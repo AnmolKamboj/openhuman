@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const Step3Analytics = () => {
+const Step2Analytics = () => {
   const navigate = useNavigate();
   const [selectedOption, setSelectedOption] = useState('maximumPrivacy');
 
   const handleContinue = () => {
-    navigate('/onboarding/step4');
+    navigate('/onboarding/step3');
   };
 
   return (
@@ -21,9 +21,13 @@ const Step3Analytics = () => {
           </div>
           <div className="flex items-center">
             <div className="w-8 h-8 bg-primary-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">2</div>
-            <div className="w-12 h-1 bg-primary-500 mx-2"></div>
+            <div className="w-12 h-1 bg-stone-700 mx-2"></div>
           </div>
-          <div className="w-8 h-8 bg-primary-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">3</div>
+          <div className="flex items-center">
+            <div className="w-8 h-8 bg-stone-700 rounded-full flex items-center justify-center text-white text-sm font-semibold">3</div>
+            <div className="w-12 h-1 bg-stone-700 mx-2"></div>
+          </div>
+          <div className="w-8 h-8 bg-stone-700 rounded-full flex items-center justify-center text-white text-sm font-semibold">4</div>
         </div>
 
         {/* Analytics card */}
@@ -106,12 +110,12 @@ const Step3Analytics = () => {
             </div>
           </div>
 
-          {/* Connect Email Account button */}
+          {/* Continue button */}
           <button
             onClick={handleContinue}
             className="btn-primary w-full py-4 text-lg font-semibold rounded-xl"
           >
-            Connect Email Account
+            Continue
           </button>
 
           {/* Privacy note */}
@@ -130,7 +134,7 @@ const Step3Analytics = () => {
 
         {/* Back button */}
         <button
-          onClick={() => navigate('/onboarding/step2')}
+          onClick={() => navigate('/onboarding/step1')}
           className="mt-6 w-full opacity-60 hover:opacity-100 text-sm font-medium transition-opacity"
         >
           ← Back
@@ -140,4 +144,4 @@ const Step3Analytics = () => {
   );
 };
 
-export default Step3Analytics;
+export default Step2Analytics;
