@@ -8,8 +8,8 @@ import socketReducer from './socketSlice';
 const authPersistConfig = {
   key: 'auth',
   storage,
-  // Only persist the token
-  whitelist: ['token'],
+  // Persist token and onboarding status
+  whitelist: ['token', 'isOnboarded'],
 };
 
 const persistedAuthReducer = persistReducer(authPersistConfig, authReducer);

@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAppDispatch } from '../../store/hooks';
+import { setOnboarded } from '../../store/authSlice';
 import ProgressIndicator from '../../components/ProgressIndicator';
 import LottieAnimation from '../../components/LottieAnimation';
 import FeaturesStep from './steps/FeaturesStep';
@@ -10,6 +12,7 @@ import GetStartedStep from './steps/GetStartedStep';
 
 const Onboarding = () => {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
   const [currentStep, setCurrentStep] = useState(1);
   const totalSteps = 5;
 
@@ -29,6 +32,7 @@ const Onboarding = () => {
   };
 
   const handleComplete = () => {
+    dispatch(setOnboarded(true));
     navigate('/home');
   };
 
