@@ -52,7 +52,7 @@ const Onboarding = () => {
         {currentStep > 1 && (
           <button
             onClick={handleBack}
-            className="mt-6 w-full opacity-60 hover:opacity-100 text-sm font-medium transition-opacity"
+            className="mt-6 outline-none border-none w-full opacity-60 hover:opacity-100 text-sm font-medium transition-opacity"
           >
             ← Back
           </button>
