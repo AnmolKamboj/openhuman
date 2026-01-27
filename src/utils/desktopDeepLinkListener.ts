@@ -5,6 +5,13 @@ import { store } from '../store';
 import { setToken } from '../store/authSlice';
 
 /**
+ * Check if running in Tauri desktop app
+ */
+const isTauri = (): boolean => {
+  return typeof window !== 'undefined' && !!(window as any).__TAURI__;
+};
+
+/**
  * Handle a list of deep link URLs delivered by the Tauri deep-link plugin.
  * Parses `outsourced://auth?token=...` URLs and exchanges the token for a
  * desktop session via the backend.
@@ -33,12 +40,28 @@ const handleDeepLinkUrls = async (urls: string[] | null | undefined) => {
     let sessionToken: string | undefined;
 
     try {
-      // Use Tauri invoke to call Rust backend (bypasses CORS)
-      const data = await invoke<{
-        sessionToken?: string;
-      }>('exchange_token', { backendUrl: BACKEND_URL, token });
+      if (isTauri()) {
+        // Use Tauri invoke to call Rust backend (bypasses CORS)
+        const data = await invoke<{
+          sessionToken?: string;
+        }>('exchange_token', { backendUrl: BACKEND_URL, token });
 
-      sessionToken = data.sessionToken;
+        sessionToken = data.sessionToken;
+      } else {
+        // Browser fallback: use fetch API
+        const response = await fetch(`${BACKEND_URL}/auth/desktop-exchange`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ token }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          sessionToken = data.data?.sessionToken;
+        }
+      }
     } catch (err) {
       console.warn('[DeepLink] Token exchange failed:', err);
     }
@@ -64,8 +87,14 @@ const handleDeepLinkUrls = async (urls: string[] | null | undefined) => {
 /**
  * Set up listeners for deep links so that when the desktop app is opened
  * via a URL like `outsourced://auth?token=...`, we can react to it.
+ * Only works in Tauri desktop app environment.
  */
 export const setupDesktopDeepLinkListener = async () => {
+  // Only set up deep link listener in Tauri environment
+  if (!isTauri()) {
+    return;
+  }
+
   try {
     const startUrls = await getCurrent();
     if (startUrls) {
