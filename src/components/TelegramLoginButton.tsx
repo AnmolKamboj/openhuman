@@ -175,7 +175,7 @@ const TelegramLoginButton = ({
                 }
 
                 const exchangeData = await exchangeResponse.json();
-                const { sessionToken, user } = exchangeData.data;
+                const { sessionToken } = exchangeData.data;
 
                 if (!sessionToken) {
                   throw new Error('No JWT token received from server');
@@ -183,11 +183,6 @@ const TelegramLoginButton = ({
 
                 // Store JWT token in store (this is the JWT from the backend)
                 dispatch(setToken(sessionToken));
-                
-                // Store user data in localStorage for backward compatibility
-                if (user) {
-                  localStorage.setItem('user', JSON.stringify(user));
-                }
 
                 // Call onSuccess callback if provided, otherwise navigate to onboarding
                 if (onSuccess) {

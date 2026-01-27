@@ -31,17 +31,14 @@ const handleDeepLinkUrls = async (urls: string[] | null | undefined) => {
     console.log('[DeepLink] Received token');
 
     let sessionToken: string | undefined;
-    let user: { id: string; username: string; firstName?: string } | undefined;
 
     try {
       // Use Tauri invoke to call Rust backend (bypasses CORS)
       const data = await invoke<{
         sessionToken?: string;
-        user?: { id: string; username: string; firstName?: string };
       }>('exchange_token', { backendUrl: BACKEND_URL, token });
 
       sessionToken = data.sessionToken;
-      user = data.user;
     } catch (err) {
       console.warn('[DeepLink] Token exchange failed:', err);
     }
@@ -55,10 +52,6 @@ const handleDeepLinkUrls = async (urls: string[] | null | undefined) => {
 
     // Store session token in store
     store.dispatch(setToken(sessionToken));
-    localStorage.setItem('deepLinkHandled', 'true');
-    if (user) {
-      localStorage.setItem('user', JSON.stringify(user));
-    }
 
     // Navigate to post-login flow. This listener runs outside the React
     // router context, so we assign the path directly and reload.
@@ -75,10 +68,8 @@ const handleDeepLinkUrls = async (urls: string[] | null | undefined) => {
 export const setupDesktopDeepLinkListener = async () => {
   try {
     const startUrls = await getCurrent();
-    if (startUrls && !localStorage.getItem('deepLinkHandled')) {
+    if (startUrls) {
       await handleDeepLinkUrls(startUrls);
-    } else if (localStorage.getItem('deepLinkHandled')) {
-      localStorage.removeItem('deepLinkHandled');
     }
 
     await onOpenUrl(urls => {
