@@ -1,5 +1,6 @@
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { TELEGRAM_BOT_USERNAME } from '../../../utils/config';
+import ConnectionIndicator from '../../../components/ConnectionIndicator';
 
 interface GetStartedStepProps {
   onComplete: () => void;
@@ -8,12 +9,13 @@ interface GetStartedStepProps {
 const GetStartedStep = ({ onComplete }: GetStartedStepProps) => {
   const handleOpenTelegram = async () => {
     try {
+      // Open Telegram and navigate to home immediately
       await openUrl(`https://t.me/${TELEGRAM_BOT_USERNAME}`);
-      setTimeout(() => {
-        onComplete();
-      }, 1000);
+      onComplete();
     } catch (error) {
       console.error('Failed to open Telegram:', error);
+      // Still navigate to home even if opening Telegram fails
+      onComplete();
     }
   };
 
@@ -25,6 +27,10 @@ const GetStartedStep = ({ onComplete }: GetStartedStepProps) => {
           Alright you're all set up, just message your assistant and you're ready to cook!
         </p>
       </div>
+
+      <ConnectionIndicator
+        description="Your browser is now connected to the AlphaHuman AI Models. Keep this tab open to keep the connection alive."
+      />
 
       <div className="space-y-3 mb-4">
         <div className="bg-stone-800/50 rounded-xl p-4 border border-stone-700">
@@ -47,9 +53,9 @@ const GetStartedStep = ({ onComplete }: GetStartedStepProps) => {
               <span className="text-white font-bold text-xs">2</span>
             </div>
             <div>
-              <h3 className="font-semibold mb-1 text-sm">Start Messaging</h3>
+              <h3 className="font-semibold mb-1 text-sm">Keep this tab open</h3>
               <p className="opacity-70 text-xs">
-                Send a message to the bot to get started. Try asking about crypto prices, market trends, or anything about your chats!
+                Keep this tab open to keep the connection alive. You can message the assistant with the button below.
               </p>
             </div>
           </div>
@@ -61,9 +67,9 @@ const GetStartedStep = ({ onComplete }: GetStartedStepProps) => {
               <span className="text-white font-bold text-xs">3</span>
             </div>
             <div>
-              <h3 className="font-semibold mb-1 text-sm">Watch the Magic Happen 🪄</h3>
+              <h3 className="font-semibold mb-1 text-sm">Start Messaging</h3>
               <p className="opacity-70 text-xs">
-                Your assistant will automatically start connecting to your accounts and tools to get insights and help you get more done.
+                Send a message to the bot to get started. Try asking about crypto prices, market trends, or anything about your chats!
               </p>
             </div>
           </div>
@@ -74,7 +80,7 @@ const GetStartedStep = ({ onComplete }: GetStartedStepProps) => {
         onClick={handleOpenTelegram}
         className="w-full flex items-center justify-center space-x-3 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-semibold py-2.5 text-sm rounded-xl transition-all duration-300 hover:shadow-medium mb-3"
       >
-        <span>I'm Ready to Cook! 🔥</span>
+        <span>I'm Ready! Let's Go! 🔥</span>
       </button>
     </div>
   );
