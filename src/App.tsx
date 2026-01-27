@@ -3,6 +3,7 @@ import { Provider } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
 import { store, persistor } from './store';
 import SocketProvider from './providers/SocketProvider';
+import UserProvider from './providers/UserProvider';
 import AppRoutes from './AppRoutes';
 
 function App() {
@@ -10,9 +11,11 @@ function App() {
     <Provider store={store}>
       <PersistGate loading={null} persistor={persistor}>
         <SocketProvider>
-          <Router>
-            <AppRoutes />
-          </Router>
+          <UserProvider>
+            <Router>
+              <AppRoutes />
+            </Router>
+          </UserProvider>
         </SocketProvider>
       </PersistGate>
     </Provider>

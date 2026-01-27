@@ -1,4 +1,5 @@
-import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
+import { clearUser } from './userSlice';
 
 interface AuthState {
   token: string | null;
@@ -17,7 +18,7 @@ const authSlice = createSlice({
     setToken: (state, action: PayloadAction<string>) => {
       state.token = action.payload;
     },
-    clearToken: (state) => {
+    _clearToken: (state) => {
       state.token = null;
       state.isOnboarded = false;
     },
@@ -27,5 +28,11 @@ const authSlice = createSlice({
   },
 });
 
-export const { setToken, clearToken, setOnboarded } = authSlice.actions;
+// Thunk that clears both token and user data
+export const clearToken = createAsyncThunk('auth/clearToken', async (_, { dispatch }) => {
+  dispatch(authSlice.actions._clearToken());
+  dispatch(clearUser());
+});
+
+export const { setToken, setOnboarded } = authSlice.actions;
 export default authSlice.reducer;

@@ -1,8 +1,9 @@
-import { configureStore } from '@reduxjs/toolkit';
+import { configureStore, Middleware } from '@reduxjs/toolkit';
 import { persistStore, persistReducer, FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER } from 'redux-persist';
 import storage from 'redux-persist/lib/storage';
 import authReducer from './authSlice';
 import socketReducer from './socketSlice';
+import userReducer from './userSlice';
 
 // Persist config for auth only
 const authPersistConfig = {
@@ -15,12 +16,12 @@ const authPersistConfig = {
 const persistedAuthReducer = persistReducer(authPersistConfig, authReducer);
 
 // Get logger only in dev mode
-let loggerMiddleware: unknown = undefined;
+let loggerMiddleware: Middleware | undefined = undefined;
 if (import.meta.env.DEV) {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const createLogger = require('redux-logger');
-    loggerMiddleware = createLogger.createLogger();
+    loggerMiddleware = createLogger.createLogger() as Middleware;
   } catch {
     // Logger not available, continue without it
   }
@@ -30,6 +31,7 @@ export const store = configureStore({
   reducer: {
     auth: persistedAuthReducer,
     socket: socketReducer,
+    user: userReducer,
   },
   middleware: (getDefaultMiddleware) => {
     const middleware = getDefaultMiddleware({
