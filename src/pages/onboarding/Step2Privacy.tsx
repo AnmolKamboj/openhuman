@@ -8,10 +8,7 @@ const Step2Privacy = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-200 via-sage-100 to-amber-100 relative flex items-center justify-center">
-      {/* Background pattern */}
-      <div className="absolute inset-0 bg-noise opacity-30"></div>
-
+    <div className="min-h-screen relative flex items-center justify-center">
       {/* Main content */}
       <div className="relative z-10 max-w-md w-full mx-4">
         {/* Progress indicator */}
@@ -22,18 +19,18 @@ const Step2Privacy = () => {
           </div>
           <div className="flex items-center">
             <div className="w-8 h-8 bg-primary-500 rounded-full flex items-center justify-center text-white text-sm font-semibold">2</div>
-            <div className="w-12 h-1 bg-stone-300 mx-2"></div>
+            <div className="w-12 h-1 bg-stone-700 mx-2"></div>
           </div>
-          <div className="w-8 h-8 bg-stone-300 rounded-full flex items-center justify-center text-stone-500 text-sm font-semibold">3</div>
+          <div className="w-8 h-8 bg-stone-700 rounded-full flex items-center justify-center text-white text-sm font-semibold">3</div>
         </div>
 
         {/* Privacy card */}
         <div className="glass rounded-3xl p-8 shadow-large animate-fade-up">
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-stone-900 mb-2">
+            <h1 className="text-2xl font-bold mb-2">
               Privacy
             </h1>
-            <p className="text-stone-600">
+            <p className="opacity-70">
               Your security and privacy are our top priorities
             </p>
           </div>
@@ -41,7 +38,7 @@ const Step2Privacy = () => {
           {/* Enterprise-Grade Security Section */}
           <div className="space-y-6 mb-8">
             {/* Enterprise-Grade Security */}
-            <div className="bg-sage-50 rounded-xl p-6 border border-sage-200">
+            <div className="bg-stone-800/50 rounded-xl p-6 border border-stone-700">
               <div className="flex items-start space-x-4">
                 <div className="w-12 h-12 bg-sage-500 rounded-xl flex items-center justify-center flex-shrink-0">
                   <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -49,8 +46,8 @@ const Step2Privacy = () => {
                   </svg>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-sage-900 mb-2">Enterprise-Grade Security</h3>
-                  <p className="text-sage-700 text-sm leading-relaxed">
+                  <h3 className="font-semibold mb-2">Enterprise-Grade Security</h3>
+                  <p className="opacity-70 text-sm leading-relaxed">
                     Bank-level encryption, multi-factor authentication, and 24/7 security monitoring to protect your assets and personal information.
                   </p>
                 </div>
@@ -58,7 +55,7 @@ const Step2Privacy = () => {
             </div>
 
             {/* Privacy Section */}
-            <div className="bg-primary-50 rounded-xl p-6 border border-primary-200">
+            <div className="bg-stone-800/50 rounded-xl p-6 border border-stone-700">
               <div className="flex items-start space-x-4">
                 <div className="w-12 h-12 bg-primary-500 rounded-xl flex items-center justify-center flex-shrink-0">
                   <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -67,8 +64,8 @@ const Step2Privacy = () => {
                   </svg>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-primary-900 mb-2">Privacy</h3>
-                  <p className="text-primary-700 text-sm leading-relaxed">
+                  <h3 className="font-semibold mb-2">Privacy</h3>
+                  <p className="opacity-70 text-sm leading-relaxed">
                     Zero-knowledge architecture ensures your trading patterns and holdings remain completely private from third parties.
                   </p>
                 </div>
@@ -77,29 +74,29 @@ const Step2Privacy = () => {
           </div>
 
           {/* Certifications */}
-          <div className="bg-amber-50 rounded-xl p-6 border border-amber-200 mb-8">
-            <h3 className="font-semibold text-amber-900 mb-4 text-center">Industry Certifications</h3>
+          <div className="bg-stone-800/50 rounded-xl p-6 border border-stone-700 mb-8">
+            <h3 className="font-semibold mb-4 text-center">Industry Certifications</h3>
             <div className="grid grid-cols-2 gap-4">
               {/* SOC 2 Type II */}
-              <div className="bg-white rounded-lg p-4 border border-amber-300 text-center">
+              <div className="bg-black/50 rounded-lg p-4 border border-stone-700 text-center">
                 <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center mx-auto mb-2">
                   <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
                     <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                   </svg>
                 </div>
-                <p className="font-medium text-amber-900 text-sm">SOC 2 Type II</p>
-                <p className="text-amber-700 text-xs mt-1">Security & Availability</p>
+                <p className="font-medium text-sm">SOC 2 Type II</p>
+                <p className="opacity-70 text-xs mt-1">Security & Availability</p>
               </div>
 
               {/* CASA Tier II */}
-              <div className="bg-white rounded-lg p-4 border border-amber-300 text-center">
+              <div className="bg-black/50 rounded-lg p-4 border border-stone-700 text-center">
                 <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center mx-auto mb-2">
                   <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
                   </svg>
                 </div>
-                <p className="font-medium text-amber-900 text-sm">CASA Tier II</p>
-                <p className="text-amber-700 text-xs mt-1">Asset Protection</p>
+                <p className="font-medium text-sm">CASA Tier II</p>
+                <p className="opacity-70 text-xs mt-1">Asset Protection</p>
               </div>
             </div>
           </div>
@@ -116,7 +113,7 @@ const Step2Privacy = () => {
         {/* Back button */}
         <button
           onClick={() => navigate('/onboarding/step1')}
-          className="mt-6 w-full text-stone-500 hover:text-stone-700 text-sm font-medium transition-colors"
+          className="mt-6 w-full opacity-60 hover:opacity-100 text-sm font-medium transition-opacity"
         >
           ← Back
         </button>

@@ -46,20 +46,17 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-200 via-sage-100 to-amber-100 relative flex items-center justify-center">
-      {/* Background pattern */}
-      <div className="absolute inset-0 bg-noise opacity-30"></div>
-
+    <div className="min-h-screen relative flex items-center justify-center">
       {/* Main content */}
       <div className="relative z-10 max-w-md w-full mx-4">
         {/* Login/Signup card */}
         <div className="glass rounded-3xl p-8 shadow-large animate-fade-up">
           {/* Header */}
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-stone-900 mb-2">
+            <h1 className="text-2xl font-bold mb-2">
               Join the Community
             </h1>
-            <p className="text-stone-600">
+            <p className="opacity-70">
               Choose your preferred method to get started
             </p>
           </div>
@@ -75,7 +72,7 @@ const Login = () => {
                 placeholder="(000) 000-0000"
                 className="input-primary rounded-xl pl-20"
               />
-              <div className="absolute left-4 top-1/2 transform -translate-y-1/2 flex items-center space-x-2 text-stone-500">
+              <div className="absolute left-4 top-1/2 transform -translate-y-1/2 flex items-center space-x-2 opacity-60">
                 <span className="text-lg">{selectedCountry.flag}</span>
                 <span className="text-sm">{selectedCountry.dialCode}</span>
               </div>
@@ -103,14 +100,14 @@ const Login = () => {
           </button>
 
           {/* Security note */}
-          <div className="mt-6 p-4 bg-sage-50 rounded-xl border border-sage-200">
+          <div className="mt-6 p-4 bg-stone-800/50 rounded-xl border border-stone-700">
             <div className="flex items-start space-x-2">
-              <svg className="w-5 h-5 text-sage-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-5 h-5 text-sage-400 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 1L5 6v4c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V6l-5-5z"/>
               </svg>
               <div>
-                <p className="text-sage-800 font-medium text-sm">Secure Authentication</p>
-                <p className="text-sage-600 text-xs mt-1">Your data is protected with enterprise-grade encryption</p>
+                <p className="font-medium text-sm">Secure Authentication</p>
+                <p className="opacity-70 text-xs mt-1">Your data is protected with enterprise-grade encryption</p>
               </div>
             </div>
           </div>
@@ -119,7 +116,7 @@ const Login = () => {
         {/* Back button */}
         <button
           onClick={() => navigate('/')}
-          className="mt-6 w-full text-stone-500 hover:text-stone-700 text-sm font-medium transition-colors"
+          className="mt-6 w-full opacity-60 hover:opacity-100 text-sm font-medium transition-opacity"
         >
           ← Back to welcome
         </button>

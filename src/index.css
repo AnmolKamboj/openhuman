@@ -31,7 +31,7 @@
     @apply font-sans;
     line-height: 1.6;
 
-    background-color: #0f0f0f;
+    background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 50%, #0f0f0f 100%);
     color: #ffffff;
     z-index: -1;
     position: absolute;
