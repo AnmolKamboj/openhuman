@@ -1,0 +1,55 @@
+import { Routes, Route } from 'react-router-dom';
+import Welcome from './pages/Welcome';
+import Login from './pages/Login';
+import Onboarding from './pages/onboarding/Onboarding';
+import Home from './pages/Home';
+import PublicRoute from './components/PublicRoute';
+import ProtectedRoute from './components/ProtectedRoute';
+import DefaultRedirect from './components/DefaultRedirect';
+
+const AppRoutes = () => {
+  return (
+    <Routes>
+      {/* Public routes - redirect to /home or /onboarding if logged in */}
+      <Route
+        path="/"
+        element={
+          <PublicRoute>
+            <Welcome />
+          </PublicRoute>
+        }
+      />
+      <Route
+        path="/login"
+        element={
+          <PublicRoute>
+            <Login />
+          </PublicRoute>
+        }
+      />
+
+      {/* Protected routes */}
+      <Route
+        path="/onboarding"
+        element={
+          <ProtectedRoute requireAuth={true} requireOnboarded={false}>
+            <Onboarding />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/home"
+        element={
+          <ProtectedRoute requireAuth={true} requireOnboarded={true} redirectTo="/onboarding">
+            <Home />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Default redirect based on auth status */}
+      <Route path="*" element={<DefaultRedirect />} />
+    </Routes>
+  );
+};
+
+export default AppRoutes;

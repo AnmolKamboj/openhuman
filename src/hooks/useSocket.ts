@@ -1,13 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { socketService } from '../services/socketService';
+import { useAppSelector } from '../store/hooks';
 import type { Socket } from 'socket.io-client';
-
-interface UseSocketOptions {
-  autoConnect?: boolean;
-}
 
 /**
  * React hook for using the Socket.IO connection
+ * Note: The socket connection is managed by SocketProvider based on JWT token.
+ * This hook provides access to the socket instance and methods.
  * 
  * @example
  * ```tsx
@@ -24,15 +23,11 @@ interface UseSocketOptions {
  * }, [on, off]);
  * ```
  */
-export const useSocket = (options: UseSocketOptions = {}) => {
-  const { autoConnect = true } = options;
+export const useSocket = () => {
   const listenersRef = useRef<Array<{ event: string; callback: (...args: unknown[]) => void }>>([]);
+  const socketStatus = useAppSelector((state) => state.socket.status);
 
   useEffect(() => {
-    if (autoConnect) {
-      socketService.connect();
-    }
-
     return () => {
       // Cleanup: remove all listeners registered through this hook
       listenersRef.current.forEach(({ event, callback }) => {
@@ -40,7 +35,7 @@ export const useSocket = (options: UseSocketOptions = {}) => {
       });
       listenersRef.current = [];
     };
-  }, [autoConnect]);
+  }, []);
 
   const emit = (event: string, data?: unknown) => {
     socketService.emit(event, data);
@@ -68,12 +63,11 @@ export const useSocket = (options: UseSocketOptions = {}) => {
 
   return {
     socket: socketService.getSocket() as Socket | null,
-    isConnected: socketService.isConnected(),
+    isConnected: socketStatus === 'connected',
+    status: socketStatus,
     emit,
     on,
     off,
     once,
-    connect: () => socketService.connect(),
-    disconnect: () => socketService.disconnect(),
   };
 };
