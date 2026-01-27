@@ -7,16 +7,16 @@ interface FeaturesStepProps {
 const FeaturesStep = ({ onNext }: FeaturesStepProps) => {
   const features = [
     {
-      title: 'Keeps you on track',
-      description: 'Organize your chats and tasks, finds you alpha and gets you deep insights. Get more done!',
+      title: 'Keep track of Everything',
+      description: 'Sometimes your chats, emails, tasks can get a bit too much. Stay on track, organize things and get more done.',
     },
     {
       title: 'Has Infinite Memory & Learns',
-      description: 'Your assistant can remember everything you tell it and learn from your interactions to help you get more done.',
+      description: 'Missed something? Have a sexy assistant give you exactly what you need, every time.',
     },
     {
       title: 'Trades the Trenches',
-      description: 'Your assistant comes with it\'s own private wallet that can trade on any exchange for you.',
+      description: 'With it\'s own private wallet, trade or reasearch on any exchange or shitcoin autonomously. Go big or go home.',
     },
   ];
 
@@ -25,7 +25,7 @@ const FeaturesStep = ({ onNext }: FeaturesStepProps) => {
       <div className="text-center mb-4">
         <h1 className="text-xl font-bold mb-2">Are You Ready For This?</h1>
         <p className="opacity-70 text-sm">
-          Here are a few things that AlphaHuman can do that might surprise you.
+          Here's some of the things that AlphaHuman can do
         </p>
       </div>
 
@@ -43,7 +43,7 @@ const FeaturesStep = ({ onNext }: FeaturesStepProps) => {
         onClick={onNext}
         className="btn-primary w-full py-2.5 text-sm font-medium rounded-xl"
       >
-        Yes I'm Ready. Bring It On 🚀
+        Looks Amazing. Bring It On 🚀
       </button>
     </div>
   );

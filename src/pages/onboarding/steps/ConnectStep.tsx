@@ -68,7 +68,7 @@ const ConnectStep = ({ onNext }: ConnectStepProps) => {
       <div className="text-center mb-4">
         <h1 className="text-xl font-bold mb-2">Connect Accounts</h1>
         <p className="opacity-70 text-sm">
-          To get the most out of AlphaHuman, you need to connect at least one account to your assistant. The more
+          To get the most out of AlphaHuman, you need to connect at least one account. The more
           accounts you connect, the more powerful the intelligence will be.
         </p>
       </div>
@@ -99,9 +99,10 @@ const ConnectStep = ({ onNext }: ConnectStepProps) => {
       <div className="mt-4 p-4 bg-stone-800/50 rounded-xl border border-stone-700">
         <div className="flex items-start space-x-2">
           <div>
-            <p className="font-medium text-sm">🔒 Your data stays private</p>
+            <p className="font-medium text-sm">🔒 Remember everything stays private!</p>
             <p className="opacity-70 text-xs mt-1">AlphaHuman saves all data and credentials
-              locally and follows a strict zero-data retention policy when it communicats with different AI mod</p>
+              locally and follows a strict zero-data retention policy so you won't have to worry about anything
+              getting leaked.</p>
           </div>
         </div>
       </div>

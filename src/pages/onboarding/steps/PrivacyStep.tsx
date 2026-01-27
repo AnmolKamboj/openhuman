@@ -43,7 +43,7 @@ const PrivacyStep = ({ onNext }: PrivacyStepProps) => {
         onClick={onNext}
         className="btn-primary w-full py-2.5 text-sm font-medium rounded-xl"
       >
-        Love the Privacy first features! Continue!
+        Got it! Let's Continue 👀
       </button>
     </div>
   );

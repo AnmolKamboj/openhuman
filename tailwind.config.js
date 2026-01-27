@@ -25,19 +25,19 @@ module.exports = {
           300: '#D4D4D1',   // Hover states
         },
 
-        // Primary - Premium ocean blue with depth
+        // Primary - Premium ocean blue with depth (optimized for dark backgrounds)
         primary: {
           50: '#F0F7FF',
           100: '#E0EFFF',
           200: '#C7E2FF',
           300: '#A5D0FF',
           400: '#7AB5FF',
-          500: '#5B9BF3',   // Main brand - sophisticated blue
-          600: '#4A83DD',   // Hover state
-          700: '#3D6DC4',   // Active state
-          800: '#345A9F',
-          900: '#2D4B7F',
-          950: '#1E3052',
+          500: '#4A83DD',   // Main brand - darker blue for dark backgrounds
+          600: '#3D6DC4',   // Hover state
+          700: '#345A9F',   // Active state
+          800: '#2D4B7F',
+          900: '#1E3052',
+          950: '#0F1A2E',
         },
 
         // Sage - Success and growth (sophisticated green)
