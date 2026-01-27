@@ -1,9 +1,13 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { openUrl } from '../utils/openUrl';
 import { TELEGRAM_BOT_USERNAME } from '../utils/config';
 import ConnectionIndicator from '../components/ConnectionIndicator';
+import { useAuthStore } from '../store/authStore';
 
 const Home = () => {
+  const navigate = useNavigate();
+  const clearToken = useAuthStore((state) => state.clearToken);
   const [userName] = useState('Cyrus');
 
   // Get current date
@@ -43,8 +47,8 @@ const Home = () => {
   };
 
   const handleLogout = () => {
-    // TODO: Implement logout functionality
-    console.log('Logout');
+    clearToken();
+    navigate('/');
   };
 
   return (

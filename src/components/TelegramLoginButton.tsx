@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BACKEND_URL, TELEGRAM_BOT_ID } from '../utils/config';
+import { useAuthStore } from '../store/authStore';
 
 interface TelegramAuthData {
   id: number;
@@ -27,6 +28,7 @@ const TelegramLoginButton = ({
 }: TelegramLoginButtonProps) => {
   const navigate = useNavigate();
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const setToken = useAuthStore((state) => state.setToken);
 
   const handleTelegramLogin = async () => {
     if (isAuthenticating || externalDisabled) return;
@@ -76,8 +78,8 @@ const TelegramLoginButton = ({
           try {
             const jwtToken = event.data.token;
 
-            // Store session token
-            localStorage.setItem('sessionToken', jwtToken);
+            // Store session token in store
+            setToken(jwtToken);
 
             // Call onSuccess callback if provided, otherwise navigate to onboarding
             if (onSuccess) {
@@ -176,8 +178,10 @@ const TelegramLoginButton = ({
                   throw new Error('No session token received from server');
                 }
 
-                // Store session and user data
-                localStorage.setItem('sessionToken', sessionToken);
+                // Store session token in store
+                setToken(sessionToken);
+                
+                // Store user data in localStorage for backward compatibility
                 if (user) {
                   localStorage.setItem('user', JSON.stringify(user));
                 }
