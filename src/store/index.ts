@@ -13,7 +13,7 @@ import storage from "redux-persist/lib/storage";
 import authReducer from "./authSlice";
 import socketReducer from "./socketSlice";
 import userReducer from "./userSlice";
-import createLogger from "redux-logger";
+import { createLogger } from "redux-logger";
 import { IS_DEV } from "../utils/config";
 
 // Persist config for auth only
@@ -39,8 +39,16 @@ export const store = configureStore({
       },
     });
 
-    // Add redux-logger in development
-    if (IS_DEV) return middleware.concat(createLogger);
+    // Add redux-logger in development with collapsed groups
+    if (IS_DEV) {
+      return middleware.concat(
+        createLogger({
+          collapsed: true,
+          duration: true,
+          timestamp: true,
+        }),
+      );
+    }
     return middleware;
   },
 });

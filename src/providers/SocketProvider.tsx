@@ -16,12 +16,14 @@ const SocketProvider = ({ children }: { children: React.ReactNode }) => {
 
     // Token was set - connect
     if (token && token !== previousToken) {
+      console.log('[SocketProvider] Token available, connecting...');
       socketService.connect(token);
       previousTokenRef.current = token;
     }
 
     // Token was unset - disconnect
     if (!token && previousToken) {
+      console.log('[SocketProvider] Token removed, disconnecting...');
       socketService.disconnect();
       previousTokenRef.current = null;
     }

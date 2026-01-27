@@ -11,19 +11,30 @@ class SocketService {
    * Connect to the socket server with authentication
    */
   connect(token: string): void {
+    if (!token) {
+      console.warn('[Socket] Cannot connect: no token provided');
+      return;
+    }
+
     // Don't connect if already connected with the same token
     if (this.socket?.connected && this.token === token) {
+      console.log('[Socket] Already connected with same token');
       return;
     }
 
-    // Disconnect existing connection if token changed
-    if (this.socket && this.token !== token) {
-      this.disconnect();
-    }
-
-    // Don't connect if socket exists and is not disconnected (already connecting or connected)
-    if (this.socket && !this.socket.disconnected) {
-      return;
+    // Disconnect existing connection if token changed or socket exists
+    if (this.socket) {
+      if (this.token !== token) {
+        console.log('[Socket] Token changed, disconnecting old connection');
+        this.disconnect();
+      } else if (this.socket.connected) {
+        console.log('[Socket] Already connected');
+        return;
+      } else if (!this.socket.disconnected) {
+        // Socket is connecting, wait for it
+        console.log('[Socket] Connection in progress, waiting...');
+        return;
+      }
     }
 
     this.token = token;
@@ -31,31 +42,54 @@ class SocketService {
     // Update status to connecting
     store.dispatch(setStatus('connecting'));
 
+    console.log('[Socket] Connecting to:', BACKEND_URL);
+    console.log('[Socket] Token present:', token ? 'yes' : 'no');
+    console.log('[Socket] Token length:', token?.length || 0);
+
     // Create socket connection with auth token
+    // Note: path must match backend server configuration
+    // Backend expects token in socket.handshake.auth.token
     this.socket = io(BACKEND_URL, {
       auth: {
-        token,
+        token: token, // Explicitly pass token in auth object
       },
+      path: '/socket.io/',
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 5,
+      forceNew: true, // Force new connection to ensure auth is sent
     });
 
     // Connection event handlers
     this.socket.on('connect', () => {
       const socketId = this.socket?.id || null;
+      console.log('[Socket] Connected with ID:', socketId);
       store.dispatch(setStatus('connected'));
       store.dispatch(setSocketId(socketId));
     });
 
-    this.socket.on('disconnect', () => {
+    this.socket.on('ready', () => {
+      console.log('[Socket] Server ready - authentication successful');
+    });
+
+    this.socket.on('error', (error: { message?: string; status?: number }) => {
+      console.error('[Socket] Server error:', error);
+      if (error.status === 403) {
+        console.error('[Socket] Authentication failed - plan limit or access denied');
+      }
+    });
+
+    this.socket.on('disconnect', (reason) => {
+      console.log('[Socket] Disconnected:', reason);
       store.dispatch(setStatus('disconnected'));
       store.dispatch(setSocketId(null));
     });
 
     this.socket.on('connect_error', (error) => {
       console.error('[Socket] Connection error:', error);
+      console.error('[Socket] Error message:', error.message);
+      console.error('[Socket] Error type:', error.type);
       store.dispatch(setStatus('disconnected'));
     });
   }
