@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import GoogleIcon from './icons/GoogleIcon';
+import TelegramConnectionModal from '../../../components/TelegramConnectionModal';
 
 import BinanceIcon from './icons/binance.svg';
 import NotionIcon from './icons/notion.svg';
@@ -19,13 +21,26 @@ interface ConnectOption {
 }
 
 const ConnectStep = ({ onNext }: ConnectStepProps) => {
+  const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
+
   const handleConnect = (provider: string) => {
     // In a real app, this would handle OAuth
     console.log(`Connecting to ${provider}`);
+    
+    if (provider === 'telegram') {
+      setIsTelegramModalOpen(true);
+      return;
+    }
+    
     // Don't auto-advance for coming soon items
     if (!connectOptions.find(opt => opt.id === provider)?.comingSoon) {
       onNext();
     }
+  };
+
+  const handleTelegramComplete = () => {
+    setIsTelegramModalOpen(false);
+    onNext();
   };
 
   const connectOptions: ConnectOption[] = [
@@ -106,6 +121,12 @@ const ConnectStep = ({ onNext }: ConnectStepProps) => {
           </div>
         </div>
       </div>
+
+      <TelegramConnectionModal
+        isOpen={isTelegramModalOpen}
+        onClose={() => setIsTelegramModalOpen(false)}
+        onComplete={handleTelegramComplete}
+      />
     </div>
   );
 };
