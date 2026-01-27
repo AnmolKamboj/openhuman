@@ -7,33 +7,25 @@ interface FeaturesStepProps {
 const FeaturesStep = ({ onNext }: FeaturesStepProps) => {
   const features = [
     {
-      title: '🤖 Telegram Bot Assistant',
-      description: 'Interact with AlphaHuman through Telegram. Get instant responses, automate tasks, and receive insights directly in your chats.',
+      title: 'Keeps you on track',
+      description: 'Organize your chats and tasks, finds you alpha and gets you deep insights. Get more done!',
     },
     {
-      title: '📊 Crypto Market Intelligence',
-      description: 'Get real-time market analysis, price alerts, and deep insights to help you make informed trading decisions.',
+      title: 'Has Infinite Memory & Learns',
+      description: 'Your assistant can remember everything you tell it and learn from your interactions to help you get more done.',
     },
     {
-      title: '🔗 Multi-Account Integration',
-      description: 'Connect Google, Notion, Telegram, and more. Your assistant can read emails, manage tasks, and automate workflows across all your tools.',
-    },
-    {
-      title: '⚡ Local Processing',
-      description: 'All your data is processed locally on your device. Your conversations, credentials, and sensitive information never leave your machine.',
-    },
-    {
-      title: '🔄 Automation & Workflows',
-      description: 'Automate repetitive tasks, schedule actions, and create custom workflows to 10x your productivity in crypto.',
+      title: 'Trades the Trenches',
+      description: 'Your assistant comes with it\'s own private wallet that can trade on any exchange for you.',
     },
   ];
 
   return (
     <div className="glass rounded-3xl p-8 shadow-large animate-fade-up">
       <div className="text-center mb-4">
-        <h1 className="text-xl font-bold mb-2">Features</h1>
+        <h1 className="text-xl font-bold mb-2">Are You Ready For This?</h1>
         <p className="opacity-70 text-sm">
-          Discover what AlphaHuman can do for you
+          Here are a few things that AlphaHuman can do that might surprise you.
         </p>
       </div>
 
@@ -51,7 +43,7 @@ const FeaturesStep = ({ onNext }: FeaturesStepProps) => {
         onClick={onNext}
         className="btn-primary w-full py-2.5 text-sm font-medium rounded-xl"
       >
-        Continue
+        Yes I'm Ready. Bring It On 🚀
       </button>
     </div>
   );

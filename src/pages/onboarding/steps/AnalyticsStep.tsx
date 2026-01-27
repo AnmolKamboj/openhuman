@@ -12,7 +12,7 @@ const AnalyticsStep = ({ onNext }: AnalyticsStepProps) => {
       <div className="text-center mb-4">
         <h1 className="text-xl font-bold mb-2">Analytics</h1>
         <p className="opacity-70 text-sm">
-          Help us improve your experience while maintaining your privacy
+          We collect anonymized usage data to help us improve the app for you and for others. You can choose to skip this.
         </p>
       </div>
 

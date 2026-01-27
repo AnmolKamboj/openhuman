@@ -7,25 +7,25 @@ interface PrivacyStepProps {
 const PrivacyStep = ({ onNext }: PrivacyStepProps) => {
   const privacyFeatures = [
     {
-      title: '🔒 Client-Side Encryption',
-      description: 'Your data is encrypted in your browser before it ever reaches our servers. We store only ciphertext. Without your recovery phrase, your content is cryptographically unreadable AES-256-GCM. Keys never leave your device',
+      title: '🔒 Everything is Local & Encrypted',
+      description: 'Your data is encrypted (AES-256-GCM) in your device and never stored elsewhere. Your encryption keys never leave your device.',
     },
     {
-      title: '🙈 Zero Admin Access',
-      description: 'Even with full database access, Momo admins cannot decrypt your content. Your encryption keys exist only in your browser. We have no mechanism to access them.',
+      title: '🙈 Zero Data Retention',
+      description: 'Your queries are processed, immediately discarded and never stored elsewhere. Your data is NEVER used to train AI models. ',
     },
     {
-      title: '🚫 Zero Data Retention',
-      description: 'Your data is NEVER used to train AI models. We operate under a Zero Data Retention contract with Anthropic. Your queries are processed and immediately discarded, never stored or used for training.',
-    },
+      title: '🔥 Delete Anytime You Want',
+      description: 'You can delete your data and your account anytime you want. Everything will get wiped including AI memories.',
+    }
   ];
 
   return (
     <div className="glass rounded-3xl p-8 shadow-large animate-fade-up">
       <div className="text-center mb-4">
-        <h1 className="text-xl font-bold mb-2">Privacy</h1>
+        <h1 className="text-xl font-bold mb-2">A Quick Privacy Note</h1>
         <p className="opacity-70 text-sm">
-          A quick overview of how your privacy is protected with AlphaHuman. AlphaHuman is built with privacy in mind.
+          Since AlphaHuman handles criticial information about you, here's how it handles your data and manages your privacy.
         </p>
       </div>
 
@@ -43,7 +43,7 @@ const PrivacyStep = ({ onNext }: PrivacyStepProps) => {
         onClick={onNext}
         className="btn-primary w-full py-2.5 text-sm font-medium rounded-xl"
       >
-        Continue
+        Love the Privacy first features! Continue!
       </button>
     </div>
   );
