@@ -1,23 +1,45 @@
 # Project Overview
 
-## Tauri Cross-Platform Application
+## Crypto Community Platform
 
-This project is a Tauri v2 application designed to run on multiple platforms:
+This project is a **crypto-focused communication platform** built with Tauri v2, designed to serve the cryptocurrency ecosystem across multiple platforms:
 
 - **Windows** (Desktop)
 - **macOS** (Desktop)
 - **Android** (Mobile)
 - **iOS** (Mobile)
 
+## Target Users
+- Traders, Yield Farmers, Investors
+- Researchers, KOLs, Developers
+- General crypto community members
+
 ## Technology Stack
 
-| Layer | Technology | Version |
-|-------|------------|---------|
-| Frontend | React | 19.1.0 |
-| Language | TypeScript | 5.8.3 |
-| Build Tool | Vite | 7.0.4 |
-| Backend | Rust | 1.93.0 |
-| Framework | Tauri | 2.x |
+| Layer | Technology | Version | Purpose |
+|-------|------------|---------|---------|
+| **Frontend Core** |
+| UI Framework | React | 19.1.0 | Component-based UI |
+| Language | TypeScript | 5.8.3 | Type safety |
+| Build Tool | Vite | 7.0.4 | Fast development |
+| **UI & Styling** |
+| Styling | Tailwind CSS | Latest | Utility-first CSS |
+| Components | Headless UI | Latest | Accessible components |
+| Animation | Framer Motion | Latest | Smooth animations |
+| **State & Data** |
+| State Management | Zustand | Latest | Lightweight state |
+| Data Fetching | TanStack Query | Latest | Server state management |
+| Form Handling | React Hook Form | Latest | Form validation |
+| **Backend Core** |
+| Language | Rust | 1.93.0 | Performance & safety |
+| Framework | Tauri | 2.x | Cross-platform apps |
+| **Backend Libraries** |
+| Async Runtime | Tokio | Latest | Async operations |
+| JSON Handling | Serde JSON | Latest | Serialization |
+| Database | SQLx + SQLite | Latest | Local storage |
+| HTTP Client | Reqwest | Latest | API requests |
+| WebSocket | WebSocket crate | Latest | Real-time messaging |
+| Utilities | UUID | Latest | Unique identifiers |
 
 ## Project Structure
 

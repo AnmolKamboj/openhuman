@@ -1,0 +1,236 @@
+/* Import Google Fonts for trust and professionalism */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap');
+
+/* Tailwind CSS imports */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base layer - Typography and fundamental styles */
+@layer base {
+  /* Set default font and improve text rendering */
+  html {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-canvas-50 text-stone-900;
+    @apply font-sans;
+    line-height: 1.6;
+  }
+
+  /* Heading hierarchy for clear information architecture */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display font-semibold;
+    @apply text-stone-900;
+    line-height: 1.2;
+  }
+
+  h1 { @apply text-3xl lg:text-4xl; }
+  h2 { @apply text-2xl lg:text-3xl; }
+  h3 { @apply text-xl lg:text-2xl; }
+  h4 { @apply text-lg lg:text-xl; }
+
+  /* Enhanced focus styles for accessibility and trust */
+  *:focus {
+    @apply outline-none ring-2 ring-primary-500 ring-offset-2 ring-offset-canvas-50;
+  }
+
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Component layer - Reusable patterns */
+@layer components {
+  /* Button variants for consistent interaction design */
+  .btn-primary {
+    @apply bg-primary-500 hover:bg-primary-600 active:bg-primary-700;
+    @apply text-white font-medium;
+    @apply px-4 py-2 rounded-lg;
+    @apply transition-all duration-200 ease-in-out;
+    @apply shadow-soft hover:shadow-medium;
+    @apply focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply bg-canvas-100 hover:bg-canvas-200 active:bg-canvas-300;
+    @apply text-stone-700 font-medium;
+    @apply px-4 py-2 rounded-lg border border-canvas-200;
+    @apply transition-all duration-200 ease-in-out;
+    @apply focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+  }
+
+  .btn-success {
+    @apply bg-sage-500 hover:bg-sage-600 active:bg-sage-700;
+    @apply text-white font-medium;
+    @apply px-4 py-2 rounded-lg;
+    @apply transition-all duration-200 ease-in-out;
+    @apply shadow-soft hover:shadow-medium;
+  }
+
+  .btn-danger {
+    @apply bg-coral-500 hover:bg-coral-600 active:bg-coral-700;
+    @apply text-white font-medium;
+    @apply px-4 py-2 rounded-lg;
+    @apply transition-all duration-200 ease-in-out;
+    @apply shadow-soft hover:shadow-medium;
+  }
+
+  /* Card components for content organization */
+  .card {
+    @apply bg-white rounded-xl shadow-soft border border-canvas-200;
+    @apply p-6;
+    @apply transition-shadow duration-200;
+  }
+
+  .card-hover {
+    @apply card hover:shadow-medium;
+  }
+
+  /* Input components with consistent styling */
+  .input-primary {
+    @apply w-full px-4 py-3 rounded-lg;
+    @apply border border-stone-300 focus:border-primary-500;
+    @apply bg-white text-stone-900 placeholder-stone-500;
+    @apply transition-colors duration-200;
+    @apply focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:outline-none;
+  }
+
+  /* Status indicators */
+  .status-online {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply bg-sage-100 text-sage-800;
+  }
+
+  .status-offline {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply bg-stone-100 text-stone-600;
+  }
+
+  .status-warning {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply bg-amber-100 text-amber-800;
+  }
+
+  /* Navigation styles */
+  .nav-item {
+    @apply flex items-center px-4 py-2 text-sm font-medium rounded-lg;
+    @apply text-stone-600 hover:text-stone-900 hover:bg-canvas-100;
+    @apply transition-colors duration-150;
+  }
+
+  .nav-item-active {
+    @apply nav-item bg-primary-50 text-primary-700;
+  }
+
+  /* Message/chat specific styles */
+  .message-bubble {
+    @apply max-w-xs lg:max-w-md px-4 py-2 rounded-2xl;
+    @apply break-words;
+  }
+
+  .message-sent {
+    @apply message-bubble bg-primary-500 text-white ml-auto;
+  }
+
+  .message-received {
+    @apply message-bubble bg-canvas-100 text-stone-900;
+  }
+
+  /* Loading states */
+  .loading-pulse {
+    @apply animate-pulse bg-canvas-200 rounded;
+  }
+
+  /* Crypto price styling */
+  .price-positive {
+    @apply text-market-bullish font-mono font-medium;
+  }
+
+  .price-negative {
+    @apply text-market-bearish font-mono font-medium;
+  }
+
+  .price-neutral {
+    @apply text-market-neutral font-mono font-medium;
+  }
+}
+
+/* Utility layer - Custom utilities */
+@layer utilities {
+  /* Scrollbar styling for better UX */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(163 163 163) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgb(163 163 163);
+    border-radius: 3px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(115 115 115);
+  }
+
+  /* Text selection styling */
+  .select-primary::selection {
+    @apply bg-primary-100 text-primary-900;
+  }
+
+  /* Enhanced glass effect for better visibility */
+  .glass {
+    backdrop-filter: blur(16px);
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Animation utilities */
+  .animate-fade-in-up {
+    animation: fadeInUp 0.5s ease-out forwards;
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Safe area padding for mobile devices */
+  .safe-area-padding {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* Dark mode support (optional) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+  }
+
+  /* Dark mode styles can be added here if needed */
+}
