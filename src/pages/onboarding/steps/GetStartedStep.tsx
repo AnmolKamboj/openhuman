@@ -1,4 +1,4 @@
-import { openUrl } from '@tauri-apps/plugin-opener';
+import { openUrl } from '../../../utils/openUrl';
 import { TELEGRAM_BOT_USERNAME } from '../../../utils/config';
 import ConnectionIndicator from '../../../components/ConnectionIndicator';
 
@@ -8,15 +8,9 @@ interface GetStartedStepProps {
 
 const GetStartedStep = ({ onComplete }: GetStartedStepProps) => {
   const handleOpenTelegram = async () => {
-    try {
-      // Open Telegram and navigate to home immediately
-      await openUrl(`https://t.me/${TELEGRAM_BOT_USERNAME}`);
-      onComplete();
-    } catch (error) {
-      console.error('Failed to open Telegram:', error);
-      // Still navigate to home even if opening Telegram fails
-      onComplete();
-    }
+    // Open Telegram and navigate to home immediately
+    await openUrl(`https://t.me/${TELEGRAM_BOT_USERNAME}`);
+    onComplete();
   };
 
   return (

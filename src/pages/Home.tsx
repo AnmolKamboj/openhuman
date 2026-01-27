@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { openUrl } from '@tauri-apps/plugin-opener';
+import { openUrl } from '../utils/openUrl';
 import { TELEGRAM_BOT_USERNAME } from '../utils/config';
 import ConnectionIndicator from '../components/ConnectionIndicator';
 
@@ -24,11 +24,7 @@ const Home = () => {
 
   // Handle Telegram bot link
   const handleStartCooking = async () => {
-    try {
-      await openUrl(`https://t.me/${TELEGRAM_BOT_USERNAME}`);
-    } catch (error) {
-      console.error('Failed to open Telegram:', error);
-    }
+    await openUrl(`https://t.me/${TELEGRAM_BOT_USERNAME}`);
   };
 
   const handleManageConnections = () => {
