@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAppSelector } from '../store/hooks';
+import { store } from '../store';
 import { socketService } from '../services/socketService';
 
 /**
@@ -16,25 +17,30 @@ const SocketProvider = ({ children }: { children: React.ReactNode }) => {
 
     // Token was set - connect
     if (token && token !== previousToken) {
-      console.log('[SocketProvider] Token available, connecting...');
       socketService.connect(token);
       previousTokenRef.current = token;
     }
 
     // Token was unset - disconnect
     if (!token && previousToken) {
-      console.log('[SocketProvider] Token removed, disconnecting...');
       socketService.disconnect();
       previousTokenRef.current = null;
     }
   }, [token]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount only
+  // Note: This should only run when the entire app unmounts, not on re-renders
   useEffect(() => {
     return () => {
-      socketService.disconnect();
+      // Only disconnect on actual unmount (e.g., app closing)
+      // Don't disconnect on re-renders or route changes
+      // Check if token still exists - if it does, don't disconnect (might be a re-render)
+      const currentToken = store.getState().auth.token;
+      if (!currentToken) {
+        socketService.disconnect();
+      }
     };
-  }, []);
+  }, []); // Empty deps - only run cleanup on unmount
 
   return <>{children}</>;
 };

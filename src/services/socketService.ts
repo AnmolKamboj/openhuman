@@ -1,7 +1,7 @@
-import { io, Socket } from 'socket.io-client';
-import { BACKEND_URL } from '../utils/config';
-import { store } from '../store';
-import { setStatus, setSocketId, reset } from '../store/socketSlice';
+import { io, Socket } from "socket.io-client";
+import { BACKEND_URL } from "../utils/config";
+import { store } from "../store";
+import { setStatus, setSocketId, reset } from "../store/socketSlice";
 
 class SocketService {
   private socket: Socket | null = null;
@@ -12,27 +12,22 @@ class SocketService {
    */
   connect(token: string): void {
     if (!token) {
-      console.warn('[Socket] Cannot connect: no token provided');
       return;
     }
 
     // Don't connect if already connected with the same token
     if (this.socket?.connected && this.token === token) {
-      console.log('[Socket] Already connected with same token');
       return;
     }
 
     // Disconnect existing connection if token changed or socket exists
     if (this.socket) {
       if (this.token !== token) {
-        console.log('[Socket] Token changed, disconnecting old connection');
         this.disconnect();
       } else if (this.socket.connected) {
-        console.log('[Socket] Already connected');
         return;
       } else if (!this.socket.disconnected) {
         // Socket is connecting, wait for it
-        console.log('[Socket] Connection in progress, waiting...');
         return;
       }
     }
@@ -40,58 +35,60 @@ class SocketService {
     this.token = token;
 
     // Update status to connecting
-    store.dispatch(setStatus('connecting'));
+    store.dispatch(setStatus("connecting"));
 
-    console.log('[Socket] Connecting to:', BACKEND_URL);
-    console.log('[Socket] Token present:', token ? 'yes' : 'no');
-    console.log('[Socket] Token length:', token?.length || 0);
+    const backendUrl = BACKEND_URL;
+
+    // Ensure we're not connecting to the wrong URL
+    if (backendUrl.includes("localhost:1420") || backendUrl.includes(":1420")) {
+      return;
+    }
 
     // Create socket connection with auth token
     // Note: path must match backend server configuration
-    // Backend expects token in socket.handshake.auth.token
-    this.socket = io(BACKEND_URL, {
-      auth: {
-        token: token, // Explicitly pass token in auth object
-      },
-      path: '/socket.io/',
-      transports: ['websocket', 'polling'],
+    // Backend expects token in socket.handshake.auth.token (NOT in query string)
+    // Match the working test script configuration: start with polling, then upgrade
+    // Socket.io sends auth in the handshake (POST request body for polling, not in GET headers)
+    const socketOptions = {
+      auth: { token },
+      path: "/socket.io/",
+      transports: ["polling", "websocket"], // Start with polling (more reliable), then upgrade to websocket
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 5,
       forceNew: true, // Force new connection to ensure auth is sent
-    });
+      timeout: 20000, // Increase timeout for initial connection
+      upgrade: true, // Allow upgrade from polling to websocket
+      query: {}, // Explicitly prevent token from being added to query string
+    };
+
+    this.socket = io(backendUrl, socketOptions);
 
     // Connection event handlers
-    this.socket.on('connect', () => {
+    this.socket.on("connect", () => {
       const socketId = this.socket?.id || null;
-      console.log('[Socket] Connected with ID:', socketId);
-      store.dispatch(setStatus('connected'));
+      store.dispatch(setStatus("connected"));
       store.dispatch(setSocketId(socketId));
     });
 
-    this.socket.on('ready', () => {
-      console.log('[Socket] Server ready - authentication successful');
+    this.socket.on("ready", () => {
+      // Server ready - authentication successful
     });
 
-    this.socket.on('error', (error: { message?: string; status?: number }) => {
-      console.error('[Socket] Server error:', error);
-      if (error.status === 403) {
-        console.error('[Socket] Authentication failed - plan limit or access denied');
-      }
+    this.socket.on("error", () => {
+      // Handle server errors
     });
 
-    this.socket.on('disconnect', (reason) => {
-      console.log('[Socket] Disconnected:', reason);
-      store.dispatch(setStatus('disconnected'));
+    this.socket.on("disconnect", () => {
+      store.dispatch(setStatus("disconnected"));
       store.dispatch(setSocketId(null));
     });
 
-    this.socket.on('connect_error', (error) => {
-      console.error('[Socket] Connection error:', error);
-      console.error('[Socket] Error message:', error.message);
-      console.error('[Socket] Error type:', error.type);
-      store.dispatch(setStatus('disconnected'));
+    this.socket.on("connect_error", () => {
+      store.dispatch(setStatus("disconnected"));
     });
+
+    this.socket.connect();
   }
 
   /**
@@ -126,8 +123,6 @@ class SocketService {
   emit(event: string, data?: unknown): void {
     if (this.socket?.connected) {
       this.socket.emit(event, data);
-    } else {
-      console.warn(`[Socket] Cannot emit '${event}': socket not connected`);
     }
   }
 
