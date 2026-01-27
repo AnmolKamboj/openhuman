@@ -97,6 +97,15 @@ Action: [What the agent is currently doing]
 Next: [What happens next in pipeline]
 ```
 
+### Agent Status Visibility
+**All agents provide continuous high-level status updates:**
+- 🏗️ **stevebaba**: Shows architecture analysis and planning progress
+- 👨‍💻 **elvinbaba**: Shows implementation progress and current files being worked on
+- 🎨 **neilbaba**: Shows design analysis and specification creation progress
+- 🧪 **prembaba**: Shows QA testing progress and issue resolution
+
+**I relay and coordinate these status updates to provide complete pipeline visibility.**
+
 ## Exception Handling
 
 ### Question Loops
