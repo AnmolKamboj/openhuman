@@ -1,5 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import TypewriterGreeting from '../components/TypewriterGreeting';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { BACKEND_URL } from '../utils/config';
 
 const Welcome = () => {
   const navigate = useNavigate();
@@ -16,9 +18,16 @@ const Welcome = () => {
     // "Ready to go to the moon? Pack light! 🌙🚀"
   ];
 
-  const handleTelegramLogin = () => {
-    navigate('/onboarding');
+  const handleTelegramLogin = async () => {
+    // navigate('/onboarding');
+    try {
+      await openUrl(`${BACKEND_URL}/auth/telegram?platform=desktop`);
+    } catch (error) {
+      console.error('Failed to open Telegram auth page:', error);
+    }
   };
+
+
 
   return (
     <div className="min-h-screen relative flex items-center justify-center">

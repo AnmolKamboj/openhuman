@@ -28,14 +28,6 @@ const Onboarding = () => {
     }
   };
 
-  const handleBack = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
-    } else {
-      navigate('/');
-    }
-  };
-
   const handleComplete = () => {
     navigate('/home');
   };
