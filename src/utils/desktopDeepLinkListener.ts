@@ -1,7 +1,8 @@
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { invoke } from '@tauri-apps/api/core';
 import { BACKEND_URL } from './config';
-import { useAuthStore } from '../store/authStore';
+import { store } from '../store';
+import { setToken } from '../store/authSlice';
 
 /**
  * Handle a list of deep link URLs delivered by the Tauri deep-link plugin.
@@ -53,7 +54,7 @@ const handleDeepLinkUrls = async (urls: string[] | null | undefined) => {
     }
 
     // Store session token in store
-    useAuthStore.getState().setToken(sessionToken);
+    store.dispatch(setToken(sessionToken));
     localStorage.setItem('deepLinkHandled', 'true');
     if (user) {
       localStorage.setItem('user', JSON.stringify(user));

@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuthStore } from '../store/authStore';
+import { useAppDispatch } from '../store/hooks';
+import { setToken } from '../store/authSlice';
 
 const Login = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const setToken = useAuthStore((state) => state.setToken);
+  const dispatch = useAppDispatch();
 
   // Handle JWT token from URL query parameter (backend redirect)
   useEffect(() => {
@@ -14,7 +15,7 @@ const Login = () => {
     if (token) {
 
       // Store the JWT token from the backend
-      setToken(token);
+      dispatch(setToken(token));
 
       // Clear the token from URL for security
       const newSearchParams = new URLSearchParams(searchParams);
@@ -28,7 +29,7 @@ const Login = () => {
         navigate('/onboarding/');
       }, 100);
     }
-  }, [searchParams, setToken, navigate]);
+  }, [searchParams, dispatch, navigate]);
 
 
 

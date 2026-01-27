@@ -1,4 +1,4 @@
-import { useSocketStore } from '../store/socketStore';
+import { useAppSelector } from '../store/hooks';
 
 interface ConnectionIndicatorProps {
   status?: 'connected' | 'disconnected' | 'connecting';
@@ -12,7 +12,7 @@ const ConnectionIndicator = ({
   className = '',
 }: ConnectionIndicatorProps) => {
   // Use socket store status, but allow override via props
-  const storeStatus = useSocketStore((state) => state.status);
+  const storeStatus = useAppSelector((state) => state.socket.status);
   const status = overrideStatus || storeStatus;
   const statusConfig = {
     connected: {

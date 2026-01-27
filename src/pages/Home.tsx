@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { openUrl } from '../utils/openUrl';
 import { TELEGRAM_BOT_USERNAME } from '../utils/config';
 import ConnectionIndicator from '../components/ConnectionIndicator';
-import { useAuthStore } from '../store/authStore';
+import { useAppDispatch } from '../store/hooks';
+import { clearToken } from '../store/authSlice';
 
 const Home = () => {
   const navigate = useNavigate();
-  const clearToken = useAuthStore((state) => state.clearToken);
+  const dispatch = useAppDispatch();
   const [userName] = useState('Cyrus');
 
   // Get current date
@@ -47,7 +48,7 @@ const Home = () => {
   };
 
   const handleLogout = () => {
-    clearToken();
+    dispatch(clearToken());
     navigate('/');
   };
 
