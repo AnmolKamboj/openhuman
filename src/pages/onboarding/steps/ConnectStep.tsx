@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import GoogleIcon from './icons/GoogleIcon';
+import GoogleIcon from '../../../assets/icons/GoogleIcon';
 import TelegramConnectionModal from '../../../components/TelegramConnectionModal';
 
 import BinanceIcon from './icons/binance.svg';
