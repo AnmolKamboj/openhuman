@@ -36,8 +36,7 @@ const Home = () => {
   };
 
   const handleManageConnections = () => {
-    // TODO: Navigate to connections management page
-    console.log('Manage connections');
+    navigate('/settings/connections');
   };
 
   const handleDeleteAllData = () => {
