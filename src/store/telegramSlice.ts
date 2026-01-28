@@ -1,6 +1,5 @@
 import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
 import { mtprotoService } from '../services/mtprotoService';
-import type { Api } from 'telegram/tl';
 
 // Types for Telegram entities
 export type TelegramConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
@@ -434,7 +433,7 @@ const telegramSlice = createSlice({
     },
 
     // Reset actions
-    resetTelegram: (state) => {
+    resetTelegram: () => {
       return initialState;
     },
     resetChats: (state) => {
@@ -510,7 +509,7 @@ const telegramSlice = createSlice({
       .addCase(fetchChats.pending, (state) => {
         state.isLoadingChats = true;
       })
-      .addCase(fetchChats.fulfilled, (state, action) => {
+      .addCase(fetchChats.fulfilled, (state) => {
         state.isLoadingChats = false;
         // Convert dialogs to chats
         // This is a placeholder - adjust based on actual API response
@@ -525,7 +524,7 @@ const telegramSlice = createSlice({
       .addCase(fetchMessages.pending, (state) => {
         state.isLoadingMessages = true;
       })
-      .addCase(fetchMessages.fulfilled, (state, action) => {
+      .addCase(fetchMessages.fulfilled, (state) => {
         state.isLoadingMessages = false;
         // Messages will be added via addMessages action
       })

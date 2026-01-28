@@ -114,7 +114,7 @@ export const selectThreadMessages = createSelector(
     selectSelectedChatId,
     selectSelectedThreadId,
   ],
-  (messages, chatId, threadId): TelegramMessage[] => {
+  (messages, _chatId, threadId): TelegramMessage[] => {
     if (!threadId) return [];
     return messages.filter((msg) => msg.threadId === threadId);
   }

@@ -52,7 +52,7 @@ class SocketService {
     const socketOptions = {
       auth: { token },
       path: "/socket.io/",
-      transports: ["polling", "websocket"], // Start with polling (more reliable), then upgrade to websocket
+      transports: ["websocket", "polling"], // Start with polling (more reliable), then upgrade to websocket
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 5,

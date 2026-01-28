@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { openUrl } from '../utils/openUrl';
 import { TELEGRAM_BOT_USERNAME } from '../utils/config';
 import ConnectionIndicator from '../components/ConnectionIndicator';
+import TelegramConnectionIndicator from '../components/TelegramConnectionIndicator';
 import { useAppDispatch } from '../store/hooks';
 import { clearToken } from '../store/authSlice';
 import { useUser } from '../hooks/useUser';
@@ -143,6 +144,9 @@ const Home = () => {
                 </svg>
               </button>
             </div>
+
+            {/* Telegram Connection Indicator */}
+            <TelegramConnectionIndicator className="mt-4" />
           </div>
         </div>
       </div>

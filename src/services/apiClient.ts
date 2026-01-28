@@ -1,5 +1,5 @@
 import { BACKEND_URL } from '../utils/config';
-import type { ApiResponse, ApiError } from '../types/api';
+import type { ApiError } from '../types/api';
 import { store } from '../store';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
