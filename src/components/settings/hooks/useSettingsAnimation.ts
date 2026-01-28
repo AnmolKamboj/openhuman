@@ -10,7 +10,7 @@ interface SettingsAnimationHook {
 }
 
 export const useSettingsAnimation = (
-  duration = 200
+  duration = 300
 ): SettingsAnimationHook => {
   const [animationState, setAnimationState] = useState<AnimationState>('exited');
 
@@ -39,7 +39,7 @@ export const useSettingsAnimation = (
 };
 
 // Hook for panel slide animations (slide from right)
-export const usePanelAnimation = (isActive: boolean, duration = 250) => {
+export const usePanelAnimation = (isActive: boolean, duration = 300) => {
   const [mounted, setMounted] = useState(isActive);
 
   useEffect(() => {
@@ -52,7 +52,7 @@ export const usePanelAnimation = (isActive: boolean, duration = 250) => {
   }, [isActive, duration]);
 
   const getPanelClasses = () => {
-    const baseClasses = 'transition-all duration-250 ease-out';
+    const baseClasses = 'transition-all duration-300 ease-[cubic-bezier(0.25,0.46,0.45,0.94)]';
     if (!mounted) return `${baseClasses} opacity-0`;
 
     return isActive

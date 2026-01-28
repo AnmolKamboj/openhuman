@@ -55,10 +55,10 @@ const SettingsLayout = ({ children, onClose }: SettingsLayoutProps) => {
     >
       <div
         ref={modalRef}
-        className="glass rounded-3xl shadow-large w-full max-w-[520px] h-[800px] overflow-hidden animate-fade-up focus:outline-none focus:ring-0"
+        className="glass rounded-3xl shadow-large w-full max-w-[520px] h-[800px] overflow-hidden animate-slide-right focus:outline-none focus:ring-0"
         style={{
-          animationDuration: '200ms',
-          animationTimingFunction: 'ease-out',
+          animationDuration: '300ms',
+          animationTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)',
           animationFillMode: 'both'
         }}
         tabIndex={-1}
