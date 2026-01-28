@@ -32,33 +32,49 @@ Small: text-sm (14px) - secondary information
 
 ## Color Palette - Trust & Professionalism
 
-### Primary Colors - Deep Trustworthy Blue
-- **Primary-500**: `#0ea5e9` - Main brand color, conveys reliability
-- **Primary-600**: `#0284c7` - Interactive states (buttons, links)
-- **Primary-700**: `#0369a1` - Active states, emphasis
+### Primary Colors - Ocean Blue (Updated)
+- **Primary-500**: `#4A83DD` - Main brand color optimized for dark backgrounds
+- **Primary-600**: `#3D6DC4` - Interactive hover states
+- **Primary-700**: `#345A9F` - Active states, emphasis
 
-**Psychology**: Blue is universally associated with trust, security, and professionalism in financial apps.
+**Psychology**: Deep ocean blue builds trust and sophistication for crypto platforms.
 
-### Success Colors - Financial Green
-- **Success-500**: `#22c55e` - Profit, positive transactions, confirmations
-- **Success-600**: `#16a34a` - Interactive success states
+### Success Colors - Sage Green (Updated)
+- **Success-500**: `#4DC46F` - Refined success green for growth indicators
+- **Success-600**: `#3BA858` - Interactive success states
 
-**Psychology**: Green represents growth, wealth, and positive financial outcomes.
+**Psychology**: Sophisticated sage green represents growth and financial success.
 
-### Warning & Error Colors
-- **Warning-500**: `#f59e0b` - Caution, pending states, important notices
-- **Error-500**: `#ef4444` - Losses, errors, critical alerts
+### Warning & Error Colors (Updated)
+- **Warning-500**: `#E8A838` - Sophisticated amber for attention states
+- **Error-500**: `#F56565` - Soft coral red for professional error handling
 
-### Neutral Grays - Clean Interface
-- **Neutral-50**: `#fafafa` - Background, light surfaces
-- **Neutral-900**: `#171717` - Primary text, high contrast
-- **Neutral-100-800**: Graduated scale for UI elements
+### Canvas Colors - Background Layers (Updated)
+- **Canvas-50**: `#FAFAF9` - Base background with subtle warmth
+- **Canvas-100**: `#F5F5F4` - Secondary background
+- **Canvas-150**: `#EDEDEC` - Tertiary background
+- **Canvas-200**: `#E5E5E3` - Card background
+- **Canvas-300**: `#D4D4D1` - Hover states
 
-### Crypto Accent Colors
-- **Bitcoin**: `#f7931a` - BTC brand color
-- **Ethereum**: `#627eea` - ETH brand color
-- **Success**: `#00d4aa` - DeFi success indicators
-- **Danger**: `#ff6b6b` - Risk warnings
+### Stone/Slate Neutrals - Text & UI Elements
+- **Stone-500**: `#78716C` - Mid-tone text
+- **Stone-900**: `#1C1917` - Primary text, high contrast
+- **Slate-400**: `#94A3B8` - Secondary text, data elements
+
+### Market Colors - Crypto Trading
+- **Bullish**: `#4DC46F` - Green for gains (matches sage)
+- **Bearish**: `#F56565` - Red for losses (matches coral)
+- **Neutral**: `#94A3B8` - Gray for no change
+- **Bitcoin**: `#F7931A` - Bitcoin orange
+- **Ethereum**: `#627EEA` - Ethereum purple
+- **Stablecoin**: `#5B9BF3` - Blue for stables
+
+### Accent Colors - Special Elements
+- **Lavender**: `#9B8AFB` - Premium features
+- **Mint**: `#6EE7B7` - Achievements
+- **Sky**: `#7DD3FC` - Notifications
+- **Rose**: `#FDA4AF` - Alerts
+- **Gold**: `#FCD34D` - Rewards
 
 ## Component Library
 

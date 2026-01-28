@@ -20,16 +20,51 @@ Frontend development guide for crypto-focused communication platform using moder
 - **Responsive Design**: Mobile-first approach with proper breakpoints
 - **Accessibility**: Focus rings, proper contrast, WCAG compliance ready
 
-## Structure
+## Current Project Structure (Updated)
 
 ```
 src/
-├── App.tsx             # Main application component
-├── App.css             # Application styles
-├── main.tsx            # Entry point
-├── vite-env.d.ts       # Vite type definitions
-└── assets/             # Static assets
+├── App.tsx                        # Main app with HashRouter + provider chain
+├── AppRoutes.tsx                  # Route definitions with protected/public routes
+├── main.tsx                       # Entry point with desktop deep link handling
+├── providers/                     # Context providers
+│   ├── SocketProvider.tsx         # Socket.io real-time communication
+│   ├── TelegramProvider.tsx       # Telegram MTProto integration
+│   └── UserProvider.tsx           # User state management
+├── store/                         # Redux Toolkit state management
+│   ├── index.ts                   # Store configuration with persist
+│   ├── authSlice.ts              # Authentication state
+│   ├── socketSlice.ts            # Socket connection state
+│   ├── userSlice.ts              # User profile state
+│   └── telegram/                  # Telegram state management
+├── services/                      # Service layer (singletons)
+│   ├── apiClient.ts              # HTTP REST client
+│   ├── socketService.ts          # Socket.io client
+│   └── mtprotoService.ts         # Telegram MTProto service
+├── lib/mcp/                       # Model Context Protocol system
+│   ├── transport.ts              # Socket.io JSON-RPC transport
+│   └── telegram/                  # 99 Telegram MCP tools
+├── pages/                         # Route components
+│   ├── Welcome.tsx               # Landing page
+│   ├── Login.tsx                 # Authentication
+│   ├── Home.tsx                  # Main dashboard
+│   └── onboarding/               # Multi-step onboarding
+├── components/                    # Reusable UI components
+│   ├── TelegramLoginButton.tsx   # OAuth login integration
+│   ├── ProtectedRoute.tsx        # Auth-gated routes
+│   ├── PublicRoute.tsx           # Guest-only routes
+│   └── ConnectionIndicator.tsx   # Status indicators
+└── utils/                         # Utilities and config
+    ├── config.ts                 # Environment variables
+    └── desktopDeepLinkListener.ts # Deep link handling
 ```
+
+### Recent Architecture Changes
+- **HashRouter**: Switched from BrowserRouter for better desktop app compatibility
+- **153 TypeScript files**: Comprehensive component library
+- **Provider chain**: Redux → PersistGate → Socket → Telegram → HashRouter → Routes
+- **MCP Integration**: 99 Telegram tools for AI-driven interactions
+- **Deep Link Auth**: Web-to-desktop handoff using `outsourced://` scheme
 
 ## React with Tauri
 
@@ -216,48 +251,48 @@ switch (currentPlatform) {
 - **Headless UI** - Accessible, unstyled UI components
 - **Framer Motion** - Animation library for React
 
-### State & Data Management
-- **Zustand** - Lightweight state management
-- **TanStack Query** - Server state management & caching
-- **React Hook Form** - Performant form handling
+### State & Data Management (Current Implementation)
+- **Redux Toolkit** - Currently implemented state management with persistence
+- **Redux Persist** - Persists auth and telegram state to localStorage
+- **Socket.io** - Real-time communication via socketService singleton
+- **MTProto Client** - Telegram integration via mtprotoService singleton
+- **MCP System** - 99 AI tools for Telegram interactions over Socket.io transport
 
-## State Management
-
-```bash
-npm install zustand
-```
+## Current State Management (Redux Toolkit)
 
 ```typescript
-import { create } from 'zustand';
+// Current implementation uses Redux Toolkit with these slices:
+import { useAppSelector, useAppDispatch } from '../store/hooks';
 
-// Example for crypto platform
-interface AppState {
-    user: User | null;
-    activeChannel: Channel | null;
-    messages: Message[];
-    setUser: (user: User) => void;
-    setActiveChannel: (channel: Channel) => void;
-    addMessage: (message: Message) => void;
-}
+// Auth state (persisted)
+const authState = useAppSelector((state) => state.auth);
+// { token: string | null, isOnboarded: boolean }
 
-const useStore = create<AppState>((set) => ({
-    user: null,
-    activeChannel: null,
-    messages: [],
-    setUser: (user) => set({ user }),
-    setActiveChannel: (channel) => set({ activeChannel: channel }),
-    addMessage: (message) => set((state) => ({
-        messages: [...state.messages, message]
-    })),
-}));
+// User state
+const userState = useAppSelector((state) => state.user);
+// { profile: UserProfile | null, loading: boolean, error: string | null }
+
+// Socket state
+const socketState = useAppSelector((state) => state.socket);
+// { isConnected: boolean, socketId: string | null }
+
+// Telegram state (selectively persisted)
+const telegramState = useAppSelector((state) => state.telegram);
+// Complex nested state with chats, messages, threads, auth status
 
 // Usage in component
 function ChatHeader() {
-    const { activeChannel, user } = useStore();
+    const { token } = useAppSelector((state) => state.auth);
+    const { profile } = useAppSelector((state) => state.user);
+    const { isConnected } = useAppSelector((state) => state.socket);
+
     return (
         <div className="flex items-center justify-between p-4">
-            <h1>{activeChannel?.name || 'Select Channel'}</h1>
-            <span>{user?.username}</span>
+            <h1>Chat</h1>
+            <div className="flex items-center gap-2">
+                <span>{profile?.username}</span>
+                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-sage-500' : 'bg-coral-500'}`} />
+            </div>
         </div>
     );
 }

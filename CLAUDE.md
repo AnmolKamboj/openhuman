@@ -6,6 +6,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Cross-platform crypto community communication platform built with **Tauri v2** (React 19 + Rust). Targets desktop (Windows, macOS) and mobile (Android, iOS). Features deep Telegram integration via MTProto, real-time Socket.io communication, and an MCP (Model Context Protocol) tool system for AI-driven Telegram interactions.
 
+## App Theme & Design System
+
+**Design Philosophy**: Premium, sophisticated crypto platform with calm, trustworthy aesthetic.
+
+### Color Palette
+- **Primary**: Ocean blue (`#4A83DD`) optimized for dark backgrounds
+- **Sage**: Success green (`#4DC46F`) for growth indicators
+- **Amber**: Warning (`#E8A838`) for attention states
+- **Coral**: Error (`#F56565`) soft professional red
+- **Canvas**: Background layers (`#FAFAF9` to `#D4D4D1`) with subtle warmth
+- **Market Colors**: Bullish green, bearish red, Bitcoin orange, Ethereum purple
+
+### Typography
+- **Primary**: Inter (premium font stack)
+- **Display**: Cabinet Grotesk for headings
+- **Mono**: JetBrains Mono for code
+- **Scale**: Sophisticated sizing with negative letter spacing for elegance
+
+### Component System
+- **Shadows**: Glow effects, subtle to float depth levels
+- **Animations**: Fade-in, slide-in, scale-in with cubic-bezier easing
+- **Border Radius**: Smooth system from `xs` (0.25rem) to `5xl` (2rem)
+- **Spacing**: Extended scale including custom values (4.5, 13, 15, etc.)
+
+### Current UI State
+- Uses HashRouter (not BrowserRouter) as seen in `App.tsx:1`
+- 153 TypeScript files total in src/
+- Sophisticated Tailwind config with custom color system and animations
+
 ## Commands
 
 ```bash
@@ -40,7 +69,7 @@ No test framework is currently configured. No ESLint or Prettier configuration e
 
 ### Provider Chain (App.tsx)
 
-The app wraps in this order: `Redux Provider` → `PersistGate` → `SocketProvider` → `TelegramProvider` → `BrowserRouter` → `AppRoutes`. This ordering matters because Socket.io and Telegram providers depend on Redux auth state.
+The app wraps in this order: `Redux Provider` → `PersistGate` → `SocketProvider` → `TelegramProvider` → `HashRouter` → `AppRoutes`. **Note**: Now uses HashRouter instead of BrowserRouter. This ordering matters because Socket.io and Telegram providers depend on Redux auth state.
 
 ### State Management (Redux Toolkit + Persist)
 
@@ -112,6 +141,29 @@ Set in `.env` (Vite exposes `VITE_*` prefixed vars):
 
 Production defaults are in `src/utils/config.ts`.
 
+## Recent Changes (Last 24 Hours)
+
+Key updates from recent commits:
+
+### Major Additions
+- **Type Casting Helpers**: Added for Telegram MTProto API (`5a0425c`)
+- **Onboarding Refactor**: Updated connection logic and steps (`bd1d240`)
+- **MCP Tools Enhancement**: Improved type safety and consistency across Telegram tools (`d0e1191`, `86cc53a`)
+- **App Structure**: Refactored MCPProvider integration (`d7d848d`)
+- **Big Integer Support**: Consistent handling across all Telegram MCP tools (`0abed4d`)
+
+### Design System Updates
+- **Lottie Animations**: Integrated into onboarding flow (`334673e`)
+- **Connection Components**: Added Telegram and Gmail connection indicators
+- **Routing**: Switched to HashRouter for better desktop app compatibility
+- **Theme**: Implemented sophisticated color system with premium crypto aesthetic
+
+### Component Structure
+- **153 TypeScript files** across `src/` directory
+- **Onboarding Flow**: Multi-step process with privacy, analytics, and connection steps
+- **Authentication**: Web-to-desktop handoff using `outsourced://` scheme
+- **Connection Management**: Telegram MTProto and Socket.io integration
+
 ## Key Patterns
 
 - **Node polyfills**: Vite config (`vite.config.ts`) polyfills `buffer`, `process`, `util`, `os`, `crypto`, `stream` for the `telegram` npm package which requires Node APIs.
@@ -119,6 +171,7 @@ Production defaults are in `src/utils/config.ts`.
 - **MCP tool files**: Each tool in `src/lib/mcp/telegram/tools/` exports a handler conforming to `TelegramMCPToolHandler` interface. Tool names are typed in `src/lib/mcp/telegram/types.ts`.
 - **Tauri IPC**: Frontend calls Rust via `invoke()` from `@tauri-apps/api/core`. Rust commands are registered in `generate_handler![]` macro.
 - **CORS workaround**: External HTTP requests from the WebView hit CORS. Use Rust `reqwest` via Tauri commands instead of browser `fetch()`.
+- **Hash Routing**: Uses HashRouter for desktop app compatibility and deep link handling.
 
 ## Platform Gotchas
 
