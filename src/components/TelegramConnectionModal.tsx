@@ -10,7 +10,7 @@ import {
   setAuthError,
   setConnectionStatus,
 } from '../store/telegramSlice';
-import { selectIsInitialized, selectConnectionStatus, selectAuthStatus } from '../store/telegramSelectors';
+import { selectIsInitialized, selectConnectionStatus } from '../store/telegramSelectors';
 import { mtprotoService } from '../services/mtprotoService';
 
 interface TelegramConnectionModalProps {
@@ -25,7 +25,6 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
   const dispatch = useAppDispatch();
   const isInitialized = useAppSelector(selectIsInitialized);
   const connectionStatus = useAppSelector(selectConnectionStatus);
-  const authStatus = useAppSelector(selectAuthStatus);
 
   const [currentStep, setCurrentStep] = useState<ConnectionStep>('qr');
   const [password, setPassword] = useState('');

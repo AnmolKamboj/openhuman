@@ -1,6 +1,7 @@
 import { TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions';
 import type { UserAuthParams, BotAuthParams } from 'telegram/client/auth';
+import { FloodWaitError } from 'telegram/errors';
 import { TELEGRAM_API_ID, TELEGRAM_API_HASH } from '../utils/config';
 
 type LoginOptions = UserAuthParams | BotAuthParams;
@@ -48,6 +49,8 @@ class MTProtoService {
 
       this.client = new TelegramClient(stringSession, this.apiId, this.apiHash, {
         connectionRetries: 5,
+        requestRetries: 5,
+        floodSleepThreshold: 60, // Auto-retry FLOOD_WAIT errors up to 60 seconds
       });
 
       this.isInitialized = true;
@@ -77,7 +80,7 @@ class MTProtoService {
       console.log('Connected to Telegram successfully');
 
       // Save session string if it changed
-      const newSessionString = this.client.session.save();
+      const newSessionString = this.client.session.save() as string | undefined;
       if (newSessionString && newSessionString !== this.sessionString) {
         this.sessionString = newSessionString;
         this.saveSession(newSessionString);
@@ -101,7 +104,7 @@ class MTProtoService {
       await this.client.start(options);
 
       // Save session after successful login
-      const newSessionString = this.client.session.save();
+      const newSessionString = this.client.session.save() as string | undefined;
       if (newSessionString && newSessionString !== this.sessionString) {
         this.sessionString = newSessionString;
         this.saveSession(newSessionString);
@@ -136,7 +139,7 @@ class MTProtoService {
             qrCodeCallback(qrCode);
           },
           password: passwordCallback,
-          onError: async (err: Error) => {
+          onError: async (err: Error): Promise<boolean> => {
             // If password callback is provided and we get SESSION_PASSWORD_NEEDED,
             // the password callback should handle it, but if onError is called first,
             // we need to let it through
@@ -145,14 +148,14 @@ class MTProtoService {
               // Don't stop - let the password callback handle it
               if (onError) {
                 const result = await onError(err);
-                return result;
+                return result ?? false;
               }
               return false;
             }
             
             if (onError) {
               const result = await onError(err);
-              return result;
+              return result ?? false;
             }
             console.error('QR code auth error:', err);
             return false;
@@ -161,7 +164,7 @@ class MTProtoService {
       );
 
       // Save session after successful login
-      const newSessionString = this.client.session.save();
+      const newSessionString = this.client.session.save() as string | undefined;
       if (newSessionString && newSessionString !== this.sessionString) {
         this.sessionString = newSessionString;
         this.saveSession(newSessionString);
@@ -222,6 +225,45 @@ class MTProtoService {
   }
 
   /**
+   * Check connection status and update user online status
+   * This calls getMe() which also updates the user's online status on Telegram
+   * Automatically initializes and connects if needed
+   */
+  async checkConnection(): Promise<boolean> {
+    try {
+      // Initialize if not already initialized
+      if (!this.isInitialized || !this.client) {
+        await this.initialize();
+      }
+
+      // Connect if not already connected
+      if (!this.isConnected) {
+        await this.connect();
+      }
+
+      // Check authorization
+      const isAuthorized = await this.client!.checkAuthorization();
+      if (!isAuthorized) {
+        return false;
+      }
+
+      // Call getMe() to check connection and update online status with FLOOD_WAIT handling
+      await this.handleFloodWait(async () => {
+        await this.client!.getMe();
+      });
+      return true;
+    } catch (error) {
+      // Don't log FLOOD_WAIT as a warning - it's expected behavior
+      if (error instanceof FloodWaitError) {
+        console.debug(`Telegram connection check: FLOOD_WAIT ${error.seconds}s`);
+      } else {
+        console.warn('Telegram connection check failed:', error);
+      }
+      return false;
+    }
+  }
+
+  /**
    * Disconnect from Telegram
    */
   async disconnect(): Promise<void> {
@@ -238,25 +280,88 @@ class MTProtoService {
   }
 
   /**
-   * Send a message using the client
+   * Send a message using the client with FLOOD_WAIT handling
    */
   async sendMessage(entity: string, message: string): Promise<void> {
     const client = this.getClient();
     if (!this.isClientConnected()) {
       await this.connect();
     }
-    await client.sendMessage(entity, { message });
+    
+    return this.handleFloodWait(async () => {
+      await client.sendMessage(entity, { message });
+    });
   }
 
   /**
-   * Invoke a raw Telegram API method
+   * Handle FLOOD_WAIT errors by waiting and retrying
+   * @param operation The async operation to execute
+   * @param maxRetries Maximum number of retry attempts (default: 3)
+   * @param retryCount Current retry count (internal use)
+   * @returns The result of the operation
+   */
+  private async handleFloodWait<T>(
+    operation: () => Promise<T>,
+    maxRetries = 3,
+    retryCount = 0
+  ): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      // Check if it's a FLOOD_WAIT error
+      if (error instanceof FloodWaitError) {
+        const waitSeconds = error.seconds;
+        
+        // If wait time is too long (more than 5 minutes), throw error
+        if (waitSeconds > 300) {
+          throw new Error(`FLOOD_WAIT: Too long wait time (${waitSeconds}s). Please try again later.`);
+        }
+
+        // If we've exceeded max retries, throw error
+        if (retryCount >= maxRetries) {
+          throw new Error(`FLOOD_WAIT: Maximum retries exceeded. Wait ${waitSeconds}s before trying again.`);
+        }
+
+        console.warn(`FLOOD_WAIT: Waiting ${waitSeconds} seconds before retry (attempt ${retryCount + 1}/${maxRetries})`);
+        
+        // Wait for the specified time (convert to milliseconds)
+        await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
+        
+        // Retry the operation
+        return this.handleFloodWait(operation, maxRetries, retryCount + 1);
+      }
+      
+      // If it's not a FLOOD_WAIT error, rethrow it
+      throw error;
+    }
+  }
+
+  /**
+   * Execute an operation with FLOOD_WAIT error handling
+   * This is a public utility method that can be used to wrap any Telegram API call
+   * @param operation The async operation to execute
+   * @param maxRetries Maximum number of retry attempts (default: 3)
+   * @returns The result of the operation
+   */
+  async withFloodWaitHandling<T>(
+    operation: () => Promise<T>,
+    maxRetries = 3
+  ): Promise<T> {
+    return this.handleFloodWait(operation, maxRetries);
+  }
+
+  /**
+   * Invoke a raw Telegram API method with FLOOD_WAIT handling
    */
   async invoke<T = unknown>(request: Parameters<TelegramClient['invoke']>[0]): Promise<T> {
     const client = this.getClient();
     if (!this.isClientConnected()) {
       await this.connect();
     }
-    return client.invoke(request) as Promise<T>;
+    
+    return this.handleFloodWait(async () => {
+      return client.invoke(request) as Promise<T>;
+    });
   }
 
   /**
