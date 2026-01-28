@@ -1,43 +1,30 @@
-import { useAppSelector } from '../../../store/hooks';
+import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
 
 interface SettingsHeaderProps {
   className?: string;
 }
 
 const SettingsHeader = ({ className = '' }: SettingsHeaderProps) => {
-  const user = useAppSelector((state) => state.user.user);
-
-  // Get user initials for avatar
-  const getInitials = (firstName?: string, lastName?: string): string => {
-    if (!firstName && !lastName) return 'U';
-    const first = firstName?.charAt(0) || '';
-    const last = lastName?.charAt(0) || '';
-    return (first + last).toUpperCase();
-  };
-
-  const initials = getInitials(user?.firstName, user?.lastName);
-  const displayName = user?.firstName && user?.lastName
-    ? `${user.firstName} ${user.lastName}`
-    : user?.firstName || user?.username || 'User';
-  const displayUsername = user?.username ? `@${user.username}` : '';
+  const { closeSettings } = useSettingsNavigation();
 
   return (
-    <div className={`bg-black/30 border-b border-stone-700 p-6 ${className}`}>
-      <div className="flex items-center space-x-4">
-        {/* Avatar */}
-        <div className="w-14 h-14 bg-stone-700 rounded-full flex items-center justify-center flex-shrink-0">
-          <span className="text-white font-semibold text-lg">{initials}</span>
-        </div>
+    <div className={`bg-black/30 border-b border-stone-700 p-6 relative ${className}`}>
+      <div className="flex items-center justify-between">
+        {/* Settings title */}
+        <h2 className="text-lg font-semibold text-white" id="settings-modal-title">
+          Settings
+        </h2>
 
-        {/* User info */}
-        <div className="flex-1 min-w-0">
-          <h2 className="text-lg font-semibold text-white truncate" id="settings-modal-title">
-            {displayName}
-          </h2>
-          {displayUsername && (
-            <p className="text-sm text-stone-400 truncate">{displayUsername}</p>
-          )}
-        </div>
+        {/* Close button */}
+        <button
+          onClick={closeSettings}
+          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-stone-800/50 transition-colors"
+          aria-label="Close settings"
+        >
+          <svg className="w-5 h-5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
     </div>
   );
