@@ -6,6 +6,7 @@ import type { MCPTool, MCPToolResult } from '../../types';
 import type { TelegramMCPContext } from '../types';
 
 import { ErrorCategory, logAndFormatError } from '../../errorHandler';
+import { optNumber } from '../args';
 import { formatMessage, getChatById, getMessages } from '../telegramApi';
 import { validateId } from '../../validation';
 
@@ -24,12 +25,20 @@ export const tool: MCPTool = {
 };
 
 export async function searchMessages(
-  args: { chat_id: string | number; query: string; limit?: number },
+  args: Record<string, unknown>,
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
     const chatId = validateId(args.chat_id, 'chat_id');
-    const { query, limit = 20 } = args;
+    const query = typeof args.query === 'string' ? args.query : '';
+    const limit = optNumber(args, 'limit', 20);
+
+    if (!query) {
+      return {
+        content: [{ type: 'text', text: 'query is required' }],
+        isError: true,
+      };
+    }
 
     const chat = getChatById(chatId);
     if (!chat) {
@@ -45,7 +54,9 @@ export async function searchMessages(
     }
 
     const q = query.toLowerCase();
-    const filtered = messages.filter((m) => (m.message ?? '').toLowerCase().includes(q)).slice(0, limit);
+    const filtered = messages
+      .filter((m) => (m.message ?? '').toLowerCase().includes(q))
+      .slice(0, limit);
 
     const lines = filtered.map((m) => {
       const f = formatMessage(m);

@@ -21,11 +21,18 @@ export const tool: MCPTool = {
 };
 
 export async function searchPublicChats(
-  args: { query: string },
+  args: Record<string, unknown>,
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const chats = await searchChats(args.query);
+    const query = typeof args.query === 'string' ? args.query : '';
+    if (!query) {
+      return {
+        content: [{ type: 'text', text: 'query is required' }],
+        isError: true,
+      };
+    }
+    const chats = await searchChats(query);
     const results = chats.map(formatEntity);
     return {
       content: [{ type: 'text', text: JSON.stringify(results, undefined, 2) }],

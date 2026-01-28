@@ -6,6 +6,7 @@ import type { MCPTool, MCPToolResult } from '../../types';
 import type { TelegramMCPContext } from '../types';
 
 import { ErrorCategory, logAndFormatError } from '../../errorHandler';
+import { optNumber, optString } from '../args';
 import { formatEntity, getChats as getChatsApi } from '../telegramApi';
 import { toHumanReadableAction } from '../toolActionParser';
 
@@ -27,12 +28,12 @@ export const tool: MCPTool = {
 };
 
 export async function listChats(
-  args: { chat_type?: string; limit?: number },
+  args: Record<string, unknown>,
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const limit = args.limit ?? 20;
-    const chatType = args.chat_type?.toLowerCase();
+    const limit = optNumber(args, 'limit', 20);
+    const chatType = optString(args, 'chat_type')?.toLowerCase();
 
     const chats = await getChatsApi(limit);
     const contentItems: Array<{ type: 'text'; text: string }> = [];

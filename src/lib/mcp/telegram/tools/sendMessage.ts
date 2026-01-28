@@ -25,13 +25,13 @@ export const tool: MCPTool = {
 };
 
 export async function sendMessage(
-  args: { chat_id: string | number; message: string },
+  args: Record<string, unknown>,
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
     const chatId = validateId(args.chat_id, 'chat_id');
-    const { message } = args;
-    if (!message || typeof message !== 'string') {
+    const message = typeof args.message === 'string' ? args.message : '';
+    if (!message) {
       return {
         content: [{ type: 'text', text: 'Message content is required' }],
         isError: true,

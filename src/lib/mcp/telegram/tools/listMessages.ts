@@ -6,6 +6,7 @@ import type { MCPTool, MCPToolResult } from '../../types';
 import type { TelegramMCPContext } from '../types';
 
 import { ErrorCategory, logAndFormatError } from '../../errorHandler';
+import { optNumber, optString } from '../args';
 import { formatMessage, getChatById, getMessages as getMessagesApi } from '../telegramApi';
 import { validateId } from '../../validation';
 
@@ -26,18 +27,15 @@ export const tool: MCPTool = {
 };
 
 export async function listMessages(
-  args: {
-    chat_id: string | number;
-    limit?: number;
-    search_query?: string;
-    from_date?: string;
-    to_date?: string;
-  },
+  args: Record<string, unknown>,
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
     const chatId = validateId(args.chat_id, 'chat_id');
-    const limit = args.limit ?? 20;
+    const limit = optNumber(args, 'limit', 20);
+    const searchQuery = optString(args, 'search_query');
+    const fromDate = optString(args, 'from_date');
+    const toDate = optString(args, 'to_date');
 
     const chat = getChatById(chatId);
     if (!chat) {
@@ -52,17 +50,17 @@ export async function listMessages(
       return { content: [{ type: 'text', text: 'No messages found matching the criteria.' }] };
     }
 
-    if (args.search_query) {
-      const q = args.search_query.toLowerCase();
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
       messages = messages.filter((m) => (m.message ?? '').toLowerCase().includes(q));
     }
 
-    if (args.from_date || args.to_date) {
+    if (fromDate || toDate) {
       messages = messages.filter((m) => {
         const d = new Date(m.date * 1000);
-        if (args.from_date && d < new Date(args.from_date)) return false;
-        if (args.to_date) {
-          const to = new Date(args.to_date);
+        if (fromDate && d < new Date(fromDate)) return false;
+        if (toDate) {
+          const to = new Date(toDate);
           to.setHours(23, 59, 59, 999);
           if (d > to) return false;
         }

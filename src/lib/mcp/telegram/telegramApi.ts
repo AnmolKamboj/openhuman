@@ -7,7 +7,6 @@ import { store } from '../../../store';
 import { mtprotoService } from '../../../services/mtprotoService';
 import {
   selectOrderedChats,
-  selectChatMessages,
   selectCurrentUser,
 } from '../../../store/telegramSelectors';
 import type { TelegramChat, TelegramUser, TelegramMessage } from '../../../store/telegram/types';

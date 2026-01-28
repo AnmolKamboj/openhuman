@@ -21,11 +21,17 @@ export const tool: MCPTool = {
 };
 
 export async function resolveUsername(
-  args: { username: string },
+  args: Record<string, unknown>,
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const raw = args.username;
+    const raw = typeof args.username === 'string' ? args.username : '';
+    if (!raw) {
+      return {
+        content: [{ type: 'text', text: 'username is required' }],
+        isError: true,
+      };
+    }
     const username = raw.startsWith('@') ? raw : `@${raw}`;
     const chat = getChatById(username);
     if (!chat) {

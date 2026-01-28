@@ -18,7 +18,7 @@ export const tool: MCPTool = {
 };
 
 export async function getMe(
-  _args: Record<string, never>,
+  _args: Record<string, unknown>,
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {

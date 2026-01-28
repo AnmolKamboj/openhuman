@@ -25,8 +25,8 @@ export const tool: MCPTool = {
 };
 
 export async function getChat(
-  args: { chat_id: string | number },
-  context: TelegramMCPContext,
+  args: Record<string, unknown>,
+  _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
     const chatId = validateId(args.chat_id, 'chat_id');

@@ -6,6 +6,7 @@ import type { MCPTool, MCPToolResult } from '../../types';
 import type { TelegramMCPContext } from '../types';
 
 import { ErrorCategory, logAndFormatError } from '../../errorHandler';
+import { optNumber } from '../args';
 import { formatEntity, getChats as getChatsApi } from '../telegramApi';
 
 export const tool: MCPTool = {
@@ -21,12 +22,12 @@ export const tool: MCPTool = {
 };
 
 export async function getChats(
-  args: { page?: number; page_size?: number },
+  args: Record<string, unknown>,
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const page = args.page ?? 1;
-    const pageSize = args.page_size ?? 20;
+    const page = optNumber(args, 'page', 1);
+    const pageSize = optNumber(args, 'page_size', 20);
     const start = (page - 1) * pageSize;
 
     const chats = await getChatsApi(pageSize + start);

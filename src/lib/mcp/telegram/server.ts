@@ -17,7 +17,11 @@ import { ErrorCategory, logAndFormatError } from "../errorHandler";
 import { ValidationError } from "../validation";
 import { SocketIOMCPTransportImpl } from "../transport";
 import { mcpLog } from "../logger";
-import type { TelegramMCPToolHandler } from "./types";
+import {
+  type TelegramMCPToolHandler,
+  type TelegramMCPToolName,
+  TELEGRAM_MCP_TOOL_NAMES,
+} from "./types";
 import * as tools from "./tools";
 
 export class TelegramMCPServer {
@@ -27,6 +31,7 @@ export class TelegramMCPServer {
   constructor(socket: Socket | null | undefined) {
     this.transport = new SocketIOMCPTransportImpl(socket ?? undefined);
     this.config = { name: "telegram-mcp", version: "1.0.0" };
+    mcpLog(`Telegram MCP ${this.config.name} v${this.config.version} ready`);
     this.setupHandlers();
   }
 
@@ -35,15 +40,14 @@ export class TelegramMCPServer {
   }
 
   private setupHandlers(): void {
-    this.transport.on(
-      "toolCall",
-      (data: { requestId: string; toolCall: MCPToolCall }) => {
-        void this.handleToolCallRequest(data);
-      },
-    );
+    this.transport.on("toolCall", (data: unknown) => {
+      void this.handleToolCallRequest(
+        data as { requestId: string; toolCall: MCPToolCall },
+      );
+    });
 
-    this.transport.on("listTools", (data: { requestId: string }) => {
-      const { requestId } = data;
+    this.transport.on("listTools", (data: unknown) => {
+      const { requestId } = data as { requestId: string };
       try {
         const toolsList = this.listTools();
         this.transport.emit("listToolsResponse", {
@@ -119,7 +123,12 @@ export class TelegramMCPServer {
   }
 
   private findToolHandler(name: string): TelegramMCPToolHandler | undefined {
-    const toolMap: Record<string, TelegramMCPToolHandler> = {
+    const isToolName = (n: string): n is TelegramMCPToolName =>
+      (TELEGRAM_MCP_TOOL_NAMES as readonly string[]).includes(n);
+
+    if (!isToolName(name)) return undefined;
+
+    const toolMap: Record<TelegramMCPToolName, TelegramMCPToolHandler> = {
       get_chats: tools.getChats,
       list_chats: tools.listChats,
       get_chat: tools.getChat,
@@ -200,6 +209,7 @@ export class TelegramMCPServer {
       get_contact_chats: tools.getContactChats,
       get_last_interaction: tools.getLastInteraction,
     };
+
     return toolMap[name];
   }
 }
