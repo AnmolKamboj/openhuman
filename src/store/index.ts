@@ -13,7 +13,7 @@ import storage from "redux-persist/lib/storage";
 import authReducer from "./authSlice";
 import socketReducer from "./socketSlice";
 import userReducer from "./userSlice";
-import telegramReducer from "./telegramSlice";
+import telegramReducer from "./telegram";
 import { createLogger } from "redux-logger";
 import { IS_DEV } from "../utils/config";
 

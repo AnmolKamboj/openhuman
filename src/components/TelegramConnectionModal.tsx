@@ -9,7 +9,7 @@ import {
   setAuthStatus,
   setAuthError,
   setConnectionStatus,
-} from '../store/telegramSlice';
+} from '../store/telegram';
 import { selectIsInitialized, selectConnectionStatus } from '../store/telegramSelectors';
 import { mtprotoService } from '../services/mtprotoService';
 

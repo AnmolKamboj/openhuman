@@ -1,6 +1,6 @@
 import { createSelector } from '@reduxjs/toolkit';
 import type { RootState } from './index';
-import type { TelegramChat, TelegramMessage, TelegramThread } from './telegramSlice';
+import type { TelegramChat, TelegramMessage, TelegramThread } from './telegram';
 
 // Base selectors
 export const selectTelegramState = (state: RootState) => state.telegram;

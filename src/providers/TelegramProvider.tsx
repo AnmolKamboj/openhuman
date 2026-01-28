@@ -1,7 +1,7 @@
 import { useEffect, useRef, useMemo, createContext, useContext, ReactNode } from 'react';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { selectIsAuthenticated, selectIsInitialized, selectConnectionStatus } from '../store/telegramSelectors';
-import { initializeTelegram, connectTelegram } from '../store/telegramSlice';
+import { initializeTelegram, connectTelegram } from '../store/telegram';
 import { mtprotoService } from '../services/mtprotoService';
 
 // Helper to check if there's a saved session in localStorage
