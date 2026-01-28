@@ -111,34 +111,13 @@ const ConnectionsPanel = () => {
     setIsTelegramModalOpen(false);
   };
 
-  const getConnectionStatus = (optionId: string) => {
-    const isConnected = isAccountConnected(optionId);
-    if (isConnected) {
-      return { label: 'Connected', className: 'bg-green-500/20 text-green-400 border-green-500/30' };
-    }
-    const option = connectOptions.find(opt => opt.id === optionId);
-    if (option?.comingSoon) {
-      return { label: 'Coming Soon', className: 'bg-stone-500/20 text-stone-400 border-stone-500/30' };
-    }
-    return { label: 'Not Connected', className: 'bg-red-500/20 text-red-400 border-red-500/30' };
-  };
-
   return (
     <>
       <SettingsPanelLayout title="Connections" onBack={navigateBack}>
         <div className="p-6">
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-white mb-2">Connected Services</h3>
-            <p className="text-sm text-stone-400">
-              Manage your connected accounts and services. Connect more accounts for better AI intelligence.
-            </p>
-          </div>
-
           <div className="space-y-3">
             {connectOptions.map((option) => {
               const isConnected = isAccountConnected(option.id);
-              const status = getConnectionStatus(option.id);
-
               return (
                 <div
                   key={option.id}

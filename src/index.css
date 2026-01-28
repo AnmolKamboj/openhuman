@@ -92,6 +92,7 @@
   *:focus {
     outline: none !important;
     box-shadow: none !important;
+    border: inherit !important;
     border-color: inherit !important;
   }
 
