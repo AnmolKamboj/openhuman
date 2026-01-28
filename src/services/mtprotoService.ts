@@ -136,10 +136,27 @@ class MTProtoService {
             qrCodeCallback(qrCode);
           },
           password: passwordCallback,
-          onError: onError || ((err: Error) => {
+          onError: async (err: Error) => {
+            // If password callback is provided and we get SESSION_PASSWORD_NEEDED,
+            // the password callback should handle it, but if onError is called first,
+            // we need to let it through
+            const errorMessage = err.message || '';
+            if (errorMessage.includes('SESSION_PASSWORD_NEEDED') && passwordCallback) {
+              // Don't stop - let the password callback handle it
+              if (onError) {
+                const result = await onError(err);
+                return result;
+              }
+              return false;
+            }
+            
+            if (onError) {
+              const result = await onError(err);
+              return result;
+            }
             console.error('QR code auth error:', err);
             return false;
-          }),
+          },
         }
       );
 
@@ -153,7 +170,21 @@ class MTProtoService {
 
       return user;
     } catch (error) {
-      console.error('QR code authentication failed:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // If it's a password needed error, the password callback should have been invoked
+      // by the library. If we're here, it means either:
+      // 1. The password callback wasn't provided
+      // 2. The password callback failed
+      // 3. The library threw before invoking the callback
+      // In any case, we should let the caller handle it
+      if (errorMessage.includes('SESSION_PASSWORD_NEEDED')) {
+        console.log('SESSION_PASSWORD_NEEDED - password callback should handle this');
+        // Don't log as error - this is expected when 2FA is enabled
+        // The password callback should be invoked by the library
+      } else {
+        console.error('QR code authentication failed:', error);
+      }
       throw error;
     }
   }

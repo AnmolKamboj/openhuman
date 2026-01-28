@@ -111,18 +111,46 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
         },
         async (hint) => {
           // 2FA password required
+          console.log('Password callback invoked with hint:', hint);
           setPasswordHint(hint);
           setCurrentStep('2fa');
           setIsAuthenticating(false);
 
           // Wait for user to enter password
-          return new Promise<string>((resolve) => {
-            passwordResolverRef.current = resolve;
+          return new Promise<string>((resolve, reject) => {
+            passwordResolverRef.current = (password: string) => {
+              console.log('Password resolved in callback, sending to Telegram:', password ? '***' : 'empty');
+              if (!password || !password.trim()) {
+                reject(new Error('Password is required'));
+                return;
+              }
+              resolve(password.trim());
+            };
+            
+            // Set a timeout to prevent hanging forever
+            setTimeout(() => {
+              if (passwordResolverRef.current) {
+                console.warn('Password callback timeout - no password provided');
+                reject(new Error('Password input timeout'));
+                passwordResolverRef.current = null;
+              }
+            }, 300000); // 5 minutes timeout
           });
         },
         async (err) => {
           // Handle errors
           const errorMessage = err.message || 'Authentication error';
+          
+          // Check if it's a 2FA password needed error
+          if (errorMessage.includes('SESSION_PASSWORD_NEEDED') || errorMessage.includes('PASSWORD')) {
+            // This should trigger the password callback, but if it doesn't, handle it here
+            setPasswordHint(undefined);
+            setCurrentStep('2fa');
+            setIsAuthenticating(false);
+            // Don't stop authentication - let the password callback handle it
+            return false;
+          }
+
           setError(errorMessage);
           dispatch(setAuthError(errorMessage));
 
@@ -151,6 +179,19 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
     } catch (err) {
       setIsAuthenticating(false);
       const errorMessage = err instanceof Error ? err.message : 'Authentication failed';
+      
+      // If it's a password needed error, we should already be on the 2FA step
+      // Don't show it as an error, just log it
+      if (errorMessage.includes('SESSION_PASSWORD_NEEDED')) {
+        console.log('Password required - user should be on 2FA step');
+        // If we're not on 2FA step, switch to it
+        if (currentStep !== '2fa') {
+          setCurrentStep('2fa');
+          setPasswordHint(undefined);
+        }
+        return; // Don't show error, password callback should handle it
+      }
+      
       setError(errorMessage);
       setCurrentStep('error');
       dispatch(setAuthError(errorMessage));
@@ -183,21 +224,94 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
     return () => clearInterval(interval);
   }, [qrCodeExpires, currentStep, isAuthenticating, startQrCodeFlow]);
 
+  // Poll authentication status every 5 seconds when QR code is displayed
+  useEffect(() => {
+    if (currentStep !== 'qr' || !qrCodeUrl || isAuthenticating) {
+      return;
+    }
+
+    const checkAuthStatus = async () => {
+      try {
+        const client = mtprotoService.getClient();
+        if (!client) return;
+
+        const isAuthorized = await client.checkAuthorization();
+        
+        if (isAuthorized) {
+          // User is authenticated - check if we need password
+          try {
+            // Try to get user info - if this fails with SESSION_PASSWORD_NEEDED, we need password
+            await client.getMe();
+            // If getMe succeeds, authentication is complete
+            console.log('QR code scanned and authenticated successfully');
+            // The signInWithQrCode promise should resolve, but if it doesn't, trigger completion
+            setIsAuthenticating(false);
+            dispatch(setAuthStatus('authenticated'));
+            onComplete();
+            onClose();
+          } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            if (errorMessage.includes('SESSION_PASSWORD_NEEDED') || errorMessage.includes('PASSWORD')) {
+              // Need password - switch to 2FA step
+              console.log('Password required after QR scan - switching to 2FA step');
+              if (currentStep === 'qr' && !passwordResolverRef.current) {
+                // Trigger password callback manually if it wasn't called
+                setPasswordHint(undefined);
+                setCurrentStep('2fa');
+                setIsAuthenticating(false);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        // Ignore errors during polling - they're expected if not authenticated yet
+        console.debug('Auth status check:', err instanceof Error ? err.message : String(err));
+      }
+    };
+
+    // Check immediately, then every 5 seconds
+    checkAuthStatus();
+    const interval = setInterval(checkAuthStatus, 5000);
+
+    return () => clearInterval(interval);
+  }, [currentStep, qrCodeUrl, isAuthenticating, dispatch, onComplete, onClose]);
+
   const handle2FASubmit = async () => {
-    if (!password.trim() || !passwordResolverRef.current) return;
+    const passwordValue = password.trim();
+    
+    if (!passwordValue) {
+      setError('Please enter your password');
+      return;
+    }
+    
+    if (!passwordResolverRef.current) {
+      console.error('Password resolver is null - password callback may not be active');
+      setError('Authentication session expired. Please try again.');
+      setCurrentStep('qr');
+      return;
+    }
 
     try {
       setIsAuthenticating(true);
       setError(null);
 
       // Resolve the password promise to continue authentication
-      passwordResolverRef.current(password);
-      passwordResolverRef.current = null;
+      // This will pass the password to the Telegram library
+      const resolver = passwordResolverRef.current;
+      passwordResolverRef.current = null; // Clear before resolving to prevent double calls
+      
+      console.log('Resolving password promise - sending password to Telegram');
+      resolver(passwordValue);
+      
+      // The authentication will continue in the background via signInWithQrCode
+      // The success/error will be handled by the signInWithQrCode promise
+      // We keep isAuthenticating true until the promise resolves or rejects
     } catch (err) {
       setIsAuthenticating(false);
       const errorMessage = err instanceof Error ? err.message : 'Password verification failed';
       setError(errorMessage);
       dispatch(setAuthError(errorMessage));
+      console.error('Error in handle2FASubmit:', err);
     }
   };
 
@@ -392,6 +506,13 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
                     }}
                     placeholder="Enter your password"
                     className="w-full px-4 py-3 bg-black/50 border border-stone-700 rounded-xl text-white placeholder-opacity-50 focus:outline-none focus:border-primary-500 transition-colors"
+                    autoComplete="off"
+                    data-form-type="other"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    data-bwignore="true"
+                    data-dashlane-ignore="true"
+                    data-bitwarden-watching="false"
                     autoFocus
                     disabled={isAuthenticating}
                   />
