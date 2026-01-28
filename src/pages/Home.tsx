@@ -3,6 +3,7 @@ import { openUrl } from '../utils/openUrl';
 import { TELEGRAM_BOT_USERNAME } from '../utils/config';
 import ConnectionIndicator from '../components/ConnectionIndicator';
 import TelegramConnectionIndicator from '../components/TelegramConnectionIndicator';
+import GmailConnectionIndicator from '../components/GmailConnectionIndicator';
 import { useAppDispatch } from '../store/hooks';
 import { clearToken } from '../store/authSlice';
 import { useUser } from '../hooks/useUser';
@@ -145,8 +146,9 @@ const Home = () => {
               </button>
             </div>
 
-            {/* Telegram Connection Indicator */}
+            {/* Connection Indicators */}
             <TelegramConnectionIndicator className="mt-4" />
+            <GmailConnectionIndicator className="mt-4" />
           </div>
         </div>
       </div>
