@@ -8,6 +8,7 @@ import { Api } from "telegram";
 import { optNumber } from "../args";
 import bigInt from "big-integer";
 import type { ApiUser } from "../apiResultTypes";
+import { toInputChannel } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: "get_banned_users",
@@ -56,7 +57,7 @@ export async function getBannedUsers(
       const inputChannel = await client.getInputEntity(entity);
       return client.invoke(
         new Api.channels.GetParticipants({
-          channel: inputChannel as unknown as Api.TypeInputChannel,
+          channel: toInputChannel(inputChannel),
           filter: new Api.ChannelParticipantsKicked({ q: "" }),
           offset: 0,
           limit,

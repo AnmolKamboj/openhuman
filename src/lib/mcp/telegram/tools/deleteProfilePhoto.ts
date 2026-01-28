@@ -5,6 +5,7 @@ import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
 import bigInt from 'big-integer';
 import type { ApiPhoto } from '../apiResultTypes';
+import { narrow } from '../apiCastHelpers';
 
 export const tool: MCPTool = {
   name: "delete_profile_photo",
@@ -34,7 +35,7 @@ export async function deleteProfilePhoto(
       return { content: [{ type: 'text', text: 'No profile photo to delete.' }] };
     }
 
-    const photo = photos.photos[0] as unknown as ApiPhoto;
+    const photo = narrow<ApiPhoto>(photos.photos[0]);
 
     await mtprotoService.withFloodWaitHandling(async () => {
       await client.invoke(

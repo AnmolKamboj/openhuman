@@ -5,6 +5,7 @@ import { validateId } from "../../validation";
 import { getChatById } from "../telegramApi";
 import { mtprotoService } from "../../../../services/mtprotoService";
 import { Api } from "telegram";
+import { toInputChannel, toInputUser } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: "promote_admin",
@@ -54,8 +55,8 @@ export async function promoteAdmin(
       const inputUser = await client.getInputEntity(userId);
       await client.invoke(
         new Api.channels.EditAdmin({
-          channel: inputChannel as unknown as Api.TypeInputChannel,
-          userId: inputUser as unknown as Api.TypeInputUser,
+          channel: toInputChannel(inputChannel),
+          userId: toInputUser(inputUser),
           adminRights: new Api.ChatAdminRights({
             changeInfo: true,
             deleteMessages: true,

@@ -5,6 +5,7 @@ import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
 import bigInt from 'big-integer';
 import type { ContactIdEntry } from '../apiResultTypes';
+import { narrow } from '../apiCastHelpers';
 
 type ContactIdResult = number | ContactIdEntry;
 
@@ -29,7 +30,7 @@ export async function getContactIds(
       return { content: [{ type: 'text', text: 'No contact IDs found.' }] };
     }
 
-    const ids = (result as unknown as ContactIdResult[]).map((c) =>
+    const ids = narrow<ContactIdResult[]>(result).map((c) =>
       String(typeof c === 'number' ? c : c.userId ?? c),
     );
     return { content: [{ type: 'text', text: ids.length + ' contacts:\n' + ids.join('\n') }] };

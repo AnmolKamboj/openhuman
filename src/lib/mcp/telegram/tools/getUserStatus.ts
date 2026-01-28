@@ -5,6 +5,7 @@ import { validateId } from '../../validation';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
 import type { ApiUser } from '../apiResultTypes';
+import { toInputUser, narrow } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: 'get_user_status',
@@ -29,7 +30,7 @@ export async function getUserStatus(
     const result = await mtprotoService.withFloodWaitHandling(async () => {
       const inputUser = await client.getInputEntity(userId);
       return client.invoke(
-        new Api.users.GetUsers({ id: [inputUser as unknown as Api.TypeInputUser] }),
+        new Api.users.GetUsers({ id: [toInputUser(inputUser)] }),
       );
     });
 
@@ -37,7 +38,7 @@ export async function getUserStatus(
       return { content: [{ type: 'text', text: 'User ' + userId + ' not found.' }], isError: true };
     }
 
-    const user = result[0] as unknown as ApiUser;
+    const user = narrow<ApiUser>(result[0]);
     const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Unknown';
     let statusText = 'unknown';
 

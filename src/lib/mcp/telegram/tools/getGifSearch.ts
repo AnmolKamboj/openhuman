@@ -5,6 +5,7 @@ import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
 import { optNumber } from '../args';
 import type { InlineBotResults } from '../apiResultTypes';
+import { toInputUser, narrow } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: "get_gif_search",
@@ -34,7 +35,7 @@ export async function getGifSearch(
       const bot = await client.getInputEntity('gif');
       return client.invoke(
         new Api.messages.GetInlineBotResults({
-          bot: bot as unknown as Api.TypeInputUser,
+          bot: toInputUser(bot),
           peer: new Api.InputPeerSelf(),
           query,
           offset: '',
@@ -42,7 +43,7 @@ export async function getGifSearch(
       );
     });
 
-    const results = (result as unknown as InlineBotResults)?.results;
+    const results = narrow<InlineBotResults>(result)?.results;
     if (!results || !Array.isArray(results) || results.length === 0) {
       return { content: [{ type: 'text', text: 'No GIFs found for: ' + query }] };
     }

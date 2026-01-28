@@ -6,6 +6,7 @@ import { getChatById } from "../telegramApi";
 import { mtprotoService } from "../../../../services/mtprotoService";
 import { Api } from "telegram";
 import bigInt from "big-integer";
+import { toInputChannel } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: "delete_chat_photo",
@@ -41,7 +42,7 @@ export async function deleteChatPhoto(
         const inputChannel = await client.getInputEntity(entity);
         await client.invoke(
           new Api.channels.EditPhoto({
-            channel: inputChannel as unknown as Api.TypeInputChannel,
+            channel: toInputChannel(inputChannel),
             photo: new Api.InputChatPhotoEmpty(),
           }),
         );

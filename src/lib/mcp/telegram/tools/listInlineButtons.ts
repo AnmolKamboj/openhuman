@@ -4,6 +4,7 @@ import { ErrorCategory, logAndFormatError } from '../../errorHandler';
 import { validateId } from '../../validation';
 import { getChatById, getMessages } from '../telegramApi';
 import type { MessageWithReplyMarkup, ReplyMarkupRow } from '../apiResultTypes';
+import { narrow } from '../apiCastHelpers';
 
 export const tool: MCPTool = {
   name: "list_inline_buttons",
@@ -36,7 +37,8 @@ export async function listInlineButtons(
     const messages = await getMessages(chatId, 200, 0);
     if (!messages) return { content: [{ type: 'text', text: 'No messages found.' }] };
 
-    const msg = messages.find((m) => String(m.id) === String(messageId)) as unknown as MessageWithReplyMarkup | undefined;
+    const found = messages.find((m) => String(m.id) === String(messageId));
+    const msg = found ? narrow<MessageWithReplyMarkup>(found) : undefined;
     if (!msg) return { content: [{ type: 'text', text: 'Message ' + messageId + ' not found in cache.' }], isError: true };
 
     if (!msg.replyMarkup || !msg.replyMarkup.rows) {

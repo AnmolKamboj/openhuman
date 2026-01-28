@@ -6,6 +6,7 @@ import { getChatById } from "../telegramApi";
 import { mtprotoService } from "../../../../services/mtprotoService";
 import { Api } from "telegram";
 import bigInt from "big-integer";
+import { toInputChannel } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: "edit_chat_title",
@@ -48,7 +49,7 @@ export async function editChatTitle(
         const inputChannel = await client.getInputEntity(entity);
         await client.invoke(
           new Api.channels.EditTitle({
-            channel: inputChannel as unknown as Api.TypeInputChannel,
+            channel: toInputChannel(inputChannel),
             title,
           }),
         );

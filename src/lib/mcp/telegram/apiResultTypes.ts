@@ -82,7 +82,7 @@ export interface BotCallbackAnswer {
 
 /** Contact import result */
 export interface ImportContactsResult {
-  imported?: unknown[];
+  imported?: object[];
 }
 
 /** Contact ID entry */

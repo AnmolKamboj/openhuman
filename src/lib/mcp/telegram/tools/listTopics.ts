@@ -6,6 +6,7 @@ import { getChatById } from '../telegramApi';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
 import type { ForumTopicsResult } from '../apiResultTypes';
+import { toInputChannel, narrow } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: 'list_topics',
@@ -34,7 +35,7 @@ export async function listTopics(
       const inputChannel = await client.getInputEntity(entity);
       return client.invoke(
         new Api.channels.GetForumTopics({
-          channel: inputChannel as unknown as Api.TypeInputChannel,
+          channel: toInputChannel(inputChannel),
           offsetDate: 0,
           offsetId: 0,
           offsetTopic: 0,
@@ -43,7 +44,7 @@ export async function listTopics(
       );
     });
 
-    const topics = (result as unknown as ForumTopicsResult)?.topics;
+    const topics = narrow<ForumTopicsResult>(result)?.topics;
     if (!topics || !Array.isArray(topics) || topics.length === 0) {
       return { content: [{ type: 'text', text: 'No forum topics found.' }] };
     }

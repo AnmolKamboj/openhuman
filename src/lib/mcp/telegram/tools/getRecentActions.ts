@@ -8,6 +8,7 @@ import { Api } from 'telegram';
 import bigInt from 'big-integer';
 import { optNumber } from '../args';
 import type { AdminLogResult } from '../apiResultTypes';
+import { toInputChannel, narrow } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: "get_recent_actions",
@@ -44,7 +45,7 @@ export async function getRecentActions(
       const inputChannel = await client.getInputEntity(entity);
       return client.invoke(
         new Api.channels.GetAdminLog({
-          channel: inputChannel as unknown as Api.TypeInputChannel,
+          channel: toInputChannel(inputChannel),
           q: '',
           maxId: bigInt(0),
           minId: bigInt(0),
@@ -53,7 +54,7 @@ export async function getRecentActions(
       );
     });
 
-    const events = (result as unknown as AdminLogResult)?.events;
+    const events = narrow<AdminLogResult>(result)?.events;
     if (!events || !Array.isArray(events) || events.length === 0) {
       return { content: [{ type: 'text', text: 'No recent actions found.' }] };
     }

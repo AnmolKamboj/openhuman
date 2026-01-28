@@ -5,6 +5,7 @@ import { validateId } from '../../validation';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
 import type { FullUserResult } from '../apiResultTypes';
+import { toInputUser, narrow } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: "get_bot_info",
@@ -29,12 +30,12 @@ export async function getBotInfo(
     const result = await mtprotoService.withFloodWaitHandling(async () => {
       const inputUser = await client.getInputEntity(botId);
       return client.invoke(
-        new Api.users.GetFullUser({ id: inputUser as unknown as Api.TypeInputUser }),
+        new Api.users.GetFullUser({ id: toInputUser(inputUser) }),
       );
     });
 
-    const fullUser = (result as unknown as FullUserResult)?.fullUser;
-    const user = (result as unknown as FullUserResult)?.users?.[0];
+    const fullUser = narrow<FullUserResult>(result)?.fullUser;
+    const user = narrow<FullUserResult>(result)?.users?.[0];
 
     if (!user) {
       return { content: [{ type: 'text', text: 'Bot not found: ' + botId }], isError: true };

@@ -5,6 +5,7 @@ import { mtprotoService } from "../../../../services/mtprotoService";
 import { Api } from "telegram";
 import bigInt from "big-integer";
 import type { ContactInput, ImportContactsResult } from "../apiResultTypes";
+import { narrow } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: "import_contacts",
@@ -66,7 +67,7 @@ export async function importContacts(
       );
     });
 
-    const imported = (result as unknown as ImportContactsResult)?.imported?.length ?? 0;
+    const imported = narrow<ImportContactsResult>(result)?.imported?.length ?? 0;
     return {
       content: [
         {

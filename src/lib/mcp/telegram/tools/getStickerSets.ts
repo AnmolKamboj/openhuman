@@ -5,6 +5,7 @@ import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
 import bigInt from 'big-integer';
 import type { StickerSetsResult } from '../apiResultTypes';
+import { narrow } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: "get_sticker_sets",
@@ -23,7 +24,7 @@ export async function getStickerSets(
       return client.invoke(new Api.messages.GetAllStickers({ hash: bigInt(0) }));
     });
 
-    const sets = (result as unknown as StickerSetsResult)?.sets;
+    const sets = narrow<StickerSetsResult>(result)?.sets;
     if (!sets || !Array.isArray(sets) || sets.length === 0) {
       return { content: [{ type: 'text', text: 'No sticker sets found.' }] };
     }

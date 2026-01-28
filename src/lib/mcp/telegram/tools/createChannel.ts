@@ -5,6 +5,7 @@ import { mtprotoService } from "../../../../services/mtprotoService";
 import { Api } from "telegram";
 import { optString } from "../args";
 import type { ResultWithChats } from "../apiResultTypes";
+import { narrow } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: "create_channel",
@@ -51,7 +52,7 @@ export async function createChannel(
       );
     });
 
-    const channelId = (result as unknown as ResultWithChats)?.chats?.[0]?.id ?? "unknown";
+    const channelId = narrow<ResultWithChats>(result)?.chats?.[0]?.id ?? "unknown";
     const type = megagroup ? "Supergroup" : "Channel";
     return {
       content: [

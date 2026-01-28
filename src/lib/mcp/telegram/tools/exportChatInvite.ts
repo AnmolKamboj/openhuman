@@ -7,6 +7,7 @@ import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
 import { optString } from '../args';
 import type { ChatInviteResult } from '../apiResultTypes';
+import { narrow } from '../apiCastHelpers';
 
 export const tool: MCPTool = {
   name: 'export_chat_invite',
@@ -51,7 +52,7 @@ export async function exportChatInvite(
       );
     });
 
-    const link = (result as unknown as ChatInviteResult)?.link;
+    const link = narrow<ChatInviteResult>(result)?.link;
     if (!link) {
       return { content: [{ type: 'text', text: 'Could not create invite link.' }], isError: true };
     }

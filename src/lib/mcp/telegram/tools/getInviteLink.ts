@@ -6,6 +6,7 @@ import { getChatById } from "../telegramApi";
 import { mtprotoService } from "../../../../services/mtprotoService";
 import { Api } from "telegram";
 import type { ChatInviteResult } from "../apiResultTypes";
+import { narrow } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: "get_invite_link",
@@ -46,7 +47,7 @@ export async function getInviteLink(
       );
     });
 
-    const link = (result as unknown as ChatInviteResult)?.link;
+    const link = narrow<ChatInviteResult>(result)?.link;
     if (!link) {
       return {
         content: [{ type: "text", text: "Could not generate invite link." }],

@@ -5,6 +5,7 @@ import { validateId } from "../../validation";
 import { getChatById } from "../telegramApi";
 import { mtprotoService } from "../../../../services/mtprotoService";
 import { Api } from "telegram";
+import { toInputChannel, toInputPeer } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: "ban_user",
@@ -54,8 +55,8 @@ export async function banUser(
       const inputUser = await client.getInputEntity(userId);
       await client.invoke(
         new Api.channels.EditBanned({
-          channel: inputChannel as unknown as Api.TypeInputChannel,
-          participant: inputUser as unknown as Api.TypeInputPeer,
+          channel: toInputChannel(inputChannel),
+          participant: toInputPeer(inputUser),
           bannedRights: new Api.ChatBannedRights({
             viewMessages: true,
             sendMessages: true,

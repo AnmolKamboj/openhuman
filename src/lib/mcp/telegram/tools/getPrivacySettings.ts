@@ -4,6 +4,7 @@ import { ErrorCategory, logAndFormatError } from '../../errorHandler';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
 import type { PrivacyResult } from '../apiResultTypes';
+import { narrow } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: "get_privacy_settings",
@@ -42,7 +43,7 @@ export async function getPrivacySettings(
       return client.invoke(new Api.account.GetPrivacy({ key }));
     });
 
-    const rules = (result as unknown as PrivacyResult)?.rules;
+    const rules = narrow<PrivacyResult>(result)?.rules;
     if (!rules || !Array.isArray(rules)) {
       return { content: [{ type: 'text', text: 'No privacy rules found for ' + keyStr + '.' }] };
     }

@@ -4,6 +4,7 @@ import { ErrorCategory, logAndFormatError } from '../../errorHandler';
 import { validateId } from '../../validation';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
+import { toInputUser } from '../apiCastHelpers';
 
 export const tool: MCPTool = {
   name: 'delete_contact',
@@ -29,7 +30,7 @@ export async function deleteContact(
       const inputUser = await client.getInputEntity(userId);
       await client.invoke(
         new Api.contacts.DeleteContacts({
-          id: [inputUser as unknown as Api.TypeInputUser],
+          id: [toInputUser(inputUser)],
         }),
       );
     });

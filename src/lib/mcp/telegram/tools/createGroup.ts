@@ -4,6 +4,7 @@ import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { mtprotoService } from "../../../../services/mtprotoService";
 import { Api } from "telegram";
 import type { ResultWithChats } from "../apiResultTypes";
+import { toInputUser, narrow } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: "create_group",
@@ -46,14 +47,14 @@ export async function createGroup(
     const users: Api.TypeInputUser[] = [];
     for (const uid of userIds) {
       const inputUser = await client.getInputEntity(String(uid));
-      users.push(inputUser as unknown as Api.TypeInputUser);
+      users.push(toInputUser(inputUser));
     }
 
     const result = await mtprotoService.withFloodWaitHandling(async () => {
       return client.invoke(new Api.messages.CreateChat({ title, users }));
     });
 
-    const chatId = (result as unknown as ResultWithChats)?.chats?.[0]?.id ?? "unknown";
+    const chatId = narrow<ResultWithChats>(result)?.chats?.[0]?.id ?? "unknown";
     return {
       content: [
         { type: "text", text: `Group "${title}" created. Chat ID: ${chatId}` },

@@ -4,6 +4,7 @@ import { ErrorCategory, logAndFormatError } from '../../errorHandler';
 import { validateId } from '../../validation';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
+import { toInputPeer } from '../apiCastHelpers';
 
 export const tool: MCPTool = {
   name: 'unblock_user',
@@ -28,7 +29,7 @@ export async function unblockUser(
     await mtprotoService.withFloodWaitHandling(async () => {
       const inputUser = await client.getInputEntity(userId);
       await client.invoke(
-        new Api.contacts.Unblock({ id: inputUser as unknown as Api.TypeInputPeer }),
+        new Api.contacts.Unblock({ id: toInputPeer(inputUser) }),
       );
     });
 

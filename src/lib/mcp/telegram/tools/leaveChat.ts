@@ -6,6 +6,7 @@ import { getChatById } from "../telegramApi";
 import { mtprotoService } from "../../../../services/mtprotoService";
 import { Api } from "telegram";
 import bigInt from "big-integer";
+import { toInputChannel } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: "leave_chat",
@@ -41,7 +42,7 @@ export async function leaveChat(
         const inputChannel = await client.getInputEntity(entity);
         await client.invoke(
           new Api.channels.LeaveChannel({
-            channel: inputChannel as unknown as Api.TypeInputChannel,
+            channel: toInputChannel(inputChannel),
           }),
         );
       });

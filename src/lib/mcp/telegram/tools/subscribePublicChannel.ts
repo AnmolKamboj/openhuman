@@ -3,6 +3,7 @@ import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { mtprotoService } from "../../../../services/mtprotoService";
 import { Api } from "telegram";
+import { toInputChannel } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: "subscribe_public_channel",
@@ -34,7 +35,7 @@ export async function subscribePublicChannel(
       const inputChannel = await client.getInputEntity(username);
       await client.invoke(
         new Api.channels.JoinChannel({
-          channel: inputChannel as unknown as Api.TypeInputChannel,
+          channel: toInputChannel(inputChannel),
         }),
       );
     });

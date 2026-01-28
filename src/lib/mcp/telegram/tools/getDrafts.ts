@@ -4,6 +4,7 @@ import { ErrorCategory, logAndFormatError } from '../../errorHandler';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
 import type { UpdatesResult } from '../apiResultTypes';
+import { narrow } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: "get_drafts",
@@ -22,7 +23,7 @@ export async function getDrafts(
       return client.invoke(new Api.messages.GetAllDrafts());
     });
 
-    const updates = result as unknown as UpdatesResult;
+    const updates = narrow<UpdatesResult>(result);
     if (!updates || !updates.updates || updates.updates.length === 0) {
       return { content: [{ type: 'text', text: 'No drafts found.' }] };
     }

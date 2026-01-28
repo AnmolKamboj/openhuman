@@ -7,6 +7,7 @@ import { Api } from 'telegram';
 import bigInt from 'big-integer';
 import { optNumber } from '../args';
 import type { ApiPhoto } from '../apiResultTypes';
+import { toInputUser, narrow } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: 'get_user_photos',
@@ -34,7 +35,7 @@ export async function getUserPhotos(
       const inputUser = await client.getInputEntity(userId);
       return client.invoke(
         new Api.photos.GetUserPhotos({
-          userId: inputUser as unknown as Api.TypeInputUser,
+          userId: toInputUser(inputUser),
           offset: 0,
           maxId: bigInt(0),
           limit,
@@ -46,7 +47,7 @@ export async function getUserPhotos(
       return { content: [{ type: 'text', text: 'No photos found.' }] };
     }
 
-    const lines = (result.photos as unknown as ApiPhoto[]).map((photo, i: number) => {
+    const lines = narrow<ApiPhoto[]>(result.photos).map((photo, i: number) => {
       const date = photo.date ? new Date(photo.date * 1000).toISOString() : 'unknown';
       return 'Photo ' + (i + 1) + ': ID ' + photo.id + ' | Date: ' + date;
     });
