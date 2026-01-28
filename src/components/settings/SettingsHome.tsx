@@ -23,7 +23,8 @@ const SettingsHome = () => {
     console.log('Delete all data');
   };
 
-  const menuItems = [
+  // Main settings menu items
+  const mainMenuItems = [
     {
       id: 'connections',
       title: 'Connections',
@@ -33,7 +34,8 @@ const SettingsHome = () => {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
         </svg>
       ),
-      onClick: () => navigateToSettings('connections')
+      onClick: () => navigateToSettings('connections'),
+      dangerous: false
     },
     {
       id: 'messaging',
@@ -44,7 +46,8 @@ const SettingsHome = () => {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
         </svg>
       ),
-      onClick: () => navigateToSettings('messaging')
+      onClick: () => navigateToSettings('messaging'),
+      dangerous: false
     },
     {
       id: 'privacy',
@@ -55,7 +58,8 @@ const SettingsHome = () => {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
         </svg>
       ),
-      onClick: () => navigateToSettings('privacy')
+      onClick: () => navigateToSettings('privacy'),
+      dangerous: false
     },
     {
       id: 'profile',
@@ -66,7 +70,8 @@ const SettingsHome = () => {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
         </svg>
       ),
-      onClick: () => navigateToSettings('profile')
+      onClick: () => navigateToSettings('profile'),
+      dangerous: false
     },
     {
       id: 'advanced',
@@ -78,7 +83,8 @@ const SettingsHome = () => {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
       ),
-      onClick: () => navigateToSettings('advanced')
+      onClick: () => navigateToSettings('advanced'),
+      dangerous: false
     },
     {
       id: 'encryption',
@@ -86,10 +92,11 @@ const SettingsHome = () => {
       description: 'Access your encryption key for backup purposes',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1721 9z" />
         </svg>
       ),
-      onClick: handleViewEncryptionKey
+      onClick: handleViewEncryptionKey,
+      dangerous: false
     },
     {
       id: 'billing',
@@ -97,11 +104,16 @@ const SettingsHome = () => {
       description: 'Manage your subscription and payment methods',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3 3v8a3 3 0 003 3z" />
         </svg>
       ),
-      onClick: () => navigateToSettings('billing')
-    },
+      onClick: () => navigateToSettings('billing'),
+      dangerous: false
+    }
+  ];
+
+  // Destructive actions menu items
+  const destructiveMenuItems = [
     {
       id: 'delete',
       title: 'Delete All Data',
@@ -113,6 +125,18 @@ const SettingsHome = () => {
       ),
       onClick: handleDeleteAllData,
       dangerous: true
+    },
+    {
+      id: 'logout',
+      title: 'Log out',
+      description: 'Sign out of your account',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        </svg>
+      ),
+      onClick: handleLogout,
+      dangerous: true
     }
   ];
 
@@ -121,33 +145,38 @@ const SettingsHome = () => {
       <SettingsHeader />
 
       <div className="flex-1 overflow-y-auto">
-        {/* Menu items */}
-        <div className="p-4">
-          {menuItems.map((item, index) => (
-            <SettingsMenuItem
-              key={item.id}
-              icon={item.icon}
-              title={item.title}
-              description={item.description}
-              onClick={item.onClick}
-              dangerous={item.dangerous}
-              isFirst={index === 0}
-            />
-          ))}
+        <div className="p-4 space-y-6">
+          {/* Main Settings */}
+          <div>
+            {mainMenuItems.map((item, index) => (
+              <SettingsMenuItem
+                key={item.id}
+                icon={item.icon}
+                title={item.title}
+                description={item.description}
+                onClick={item.onClick}
+                dangerous={item.dangerous}
+                isFirst={index === 0}
+                isLast={index === mainMenuItems.length - 1}
+              />
+            ))}
+          </div>
 
-          {/* Logout */}
-          <SettingsMenuItem
-            icon={
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-            }
-            title="Log out"
-            description="Sign out of your account"
-            onClick={handleLogout}
-            dangerous
-            isLast
-          />
+          {/* Destructive Actions */}
+          <div>
+            {destructiveMenuItems.map((item, index) => (
+              <SettingsMenuItem
+                key={item.id}
+                icon={item.icon}
+                title={item.title}
+                description={item.description}
+                onClick={item.onClick}
+                dangerous={item.dangerous}
+                isFirst={index === 0}
+                isLast={index === destructiveMenuItems.length - 1}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </div>

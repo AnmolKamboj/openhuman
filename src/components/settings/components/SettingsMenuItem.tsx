@@ -22,7 +22,7 @@ const SettingsMenuItem = ({
   // Color variations for dangerous items (like logout/delete)
   const titleColor = dangerous ? 'text-amber-400' : 'text-white';
   const iconColor = dangerous ? 'text-amber-400' : 'text-white';
-  const borderColor = dangerous ? 'border-amber-500/30' : 'border-stone-700';
+  const borderColor = 'border-stone-700'; // Use consistent border color for all items
 
   // Border classes for first/last items
   const borderClasses = isLast ? '' : `border-b ${borderColor}`;
