@@ -166,14 +166,14 @@ const ConnectionsPanel = () => {
                         </span>
                       )}
 
-                      {/* Action button for active connections */}
+                      {/* Disconnect button for connected services */}
                       {!option.comingSoon && isConnected && (
-                        <span className="px-2 py-1 text-xs font-medium rounded-full border bg-sage-500/20 text-sage-400 border-sage-500/30">
-                          Connected
+                        <span className="px-2 py-1 text-xs font-medium rounded-full border bg-red-500/20 text-red-400 border-red-500/30">
+                          Disconnect
                         </span>
                       )}
 
-                      {/* Action button for non-connected */}
+                      {/* Connect button for non-connected services */}
                       {!option.comingSoon && !isConnected && (
                         <span className="px-2 py-1 text-xs font-medium rounded-full border bg-blue-500/20 text-blue-400 border-blue-500/30">
                           Connect
