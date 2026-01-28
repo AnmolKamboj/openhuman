@@ -42,8 +42,8 @@ export async function demoteAdmin(
       const inputUser = await client.getInputEntity(userId);
       await client.invoke(
         new Api.channels.EditAdmin({
-          channel: inputChannel as Api.TypeInputChannel,
-          userId: inputUser as Api.TypeInputUser,
+          channel: inputChannel as unknown as Api.TypeInputChannel,
+          userId: inputUser as unknown as Api.TypeInputUser,
           adminRights: new Api.ChatAdminRights({}),
           rank: '',
         }),

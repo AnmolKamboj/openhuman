@@ -33,7 +33,7 @@ export async function createGroup(
     const users: Api.TypeInputUser[] = [];
     for (const uid of userIds) {
       const inputUser = await client.getInputEntity(String(uid));
-      users.push(inputUser as Api.TypeInputUser);
+      users.push(inputUser as unknown as Api.TypeInputUser);
     }
 
     const result = await mtprotoService.withFloodWaitHandling(async () => {

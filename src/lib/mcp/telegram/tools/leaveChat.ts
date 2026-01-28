@@ -5,6 +5,7 @@ import { validateId } from '../../validation';
 import { getChatById } from '../telegramApi';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
+import bigInt from 'big-integer';
 
 export const tool: MCPTool = {
   name: 'leave_chat',
@@ -36,16 +37,15 @@ export async function leaveChat(
         const inputChannel = await client.getInputEntity(entity);
         await client.invoke(
           new Api.channels.LeaveChannel({
-            channel: inputChannel as Api.TypeInputChannel,
+            channel: inputChannel as unknown as Api.TypeInputChannel,
           }),
         );
       });
     } else {
       await mtprotoService.withFloodWaitHandling(async () => {
-        const selfUser = await client.getMe();
         await client.invoke(
           new Api.messages.DeleteChatUser({
-            chatId: BigInt(chat.id),
+            chatId: bigInt(chat.id),
             userId: new Api.InputUserSelf(),
           }),
         );

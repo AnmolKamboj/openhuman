@@ -42,8 +42,8 @@ export async function unbanUser(
       const inputUser = await client.getInputEntity(userId);
       await client.invoke(
         new Api.channels.EditBanned({
-          channel: inputChannel as Api.TypeInputChannel,
-          participant: inputUser as Api.TypeInputPeer,
+          channel: inputChannel as unknown as Api.TypeInputChannel,
+          participant: inputUser as unknown as Api.TypeInputPeer,
           bannedRights: new Api.ChatBannedRights({ untilDate: 0 }),
         }),
       );

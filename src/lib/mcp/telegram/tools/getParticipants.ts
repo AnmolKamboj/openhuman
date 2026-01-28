@@ -6,6 +6,7 @@ import { getChatById } from '../telegramApi';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
 import { optNumber } from '../args';
+import bigInt from 'big-integer';
 
 export const tool: MCPTool = {
   name: 'get_participants',
@@ -41,11 +42,11 @@ export async function getParticipants(
         const inputChannel = await client.getInputEntity(entity);
         return client.invoke(
           new Api.channels.GetParticipants({
-            channel: inputChannel as Api.TypeInputChannel,
+            channel: inputChannel as unknown as Api.TypeInputChannel,
             filter: new Api.ChannelParticipantsRecent(),
             offset: 0,
             limit,
-            hash: BigInt(0),
+            hash: bigInt(0),
           }),
         );
       });
@@ -55,7 +56,7 @@ export async function getParticipants(
     } else {
       const result = await mtprotoService.withFloodWaitHandling(async () => {
         return client.invoke(
-          new Api.messages.GetFullChat({ chatId: BigInt(chat.id) }),
+          new Api.messages.GetFullChat({ chatId: bigInt(chat.id) }),
         );
       });
       if (result && 'users' in result && Array.isArray(result.users)) {

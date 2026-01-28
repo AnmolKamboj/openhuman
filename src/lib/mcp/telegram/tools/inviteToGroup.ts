@@ -5,6 +5,7 @@ import { validateId } from '../../validation';
 import { getChatById } from '../telegramApi';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
+import bigInt from 'big-integer';
 
 export const tool: MCPTool = {
   name: 'invite_to_group',
@@ -37,7 +38,7 @@ export async function inviteToGroup(
     const users: Api.TypeInputUser[] = [];
     for (const uid of userIds) {
       const inputUser = await client.getInputEntity(String(uid));
-      users.push(inputUser as Api.TypeInputUser);
+      users.push(inputUser as unknown as Api.TypeInputUser);
     }
 
     const inputPeer = await client.getInputEntity(entity);
@@ -46,7 +47,7 @@ export async function inviteToGroup(
       await mtprotoService.withFloodWaitHandling(async () => {
         await client.invoke(
           new Api.channels.InviteToChannel({
-            channel: inputPeer as Api.TypeInputChannel,
+            channel: inputPeer as unknown as Api.TypeInputChannel,
             users,
           }),
         );
@@ -56,7 +57,7 @@ export async function inviteToGroup(
         await mtprotoService.withFloodWaitHandling(async () => {
           await client.invoke(
             new Api.messages.AddChatUser({
-              chatId: BigInt(chat.id),
+              chatId: bigInt(chat.id),
               userId: user,
               fwdLimit: 100,
             }),

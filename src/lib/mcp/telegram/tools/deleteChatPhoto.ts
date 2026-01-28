@@ -5,6 +5,7 @@ import { validateId } from '../../validation';
 import { getChatById } from '../telegramApi';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
+import bigInt from 'big-integer';
 
 export const tool: MCPTool = {
   name: 'delete_chat_photo',
@@ -36,7 +37,7 @@ export async function deleteChatPhoto(
         const inputChannel = await client.getInputEntity(entity);
         await client.invoke(
           new Api.channels.EditPhoto({
-            channel: inputChannel as Api.TypeInputChannel,
+            channel: inputChannel as unknown as Api.TypeInputChannel,
             photo: new Api.InputChatPhotoEmpty(),
           }),
         );
@@ -45,7 +46,7 @@ export async function deleteChatPhoto(
       await mtprotoService.withFloodWaitHandling(async () => {
         await client.invoke(
           new Api.messages.EditChatPhoto({
-            chatId: BigInt(chat.id),
+            chatId: bigInt(chat.id),
             photo: new Api.InputChatPhotoEmpty(),
           }),
         );

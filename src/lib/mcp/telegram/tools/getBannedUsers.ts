@@ -6,6 +6,7 @@ import { getChatById } from '../telegramApi';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
 import { optNumber } from '../args';
+import bigInt from 'big-integer';
 
 export const tool: MCPTool = {
   name: 'get_banned_users',
@@ -42,11 +43,11 @@ export async function getBannedUsers(
       const inputChannel = await client.getInputEntity(entity);
       return client.invoke(
         new Api.channels.GetParticipants({
-          channel: inputChannel as Api.TypeInputChannel,
+          channel: inputChannel as unknown as Api.TypeInputChannel,
           filter: new Api.ChannelParticipantsKicked({ q: '' }),
           offset: 0,
           limit,
-          hash: BigInt(0),
+          hash: bigInt(0),
         }),
       );
     });

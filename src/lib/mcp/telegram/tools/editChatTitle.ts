@@ -5,6 +5,7 @@ import { validateId } from '../../validation';
 import { getChatById } from '../telegramApi';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
+import bigInt from 'big-integer';
 
 export const tool: MCPTool = {
   name: 'edit_chat_title',
@@ -39,7 +40,7 @@ export async function editChatTitle(
         const inputChannel = await client.getInputEntity(entity);
         await client.invoke(
           new Api.channels.EditTitle({
-            channel: inputChannel as Api.TypeInputChannel,
+            channel: inputChannel as unknown as Api.TypeInputChannel,
             title,
           }),
         );
@@ -48,7 +49,7 @@ export async function editChatTitle(
       await mtprotoService.withFloodWaitHandling(async () => {
         await client.invoke(
           new Api.messages.EditChatTitle({
-            chatId: BigInt(chat.id),
+            chatId: bigInt(chat.id),
             title,
           }),
         );
