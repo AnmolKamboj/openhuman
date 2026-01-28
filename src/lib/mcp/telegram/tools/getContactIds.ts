@@ -6,6 +6,8 @@ import { Api } from 'telegram';
 import bigInt from 'big-integer';
 import type { ContactIdEntry } from '../apiResultTypes';
 
+type ContactIdResult = number | ContactIdEntry;
+
 export const tool: MCPTool = {
   name: 'get_contact_ids',
   description: 'Get IDs of all contacts',
@@ -27,7 +29,9 @@ export async function getContactIds(
       return { content: [{ type: 'text', text: 'No contact IDs found.' }] };
     }
 
-    const ids = result.map((c: ContactIdEntry) => String(c.userId ?? c));
+    const ids = (result as unknown as ContactIdResult[]).map((c) =>
+      String(typeof c === 'number' ? c : c.userId ?? c),
+    );
     return { content: [{ type: 'text', text: ids.length + ' contacts:\n' + ids.join('\n') }] };
   } catch (error) {
     return logAndFormatError(

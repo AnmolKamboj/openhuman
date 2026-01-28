@@ -34,7 +34,7 @@ export async function listTopics(
       const inputChannel = await client.getInputEntity(entity);
       return client.invoke(
         new Api.channels.GetForumTopics({
-          channel: inputChannel as Api.TypeInputChannel,
+          channel: inputChannel as unknown as Api.TypeInputChannel,
           offsetDate: 0,
           offsetId: 0,
           offsetTopic: 0,

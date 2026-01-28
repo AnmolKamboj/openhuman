@@ -34,7 +34,7 @@ export async function subscribePublicChannel(
       const inputChannel = await client.getInputEntity(username);
       await client.invoke(
         new Api.channels.JoinChannel({
-          channel: inputChannel as Api.TypeInputChannel,
+          channel: inputChannel as unknown as Api.TypeInputChannel,
         }),
       );
     });

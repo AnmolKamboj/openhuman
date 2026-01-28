@@ -44,7 +44,7 @@ export async function getRecentActions(
       const inputChannel = await client.getInputEntity(entity);
       return client.invoke(
         new Api.channels.GetAdminLog({
-          channel: inputChannel as Api.TypeInputChannel,
+          channel: inputChannel as unknown as Api.TypeInputChannel,
           q: '',
           maxId: bigInt(0),
           minId: bigInt(0),

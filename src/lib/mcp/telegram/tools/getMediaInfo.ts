@@ -43,8 +43,8 @@ export async function getMediaInfo(
     }
 
     const info = {
-      type: msg.media.type ?? 'unknown',
       ...msg.media,
+      type: msg.media.type ?? 'unknown',
     };
 
     return { content: [{ type: 'text', text: JSON.stringify(info, null, 2) }] };

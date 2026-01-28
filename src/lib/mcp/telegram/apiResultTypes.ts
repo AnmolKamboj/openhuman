@@ -94,8 +94,8 @@ export interface ContactIdEntry {
 export interface ApiPhoto {
   id: bigInt.BigInteger;
   date?: number;
-  accessHash?: bigInt.BigInteger;
-  fileReference?: Buffer;
+  accessHash: bigInt.BigInteger;
+  fileReference: Buffer;
 }
 
 /** API message shape (from search results) */

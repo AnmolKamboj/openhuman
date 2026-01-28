@@ -46,7 +46,7 @@ export async function getUserPhotos(
       return { content: [{ type: 'text', text: 'No photos found.' }] };
     }
 
-    const lines = result.photos.map((photo: ApiPhoto, i: number) => {
+    const lines = (result.photos as unknown as ApiPhoto[]).map((photo, i: number) => {
       const date = photo.date ? new Date(photo.date * 1000).toISOString() : 'unknown';
       return 'Photo ' + (i + 1) + ': ID ' + photo.id + ' | Date: ' + date;
     });
