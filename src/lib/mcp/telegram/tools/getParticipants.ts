@@ -1,23 +1,23 @@
-import type { MCPTool, MCPToolResult } from '../../types';
-import type { TelegramMCPContext } from '../types';
-import { ErrorCategory, logAndFormatError } from '../../errorHandler';
-import { validateId } from '../../validation';
-import { getChatById } from '../telegramApi';
-import { mtprotoService } from '../../../../services/mtprotoService';
-import { Api } from 'telegram';
-import { optNumber } from '../args';
-import bigInt from 'big-integer';
+import type { MCPTool, MCPToolResult } from "../../types";
+import type { TelegramMCPContext } from "../types";
+import { ErrorCategory, logAndFormatError } from "../../errorHandler";
+import { validateId } from "../../validation";
+import { getChatById } from "../telegramApi";
+import { mtprotoService } from "../../../../services/mtprotoService";
+import { Api } from "telegram";
+import { optNumber } from "../args";
+import bigInt from "big-integer";
 
 export const tool: MCPTool = {
-  name: 'get_participants',
-  description: 'Get participants of a group or channel',
+  name: "get_participants",
+  description: "Get participants of a group or channel",
   inputSchema: {
-    type: 'object',
+    type: "object",
     properties: {
-      chat_id: { type: 'string', description: 'Chat ID or username' },
-      limit: { type: 'number', description: 'Max results', default: 50 },
+      chat_id: { type: "string", description: "Chat ID or username" },
+      limit: { type: "number", description: "Max results", default: 50 },
     },
-    required: ['chat_id'],
+    required: ["chat_id"],
   },
 };
 
@@ -26,18 +26,22 @@ export async function getParticipants(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const chatId = validateId(args.chat_id, 'chat_id');
-    const limit = optNumber(args, 'limit', 50);
+    const chatId = validateId(args.chat_id, "chat_id");
+    const limit = optNumber(args, "limit", 50);
 
     const chat = getChatById(chatId);
-    if (!chat) return { content: [{ type: 'text', text: `Chat not found: ${chatId}` }], isError: true };
+    if (!chat)
+      return {
+        content: [{ type: "text", text: `Chat not found: ${chatId}` }],
+        isError: true,
+      };
 
     const client = mtprotoService.getClient();
     const entity = chat.username ? chat.username : chat.id;
 
     let participants: any[] = [];
 
-    if (chat.type === 'channel' || chat.type === 'supergroup') {
+    if (chat.type === "channel" || chat.type === "supergroup") {
       const result = await mtprotoService.withFloodWaitHandling(async () => {
         const inputChannel = await client.getInputEntity(entity);
         return client.invoke(
@@ -50,7 +54,7 @@ export async function getParticipants(
           }),
         );
       });
-      if (result && 'users' in result && Array.isArray(result.users)) {
+      if (result && "users" in result && Array.isArray(result.users)) {
         participants = result.users;
       }
     } else {
@@ -59,25 +63,33 @@ export async function getParticipants(
           new Api.messages.GetFullChat({ chatId: bigInt(chat.id) }),
         );
       });
-      if (result && 'users' in result && Array.isArray(result.users)) {
+      if (result && "users" in result && Array.isArray(result.users)) {
         participants = result.users;
       }
     }
 
     if (participants.length === 0) {
-      return { content: [{ type: 'text', text: 'No participants found.' }] };
+      return { content: [{ type: "text", text: "No participants found." }] };
     }
 
     const lines = participants.map((u: any) => {
-      const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Unknown';
-      const username = u.username ? `@${u.username}` : '';
+      const name =
+        [u.firstName, u.lastName].filter(Boolean).join(" ") || "Unknown";
+      const username = u.username ? `@${u.username}` : "";
       return `ID: ${u.id} | ${name} ${username}`.trim();
     });
 
-    return { content: [{ type: 'text', text: `${lines.length} participants:\n${lines.join('\n')}` }] };
+    return {
+      content: [
+        {
+          type: "text",
+          text: `${lines.length} participants:\n${lines.join("\n")}`,
+        },
+      ],
+    };
   } catch (error) {
     return logAndFormatError(
-      'get_participants',
+      "get_participants",
       error instanceof Error ? error : new Error(String(error)),
       ErrorCategory.GROUP,
     );

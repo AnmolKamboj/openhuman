@@ -1,14 +1,16 @@
-import type { MCPTool, MCPToolResult } from '../../types';
-import type { TelegramMCPContext } from '../types';
-import { notImplemented } from './notImplemented';
+import type { MCPTool, MCPToolResult } from "../../types";
+import type { TelegramMCPContext } from "../types";
+import { notImplemented } from "./notImplemented";
 
 export const tool: MCPTool = {
-  name: 'get_bot_info',
-  description: 'Get bot information in a chat',
+  name: "get_bot_info",
+  description: "Get bot information in a chat",
   inputSchema: {
-    type: 'object',
-    properties: { chat_id: { type: 'string', description: 'Chat ID or username' } },
-    required: ['chat_id'],
+    type: "object",
+    properties: {
+      chat_id: { type: "string", description: "Chat ID or username" },
+    },
+    required: ["chat_id"],
   },
 };
 
@@ -16,5 +18,5 @@ export async function getBotInfo(
   _args: Record<string, unknown>,
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
-  return notImplemented('get_bot_info');
+  return notImplemented("get_bot_info");
 }

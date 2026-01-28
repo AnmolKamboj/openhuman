@@ -2,27 +2,47 @@
  * List Messages tool - Retrieve messages with optional filters
  */
 
-import type { MCPTool, MCPToolResult } from '../../types';
-import type { TelegramMCPContext } from '../types';
+import type { MCPTool, MCPToolResult } from "../../types";
+import type { TelegramMCPContext } from "../types";
 
-import { ErrorCategory, logAndFormatError } from '../../errorHandler';
-import { optNumber, optString } from '../args';
-import { formatMessage, getChatById, getMessages as getMessagesApi } from '../telegramApi';
-import { validateId } from '../../validation';
+import { ErrorCategory, logAndFormatError } from "../../errorHandler";
+import { optNumber, optString } from "../args";
+import {
+  formatMessage,
+  getChatById,
+  getMessages as getMessagesApi,
+} from "../telegramApi";
+import { validateId } from "../../validation";
 
 export const tool: MCPTool = {
-  name: 'list_messages',
-  description: 'Retrieve messages with optional filters',
+  name: "list_messages",
+  description: "Retrieve messages with optional filters",
   inputSchema: {
-    type: 'object',
+    type: "object",
     properties: {
-      chat_id: { type: 'string', description: 'The ID or username of the chat to get messages from' },
-      limit: { type: 'number', description: 'Maximum number of messages to retrieve', default: 20 },
-      search_query: { type: 'string', description: 'Filter messages containing this text' },
-      from_date: { type: 'string', description: 'Filter messages from this date (YYYY-MM-DD)' },
-      to_date: { type: 'string', description: 'Filter messages until this date (YYYY-MM-DD)' },
+      chat_id: {
+        type: "string",
+        description: "The ID or username of the chat to get messages from",
+      },
+      limit: {
+        type: "number",
+        description: "Maximum number of messages to retrieve",
+        default: 20,
+      },
+      search_query: {
+        type: "string",
+        description: "Filter messages containing this text",
+      },
+      from_date: {
+        type: "string",
+        description: "Filter messages from this date (YYYY-MM-DD)",
+      },
+      to_date: {
+        type: "string",
+        description: "Filter messages until this date (YYYY-MM-DD)",
+      },
     },
-    required: ['chat_id'],
+    required: ["chat_id"],
   },
 };
 
@@ -31,28 +51,34 @@ export async function listMessages(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const chatId = validateId(args.chat_id, 'chat_id');
-    const limit = optNumber(args, 'limit', 20);
-    const searchQuery = optString(args, 'search_query');
-    const fromDate = optString(args, 'from_date');
-    const toDate = optString(args, 'to_date');
+    const chatId = validateId(args.chat_id, "chat_id");
+    const limit = optNumber(args, "limit", 20);
+    const searchQuery = optString(args, "search_query");
+    const fromDate = optString(args, "from_date");
+    const toDate = optString(args, "to_date");
 
     const chat = getChatById(chatId);
     if (!chat) {
       return {
-        content: [{ type: 'text', text: `Chat not found: ${chatId}` }],
+        content: [{ type: "text", text: `Chat not found: ${chatId}` }],
         isError: true,
       };
     }
 
     let messages = await getMessagesApi(chatId, limit * 2, 0);
     if (!messages || messages.length === 0) {
-      return { content: [{ type: 'text', text: 'No messages found matching the criteria.' }] };
+      return {
+        content: [
+          { type: "text", text: "No messages found matching the criteria." },
+        ],
+      };
     }
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      messages = messages.filter((m) => (m.message ?? '').toLowerCase().includes(q));
+      messages = messages.filter((m) =>
+        (m.message ?? "").toLowerCase().includes(q),
+      );
     }
 
     if (fromDate || toDate) {
@@ -71,16 +97,18 @@ export async function listMessages(
     const sliced = messages.slice(0, limit);
     const contentItems = sliced.map((msg) => {
       const formatted = formatMessage(msg);
-      const from = msg.fromName ?? msg.fromId ?? 'Unknown';
-      const replyStr = msg.replyToMessageId ? ` | reply to ${msg.replyToMessageId}` : '';
-      const text = `ID: ${formatted.id} | ${from} | Date: ${formatted.date}${replyStr} | Message: ${formatted.text || '[Media/No text]'}`;
-      return { type: 'text' as const, text };
+      const from = msg.fromName ?? msg.fromId ?? "Unknown";
+      const replyStr = msg.replyToMessageId
+        ? ` | reply to ${msg.replyToMessageId}`
+        : "";
+      const text = `ID: ${formatted.id} | ${from} | Date: ${formatted.date}${replyStr} | Message: ${formatted.text || "[Media/No text]"}`;
+      return { type: "text" as const, text };
     });
 
     return { content: contentItems };
   } catch (error) {
     return logAndFormatError(
-      'list_messages',
+      "list_messages",
       error instanceof Error ? error : new Error(String(error)),
       ErrorCategory.MSG,
     );

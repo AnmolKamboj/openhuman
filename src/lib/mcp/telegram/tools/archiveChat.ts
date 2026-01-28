@@ -1,20 +1,20 @@
-import type { MCPTool, MCPToolResult } from '../../types';
-import type { TelegramMCPContext } from '../types';
-import { ErrorCategory, logAndFormatError } from '../../errorHandler';
-import { validateId } from '../../validation';
-import { getChatById } from '../telegramApi';
-import { mtprotoService } from '../../../../services/mtprotoService';
-import { Api } from 'telegram';
+import type { MCPTool, MCPToolResult } from "../../types";
+import type { TelegramMCPContext } from "../types";
+import { ErrorCategory, logAndFormatError } from "../../errorHandler";
+import { validateId } from "../../validation";
+import { getChatById } from "../telegramApi";
+import { mtprotoService } from "../../../../services/mtprotoService";
+import { Api } from "telegram";
 
 export const tool: MCPTool = {
-  name: 'archive_chat',
-  description: 'Archive a chat',
+  name: "archive_chat",
+  description: "Archive a chat",
   inputSchema: {
-    type: 'object',
+    type: "object",
     properties: {
-      chat_id: { type: 'string', description: 'Chat ID or username' },
+      chat_id: { type: "string", description: "Chat ID or username" },
     },
-    required: ['chat_id'],
+    required: ["chat_id"],
   },
 };
 
@@ -23,10 +23,14 @@ export async function archiveChat(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const chatId = validateId(args.chat_id, 'chat_id');
+    const chatId = validateId(args.chat_id, "chat_id");
 
     const chat = getChatById(chatId);
-    if (!chat) return { content: [{ type: 'text', text: `Chat not found: ${chatId}` }], isError: true };
+    if (!chat)
+      return {
+        content: [{ type: "text", text: `Chat not found: ${chatId}` }],
+        isError: true,
+      };
 
     const client = mtprotoService.getClient();
     const entity = chat.username ? chat.username : chat.id;
@@ -45,10 +49,10 @@ export async function archiveChat(
       );
     });
 
-    return { content: [{ type: 'text', text: `Chat ${chatId} archived.` }] };
+    return { content: [{ type: "text", text: `Chat ${chatId} archived.` }] };
   } catch (error) {
     return logAndFormatError(
-      'archive_chat',
+      "archive_chat",
       error instanceof Error ? error : new Error(String(error)),
       ErrorCategory.CHAT,
     );

@@ -11,9 +11,9 @@ import {
   getChatById,
   getMessages as getMessagesApi,
 } from "../telegramApi";
-import { validateId } from '../../validation';
-import type { TelegramMessage } from '../../../../store/telegram/types';
-import { optNumber } from '../args';
+import { validateId } from "../../validation";
+import type { TelegramMessage } from "../../../../store/telegram/types";
+import { optNumber } from "../args";
 
 export const tool: MCPTool = {
   name: "get_messages",
@@ -49,9 +49,9 @@ export async function getMessages(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const chatId = validateId(args.chat_id, 'chat_id');
-    const page = optNumber(args, 'page', 1);
-    const pageSize = optNumber(args, 'page_size', 20);
+    const chatId = validateId(args.chat_id, "chat_id");
+    const page = optNumber(args, "page", 1);
+    const pageSize = optNumber(args, "page_size", 20);
     const offset = (page - 1) * pageSize;
 
     const chat = getChatById(chatId);

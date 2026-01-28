@@ -2,17 +2,17 @@
  * Get Me tool - Get your own user information
  */
 
-import type { MCPTool, MCPToolResult } from '../../types';
-import type { TelegramMCPContext } from '../types';
+import type { MCPTool, MCPToolResult } from "../../types";
+import type { TelegramMCPContext } from "../types";
 
-import { ErrorCategory, logAndFormatError } from '../../errorHandler';
-import { formatEntity, getCurrentUser } from '../telegramApi';
+import { ErrorCategory, logAndFormatError } from "../../errorHandler";
+import { formatEntity, getCurrentUser } from "../telegramApi";
 
 export const tool: MCPTool = {
-  name: 'get_me',
-  description: 'Get your own user information',
+  name: "get_me",
+  description: "Get your own user information",
   inputSchema: {
-    type: 'object',
+    type: "object",
     properties: {},
   },
 };
@@ -25,7 +25,7 @@ export async function getMe(
     const user = getCurrentUser();
     if (!user) {
       return {
-        content: [{ type: 'text', text: 'User information not available' }],
+        content: [{ type: "text", text: "User information not available" }],
         isError: true,
       };
     }
@@ -38,11 +38,11 @@ export async function getMe(
       ...(entity.phone && { phone: entity.phone }),
     };
     return {
-      content: [{ type: 'text', text: JSON.stringify(result, undefined, 2) }],
+      content: [{ type: "text", text: JSON.stringify(result, undefined, 2) }],
     };
   } catch (error) {
     return logAndFormatError(
-      'get_me',
+      "get_me",
       error instanceof Error ? error : new Error(String(error)),
       ErrorCategory.PROFILE,
     );

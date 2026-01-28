@@ -1,17 +1,17 @@
-import type { MCPTool, MCPToolResult } from '../../types';
-import type { TelegramMCPContext } from '../types';
-import { notImplemented } from './notImplemented';
+import type { MCPTool, MCPToolResult } from "../../types";
+import type { TelegramMCPContext } from "../types";
+import { notImplemented } from "./notImplemented";
 
 export const tool: MCPTool = {
-  name: 'list_inline_buttons',
-  description: 'List inline buttons on a message',
+  name: "list_inline_buttons",
+  description: "List inline buttons on a message",
   inputSchema: {
-    type: 'object',
+    type: "object",
     properties: {
-      chat_id: { type: 'string', description: 'Chat ID or username' },
-      message_id: { type: 'number', description: 'Message ID' },
+      chat_id: { type: "string", description: "Chat ID or username" },
+      message_id: { type: "number", description: "Message ID" },
     },
-    required: ['chat_id', 'message_id'],
+    required: ["chat_id", "message_id"],
   },
 };
 
@@ -19,5 +19,5 @@ export async function listInlineButtons(
   _args: Record<string, unknown>,
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
-  return notImplemented('list_inline_buttons');
+  return notImplemented("list_inline_buttons");
 }

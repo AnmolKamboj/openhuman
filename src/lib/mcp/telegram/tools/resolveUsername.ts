@@ -2,21 +2,24 @@
  * Resolve Username tool - Resolve a username to a user or chat ID
  */
 
-import type { MCPTool, MCPToolResult } from '../../types';
-import type { TelegramMCPContext } from '../types';
+import type { MCPTool, MCPToolResult } from "../../types";
+import type { TelegramMCPContext } from "../types";
 
-import { ErrorCategory, logAndFormatError } from '../../errorHandler';
-import { formatEntity, getChatById } from '../telegramApi';
+import { ErrorCategory, logAndFormatError } from "../../errorHandler";
+import { formatEntity, getChatById } from "../telegramApi";
 
 export const tool: MCPTool = {
-  name: 'resolve_username',
-  description: 'Resolve a username to a user or chat ID',
+  name: "resolve_username",
+  description: "Resolve a username to a user or chat ID",
   inputSchema: {
-    type: 'object',
+    type: "object",
     properties: {
-      username: { type: 'string', description: 'Username to resolve (without @)' },
+      username: {
+        type: "string",
+        description: "Username to resolve (without @)",
+      },
     },
-    required: ['username'],
+    required: ["username"],
   },
 };
 
@@ -25,18 +28,18 @@ export async function resolveUsername(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const raw = typeof args.username === 'string' ? args.username : '';
+    const raw = typeof args.username === "string" ? args.username : "";
     if (!raw) {
       return {
-        content: [{ type: 'text', text: 'username is required' }],
+        content: [{ type: "text", text: "username is required" }],
         isError: true,
       };
     }
-    const username = raw.startsWith('@') ? raw : `@${raw}`;
+    const username = raw.startsWith("@") ? raw : `@${raw}`;
     const chat = getChatById(username);
     if (!chat) {
       return {
-        content: [{ type: 'text', text: `Username ${username} not found` }],
+        content: [{ type: "text", text: `Username ${username} not found` }],
         isError: true,
       };
     }
@@ -44,14 +47,23 @@ export async function resolveUsername(
     return {
       content: [
         {
-          type: 'text',
-          text: JSON.stringify({ id: entity.id, name: entity.name, type: entity.type, username: entity.username }, undefined, 2),
+          type: "text",
+          text: JSON.stringify(
+            {
+              id: entity.id,
+              name: entity.name,
+              type: entity.type,
+              username: entity.username,
+            },
+            undefined,
+            2,
+          ),
         },
       ],
     };
   } catch (error) {
     return logAndFormatError(
-      'resolve_username',
+      "resolve_username",
       error instanceof Error ? error : new Error(String(error)),
       ErrorCategory.SEARCH,
     );
