@@ -36,7 +36,7 @@ const Home = () => {
   };
 
   const handleManageConnections = () => {
-    navigate('/settings/connections');
+    navigate('/settings');
   };
 
   const handleDeleteAllData = () => {

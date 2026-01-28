@@ -84,12 +84,12 @@ const SettingsHome = () => {
   ];
 
   return (
-    <div className="bg-white rounded-2xl overflow-hidden">
+    <div className="overflow-hidden h-full flex flex-col">
       <SettingsHeader />
 
-      <div className="max-h-[70vh] overflow-y-auto">
+      <div className="flex-1 overflow-y-auto">
         {/* Menu items */}
-        <div className="divide-y divide-gray-100">
+        <div className="p-4">
           {menuItems.map((item, index) => (
             <SettingsMenuItem
               key={item.id}
@@ -97,12 +97,9 @@ const SettingsHome = () => {
               title={item.title}
               description={item.description}
               onClick={item.onClick}
-              className={index === 0 ? '' : ''}
+              isFirst={index === 0}
             />
           ))}
-
-          {/* Separator before logout */}
-          <div className="h-2 bg-gray-50"></div>
 
           {/* Logout */}
           <SettingsMenuItem
@@ -115,6 +112,7 @@ const SettingsHome = () => {
             description="Sign out of your account"
             onClick={handleLogout}
             dangerous
+            isLast
           />
         </div>
       </div>

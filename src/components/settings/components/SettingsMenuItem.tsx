@@ -6,7 +6,8 @@ interface SettingsMenuItemProps {
   description?: string;
   onClick: () => void;
   dangerous?: boolean;
-  className?: string;
+  isFirst?: boolean;
+  isLast?: boolean;
 }
 
 const SettingsMenuItem = ({
@@ -15,48 +16,37 @@ const SettingsMenuItem = ({
   description,
   onClick,
   dangerous = false,
-  className = ''
+  isFirst = false,
+  isLast = false
 }: SettingsMenuItemProps) => {
-  const textColor = dangerous ? 'text-red-600' : 'text-gray-900';
-  const descriptionColor = dangerous ? 'text-red-500/70' : 'text-gray-500';
+  // Color variations for dangerous items (like logout/delete)
+  const titleColor = dangerous ? 'text-amber-400' : 'text-white';
+  const iconColor = dangerous ? 'text-amber-400' : 'text-white';
+  const borderColor = dangerous ? 'border-amber-500/30' : 'border-stone-700';
+
+  // Border classes for first/last items
+  const borderClasses = isLast ? '' : `border-b ${borderColor}`;
+  const roundedClasses = isFirst ? 'first:rounded-t-3xl' : (isLast ? 'last:rounded-b-3xl' : '');
 
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center justify-between h-[52px] px-6 hover:bg-gray-50 active:bg-gray-100 transition-colors duration-150 text-left ${className}`}
+      className={`w-full flex items-center justify-between p-3 bg-black/50 ${borderClasses} hover:bg-stone-800/30 transition-all duration-200 text-left ${roundedClasses}`}
     >
-      <div className="flex items-center space-x-3 flex-1 min-w-0">
-        <div className={`flex-shrink-0 ${dangerous ? 'text-red-500' : 'text-gray-600'}`}>
-          {icon}
+      <div className={`w-5 h-5 opacity-60 flex-shrink-0 mr-3 ${iconColor}`}>
+        {icon}
+      </div>
+      <div className="flex-1">
+        <div className={`font-medium text-sm mb-1 ${titleColor}`}>
+          {title}
         </div>
-        <div className="flex-1 min-w-0">
-          <p className={`text-[15px] font-medium ${textColor} truncate`}>
-            {title}
+        {description && (
+          <p className="opacity-70 text-xs">
+            {description}
           </p>
-          {description && (
-            <p className={`text-sm ${descriptionColor} truncate`}>
-              {description}
-            </p>
-          )}
-        </div>
+        )}
       </div>
 
-      {/* Chevron */}
-      <div className="flex-shrink-0 ml-3 transition-transform duration-150 hover:translate-x-0.5">
-        <svg
-          className="w-5 h-5 text-gray-400"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 5l7 7-7 7"
-          />
-        </svg>
-      </div>
     </button>
   );
 };

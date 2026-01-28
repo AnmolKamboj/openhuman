@@ -22,20 +22,20 @@ const SettingsHeader = ({ className = '' }: SettingsHeaderProps) => {
   const displayUsername = user?.username ? `@${user.username}` : '';
 
   return (
-    <div className={`bg-gradient-to-b from-white to-gray-50/50 border-b border-gray-100 p-6 ${className}`}>
+    <div className={`bg-black/30 border-b border-stone-700 p-6 ${className}`}>
       <div className="flex items-center space-x-4">
         {/* Avatar */}
-        <div className="w-14 h-14 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
-          <span className="text-gray-600 font-semibold text-lg">{initials}</span>
+        <div className="w-14 h-14 bg-stone-700 rounded-full flex items-center justify-center flex-shrink-0">
+          <span className="text-white font-semibold text-lg">{initials}</span>
         </div>
 
         {/* User info */}
         <div className="flex-1 min-w-0">
-          <h2 className="text-lg font-semibold text-gray-900 truncate" id="settings-modal-title">
+          <h2 className="text-lg font-semibold text-white truncate" id="settings-modal-title">
             {displayName}
           </h2>
           {displayUsername && (
-            <p className="text-sm text-gray-500 truncate">{displayUsername}</p>
+            <p className="text-sm text-stone-400 truncate">{displayUsername}</p>
           )}
         </div>
       </div>

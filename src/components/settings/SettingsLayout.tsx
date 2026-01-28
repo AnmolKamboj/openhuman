@@ -55,7 +55,7 @@ const SettingsLayout = ({ children, onClose }: SettingsLayoutProps) => {
     >
       <div
         ref={modalRef}
-        className="bg-white rounded-2xl shadow-[0_20px_25px_-5px_rgba(0,0,0,0.1)] w-full max-w-[520px] max-h-[90vh] overflow-hidden animate-fade-up"
+        className="glass rounded-3xl shadow-large w-full max-w-[520px] h-[600px] overflow-hidden animate-fade-up focus:outline-none"
         style={{
           animationDuration: '200ms',
           animationTimingFunction: 'ease-out',
