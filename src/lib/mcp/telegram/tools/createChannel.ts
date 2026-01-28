@@ -1,23 +1,55 @@
 import type { MCPTool, MCPToolResult } from '../../types';
 import type { TelegramMCPContext } from '../types';
-import { notImplemented } from './notImplemented';
+import { ErrorCategory, logAndFormatError } from '../../errorHandler';
+import { mtprotoService } from '../../../../services/mtprotoService';
+import { Api } from 'telegram';
+import { optString } from '../args';
 
 export const tool: MCPTool = {
   name: 'create_channel',
-  description: 'Create a channel',
+  description: 'Create a new channel',
   inputSchema: {
     type: 'object',
     properties: {
       title: { type: 'string', description: 'Channel title' },
-      description: { type: 'string', description: 'Channel description' },
+      about: { type: 'string', description: 'Channel description' },
+      megagroup: { type: 'boolean', description: 'Create as supergroup instead of channel', default: false },
     },
     required: ['title'],
   },
 };
 
 export async function createChannel(
-  _args: Record<string, unknown>,
+  args: Record<string, unknown>,
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
-  return notImplemented('create_channel');
+  try {
+    const title = typeof args.title === 'string' ? args.title : '';
+    if (!title) return { content: [{ type: 'text', text: 'title is required' }], isError: true };
+
+    const about = optString(args, 'about') ?? '';
+    const megagroup = args.megagroup === true;
+    const client = mtprotoService.getClient();
+
+    const result = await mtprotoService.withFloodWaitHandling(async () => {
+      return client.invoke(
+        new Api.channels.CreateChannel({
+          title,
+          about,
+          megagroup,
+          broadcast: !megagroup,
+        }),
+      );
+    });
+
+    const channelId = (result as any)?.chats?.[0]?.id ?? 'unknown';
+    const type = megagroup ? 'Supergroup' : 'Channel';
+    return { content: [{ type: 'text', text: `${type} "${title}" created. ID: ${channelId}` }] };
+  } catch (error) {
+    return logAndFormatError(
+      'create_channel',
+      error instanceof Error ? error : new Error(String(error)),
+      ErrorCategory.GROUP,
+    );
+  }
 }

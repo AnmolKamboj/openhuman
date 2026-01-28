@@ -1,20 +1,42 @@
 import type { MCPTool, MCPToolResult } from '../../types';
 import type { TelegramMCPContext } from '../types';
-import { notImplemented } from './notImplemented';
+import { ErrorCategory, logAndFormatError } from '../../errorHandler';
+import { mtprotoService } from '../../../../services/mtprotoService';
+import { Api } from 'telegram';
 
 export const tool: MCPTool = {
   name: 'import_chat_invite',
-  description: 'Join chat via invite hash',
+  description: 'Join a chat using an invite hash',
   inputSchema: {
     type: 'object',
-    properties: { invite_hash: { type: 'string', description: 'Invite hash' } },
-    required: ['invite_hash'],
+    properties: {
+      hash: { type: 'string', description: 'Invite hash (from t.me/+HASH or t.me/joinchat/HASH)' },
+    },
+    required: ['hash'],
   },
 };
 
 export async function importChatInvite(
-  _args: Record<string, unknown>,
+  args: Record<string, unknown>,
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
-  return notImplemented('import_chat_invite');
+  try {
+    const hash = typeof args.hash === 'string' ? args.hash : '';
+    if (!hash) return { content: [{ type: 'text', text: 'hash is required' }], isError: true };
+
+    const client = mtprotoService.getClient();
+
+    const result = await mtprotoService.withFloodWaitHandling(async () => {
+      return client.invoke(new Api.messages.ImportChatInvite({ hash }));
+    });
+
+    const chatTitle = (result as any)?.chats?.[0]?.title ?? 'unknown';
+    return { content: [{ type: 'text', text: `Joined chat: ${chatTitle}` }] };
+  } catch (error) {
+    return logAndFormatError(
+      'import_chat_invite',
+      error instanceof Error ? error : new Error(String(error)),
+      ErrorCategory.GROUP,
+    );
+  }
 }

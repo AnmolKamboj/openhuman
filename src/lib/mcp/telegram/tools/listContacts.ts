@@ -1,6 +1,8 @@
 import type { MCPTool, MCPToolResult } from '../../types';
 import type { TelegramMCPContext } from '../types';
-import { notImplemented } from './notImplemented';
+import { ErrorCategory, logAndFormatError } from '../../errorHandler';
+import { mtprotoService } from '../../../../services/mtprotoService';
+import { Api } from 'telegram';
 
 export const tool: MCPTool = {
   name: 'list_contacts',
@@ -12,5 +14,34 @@ export async function listContacts(
   _args: Record<string, unknown>,
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
-  return notImplemented('list_contacts');
+  try {
+    const client = mtprotoService.getClient();
+
+    const result = await mtprotoService.withFloodWaitHandling(async () => {
+      return client.invoke(new Api.contacts.GetContacts({ hash: BigInt(0) }));
+    });
+
+    if (!result || !('users' in result) || !Array.isArray(result.users)) {
+      return { content: [{ type: 'text', text: 'No contacts found.' }] };
+    }
+
+    const lines = result.users.map((u: any) => {
+      const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Unknown';
+      const username = u.username ? `@${u.username}` : '';
+      const phone = u.phone ? `+${u.phone}` : '';
+      return `ID: ${u.id} | ${name} ${username} ${phone}`.trim();
+    });
+
+    if (lines.length === 0) {
+      return { content: [{ type: 'text', text: 'No contacts found.' }] };
+    }
+
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  } catch (error) {
+    return logAndFormatError(
+      'list_contacts',
+      error instanceof Error ? error : new Error(String(error)),
+      ErrorCategory.CONTACT,
+    );
+  }
 }
