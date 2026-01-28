@@ -5,6 +5,7 @@ import { validateId } from '../../validation';
 import { getChatById } from '../telegramApi';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
+import bigInt from 'big-integer';
 
 export const tool: MCPTool = {
   name: "create_poll",
@@ -45,7 +46,7 @@ export async function createPoll(
           peer: inputPeer,
           media: new Api.InputMediaPoll({
             poll: new Api.Poll({
-              id: BigInt(0),
+              id: bigInt(0),
               question: new Api.TextWithEntities({ text: question, entities: [] }),
               answers: options.map((opt, i) =>
                 new Api.PollAnswer({
@@ -56,7 +57,7 @@ export async function createPoll(
             }),
           }),
           message: '',
-          randomId: BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)),
+          randomId: bigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)),
         }),
       );
     });

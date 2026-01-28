@@ -3,6 +3,7 @@ import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { mtprotoService } from "../../../../services/mtprotoService";
 import { Api } from "telegram";
+import bigInt from "big-integer";
 
 export const tool: MCPTool = {
   name: "export_contacts",
@@ -18,7 +19,7 @@ export async function exportContacts(
     const client = mtprotoService.getClient();
 
     const result = await mtprotoService.withFloodWaitHandling(async () => {
-      return client.invoke(new Api.contacts.GetContacts({ hash: BigInt(0) }));
+      return client.invoke(new Api.contacts.GetContacts({ hash: bigInt(0) }));
     });
 
     if (

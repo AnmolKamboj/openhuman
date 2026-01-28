@@ -3,6 +3,7 @@ import type { TelegramMCPContext } from '../types';
 import { ErrorCategory, logAndFormatError } from '../../errorHandler';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
+import bigInt from 'big-integer';
 
 export const tool: MCPTool = {
   name: 'get_contact_ids',
@@ -18,7 +19,7 @@ export async function getContactIds(
     const client = mtprotoService.getClient();
 
     const result = await mtprotoService.withFloodWaitHandling(async () => {
-      return client.invoke(new Api.contacts.GetContactIDs({ hash: BigInt(0) }));
+      return client.invoke(new Api.contacts.GetContactIDs({ hash: bigInt(0) }));
     });
 
     if (!result || !Array.isArray(result) || result.length === 0) {

@@ -3,6 +3,7 @@ import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from '../../errorHandler';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
+import bigInt from 'big-integer';
 
 export const tool: MCPTool = {
   name: "get_sticker_sets",
@@ -18,7 +19,7 @@ export async function getStickerSets(
     const client = mtprotoService.getClient();
 
     const result = await mtprotoService.withFloodWaitHandling(async () => {
-      return client.invoke(new Api.messages.GetAllStickers({ hash: BigInt(0) }));
+      return client.invoke(new Api.messages.GetAllStickers({ hash: bigInt(0) }));
     });
 
     const sets = (result as any)?.sets;

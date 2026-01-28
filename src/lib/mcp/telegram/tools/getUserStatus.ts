@@ -28,7 +28,7 @@ export async function getUserStatus(
     const result = await mtprotoService.withFloodWaitHandling(async () => {
       const inputUser = await client.getInputEntity(userId);
       return client.invoke(
-        new Api.users.GetUsers({ id: [inputUser as Api.TypeInputUser] }),
+        new Api.users.GetUsers({ id: [inputUser as unknown as Api.TypeInputUser] }),
       );
     });
 

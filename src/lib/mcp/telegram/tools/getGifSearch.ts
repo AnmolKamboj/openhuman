@@ -1,20 +1,62 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
-import { notImplemented } from "./notImplemented";
+import { ErrorCategory, logAndFormatError } from '../../errorHandler';
+import { mtprotoService } from '../../../../services/mtprotoService';
+import { Api } from 'telegram';
+import { optNumber } from '../args';
 
 export const tool: MCPTool = {
   name: "get_gif_search",
   description: "Search GIFs",
   inputSchema: {
     type: "object",
-    properties: { query: { type: "string", description: "Search query" } },
+    properties: {
+      query: { type: "string", description: "Search query" },
+      limit: { type: 'number', description: 'Max results', default: 10 },
+    },
     required: ["query"],
   },
 };
 
 export async function getGifSearch(
-  _args: Record<string, unknown>,
+  args: Record<string, unknown>,
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
-  return notImplemented("get_gif_search");
+  try {
+    const query = typeof args.query === 'string' ? args.query : '';
+    if (!query) return { content: [{ type: 'text', text: 'query is required' }], isError: true };
+    const limit = optNumber(args, 'limit', 10);
+
+    const client = mtprotoService.getClient();
+
+    const result = await mtprotoService.withFloodWaitHandling(async () => {
+      const bot = await client.getInputEntity('gif');
+      return client.invoke(
+        new Api.messages.GetInlineBotResults({
+          bot: bot as unknown as Api.TypeInputUser,
+          peer: new Api.InputPeerSelf(),
+          query,
+          offset: '',
+        }),
+      );
+    });
+
+    const results = (result as any)?.results;
+    if (!results || !Array.isArray(results) || results.length === 0) {
+      return { content: [{ type: 'text', text: 'No GIFs found for: ' + query }] };
+    }
+
+    const lines = results.slice(0, limit).map((r: any, i: number) => {
+      const title = r.title ?? r.description ?? 'GIF ' + (i + 1);
+      return (i + 1) + '. ' + title;
+    });
+
+    return { content: [{ type: 'text', text: lines.length + ' GIFs found:\n' + lines.join('\n') }] };
+  } catch (error) {
+    return logAndFormatError(
+      'get_gif_search',
+      error instanceof Error ? error : new Error(String(error)),
+      ErrorCategory.MEDIA,
+    );
+  }
 }

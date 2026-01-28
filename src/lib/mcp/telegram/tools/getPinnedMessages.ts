@@ -5,6 +5,7 @@ import { getChatById, getMessages, formatMessage } from '../telegramApi';
 import { validateId } from '../../validation';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
+import bigInt from 'big-integer';
 
 export const tool: MCPTool = {
   name: 'get_pinned_messages',
@@ -47,7 +48,7 @@ export async function getPinnedMessages(
           limit: 50,
           maxId: 0,
           minId: 0,
-          hash: BigInt(0),
+          hash: bigInt(0),
         }),
       );
 

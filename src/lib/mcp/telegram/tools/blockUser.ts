@@ -28,7 +28,7 @@ export async function blockUser(
     await mtprotoService.withFloodWaitHandling(async () => {
       const inputUser = await client.getInputEntity(userId);
       await client.invoke(
-        new Api.contacts.Block({ id: inputUser as Api.TypeInputPeer }),
+        new Api.contacts.Block({ id: inputUser as unknown as Api.TypeInputPeer }),
       );
     });
 

@@ -3,6 +3,7 @@ import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { mtprotoService } from "../../../../services/mtprotoService";
 import { Api } from "telegram";
+import bigInt from "big-integer";
 
 export const tool: MCPTool = {
   name: "import_contacts",
@@ -49,7 +50,7 @@ export async function importContacts(
     const inputContacts = contactsArg.map(
       (c: any, i: number) =>
         new Api.InputPhoneContact({
-          clientId: BigInt(i),
+          clientId: bigInt(i),
           phone: String(c.phone ?? ""),
           firstName: String(c.first_name ?? ""),
           lastName: String(c.last_name ?? ""),

@@ -28,7 +28,7 @@ export async function getBotInfo(
     const result = await mtprotoService.withFloodWaitHandling(async () => {
       const inputUser = await client.getInputEntity(botId);
       return client.invoke(
-        new Api.users.GetFullUser({ id: inputUser as Api.TypeInputUser }),
+        new Api.users.GetFullUser({ id: inputUser as unknown as Api.TypeInputUser }),
       );
     });
 

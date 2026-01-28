@@ -29,7 +29,7 @@ export async function deleteContact(
       const inputUser = await client.getInputEntity(userId);
       await client.invoke(
         new Api.contacts.DeleteContacts({
-          id: [inputUser as Api.TypeInputUser],
+          id: [inputUser as unknown as Api.TypeInputUser],
         }),
       );
     });

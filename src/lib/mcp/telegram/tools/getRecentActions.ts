@@ -5,6 +5,7 @@ import { validateId } from '../../validation';
 import { getChatById } from '../telegramApi';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
+import bigInt from 'big-integer';
 import { optNumber } from '../args';
 
 export const tool: MCPTool = {
@@ -44,8 +45,8 @@ export async function getRecentActions(
         new Api.channels.GetAdminLog({
           channel: inputChannel as Api.TypeInputChannel,
           q: '',
-          maxId: BigInt(0),
-          minId: BigInt(0),
+          maxId: bigInt(0),
+          minId: bigInt(0),
           limit,
         }),
       );

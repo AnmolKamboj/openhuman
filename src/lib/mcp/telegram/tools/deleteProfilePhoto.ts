@@ -3,6 +3,7 @@ import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from '../../errorHandler';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
+import bigInt from 'big-integer';
 
 export const tool: MCPTool = {
   name: "delete_profile_photo",
@@ -22,7 +23,7 @@ export async function deleteProfilePhoto(
         new Api.photos.GetUserPhotos({
           userId: new Api.InputUserSelf(),
           offset: 0,
-          maxId: BigInt(0),
+          maxId: bigInt(0),
           limit: 1,
         }),
       );

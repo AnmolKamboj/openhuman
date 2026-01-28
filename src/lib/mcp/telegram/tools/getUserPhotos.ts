@@ -4,6 +4,7 @@ import { ErrorCategory, logAndFormatError } from '../../errorHandler';
 import { validateId } from '../../validation';
 import { mtprotoService } from '../../../../services/mtprotoService';
 import { Api } from 'telegram';
+import bigInt from 'big-integer';
 import { optNumber } from '../args';
 
 export const tool: MCPTool = {
@@ -32,9 +33,9 @@ export async function getUserPhotos(
       const inputUser = await client.getInputEntity(userId);
       return client.invoke(
         new Api.photos.GetUserPhotos({
-          userId: inputUser as Api.TypeInputUser,
+          userId: inputUser as unknown as Api.TypeInputUser,
           offset: 0,
-          maxId: BigInt(0),
+          maxId: bigInt(0),
           limit,
         }),
       );
