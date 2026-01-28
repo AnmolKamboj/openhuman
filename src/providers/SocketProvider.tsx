@@ -2,6 +2,12 @@ import { useEffect, useRef } from 'react';
 import { useAppSelector } from '../store/hooks';
 import { store } from '../store';
 import { socketService } from '../services/socketService';
+import {
+  initTelegramMCPServer,
+  getTelegramMCPServer,
+  updateTelegramMCPServerSocket,
+  cleanupTelegramMCPServer,
+} from '../lib/mcp/telegram';
 
 /**
  * SocketProvider manages the socket connection based on JWT token
@@ -10,6 +16,7 @@ import { socketService } from '../services/socketService';
  */
 const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   const token = useAppSelector((state) => state.auth.token);
+  const socketStatus = useAppSelector((state) => state.socket.status);
   const previousTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -24,9 +31,26 @@ const SocketProvider = ({ children }: { children: React.ReactNode }) => {
     // Token was unset - disconnect
     if (!token && previousToken) {
       socketService.disconnect();
+      cleanupTelegramMCPServer();
       previousTokenRef.current = null;
     }
   }, [token]);
+
+  // Handle MCP initialization when socket connects
+  useEffect(() => {
+    if (socketStatus === 'connected') {
+      const socket = socketService.getSocket();
+      const server = getTelegramMCPServer();
+
+      if (server) {
+        updateTelegramMCPServerSocket(socket);
+      } else {
+        initTelegramMCPServer(socket);
+      }
+    } else if (socketStatus === 'disconnected') {
+      cleanupTelegramMCPServer();
+    }
+  }, [socketStatus]);
 
   // Cleanup on unmount only
   // Note: This should only run when the entire app unmounts, not on re-renders

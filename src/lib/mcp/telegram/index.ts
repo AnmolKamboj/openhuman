@@ -25,5 +25,12 @@ export function updateTelegramMCPServerSocket(socket: Socket | null | undefined)
   }
 }
 
+export function cleanupTelegramMCPServer(): void {
+  if (telegramMCPInstance) {
+    telegramMCPInstance = undefined;
+    console.log('[MCP] Telegram MCP server cleaned up');
+  }
+}
+
 export { toHumanReadableAction } from './toolActionParser';
 export type { TelegramMCPServer } from './server';
