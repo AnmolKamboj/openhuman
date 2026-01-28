@@ -13,7 +13,7 @@ import GetStartedStep from './steps/GetStartedStep';
 const Onboarding = () => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
-  const [currentStep, setCurrentStep] = useState(4);
+  const [currentStep, setCurrentStep] = useState(1);
   const totalSteps = 5;
 
   // Lottie animation files for each step
