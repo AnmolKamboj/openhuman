@@ -1,4 +1,4 @@
-import { PayloadAction } from '@reduxjs/toolkit';
+import { PayloadAction } from "@reduxjs/toolkit";
 import type {
   TelegramState,
   TelegramConnectionStatus,
@@ -7,50 +7,74 @@ import type {
   TelegramChat,
   TelegramMessage,
   TelegramThread,
-} from './types';
+} from "./types";
 
 export const reducers = {
   // Connection actions
-  setConnectionStatus: (state: TelegramState, action: PayloadAction<TelegramConnectionStatus>) => {
+  setConnectionStatus: (
+    state: TelegramState,
+    action: PayloadAction<TelegramConnectionStatus>,
+  ) => {
     state.connectionStatus = action.payload;
-    if (action.payload !== 'error') {
+    if (action.payload !== "error") {
       state.connectionError = null;
     }
   },
-  setConnectionError: (state: TelegramState, action: PayloadAction<string | null>) => {
+  setConnectionError: (
+    state: TelegramState,
+    action: PayloadAction<string | null>,
+  ) => {
     state.connectionError = action.payload;
     if (action.payload) {
-      state.connectionStatus = 'error';
+      state.connectionStatus = "error";
     }
   },
 
   // Authentication actions
-  setAuthStatus: (state: TelegramState, action: PayloadAction<TelegramAuthStatus>) => {
+  setAuthStatus: (
+    state: TelegramState,
+    action: PayloadAction<TelegramAuthStatus>,
+  ) => {
     state.authStatus = action.payload;
-    if (action.payload !== 'error') {
+    if (action.payload !== "error") {
       state.authError = null;
     }
   },
-  setAuthError: (state: TelegramState, action: PayloadAction<string | null>) => {
+  setAuthError: (
+    state: TelegramState,
+    action: PayloadAction<string | null>,
+  ) => {
     state.authError = action.payload;
     if (action.payload) {
-      state.authStatus = 'error';
+      state.authStatus = "error";
     }
   },
-  setPhoneNumber: (state: TelegramState, action: PayloadAction<string | null>) => {
+  setPhoneNumber: (
+    state: TelegramState,
+    action: PayloadAction<string | null>,
+  ) => {
     state.phoneNumber = action.payload;
   },
-  setSessionString: (state: TelegramState, action: PayloadAction<string | null>) => {
+  setSessionString: (
+    state: TelegramState,
+    action: PayloadAction<string | null>,
+  ) => {
     state.sessionString = action.payload;
   },
 
   // User actions
-  setCurrentUser: (state: TelegramState, action: PayloadAction<TelegramUser | null>) => {
+  setCurrentUser: (
+    state: TelegramState,
+    action: PayloadAction<TelegramUser | null>,
+  ) => {
     state.currentUser = action.payload;
   },
 
   // Chat actions
-  setChats: (state: TelegramState, action: PayloadAction<Record<string, TelegramChat>>) => {
+  setChats: (
+    state: TelegramState,
+    action: PayloadAction<Record<string, TelegramChat>>,
+  ) => {
     state.chats = action.payload;
   },
   addChat: (state: TelegramState, action: PayloadAction<TelegramChat>) => {
@@ -60,7 +84,10 @@ export const reducers = {
       state.chatsOrder.unshift(chat.id);
     }
   },
-  updateChat: (state: TelegramState, action: PayloadAction<Partial<TelegramChat> & { id: string }>) => {
+  updateChat: (
+    state: TelegramState,
+    action: PayloadAction<Partial<TelegramChat> & { id: string }>,
+  ) => {
     const { id, ...updates } = action.payload;
     if (state.chats[id]) {
       state.chats[id] = { ...state.chats[id], ...updates };
@@ -74,7 +101,10 @@ export const reducers = {
       state.selectedChatId = null;
     }
   },
-  setSelectedChat: (state: TelegramState, action: PayloadAction<string | null>) => {
+  setSelectedChat: (
+    state: TelegramState,
+    action: PayloadAction<string | null>,
+  ) => {
     state.selectedChatId = action.payload;
     // Clear selected thread when changing chat
     if (action.payload !== state.selectedChatId) {
@@ -86,7 +116,10 @@ export const reducers = {
   },
 
   // Message actions
-  addMessage: (state: TelegramState, action: PayloadAction<TelegramMessage>) => {
+  addMessage: (
+    state: TelegramState,
+    action: PayloadAction<TelegramMessage>,
+  ) => {
     const message = action.payload;
     const { chatId, id } = message;
 
@@ -100,7 +133,10 @@ export const reducers = {
       state.messagesOrder[chatId].push(id);
     }
   },
-  addMessages: (state: TelegramState, action: PayloadAction<{ chatId: string; messages: TelegramMessage[] }>) => {
+  addMessages: (
+    state: TelegramState,
+    action: PayloadAction<{ chatId: string; messages: TelegramMessage[] }>,
+  ) => {
     const { chatId, messages } = action.payload;
 
     if (!state.messages[chatId]) {
@@ -117,7 +153,11 @@ export const reducers = {
   },
   updateMessage: (
     state: TelegramState,
-    action: PayloadAction<{ chatId: string; messageId: string; updates: Partial<TelegramMessage> }>
+    action: PayloadAction<{
+      chatId: string;
+      messageId: string;
+      updates: Partial<TelegramMessage>;
+    }>,
   ) => {
     const { chatId, messageId, updates } = action.payload;
     if (state.messages[chatId]?.[messageId]) {
@@ -127,12 +167,15 @@ export const reducers = {
       };
     }
   },
-  removeMessage: (state: TelegramState, action: PayloadAction<{ chatId: string; messageId: string }>) => {
+  removeMessage: (
+    state: TelegramState,
+    action: PayloadAction<{ chatId: string; messageId: string }>,
+  ) => {
     const { chatId, messageId } = action.payload;
     if (state.messages[chatId]?.[messageId]) {
       delete state.messages[chatId][messageId];
       state.messagesOrder[chatId] = state.messagesOrder[chatId].filter(
-        (id) => id !== messageId
+        (id) => id !== messageId,
       );
     }
   },
@@ -159,7 +202,11 @@ export const reducers = {
   },
   updateThread: (
     state: TelegramState,
-    action: PayloadAction<{ chatId: string; threadId: string; updates: Partial<TelegramThread> }>
+    action: PayloadAction<{
+      chatId: string;
+      threadId: string;
+      updates: Partial<TelegramThread>;
+    }>,
   ) => {
     const { chatId, threadId, updates } = action.payload;
     if (state.threads[chatId]?.[threadId]) {
@@ -169,15 +216,24 @@ export const reducers = {
       };
     }
   },
-  setSelectedThread: (state: TelegramState, action: PayloadAction<string | null>) => {
+  setSelectedThread: (
+    state: TelegramState,
+    action: PayloadAction<string | null>,
+  ) => {
     state.selectedThreadId = action.payload;
   },
 
   // Search actions
-  setSearchQuery: (state: TelegramState, action: PayloadAction<string | null>) => {
+  setSearchQuery: (
+    state: TelegramState,
+    action: PayloadAction<string | null>,
+  ) => {
     state.searchQuery = action.payload;
   },
-  setFilteredChatIds: (state: TelegramState, action: PayloadAction<string[] | null>) => {
+  setFilteredChatIds: (
+    state: TelegramState,
+    action: PayloadAction<string[] | null>,
+  ) => {
     state.filteredChatIds = action.payload;
   },
 

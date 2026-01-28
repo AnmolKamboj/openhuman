@@ -2,10 +2,10 @@ import { useState } from 'react';
 import GoogleIcon from '../../../assets/icons/GoogleIcon';
 import TelegramConnectionModal from '../../../components/TelegramConnectionModal';
 
-import BinanceIcon from './icons/binance.svg';
-import NotionIcon from './icons/notion.svg';
-import TelegramIcon from './icons/telegram.svg';
-import MetamaskIcon from './icons/metamask.svg';
+import BinanceIcon from '../../../assets/icons/binance.svg';
+import NotionIcon from '../../../assets/icons/notion.svg';
+import TelegramIcon from '../../../assets/icons/telegram.svg';
+import MetamaskIcon from '../../../assets/icons/metamask.svg';
 
 
 interface ConnectStepProps {
