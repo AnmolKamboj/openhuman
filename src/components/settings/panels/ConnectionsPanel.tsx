@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useAppSelector } from '../../../store/hooks';
 import { selectIsAuthenticated } from '../../../store/telegramSelectors';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
-import SettingsPanelLayout from '../components/SettingsPanelLayout';
+import SettingsHeader from '../components/SettingsHeader';
 import TelegramConnectionModal from '../../TelegramConnectionModal';
 
 import BinanceIcon from '../../../assets/icons/binance.svg';
@@ -113,75 +113,96 @@ const ConnectionsPanel = () => {
 
   return (
     <>
-      <SettingsPanelLayout title="Connections" onBack={navigateBack}>
-        <div className="p-6">
-          <div className="space-y-3">
-            {connectOptions.map((option) => {
-              const isConnected = isAccountConnected(option.id);
-              return (
-                <div
-                  key={option.id}
-                  className="relative flex items-center justify-between p-3 bg-black/50 border border-stone-700 rounded-xl hover:bg-stone-800/30 transition-colors"
-                >
-                  {/* Connection status dot - top right corner */}
-                  {isConnected && !option.comingSoon && (
-                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-sage-500 rounded-full border-2 border-black/50"></div>
-                  )}
+      <div className="overflow-hidden h-full flex flex-col">
+        <SettingsHeader
+          title="Connections"
+          showBackButton={true}
+          onBack={navigateBack}
+        />
 
-                  <div className="flex items-center space-x-3 flex-1 min-w-0">
-                    <div className="flex-shrink-0">
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-4 space-y-6">
+            {/* Connection Options */}
+            <div>
+              {connectOptions.map((option, index) => {
+                const isConnected = isAccountConnected(option.id);
+                return (
+                  <button
+                    key={option.id}
+                    onClick={() => handleConnect(option.id)}
+                    disabled={option.comingSoon}
+                    className={`w-full flex items-center justify-between p-3 bg-black/50 ${
+                      index === connectOptions.length - 1 ? '' : 'border-b border-stone-700'
+                    } hover:bg-stone-800/30 transition-all duration-200 text-left ${
+                      index === 0 ? 'first:rounded-t-3xl' : ''
+                    } ${
+                      index === connectOptions.length - 1 ? 'last:rounded-b-3xl' : ''
+                    } focus:outline-none focus:ring-0 focus:border-inherit relative ${
+                      option.comingSoon ? 'opacity-60 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    {/* Connection status dot - top right corner */}
+                    {isConnected && !option.comingSoon && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-sage-500 rounded-full border-2 border-black/50"></div>
+                    )}
+
+                    <div className="w-5 h-5 opacity-60 flex-shrink-0 mr-3 text-white">
                       {option.icon}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-white text-sm">{option.name}</h4>
-                      <p className="text-xs text-stone-400 truncate">{option.description}</p>
+                    <div className="flex-1">
+                      <div className="font-medium text-sm mb-1 text-white">
+                        {option.name}
+                      </div>
+                      <p className="opacity-70 text-xs">
+                        {option.description}
+                      </p>
                     </div>
-                  </div>
 
-                  <div className="flex items-center space-x-3">
-                    {/* Coming Soon badge in original position */}
-                    {option.comingSoon && (
-                      <span className="px-2 py-1 text-xs font-medium rounded-full border bg-stone-500/20 text-stone-400 border-stone-500/30">
-                        Coming Soon
-                      </span>
-                    )}
+                    <div className="flex items-center space-x-3">
+                      {/* Coming Soon badge */}
+                      {option.comingSoon && (
+                        <span className="px-2 py-1 text-xs font-medium rounded-full border bg-stone-500/20 text-stone-400 border-stone-500/30">
+                          Coming Soon
+                        </span>
+                      )}
 
-                    {/* Action button */}
-                    {!option.comingSoon && (
-                      <button
-                        onClick={() => handleConnect(option.id)}
-                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                          isConnected
-                            ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
-                            : 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30'
-                        }`}
-                      >
-                        {isConnected ? 'Disconnect' : 'Connect'}
-                      </button>
-                    )}
-                  </div>
+                      {/* Action button for active connections */}
+                      {!option.comingSoon && isConnected && (
+                        <span className="px-2 py-1 text-xs font-medium rounded-full border bg-sage-500/20 text-sage-400 border-sage-500/30">
+                          Connected
+                        </span>
+                      )}
+
+                      {/* Action button for non-connected */}
+                      {!option.comingSoon && !isConnected && (
+                        <span className="px-2 py-1 text-xs font-medium rounded-full border bg-blue-500/20 text-blue-400 border-blue-500/30">
+                          Connect
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Security notice */}
+            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
+              <div className="flex items-start space-x-2">
+                <svg className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p className="font-medium text-blue-300 text-sm">🔒 Privacy & Security</p>
+                  <p className="text-blue-200 text-xs mt-1">
+                    All data and credentials are stored locally with zero-data retention policy.
+                    Your information is encrypted and never shared with third parties.
+                  </p>
                 </div>
-              );
-            })}
-          </div>
-
-          {/* Security notice */}
-          <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
-            <div className="flex items-start space-x-2">
-              <svg className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div>
-                <p className="font-medium text-blue-300 text-sm">🔒 Privacy & Security</p>
-                <p className="text-blue-200 text-xs mt-1">
-                  All data and credentials are stored locally with zero-data retention policy.
-                  Your information is encrypted and never shared with third parties.
-                </p>
               </div>
             </div>
           </div>
         </div>
-      </SettingsPanelLayout>
+      </div>
 
       {/* Telegram Connection Modal */}
       <TelegramConnectionModal
