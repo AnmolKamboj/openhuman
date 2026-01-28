@@ -192,14 +192,30 @@ export const checkAuthStatus = createAsyncThunk(
   async (_, { rejectWithValue }) => {
     try {
       const client = mtprotoService.getClient();
+      
+      // First check if we're authorized without making API calls
       const isAuthorized = await client.checkAuthorization();
       
-      if (isAuthorized) {
+      if (!isAuthorized) {
+        return null;
+      }
+      
+      // Only call getMe() if we're authorized
+      try {
         const me = await client.getMe();
         return me;
+      } catch (error) {
+        // If getMe() fails, we're not actually authorized
+        // This can happen if the session is invalid
+        console.warn('getMe() failed, user not authenticated:', error);
+        return null;
       }
-      return null;
     } catch (error) {
+      // If checkAuthorization itself fails, we're definitely not authenticated
+      // Don't treat this as an error, just return null
+      if (error instanceof Error && error.message.includes('AUTH_KEY_UNREGISTERED')) {
+        return null;
+      }
       return rejectWithValue(
         error instanceof Error ? error.message : 'Failed to check auth status'
       );

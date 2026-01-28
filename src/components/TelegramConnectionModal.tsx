@@ -52,12 +52,17 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
         if (connectionStatus !== 'connected') {
           await dispatch(connectTelegram()).unwrap();
         }
-        // Check if already authenticated
-        const authCheck = await dispatch(checkAuthStatus()).unwrap();
-        if (authCheck) {
-          onComplete();
-          onClose();
-          return;
+        // Check if already authenticated (but don't fail if not authenticated)
+        try {
+          const authCheck = await dispatch(checkAuthStatus()).unwrap();
+          if (authCheck) {
+            onComplete();
+            onClose();
+            return;
+          }
+        } catch (err) {
+          // If checkAuthStatus fails, we're not authenticated - continue with QR flow
+          console.log('Not authenticated, proceeding with QR code flow');
         }
         // Start QR code flow
         startQrCodeFlow();
@@ -134,7 +139,12 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
 
       // Authentication successful
       setIsAuthenticating(false);
-      await dispatch(checkAuthStatus()).unwrap();
+      try {
+        await dispatch(checkAuthStatus()).unwrap();
+      } catch (err) {
+        // Even if checkAuthStatus fails, we know we just authenticated
+        console.warn('checkAuthStatus failed after authentication, but continuing:', err);
+      }
       dispatch(setAuthStatus('authenticated'));
       onComplete();
       onClose();
