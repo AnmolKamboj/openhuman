@@ -131,7 +131,7 @@ const TelegramProvider = ({ children }: TelegramProviderProps) => {
     userId,
   ]);
 
-  // Check connection status periodically to keep user online
+  // Check connection status once when Telegram reports as connected
   useEffect(() => {
     if (
       !shouldSetupTelegram ||
@@ -151,9 +151,6 @@ const TelegramProvider = ({ children }: TelegramProviderProps) => {
     };
 
     checkConnection();
-    const interval = setInterval(checkConnection, 20000);
-
-    return () => clearInterval(interval);
   }, [shouldSetupTelegram, isInitialized, connectionStatus, userId]);
 
   const checkConnection = async (): Promise<boolean> => {

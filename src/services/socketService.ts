@@ -19,14 +19,10 @@ class SocketService {
    * Connect to the socket server with authentication
    */
   connect(token: string): void {
-    if (!token) {
-      return;
-    }
+    if (!token) return;
 
     // Don't connect if already connected with the same token
-    if (this.socket?.connected && this.token === token) {
-      return;
-    }
+    if (this.socket?.connected && this.token === token) return;
 
     // Disconnect existing connection if token changed or socket exists
     if (this.socket) {
@@ -66,7 +62,7 @@ class SocketService {
       reconnectionDelay: 1000,
       reconnectionAttempts: 5,
       forceNew: true, // Force new connection to ensure auth is sent
-      timeout: 20000, // Increase timeout for initial connection
+      timeout: 2000, // Increase timeout for initial connection
       upgrade: true, // Allow upgrade from polling to websocket
       query: {}, // Explicitly prevent token from being added to query string
     };
@@ -77,6 +73,7 @@ class SocketService {
     this.socket.on("connect", () => {
       const socketId = this.socket?.id || null;
       const uid = getSocketUserId();
+      console.log("connected", socketId, uid);
       store.dispatch(setStatusForUser({ userId: uid, status: "connected" }));
       store.dispatch(setSocketIdForUser({ userId: uid, socketId }));
     });
