@@ -10,7 +10,7 @@ name: Package and publish
 
 on:
   push:
-    branches: ["master"]
+    branches: ["master","main"]
   workflow_dispatch:
     inputs:
       forceRelease:
@@ -21,7 +21,7 @@ on:
 
 env:
   IS_ON_MASTER: ${{ github.ref == 'refs/heads/master' }}
-  SHOULD_PUBLISH: ${{ github.ref == 'refs/heads/master' && vars.PUBLISH_REPO || '' }}
+  SHOULD_PUBLISH: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && vars.PUBLISH_REPO || '' }}
   PUBLISH_REPO: ${{ vars.PUBLISH_REPO }}
   GH_TOKEN: ${{ secrets.GH_TOKEN }}
   UPDATER_GIST_URL: ${{ secrets.UPDATER_GIST_URL }}
