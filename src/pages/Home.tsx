@@ -1,20 +1,33 @@
-import { useNavigate } from 'react-router-dom';
-import { openUrl } from '../utils/openUrl';
-import { TELEGRAM_BOT_USERNAME } from '../utils/config';
-import ConnectionIndicator from '../components/ConnectionIndicator';
-import TelegramConnectionIndicator from '../components/TelegramConnectionIndicator';
-import GmailConnectionIndicator from '../components/GmailConnectionIndicator';
-import { useUser } from '../hooks/useUser';
+import { useNavigate } from "react-router-dom";
+import { openUrl } from "../utils/openUrl";
+import { TELEGRAM_BOT_USERNAME } from "../utils/config";
+import ConnectionIndicator from "../components/ConnectionIndicator";
+import TelegramConnectionIndicator from "../components/TelegramConnectionIndicator";
+import GmailConnectionIndicator from "../components/GmailConnectionIndicator";
+import { useUser } from "../hooks/useUser";
 
 const Home = () => {
   const navigate = useNavigate();
   const { user } = useUser();
-  const userName = user?.firstName || 'User';
+  const userName = user?.firstName || "User";
 
   // Get current date
   const getCurrentDate = () => {
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
     const now = new Date();
     return `${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}`;
   };
@@ -22,9 +35,9 @@ const Home = () => {
   // Get greeting based on time
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
+    if (hour < 12) return "Good morning";
+    if (hour < 18) return "Good afternoon";
+    return "Good evening";
   };
 
   // Handle Telegram bot link
@@ -33,9 +46,8 @@ const Home = () => {
   };
 
   const handleManageConnections = () => {
-    navigate('/settings');
+    navigate("/settings");
   };
-
 
   return (
     <div className="min-h-screen relative overflow-hidden">
@@ -75,13 +87,30 @@ const Home = () => {
                 onClick={handleManageConnections}
                 className="w-full flex items-center justify-between p-3 bg-black/50 hover:bg-stone-800/30 transition-all duration-200 text-left rounded-3xl focus:outline-none"
               >
-                <svg className="w-5 h-5 opacity-60 flex-shrink-0 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <svg
+                  className="w-5 h-5 opacity-60 flex-shrink-0 mr-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
                 </svg>
                 <div className="flex-1">
                   <div className="font-medium text-sm mb-1">Settings</div>
-                  <p className="opacity-70 text-xs">Manage connections, privacy, profile, and app settings</p>
+                  <p className="opacity-70 text-xs">
+                    Manage connections, privacy, profile, and app settings
+                  </p>
                 </div>
               </button>
             </div>

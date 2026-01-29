@@ -1,33 +1,66 @@
-import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
-export type SocketConnectionStatus = 'connected' | 'disconnected' | 'connecting';
+export type SocketConnectionStatus =
+  | "connected"
+  | "disconnected"
+  | "connecting";
 
-interface SocketState {
+export interface SocketUserState {
   status: SocketConnectionStatus;
   socketId: string | null;
 }
 
-const initialState: SocketState = {
-  status: 'disconnected',
+const initialUserState: SocketUserState = {
+  status: "disconnected",
   socketId: null,
 };
 
+interface SocketState {
+  /** Socket state per user id. Use __pending__ when user not loaded yet. */
+  byUser: Record<string, SocketUserState>;
+}
+
+const initialState: SocketState = {
+  byUser: {},
+};
+
+const ensureUserState = (state: SocketState, userId: string): SocketUserState => {
+  if (!state.byUser[userId]) {
+    state.byUser[userId] = { ...initialUserState };
+  }
+  return state.byUser[userId];
+};
+
 const socketSlice = createSlice({
-  name: 'socket',
+  name: "socket",
   initialState,
   reducers: {
-    setStatus: (state, action: PayloadAction<SocketConnectionStatus>) => {
-      state.status = action.payload;
+    setStatusForUser: (
+      state,
+      action: PayloadAction<{ userId: string; status: SocketConnectionStatus }>,
+    ) => {
+      const { userId, status } = action.payload;
+      const user = ensureUserState(state, userId);
+      user.status = status;
+      if (status === "disconnected" || status === "connecting") {
+        user.socketId = null;
+      }
     },
-    setSocketId: (state, action: PayloadAction<string | null>) => {
-      state.socketId = action.payload;
+    setSocketIdForUser: (
+      state,
+      action: PayloadAction<{ userId: string; socketId: string | null }>,
+    ) => {
+      const { userId, socketId } = action.payload;
+      const user = ensureUserState(state, userId);
+      user.socketId = socketId;
     },
-    reset: (state) => {
-      state.status = 'disconnected';
-      state.socketId = null;
+    resetForUser: (state, action: PayloadAction<{ userId: string }>) => {
+      const { userId } = action.payload;
+      state.byUser[userId] = { ...initialUserState };
     },
   },
 });
 
-export const { setStatus, setSocketId, reset } = socketSlice.actions;
+export const { setStatusForUser, setSocketIdForUser, resetForUser } =
+  socketSlice.actions;
 export default socketSlice.reducer;

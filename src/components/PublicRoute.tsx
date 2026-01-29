@@ -1,5 +1,6 @@
-import { Navigate } from 'react-router-dom';
-import { useAppSelector } from '../store/hooks';
+import { Navigate } from "react-router-dom";
+import { useAppSelector } from "../store/hooks";
+import { selectIsOnboarded } from "../store/authSelectors";
 
 interface PublicRouteProps {
   children: React.ReactNode;
@@ -13,11 +14,11 @@ interface PublicRouteProps {
  */
 const PublicRoute = ({ children, redirectTo }: PublicRouteProps) => {
   const token = useAppSelector((state) => state.auth.token);
-  const isOnboarded = useAppSelector((state) => state.auth.isOnboarded);
+  const isOnboarded = useAppSelector(selectIsOnboarded);
 
   // If user is logged in and onboarded, redirect to home
   if (token && isOnboarded) {
-    return <Navigate to={redirectTo || '/home'} replace />;
+    return <Navigate to={redirectTo || "/home"} replace />;
   }
 
   // If user is logged in but not onboarded, redirect to onboarding

@@ -2,42 +2,43 @@
  * Error handling utilities for MCP server
  */
 
-import type { MCPToolResult } from './types';
-import { ValidationError } from './validation';
+import type { MCPToolResult } from "./types";
+import { ValidationError } from "./validation";
 
 export enum ErrorCategory {
-  CHAT = 'CHAT',
-  MSG = 'MSG',
-  CONTACT = 'CONTACT',
-  GROUP = 'GROUP',
-  MEDIA = 'MEDIA',
-  PROFILE = 'PROFILE',
-  AUTH = 'AUTH',
-  ADMIN = 'ADMIN',
-  VALIDATION = 'VALIDATION',
-  SEARCH = 'SEARCH',
-  DRAFT = 'DRAFT',
+  CHAT = "CHAT",
+  MSG = "MSG",
+  CONTACT = "CONTACT",
+  GROUP = "GROUP",
+  MEDIA = "MEDIA",
+  PROFILE = "PROFILE",
+  AUTH = "AUTH",
+  ADMIN = "ADMIN",
+  VALIDATION = "VALIDATION",
+  SEARCH = "SEARCH",
+  DRAFT = "DRAFT",
 }
 
 function generateErrorCode(
   functionName: string,
   category?: ErrorCategory | string,
 ): string {
-  if (category === 'VALIDATION-001' || category === ErrorCategory.VALIDATION) {
-    return 'VALIDATION-001';
+  if (category === "VALIDATION-001" || category === ErrorCategory.VALIDATION) {
+    return "VALIDATION-001";
   }
 
   const prefix = category
-    ? typeof category === 'string' && category.startsWith('VALIDATION')
+    ? typeof category === "string" && category.startsWith("VALIDATION")
       ? category
       : category
-    : 'GEN';
+    : "GEN";
 
-  const hash = Math.abs(
-    functionName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0),
-  ) % 1000;
+  const hash =
+    Math.abs(
+      functionName.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0),
+    ) % 1000;
 
-  return `${prefix}-ERR-${hash.toString().padStart(3, '0')}`;
+  return `${prefix}-ERR-${hash.toString().padStart(3, "0")}`;
 }
 
 export function logAndFormatError(
@@ -50,8 +51,8 @@ export function logAndFormatError(
   const contextStr = context
     ? Object.entries(context)
         .map(([k, v]) => `${k}=${String(v)}`)
-        .join(', ')
-    : '';
+        .join(", ")
+    : "";
 
   console.error(
     `[MCP] Error in ${functionName} (${contextStr}) - Code: ${errorCode}`,
@@ -64,20 +65,19 @@ export function logAndFormatError(
       : `An error occurred (code: ${errorCode}). Check logs for details.`;
 
   return {
-    content: [{ type: 'text', text: userMessage }],
+    content: [{ type: "text", text: userMessage }],
     isError: true,
   };
 }
 
-export function withErrorHandling<T extends (...args: unknown[]) => Promise<MCPToolResult>>(
-  fn: T,
-  category?: ErrorCategory,
-): T {
+export function withErrorHandling<
+  T extends (...args: unknown[]) => Promise<MCPToolResult>,
+>(fn: T, category?: ErrorCategory): T {
   return (async (...args: Parameters<T>): Promise<MCPToolResult> => {
     try {
       return await fn(...args);
     } catch (error) {
-      const functionName = fn.name || 'unknown';
+      const functionName = fn.name || "unknown";
       return logAndFormatError(
         functionName,
         error instanceof Error ? error : new Error(String(error)),

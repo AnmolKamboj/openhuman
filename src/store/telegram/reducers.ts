@@ -1,5 +1,6 @@
 import { PayloadAction } from "@reduxjs/toolkit";
 import type {
+  TelegramRootState,
   TelegramState,
   TelegramConnectionStatus,
   TelegramAuthStatus,
@@ -8,244 +9,279 @@ import type {
   TelegramMessage,
   TelegramThread,
 } from "./types";
+import { initialState } from "./types";
+
+function ensureUser(
+  state: TelegramRootState,
+  userId: string,
+): TelegramState {
+  if (!state.byUser[userId]) {
+    state.byUser[userId] = { ...initialState };
+  }
+  return state.byUser[userId];
+}
 
 export const reducers = {
-  // Connection actions
   setConnectionStatus: (
-    state: TelegramState,
-    action: PayloadAction<TelegramConnectionStatus>,
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string; status: TelegramConnectionStatus }>,
   ) => {
-    state.connectionStatus = action.payload;
-    if (action.payload !== "error") {
-      state.connectionError = null;
-    }
+    const u = ensureUser(state, action.payload.userId);
+    u.connectionStatus = action.payload.status;
+    if (action.payload.status !== "error") u.connectionError = null;
   },
   setConnectionError: (
-    state: TelegramState,
-    action: PayloadAction<string | null>,
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string; error: string | null }>,
   ) => {
-    state.connectionError = action.payload;
-    if (action.payload) {
-      state.connectionStatus = "error";
-    }
+    const u = ensureUser(state, action.payload.userId);
+    u.connectionError = action.payload.error;
+    if (action.payload.error) u.connectionStatus = "error";
   },
-
-  // Authentication actions
   setAuthStatus: (
-    state: TelegramState,
-    action: PayloadAction<TelegramAuthStatus>,
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string; status: TelegramAuthStatus }>,
   ) => {
-    state.authStatus = action.payload;
-    if (action.payload !== "error") {
-      state.authError = null;
-    }
+    const u = ensureUser(state, action.payload.userId);
+    u.authStatus = action.payload.status;
+    if (action.payload.status !== "error") u.authError = null;
   },
   setAuthError: (
-    state: TelegramState,
-    action: PayloadAction<string | null>,
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string; error: string | null }>,
   ) => {
-    state.authError = action.payload;
-    if (action.payload) {
-      state.authStatus = "error";
-    }
+    const u = ensureUser(state, action.payload.userId);
+    u.authError = action.payload.error;
+    if (action.payload.error) u.authStatus = "error";
   },
   setPhoneNumber: (
-    state: TelegramState,
-    action: PayloadAction<string | null>,
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string; phoneNumber: string | null }>,
   ) => {
-    state.phoneNumber = action.payload;
+    ensureUser(state, action.payload.userId).phoneNumber =
+      action.payload.phoneNumber;
   },
   setSessionString: (
-    state: TelegramState,
-    action: PayloadAction<string | null>,
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string; sessionString: string | null }>,
   ) => {
-    state.sessionString = action.payload;
+    ensureUser(state, action.payload.userId).sessionString =
+      action.payload.sessionString;
   },
-
-  // User actions
   setCurrentUser: (
-    state: TelegramState,
-    action: PayloadAction<TelegramUser | null>,
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string; user: TelegramUser | null }>,
   ) => {
-    state.currentUser = action.payload;
+    ensureUser(state, action.payload.userId).currentUser = action.payload.user;
   },
-
-  // Chat actions
   setChats: (
-    state: TelegramState,
-    action: PayloadAction<Record<string, TelegramChat>>,
+    state: TelegramRootState,
+    action: PayloadAction<{
+      userId: string;
+      chats: Record<string, TelegramChat>;
+    }>,
   ) => {
-    state.chats = action.payload;
+    ensureUser(state, action.payload.userId).chats = action.payload.chats;
   },
-  addChat: (state: TelegramState, action: PayloadAction<TelegramChat>) => {
-    const chat = action.payload;
-    state.chats[chat.id] = chat;
-    if (!state.chatsOrder.includes(chat.id)) {
-      state.chatsOrder.unshift(chat.id);
-    }
+  addChat: (
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string; chat: TelegramChat }>,
+  ) => {
+    const u = ensureUser(state, action.payload.userId);
+    const chat = action.payload.chat;
+    u.chats[chat.id] = chat;
+    if (!u.chatsOrder.includes(chat.id)) u.chatsOrder.unshift(chat.id);
   },
   updateChat: (
-    state: TelegramState,
-    action: PayloadAction<Partial<TelegramChat> & { id: string }>,
+    state: TelegramRootState,
+    action: PayloadAction<{
+      userId: string;
+      id: string;
+      updates: Partial<TelegramChat>;
+    }>,
   ) => {
-    const { id, ...updates } = action.payload;
-    if (state.chats[id]) {
-      state.chats[id] = { ...state.chats[id], ...updates };
-    }
+    const u = ensureUser(state, action.payload.userId);
+    const { id, updates } = action.payload;
+    if (u.chats[id]) u.chats[id] = { ...u.chats[id], ...updates };
   },
-  removeChat: (state: TelegramState, action: PayloadAction<string>) => {
-    const chatId = action.payload;
-    delete state.chats[chatId];
-    state.chatsOrder = state.chatsOrder.filter((id) => id !== chatId);
-    if (state.selectedChatId === chatId) {
-      state.selectedChatId = null;
-    }
+  removeChat: (
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string; chatId: string }>,
+  ) => {
+    const u = ensureUser(state, action.payload.userId);
+    const chatId = action.payload.chatId;
+    delete u.chats[chatId];
+    u.chatsOrder = u.chatsOrder.filter((id) => id !== chatId);
+    if (u.selectedChatId === chatId) u.selectedChatId = null;
   },
   setSelectedChat: (
-    state: TelegramState,
-    action: PayloadAction<string | null>,
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string; chatId: string | null }>,
   ) => {
-    state.selectedChatId = action.payload;
-    // Clear selected thread when changing chat
-    if (action.payload !== state.selectedChatId) {
-      state.selectedThreadId = null;
-    }
+    const u = ensureUser(state, action.payload.userId);
+    const prev = u.selectedChatId;
+    u.selectedChatId = action.payload.chatId;
+    if (action.payload.chatId !== prev) u.selectedThreadId = null;
   },
-  setChatsOrder: (state: TelegramState, action: PayloadAction<string[]>) => {
-    state.chatsOrder = action.payload;
+  setChatsOrder: (
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string; order: string[] }>,
+  ) => {
+    ensureUser(state, action.payload.userId).chatsOrder = action.payload.order;
   },
-
-  // Message actions
   addMessage: (
-    state: TelegramState,
-    action: PayloadAction<TelegramMessage>,
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string; message: TelegramMessage }>,
   ) => {
-    const message = action.payload;
-    const { chatId, id } = message;
-
-    if (!state.messages[chatId]) {
-      state.messages[chatId] = {};
-      state.messagesOrder[chatId] = [];
+    const u = ensureUser(state, action.payload.userId);
+    const { chatId, id } = action.payload.message;
+    if (!u.messages[chatId]) {
+      u.messages[chatId] = {};
+      u.messagesOrder[chatId] = [];
     }
-
-    if (!state.messages[chatId][id]) {
-      state.messages[chatId][id] = message;
-      state.messagesOrder[chatId].push(id);
+    if (!u.messages[chatId][id]) {
+      u.messages[chatId][id] = action.payload.message;
+      u.messagesOrder[chatId].push(id);
     }
   },
   addMessages: (
-    state: TelegramState,
-    action: PayloadAction<{ chatId: string; messages: TelegramMessage[] }>,
+    state: TelegramRootState,
+    action: PayloadAction<{
+      userId: string;
+      chatId: string;
+      messages: TelegramMessage[];
+    }>,
   ) => {
+    const u = ensureUser(state, action.payload.userId);
     const { chatId, messages } = action.payload;
-
-    if (!state.messages[chatId]) {
-      state.messages[chatId] = {};
-      state.messagesOrder[chatId] = [];
+    if (!u.messages[chatId]) {
+      u.messages[chatId] = {};
+      u.messagesOrder[chatId] = [];
     }
-
-    messages.forEach((message) => {
-      if (!state.messages[chatId][message.id]) {
-        state.messages[chatId][message.id] = message;
-        state.messagesOrder[chatId].push(message.id);
+    messages.forEach((m) => {
+      if (!u.messages[chatId][m.id]) {
+        u.messages[chatId][m.id] = m;
+        u.messagesOrder[chatId].push(m.id);
       }
     });
   },
   updateMessage: (
-    state: TelegramState,
+    state: TelegramRootState,
     action: PayloadAction<{
+      userId: string;
       chatId: string;
       messageId: string;
       updates: Partial<TelegramMessage>;
     }>,
   ) => {
+    const u = ensureUser(state, action.payload.userId);
     const { chatId, messageId, updates } = action.payload;
-    if (state.messages[chatId]?.[messageId]) {
-      state.messages[chatId][messageId] = {
-        ...state.messages[chatId][messageId],
+    if (u.messages[chatId]?.[messageId]) {
+      u.messages[chatId][messageId] = {
+        ...u.messages[chatId][messageId],
         ...updates,
       };
     }
   },
   removeMessage: (
-    state: TelegramState,
-    action: PayloadAction<{ chatId: string; messageId: string }>,
+    state: TelegramRootState,
+    action: PayloadAction<{
+      userId: string;
+      chatId: string;
+      messageId: string;
+    }>,
   ) => {
+    const u = ensureUser(state, action.payload.userId);
     const { chatId, messageId } = action.payload;
-    if (state.messages[chatId]?.[messageId]) {
-      delete state.messages[chatId][messageId];
-      state.messagesOrder[chatId] = state.messagesOrder[chatId].filter(
+    if (u.messages[chatId]?.[messageId]) {
+      delete u.messages[chatId][messageId];
+      u.messagesOrder[chatId] = u.messagesOrder[chatId].filter(
         (id) => id !== messageId,
       );
     }
   },
-  clearMessages: (state: TelegramState, action: PayloadAction<string>) => {
-    const chatId = action.payload;
-    delete state.messages[chatId];
-    delete state.messagesOrder[chatId];
+  clearMessages: (
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string; chatId: string }>,
+  ) => {
+    const u = ensureUser(state, action.payload.userId);
+    delete u.messages[action.payload.chatId];
+    delete u.messagesOrder[action.payload.chatId];
   },
-
-  // Thread actions
-  addThread: (state: TelegramState, action: PayloadAction<TelegramThread>) => {
-    const thread = action.payload;
-    const { chatId, id } = thread;
-
-    if (!state.threads[chatId]) {
-      state.threads[chatId] = {};
-      state.threadsOrder[chatId] = [];
+  addThread: (
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string; thread: TelegramThread }>,
+  ) => {
+    const u = ensureUser(state, action.payload.userId);
+    const { chatId, id } = action.payload.thread;
+    if (!u.threads[chatId]) {
+      u.threads[chatId] = {};
+      u.threadsOrder[chatId] = [];
     }
-
-    if (!state.threads[chatId][id]) {
-      state.threads[chatId][id] = thread;
-      state.threadsOrder[chatId].push(id);
+    if (!u.threads[chatId][id]) {
+      u.threads[chatId][id] = action.payload.thread;
+      u.threadsOrder[chatId].push(id);
     }
   },
   updateThread: (
-    state: TelegramState,
+    state: TelegramRootState,
     action: PayloadAction<{
+      userId: string;
       chatId: string;
       threadId: string;
       updates: Partial<TelegramThread>;
     }>,
   ) => {
+    const u = ensureUser(state, action.payload.userId);
     const { chatId, threadId, updates } = action.payload;
-    if (state.threads[chatId]?.[threadId]) {
-      state.threads[chatId][threadId] = {
-        ...state.threads[chatId][threadId],
+    if (u.threads[chatId]?.[threadId]) {
+      u.threads[chatId][threadId] = {
+        ...u.threads[chatId][threadId],
         ...updates,
       };
     }
   },
   setSelectedThread: (
-    state: TelegramState,
-    action: PayloadAction<string | null>,
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string; threadId: string | null }>,
   ) => {
-    state.selectedThreadId = action.payload;
+    ensureUser(state, action.payload.userId).selectedThreadId =
+      action.payload.threadId;
   },
-
-  // Search actions
   setSearchQuery: (
-    state: TelegramState,
-    action: PayloadAction<string | null>,
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string; query: string | null }>,
   ) => {
-    state.searchQuery = action.payload;
+    ensureUser(state, action.payload.userId).searchQuery = action.payload.query;
   },
   setFilteredChatIds: (
-    state: TelegramState,
-    action: PayloadAction<string[] | null>,
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string; chatIds: string[] | null }>,
   ) => {
-    state.filteredChatIds = action.payload;
+    ensureUser(state, action.payload.userId).filteredChatIds =
+      action.payload.chatIds;
   },
-
-  // Reset actions
-  // Note: resetTelegram is handled in index.ts to return initialState
-  resetChats: (state: TelegramState) => {
-    state.chats = {};
-    state.chatsOrder = [];
-    state.selectedChatId = null;
+  resetChats: (
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string }>,
+  ) => {
+    const u = ensureUser(state, action.payload.userId);
+    u.chats = {};
+    u.chatsOrder = [];
+    u.selectedChatId = null;
   },
-  resetMessages: (state: TelegramState) => {
-    state.messages = {};
-    state.messagesOrder = {};
+  resetMessages: (
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string }>,
+  ) => {
+    const u = ensureUser(state, action.payload.userId);
+    u.messages = {};
+    u.messagesOrder = {};
+  },
+  resetTelegramForUser: (
+    state: TelegramRootState,
+    action: PayloadAction<{ userId: string }>,
+  ) => {
+    state.byUser[action.payload.userId] = { ...initialState };
   },
 };

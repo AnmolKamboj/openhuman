@@ -1,9 +1,9 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
-import { ErrorCategory, logAndFormatError } from '../../errorHandler';
-import { mtprotoService } from '../../../../services/mtprotoService';
-import { Api } from 'telegram';
-import type { UpdatesResult } from '../apiResultTypes';
+import { ErrorCategory, logAndFormatError } from "../../errorHandler";
+import { mtprotoService } from "../../../../services/mtprotoService";
+import { Api } from "telegram";
+import type { UpdatesResult } from "../apiResultTypes";
 import { narrow } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
@@ -25,25 +25,29 @@ export async function getDrafts(
 
     const updates = narrow<UpdatesResult>(result);
     if (!updates || !updates.updates || updates.updates.length === 0) {
-      return { content: [{ type: 'text', text: 'No drafts found.' }] };
+      return { content: [{ type: "text", text: "No drafts found." }] };
     }
 
     const lines: string[] = [];
     for (const update of updates.updates) {
       if (update.draft && update.draft.message) {
-        const peerId = update.peer?.userId ?? update.peer?.chatId ?? update.peer?.channelId ?? '?';
-        lines.push('Peer ' + peerId + ': ' + update.draft.message);
+        const peerId =
+          update.peer?.userId ??
+          update.peer?.chatId ??
+          update.peer?.channelId ??
+          "?";
+        lines.push("Peer " + peerId + ": " + update.draft.message);
       }
     }
 
     if (lines.length === 0) {
-      return { content: [{ type: 'text', text: 'No drafts found.' }] };
+      return { content: [{ type: "text", text: "No drafts found." }] };
     }
 
-    return { content: [{ type: 'text', text: lines.join('\n') }] };
+    return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (error) {
     return logAndFormatError(
-      'get_drafts',
+      "get_drafts",
       error instanceof Error ? error : new Error(String(error)),
       ErrorCategory.DRAFT,
     );

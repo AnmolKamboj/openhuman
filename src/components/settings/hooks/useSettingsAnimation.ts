@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
 
-export type AnimationState = 'entering' | 'entered' | 'exiting' | 'exited';
+export type AnimationState = "entering" | "entered" | "exiting" | "exited";
 
 interface SettingsAnimationHook {
   isVisible: boolean;
@@ -9,24 +9,24 @@ interface SettingsAnimationHook {
   startExit: () => void;
 }
 
-export const useSettingsAnimation = (
-  duration = 300
-): SettingsAnimationHook => {
-  const [animationState, setAnimationState] = useState<AnimationState>('exited');
+export const useSettingsAnimation = (duration = 300): SettingsAnimationHook => {
+  const [animationState, setAnimationState] =
+    useState<AnimationState>("exited");
 
-  const isVisible = animationState === 'entering' || animationState === 'entered';
+  const isVisible =
+    animationState === "entering" || animationState === "entered";
 
   const startEntry = () => {
-    setAnimationState('entering');
+    setAnimationState("entering");
     setTimeout(() => {
-      setAnimationState('entered');
+      setAnimationState("entered");
     }, duration);
   };
 
   const startExit = () => {
-    setAnimationState('exiting');
+    setAnimationState("exiting");
     setTimeout(() => {
-      setAnimationState('exited');
+      setAnimationState("exited");
     }, duration);
   };
 
@@ -34,7 +34,7 @@ export const useSettingsAnimation = (
     isVisible,
     animationState,
     startEntry,
-    startExit
+    startExit,
   };
 };
 
@@ -52,7 +52,8 @@ export const usePanelAnimation = (isActive: boolean, duration = 300) => {
   }, [isActive, duration]);
 
   const getPanelClasses = () => {
-    const baseClasses = 'transition-all duration-300 ease-[cubic-bezier(0.25,0.46,0.45,0.94)]';
+    const baseClasses =
+      "transition-all duration-300 ease-[cubic-bezier(0.25,0.46,0.45,0.94)]";
     if (!mounted) return `${baseClasses} opacity-0`;
 
     return isActive
@@ -62,6 +63,6 @@ export const usePanelAnimation = (isActive: boolean, duration = 300) => {
 
   return {
     mounted,
-    panelClasses: getPanelClasses()
+    panelClasses: getPanelClasses(),
   };
 };

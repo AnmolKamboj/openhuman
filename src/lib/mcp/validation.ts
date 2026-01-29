@@ -5,7 +5,7 @@
 export class ValidationError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'ValidationError';
+    this.name = "ValidationError";
   }
 }
 
@@ -13,11 +13,8 @@ export class ValidationError extends Error {
  * Validate chat_id or user_id parameter
  * Supports integer IDs, string IDs, and usernames
  */
-export function validateId(
-  value: unknown,
-  paramName: string,
-): number | string {
-  if (typeof value === 'number') {
+export function validateId(value: unknown, paramName: string): number | string {
+  if (typeof value === "number") {
     if (!Number.isInteger(value) || value < -(2 ** 63) || value > 2 ** 63 - 1) {
       throw new ValidationError(
         `Invalid ${paramName}: ${value}. ID is out of the valid integer range.`,
@@ -26,7 +23,7 @@ export function validateId(
     return value;
   }
 
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     const intValue = Number.parseInt(value, 10);
     if (!Number.isNaN(intValue) && Number.isFinite(intValue)) {
       if (intValue < -(2 ** 63) || intValue > 2 ** 63 - 1) {
@@ -38,7 +35,7 @@ export function validateId(
     }
 
     if (/^@?[a-zA-Z0-9_]{5,}$/.test(value)) {
-      return value.startsWith('@') ? value : `@${value}`;
+      return value.startsWith("@") ? value : `@${value}`;
     }
 
     throw new ValidationError(
@@ -59,9 +56,7 @@ export function validateIdList(
   paramName: string,
 ): Array<number | string> {
   if (!Array.isArray(value)) {
-    throw new ValidationError(
-      `Invalid ${paramName}: must be an array of IDs.`,
-    );
+    throw new ValidationError(`Invalid ${paramName}: must be an array of IDs.`);
   }
 
   return value.map((item: unknown, index: number) => {

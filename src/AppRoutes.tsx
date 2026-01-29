@@ -1,12 +1,12 @@
-import { Routes, Route } from 'react-router-dom';
-import Welcome from './pages/Welcome';
-import Login from './pages/Login';
-import Onboarding from './pages/onboarding/Onboarding';
-import Home from './pages/Home';
-import PublicRoute from './components/PublicRoute';
-import ProtectedRoute from './components/ProtectedRoute';
-import DefaultRedirect from './components/DefaultRedirect';
-import SettingsModal from './components/settings/SettingsModal';
+import { Routes, Route } from "react-router-dom";
+import Welcome from "./pages/Welcome";
+import Login from "./pages/Login";
+import Onboarding from "./pages/onboarding/Onboarding";
+import Home from "./pages/Home";
+import PublicRoute from "./components/PublicRoute";
+import ProtectedRoute from "./components/ProtectedRoute";
+import DefaultRedirect from "./components/DefaultRedirect";
+import SettingsModal from "./components/settings/SettingsModal";
 
 const AppRoutes = () => {
   return (
@@ -42,7 +42,11 @@ const AppRoutes = () => {
         <Route
           path="/home"
           element={
-            <ProtectedRoute requireAuth={true} requireOnboarded={true} redirectTo="/onboarding">
+            <ProtectedRoute
+              requireAuth={true}
+              requireOnboarded={true}
+              redirectTo="/onboarding"
+            >
               <Home />
             </ProtectedRoute>
           }
@@ -52,7 +56,11 @@ const AppRoutes = () => {
         <Route
           path="/settings/*"
           element={
-            <ProtectedRoute requireAuth={true} requireOnboarded={true} redirectTo="/onboarding">
+            <ProtectedRoute
+              requireAuth={true}
+              requireOnboarded={true}
+              redirectTo="/onboarding"
+            >
               <Home />
             </ProtectedRoute>
           }

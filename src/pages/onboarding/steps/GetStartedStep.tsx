@@ -1,16 +1,29 @@
-import { openUrl } from '../../../utils/openUrl';
-import { TELEGRAM_BOT_USERNAME } from '../../../utils/config';
-import ConnectionIndicator from '../../../components/ConnectionIndicator';
+import { useState } from "react";
+import { openUrl } from "../../../utils/openUrl";
+import { TELEGRAM_BOT_USERNAME } from "../../../utils/config";
+import ConnectionIndicator from "../../../components/ConnectionIndicator";
 
 interface GetStartedStepProps {
-  onComplete: () => void;
+  onComplete: () => void | Promise<void>;
 }
 
 const GetStartedStep = ({ onComplete }: GetStartedStepProps) => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const handleOpenTelegram = async () => {
-    // Open Telegram and navigate to home immediately
-    await openUrl(`https://t.me/${TELEGRAM_BOT_USERNAME}`);
-    onComplete();
+    setError(null);
+    setLoading(true);
+    try {
+      await openUrl(`https://t.me/${TELEGRAM_BOT_USERNAME}`);
+      await onComplete();
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Something went wrong. Please try again.",
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -18,19 +31,24 @@ const GetStartedStep = ({ onComplete }: GetStartedStepProps) => {
       <div className="text-center mb-4">
         <h1 className="text-xl font-bold mb-2">You Are Ready, Soldier!</h1>
         <p className="opacity-70 text-sm">
-          Alright you're all set up, just message your assistant and you're ready to cook! Remember to keep this tab open to keep the connection alive.
+          Alright you're all set up, just message your assistant and you're
+          ready to cook! Remember to keep this tab open to keep the connection
+          alive.
         </p>
       </div>
 
-      <ConnectionIndicator
-        description="Your browser is now connected to the AlphaHuman AI Models. Please keep this tab open."
-      />
+      <ConnectionIndicator description="Your browser is now connected to the AlphaHuman AI Models. Please keep this tab open." />
+
+      {error && (
+        <p className="text-coral-500 text-sm mb-3 text-center">{error}</p>
+      )}
 
       <button
         onClick={handleOpenTelegram}
-        className="w-full flex items-center justify-center space-x-3 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-semibold py-2.5 text-sm rounded-xl transition-all duration-300 hover:shadow-medium mb-3"
+        disabled={loading}
+        className="w-full flex items-center justify-center space-x-3 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-2.5 text-sm rounded-xl transition-all duration-300 hover:shadow-medium mb-3"
       >
-        <span>I'm Ready! Let's Go! 🔥</span>
+        <span>{loading ? "Finishing…" : "I'm Ready! Let's Go! 🔥"}</span>
       </button>
     </div>
   );

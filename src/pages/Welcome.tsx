@@ -1,5 +1,5 @@
-import TypewriterGreeting from '../components/TypewriterGreeting';
-import TelegramLoginButton from '../components/TelegramLoginButton';
+import TypewriterGreeting from "../components/TypewriterGreeting";
+import TelegramLoginButton from "../components/TelegramLoginButton";
 
 const Welcome = () => {
   const greetings = [
@@ -15,8 +15,6 @@ const Welcome = () => {
     // "Ready to go to the moon? Pack light! 🌙🚀"
   ];
 
-
-
   return (
     <div className="min-h-screen relative flex items-center justify-center">
       {/* Main content */}
@@ -29,7 +27,8 @@ const Welcome = () => {
           {/* <br /> */}
 
           <p className="opacity-70 mb-8 leading-relaxed">
-            Welcome to AlphaHuman. Your Telegram assistant here to get you 10x more done in your crypto journey.
+            Welcome to AlphaHuman. Your Telegram assistant here to get you 10x
+            more done in your crypto journey.
           </p>
 
           <p className="opacity-70 mb-8 leading-relaxed">

@@ -7,9 +7,9 @@ export const tool: MCPTool = {
   inputSchema: {
     type: "object",
     properties: {
-      file_path: { type: 'string', description: 'Path to the photo file' },
+      file_path: { type: "string", description: "Path to the photo file" },
     },
-    required: ['file_path'],
+    required: ["file_path"],
   },
 };
 
@@ -18,7 +18,12 @@ export async function setProfilePhoto(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   return {
-    content: [{ type: 'text', text: 'set_profile_photo requires file upload which is not supported via MCP text interface. Use the Telegram client directly.' }],
+    content: [
+      {
+        type: "text",
+        text: "set_profile_photo requires file upload which is not supported via MCP text interface. Use the Telegram client directly.",
+      },
+    ],
     isError: true,
   };
 }

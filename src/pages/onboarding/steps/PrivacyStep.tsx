@@ -1,4 +1,4 @@
-import PrivacyFeatureCard from '../../../components/PrivacyFeatureCard';
+import PrivacyFeatureCard from "../../../components/PrivacyFeatureCard";
 
 interface PrivacyStepProps {
   onNext: () => void;
@@ -7,17 +7,20 @@ interface PrivacyStepProps {
 const PrivacyStep = ({ onNext }: PrivacyStepProps) => {
   const privacyFeatures = [
     {
-      title: '🔒 Everything is Local & Encrypted',
-      description: 'Your data is encrypted (AES-256-GCM) in your device and never stored elsewhere. Your encryption keys never leave your device.',
+      title: "🔒 Everything is Local & Encrypted",
+      description:
+        "Your data is encrypted (AES-256-GCM) in your device and never stored elsewhere. Your encryption keys never leave your device.",
     },
     {
-      title: '🙈 Zero Data Retention',
-      description: 'Your queries are processed, immediately discarded and never stored elsewhere. Your data is NEVER used to train AI models. ',
+      title: "🙈 Zero Data Retention",
+      description:
+        "Your queries are processed, immediately discarded and never stored elsewhere. Your data is NEVER used to train AI models. ",
     },
     {
-      title: '🔥 Delete Anytime You Want',
-      description: 'You can delete your data and your account anytime you want. Everything will get wiped including AI memories.',
-    }
+      title: "🔥 Delete Anytime You Want",
+      description:
+        "You can delete your data and your account anytime you want. Everything will get wiped including AI memories.",
+    },
   ];
 
   return (
@@ -25,7 +28,8 @@ const PrivacyStep = ({ onNext }: PrivacyStepProps) => {
       <div className="text-center mb-4">
         <h1 className="text-xl font-bold mb-2">A Quick Privacy Note</h1>
         <p className="opacity-70 text-sm">
-          Since AlphaHuman handles criticial information about you, here's how it handles your data and manages your privacy.
+          Since AlphaHuman handles criticial information about you, here's how
+          it handles your data and manages your privacy.
         </p>
       </div>
 

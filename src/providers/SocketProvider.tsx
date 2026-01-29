@@ -1,13 +1,14 @@
-import { useEffect, useRef } from 'react';
-import { useAppSelector } from '../store/hooks';
-import { store } from '../store';
-import { socketService } from '../services/socketService';
+import { useEffect, useRef } from "react";
+import { useAppSelector } from "../store/hooks";
+import { store } from "../store";
+import { selectSocketStatus } from "../store/socketSelectors";
+import { socketService } from "../services/socketService";
 import {
   initTelegramMCPServer,
   getTelegramMCPServer,
   updateTelegramMCPServerSocket,
   cleanupTelegramMCPServer,
-} from '../lib/mcp/telegram';
+} from "../lib/mcp/telegram";
 
 /**
  * SocketProvider manages the socket connection based on JWT token
@@ -16,7 +17,7 @@ import {
  */
 const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   const token = useAppSelector((state) => state.auth.token);
-  const socketStatus = useAppSelector((state) => state.socket.status);
+  const socketStatus = useAppSelector(selectSocketStatus);
   const previousTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -38,7 +39,7 @@ const SocketProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Handle MCP initialization when socket connects
   useEffect(() => {
-    if (socketStatus === 'connected') {
+    if (socketStatus === "connected") {
       const socket = socketService.getSocket();
       const server = getTelegramMCPServer();
 
@@ -47,7 +48,7 @@ const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       } else {
         initTelegramMCPServer(socket);
       }
-    } else if (socketStatus === 'disconnected') {
+    } else if (socketStatus === "disconnected") {
       cleanupTelegramMCPServer();
     }
   }, [socketStatus]);

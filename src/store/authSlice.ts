@@ -1,18 +1,19 @@
-import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
-import { clearUser } from './userSlice';
+import { createSlice, PayloadAction, createAsyncThunk } from "@reduxjs/toolkit";
+import { clearUser } from "./userSlice";
 
-interface AuthState {
+export interface AuthState {
   token: string | null;
-  isOnboarded: boolean;
+  /** Onboarding completion per user id */
+  isOnboardedByUser: Record<string, boolean>;
 }
 
 const initialState: AuthState = {
   token: null,
-  isOnboarded: false,
+  isOnboardedByUser: {},
 };
 
 const authSlice = createSlice({
-  name: 'auth',
+  name: "auth",
   initialState,
   reducers: {
     setToken: (state, action: PayloadAction<string>) => {
@@ -20,19 +21,25 @@ const authSlice = createSlice({
     },
     _clearToken: (state) => {
       state.token = null;
-      state.isOnboarded = false;
     },
-    setOnboarded: (state, action: PayloadAction<boolean>) => {
-      state.isOnboarded = action.payload;
+    setOnboardedForUser: (
+      state,
+      action: PayloadAction<{ userId: string; value: boolean }>,
+    ) => {
+      const { userId, value } = action.payload;
+      state.isOnboardedByUser[userId] = value;
     },
   },
 });
 
 // Thunk that clears both token and user data
-export const clearToken = createAsyncThunk('auth/clearToken', async (_, { dispatch }) => {
-  dispatch(authSlice.actions._clearToken());
-  dispatch(clearUser());
-});
+export const clearToken = createAsyncThunk(
+  "auth/clearToken",
+  async (_, { dispatch }) => {
+    dispatch(authSlice.actions._clearToken());
+    dispatch(clearUser());
+  },
+);
 
-export const { setToken, setOnboarded } = authSlice.actions;
+export const { setToken, setOnboardedForUser } = authSlice.actions;
 export default authSlice.reducer;

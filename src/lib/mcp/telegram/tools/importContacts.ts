@@ -67,7 +67,8 @@ export async function importContacts(
       );
     });
 
-    const imported = narrow<ImportContactsResult>(result)?.imported?.length ?? 0;
+    const imported =
+      narrow<ImportContactsResult>(result)?.imported?.length ?? 0;
     return {
       content: [
         {

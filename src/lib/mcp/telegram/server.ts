@@ -13,6 +13,7 @@ import type {
 } from "../types";
 
 import { store } from "../../../store";
+import { selectTelegramUserState } from "../../../store/telegramSelectors";
 import { ErrorCategory, logAndFormatError } from "../errorHandler";
 import { ValidationError } from "../validation";
 import { SocketIOMCPTransportImpl } from "../transport";
@@ -104,7 +105,8 @@ export class TelegramMCPServer {
       };
     }
 
-    const telegramState: TelegramState = store.getState().telegram;
+    const telegramState: TelegramState =
+      selectTelegramUserState(store.getState());
 
     try {
       return await toolHandler(args, {

@@ -52,7 +52,8 @@ export async function createChannel(
       );
     });
 
-    const channelId = narrow<ResultWithChats>(result)?.chats?.[0]?.id ?? "unknown";
+    const channelId =
+      narrow<ResultWithChats>(result)?.chats?.[0]?.id ?? "unknown";
     const type = megagroup ? "Supergroup" : "Channel";
     return {
       content: [

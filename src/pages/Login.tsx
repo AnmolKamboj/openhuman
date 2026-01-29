@@ -1,37 +1,57 @@
-import { useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAppDispatch } from '../store/hooks';
-import { setToken } from '../store/authSlice';
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useAppDispatch } from "../store/hooks";
+import { setToken } from "../store/authSlice";
+import { consumeLoginToken } from "../services/api/authApi";
 
 const Login = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const dispatch = useAppDispatch();
+  const [consumeError, setConsumeError] = useState<string | null>(null);
 
-  // Handle JWT token from URL query parameter (backend redirect)
+  // Handle login token from URL (e.g. from Telegram bot "Open AlphaHuman" button)
+  // Consume the token with the backend and store the returned JWT
   useEffect(() => {
-    const token = searchParams.get('token');
+    const loginToken = searchParams.get("token");
+    if (!loginToken) return;
 
-    if (token) {
+    let cancelled = false;
 
-      // Store the JWT token from the backend
-      dispatch(setToken(token));
+    (async () => {
+      setConsumeError(null);
+      try {
+        const jwtToken = await consumeLoginToken(loginToken);
+        if (cancelled) return;
 
-      // Clear the token from URL for security
-      const newSearchParams = new URLSearchParams(searchParams);
-      newSearchParams.delete('token');
-      const newSearch = newSearchParams.toString();
-      const newUrl = newSearch ? `${window.location.pathname}?${newSearch}` : window.location.pathname;
-      window.history.replaceState({}, '', newUrl);
+        dispatch(setToken(jwtToken));
+        navigate("/onboarding/", { replace: true });
+      } catch (err) {
+        if (!cancelled) {
+          setConsumeError(err instanceof Error ? err.message : "Login failed");
+        }
+      }
+    })();
 
-      // Navigate to onboarding after successful login
-      setTimeout(() => {
-        navigate('/onboarding/');
-      }, 100);
-    }
+    return () => {
+      cancelled = true;
+    };
   }, [searchParams, dispatch, navigate]);
 
-
+  if (consumeError) {
+    return (
+      <div className="min-h-screen relative flex items-center justify-center">
+        <div className="relative z-10 max-w-md w-full mx-4 text-center">
+          <div className="glass rounded-3xl p-8 shadow-large animate-fade-up">
+            <p className="opacity-90 text-coral mb-4">{consumeError}</p>
+            <p className="text-sm opacity-70">
+              Get a new link by sending '/start login' to the AlphaHuman bot on Telegram.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen relative flex items-center justify-center">

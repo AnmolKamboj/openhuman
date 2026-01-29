@@ -1,22 +1,23 @@
-import { useEffect, useRef } from 'react';
-import { socketService } from '../services/socketService';
-import { useAppSelector } from '../store/hooks';
-import type { Socket } from 'socket.io-client';
+import { useEffect, useRef } from "react";
+import { socketService } from "../services/socketService";
+import { useAppSelector } from "../store/hooks";
+import { selectSocketStatus } from "../store/socketSelectors";
+import type { Socket } from "socket.io-client";
 
 /**
  * React hook for using the Socket.IO connection
  * Note: The socket connection is managed by SocketProvider based on JWT token.
  * This hook provides access to the socket instance and methods.
- * 
+ *
  * @example
  * ```tsx
  * const { socket, isConnected, emit, on, off } = useSocket();
- * 
+ *
  * useEffect(() => {
  *   on('ready', () => {
  *     console.log('Socket ready!');
  *   });
- *   
+ *
  *   return () => {
  *     off('ready');
  *   };
@@ -24,8 +25,10 @@ import type { Socket } from 'socket.io-client';
  * ```
  */
 export const useSocket = () => {
-  const listenersRef = useRef<Array<{ event: string; callback: (...args: unknown[]) => void }>>([]);
-  const socketStatus = useAppSelector((state) => state.socket.status);
+  const listenersRef = useRef<
+    Array<{ event: string; callback: (...args: unknown[]) => void }>
+  >([]);
+  const socketStatus = useAppSelector(selectSocketStatus);
 
   useEffect(() => {
     return () => {
@@ -50,10 +53,13 @@ export const useSocket = () => {
     socketService.off(event, callback);
     if (callback) {
       listenersRef.current = listenersRef.current.filter(
-        (listener) => listener.event !== event || listener.callback !== callback
+        (listener) =>
+          listener.event !== event || listener.callback !== callback,
       );
     } else {
-      listenersRef.current = listenersRef.current.filter((listener) => listener.event !== event);
+      listenersRef.current = listenersRef.current.filter(
+        (listener) => listener.event !== event,
+      );
     }
   };
 
@@ -63,7 +69,7 @@ export const useSocket = () => {
 
   return {
     socket: socketService.getSocket() as Socket | null,
-    isConnected: socketStatus === 'connected',
+    isConnected: socketStatus === "connected",
     status: socketStatus,
     emit,
     on,

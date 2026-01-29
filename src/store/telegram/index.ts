@@ -1,14 +1,15 @@
-import { createSlice } from '@reduxjs/toolkit';
-import { initialState } from './types';
-import { reducers } from './reducers';
-import { buildExtraReducers } from './extraReducers';
+import { createSlice } from "@reduxjs/toolkit";
+import type { TelegramRootState } from "./types";
+import { reducers } from "./reducers";
+import { buildExtraReducers } from "./extraReducers";
+
+const telegramInitialState: TelegramRootState = { byUser: {} };
 
 const telegramSlice = createSlice({
-  name: 'telegram',
-  initialState,
+  name: "telegram",
+  initialState: telegramInitialState,
   reducers: {
     ...reducers,
-    resetTelegram: () => initialState,
   },
   extraReducers: buildExtraReducers,
 });
@@ -37,7 +38,7 @@ export const {
   setSelectedThread,
   setSearchQuery,
   setFilteredChatIds,
-  resetTelegram,
+  resetTelegramForUser,
   resetChats,
   resetMessages,
 } = telegramSlice.actions;
@@ -49,7 +50,7 @@ export {
   checkAuthStatus,
   fetchChats,
   fetchMessages,
-} from './thunks';
+} from "./thunks";
 
 // Re-export types
 export type {
@@ -60,6 +61,8 @@ export type {
   TelegramMessage,
   TelegramThread,
   TelegramState,
-} from './types';
+  TelegramRootState,
+} from "./types";
+export { initialState } from "./types";
 
 export default telegramSlice.reducer;

@@ -1,4 +1,4 @@
-import PrivacyFeatureCard from '../../../components/PrivacyFeatureCard';
+import PrivacyFeatureCard from "../../../components/PrivacyFeatureCard";
 
 interface FeaturesStepProps {
   onNext: () => void;
@@ -7,16 +7,19 @@ interface FeaturesStepProps {
 const FeaturesStep = ({ onNext }: FeaturesStepProps) => {
   const features = [
     {
-      title: 'Keep track of Everything',
-      description: 'Sometimes your chats, emails, tasks can get a bit too much. Stay on track, organize things and get more done.',
+      title: "Keep track of Everything",
+      description:
+        "Sometimes your chats, emails, tasks can get a bit too much. Stay on track, organize things and get more done.",
     },
     {
-      title: 'Has Infinite Memory & Learns',
-      description: 'Missed something? Have a sexy assistant give you exactly what you need, every time.',
+      title: "Has Infinite Memory & Learns",
+      description:
+        "Missed something? Have a sexy assistant give you exactly what you need, every time.",
     },
     {
-      title: 'Trades the Trenches',
-      description: 'With it\'s own private wallet, trade or reasearch on any exchange or shitcoin autonomously. Go big or go home.',
+      title: "Trades the Trenches",
+      description:
+        "With it's own private wallet, trade or reasearch on any exchange or shitcoin autonomously. Go big or go home.",
     },
   ];
 

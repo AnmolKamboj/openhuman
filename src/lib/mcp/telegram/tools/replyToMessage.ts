@@ -34,21 +34,22 @@ export async function replyToMessage(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const chatId = validateId(args.chat_id, 'chat_id');
-    const messageId = typeof args.message_id === 'number' && Number.isInteger(args.message_id)
-      ? args.message_id
-      : undefined;
-    const text = typeof args.text === 'string' ? args.text : '';
+    const chatId = validateId(args.chat_id, "chat_id");
+    const messageId =
+      typeof args.message_id === "number" && Number.isInteger(args.message_id)
+        ? args.message_id
+        : undefined;
+    const text = typeof args.text === "string" ? args.text : "";
 
     if (messageId === undefined) {
       return {
-        content: [{ type: 'text', text: 'message_id must be an integer' }],
+        content: [{ type: "text", text: "message_id must be an integer" }],
         isError: true,
       };
     }
     if (!text) {
       return {
-        content: [{ type: 'text', text: 'text is required' }],
+        content: [{ type: "text", text: "text is required" }],
         isError: true,
       };
     }
@@ -66,7 +67,7 @@ export async function replyToMessage(
       return {
         content: [
           {
-            type: 'text',
+            type: "text",
             text: `Failed to reply to message ${messageId} in chat ${chatId}.`,
           },
         ],
@@ -77,7 +78,7 @@ export async function replyToMessage(
     return {
       content: [
         {
-          type: 'text',
+          type: "text",
           text: `Replied to message ${messageId} in chat ${chatId}.`,
         },
       ],

@@ -1,11 +1,11 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
-import { ErrorCategory, logAndFormatError } from '../../errorHandler';
-import { validateId } from '../../validation';
-import { getChatById } from '../telegramApi';
-import { mtprotoService } from '../../../../services/mtprotoService';
-import { Api } from 'telegram';
-import bigInt from 'big-integer';
+import { ErrorCategory, logAndFormatError } from "../../errorHandler";
+import { validateId } from "../../validation";
+import { getChatById } from "../telegramApi";
+import { mtprotoService } from "../../../../services/mtprotoService";
+import { Api } from "telegram";
+import bigInt from "big-integer";
 
 export const tool: MCPTool = {
   name: "create_poll",
@@ -26,15 +26,27 @@ export async function createPoll(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const chatId = validateId(args.chat_id, 'chat_id');
-    const question = typeof args.question === 'string' ? args.question : '';
+    const chatId = validateId(args.chat_id, "chat_id");
+    const question = typeof args.question === "string" ? args.question : "";
     const options = Array.isArray(args.options) ? args.options.map(String) : [];
 
-    if (!question) return { content: [{ type: 'text', text: 'question is required' }], isError: true };
-    if (options.length < 2) return { content: [{ type: 'text', text: 'At least 2 options are required' }], isError: true };
+    if (!question)
+      return {
+        content: [{ type: "text", text: "question is required" }],
+        isError: true,
+      };
+    if (options.length < 2)
+      return {
+        content: [{ type: "text", text: "At least 2 options are required" }],
+        isError: true,
+      };
 
     const chat = getChatById(chatId);
-    if (!chat) return { content: [{ type: 'text', text: 'Chat not found: ' + chatId }], isError: true };
+    if (!chat)
+      return {
+        content: [{ type: "text", text: "Chat not found: " + chatId }],
+        isError: true,
+      };
 
     const client = mtprotoService.getClient();
     const entity = chat.username ? chat.username : chat.id;
@@ -47,25 +59,29 @@ export async function createPoll(
           media: new Api.InputMediaPoll({
             poll: new Api.Poll({
               id: bigInt(0),
-              question: new Api.TextWithEntities({ text: question, entities: [] }),
-              answers: options.map((opt, i) =>
-                new Api.PollAnswer({
-                  text: new Api.TextWithEntities({ text: opt, entities: [] }),
-                  option: Buffer.from([i]),
-                }),
+              question: new Api.TextWithEntities({
+                text: question,
+                entities: [],
+              }),
+              answers: options.map(
+                (opt, i) =>
+                  new Api.PollAnswer({
+                    text: new Api.TextWithEntities({ text: opt, entities: [] }),
+                    option: Buffer.from([i]),
+                  }),
               ),
             }),
           }),
-          message: '',
+          message: "",
           randomId: bigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)),
         }),
       );
     });
 
-    return { content: [{ type: 'text', text: 'Poll created: ' + question }] };
+    return { content: [{ type: "text", text: "Poll created: " + question }] };
   } catch (error) {
     return logAndFormatError(
-      'create_poll',
+      "create_poll",
       error instanceof Error ? error : new Error(String(error)),
       ErrorCategory.MSG,
     );

@@ -1,300 +1,24 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { BACKEND_URL, TELEGRAM_BOT_ID } from '../utils/config';
-import { useAppDispatch } from '../store/hooks';
-import { setToken } from '../store/authSlice';
+import { TELEGRAM_BOT_USERNAME } from "../utils/config";
+import { openUrl } from "../utils/openUrl";
 
-interface TelegramAuthData {
-  id: number;
-  first_name?: string;
-  last_name?: string;
-  username?: string;
-  photo_url?: string;
-  auth_date: number;
-  hash: string;
-}
 
 interface TelegramLoginButtonProps {
-  onSuccess?: () => void;
   className?: string;
   text?: string;
   disabled?: boolean;
 }
 
 const TelegramLoginButton = ({
-  onSuccess,
-  className = '',
-  text = 'Yes, Login with Telegram',
+  className = "",
+  text = "Yes, Login with Telegram",
   disabled: externalDisabled = false,
 }: TelegramLoginButtonProps) => {
-  const navigate = useNavigate();
-  const dispatch = useAppDispatch();
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
-
-  const handleTelegramLogin = async () => {
-    if (isAuthenticating || externalDisabled) return;
-
-    setIsAuthenticating(true);
-
-    try {
-      const origin = window.location.origin;
-      const botId = TELEGRAM_BOT_ID;
-      // Pass origin as query param so backend can use it for postMessage
-      const callbackUrl = `${BACKEND_URL}/auth/telegram/callback?frontend_origin=${encodeURIComponent(origin)}`;
-      const oauthUrl = `https://oauth.telegram.org/auth?bot_id=${botId}&origin=${encodeURIComponent(origin)}&request_access=write&embed=0&return_to=${encodeURIComponent(callbackUrl)}`;
-
-      // Open popup window
-      const width = 550;
-      const height = 470;
-      const availLeft = 'availLeft' in screen ? (screen as { availLeft: number }).availLeft : 0;
-      const availTop = 'availTop' in screen ? (screen as { availTop: number }).availTop : 0;
-      const left = Math.max(0, (screen.width - width) / 2) + availLeft;
-      const top = Math.max(0, (screen.height - height) / 2) + availTop;
-
-      const popup = window.open(
-        oauthUrl,
-        'telegram_oauth',
-        `width=${width},height=${height},left=${left},top=${top},status=0,location=0,menubar=0,toolbar=0`
-      );
-
-      if (!popup) {
-        throw new Error('Failed to open popup window. Please allow popups for this site.');
-      }
-
-      let authCompleted = false;
-
-      // Listen for postMessage from Telegram OAuth
-      const messageHandler = async (event: MessageEvent) => {
-        // 1) Only accept messages from Telegram OAuth
-        if (event.origin !== 'https://oauth.telegram.org') {
-          return;
-        }
-
-        // 2) Parse the payload (Telegram sends a JSON string)
-        let data: any;
-        try {
-          data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        } catch {
-          return;
-        }
-
-        // 3) Handle successful auth_result from Telegram
-        if (data.event === 'auth_result' && data.result && !authCompleted) {
-          authCompleted = true;
-          window.removeEventListener('message', messageHandler);
-          popup.close();
-
-          const telegramData: TelegramAuthData = {
-            id: data.result.id,
-            first_name: data.result.first_name,
-            last_name: data.result.last_name,
-            username: data.result.username,
-            photo_url: data.result.photo_url,
-            auth_date: data.result.auth_date,
-            hash: data.result.hash,
-          };
-
-          try {
-            // Send Telegram auth data to backend to verify and exchange for JWT
-            const webCompleteResponse = await fetch(`${BACKEND_URL}/auth/web-complete`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                method: 'telegram',
-                telegramUser: telegramData,
-              }),
-            });
-
-            if (!webCompleteResponse.ok) {
-              const errorData = await webCompleteResponse.json().catch(() => ({}));
-              throw new Error(errorData.error || 'Failed to complete authentication');
-            }
-
-            const { data: completeData } = await webCompleteResponse.json();
-            const { loginToken } = completeData || {};
-
-            if (!loginToken) {
-              throw new Error('No login token received from server');
-            }
-
-            const exchangeResponse = await fetch(`${BACKEND_URL}/auth/desktop-exchange`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                token: loginToken,
-              }),
-            });
-
-            if (!exchangeResponse.ok) {
-              const errorData = await exchangeResponse.json().catch(() => ({}));
-              throw new Error(errorData.error || 'Failed to exchange token');
-            }
-
-            const exchangeData = await exchangeResponse.json();
-            const { sessionToken } = exchangeData.data || {};
-
-            if (!sessionToken) {
-              throw new Error('No JWT token received from server');
-            }
-
-            // Store JWT token in store (this is the JWT from the backend)
-            dispatch(setToken(sessionToken));
-
-            // Call onSuccess callback if provided, otherwise navigate to onboarding
-            if (onSuccess) {
-              onSuccess();
-            } else {
-              navigate('/onboarding/step1');
-            }
-            setIsAuthenticating(false);
-          } catch (error) {
-            setIsAuthenticating(false);
-            console.error('Failed to complete Telegram authentication:', error);
-          }
-        }
-      };
-
-      window.addEventListener('message', messageHandler);
-
-      // Fallback: Try to extract auth data from popup URL if postMessage doesn't work
-      // This will only work if the popup redirects to our origin (unlikely but possible)
-      const checkPopupUrl = setInterval(async () => {
-        if (authCompleted || popup.closed) {
-          clearInterval(checkPopupUrl);
-          return;
-        }
-
-        try {
-          // Try to read popup location (will throw if cross-origin)
-          const popupUrl = popup.location.href;
-
-          // If popup is on our callback URL, extract data and get JWT from backend
-          if (popupUrl.startsWith(callbackUrl.split('?')[0])) {
-            const url = new URL(popupUrl);
-            const telegramData: TelegramAuthData = {
-              id: parseInt(url.searchParams.get('id') || '0', 10),
-              first_name: url.searchParams.get('first_name') || undefined,
-              last_name: url.searchParams.get('last_name') || undefined,
-              username: url.searchParams.get('username') || undefined,
-              photo_url: url.searchParams.get('photo_url') || undefined,
-              auth_date: parseInt(url.searchParams.get('auth_date') || '0', 10),
-              hash: url.searchParams.get('hash') || '',
-            };
-
-            // Validate required fields
-            if (telegramData.id && telegramData.auth_date && telegramData.hash) {
-              authCompleted = true;
-              clearInterval(checkPopupUrl);
-              popup.close();
-              window.removeEventListener('message', messageHandler);
-
-              try {
-                // Send Telegram auth data to backend to get JWT token
-                // Use web-complete to verify and then exchange for JWT
-                const webCompleteResponse = await fetch(`${BACKEND_URL}/auth/web-complete`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({
-                    method: 'telegram',
-                    telegramUser: telegramData,
-                  }),
-                });
-
-                if (!webCompleteResponse.ok) {
-                  const errorData = await webCompleteResponse.json().catch(() => ({}));
-                  throw new Error(errorData.error || 'Failed to complete authentication');
-                }
-
-                const { data } = await webCompleteResponse.json();
-                const { loginToken } = data;
-
-                if (!loginToken) {
-                  throw new Error('No login token received from server');
-                }
-
-                // Exchange handoff token for JWT session token
-                const exchangeResponse = await fetch(`${BACKEND_URL}/auth/desktop-exchange`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({
-                    token: loginToken,
-                  }),
-                });
-
-                if (!exchangeResponse.ok) {
-                  const errorData = await exchangeResponse.json().catch(() => ({}));
-                  throw new Error(errorData.error || 'Failed to exchange token');
-                }
-
-                const exchangeData = await exchangeResponse.json();
-                const { sessionToken } = exchangeData.data;
-
-                if (!sessionToken) {
-                  throw new Error('No JWT token received from server');
-                }
-
-                // Store JWT token in store (this is the JWT from the backend)
-                dispatch(setToken(sessionToken));
-
-                // Call onSuccess callback if provided, otherwise navigate to onboarding
-                if (onSuccess) {
-                  onSuccess();
-                } else {
-                  navigate('/onboarding/step1');
-                }
-                setIsAuthenticating(false);
-              } catch (error) {
-                setIsAuthenticating(false);
-                console.error('Failed to complete authentication:', error);
-                // alert(error instanceof Error ? error.message : 'Authentication failed. Please try again.');
-              }
-            }
-          }
-        } catch (e) {
-          // Cross-origin or other error - this is expected, continue polling
-          // The postMessage handler will catch the auth completion
-        }
-      }, 500);
-
-      // Monitor popup closure
-      const checkClosed = setInterval(() => {
-        if (popup.closed && !authCompleted) {
-          clearInterval(checkClosed);
-          clearInterval(checkPopupUrl);
-          window.removeEventListener('message', messageHandler);
-          setIsAuthenticating(false);
-        }
-      }, 500);
-
-      // Timeout after 5 minutes
-      setTimeout(() => {
-        if (!authCompleted) {
-          if (!popup.closed) {
-            popup.close();
-          }
-          clearInterval(checkClosed);
-          clearInterval(checkPopupUrl);
-          window.removeEventListener('message', messageHandler);
-          setIsAuthenticating(false);
-          // alert('Authentication timed out. Please try again.');
-        }
-      }, 5 * 60 * 1000);
-    } catch (error) {
-      setIsAuthenticating(false);
-      console.error('Failed to start Telegram authentication:', error);
-      // alert(error instanceof Error ? error.message : 'Failed to start authentication. Please try again.');
-    }
+  const handleTelegramLogin = () => {
+    if (externalDisabled) return;
+    openUrl(`https://t.me/${TELEGRAM_BOT_USERNAME}?start=login`);
   };
 
-  const isDisabled = isAuthenticating || externalDisabled;
+  const isDisabled = externalDisabled;
 
   return (
     <button
@@ -305,7 +29,7 @@ const TelegramLoginButton = ({
       <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
         <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
       </svg>
-      <span>{isAuthenticating ? 'Authenticating...' : text}</span>
+      <span>{text}</span>
     </button>
   );
 };

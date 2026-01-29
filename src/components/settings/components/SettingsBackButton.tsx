@@ -6,8 +6,8 @@ interface SettingsBackButtonProps {
 
 const SettingsBackButton = ({
   onClick,
-  title = 'Settings',
-  className = ''
+  title = "Settings",
+  className = "",
 }: SettingsBackButtonProps) => {
   return (
     <div className={`bg-black/30 border-b border-stone-700 p-6 ${className}`}>

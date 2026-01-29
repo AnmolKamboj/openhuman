@@ -1,10 +1,10 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
-import { ErrorCategory, logAndFormatError } from '../../errorHandler';
-import { validateId } from '../../validation';
-import { getChatById } from '../telegramApi';
-import { mtprotoService } from '../../../../services/mtprotoService';
-import { Api } from 'telegram';
+import { ErrorCategory, logAndFormatError } from "../../errorHandler";
+import { validateId } from "../../validation";
+import { getChatById } from "../telegramApi";
+import { mtprotoService } from "../../../../services/mtprotoService";
+import { Api } from "telegram";
 
 export const tool: MCPTool = {
   name: "clear_draft",
@@ -23,10 +23,14 @@ export async function clearDraft(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const chatId = validateId(args.chat_id, 'chat_id');
+    const chatId = validateId(args.chat_id, "chat_id");
 
     const chat = getChatById(chatId);
-    if (!chat) return { content: [{ type: 'text', text: 'Chat not found: ' + chatId }], isError: true };
+    if (!chat)
+      return {
+        content: [{ type: "text", text: "Chat not found: " + chatId }],
+        isError: true,
+      };
 
     const client = mtprotoService.getClient();
     const entity = chat.username ? chat.username : chat.id;
@@ -36,15 +40,19 @@ export async function clearDraft(
       await client.invoke(
         new Api.messages.SaveDraft({
           peer: inputPeer,
-          message: '',
+          message: "",
         }),
       );
     });
 
-    return { content: [{ type: 'text', text: 'Draft cleared in chat ' + chatId + '.' }] };
+    return {
+      content: [
+        { type: "text", text: "Draft cleared in chat " + chatId + "." },
+      ],
+    };
   } catch (error) {
     return logAndFormatError(
-      'clear_draft',
+      "clear_draft",
       error instanceof Error ? error : new Error(String(error)),
       ErrorCategory.DRAFT,
     );

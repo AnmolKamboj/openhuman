@@ -79,11 +79,18 @@ State lives in `src/store/` using Redux Toolkit slices:
 - **socketSlice** — connection status, socket ID
 - **telegramSlice** — connection/auth status, chats, messages, threads (selectively persisted; loading/error states excluded)
 
-Redux Persist stores auth and telegram state to localStorage. The telegram slice has a complex nested structure in `src/store/telegram/` with separate files for types, reducers, extraReducers, and thunks.
+Redux Persist stores auth and telegram state (storage backend is configurable; default uses localStorage). The telegram slice has a complex nested structure in `src/store/telegram/` with separate files for types, reducers, extraReducers, and thunks.
+
+### LocalStorage
+
+- **Do not use `localStorage` (or `sessionStorage`) for app state or feature logic.** Use Redux (and Redux Persist where needed) instead.
+- **Remove any existing `localStorage` usage** when touching related code. User-scoped data (auth, onboarding, Telegram session, socket state) lives in Redux, keyed by user id where applicable. Telegram session is in `telegram.byUser[userId].sessionString`, not localStorage.
+- **Exceptions**: Redux-persist may use a localStorage-backed storage adapter by default; that is the persistence layer, not app logic. Any other remaining usage (e.g. deep-link `deepLinkHandled` flag) should be migrated to Redux or similar when that code is modified.
+- **General rule**: Avoid adding new `localStorage` or `sessionStorage` usage; prefer Redux and remove existing usage when you work on affected areas.
 
 ### Service Layer (Singletons)
 
-- **mtprotoService** (`src/services/mtprotoService.ts`) — Telegram MTProto client via `telegram` npm package. Session stored in localStorage as `telegram_session`. Auto-retries FLOOD_WAIT up to 60s.
+- **mtprotoService** (`src/services/mtprotoService.ts`) — Telegram MTProto client via `telegram` npm package. Session stored in Redux (`telegram.byUser[userId].sessionString`), not localStorage. Auto-retries FLOOD_WAIT up to 60s.
 - **socketService** (`src/services/socketService.ts`) — Socket.io client. Auth token passed in socket `auth` object (not query string). Transports: polling first, then WebSocket.
 - **apiClient** (`src/services/apiClient.ts`) — HTTP client for REST backend.
 
@@ -116,7 +123,7 @@ Web-to-desktop handoff using `outsourced://` URL scheme:
 4. Backend returns `sessionToken` + user object
 5. App stores session in Redux, navigates to onboarding/home
 
-Key file: `src/utils/desktopDeepLinkListener.ts` (lazy-loaded in `main.tsx`). Uses `localStorage.deepLinkHandled` flag to prevent infinite reload loops. Deep links do NOT work in `tauri dev` on macOS — must use built `.app` bundle.
+Key file: `src/utils/desktopDeepLinkListener.ts` (lazy-loaded in `main.tsx`). Uses a `deepLinkHandled` flag to prevent infinite reload loops. Deep links do NOT work in `tauri dev` on macOS — must use built `.app` bundle.
 
 ### Rust Backend (`src-tauri/src/lib.rs`)
 
@@ -180,6 +187,7 @@ Key updates from recent commits:
 
 ## Key Patterns
 
+- **No localStorage**: Avoid `localStorage` and `sessionStorage`; use Redux (and persist) for app state. Remove any direct usage when working on affected code.
 - **Modal System**: Settings modal uses `createPortal` pattern with URL-based routing. Clean white design (not glass morphism) for system settings. Navigate with `/settings` and `/settings/connections` paths.
 - **Component Reuse**: Connection management reuses `connectOptions` array and components from onboarding flow. Maintains consistent UX patterns across features.
 - **Redux Integration**: Settings modal integrates with existing slices - auth for logout, user for profile display, telegram for connection status. No new state management needed.

@@ -1,10 +1,10 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
-import { ErrorCategory, logAndFormatError } from '../../errorHandler';
-import { validateId } from '../../validation';
-import { mtprotoService } from '../../../../services/mtprotoService';
-import { Api } from 'telegram';
-import type { FullUserResult } from '../apiResultTypes';
+import { ErrorCategory, logAndFormatError } from "../../errorHandler";
+import { validateId } from "../../validation";
+import { mtprotoService } from "../../../../services/mtprotoService";
+import { Api } from "telegram";
+import type { FullUserResult } from "../apiResultTypes";
 import { toInputUser, narrow } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
@@ -24,7 +24,7 @@ export async function getBotInfo(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const botId = validateId(args.chat_id, 'chat_id');
+    const botId = validateId(args.chat_id, "chat_id");
     const client = mtprotoService.getClient();
 
     const result = await mtprotoService.withFloodWaitHandling(async () => {
@@ -38,30 +38,34 @@ export async function getBotInfo(
     const user = narrow<FullUserResult>(result)?.users?.[0];
 
     if (!user) {
-      return { content: [{ type: 'text', text: 'Bot not found: ' + botId }], isError: true };
+      return {
+        content: [{ type: "text", text: "Bot not found: " + botId }],
+        isError: true,
+      };
     }
 
-    const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Unknown';
+    const name =
+      [user.firstName, user.lastName].filter(Boolean).join(" ") || "Unknown";
     const lines = [
-      'Name: ' + name,
-      'Username: @' + (user.username ?? 'N/A'),
-      'ID: ' + user.id,
-      'Bot: ' + (user.bot ? 'Yes' : 'No'),
-      'About: ' + (fullUser?.about ?? 'N/A'),
-      'Bot Info Description: ' + (fullUser?.botInfo?.description ?? 'N/A'),
+      "Name: " + name,
+      "Username: @" + (user.username ?? "N/A"),
+      "ID: " + user.id,
+      "Bot: " + (user.bot ? "Yes" : "No"),
+      "About: " + (fullUser?.about ?? "N/A"),
+      "Bot Info Description: " + (fullUser?.botInfo?.description ?? "N/A"),
     ];
 
     if (fullUser?.botInfo?.commands) {
-      lines.push('Commands:');
+      lines.push("Commands:");
       for (const cmd of fullUser.botInfo.commands) {
-        lines.push('  /' + cmd.command + ' - ' + cmd.description);
+        lines.push("  /" + cmd.command + " - " + cmd.description);
       }
     }
 
-    return { content: [{ type: 'text', text: lines.join('\n') }] };
+    return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (error) {
     return logAndFormatError(
-      'get_bot_info',
+      "get_bot_info",
       error instanceof Error ? error : new Error(String(error)),
       ErrorCategory.CONTACT,
     );

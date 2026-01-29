@@ -1,22 +1,24 @@
-import { useEffect } from 'react';
-import { useAppSelector, useAppDispatch } from '../store/hooks';
-import { fetchCurrentUser } from '../store/userSlice';
+import { useEffect } from "react";
+import { useAppSelector, useAppDispatch } from "../store/hooks";
+import { fetchCurrentUser } from "../store/userSlice";
+import { clearToken } from "../store/authSlice";
 
 /**
- * UserProvider automatically fetches user data when JWT token is available
+ * UserProvider automatically fetches user data when JWT token is available.
+ * On fetch failure (e.g. expired token), logs out the user.
  */
 const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const dispatch = useAppDispatch();
   const token = useAppSelector((state) => state.auth.token);
-  const user = useAppSelector((state) => state.user.user);
-  const isLoading = useAppSelector((state) => state.user.isLoading);
 
   useEffect(() => {
-    // Fetch user data when token is available and user is not loaded
-    if (token && !user && !isLoading) {
-      dispatch(fetchCurrentUser());
-    }
-  }, [token, user, isLoading, dispatch]);
+    if (!token) return;
+    dispatch(fetchCurrentUser()).then((result) => {
+      if (fetchCurrentUser.rejected.match(result)) {
+        dispatch(clearToken());
+      }
+    });
+  }, [token, dispatch]);
 
   return <>{children}</>;
 };

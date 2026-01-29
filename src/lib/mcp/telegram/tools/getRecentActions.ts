@@ -1,13 +1,13 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
-import { ErrorCategory, logAndFormatError } from '../../errorHandler';
-import { validateId } from '../../validation';
-import { getChatById } from '../telegramApi';
-import { mtprotoService } from '../../../../services/mtprotoService';
-import { Api } from 'telegram';
-import bigInt from 'big-integer';
-import { optNumber } from '../args';
-import type { AdminLogResult } from '../apiResultTypes';
+import { ErrorCategory, logAndFormatError } from "../../errorHandler";
+import { validateId } from "../../validation";
+import { getChatById } from "../telegramApi";
+import { mtprotoService } from "../../../../services/mtprotoService";
+import { Api } from "telegram";
+import bigInt from "big-integer";
+import { optNumber } from "../args";
+import type { AdminLogResult } from "../apiResultTypes";
 import { toInputChannel, narrow } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
@@ -28,14 +28,26 @@ export async function getRecentActions(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const chatId = validateId(args.chat_id, 'chat_id');
-    const limit = optNumber(args, 'limit', 20);
+    const chatId = validateId(args.chat_id, "chat_id");
+    const limit = optNumber(args, "limit", 20);
 
     const chat = getChatById(chatId);
-    if (!chat) return { content: [{ type: 'text', text: 'Chat not found: ' + chatId }], isError: true };
+    if (!chat)
+      return {
+        content: [{ type: "text", text: "Chat not found: " + chatId }],
+        isError: true,
+      };
 
-    if (chat.type !== 'channel' && chat.type !== 'supergroup') {
-      return { content: [{ type: 'text', text: 'Recent actions are only available for channels/supergroups.' }], isError: true };
+    if (chat.type !== "channel" && chat.type !== "supergroup") {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Recent actions are only available for channels/supergroups.",
+          },
+        ],
+        isError: true,
+      };
     }
 
     const client = mtprotoService.getClient();
@@ -46,7 +58,7 @@ export async function getRecentActions(
       return client.invoke(
         new Api.channels.GetAdminLog({
           channel: toInputChannel(inputChannel),
-          q: '',
+          q: "",
           maxId: bigInt(0),
           minId: bigInt(0),
           limit,
@@ -56,19 +68,19 @@ export async function getRecentActions(
 
     const events = narrow<AdminLogResult>(result)?.events;
     if (!events || !Array.isArray(events) || events.length === 0) {
-      return { content: [{ type: 'text', text: 'No recent actions found.' }] };
+      return { content: [{ type: "text", text: "No recent actions found." }] };
     }
 
     const lines = events.map((e) => {
-      const date = e.date ? new Date(e.date * 1000).toISOString() : 'unknown';
-      const action = e.action?.className ?? 'unknown';
-      return date + ' | ' + action;
+      const date = e.date ? new Date(e.date * 1000).toISOString() : "unknown";
+      const action = e.action?.className ?? "unknown";
+      return date + " | " + action;
     });
 
-    return { content: [{ type: 'text', text: lines.join('\n') }] };
+    return { content: [{ type: "text", text: lines.join("\n") }] };
   } catch (error) {
     return logAndFormatError(
-      'get_recent_actions',
+      "get_recent_actions",
       error instanceof Error ? error : new Error(String(error)),
       ErrorCategory.ADMIN,
     );

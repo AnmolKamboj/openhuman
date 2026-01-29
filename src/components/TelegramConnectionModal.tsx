@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom';
-import { QRCodeSVG } from 'qrcode.react';
-import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
+import { QRCodeSVG } from "qrcode.react";
+import { useAppDispatch, useAppSelector } from "../store/hooks";
 import {
   initializeTelegram,
   connectTelegram,
@@ -9,9 +9,17 @@ import {
   setAuthStatus,
   setAuthError,
   setConnectionStatus,
-} from '../store/telegram';
-import { selectIsInitialized, selectConnectionStatus } from '../store/telegramSelectors';
-import { mtprotoService } from '../services/mtprotoService';
+  resetTelegramForUser,
+} from "../store/telegram";
+import {
+  selectIsInitialized,
+  selectConnectionStatus,
+  selectTelegramCurrentUserId,
+} from "../store/telegramSelectors";
+import { selectSocketStatus } from "../store/socketSelectors";
+import { mtprotoService } from "../services/mtprotoService";
+import { socketService } from "../services/socketService";
+import type { User } from "../types/api";
 
 interface TelegramConnectionModalProps {
   isOpen: boolean;
@@ -19,15 +27,30 @@ interface TelegramConnectionModalProps {
   onComplete: () => void;
 }
 
-type ConnectionStep = 'qr' | '2fa' | 'loading' | 'error';
+type ConnectionStep = "qr" | "2fa" | "loading" | "error";
 
-const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnectionModalProps) => {
+const TELEGRAM_ACCOUNT_MISMATCH_ERROR =
+  "This Telegram account doesn't match your logged-in account. Please use the Telegram account you signed up with.";
+
+function telegramMeIdMatchesUser(me: { id: unknown }, appUser: User): boolean {
+  return String(me.id) === String(appUser.telegramId);
+}
+
+const TelegramConnectionModal = ({
+  isOpen,
+  onClose,
+  onComplete,
+}: TelegramConnectionModalProps) => {
   const dispatch = useAppDispatch();
+  const user = useAppSelector((state) => state.user.user);
+  const userId = useAppSelector(selectTelegramCurrentUserId);
   const isInitialized = useAppSelector(selectIsInitialized);
   const connectionStatus = useAppSelector(selectConnectionStatus);
+  const socketStatus = useAppSelector(selectSocketStatus);
+  const token = useAppSelector((state) => state.auth.token);
 
-  const [currentStep, setCurrentStep] = useState<ConnectionStep>('qr');
-  const [password, setPassword] = useState('');
+  const [currentStep, setCurrentStep] = useState<ConnectionStep>("qr");
+  const [password, setPassword] = useState("");
   const [passwordHint, setPasswordHint] = useState<string | undefined>();
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [qrCodeExpires, setQrCodeExpires] = useState<number | null>(null);
@@ -35,53 +58,40 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  // Store password promise resolver
   const passwordResolverRef = useRef<((password: string) => void) | null>(null);
+  const qrFlowStartedRef = useRef(false);
 
-  // Initialize and connect when modal opens
+  // Ensure socket is connected when modal opens (e.g. for MCP / real-time features)
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      qrFlowStartedRef.current = false;
+      return;
+    }
+    if (token && socketStatus !== "connected") {
 
-    const init = async () => {
-      try {
-        setCurrentStep('loading');
-        if (!isInitialized) {
-          await dispatch(initializeTelegram()).unwrap();
-        }
-        if (connectionStatus !== 'connected') {
-          await dispatch(connectTelegram()).unwrap();
-        }
-        // Check if already authenticated (but don't fail if not authenticated)
-        try {
-          const authCheck = await dispatch(checkAuthStatus()).unwrap();
-          if (authCheck) {
-            onComplete();
-            onClose();
-            return;
-          }
-        } catch (err) {
-          // If checkAuthStatus fails, we're not authenticated - continue with QR flow
-          console.log('Not authenticated, proceeding with QR code flow');
-        }
-        // Start QR code flow
-        startQrCodeFlow();
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to initialize Telegram';
-        setError(errorMessage);
-        setCurrentStep('error');
-        dispatch(setConnectionStatus('error'));
-      }
-    };
+      socketService.connect(token);
+    }
+  }, [isOpen, token, socketStatus]);
 
-    init();
-  }, [isOpen, isInitialized, connectionStatus, dispatch, onComplete, onClose]);
+  const handleTelegramAccountMismatch = useCallback(async () => {
+    if (!userId) return;
+    setError(TELEGRAM_ACCOUNT_MISMATCH_ERROR);
+    setCurrentStep("error");
+    dispatch(setConnectionStatus({ userId, status: "error" }));
+    try {
+      await mtprotoService.clearSessionAndDisconnect(userId);
+    } catch (e) {
+      console.warn("clearSessionAndDisconnect failed:", e);
+    }
+    dispatch(resetTelegramForUser({ userId }));
+  }, [dispatch, userId]);
 
   const startQrCodeFlow = useCallback(async () => {
     try {
       setIsAuthenticating(true);
       setError(null);
-      setCurrentStep('qr');
-      setPassword('');
+      setCurrentStep("qr");
+      setPassword("");
       setPasswordHint(undefined);
       setQrCodeUrl(null);
       setQrCodeExpires(null);
@@ -94,15 +104,17 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
             // Convert Uint8Array to base64url
             const binary = Array.from(qrCode.token)
               .map((byte) => String.fromCharCode(byte))
-              .join('');
+              .join("");
             tokenBase64 = btoa(binary)
-              .replace(/\+/g, '-')
-              .replace(/\//g, '_')
-              .replace(/=/g, '');
+              .replace(/\+/g, "-")
+              .replace(/\//g, "_")
+              .replace(/=/g, "");
           } else {
             // If it's a Buffer, use toString
-            const buffer = qrCode.token as { toString: (encoding: string) => string };
-            tokenBase64 = buffer.toString('base64url');
+            const buffer = qrCode.token as {
+              toString: (encoding: string) => string;
+            };
+            tokenBase64 = buffer.toString("base64url");
           }
           const url = `tg://login?token=${tokenBase64}`;
           setQrCodeUrl(url);
@@ -110,17 +122,20 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
         },
         async (hint) => {
           // 2FA password required
-          console.log('Password callback invoked with hint:', hint);
+          console.log("Password callback invoked with hint:", hint);
           setPasswordHint(hint);
-          setCurrentStep('2fa');
+          setCurrentStep("2fa");
           setIsAuthenticating(false);
 
           // Wait for user to enter password
           return new Promise<string>((resolve, reject) => {
             passwordResolverRef.current = (password: string) => {
-              console.log('Password resolved in callback, sending to Telegram:', password ? '***' : 'empty');
+              console.log(
+                "Password resolved in callback, sending to Telegram:",
+                password ? "***" : "empty",
+              );
               if (!password || !password.trim()) {
-                reject(new Error('Password is required'));
+                reject(new Error("Password is required"));
                 return;
               }
               resolve(password.trim());
@@ -129,8 +144,10 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
             // Set a timeout to prevent hanging forever
             setTimeout(() => {
               if (passwordResolverRef.current) {
-                console.warn('Password callback timeout - no password provided');
-                reject(new Error('Password input timeout'));
+                console.warn(
+                  "Password callback timeout - no password provided",
+                );
+                reject(new Error("Password input timeout"));
                 passwordResolverRef.current = null;
               }
             }, 300000); // 5 minutes timeout
@@ -138,64 +155,144 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
         },
         async (err) => {
           // Handle errors
-          const errorMessage = err.message || 'Authentication error';
+          const errorMessage = err.message || "Authentication error";
 
           // Check if it's a 2FA password needed error
-          if (errorMessage.includes('SESSION_PASSWORD_NEEDED') || errorMessage.includes('PASSWORD')) {
+          if (
+            errorMessage.includes("SESSION_PASSWORD_NEEDED") ||
+            errorMessage.includes("PASSWORD")
+          ) {
             // This should trigger the password callback, but if it doesn't, handle it here
             setPasswordHint(undefined);
-            setCurrentStep('2fa');
+            setCurrentStep("2fa");
             setIsAuthenticating(false);
             // Don't stop authentication - let the password callback handle it
             return false;
           }
 
           setError(errorMessage);
-          dispatch(setAuthError(errorMessage));
+          dispatch(setAuthError({ userId, error: errorMessage }));
 
           // Check if it's a cancellation
-          if (errorMessage.includes('AUTH_USER_CANCEL') || errorMessage.includes('cancel')) {
-            setCurrentStep('qr');
+          if (
+            errorMessage.includes("AUTH_USER_CANCEL") ||
+            errorMessage.includes("cancel")
+          ) {
+            setCurrentStep("qr");
             setIsAuthenticating(false);
             return true; // Stop authentication
           }
 
           return false; // Continue
-        }
+        },
       );
 
-      // Authentication successful
       setIsAuthenticating(false);
+      let me: { id: unknown } | null = null;
       try {
-        await dispatch(checkAuthStatus()).unwrap();
+        me = await dispatch(checkAuthStatus(userId)).unwrap();
       } catch (err) {
-        // Even if checkAuthStatus fails, we know we just authenticated
-        console.warn('checkAuthStatus failed after authentication, but continuing:', err);
+        console.warn("checkAuthStatus failed after authentication:", err);
       }
-      dispatch(setAuthStatus('authenticated'));
+      if (!user) {
+        setError("Could not verify account. Please try again.");
+        setCurrentStep("error");
+        dispatch(setConnectionStatus({ userId, status: "error" }));
+        return;
+      }
+      if (!me || !telegramMeIdMatchesUser(me, user)) {
+        await handleTelegramAccountMismatch();
+        return;
+      }
+      dispatch(setAuthStatus({ userId, status: "authenticated" }));
       onComplete();
       onClose();
     } catch (err) {
       setIsAuthenticating(false);
-      const errorMessage = err instanceof Error ? err.message : 'Authentication failed';
+      const errorMessage =
+        err instanceof Error ? err.message : "Authentication failed";
 
-      // If it's a password needed error, we should already be on the 2FA step
-      // Don't show it as an error, just log it
-      if (errorMessage.includes('SESSION_PASSWORD_NEEDED')) {
-        console.log('Password required - user should be on 2FA step');
-        // If we're not on 2FA step, switch to it
-        if (currentStep !== '2fa') {
-          setCurrentStep('2fa');
+      if (errorMessage.includes("SESSION_PASSWORD_NEEDED")) {
+        console.log("Password required - user should be on 2FA step");
+        if (currentStep !== "2fa") {
+          setCurrentStep("2fa");
           setPasswordHint(undefined);
         }
-        return; // Don't show error, password callback should handle it
+        return;
       }
 
       setError(errorMessage);
-      setCurrentStep('error');
-      dispatch(setAuthError(errorMessage));
+      setCurrentStep("error");
+      dispatch(setAuthError({ userId, error: errorMessage }));
     }
-  }, [dispatch, onComplete, onClose]);
+  }, [
+    dispatch,
+    onComplete,
+    onClose,
+    user,
+    userId,
+    handleTelegramAccountMismatch,
+  ]);
+
+  useEffect(() => {
+    if (!isOpen || !userId) return;
+    if (qrFlowStartedRef.current) return;
+
+    const init = async () => {
+      try {
+        setCurrentStep("loading");
+        if (!isInitialized) {
+          await dispatch(initializeTelegram(userId)).unwrap();
+        }
+        if (connectionStatus !== "connected") {
+          await dispatch(connectTelegram(userId)).unwrap();
+        }
+        try {
+          const authCheck = await dispatch(checkAuthStatus(userId)).unwrap();
+          if (authCheck) {
+            if (!user) {
+              setError("Could not verify account. Please try again.");
+              setCurrentStep("error");
+              dispatch(setConnectionStatus({ userId, status: "error" }));
+              return;
+            }
+            if (!telegramMeIdMatchesUser(authCheck, user)) {
+              await handleTelegramAccountMismatch();
+              return;
+            }
+            onComplete();
+            onClose();
+            return;
+          }
+        } catch (err) {
+          console.log("Not authenticated, proceeding with QR code flow");
+        }
+        if (qrFlowStartedRef.current) return;
+        qrFlowStartedRef.current = true;
+        await startQrCodeFlow();
+      } catch (err) {
+        qrFlowStartedRef.current = false;
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to initialize Telegram";
+        setError(errorMessage);
+        setCurrentStep("error");
+        dispatch(setConnectionStatus({ userId, status: "error" }));
+      }
+    };
+
+    void init();
+  }, [
+    isOpen,
+    isInitialized,
+    connectionStatus,
+    dispatch,
+    onComplete,
+    onClose,
+    user,
+    userId,
+    handleTelegramAccountMismatch,
+    startQrCodeFlow,
+  ]);
 
   // Update countdown timer every second and reload QR code on timeout
   useEffect(() => {
@@ -205,11 +302,14 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
     }
 
     const updateTimer = () => {
-      const remaining = Math.max(0, Math.floor((qrCodeExpires * 1000 - Date.now()) / 1000));
+      const remaining = Math.max(
+        0,
+        Math.floor((qrCodeExpires * 1000 - Date.now()) / 1000),
+      );
       setTimeRemaining(remaining);
 
       // If timer reaches 0 and we're on QR step, reload the QR code
-      if (remaining === 0 && currentStep === 'qr' && !isAuthenticating) {
+      if (remaining === 0 && currentStep === "qr" && !isAuthenticating) {
         startQrCodeFlow();
       }
     };
@@ -225,68 +325,92 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
 
   // Poll authentication status every 5 seconds when QR code is displayed
   useEffect(() => {
-    if (currentStep !== 'qr' || !qrCodeUrl || isAuthenticating) {
+    if (currentStep !== "qr" || !qrCodeUrl || isAuthenticating) {
       return;
     }
 
-    const checkAuthStatus = async () => {
+    const pollAuthStatus = async () => {
       try {
+        if (!mtprotoService.isReady()) return;
         const client = mtprotoService.getClient();
-        if (!client) return;
-
         const isAuthorized = await client.checkAuthorization();
 
         if (isAuthorized) {
-          // User is authenticated - check if we need password
           try {
-            // Try to get user info - if this fails with SESSION_PASSWORD_NEEDED, we need password
-            await client.getMe();
-            // If getMe succeeds, authentication is complete
-            console.log('QR code scanned and authenticated successfully');
-            // The signInWithQrCode promise should resolve, but if it doesn't, trigger completion
+            const me = await client.getMe();
+            if (!user) {
+              setError("Could not verify account. Please try again.");
+              setCurrentStep("error");
+              dispatch(setConnectionStatus({ userId, status: "error" }));
+              setIsAuthenticating(false);
+              return;
+            }
+            if (!telegramMeIdMatchesUser(me, user)) {
+              setIsAuthenticating(false);
+              await handleTelegramAccountMismatch();
+              return;
+            }
+            console.log("QR code scanned and authenticated successfully");
             setIsAuthenticating(false);
-            dispatch(setAuthStatus('authenticated'));
+            dispatch(setAuthStatus({ userId, status: "authenticated" }));
             onComplete();
             onClose();
           } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : String(err);
-            if (errorMessage.includes('SESSION_PASSWORD_NEEDED') || errorMessage.includes('PASSWORD')) {
-              // Need password - switch to 2FA step
-              console.log('Password required after QR scan - switching to 2FA step');
-              if (currentStep === 'qr' && !passwordResolverRef.current) {
-                // Trigger password callback manually if it wasn't called
+            const errorMessage =
+              err instanceof Error ? err.message : String(err);
+            if (
+              errorMessage.includes("SESSION_PASSWORD_NEEDED") ||
+              errorMessage.includes("PASSWORD")
+            ) {
+              console.log(
+                "Password required after QR scan - switching to 2FA step",
+              );
+              if (currentStep === "qr" && !passwordResolverRef.current) {
                 setPasswordHint(undefined);
-                setCurrentStep('2fa');
+                setCurrentStep("2fa");
                 setIsAuthenticating(false);
               }
             }
           }
         }
       } catch (err) {
-        // Ignore errors during polling - they're expected if not authenticated yet
-        console.debug('Auth status check:', err instanceof Error ? err.message : String(err));
+        console.debug(
+          "Auth status check:",
+          err instanceof Error ? err.message : String(err),
+        );
       }
     };
 
-    // Check immediately, then every 5 seconds
-    checkAuthStatus();
-    const interval = setInterval(checkAuthStatus, 5000);
+    pollAuthStatus();
+    const interval = setInterval(pollAuthStatus, 5000);
 
     return () => clearInterval(interval);
-  }, [currentStep, qrCodeUrl, isAuthenticating, dispatch, onComplete, onClose]);
+  }, [
+    currentStep,
+    qrCodeUrl,
+    isAuthenticating,
+    dispatch,
+    onComplete,
+    onClose,
+    user,
+    userId,
+    handleTelegramAccountMismatch,
+  ]);
 
   const handle2FASubmit = async () => {
     const passwordValue = password.trim();
 
     if (!passwordValue) {
-      setError('Please enter your password');
+      setError("Please enter your password");
       return;
     }
 
     if (!passwordResolverRef.current) {
-      console.error('Password resolver is null - password callback may not be active');
-      setError('Authentication session expired. Please try again.');
-      setCurrentStep('qr');
+      console.error(
+        "Password resolver is null - password callback may not be active",
+      );
+      setError("Authentication session expired. Please try again.");
+      setCurrentStep("qr");
       return;
     }
 
@@ -299,7 +423,7 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
       const resolver = passwordResolverRef.current;
       passwordResolverRef.current = null; // Clear before resolving to prevent double calls
 
-      console.log('Resolving password promise - sending password to Telegram');
+      console.log("Resolving password promise - sending password to Telegram");
       resolver(passwordValue);
 
       // The authentication will continue in the background via signInWithQrCode
@@ -307,20 +431,21 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
       // We keep isAuthenticating true until the promise resolves or rejects
     } catch (err) {
       setIsAuthenticating(false);
-      const errorMessage = err instanceof Error ? err.message : 'Password verification failed';
+      const errorMessage =
+        err instanceof Error ? err.message : "Password verification failed";
       setError(errorMessage);
-      dispatch(setAuthError(errorMessage));
-      console.error('Error in handle2FASubmit:', err);
+      dispatch(setAuthError({ userId, error: errorMessage }));
+      console.error("Error in handle2FASubmit:", err);
     }
   };
 
   const handleBack = () => {
-    if (currentStep === '2fa') {
-      setCurrentStep('qr');
-      setPassword('');
+    if (currentStep === "2fa") {
+      setCurrentStep("qr");
+      setPassword("");
       setPasswordHint(undefined);
       if (passwordResolverRef.current) {
-        passwordResolverRef.current('');
+        passwordResolverRef.current("");
         passwordResolverRef.current = null;
       }
     } else {
@@ -328,12 +453,27 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
     }
   };
 
-  const handleRetry = () => {
+  const handleRetry = async () => {
+    if (!userId) return;
     setError(null);
-    setPassword('');
+    setPassword("");
     setPasswordHint(undefined);
     setQrCodeUrl(null);
     setQrCodeExpires(null);
+    setCurrentStep("loading");
+    try {
+      if (!isInitialized) {
+        await dispatch(initializeTelegram(userId)).unwrap();
+      }
+      if (connectionStatus !== "connected") {
+        await dispatch(connectTelegram(userId)).unwrap();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to initialize");
+      setCurrentStep("error");
+      dispatch(setConnectionStatus({ userId, status: "error" }));
+      return;
+    }
     startQrCodeFlow();
   };
 
@@ -343,22 +483,22 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
     <div
       className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center"
       style={{
-        position: 'fixed',
+        position: "fixed",
         top: 0,
         left: 0,
         right: 0,
         bottom: 0,
-        width: '100vw',
-        height: '100vh',
-        zIndex: 9999
+        width: "100vw",
+        height: "100vh",
+        zIndex: 9999,
       }}
     >
       <div
         className="bg-black/90 shadow-large animate-fade-up max-w-4xl max-h-[90vh] overflow-y-auto flex flex-col items-center justify-center rounded-3xl focus:outline-none"
         style={{
-          maxWidth: '56rem',
-          maxHeight: '90vh',
-          padding: 0
+          maxWidth: "56rem",
+          maxHeight: "90vh",
+          padding: 0,
         }}
       >
         {/* Close button */}
@@ -366,27 +506,49 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
           onClick={onClose}
           className="absolute top-6 right-6 z-10 w-8 h-8 flex items-center justify-center rounded-full hover:bg-stone-800/50 transition-colors"
         >
-          <svg className="w-5 h-5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          <svg
+            className="w-5 h-5 opacity-70"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
           </svg>
         </button>
 
-        {currentStep === 'loading' ? (
+        {currentStep === "loading" ? (
           <div className="text-center py-8 flex flex-col items-center justify-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500 mb-4"></div>
             <p className="opacity-70">Initializing Telegram connection...</p>
           </div>
-        ) : currentStep === 'error' ? (
+        ) : currentStep === "error" ? (
           <>
             {/* Error Screen */}
             <div className="text-center flex flex-col items-center justify-center">
               <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <svg
+                  className="w-8 h-8 text-red-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </div>
               <h2 className="text-2xl font-bold mb-2">Connection Error</h2>
-              <p className="opacity-70 text-sm mb-6">{error || 'An error occurred'}</p>
+              <p className="opacity-70 text-sm mb-6">
+                {error || "An error occurred"}
+              </p>
               <div className="flex space-x-3">
                 <button
                   onClick={handleBack}
@@ -403,7 +565,7 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
               </div>
             </div>
           </>
-        ) : currentStep === 'qr' ? (
+        ) : currentStep === "qr" ? (
           <>
             {/* QR Code Screen */}
             <div className="text-center flex flex-col items-center justify-center w-full">
@@ -428,10 +590,14 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
                       {isAuthenticating ? (
                         <div className="text-center">
                           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                          <p className="text-gray-600 text-sm">Generating QR code...</p>
+                          <p className="text-gray-600 text-sm">
+                            Generating QR code...
+                          </p>
                         </div>
                       ) : (
-                        <p className="text-gray-600 text-sm">Loading QR code...</p>
+                        <p className="text-gray-600 text-sm">
+                          Loading QR code...
+                        </p>
                       )}
                     </div>
                   )}
@@ -456,21 +622,27 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
                   <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                     <span className="text-white font-bold text-xs">1</span>
                   </div>
-                  <p className="opacity-90 text-sm">Open Telegram on your phone</p>
+                  <p className="opacity-90 text-sm">
+                    Open Telegram on your phone
+                  </p>
                 </div>
 
                 <div className="flex items-start space-x-3 text-left">
                   <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                     <span className="text-white font-bold text-xs">2</span>
                   </div>
-                  <p className="opacity-90 text-sm">Go to Settings &gt; Devices &gt; Link Desktop Device</p>
+                  <p className="opacity-90 text-sm">
+                    Go to Settings &gt; Devices &gt; Link Desktop Device
+                  </p>
                 </div>
 
                 <div className="flex items-start space-x-3 text-left">
                   <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                     <span className="text-white font-bold text-xs">3</span>
                   </div>
-                  <p className="opacity-90 text-sm">Point your phone at this screen to confirm login</p>
+                  <p className="opacity-90 text-sm">
+                    Point your phone at this screen to confirm login
+                  </p>
                 </div>
               </div>
             </div>
@@ -483,7 +655,7 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
               <p className="opacity-70 text-sm mb-6">
                 {passwordHint
                   ? `Your account is protected with two-step verification. Hint: ${passwordHint}`
-                  : 'Your account is protected with two-step verification. Please enter your password to continue.'}
+                  : "Your account is protected with two-step verification. Please enter your password to continue."}
               </p>
 
               {error && (
@@ -499,7 +671,11 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && password.trim() && !isAuthenticating) {
+                    if (
+                      e.key === "Enter" &&
+                      password.trim() &&
+                      !isAuthenticating
+                    ) {
                       handle2FASubmit();
                     }
                   }}
@@ -531,7 +707,7 @@ const TelegramConnectionModal = ({ isOpen, onClose, onComplete }: TelegramConnec
                   disabled={!password.trim() || isAuthenticating}
                   className="flex-1 py-2.5 px-4 bg-primary-500 hover:bg-primary-600 active:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-medium transition-all duration-200"
                 >
-                  {isAuthenticating ? 'Verifying...' : 'Continue'}
+                  {isAuthenticating ? "Verifying..." : "Continue"}
                 </button>
               </div>
             </div>

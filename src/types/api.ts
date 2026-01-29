@@ -16,7 +16,7 @@ export interface ApiError {
 // User types based on backend ITgUser model
 export interface UserSubscription {
   hasActiveSubscription: boolean;
-  plan: 'FREE' | 'BASIC' | 'PRO';
+  plan: "FREE" | "BASIC" | "PRO";
   planExpiry?: string;
   stripeCustomerId?: string;
 }
@@ -42,20 +42,20 @@ export interface UserSettings {
   dailySummaryUtcTriggerHour?: number;
   dailySummaryChatIds: number[];
   autoCompleteEnabled: boolean;
-  autoCompleteVisibility: 'always' | 'groups_only' | 'private_chats_only';
+  autoCompleteVisibility: "always" | "groups_only" | "private_chats_only";
   autoCompleteWhitelistChatIds: number[];
   autoCompleteBlacklistChatIds: number[];
 }
 
 export interface User {
-  id: string;
+  _id: string;
   telegramId: number;
   hasAccess: boolean;
   magicWord: string;
   referral: UserReferral;
   subscription: UserSubscription;
   usage: UserUsage;
-  role: 'admin' | 'team' | 'user';
+  role: "admin" | "team" | "user";
   settings: UserSettings;
   autoDeleteTelegramMessagesAfterDays: number;
   autoDeleteThreadsAfterDays: number;

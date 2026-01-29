@@ -1,50 +1,54 @@
-import { createAsyncThunk } from '@reduxjs/toolkit';
-import { mtprotoService } from '../../services/mtprotoService';
-import type { TelegramUser } from './types';
+import { createAsyncThunk } from "@reduxjs/toolkit";
+import { mtprotoService } from "../../services/mtprotoService";
+import type { TelegramUser } from "./types";
+import type { RootState } from "../index";
 
 // Global flag to prevent concurrent checkAuthStatus calls
 let isCheckingAuth = false;
 let lastCheckTime = 0;
-const MIN_CHECK_INTERVAL = 5000; // 5 seconds minimum between checks
+const MIN_CHECK_INTERVAL = 5000;
 
 export const initializeTelegram = createAsyncThunk(
-  'telegram/initialize',
-  async (_, { rejectWithValue }) => {
+  "telegram/initialize",
+  async (userId: string, { rejectWithValue }) => {
     try {
-      await mtprotoService.initialize();
+      await mtprotoService.initialize(userId);
       const sessionString = mtprotoService.getSessionString();
       return { sessionString };
     } catch (error) {
       return rejectWithValue(
-        error instanceof Error ? error.message : 'Failed to initialize Telegram client'
+        error instanceof Error
+          ? error.message
+          : "Failed to initialize Telegram client",
       );
     }
-  }
+  },
 );
 
 export const connectTelegram = createAsyncThunk(
-  'telegram/connect',
-  async (_, { rejectWithValue }) => {
+  "telegram/connect",
+  async (_userId: string, { rejectWithValue }) => {
     try {
       await mtprotoService.connect();
       return true;
     } catch (error) {
       return rejectWithValue(
-        error instanceof Error ? error.message : 'Failed to connect to Telegram'
+        error instanceof Error
+          ? error.message
+          : "Failed to connect to Telegram",
       );
     }
-  }
+  },
 );
 
 export const checkAuthStatus = createAsyncThunk(
-  'telegram/checkAuthStatus',
-  async (_, { rejectWithValue, getState }) => {
-    // Prevent concurrent calls
+  "telegram/checkAuthStatus",
+  async (userId: string, { rejectWithValue, getState }) => {
     const now = Date.now();
     if (isCheckingAuth && now - lastCheckTime < MIN_CHECK_INTERVAL) {
-      // Return current state instead of making another call
-      const state = getState() as { telegram: { authStatus: string; currentUser: TelegramUser | null } };
-      return state.telegram.currentUser || null;
+      const state = getState() as RootState;
+      const u = state.telegram.byUser[userId];
+      return (u?.currentUser as TelegramUser) || null;
     }
 
     isCheckingAuth = true;
@@ -52,16 +56,13 @@ export const checkAuthStatus = createAsyncThunk(
 
     try {
       const client = mtprotoService.getClient();
-      
-      // First check if we're authorized without making API calls
       const isAuthorized = await client.checkAuthorization();
-      
+
       if (!isAuthorized) {
         isCheckingAuth = false;
         return null;
       }
-      
-      // Only call getMe() if we're authorized, with FLOOD_WAIT handling
+
       try {
         const me = await mtprotoService.withFloodWaitHandling(async () => {
           return client.getMe();
@@ -69,29 +70,28 @@ export const checkAuthStatus = createAsyncThunk(
         isCheckingAuth = false;
         return me;
       } catch (error) {
-        // If getMe() fails, we're not actually authorized
-        // This can happen if the session is invalid
-        console.warn('getMe() failed, user not authenticated:', error);
+        console.warn("getMe() failed, user not authenticated:", error);
         isCheckingAuth = false;
         return null;
       }
     } catch (error) {
       isCheckingAuth = false;
-      // If checkAuthorization itself fails, we're definitely not authenticated
-      // Don't treat this as an error, just return null
-      if (error instanceof Error && error.message.includes('AUTH_KEY_UNREGISTERED')) {
+      if (
+        error instanceof Error &&
+        error.message.includes("AUTH_KEY_UNREGISTERED")
+      ) {
         return null;
       }
       return rejectWithValue(
-        error instanceof Error ? error.message : 'Failed to check auth status'
+        error instanceof Error ? error.message : "Failed to check auth status",
       );
     }
-  }
+  },
 );
 
 export const fetchChats = createAsyncThunk(
-  'telegram/fetchChats',
-  async (_, { rejectWithValue }) => {
+  "telegram/fetchChats",
+  async (_userId: string, { rejectWithValue }) => {
     try {
       const client = mtprotoService.getClient();
       const dialogs = await mtprotoService.withFloodWaitHandling(async () => {
@@ -100,30 +100,34 @@ export const fetchChats = createAsyncThunk(
       return dialogs;
     } catch (error) {
       return rejectWithValue(
-        error instanceof Error ? error.message : 'Failed to fetch chats'
+        error instanceof Error ? error.message : "Failed to fetch chats",
       );
     }
-  }
+  },
 );
 
 export const fetchMessages = createAsyncThunk(
-  'telegram/fetchMessages',
+  "telegram/fetchMessages",
   async (
-    { chatId, limit = 50, offsetId }: { chatId: string; limit?: number; offsetId?: number },
-    { rejectWithValue }
+    {
+      userId: _userId,
+      chatId,
+      limit = 50,
+      offsetId,
+    }: { userId: string; chatId: string; limit?: number; offsetId?: number },
+    { rejectWithValue },
   ) => {
     try {
+      void _userId;
       const client = mtprotoService.getClient();
-      // Implementation depends on GramJS API
-      // This is a placeholder - adjust based on actual API
       const messages = await mtprotoService.withFloodWaitHandling(async () => {
         return client.getMessages(chatId, { limit, offsetId });
       });
       return { chatId, messages };
     } catch (error) {
       return rejectWithValue(
-        error instanceof Error ? error.message : 'Failed to fetch messages'
+        error instanceof Error ? error.message : "Failed to fetch messages",
       );
     }
-  }
+  },
 );

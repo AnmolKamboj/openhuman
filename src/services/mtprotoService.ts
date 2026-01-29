@@ -1,8 +1,10 @@
-import { TelegramClient } from 'telegram';
-import { StringSession } from 'telegram/sessions';
-import type { UserAuthParams, BotAuthParams } from 'telegram/client/auth';
-import { FloodWaitError } from 'telegram/errors';
-import { TELEGRAM_API_ID, TELEGRAM_API_HASH } from '../utils/config';
+import { TelegramClient } from "telegram";
+import { StringSession } from "telegram/sessions";
+import type { UserAuthParams, BotAuthParams } from "telegram/client/auth";
+import { FloodWaitError } from "telegram/errors";
+import { TELEGRAM_API_ID, TELEGRAM_API_HASH } from "../utils/config";
+import { store } from "../store";
+import { setSessionString } from "../store/telegram";
 
 type LoginOptions = UserAuthParams | BotAuthParams;
 
@@ -11,7 +13,8 @@ class MTProtoService {
   private client: TelegramClient | undefined;
   private isInitialized = false;
   private isConnected = false;
-  private sessionString = '';
+  private sessionString = "";
+  private userId: string | null = null;
   private readonly apiId: number;
   private readonly apiHash: string;
 
@@ -19,7 +22,9 @@ class MTProtoService {
     // Private constructor to enforce singleton
     // Load API credentials from config once
     if (!TELEGRAM_API_ID || !TELEGRAM_API_HASH) {
-      throw new Error('TELEGRAM_API_ID and TELEGRAM_API_HASH must be configured');
+      throw new Error(
+        "TELEGRAM_API_ID and TELEGRAM_API_HASH must be configured",
+      );
     }
     this.apiId = TELEGRAM_API_ID;
     this.apiHash = TELEGRAM_API_HASH;
@@ -33,30 +38,39 @@ class MTProtoService {
   }
 
   /**
-   * Initialize the MTProto client with API credentials
+   * Initialize the MTProto client with API credentials.
+   * Session is stored in Redux (telegram.byUser[userId].sessionString).
    */
-  async initialize(): Promise<void> {
-    if (this.isInitialized && this.client) {
-      console.log('MTProto client already initialized');
+  async initialize(userId: string): Promise<void> {
+    if (this.isInitialized && this.client && this.userId === userId) {
       return;
     }
+    if (this.isInitialized && this.userId !== null && this.userId !== userId) {
+      await this.clearSessionAndDisconnect(this.userId);
+    }
 
-    const sessionString = this.loadSession() || '';
+    this.userId = userId;
+    const sessionString = this.loadSession() || "";
 
     try {
       const stringSession = new StringSession(sessionString);
       this.sessionString = sessionString;
 
-      this.client = new TelegramClient(stringSession, this.apiId, this.apiHash, {
-        connectionRetries: 5,
-        requestRetries: 5,
-        floodSleepThreshold: 60, // Auto-retry FLOOD_WAIT errors up to 60 seconds
-      });
+      this.client = new TelegramClient(
+        stringSession,
+        this.apiId,
+        this.apiHash,
+        {
+          connectionRetries: 5,
+          requestRetries: 5,
+          floodSleepThreshold: 60, // Auto-retry FLOOD_WAIT errors up to 60 seconds
+        },
+      );
 
       this.isInitialized = true;
-      console.log('MTProto client initialized successfully');
+      console.log("MTProto client initialized successfully");
     } catch (error) {
-      console.error('Failed to initialize MTProto client:', error);
+      console.error("Failed to initialize MTProto client:", error);
       throw error;
     }
   }
@@ -66,28 +80,30 @@ class MTProtoService {
    */
   async connect(): Promise<void> {
     if (!this.client) {
-      throw new Error('MTProto client not initialized. Call initialize() first.');
+      throw new Error(
+        "MTProto client not initialized. Call initialize() first.",
+      );
     }
 
     if (this.isConnected) {
-      console.log('Already connected to Telegram');
+      console.log("Already connected to Telegram");
       return;
     }
 
     try {
       await this.client.connect();
       this.isConnected = true;
-      console.log('Connected to Telegram successfully');
+      console.log("Connected to Telegram successfully");
 
       // Save session string if it changed
       const newSessionString = this.client.session.save() as string | undefined;
       if (newSessionString && newSessionString !== this.sessionString) {
         this.sessionString = newSessionString;
         this.saveSession(newSessionString);
-        console.log('Session updated and saved');
+        console.log("Session updated and saved");
       }
     } catch (error) {
-      console.error('Failed to connect to Telegram:', error);
+      console.error("Failed to connect to Telegram:", error);
       throw error;
     }
   }
@@ -97,7 +113,9 @@ class MTProtoService {
    */
   async start(options: LoginOptions): Promise<void> {
     if (!this.client) {
-      throw new Error('MTProto client not initialized. Call initialize() first.');
+      throw new Error(
+        "MTProto client not initialized. Call initialize() first.",
+      );
     }
 
     try {
@@ -108,10 +126,10 @@ class MTProtoService {
       if (newSessionString && newSessionString !== this.sessionString) {
         this.sessionString = newSessionString;
         this.saveSession(newSessionString);
-        console.log('Authentication successful, session saved');
+        console.log("Authentication successful, session saved");
       }
     } catch (error) {
-      console.error('Authentication failed:', error);
+      console.error("Authentication failed:", error);
       throw error;
     }
   }
@@ -122,10 +140,13 @@ class MTProtoService {
   async signInWithQrCode(
     qrCodeCallback: (qrCode: { token: Buffer; expires: number }) => void,
     passwordCallback?: (hint?: string) => Promise<string>,
-    onError?: (err: Error) => Promise<boolean> | void
+    onError?: (err: Error) => Promise<boolean> | void,
   ): Promise<unknown> {
+    console.log("signInWithQrCode");
     if (!this.client) {
-      throw new Error('MTProto client not initialized. Call initialize() first.');
+      throw new Error(
+        "MTProto client not initialized. Call initialize() first.",
+      );
     }
 
     try {
@@ -143,8 +164,11 @@ class MTProtoService {
             // If password callback is provided and we get SESSION_PASSWORD_NEEDED,
             // the password callback should handle it, but if onError is called first,
             // we need to let it through
-            const errorMessage = err.message || '';
-            if (errorMessage.includes('SESSION_PASSWORD_NEEDED') && passwordCallback) {
+            const errorMessage = err.message || "";
+            if (
+              errorMessage.includes("SESSION_PASSWORD_NEEDED") &&
+              passwordCallback
+            ) {
               // Don't stop - let the password callback handle it
               if (onError) {
                 const result = await onError(err);
@@ -152,15 +176,15 @@ class MTProtoService {
               }
               return false;
             }
-            
+
             if (onError) {
               const result = await onError(err);
               return result ?? false;
             }
-            console.error('QR code auth error:', err);
+            console.error("QR code auth error:", err);
             return false;
           },
-        }
+        },
       );
 
       // Save session after successful login
@@ -168,25 +192,28 @@ class MTProtoService {
       if (newSessionString && newSessionString !== this.sessionString) {
         this.sessionString = newSessionString;
         this.saveSession(newSessionString);
-        console.log('QR code authentication successful, session saved');
+        console.log("QR code authentication successful, session saved");
       }
 
       return user;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
       // If it's a password needed error, the password callback should have been invoked
       // by the library. If we're here, it means either:
       // 1. The password callback wasn't provided
       // 2. The password callback failed
       // 3. The library threw before invoking the callback
       // In any case, we should let the caller handle it
-      if (errorMessage.includes('SESSION_PASSWORD_NEEDED')) {
-        console.log('SESSION_PASSWORD_NEEDED - password callback should handle this');
+      if (errorMessage.includes("SESSION_PASSWORD_NEEDED")) {
+        console.log(
+          "SESSION_PASSWORD_NEEDED - password callback should handle this",
+        );
         // Don't log as error - this is expected when 2FA is enabled
         // The password callback should be invoked by the library
       } else {
-        console.error('QR code authentication failed:', error);
+        console.error("QR code authentication failed:", error);
       }
       throw error;
     }
@@ -198,7 +225,9 @@ class MTProtoService {
    */
   getClient(): TelegramClient {
     if (!this.client || !this.isInitialized) {
-      throw new Error('MTProto client not initialized. Call initialize() first.');
+      throw new Error(
+        "MTProto client not initialized. Call initialize() first.",
+      );
     }
     return this.client;
   }
@@ -229,11 +258,11 @@ class MTProtoService {
    * This calls getMe() which also updates the user's online status on Telegram
    * Automatically initializes and connects if needed
    */
-  async checkConnection(): Promise<boolean> {
+  async checkConnection(userId?: string): Promise<boolean> {
     try {
-      // Initialize if not already initialized
       if (!this.isInitialized || !this.client) {
-        await this.initialize();
+        if (!userId) return false;
+        await this.initialize(userId);
       }
 
       // Connect if not already connected
@@ -255,9 +284,11 @@ class MTProtoService {
     } catch (error) {
       // Don't log FLOOD_WAIT as a warning - it's expected behavior
       if (error instanceof FloodWaitError) {
-        console.debug(`Telegram connection check: FLOOD_WAIT ${error.seconds}s`);
+        console.debug(
+          `Telegram connection check: FLOOD_WAIT ${error.seconds}s`,
+        );
       } else {
-        console.warn('Telegram connection check failed:', error);
+        console.warn("Telegram connection check failed:", error);
       }
       return false;
     }
@@ -271,12 +302,32 @@ class MTProtoService {
       try {
         await this.client.disconnect();
         this.isConnected = false;
-        console.log('Disconnected from Telegram');
+        console.log("Disconnected from Telegram");
       } catch (error) {
-        console.error('Error disconnecting from Telegram:', error);
+        console.error("Error disconnecting from Telegram:", error);
         throw error;
       }
     }
+  }
+
+  /**
+   * Clear session from Redux, disconnect, and reset client state.
+   * Use when the logged-in Telegram account does not match the app user (e.g. after QR connect).
+   */
+  async clearSessionAndDisconnect(userId?: string): Promise<void> {
+    const uid = userId ?? this.userId;
+    if (uid) {
+      try {
+        store.dispatch(setSessionString({ userId: uid, sessionString: null }));
+      } catch (e) {
+        console.warn("Failed to clear Telegram session from Redux:", e);
+      }
+    }
+    await this.disconnect();
+    this.client = undefined;
+    this.isInitialized = false;
+    this.sessionString = "";
+    this.userId = null;
   }
 
   /**
@@ -287,7 +338,7 @@ class MTProtoService {
     if (!this.isClientConnected()) {
       await this.connect();
     }
-    
+
     return this.handleFloodWait(async () => {
       await client.sendMessage(entity, { message });
     });
@@ -303,7 +354,7 @@ class MTProtoService {
   private async handleFloodWait<T>(
     operation: () => Promise<T>,
     maxRetries = 3,
-    retryCount = 0
+    retryCount = 0,
   ): Promise<T> {
     try {
       return await operation();
@@ -311,26 +362,32 @@ class MTProtoService {
       // Check if it's a FLOOD_WAIT error
       if (error instanceof FloodWaitError) {
         const waitSeconds = error.seconds;
-        
+
         // If wait time is too long (more than 5 minutes), throw error
         if (waitSeconds > 300) {
-          throw new Error(`FLOOD_WAIT: Too long wait time (${waitSeconds}s). Please try again later.`);
+          throw new Error(
+            `FLOOD_WAIT: Too long wait time (${waitSeconds}s). Please try again later.`,
+          );
         }
 
         // If we've exceeded max retries, throw error
         if (retryCount >= maxRetries) {
-          throw new Error(`FLOOD_WAIT: Maximum retries exceeded. Wait ${waitSeconds}s before trying again.`);
+          throw new Error(
+            `FLOOD_WAIT: Maximum retries exceeded. Wait ${waitSeconds}s before trying again.`,
+          );
         }
 
-        console.warn(`FLOOD_WAIT: Waiting ${waitSeconds} seconds before retry (attempt ${retryCount + 1}/${maxRetries})`);
-        
+        console.warn(
+          `FLOOD_WAIT: Waiting ${waitSeconds} seconds before retry (attempt ${retryCount + 1}/${maxRetries})`,
+        );
+
         // Wait for the specified time (convert to milliseconds)
         await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
-        
+
         // Retry the operation
         return this.handleFloodWait(operation, maxRetries, retryCount + 1);
       }
-      
+
       // If it's not a FLOOD_WAIT error, rethrow it
       throw error;
     }
@@ -345,7 +402,7 @@ class MTProtoService {
    */
   async withFloodWaitHandling<T>(
     operation: () => Promise<T>,
-    maxRetries = 3
+    maxRetries = 3,
   ): Promise<T> {
     return this.handleFloodWait(operation, maxRetries);
   }
@@ -353,41 +410,42 @@ class MTProtoService {
   /**
    * Invoke a raw Telegram API method with FLOOD_WAIT handling
    */
-  async invoke<T = unknown>(request: Parameters<TelegramClient['invoke']>[0]): Promise<T> {
+  async invoke<T = unknown>(
+    request: Parameters<TelegramClient["invoke"]>[0],
+  ): Promise<T> {
     const client = this.getClient();
     if (!this.isClientConnected()) {
       await this.connect();
     }
-    
+
     return this.handleFloodWait(async () => {
       return client.invoke(request) as Promise<T>;
     });
   }
 
-  /**
-   * Load session from localStorage
-   */
   private loadSession(): string | null {
     try {
-      return localStorage.getItem('telegram_session');
+      if (!this.userId) return null;
+      const state = store.getState();
+      const u = state.telegram.byUser[this.userId];
+      return u?.sessionString ?? null;
     } catch (error) {
-      console.error('Failed to load session from localStorage:', error);
+      console.error("Failed to load Telegram session from Redux:", error);
       return null;
     }
   }
 
-  /**
-   * Save session to localStorage
-   */
   private saveSession(session: string): void {
     try {
-      localStorage.setItem('telegram_session', session);
+      if (!this.userId) return;
+      store.dispatch(
+        setSessionString({ userId: this.userId, sessionString: session }),
+      );
     } catch (error) {
-      console.error('Failed to save session to localStorage:', error);
+      console.error("Failed to save Telegram session to Redux:", error);
     }
   }
 }
 
-// Export singleton instance
 export const mtprotoService = MTProtoService.getInstance();
 export default mtprotoService;

@@ -1,6 +1,14 @@
 // Types for Telegram entities
-export type TelegramConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
-export type TelegramAuthStatus = 'not_authenticated' | 'authenticating' | 'authenticated' | 'error';
+export type TelegramConnectionStatus =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "error";
+export type TelegramAuthStatus =
+  | "not_authenticated"
+  | "authenticating"
+  | "authenticated"
+  | "error";
 
 export interface TelegramUser {
   id: string;
@@ -17,7 +25,7 @@ export interface TelegramUser {
 export interface TelegramChat {
   id: string;
   title?: string;
-  type: 'private' | 'group' | 'supergroup' | 'channel';
+  type: "private" | "group" | "supergroup" | "channel";
   username?: string;
   accessHash?: string;
   unreadCount: number;
@@ -111,11 +119,11 @@ export interface TelegramState {
 
 export const initialState: TelegramState = {
   // Connection
-  connectionStatus: 'disconnected',
+  connectionStatus: "disconnected",
   connectionError: null,
 
   // Authentication
-  authStatus: 'not_authenticated',
+  authStatus: "not_authenticated",
   authError: null,
   isInitialized: false,
   phoneNumber: null,
@@ -152,3 +160,8 @@ export const initialState: TelegramState = {
   searchQuery: null,
   filteredChatIds: null,
 };
+
+/** Root telegram slice state: per-user */
+export interface TelegramRootState {
+  byUser: Record<string, TelegramState>;
+}

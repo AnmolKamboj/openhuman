@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
 
 interface TypewriterGreetingProps {
   greetings: string[];
@@ -13,10 +13,10 @@ const TypewriterGreeting = ({
   typingSpeed = 100,
   deletingSpeed = 50,
   pauseTime = 2000,
-  className = '',
+  className = "",
 }: TypewriterGreetingProps) => {
   const [currentGreetingIndex, setCurrentGreetingIndex] = useState(0);
-  const [displayedText, setDisplayedText] = useState('');
+  const [displayedText, setDisplayedText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
 
@@ -56,7 +56,16 @@ const TypewriterGreeting = ({
     }, speed);
 
     return () => clearTimeout(timer);
-  }, [displayedText, isDeleting, isPaused, currentGreetingIndex, greetings, typingSpeed, deletingSpeed, pauseTime]);
+  }, [
+    displayedText,
+    isDeleting,
+    isPaused,
+    currentGreetingIndex,
+    greetings,
+    typingSpeed,
+    deletingSpeed,
+    pauseTime,
+  ]);
 
   return (
     <h1 className={`text-2xl font-bold mb-4 ${className}`}>

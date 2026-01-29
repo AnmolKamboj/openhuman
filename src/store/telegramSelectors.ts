@@ -1,60 +1,88 @@
-import { createSelector } from '@reduxjs/toolkit';
-import type { RootState } from './index';
-import type { TelegramChat, TelegramMessage, TelegramThread } from './telegram';
+import { createSelector } from "@reduxjs/toolkit";
+import type { RootState } from "./index";
+import type {
+  TelegramChat,
+  TelegramMessage,
+  TelegramThread,
+  TelegramState,
+} from "./telegram";
+import { initialState } from "./telegram/types";
 
-// Base selectors
+function selectCurrentUserId(state: RootState): string {
+  return state.user.user?._id ?? "";
+}
+
+const defaultUserState: TelegramState = { ...initialState };
+
 export const selectTelegramState = (state: RootState) => state.telegram;
 
-export const selectConnectionStatus = (state: RootState) => state.telegram.connectionStatus;
-export const selectConnectionError = (state: RootState) => state.telegram.connectionError;
-export const selectIsConnected = (state: RootState) =>
-  state.telegram.connectionStatus === 'connected';
+export const selectTelegramUserState = (state: RootState): TelegramState =>
+  state.telegram.byUser[selectCurrentUserId(state)] ?? defaultUserState;
 
-export const selectAuthStatus = (state: RootState) => state.telegram.authStatus;
-export const selectAuthError = (state: RootState) => state.telegram.authError;
+export const selectConnectionStatus = (state: RootState) =>
+  selectTelegramUserState(state).connectionStatus;
+export const selectConnectionError = (state: RootState) =>
+  selectTelegramUserState(state).connectionError;
+export const selectIsConnected = (state: RootState) =>
+  selectTelegramUserState(state).connectionStatus === "connected";
+
+export const selectAuthStatus = (state: RootState) =>
+  selectTelegramUserState(state).authStatus;
+export const selectAuthError = (state: RootState) =>
+  selectTelegramUserState(state).authError;
 export const selectIsAuthenticated = (state: RootState) =>
-  state.telegram.authStatus === 'authenticated';
-export const selectIsInitialized = (state: RootState) => state.telegram.isInitialized;
-export const selectPhoneNumber = (state: RootState) => state.telegram.phoneNumber;
-export const selectCurrentUser = (state: RootState) => state.telegram.currentUser;
+  selectTelegramUserState(state).authStatus === "authenticated";
+export const selectIsInitialized = (state: RootState) =>
+  selectTelegramUserState(state).isInitialized;
+export const selectPhoneNumber = (state: RootState) =>
+  selectTelegramUserState(state).phoneNumber;
+export const selectCurrentUser = (state: RootState) =>
+  selectTelegramUserState(state).currentUser;
+
+export const selectSessionString = (state: RootState) =>
+  selectTelegramUserState(state).sessionString;
 
 // Chat selectors
-export const selectAllChats = (state: RootState) => state.telegram.chats;
-export const selectChatsOrder = (state: RootState) => state.telegram.chatsOrder;
-export const selectSelectedChatId = (state: RootState) => state.telegram.selectedChatId;
-export const selectIsLoadingChats = (state: RootState) => state.telegram.isLoadingChats;
+export const selectAllChats = (state: RootState) =>
+  selectTelegramUserState(state).chats;
+export const selectChatsOrder = (state: RootState) =>
+  selectTelegramUserState(state).chatsOrder;
+export const selectSelectedChatId = (state: RootState) =>
+  selectTelegramUserState(state).selectedChatId;
+export const selectIsLoadingChats = (state: RootState) =>
+  selectTelegramUserState(state).isLoadingChats;
 
-// Ordered chats selector
 export const selectOrderedChats = createSelector(
   [selectAllChats, selectChatsOrder],
-  (chats, order): TelegramChat[] => {
-    return order.map((id) => chats[id]).filter(Boolean);
-  }
+  (chats, order): TelegramChat[] =>
+    order.map((id) => chats[id]).filter(Boolean),
 );
 
-// Selected chat selector
 export const selectSelectedChat = createSelector(
   [selectAllChats, selectSelectedChatId],
-  (chats, selectedId): TelegramChat | null => {
-    return selectedId ? chats[selectedId] || null : null;
-  }
+  (chats, selectedId): TelegramChat | null =>
+    selectedId ? chats[selectedId] || null : null,
 );
 
-// Filtered chats selector (for search)
 export const selectFilteredChats = createSelector(
-  [selectOrderedChats, (state: RootState) => state.telegram.filteredChatIds],
+  [
+    selectOrderedChats,
+    (state: RootState) => selectTelegramUserState(state).filteredChatIds,
+  ],
   (chats, filteredIds): TelegramChat[] => {
     if (!filteredIds) return chats;
     return chats.filter((chat) => filteredIds.includes(chat.id));
-  }
+  },
 );
 
 // Message selectors
-export const selectAllMessages = (state: RootState) => state.telegram.messages;
-export const selectMessagesOrder = (state: RootState) => state.telegram.messagesOrder;
-export const selectIsLoadingMessages = (state: RootState) => state.telegram.isLoadingMessages;
+export const selectAllMessages = (state: RootState) =>
+  selectTelegramUserState(state).messages;
+export const selectMessagesOrder = (state: RootState) =>
+  selectTelegramUserState(state).messagesOrder;
+export const selectIsLoadingMessages = (state: RootState) =>
+  selectTelegramUserState(state).isLoadingMessages;
 
-// Messages for a specific chat
 export const selectChatMessages = createSelector(
   [
     selectAllMessages,
@@ -66,24 +94,25 @@ export const selectChatMessages = createSelector(
     const order = messagesOrder[chatId] || [];
     if (!chatMessages) return [];
     return order.map((id) => chatMessages[id]).filter(Boolean);
-  }
+  },
 );
 
-// Latest message for a chat
 export const selectChatLatestMessage = createSelector(
   [selectChatMessages],
-  (messages): TelegramMessage | null => {
-    return messages.length > 0 ? messages[messages.length - 1] : null;
-  }
+  (messages): TelegramMessage | null =>
+    messages.length > 0 ? messages[messages.length - 1] : null,
 );
 
 // Thread selectors
-export const selectAllThreads = (state: RootState) => state.telegram.threads;
-export const selectThreadsOrder = (state: RootState) => state.telegram.threadsOrder;
-export const selectSelectedThreadId = (state: RootState) => state.telegram.selectedThreadId;
-export const selectIsLoadingThreads = (state: RootState) => state.telegram.isLoadingThreads;
+export const selectAllThreads = (state: RootState) =>
+  selectTelegramUserState(state).threads;
+export const selectThreadsOrder = (state: RootState) =>
+  selectTelegramUserState(state).threadsOrder;
+export const selectSelectedThreadId = (state: RootState) =>
+  selectTelegramUserState(state).selectedThreadId;
+export const selectIsLoadingThreads = (state: RootState) =>
+  selectTelegramUserState(state).isLoadingThreads;
 
-// Threads for a specific chat
 export const selectChatThreads = createSelector(
   [
     selectAllThreads,
@@ -95,72 +124,63 @@ export const selectChatThreads = createSelector(
     const order = threadsOrder[chatId] || [];
     if (!chatThreads) return [];
     return order.map((id) => chatThreads[id]).filter(Boolean);
-  }
+  },
 );
 
-// Selected thread selector
 export const selectSelectedThread = createSelector(
   [selectAllThreads, selectSelectedChatId, selectSelectedThreadId],
   (threads, chatId, threadId): TelegramThread | null => {
     if (!chatId || !threadId) return null;
     return threads[chatId]?.[threadId] || null;
-  }
+  },
 );
 
-// Messages for selected thread
 export const selectThreadMessages = createSelector(
-  [
-    selectChatMessages,
-    selectSelectedChatId,
-    selectSelectedThreadId,
-  ],
+  [selectChatMessages, selectSelectedChatId, selectSelectedThreadId],
   (messages, _chatId, threadId): TelegramMessage[] => {
     if (!threadId) return [];
     return messages.filter((msg) => msg.threadId === threadId);
-  }
+  },
 );
 
 // Search selectors
-export const selectSearchQuery = (state: RootState) => state.telegram.searchQuery;
-export const selectIsSearching = (state: RootState) => state.telegram.searchQuery !== null;
+export const selectSearchQuery = (state: RootState) =>
+  selectTelegramUserState(state).searchQuery;
+export const selectIsSearching = (state: RootState) =>
+  selectTelegramUserState(state).searchQuery !== null;
 
 // Pagination selectors
-export const selectHasMoreChats = (state: RootState) => state.telegram.hasMoreChats;
-export const selectHasMoreMessages = (state: RootState) => state.telegram.hasMoreMessages;
-export const selectHasMoreThreads = (state: RootState) => state.telegram.hasMoreThreads;
+export const selectHasMoreChats = (state: RootState) =>
+  selectTelegramUserState(state).hasMoreChats;
+export const selectHasMoreMessages = (state: RootState) =>
+  selectTelegramUserState(state).hasMoreMessages;
+export const selectHasMoreThreads = (state: RootState) =>
+  selectTelegramUserState(state).hasMoreThreads;
 
-// Helper: Check if chat has more messages
 export const selectChatHasMoreMessages = createSelector(
   [selectHasMoreMessages, (_: RootState, chatId: string) => chatId],
-  (hasMore, chatId) => hasMore[chatId] ?? true
+  (hasMore, chatId) => hasMore[chatId] ?? true,
 );
 
-// Helper: Check if chat has more threads
 export const selectChatHasMoreThreads = createSelector(
   [selectHasMoreThreads, (_: RootState, chatId: string) => chatId],
-  (hasMore, chatId) => hasMore[chatId] ?? true
+  (hasMore, chatId) => hasMore[chatId] ?? true,
 );
 
-// Combined state selectors
 export const selectTelegramReady = createSelector(
   [selectIsConnected, selectIsAuthenticated, selectIsInitialized],
-  (isConnected, isAuthenticated, isInitialized) => {
-    return isConnected && isAuthenticated && isInitialized;
-  }
+  (isConnected, isAuthenticated, isInitialized) =>
+    isConnected && isAuthenticated && isInitialized,
 );
 
-// Unread counts
 export const selectTotalUnreadCount = createSelector(
   [selectOrderedChats],
-  (chats) => {
-    return chats.reduce((total, chat) => total + (chat.unreadCount || 0), 0);
-  }
+  (chats) => chats.reduce((total, chat) => total + (chat.unreadCount || 0), 0),
 );
 
-// Pinned chats
 export const selectPinnedChats = createSelector(
   [selectOrderedChats],
-  (chats): TelegramChat[] => {
-    return chats.filter((chat) => chat.isPinned);
-  }
+  (chats): TelegramChat[] => chats.filter((chat) => chat.isPinned),
 );
+
+export { selectCurrentUserId as selectTelegramCurrentUserId };

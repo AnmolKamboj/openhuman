@@ -1,5 +1,5 @@
-import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
-import SettingsHeader from '../components/SettingsHeader';
+import { useSettingsNavigation } from "../hooks/useSettingsNavigation";
+import SettingsHeader from "../components/SettingsHeader";
 
 const ProfilePanel = () => {
   const { navigateBack } = useSettingsNavigation();
@@ -16,11 +16,23 @@ const ProfilePanel = () => {
         <div className="p-4 h-full flex items-center justify-center">
           <div className="text-center">
             <div className="w-16 h-16 mx-auto mb-4 bg-stone-700/50 rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              <svg
+                className="w-8 h-8 text-stone-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                />
               </svg>
             </div>
-            <h3 className="text-lg font-medium text-white mb-2">Profile Settings</h3>
+            <h3 className="text-lg font-medium text-white mb-2">
+              Profile Settings
+            </h3>
             <p className="text-stone-400 text-sm max-w-sm mx-auto">
               Update your profile information, avatar, and personal preferences.
             </p>

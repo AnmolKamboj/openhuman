@@ -7,9 +7,9 @@ import App from "./App";
 import "./index.css";
 
 // Deep link listener - lazy import to avoid running before Tauri IPC is ready
-import('./utils/desktopDeepLinkListener').then(m => {
-  m.setupDesktopDeepLinkListener().catch(err => {
-    console.error('[DeepLink] setup error:', err);
+import("./utils/desktopDeepLinkListener").then((m) => {
+  m.setupDesktopDeepLinkListener().catch((err) => {
+    console.error("[DeepLink] setup error:", err);
   });
 });
 

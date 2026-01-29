@@ -1,11 +1,11 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
-import { ErrorCategory, logAndFormatError } from '../../errorHandler';
-import { mtprotoService } from '../../../../services/mtprotoService';
-import { Api } from 'telegram';
-import bigInt from 'big-integer';
-import type { ApiPhoto } from '../apiResultTypes';
-import { narrow } from '../apiCastHelpers';
+import { ErrorCategory, logAndFormatError } from "../../errorHandler";
+import { mtprotoService } from "../../../../services/mtprotoService";
+import { Api } from "telegram";
+import bigInt from "big-integer";
+import type { ApiPhoto } from "../apiResultTypes";
+import { narrow } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
   name: "delete_profile_photo",
@@ -31,8 +31,15 @@ export async function deleteProfilePhoto(
       );
     });
 
-    if (!photos || !('photos' in photos) || !Array.isArray(photos.photos) || photos.photos.length === 0) {
-      return { content: [{ type: 'text', text: 'No profile photo to delete.' }] };
+    if (
+      !photos ||
+      !("photos" in photos) ||
+      !Array.isArray(photos.photos) ||
+      photos.photos.length === 0
+    ) {
+      return {
+        content: [{ type: "text", text: "No profile photo to delete." }],
+      };
     }
 
     const photo = narrow<ApiPhoto>(photos.photos[0]);
@@ -40,15 +47,21 @@ export async function deleteProfilePhoto(
     await mtprotoService.withFloodWaitHandling(async () => {
       await client.invoke(
         new Api.photos.DeletePhotos({
-          id: [new Api.InputPhoto({ id: photo.id, accessHash: photo.accessHash, fileReference: photo.fileReference })],
+          id: [
+            new Api.InputPhoto({
+              id: photo.id,
+              accessHash: photo.accessHash,
+              fileReference: photo.fileReference,
+            }),
+          ],
         }),
       );
     });
 
-    return { content: [{ type: 'text', text: 'Profile photo deleted.' }] };
+    return { content: [{ type: "text", text: "Profile photo deleted." }] };
   } catch (error) {
     return logAndFormatError(
-      'delete_profile_photo',
+      "delete_profile_photo",
       error instanceof Error ? error : new Error(String(error)),
       ErrorCategory.PROFILE,
     );

@@ -1,5 +1,6 @@
-import { Navigate } from 'react-router-dom';
-import { useAppSelector } from '../store/hooks';
+import { Navigate } from "react-router-dom";
+import { useAppSelector } from "../store/hooks";
+import { selectIsOnboarded } from "../store/authSelectors";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -18,16 +19,16 @@ const ProtectedRoute = ({
   redirectTo,
 }: ProtectedRouteProps) => {
   const token = useAppSelector((state) => state.auth.token);
-  const isOnboarded = useAppSelector((state) => state.auth.isOnboarded);
+  const isOnboarded = useAppSelector(selectIsOnboarded);
 
   // If auth is required but user is not logged in
   if (requireAuth && !token) {
-    return <Navigate to={redirectTo || '/'} replace />;
+    return <Navigate to={redirectTo || "/"} replace />;
   }
 
   // If onboarding is required but user is not onboarded
   if (requireOnboarded && !isOnboarded) {
-    return <Navigate to={redirectTo || '/onboarding'} replace />;
+    return <Navigate to={redirectTo || "/onboarding"} replace />;
   }
 
   return <>{children}</>;

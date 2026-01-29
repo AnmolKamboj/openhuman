@@ -1,10 +1,10 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
-import { ErrorCategory, logAndFormatError } from '../../errorHandler';
-import { mtprotoService } from '../../../../services/mtprotoService';
-import { Api } from 'telegram';
-import bigInt from 'big-integer';
-import type { StickerSetsResult } from '../apiResultTypes';
+import { ErrorCategory, logAndFormatError } from "../../errorHandler";
+import { mtprotoService } from "../../../../services/mtprotoService";
+import { Api } from "telegram";
+import bigInt from "big-integer";
+import type { StickerSetsResult } from "../apiResultTypes";
 import { narrow } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
@@ -21,22 +21,39 @@ export async function getStickerSets(
     const client = mtprotoService.getClient();
 
     const result = await mtprotoService.withFloodWaitHandling(async () => {
-      return client.invoke(new Api.messages.GetAllStickers({ hash: bigInt(0) }));
+      return client.invoke(
+        new Api.messages.GetAllStickers({ hash: bigInt(0) }),
+      );
     });
 
     const sets = narrow<StickerSetsResult>(result)?.sets;
     if (!sets || !Array.isArray(sets) || sets.length === 0) {
-      return { content: [{ type: 'text', text: 'No sticker sets found.' }] };
+      return { content: [{ type: "text", text: "No sticker sets found." }] };
     }
 
     const lines = sets.map((s) => {
-      return 'ID: ' + s.id + ' | ' + (s.title ?? 'Untitled') + ' (' + (s.count ?? 0) + ' stickers)';
+      return (
+        "ID: " +
+        s.id +
+        " | " +
+        (s.title ?? "Untitled") +
+        " (" +
+        (s.count ?? 0) +
+        " stickers)"
+      );
     });
 
-    return { content: [{ type: 'text', text: lines.length + ' sticker sets:\n' + lines.join('\n') }] };
+    return {
+      content: [
+        {
+          type: "text",
+          text: lines.length + " sticker sets:\n" + lines.join("\n"),
+        },
+      ],
+    };
   } catch (error) {
     return logAndFormatError(
-      'get_sticker_sets',
+      "get_sticker_sets",
       error instanceof Error ? error : new Error(String(error)),
       ErrorCategory.MEDIA,
     );

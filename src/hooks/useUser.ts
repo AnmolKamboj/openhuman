@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
-import { useAppSelector, useAppDispatch } from '../store/hooks';
-import { fetchCurrentUser } from '../store/userSlice';
+import { useEffect } from "react";
+import { useAppSelector, useAppDispatch } from "../store/hooks";
+import { fetchCurrentUser } from "../store/userSlice";
 
 /**
  * Hook to access user data and automatically fetch it when token is available

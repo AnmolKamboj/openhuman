@@ -39,7 +39,8 @@ export async function importChatInvite(
       return client.invoke(new Api.messages.ImportChatInvite({ hash }));
     });
 
-    const chatTitle = narrow<ResultWithChats>(result)?.chats?.[0]?.title ?? "unknown";
+    const chatTitle =
+      narrow<ResultWithChats>(result)?.chats?.[0]?.title ?? "unknown";
     return { content: [{ type: "text", text: `Joined chat: ${chatTitle}` }] };
   } catch (error) {
     return logAndFormatError(

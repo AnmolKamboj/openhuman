@@ -1,22 +1,22 @@
-import type { MCPTool, MCPToolResult } from '../../types';
-import type { TelegramMCPContext } from '../types';
-import { ErrorCategory, logAndFormatError } from '../../errorHandler';
-import { validateId } from '../../validation';
-import { getChatById } from '../telegramApi';
-import { mtprotoService } from '../../../../services/mtprotoService';
-import { Api } from 'telegram';
-import { toInputChannel, toInputPeer } from '../apiCastHelpers';
+import type { MCPTool, MCPToolResult } from "../../types";
+import type { TelegramMCPContext } from "../types";
+import { ErrorCategory, logAndFormatError } from "../../errorHandler";
+import { validateId } from "../../validation";
+import { getChatById } from "../telegramApi";
+import { mtprotoService } from "../../../../services/mtprotoService";
+import { Api } from "telegram";
+import { toInputChannel, toInputPeer } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
-  name: 'unban_user',
-  description: 'Unban a user from a group or channel',
+  name: "unban_user",
+  description: "Unban a user from a group or channel",
   inputSchema: {
-    type: 'object',
+    type: "object",
     properties: {
-      chat_id: { type: 'string', description: 'Chat ID or username' },
-      user_id: { type: 'string', description: 'User ID to unban' },
+      chat_id: { type: "string", description: "Chat ID or username" },
+      user_id: { type: "string", description: "User ID to unban" },
     },
-    required: ['chat_id', 'user_id'],
+    required: ["chat_id", "user_id"],
   },
 };
 
@@ -25,14 +25,26 @@ export async function unbanUser(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const chatId = validateId(args.chat_id, 'chat_id');
-    const userId = validateId(args.user_id, 'user_id');
+    const chatId = validateId(args.chat_id, "chat_id");
+    const userId = validateId(args.user_id, "user_id");
 
     const chat = getChatById(chatId);
-    if (!chat) return { content: [{ type: 'text', text: `Chat not found: ${chatId}` }], isError: true };
+    if (!chat)
+      return {
+        content: [{ type: "text", text: `Chat not found: ${chatId}` }],
+        isError: true,
+      };
 
-    if (chat.type !== 'channel' && chat.type !== 'supergroup') {
-      return { content: [{ type: 'text', text: 'Unban is only available for channels/supergroups.' }], isError: true };
+    if (chat.type !== "channel" && chat.type !== "supergroup") {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Unban is only available for channels/supergroups.",
+          },
+        ],
+        isError: true,
+      };
     }
 
     const client = mtprotoService.getClient();
@@ -50,10 +62,17 @@ export async function unbanUser(
       );
     });
 
-    return { content: [{ type: 'text', text: `User ${userId} unbanned from ${chat.title ?? chatId}.` }] };
+    return {
+      content: [
+        {
+          type: "text",
+          text: `User ${userId} unbanned from ${chat.title ?? chatId}.`,
+        },
+      ],
+    };
   } catch (error) {
     return logAndFormatError(
-      'unban_user',
+      "unban_user",
       error instanceof Error ? error : new Error(String(error)),
       ErrorCategory.ADMIN,
     );

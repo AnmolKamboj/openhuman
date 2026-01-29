@@ -1,5 +1,5 @@
-import { ReactNode, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import { ReactNode, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 interface SettingsLayoutProps {
   children: ReactNode;
@@ -12,13 +12,13 @@ const SettingsLayout = ({ children, onClose }: SettingsLayoutProps) => {
   // Handle escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         onClose();
       }
     };
 
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
   }, [onClose]);
 
   // Handle backdrop click
@@ -57,9 +57,9 @@ const SettingsLayout = ({ children, onClose }: SettingsLayoutProps) => {
         ref={modalRef}
         className="glass rounded-3xl shadow-large w-full max-w-[520px] h-[800px] overflow-hidden animate-slide-right focus:outline-none focus:ring-0"
         style={{
-          animationDuration: '300ms',
-          animationTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)',
-          animationFillMode: 'both'
+          animationDuration: "300ms",
+          animationTimingFunction: "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+          animationFillMode: "both",
         }}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}

@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 
 /**
  * Design System Showcase Component
@@ -46,17 +46,23 @@ const DesignSystemShowcase: React.FC = () => {
           {/* Quick Actions */}
           <div className="mt-12 flex flex-wrap gap-4">
             <button className="btn-premium">
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              <svg
+                className="w-5 h-5 mr-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
               </svg>
               Start Trading
             </button>
-            <button className="btn-glass">
-              View Portfolio
-            </button>
-            <button className="btn-outline">
-              Market Analysis
-            </button>
+            <button className="btn-glass">View Portfolio</button>
+            <button className="btn-outline">Market Analysis</button>
           </div>
         </div>
       </section>
@@ -70,19 +76,25 @@ const DesignSystemShowcase: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {/* Primary Colors */}
           <div className="card-elevated p-6">
-            <h3 className="text-lg font-semibold text-stone-900 mb-4">Primary Ocean</h3>
+            <h3 className="text-lg font-semibold text-stone-900 mb-4">
+              Primary Ocean
+            </h3>
             <div className="space-y-2">
               <div className="flex items-center space-x-3">
                 <div className="w-12 h-12 bg-primary-500 rounded-xl shadow-soft" />
                 <div>
-                  <p className="text-sm font-medium text-stone-900">Primary 500</p>
+                  <p className="text-sm font-medium text-stone-900">
+                    Primary 500
+                  </p>
                   <p className="text-xs text-stone-500">#5B9BF3</p>
                 </div>
               </div>
               <div className="flex items-center space-x-3">
                 <div className="w-12 h-12 bg-primary-600 rounded-xl shadow-soft" />
                 <div>
-                  <p className="text-sm font-medium text-stone-900">Primary 600</p>
+                  <p className="text-sm font-medium text-stone-900">
+                    Primary 600
+                  </p>
                   <p className="text-xs text-stone-500">#4A83DD</p>
                 </div>
               </div>
@@ -91,7 +103,9 @@ const DesignSystemShowcase: React.FC = () => {
 
           {/* Success Colors */}
           <div className="card-elevated p-6">
-            <h3 className="text-lg font-semibold text-stone-900 mb-4">Sage Success</h3>
+            <h3 className="text-lg font-semibold text-stone-900 mb-4">
+              Sage Success
+            </h3>
             <div className="space-y-2">
               <div className="flex items-center space-x-3">
                 <div className="w-12 h-12 bg-sage-500 rounded-xl shadow-soft" />
@@ -112,7 +126,9 @@ const DesignSystemShowcase: React.FC = () => {
 
           {/* Accent Colors */}
           <div className="card-elevated p-6">
-            <h3 className="text-lg font-semibold text-stone-900 mb-4">Accent Palette</h3>
+            <h3 className="text-lg font-semibold text-stone-900 mb-4">
+              Accent Palette
+            </h3>
             <div className="space-y-2">
               <div className="flex items-center space-x-3">
                 <div className="w-12 h-12 bg-accent-lavender rounded-xl shadow-soft" />
@@ -164,14 +180,17 @@ const DesignSystemShowcase: React.FC = () => {
           <div>
             <p className="text-xs text-stone-500 mb-1">Body · 1rem</p>
             <p className="text-base text-stone-700 leading-relaxed max-w-3xl">
-              The typography system is designed to create clear visual hierarchy while maintaining
-              excellent readability. Each text size has been carefully calibrated with appropriate
-              line heights and letter spacing to ensure optimal legibility across all device sizes.
+              The typography system is designed to create clear visual hierarchy
+              while maintaining excellent readability. Each text size has been
+              carefully calibrated with appropriate line heights and letter
+              spacing to ensure optimal legibility across all device sizes.
             </p>
           </div>
 
           <div>
-            <p className="text-xs text-stone-500 mb-1">Monospace · For prices and data</p>
+            <p className="text-xs text-stone-500 mb-1">
+              Monospace · For prices and data
+            </p>
             <p className="text-crypto-price text-2xl text-stone-900">
               $48,392.50 <span className="text-market-bullish">+2.45%</span>
             </p>
@@ -205,7 +224,9 @@ const DesignSystemShowcase: React.FC = () => {
               <div className="space-y-2">
                 <p className="price-ticker up">$48,392.50</p>
                 <div className="flex items-center space-x-2">
-                  <span className="text-sm text-market-bullish font-medium">+$1,185.20</span>
+                  <span className="text-sm text-market-bullish font-medium">
+                    +$1,185.20
+                  </span>
                   <span className="text-sm text-market-bullish">(+2.45%)</span>
                 </div>
               </div>
@@ -222,8 +243,18 @@ const DesignSystemShowcase: React.FC = () => {
             </p>
             <div className="flex items-center text-primary-600 font-medium">
               <span>View Details</span>
-              <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              <svg
+                className="w-4 h-4 ml-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
               </svg>
             </div>
           </div>
@@ -231,25 +262,43 @@ const DesignSystemShowcase: React.FC = () => {
           {/* Elevated Card */}
           <div className="card-elevated">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-stone-900">Quick Stats</h3>
+              <h3 className="text-lg font-semibold text-stone-900">
+                Quick Stats
+              </h3>
               <div className="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
-                <svg className="w-4 h-4 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                <svg
+                  className="w-4 h-4 text-primary-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                  />
                 </svg>
               </div>
             </div>
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-stone-600">Total Value</span>
-                <span className="font-mono font-semibold text-stone-900">$125,430</span>
+                <span className="font-mono font-semibold text-stone-900">
+                  $125,430
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-stone-600">24h Change</span>
-                <span className="font-mono font-semibold text-market-bullish">+3.2%</span>
+                <span className="font-mono font-semibold text-market-bullish">
+                  +3.2%
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-stone-600">Holdings</span>
-                <span className="font-mono font-semibold text-stone-900">12</span>
+                <span className="font-mono font-semibold text-stone-900">
+                  12
+                </span>
               </div>
             </div>
           </div>
@@ -278,32 +327,82 @@ const DesignSystemShowcase: React.FC = () => {
             {/* Navigation Items */}
             <nav className="p-2">
               <a href="#" className="nav-item-premium active">
-                <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                <svg
+                  className="w-5 h-5 mr-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+                  />
                 </svg>
                 Dashboard
               </a>
               <a href="#" className="nav-item-premium">
-                <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                <svg
+                  className="w-5 h-5 mr-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                  />
                 </svg>
                 Profile Settings
               </a>
               <a href="#" className="nav-item-premium">
-                <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                <svg
+                  className="w-5 h-5 mr-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                  />
                 </svg>
                 Notifications
               </a>
               <a href="#" className="nav-item-premium">
-                <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                <svg
+                  className="w-5 h-5 mr-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                  />
                 </svg>
                 Security
               </a>
               <a href="#" className="nav-item-premium">
-                <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <svg
+                  className="w-5 h-5 mr-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
                 Help & Support
               </a>
@@ -367,9 +466,7 @@ const DesignSystemShowcase: React.FC = () => {
               </label>
             </div>
 
-            <button className="btn-premium w-full">
-              Complete Transaction
-            </button>
+            <button className="btn-premium w-full">Complete Transaction</button>
           </div>
         </div>
       </section>

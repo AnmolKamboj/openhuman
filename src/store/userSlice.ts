@@ -1,6 +1,6 @@
-import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
-import { userApi } from '../services/api/userApi';
-import type { User } from '../types/api';
+import { createSlice, PayloadAction, createAsyncThunk } from "@reduxjs/toolkit";
+import { userApi } from "../services/api/userApi";
+import type { User } from "../types/api";
 
 interface UserState {
   user: User | null;
@@ -18,23 +18,23 @@ const initialState: UserState = {
  * Async thunk to fetch current user data
  */
 export const fetchCurrentUser = createAsyncThunk(
-  'user/fetchCurrentUser',
+  "user/fetchCurrentUser",
   async (_, { rejectWithValue }) => {
     try {
       const user = await userApi.getMe();
       return user;
     } catch (error) {
       const errorMessage =
-        error && typeof error === 'object' && 'error' in error
+        error && typeof error === "object" && "error" in error
           ? String(error.error)
-          : 'Failed to fetch user data';
+          : "Failed to fetch user data";
       return rejectWithValue(errorMessage);
     }
-  }
+  },
 );
 
 const userSlice = createSlice({
-  name: 'user',
+  name: "user",
   initialState,
   reducers: {
     setUser: (state, action: PayloadAction<User | null>) => {

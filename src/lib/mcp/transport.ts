@@ -3,14 +3,17 @@
  * Handles communication between frontend MCP server and backend MCP client
  */
 
-import type { Socket } from 'socket.io-client';
-import type { MCPRequest, MCPResponse, SocketIOMCPTransport } from './types';
-import { mcpWarn } from './logger';
+import type { Socket } from "socket.io-client";
+import type { MCPRequest, MCPResponse, SocketIOMCPTransport } from "./types";
+import { mcpWarn } from "./logger";
 
 export class SocketIOMCPTransportImpl implements SocketIOMCPTransport {
   private socket: Socket | null | undefined;
-  private requestHandlers = new Map<string | number, (response: MCPResponse) => void>();
-  private readonly eventPrefix = 'mcp:';
+  private requestHandlers = new Map<
+    string | number,
+    (response: MCPResponse) => void
+  >();
+  private readonly eventPrefix = "mcp:";
   private responseHandler = (response: MCPResponse): void => {
     const handler = this.requestHandlers.get(response.id);
     if (handler) {
@@ -35,7 +38,7 @@ export class SocketIOMCPTransportImpl implements SocketIOMCPTransport {
 
   emit(event: string, data: unknown): void {
     if (!this.socket?.connected) {
-      mcpWarn('Cannot emit MCP event: socket not connected', { event });
+      mcpWarn("Cannot emit MCP event: socket not connected", { event });
       return;
     }
     this.socket.emit(`${this.eventPrefix}${event}`, data);
@@ -53,7 +56,7 @@ export class SocketIOMCPTransportImpl implements SocketIOMCPTransport {
 
   async request(request: MCPRequest, timeoutMs = 30000): Promise<MCPResponse> {
     if (!this.socket?.connected) {
-      throw new Error('Socket not connected');
+      throw new Error("Socket not connected");
     }
 
     return new Promise<MCPResponse>((resolve, reject) => {
@@ -71,7 +74,7 @@ export class SocketIOMCPTransportImpl implements SocketIOMCPTransport {
         }
       });
 
-      this.emit('request', request);
+      this.emit("request", request);
     });
   }
 

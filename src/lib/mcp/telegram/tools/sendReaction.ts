@@ -1,22 +1,22 @@
-import type { MCPTool, MCPToolResult } from '../../types';
-import type { TelegramMCPContext } from '../types';
-import { ErrorCategory, logAndFormatError } from '../../errorHandler';
-import { validateId } from '../../validation';
-import { getChatById } from '../telegramApi';
-import { mtprotoService } from '../../../../services/mtprotoService';
-import { Api } from 'telegram';
+import type { MCPTool, MCPToolResult } from "../../types";
+import type { TelegramMCPContext } from "../types";
+import { ErrorCategory, logAndFormatError } from "../../errorHandler";
+import { validateId } from "../../validation";
+import { getChatById } from "../telegramApi";
+import { mtprotoService } from "../../../../services/mtprotoService";
+import { Api } from "telegram";
 
 export const tool: MCPTool = {
-  name: 'send_reaction',
-  description: 'Send a reaction to a message',
+  name: "send_reaction",
+  description: "Send a reaction to a message",
   inputSchema: {
-    type: 'object',
+    type: "object",
     properties: {
-      chat_id: { type: 'string', description: 'Chat ID or username' },
-      message_id: { type: 'number', description: 'Message ID' },
-      reaction: { type: 'string', description: 'Reaction emoji' },
+      chat_id: { type: "string", description: "Chat ID or username" },
+      message_id: { type: "number", description: "Message ID" },
+      reaction: { type: "string", description: "Reaction emoji" },
     },
-    required: ['chat_id', 'message_id'],
+    required: ["chat_id", "message_id"],
   },
 };
 
@@ -25,16 +25,29 @@ export async function sendReaction(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const chatId = validateId(args.chat_id, 'chat_id');
-    const messageId = typeof args.message_id === 'number' && Number.isInteger(args.message_id) ? args.message_id : undefined;
-    const emoji = typeof args.reaction === 'string' ? args.reaction : '\ud83d\udc4d';
+    const chatId = validateId(args.chat_id, "chat_id");
+    const messageId =
+      typeof args.message_id === "number" && Number.isInteger(args.message_id)
+        ? args.message_id
+        : undefined;
+    const emoji =
+      typeof args.reaction === "string" ? args.reaction : "\ud83d\udc4d";
 
     if (messageId === undefined) {
-      return { content: [{ type: 'text', text: 'message_id must be a positive integer' }], isError: true };
+      return {
+        content: [
+          { type: "text", text: "message_id must be a positive integer" },
+        ],
+        isError: true,
+      };
     }
 
     const chat = getChatById(chatId);
-    if (!chat) return { content: [{ type: 'text', text: 'Chat not found: ' + chatId }], isError: true };
+    if (!chat)
+      return {
+        content: [{ type: "text", text: "Chat not found: " + chatId }],
+        isError: true,
+      };
 
     const client = mtprotoService.getClient();
     const entity = chat.username ? chat.username : chat.id;
@@ -50,10 +63,17 @@ export async function sendReaction(
       );
     });
 
-    return { content: [{ type: 'text', text: 'Reaction ' + emoji + ' sent to message ' + messageId + '.' }] };
+    return {
+      content: [
+        {
+          type: "text",
+          text: "Reaction " + emoji + " sent to message " + messageId + ".",
+        },
+      ],
+    };
   } catch (error) {
     return logAndFormatError(
-      'send_reaction',
+      "send_reaction",
       error instanceof Error ? error : new Error(String(error)),
       ErrorCategory.MSG,
     );

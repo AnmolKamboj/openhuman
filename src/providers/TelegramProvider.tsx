@@ -1,31 +1,36 @@
-import { useEffect, useRef, useMemo, createContext, useContext, ReactNode } from 'react';
-import { useAppSelector, useAppDispatch } from '../store/hooks';
-import { selectIsAuthenticated, selectIsInitialized, selectConnectionStatus } from '../store/telegramSelectors';
-import { initializeTelegram, connectTelegram } from '../store/telegram';
-import { mtprotoService } from '../services/mtprotoService';
-
-// Helper to check if there's a saved session in localStorage
-const hasSavedSession = (): boolean => {
-  try {
-    return !!localStorage.getItem('telegram_session');
-  } catch {
-    return false;
-  }
-};
+import {
+  useEffect,
+  useRef,
+  createContext,
+  useContext,
+  ReactNode,
+} from "react";
+import { useAppSelector, useAppDispatch } from "../store/hooks";
+import {
+  selectIsAuthenticated,
+  selectIsInitialized,
+  selectConnectionStatus,
+  selectSessionString,
+  selectTelegramCurrentUserId,
+} from "../store/telegramSelectors";
+import { initializeTelegram, connectTelegram } from "../store/telegram";
+import { mtprotoService } from "../services/mtprotoService";
 
 interface TelegramContextType {
   isAuthenticated: boolean;
   isInitialized: boolean;
-  connectionStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
+  connectionStatus: "disconnected" | "connecting" | "connected" | "error";
   checkConnection: () => Promise<boolean>;
 }
 
-const TelegramContext = createContext<TelegramContextType | undefined>(undefined);
+const TelegramContext = createContext<TelegramContextType | undefined>(
+  undefined,
+);
 
 export const useTelegram = () => {
   const context = useContext(TelegramContext);
   if (!context) {
-    throw new Error('useTelegram must be used within TelegramProvider');
+    throw new Error("useTelegram must be used within TelegramProvider");
   }
   return context;
 };
@@ -36,30 +41,31 @@ interface TelegramProviderProps {
 
 /**
  * TelegramProvider manages the Telegram MTProto connection
- * - Initializes when authenticated
+ * - Initializes when app-authenticated (JWT), or has Telegram session / authenticated
+ * - Starts init+connect in parallel with login (token) so connect modal is ready sooner
  * - Connects automatically
  * - Provides Telegram context to children
  */
 const TelegramProvider = ({ children }: TelegramProviderProps) => {
   const dispatch = useAppDispatch();
+  const token = useAppSelector((state) => state.auth.token);
+  const userId = useAppSelector(selectTelegramCurrentUserId);
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const isInitialized = useAppSelector(selectIsInitialized);
   const connectionStatus = useAppSelector(selectConnectionStatus);
-  const sessionString = useAppSelector((state) => state.telegram.sessionString);
+  const sessionString = useAppSelector(selectSessionString);
   const initializedRef = useRef(false);
   const connectedRef = useRef(false);
   const setupInProgressRef = useRef(false);
   const setupCompleteRef = useRef(false);
 
-  // Memoize hasSession to prevent unnecessary recalculations
-  const hasSession = useMemo(() => {
-    return !!sessionString || hasSavedSession();
-  }, [sessionString]);
+  const hasSession = !!sessionString;
 
-  // Initialize Telegram when authenticated or when we have a saved session
+  const shouldSetupTelegram = !!token && !!userId;
+
+  // Initialize Telegram when app-authenticated (token), or have session / Telegram auth
   useEffect(() => {
-    // Reset refs if we're not authenticated and have no session
-    if (!isAuthenticated && !hasSession) {
+    if (!shouldSetupTelegram) {
       initializedRef.current = false;
       connectedRef.current = false;
       setupInProgressRef.current = false;
@@ -68,11 +74,14 @@ const TelegramProvider = ({ children }: TelegramProviderProps) => {
     }
 
     // If setup is already complete and everything is connected, don't run again
-    if (setupCompleteRef.current && isInitialized && connectionStatus === 'connected') {
+    if (
+      setupCompleteRef.current &&
+      isInitialized &&
+      connectionStatus === "connected"
+    ) {
       return;
     }
 
-    // Prevent multiple simultaneous setup attempts
     if (setupInProgressRef.current) {
       return;
     }
@@ -85,15 +94,18 @@ const TelegramProvider = ({ children }: TelegramProviderProps) => {
         // Initialize if not already initialized
         if (!isInitialized && !initializedRef.current) {
           initializedRef.current = true;
-          await dispatch(initializeTelegram()).unwrap();
+          await dispatch(initializeTelegram(userId)).unwrap();
           setupInProgressRef.current = false;
-          return; // Exit early, will re-run when isInitialized updates
+          return;
         }
 
-        // Connect if not already connected
-        if (isInitialized && connectionStatus !== 'connected' && !connectedRef.current) {
+        if (
+          isInitialized &&
+          connectionStatus !== "connected" &&
+          !connectedRef.current
+        ) {
           connectedRef.current = true;
-          await dispatch(connectTelegram()).unwrap();
+          await dispatch(connectTelegram(userId)).unwrap();
           setupInProgressRef.current = false;
           return; // Exit early, will re-run when connectionStatus updates
         }
@@ -102,7 +114,7 @@ const TelegramProvider = ({ children }: TelegramProviderProps) => {
         setupInProgressRef.current = false;
         setupCompleteRef.current = true;
       } catch (error) {
-        console.error('Failed to setup Telegram:', error);
+        console.error("Failed to setup Telegram:", error);
         initializedRef.current = false;
         connectedRef.current = false;
         setupInProgressRef.current = false;
@@ -111,34 +123,44 @@ const TelegramProvider = ({ children }: TelegramProviderProps) => {
     };
 
     setupTelegram();
-  }, [isAuthenticated, hasSession, isInitialized, connectionStatus, dispatch]);
+  }, [
+    shouldSetupTelegram,
+    isInitialized,
+    connectionStatus,
+    dispatch,
+    userId,
+  ]);
 
   // Check connection status periodically to keep user online
   useEffect(() => {
-    if ((!isAuthenticated && !hasSession) || !isInitialized || connectionStatus !== 'connected') {
+    if (
+      !shouldSetupTelegram ||
+      !isInitialized ||
+      connectionStatus !== "connected"
+    ) {
       return;
     }
 
+    const uid = userId;
     const checkConnection = async () => {
       try {
-        await mtprotoService.checkConnection();
+        await mtprotoService.checkConnection(uid);
       } catch (error) {
-        console.warn('Telegram connection check failed:', error);
+        console.warn("Telegram connection check failed:", error);
       }
     };
 
-    // Check immediately, then every 20 seconds
     checkConnection();
     const interval = setInterval(checkConnection, 20000);
 
     return () => clearInterval(interval);
-  }, [isAuthenticated, hasSession, isInitialized, connectionStatus]);
+  }, [shouldSetupTelegram, isInitialized, connectionStatus, userId]);
 
   const checkConnection = async (): Promise<boolean> => {
     try {
-      return await mtprotoService.checkConnection();
+      return await mtprotoService.checkConnection(userId || undefined);
     } catch (error) {
-      console.warn('Connection check failed:', error);
+      console.warn("Connection check failed:", error);
       return false;
     }
   };
@@ -150,7 +172,11 @@ const TelegramProvider = ({ children }: TelegramProviderProps) => {
     checkConnection,
   };
 
-  return <TelegramContext.Provider value={value}>{children}</TelegramContext.Provider>;
+  return (
+    <TelegramContext.Provider value={value}>
+      {children}
+    </TelegramContext.Provider>
+  );
 };
 
 export default TelegramProvider;

@@ -1,7 +1,7 @@
-export type WebLoginMethod = 'phone' | 'telegram';
+export type WebLoginMethod = "phone" | "telegram";
 
 export interface PhoneLoginContext {
-  method: 'phone';
+  method: "phone";
   phoneNumber: string;
   countryCode: string;
 }
@@ -9,13 +9,13 @@ export interface PhoneLoginContext {
 // The shape of the Telegram user object is defined by Telegram.
 // We keep it as unknown here and let the backend interpret it.
 export interface TelegramLoginContext {
-  method: 'telegram';
+  method: "telegram";
   telegramUser: unknown;
 }
 
 export type WebLoginContext = PhoneLoginContext | TelegramLoginContext;
 
-const DESKTOP_SCHEME = 'outsourced';
+const DESKTOP_SCHEME = "outsourced";
 
 export const buildDesktopDeeplink = (token: string): string => {
   const encoded = encodeURIComponent(token);
@@ -32,25 +32,24 @@ export const buildDesktopDeeplink = (token: string): string => {
 export const completeWebLoginAndOpenDesktop = async (
   context: WebLoginContext,
 ): Promise<void> => {
-  const response = await fetch('/api/auth/web-complete', {
-    method: 'POST',
+  const response = await fetch("/api/auth/web-complete", {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify(context),
-    credentials: 'include',
+    credentials: "include",
   });
 
   if (!response.ok) {
-    throw new Error('Failed to complete web login for desktop handoff');
+    throw new Error("Failed to complete web login for desktop handoff");
   }
 
   const data = (await response.json()) as { loginToken?: string };
   if (!data.loginToken) {
-    throw new Error('Backend response did not include a loginToken');
+    throw new Error("Backend response did not include a loginToken");
   }
 
   const deeplink = buildDesktopDeeplink(data.loginToken);
   window.location.href = deeplink;
 };
-

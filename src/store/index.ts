@@ -21,48 +21,21 @@ import { IS_DEV } from "../utils/config";
 const authPersistConfig = {
   key: "auth",
   storage,
-  // Persist token and onboarding status
-  whitelist: ["token", "isOnboarded"],
+  whitelist: ["token", "isOnboardedByUser"],
 };
 
-// Persist config for telegram state
+// Persist config for telegram state (scoped by user in byUser)
 const telegramPersistConfig = {
   key: "telegram",
   storage,
-  // Persist important state but not connection status (will reconnect on app start)
-  whitelist: [
-    "authStatus",
-    "phoneNumber",
-    "sessionString",
-    "currentUser",
-    "chats",
-    "chatsOrder",
-    "selectedChatId",
-    "messages",
-    "messagesOrder",
-    "threads",
-    "threadsOrder",
-    "selectedThreadId",
-    "hasMoreChats",
-    "hasMoreMessages",
-    "hasMoreThreads",
-  ],
-  // Don't persist connection status, errors, or loading states
-  blacklist: [
-    "connectionStatus",
-    "connectionError",
-    "authError",
-    "isInitialized",
-    "isLoadingChats",
-    "isLoadingMessages",
-    "isLoadingThreads",
-    "searchQuery",
-    "filteredChatIds",
-  ],
+  whitelist: ["byUser"],
 };
 
 const persistedAuthReducer = persistReducer(authPersistConfig, authReducer);
-const persistedTelegramReducer = persistReducer(telegramPersistConfig, telegramReducer);
+const persistedTelegramReducer = persistReducer(
+  telegramPersistConfig,
+  telegramReducer,
+);
 
 export const store = configureStore({
   reducer: {

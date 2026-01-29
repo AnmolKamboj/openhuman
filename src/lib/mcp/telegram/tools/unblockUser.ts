@@ -1,20 +1,20 @@
-import type { MCPTool, MCPToolResult } from '../../types';
-import type { TelegramMCPContext } from '../types';
-import { ErrorCategory, logAndFormatError } from '../../errorHandler';
-import { validateId } from '../../validation';
-import { mtprotoService } from '../../../../services/mtprotoService';
-import { Api } from 'telegram';
-import { toInputPeer } from '../apiCastHelpers';
+import type { MCPTool, MCPToolResult } from "../../types";
+import type { TelegramMCPContext } from "../types";
+import { ErrorCategory, logAndFormatError } from "../../errorHandler";
+import { validateId } from "../../validation";
+import { mtprotoService } from "../../../../services/mtprotoService";
+import { Api } from "telegram";
+import { toInputPeer } from "../apiCastHelpers";
 
 export const tool: MCPTool = {
-  name: 'unblock_user',
-  description: 'Unblock a user',
+  name: "unblock_user",
+  description: "Unblock a user",
   inputSchema: {
-    type: 'object',
+    type: "object",
     properties: {
-      user_id: { type: 'string', description: 'User ID to unblock' },
+      user_id: { type: "string", description: "User ID to unblock" },
     },
-    required: ['user_id'],
+    required: ["user_id"],
   },
 };
 
@@ -23,7 +23,7 @@ export async function unblockUser(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const userId = validateId(args.user_id, 'user_id');
+    const userId = validateId(args.user_id, "user_id");
     const client = mtprotoService.getClient();
 
     await mtprotoService.withFloodWaitHandling(async () => {
@@ -33,10 +33,10 @@ export async function unblockUser(
       );
     });
 
-    return { content: [{ type: 'text', text: `User ${userId} unblocked.` }] };
+    return { content: [{ type: "text", text: `User ${userId} unblocked.` }] };
   } catch (error) {
     return logAndFormatError(
-      'unblock_user',
+      "unblock_user",
       error instanceof Error ? error : new Error(String(error)),
       ErrorCategory.CONTACT,
     );

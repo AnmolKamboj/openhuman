@@ -1,7 +1,15 @@
 import { io, Socket } from "socket.io-client";
 import { BACKEND_URL } from "../utils/config";
 import { store } from "../store";
-import { setStatus, setSocketId, reset } from "../store/socketSlice";
+import {
+  setStatusForUser,
+  setSocketIdForUser,
+  resetForUser,
+} from "../store/socketSlice";
+
+function getSocketUserId(): string {
+  return store.getState().user.user?._id ?? "__pending__";
+}
 
 class SocketService {
   private socket: Socket | null = null;
@@ -34,8 +42,9 @@ class SocketService {
 
     this.token = token;
 
-    // Update status to connecting
-    store.dispatch(setStatus("connecting"));
+    store.dispatch(
+      setStatusForUser({ userId: getSocketUserId(), status: "connecting" }),
+    );
 
     const backendUrl = BACKEND_URL;
 
@@ -67,8 +76,9 @@ class SocketService {
     // Connection event handlers
     this.socket.on("connect", () => {
       const socketId = this.socket?.id || null;
-      store.dispatch(setStatus("connected"));
-      store.dispatch(setSocketId(socketId));
+      const uid = getSocketUserId();
+      store.dispatch(setStatusForUser({ userId: uid, status: "connected" }));
+      store.dispatch(setSocketIdForUser({ userId: uid, socketId }));
     });
 
     this.socket.on("ready", () => {
@@ -80,12 +90,14 @@ class SocketService {
     });
 
     this.socket.on("disconnect", () => {
-      store.dispatch(setStatus("disconnected"));
-      store.dispatch(setSocketId(null));
+      const uid = getSocketUserId();
+      store.dispatch(setStatusForUser({ userId: uid, status: "disconnected" }));
+      store.dispatch(setSocketIdForUser({ userId: uid, socketId: null }));
     });
 
     this.socket.on("connect_error", () => {
-      store.dispatch(setStatus("disconnected"));
+      const uid = getSocketUserId();
+      store.dispatch(setStatusForUser({ userId: uid, status: "disconnected" }));
     });
 
     this.socket.connect();
@@ -99,7 +111,7 @@ class SocketService {
       this.socket.disconnect();
       this.socket = null;
       this.token = null;
-      store.dispatch(reset());
+      store.dispatch(resetForUser({ userId: getSocketUserId() }));
     }
   }
 
