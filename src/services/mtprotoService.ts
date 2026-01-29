@@ -18,6 +18,11 @@ class MTProtoService {
   private readonly apiId: number;
   private readonly apiHash: string;
 
+  // In-flight promise guards — concurrent callers await the same promise
+  private initializePromise: Promise<void> | null = null;
+  private connectPromise: Promise<void> | null = null;
+  private checkConnectionPromise: Promise<boolean> | null = null;
+
   private constructor() {
     // Private constructor to enforce singleton
     // Load API credentials from config once
@@ -40,11 +45,24 @@ class MTProtoService {
   /**
    * Initialize the MTProto client with API credentials.
    * Session is stored in Redux (telegram.byUser[userId].sessionString).
+   * Concurrent calls for the same userId await the same in-flight promise.
    */
   async initialize(userId: string): Promise<void> {
     if (this.isInitialized && this.client && this.userId === userId) {
       return;
     }
+    // If already in-flight for the same user, deduplicate
+    if (this.initializePromise && this.userId === userId) {
+      return this.initializePromise;
+    }
+
+    this.initializePromise = this._doInitialize(userId).finally(() => {
+      this.initializePromise = null;
+    });
+    return this.initializePromise;
+  }
+
+  private async _doInitialize(userId: string): Promise<void> {
     if (this.isInitialized && this.userId !== null && this.userId !== userId) {
       await this.clearSessionAndDisconnect(this.userId);
     }
@@ -76,7 +94,8 @@ class MTProtoService {
   }
 
   /**
-   * Connect to Telegram servers
+   * Connect to Telegram servers.
+   * Concurrent calls await the same in-flight promise.
    */
   async connect(): Promise<void> {
     if (!this.client) {
@@ -86,17 +105,27 @@ class MTProtoService {
     }
 
     if (this.isConnected) {
-      console.log("Already connected to Telegram");
       return;
     }
 
+    if (this.connectPromise) {
+      return this.connectPromise;
+    }
+
+    this.connectPromise = this._doConnect().finally(() => {
+      this.connectPromise = null;
+    });
+    return this.connectPromise;
+  }
+
+  private async _doConnect(): Promise<void> {
     try {
-      await this.client.connect();
+      await this.client!.connect();
       this.isConnected = true;
       console.log("Connected to Telegram successfully");
 
       // Save session string if it changed
-      const newSessionString = this.client.session.save() as string | undefined;
+      const newSessionString = this.client!.session.save() as string | undefined;
       if (newSessionString && newSessionString !== this.sessionString) {
         this.sessionString = newSessionString;
         this.saveSession(newSessionString);
@@ -254,11 +283,23 @@ class MTProtoService {
   }
 
   /**
-   * Check connection status and update user online status
-   * This calls getMe() which also updates the user's online status on Telegram
-   * Automatically initializes and connects if needed
+   * Check connection status and update user online status.
+   * This calls getMe() which also updates the user's online status on Telegram.
+   * Automatically initializes and connects if needed.
+   * Concurrent calls await the same in-flight promise.
    */
   async checkConnection(userId?: string): Promise<boolean> {
+    if (this.checkConnectionPromise) {
+      return this.checkConnectionPromise;
+    }
+
+    this.checkConnectionPromise = this._doCheckConnection(userId).finally(() => {
+      this.checkConnectionPromise = null;
+    });
+    return this.checkConnectionPromise;
+  }
+
+  private async _doCheckConnection(userId?: string): Promise<boolean> {
     try {
       if (!this.isInitialized || !this.client) {
         if (!userId) return false;
@@ -326,8 +367,12 @@ class MTProtoService {
     await this.disconnect();
     this.client = undefined;
     this.isInitialized = false;
+    this.isConnected = false;
     this.sessionString = "";
     this.userId = null;
+    this.initializePromise = null;
+    this.connectPromise = null;
+    this.checkConnectionPromise = null;
   }
 
   /**
