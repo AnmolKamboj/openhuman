@@ -7,8 +7,29 @@ import {
   resetForUser,
 } from "../store/socketSlice";
 
+interface JwtPayload {
+  tgUserId?: string;
+  userId?: string;
+  sub?: string;
+}
+
 function getSocketUserId(): string {
-  return store.getState().user.user?._id ?? "__pending__";
+  const token = store.getState().auth.token;
+  if (!token) return "__pending__";
+
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return "__pending__";
+
+    const payloadBase64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const payloadJson = atob(payloadBase64);
+    const payload = JSON.parse(payloadJson) as JwtPayload;
+
+    const id = payload.tgUserId || payload.userId || payload.sub;
+    return id || "__pending__";
+  } catch {
+    return "__pending__";
+  }
 }
 
 class SocketService {
