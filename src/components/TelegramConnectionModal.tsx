@@ -155,6 +155,7 @@ const TelegramConnectionModal = ({
         },
         async (err) => {
           // Handle errors
+          console.error("[mtproto] signInWithQrCode error:", err);
           const errorMessage = err.message || "Authentication error";
 
           // Check if it's a 2FA password needed error
@@ -208,6 +209,7 @@ const TelegramConnectionModal = ({
       onComplete();
       onClose();
     } catch (err) {
+      console.error("[mtproto] Telegram login flow failed:", err);
       setIsAuthenticating(false);
       const errorMessage =
         err instanceof Error ? err.message : "Authentication failed";
