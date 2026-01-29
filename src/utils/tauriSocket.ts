@@ -16,12 +16,12 @@
  */
 
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, isTauri as coreIsTauri } from '@tauri-apps/api/core';
 import { socketService } from '../services/socketService';
 
 // Check if we're running in Tauri
 export const isTauri = (): boolean => {
-  return typeof window !== 'undefined' && '__TAURI__' in window;
+  return coreIsTauri();
 };
 
 let unlistenConnect: UnlistenFn | null = null;

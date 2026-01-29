@@ -1,15 +1,8 @@
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri as coreIsTauri } from "@tauri-apps/api/core";
 import { BACKEND_URL } from "./config";
 import { store } from "../store";
 import { setToken } from "../store/authSlice";
-
-/**
- * Check if running in Tauri desktop app
- */
-const isTauri = (): boolean => {
-  return typeof window !== "undefined" && !!(window as any).__TAURI__;
-};
 
 /**
  * Handle a list of deep link URLs delivered by the Tauri deep-link plugin.
@@ -28,6 +21,10 @@ const handleDeepLinkUrls = async (urls: string[] | null | undefined) => {
     if (parsed.protocol !== "outsourced:") {
       return;
     }
+    // Harden: ensure this deep link is intended for auth handoff
+    if (parsed.hostname !== "auth") {
+      return;
+    }
 
     const token = parsed.searchParams.get("token");
     if (!token) {
@@ -37,48 +34,31 @@ const handleDeepLinkUrls = async (urls: string[] | null | undefined) => {
 
     console.log("[DeepLink] Received token");
 
-    let sessionToken: string | undefined;
-
     try {
-      if (isTauri()) {
-        // Use Tauri invoke to call Rust backend (bypasses CORS)
-        const data = await invoke<{
-          sessionToken?: string;
-        }>("exchange_token", { backendUrl: BACKEND_URL, token });
-
-        sessionToken = data.sessionToken;
-      } else {
-        // Browser fallback: use fetch API
-        const response = await fetch(`${BACKEND_URL}/auth/desktop-exchange`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ token }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          sessionToken = data.data?.sessionToken;
-        }
-      }
+      // Bring app window to foreground so macOS users actually see completion.
+      // (In this app, the window can start hidden and live in the tray.)
+      await invoke("show_window");
     } catch (err) {
-      console.warn("[DeepLink] Token exchange failed:", err);
+      // Not fatal; we still continue the auth flow.
+      console.warn("[DeepLink] Failed to show window:", err);
     }
 
-    // If the backend didn't return a session, store the raw token so the
-    // login flow can proceed. This path is used during development when
-    // the backend server is not yet running.
+    // Use Tauri invoke to call Rust backend (bypasses CORS)
+    const data = await invoke<{
+      sessionToken?: string;
+    }>("exchange_token", { backendUrl: BACKEND_URL, token });
+
+    const sessionToken = data.sessionToken;
     if (!sessionToken) {
-      sessionToken = token;
+      console.warn("[DeepLink] Token exchange did not return a sessionToken");
+      return;
     }
 
     // Store session token in store
     store.dispatch(setToken(sessionToken));
 
-    // Navigate to post-login flow. This listener runs outside the React
-    // router context, so we assign the path directly and reload.
-    window.location.replace("/onboarding/step1");
+    // Navigate to post-login flow. We use HashRouter, so update the hash route.
+    window.location.hash = "/onboarding";
   } catch (error) {
     console.error("[DeepLink] Failed to handle deep link URL:", url, error);
   }
@@ -91,7 +71,7 @@ const handleDeepLinkUrls = async (urls: string[] | null | undefined) => {
  */
 export const setupDesktopDeepLinkListener = async () => {
   // Only set up deep link listener in Tauri environment
-  if (!isTauri()) {
+  if (!coreIsTauri()) {
     return;
   }
 

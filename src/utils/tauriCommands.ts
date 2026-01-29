@@ -4,11 +4,12 @@
  * Helper functions for invoking Tauri commands from the frontend.
  */
 
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, isTauri as coreIsTauri } from '@tauri-apps/api/core';
 
 // Check if we're running in Tauri
 export const isTauri = (): boolean => {
-  return typeof window !== 'undefined' && '__TAURI__' in window;
+  // Tauri v2: prefer the official runtime check over window globals.
+  return coreIsTauri();
 };
 
 /**
