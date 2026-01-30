@@ -176,20 +176,8 @@ const TelegramProvider = ({ children }: TelegramProviderProps) => {
     }
 
     // Only check if the service is actually ready
-    if (!mtprotoService.isReady()) {
-      return;
-    }
-
-    const uid = userId;
-    const doCheck = async () => {
-      try {
-        await mtprotoService.checkConnection(uid);
-      } catch (error) {
-        console.warn("Telegram connection check failed:", error);
-      }
-    };
-
-    doCheck();
+    if (!mtprotoService.isReady()) return;
+    checkConnection();
   }, [shouldSetupTelegram, isInitialized, connectionStatus, userId]);
 
   const checkConnection = async (): Promise<boolean> => {

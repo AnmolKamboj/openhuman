@@ -1,5 +1,6 @@
-import { TELEGRAM_BOT_USERNAME } from "../utils/config";
+import { BACKEND_URL, TELEGRAM_BOT_USERNAME } from "../utils/config";
 import { openUrl } from "../utils/openUrl";
+import { isTauri, startTelegramLoginWithUrl } from "../utils/tauriCommands";
 
 
 interface TelegramLoginButtonProps {
@@ -13,9 +14,24 @@ const TelegramLoginButton = ({
   text = "Yes, Login with Telegram",
   disabled: externalDisabled = false,
 }: TelegramLoginButtonProps) => {
-  const handleTelegramLogin = () => {
+  const handleTelegramLogin = async () => {
     if (externalDisabled) return;
-    openUrl(`https://t.me/${TELEGRAM_BOT_USERNAME}?start=login`);
+
+    console.log("Starting Telegram login", isTauri());
+
+    // Desktop (Tauri): use system browser → backend Telegram widget → deep link back to app.
+    if (isTauri()) {
+      try {
+        await startTelegramLoginWithUrl(BACKEND_URL);
+        return;
+      } catch (err) {
+        console.error("[TelegramLoginButton] Failed to start desktop Telegram login:", err);
+        // Fall through to browser fallback below.
+      }
+    }
+
+    // Web fallback: open bot (existing flow).
+    await openUrl(`https://t.me/${TELEGRAM_BOT_USERNAME}?start=login`);
   };
 
   const isDisabled = externalDisabled;
