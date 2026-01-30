@@ -8,3 +8,11 @@ export * from "./validation";
 export * from "./errorHandler";
 export * from "./logger";
 export { SocketIOMCPTransportImpl } from "./transport";
+export {
+  enforceRateLimit,
+  resetRequestCallCount,
+  isReadOnlyTool,
+  isHeavyTool,
+  getRateLimitStatus,
+  RATE_LIMIT_CONFIG,
+} from "./rateLimiter";

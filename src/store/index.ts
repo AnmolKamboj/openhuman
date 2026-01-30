@@ -47,6 +47,8 @@ const telegramVolatileTransform = createTransform<
         isLoadingChats: telegramInitialState.isLoadingChats,
         isLoadingMessages: telegramInitialState.isLoadingMessages,
         isLoadingThreads: telegramInitialState.isLoadingThreads,
+        // Thread index is volatile — viewport/outlying state is runtime-only
+        threadIndex: telegramInitialState.threadIndex,
       };
     }
     return cleaned;
