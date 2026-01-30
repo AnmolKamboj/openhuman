@@ -11,8 +11,11 @@ export { SocketIOMCPTransportImpl } from "./transport";
 export {
   enforceRateLimit,
   resetRequestCallCount,
+  classifyTool,
+  isStateOnlyTool,
   isReadOnlyTool,
   isHeavyTool,
   getRateLimitStatus,
   RATE_LIMIT_CONFIG,
 } from "./rateLimiter";
+export type { ToolTier } from "./rateLimiter";
