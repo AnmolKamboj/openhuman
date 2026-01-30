@@ -10,7 +10,10 @@
 import { Api } from "telegram/tl";
 import { Raw } from "telegram/events";
 import bigInt from "big-integer";
+import createDebug from "debug";
 import { mtprotoService } from "../../../services/mtprotoService";
+
+const log = createDebug("app:telegram:sync");
 import { updateManager } from "../../../services/updateManager";
 import { store } from "../../../store";
 import {
@@ -46,7 +49,6 @@ const MESSAGE_LIST_SLICE_MOBILE = 40;
 const SYNC_SAFETY_TIMEOUT = 15_000; // 15s safety timeout
 const INFINITE_LOOP_MARKER = 100; // max iterations for chat loading
 
-const LOG_PREFIX = "[TelegramSync]";
 
 function getMessageSlice(): number {
   return typeof window !== "undefined" && window.innerWidth < 768
@@ -76,15 +78,15 @@ class TelegramSyncService {
    */
   async startSync(userId: string): Promise<void> {
     if (this.isSyncing) {
-      console.log(LOG_PREFIX, "Sync already in progress, skipping");
+      log( "Sync already in progress, skipping");
       return;
     }
     if (this.isSynced && this.userId === userId) {
-      console.log(LOG_PREFIX, "Already synced for this user, skipping");
+      log( "Already synced for this user, skipping");
       return;
     }
 
-    console.log(LOG_PREFIX, "Starting sync for user", userId);
+    log( "Starting sync for user", userId);
     this.userId = userId;
     this.isSyncing = true;
     this.isSynced = false;
@@ -94,10 +96,7 @@ class TelegramSyncService {
     // Safety timeout: release isSyncing if stuck
     this.safetyTimeout = setTimeout(() => {
       if (this.isSyncing) {
-        console.warn(
-          LOG_PREFIX,
-          "Safety timeout reached — releasing sync lock"
-        );
+        log("Safety timeout reached — releasing sync lock");
         this.isSyncing = false;
         store.dispatch(setSyncStatus({ userId, isSyncing: false }));
       }
@@ -120,18 +119,18 @@ class TelegramSyncService {
         store.dispatch(
           setSyncStatus({ userId, isSyncing: false, isSynced: true })
         );
-        console.log(LOG_PREFIX, "Initial sync complete — UI ready");
+        log( "Initial sync complete — UI ready");
 
         // Background tasks (non-blocking)
         this.loadAllChats("archived").catch((e) =>
-          console.warn(LOG_PREFIX, "Archived chat load failed:", e)
+          log( "Archived chat load failed:", e)
         );
         this.preloadTopChatMessages().catch((e) =>
-          console.warn(LOG_PREFIX, "Top chat preload failed:", e)
+          log( "Top chat preload failed:", e)
         );
       });
     } catch (error) {
-      console.error(LOG_PREFIX, "Sync failed:", error);
+      log( "Sync failed:", error);
       this.isSyncing = false;
       clearTimeout(this.safetyTimeout);
       store.dispatch(setSyncStatus({ userId, isSyncing: false }));
@@ -142,7 +141,7 @@ class TelegramSyncService {
    * Stop sync and clean up resources.
    */
   stopSync(): void {
-    console.log(LOG_PREFIX, "Stopping sync");
+    log( "Stopping sync");
     clearTimeout(this.safetyTimeout);
 
     // Remove update handler from client
@@ -183,7 +182,7 @@ class TelegramSyncService {
       qts: state.qts,
     };
 
-    console.log(LOG_PREFIX, "Update state:", commonBoxState);
+    log( "Update state:", commonBoxState);
 
     // Store in Redux
     store.dispatch(setCommonBoxState({ userId, commonBoxState }));
@@ -200,10 +199,7 @@ class TelegramSyncService {
     };
     client.addEventHandler(this.boundProcessUpdate);
 
-    console.log(
-      LOG_PREFIX,
-      "Update manager initialized, event handler registered"
-    );
+    log("Update manager initialized, event handler registered");
   }
 
   // -------------------------------------------------------------------------
@@ -230,7 +226,7 @@ class TelegramSyncService {
     let offsetPeer: any = new Api.InputPeerEmpty();
     let iterations = 0;
 
-    console.log(LOG_PREFIX, `Loading ${listType} chats...`);
+    log( `Loading ${listType} chats...`);
 
     // Also fetch pinned dialogs on first active batch
     if (!isArchived) {
@@ -242,7 +238,7 @@ class TelegramSyncService {
           this.processDialogsResult(pinned, userId, true);
         }
       } catch (e) {
-        console.warn(LOG_PREFIX, "Failed to fetch pinned dialogs:", e);
+        log( "Failed to fetch pinned dialogs:", e);
       }
     }
 
@@ -264,10 +260,7 @@ class TelegramSyncService {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const dialogs: any[] = (result as any).dialogs ?? [];
       if (dialogs.length === 0) {
-        console.log(
-          LOG_PREFIX,
-          `${listType} chats fully loaded (${iterations} batches)`
-        );
+        log(`${listType} chats fully loaded (${iterations} batches)`);
         break;
       }
 
@@ -289,10 +282,7 @@ class TelegramSyncService {
         break;
       }
       if (dialogs.length < CHAT_LIST_LOAD_SLICE) {
-        console.log(
-          LOG_PREFIX,
-          `${listType} chats fully loaded (last batch < slice)`
-        );
+        log(`${listType} chats fully loaded (last batch < slice)`);
         break;
       }
 
@@ -336,7 +326,7 @@ class TelegramSyncService {
     }
 
     if (iterations >= INFINITE_LOOP_MARKER) {
-      console.warn(LOG_PREFIX, `${listType} chat loading hit loop guard`);
+      log( `${listType} chat loading hit loop guard`);
     }
   }
 
@@ -438,17 +428,14 @@ class TelegramSyncService {
     const selectedChatId = userState?.selectedChatId;
 
     if (!selectedChatId) {
-      console.log(LOG_PREFIX, "No chat selected, skipping message load");
+      log( "No chat selected, skipping message load");
       return;
     }
 
     const slice = getMessageSlice();
 
     try {
-      console.log(
-        LOG_PREFIX,
-        `Loading ${slice} messages for chat ${selectedChatId}`
-      );
+      log(`Loading ${slice} messages for chat ${selectedChatId}`);
 
       const result = await mtprotoService.invoke(
         new Api.messages.GetHistory({
@@ -471,16 +458,9 @@ class TelegramSyncService {
         );
       }
 
-      console.log(
-        LOG_PREFIX,
-        `Loaded ${messages.length} messages for chat ${selectedChatId}`
-      );
+      log(`Loaded ${messages.length} messages for chat ${selectedChatId}`);
     } catch (error) {
-      console.warn(
-        LOG_PREFIX,
-        `Failed to load messages for chat ${selectedChatId}:`,
-        error
-      );
+      log(`Failed to load messages for chat ${selectedChatId}: %O`, error);
     }
   }
 
@@ -538,16 +518,12 @@ class TelegramSyncService {
 
         preloaded++;
       } catch (error) {
-        console.warn(
-          LOG_PREFIX,
-          `Failed to preload messages for chat ${chatId}:`,
-          error
-        );
+        log(`Failed to preload messages for chat ${chatId}: %O`, error);
         // Continue with next chat
       }
     }
 
-    console.log(LOG_PREFIX, `Preloaded messages for ${preloaded} chats`);
+    log( `Preloaded messages for ${preloaded} chats`);
   }
 }
 

@@ -17,7 +17,10 @@ import { selectTelegramUserState } from "../../store/telegramSelectors";
 import { ErrorCategory, logAndFormatError } from "../mcp/errorHandler";
 import { ValidationError } from "../mcp/validation";
 import { SocketIOMCPTransportImpl } from "../mcp/transport";
+import createDebug from "debug";
 import { mcpLog } from "../mcp/logger";
+
+const log = createDebug("app:telegram:mcp");
 import {
   enforceRateLimit,
   resetRequestCallCount,
@@ -68,7 +71,7 @@ export class TelegramMCPServer {
           tools: toolsList,
         });
       } catch (error) {
-        console.error("[MCP] Failed to list tools", error);
+        log("Failed to list tools %O", error);
         this.transport.emit("listToolsResponse", { requestId, tools: [] });
       }
     });

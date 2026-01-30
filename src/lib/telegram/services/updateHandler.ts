@@ -8,7 +8,10 @@
  */
 
 import { Api } from "telegram/tl";
+import createDebug from "debug";
 import { store } from "../../../store";
+
+const log = createDebug("app:telegram:sync");
 import {
   addMessage,
   updateMessage,
@@ -17,7 +20,6 @@ import {
 } from "../../../store/telegram";
 import { buildMessage, buildPeerId } from "./entityBuilders";
 
-const LOG_PREFIX = "[TelegramSync]";
 
 /**
  * Handle a single update from the UpdateManager.
@@ -35,9 +37,8 @@ export function handleUpdate(
   // Force sync signal from UpdateManager
   // -------------------------------------------------------------------------
   if (update && update._ === "forceSync") {
-    console.log(
-      LOG_PREFIX,
-      "Force sync requested",
+    log(
+      "Force sync requested %s",
       update.channelId ? `for channel ${update.channelId}` : "(full)"
     );
     return;

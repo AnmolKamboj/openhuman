@@ -43,24 +43,24 @@ Cross-platform crypto community communication platform built with **Tauri v2** (
 
 ```bash
 # Frontend dev server only (port 1420)
-npm run dev
+yarn dev
 
 # Desktop dev with hot-reload (starts Vite + Tauri)
-npm run tauri dev
+yarn tauri dev
 
 # Production build (TypeScript compile + Vite build + Tauri bundle)
-npm run tauri build
+yarn tauri build
 
 # Debug build with .app bundle (required for deep link testing on macOS)
-npm run tauri build -- --debug --bundles app
+yarn tauri build --debug --bundles app
 
 # Android
-npm run tauri android dev
-npm run tauri android build
+yarn tauri android dev
+yarn tauri android build
 
 # iOS
-npm run tauri ios dev
-npm run tauri ios build
+yarn tauri ios dev
+yarn tauri ios build
 
 # Rust checks
 cargo check --manifest-path src-tauri/Cargo.toml
@@ -202,7 +202,7 @@ Key updates from recent commits:
 - **Modal System**: Settings modal uses `createPortal` pattern with URL-based routing. Clean white design (not glass morphism) for system settings. Navigate with `/settings` and `/settings/connections` paths.
 - **Component Reuse**: Connection management reuses `connectOptions` array and components from onboarding flow. Maintains consistent UX patterns across features.
 - **Redux Integration**: Settings modal integrates with existing slices - auth for logout, user for profile display, telegram for connection status. No new state management needed.
-- **Node polyfills**: Vite config (`vite.config.ts`) polyfills `buffer`, `process`, `util`, `os`, `crypto`, `stream` for the `telegram` npm package which requires Node APIs.
+- **Node polyfills**: Vite config (`vite.config.ts`) polyfills `buffer`, `process`, `util`, `os`, `crypto`, `stream` for the `telegram` package which requires Node APIs.
 - **Telegram IDs**: Use `big-integer` library, not native JS numbers (Telegram IDs exceed `Number.MAX_SAFE_INTEGER`).
 - **MCP tool files**: Each tool in `src/lib/mcp/telegram/tools/` exports a handler conforming to `TelegramMCPToolHandler` interface. Tool names are typed in `src/lib/mcp/telegram/types.ts`.
 - **Tauri IPC**: Frontend calls Rust via `invoke()` from `@tauri-apps/api/core`. Rust commands are registered in `generate_handler![]` macro.
