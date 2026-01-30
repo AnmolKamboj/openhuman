@@ -1,10 +1,7 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import type { ResultWithChats } from "../apiResultTypes";
-import { toInputUser, narrow } from "../apiCastHelpers";
+import { createGroup as createGroupApi } from "../api/createGroup";
 
 export const tool: MCPTool = {
   name: "create_group",
@@ -42,23 +39,15 @@ export async function createGroup(
         isError: true,
       };
 
-    const client = mtprotoService.getClient();
-
-    const users: Api.TypeInputUser[] = [];
-    for (const uid of userIds) {
-      const inputUser = await client.getInputEntity(String(uid));
-      users.push(toInputUser(inputUser));
-    }
-
-    const result = await mtprotoService.withFloodWaitHandling(async () => {
-      return client.invoke(new Api.messages.CreateChat({ title, users }));
-    });
-
-    const chatId = narrow<ResultWithChats>(result)?.chats?.[0]?.id ?? "unknown";
+    const { data, fromCache } = await createGroupApi(
+      title,
+      userIds.map(String),
+    );
     return {
       content: [
-        { type: "text", text: `Group "${title}" created. Chat ID: ${chatId}` },
+        { type: "text", text: `Group "${title}" created. Chat ID: ${data.id}` },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

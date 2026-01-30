@@ -1,9 +1,7 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import { toInputChannel } from "../apiCastHelpers";
+import { subscribePublicChannel as subscribePublicChannelApi } from "../api/subscribePublicChannel";
 
 export const tool: MCPTool = {
   name: "subscribe_public_channel",
@@ -29,19 +27,10 @@ export async function subscribePublicChannel(
         isError: true,
       };
 
-    const client = mtprotoService.getClient();
-
-    await mtprotoService.withFloodWaitHandling(async () => {
-      const inputChannel = await client.getInputEntity(username);
-      await client.invoke(
-        new Api.channels.JoinChannel({
-          channel: toInputChannel(inputChannel),
-        }),
-      );
-    });
-
+    const { fromCache } = await subscribePublicChannelApi(username);
     return {
       content: [{ type: "text", text: `Subscribed to channel: ${username}` }],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

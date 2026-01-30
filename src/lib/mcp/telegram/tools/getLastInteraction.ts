@@ -2,7 +2,7 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { getChatById, getMessages, formatMessage } from "../telegramApi";
+import { getLastInteraction as getLastInteractionApi } from "../api/getLastInteraction";
 
 export const tool: MCPTool = {
   name: "get_last_interaction",
@@ -22,41 +22,23 @@ export async function getLastInteraction(
 ): Promise<MCPToolResult> {
   try {
     const chatId = validateId(args.chat_id, "chat_id");
+    const { data: interaction, fromCache } = await getLastInteractionApi(chatId);
 
-    const chat = getChatById(chatId);
-    if (!chat) {
-      return {
-        content: [{ type: "text", text: "Chat not found: " + chatId }],
-        isError: true,
-      };
-    }
-
-    const messages = await getMessages(chatId, 1, 0);
-    if (!messages || messages.length === 0) {
+    if (!interaction) {
       return {
         content: [{ type: "text", text: "No messages found in this chat." }],
+        fromCache,
       };
     }
-
-    const msg = messages[0];
-    const f = formatMessage(msg);
-    const from = msg.fromName ?? msg.fromId ?? "Unknown";
 
     return {
       content: [
         {
           type: "text",
-          text:
-            "Last message in " +
-            (chat.title ?? chatId) +
-            ":\nFrom: " +
-            from +
-            " | Date: " +
-            f.date +
-            " | " +
-            (f.text || "[Media/No text]"),
+          text: "Last message in " + interaction.chatTitle + ":\nFrom: " + interaction.from + " | Date: " + interaction.date + " | " + interaction.text,
         },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

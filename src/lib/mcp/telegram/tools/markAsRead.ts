@@ -1,9 +1,8 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { getChatById } from "../telegramApi";
 import { validateId } from "../../validation";
-import { mtprotoService } from "../../../../services/mtprotoService";
+import { markAsRead as markAsReadApi } from "../api/markAsRead";
 
 export const tool: MCPTool = {
   name: "mark_as_read",
@@ -24,25 +23,13 @@ export async function markAsRead(
   try {
     const chatId = validateId(args.chat_id, "chat_id");
 
-    const chat = getChatById(chatId);
-    if (!chat) {
-      return {
-        content: [{ type: "text", text: `Chat not found: ${chatId}` }],
-        isError: true,
-      };
-    }
-
-    const entity = chat.username ? chat.username : chat.id;
-    const client = mtprotoService.getClient();
-
-    await mtprotoService.withFloodWaitHandling(async () => {
-      await client.markAsRead(entity);
-    });
+    const { fromCache } = await markAsReadApi(chatId);
 
     return {
       content: [
         { type: "text", text: `Messages in chat ${chatId} marked as read.` },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

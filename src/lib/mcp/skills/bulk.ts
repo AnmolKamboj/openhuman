@@ -7,7 +7,7 @@
 
 import type { MCPTool, MCPToolResult } from "../types";
 import type { ExtraTool } from "./types";
-import * as telegramApi from "../telegram/telegramApi";
+import { sendMessage } from "../telegram/api/sendMessage";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -193,7 +193,7 @@ async function executeBulkSendMessage(
 
   for (const chatId of chatIds) {
     try {
-      await telegramApi.sendMessage(chatId, message);
+      await sendMessage(chatId, message);
       successCount++;
       await sleep(BATCH_DELAY_MS);
     } catch (error) {
@@ -227,7 +227,7 @@ async function executeBulkArchiveChats(
     };
   }
 
-  // Archive is not directly available in telegramApi yet — return planned result
+  // Archive API integration pending — stubbed for now
   return {
     content: [
       {

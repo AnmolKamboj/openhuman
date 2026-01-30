@@ -1,8 +1,7 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { store } from "../../../../store";
-import { selectOrderedChats } from "../../../../store/telegramSelectors";
+import { getContactChats as getContactChatsApi } from "../api/getContactChats";
 
 export const tool: MCPTool = {
   name: "get_contact_chats",
@@ -15,27 +14,18 @@ export async function getContactChats(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const state = store.getState();
-    const chats = selectOrderedChats(state);
-    const dmChats = chats.filter((c) => c.type === "private");
+    const { data: dmChats, fromCache } = await getContactChatsApi();
 
     if (dmChats.length === 0) {
-      return { content: [{ type: "text", text: "No contact chats found." }] };
+      return { content: [{ type: "text", text: "No contact chats found." }], fromCache };
     }
 
     const lines = dmChats.map((c) => {
       const username = c.username ? "@" + c.username : "";
-      return (
-        "ID: " +
-        c.id +
-        " | " +
-        (c.title ?? "DM") +
-        " " +
-        username
-      ).trim();
+      return ("ID: " + c.id + " | " + c.title + " " + username).trim();
     });
 
-    return { content: [{ type: "text", text: lines.join("\n") }] };
+    return { content: [{ type: "text", text: lines.join("\n") }], fromCache };
   } catch (error) {
     return logAndFormatError(
       "get_contact_chats",

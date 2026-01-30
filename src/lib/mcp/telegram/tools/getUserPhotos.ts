@@ -2,12 +2,8 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import bigInt from "big-integer";
 import { optNumber } from "../args";
-import type { ApiPhoto } from "../apiResultTypes";
-import { toInputUser, narrow } from "../apiCastHelpers";
+import { getUserPhotos as getUserPhotosApi } from "../api/getUserPhotos";
 
 export const tool: MCPTool = {
   name: "get_user_photos",
@@ -29,34 +25,15 @@ export async function getUserPhotos(
   try {
     const userId = validateId(args.user_id, "user_id");
     const limit = optNumber(args, "limit", 10);
-    const client = mtprotoService.getClient();
 
-    const result = await mtprotoService.withFloodWaitHandling(async () => {
-      const inputUser = await client.getInputEntity(userId);
-      return client.invoke(
-        new Api.photos.GetUserPhotos({
-          userId: toInputUser(inputUser),
-          offset: 0,
-          maxId: bigInt(0),
-          limit,
-        }),
-      );
-    });
+    const { data: photos, fromCache } = await getUserPhotosApi(userId, limit);
 
-    if (
-      !result ||
-      !("photos" in result) ||
-      !Array.isArray(result.photos) ||
-      result.photos.length === 0
-    ) {
-      return { content: [{ type: "text", text: "No photos found." }] };
+    if (photos.length === 0) {
+      return { content: [{ type: "text", text: "No photos found." }], fromCache };
     }
 
-    const lines = narrow<ApiPhoto[]>(result.photos).map((photo, i: number) => {
-      const date = photo.date
-        ? new Date(photo.date * 1000).toISOString()
-        : "unknown";
-      return "Photo " + (i + 1) + ": ID " + photo.id + " | Date: " + date;
+    const lines = photos.map((photo, i: number) => {
+      return "Photo " + (i + 1) + ": ID " + photo.id + " | Date: " + photo.date;
     });
 
     return {
@@ -66,6 +43,7 @@ export async function getUserPhotos(
           text: lines.length + " photos found:\n" + lines.join("\n"),
         },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

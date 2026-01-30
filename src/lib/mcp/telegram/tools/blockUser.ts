@@ -2,9 +2,7 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import { toInputPeer } from "../apiCastHelpers";
+import { blockUser as blockUserApi } from "../api/blockUser";
 
 export const tool: MCPTool = {
   name: "block_user",
@@ -24,17 +22,11 @@ export async function blockUser(
 ): Promise<MCPToolResult> {
   try {
     const userId = validateId(args.user_id, "user_id");
-    const client = mtprotoService.getClient();
 
-    await mtprotoService.withFloodWaitHandling(async () => {
-      const inputUser = await client.getInputEntity(userId);
-      await client.invoke(
-        new Api.contacts.Block({ id: toInputPeer(inputUser) }),
-      );
-    });
+    await blockUserApi(userId);
 
     return {
-      content: [{ type: "text", text: "User " + userId + " blocked." }],
+      content: [{ type: "text", text: `User ${userId} blocked.` }],
     };
   } catch (error) {
     return logAndFormatError(

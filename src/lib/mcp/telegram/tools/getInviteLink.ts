@@ -2,11 +2,7 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { getChatById } from "../telegramApi";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import type { ChatInviteResult } from "../apiResultTypes";
-import { narrow } from "../apiCastHelpers";
+import { getInviteLink as getInviteLinkApi } from "../api/getInviteLink";
 
 export const tool: MCPTool = {
   name: "get_invite_link",
@@ -26,36 +22,11 @@ export async function getInviteLink(
 ): Promise<MCPToolResult> {
   try {
     const chatId = validateId(args.chat_id, "chat_id");
-
-    const chat = getChatById(chatId);
-    if (!chat)
-      return {
-        content: [{ type: "text", text: `Chat not found: ${chatId}` }],
-        isError: true,
-      };
-
-    const client = mtprotoService.getClient();
-    const entity = chat.username ? chat.username : chat.id;
-
-    const result = await mtprotoService.withFloodWaitHandling(async () => {
-      const inputPeer = await client.getInputEntity(entity);
-      return client.invoke(
-        new Api.messages.ExportChatInvite({
-          peer: inputPeer,
-          legacyRevokePermanent: true,
-        }),
-      );
-    });
-
-    const link = narrow<ChatInviteResult>(result)?.link;
-    if (!link) {
-      return {
-        content: [{ type: "text", text: "Could not generate invite link." }],
-        isError: true,
-      };
-    }
-
-    return { content: [{ type: "text", text: `Invite link: ${link}` }] };
+    const { data, fromCache } = await getInviteLinkApi(chatId);
+    return {
+      content: [{ type: "text", text: `Invite link: ${data.link}` }],
+      fromCache,
+    };
   } catch (error) {
     return logAndFormatError(
       "get_invite_link",

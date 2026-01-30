@@ -2,10 +2,8 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { getChatById } from "../telegramApi";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import { toInputChannel, toInputUser } from "../apiCastHelpers";
+import { demoteAdmin as demoteAdminApi } from "../api/demoteAdmin";
+import { getChatById } from "../api/helpers";
 
 export const tool: MCPTool = {
   name: "demote_admin",
@@ -28,46 +26,14 @@ export async function demoteAdmin(
     const chatId = validateId(args.chat_id, "chat_id");
     const userId = validateId(args.user_id, "user_id");
 
+    await demoteAdminApi(chatId, userId);
+
     const chat = getChatById(chatId);
-    if (!chat)
-      return {
-        content: [{ type: "text", text: `Chat not found: ${chatId}` }],
-        isError: true,
-      };
-
-    if (chat.type !== "channel" && chat.type !== "supergroup") {
-      return {
-        content: [
-          {
-            type: "text",
-            text: "Admin demotion is only available for channels/supergroups.",
-          },
-        ],
-        isError: true,
-      };
-    }
-
-    const client = mtprotoService.getClient();
-    const entity = chat.username ? chat.username : chat.id;
-
-    await mtprotoService.withFloodWaitHandling(async () => {
-      const inputChannel = await client.getInputEntity(entity);
-      const inputUser = await client.getInputEntity(userId);
-      await client.invoke(
-        new Api.channels.EditAdmin({
-          channel: toInputChannel(inputChannel),
-          userId: toInputUser(inputUser),
-          adminRights: new Api.ChatAdminRights({}),
-          rank: "",
-        }),
-      );
-    });
-
     return {
       content: [
         {
           type: "text",
-          text: `User ${userId} demoted in ${chat.title ?? chatId}.`,
+          text: `User ${userId} demoted in ${chat?.title ?? chatId}.`,
         },
       ],
     };

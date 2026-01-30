@@ -7,11 +7,8 @@
 
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
-
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { formatEntity, searchChats } from "../telegramApi";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
+import { searchPublicChats as searchPublicChatsApi } from "../api/searchPublicChats";
 
 export const tool: MCPTool = {
   name: "search_public_chats",
@@ -39,82 +36,7 @@ export async function searchPublicChats(
       };
     }
 
-    // Try server-side search via Telegram API
-    try {
-      const client = mtprotoService.getClient();
-
-      const result = await mtprotoService.withFloodWaitHandling(async () => {
-        return client.invoke(
-          new Api.contacts.Search({ q: query, limit: 20 }),
-        );
-      });
-
-      const entries: Array<{
-        id: string;
-        name: string;
-        type: string;
-        username?: string;
-      }> = [];
-
-      // Process returned chats
-      if ("chats" in result && Array.isArray(result.chats)) {
-        for (const chat of result.chats) {
-          const c = chat as {
-            id: { toString(): string };
-            title?: string;
-            username?: string;
-            megagroup?: boolean;
-            broadcast?: boolean;
-          };
-          const type = c.broadcast
-            ? "channel"
-            : c.megagroup
-              ? "group"
-              : "chat";
-          entries.push({
-            id: String(c.id),
-            name: c.title ?? "Unknown",
-            type,
-            username: c.username,
-          });
-        }
-      }
-
-      // Process returned users
-      if ("users" in result && Array.isArray(result.users)) {
-        for (const user of result.users) {
-          const u = user as {
-            id: { toString(): string };
-            firstName?: string;
-            lastName?: string;
-            username?: string;
-            bot?: boolean;
-          };
-          const name =
-            [u.firstName, u.lastName].filter(Boolean).join(" ") || "Unknown";
-          entries.push({
-            id: String(u.id),
-            name,
-            type: u.bot ? "bot" : "user",
-            username: u.username,
-          });
-        }
-      }
-
-      if (entries.length > 0) {
-        return {
-          content: [
-            { type: "text", text: JSON.stringify(entries, undefined, 2) },
-          ],
-        };
-      }
-    } catch {
-      // API call failed — fall back to cached search below
-    }
-
-    // Fallback: search cached chats locally
-    const chats = await searchChats(query);
-    const results = chats.map(formatEntity);
+    const { data: results, fromCache } = await searchPublicChatsApi(query);
 
     if (results.length === 0) {
       return {
@@ -124,16 +46,19 @@ export async function searchPublicChats(
             text: `No public chats matching "${query}" found.`,
           },
         ],
+        fromCache,
       };
     }
 
+    const prefix = fromCache ? "(cached search)\n" : "";
     return {
       content: [
         {
           type: "text",
-          text: `(cached search)\n${JSON.stringify(results, undefined, 2)}`,
+          text: prefix + JSON.stringify(results, undefined, 2),
         },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

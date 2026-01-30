@@ -7,7 +7,8 @@ import type { TelegramMCPContext } from "../types";
 
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { optNumber, optString } from "../args";
-import { formatEntity, getChatsWithApiFallback } from "../telegramApi";
+import { getChats as getChatsApi } from "../api/getChats";
+import { formatEntity } from "../api/helpers";
 import { toHumanReadableAction } from "../toolActionParser";
 
 export const tool: MCPTool = {
@@ -40,7 +41,7 @@ export async function listChats(
     const limit = optNumber(args, "limit", 20);
     const chatType = optString(args, "chat_type")?.toLowerCase();
 
-    const chats = await getChatsWithApiFallback(limit);
+    const { data: chats, fromCache } = await getChatsApi(limit);
     const contentItems: Array<{ type: "text"; text: string }> = [];
 
     for (const chat of chats) {
@@ -62,10 +63,11 @@ export async function listChats(
         content: [
           { type: "text", text: "No chats found matching the criteria." },
         ],
+        fromCache,
       };
     }
 
-    return { content: contentItems };
+    return { content: contentItems, fromCache };
   } catch (error) {
     return logAndFormatError(
       "list_chats",

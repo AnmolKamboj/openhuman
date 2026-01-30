@@ -2,9 +2,7 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import { toInputPeer } from "../apiCastHelpers";
+import { unblockUser as unblockUserApi } from "../api/unblockUser";
 
 export const tool: MCPTool = {
   name: "unblock_user",
@@ -24,14 +22,8 @@ export async function unblockUser(
 ): Promise<MCPToolResult> {
   try {
     const userId = validateId(args.user_id, "user_id");
-    const client = mtprotoService.getClient();
 
-    await mtprotoService.withFloodWaitHandling(async () => {
-      const inputUser = await client.getInputEntity(userId);
-      await client.invoke(
-        new Api.contacts.Unblock({ id: toInputPeer(inputUser) }),
-      );
-    });
+    await unblockUserApi(userId);
 
     return { content: [{ type: "text", text: `User ${userId} unblocked.` }] };
   } catch (error) {

@@ -2,7 +2,7 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { getChatById, getMessages } from "../telegramApi";
+import { getMediaInfo as getMediaInfoApi } from "../api/getMediaInfo";
 
 export const tool: MCPTool = {
   name: "get_media_info",
@@ -37,43 +37,21 @@ export async function getMediaInfo(
       };
     }
 
-    const chat = getChatById(chatId);
-    if (!chat)
-      return {
-        content: [{ type: "text", text: "Chat not found: " + chatId }],
-        isError: true,
-      };
+    const { data: info, fromCache } = await getMediaInfoApi(chatId, messageId);
 
-    const messages = await getMessages(chatId, 200, 0);
-    if (!messages)
-      return { content: [{ type: "text", text: "No messages found." }] };
-
-    const msg = messages.find((m) => String(m.id) === String(messageId));
-    if (!msg)
-      return {
-        content: [
-          {
-            type: "text",
-            text: "Message " + messageId + " not found in cache.",
-          },
-        ],
-        isError: true,
-      };
-
-    if (!msg.media) {
+    if (info.type === "none") {
       return {
         content: [
           { type: "text", text: "No media in message " + messageId + "." },
         ],
+        fromCache,
       };
     }
 
-    const info = {
-      ...msg.media,
-      type: msg.media.type ?? "unknown",
+    return {
+      content: [{ type: "text", text: JSON.stringify(info, null, 2) }],
+      fromCache,
     };
-
-    return { content: [{ type: "text", text: JSON.stringify(info, null, 2) }] };
   } catch (error) {
     return logAndFormatError(
       "get_media_info",

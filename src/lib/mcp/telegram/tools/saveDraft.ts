@@ -2,9 +2,7 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { getChatById } from "../telegramApi";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
+import { saveDraft as saveDraftApi } from "../api/saveDraft";
 
 export const tool: MCPTool = {
   name: "save_draft",
@@ -32,28 +30,11 @@ export async function saveDraft(
         isError: true,
       };
 
-    const chat = getChatById(chatId);
-    if (!chat)
-      return {
-        content: [{ type: "text", text: "Chat not found: " + chatId }],
-        isError: true,
-      };
-
-    const client = mtprotoService.getClient();
-    const entity = chat.username ? chat.username : chat.id;
-
-    await mtprotoService.withFloodWaitHandling(async () => {
-      const inputPeer = await client.getInputEntity(entity);
-      await client.invoke(
-        new Api.messages.SaveDraft({
-          peer: inputPeer,
-          message: text,
-        }),
-      );
-    });
+    const { fromCache } = await saveDraftApi(chatId, text);
 
     return {
       content: [{ type: "text", text: "Draft saved in chat " + chatId + "." }],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

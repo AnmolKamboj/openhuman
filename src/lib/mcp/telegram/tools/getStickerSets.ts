@@ -1,11 +1,7 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import bigInt from "big-integer";
-import type { StickerSetsResult } from "../apiResultTypes";
-import { narrow } from "../apiCastHelpers";
+import { getStickerSets as getStickerSetsApi } from "../api/getStickerSets";
 
 export const tool: MCPTool = {
   name: "get_sticker_sets",
@@ -18,30 +14,18 @@ export async function getStickerSets(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const client = mtprotoService.getClient();
+    const { data: sets, fromCache } = await getStickerSetsApi();
 
-    const result = await mtprotoService.withFloodWaitHandling(async () => {
-      return client.invoke(
-        new Api.messages.GetAllStickers({ hash: bigInt(0) }),
-      );
-    });
-
-    const sets = narrow<StickerSetsResult>(result)?.sets;
-    if (!sets || !Array.isArray(sets) || sets.length === 0) {
-      return { content: [{ type: "text", text: "No sticker sets found." }] };
+    if (sets.length === 0) {
+      return {
+        content: [{ type: "text", text: "No sticker sets found." }],
+        fromCache,
+      };
     }
 
-    const lines = sets.map((s) => {
-      return (
-        "ID: " +
-        s.id +
-        " | " +
-        (s.title ?? "Untitled") +
-        " (" +
-        (s.count ?? 0) +
-        " stickers)"
-      );
-    });
+    const lines = sets.map(
+      (s) => "ID: " + s.id + " | " + s.title + " (" + s.count + " stickers)",
+    );
 
     return {
       content: [
@@ -50,6 +34,7 @@ export async function getStickerSets(
           text: lines.length + " sticker sets:\n" + lines.join("\n"),
         },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

@@ -1,10 +1,8 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
 import { optNumber } from "../args";
-import type { ApiUser } from "../apiResultTypes";
+import { getBlockedUsers as getBlockedUsersApi } from "../api/getBlockedUsers";
 
 export const tool: MCPTool = {
   name: "get_blocked_users",
@@ -23,29 +21,25 @@ export async function getBlockedUsers(
 ): Promise<MCPToolResult> {
   try {
     const limit = optNumber(args, "limit", 50);
-    const client = mtprotoService.getClient();
 
-    const result = await mtprotoService.withFloodWaitHandling(async () => {
-      return client.invoke(new Api.contacts.GetBlocked({ offset: 0, limit }));
-    });
+    const { data: blockedUsers, fromCache } = await getBlockedUsersApi(limit);
 
-    if (
-      !result ||
-      !("users" in result) ||
-      !Array.isArray(result.users) ||
-      result.users.length === 0
-    ) {
-      return { content: [{ type: "text", text: "No blocked users." }] };
+    if (blockedUsers.length === 0) {
+      return {
+        content: [{ type: "text", text: "No blocked users." }],
+        fromCache,
+      };
     }
 
-    const lines = result.users.map((u: ApiUser) => {
-      const name =
-        [u.firstName, u.lastName].filter(Boolean).join(" ") || "Unknown";
+    const lines = blockedUsers.map((u) => {
       const username = u.username ? `@${u.username}` : "";
-      return `ID: ${u.id} | ${name} ${username}`.trim();
+      return `ID: ${u.id} | ${u.name} ${username}`.trim();
     });
 
-    return { content: [{ type: "text", text: lines.join("\n") }] };
+    return {
+      content: [{ type: "text", text: lines.join("\n") }],
+      fromCache,
+    };
   } catch (error) {
     return logAndFormatError(
       "get_blocked_users",

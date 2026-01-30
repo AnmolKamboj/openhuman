@@ -1,10 +1,7 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import type { PrivacyResult } from "../apiResultTypes";
-import { narrow } from "../apiCastHelpers";
+import { getPrivacySettings as getPrivacySettingsApi } from "../api/getPrivacySettings";
 
 export const tool: MCPTool = {
   name: "get_privacy_settings",
@@ -28,55 +25,33 @@ export async function getPrivacySettings(
 ): Promise<MCPToolResult> {
   try {
     const keyStr = typeof args.key === "string" ? args.key : "last_seen";
-    const client = mtprotoService.getClient();
 
-    const keyMap: Record<string, Api.TypeInputPrivacyKey> = {
-      phone_number: new Api.InputPrivacyKeyPhoneNumber(),
-      last_seen: new Api.InputPrivacyKeyStatusTimestamp(),
-      profile_photo: new Api.InputPrivacyKeyProfilePhoto(),
-      forwards: new Api.InputPrivacyKeyForwards(),
-      phone_call: new Api.InputPrivacyKeyPhoneCall(),
-      chat_invite: new Api.InputPrivacyKeyChatInvite(),
-    };
+    const { data: settings, fromCache } = await getPrivacySettingsApi(keyStr);
 
-    const key = keyMap[keyStr];
-    if (!key) {
+    if (settings.rules.length === 0) {
       return {
         content: [
           {
             type: "text",
-            text:
-              "Unknown privacy key: " +
-              keyStr +
-              ". Valid keys: " +
-              Object.keys(keyMap).join(", "),
+            text: "No privacy rules found for " + settings.key + ".",
           },
         ],
-        isError: true,
+        fromCache,
       };
     }
 
-    const result = await mtprotoService.withFloodWaitHandling(async () => {
-      return client.invoke(new Api.account.GetPrivacy({ key }));
-    });
-
-    const rules = narrow<PrivacyResult>(result)?.rules;
-    if (!rules || !Array.isArray(rules)) {
-      return {
-        content: [
-          { type: "text", text: "No privacy rules found for " + keyStr + "." },
-        ],
-      };
-    }
-
-    const lines = rules.map((r) => r.className ?? "Unknown rule");
     return {
       content: [
         {
           type: "text",
-          text: "Privacy settings for " + keyStr + ":\n" + lines.join("\n"),
+          text:
+            "Privacy settings for " +
+            settings.key +
+            ":\n" +
+            settings.rules.join("\n"),
         },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

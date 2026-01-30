@@ -6,7 +6,8 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { getChatById, sendMessage } from "../telegramApi";
+import { sendMessage } from "../api/sendMessage";
+import { getChatById } from "../api/helpers";
 import { toHumanReadableAction } from "../toolActionParser";
 import { validateId } from "../../validation";
 
@@ -62,8 +63,8 @@ export async function replyToMessage(
       };
     }
 
-    const result = await sendMessage(chatId, text, messageId);
-    if (!result) {
+    const { data, fromCache } = await sendMessage(chatId, text, messageId);
+    if (!data) {
       return {
         content: [
           {
@@ -82,6 +83,7 @@ export async function replyToMessage(
           text: `Replied to message ${messageId} in chat ${chatId}.`,
         },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

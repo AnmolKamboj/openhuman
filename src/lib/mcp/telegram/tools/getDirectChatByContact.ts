@@ -2,8 +2,7 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { store } from "../../../../store";
-import { selectOrderedChats } from "../../../../store/telegramSelectors";
+import { getDirectChatByContact as getDirectChatApi } from "../api/getDirectChatByContact";
 
 export const tool: MCPTool = {
   name: "get_direct_chat_by_contact",
@@ -23,21 +22,14 @@ export async function getDirectChatByContact(
 ): Promise<MCPToolResult> {
   try {
     const userId = validateId(args.user_id, "user_id");
-    const state = store.getState();
-    const chats = selectOrderedChats(state);
-
-    const dmChat = chats.find(
-      (c) => c.type === "private" && String(c.id) === String(userId),
-    );
+    const { data: dmChat, fromCache } = await getDirectChatApi(userId);
 
     if (!dmChat) {
       return {
         content: [
-          {
-            type: "text",
-            text: "No direct chat found with user " + userId + ".",
-          },
+          { type: "text", text: "No direct chat found with user " + userId + "." },
         ],
+        fromCache,
       };
     }
 
@@ -45,15 +37,10 @@ export async function getDirectChatByContact(
       content: [
         {
           type: "text",
-          text:
-            "Chat ID: " +
-            dmChat.id +
-            " | Title: " +
-            (dmChat.title ?? "DM") +
-            " | Username: " +
-            (dmChat.username ?? "N/A"),
+          text: "Chat ID: " + dmChat.id + " | Title: " + dmChat.title + " | Username: " + (dmChat.username ?? "N/A"),
         },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

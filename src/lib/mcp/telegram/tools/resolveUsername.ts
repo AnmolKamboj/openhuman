@@ -9,9 +9,7 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { formatEntity, getChatById } from "../telegramApi";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
+import { resolveUsername as resolveUsernameApi } from "../api/resolveUsername";
 
 export const tool: MCPTool = {
   name: "resolve_username",
@@ -40,104 +38,27 @@ export async function resolveUsername(
         isError: true,
       };
     }
-    const username = raw.startsWith("@") ? raw.slice(1) : raw;
 
-    // Try server-side resolution via Telegram API
-    try {
-      const client = mtprotoService.getClient();
+    const { data: resolved, fromCache } = await resolveUsernameApi(raw);
 
-      const result = await mtprotoService.withFloodWaitHandling(async () => {
-        return client.invoke(
-          new Api.contacts.ResolveUsername({ username }),
-        );
-      });
-
-      if (result && "peer" in result) {
-        const peer = result.peer;
-        const peerType =
-          peer.className === "PeerUser"
-            ? "user"
-            : peer.className === "PeerChannel"
-              ? "channel"
-              : peer.className === "PeerChat"
-                ? "chat"
-                : "unknown";
-
-        // Extract ID from peer
-        const peerId =
-          "userId" in peer
-            ? String(peer.userId)
-            : "channelId" in peer
-              ? String(peer.channelId)
-              : "chatId" in peer
-                ? String(peer.chatId)
-                : "unknown";
-
-        // Try to get name from resolved users/chats
-        let name = username;
-        if ("users" in result && Array.isArray(result.users)) {
-          const user = result.users[0] as {
-            firstName?: string;
-            lastName?: string;
-          };
-          if (user) {
-            name =
-              [user.firstName, user.lastName].filter(Boolean).join(" ") ||
-              username;
-          }
-        }
-        if ("chats" in result && Array.isArray(result.chats)) {
-          const chat = result.chats[0] as { title?: string };
-          if (chat?.title) {
-            name = chat.title;
-          }
-        }
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                { id: peerId, name, type: peerType, username },
-                undefined,
-                2,
-              ),
-            },
-          ],
-        };
-      }
-    } catch {
-      // API call failed — fall back to cached lookup below
-    }
-
-    // Fallback: look up from cached state
-    const lookupKey = `@${username}`;
-    const chat = getChatById(lookupKey);
-    if (!chat) {
+    if (!resolved) {
+      const username = raw.startsWith("@") ? raw : `@${raw}`;
       return {
         content: [
-          { type: "text", text: `Username @${username} not found` },
+          { type: "text", text: `Username ${username} not found` },
         ],
         isError: true,
       };
     }
-    const entity = formatEntity(chat);
+
     return {
       content: [
         {
           type: "text",
-          text: JSON.stringify(
-            {
-              id: entity.id,
-              name: entity.name,
-              type: entity.type,
-              username: entity.username,
-            },
-            undefined,
-            2,
-          ),
+          text: JSON.stringify(resolved, undefined, 2),
         },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

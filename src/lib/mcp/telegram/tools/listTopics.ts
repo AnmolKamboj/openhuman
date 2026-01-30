@@ -2,11 +2,7 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { getChatById } from "../telegramApi";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import type { ForumTopicsResult } from "../apiResultTypes";
-import { toInputChannel, narrow } from "../apiCastHelpers";
+import { listTopics as listTopicsApi } from "../api/listTopics";
 
 export const tool: MCPTool = {
   name: "list_topics",
@@ -27,51 +23,21 @@ export async function listTopics(
   try {
     const chatId = validateId(args.chat_id, "chat_id");
 
-    const chat = getChatById(chatId);
-    if (!chat)
-      return {
-        content: [{ type: "text", text: "Chat not found: " + chatId }],
-        isError: true,
-      };
+    const { data: topics, fromCache } = await listTopicsApi(chatId);
 
-    if (chat.type !== "channel" && chat.type !== "supergroup") {
+    if (topics.length === 0) {
       return {
-        content: [
-          {
-            type: "text",
-            text: "Forum topics are only available for channels/supergroups.",
-          },
-        ],
-        isError: true,
+        content: [{ type: "text", text: "No forum topics found." }],
+        fromCache,
       };
     }
 
-    const client = mtprotoService.getClient();
-    const entity = chat.username ? chat.username : chat.id;
+    const lines = topics.map((t) => "ID: " + t.id + " | " + t.title);
 
-    const result = await mtprotoService.withFloodWaitHandling(async () => {
-      const inputChannel = await client.getInputEntity(entity);
-      return client.invoke(
-        new Api.channels.GetForumTopics({
-          channel: toInputChannel(inputChannel),
-          offsetDate: 0,
-          offsetId: 0,
-          offsetTopic: 0,
-          limit: 100,
-        }),
-      );
-    });
-
-    const topics = narrow<ForumTopicsResult>(result)?.topics;
-    if (!topics || !Array.isArray(topics) || topics.length === 0) {
-      return { content: [{ type: "text", text: "No forum topics found." }] };
-    }
-
-    const lines = topics.map((t) => {
-      return "ID: " + t.id + " | " + (t.title ?? "Untitled");
-    });
-
-    return { content: [{ type: "text", text: lines.join("\n") }] };
+    return {
+      content: [{ type: "text", text: lines.join("\n") }],
+      fromCache,
+    };
   } catch (error) {
     return logAndFormatError(
       "list_topics",

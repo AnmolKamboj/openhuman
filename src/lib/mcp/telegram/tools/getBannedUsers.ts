@@ -2,13 +2,8 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { getChatById } from "../telegramApi";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
 import { optNumber } from "../args";
-import bigInt from "big-integer";
-import type { ApiUser } from "../apiResultTypes";
-import { toInputChannel } from "../apiCastHelpers";
+import { getBannedUsers as getBannedUsersApi } from "../api/getBannedUsers";
 
 export const tool: MCPTool = {
   name: "get_banned_users",
@@ -31,55 +26,21 @@ export async function getBannedUsers(
     const chatId = validateId(args.chat_id, "chat_id");
     const limit = optNumber(args, "limit", 50);
 
-    const chat = getChatById(chatId);
-    if (!chat)
-      return {
-        content: [{ type: "text", text: `Chat not found: ${chatId}` }],
-        isError: true,
-      };
+    const { data: bannedUsers, fromCache } = await getBannedUsersApi(
+      chatId,
+      limit,
+    );
 
-    if (chat.type !== "channel" && chat.type !== "supergroup") {
+    if (bannedUsers.length === 0) {
       return {
-        content: [
-          {
-            type: "text",
-            text: "Banned users list is only available for channels/supergroups.",
-          },
-        ],
-        isError: true,
+        content: [{ type: "text", text: "No banned users found." }],
+        fromCache,
       };
     }
 
-    const client = mtprotoService.getClient();
-    const entity = chat.username ? chat.username : chat.id;
-
-    const result = await mtprotoService.withFloodWaitHandling(async () => {
-      const inputChannel = await client.getInputEntity(entity);
-      return client.invoke(
-        new Api.channels.GetParticipants({
-          channel: toInputChannel(inputChannel),
-          filter: new Api.ChannelParticipantsKicked({ q: "" }),
-          offset: 0,
-          limit,
-          hash: bigInt(0),
-        }),
-      );
-    });
-
-    if (
-      !result ||
-      !("users" in result) ||
-      !Array.isArray(result.users) ||
-      result.users.length === 0
-    ) {
-      return { content: [{ type: "text", text: "No banned users found." }] };
-    }
-
-    const lines = result.users.map((u: ApiUser) => {
-      const name =
-        [u.firstName, u.lastName].filter(Boolean).join(" ") || "Unknown";
+    const lines = bannedUsers.map((u) => {
       const username = u.username ? `@${u.username}` : "";
-      return `ID: ${u.id} | ${name} ${username}`.trim();
+      return `ID: ${u.id} | ${u.name} ${username}`.trim();
     });
 
     return {
@@ -89,6 +50,7 @@ export async function getBannedUsers(
           text: `${lines.length} banned users:\n${lines.join("\n")}`,
         },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

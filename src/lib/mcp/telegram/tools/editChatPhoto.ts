@@ -1,5 +1,8 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
+import { ErrorCategory, logAndFormatError } from "../../errorHandler";
+import { validateId } from "../../validation";
+import { editChatPhoto as editChatPhotoApi } from "../api/editChatPhoto";
 
 export const tool: MCPTool = {
   name: "edit_chat_photo",
@@ -15,16 +18,22 @@ export const tool: MCPTool = {
 };
 
 export async function editChatPhoto(
-  _args: Record<string, unknown>,
+  args: Record<string, unknown>,
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
-  return {
-    content: [
-      {
-        type: "text",
-        text: "edit_chat_photo requires file upload which is not supported via MCP text interface. Use the Telegram client directly.",
-      },
-    ],
-    isError: true,
-  };
+  try {
+    const chatId = validateId(args.chat_id, "chat_id");
+    const filePath = typeof args.file_path === "string" ? args.file_path : "";
+    await editChatPhotoApi(chatId, filePath);
+    return {
+      content: [{ type: "text", text: "Unreachable code" }],
+      isError: true,
+    };
+  } catch (error) {
+    return logAndFormatError(
+      "edit_chat_photo",
+      error instanceof Error ? error : new Error(String(error)),
+      ErrorCategory.GROUP,
+    );
+  }
 }

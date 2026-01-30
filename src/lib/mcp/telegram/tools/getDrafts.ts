@@ -1,10 +1,7 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import type { UpdatesResult } from "../apiResultTypes";
-import { narrow } from "../apiCastHelpers";
+import { getDrafts as getDraftsApi } from "../api/getDrafts";
 
 export const tool: MCPTool = {
   name: "get_drafts",
@@ -17,34 +14,21 @@ export async function getDrafts(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const client = mtprotoService.getClient();
+    const { data: drafts, fromCache } = await getDraftsApi();
 
-    const result = await mtprotoService.withFloodWaitHandling(async () => {
-      return client.invoke(new Api.messages.GetAllDrafts());
-    });
-
-    const updates = narrow<UpdatesResult>(result);
-    if (!updates || !updates.updates || updates.updates.length === 0) {
-      return { content: [{ type: "text", text: "No drafts found." }] };
+    if (drafts.length === 0) {
+      return {
+        content: [{ type: "text", text: "No drafts found." }],
+        fromCache,
+      };
     }
 
-    const lines: string[] = [];
-    for (const update of updates.updates) {
-      if (update.draft && update.draft.message) {
-        const peerId =
-          update.peer?.userId ??
-          update.peer?.chatId ??
-          update.peer?.channelId ??
-          "?";
-        lines.push("Peer " + peerId + ": " + update.draft.message);
-      }
-    }
+    const lines = drafts.map((d) => "Peer " + d.peerId + ": " + d.message);
 
-    if (lines.length === 0) {
-      return { content: [{ type: "text", text: "No drafts found." }] };
-    }
-
-    return { content: [{ type: "text", text: lines.join("\n") }] };
+    return {
+      content: [{ type: "text", text: lines.join("\n") }],
+      fromCache,
+    };
   } catch (error) {
     return logAndFormatError(
       "get_drafts",

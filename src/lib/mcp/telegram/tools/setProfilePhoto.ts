@@ -1,5 +1,7 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
+import { ErrorCategory, logAndFormatError } from "../../errorHandler";
+import { setProfilePhoto as setProfilePhotoApi } from "../api/setProfilePhoto";
 
 export const tool: MCPTool = {
   name: "set_profile_photo",
@@ -14,16 +16,26 @@ export const tool: MCPTool = {
 };
 
 export async function setProfilePhoto(
-  _args: Record<string, unknown>,
+  args: Record<string, unknown>,
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
-  return {
-    content: [
-      {
-        type: "text",
-        text: "set_profile_photo requires file upload which is not supported via MCP text interface. Use the Telegram client directly.",
-      },
-    ],
-    isError: true,
-  };
+  try {
+    const filePath = typeof args.file_path === "string" ? args.file_path : "";
+    await setProfilePhotoApi(filePath);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: "This should not be reached",
+        },
+      ],
+    };
+  } catch (error) {
+    return logAndFormatError(
+      "set_profile_photo",
+      error instanceof Error ? error : new Error(String(error)),
+      ErrorCategory.PROFILE,
+    );
+  }
 }

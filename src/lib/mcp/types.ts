@@ -31,6 +31,7 @@ export interface MCPToolResult {
     text: string;
   }>;
   isError?: boolean;
+  fromCache?: boolean;
 }
 
 export interface MCPRequest {

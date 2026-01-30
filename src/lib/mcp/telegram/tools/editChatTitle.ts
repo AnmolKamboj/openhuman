@@ -2,11 +2,7 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { getChatById } from "../telegramApi";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import bigInt from "big-integer";
-import { toInputChannel } from "../apiCastHelpers";
+import { editChatTitle as editChatTitleApi } from "../api/editChatTitle";
 
 export const tool: MCPTool = {
   name: "edit_chat_title",
@@ -34,39 +30,10 @@ export async function editChatTitle(
         isError: true,
       };
 
-    const chat = getChatById(chatId);
-    if (!chat)
-      return {
-        content: [{ type: "text", text: `Chat not found: ${chatId}` }],
-        isError: true,
-      };
-
-    const client = mtprotoService.getClient();
-    const entity = chat.username ? chat.username : chat.id;
-
-    if (chat.type === "channel" || chat.type === "supergroup") {
-      await mtprotoService.withFloodWaitHandling(async () => {
-        const inputChannel = await client.getInputEntity(entity);
-        await client.invoke(
-          new Api.channels.EditTitle({
-            channel: toInputChannel(inputChannel),
-            title,
-          }),
-        );
-      });
-    } else {
-      await mtprotoService.withFloodWaitHandling(async () => {
-        await client.invoke(
-          new Api.messages.EditChatTitle({
-            chatId: bigInt(chat.id),
-            title,
-          }),
-        );
-      });
-    }
-
+    const { fromCache } = await editChatTitleApi(chatId, title);
     return {
       content: [{ type: "text", text: `Chat title updated to "${title}".` }],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

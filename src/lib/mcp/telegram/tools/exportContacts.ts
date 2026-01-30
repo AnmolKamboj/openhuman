@@ -1,10 +1,7 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import bigInt from "big-integer";
-import type { ApiUser } from "../apiResultTypes";
+import { exportContacts as exportContactsApi } from "../api/exportContacts";
 
 export const tool: MCPTool = {
   name: "export_contacts",
@@ -17,31 +14,18 @@ export async function exportContacts(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const client = mtprotoService.getClient();
+    const { data: contacts, fromCache } = await exportContactsApi();
 
-    const result = await mtprotoService.withFloodWaitHandling(async () => {
-      return client.invoke(new Api.contacts.GetContacts({ hash: bigInt(0) }));
-    });
-
-    if (
-      !result ||
-      !("users" in result) ||
-      !Array.isArray(result.users) ||
-      result.users.length === 0
-    ) {
-      return { content: [{ type: "text", text: "No contacts to export." }] };
+    if (contacts.length === 0) {
+      return {
+        content: [{ type: "text", text: "No contacts to export." }],
+        fromCache,
+      };
     }
-
-    const contacts = result.users.map((u: ApiUser) => ({
-      id: String(u.id),
-      firstName: u.firstName ?? "",
-      lastName: u.lastName ?? "",
-      username: u.username ?? "",
-      phone: u.phone ?? "",
-    }));
 
     return {
       content: [{ type: "text", text: JSON.stringify(contacts, null, 2) }],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

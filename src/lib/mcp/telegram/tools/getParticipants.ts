@@ -2,13 +2,8 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { getChatById } from "../telegramApi";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
 import { optNumber } from "../args";
-import bigInt from "big-integer";
-import type { ApiUser } from "../apiResultTypes";
-import { toInputChannel, narrow } from "../apiCastHelpers";
+import { getParticipants as getParticipantsApi } from "../api/getParticipants";
 
 export const tool: MCPTool = {
   name: "get_participants",
@@ -31,54 +26,21 @@ export async function getParticipants(
     const chatId = validateId(args.chat_id, "chat_id");
     const limit = optNumber(args, "limit", 50);
 
-    const chat = getChatById(chatId);
-    if (!chat)
-      return {
-        content: [{ type: "text", text: `Chat not found: ${chatId}` }],
-        isError: true,
-      };
-
-    const client = mtprotoService.getClient();
-    const entity = chat.username ? chat.username : chat.id;
-
-    let participants: ApiUser[] = [];
-
-    if (chat.type === "channel" || chat.type === "supergroup") {
-      const result = await mtprotoService.withFloodWaitHandling(async () => {
-        const inputChannel = await client.getInputEntity(entity);
-        return client.invoke(
-          new Api.channels.GetParticipants({
-            channel: toInputChannel(inputChannel),
-            filter: new Api.ChannelParticipantsRecent(),
-            offset: 0,
-            limit,
-            hash: bigInt(0),
-          }),
-        );
-      });
-      if (result && "users" in result && Array.isArray(result.users)) {
-        participants = narrow<ApiUser[]>(result.users);
-      }
-    } else {
-      const result = await mtprotoService.withFloodWaitHandling(async () => {
-        return client.invoke(
-          new Api.messages.GetFullChat({ chatId: bigInt(chat.id) }),
-        );
-      });
-      if (result && "users" in result && Array.isArray(result.users)) {
-        participants = narrow<ApiUser[]>(result.users);
-      }
-    }
+    const { data: participants, fromCache } = await getParticipantsApi(
+      chatId,
+      limit,
+    );
 
     if (participants.length === 0) {
-      return { content: [{ type: "text", text: "No participants found." }] };
+      return {
+        content: [{ type: "text", text: "No participants found." }],
+        fromCache,
+      };
     }
 
-    const lines = participants.map((u: ApiUser) => {
-      const name =
-        [u.firstName, u.lastName].filter(Boolean).join(" ") || "Unknown";
-      const username = u.username ? `@${u.username}` : "";
-      return `ID: ${u.id} | ${name} ${username}`.trim();
+    const lines = participants.map((p) => {
+      const username = p.username ? `@${p.username}` : "";
+      return `ID: ${p.id} | ${p.name} ${username}`.trim();
     });
 
     return {
@@ -88,6 +50,7 @@ export async function getParticipants(
           text: `${lines.length} participants:\n${lines.join("\n")}`,
         },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

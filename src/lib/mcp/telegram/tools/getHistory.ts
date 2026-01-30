@@ -1,7 +1,8 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { getChatById, getMessagesWithApiFallback, formatMessage } from "../telegramApi";
+import { getMessages as getMessagesApi } from "../api/getMessages";
+import { getChatById, formatMessage } from "../api/helpers";
 import { validateId } from "../../validation";
 import { optNumber } from "../args";
 
@@ -34,10 +35,12 @@ export async function getHistory(
       };
     }
 
-    const messages = await getMessagesWithApiFallback(chatId, limit, 0);
+    const { data: messagesData, fromCache } = await getMessagesApi(chatId, limit, 0);
+    const messages = messagesData.length > 0 ? messagesData : undefined;
     if (!messages || messages.length === 0) {
       return {
         content: [{ type: "text", text: "No messages found in this chat." }],
+        fromCache,
       };
     }
 
@@ -47,7 +50,7 @@ export async function getHistory(
       return `ID: ${f.id} | ${from} | ${f.date} | ${f.text || "[Media/No text]"}`;
     });
 
-    return { content: [{ type: "text", text: lines.join("\n") }] };
+    return { content: [{ type: "text", text: lines.join("\n") }], fromCache };
   } catch (error) {
     return logAndFormatError(
       "get_history",

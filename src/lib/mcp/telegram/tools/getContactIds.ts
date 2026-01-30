@@ -1,13 +1,7 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import bigInt from "big-integer";
-import type { ContactIdEntry } from "../apiResultTypes";
-import { narrow } from "../apiCastHelpers";
-
-type ContactIdResult = number | ContactIdEntry;
+import { getContactIds as getContactIdsApi } from "../api/getContactIds";
 
 export const tool: MCPTool = {
   name: "get_contact_ids",
@@ -20,23 +14,20 @@ export async function getContactIds(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const client = mtprotoService.getClient();
+    const { data: ids, fromCache } = await getContactIdsApi();
 
-    const result = await mtprotoService.withFloodWaitHandling(async () => {
-      return client.invoke(new Api.contacts.GetContactIDs({ hash: bigInt(0) }));
-    });
-
-    if (!result || !Array.isArray(result) || result.length === 0) {
-      return { content: [{ type: "text", text: "No contact IDs found." }] };
+    if (ids.length === 0) {
+      return {
+        content: [{ type: "text", text: "No contact IDs found." }],
+        fromCache,
+      };
     }
 
-    const ids = narrow<ContactIdResult[]>(result).map((c) =>
-      String(typeof c === "number" ? c : (c.userId ?? c)),
-    );
     return {
       content: [
-        { type: "text", text: ids.length + " contacts:\n" + ids.join("\n") },
+        { type: "text", text: `${ids.length} contacts:\n${ids.join("\n")}` },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(
