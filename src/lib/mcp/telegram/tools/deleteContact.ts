@@ -2,9 +2,7 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import { toInputUser } from "../apiCastHelpers";
+import { deleteContact as deleteContactApi } from "../api/deleteContact";
 
 export const tool: MCPTool = {
   name: "delete_contact",
@@ -27,19 +25,11 @@ export async function deleteContact(
 ): Promise<MCPToolResult> {
   try {
     const userId = validateId(args.user_id, "user_id");
-    const client = mtprotoService.getClient();
 
-    await mtprotoService.withFloodWaitHandling(async () => {
-      const inputUser = await client.getInputEntity(userId);
-      await client.invoke(
-        new Api.contacts.DeleteContacts({
-          id: [toInputUser(inputUser)],
-        }),
-      );
-    });
+    await deleteContactApi(userId);
 
     return {
-      content: [{ type: "text", text: "Contact " + userId + " deleted." }],
+      content: [{ type: "text", text: `Contact ${userId} deleted.` }],
     };
   } catch (error) {
     return logAndFormatError(

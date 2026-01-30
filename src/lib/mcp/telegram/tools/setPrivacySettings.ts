@@ -1,8 +1,7 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
+import { setPrivacySettings as setPrivacySettingsApi } from "../api/setPrivacySettings";
 
 export const tool: MCPTool = {
   name: "set_privacy_settings",
@@ -25,61 +24,7 @@ export async function setPrivacySettings(
     const keyStr = typeof args.setting === "string" ? args.setting : "";
     const ruleStr = typeof args.value === "string" ? args.value : "";
 
-    if (!keyStr)
-      return {
-        content: [{ type: "text", text: "setting is required" }],
-        isError: true,
-      };
-    if (!ruleStr)
-      return {
-        content: [{ type: "text", text: "value is required" }],
-        isError: true,
-      };
-
-    const client = mtprotoService.getClient();
-
-    const keyMap: Record<string, Api.TypeInputPrivacyKey> = {
-      phone_number: new Api.InputPrivacyKeyPhoneNumber(),
-      last_seen: new Api.InputPrivacyKeyStatusTimestamp(),
-      profile_photo: new Api.InputPrivacyKeyProfilePhoto(),
-      forwards: new Api.InputPrivacyKeyForwards(),
-      phone_call: new Api.InputPrivacyKeyPhoneCall(),
-      chat_invite: new Api.InputPrivacyKeyChatInvite(),
-    };
-
-    const key = keyMap[keyStr];
-    if (!key) {
-      return {
-        content: [{ type: "text", text: "Unknown privacy key: " + keyStr }],
-        isError: true,
-      };
-    }
-
-    const ruleMap: Record<string, Api.TypeInputPrivacyRule> = {
-      allow_all: new Api.InputPrivacyValueAllowAll(),
-      allow_contacts: new Api.InputPrivacyValueAllowContacts(),
-      disallow_all: new Api.InputPrivacyValueDisallowAll(),
-    };
-
-    const rule = ruleMap[ruleStr];
-    if (!rule) {
-      return {
-        content: [
-          {
-            type: "text",
-            text:
-              "Unknown rule: " +
-              ruleStr +
-              ". Valid: allow_all, allow_contacts, disallow_all",
-          },
-        ],
-        isError: true,
-      };
-    }
-
-    await mtprotoService.withFloodWaitHandling(async () => {
-      await client.invoke(new Api.account.SetPrivacy({ key, rules: [rule] }));
-    });
+    const { fromCache } = await setPrivacySettingsApi(keyStr, ruleStr);
 
     return {
       content: [
@@ -88,6 +33,7 @@ export async function setPrivacySettings(
           text: "Privacy setting " + keyStr + " set to " + ruleStr + ".",
         },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

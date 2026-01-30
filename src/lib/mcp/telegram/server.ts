@@ -18,7 +18,11 @@ import { ErrorCategory, logAndFormatError } from "../errorHandler";
 import { ValidationError } from "../validation";
 import { SocketIOMCPTransportImpl } from "../transport";
 import { mcpLog } from "../logger";
-import { enforceRateLimit, resetRequestCallCount } from "../rateLimiter";
+import {
+  enforceRateLimit,
+  resetRequestCallCount,
+  isStateOnlyTool,
+} from "../rateLimiter";
 import {
   useExtraToolDefinition,
   executeUseExtraTool,
@@ -182,10 +186,15 @@ export class TelegramMCPServer {
       selectTelegramUserState(store.getState());
 
     try {
-      return await toolHandler(args, {
+      const result = await toolHandler(args, {
         telegramState,
         transport: this.transport,
       });
+      // Auto-infer fromCache if the tool didn't set it explicitly
+      if (result.fromCache === undefined) {
+        result.fromCache = isStateOnlyTool(name);
+      }
+      return result;
     } catch (error) {
       if (error instanceof ValidationError) {
         return logAndFormatError(name, error, ErrorCategory.VALIDATION);

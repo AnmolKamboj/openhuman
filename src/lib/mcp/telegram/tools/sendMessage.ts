@@ -6,7 +6,7 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { sendMessage as sendMessageApi } from "../telegramApi";
+import { sendMessage as sendMessageApiCall } from "../api/sendMessage";
 import { toHumanReadableAction } from "../toolActionParser";
 import { validateId } from "../../validation";
 
@@ -40,7 +40,7 @@ export async function sendMessage(
         isError: true,
       };
     }
-    const result = await sendMessageApi(chatId, message);
+    const { data: result, fromCache } = await sendMessageApiCall(chatId, message);
     if (!result) {
       return {
         content: [
@@ -49,7 +49,7 @@ export async function sendMessage(
         isError: true,
       };
     }
-    return { content: [{ type: "text", text: "Message sent successfully." }] };
+    return { content: [{ type: "text", text: "Message sent successfully." }], fromCache };
   } catch (error) {
     return logAndFormatError(
       "send_message",

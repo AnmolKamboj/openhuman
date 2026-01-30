@@ -1,9 +1,8 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import type { BotCommandInput } from "../apiResultTypes";
+import type { BotCommandInput } from "../api/apiResultTypes";
+import { setBotCommands as setBotCommandsApi } from "../api/setBotCommands";
 
 export const tool: MCPTool = {
   name: "set_bot_commands",
@@ -24,39 +23,19 @@ export async function setBotCommands(
 ): Promise<MCPToolResult> {
   try {
     const cmds = Array.isArray(args.commands) ? args.commands : [];
-    if (cmds.length === 0)
-      return {
-        content: [{ type: "text", text: "commands array is required" }],
-        isError: true,
-      };
 
-    const client = mtprotoService.getClient();
-
-    const botCommands = cmds.map(
-      (c: BotCommandInput) =>
-        new Api.BotCommand({
-          command: String(c.command ?? ""),
-          description: String(c.description ?? ""),
-        }),
+    const { data: count, fromCache } = await setBotCommandsApi(
+      cmds as BotCommandInput[],
     );
-
-    await mtprotoService.withFloodWaitHandling(async () => {
-      await client.invoke(
-        new Api.bots.SetBotCommands({
-          scope: new Api.BotCommandScopeDefault(),
-          langCode: "",
-          commands: botCommands,
-        }),
-      );
-    });
 
     return {
       content: [
         {
           type: "text",
-          text: "Bot commands updated: " + cmds.length + " commands.",
+          text: "Bot commands updated: " + count + " commands.",
         },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

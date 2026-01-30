@@ -1,10 +1,8 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
 import { optNumber } from "../args";
-import type { ApiUser } from "../apiResultTypes";
+import { searchContacts as searchContactsApi } from "../api/searchContacts";
 
 export const tool: MCPTool = {
   name: "search_contacts",
@@ -25,38 +23,29 @@ export async function searchContacts(
 ): Promise<MCPToolResult> {
   try {
     const query = typeof args.query === "string" ? args.query : "";
-    if (!query) {
-      return {
-        content: [{ type: "text", text: "query is required" }],
-        isError: true,
-      };
-    }
     const limit = optNumber(args, "limit", 20);
-    const client = mtprotoService.getClient();
 
-    const result = await mtprotoService.withFloodWaitHandling(async () => {
-      return client.invoke(new Api.contacts.Search({ q: query, limit }));
-    });
+    const { data: contacts, fromCache } = await searchContactsApi(
+      query,
+      limit,
+    );
 
-    if (
-      !result ||
-      !("users" in result) ||
-      !Array.isArray(result.users) ||
-      result.users.length === 0
-    ) {
+    if (contacts.length === 0) {
       return {
         content: [{ type: "text", text: `No contacts found for "${query}".` }],
+        fromCache,
       };
     }
 
-    const lines = result.users.map((u: ApiUser) => {
-      const name =
-        [u.firstName, u.lastName].filter(Boolean).join(" ") || "Unknown";
-      const username = u.username ? `@${u.username}` : "";
-      return `ID: ${u.id} | ${name} ${username}`.trim();
+    const lines = contacts.map((c) => {
+      const username = c.username ? `@${c.username}` : "";
+      return `ID: ${c.id} | ${c.name} ${username}`.trim();
     });
 
-    return { content: [{ type: "text", text: lines.join("\n") }] };
+    return {
+      content: [{ type: "text", text: lines.join("\n") }],
+      fromCache,
+    };
   } catch (error) {
     return logAndFormatError(
       "search_contacts",

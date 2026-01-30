@@ -1,9 +1,8 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { getChatById } from "../telegramApi";
-import { validateId } from "../../validation";
-import { mtprotoService } from "../../../../services/mtprotoService";
+import { validateId, validatePositiveInt } from "../../validation";
+import { pinMessage as pinMessageApi } from "../api/pinMessage";
 
 export const tool: MCPTool = {
   name: "pin_message",
@@ -24,34 +23,9 @@ export async function pinMessage(
 ): Promise<MCPToolResult> {
   try {
     const chatId = validateId(args.chat_id, "chat_id");
-    const messageId =
-      typeof args.message_id === "number" && Number.isInteger(args.message_id)
-        ? args.message_id
-        : undefined;
+    const messageId = validatePositiveInt(args.message_id, "message_id");
 
-    if (messageId === undefined) {
-      return {
-        content: [
-          { type: "text", text: "message_id must be a positive integer" },
-        ],
-        isError: true,
-      };
-    }
-
-    const chat = getChatById(chatId);
-    if (!chat) {
-      return {
-        content: [{ type: "text", text: `Chat not found: ${chatId}` }],
-        isError: true,
-      };
-    }
-
-    const entity = chat.username ? chat.username : chat.id;
-    const client = mtprotoService.getClient();
-
-    await mtprotoService.withFloodWaitHandling(async () => {
-      await client.pinMessage(entity, messageId, { notify: false });
-    });
+    const { fromCache } = await pinMessageApi(chatId, messageId);
 
     return {
       content: [
@@ -60,6 +34,7 @@ export async function pinMessage(
           text: `Message ${messageId} pinned in chat ${chatId}.`,
         },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

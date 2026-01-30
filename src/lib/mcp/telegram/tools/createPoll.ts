@@ -2,10 +2,7 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { getChatById } from "../telegramApi";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import bigInt from "big-integer";
+import { createPoll as createPollApi } from "../api/createPoll";
 
 export const tool: MCPTool = {
   name: "create_poll",
@@ -41,44 +38,12 @@ export async function createPoll(
         isError: true,
       };
 
-    const chat = getChatById(chatId);
-    if (!chat)
-      return {
-        content: [{ type: "text", text: "Chat not found: " + chatId }],
-        isError: true,
-      };
+    const { fromCache } = await createPollApi(chatId, question, options);
 
-    const client = mtprotoService.getClient();
-    const entity = chat.username ? chat.username : chat.id;
-
-    await mtprotoService.withFloodWaitHandling(async () => {
-      const inputPeer = await client.getInputEntity(entity);
-      await client.invoke(
-        new Api.messages.SendMedia({
-          peer: inputPeer,
-          media: new Api.InputMediaPoll({
-            poll: new Api.Poll({
-              id: bigInt(0),
-              question: new Api.TextWithEntities({
-                text: question,
-                entities: [],
-              }),
-              answers: options.map(
-                (opt, i) =>
-                  new Api.PollAnswer({
-                    text: new Api.TextWithEntities({ text: opt, entities: [] }),
-                    option: Buffer.from([i]),
-                  }),
-              ),
-            }),
-          }),
-          message: "",
-          randomId: bigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)),
-        }),
-      );
-    });
-
-    return { content: [{ type: "text", text: "Poll created: " + question }] };
+    return {
+      content: [{ type: "text", text: "Poll created: " + question }],
+      fromCache,
+    };
   } catch (error) {
     return logAndFormatError(
       "create_poll",

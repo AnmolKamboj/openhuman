@@ -2,12 +2,7 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { getChatById } from "../telegramApi";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import bigInt from "big-integer";
-import type { ApiUser } from "../apiResultTypes";
-import { toInputChannel, narrow } from "../apiCastHelpers";
+import { getAdmins as getAdminsApi } from "../api/getAdmins";
 
 export const tool: MCPTool = {
   name: "get_admins",
@@ -28,60 +23,25 @@ export async function getAdmins(
   try {
     const chatId = validateId(args.chat_id, "chat_id");
 
-    const chat = getChatById(chatId);
-    if (!chat)
-      return {
-        content: [{ type: "text", text: `Chat not found: ${chatId}` }],
-        isError: true,
-      };
-
-    const client = mtprotoService.getClient();
-    const entity = chat.username ? chat.username : chat.id;
-
-    let admins: ApiUser[] = [];
-
-    if (chat.type === "channel" || chat.type === "supergroup") {
-      const result = await mtprotoService.withFloodWaitHandling(async () => {
-        const inputChannel = await client.getInputEntity(entity);
-        return client.invoke(
-          new Api.channels.GetParticipants({
-            channel: toInputChannel(inputChannel),
-            filter: new Api.ChannelParticipantsAdmins(),
-            offset: 0,
-            limit: 100,
-            hash: bigInt(0),
-          }),
-        );
-      });
-      if (result && "users" in result && Array.isArray(result.users)) {
-        admins = narrow<ApiUser[]>(result.users);
-      }
-    } else {
-      const result = await mtprotoService.withFloodWaitHandling(async () => {
-        return client.invoke(
-          new Api.messages.GetFullChat({ chatId: bigInt(chat.id) }),
-        );
-      });
-      if (result && "users" in result && Array.isArray(result.users)) {
-        admins = narrow<ApiUser[]>(result.users);
-      }
-    }
+    const { data: admins, fromCache } = await getAdminsApi(chatId);
 
     if (admins.length === 0) {
-      return { content: [{ type: "text", text: "No admins found." }] };
+      return {
+        content: [{ type: "text", text: "No admins found." }],
+        fromCache,
+      };
     }
 
-    const lines = admins.map((u: ApiUser) => {
-      const name =
-        [u.firstName, u.lastName].filter(Boolean).join(" ") || "Unknown";
-      const username = u.username ? `@${u.username}` : "";
-      return `ID: ${u.id} | ${name} ${username}`.trim();
+    const lines = admins.map((a) => {
+      const username = a.username ? `@${a.username}` : "";
+      return `ID: ${a.id} | ${a.name} ${username}`.trim();
     });
 
     return {
       content: [
         { type: "text", text: `${lines.length} admins:\n${lines.join("\n")}` },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

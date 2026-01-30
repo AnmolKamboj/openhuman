@@ -1,11 +1,8 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
 import { optString } from "../args";
-import type { ResultWithChats } from "../apiResultTypes";
-import { narrow } from "../apiCastHelpers";
+import { createChannel as createChannelApi } from "../api/createChannel";
 
 export const tool: MCPTool = {
   name: "create_channel",
@@ -39,26 +36,16 @@ export async function createChannel(
 
     const about = optString(args, "about") ?? "";
     const megagroup = args.megagroup === true;
-    const client = mtprotoService.getClient();
 
-    const result = await mtprotoService.withFloodWaitHandling(async () => {
-      return client.invoke(
-        new Api.channels.CreateChannel({
-          title,
-          about,
-          megagroup,
-          broadcast: !megagroup,
-        }),
-      );
-    });
-
-    const channelId =
-      narrow<ResultWithChats>(result)?.chats?.[0]?.id ?? "unknown";
-    const type = megagroup ? "Supergroup" : "Channel";
+    const { data, fromCache } = await createChannelApi(title, about, megagroup);
     return {
       content: [
-        { type: "text", text: `${type} "${title}" created. ID: ${channelId}` },
+        {
+          type: "text",
+          text: `${data.type} "${title}" created. ID: ${data.id}`,
+        },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

@@ -1,10 +1,8 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import bigInt from "big-integer";
 import { optString } from "../args";
+import { addContact as addContactApi } from "../api/addContact";
 
 export const tool: MCPTool = {
   name: "add_contact",
@@ -28,42 +26,15 @@ export async function addContact(
     const phone = typeof args.phone === "string" ? args.phone : "";
     const firstName =
       typeof args.first_name === "string" ? args.first_name : "";
-    const lastName = optString(args, "last_name") ?? "";
+    const lastName = optString(args, "last_name");
 
-    if (!phone)
-      return {
-        content: [{ type: "text", text: "phone is required" }],
-        isError: true,
-      };
-    if (!firstName)
-      return {
-        content: [{ type: "text", text: "first_name is required" }],
-        isError: true,
-      };
-
-    const client = mtprotoService.getClient();
-
-    await mtprotoService.withFloodWaitHandling(async () => {
-      await client.invoke(
-        new Api.contacts.ImportContacts({
-          contacts: [
-            new Api.InputPhoneContact({
-              clientId: bigInt(0),
-              phone,
-              firstName,
-              lastName,
-            }),
-          ],
-        }),
-      );
-    });
+    await addContactApi(phone, firstName, lastName);
 
     return {
       content: [
         {
           type: "text",
-          text:
-            "Contact " + firstName + " " + lastName + " (" + phone + ") added.",
+          text: `Contact ${firstName} ${lastName ?? ""} (${phone}) added.`,
         },
       ],
     };

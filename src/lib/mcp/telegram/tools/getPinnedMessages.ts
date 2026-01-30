@@ -1,13 +1,8 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { getChatById, getMessages, formatMessage } from "../telegramApi";
 import { validateId } from "../../validation";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import bigInt from "big-integer";
-import type { ApiMessage } from "../apiResultTypes";
-import { narrow } from "../apiCastHelpers";
+import { getPinnedMessages as getPinnedMessagesApi } from "../api/getPinnedMessages";
 
 export const tool: MCPTool = {
   name: "get_pinned_messages",
@@ -28,64 +23,23 @@ export async function getPinnedMessages(
   try {
     const chatId = validateId(args.chat_id, "chat_id");
 
-    const chat = getChatById(chatId);
-    if (!chat) {
+    const { data: pinnedMessages, fromCache } = await getPinnedMessagesApi(chatId);
+
+    if (pinnedMessages.length === 0) {
       return {
-        content: [{ type: "text", text: `Chat not found: ${chatId}` }],
-        isError: true,
+        content: [{ type: "text", text: "No pinned messages found." }],
+        fromCache,
       };
     }
 
-    const entity = chat.username ? chat.username : chat.id;
-    const client = mtprotoService.getClient();
+    const pinnedLines = pinnedMessages.map(
+      (msg) => `ID: ${msg.id} | Date: ${msg.date} | ${msg.text}`,
+    );
 
-    let pinnedLines: string[] = [];
-
-    try {
-      const inputPeer = await client.getInputEntity(entity);
-      const result = await client.invoke(
-        new Api.messages.Search({
-          peer: inputPeer,
-          q: "",
-          filter: new Api.InputMessagesFilterPinned(),
-          minDate: 0,
-          maxDate: 0,
-          offsetId: 0,
-          addOffset: 0,
-          limit: 50,
-          maxId: 0,
-          minId: 0,
-          hash: bigInt(0),
-        }),
-      );
-
-      if ("messages" in result && Array.isArray(result.messages)) {
-        pinnedLines = narrow<ApiMessage[]>(result.messages).map((msg) => {
-          const id = msg.id ?? "?";
-          const text = msg.message ?? "[Media/No text]";
-          const date = msg.date
-            ? new Date(msg.date * 1000).toISOString()
-            : "unknown";
-          return `ID: ${id} | Date: ${date} | ${text}`;
-        });
-      }
-    } catch {
-      // Fallback: check cached messages for pinned flag
-      const allMessages = await getMessages(chatId, 500, 0);
-      if (allMessages) {
-        const pinned = allMessages.filter((m) => narrow<ApiMessage>(m).pinned);
-        pinnedLines = pinned.map((msg) => {
-          const f = formatMessage(msg);
-          return `ID: ${f.id} | Date: ${f.date} | ${f.text || "[Media/No text]"}`;
-        });
-      }
-    }
-
-    if (pinnedLines.length === 0) {
-      return { content: [{ type: "text", text: "No pinned messages found." }] };
-    }
-
-    return { content: [{ type: "text", text: pinnedLines.join("\n") }] };
+    return {
+      content: [{ type: "text", text: pinnedLines.join("\n") }],
+      fromCache,
+    };
   } catch (error) {
     return logAndFormatError(
       "get_pinned_messages",

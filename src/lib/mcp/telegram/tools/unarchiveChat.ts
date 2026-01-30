@@ -2,9 +2,7 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { getChatById } from "../telegramApi";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
+import { unarchiveChat as unarchiveChatApi } from "../api/unarchiveChat";
 
 export const tool: MCPTool = {
   name: "unarchive_chat",
@@ -24,32 +22,11 @@ export async function unarchiveChat(
 ): Promise<MCPToolResult> {
   try {
     const chatId = validateId(args.chat_id, "chat_id");
-
-    const chat = getChatById(chatId);
-    if (!chat)
-      return {
-        content: [{ type: "text", text: `Chat not found: ${chatId}` }],
-        isError: true,
-      };
-
-    const client = mtprotoService.getClient();
-    const entity = chat.username ? chat.username : chat.id;
-
-    await mtprotoService.withFloodWaitHandling(async () => {
-      const inputPeer = await client.getInputEntity(entity);
-      await client.invoke(
-        new Api.folders.EditPeerFolders({
-          folderPeers: [
-            new Api.InputFolderPeer({
-              peer: inputPeer,
-              folderId: 0, // 0 = Main folder (unarchive)
-            }),
-          ],
-        }),
-      );
-    });
-
-    return { content: [{ type: "text", text: `Chat ${chatId} unarchived.` }] };
+    const { fromCache } = await unarchiveChatApi(chatId);
+    return {
+      content: [{ type: "text", text: `Chat ${chatId} unarchived.` }],
+      fromCache,
+    };
   } catch (error) {
     return logAndFormatError(
       "unarchive_chat",

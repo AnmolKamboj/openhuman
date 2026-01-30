@@ -58,12 +58,12 @@ Redirects authenticated users away from public pages.
 export function PublicRoute() {
   const token = useAppSelector((state) => state.auth.token);
   const isOnboarded = useAppSelector((state) =>
-    selectIsOnboarded(state, userId)
+    selectIsOnboarded(state, userId),
   );
 
   if (token) {
     // Authenticated - redirect to appropriate page
-    return <Navigate to={isOnboarded ? '/home' : '/onboarding'} replace />;
+    return <Navigate to={isOnboarded ? "/home" : "/onboarding"} replace />;
   }
 
   return <Outlet />;
@@ -82,7 +82,7 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ requireOnboarded = false }) {
   const token = useAppSelector((state) => state.auth.token);
   const isOnboarded = useAppSelector((state) =>
-    selectIsOnboarded(state, userId)
+    selectIsOnboarded(state, userId),
   );
 
   if (!token) {
@@ -105,7 +105,7 @@ Fallback route that redirects based on auth state.
 export function DefaultRedirect() {
   const token = useAppSelector((state) => state.auth.token);
   const isOnboarded = useAppSelector((state) =>
-    selectIsOnboarded(state, userId)
+    selectIsOnboarded(state, userId),
   );
 
   if (!token) {
@@ -127,6 +127,7 @@ export function DefaultRedirect() {
 Landing page for unauthenticated users.
 
 **Features:**
+
 - App introduction and branding
 - CTA to login/signup
 - Public route (redirects if authenticated)
@@ -136,6 +137,7 @@ Landing page for unauthenticated users.
 Authentication page.
 
 **Features:**
+
 - Telegram OAuth button
 - Opens `/auth/telegram?platform=desktop` in browser
 - Handles deep link callback
@@ -160,6 +162,7 @@ export function Login() {
 Main dashboard after authentication.
 
 **Features:**
+
 - Protected route (requires auth + onboarded)
 - Connection status indicators
 - Navigation to settings modal
@@ -170,14 +173,14 @@ export function Home() {
   const navigate = useNavigate();
   const user = useAppSelector((state) => state.user.profile);
   const telegramStatus = useAppSelector((state) =>
-    selectTelegramConnectionStatus(state, user?.id)
+    selectTelegramConnectionStatus(state, user?.id),
   );
 
   return (
     <div className="home-page">
       <header>
         <h1>Welcome, {user?.firstName}</h1>
-        <button onClick={() => navigate('/settings')}>Settings</button>
+        <button onClick={() => navigate("/settings")}>Settings</button>
       </header>
 
       <TelegramConnectionIndicator status={telegramStatus} />
@@ -194,6 +197,7 @@ export function Home() {
 Multi-step onboarding process.
 
 ### Structure
+
 ```
 pages/onboarding/
 ├── Onboarding.tsx           # Flow controller
@@ -209,11 +213,11 @@ pages/onboarding/
 
 ```typescript
 const STEPS = [
-  { id: 'get-started', component: GetStartedStep },
-  { id: 'privacy', component: PrivacyStep },
-  { id: 'analytics', component: AnalyticsStep },
-  { id: 'connect', component: ConnectStep },
-  { id: 'features', component: FeaturesStep }
+  { id: "get-started", component: GetStartedStep },
+  { id: "privacy", component: PrivacyStep },
+  { id: "analytics", component: AnalyticsStep },
+  { id: "connect", component: ConnectStep },
+  { id: "features", component: FeaturesStep },
 ];
 
 export function Onboarding() {
@@ -227,7 +231,7 @@ export function Onboarding() {
     } else {
       // Complete onboarding
       dispatch(setOnboarded({ userId, isOnboarded: true }));
-      navigate('/home');
+      navigate("/home");
     }
   };
 
@@ -270,7 +274,7 @@ export function ConnectStep({ onNext, onBack }: StepProps) {
         <ConnectionOption
           key={option.id}
           {...option}
-          onClick={() => option.id === 'telegram' && setShowModal(true)}
+          onClick={() => option.id === "telegram" && setShowModal(true)}
         />
       ))}
 
@@ -293,13 +297,15 @@ export function ConnectStep({ onNext, onBack }: StepProps) {
 The settings modal overlays existing content using URL-based routing.
 
 ### Modal Detection
+
 ```typescript
 // In SettingsModal.tsx
 const location = useLocation();
-const isOpen = location.pathname.startsWith('/settings');
+const isOpen = location.pathname.startsWith("/settings");
 ```
 
 ### Sub-Routes
+
 ```
 /settings              → SettingsHome (main menu)
 /settings/connections  → ConnectionsPanel
@@ -311,8 +317,9 @@ const isOpen = location.pathname.startsWith('/settings');
 ```
 
 ### Navigation
+
 ```typescript
-import { useSettingsNavigation } from './hooks/useSettingsNavigation';
+import { useSettingsNavigation } from "./hooks/useSettingsNavigation";
 
 function SettingsHome() {
   const { navigateTo, closeModal } = useSettingsNavigation();
@@ -321,7 +328,7 @@ function SettingsHome() {
     <div>
       <SettingsMenuItem
         label="Connections"
-        onClick={() => navigateTo('connections')}
+        onClick={() => navigateTo("connections")}
       />
       <button onClick={closeModal}>Close</button>
     </div>
@@ -335,13 +342,14 @@ The app uses HashRouter for desktop compatibility:
 
 ```typescript
 // App.tsx
-import { HashRouter } from 'react-router-dom';
+import { HashRouter } from "react-router-dom";
 
 // URLs look like: app://localhost/#/home
 // Instead of: app://localhost/home
 ```
 
 **Why HashRouter:**
+
 1. Tauri deep links work with hash-based URLs
 2. No server configuration needed
 3. Works with file:// protocol
@@ -353,12 +361,13 @@ Deep links are handled before routing:
 
 ```typescript
 // main.tsx
-import('./utils/desktopDeepLinkListener').then((m) => {
+import("./utils/desktopDeepLinkListener").then((m) => {
   m.setupDesktopDeepLinkListener().catch(console.error);
 });
 ```
 
 The listener intercepts `alphahuman://auth?token=...` and:
+
 1. Exchanges token via Rust command
 2. Stores session in Redux
 3. Navigates to `/onboarding` or `/home`
@@ -366,32 +375,35 @@ The listener intercepts `alphahuman://auth?token=...` and:
 ## Navigation Patterns
 
 ### Programmatic Navigation
+
 ```typescript
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from "react-router-dom";
 
 const navigate = useNavigate();
 
 // Navigate to route
-navigate('/home');
+navigate("/home");
 
 // Replace history entry
-navigate('/login', { replace: true });
+navigate("/login", { replace: true });
 
 // Go back
 navigate(-1);
 ```
 
 ### Link Component
-```typescript
-import { Link } from 'react-router-dom';
 
-<Link to="/settings">Settings</Link>
+```typescript
+import { Link } from "react-router-dom";
+
+<Link to="/settings">Settings</Link>;
 ```
 
 ### State Transfer
+
 ```typescript
 // Pass state to route
-navigate('/details', { state: { itemId: 123 } });
+navigate("/details", { state: { itemId: 123 } });
 
 // Receive state
 const location = useLocation();
@@ -400,4 +412,4 @@ const { itemId } = location.state;
 
 ---
 
-*Previous: [MCP System](./04-mcp-system.md) | Next: [Components](./06-components.md)*
+_Previous: [MCP System](./04-mcp-system.md) | Next: [Components](./06-components.md)_

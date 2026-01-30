@@ -49,9 +49,11 @@ Web Browser                    Backend Server                 Desktop App (Tauri
 Initiates Telegram OAuth. The frontend opens this URL in the system browser.
 
 **Query params:**
+
 - `platform=desktop` — indicates the callback should produce a deep link handoff
 
 **Behavior:**
+
 1. Redirect user to Telegram OAuth authorization URL
 2. On callback, validate Telegram user data
 3. Create or find user in database
@@ -63,6 +65,7 @@ Initiates Telegram OAuth. The frontend opens this URL in the system browser.
 Called by the web frontend after phone-based authentication completes.
 
 **Request body:**
+
 ```json
 {
   "method": "phone",
@@ -70,15 +73,20 @@ Called by the web frontend after phone-based authentication completes.
   "countryCode": "+1"
 }
 ```
+
 or
+
 ```json
 {
   "method": "telegram",
-  "telegramUser": { /* Telegram user object */ }
+  "telegramUser": {
+    /* Telegram user object */
+  }
 }
 ```
 
 **Response (200):**
+
 ```json
 {
   "loginToken": "short-lived-opaque-token"
@@ -86,6 +94,7 @@ or
 ```
 
 **Behavior:**
+
 1. Validate the authentication data (verify OTP for phone, verify Telegram hash)
 2. Create or find user in database
 3. Generate a short-lived `loginToken`
@@ -101,6 +110,7 @@ Called by the Tauri Rust command `exchange_token` (NOT browser fetch). Exchanges
 **Note:** The endpoint path is `/auth/desktop-exchange` (no `/api` prefix) — this matches the current frontend implementation.
 
 **Request body:**
+
 ```json
 {
   "token": "loginToken-from-web"
@@ -108,6 +118,7 @@ Called by the Tauri Rust command `exchange_token` (NOT browser fetch). Exchanges
 ```
 
 **Response (200):**
+
 ```json
 {
   "sessionToken": "long-lived-session-token",
@@ -120,6 +131,7 @@ Called by the Tauri Rust command `exchange_token` (NOT browser fetch). Exchanges
 ```
 
 **Error response (401):**
+
 ```json
 {
   "success": false,
@@ -128,6 +140,7 @@ Called by the Tauri Rust command `exchange_token` (NOT browser fetch). Exchanges
 ```
 
 **Behavior:**
+
 1. Look up the `loginToken` in the database
 2. Validate: not expired, not already used
 3. Mark token as used (single-use enforcement)
@@ -137,35 +150,38 @@ Called by the Tauri Rust command `exchange_token` (NOT browser fetch). Exchanges
 ## Database Schema
 
 ### `users` table
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID (PK) | User ID |
-| username | TEXT | Display name |
-| first_name | TEXT (nullable) | First name |
-| phone_number | TEXT (nullable) | Phone number |
-| telegram_id | TEXT (nullable) | Telegram user ID |
-| created_at | TIMESTAMP | Account creation |
-| updated_at | TIMESTAMP | Last update |
+
+| Column       | Type            | Description      |
+| ------------ | --------------- | ---------------- |
+| id           | UUID (PK)       | User ID          |
+| username     | TEXT            | Display name     |
+| first_name   | TEXT (nullable) | First name       |
+| phone_number | TEXT (nullable) | Phone number     |
+| telegram_id  | TEXT (nullable) | Telegram user ID |
+| created_at   | TIMESTAMP       | Account creation |
+| updated_at   | TIMESTAMP       | Last update      |
 
 ### `login_tokens` table (handoff tokens)
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID (PK) | Token record ID |
-| token | TEXT (unique, indexed) | The opaque token string |
-| user_id | UUID (FK -> users) | Associated user |
-| created_at | TIMESTAMP | When issued |
-| expires_at | TIMESTAMP | Expiration (created_at + 5min) |
-| used | BOOLEAN | Whether already exchanged |
+
+| Column     | Type                   | Description                    |
+| ---------- | ---------------------- | ------------------------------ |
+| id         | UUID (PK)              | Token record ID                |
+| token      | TEXT (unique, indexed) | The opaque token string        |
+| user_id    | UUID (FK -> users)     | Associated user                |
+| created_at | TIMESTAMP              | When issued                    |
+| expires_at | TIMESTAMP              | Expiration (created_at + 5min) |
+| used       | BOOLEAN                | Whether already exchanged      |
 
 ### `sessions` table
-| Column | Type | Description |
-|--------|------|-------------|
-| id | UUID (PK) | Session ID |
-| token | TEXT (unique, indexed) | Session token |
-| user_id | UUID (FK -> users) | Associated user |
-| created_at | TIMESTAMP | When issued |
-| expires_at | TIMESTAMP | Expiration (created_at + 30 days) |
-| revoked | BOOLEAN | Whether revoked |
+
+| Column     | Type                   | Description                       |
+| ---------- | ---------------------- | --------------------------------- |
+| id         | UUID (PK)              | Session ID                        |
+| token      | TEXT (unique, indexed) | Session token                     |
+| user_id    | UUID (FK -> users)     | Associated user                   |
+| created_at | TIMESTAMP              | When issued                       |
+| expires_at | TIMESTAMP              | Expiration (created_at + 30 days) |
+| revoked    | BOOLEAN                | Whether revoked                   |
 
 ## Token Generation
 
@@ -195,16 +211,18 @@ async fn exchange_token(backend_url: String, token: String) -> Result<serde_json
 ```
 
 Frontend invocation:
+
 ```typescript
 const data = await invoke<{ sessionToken?: string; user?: object }>(
-  'exchange_token',
-  { backendUrl: BACKEND_URL, token }
+  "exchange_token",
+  { backendUrl: BACKEND_URL, token },
 );
 ```
 
 ### Deep Link Listener
 
 Located in `src/utils/desktopDeepLinkListener.ts`. Key behaviors:
+
 - Uses **lazy dynamic import** in `main.tsx` to avoid loading before Tauri IPC is ready
 - No `window.__TAURI__` guard — the try/catch handles non-Tauri environments
 - Uses `localStorage.setItem('deepLinkHandled', 'true')` to prevent infinite reload loops (since `getCurrent()` returns the same URL after `window.location.replace()`)
@@ -213,23 +231,24 @@ Located in `src/utils/desktopDeepLinkListener.ts`. Key behaviors:
 ### Backend URL Configuration
 
 Configured in `src/utils/config.ts`:
+
 ```typescript
 export const BACKEND_URL =
-  import.meta.env.VITE_BACKEND_URL || 'https://2937933edf8a.ngrok-free.app';
+  import.meta.env.VITE_BACKEND_URL || "https://2937933edf8a.ngrok-free.app";
 ```
 
 Set `VITE_BACKEND_URL` environment variable for different environments.
 
 ## Frontend Integration Points
 
-| File | Role |
-|------|------|
-| `src/main.tsx` | Lazy-imports and starts the deep link listener |
-| `src/utils/desktopDeepLinkListener.ts` | Parses deep link -> invokes Rust `exchange_token` -> stores session -> navigates |
-| `src/utils/deeplink.ts` | Web-side: calls `/api/auth/web-complete` and builds `alphahuman://auth?token=...` URL |
-| `src/utils/config.ts` | Backend URL configuration |
-| `src/pages/Login.tsx` | Opens `GET /auth/telegram?platform=desktop` in browser |
-| `src-tauri/src/lib.rs` | Rust `exchange_token` command using `reqwest` (CORS-free) |
+| File                                   | Role                                                                                  |
+| -------------------------------------- | ------------------------------------------------------------------------------------- |
+| `src/main.tsx`                         | Lazy-imports and starts the deep link listener                                        |
+| `src/utils/desktopDeepLinkListener.ts` | Parses deep link -> invokes Rust `exchange_token` -> stores session -> navigates      |
+| `src/utils/deeplink.ts`                | Web-side: calls `/api/auth/web-complete` and builds `alphahuman://auth?token=...` URL |
+| `src/utils/config.ts`                  | Backend URL configuration                                                             |
+| `src/pages/Login.tsx`                  | Opens `GET /auth/telegram?platform=desktop` in browser                                |
+| `src-tauri/src/lib.rs`                 | Rust `exchange_token` command using `reqwest` (CORS-free)                             |
 
 ## Phone OTP Flow (Future)
 
@@ -245,4 +264,4 @@ See `14-deep-link-platform-guide.md` for detailed platform gotchas.
 
 ---
 
-*Last updated: 2026-01-28*
+_Last updated: 2026-01-28_

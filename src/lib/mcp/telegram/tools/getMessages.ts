@@ -6,11 +6,8 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import {
-  formatMessage,
-  getChatById,
-  getMessagesWithApiFallback,
-} from "../telegramApi";
+import { getMessages as getMessagesApi } from "../api/getMessages";
+import { getChatById, formatMessage } from "../api/helpers";
 import { validateId } from "../../validation";
 import type { TelegramMessage } from "../../../../store/telegram/types";
 import { optNumber } from "../args";
@@ -62,10 +59,12 @@ export async function getMessages(
       };
     }
 
-    const messages = await getMessagesWithApiFallback(chatId, pageSize, offset);
+    const { data: messagesData, fromCache } = await getMessagesApi(chatId, pageSize, offset);
+    const messages = messagesData.length > 0 ? messagesData : undefined;
     if (!messages || messages.length === 0) {
       return {
         content: [{ type: "text", text: "No messages found for this page." }],
+        fromCache,
       };
     }
 
@@ -78,7 +77,7 @@ export async function getMessages(
       return `ID: ${formatted.id} | ${senderDisplay(msg)} | Date: ${formatted.date}${replyStr} | Message: ${msgText}`;
     });
 
-    return { content: [{ type: "text", text: lines.join("\n") }] };
+    return { content: [{ type: "text", text: lines.join("\n") }], fromCache };
   } catch (error) {
     return logAndFormatError(
       "get_messages",

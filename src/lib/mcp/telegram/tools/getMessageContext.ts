@@ -1,7 +1,8 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { getChatById, getMessagesWithApiFallback, formatMessage } from "../telegramApi";
+import { getMessages as getMessagesApi } from "../api/getMessages";
+import { getChatById, formatMessage } from "../api/helpers";
 import { validateId } from "../../validation";
 import { optNumber } from "../args";
 
@@ -52,10 +53,12 @@ export async function getMessageContext(
       };
     }
 
-    const allMessages = await getMessagesWithApiFallback(chatId, 200, 0);
+    const { data: allMessagesData, fromCache } = await getMessagesApi(chatId, 200, 0);
+    const allMessages = allMessagesData.length > 0 ? allMessagesData : undefined;
     if (!allMessages || allMessages.length === 0) {
       return {
         content: [{ type: "text", text: "No messages found in this chat." }],
+        fromCache,
       };
     }
 
@@ -85,7 +88,7 @@ export async function getMessageContext(
       return `${marker}ID: ${f.id} | ${from} | ${f.date} | ${f.text || "[Media/No text]"}`;
     });
 
-    return { content: [{ type: "text", text: lines.join("\n") }] };
+    return { content: [{ type: "text", text: lines.join("\n") }], fromCache };
   } catch (error) {
     return logAndFormatError(
       "get_message_context",

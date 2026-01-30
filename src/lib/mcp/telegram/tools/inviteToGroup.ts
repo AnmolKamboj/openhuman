@@ -2,11 +2,8 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { getChatById } from "../telegramApi";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import bigInt from "big-integer";
-import { toInputChannel, toInputUser } from "../apiCastHelpers";
+import { inviteToGroup as inviteToGroupApi } from "../api/inviteToGroup";
+import { getChatById } from "../api/helpers";
 
 export const tool: MCPTool = {
   name: "invite_to_group",
@@ -31,59 +28,18 @@ export async function inviteToGroup(
 ): Promise<MCPToolResult> {
   try {
     const chatId = validateId(args.chat_id, "chat_id");
-    const userIds = Array.isArray(args.user_ids) ? args.user_ids : [];
-    if (userIds.length === 0)
-      return {
-        content: [{ type: "text", text: "user_ids must not be empty" }],
-        isError: true,
-      };
+    const userIds = Array.isArray(args.user_ids)
+      ? args.user_ids.map(String)
+      : [];
+
+    await inviteToGroupApi(chatId, userIds);
 
     const chat = getChatById(chatId);
-    if (!chat)
-      return {
-        content: [{ type: "text", text: `Chat not found: ${chatId}` }],
-        isError: true,
-      };
-
-    const client = mtprotoService.getClient();
-    const entity = chat.username ? chat.username : chat.id;
-
-    const users: Api.TypeInputUser[] = [];
-    for (const uid of userIds) {
-      const inputUser = await client.getInputEntity(String(uid));
-      users.push(toInputUser(inputUser));
-    }
-
-    const inputPeer = await client.getInputEntity(entity);
-
-    if (chat.type === "channel" || chat.type === "supergroup") {
-      await mtprotoService.withFloodWaitHandling(async () => {
-        await client.invoke(
-          new Api.channels.InviteToChannel({
-            channel: toInputChannel(inputPeer),
-            users,
-          }),
-        );
-      });
-    } else {
-      for (const user of users) {
-        await mtprotoService.withFloodWaitHandling(async () => {
-          await client.invoke(
-            new Api.messages.AddChatUser({
-              chatId: bigInt(chat.id),
-              userId: user,
-              fwdLimit: 100,
-            }),
-          );
-        });
-      }
-    }
-
     return {
       content: [
         {
           type: "text",
-          text: `Invited ${userIds.length} user(s) to ${chat.title ?? chatId}.`,
+          text: `Invited ${userIds.length} user(s) to ${chat?.title ?? chatId}.`,
         },
       ],
     };

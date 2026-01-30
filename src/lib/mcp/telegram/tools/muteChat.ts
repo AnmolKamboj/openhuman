@@ -2,9 +2,7 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { getChatById } from "../telegramApi";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
+import { muteChat as muteChatApi } from "../api/muteChat";
 
 export const tool: MCPTool = {
   name: "mute_chat",
@@ -30,33 +28,11 @@ export async function muteChat(
   try {
     const chatId = validateId(args.chat_id, "chat_id");
     const duration = typeof args.duration === "number" ? args.duration : 0;
-
-    const chat = getChatById(chatId);
-    if (!chat)
-      return {
-        content: [{ type: "text", text: `Chat not found: ${chatId}` }],
-        isError: true,
-      };
-
-    const client = mtprotoService.getClient();
-    const entity = chat.username ? chat.username : chat.id;
-
-    const muteUntil =
-      duration === 0 ? 2147483647 : Math.floor(Date.now() / 1000) + duration;
-
-    await mtprotoService.withFloodWaitHandling(async () => {
-      const inputPeer = await client.getInputEntity(entity);
-      await client.invoke(
-        new Api.account.UpdateNotifySettings({
-          peer: new Api.InputNotifyPeer({ peer: inputPeer }),
-          settings: new Api.InputPeerNotifySettings({
-            muteUntil,
-          }),
-        }),
-      );
-    });
-
-    return { content: [{ type: "text", text: `Chat ${chatId} muted.` }] };
+    const { fromCache } = await muteChatApi(chatId, duration);
+    return {
+      content: [{ type: "text", text: `Chat ${chatId} muted.` }],
+      fromCache,
+    };
   } catch (error) {
     return logAndFormatError(
       "mute_chat",

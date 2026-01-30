@@ -1,10 +1,8 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { validateId } from "../../validation";
-import { getChatById } from "../telegramApi";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
+import { validateId, validatePositiveInt } from "../../validation";
+import { removeReaction as removeReactionApi } from "../api/removeReaction";
 
 export const tool: MCPTool = {
   name: "remove_reaction",
@@ -26,40 +24,9 @@ export async function removeReaction(
 ): Promise<MCPToolResult> {
   try {
     const chatId = validateId(args.chat_id, "chat_id");
-    const messageId =
-      typeof args.message_id === "number" && Number.isInteger(args.message_id)
-        ? args.message_id
-        : undefined;
+    const messageId = validatePositiveInt(args.message_id, "message_id");
 
-    if (messageId === undefined) {
-      return {
-        content: [
-          { type: "text", text: "message_id must be a positive integer" },
-        ],
-        isError: true,
-      };
-    }
-
-    const chat = getChatById(chatId);
-    if (!chat)
-      return {
-        content: [{ type: "text", text: "Chat not found: " + chatId }],
-        isError: true,
-      };
-
-    const client = mtprotoService.getClient();
-    const entity = chat.username ? chat.username : chat.id;
-
-    await mtprotoService.withFloodWaitHandling(async () => {
-      const inputPeer = await client.getInputEntity(entity);
-      await client.invoke(
-        new Api.messages.SendReaction({
-          peer: inputPeer,
-          msgId: messageId,
-          reaction: [],
-        }),
-      );
-    });
+    const { fromCache } = await removeReactionApi(chatId, messageId);
 
     return {
       content: [
@@ -68,6 +35,7 @@ export async function removeReaction(
           text: "Reaction removed from message " + messageId + ".",
         },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

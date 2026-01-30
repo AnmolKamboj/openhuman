@@ -7,7 +7,8 @@ import type { TelegramMCPContext } from "../types";
 
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { optNumber } from "../args";
-import { formatEntity, getChatsWithApiFallback } from "../telegramApi";
+import { getChats as getChatsApi } from "../api/getChats";
+import { formatEntity } from "../api/helpers";
 
 export const tool: MCPTool = {
   name: "get_chats",
@@ -38,11 +39,11 @@ export async function getChats(
     const pageSize = optNumber(args, "page_size", 20);
     const start = (page - 1) * pageSize;
 
-    const chats = await getChatsWithApiFallback(pageSize + start);
-    const paginatedChats = chats.slice(start, start + pageSize);
+    const { data: allChats, fromCache } = await getChatsApi(pageSize + start);
+    const paginatedChats = allChats.slice(start, start + pageSize);
 
     if (paginatedChats.length === 0) {
-      return { content: [{ type: "text", text: "Page out of range." }] };
+      return { content: [{ type: "text", text: "Page out of range." }], fromCache };
     }
 
     const lines = paginatedChats.map((chat) => {
@@ -50,7 +51,7 @@ export async function getChats(
       return `Chat ID: ${entity.id}, Title: ${entity.name}`;
     });
 
-    return { content: [{ type: "text", text: lines.join("\n") }] };
+    return { content: [{ type: "text", text: lines.join("\n") }], fromCache };
   } catch (error) {
     return logAndFormatError(
       "get_chats",

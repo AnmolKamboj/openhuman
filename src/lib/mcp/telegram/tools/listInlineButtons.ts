@@ -2,9 +2,7 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { getChatById, getMessages } from "../telegramApi";
-import type { MessageWithReplyMarkup, ReplyMarkupRow } from "../apiResultTypes";
-import { narrow } from "../apiCastHelpers";
+import { listInlineButtons as listInlineButtonsApi } from "../api/listInlineButtons";
 
 export const tool: MCPTool = {
   name: "list_inline_buttons",
@@ -39,31 +37,9 @@ export async function listInlineButtons(
       };
     }
 
-    const chat = getChatById(chatId);
-    if (!chat)
-      return {
-        content: [{ type: "text", text: "Chat not found: " + chatId }],
-        isError: true,
-      };
+    const { data: buttons, fromCache } = await listInlineButtonsApi(chatId, messageId);
 
-    const messages = await getMessages(chatId, 200, 0);
-    if (!messages)
-      return { content: [{ type: "text", text: "No messages found." }] };
-
-    const found = messages.find((m) => String(m.id) === String(messageId));
-    const msg = found ? narrow<MessageWithReplyMarkup>(found) : undefined;
-    if (!msg)
-      return {
-        content: [
-          {
-            type: "text",
-            text: "Message " + messageId + " not found in cache.",
-          },
-        ],
-        isError: true,
-      };
-
-    if (!msg.replyMarkup || !msg.replyMarkup.rows) {
+    if (buttons.length === 0) {
       return {
         content: [
           {
@@ -71,32 +47,15 @@ export async function listInlineButtons(
             text: "No inline buttons on message " + messageId + ".",
           },
         ],
+        fromCache,
       };
     }
 
-    const lines: string[] = [];
-    msg.replyMarkup.rows.forEach((row: ReplyMarkupRow, ri: number) => {
-      if (row.buttons) {
-        row.buttons.forEach((btn, bi: number) => {
-          lines.push(
-            "Row " + ri + ", Button " + bi + ': "' + (btn.text ?? "?") + '"',
-          );
-        });
-      }
-    });
+    const lines = buttons.map(
+      (b) => "Row " + b.row + ", Button " + b.button + ': "' + b.text + '"',
+    );
 
-    if (lines.length === 0) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: "No inline buttons on message " + messageId + ".",
-          },
-        ],
-      };
-    }
-
-    return { content: [{ type: "text", text: lines.join("\n") }] };
+    return { content: [{ type: "text", text: lines.join("\n") }], fromCache };
   } catch (error) {
     return logAndFormatError(
       "list_inline_buttons",

@@ -6,11 +6,11 @@ This documentation covers the Tauri Rust backend for the AlphaHuman desktop appl
 
 ## Quick Reference
 
-| Document | Description |
-|----------|-------------|
-| [Architecture](./01-architecture.md) | System architecture and module structure |
-| [Commands Reference](./02-commands.md) | All Tauri IPC commands |
-| [Services](./03-services.md) | Background services documentation |
+| Document                               | Description                              |
+| -------------------------------------- | ---------------------------------------- |
+| [Architecture](./01-architecture.md)   | System architecture and module structure |
+| [Commands Reference](./02-commands.md) | All Tauri IPC commands                   |
+| [Services](./03-services.md)           | Background services documentation        |
 
 ## Features Implemented
 
@@ -24,6 +24,7 @@ This documentation covers the Tauri Rust backend for the AlphaHuman desktop appl
 ## Current State Analysis
 
 ### Existing Implementation (`lib.rs`)
+
 - ✅ System tray with show/hide/quit
 - ✅ Deep link handling (`alphahuman://` scheme)
 - ✅ Token exchange command (CORS bypass)
@@ -31,6 +32,7 @@ This documentation covers the Tauri Rust backend for the AlphaHuman desktop appl
 - ✅ Window minimize-to-tray on close (macOS)
 
 ### Missing Features
+
 - ❌ Socket.io client in Rust (background persistence)
 - ❌ Telegram Widget integration
 - ❌ Session management in Rust
@@ -74,6 +76,7 @@ src-tauri/src/
 **Goal**: Persistent WebSocket connection even when app is in background
 
 **Dependencies to add:**
+
 ```toml
 [dependencies]
 rust_socketio = "0.6"           # Socket.io client
@@ -83,6 +86,7 @@ parking_lot = "0.12"            # Fast mutexes
 ```
 
 **Implementation:**
+
 ```rust
 // services/socket_service.rs
 pub struct SocketService {
@@ -100,6 +104,7 @@ impl SocketService {
 ```
 
 **Background Persistence:**
+
 - Socket runs on Tokio runtime, independent of window state
 - Connection survives window hide/minimize
 - Auto-reconnect on network recovery
@@ -110,6 +115,7 @@ impl SocketService {
 **Goal**: Web-based Telegram auth → Deep link callback → Native session
 
 **Flow:**
+
 ```
 1. User clicks "Login with Telegram" in desktop app
    ↓
@@ -134,12 +140,15 @@ impl SocketService {
 ```
 
 **Backend Endpoint Needed:**
+
 ```
 GET /auth/telegram-widget?redirect={deeplink_scheme}
 ```
+
 Returns HTML page with Telegram Login Widget that redirects to the specified scheme.
 
 **Commands to implement:**
+
 ```rust
 #[tauri::command]
 async fn start_telegram_login(app: AppHandle) -> Result<(), String> {
@@ -165,12 +174,14 @@ async fn logout(app: AppHandle) -> Result<(), String> {
 **Goal**: Store auth tokens securely using OS keychain
 
 **Dependencies:**
+
 ```toml
 [dependencies]
 keyring = "3"  # Cross-platform keychain access
 ```
 
 **Implementation:**
+
 ```rust
 // services/session_service.rs
 pub struct SessionService {
@@ -178,7 +189,7 @@ pub struct SessionService {
 }
 
 impl SessionService {
-    const SERVICE: &'static str = "com.megamind.tauri-app";
+    const SERVICE: &'static str = "com.alphahuman.app";
 
     pub fn store_token(&self, token: &str) -> Result<(), Error>;
     pub fn get_token(&self) -> Result<Option<String>, Error>;
@@ -187,6 +198,7 @@ impl SessionService {
 ```
 
 **Platform Support:**
+
 - macOS: Keychain
 - Windows: Credential Manager
 - Linux: Secret Service (libsecret)
@@ -196,12 +208,14 @@ impl SessionService {
 **Goal**: Show notifications even when app is minimized
 
 **Dependencies:**
+
 ```toml
 [dependencies]
 tauri-plugin-notification = "2"
 ```
 
 **Capability Addition:**
+
 ```json
 {
   "permissions": [
@@ -213,6 +227,7 @@ tauri-plugin-notification = "2"
 ```
 
 **Usage:**
+
 ```rust
 // services/notification_service.rs
 pub fn show_notification(title: &str, body: &str) -> Result<(), Error> {
@@ -229,6 +244,7 @@ pub fn show_notification(title: &str, body: &str) -> Result<(), Error> {
 **Goal**: Bidirectional communication between Rust services and React frontend
 
 **Events from Rust to Frontend:**
+
 ```rust
 // Emit to frontend when socket receives message
 app.emit("socket:message", payload)?;
@@ -238,10 +254,11 @@ app.emit("telegram:notification", notification)?;
 ```
 
 **Frontend listening:**
-```typescript
-import { listen } from '@tauri-apps/api/event';
 
-await listen('socket:message', (event) => {
+```typescript
+import { listen } from "@tauri-apps/api/event";
+
+await listen("socket:message", (event) => {
   // Handle message from Rust socket service
 });
 ```
@@ -251,12 +268,14 @@ await listen('socket:message', (event) => {
 **Goal**: Run MCP tools from Rust for performance-critical operations
 
 **Approach:**
+
 - Keep MCP tools in TypeScript for flexibility
 - Rust handles socket transport
 - Frontend dispatches tool calls
 - Rust forwards via socket, returns results
 
 **Alternative (Full Rust MCP):**
+
 - Implement tool handlers in Rust
 - Higher performance, but more maintenance
 - Consider for v2
@@ -265,15 +284,15 @@ await listen('socket:message', (event) => {
 
 ## Implementation Order
 
-| Phase | Priority | Effort | Dependencies |
-|-------|----------|--------|--------------|
-| 1. Project Structure | High | 2h | None |
-| 2. Socket.io Service | High | 4h | Phase 1 |
-| 3. Telegram Widget Login | High | 3h | Backend endpoint |
-| 4. Secure Storage | High | 2h | Phase 1 |
-| 5. Notifications | Medium | 1h | Phase 2 |
-| 6. Event Bridge | High | 2h | Phase 2 |
-| 7. MCP Integration | Low | 4h+ | Phase 2, 6 |
+| Phase                    | Priority | Effort | Dependencies     |
+| ------------------------ | -------- | ------ | ---------------- |
+| 1. Project Structure     | High     | 2h     | None             |
+| 2. Socket.io Service     | High     | 4h     | Phase 1          |
+| 3. Telegram Widget Login | High     | 3h     | Backend endpoint |
+| 4. Secure Storage        | High     | 2h     | Phase 1          |
+| 5. Notifications         | Medium   | 1h     | Phase 2          |
+| 6. Event Bridge          | High     | 2h     | Phase 2          |
+| 7. MCP Integration       | Low      | 4h+    | Phase 2, 6       |
 
 **Total Estimated Effort**: 18+ hours
 
@@ -282,6 +301,7 @@ await listen('socket:message', (event) => {
 ## Cross-Platform Considerations
 
 ### macOS
+
 - ✅ System tray (menu bar)
 - ✅ LaunchAgent autostart
 - ✅ Keychain storage
@@ -289,6 +309,7 @@ await listen('socket:message', (event) => {
 - ⚠️ Notarization for distribution
 
 ### Windows
+
 - ✅ System tray
 - ✅ Registry autostart
 - ✅ Credential Manager storage
@@ -296,12 +317,14 @@ await listen('socket:message', (event) => {
 - ⚠️ Code signing for SmartScreen
 
 ### Linux
+
 - ✅ System tray (AppIndicator)
 - ✅ Desktop file autostart
 - ✅ Secret Service storage
 - ⚠️ Deep link varies by desktop environment
 
 ### Mobile (Future)
+
 - ❌ No system tray
 - ❌ Different auth flow
 - ❌ Push notifications instead of socket
@@ -312,6 +335,7 @@ await listen('socket:message', (event) => {
 ## Testing Strategy
 
 ### Unit Tests
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -324,11 +348,13 @@ mod tests {
 ```
 
 ### Integration Tests
+
 - Deep link flow end-to-end
 - Socket reconnection scenarios
 - Background persistence verification
 
 ### Manual Testing
+
 - Build debug `.app` bundle
 - Test tray behavior
 - Test window minimize/restore
@@ -339,6 +365,7 @@ mod tests {
 ## Files to Create/Modify
 
 ### New Files
+
 - `src-tauri/src/commands/mod.rs`
 - `src-tauri/src/commands/auth.rs`
 - `src-tauri/src/commands/socket.rs`
@@ -354,6 +381,7 @@ mod tests {
 - `src-tauri/src/utils/config.rs`
 
 ### Modified Files
+
 - `src-tauri/Cargo.toml` - Add dependencies
 - `src-tauri/src/lib.rs` - Refactor, use modules
 - `src-tauri/capabilities/default.json` - Add permissions
@@ -371,4 +399,4 @@ mod tests {
 
 ---
 
-*Plan created by stevenbaba - 2026-01-29*
+_Plan created by stevenbaba - 2026-01-29_

@@ -1,10 +1,7 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import type { ResultWithChats } from "../apiResultTypes";
-import { narrow } from "../apiCastHelpers";
+import { importChatInvite as importChatInviteApi } from "../api/importChatInvite";
 
 export const tool: MCPTool = {
   name: "import_chat_invite",
@@ -33,15 +30,11 @@ export async function importChatInvite(
         isError: true,
       };
 
-    const client = mtprotoService.getClient();
-
-    const result = await mtprotoService.withFloodWaitHandling(async () => {
-      return client.invoke(new Api.messages.ImportChatInvite({ hash }));
-    });
-
-    const chatTitle =
-      narrow<ResultWithChats>(result)?.chats?.[0]?.title ?? "unknown";
-    return { content: [{ type: "text", text: `Joined chat: ${chatTitle}` }] };
+    const { data, fromCache } = await importChatInviteApi(hash);
+    return {
+      content: [{ type: "text", text: `Joined chat: ${data.chatTitle}` }],
+      fromCache,
+    };
   } catch (error) {
     return logAndFormatError(
       "import_chat_invite",

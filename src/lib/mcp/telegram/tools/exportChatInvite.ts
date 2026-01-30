@@ -2,12 +2,8 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { validateId } from "../../validation";
-import { getChatById } from "../telegramApi";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
 import { optString } from "../args";
-import type { ChatInviteResult } from "../apiResultTypes";
-import { narrow } from "../apiCastHelpers";
+import { exportChatInvite as exportChatInviteApi } from "../api/exportChatInvite";
 
 export const tool: MCPTool = {
   name: "export_chat_invite",
@@ -36,38 +32,15 @@ export async function exportChatInvite(
     const usageLimit =
       typeof args.usage_limit === "number" ? args.usage_limit : undefined;
 
-    const chat = getChatById(chatId);
-    if (!chat)
-      return {
-        content: [{ type: "text", text: `Chat not found: ${chatId}` }],
-        isError: true,
-      };
-
-    const client = mtprotoService.getClient();
-    const entity = chat.username ? chat.username : chat.id;
-
-    const result = await mtprotoService.withFloodWaitHandling(async () => {
-      const inputPeer = await client.getInputEntity(entity);
-      return client.invoke(
-        new Api.messages.ExportChatInvite({
-          peer: inputPeer,
-          title: title ?? undefined,
-          expireDate: expireDate ?? undefined,
-          usageLimit: usageLimit ?? undefined,
-        }),
-      );
-    });
-
-    const link = narrow<ChatInviteResult>(result)?.link;
-    if (!link) {
-      return {
-        content: [{ type: "text", text: "Could not create invite link." }],
-        isError: true,
-      };
-    }
-
+    const { data, fromCache } = await exportChatInviteApi(
+      chatId,
+      title,
+      expireDate,
+      usageLimit,
+    );
     return {
-      content: [{ type: "text", text: `Invite link created: ${link}` }],
+      content: [{ type: "text", text: `Invite link created: ${data.link}` }],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

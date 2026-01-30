@@ -33,7 +33,7 @@ The backend base URL is configured here (`src/utils/config.ts`):
 
 ```ts
 export const BACKEND_URL =
-  import.meta.env.VITE_BACKEND_URL || 'https://2937933edf8a.ngrok-free.app';
+  import.meta.env.VITE_BACKEND_URL || "https://2937933edf8a.ngrok-free.app";
 ```
 
 ### 2) Deep link registration (Tauri config + Rust)
@@ -77,14 +77,15 @@ pub fn run() {
 The listener is lazy-loaded in `src/main.tsx`:
 
 ```ts
-import('./utils/desktopDeepLinkListener').then(m => {
-  m.setupDesktopDeepLinkListener().catch(err => {
-    console.error('[DeepLink] setup error:', err);
+import("./utils/desktopDeepLinkListener").then((m) => {
+  m.setupDesktopDeepLinkListener().catch((err) => {
+    console.error("[DeepLink] setup error:", err);
   });
 });
 ```
 
 The deep link handler:
+
 - Accepts only the `alphahuman:` scheme
 - Requires `alphahuman://auth?token=...`
 - Calls the Rust command `exchange_token`
@@ -98,17 +99,25 @@ const handleDeepLinkUrls = async (urls: string[] | null | undefined) => {
 
   try {
     const parsed = new URL(url);
+<<<<<<< HEAD
     if (parsed.protocol !== 'alphahuman:') return;
     if (parsed.hostname !== 'auth') return;
+=======
+    if (parsed.protocol !== "outsourced:") return;
+    if (parsed.hostname !== "auth") return;
+>>>>>>> fix/telegram-mcp
 
-    const token = parsed.searchParams.get('token');
+    const token = parsed.searchParams.get("token");
     if (!token) return;
 
-    const data = await invoke('exchange_token', { backendUrl: BACKEND_URL, token });
+    const data = await invoke("exchange_token", {
+      backendUrl: BACKEND_URL,
+      token,
+    });
     // ... store sessionToken + user ...
-    window.location.hash = '/onboarding';
+    window.location.hash = "/onboarding";
   } catch (error) {
-    console.error('[DeepLink] Failed to handle deep link URL:', url, error);
+    console.error("[DeepLink] Failed to handle deep link URL:", url, error);
   }
 };
 ```
@@ -200,8 +209,7 @@ Your backend must implement **both**:
   - today it checks only `parsed.protocol === 'alphahuman:'`
   - recommended: also require `parsed.hostname === 'auth'` (and optionally a known path)
 - **Don’t skip Telegram auth in onboarding**:
-  - `src/pages/onboarding/Step1Phone.tsx` currently has a “Continue with Telegram” button that *only navigates* and does not authenticate.
+  - `src/pages/onboarding/Step1Phone.tsx` currently has a “Continue with Telegram” button that _only navigates_ and does not authenticate.
 - **Remove sensitive Telegram secrets from frontend env**:
   - any `VITE_*` variables are bundled into the frontend; don’t place bot tokens / api hashes there.
   - the desktop app typically only needs `VITE_BACKEND_URL`; Telegram verification secrets should live on the backend.
-

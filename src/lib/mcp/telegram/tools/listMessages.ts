@@ -7,11 +7,8 @@ import type { TelegramMCPContext } from "../types";
 
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { optNumber, optString } from "../args";
-import {
-  formatMessage,
-  getChatById,
-  getMessagesWithApiFallback,
-} from "../telegramApi";
+import { getMessages as getMessagesApi } from "../api/getMessages";
+import { getChatById, formatMessage } from "../api/helpers";
 import { validateId } from "../../validation";
 
 export const tool: MCPTool = {
@@ -65,12 +62,14 @@ export async function listMessages(
       };
     }
 
-    let messages = await getMessagesWithApiFallback(chatId, limit * 2, 0);
+    const { data: messagesRaw, fromCache } = await getMessagesApi(chatId, limit * 2, 0);
+    let messages = messagesRaw.length > 0 ? messagesRaw : undefined;
     if (!messages || messages.length === 0) {
       return {
         content: [
           { type: "text", text: "No messages found matching the criteria." },
         ],
+        fromCache,
       };
     }
 
@@ -105,7 +104,7 @@ export async function listMessages(
       return { type: "text" as const, text };
     });
 
-    return { content: contentItems };
+    return { content: contentItems, fromCache };
   } catch (error) {
     return logAndFormatError(
       "list_messages",

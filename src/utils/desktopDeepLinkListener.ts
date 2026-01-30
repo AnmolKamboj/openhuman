@@ -1,8 +1,8 @@
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { invoke, isTauri as coreIsTauri } from "@tauri-apps/api/core";
-import { BACKEND_URL } from "./config";
 import { store } from "../store";
 import { setToken } from "../store/authSlice";
+import { consumeLoginToken } from "../services/api/authApi";
 
 /**
  * Handle a list of deep link URLs delivered by the Tauri deep-link plugin.
@@ -32,7 +32,7 @@ const handleDeepLinkUrls = async (urls: string[] | null | undefined) => {
       return;
     }
 
-    console.log("[DeepLink] Received token");
+    console.log("[DeepLink] Received token", token);
 
     try {
       // Bring app window to foreground so macOS users actually see completion.
@@ -43,19 +43,8 @@ const handleDeepLinkUrls = async (urls: string[] | null | undefined) => {
       console.warn("[DeepLink] Failed to show window:", err);
     }
 
-    // Use Tauri invoke to call Rust backend (bypasses CORS)
-    const data = await invoke<{
-      sessionToken?: string;
-    }>("exchange_token", { backendUrl: BACKEND_URL, token });
-
-    const sessionToken = data.sessionToken;
-    if (!sessionToken) {
-      console.warn("[DeepLink] Token exchange did not return a sessionToken");
-      return;
-    }
-
-    // Store session token in store
-    store.dispatch(setToken(sessionToken));
+    const jwtToken = await consumeLoginToken(token);
+    store.dispatch(setToken(jwtToken));
 
     // Navigate to post-login flow. We use HashRouter, so update the hash route.
     window.location.hash = "/onboarding";

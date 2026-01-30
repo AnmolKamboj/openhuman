@@ -10,13 +10,8 @@ import type { TelegramMCPContext } from "../types";
 
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
 import { optNumber } from "../args";
-import { formatMessage, getChatById, getMessages } from "../telegramApi";
 import { validateId } from "../../validation";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import bigInt from "big-integer";
-import type { ApiMessage } from "../apiResultTypes";
-import { narrow } from "../apiCastHelpers";
+import { searchMessages as searchMessagesApi } from "../api/searchMessages";
 
 export const tool: MCPTool = {
   name: "search_messages",
@@ -52,92 +47,30 @@ export async function searchMessages(
       };
     }
 
-    const chat = getChatById(chatId);
-    if (!chat) {
-      return {
-        content: [{ type: "text", text: `Chat ${chatId} not found` }],
-        isError: true,
-      };
-    }
+    const { data: messages, fromCache } = await searchMessagesApi(chatId, query, limit);
 
-    // Try server-side search via Telegram API
-    try {
-      const client = mtprotoService.getClient();
-      const entity = chat.username ? chat.username : chat.id;
-      const inputPeer = await client.getInputEntity(entity);
-
-      const result = await mtprotoService.withFloodWaitHandling(async () => {
-        return client.invoke(
-          new Api.messages.Search({
-            peer: inputPeer,
-            q: query,
-            filter: new Api.InputMessagesFilterEmpty(),
-            minDate: 0,
-            maxDate: 0,
-            offsetId: 0,
-            addOffset: 0,
-            limit,
-            maxId: 0,
-            minId: 0,
-            hash: bigInt(0),
-          }),
-        );
-      });
-
-      if ("messages" in result && Array.isArray(result.messages)) {
-        const messages = narrow<ApiMessage[]>(result.messages);
-
-        if (messages.length === 0) {
-          return {
-            content: [
-              { type: "text", text: `No messages matching "${query}" found.` },
-            ],
-          };
-        }
-
-        const lines = messages.map((msg) => {
-          const id = msg.id ?? "?";
-          const text = msg.message ?? "[Media/No text]";
-          const date = msg.date
-            ? new Date(msg.date * 1000).toISOString()
-            : "unknown";
-          return `ID: ${id} | Date: ${date} | ${text}`;
-        });
-
-        return { content: [{ type: "text", text: lines.join("\n") }] };
-      }
-    } catch {
-      // API call failed — fall back to cached message search below
-    }
-
-    // Fallback: search cached messages locally
-    const messages = await getMessages(chatId, Math.min(limit * 3, 100), 0);
-    if (!messages || messages.length === 0) {
-      return { content: [{ type: "text", text: "No messages found." }] };
-    }
-
-    const q = query.toLowerCase();
-    const filtered = messages
-      .filter((m) => (m.message ?? "").toLowerCase().includes(q))
-      .slice(0, limit);
-
-    if (filtered.length === 0) {
+    if (messages.length === 0) {
       return {
         content: [
           { type: "text", text: `No messages matching "${query}" found.` },
         ],
+        fromCache,
       };
     }
 
-    const lines = filtered.map((m) => {
-      const f = formatMessage(m);
-      return `ID: ${f.id} | ${m.fromName ?? m.fromId ?? "Unknown"} | ${f.date} | ${f.text || "[Media]"}`;
+    const lines = messages.map((msg) => {
+      const parts = [`ID: ${msg.id}`, `Date: ${msg.date}`, msg.text];
+      if (msg.from) {
+        parts.splice(1, 0, msg.from);
+      }
+      return parts.join(" | ");
     });
 
+    const prefix = fromCache ? "(cached search)\n" : "";
+
     return {
-      content: [
-        { type: "text", text: `(cached search)\n${lines.join("\n")}` },
-      ],
+      content: [{ type: "text", text: prefix + lines.join("\n") }],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

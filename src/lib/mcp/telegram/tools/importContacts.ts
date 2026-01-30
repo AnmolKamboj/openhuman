@@ -1,11 +1,8 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import bigInt from "big-integer";
-import type { ContactInput, ImportContactsResult } from "../apiResultTypes";
-import { narrow } from "../apiCastHelpers";
+import type { ContactInput } from "../api/apiResultTypes";
+import { importContacts as importContactsApi } from "../api/importContacts";
 
 export const tool: MCPTool = {
   name: "import_contacts",
@@ -37,43 +34,19 @@ export async function importContacts(
 ): Promise<MCPToolResult> {
   try {
     const contactsArg = args.contacts;
-    if (!Array.isArray(contactsArg) || contactsArg.length === 0) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: "contacts array is required and must not be empty.",
-          },
-        ],
-        isError: true,
-      };
+    if (!Array.isArray(contactsArg)) {
+      throw new Error("contacts must be an array");
     }
 
-    const inputContacts = contactsArg.map(
-      (c: ContactInput, i: number) =>
-        new Api.InputPhoneContact({
-          clientId: bigInt(i),
-          phone: String(c.phone ?? ""),
-          firstName: String(c.first_name ?? ""),
-          lastName: String(c.last_name ?? ""),
-        }),
+    const { data } = await importContactsApi(
+      contactsArg as ContactInput[],
     );
 
-    const client = mtprotoService.getClient();
-
-    const result = await mtprotoService.withFloodWaitHandling(async () => {
-      return client.invoke(
-        new Api.contacts.ImportContacts({ contacts: inputContacts }),
-      );
-    });
-
-    const imported =
-      narrow<ImportContactsResult>(result)?.imported?.length ?? 0;
     return {
       content: [
         {
           type: "text",
-          text: `Imported ${imported} of ${contactsArg.length} contacts.`,
+          text: `Imported ${data.imported} of ${data.total} contacts.`,
         },
       ],
     };

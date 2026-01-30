@@ -1,11 +1,8 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
 import { optNumber } from "../args";
-import type { InlineBotResults } from "../apiResultTypes";
-import { toInputUser, narrow } from "../apiCastHelpers";
+import { getGifSearch as getGifSearchApi } from "../api/getGifSearch";
 
 export const tool: MCPTool = {
   name: "get_gif_search",
@@ -33,31 +30,16 @@ export async function getGifSearch(
       };
     const limit = optNumber(args, "limit", 10);
 
-    const client = mtprotoService.getClient();
+    const { data: gifs, fromCache } = await getGifSearchApi(query, limit);
 
-    const result = await mtprotoService.withFloodWaitHandling(async () => {
-      const bot = await client.getInputEntity("gif");
-      return client.invoke(
-        new Api.messages.GetInlineBotResults({
-          bot: toInputUser(bot),
-          peer: new Api.InputPeerSelf(),
-          query,
-          offset: "",
-        }),
-      );
-    });
-
-    const results = narrow<InlineBotResults>(result)?.results;
-    if (!results || !Array.isArray(results) || results.length === 0) {
+    if (gifs.length === 0) {
       return {
         content: [{ type: "text", text: "No GIFs found for: " + query }],
+        fromCache,
       };
     }
 
-    const lines = results.slice(0, limit).map((r, i: number) => {
-      const title = r.title ?? r.description ?? "GIF " + (i + 1);
-      return i + 1 + ". " + title;
-    });
+    const lines = gifs.map((g, i) => i + 1 + ". " + g.title);
 
     return {
       content: [
@@ -66,6 +48,7 @@ export async function getGifSearch(
           text: lines.length + " GIFs found:\n" + lines.join("\n"),
         },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

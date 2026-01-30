@@ -24,21 +24,21 @@ function useSocket(): UseSocketReturn;
 **Usage:**
 
 ```typescript
-import { useSocket } from '../hooks/useSocket';
+import { useSocket } from "../hooks/useSocket";
 
 function ChatInput() {
   const { emit, isConnected } = useSocket();
 
   const sendMessage = (text: string) => {
     if (isConnected) {
-      emit('chat:message', { text });
+      emit("chat:message", { text });
     }
   };
 
   return (
     <input
       disabled={!isConnected}
-      onKeyDown={(e) => e.key === 'Enter' && sendMessage(e.target.value)}
+      onKeyDown={(e) => e.key === "Enter" && sendMessage(e.target.value)}
     />
   );
 }
@@ -56,8 +56,8 @@ function Notifications() {
       setNotifications((prev) => [...prev, notification]);
     };
 
-    on('notification', handler);
-    return () => off('notification', handler);
+    on("notification", handler);
+    return () => off("notification", handler);
   }, [on, off]);
 
   return <NotificationList items={notifications} />;
@@ -82,7 +82,7 @@ function useUser(): UseUserReturn;
 **Usage:**
 
 ```typescript
-import { useUser } from '../hooks/useUser';
+import { useUser } from "../hooks/useUser";
 
 function ProfileHeader() {
   const { user, loading, error, refetch } = useUser();
@@ -94,7 +94,9 @@ function ProfileHeader() {
   return (
     <div className="profile">
       <Avatar src={user.avatar} />
-      <span>{user.firstName} {user.lastName}</span>
+      <span>
+        {user.firstName} {user.lastName}
+      </span>
     </div>
   );
 }
@@ -108,10 +110,10 @@ URL-based navigation for settings modal.
 
 ```typescript
 interface UseSettingsNavigationReturn {
-  currentRoute: string;      // Current settings path
-  navigateTo: (panel: string) => void;  // Navigate to panel
-  navigateBack: () => void;  // Go back one level
-  closeModal: () => void;    // Close settings entirely
+  currentRoute: string; // Current settings path
+  navigateTo: (panel: string) => void; // Navigate to panel
+  navigateBack: () => void; // Go back one level
+  closeModal: () => void; // Close settings entirely
 }
 
 function useSettingsNavigation(): UseSettingsNavigationReturn;
@@ -120,19 +122,15 @@ function useSettingsNavigation(): UseSettingsNavigationReturn;
 **Usage:**
 
 ```typescript
-import { useSettingsNavigation } from './hooks/useSettingsNavigation';
+import { useSettingsNavigation } from "./hooks/useSettingsNavigation";
 
 function SettingsMenu() {
   const { navigateTo, closeModal } = useSettingsNavigation();
 
   return (
     <nav>
-      <button onClick={() => navigateTo('connections')}>
-        Connections
-      </button>
-      <button onClick={() => navigateTo('privacy')}>
-        Privacy
-      </button>
+      <button onClick={() => navigateTo("connections")}>Connections</button>
+      <button onClick={() => navigateTo("privacy")}>Privacy</button>
       <button onClick={closeModal}>Close</button>
     </nav>
   );
@@ -145,9 +143,9 @@ Animation state management for settings modal.
 
 ```typescript
 interface UseSettingsAnimationReturn {
-  isEntering: boolean;       // Modal is animating in
-  isExiting: boolean;        // Modal is animating out
-  animationClass: string;    // CSS class for current state
+  isEntering: boolean; // Modal is animating in
+  isExiting: boolean; // Modal is animating out
+  animationClass: string; // CSS class for current state
 }
 
 function useSettingsAnimation(): UseSettingsAnimationReturn;
@@ -156,16 +154,12 @@ function useSettingsAnimation(): UseSettingsAnimationReturn;
 **Usage:**
 
 ```typescript
-import { useSettingsAnimation } from './hooks/useSettingsAnimation';
+import { useSettingsAnimation } from "./hooks/useSettingsAnimation";
 
 function SettingsModal() {
   const { animationClass, isExiting } = useSettingsAnimation();
 
-  return (
-    <div className={`modal ${animationClass}`}>
-      {/* Content */}
-    </div>
-  );
+  return <div className={`modal ${animationClass}`}>{/* Content */}</div>;
 }
 ```
 
@@ -178,7 +172,7 @@ Environment variable access with defaults.
 ```typescript
 // Backend URL
 export const BACKEND_URL =
-  import.meta.env.VITE_BACKEND_URL || 'https://api.example.com';
+  import.meta.env.VITE_BACKEND_URL || "https://api.example.com";
 
 // Telegram configuration
 export const TELEGRAM_API_ID = import.meta.env.VITE_TELEGRAM_API_ID;
@@ -187,18 +181,18 @@ export const TELEGRAM_BOT_USERNAME = import.meta.env.VITE_TELEGRAM_BOT_USERNAME;
 export const TELEGRAM_BOT_ID = import.meta.env.VITE_TELEGRAM_BOT_ID;
 
 // Debug mode
-export const DEBUG = import.meta.env.VITE_DEBUG === 'true';
+export const DEBUG = import.meta.env.VITE_DEBUG === "true";
 ```
 
 **Usage:**
 
 ```typescript
-import { BACKEND_URL, DEBUG } from '../utils/config';
+import { BACKEND_URL, DEBUG } from "../utils/config";
 
 const response = await fetch(`${BACKEND_URL}/api/users`);
 
 if (DEBUG) {
-  console.log('Response:', response);
+  console.log("Response:", response);
 }
 ```
 
@@ -217,7 +211,7 @@ function parseDeepLink(url: string): { path: string; params: URLSearchParams };
 **Usage:**
 
 ```typescript
-import { buildAuthDeepLink } from '../utils/deeplink';
+import { buildAuthDeepLink } from "../utils/deeplink";
 
 // Build URL for browser redirect
 const deepLink = buildAuthDeepLink(loginToken);
@@ -240,12 +234,13 @@ async function setupDesktopDeepLinkListener(): Promise<void>;
 
 ```typescript
 // Lazy import to ensure Tauri IPC is ready
-import('./utils/desktopDeepLinkListener').then((m) => {
+import("./utils/desktopDeepLinkListener").then((m) => {
   m.setupDesktopDeepLinkListener().catch(console.error);
 });
 ```
 
 **What it does:**
+
 1. Listens for `onOpenUrl` events from Tauri deep-link plugin
 2. Parses `alphahuman://auth?token=...` URLs
 3. Calls Rust `exchange_token` command (bypasses CORS)
@@ -253,14 +248,15 @@ import('./utils/desktopDeepLinkListener').then((m) => {
 5. Navigates to `/onboarding` or `/home`
 
 **Loop prevention:**
+
 ```typescript
 // Set flag before navigation to prevent reprocessing
-localStorage.setItem('deepLinkHandled', 'true');
-window.location.replace('/');
+localStorage.setItem("deepLinkHandled", "true");
+window.location.replace("/");
 
 // On next load, clear flag
-if (localStorage.getItem('deepLinkHandled') === 'true') {
-  localStorage.removeItem('deepLinkHandled');
+if (localStorage.getItem("deepLinkHandled") === "true") {
+  localStorage.removeItem("deepLinkHandled");
   return; // Don't process again
 }
 ```
@@ -277,22 +273,23 @@ async function openUrl(url: string): Promise<void>;
 **Usage:**
 
 ```typescript
-import { openUrl } from '../utils/openUrl';
+import { openUrl } from "../utils/openUrl";
 
 // Opens in system browser (not in-app WebView)
-await openUrl('https://telegram.org/auth');
+await openUrl("https://telegram.org/auth");
 ```
 
 **Implementation:**
+
 ```typescript
 export async function openUrl(url: string): Promise<void> {
   try {
     // Try Tauri opener plugin first
-    const { open } = await import('@tauri-apps/plugin-opener');
+    const { open } = await import("@tauri-apps/plugin-opener");
     await open(url);
   } catch {
     // Fallback to browser API
-    window.open(url, '_blank');
+    window.open(url, "_blank");
   }
 }
 ```
@@ -305,9 +302,9 @@ The `telegram` npm package requires Node.js APIs. These are polyfilled:
 
 ```typescript
 // polyfills.ts
-import { Buffer } from 'buffer';
-import process from 'process';
-import util from 'util';
+import { Buffer } from "buffer";
+import process from "process";
+import util from "util";
 
 window.Buffer = Buffer;
 window.process = process;
@@ -318,7 +315,7 @@ window.util = util;
 
 ```typescript
 // main.tsx
-import './polyfills';
+import "./polyfills";
 // ... rest of app
 ```
 
@@ -329,15 +326,15 @@ import './polyfills';
 export default defineConfig({
   resolve: {
     alias: {
-      buffer: 'buffer',
-      process: 'process/browser',
-      util: 'util'
-    }
+      buffer: "buffer",
+      process: "process/browser",
+      util: "util",
+    },
   },
   define: {
-    'process.env': {},
-    global: 'globalThis'
-  }
+    "process.env": {},
+    global: "globalThis",
+  },
 });
 ```
 
@@ -410,10 +407,10 @@ Country list for phone number input.
 
 ```typescript
 interface Country {
-  code: string;      // "US"
-  name: string;      // "United States"
-  dialCode: string;  // "+1"
-  flag: string;      // "🇺🇸"
+  code: string; // "US"
+  name: string; // "United States"
+  dialCode: string; // "+1"
+  flag: string; // "🇺🇸"
 }
 
 export const countries: Country[];
@@ -422,7 +419,7 @@ export const countries: Country[];
 **Usage:**
 
 ```typescript
-import { countries } from '../data/countries';
+import { countries } from "../data/countries";
 
 function PhoneInput() {
   const [country, setCountry] = useState(countries[0]);
@@ -431,9 +428,9 @@ function PhoneInput() {
     <div>
       <select
         value={country.code}
-        onChange={(e) => setCountry(
-          countries.find((c) => c.code === e.target.value)
-        )}
+        onChange={(e) =>
+          setCountry(countries.find((c) => c.code === e.target.value))
+        }
       >
         {countries.map((c) => (
           <option key={c.code} value={c.code}>
@@ -456,14 +453,14 @@ Always include dependencies in useEffect:
 ```typescript
 // Good
 useEffect(() => {
-  on('event', handler);
-  return () => off('event', handler);
+  on("event", handler);
+  return () => off("event", handler);
 }, [on, off, handler]);
 
 // Bad - missing dependencies
 useEffect(() => {
-  on('event', handler);
-  return () => off('event', handler);
+  on("event", handler);
+  return () => off("event", handler);
 }, []);
 ```
 
@@ -486,7 +483,7 @@ Wrap utility calls in try-catch:
 try {
   await openUrl(url);
 } catch (error) {
-  console.error('Failed to open URL:', error);
+  console.error("Failed to open URL:", error);
   // Fallback behavior
 }
 ```
@@ -496,10 +493,10 @@ try {
 Use TypeScript generics for API calls:
 
 ```typescript
-const user = await apiClient.get<User>('/users/me');
+const user = await apiClient.get<User>("/users/me");
 // user is typed as User
 ```
 
 ---
 
-*Previous: [Providers](./07-providers.md) | [Back to Index](./README.md)*
+_Previous: [Providers](./07-providers.md) | [Back to Index](./README.md)_

@@ -1,11 +1,7 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import bigInt from "big-integer";
-import type { ApiPhoto } from "../apiResultTypes";
-import { narrow } from "../apiCastHelpers";
+import { deleteProfilePhoto as deleteProfilePhotoApi } from "../api/deleteProfilePhoto";
 
 export const tool: MCPTool = {
   name: "delete_profile_photo",
@@ -18,47 +14,12 @@ export async function deleteProfilePhoto(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const client = mtprotoService.getClient();
+    const { fromCache } = await deleteProfilePhotoApi();
 
-    const photos = await mtprotoService.withFloodWaitHandling(async () => {
-      return client.invoke(
-        new Api.photos.GetUserPhotos({
-          userId: new Api.InputUserSelf(),
-          offset: 0,
-          maxId: bigInt(0),
-          limit: 1,
-        }),
-      );
-    });
-
-    if (
-      !photos ||
-      !("photos" in photos) ||
-      !Array.isArray(photos.photos) ||
-      photos.photos.length === 0
-    ) {
-      return {
-        content: [{ type: "text", text: "No profile photo to delete." }],
-      };
-    }
-
-    const photo = narrow<ApiPhoto>(photos.photos[0]);
-
-    await mtprotoService.withFloodWaitHandling(async () => {
-      await client.invoke(
-        new Api.photos.DeletePhotos({
-          id: [
-            new Api.InputPhoto({
-              id: photo.id,
-              accessHash: photo.accessHash,
-              fileReference: photo.fileReference,
-            }),
-          ],
-        }),
-      );
-    });
-
-    return { content: [{ type: "text", text: "Profile photo deleted." }] };
+    return {
+      content: [{ type: "text", text: "Profile photo deleted." }],
+      fromCache,
+    };
   } catch (error) {
     return logAndFormatError(
       "delete_profile_photo",

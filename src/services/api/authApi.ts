@@ -15,6 +15,7 @@ export async function consumeLoginToken(loginToken: string): Promise<string> {
     undefined,
     { requireAuth: false },
   );
+  console.log("[ConsumeLoginToken] Response", response);
   if (!response.success || !response.data?.jwtToken) {
     throw new Error("Login token invalid or expired");
   }

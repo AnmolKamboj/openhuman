@@ -6,7 +6,8 @@ import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { formatEntity, getCurrentUserWithApiFallback } from "../telegramApi";
+import { getCurrentUser } from "../api/getCurrentUser";
+import { formatEntity } from "../api/helpers";
 
 export const tool: MCPTool = {
   name: "get_me",
@@ -22,11 +23,12 @@ export async function getMe(
   _context: TelegramMCPContext,
 ): Promise<MCPToolResult> {
   try {
-    const user = await getCurrentUserWithApiFallback();
+    const { data: user, fromCache } = await getCurrentUser();
     if (!user) {
       return {
         content: [{ type: "text", text: "User information not available" }],
         isError: true,
+        fromCache,
       };
     }
     const entity = formatEntity(user);
@@ -39,6 +41,7 @@ export async function getMe(
     };
     return {
       content: [{ type: "text", text: JSON.stringify(result, undefined, 2) }],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

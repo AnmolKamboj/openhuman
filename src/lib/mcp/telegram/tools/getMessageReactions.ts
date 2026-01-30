@@ -1,12 +1,8 @@
 import type { MCPTool, MCPToolResult } from "../../types";
 import type { TelegramMCPContext } from "../types";
 import { ErrorCategory, logAndFormatError } from "../../errorHandler";
-import { validateId } from "../../validation";
-import { getChatById } from "../telegramApi";
-import { mtprotoService } from "../../../../services/mtprotoService";
-import { Api } from "telegram";
-import type { UpdatesResult } from "../apiResultTypes";
-import { narrow } from "../apiCastHelpers";
+import { validateId, validatePositiveInt } from "../../validation";
+import { getMessageReactions as getMessageReactionsApi } from "../api/getMessageReactions";
 
 export const tool: MCPTool = {
   name: "get_message_reactions",
@@ -27,42 +23,11 @@ export async function getMessageReactions(
 ): Promise<MCPToolResult> {
   try {
     const chatId = validateId(args.chat_id, "chat_id");
-    const messageId =
-      typeof args.message_id === "number" && Number.isInteger(args.message_id)
-        ? args.message_id
-        : undefined;
+    const messageId = validatePositiveInt(args.message_id, "message_id");
 
-    if (messageId === undefined) {
-      return {
-        content: [
-          { type: "text", text: "message_id must be a positive integer" },
-        ],
-        isError: true,
-      };
-    }
+    const { data: reactions, fromCache } = await getMessageReactionsApi(chatId, messageId);
 
-    const chat = getChatById(chatId);
-    if (!chat)
-      return {
-        content: [{ type: "text", text: "Chat not found: " + chatId }],
-        isError: true,
-      };
-
-    const client = mtprotoService.getClient();
-    const entity = chat.username ? chat.username : chat.id;
-
-    const result = await mtprotoService.withFloodWaitHandling(async () => {
-      const inputPeer = await client.getInputEntity(entity);
-      return client.invoke(
-        new Api.messages.GetMessagesReactions({
-          peer: inputPeer,
-          id: [messageId],
-        }),
-      );
-    });
-
-    const updates = narrow<UpdatesResult>(result);
-    if (!updates || !updates.updates || updates.updates.length === 0) {
+    if (reactions.length === 0) {
       return {
         content: [
           {
@@ -70,30 +35,11 @@ export async function getMessageReactions(
             text: "No reactions found on message " + messageId + ".",
           },
         ],
+        fromCache,
       };
     }
 
-    const lines: string[] = [];
-    for (const update of updates.updates) {
-      if (update.reactions && update.reactions.results) {
-        for (const r of update.reactions.results) {
-          const emoji = r.reaction?.emoticon ?? r.reaction?.className ?? "?";
-          const count = r.count ?? 0;
-          lines.push(emoji + ": " + count);
-        }
-      }
-    }
-
-    if (lines.length === 0) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: "No reactions found on message " + messageId + ".",
-          },
-        ],
-      };
-    }
+    const lines = reactions.map((r) => r.emoji + ": " + r.count);
 
     return {
       content: [
@@ -102,6 +48,7 @@ export async function getMessageReactions(
           text: "Reactions on message " + messageId + ":\n" + lines.join("\n"),
         },
       ],
+      fromCache,
     };
   } catch (error) {
     return logAndFormatError(

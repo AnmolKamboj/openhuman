@@ -73,6 +73,37 @@ export function validateIdList(
 }
 
 /**
+ * Validate a positive integer parameter (e.g. message IDs)
+ */
+export function validatePositiveInt(
+  value: unknown,
+  paramName: string,
+): number {
+  if (typeof value === "number") {
+    if (!Number.isInteger(value) || value <= 0) {
+      throw new ValidationError(
+        `Invalid ${paramName}: ${value}. Must be a positive integer.`,
+      );
+    }
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const intValue = Number.parseInt(value, 10);
+    if (Number.isNaN(intValue) || intValue <= 0) {
+      throw new ValidationError(
+        `Invalid ${paramName}: '${value}'. Must be a positive integer.`,
+      );
+    }
+    return intValue;
+  }
+
+  throw new ValidationError(
+    `Invalid ${paramName}: ${String(value)}. Must be a positive integer.`,
+  );
+}
+
+/**
  * Validate optional ID (can be undefined)
  */
 export function validateOptionalId(
