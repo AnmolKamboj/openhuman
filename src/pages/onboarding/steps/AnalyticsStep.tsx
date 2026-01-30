@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 interface AnalyticsStepProps {
-  onNext: () => void;
+  onNext: (analyticsEnabled: boolean) => void;
 }
 
 const AnalyticsStep = ({ onNext }: AnalyticsStepProps) => {
@@ -113,7 +113,7 @@ const AnalyticsStep = ({ onNext }: AnalyticsStepProps) => {
       </div>
 
       <button
-        onClick={onNext}
+        onClick={() => onNext(selectedOption === "shareAnalytics")}
         className="btn-primary w-full py-2.5 text-sm font-medium rounded-xl"
       >
         Continue

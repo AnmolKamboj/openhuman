@@ -24,7 +24,7 @@ import { initialState as telegramInitialState } from "./telegram/types";
 const authPersistConfig = {
   key: "auth",
   storage,
-  whitelist: ["token", "isOnboardedByUser"],
+  whitelist: ["token", "isOnboardedByUser", "isAnalyticsEnabledByUser"],
 };
 
 // Strip volatile runtime fields from each per-user Telegram state on rehydrate.

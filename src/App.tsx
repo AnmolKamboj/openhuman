@@ -1,6 +1,7 @@
 import { HashRouter as Router } from "react-router-dom";
 import { Provider } from "react-redux";
 import { PersistGate } from "redux-persist/integration/react";
+import * as Sentry from "@sentry/react";
 import { store, persistor } from "./store";
 import UserProvider from "./providers/UserProvider";
 import SocketProvider from "./providers/SocketProvider";
@@ -9,7 +10,7 @@ import AppRoutes from "./AppRoutes";
 
 function App() {
   return (
-    <>
+    <Sentry.ErrorBoundary fallback={<div>Something went wrong.</div>}>
       <Provider store={store}>
         <PersistGate loading={null} persistor={persistor}>
           <UserProvider>
@@ -31,8 +32,7 @@ function App() {
           </UserProvider>
         </PersistGate>
       </Provider>
-
-    </>
+    </Sentry.ErrorBoundary>
   );
 }
 

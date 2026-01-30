@@ -152,6 +152,7 @@ Set in `.env` (Vite exposes `VITE_*` prefixed vars):
 | `VITE_TELEGRAM_API_HASH`     | Telegram MTProto API hash                          |
 | `VITE_TELEGRAM_BOT_USERNAME` | Telegram bot username                              |
 | `VITE_TELEGRAM_BOT_ID`       | Telegram bot numeric ID                            |
+| `VITE_SENTRY_DSN`            | Sentry DSN for error reporting (optional)          |
 | `VITE_DEBUG`                 | Debug mode flag                                    |
 
 Production defaults are in `src/utils/config.ts`.

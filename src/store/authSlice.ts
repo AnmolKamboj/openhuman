@@ -5,11 +5,14 @@ export interface AuthState {
   token: string | null;
   /** Onboarding completion per user id */
   isOnboardedByUser: Record<string, boolean>;
+  /** Analytics consent per user id (opt-in during onboarding) */
+  isAnalyticsEnabledByUser: Record<string, boolean>;
 }
 
 const initialState: AuthState = {
   token: null,
   isOnboardedByUser: {},
+  isAnalyticsEnabledByUser: {},
 };
 
 const authSlice = createSlice({
@@ -29,6 +32,13 @@ const authSlice = createSlice({
       const { userId, value } = action.payload;
       state.isOnboardedByUser[userId] = value;
     },
+    setAnalyticsForUser: (
+      state,
+      action: PayloadAction<{ userId: string; enabled: boolean }>,
+    ) => {
+      const { userId, enabled } = action.payload;
+      state.isAnalyticsEnabledByUser[userId] = enabled;
+    },
   },
 });
 
@@ -41,5 +51,5 @@ export const clearToken = createAsyncThunk(
   },
 );
 
-export const { setToken, setOnboardedForUser } = authSlice.actions;
+export const { setToken, setOnboardedForUser, setAnalyticsForUser } = authSlice.actions;
 export default authSlice.reducer;
