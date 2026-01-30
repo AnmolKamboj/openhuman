@@ -2,9 +2,9 @@ import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions";
 import type { UserAuthParams, BotAuthParams } from "telegram/client/auth";
 import { FloodWaitError } from "telegram/errors";
-import { TELEGRAM_API_ID, TELEGRAM_API_HASH } from "../utils/config";
-import { store } from "../store";
-import { setSessionString } from "../store/telegram";
+import { TELEGRAM_API_ID, TELEGRAM_API_HASH } from "../../../utils/config";
+import { store } from "../../../store";
+import { setSessionString } from "../../../store/telegram";
 
 type LoginOptions = UserAuthParams | BotAuthParams;
 

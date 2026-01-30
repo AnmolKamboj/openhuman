@@ -17,7 +17,7 @@ import {
   selectTelegramCurrentUserId,
 } from "../store/telegramSelectors";
 import { selectSocketStatus } from "../store/socketSelectors";
-import { mtprotoService } from "../services/mtprotoService";
+import { mtprotoService } from "../lib/telegram/services/mtprotoService";
 import { socketService } from "../services/socketService";
 import type { User } from "../types/api";
 

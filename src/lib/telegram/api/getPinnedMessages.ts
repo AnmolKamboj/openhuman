@@ -2,7 +2,7 @@
  * API: Get pinned messages (API-first with cache fallback)
  */
 
-import { mtprotoService } from "../../../services/mtprotoService";
+import { mtprotoService } from "../services/mtprotoService";
 import { getChatById } from "./helpers";
 import type { ApiResult } from "./types";
 import type { ApiMessage } from "./apiResultTypes";

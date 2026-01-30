@@ -4,7 +4,7 @@
  * Fetches all available sticker sets for the current user.
  */
 
-import { mtprotoService } from "../../../services/mtprotoService";
+import { mtprotoService } from "../services/mtprotoService";
 import type { ApiResult } from "./types";
 import type { StickerSetsResult } from "./apiResultTypes";
 import { narrow } from "./apiCastHelpers";

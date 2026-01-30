@@ -10,7 +10,7 @@ const mockClient = {
   sendMessage: vi.fn(),
 };
 
-vi.mock("../../../../services/mtprotoService", () => ({
+vi.mock("../../services/mtprotoService", () => ({
   mtprotoService: {
     getClient: vi.fn(() => mockClient),
     withFloodWaitHandling: vi.fn(async (fn: any) => await fn()),
@@ -97,7 +97,7 @@ describe("getChats", () => {
     expect(result.fromCache).toBe(true);
 
     const { mtprotoService } = await import(
-      "../../../../services/mtprotoService"
+      "../../services/mtprotoService"
     );
     expect(mtprotoService.getClient).not.toHaveBeenCalled();
   });
@@ -171,7 +171,7 @@ describe("getChats", () => {
     expect(result.fromCache).toBe(false);
 
     const { mtprotoService } = await import(
-      "../../../../services/mtprotoService"
+      "../../services/mtprotoService"
     );
     expect(mtprotoService.getClient).not.toHaveBeenCalled();
   });

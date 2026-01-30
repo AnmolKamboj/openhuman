@@ -9,7 +9,7 @@
 import { Api } from "telegram/tl";
 import type { TelegramClient } from "telegram";
 import bigInt from "big-integer";
-import { mcpLog, mcpWarn } from "../lib/mcp/logger";
+import { mcpLog, mcpWarn } from "../../mcp/logger";
 
 // ---------------------------------------------------------------------------
 // Types

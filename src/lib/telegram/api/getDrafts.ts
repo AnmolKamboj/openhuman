@@ -2,7 +2,7 @@
  * API: Get all drafts
  */
 
-import { mtprotoService } from "../../../services/mtprotoService";
+import { mtprotoService } from "../services/mtprotoService";
 import type { ApiResult } from "./types";
 import type { UpdatesResult } from "./apiResultTypes";
 import { Api } from "telegram";

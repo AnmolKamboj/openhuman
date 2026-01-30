@@ -1,5 +1,5 @@
 import { createAsyncThunk } from "@reduxjs/toolkit";
-import { mtprotoService } from "../../services/mtprotoService";
+import { mtprotoService } from "../../lib/telegram/services/mtprotoService";
 import type { TelegramUser } from "./types";
 import type { RootState } from "../index";
 

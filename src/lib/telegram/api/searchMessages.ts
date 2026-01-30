@@ -2,7 +2,7 @@
  * API: Search messages (API-first with cache fallback)
  */
 
-import { mtprotoService } from "../../../services/mtprotoService";
+import { mtprotoService } from "../services/mtprotoService";
 import { getChatById, formatMessage, getCachedMessages } from "./helpers";
 import type { ApiResult } from "./types";
 import type { ApiMessage } from "./apiResultTypes";

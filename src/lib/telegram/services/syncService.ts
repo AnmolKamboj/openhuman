@@ -11,22 +11,22 @@ import { Api } from "telegram/tl";
 import { Raw } from "telegram/events";
 import bigInt from "big-integer";
 import createDebug from "debug";
-import { mtprotoService } from "../../../services/mtprotoService";
+import { mtprotoService } from "./mtprotoService";
 
 const log = createDebug("app:telegram:sync");
-import { updateManager } from "../../../services/updateManager";
+import { updateManager } from "./updateManager";
 import { store } from "../../../store";
-import {
-  setSyncStatus,
-  replaceChats,
-  addChats,
-  setUsers,
-  addUsers,
-  addChatMessagesById,
-  setCommonBoxState,
-  setChannelPts,
-} from "../../../store/telegram";
 import type { TelegramChat, TelegramUser } from "../../../store/telegram/types";
+import {
+  replaceAllChatsInState,
+  addChatsWithUsersInState,
+  replaceAllUsersInState,
+  updateUsersInState,
+  updateMessagesInState,
+  updateSyncStatusInState,
+  updateCommonBoxStateInState,
+  updateChannelPtsInState,
+} from "../state";
 import {
   buildChat,
   buildMessage,
@@ -91,14 +91,14 @@ class TelegramSyncService {
     this.isSyncing = true;
     this.isSynced = false;
 
-    store.dispatch(setSyncStatus({ userId, isSyncing: true, isSynced: false }));
+    updateSyncStatusInState(true, false, userId);
 
     // Safety timeout: release isSyncing if stuck
     this.safetyTimeout = setTimeout(() => {
       if (this.isSyncing) {
         log("Safety timeout reached — releasing sync lock");
         this.isSyncing = false;
-        store.dispatch(setSyncStatus({ userId, isSyncing: false }));
+        updateSyncStatusInState(false, undefined, userId);
       }
     }, SYNC_SAFETY_TIMEOUT);
 
@@ -116,9 +116,7 @@ class TelegramSyncService {
         this.isSyncing = false;
         this.isSynced = true;
         clearTimeout(this.safetyTimeout);
-        store.dispatch(
-          setSyncStatus({ userId, isSyncing: false, isSynced: true })
-        );
+        updateSyncStatusInState(false, true, userId);
         log( "Initial sync complete — UI ready");
 
         // Background tasks (non-blocking)
@@ -133,7 +131,7 @@ class TelegramSyncService {
       log( "Sync failed:", error);
       this.isSyncing = false;
       clearTimeout(this.safetyTimeout);
-      store.dispatch(setSyncStatus({ userId, isSyncing: false }));
+      updateSyncStatusInState(false, undefined, userId);
     }
   }
 
@@ -184,8 +182,8 @@ class TelegramSyncService {
 
     log( "Update state:", commonBoxState);
 
-    // Store in Redux
-    store.dispatch(setCommonBoxState({ userId, commonBoxState }));
+    // Store in Redux via state layer
+    updateCommonBoxStateInState(commonBoxState, userId);
 
     // Initialize the update manager with client + handler
     updateManager.init(client, (update, source) => {
@@ -332,7 +330,7 @@ class TelegramSyncService {
 
   /**
    * Process a GetDialogs response — extract chats, users, messages
-   * and dispatch to Redux.
+   * and dispatch to Redux via state layer.
    *
    * @returns Array of chat IDs from this batch
    */
@@ -396,18 +394,19 @@ class TelegramSyncService {
     for (const dialog of dialogs) {
       if (dialog.pts && dialog.peer?.channelId) {
         const channelId = String(dialog.peer.channelId);
-        store.dispatch(setChannelPts({ userId, channelId, pts: dialog.pts }));
+        updateChannelPtsInState(channelId, dialog.pts, userId);
         updateManager.setChannelPts(channelId, dialog.pts);
       }
     }
 
-    // Dispatch to Redux
+    // Dispatch to Redux via state layer
     if (isFirstBatch) {
-      store.dispatch(replaceChats({ userId, chats, chatsOrder: chatOrder }));
-      store.dispatch(setUsers({ userId, users }));
+      replaceAllChatsInState(chats, chatOrder, userId);
+      replaceAllUsersInState(users, userId);
     } else {
-      store.dispatch(addChats({ userId, chats, appendOrder: chatOrder }));
-      store.dispatch(addUsers({ userId, users }));
+      addChatsWithUsersInState(chats, chatOrder, userId);
+      // Convert users map to array for updateUsersInState
+      updateUsersInState(Object.values(users), userId);
     }
 
     return chatOrder;
@@ -453,9 +452,7 @@ class TelegramSyncService {
         .filter(Boolean) as NonNullable<ReturnType<typeof buildMessage>>[];
 
       if (messages.length > 0) {
-        store.dispatch(
-          addChatMessagesById({ userId, chatId: selectedChatId, messages })
-        );
+        updateMessagesInState(selectedChatId, messages, userId);
       }
 
       log(`Loaded ${messages.length} messages for chat ${selectedChatId}`);
@@ -513,7 +510,7 @@ class TelegramSyncService {
           .filter(Boolean) as NonNullable<ReturnType<typeof buildMessage>>[];
 
         if (messages.length > 0) {
-          store.dispatch(addChatMessagesById({ userId, chatId, messages }));
+          updateMessagesInState(chatId, messages, userId);
         }
 
         preloaded++;

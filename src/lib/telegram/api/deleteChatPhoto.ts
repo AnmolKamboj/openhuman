@@ -1,4 +1,4 @@
-import { mtprotoService } from "../../../services/mtprotoService";
+import { mtprotoService } from "../services/mtprotoService";
 import { getChatById } from "./helpers";
 import type { ApiResult } from "./types";
 import { Api } from "telegram";

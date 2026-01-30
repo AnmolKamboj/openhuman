@@ -4,7 +4,7 @@
  * Fetches forum topics from channels/supergroups only.
  */
 
-import { mtprotoService } from "../../../services/mtprotoService";
+import { mtprotoService } from "../services/mtprotoService";
 import { getChatById } from "./helpers";
 import type { ApiResult } from "./types";
 import type { ForumTopicsResult } from "./apiResultTypes";

@@ -1,5 +1,5 @@
 /**
- * Update handler — routes processed Telegram updates to Redux dispatches.
+ * Update handler — routes processed Telegram updates to state layer functions.
  *
  * Only handles essential update types:
  * - New/edit/delete messages
@@ -9,15 +9,15 @@
 
 import { Api } from "telegram/tl";
 import createDebug from "debug";
-import { store } from "../../../store";
 
 const log = createDebug("app:telegram:sync");
 import {
-  addMessage,
-  updateMessage,
-  deleteChatMessages,
-  updateChat,
-} from "../../../store/telegram";
+  addMessageToState,
+  updateChatFieldsInState,
+  updateMessageFieldsInState,
+  findAndDeleteMessagesFromState,
+  deleteMessagesFromState,
+} from "../state";
 import { buildMessage, buildPeerId } from "./entityBuilders";
 
 
@@ -31,8 +31,6 @@ export function handleUpdate(
   userId: string,
   _source: "realtime" | "difference" = "realtime"
 ): void {
-  const dispatch = store.dispatch;
-
   // -------------------------------------------------------------------------
   // Force sync signal from UpdateManager
   // -------------------------------------------------------------------------
@@ -53,16 +51,11 @@ export function handleUpdate(
   ) {
     const msg = buildMessage(update.message);
     if (msg) {
-      dispatch(addMessage({ userId, message: msg }));
-      dispatch(
-        updateChat({
-          userId,
-          id: msg.chatId,
-          updates: {
-            lastMessage: msg,
-            lastMessageDate: msg.date,
-          },
-        })
+      addMessageToState(msg, userId);
+      updateChatFieldsInState(
+        msg.chatId,
+        { lastMessage: msg, lastMessageDate: msg.date },
+        userId
       );
     }
     return;
@@ -77,14 +70,7 @@ export function handleUpdate(
   ) {
     const msg = buildMessage(update.message);
     if (msg) {
-      dispatch(
-        updateMessage({
-          userId,
-          chatId: msg.chatId,
-          messageId: msg.id,
-          updates: msg,
-        })
-      );
+      updateMessageFieldsInState(msg.chatId, msg.id, msg, userId);
     }
     return;
   }
@@ -94,28 +80,14 @@ export function handleUpdate(
   // -------------------------------------------------------------------------
   if (update instanceof Api.UpdateDeleteMessages) {
     const messageIds = update.messages.map(String);
-    // DeleteMessages doesn't include chatId — we need to find it from our state.
-    // For common messages, we search all chats for these message IDs.
-    const state = store.getState();
-    const userState = state.telegram.byUser[userId];
-    if (userState) {
-      for (const chatId of Object.keys(userState.messages)) {
-        const chatMsgs = userState.messages[chatId];
-        const matching = messageIds.filter((id) => chatMsgs[id]);
-        if (matching.length > 0) {
-          dispatch(
-            deleteChatMessages({ userId, chatId, messageIds: matching })
-          );
-        }
-      }
-    }
+    findAndDeleteMessagesFromState(messageIds, userId);
     return;
   }
 
   if (update instanceof Api.UpdateDeleteChannelMessages) {
     const channelId = String(update.channelId);
     const messageIds = update.messages.map(String);
-    dispatch(deleteChatMessages({ userId, chatId: channelId, messageIds }));
+    deleteMessagesFromState(channelId, messageIds, userId);
     return;
   }
 
@@ -125,12 +97,10 @@ export function handleUpdate(
   if (update instanceof Api.UpdateReadHistoryInbox) {
     const chatId = buildPeerId(update.peer);
     if (chatId) {
-      dispatch(
-        updateChat({
-          userId,
-          id: chatId,
-          updates: { unreadCount: update.stillUnreadCount },
-        })
+      updateChatFieldsInState(
+        chatId,
+        { unreadCount: update.stillUnreadCount },
+        userId
       );
     }
     return;
@@ -144,12 +114,10 @@ export function handleUpdate(
   // Channel read
   if (update instanceof Api.UpdateReadChannelInbox) {
     const chatId = String(update.channelId);
-    dispatch(
-      updateChat({
-        userId,
-        id: chatId,
-        updates: { unreadCount: update.stillUnreadCount },
-      })
+    updateChatFieldsInState(
+      chatId,
+      { unreadCount: update.stillUnreadCount },
+      userId
     );
     return;
   }
@@ -176,16 +144,11 @@ export function handleUpdate(
   if (update instanceof Api.Message || update instanceof Api.MessageService) {
     const msg = buildMessage(update);
     if (msg) {
-      dispatch(addMessage({ userId, message: msg }));
-      dispatch(
-        updateChat({
-          userId,
-          id: msg.chatId,
-          updates: {
-            lastMessage: msg,
-            lastMessageDate: msg.date,
-          },
-        })
+      addMessageToState(msg, userId);
+      updateChatFieldsInState(
+        msg.chatId,
+        { lastMessage: msg, lastMessageDate: msg.date },
+        userId
       );
     }
     return;

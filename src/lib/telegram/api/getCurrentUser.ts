@@ -3,7 +3,7 @@
  */
 
 import type { TelegramUser } from "../../../store/telegram/types";
-import { mtprotoService } from "../../../services/mtprotoService";
+import { mtprotoService } from "../services/mtprotoService";
 import { enforceRateLimit } from "../../mcp/rateLimiter";
 import { getCurrentUser as getCachedCurrentUser } from "./helpers";
 import type { ApiResult } from "./types";

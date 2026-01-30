@@ -11,15 +11,15 @@
 
 import { Api } from "telegram/tl";
 import { mtprotoService } from "./mtprotoService";
-import { store } from "../store";
+import { store } from "../../../store";
 import {
   addChatMessagesById,
   setViewportIds,
   addOutlyingList,
-} from "../store/telegram";
-import { selectTelegramCurrentUserId } from "../store/telegramSelectors";
-import type { TelegramMessage } from "../store/telegram/types";
-import { MAIN_THREAD_ID } from "../store/telegram/types";
+} from "../../../store/telegram";
+import { selectTelegramCurrentUserId } from "../../../store/telegramSelectors";
+import type { TelegramMessage } from "../../../store/telegram/types";
+import { MAIN_THREAD_ID } from "../../../store/telegram/types";
 
 // ---------------------------------------------------------------------------
 // Configuration

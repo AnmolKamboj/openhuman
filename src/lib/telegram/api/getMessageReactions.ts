@@ -2,7 +2,7 @@
  * API: Get message reactions
  */
 
-import { mtprotoService } from "../../../services/mtprotoService";
+import { mtprotoService } from "../services/mtprotoService";
 import { getChatById } from "./helpers";
 import type { ApiResult } from "./types";
 import { updateMessageReactionsInState } from "../state";

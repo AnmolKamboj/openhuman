@@ -6,16 +6,24 @@
  */
 
 import { store } from "../../../store";
-import { addChats, addChat } from "../../../store/telegram";
+import {
+  addChats,
+  addChat,
+  updateChat,
+  replaceChats,
+} from "../../../store/telegram";
 import type { TelegramChat } from "../../../store/telegram/types";
-import { getCurrentUserId } from "./helpers";
+import { resolveUserId } from "./helpers";
 
 /**
  * Add or merge fetched chats into Redux state.
  */
-export function updateChatsInState(chats: TelegramChat[]): void {
-  const userId = getCurrentUserId();
-  if (!userId || chats.length === 0) return;
+export function updateChatsInState(
+  chats: TelegramChat[],
+  userId?: string
+): void {
+  const uid = resolveUserId(userId);
+  if (!uid || chats.length === 0) return;
 
   const chatsMap: Record<string, TelegramChat> = {};
   const order: string[] = [];
@@ -23,16 +31,19 @@ export function updateChatsInState(chats: TelegramChat[]): void {
     chatsMap[chat.id] = chat;
     order.push(chat.id);
   }
-  store.dispatch(addChats({ userId, chats: chatsMap, appendOrder: order }));
+  store.dispatch(addChats({ userId: uid, chats: chatsMap, appendOrder: order }));
 }
 
 /**
  * Add or update a single chat in Redux state.
  */
-export function updateChatInState(chat: TelegramChat): void {
-  const userId = getCurrentUserId();
-  if (!userId) return;
-  store.dispatch(addChat({ userId, chat }));
+export function updateChatInState(
+  chat: TelegramChat,
+  userId?: string
+): void {
+  const uid = resolveUserId(userId);
+  if (!uid) return;
+  store.dispatch(addChat({ userId: uid, chat }));
 }
 
 /** Map a generic type string to TelegramChat["type"] */
@@ -84,8 +95,8 @@ export function updateChatsFromResults(
     username?: string;
   }>
 ): void {
-  const userId = getCurrentUserId();
-  if (!userId || results.length === 0) return;
+  const uid = resolveUserId();
+  if (!uid || results.length === 0) return;
 
   const chatsMap: Record<string, TelegramChat> = {};
   const order: string[] = [];
@@ -101,5 +112,48 @@ export function updateChatsFromResults(
     chatsMap[r.id] = chat;
     order.push(r.id);
   }
-  store.dispatch(addChats({ userId, chats: chatsMap, appendOrder: order }));
+  store.dispatch(addChats({ userId: uid, chats: chatsMap, appendOrder: order }));
+}
+
+/**
+ * Partially update fields on an existing chat in Redux state.
+ */
+export function updateChatFieldsInState(
+  chatId: string,
+  updates: Partial<TelegramChat>,
+  userId?: string
+): void {
+  const uid = resolveUserId(userId);
+  if (!uid) return;
+  store.dispatch(updateChat({ userId: uid, id: chatId, updates }));
+}
+
+/**
+ * Replace all chats in Redux state (used for the first batch of dialogs).
+ */
+export function replaceAllChatsInState(
+  chatsMap: Record<string, TelegramChat>,
+  order: string[],
+  userId?: string
+): void {
+  const uid = resolveUserId(userId);
+  if (!uid) return;
+  store.dispatch(
+    replaceChats({ userId: uid, chats: chatsMap, chatsOrder: order })
+  );
+}
+
+/**
+ * Add a batch of chats (used for subsequent dialog batches).
+ */
+export function addChatsWithUsersInState(
+  chatsMap: Record<string, TelegramChat>,
+  order: string[],
+  userId?: string
+): void {
+  const uid = resolveUserId(userId);
+  if (!uid) return;
+  store.dispatch(
+    addChats({ userId: uid, chats: chatsMap, appendOrder: order })
+  );
 }

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { sendMessage } from "../sendMessage";
 
 // Mock dependencies
-vi.mock("../../../../services/mtprotoService", () => {
+vi.mock("../../services/mtprotoService", () => {
   const mockClient = {
     invoke: vi.fn(),
     getInputEntity: vi.fn(),
@@ -71,7 +71,7 @@ describe("sendMessage", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    const mtproto = await import("../../../../services/mtprotoService");
+    const mtproto = await import("../../services/mtprotoService");
     mockMtprotoService = mtproto.mtprotoService;
     mockClient = mockMtprotoService.getClient();
   });

@@ -5,7 +5,7 @@
  * Falls back to filtering cached chats if the API call fails.
  */
 
-import { mtprotoService } from "../../../services/mtprotoService";
+import { mtprotoService } from "../services/mtprotoService";
 import { searchChatsInCache } from "./helpers";
 import type { ApiResult } from "./types";
 import { Api } from "telegram";

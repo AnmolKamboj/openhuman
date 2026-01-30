@@ -2,7 +2,7 @@
  * API: Get chat — cache-first with API fallback (hybrid).
  */
 
-import { mtprotoService } from "../../../services/mtprotoService";
+import { mtprotoService } from "../services/mtprotoService";
 import { enforceRateLimit } from "../../mcp/rateLimiter";
 import { getChatById, formatEntity } from "./helpers";
 import type { ApiResult } from "./types";

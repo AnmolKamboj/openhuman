@@ -1,4 +1,4 @@
-import { mtprotoService } from "../../../services/mtprotoService";
+import { mtprotoService } from "../services/mtprotoService";
 import type { ApiResult } from "./types";
 import { Api } from "telegram";
 import type { BotCommandInput } from "./apiResultTypes";

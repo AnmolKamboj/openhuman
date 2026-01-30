@@ -11,3 +11,11 @@ import { store } from "../../../store";
 export function getCurrentUserId(): string {
   return store.getState().user.user?._id ?? "";
 }
+
+/**
+ * Resolve the user ID to use for state operations.
+ * If an explicit userId is provided, use it; otherwise fall back to getCurrentUserId().
+ */
+export function resolveUserId(userId?: string): string {
+  return userId ?? getCurrentUserId();
+}

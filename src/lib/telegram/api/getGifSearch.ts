@@ -4,7 +4,7 @@
  * Uses the @gif bot to search for GIFs.
  */
 
-import { mtprotoService } from "../../../services/mtprotoService";
+import { mtprotoService } from "../services/mtprotoService";
 import type { ApiResult } from "./types";
 import type { InlineBotResults } from "./apiResultTypes";
 import { toInputUser, narrow } from "./apiCastHelpers";

@@ -2,7 +2,7 @@
  * API: Resolve username — API-first with cache fallback (hybrid).
  */
 
-import { mtprotoService } from "../../../services/mtprotoService";
+import { mtprotoService } from "../services/mtprotoService";
 import { Api } from "telegram";
 import { getChatById, formatEntity } from "./helpers";
 import type { ApiResult } from "./types";

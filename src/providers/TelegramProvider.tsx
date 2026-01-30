@@ -15,7 +15,7 @@ import {
   selectTelegramCurrentUserId,
 } from "../store/telegramSelectors";
 import { initializeTelegram, connectTelegram } from "../store/telegram";
-import { mtprotoService } from "../services/mtprotoService";
+import { mtprotoService } from "../lib/telegram/services/mtprotoService";
 import { telegramSyncService } from "../lib/telegram/services";
 
 interface TelegramContextType {

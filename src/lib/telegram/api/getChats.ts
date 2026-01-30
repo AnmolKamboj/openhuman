@@ -3,7 +3,7 @@
  */
 
 import type { TelegramChat } from "../../../store/telegram/types";
-import { mtprotoService } from "../../../services/mtprotoService";
+import { mtprotoService } from "../services/mtprotoService";
 import { Api } from "telegram";
 import bigInt from "big-integer";
 import { enforceRateLimit } from "../../mcp/rateLimiter";
