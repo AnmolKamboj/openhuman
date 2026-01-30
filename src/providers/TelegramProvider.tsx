@@ -16,7 +16,7 @@ import {
 } from "../store/telegramSelectors";
 import { initializeTelegram, connectTelegram } from "../store/telegram";
 import { mtprotoService } from "../services/mtprotoService";
-import { telegramSyncService } from "../services/telegram";
+import { telegramSyncService } from "../lib/telegram/services";
 
 interface TelegramContextType {
   isAuthenticated: boolean;

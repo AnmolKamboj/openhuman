@@ -8,7 +8,7 @@ import {
   getTelegramMCPServer,
   updateTelegramMCPServerSocket,
   cleanupTelegramMCPServer,
-} from "../lib/mcp/telegram";
+} from "../lib/telegram";
 import {
   isTauri,
   setupTauriSocketListeners,

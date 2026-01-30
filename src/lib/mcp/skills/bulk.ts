@@ -7,7 +7,7 @@
 
 import type { MCPTool, MCPToolResult } from "../types";
 import type { ExtraTool } from "./types";
-import { sendMessage } from "../telegram/api/sendMessage";
+import { sendMessage } from "../../telegram/api/sendMessage";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -148,7 +148,7 @@ IMPORTANT: Bulk operations execute sequentially with delays between items to avo
 
 export async function executeBulkTool(
   toolName: string,
-  args: Record<string, unknown>,
+  args: Record<string, unknown>
 ): Promise<MCPToolResult> {
   switch (toolName) {
     case "bulk_send_message":
@@ -174,7 +174,7 @@ export async function executeBulkTool(
 // ---------------------------------------------------------------------------
 
 async function executeBulkSendMessage(
-  args: Record<string, unknown>,
+  args: Record<string, unknown>
 ): Promise<MCPToolResult> {
   const chatIds = args.chat_ids as string[];
   const message = args.message as string;
@@ -182,7 +182,10 @@ async function executeBulkSendMessage(
   if (!chatIds?.length || !message) {
     return {
       content: [
-        { type: "text", text: "chat_ids (array) and message (string) are required" },
+        {
+          type: "text",
+          text: "chat_ids (array) and message (string) are required",
+        },
       ],
       isError: true,
     };
@@ -217,7 +220,7 @@ async function executeBulkSendMessage(
 }
 
 async function executeBulkArchiveChats(
-  args: Record<string, unknown>,
+  args: Record<string, unknown>
 ): Promise<MCPToolResult> {
   const chatIds = args.chat_ids as string[];
   if (!chatIds?.length) {
@@ -240,7 +243,7 @@ async function executeBulkArchiveChats(
 }
 
 async function executeBulkMarkAsRead(
-  args: Record<string, unknown>,
+  args: Record<string, unknown>
 ): Promise<MCPToolResult> {
   const chatIds = args.chat_ids as string[];
   if (!chatIds?.length) {
@@ -262,7 +265,7 @@ async function executeBulkMarkAsRead(
 }
 
 async function executeBulkDeleteMessages(
-  args: Record<string, unknown>,
+  args: Record<string, unknown>
 ): Promise<MCPToolResult> {
   const chatId = args.chat_id as string;
   const messageIds = args.message_ids as string[];
@@ -291,7 +294,7 @@ async function executeBulkDeleteMessages(
 }
 
 async function executeBulkForwardMessages(
-  args: Record<string, unknown>,
+  args: Record<string, unknown>
 ): Promise<MCPToolResult> {
   const fromChatId = args.from_chat_id as string;
   const messageIds = args.message_ids as string[];

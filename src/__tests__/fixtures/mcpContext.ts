@@ -2,8 +2,8 @@
  * Factory builder for TelegramMCPContext (used by tool handlers).
  */
 
-import { vi } from 'vitest';
-import type { TelegramMCPContext } from "../../lib/mcp/telegram/types";
+import { vi } from "vitest";
+import type { TelegramMCPContext } from "../../lib/telegram/types";
 import type { TelegramState } from "../../store/telegram/types";
 import { initialState } from "../../store/telegram/types";
 
@@ -18,7 +18,7 @@ function createMockTransport() {
 }
 
 export function createMockContext(
-  telegramOverrides: Partial<TelegramState> = {},
+  telegramOverrides: Partial<TelegramState> = {}
 ): TelegramMCPContext {
   return {
     telegramState: { ...initialState, ...telegramOverrides },
