@@ -325,7 +325,9 @@ const TelegramConnectionModal = ({
     return () => clearInterval(interval);
   }, [qrCodeExpires, currentStep, isAuthenticating, startQrCodeFlow]);
 
-  // Poll authentication status every 5 seconds when QR code is displayed
+  // Poll authentication status when QR code is displayed
+  // IMPORTANT: Polling is disabled during active QR flow to prevent interference
+  // with the signInWithQrCode authentication process and DC migration
   useEffect(() => {
     if (currentStep !== "qr" || !qrCodeUrl || isAuthenticating) {
       return;
@@ -334,10 +336,25 @@ const TelegramConnectionModal = ({
     const pollAuthStatus = async () => {
       try {
         if (!mtprotoService.isReady()) return;
+
+        // CRITICAL: Don't poll if QR flow or DC migration is in progress
+        // This prevents the infinite reconnection loop caused by concurrent
+        // calls to checkAuthorization() during sensitive operations
+        if (mtprotoService.shouldBlockExternalCalls()) {
+          console.debug("Skipping auth poll - QR flow or DC migration in progress");
+          return;
+        }
+
         const client = mtprotoService.getClient();
         const isAuthorized = await client.checkAuthorization();
 
         if (isAuthorized) {
+          // Double-check we're still not in a sensitive state after the async call
+          if (mtprotoService.shouldBlockExternalCalls()) {
+            console.debug("Skipping auth completion - flow state changed");
+            return;
+          }
+
           try {
             const me = await client.getMe();
             if (!user) {
@@ -383,10 +400,15 @@ const TelegramConnectionModal = ({
       }
     };
 
-    pollAuthStatus();
-    const interval = setInterval(pollAuthStatus, 5000);
+    // Initial poll after a delay to allow QR flow to start
+    const initialTimeout = setTimeout(pollAuthStatus, 2000);
+    // Poll every 10 seconds (increased from 5s to reduce interference)
+    const interval = setInterval(pollAuthStatus, 10000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialTimeout);
+      clearInterval(interval);
+    };
   }, [
     currentStep,
     qrCodeUrl,

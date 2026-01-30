@@ -55,6 +55,15 @@ export const checkAuthStatus = createAsyncThunk(
       );
     }
 
+    // CRITICAL: Don't check auth status if QR flow or DC migration is in progress
+    // This prevents interference with the active authentication flow
+    if (mtprotoService.shouldBlockExternalCalls()) {
+      console.debug("checkAuthStatus skipped - QR flow or DC migration in progress");
+      const state = getState() as RootState;
+      const u = state.telegram.byUser[userId];
+      return (u?.currentUser as TelegramUser) || null;
+    }
+
     const now = Date.now();
     if (isCheckingAuth && now - lastCheckTime < MIN_CHECK_INTERVAL) {
       const state = getState() as RootState;

@@ -34,6 +34,10 @@ class MTProtoService {
 
   // QR login race condition guard
   private isScanningComplete = false;
+  // More reliable flag that tracks the entire QR flow lifecycle
+  private isQrFlowInProgress = false;
+  // DC migration tracking to prevent interference during migration
+  private isDcMigrating = false;
 
   private constructor() {
     // Private constructor to enforce singleton
@@ -203,8 +207,10 @@ class MTProtoService {
       );
     }
 
-    // Reset race condition guard
+    // Reset race condition guards and set flow in progress
     this.isScanningComplete = false;
+    this.isQrFlowInProgress = true;
+    this.isDcMigrating = false;
 
     try {
       const user = await this.client.signInUserWithQrCode(
@@ -243,11 +249,16 @@ class MTProtoService {
             const errorMessage = err.message || "";
 
             // DC migration — the library handles this internally but we
-            // notify the UI for status display
-            if (errorMessage.includes("NETWORK_MIGRATE_")) {
-              const dcMatch = errorMessage.match(/NETWORK_MIGRATE_(\d+)/);
+            // notify the UI for status display and set migration flag
+            if (errorMessage.includes("NETWORK_MIGRATE_") || errorMessage.includes("MIGRATE_")) {
+              const dcMatch = errorMessage.match(/(?:NETWORK_)?MIGRATE_(\d+)/);
               if (dcMatch) {
+                this.isDcMigrating = true;
                 onStatus?.({ type: "dc_migration", dcId: Number(dcMatch[1]) });
+                // Clear migration flag after a delay to allow migration to complete
+                setTimeout(() => {
+                  this.isDcMigrating = false;
+                }, 10000);
               }
               // Don't stop — let the library handle DC migration
               return false;
@@ -280,8 +291,10 @@ class MTProtoService {
         },
       );
 
-      // Mark scanning as complete
+      // Mark scanning as complete and clear flow flag
       this.isScanningComplete = true;
+      this.isQrFlowInProgress = false;
+      this.isDcMigrating = false;
       onStatus?.({ type: "scanning_complete" });
 
       // Save session after successful login (critical after DC migration
@@ -297,6 +310,8 @@ class MTProtoService {
       return user;
     } catch (error) {
       this.isScanningComplete = true;
+      this.isQrFlowInProgress = false;
+      this.isDcMigrating = false;
 
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -317,11 +332,28 @@ class MTProtoService {
   }
 
   /**
-   * Check if QR scanning is still in progress (not yet complete or errored).
-   * Use this to avoid starting a new QR flow while one is active.
+   * Check if QR login flow is in progress.
+   * Use this to prevent external operations (like polling) from interfering
+   * with the active authentication flow.
    */
   isQrScanningActive(): boolean {
-    return !this.isScanningComplete;
+    return this.isQrFlowInProgress;
+  }
+
+  /**
+   * Check if DC migration is in progress.
+   * During DC migration, external calls to the client can corrupt state.
+   */
+  isDcMigrationInProgress(): boolean {
+    return this.isDcMigrating;
+  }
+
+  /**
+   * Check if any sensitive operation is in progress that should block polling.
+   * This includes QR flow and DC migration.
+   */
+  shouldBlockExternalCalls(): boolean {
+    return this.isQrFlowInProgress || this.isDcMigrating;
   }
 
   /**
@@ -449,6 +481,10 @@ class MTProtoService {
     this.initializePromise = null;
     this.connectPromise = null;
     this.checkConnectionPromise = null;
+    // Reset QR flow flags
+    this.isScanningComplete = false;
+    this.isQrFlowInProgress = false;
+    this.isDcMigrating = false;
   }
 
   /**
