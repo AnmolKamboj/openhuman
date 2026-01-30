@@ -13,6 +13,8 @@ import {
   apiMessageToTelegramMessage,
 } from "./helpers";
 import type { ApiResult } from "./types";
+import { updateMessagesInState, updateUsersFromApiUsers } from "../state";
+import type { ApiUser } from "./apiResultTypes";
 
 export async function getMessages(
   chatId: string | number,
@@ -83,6 +85,14 @@ export async function getMessages(
             msg.fromName = usersById.get(msg.fromId);
           }
         }
+      }
+
+      // Update Redux state with fetched messages and users
+      if (messages.length > 0) {
+        updateMessagesInState(chat.id, messages);
+      }
+      if ("users" in result && Array.isArray(result.users)) {
+        updateUsersFromApiUsers(result.users as unknown as ApiUser[]);
       }
 
       return {

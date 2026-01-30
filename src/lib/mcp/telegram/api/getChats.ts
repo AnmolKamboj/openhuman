@@ -9,6 +9,8 @@ import bigInt from "big-integer";
 import { enforceRateLimit } from "../../rateLimiter";
 import { getOrderedChats, apiDialogToTelegramChat } from "./helpers";
 import type { ApiResult } from "./types";
+import { updateChatsInState, updateUsersFromApiUsers } from "../state";
+import type { ApiUser } from "./apiResultTypes";
 
 export async function getChats(
   limit = 20,
@@ -62,6 +64,12 @@ export async function getChats(
       .map((d) => apiDialogToTelegramChat(d, chatsById, usersById))
       .filter((c): c is TelegramChat => c !== undefined)
       .slice(0, limit);
+
+    // Update Redux state with fetched chats and users
+    updateChatsInState(data);
+    if ("users" in result && Array.isArray(result.users)) {
+      updateUsersFromApiUsers(result.users as unknown as ApiUser[]);
+    }
 
     return { data, fromCache: false };
   } catch {

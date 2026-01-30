@@ -3,6 +3,7 @@ import type { ApiResult } from "./types";
 import { Api } from "telegram";
 import bigInt from "big-integer";
 import type { ApiUser } from "./apiResultTypes";
+import { updateUsersFromApiUsers } from "../state";
 
 export interface Contact {
   id: string;
@@ -21,6 +22,9 @@ export async function listContacts(): Promise<ApiResult<Contact[]>> {
   if (!result || !("users" in result) || !Array.isArray(result.users)) {
     return { data: [], fromCache: false };
   }
+
+  // Update Redux state with fetched users
+  updateUsersFromApiUsers(result.users as ApiUser[]);
 
   const contacts: Contact[] = result.users.map((u: ApiUser) => ({
     id: String(u.id),

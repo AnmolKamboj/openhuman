@@ -3,6 +3,7 @@ import type { ApiResult } from "./types";
 import { Api } from "telegram";
 import type { ApiUser } from "./apiResultTypes";
 import { toInputUser, narrow } from "./apiCastHelpers";
+import { updateUsersFromApiUsers } from "../state";
 
 export interface UserStatus {
   userId: string;
@@ -28,6 +29,10 @@ export async function getUserStatus(
   }
 
   const user = narrow<ApiUser>(result[0]);
+
+  // Update Redux state with fetched user
+  updateUsersFromApiUsers([user]);
+
   const name =
     [user.firstName, user.lastName].filter(Boolean).join(" ") || "Unknown";
   let statusText = "unknown";

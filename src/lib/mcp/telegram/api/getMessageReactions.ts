@@ -5,6 +5,7 @@
 import { mtprotoService } from "../../../../services/mtprotoService";
 import { getChatById } from "./helpers";
 import type { ApiResult } from "./types";
+import { updateMessageReactionsInState } from "../state";
 import type { UpdatesResult } from "./apiResultTypes";
 import { Api } from "telegram";
 import { narrow } from "./apiCastHelpers";
@@ -52,6 +53,15 @@ export async function getMessageReactions(
         reactions.push({ emoji, count });
       }
     }
+  }
+
+  // Update Redux state with fetched reactions
+  if (reactions.length > 0) {
+    updateMessageReactionsInState(
+      chat.id,
+      String(messageId),
+      reactions.map((r) => ({ emoticon: r.emoji, count: r.count })),
+    );
   }
 
   return { data: reactions, fromCache: false };

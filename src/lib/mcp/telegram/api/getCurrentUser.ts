@@ -7,6 +7,7 @@ import { mtprotoService } from "../../../../services/mtprotoService";
 import { enforceRateLimit } from "../../rateLimiter";
 import { getCurrentUser as getCachedCurrentUser } from "./helpers";
 import type { ApiResult } from "./types";
+import { updateCurrentUserInState } from "../state";
 
 export async function getCurrentUser(): Promise<
   ApiResult<TelegramUser | undefined>
@@ -40,15 +41,20 @@ export async function getCurrentUser(): Promise<
       bot?: boolean;
     };
 
+    const userData = {
+      id: String(raw.id ?? ""),
+      firstName: raw.firstName ?? "",
+      lastName: raw.lastName,
+      username: raw.username,
+      phoneNumber: raw.phone,
+      isBot: Boolean(raw.bot),
+    };
+
+    // Update Redux state with fetched current user
+    updateCurrentUserInState(userData);
+
     return {
-      data: {
-        id: String(raw.id ?? ""),
-        firstName: raw.firstName ?? "",
-        lastName: raw.lastName,
-        username: raw.username,
-        phoneNumber: raw.phone,
-        isBot: Boolean(raw.bot),
-      },
+      data: userData,
       fromCache: false,
     };
   } catch {

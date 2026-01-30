@@ -5,6 +5,7 @@ import bigInt from "big-integer";
 import type { ApiUser } from "./apiResultTypes";
 import { toInputChannel } from "./apiCastHelpers";
 import { getChatById } from "./helpers";
+import { updateUsersFromApiUsers } from "../state";
 
 export interface BannedUser {
   id: string;
@@ -51,6 +52,9 @@ export async function getBannedUsers(
   ) {
     return { data: [], fromCache: false };
   }
+
+  // Update Redux state with fetched users
+  updateUsersFromApiUsers(result.users as ApiUser[]);
 
   const data: BannedUser[] = result.users.map((u: ApiUser) => ({
     id: String(u.id),

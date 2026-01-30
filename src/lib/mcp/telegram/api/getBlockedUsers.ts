@@ -2,6 +2,7 @@ import { mtprotoService } from "../../../../services/mtprotoService";
 import type { ApiResult } from "./types";
 import { Api } from "telegram";
 import type { ApiUser } from "./apiResultTypes";
+import { updateUsersFromApiUsers } from "../state";
 
 export interface BlockedUser {
   id: string;
@@ -26,6 +27,9 @@ export async function getBlockedUsers(
   ) {
     return { data: [], fromCache: false };
   }
+
+  // Update Redux state with fetched users
+  updateUsersFromApiUsers(result.users as ApiUser[]);
 
   const blockedUsers: BlockedUser[] = result.users.map((u: ApiUser) => ({
     id: String(u.id),

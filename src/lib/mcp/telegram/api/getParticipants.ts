@@ -5,6 +5,7 @@ import bigInt from "big-integer";
 import type { ApiUser } from "./apiResultTypes";
 import { toInputChannel, narrow } from "./apiCastHelpers";
 import { getChatById } from "./helpers";
+import { updateUsersFromApiUsers } from "../state";
 
 export interface Participant {
   id: string;
@@ -52,6 +53,9 @@ export async function getParticipants(
       participants = narrow<ApiUser[]>(result.users);
     }
   }
+
+  // Update Redux state with fetched users
+  updateUsersFromApiUsers(participants);
 
   const data: Participant[] = participants.map((u: ApiUser) => ({
     id: String(u.id),

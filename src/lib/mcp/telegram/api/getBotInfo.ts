@@ -3,6 +3,7 @@ import type { ApiResult } from "./types";
 import { Api } from "telegram";
 import type { FullUserResult } from "./apiResultTypes";
 import { toInputUser, narrow } from "./apiCastHelpers";
+import { updateUsersFromApiUsers } from "../state";
 
 export interface BotInfo {
   name: string;
@@ -32,6 +33,9 @@ export async function getBotInfo(
   if (!user) {
     throw new Error("Bot not found: " + botId);
   }
+
+  // Update Redux state with fetched bot user
+  updateUsersFromApiUsers([user]);
 
   const name =
     [user.firstName, user.lastName].filter(Boolean).join(" ") || "Unknown";

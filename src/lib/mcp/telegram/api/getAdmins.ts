@@ -5,6 +5,7 @@ import bigInt from "big-integer";
 import type { ApiUser } from "./apiResultTypes";
 import { toInputChannel, narrow } from "./apiCastHelpers";
 import { getChatById } from "./helpers";
+import { updateUsersFromApiUsers } from "../state";
 
 export interface Admin {
   id: string;
@@ -49,6 +50,9 @@ export async function getAdmins(chatId: string | number): Promise<ApiResult<Admi
       admins = narrow<ApiUser[]>(result.users);
     }
   }
+
+  // Update Redux state with fetched users
+  updateUsersFromApiUsers(admins);
 
   const data: Admin[] = admins.map((u: ApiUser) => ({
     id: String(u.id),

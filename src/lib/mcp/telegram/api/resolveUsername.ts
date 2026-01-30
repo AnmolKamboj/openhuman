@@ -6,6 +6,8 @@ import { mtprotoService } from "../../../../services/mtprotoService";
 import { Api } from "telegram";
 import { getChatById, formatEntity } from "./helpers";
 import type { ApiResult } from "./types";
+import { updateChatFromResult, updateUsersFromApiUsers } from "../state";
+import type { ApiUser } from "./apiResultTypes";
 
 export interface ResolvedEntity {
   id: string;
@@ -67,8 +69,16 @@ export async function resolveUsername(
         }
       }
 
+      const resolved = { id: peerId, name, type: peerType, username: clean };
+
+      // Update Redux state with resolved entity
+      updateChatFromResult(resolved);
+      if ("users" in result && Array.isArray(result.users)) {
+        updateUsersFromApiUsers(result.users as unknown as ApiUser[]);
+      }
+
       return {
-        data: { id: peerId, name, type: peerType, username: clean },
+        data: resolved,
         fromCache: false,
       };
     }

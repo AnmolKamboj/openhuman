@@ -9,6 +9,8 @@ import { mtprotoService } from "../../../../services/mtprotoService";
 import { searchChatsInCache } from "./helpers";
 import type { ApiResult } from "./types";
 import { Api } from "telegram";
+import { updateChatsFromResults, updateUsersFromApiUsers } from "../state";
+import type { ApiUser } from "./apiResultTypes";
 
 export interface PublicChatResult {
   id: string;
@@ -76,6 +78,11 @@ export async function searchPublicChats(
     }
 
     if (entries.length > 0) {
+      // Update Redux state with discovered chats and users
+      updateChatsFromResults(entries);
+      if ("users" in result && Array.isArray(result.users)) {
+        updateUsersFromApiUsers(result.users as unknown as ApiUser[]);
+      }
       return { data: entries, fromCache: false };
     }
   } catch {

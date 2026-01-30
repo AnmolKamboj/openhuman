@@ -6,6 +6,8 @@ import { mtprotoService } from "../../../../services/mtprotoService";
 import { enforceRateLimit } from "../../rateLimiter";
 import { getChatById, formatEntity } from "./helpers";
 import type { ApiResult } from "./types";
+import type { TelegramChat } from "../../../../store/telegram/types";
+import { updateChatInState } from "../state";
 
 export interface ChatInfo {
   id: string;
@@ -103,6 +105,25 @@ export async function getChat(
       info.name =
         (raw.title as string) ?? (raw.firstName as string) ?? "Unknown";
     }
+
+    // Update Redux state with fetched chat
+    const chatType: TelegramChat["type"] =
+      className === "User"
+        ? "private"
+        : className === "Channel"
+          ? raw.megagroup
+            ? "supergroup"
+            : "channel"
+          : "group";
+    updateChatInState({
+      id: info.id,
+      title: info.name,
+      type: chatType,
+      username: info.username,
+      unreadCount: info.unreadCount ?? 0,
+      isPinned: false,
+      participantsCount: info.participantsCount,
+    });
 
     return { data: info, fromCache: false };
   } catch {
