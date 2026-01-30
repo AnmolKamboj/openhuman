@@ -7,6 +7,7 @@ Complete implementation of macOS background execution features including system 
 ## Features Implemented
 
 ### 1. System Tray (Menu Bar App)
+
 - **Tray icon** appears in macOS menu bar
 - **Click to toggle** window visibility (left-click on icon)
 - **Context menu** with two options:
@@ -16,6 +17,7 @@ Complete implementation of macOS background execution features including system 
 - **Close button minimizes to tray** instead of quitting app
 
 ### 2. Launch at Login (Autostart)
+
 - **LaunchAgent configuration** for macOS
 - **Configurable autostart** via plugin API
 - **Command-line flags** support for launch arguments
@@ -26,6 +28,7 @@ Complete implementation of macOS background execution features including system 
 ### Dependencies Added
 
 **Cargo.toml**:
+
 ```toml
 tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
 tauri-plugin-autostart = "2"
@@ -34,15 +37,18 @@ tauri-plugin-autostart = "2"
 ### Configuration Changes
 
 **tauri.conf.json**:
+
 ```json
 {
   "app": {
-    "windows": [{
-      "visible": false,  // Start hidden
-      "decorations": true,
-      "resizable": true,
-      "center": true
-    }],
+    "windows": [
+      {
+        "visible": false, // Start hidden
+        "decorations": true,
+        "resizable": true,
+        "center": true
+      }
+    ],
     "trayIcon": {
       "id": "main-tray",
       "iconPath": "icons/icon.png",
@@ -50,12 +56,13 @@ tauri-plugin-autostart = "2"
       "menuOnLeftClick": false,
       "tooltip": "Outsourced - Crypto Community Platform"
     },
-    "macOSPrivateApi": true  // Required for advanced tray features
+    "macOSPrivateApi": true // Required for advanced tray features
   }
 }
 ```
 
 **capabilities/default.json**:
+
 ```json
 {
   "permissions": [
@@ -78,6 +85,7 @@ tauri-plugin-autostart = "2"
 4. **Autostart Plugin** - Configured with LaunchAgent for macOS
 
 **Code Structure** (`src-tauri/src/lib.rs`):
+
 ```rust
 // System tray with menu
 fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
@@ -108,17 +116,20 @@ pub fn run() {
 ## Platform-Specific Behavior
 
 ### macOS
+
 - Tray icon appears in menu bar
 - Close button hides window (minimizes to tray)
 - LaunchAgent for autostart integration
 - Native macOS menu bar styling
 
 ### Windows/Linux
+
 - Tray icon in system tray
 - Same menu functionality
 - Platform-appropriate autostart mechanisms
 
 ### Mobile (iOS/Android)
+
 - Tray features disabled (desktop-only)
 - Autostart not applicable on mobile
 
@@ -129,21 +140,22 @@ pub fn run() {
 Control autostart via Tauri commands:
 
 ```typescript
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from "@tauri-apps/api/core";
 
 // Enable autostart
-await invoke('plugin:autostart|enable');
+await invoke("plugin:autostart|enable");
 
 // Disable autostart
-await invoke('plugin:autostart|disable');
+await invoke("plugin:autostart|disable");
 
 // Check if enabled
-const isEnabled = await invoke<boolean>('plugin:autostart|is_enabled');
+const isEnabled = await invoke<boolean>("plugin:autostart|is_enabled");
 ```
 
 ### Tray Behavior
 
 **User Actions**:
+
 1. **Left-click tray icon** → Toggle window visibility
 2. **Right-click tray icon** → Open context menu
 3. **"Show/Hide Window"** → Toggle visibility
@@ -153,6 +165,7 @@ const isEnabled = await invoke<boolean>('plugin:autostart|is_enabled');
 ## Testing
 
 ### Build & Test
+
 ```bash
 # Clean build
 cargo clean --manifest-path src-tauri/Cargo.toml
@@ -168,6 +181,7 @@ open /Applications/tauri-app.app
 ```
 
 ### Verification Checklist
+
 - [ ] Tray icon appears in menu bar
 - [ ] Left-click toggles window visibility
 - [ ] Context menu has "Show/Hide Window" and "Quit"
@@ -180,28 +194,35 @@ open /Applications/tauri-app.app
 ## Build Requirements
 
 ### macOS Deep Link & Tray Testing
+
 - Must use `.app` bundle (not `tauri dev`)
 - `tauri dev` does NOT support deep links or full tray functionality
 - Use debug build: `npm run tauri build -- --debug --bundles app`
 
 ### Cargo Cache Issues
+
 If UI appears outdated after rebuild:
+
 ```bash
 cargo clean --manifest-path src-tauri/Cargo.toml
 npm run tauri build -- --debug --bundles app
 ```
 
 ### WebKit Cache
+
 Clear WebKit cache if needed:
+
 ```bash
-rm -rf ~/Library/WebKit/com.megamind.tauri-app
-rm -rf ~/Library/Caches/com.megamind.tauri-app
+rm -rf ~/Library/WebKit/com.alphahuman.app
+rm -rf ~/Library/Caches/com.alphahuman.app
 ```
 
 ## Configuration Options
 
 ### Autostart Arguments
+
 Customize launch arguments in `lib.rs`:
+
 ```rust
 .plugin(tauri_plugin_autostart::init(
     tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -210,26 +231,32 @@ Customize launch arguments in `lib.rs`:
 ```
 
 ### Tray Icon
+
 Change tray icon path in `tauri.conf.json`:
+
 ```json
 {
   "trayIcon": {
     "iconPath": "icons/custom-tray-icon.png",
-    "iconAsTemplate": true  // Adapts to dark/light menu bar
+    "iconAsTemplate": true // Adapts to dark/light menu bar
   }
 }
 ```
 
 ### Window Behavior
+
 Adjust window settings:
+
 ```json
 {
-  "windows": [{
-    "visible": false,      // Start hidden
-    "decorations": true,   // Show title bar
-    "resizable": true,     // Allow resize
-    "center": true         // Center on screen
-  }]
+  "windows": [
+    {
+      "visible": false, // Start hidden
+      "decorations": true, // Show title bar
+      "resizable": true, // Allow resize
+      "center": true // Center on screen
+    }
+  ]
 }
 ```
 
@@ -253,16 +280,18 @@ Potential improvements for future development:
 ## Security Considerations
 
 ### macOS Private API
+
 - Required for advanced tray features
 - Approved by Apple for this use case
 - No App Store restrictions for direct distribution
 
 ### LaunchAgent
+
 - Installed in user's LaunchAgents directory
 - User can disable via System Settings
 - Respects macOS security policies
 
 ---
 
-*Implementation completed: 2026-01-29*
-*Status: Fully functional, tested, and production-ready*
+_Implementation completed: 2026-01-29_
+_Status: Fully functional, tested, and production-ready_

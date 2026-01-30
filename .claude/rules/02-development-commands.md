@@ -94,7 +94,7 @@ adb kill-server                  # Stop ADB server
 adb start-server                 # Restart ADB server
 
 # Force stop app on device:
-adb shell am force-stop com.megamind.tauri-app
+adb shell am force-stop com.alphahuman.app
 
 # Kill Gradle daemon if stuck:
 # macOS/Linux:
@@ -156,10 +156,10 @@ Get-Process | Where-Object {$_.ProcessName -match "tauri|vite|cargo|node"} | Sto
 
 ## Build Targets
 
-| Platform | Command | Output |
-|----------|---------|--------|
-| Windows | `npm run tauri build` | `.msi`, `.exe` |
-| macOS | `npm run tauri build` | `.dmg`, `.app` |
-| Linux | `npm run tauri build` | `.deb`, `.AppImage` |
-| Android | `npm run tauri android build` | `.apk`, `.aab` |
-| iOS | `npm run tauri ios build` | `.ipa` |
+| Platform | Command                       | Output              |
+| -------- | ----------------------------- | ------------------- |
+| Windows  | `npm run tauri build`         | `.msi`, `.exe`      |
+| macOS    | `npm run tauri build`         | `.dmg`, `.app`      |
+| Linux    | `npm run tauri build`         | `.deb`, `.AppImage` |
+| Android  | `npm run tauri android build` | `.apk`, `.aab`      |
+| iOS      | `npm run tauri ios build`     | `.ipa`              |

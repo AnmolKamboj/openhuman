@@ -11,6 +11,7 @@ Cross-platform crypto community communication platform built with **Tauri v2** (
 **Design Philosophy**: Premium, sophisticated crypto platform with calm, trustworthy aesthetic.
 
 ### Color Palette
+
 - **Primary**: Ocean blue (`#4A83DD`) optimized for dark backgrounds
 - **Sage**: Success green (`#4DC46F`) for growth indicators
 - **Amber**: Warning (`#E8A838`) for attention states
@@ -19,18 +20,21 @@ Cross-platform crypto community communication platform built with **Tauri v2** (
 - **Market Colors**: Bullish green, bearish red, Bitcoin orange, Ethereum purple
 
 ### Typography
+
 - **Primary**: Inter (premium font stack)
 - **Display**: Cabinet Grotesk for headings
 - **Mono**: JetBrains Mono for code
 - **Scale**: Sophisticated sizing with negative letter spacing for elegance
 
 ### Component System
+
 - **Shadows**: Glow effects, subtle to float depth levels
 - **Animations**: Fade-in, slide-in, scale-in with cubic-bezier easing
 - **Border Radius**: Smooth system from `xs` (0.25rem) to `5xl` (2rem)
 - **Spacing**: Extended scale including custom values (4.5, 13, 15, etc.)
 
 ### Current UI State
+
 - Uses HashRouter (not BrowserRouter) as seen in `App.tsx:1`
 - 153 TypeScript files total in src/
 - Sophisticated Tailwind config with custom color system and animations
@@ -74,6 +78,7 @@ The app wraps in this order: `Redux Provider` → `PersistGate` → `SocketProvi
 ### State Management (Redux Toolkit + Persist)
 
 State lives in `src/store/` using Redux Toolkit slices:
+
 - **authSlice** — JWT token, onboarding completion flag (persisted)
 - **userSlice** — user profile
 - **socketSlice** — connection status, socket ID
@@ -97,6 +102,7 @@ Redux Persist stores auth and telegram state (storage backend is configurable; d
 ### MCP System (`src/lib/mcp/`)
 
 Model Context Protocol implementation for AI tool execution over Socket.io:
+
 - `transport.ts` — Socket.io JSON-RPC 2.0 transport with 30s timeout
 - `telegram/server.ts` — TelegramMCPServer manages 99 tool definitions
 - `telegram/tools/` — Individual tool files (one per Telegram API operation)
@@ -116,9 +122,10 @@ Model Context Protocol implementation for AI tool execution over Socket.io:
 
 ### Deep Link Auth Flow
 
-Web-to-desktop handoff using `outsourced://` URL scheme:
+Web-to-desktop handoff using `alphahuman://` URL scheme:
+
 1. User authenticates in browser
-2. Browser redirects to `outsourced://auth?token=<loginToken>`
+2. Browser redirects to `alphahuman://auth?token=<loginToken>`
 3. Tauri catches the deep link, Rust `exchange_token` command calls backend via `reqwest` (bypasses CORS)
 4. Backend returns `sessionToken` + user object
 5. App stores session in Redux, navigates to onboarding/home
@@ -128,6 +135,7 @@ Key file: `src/utils/desktopDeepLinkListener.ts` (lazy-loaded in `main.tsx`). Us
 ### Rust Backend (`src-tauri/src/lib.rs`)
 
 Minimal — two Tauri commands:
+
 - `greet` — demo command
 - `exchange_token` — CORS-free HTTP POST to backend for token exchange
 
@@ -137,14 +145,14 @@ Deep link plugin registered at setup. `register_all()` called only on Windows/Li
 
 Set in `.env` (Vite exposes `VITE_*` prefixed vars):
 
-| Variable | Purpose |
-|----------|---------|
-| `VITE_BACKEND_URL` | Backend API URL (default: `http://localhost:5005`) |
-| `VITE_TELEGRAM_API_ID` | Telegram MTProto API ID |
-| `VITE_TELEGRAM_API_HASH` | Telegram MTProto API hash |
-| `VITE_TELEGRAM_BOT_USERNAME` | Telegram bot username |
-| `VITE_TELEGRAM_BOT_ID` | Telegram bot numeric ID |
-| `VITE_DEBUG` | Debug mode flag |
+| Variable                     | Purpose                                            |
+| ---------------------------- | -------------------------------------------------- |
+| `VITE_BACKEND_URL`           | Backend API URL (default: `http://localhost:5005`) |
+| `VITE_TELEGRAM_API_ID`       | Telegram MTProto API ID                            |
+| `VITE_TELEGRAM_API_HASH`     | Telegram MTProto API hash                          |
+| `VITE_TELEGRAM_BOT_USERNAME` | Telegram bot username                              |
+| `VITE_TELEGRAM_BOT_ID`       | Telegram bot numeric ID                            |
+| `VITE_DEBUG`                 | Debug mode flag                                    |
 
 Production defaults are in `src/utils/config.ts`.
 
@@ -153,6 +161,7 @@ Production defaults are in `src/utils/config.ts`.
 Key updates from recent commits:
 
 ### Major Additions
+
 - **Settings Modal System** (`60054d8`): Complete URL-based settings modal with clean white design
   - Modal infrastructure with backdrop blur and center positioning
   - User profile integration with Redux state management
@@ -166,6 +175,7 @@ Key updates from recent commits:
 - **Big Integer Support**: Consistent handling across all Telegram MCP tools (`0abed4d`)
 
 ### Design System Updates
+
 - **Settings Modal UI**: Clean 520px white modal contrasting with glass morphism theme
 - **Animations**: 200ms entry animations, 250ms panel transitions, chevron hover effects
 - **Lottie Animations**: Integrated into onboarding flow (`334673e`)
@@ -174,6 +184,7 @@ Key updates from recent commits:
 - **Theme**: Implemented sophisticated color system with premium crypto aesthetic
 
 ### Component Structure
+
 - **165+ TypeScript files** across `src/` directory (added settings modal system)
 - **Settings Modal System**: Complete modal infrastructure in `src/components/settings/`
   - SettingsModal.tsx - Main container with URL routing
@@ -182,7 +193,7 @@ Key updates from recent commits:
   - ConnectionsPanel.tsx - Connection management with status indicators
   - Hooks: useSettingsNavigation.ts, useSettingsAnimation.ts
 - **Onboarding Flow**: Multi-step process with privacy, analytics, and connection steps
-- **Authentication**: Web-to-desktop handoff using `outsourced://` scheme
+- **Authentication**: Web-to-desktop handoff using `alphahuman://` scheme
 - **Connection Management**: Telegram MTProto and Socket.io integration
 
 ## Key Patterns
@@ -200,6 +211,6 @@ Key updates from recent commits:
 
 ## Platform Gotchas
 
-- **macOS deep links**: Require `.app` bundle (not `tauri dev`). Clear WebKit caches when debugging stale content: `rm -rf ~/Library/WebKit/com.megamind.tauri-app ~/Library/Caches/com.megamind.tauri-app`
+- **macOS deep links**: Require `.app` bundle (not `tauri dev`). Clear WebKit caches when debugging stale content: `rm -rf ~/Library/WebKit/com.alphahuman.app ~/Library/Caches/com.alphahuman.app`
 - **Cargo caching**: May serve stale frontend assets on incremental builds. Run `cargo clean --manifest-path src-tauri/Cargo.toml` if the app shows outdated UI.
 - **`window.__TAURI__`**: Not available at module load time. Use dynamic `import()` and try/catch for Tauri plugin calls.

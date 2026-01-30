@@ -21,9 +21,8 @@ const TelegramLoginButton = ({
 
     // Desktop (Tauri): use system browser → backend Telegram widget → deep link back to app.
     if (isTauri()) await openUrl(`https://t.me/${TELEGRAM_BOT_USERNAME}?start=login_desktop`);
-
     // Web fallback: open bot (existing flow).
-    await openUrl(`https://t.me/${TELEGRAM_BOT_USERNAME}?start=login`);
+    else await openUrl(`https://t.me/${TELEGRAM_BOT_USERNAME}?start=login`);
   };
 
   const isDisabled = externalDisabled;

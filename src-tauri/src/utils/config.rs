@@ -6,16 +6,16 @@
 use std::env;
 
 /// Default backend URL (can be overridden via BACKEND_URL env var)
-pub const DEFAULT_BACKEND_URL: &str = "https://api.alphahuman.io";
+pub const DEFAULT_BACKEND_URL: &str = "https://api.alphahuman.xyz";
 
 /// Application identifier for keychain storage
-pub const APP_IDENTIFIER: &str = "com.megamind.tauri-app";
+pub const APP_IDENTIFIER: &str = "com.alphahuman.app";
 
 /// Service name for keychain
 pub const KEYCHAIN_SERVICE: &str = "AlphaHuman";
 
 /// Deep link scheme
-pub const DEEP_LINK_SCHEME: &str = "outsourced";
+pub const DEEP_LINK_SCHEME: &str = "alphahuman";
 
 /// Socket.io reconnection settings
 pub const SOCKET_RECONNECT_ATTEMPTS: u32 = 5;
