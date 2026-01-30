@@ -17,7 +17,20 @@ function ensureUser(
   userId: string,
 ): TelegramState {
   if (!state.byUser[userId]) {
-    state.byUser[userId] = { ...initialState };
+    // Create a deep copy of nested objects to avoid sharing references with initialState
+    state.byUser[userId] = {
+      ...initialState,
+      chats: {},
+      chatsOrder: [],
+      messages: {},
+      messagesOrder: {},
+      threads: {},
+      threadsOrder: {},
+      threadIndex: {},
+      users: {},
+      channelPtsById: {},
+      commonBoxState: { ...initialState.commonBoxState },
+    };
   }
   return state.byUser[userId];
 }
