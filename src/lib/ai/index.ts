@@ -6,7 +6,7 @@
  * Modules:
  * - **constitution/** — Agent safety & compliance framework
  * - **memory/** — JSON file-based index + vector search memory storage
- * - **entities/** — SQLite entity relationship database for platform graph
+ * - **entities/** — Remote Neo4j entity graph via backend API
  * - **prompts/** — Modular system prompt construction
  * - **sessions/** — JSONL session transcripts with compaction
  * - **skills/** — Skill loading, registry, lifecycle hooks, and installation

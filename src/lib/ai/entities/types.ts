@@ -20,10 +20,9 @@ export type RelationType =
   | "traded"
   | "replied_to";
 
-/** Core entity record */
+/** Core entity record (frontend domain type) */
 export interface Entity {
   id: string;
-  /** Mapped from Rust `type` field */
   type: EntityType;
   source: EntitySource;
   sourceId: string | null;
@@ -33,19 +32,6 @@ export interface Entity {
   metadata: string | null;
   createdAt: number;
   updatedAt: number;
-}
-
-/** Entity as returned from Rust IPC (snake_case) */
-export interface EntityRust {
-  id: string;
-  entity_type: string;
-  source: string;
-  source_id: string | null;
-  title: string | null;
-  summary: string | null;
-  metadata: string | null;
-  created_at: number;
-  updated_at: number;
 }
 
 /** Relationship between two entities */
@@ -58,31 +44,132 @@ export interface EntityRelation {
   createdAt: number;
 }
 
-/** Relation as returned from Rust IPC (snake_case) */
-export interface EntityRelationRust {
-  id: string;
-  from_entity_id: string;
-  to_entity_id: string;
-  relation_type: string;
-  metadata: string | null;
-  created_at: number;
-}
-
 /** Tag attached to an entity */
 export interface EntityTag {
   entityId: string;
   tag: string;
 }
 
-/** Search result from entity FTS */
+/** Search result from entity search */
 export interface EntitySearchResult extends Entity {
   score: number;
 }
 
-/** Entity search result from Rust IPC */
-export interface EntitySearchResultRust extends EntityRust {
-  score: number;
+// --- Neo4j backend response types ---
+
+/** Entity node as returned from the Neo4j backend API */
+export interface Neo4jEntityNode {
+  id: string;
+  name: string;
+  type: string;
+  description: string | null;
+  properties: string | null;
+  confidence: number;
+  isActive: boolean;
+  ownerId: string;
+  createdAt: string;
+  updatedAt: string;
 }
+
+/** Relationship record as returned from the Neo4j backend API */
+export interface Neo4jRelationshipRecord {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  type: string;
+  properties: string | null;
+  weight: number;
+  createdAt: string;
+}
+
+/** Wrapper for all API responses */
+export interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+}
+
+// --- Conversion helpers ---
+
+/** Parse a properties JSON string, returning an empty object on failure */
+function parseProperties(props: string | null): Record<string, unknown> {
+  if (!props) return {};
+  try {
+    return JSON.parse(props);
+  } catch {
+    return {};
+  }
+}
+
+/** Convert a Neo4j entity node to the frontend Entity type */
+export function fromNeo4jEntity(node: Neo4jEntityNode): Entity {
+  const props = parseProperties(node.properties);
+
+  const source = (props.source as string) ?? "manual";
+  const sourceId = (props.sourceId as string) ?? null;
+
+  // Build metadata from remaining properties (excluding source, sourceId, tags)
+  const { source: _s, sourceId: _sid, tags: _t, ...rest } = props;
+  const metadata = Object.keys(rest).length > 0 ? JSON.stringify(rest) : null;
+
+  return {
+    id: node.id,
+    type: node.type as EntityType,
+    source: source as EntitySource,
+    sourceId,
+    title: node.name,
+    summary: node.description,
+    metadata,
+    createdAt: new Date(node.createdAt).getTime(),
+    updatedAt: new Date(node.updatedAt).getTime(),
+  };
+}
+
+/** Build a request body for POST/PUT to the Neo4j entity API */
+export function toNeo4jCreateBody(entity: Entity): Record<string, unknown> {
+  // Merge source, sourceId, tags, and any existing metadata into properties
+  const existingMeta = parseProperties(entity.metadata);
+  const properties: Record<string, unknown> = {
+    ...existingMeta,
+    source: entity.source,
+  };
+  if (entity.sourceId) {
+    properties.sourceId = entity.sourceId;
+  }
+
+  return {
+    name: entity.title ?? "",
+    type: entity.type,
+    description: entity.summary ?? undefined,
+    properties: JSON.stringify(properties),
+    confidence: 1.0,
+  };
+}
+
+/** Convert a Neo4j relationship record to the frontend EntityRelation type */
+export function fromNeo4jRelation(r: Neo4jRelationshipRecord): EntityRelation {
+  return {
+    id: r.id,
+    fromEntityId: r.sourceId,
+    toEntityId: r.targetId,
+    relationType: r.type as RelationType,
+    metadata: r.properties,
+    createdAt: new Date(r.createdAt).getTime(),
+  };
+}
+
+/** Build a request body for POST to the Neo4j relationship API */
+export function toNeo4jRelationBody(
+  relation: EntityRelation,
+): Record<string, unknown> {
+  return {
+    sourceId: relation.fromEntityId,
+    targetId: relation.toEntityId,
+    type: relation.relationType,
+    properties: relation.metadata ?? undefined,
+  };
+}
+
+// --- Metadata interfaces ---
 
 /** Contact metadata */
 export interface ContactMetadata {
@@ -133,68 +220,4 @@ export interface TransactionMetadata {
   txHash?: string;
   value?: string;
   method?: string;
-}
-
-// --- Conversion helpers ---
-
-/** Convert Rust entity to TypeScript entity */
-export function fromRustEntity(e: EntityRust): Entity {
-  return {
-    id: e.id,
-    type: e.entity_type as EntityType,
-    source: e.source as EntitySource,
-    sourceId: e.source_id,
-    title: e.title,
-    summary: e.summary,
-    metadata: e.metadata,
-    createdAt: e.created_at,
-    updatedAt: e.updated_at,
-  };
-}
-
-/** Convert TypeScript entity to Rust entity */
-export function toRustEntity(e: Entity): EntityRust {
-  return {
-    id: e.id,
-    entity_type: e.type,
-    source: e.source,
-    source_id: e.sourceId,
-    title: e.title,
-    summary: e.summary,
-    metadata: e.metadata,
-    created_at: e.createdAt,
-    updated_at: e.updatedAt,
-  };
-}
-
-/** Convert Rust relation to TypeScript relation */
-export function fromRustRelation(r: EntityRelationRust): EntityRelation {
-  return {
-    id: r.id,
-    fromEntityId: r.from_entity_id,
-    toEntityId: r.to_entity_id,
-    relationType: r.relation_type as RelationType,
-    metadata: r.metadata,
-    createdAt: r.created_at,
-  };
-}
-
-/** Convert TypeScript relation to Rust relation */
-export function toRustRelation(r: EntityRelation): EntityRelationRust {
-  return {
-    id: r.id,
-    from_entity_id: r.fromEntityId,
-    to_entity_id: r.toEntityId,
-    relation_type: r.relationType,
-    metadata: r.metadata,
-    created_at: r.createdAt,
-  };
-}
-
-/** Convert Rust search result to TypeScript search result */
-export function fromRustSearchResult(r: EntitySearchResultRust): EntitySearchResult {
-  return {
-    ...fromRustEntity(r),
-    score: r.score,
-  };
 }

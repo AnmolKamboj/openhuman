@@ -197,6 +197,10 @@ Key updates from recent commits:
 - **Authentication**: Web-to-desktop handoff using `alphahuman://` scheme
 - **Connection Management**: Telegram MTProto and Socket.io integration
 
+## Git Workflow
+
+- **PR target branch**: All pull requests should target the `develop` branch, not `main`.
+
 ## Key Patterns
 
 - **No localStorage**: Avoid `localStorage` and `sessionStorage`; use Redux (and persist) for app state. Remove any direct usage when working on affected code.

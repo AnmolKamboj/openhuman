@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { apiClient } from "../../../services/apiClient";
 import type {
   Entity,
   EntityRelation,
@@ -6,77 +6,129 @@ import type {
   EntityType,
   EntitySource,
   RelationType,
-  EntityRust,
-  EntityRelationRust,
-  EntitySearchResultRust,
+  ApiResponse,
+  Neo4jEntityNode,
+  Neo4jRelationshipRecord,
 } from "./types";
 import {
-  fromRustEntity,
-  fromRustRelation,
-  fromRustSearchResult,
-  toRustEntity,
-  toRustRelation,
+  fromNeo4jEntity,
+  fromNeo4jRelation,
+  toNeo4jCreateBody,
+  toNeo4jRelationBody,
 } from "./types";
 
+const ENTITY_API = "/api/entity-graph";
+const MAX_TAG_RETRIES = 3;
+
+/** Parse the properties JSON from a Neo4j entity node */
+function parseProps(props: string | null): Record<string, unknown> {
+  if (!props) return {};
+  try {
+    return JSON.parse(props);
+  } catch {
+    return {};
+  }
+}
+
+/** Check whether an error represents an HTTP 409 Conflict */
+function isConflictError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const error = (err as Record<string, unknown>).error;
+  return typeof error === "string" && error.includes("409");
+}
+
 /**
- * EntityManager wraps Tauri commands for the entity relationship database.
+ * EntityManager wraps REST API calls to the Neo4j-backed entity graph.
  *
  * Provides a typed interface for CRUD operations on entities, relations,
- * and tags in the platform graph.
+ * and tags in the platform graph via the backend API.
  */
 export class EntityManager {
   private initialized = false;
 
-  /** Initialize the entity database */
+  /** Initialize the entity manager (no-op for remote backend) */
   async init(): Promise<void> {
-    await invoke("ai_entity_db_init");
     this.initialized = true;
   }
 
-  /** Ensure the database is initialized */
+  /** Ensure the manager is initialized */
   private async ensureInit(): Promise<void> {
     if (!this.initialized) await this.init();
   }
 
   /**
-   * Upsert an entity (insert or update).
-   * If an entity with the same id or same source+sourceId exists, it's updated.
+   * Upsert an entity (create via POST).
+   * The backend handles insert-or-update semantics.
    */
   async upsert(entity: Entity): Promise<void> {
     await this.ensureInit();
-    await invoke("ai_entity_upsert", { entity: toRustEntity(entity) });
+    const body = toNeo4jCreateBody(entity);
+    await apiClient.post<ApiResponse<Neo4jEntityNode>>(
+      `${ENTITY_API}/entities`,
+      body,
+    );
   }
 
   /** Get an entity by ID */
   async get(id: string): Promise<Entity | null> {
     await this.ensureInit();
-    const result = await invoke<EntityRust | null>("ai_entity_get", { id });
-    return result ? fromRustEntity(result) : null;
+    try {
+      const resp = await apiClient.get<ApiResponse<Neo4jEntityNode>>(
+        `${ENTITY_API}/entities/${id}`,
+      );
+      return fromNeo4jEntity(resp.data);
+    } catch {
+      return null;
+    }
   }
 
   /** Get an entity by source system reference */
-  async getBySource(source: EntitySource, sourceId: string): Promise<Entity | null> {
+  async getBySource(
+    source: EntitySource,
+    sourceId: string,
+  ): Promise<Entity | null> {
     await this.ensureInit();
-    const result = await invoke<EntityRust | null>("ai_entity_get_by_source", {
-      source,
-      sourceId,
-    });
-    return result ? fromRustEntity(result) : null;
+    try {
+      const params = new URLSearchParams({
+        source,
+        sourceId,
+        limit: "1",
+      });
+      const resp = await apiClient.get<
+        ApiResponse<{ entities: Neo4jEntityNode[]; count: number }>
+      >(`${ENTITY_API}/entities?${params}`);
+      const node = resp.data.entities[0];
+      return node ? fromNeo4jEntity(node) : null;
+    } catch {
+      return null;
+    }
   }
 
-  /** Full-text search on entities */
+  /** Search entities via server-side query */
   async search(
     query: string,
     types?: EntityType[],
     limit = 20,
   ): Promise<EntitySearchResult[]> {
     await this.ensureInit();
-    const results = await invoke<EntitySearchResultRust[]>("ai_entity_search", {
+    const params = new URLSearchParams({
       query,
-      types: types ?? null,
-      limit,
+      limit: String(limit),
     });
-    return results.map(fromRustSearchResult);
+    if (types && types.length > 0) {
+      params.set("types", types.join(","));
+    }
+    const resp = await apiClient.get<
+      ApiResponse<{
+        entities: (Neo4jEntityNode & { score?: number })[];
+        count: number;
+      }>
+    >(`${ENTITY_API}/entities?${params}`);
+
+    return resp.data.entities.map((node) => ({
+      ...fromNeo4jEntity(node),
+      score: node.score ?? 1.0,
+    }));
   }
 
   /** List entities by type with pagination */
@@ -86,26 +138,32 @@ export class EntityManager {
     limit = 50,
   ): Promise<Entity[]> {
     await this.ensureInit();
-    const results = await invoke<EntityRust[]>("ai_entity_list", {
-      entityType,
-      offset,
-      limit,
+    const params = new URLSearchParams({
+      type: entityType,
+      limit: String(limit),
+      offset: String(offset),
     });
-    return results.map(fromRustEntity);
+    const resp = await apiClient.get<
+      ApiResponse<{ entities: Neo4jEntityNode[]; count: number }>
+    >(`${ENTITY_API}/entities?${params}`);
+
+    return resp.data.entities.map(fromNeo4jEntity);
   }
 
-  /** Delete an entity and cascade relations/tags */
+  /** Delete an entity (soft-delete on backend) */
   async delete(id: string): Promise<void> {
     await this.ensureInit();
-    await invoke("ai_entity_delete", { id });
+    await apiClient.delete(`${ENTITY_API}/entities/${id}`);
   }
 
   /** Add a relationship between entities */
   async addRelation(relation: EntityRelation): Promise<void> {
     await this.ensureInit();
-    await invoke("ai_entity_add_relation", {
-      relation: toRustRelation(relation),
-    });
+    const body = toNeo4jRelationBody(relation);
+    await apiClient.post<ApiResponse<Neo4jRelationshipRecord>>(
+      `${ENTITY_API}/relationships`,
+      body,
+    );
   }
 
   /**
@@ -120,33 +178,100 @@ export class EntityManager {
     relationType?: RelationType,
   ): Promise<EntityRelation[]> {
     await this.ensureInit();
-    const results = await invoke<EntityRelationRust[]>("ai_entity_get_relations", {
-      entityId,
-      direction: direction ?? null,
-      relationType: relationType ?? null,
-    });
-    return results.map(fromRustRelation);
+    const resp = await apiClient.get<
+      ApiResponse<{ relationships: Neo4jRelationshipRecord[] }>
+    >(`${ENTITY_API}/entities/${entityId}/relationships`);
+
+    let relations = resp.data.relationships.map(fromNeo4jRelation);
+
+    // Filter by direction
+    const dir = direction ?? "both";
+    if (dir === "from") {
+      relations = relations.filter((r) => r.fromEntityId === entityId);
+    } else if (dir === "to") {
+      relations = relations.filter((r) => r.toEntityId === entityId);
+    }
+
+    // Filter by relation type
+    if (relationType) {
+      relations = relations.filter((r) => r.relationType === relationType);
+    }
+
+    return relations;
   }
 
-  /** Tag an entity */
+  /**
+   * Tag an entity with optimistic concurrency control.
+   * Uses If-Match with the entity's updatedAt to detect concurrent writes,
+   * retrying up to MAX_TAG_RETRIES times on 409 Conflict.
+   */
   async addTag(entityId: string, tag: string): Promise<void> {
     await this.ensureInit();
-    await invoke("ai_entity_add_tag", { entityId, tag });
+    for (let attempt = 0; attempt < MAX_TAG_RETRIES; attempt++) {
+      const resp = await apiClient.get<ApiResponse<Neo4jEntityNode>>(
+        `${ENTITY_API}/entities/${entityId}`,
+      );
+      const node = resp.data;
+      const props = parseProps(node.properties);
+      const tags: string[] = Array.isArray(props.tags) ? props.tags : [];
+      if (!tags.includes(tag)) {
+        tags.push(tag);
+      }
+      props.tags = tags;
+
+      try {
+        await apiClient.put(
+          `${ENTITY_API}/entities/${entityId}`,
+          { properties: JSON.stringify(props) },
+          { headers: { "If-Match": node.updatedAt } },
+        );
+        return;
+      } catch (err: unknown) {
+        if (!isConflictError(err) || attempt === MAX_TAG_RETRIES - 1) throw err;
+      }
+    }
   }
 
-  /** Remove a tag from an entity */
+  /**
+   * Remove a tag with optimistic concurrency control.
+   * Uses If-Match with the entity's updatedAt to detect concurrent writes,
+   * retrying up to MAX_TAG_RETRIES times on 409 Conflict.
+   */
   async removeTag(entityId: string, tag: string): Promise<void> {
     await this.ensureInit();
-    await invoke("ai_entity_remove_tag", { entityId, tag });
+    for (let attempt = 0; attempt < MAX_TAG_RETRIES; attempt++) {
+      const resp = await apiClient.get<ApiResponse<Neo4jEntityNode>>(
+        `${ENTITY_API}/entities/${entityId}`,
+      );
+      const node = resp.data;
+      const props = parseProps(node.properties);
+      const tags: string[] = Array.isArray(props.tags) ? props.tags : [];
+      props.tags = tags.filter((t) => t !== tag);
+
+      try {
+        await apiClient.put(
+          `${ENTITY_API}/entities/${entityId}`,
+          { properties: JSON.stringify(props) },
+          { headers: { "If-Match": node.updatedAt } },
+        );
+        return;
+      } catch (err: unknown) {
+        if (!isConflictError(err) || attempt === MAX_TAG_RETRIES - 1) throw err;
+      }
+    }
   }
 
   /** Find entities by tag, optionally filtered by type */
   async getByTag(tag: string, entityType?: EntityType): Promise<Entity[]> {
     await this.ensureInit();
-    const results = await invoke<EntityRust[]>("ai_entity_get_by_tag", {
-      tag,
-      entityType: entityType ?? null,
-    });
-    return results.map(fromRustEntity);
+    const params = new URLSearchParams({ tag, limit: "500" });
+    if (entityType) {
+      params.set("type", entityType);
+    }
+    const resp = await apiClient.get<
+      ApiResponse<{ entities: Neo4jEntityNode[]; count: number }>
+    >(`${ENTITY_API}/entities?${params}`);
+
+    return resp.data.entities.map(fromNeo4jEntity);
   }
 }
