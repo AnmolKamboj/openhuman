@@ -11,14 +11,8 @@
 @layer base {
   /* Set default font and improve text rendering */
   html {
-    font-family:
-      "Inter",
-      system-ui,
-      -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      Roboto,
-      sans-serif;
+    font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -357,7 +351,11 @@
     left: 0;
     right: 0;
     height: 50px;
-    background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.15));
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      rgba(255, 255, 255, 0.15)
+    );
     pointer-events: none;
     z-index: 10;
   }
