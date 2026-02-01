@@ -1,3 +1,4 @@
+import path from "path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -49,6 +50,7 @@ export default defineConfig(async () => ({
       process: "process/browser",
       util: "util",
       os: "os-browserify/browser",
+      "@alphahuman/skill-types": path.resolve(__dirname, "src/lib/skills/types.ts"),
     },
   },
   optimizeDeps: {

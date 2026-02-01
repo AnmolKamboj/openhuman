@@ -14,9 +14,6 @@ export interface SessionEntry {
   channel?: string;
 }
 
-/** JSONL message types in a session transcript */
-export type TranscriptLineType = "session" | "message" | "tool_result" | "compaction";
-
 /** Session header (first line of JSONL file) */
 export interface SessionHeader {
   type: "session";
@@ -48,8 +45,26 @@ export interface CompactionMarker {
   preservedMessages: number;
 }
 
+/** Session end marker in transcript */
+export interface SessionEndMarker {
+  type: "session_end";
+  timestamp: string;
+  memoryCaptured: boolean;
+}
+
 /** Any line in a JSONL transcript */
-export type TranscriptLine = SessionHeader | TranscriptMessage | CompactionMarker;
+export type TranscriptLine =
+  | SessionHeader
+  | TranscriptMessage
+  | CompactionMarker
+  | SessionEndMarker;
+
+export type TranscriptLineType =
+  | "session"
+  | "message"
+  | "tool_result"
+  | "compaction"
+  | "session_end";
 
 /** Session state for the current active session */
 export interface SessionState {
@@ -57,6 +72,12 @@ export interface SessionState {
   entry: SessionEntry;
   messages: TranscriptMessage[];
   isActive: boolean;
+}
+
+/** Configuration for which tools to capture or skip during compression */
+export interface ToolCaptureConfig {
+  skipTools: string[];
+  captureTools: string[];
 }
 
 /** Session configuration */
@@ -67,6 +88,8 @@ export interface SessionConfig {
   preserveRecentTokens: number;
   /** Enable memory flush before compaction (default: true) */
   memoryFlushEnabled: boolean;
+  /** Tool capture config for compression (optional) */
+  toolCaptureConfig?: ToolCaptureConfig;
 }
 
 export const DEFAULT_SESSION_CONFIG: SessionConfig = {

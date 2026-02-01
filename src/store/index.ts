@@ -2,7 +2,6 @@ import { configureStore } from "@reduxjs/toolkit";
 import {
   persistStore,
   persistReducer,
-  createTransform,
   FLUSH,
   REHYDRATE,
   PAUSE,
@@ -14,58 +13,16 @@ import storage from "redux-persist/lib/storage";
 import authReducer from "./authSlice";
 import socketReducer from "./socketSlice";
 import userReducer from "./userSlice";
-import telegramReducer from "./telegram";
 import aiReducer from "./aiSlice";
+import skillsReducer from "./skillsSlice";
 import { createLogger } from "redux-logger";
 import { IS_DEV } from "../utils/config";
-import type { TelegramRootState, TelegramState } from "./telegram/types";
-import { initialState as telegramInitialState } from "./telegram/types";
 
 // Persist config for auth only
 const authPersistConfig = {
   key: "auth",
   storage,
   whitelist: ["token", "isOnboardedByUser", "isAnalyticsEnabledByUser"],
-};
-
-// Strip volatile runtime fields from each per-user Telegram state on rehydrate.
-// These fields reflect in-memory MTProto client state and must start fresh on reload.
-const telegramVolatileTransform = createTransform<
-  TelegramRootState["byUser"],
-  TelegramRootState["byUser"]
->(
-  // inbound (state -> storage): pass through as-is
-  (inboundState) => inboundState,
-  // outbound (storage -> state): reset volatile fields per user
-  (outboundState) => {
-    const cleaned: Record<string, TelegramState> = {};
-    for (const [userId, userState] of Object.entries(outboundState)) {
-      cleaned[userId] = {
-        ...userState,
-        isInitialized: telegramInitialState.isInitialized,
-        connectionStatus: telegramInitialState.connectionStatus,
-        connectionError: telegramInitialState.connectionError,
-        isLoadingChats: telegramInitialState.isLoadingChats,
-        isLoadingMessages: telegramInitialState.isLoadingMessages,
-        isLoadingThreads: telegramInitialState.isLoadingThreads,
-        // Thread index is volatile — viewport/outlying state is runtime-only
-        threadIndex: telegramInitialState.threadIndex,
-        // Sync state is volatile — must re-sync on reload
-        isSyncing: telegramInitialState.isSyncing,
-        isSynced: telegramInitialState.isSynced,
-      };
-    }
-    return cleaned;
-  },
-  { whitelist: ["byUser"] },
-);
-
-// Persist config for telegram state (scoped by user in byUser)
-const telegramPersistConfig = {
-  key: "telegram",
-  storage,
-  whitelist: ["byUser"],
-  transforms: [telegramVolatileTransform],
 };
 
 // Persist config for AI state (config only)
@@ -75,20 +32,24 @@ const aiPersistConfig = {
   whitelist: ["config"],
 };
 
+// Persist config for skills state (setupComplete per skill)
+const skillsPersistConfig = {
+  key: "skills",
+  storage,
+  whitelist: ["skills"],
+};
+
 const persistedAuthReducer = persistReducer(authPersistConfig, authReducer);
-const persistedTelegramReducer = persistReducer(
-  telegramPersistConfig,
-  telegramReducer,
-);
 const persistedAiReducer = persistReducer(aiPersistConfig, aiReducer);
+const persistedSkillsReducer = persistReducer(skillsPersistConfig, skillsReducer);
 
 export const store = configureStore({
   reducer: {
     auth: persistedAuthReducer,
     socket: socketReducer,
     user: userReducer,
-    telegram: persistedTelegramReducer,
     ai: persistedAiReducer,
+    skills: persistedSkillsReducer,
   },
   middleware: (getDefaultMiddleware) => {
     const middleware = getDefaultMiddleware({

@@ -7,22 +7,20 @@ import ProgressIndicator from "../../components/ProgressIndicator";
 import LottieAnimation from "../../components/LottieAnimation";
 import FeaturesStep from "./steps/FeaturesStep";
 import PrivacyStep from "./steps/PrivacyStep";
-import ConnectStep from "./steps/ConnectStep";
 import GetStartedStep from "./steps/GetStartedStep";
 
 const Onboarding = () => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.user.user);
-  const [currentStep, setCurrentStep] = useState(1);
-  const totalSteps = 4;
+  const [currentStep, setCurrentStep] = useState(0);
+  const totalSteps = 3;
 
   // Lottie animation files for each step
   const stepAnimations = [
     "/lottie/wave.json", // Step 1 - Features
     "/lottie/safe3.json", // Step 2 - Privacy
-    "/lottie/connect2.json", // Step 3 - Connect
-    "/lottie/trophy.json", // Step 4 - Get Started
+    "/lottie/trophy.json", // Step 3 - Get Started
   ];
 
   const handleNext = () => {
@@ -57,8 +55,6 @@ const Onboarding = () => {
       case 2:
         return <PrivacyStep onNext={handleNext} />;
       case 3:
-        return <ConnectStep onNext={handleNext} />;
-      case 4:
         return <GetStartedStep onComplete={handleComplete} />;
       default:
         return <FeaturesStep onNext={handleNext} />;

@@ -1,5 +1,4 @@
 import type { ConstitutionConfig } from "../constitution/types";
-import type { SkillEntry } from "../skills/types";
 import type { ToolDefinition } from "../providers/interface";
 import type { AgentIdentity } from "./sections/identity";
 import type { CryptoIntelligenceContext } from "./sections/crypto-intelligence";
@@ -13,6 +12,13 @@ import { buildSkillsSection } from "./sections/skills";
 import { buildToolsSection } from "./sections/tools";
 import { buildContextSection } from "./sections/context";
 
+/** Minimal skill entry for prompt rendering */
+interface SkillPromptEntry {
+  name: string;
+  description: string;
+  location?: string;
+}
+
 /**
  * Parameters for building the full system prompt.
  */
@@ -24,7 +30,7 @@ export interface SystemPromptParams {
   /** Available tools */
   tools?: ToolDefinition[];
   /** Loaded skills */
-  skills?: SkillEntry[];
+  skills?: SkillPromptEntry[];
   /** User context (timezone, preferences, etc.) */
   userContext?: UserContext;
   /** Crypto market/portfolio context */

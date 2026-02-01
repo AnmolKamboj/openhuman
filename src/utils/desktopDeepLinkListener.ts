@@ -3,6 +3,7 @@ import { invoke, isTauri as coreIsTauri } from "@tauri-apps/api/core";
 import { store } from "../store";
 import { setToken } from "../store/authSlice";
 import { consumeLoginToken } from "../services/api/authApi";
+import { IS_DEV } from "./config";
 
 /**
  * Handle a list of deep link URLs delivered by the Tauri deep-link plugin.
@@ -73,6 +74,10 @@ export const setupDesktopDeepLinkListener = async () => {
     await onOpenUrl((urls) => {
       void handleDeepLinkUrls(urls);
     });
+
+    if (IS_DEV && typeof window !== "undefined") {
+      (window as Window & { __simulateDeepLink?: (url: string) => Promise<void> }).__simulateDeepLink = (url: string) => handleDeepLinkUrls([url]);
+    }
   } catch (err) {
     console.error("[DeepLink] Setup failed:", err);
   }

@@ -87,7 +87,9 @@ export async function executeMemoryFlush(params: {
         }
 
         try {
-          await memoryManager.appendToFile(filePath, content);
+          await memoryManager.appendToFile(filePath, content, {
+            deduplicate: true,
+          });
           savedFiles.push(filePath);
         } catch {
           // File write failed — non-fatal

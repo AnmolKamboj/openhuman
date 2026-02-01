@@ -1,10 +1,15 @@
-import type { SkillEntry } from "../../skills/types";
+/** Minimal skill entry for prompt rendering */
+interface SkillPromptEntry {
+  name: string;
+  description: string;
+  location?: string;
+}
 
 /**
  * Build the available skills section of the system prompt.
  * Matches OpenClaw's <available_skills> XML format.
  */
-export function buildSkillsSection(skills: SkillEntry[]): string {
+export function buildSkillsSection(skills: SkillPromptEntry[]): string {
   if (skills.length === 0) return "";
 
   const parts: string[] = [];

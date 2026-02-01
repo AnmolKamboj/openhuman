@@ -52,7 +52,9 @@ yarn tauri dev
 yarn tauri build
 
 # Debug build with .app bundle (required for deep link testing on macOS)
+# On macOS, alphahuman:// only works when running the .app, not `tauri dev`
 yarn tauri build --debug --bundles app
+yarn macos:dev
 
 # Android
 yarn tauri android dev

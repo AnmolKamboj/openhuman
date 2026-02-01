@@ -9,6 +9,8 @@ import DefaultRedirect from "./components/DefaultRedirect";
 import SettingsModal from "./components/settings/SettingsModal";
 import { useAppSelector } from "./store/hooks";
 import { selectIsOnboarded } from "./store/authSelectors";
+import { isTauri } from "./utils/tauriCommands";
+import { useEffect, useState } from "react";
 
 const OnboardingRoute = () => {
   const isOnboarded = useAppSelector(selectIsOnboarded);
@@ -20,6 +22,15 @@ const OnboardingRoute = () => {
 };
 
 const AppRoutes = () => {
+  const [isWeb, setIsWeb] = useState(false);
+
+  useEffect(() => {
+    // Check if we're running on web (not Tauri)
+    setIsWeb(!isTauri());
+  }, []);
+
+  if (isWeb) return <Welcome isWeb={isWeb} />;
+
   return (
     <>
       <Routes>
@@ -28,7 +39,7 @@ const AppRoutes = () => {
           path="/"
           element={
             <PublicRoute>
-              <Welcome />
+              <Welcome isWeb={isWeb} />
             </PublicRoute>
           }
         />

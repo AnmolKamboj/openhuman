@@ -10,11 +10,9 @@ import {
   setAIStatus,
   setAIError,
   setMemoryInitialized,
-  setLoadedSkillsCount,
 } from "../store/aiSlice";
 import { MemoryManager } from "../lib/ai/memory/manager";
 import { SessionManager } from "../lib/ai/sessions/manager";
-import { SkillRegistry } from "../lib/ai/skills/registry";
 import { ToolRegistry } from "../lib/ai/tools/registry";
 import { EntityManager } from "../lib/ai/entities/manager";
 import { CustomLLMProvider } from "../lib/ai/providers/custom";
@@ -28,12 +26,13 @@ import { createWebSearchTool } from "../lib/ai/tools/web-search";
 import type { ConstitutionConfig } from "../lib/ai/constitution/types";
 import type { LLMProvider } from "../lib/ai/providers/interface";
 import type { EmbeddingProvider } from "../lib/ai/providers/embeddings";
+import { bridgeSkillTools } from "../lib/skills/tool-bridge";
+import type { SkillState } from "../lib/skills/types";
 
 /** AI context value */
 interface AIContextValue {
   memoryManager: MemoryManager;
   sessionManager: SessionManager;
-  skillRegistry: SkillRegistry;
   toolRegistry: ToolRegistry;
   entityManager: EntityManager;
   llmProvider: LLMProvider | null;
@@ -56,10 +55,10 @@ export default function AIProvider({ children }: { children: ReactNode }) {
   const dispatch = useAppDispatch();
   const { config } = useAppSelector((state) => state.ai);
   const { token } = useAppSelector((state) => state.auth);
+  const skillsMap = useAppSelector((state) => state.skills.skills);
 
   const memoryManagerRef = useRef(new MemoryManager());
   const sessionManagerRef = useRef(new SessionManager());
-  const skillRegistryRef = useRef(new SkillRegistry());
   const toolRegistryRef = useRef(new ToolRegistry());
   const entityManagerRef = useRef(new EntityManager());
   const constitutionRef = useRef<ConstitutionConfig | null>(null);
@@ -140,18 +139,6 @@ export default function AIProvider({ children }: { children: ReactNode }) {
           }),
         );
 
-        // 9. Load skills (with lifecycle hooks)
-        const skillReg = skillRegistryRef.current;
-        skillReg.setManagers({
-          memory: memoryManagerRef.current,
-          session: sessionManagerRef.current,
-          tools: toolReg,
-          entities: entityManagerRef.current,
-        });
-        await skillReg.reload();
-        if (cancelled) return;
-        dispatch(setLoadedSkillsCount(skillReg.count));
-
         isReadyRef.current = true;
         dispatch(setAIStatus("ready"));
       } catch (error) {
@@ -167,15 +154,50 @@ export default function AIProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true;
-      // Unload skill hooks on cleanup
-      skillRegistryRef.current.unloadAll().catch(console.error);
     };
   }, [token, config, dispatch]);
+
+  // Register/unregister skill tools when skill statuses change
+  const registeredSkillToolsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const toolReg = toolRegistryRef.current;
+    const currentlyRegistered = registeredSkillToolsRef.current;
+    const newRegistered = new Set<string>();
+
+    for (const [skillId, skill] of Object.entries(skillsMap) as [string, SkillState][]) {
+      if (skill.status === "ready" && skill.tools.length > 0) {
+        const bridged = bridgeSkillTools(skillId, skill.tools);
+        for (const bt of bridged) {
+          newRegistered.add(bt.name);
+          if (!currentlyRegistered.has(bt.name)) {
+            toolReg.register({
+              definition: {
+                name: bt.name,
+                description: bt.description,
+                parameters: bt.parameters,
+              },
+              execute: async (args) => ({
+                content: await bt.execute(args),
+              }),
+            });
+          }
+        }
+      }
+    }
+
+    // Unregister tools from skills that are no longer ready
+    for (const name of currentlyRegistered) {
+      if (!newRegistered.has(name)) {
+        toolReg.unregister(name);
+      }
+    }
+
+    registeredSkillToolsRef.current = newRegistered;
+  }, [skillsMap]);
 
   const contextValue: AIContextValue = {
     memoryManager: memoryManagerRef.current,
     sessionManager: sessionManagerRef.current,
-    skillRegistry: skillRegistryRef.current,
     toolRegistry: toolRegistryRef.current,
     entityManager: entityManagerRef.current,
     llmProvider: llmProviderRef.current,

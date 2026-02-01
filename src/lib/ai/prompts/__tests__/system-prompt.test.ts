@@ -91,9 +91,6 @@ describe("buildSystemPrompt", () => {
         {
           name: "price-tracker",
           description: "Track crypto prices",
-          content: "",
-          installed: true,
-          source: "local",
         },
       ],
     });
@@ -110,9 +107,6 @@ describe("buildSystemPrompt", () => {
         {
           name: "test",
           description: "Test",
-          content: "",
-          installed: true,
-          source: "local",
         },
       ],
     });

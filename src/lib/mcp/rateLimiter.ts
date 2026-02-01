@@ -230,8 +230,11 @@ export function resetRequestCallCount(): void {
  *
  * Call BEFORE executing the tool handler. May sleep or throw.
  */
-export async function enforceRateLimit(toolName: string): Promise<void> {
-  const tier = classifyTool(toolName);
+export async function enforceRateLimit(
+  toolName: string,
+  overrideTier?: ToolTier,
+): Promise<void> {
+  const tier = overrideTier ?? classifyTool(toolName);
 
   // State-only tools are always allowed instantly
   if (tier === "state_only") {

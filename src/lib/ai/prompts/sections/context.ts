@@ -3,6 +3,15 @@
  * Injects preferences, timezone, and project-specific context.
  */
 
+import type { EnrichedSearchResult } from "../../memory/context-formatter";
+import { formatMemoryContext } from "../../memory/context-formatter";
+
+export interface MemoryCategorized {
+  profileFacts: string[];
+  recentContext: string[];
+  searchResults: EnrichedSearchResult[];
+}
+
 export interface UserContext {
   /** User's timezone (IANA format) */
   timezone?: string;
@@ -14,6 +23,8 @@ export interface UserContext {
   memoryContext?: string;
   /** Content of identity.md */
   identityContext?: string;
+  /** Categorized memory context (takes precedence over raw memoryContext) */
+  memoryCategorized?: MemoryCategorized;
 }
 
 /**
@@ -33,16 +44,25 @@ export function buildContextSection(context: UserContext): string {
     parts.push("");
   }
 
-  if (context.preferences) {
-    parts.push("## User Preferences\n");
-    parts.push(context.preferences);
-    parts.push("");
-  }
+  // Use categorized memory if available, otherwise fall back to raw
+  if (context.memoryCategorized) {
+    const formatted = formatMemoryContext(context.memoryCategorized);
+    if (formatted) {
+      parts.push(formatted);
+      parts.push("");
+    }
+  } else {
+    if (context.preferences) {
+      parts.push("## User Preferences\n");
+      parts.push(context.preferences);
+      parts.push("");
+    }
 
-  if (context.memoryContext) {
-    parts.push("## Project Context (memory.md)\n");
-    parts.push(context.memoryContext);
-    parts.push("");
+    if (context.memoryContext) {
+      parts.push("## Project Context (memory.md)\n");
+      parts.push(context.memoryContext);
+      parts.push("");
+    }
   }
 
   if (context.identityContext) {

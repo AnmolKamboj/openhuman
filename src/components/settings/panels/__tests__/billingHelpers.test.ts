@@ -7,7 +7,8 @@ import {
   annualSavings,
   isUpgrade,
 } from "../billingHelpers";
-import type { PlanMeta, PlanTier } from "../billingHelpers";
+import type { PlanMeta } from "../billingHelpers";
+import type { PlanTier } from "../../../../types/api";
 
 describe("PLANS", () => {
   it("should contain exactly 3 plans", () => {

@@ -5,7 +5,8 @@
 
 import type { Socket } from "socket.io-client";
 import type { MCPRequest, MCPResponse, SocketIOMCPTransport } from "./types";
-import { mcpWarn } from "./logger";
+import { mcpLog, mcpWarn, mcpError } from "./logger";
+import { sanitizeError, createSafeLogData } from "../../utils/sanitize";
 
 export class SocketIOMCPTransportImpl implements SocketIOMCPTransport {
   private socket: Socket | null | undefined;
@@ -15,10 +16,25 @@ export class SocketIOMCPTransportImpl implements SocketIOMCPTransport {
   >();
   private readonly eventPrefix = "mcp:";
   private responseHandler = (response: MCPResponse): void => {
+    mcpLog(
+      "Received response",
+      createSafeLogData(
+        {
+          id: response.id,
+          hasError: !!response.error,
+          hasResult: !!response.result,
+        },
+        response
+      )
+    );
     const handler = this.requestHandlers.get(response.id);
     if (handler) {
       handler(response);
       this.requestHandlers.delete(response.id);
+    } else {
+      mcpWarn("No handler found for response", {
+        id: response.id,
+      });
     }
   };
 
@@ -41,12 +57,19 @@ export class SocketIOMCPTransportImpl implements SocketIOMCPTransport {
       mcpWarn("Cannot emit MCP event: socket not connected", { event });
       return;
     }
-    this.socket.emit(`${this.eventPrefix}${event}`, data);
+    const fullEvent = `${this.eventPrefix}${event}`;
+    mcpLog("Emitting event", createSafeLogData({ event: fullEvent }, data));
+    this.socket.emit(fullEvent, data);
   }
 
   on(event: string, handler: (data: unknown) => void): void {
     if (!this.socket) return;
-    this.socket.on(`${this.eventPrefix}${event}`, handler);
+    const fullEvent = `${this.eventPrefix}${event}`;
+    const wrappedHandler = (data: unknown) => {
+      mcpLog("Received event", createSafeLogData({ event: fullEvent }, data));
+      handler(data);
+    };
+    this.socket.on(fullEvent, wrappedHandler);
   }
 
   off(event: string, handler: (data: unknown) => void): void {
@@ -59,17 +82,37 @@ export class SocketIOMCPTransportImpl implements SocketIOMCPTransport {
       throw new Error("Socket not connected");
     }
 
+    mcpLog("Sending request", {
+      id: request.id,
+      method: request.method,
+      timeoutMs,
+    });
+
     return new Promise<MCPResponse>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.requestHandlers.delete(request.id);
+        mcpError("Request timeout", {
+          id: request.id,
+          method: request.method,
+          timeoutMs,
+        });
         reject(new Error(`MCP request timeout after ${timeoutMs}ms`));
       }, timeoutMs);
 
       this.requestHandlers.set(request.id, (response: MCPResponse) => {
         clearTimeout(timeout);
         if (response.error) {
+          mcpError("Request error", {
+            id: request.id,
+            method: request.method,
+            error: sanitizeError(response.error),
+          });
           reject(new Error(response.error.message));
         } else {
+          mcpLog("Request success", {
+            id: request.id,
+            method: request.method,
+          });
           resolve(response);
         }
       });

@@ -47,6 +47,8 @@ export interface SearchResult {
   score: number;
   startLine: number;
   endLine: number;
+  /** Timestamp when the source chunk was last updated */
+  updatedAt?: number;
 }
 
 /** Configuration for the memory system */

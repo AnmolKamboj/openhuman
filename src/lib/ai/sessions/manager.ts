@@ -13,9 +13,14 @@ import {
   writeSessionHeader,
   appendMessage,
   appendCompactionMarker,
+  appendSessionEndMarker,
   readMessages,
 } from "./transcript";
 import { shouldCompact, compactSession } from "./compaction";
+import {
+  shouldCaptureSession,
+  captureSessionEnd,
+} from "./session-capture";
 
 /**
  * SessionManager handles session lifecycle:
@@ -242,6 +247,64 @@ export class SessionManager {
     });
 
     return true;
+  }
+
+  /**
+   * End the current session, optionally capturing durable facts.
+   *
+   * If the session has enough substance (>= 2 user turns, >= 100 tokens),
+   * runs a lightweight memory flush before closing.
+   */
+  async endSession(params: {
+    provider: LLMProvider;
+    constitution: ConstitutionConfig;
+    memoryManager: MemoryManager;
+  }): Promise<{ memoryCaptured: boolean }> {
+    if (!this.currentSessionId || !this.currentEntry) {
+      return { memoryCaptured: false };
+    }
+
+    let memoryCaptured = false;
+
+    if (shouldCaptureSession(this.messageBuffer, this.currentEntry)) {
+      try {
+        const result = await captureSessionEnd({
+          provider: params.provider,
+          constitution: params.constitution,
+          memoryManager: params.memoryManager,
+          messages: this.messageBuffer,
+          sessionId: this.currentSessionId,
+          sessionEntry: this.currentEntry,
+          toolCaptureConfig: this.config.toolCaptureConfig,
+        });
+        memoryCaptured = result.captured;
+
+        // Update entry with flush tracking
+        if (memoryCaptured) {
+          this.currentEntry.memoryFlushAt = Date.now();
+          this.currentEntry.memoryFlushCompactionCount =
+            this.currentEntry.compactionCount + 1;
+          this.currentEntry.updatedAt = Date.now();
+
+          await invoke("ai_sessions_update_index", {
+            sessionId: this.currentSessionId,
+            entry: this.currentEntry,
+          });
+        }
+      } catch {
+        // Session-end capture failed — non-fatal
+      }
+    }
+
+    // Write session-end marker
+    await appendSessionEndMarker(this.currentSessionId, memoryCaptured);
+
+    // Clear current session state
+    this.currentSessionId = null;
+    this.currentEntry = null;
+    this.messageBuffer = [];
+
+    return { memoryCaptured };
   }
 
   /**

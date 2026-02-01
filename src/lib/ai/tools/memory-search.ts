@@ -1,5 +1,6 @@
 import type { AITool, ToolResult } from "./registry";
 import type { MemoryManager } from "../memory/manager";
+import { formatRelativeTime } from "../memory/context-formatter";
 
 /**
  * Create the memory_search tool.
@@ -49,12 +50,16 @@ export function createMemorySearchTool(
       }
 
       const formatted = limited
-        .map(
-          (r, i) =>
-            `### Result ${i + 1} (score: ${r.score.toFixed(3)})\n` +
+        .map((r, i) => {
+          const timeStr = r.updatedAt
+            ? `, ${formatRelativeTime(r.updatedAt)}`
+            : "";
+          return (
+            `### Result ${i + 1} (score: ${r.score.toFixed(3)}${timeStr})\n` +
             `**File**: ${r.path} (lines ${r.startLine}-${r.endLine})\n` +
-            `**Content**:\n${r.text}`,
-        )
+            `**Content**:\n${r.text}`
+          );
+        })
         .join("\n\n---\n\n");
 
       return {

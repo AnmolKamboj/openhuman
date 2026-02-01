@@ -5,8 +5,8 @@ import * as Sentry from "@sentry/react";
 import { store, persistor } from "./store";
 import UserProvider from "./providers/UserProvider";
 import SocketProvider from "./providers/SocketProvider";
-import TelegramProvider from "./providers/TelegramProvider";
 import AIProvider from "./providers/AIProvider";
+import SkillProvider from "./providers/SkillProvider";
 import AppRoutes from "./AppRoutes";
 
 function App() {
@@ -16,21 +16,20 @@ function App() {
         <PersistGate loading={null} persistor={persistor}>
           <UserProvider>
             <SocketProvider>
-              <TelegramProvider>
-                <AIProvider>
-                <Router>
-                  <div className="relative min-h-screen">
-                    <div className="pointer-events-none fixed inset-x-0 bottom-3 flex justify-center z-50">
-                      <div className="bg-black/30 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-white/40">
-                        AlphaHuman is in alpha &mdash; share feedback by messaging
-                        the Telegram bot.
+              <AIProvider>
+                <SkillProvider>
+                  <Router>
+                    <div className="relative min-h-screen">
+                      <div className="pointer-events-none fixed inset-x-0 top-0 flex justify-center z-50">
+                        <div className="bg-black w-full px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-white/40 text-center">
+                          AlphaHuman is in early beta.
+                        </div>
                       </div>
+                      <AppRoutes />
                     </div>
-                    <AppRoutes />
-                  </div>
-                </Router>
-                </AIProvider>
-              </TelegramProvider>
+                  </Router>
+                </SkillProvider>
+              </AIProvider>
             </SocketProvider>
           </UserProvider>
         </PersistGate>

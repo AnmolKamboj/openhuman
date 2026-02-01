@@ -15,6 +15,20 @@
     "notification:default",
     "notification:allow-notify",
     "notification:allow-request-permission",
-    "notification:allow-is-permission-granted"
+    "notification:allow-is-permission-granted",
+    "shell:default",
+    "shell:allow-spawn",
+    "shell:allow-open",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "runtime-skill-python",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    },
+    "shell:allow-stdin-write"
   ]
 }

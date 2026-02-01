@@ -6,6 +6,11 @@ import { DEFAULT_SESSION_CONFIG } from "./types";
 import { COMPACTION_SUMMARY_TEMPLATE } from "../prompts/templates";
 import { buildSystemPrompt } from "../prompts/system-prompt";
 import { executeMemoryFlush } from "./memory-flush";
+import type { ToolCaptureConfig } from "./types";
+import {
+  compressMessagesForSummary,
+  DEFAULT_TOOL_CAPTURE_CONFIG,
+} from "./tool-compress";
 
 /**
  * Estimate token count for messages.
@@ -51,6 +56,7 @@ export async function compactSession(params: {
   compactionCount: number;
   lastFlushCompactionCount?: number;
   config?: Partial<SessionConfig>;
+  toolCaptureConfig?: ToolCaptureConfig;
 }): Promise<{
   compactedMessages: Message[];
   summary: string;
@@ -65,6 +71,7 @@ export async function compactSession(params: {
     compactionCount,
     lastFlushCompactionCount,
     config = {},
+    toolCaptureConfig = DEFAULT_TOOL_CAPTURE_CONFIG,
   } = params;
 
   const { preserveRecentTokens, memoryFlushEnabled } = {
@@ -74,13 +81,17 @@ export async function compactSession(params: {
 
   const newCompactionCount = compactionCount + 1;
 
-  // Step 1: Memory flush
+  // Step 1: Memory flush (with compressed messages to save tokens)
   if (memoryFlushEnabled) {
+    const compressedForFlush = compressMessagesForSummary(
+      messages,
+      toolCaptureConfig,
+    );
     await executeMemoryFlush({
       provider,
       constitution,
       memoryManager,
-      conversationMessages: messages,
+      conversationMessages: compressedForFlush,
       currentCompactionCount: newCompactionCount,
       lastFlushCompactionCount,
     });
@@ -99,7 +110,11 @@ export async function compactSession(params: {
   const oldMessages = messages.slice(0, splitIndex);
   const recentMessages = messages.slice(splitIndex);
 
-  // Step 3: Summarize old messages
+  // Step 3: Summarize old messages (compress tool output before sending to LLM)
+  const compressedOldMessages = compressMessagesForSummary(
+    oldMessages,
+    toolCaptureConfig,
+  );
   const systemPrompt = buildSystemPrompt({
     constitution,
     mode: "minimal",
@@ -108,7 +123,7 @@ export async function compactSession(params: {
   const summaryResponse = await provider.complete({
     systemPrompt,
     messages: [
-      ...oldMessages,
+      ...compressedOldMessages,
       {
         role: "user",
         content: [{ type: "text", text: COMPACTION_SUMMARY_TEMPLATE }],

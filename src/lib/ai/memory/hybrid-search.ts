@@ -12,6 +12,7 @@ interface FtsSearchResult {
   score: number;
   start_line: number;
   end_line: number;
+  updated_at?: number;
 }
 
 /**
@@ -126,6 +127,7 @@ export async function hybridSearch(
         score: combinedScore,
         startLine: ftsEntry.result.start_line,
         endLine: ftsEntry.result.end_line,
+        updatedAt: ftsEntry.result.updated_at,
       });
     } else if (vectorScore > 0) {
       // Chunk found via vector search only — need to fetch details

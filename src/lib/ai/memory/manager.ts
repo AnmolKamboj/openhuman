@@ -10,6 +10,7 @@ import { DEFAULT_MEMORY_CONFIG, MEMORY_PATHS } from "./types";
 import { chunkMarkdown, sha256 } from "./chunker";
 import { hybridSearch } from "./hybrid-search";
 import type { EmbeddingProvider } from "../providers/embeddings";
+import { deduplicateAppend } from "./dedup";
 
 /**
  * MemoryManager handles indexing, chunking, and searching memory files.
@@ -188,17 +189,31 @@ export class MemoryManager {
 
   /**
    * Append content to a memory file.
+   * @param deduplicate When true, filter out lines that already exist in the file.
    */
-  async appendToFile(relativePath: string, content: string): Promise<void> {
+  async appendToFile(
+    relativePath: string,
+    content: string,
+    options?: { deduplicate?: boolean },
+  ): Promise<void> {
     let existing = "";
     try {
       existing = await this.readFile(relativePath);
     } catch {
       // File doesn't exist yet
     }
+
+    let contentToAppend = content;
+    if (options?.deduplicate && existing) {
+      contentToAppend = deduplicateAppend(existing, content);
+      if (!contentToAppend.trim()) {
+        return; // All content was duplicate — nothing to write
+      }
+    }
+
     const newContent = existing
-      ? `${existing}\n\n${content}`
-      : content;
+      ? `${existing}\n\n${contentToAppend}`
+      : contentToAppend;
     await this.writeFile(relativePath, newContent);
   }
 

@@ -2,35 +2,13 @@ import { useNavigate } from "react-router-dom";
 import { openUrl } from "../utils/openUrl";
 import { TELEGRAM_BOT_USERNAME } from "../utils/config";
 import ConnectionIndicator from "../components/ConnectionIndicator";
-import TelegramConnectionIndicator from "../components/TelegramConnectionIndicator";
-import GmailConnectionIndicator from "../components/GmailConnectionIndicator";
+import SkillsGrid from "../components/SkillsGrid";
 import { useUser } from "../hooks/useUser";
 
 const Home = () => {
   const navigate = useNavigate();
   const { user } = useUser();
   const userName = user?.firstName || "User";
-
-  // Get current date
-  const getCurrentDate = () => {
-    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const months = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec",
-    ];
-    const now = new Date();
-    return `${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}`;
-  };
 
   // Get greeting based on time
   const getGreeting = () => {
@@ -57,18 +35,13 @@ const Home = () => {
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="max-w-md w-full">
             {/* Weather card */}
-            <div className="glass rounded-3xl p-8 shadow-large animate-fade-up text-center">
-              {/* Date */}
-              <p className="text-sm mb-2 opacity-50 font-medium">
-                {getCurrentDate()}
-              </p>
-
+            <div className="glass rounded-3xl p-4 shadow-large animate-fade-up text-center">
               {/* Greeting */}
               <h1 className="text-2xl font-bold mb-4">
                 {getGreeting()}, {userName}
               </h1>
 
-              {/* Connection indicator */}
+              {/* Connection indicators */}
               <ConnectionIndicator />
 
               {/* Get Access button */}
@@ -79,6 +52,9 @@ const Home = () => {
                 Message AlphaHuman 🔥
               </button>
             </div>
+
+            {/* Skills Grid */}
+            <SkillsGrid />
 
             {/* Action buttons */}
             <div className="glass rounded-3xl p-0 shadow-large animate-fade-up mt-4 overflow-hidden">
@@ -114,10 +90,6 @@ const Home = () => {
                 </div>
               </button>
             </div>
-
-            {/* Connection Indicators */}
-            <TelegramConnectionIndicator className="mt-4" />
-            <GmailConnectionIndicator className="mt-4" />
           </div>
         </div>
       </div>

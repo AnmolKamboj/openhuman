@@ -142,9 +142,6 @@ describe("buildSkillsSection", () => {
         name: "test-skill",
         description: "A test skill",
         location: "/path/to/skill",
-        content: "",
-        installed: true,
-        source: "local",
       },
     ]);
     expect(result).toContain("<available_skills>");
@@ -159,9 +156,6 @@ describe("buildSkillsSection", () => {
       {
         name: "s",
         description: "d",
-        content: "",
-        installed: true,
-        source: "local",
       },
     ]);
     expect(result).toContain("mandatory");

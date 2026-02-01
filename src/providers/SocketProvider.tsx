@@ -4,12 +4,6 @@ import { store } from "../store";
 import { selectSocketStatus } from "../store/socketSelectors";
 import { socketService } from "../services/socketService";
 import {
-  initTelegramMCPServer,
-  getTelegramMCPServer,
-  updateTelegramMCPServerSocket,
-  cleanupTelegramMCPServer,
-} from "../lib/telegram";
-import {
   isTauri,
   setupTauriSocketListeners,
   cleanupTauriSocketListeners,
@@ -64,7 +58,6 @@ const SocketProvider = ({ children }: { children: React.ReactNode }) => {
     // Token was unset - disconnect
     if (!token && previousToken) {
       socketService.disconnect();
-      cleanupTelegramMCPServer();
       previousTokenRef.current = null;
 
       // Report to Rust
@@ -74,25 +67,16 @@ const SocketProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, [token]);
 
-  // Handle MCP initialization and Tauri status reporting
+  // Handle Tauri status reporting
   useEffect(() => {
     if (socketStatus === "connected") {
       const socket = socketService.getSocket();
-      const server = getTelegramMCPServer();
-
-      if (server) {
-        updateTelegramMCPServerSocket(socket);
-      } else {
-        initTelegramMCPServer(socket);
-      }
 
       // Report to Rust
       if (isTauri()) {
         reportSocketConnected(socket?.id);
       }
     } else if (socketStatus === "disconnected") {
-      cleanupTelegramMCPServer();
-
       // Report to Rust
       if (isTauri()) {
         reportSocketDisconnected();

@@ -125,6 +125,9 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_notification::init());
     }
 
+    // Add shell plugin for subprocess skill runtime
+    builder = builder.plugin(tauri_plugin_shell::init());
+
     builder
         // Setup
         .setup(|app| {
@@ -223,6 +226,13 @@ pub fn run() {
             ai_read_memory_file,
             ai_write_memory_file,
             ai_list_memory_files,
+            // Skill commands
+            skill_read_data,
+            skill_write_data,
+            skill_data_dir,
+            skill_list_manifests,
+            skill_cwd,
+            skill_venv_site_packages,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

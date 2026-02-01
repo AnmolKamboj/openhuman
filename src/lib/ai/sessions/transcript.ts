@@ -4,6 +4,7 @@ import type {
   TranscriptMessage,
   TranscriptLine,
   CompactionMarker,
+  SessionEndMarker,
 } from "./types";
 
 /**
@@ -103,6 +104,25 @@ export async function readMessages(
   return lines.filter(
     (l): l is TranscriptMessage => l.type === "message",
   );
+}
+
+/**
+ * Append a session end marker to the transcript.
+ */
+export async function appendSessionEndMarker(
+  sessionId: string,
+  memoryCaptured: boolean,
+): Promise<void> {
+  const marker: SessionEndMarker = {
+    type: "session_end",
+    timestamp: new Date().toISOString(),
+    memoryCaptured,
+  };
+
+  await invoke("ai_sessions_append_transcript", {
+    sessionId,
+    line: JSON.stringify(marker),
+  });
 }
 
 /**

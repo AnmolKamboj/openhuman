@@ -41,7 +41,7 @@ export class NullEmbeddingProvider implements EmbeddingProvider {
   model = "none";
   dimensions = 0;
 
-  async embedQuery(): Promise<number[]> {
+  async embedQuery(_text: string): Promise<number[]> {
     return [];
   }
 

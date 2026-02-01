@@ -9,9 +9,10 @@
  * - **entities/** — Remote Neo4j entity graph via backend API
  * - **prompts/** — Modular system prompt construction
  * - **sessions/** — JSONL session transcripts with compaction
- * - **skills/** — Skill loading, registry, lifecycle hooks, and installation
  * - **providers/** — Pluggable LLM and embedding providers
  * - **tools/** — AI tool definitions (memory_search, memory_write, etc.)
+ *
+ * Skills are .md files or Python scripts in the skills/ submodule.
  */
 
 // Constitution
@@ -73,21 +74,6 @@ export type {
   SessionState,
 } from "./sessions/types";
 export { DEFAULT_SESSION_CONFIG } from "./sessions/types";
-
-// Skills
-export { SkillRegistry } from "./skills/registry";
-export { installSkill, uninstallSkill, listRepoSkills } from "./skills/installer";
-export { loadSkills } from "./skills/loader";
-export { parseFrontmatter } from "./skills/frontmatter";
-export { createSkillContext, runHook } from "./skills/runner";
-export type {
-  SkillEntry,
-  SkillFrontmatter,
-  SkillSnapshot,
-  SkillDefinition,
-  SkillHooks,
-  SkillContext,
-} from "./skills/types";
 
 // Providers
 export { CustomLLMProvider } from "./providers/custom";
