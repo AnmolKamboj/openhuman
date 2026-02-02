@@ -150,6 +150,9 @@ jobs:
     name: Build, package and publish Tauri
     needs: [get-version, check-version, create-release]
     if: ${{ !failure() && !cancelled() && needs.check-version.outputs.should-skip != 'true' }}
+    environment: Production
+    env:
+      GITHUB_TOKEN: ${{ secrets.XGH_TOKEN }}
     permissions:
       contents: write
     strategy:
