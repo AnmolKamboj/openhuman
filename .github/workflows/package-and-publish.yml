@@ -45,7 +45,7 @@ jobs:
         id: extract-version
         run: |
           PACKAGE_VERSION=$(grep -m1 '^version' src-tauri/Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
-          TAG_NAME="air_v${PACKAGE_VERSION}"
+          TAG_NAME="v${PACKAGE_VERSION}"
           RELEASE_NAME="AlphaHuman v${PACKAGE_VERSION}"
           echo "package-version=$PACKAGE_VERSION" >> $GITHUB_OUTPUT
           echo "tag-name=$TAG_NAME" >> $GITHUB_OUTPUT
@@ -147,6 +147,7 @@ jobs:
     name: Build, package and publish Tauri
     needs: [get-version, check-version, create-release]
     if: ${{ !failure() && !cancelled() && needs.check-version.outputs.should-skip != 'true' }}
+    environment: Production
     permissions:
       contents: write
     strategy:
@@ -272,6 +273,15 @@ jobs:
         run: yarn build
         env:
           NODE_ENV: production
+          VITE_BACKEND_URL: ${{ vars.VITE_BACKEND_URL }}
+          VITE_TELEGRAM_BOT_USERNAME: ${{ secrets.VITE_TELEGRAM_BOT_USERNAME }}
+          VITE_TELEGRAM_BOT_ID: ${{ secrets.VITE_TELEGRAM_BOT_ID }}
+          VITE_TELEGRAM_API_ID: ${{ secrets.VITE_TELEGRAM_API_ID }}
+          VITE_TELEGRAM_API_HASH: ${{ secrets.VITE_TELEGRAM_API_HASH }}
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          VITE_SKILLS_GITHUB_REPO: ${{ vars.VITE_SKILLS_GITHUB_REPO }}
+          VITE_SKILLS_GITHUB_TOKEN: ${{ secrets.VITE_SKILLS_GITHUB_TOKEN }}
+          VITE_DEBUG: ${{ vars.VITE_DEBUG }}
 
       - name: Build, package and publish
         uses: tauri-apps/tauri-action@v0
