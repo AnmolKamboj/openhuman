@@ -21,9 +21,9 @@ on:
 
 env:
   IS_PR: ${{ github.event_name == 'pull_request' }}
-  SHOULD_PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.PUBLISH_REPO || '' }}
-  PUBLISH_REPO: ${{ vars.PUBLISH_REPO }}
-  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+  SHOULD_PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+  PUBLISH_REPO: alphahumanxyz/alphahuman
+  XGH_TOKEN: ${{ secrets.XGH_TOKEN }}
   UPDATER_GIST_URL: ${{ secrets.UPDATER_GIST_URL }}
   UPDATER_GIST_ID: ${{ secrets.UPDATER_GIST_ID }}
 
@@ -69,14 +69,14 @@ jobs:
         run: |
           # For non-main branches or when publishing is disabled, always continue
           if [ -z "$SHOULD_PUBLISH" ]; then
-            echo "🚧 Publishing disabled (non-main branch or PUBLISH_REPO not set)"
+            echo "🚧 Publishing disabled (non-main branch)"
             echo "should-skip=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
           echo "Checking if release already exists for tag: $TAG_NAME"
 
-          RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
+          RESPONSE=$(curl -s -H "Authorization: token $XGH_TOKEN" \
             "https://api.github.com/repos/$PUBLISH_REPO/releases/tags/$TAG_NAME")
 
           if echo "$RESPONSE" | jq -e '.tag_name' > /dev/null; then
@@ -110,7 +110,7 @@ jobs:
           echo "Creating draft release for tag: $TAG_NAME"
           echo "Repository: $PUBLISH_REPO"
           RESPONSE=$(curl -X POST \
-            -H "Authorization: token $GH_TOKEN" \
+            -H "Authorization: token $XGH_TOKEN" \
             -d '{"tag_name": "'"$TAG_NAME"'", "name": "'"$RELEASE_NAME"'", "draft": true}' \
             "https://api.github.com/repos/$PUBLISH_REPO/releases")
           RELEASE_ID=$(echo "$RESPONSE" | jq -r '.id')
@@ -166,7 +166,44 @@ jobs:
         if: matrix.settings.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf python3
+
+      - name: Setup Python sidecar binary (Linux)
+        if: matrix.settings.platform == 'ubuntu-22.04'
+        run: |
+          TARGET=$(rustc --print host-tuple)
+          PYTHON_PATH=$(which python3)
+          SIDECAR_PATH="src-tauri/runtime-skill-python-${TARGET}"
+          ln -sf "${PYTHON_PATH}" "${SIDECAR_PATH}"
+          echo "Created symlink: ${SIDECAR_PATH} -> ${PYTHON_PATH}"
+
+      - name: Setup Python sidecar binary (macOS)
+        if: matrix.settings.platform == 'macos-latest'
+        run: |
+          # Extract target from args (e.g., "--target aarch64-apple-darwin" -> "aarch64-apple-darwin")
+          TARGET=$(echo "${{ matrix.settings.args }}" | grep -oE '(aarch64|x86_64)-apple-darwin' || rustc --print host-tuple)
+          PYTHON_PATH=$(which python3 || which python)
+          SIDECAR_PATH="src-tauri/runtime-skill-python-${TARGET}"
+          ln -sf "${PYTHON_PATH}" "${SIDECAR_PATH}"
+          echo "Created symlink: ${SIDECAR_PATH} -> ${PYTHON_PATH}"
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Cache Cargo build artifacts
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/target
+          key: ${{ runner.os }}-cargo-target-${{ matrix.settings.platform }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-target-${{ matrix.settings.platform }}-
 
       - name: Cache node modules
         id: yarn-cache
@@ -209,6 +246,11 @@ jobs:
 
             core.setOutput("json", configJson);
 
+      - name: Build frontend
+        run: yarn build
+        env:
+          NODE_ENV: production
+
       - name: Build, package and publish
         uses: tauri-apps/tauri-action@v0
         id: build-tauri
@@ -219,7 +261,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.XGH_TOKEN }}
           BASE_URL: ${{ vars.BASE_URL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATER_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
@@ -255,7 +297,7 @@ jobs:
           PUBLISH_FILE_NAME="$SANITIZED_FILENAME-${{ steps.file-info.outputs.architecture }}.dmg"
           FILE_PATH="${{ steps.file-info.outputs.path }}/${{ steps.file-info.outputs.filename }}"
           RELEASE_ID="${{ needs.create-release.outputs.releaseId }}"
-          curl -X POST -H "Authorization: Bearer $GH_TOKEN" \
+          curl -X POST -H "Authorization: Bearer $XGH_TOKEN" \
             -H "Content-Type: application/octet-stream" \
             --data-binary "@$FILE_PATH" \
             "https://uploads.github.com/repos/$PUBLISH_REPO/releases/$RELEASE_ID/assets?name=$PUBLISH_FILE_NAME"
@@ -289,11 +331,11 @@ jobs:
 
       - name: Publish release
         run: |
-          curl -X PATCH -H "Authorization: Bearer $GH_TOKEN" -d '{"draft": false}' "https://api.github.com/repos/$PUBLISH_REPO/releases/$RELEASE_ID"
+          curl -X PATCH -H "Authorization: Bearer $XGH_TOKEN" -d '{"draft": false}' "https://api.github.com/repos/$PUBLISH_REPO/releases/$RELEASE_ID"
 
       - name: Update Gist with JSON
         run: |
-          ASSET_ID=$(curl -s -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$PUBLISH_REPO/releases/$RELEASE_ID/assets" | jq -r '.[] | select(.name == "latest.json") | .id')
-          JSON_CONTENT=$(curl -sSL -H "Accept: application/octet-stream" -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/$PUBLISH_REPO/releases/assets/$ASSET_ID")
+          ASSET_ID=$(curl -s -H "Authorization: Bearer $XGH_TOKEN" "https://api.github.com/repos/$PUBLISH_REPO/releases/$RELEASE_ID/assets" | jq -r '.[] | select(.name == "latest.json") | .id')
+          JSON_CONTENT=$(curl -sSL -H "Accept: application/octet-stream" -H "Authorization: token $XGH_TOKEN" "https://api.github.com/repos/$PUBLISH_REPO/releases/assets/$ASSET_ID")
           GIST_CONTENT=$(jq -n --arg json "$JSON_CONTENT" '{"files":{"updater.json":{"content":$json}}}')
-          curl -X PATCH -H "Authorization: token $GH_TOKEN" -d "$GIST_CONTENT" "https://api.github.com/gists/$UPDATER_GIST_ID"
+          curl -X PATCH -H "Authorization: token $XGH_TOKEN" -d "$GIST_CONTENT" "https://api.github.com/gists/$UPDATER_GIST_ID"
