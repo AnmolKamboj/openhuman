@@ -106,6 +106,7 @@ jobs:
   create-release:
     runs-on: ubuntu-latest
     needs: [get-version, check-version]
+    environment: Production
     if: needs.get-version.outputs.should-publish != '' && needs.check-version.outputs.should-skip != 'true'
     permissions:
       contents: write
@@ -118,6 +119,7 @@ jobs:
           PACKAGE_VERSION: ${{ needs.get-version.outputs.package-version }}
           TAG_NAME: ${{ needs.get-version.outputs.tag-name }}
           RELEASE_NAME: ${{ needs.get-version.outputs.release-name }}
+          XGH_TOKEN: ${{ secrets.XGH_TOKEN }}
         run: |
           echo "Creating draft release for tag: $TAG_NAME"
           echo "Repository: $PUBLISH_REPO"
@@ -147,7 +149,6 @@ jobs:
     name: Build, package and publish Tauri
     needs: [get-version, check-version, create-release]
     if: ${{ !failure() && !cancelled() && needs.check-version.outputs.should-skip != 'true' }}
-    environment: Production
     permissions:
       contents: write
     strategy:
@@ -293,7 +294,6 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          XGH_TOKEN: ${{ secrets.XGH_TOKEN }}
           BASE_URL: ${{ vars.BASE_URL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATER_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
@@ -352,11 +352,13 @@ jobs:
   publish-release:
     runs-on: ubuntu-latest
     needs: [get-version, check-version, create-release, package-tauri]
+    environment: Production
     if: needs.get-version.outputs.should-publish != '' && needs.check-version.outputs.should-skip != 'true'
     permissions:
       contents: write
     env:
       RELEASE_ID: ${{ needs.create-release.outputs.releaseId }}
+      XGH_TOKEN: ${{ secrets.XGH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
