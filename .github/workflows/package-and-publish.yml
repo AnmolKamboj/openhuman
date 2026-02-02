@@ -26,6 +26,7 @@ env:
   XGH_TOKEN: ${{ secrets.XGH_TOKEN }}
   UPDATER_GIST_URL: ${{ secrets.UPDATER_GIST_URL }}
   UPDATER_GIST_ID: ${{ secrets.UPDATER_GIST_ID }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
   get-version:
@@ -297,7 +298,6 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATER_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
           WITH_UPDATER: ${{ needs.get-version.outputs.should-publish != '' && 'true' || 'false' }}
-          GITHUB_TOKEN: ${{ github.token }}
         with:
           args: "-c ${{ steps.config-overrides.outputs.json }} ${{ matrix.settings.args }}"
           includeDebug: ${{ needs.get-version.outputs.should-publish == '' && inputs.forceRelease != 'true' }}
