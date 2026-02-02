@@ -13,53 +13,75 @@ Before running any commands, ensure you have:
 ### Desktop Development
 
 ```bash
-# Start development server (hot-reload)
-npm run tauri dev
+# Frontend dev server only (port 1420)
+yarn dev
 
-# Build for production
-npm run tauri build
+# Desktop dev with hot-reload (starts Vite + Tauri)
+yarn tauri dev
+
+# Production build (TypeScript compile + Vite build + Tauri bundle)
+yarn tauri build
+
+# Debug build with .app bundle (required for deep link testing on macOS)
+yarn tauri build --debug --bundles app
+yarn macos:dev
 ```
 
 ### Android Development
 
 ```bash
 # Initialize Android project (first time)
-npm run tauri android init
+yarn tauri android init
 
 # Start Android development
-npm run tauri android dev
+yarn tauri android dev
 
 # Build Android APK/AAB
-npm run tauri android build
+yarn tauri android build
 ```
 
 ### iOS Development
 
 ```bash
 # Initialize iOS project (first time)
-npm run tauri ios init
+yarn tauri ios init
 
 # Start iOS development
-npm run tauri ios dev
+yarn tauri ios dev
 
 # Build iOS app
-npm run tauri ios build
+yarn tauri ios build
 ```
 
 ### Frontend Only
 
 ```bash
 # Install dependencies
-npm install
+yarn install
 
 # Start Vite dev server only
-npm run dev
+yarn dev
 
 # Build frontend only
-npm run build
+yarn build
 
 # Preview production build
-npm run preview
+yarn preview
+```
+
+### Code Quality
+
+```bash
+# Run linting and formatting checks
+yarn lint
+yarn format
+
+# TypeScript compilation check
+yarn typecheck
+
+# Rust checks
+cargo check --manifest-path src-tauri/Cargo.toml
+cargo clippy --manifest-path src-tauri/Cargo.toml
 ```
 
 ## Stopping Development Servers
@@ -67,7 +89,7 @@ npm run preview
 ### Desktop (Tauri Dev)
 
 ```bash
-# In the terminal running `npm run tauri dev`:
+# In the terminal running `yarn tauri dev`:
 Ctrl + C
 
 # If process is stuck, force kill:
@@ -86,7 +108,7 @@ taskkill /PID <PID> /F          # Kill by PID
 ### Android Dev Server
 
 ```bash
-# In the terminal running `npm run tauri android dev`:
+# In the terminal running `yarn tauri android dev`:
 Ctrl + C
 
 # If emulator/device is stuck:
@@ -108,7 +130,7 @@ taskkill /F /IM java.exe         # Kills Gradle processes
 ### iOS Dev Server
 
 ```bash
-# In the terminal running `npm run tauri ios dev`:
+# In the terminal running `yarn tauri ios dev`:
 Ctrl + C
 
 # If simulator is stuck:
@@ -129,7 +151,7 @@ pkill -f "cargo"
 ### Frontend Only (Vite)
 
 ```bash
-# In the terminal running `npm run dev`:
+# In the terminal running `yarn dev`:
 Ctrl + C
 
 # If port 1420 is still occupied:
@@ -156,10 +178,10 @@ Get-Process | Where-Object {$_.ProcessName -match "tauri|vite|cargo|node"} | Sto
 
 ## Build Targets
 
-| Platform | Command                       | Output              |
-| -------- | ----------------------------- | ------------------- |
-| Windows  | `npm run tauri build`         | `.msi`, `.exe`      |
-| macOS    | `npm run tauri build`         | `.dmg`, `.app`      |
-| Linux    | `npm run tauri build`         | `.deb`, `.AppImage` |
-| Android  | `npm run tauri android build` | `.apk`, `.aab`      |
-| iOS      | `npm run tauri ios build`     | `.ipa`              |
+| Platform | Command                        | Output              |
+| -------- | ------------------------------ | ------------------- |
+| Windows  | `yarn tauri build`             | `.msi`, `.exe`      |
+| macOS    | `yarn tauri build`             | `.dmg`, `.app`      |
+| Linux    | `yarn tauri build`             | `.deb`, `.AppImage` |
+| Android  | `yarn tauri android build`    | `.apk`, `.aab`      |
+| iOS      | `yarn tauri ios build`        | `.ipa`              |

@@ -69,7 +69,7 @@ cargo check --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml
 ```
 
-No test framework is currently configured. No ESLint or Prettier configuration exists in the repo.
+No test framework is currently configured. **ESLint and Prettier are configured** with Husky pre-commit/pre-push hooks for code quality enforcement.
 
 ## Architecture
 
@@ -85,6 +85,9 @@ State lives in `src/store/` using Redux Toolkit slices:
 - **userSlice** — user profile
 - **socketSlice** — connection status, socket ID
 - **telegramSlice** — connection/auth status, chats, messages, threads (selectively persisted; loading/error states excluded)
+- **aiSlice** — AI system state, memory management, session tracking
+- **skillsSlice** — skills catalog, setup status, management state
+- **teamSlice** — team management, member invites, permissions
 
 Redux Persist stores auth and telegram state (storage backend is configurable; default uses localStorage). The telegram slice has a complex nested structure in `src/store/telegram/` with separate files for types, reducers, extraReducers, and thunks.
 
@@ -165,17 +168,43 @@ Key updates from recent commits:
 
 ### Major Additions
 
-- **Settings Modal System** (`60054d8`): Complete URL-based settings modal with clean white design
-  - Modal infrastructure with backdrop blur and center positioning
-  - User profile integration with Redux state management
-  - Connection management panel reusing onboarding components
-  - URL routing for `/settings` and `/settings/connections` paths
-  - Mobile responsive design with accessibility features
-- **Type Casting Helpers**: Added for Telegram MTProto API (`5a0425c`)
-- **Onboarding Refactor**: Updated connection logic and steps (`bd1d240`)
-- **MCP Tools Enhancement**: Improved type safety and consistency across Telegram tools (`d0e1191`, `86cc53a`)
-- **App Structure**: Refactored MCPProvider integration (`d7d848d`)
-- **Big Integer Support**: Consistent handling across all Telegram MCP tools (`0abed4d`)
+- **ESLint & Prettier Integration** (`5896966`): Complete code quality toolchain
+  - ES module syntax for ESLint configuration with enhanced TypeScript support
+  - Husky pre-commit/pre-push hooks for automatic formatting and linting
+  - Type-only imports standardization across codebase
+  - Consolidated import statements and improved code organization
+  - GitHub workflows updated with Prettier and ESLint checks
+- **Advanced Skills System** (`10ec1b3`): Comprehensive skill management platform
+  - Dynamic skills loading from local directory via Rust integration
+  - SkillSetupModal with conditional rendering (wizard vs management panel)
+  - Background GitHub sync for skills catalog updates
+  - Skills table with setup status indicators and management controls
+  - Enhanced skill metadata with setup hooks and descriptions
+- **Team Management Features** (`10ec1b3`): Multi-user collaboration system
+  - TeamPanel, TeamMembersPanel, and TeamInvitesPanel components
+  - Redux state management for teams, members, and invites
+  - Team API integration with CRUD operations
+  - Settings modal routing for team management paths
+  - Role-based permissions and invitation system
+- **AI System Enhancements**: Advanced memory and session management
+  - Hybrid search with encryption for AI memory
+  - Constitution-based AI behavior with GitHub integration
+  - Entity graph migration to Neo4j backend
+  - Session capture and transcript management
+  - Memory chunking and context formatting
+- **Enhanced CI/CD Pipeline** (`b1d7bce`): Production-ready deployment
+  - XGH_TOKEN authentication for alphahumanxyz/alphahuman releases
+  - Python sidecar setup and caching for cross-platform builds
+  - Tauri configuration updates (com.alphahuman.app identifier)
+  - GitHub Pages deployment with optimized workflows
+  - Version tagging and environment variable management
+- **Device Detection & Download System** (`9d74721`, `b5bccd2`): Enhanced multi-architecture download support
+  - Optimized asset parsing using Maps for unique architecture links per platform
+  - Enhanced DownloadScreen.tsx with architecture-specific download options
+  - Improved device detection for Windows, macOS, Linux, and Android platforms
+  - Added preference logic for more specific filenames in asset parsing
+  - Support for multiple architectures (x64, aarch64) with intelligent sorting
+- **Version Bump**: Project updated to v0.20.0 (`891517c`)
 
 ### Design System Updates
 
@@ -188,16 +217,36 @@ Key updates from recent commits:
 
 ### Component Structure
 
-- **165+ TypeScript files** across `src/` directory (added settings modal system)
-- **Settings Modal System**: Complete modal infrastructure in `src/components/settings/`
+- **200+ TypeScript files** across `src/` directory with comprehensive tooling
+- **AI System Architecture** (`src/lib/ai/`): Advanced artificial intelligence platform
+  - Memory management with encryption, chunking, and hybrid search
+  - Constitution-based behavior with GitHub integration
+  - Entity graph with Neo4j backend integration
+  - Session capture, transcript management, and tool compression
+  - Provider system with OpenAI integration and custom providers
+- **Skills Management System**: Dynamic skill platform with Rust integration
+  - SkillsGrid.tsx - Skills catalog with setup status and management
+  - SkillSetupModal.tsx - Conditional wizard/management panel rendering
+  - SkillProvider.tsx - GitHub sync and local directory integration
+  - Skills submodule integration with background updates
+- **Team Collaboration Features**: Multi-user workspace management
+  - TeamPanel.tsx - Team overview with member management
+  - TeamMembersPanel.tsx - Member roles and permissions
+  - TeamInvitesPanel.tsx - Invitation system with role assignment
+  - Team API integration with Redux state management
+- **Settings Modal System**: Comprehensive configuration interface
   - SettingsModal.tsx - Main container with URL routing
   - SettingsLayout.tsx - Modal wrapper with createPortal
-  - SettingsHome.tsx - Main menu with profile and navigation
-  - ConnectionsPanel.tsx - Connection management with status indicators
+  - Enhanced panels: Billing, Team, Connections, Privacy, Profile
   - Hooks: useSettingsNavigation.ts, useSettingsAnimation.ts
-- **Onboarding Flow**: Multi-step process with privacy, analytics, and connection steps
-- **Authentication**: Web-to-desktop handoff using `alphahuman://` scheme
-- **Connection Management**: Telegram MTProto and Socket.io integration
+- **Download System**: Enhanced multi-platform distribution
+  - DownloadScreen.tsx - Platform detection with architecture support
+  - deviceDetection.ts - Comprehensive device/architecture utilities
+  - GitHub API integration for real-time release assets
+- **Code Quality Infrastructure**: ESLint, Prettier, and Husky integration
+  - Pre-commit/pre-push hooks with TypeScript compilation checks
+  - Standardized type-only imports and consolidated statements
+  - GitHub workflow integration with automated quality checks
 
 ## Git Workflow
 
@@ -205,10 +254,17 @@ Key updates from recent commits:
 
 ## Key Patterns
 
+- **Code Quality**: ESLint and Prettier enforce code standards with Husky hooks. Use type-only imports (`import type`) and consolidate imports from same modules.
 - **No localStorage**: Avoid `localStorage` and `sessionStorage`; use Redux (and persist) for app state. Remove any direct usage when working on affected code.
-- **Modal System**: Settings modal uses `createPortal` pattern with URL-based routing. Clean white design (not glass morphism) for system settings. Navigate with `/settings` and `/settings/connections` paths.
+- **AI System Integration**: Use `src/lib/ai/` for memory management, constitution loading, entity queries, and session capture. AI providers abstracted through interface pattern.
+- **Skills Management**: Skills loaded dynamically from local directory via Rust. Use `SkillProvider` for GitHub sync and `SkillsGrid` for management interface.
+- **Team Collaboration**: Team features in `src/components/settings/panels/Team*`. Use Redux `teamSlice` for state management and `teamApi` for backend operations.
+- **Device Detection**: Use `deviceDetection.ts` utilities for platform/architecture detection. Support multiple architectures per platform (x64, aarch64) with intelligent preference logic.
+- **GitHub Integration**: Fetch release assets via GitHub API (`fetchLatestRelease()`) and parse by architecture (`parseReleaseAssetsByArchitecture()`). Use Maps for efficient unique architecture tracking.
+- **Download System**: Platform-specific file type support (.exe/.msi for Windows, .dmg for macOS, .AppImage/.deb/.rpm for Linux, .apk for Android) with fallback links.
+- **Modal System**: Settings modal uses `createPortal` pattern with URL-based routing. Clean white design (not glass morphism) for system settings. Navigate with `/settings` paths for different panels.
 - **Component Reuse**: Connection management reuses `connectOptions` array and components from onboarding flow. Maintains consistent UX patterns across features.
-- **Redux Integration**: Settings modal integrates with existing slices - auth for logout, user for profile display, telegram for connection status. No new state management needed.
+- **Redux Integration**: Multiple slices (auth, user, telegram, ai, skills, team) with Redux Persist. Use typed hooks and selectors. State functions accept optional `userId` param.
 - **Node polyfills**: Vite config (`vite.config.ts`) polyfills `buffer`, `process`, `util`, `os`, `crypto`, `stream` for the `telegram` package which requires Node APIs.
 - **Telegram IDs**: Use `big-integer` library, not native JS numbers (Telegram IDs exceed `Number.MAX_SAFE_INTEGER`).
 - **MCP tool files**: Each tool in `src/lib/mcp/telegram/tools/` exports a handler conforming to `TelegramMCPToolHandler` interface. Tool names are typed in `src/lib/mcp/telegram/types.ts`.
@@ -216,8 +272,7 @@ Key updates from recent commits:
 - **CORS workaround**: External HTTP requests from the WebView hit CORS. Use Rust `reqwest` via Tauri commands instead of browser `fetch()`.
 - **Hash Routing**: Uses HashRouter for desktop app compatibility and deep link handling.
 - **Integration Libraries**: Each integration (Telegram, future Gmail, etc.) lives under `src/lib/<integration>/` with its own `state/`, `services/`, `api/` subdirectories. Domain-specific services belong in the integration folder, not in `src/services/` (which holds only cross-cutting services like socketService, apiClient).
-- **State Layer**: Each integration dispatches Redux changes through state functions in `src/lib/<integration>/state/` — never import Redux actions directly from services or update handlers. State functions accept an optional `userId` param (falls back to `getCurrentUserId()`).
-- **Unit Tests**: All unit tests live in `__tests__/` folders co-located with the code they test.
+- **Unit Tests**: All unit tests live in `__tests__/` folders co-located with the code they test. Use Jest with TypeScript support.
 
 ## Platform Gotchas
 

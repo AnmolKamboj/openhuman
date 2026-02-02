@@ -11,9 +11,10 @@ This project is a **crypto-focused communication platform** built with Tauri v2,
 
 ## Target Users
 
-- Traders, Yield Farmers, Investors
-- Researchers, KOLs, Developers
-- General crypto community members
+- **Crypto Professionals**: Traders, Yield Farmers, Investors
+- **Researchers & Analysts**: KOLs, Developers, Researchers
+- **Teams & Organizations**: Collaborative workspaces for crypto projects
+- **General Community**: Crypto enthusiasts and community members
 
 ## Technology Stack
 
@@ -28,9 +29,21 @@ This project is a **crypto-focused communication platform** built with Tauri v2,
 | Components            | Headless UI     | Latest  | Accessible components   |
 | Animation             | Framer Motion   | Latest  | Smooth animations       |
 | **State & Data**      |
-| State Management      | Zustand         | Latest  | Lightweight state       |
+| State Management      | Redux Toolkit   | Latest  | Predictable state mgmt  |
+| State Persistence     | Redux Persist   | Latest  | State rehydration       |
 | Data Fetching         | TanStack Query  | Latest  | Server state management |
 | Form Handling         | React Hook Form | Latest  | Form validation         |
+| **AI & Intelligence** |
+| AI Memory             | Custom System   | Latest  | Context & learning      |
+| Entity Graph          | Neo4j           | Latest  | Knowledge relationships |
+| Embeddings            | OpenAI          | Latest  | Semantic search         |
+| **Communication**     |
+| Real-time             | Socket.io       | Latest  | Live messaging          |
+| Telegram Integration  | MTProto         | Latest  | Deep Telegram access    |
+| MCP Protocol          | JSON-RPC 2.0    | Latest  | AI tool execution       |
+| **Team & Skills**     |
+| Skills Platform       | GitHub Sync     | Latest  | Dynamic skill loading   |
+| Team Management       | REST API        | Latest  | Multi-user collaboration|
 | **Backend Core**      |
 | Language              | Rust            | 1.93.0  | Performance & safety    |
 | Framework             | Tauri           | 2.x     | Cross-platform apps     |
@@ -45,25 +58,40 @@ This project is a **crypto-focused communication platform** built with Tauri v2,
 ## Project Structure
 
 ```
-tauri-crossplatform-app/
+frontend-runner-alphahuman/
 ├── .claude/                # Claude AI configuration
 │   ├── rules/              # Modular documentation
 │   └── agents/             # Subagent configurations
 ├── src/                    # React frontend source
+│   ├── lib/                # Core libraries
+│   │   ├── ai/             # AI system (memory, constitution, entities)
+│   │   └── mcp/            # Model Context Protocol implementation
+│   ├── components/         # React components
+│   │   └── settings/       # Settings modal system
+│   ├── store/              # Redux state management
+│   ├── services/           # API clients and services
+│   └── pages/              # Application pages
 ├── src-tauri/              # Rust backend source
 │   ├── gen/                # Generated platform code
 │   │   ├── android/        # Android project
 │   │   └── apple/          # iOS/macOS project
 │   ├── icons/              # Application icons
 │   └── src/                # Rust source code
+├── skills/                 # Skills submodule (GitHub synced)
 ├── public/                 # Static assets
+│   └── lottie/             # Animation files
+├── .github/workflows/      # CI/CD pipelines
 └── dist/                   # Build output
 ```
 
 ## Key Configuration Files
 
-- `tauri.conf.json` - Tauri configuration
-- `Cargo.toml` - Rust dependencies
-- `package.json` - Node.js dependencies
-- `vite.config.ts` - Vite build configuration
-- `tsconfig.json` - TypeScript configuration
+- `tauri.conf.json` - Tauri configuration (app identifier: com.alphahuman.app)
+- `Cargo.toml` - Rust dependencies and workspace configuration
+- `package.json` - Node.js dependencies and scripts
+- `vite.config.ts` - Vite build configuration with Node.js polyfills
+- `tsconfig.json` - TypeScript configuration with strict settings
+- `eslint.config.js` - ESLint configuration with ES modules
+- `.prettierrc` - Code formatting rules
+- `.husky/` - Git hooks for pre-commit/pre-push quality checks
+- `CLAUDE.md` - Main project documentation for Claude Code
