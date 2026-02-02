@@ -297,6 +297,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATER_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
           WITH_UPDATER: ${{ needs.get-version.outputs.should-publish != '' && 'true' || 'false' }}
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           args: "-c ${{ steps.config-overrides.outputs.json }} ${{ matrix.settings.args }}"
           includeDebug: ${{ needs.get-version.outputs.should-publish == '' && inputs.forceRelease != 'true' }}
@@ -304,7 +305,6 @@ jobs:
           releaseId: ${{ needs.create-release.outputs.releaseId }}
           owner: ${{ steps.repository-info.outputs.owner }}
           repo: ${{ steps.repository-info.outputs.repo }}
-          githubToken: ${{ github.token }}
 
       - name: Get file info
         id: file-info
