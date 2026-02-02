@@ -328,30 +328,30 @@ jobs:
           # Patterns to remove: v0.14.0-1, 0.14.0-1, v0.14.0, 0.14.0, etc.
           # Package managers add release numbers like -1, -2, etc.
           NAME="$NAME_WITH_EXT"
-          
+
           # Remove version-release pattern (0.14.0-1, 0.14.0-2, etc.) - escape dots for regex
           VERSION_ESCAPED=$(echo "$VERSION" | sed 's/\./\\./g')
           NAME=$(echo "$NAME" | sed -E "s/[_-]?${VERSION_ESCAPED}-[0-9]+[_-]?//g")
-          
+
           # Remove tag-release pattern (v0.14.0-1, v0.14.0-2, etc.)
           TAG_ESCAPED=$(echo "$TAG_NAME" | sed 's/\./\\./g')
           NAME=$(echo "$NAME" | sed -E "s/[_-]?${TAG_ESCAPED}-[0-9]+[_-]?//g")
-          
+
           # Remove tag name (v0.14.0) with various separators
           NAME=$(echo "$NAME" | sed -E "s/[_-]?${TAG_ESCAPED}[_-]?//g")
-          
+
           # Remove version (0.14.0) with various separators
           NAME=$(echo "$NAME" | sed -E "s/[_-]?${VERSION_ESCAPED}[_-]?//g")
-          
+
           # Remove version with dots replaced by separators (0_14_0, 0-14-0)
           VERSION_DASH=$(echo "$VERSION" | tr '.' '-')
           VERSION_UNDERSCORE=$(echo "$VERSION" | tr '.' '_')
           NAME=$(echo "$NAME" | sed -E "s/[_-]?v?${VERSION_DASH}[_-]?//g")
           NAME=$(echo "$NAME" | sed -E "s/[_-]?v?${VERSION_UNDERSCORE}[_-]?//g")
-          
+
           # Clean up any double separators or trailing/leading separators
           NAME=$(echo "$NAME" | sed -E 's/[_-]{2,}/_/g' | sed 's/^[_-]//' | sed 's/[_-]$//')
-          
+
           FILE_PATH=$(cd "$(dirname "$FULL_PATH")" && pwd)
           ARCHITECTURE=$(echo "${{ matrix.settings.args }}" | grep -oE 'x86_64|aarch64' || echo "")
           echo "name=$NAME" >> $GITHUB_OUTPUT
