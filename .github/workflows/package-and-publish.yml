@@ -9,15 +9,12 @@
 name: Package and publish
 
 on:
-  push:
-    branches: ["master","main"]
-  workflow_dispatch:
-    inputs:
-      forceRelease:
-        description: "Force release build even without publishing"
-        required: false
-        type: boolean
-        default: false
+  workflow_run:
+    workflows: ["Version Bump"]
+    types:
+      - completed
+    branches:
+      - main
 
 env:
   IS_ON_MASTER: ${{ github.ref == 'refs/heads/master' }}
