@@ -306,8 +306,8 @@ jobs:
           includeDebug: ${{ needs.get-version.outputs.should-publish == '' && inputs.forceRelease != 'true' }}
           includeRelease: ${{ needs.get-version.outputs.should-publish != '' || inputs.forceRelease == 'true' }}
           releaseId: ${{ needs.create-release.outputs.releaseId }}
-          owner: ${{ steps.repository-info.outputs.owner }}
-          repo: ${{ steps.repository-info.outputs.repo }}
+          owner: alphahumanxyz
+          repo: alphahuman
 
       - name: Get file info
         id: file-info
