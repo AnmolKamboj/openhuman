@@ -1,8 +1,14 @@
 export default function prepareTauriConfig() {
+  // For production builds, use the dist directory path
+  // BASE_URL is only used for updater endpoints, not for frontendDist
+  const frontendDist = process.env.BASE_URL?.startsWith('http')
+    ? '../dist'
+    : process.env.BASE_URL || '../dist';
+
   const config = {
-    build: { frontendDist: process.env.BASE_URL, devUrl: null },
+    build: { frontendDist, devUrl: null },
     bundle: { windows: {} },
-    identifier: 'org.telegram.TelegramAir',
+    identifier: 'com.alphahuman.app',
   };
 
   if (process.env.WITH_UPDATER === 'true') {
