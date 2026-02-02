@@ -2,7 +2,7 @@ export default function prepareTauriConfig() {
   const config = {
     build: { frontendDist: process.env.BASE_URL, devUrl: null },
     bundle: { windows: {} },
-    identifier: 'org.telegram.TelegramAir',
+    identifier: 'com.alphahuman.app',
   };
 
   if (process.env.WITH_UPDATER === 'true') {
