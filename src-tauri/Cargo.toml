@@ -1,8 +1,8 @@
 [package]
-name = "tauri-app"
+name = "AlphaHuman"
 version = "0.1.0"
-description = "AlphaHuman - Crypto Community Platform"
-authors = ["MegaMind"]
+description = "AlphaHuman - AI-powered Super Assistant"
+authors = ["AlphaHuman"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
