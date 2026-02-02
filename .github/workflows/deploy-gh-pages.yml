@@ -56,7 +56,7 @@ jobs:
         with:
           personal_token: ${{ secrets.XGH_TOKEN }}
           external_repository: alphahumanxyz/alphahuman
-          publish_dir: ./deploy
+          publish_dir: ./dist
           publish_branch: gh-pages
           commit_message: 'chore: deploy to gh-pages [skip ci]'
           user_name: 'github-actions[bot]'
