@@ -178,10 +178,10 @@ Get-Process | Where-Object {$_.ProcessName -match "tauri|vite|cargo|node"} | Sto
 
 ## Build Targets
 
-| Platform | Command                        | Output              |
-| -------- | ------------------------------ | ------------------- |
-| Windows  | `yarn tauri build`             | `.msi`, `.exe`      |
-| macOS    | `yarn tauri build`             | `.dmg`, `.app`      |
-| Linux    | `yarn tauri build`             | `.deb`, `.AppImage` |
-| Android  | `yarn tauri android build`    | `.apk`, `.aab`      |
-| iOS      | `yarn tauri ios build`        | `.ipa`              |
+| Platform | Command                    | Output              |
+| -------- | -------------------------- | ------------------- |
+| Windows  | `yarn tauri build`         | `.msi`, `.exe`      |
+| macOS    | `yarn tauri build`         | `.dmg`, `.app`      |
+| Linux    | `yarn tauri build`         | `.deb`, `.AppImage` |
+| Android  | `yarn tauri android build` | `.apk`, `.aab`      |
+| iOS      | `yarn tauri ios build`     | `.ipa`              |

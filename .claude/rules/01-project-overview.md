@@ -18,42 +18,42 @@ This project is a **crypto-focused communication platform** built with Tauri v2,
 
 ## Technology Stack
 
-| Layer                 | Technology      | Version | Purpose                 |
-| --------------------- | --------------- | ------- | ----------------------- |
+| Layer                 | Technology      | Version | Purpose                  |
+| --------------------- | --------------- | ------- | ------------------------ |
 | **Frontend Core**     |
-| UI Framework          | React           | 19.1.0  | Component-based UI      |
-| Language              | TypeScript      | 5.8.3   | Type safety             |
-| Build Tool            | Vite            | 7.0.4   | Fast development        |
+| UI Framework          | React           | 19.1.0  | Component-based UI       |
+| Language              | TypeScript      | 5.8.3   | Type safety              |
+| Build Tool            | Vite            | 7.0.4   | Fast development         |
 | **UI & Styling**      |
-| Styling               | Tailwind CSS    | Latest  | Utility-first CSS       |
-| Components            | Headless UI     | Latest  | Accessible components   |
-| Animation             | Framer Motion   | Latest  | Smooth animations       |
+| Styling               | Tailwind CSS    | Latest  | Utility-first CSS        |
+| Components            | Headless UI     | Latest  | Accessible components    |
+| Animation             | Framer Motion   | Latest  | Smooth animations        |
 | **State & Data**      |
-| State Management      | Redux Toolkit   | Latest  | Predictable state mgmt  |
-| State Persistence     | Redux Persist   | Latest  | State rehydration       |
-| Data Fetching         | TanStack Query  | Latest  | Server state management |
-| Form Handling         | React Hook Form | Latest  | Form validation         |
+| State Management      | Redux Toolkit   | Latest  | Predictable state mgmt   |
+| State Persistence     | Redux Persist   | Latest  | State rehydration        |
+| Data Fetching         | TanStack Query  | Latest  | Server state management  |
+| Form Handling         | React Hook Form | Latest  | Form validation          |
 | **AI & Intelligence** |
-| AI Memory             | Custom System   | Latest  | Context & learning      |
-| Entity Graph          | Neo4j           | Latest  | Knowledge relationships |
-| Embeddings            | OpenAI          | Latest  | Semantic search         |
+| AI Memory             | Custom System   | Latest  | Context & learning       |
+| Entity Graph          | Neo4j           | Latest  | Knowledge relationships  |
+| Embeddings            | OpenAI          | Latest  | Semantic search          |
 | **Communication**     |
-| Real-time             | Socket.io       | Latest  | Live messaging          |
-| Telegram Integration  | MTProto         | Latest  | Deep Telegram access    |
-| MCP Protocol          | JSON-RPC 2.0    | Latest  | AI tool execution       |
+| Real-time             | Socket.io       | Latest  | Live messaging           |
+| Telegram Integration  | MTProto         | Latest  | Deep Telegram access     |
+| MCP Protocol          | JSON-RPC 2.0    | Latest  | AI tool execution        |
 | **Team & Skills**     |
-| Skills Platform       | GitHub Sync     | Latest  | Dynamic skill loading   |
-| Team Management       | REST API        | Latest  | Multi-user collaboration|
+| Skills Platform       | GitHub Sync     | Latest  | Dynamic skill loading    |
+| Team Management       | REST API        | Latest  | Multi-user collaboration |
 | **Backend Core**      |
-| Language              | Rust            | 1.93.0  | Performance & safety    |
-| Framework             | Tauri           | 2.x     | Cross-platform apps     |
+| Language              | Rust            | 1.93.0  | Performance & safety     |
+| Framework             | Tauri           | 2.x     | Cross-platform apps      |
 | **Backend Libraries** |
-| Async Runtime         | Tokio           | Latest  | Async operations        |
-| JSON Handling         | Serde JSON      | Latest  | Serialization           |
-| Database              | SQLx + SQLite   | Latest  | Local storage           |
-| HTTP Client           | Reqwest         | Latest  | API requests            |
-| WebSocket             | WebSocket crate | Latest  | Real-time messaging     |
-| Utilities             | UUID            | Latest  | Unique identifiers      |
+| Async Runtime         | Tokio           | Latest  | Async operations         |
+| JSON Handling         | Serde JSON      | Latest  | Serialization            |
+| Database              | SQLx + SQLite   | Latest  | Local storage            |
+| HTTP Client           | Reqwest         | Latest  | API requests             |
+| WebSocket             | WebSocket crate | Latest  | Real-time messaging      |
+| Utilities             | UUID            | Latest  | Unique identifiers       |
 
 ## Project Structure
 
