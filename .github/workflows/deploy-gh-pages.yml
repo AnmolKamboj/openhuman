@@ -60,6 +60,8 @@ jobs:
           publish_branch: gh-pages
           commit_message: 'chore: deploy to gh-pages [skip ci]'
           user_name: 'github-actions[bot]'
+          cname: app.alphahuman.xyz
+          force_orphan: true
           user_email: 'github-actions[bot]@users.noreply.github.com'
 
       - name: Update GH repo
