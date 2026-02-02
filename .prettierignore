@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+src-tauri
+skills
+*.config.js
+*.config.ts
+tsconfig.tsbuildinfo
+yarn.lock
+package-lock.json
