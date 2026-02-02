@@ -38,6 +38,7 @@ export class SkillRuntime {
     this.transport.onReverseRpc(handler);
   }
 
+
   /**
    * Spawn the skill subprocess.
    * Uses absolute cwd from the backend so the sidecar finds the skills package.

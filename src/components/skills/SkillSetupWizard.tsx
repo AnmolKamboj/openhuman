@@ -30,6 +30,7 @@ export default function SkillSetupWizard({
 }: SkillSetupWizardProps) {
   const [state, setState] = useState<WizardState>({ phase: "loading" });
 
+
   // Start the skill (if not running) then start the setup flow on mount
   useEffect(() => {
     let cancelled = false;
@@ -161,6 +162,7 @@ export default function SkillSetupWizard({
           </span>
         </div>
       );
+
 
     case "step":
       return (
