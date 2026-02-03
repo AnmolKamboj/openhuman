@@ -141,7 +141,9 @@ export function detectPlatform(): PlatformInfo {
  * Fetch the latest release from GitHub
  */
 export async function fetchLatestRelease(): Promise<GitHubRelease> {
-  const response = await fetch('https://api.github.com/repos/alphahumanxyz/alphahuman/releases/latest');
+  const response = await fetch(
+    'https://api.github.com/repos/alphahumanxyz/alphahuman/releases/latest'
+  );
   if (!response.ok) {
     throw new Error(`Failed to fetch release: ${response.statusText}`);
   }
@@ -185,7 +187,9 @@ export function getArchitectureDisplayName(arch: Architecture): string {
 /**
  * Parse GitHub release assets and map them to platforms with architecture support
  */
-export function parseReleaseAssetsByArchitecture(assets: GitHubReleaseAsset[]): PlatformArchitectureLinks {
+export function parseReleaseAssetsByArchitecture(
+  assets: GitHubReleaseAsset[]
+): PlatformArchitectureLinks {
   const links: PlatformArchitectureLinks = {};
 
   // Use Maps to track unique architectures per platform
@@ -212,21 +216,39 @@ export function parseReleaseAssetsByArchitecture(assets: GitHubReleaseAsset[]): 
     };
 
     // Windows: .exe, .msi, .zip (Windows)
-    if (name.includes('windows') || name.includes('.exe') || name.includes('.msi') || (name.includes('.zip') && !name.includes('macos'))) {
+    if (
+      name.includes('windows') ||
+      name.includes('.exe') ||
+      name.includes('.msi') ||
+      (name.includes('.zip') && !name.includes('macos'))
+    ) {
       // Only add if this architecture doesn't exist yet, or prefer more specific filenames
-      if (!windowsMap.has(architecture) || (name.includes('windows') && !windowsMap.get(architecture)?.fileName.toLowerCase().includes('windows'))) {
+      if (
+        !windowsMap.has(architecture) ||
+        (name.includes('windows') &&
+          !windowsMap.get(architecture)?.fileName.toLowerCase().includes('windows'))
+      ) {
         windowsMap.set(architecture, link);
       }
     }
     // macOS: .dmg
     else if (name.includes('macos') || name.includes('.dmg') || name.includes('darwin')) {
       // Only add if this architecture doesn't exist yet, or prefer more specific filenames
-      if (!macosMap.has(architecture) || (name.includes('macos') && !macosMap.get(architecture)?.fileName.toLowerCase().includes('macos'))) {
+      if (
+        !macosMap.has(architecture) ||
+        (name.includes('macos') &&
+          !macosMap.get(architecture)?.fileName.toLowerCase().includes('macos'))
+      ) {
         macosMap.set(architecture, link);
       }
     }
     // Linux: .AppImage, .deb, .rpm
-    else if (name.includes('linux') || name.includes('.appimage') || name.includes('.deb') || name.includes('.rpm')) {
+    else if (
+      name.includes('linux') ||
+      name.includes('.appimage') ||
+      name.includes('.deb') ||
+      name.includes('.rpm')
+    ) {
       // Prefer AppImage, then deb, then rpm for the same architecture
       const existing = linuxMap.get(architecture);
       if (!existing) {
@@ -267,7 +289,10 @@ export function parseReleaseAssetsByArchitecture(assets: GitHubReleaseAsset[]): 
   }
 
   // Sort architectures: prefer detected architecture, then x64, then aarch64
-  const sortArchitectures = (archLinks: ArchitectureDownloadLink[], preferredArch?: Architecture) => {
+  const sortArchitectures = (
+    archLinks: ArchitectureDownloadLink[],
+    preferredArch?: Architecture
+  ) => {
     return archLinks.sort((a, b) => {
       if (preferredArch && a.architecture === preferredArch) return -1;
       if (preferredArch && b.architecture === preferredArch) return 1;
