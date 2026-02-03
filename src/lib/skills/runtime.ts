@@ -38,6 +38,7 @@ export class SkillRuntime {
     this.transport.onReverseRpc(handler);
   }
 
+
   /**
    * Spawn the skill subprocess.
    * Uses absolute cwd from the backend so the sidecar finds the skills package.
@@ -94,9 +95,9 @@ export class SkillRuntime {
   }
 
   /**
-   * Send skill/load with manifest + data dir.
+   * Send skill/load with manifest + data dir + session data.
    */
-  async load(): Promise<void> {
+  async load(additionalParams?: Record<string, unknown>): Promise<void> {
     // Use absolute path from Rust to avoid cwd-relative ambiguity
     const dataDir = await invoke<string>("skill_data_dir", {
       skillId: this.manifest.id,
@@ -104,6 +105,7 @@ export class SkillRuntime {
     await this.transport.request("skill/load", {
       manifest: this.manifest,
       dataDir,
+      ...additionalParams,
     });
   }
 

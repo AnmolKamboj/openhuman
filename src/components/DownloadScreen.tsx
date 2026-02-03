@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 
 import {
+  type Architecture,
+  type ArchitectureDownloadLink,
   detectPlatform,
   fetchLatestRelease,
   getDownloadLink,
   getPlatformDisplayName,
   parseReleaseAssets,
   parseReleaseAssetsByArchitecture,
-  type Architecture,
-  type ArchitectureDownloadLink,
   type Platform,
   type PlatformArchitectureLinks,
   type PlatformDownloadLinks,
@@ -33,7 +33,9 @@ const DownloadScreen = () => {
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | null>(null);
   const [selectedArchitecture, setSelectedArchitecture] = useState<Architecture | null>(null);
   const [releaseLinks, setReleaseLinks] = useState<PlatformDownloadLinks | null>(null);
-  const [architectureLinks, setArchitectureLinks] = useState<PlatformArchitectureLinks | null>(null);
+  const [architectureLinks, setArchitectureLinks] = useState<PlatformArchitectureLinks | null>(
+    null
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,7 +65,9 @@ const DownloadScreen = () => {
         const platformArchLinks = archLinks[detected.platform as keyof PlatformArchitectureLinks];
         if (platformArchLinks && platformArchLinks.length > 0) {
           // Prefer detected architecture, otherwise use first available
-          const preferredLink = platformArchLinks.find(link => link.architecture === detected.architecture) || platformArchLinks[0];
+          const preferredLink =
+            platformArchLinks.find(link => link.architecture === detected.architecture) ||
+            platformArchLinks[0];
           setSelectedArchitecture(preferredLink.architecture);
         }
       } catch (err) {
@@ -88,7 +92,8 @@ const DownloadScreen = () => {
       return getDownloadLink(selectedPlatform || 'unknown', releaseLinks || undefined);
     }
 
-    const platformArchLinks = architectureLinks[selectedPlatform as keyof PlatformArchitectureLinks];
+    const platformArchLinks =
+      architectureLinks[selectedPlatform as keyof PlatformArchitectureLinks];
     if (platformArchLinks && selectedArchitecture) {
       const link = platformArchLinks.find(l => l.architecture === selectedArchitecture);
       if (link) {
@@ -139,9 +144,7 @@ const DownloadScreen = () => {
       {error && !isLoading && (
         <div className="mb-6">
           <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4">
-            <p className="text-sm text-red-400">
-              {error}. Using fallback download links.
-            </p>
+            <p className="text-sm text-red-400">{error}. Using fallback download links.</p>
           </div>
         </div>
       )}
@@ -209,9 +212,12 @@ const DownloadScreen = () => {
             {downloadOptions
               .filter(opt => opt.platform !== selectedPlatform)
               .map(option => {
-                const platformArchLinks = architectureLinks?.[option.platform as keyof PlatformArchitectureLinks];
+                const platformArchLinks =
+                  architectureLinks?.[option.platform as keyof PlatformArchitectureLinks];
                 const hasValidLink = platformArchLinks && platformArchLinks.length > 0;
-                const defaultLink = platformArchLinks?.[0]?.url || getDownloadLink(option.platform, releaseLinks || undefined);
+                const defaultLink =
+                  platformArchLinks?.[0]?.url ||
+                  getDownloadLink(option.platform, releaseLinks || undefined);
                 const hasMultipleArchs = platformArchLinks && platformArchLinks.length > 1;
 
                 return (

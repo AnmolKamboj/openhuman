@@ -38,14 +38,24 @@ src/
 │   ├── authSlice.ts              # Authentication state
 │   ├── socketSlice.ts            # Socket connection state
 │   ├── userSlice.ts              # User profile state
+│   ├── aiSlice.ts                # AI system state
+│   ├── skillsSlice.ts            # Skills management state
+│   ├── teamSlice.ts              # Team collaboration state
 │   └── telegram/                  # Telegram state management
 ├── services/                      # Service layer (singletons)
 │   ├── apiClient.ts              # HTTP REST client
 │   ├── socketService.ts          # Socket.io client
 │   └── mtprotoService.ts         # Telegram MTProto service
-├── lib/mcp/                       # Model Context Protocol system
-│   ├── transport.ts              # Socket.io JSON-RPC transport
-│   └── telegram/                  # 99 Telegram MCP tools
+├── lib/                           # Core libraries
+│   ├── ai/                       # AI system architecture
+│   │   ├── memory/               # Memory management with encryption
+│   │   ├── constitution/         # AI behavior rules
+│   │   ├── entities/             # Entity graph management
+│   │   ├── sessions/             # Session capture and transcripts
+│   │   └── providers/            # AI provider abstractions
+│   └── mcp/                      # Model Context Protocol system
+│       ├── transport.ts          # Socket.io JSON-RPC transport
+│       └── telegram/             # 99 Telegram MCP tools
 ├── pages/                         # Route components
 │   ├── Welcome.tsx               # Landing page
 │   ├── Login.tsx                 # Authentication
@@ -56,11 +66,18 @@ src/
 │   ├── ProtectedRoute.tsx        # Auth-gated routes
 │   ├── PublicRoute.tsx           # Guest-only routes
 │   ├── ConnectionIndicator.tsx   # Status indicators
+│   ├── SkillsGrid.tsx            # Skills catalog and management
+│   ├── DownloadScreen.tsx        # Multi-platform download system
 │   └── settings/                 # Settings modal system
 │       ├── SettingsModal.tsx     # Main container with routing
 │       ├── SettingsLayout.tsx    # Modal wrapper with portal
 │       ├── SettingsHome.tsx      # Main menu with profile
-│       ├── panels/ConnectionsPanel.tsx # Connection management
+│       ├── panels/               # Settings panels
+│       │   ├── ConnectionsPanel.tsx # Connection management
+│       │   ├── TeamPanel.tsx     # Team management
+│       │   ├── TeamMembersPanel.tsx # Member roles & permissions
+│       │   ├── TeamInvitesPanel.tsx # Invitation system
+│       │   └── BillingPanel.tsx  # Premium features and billing
 │       ├── components/           # Menu items, header, back button
 │       └── hooks/                # Navigation and animation hooks
 └── utils/                         # Utilities and config
@@ -70,15 +87,31 @@ src/
 
 ### Recent Architecture Changes
 
-- **Settings Modal System**: Complete URL-based modal system with clean white design
-  - Modal routes: `/settings`, `/settings/connections` overlaying existing content
-  - Component structure: SettingsModal, SettingsLayout, ConnectionsPanel, hooks
-  - Redux integration: auth, user, telegram state for profile and connection management
-- **HashRouter**: Switched from BrowserRouter for better desktop app compatibility
-- **165+ TypeScript files**: Comprehensive component library with settings modal system
-- **Provider chain**: Redux → PersistGate → Socket → Telegram → HashRouter → Routes
-- **MCP Integration**: 99 Telegram tools for AI-driven interactions
-- **Deep Link Auth**: Web-to-desktop handoff using `alphahuman://` scheme
+- **Code Quality Infrastructure**: ESLint, Prettier, and Husky hooks for automated quality checks
+  - Pre-commit/pre-push hooks with TypeScript compilation validation
+  - Type-only imports standardization and consolidated import statements
+  - GitHub workflow integration with quality gate checks
+- **Advanced AI System**: Comprehensive artificial intelligence platform
+  - Memory management with encryption, chunking, and hybrid search capabilities
+  - Constitution-based AI behavior with GitHub integration for rule updates
+  - Entity graph migration to Neo4j backend for knowledge relationships
+  - Session capture, transcript management, and tool compression
+- **Skills Management Platform**: Dynamic skill loading and management system
+  - SkillsGrid with setup status indicators and management controls
+  - GitHub sync integration for skills catalog updates
+  - Conditional rendering (setup wizard vs management panel)
+  - Skills submodule with background update synchronization
+- **Team Collaboration Features**: Multi-user workspace management system
+  - TeamPanel, TeamMembersPanel, TeamInvitesPanel for comprehensive team management
+  - Role-based permissions and invitation system with Redux state management
+  - Team API integration with CRUD operations and member management
+- **Enhanced Settings System**: Expanded modal system with multiple management panels
+  - Team management, billing, privacy, and advanced configuration panels
+  - Enhanced URL routing for deep-linking to specific settings sections
+  - Redux integration across auth, user, telegram, ai, skills, and team slices
+- **200+ TypeScript files**: Comprehensive component and library ecosystem
+- **Provider chain**: Redux → PersistGate → Socket → Telegram → AI → Skills → HashRouter → Routes
+- **Enhanced CI/CD**: Python sidecar support, XGH_TOKEN authentication, GitHub Pages deployment
 
 ## React with Tauri
 
