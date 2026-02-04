@@ -257,10 +257,10 @@ jobs:
             --data-binary "@${{ steps.find-aab.outputs.path }}" \
             "https://uploads.github.com/repos/$PUBLISH_REPO/releases/$RELEASE_ID/assets?name=${{ steps.find-aab.outputs.filename }}"
 
-      # Requires secret GOOGLE_PLAY_SERVICE_ACCOUNT_JSON (full JSON key from Play Console API access)
+      # Requires secret GOOGLE_PLAY_SERVICE_ACCOUNT_JSON and vars.GOOGLE_PLAY_UPLOAD_ENABLED = 'true'
       # Track: internal | alpha | beta | production (use vars.GOOGLE_PLAY_TRACK to override)
       - name: Upload AAB to Google Play
-        if: needs.get-version.outputs.should-publish == 'true' && ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        if: needs.get-version.outputs.should-publish == 'true' && vars.GOOGLE_PLAY_UPLOAD_ENABLED == 'true'
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
