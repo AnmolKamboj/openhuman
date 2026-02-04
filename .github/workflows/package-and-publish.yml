@@ -327,7 +327,7 @@ jobs:
 
       # Re-sign the app after modifying the bundle (required for notarization)
       - name: Re-sign macOS app after TDLib bundling
-        if: matrix.settings.platform == 'macos-latest' && secrets.APPLE_SIGNING_IDENTITY != ''
+        if: matrix.settings.platform == 'macos-latest' && ${{ secrets.APPLE_SIGNING_IDENTITY }} != ''
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
