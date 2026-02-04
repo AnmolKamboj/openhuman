@@ -327,16 +327,23 @@ jobs:
 
       # Re-sign the app after modifying the bundle (required for notarization)
       - name: Re-sign macOS app after TDLib bundling
-        if: matrix.settings.platform == 'macos-latest' && ${{ secrets.APPLE_SIGNING_IDENTITY }} != ''
+        if: matrix.settings.platform == 'macos-latest'
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "No signing identity provided, skipping re-sign"
+            exit 0
+          fi
           APP_BUNDLE=$(find src-tauri/target/release/bundle/macos -name "*.app" -type d | head -1)
           if [ -n "$APP_BUNDLE" ]; then
             echo "Re-signing app bundle: $APP_BUNDLE"
-            # Sign the TDLib dylib
-            codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
-              "$APP_BUNDLE/Contents/Frameworks/libtdjson.1.8.29.dylib" || true
+            # Sign the bundled dylibs
+            for dylib in "$APP_BUNDLE/Contents/Frameworks/"*.dylib; do
+              if [ -f "$dylib" ]; then
+                codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" "$dylib" || true
+              fi
+            done
             # Re-sign the entire app bundle
             codesign --force --deep --options runtime --sign "$APPLE_SIGNING_IDENTITY" "$APP_BUNDLE" || true
             echo "App re-signed successfully"
