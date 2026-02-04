@@ -7,14 +7,14 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish to release (requires main branch)'
+        description: "Publish to release (requires main branch)"
         type: boolean
         default: false
         push:
           branches:
             - develop
         workflow_run:
-          workflows: ['Version Bump']
+          workflows: ["Version Bump"]
           types:
             - completed
           branches:
@@ -129,7 +129,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24.x
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -139,8 +139,8 @@ jobs:
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          distribution: "temurin"
+          java-version: "17"
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -260,7 +260,7 @@ jobs:
       # Requires secret GOOGLE_PLAY_SERVICE_ACCOUNT_JSON (full JSON key from Play Console API access)
       # Track: internal | alpha | beta | production (use vars.GOOGLE_PLAY_TRACK to override)
       - name: Upload AAB to Google Play
-        if: needs.get-version.outputs.should-publish == 'true' && secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != ''
+        if: needs.get-version.outputs.should-publish == 'true' && ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }} != ''
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
