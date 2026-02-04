@@ -107,20 +107,17 @@ object MediaPipeLlmBridge {
             currentModelPath = null
 
             // Build options
-            // Note: Temperature is not available in MediaPipe LLM Inference API 0.10.x
-            // Only setModelPath, setMaxTokens, setMaxTopK, and setRandomSeed are supported
+            // Note: MediaPipe LLM Inference API 0.10.x only supports:
+            // setModelPath, setMaxTokens, setMaxTopK
+            // Temperature and randomSeed are not available in this API version
             val optionsBuilder = LlmInferenceOptions.builder()
                 .setModelPath(modelPath)
                 .setMaxTokens(maxTokens)
                 .setMaxTopK(topK)
 
-            if (randomSeed > 0) {
-                optionsBuilder.setRandomSeed(randomSeed)
-            }
-
-            // Temperature parameter is accepted but not used in current API version
+            // Temperature and randomSeed parameters are accepted but not used
             @Suppress("UNUSED_VARIABLE")
-            val unusedTemp = temperature
+            val unusedParams = listOf(temperature, randomSeed)
 
             val options = optionsBuilder.build()
 
