@@ -225,8 +225,6 @@ pub fn run() {
                 .with_max_level(log::LevelFilter::Debug)
                 .with_tag("AlphaHuman"),
         );
-        // Ensure vendored OpenSSL is initialized before any TLS usage
-        openssl::init();
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -468,6 +466,10 @@ pub fn run() {
                     model_generate,
                     model_summarize,
                     model_unload,
+                    // Android MediaPipe LLM commands
+                    model_get_recommended,
+                    model_list_downloaded,
+                    model_load_path,
                 ]
             }
             #[cfg(not(desktop))]
@@ -549,13 +551,17 @@ pub fn run() {
                     tdlib_receive,
                     tdlib_destroy,
                     tdlib_is_available,
-                    // Model commands (local LLM)
+                    // Model commands (local LLM / MediaPipe)
                     model_is_available,
                     model_get_status,
                     model_ensure_loaded,
                     model_generate,
                     model_summarize,
                     model_unload,
+                    // Android MediaPipe LLM commands
+                    model_get_recommended,
+                    model_list_downloaded,
+                    model_load_path,
                 ]
             }
         })
