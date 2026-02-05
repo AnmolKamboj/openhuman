@@ -408,25 +408,28 @@ jobs:
           TARGET="${{ matrix.settings.target }}"
           echo "Recreating DMG for target: $TARGET"
 
-          # Find the app bundle
+          # Tauri v2 puts .app in bundle/macos/ and .dmg in bundle/dmg/
           if [ -n "$TARGET" ]; then
-            BUNDLE_DIR="src-tauri/target/$TARGET/release/bundle/macos"
+            BASE_BUNDLE_DIR="src-tauri/target/$TARGET/release/bundle"
           else
-            BUNDLE_DIR="src-tauri/target/release/bundle/macos"
+            BASE_BUNDLE_DIR="src-tauri/target/release/bundle"
           fi
 
-          APP_BUNDLE=$(find "$BUNDLE_DIR" -name "*.app" -type d 2>/dev/null | head -1)
+          MACOS_DIR="$BASE_BUNDLE_DIR/macos"
+          DMG_DIR="$BASE_BUNDLE_DIR/dmg"
+
+          APP_BUNDLE=$(find "$MACOS_DIR" -name "*.app" -type d 2>/dev/null | head -1)
           if [ -z "$APP_BUNDLE" ]; then
-            echo "Error: No app bundle found"
+            echo "Error: No app bundle found in $MACOS_DIR"
             exit 1
           fi
 
           APP_NAME=$(basename "$APP_BUNDLE" .app)
 
-          # Find the original DMG
-          ORIGINAL_DMG=$(find "$BUNDLE_DIR" -name "*.dmg" -type f 2>/dev/null | head -1)
+          # Find the original DMG in bundle/dmg/ (NOT bundle/macos/)
+          ORIGINAL_DMG=$(find "$DMG_DIR" -name "*.dmg" -type f 2>/dev/null | head -1)
           if [ -z "$ORIGINAL_DMG" ]; then
-            echo "Warning: No original DMG found, skipping DMG recreation"
+            echo "Warning: No original DMG found in $DMG_DIR, skipping DMG recreation"
             exit 0
           fi
 
@@ -439,10 +442,10 @@ jobs:
 
           # Create new DMG with the updated app bundle
           DMG_NAME=$(basename "$ORIGINAL_DMG")
-          hdiutil create -volname "$APP_NAME" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$BUNDLE_DIR/$DMG_NAME"
+          hdiutil create -volname "$APP_NAME" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$DMG_DIR/$DMG_NAME"
 
-          echo "DMG recreated successfully: $BUNDLE_DIR/$DMG_NAME"
-          ls -la "$BUNDLE_DIR/$DMG_NAME"
+          echo "DMG recreated successfully: $DMG_DIR/$DMG_NAME"
+          ls -la "$DMG_DIR/$DMG_NAME"
 
       - name: Get file info
         id: file-info
