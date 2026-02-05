@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use super::types::{check_telegram_skill, js_err, SkillContext};
 
-pub fn register(ctx: &Ctx<'_>, ops: &Object<'_>, skill_context: SkillContext) -> rquickjs::Result<()> {
+pub fn register<'js>(ctx: &Ctx<'js>, ops: &Object<'js>, skill_context: SkillContext) -> rquickjs::Result<()> {
     {
         let sc = skill_context.clone();
         ops.set("tdlib_is_available", Function::new(ctx.clone(),

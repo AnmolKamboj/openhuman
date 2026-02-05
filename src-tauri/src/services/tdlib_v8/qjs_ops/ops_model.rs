@@ -4,7 +4,7 @@ use rquickjs::{function::Async, Ctx, Function, Object};
 
 use super::types::js_err;
 
-pub fn register(ctx: &Ctx<'_>, ops: &Object<'_>) -> rquickjs::Result<()> {
+pub fn register<'js>(ctx: &Ctx<'js>, ops: &Object<'js>) -> rquickjs::Result<()> {
     ops.set("model_is_available", Function::new(ctx.clone(), || -> bool { false }))?;
 
     ops.set("model_get_status", Function::new(ctx.clone(), || -> rquickjs::Result<String> {

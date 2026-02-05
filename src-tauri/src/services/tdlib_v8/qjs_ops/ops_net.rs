@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use super::types::{js_err, WebSocketConnection, WebSocketState};
 
-pub fn register(ctx: &Ctx<'_>, ops: &Object<'_>, ws_state: Arc<RwLock<WebSocketState>>) -> rquickjs::Result<()> {
+pub fn register<'js>(ctx: &Ctx<'js>, ops: &Object<'js>, ws_state: Arc<RwLock<WebSocketState>>) -> rquickjs::Result<()> {
     // ========================================================================
     // Fetch (1) - ASYNC
     // ========================================================================

@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use super::types::{TimerEntry, TimerState, ALLOWED_ENV_VARS};
 
-pub fn register(ctx: &Ctx<'_>, ops: &Object<'_>, timer_state: Arc<RwLock<TimerState>>) -> rquickjs::Result<()> {
+pub fn register<'js>(ctx: &Ctx<'js>, ops: &Object<'js>, timer_state: Arc<RwLock<TimerState>>) -> rquickjs::Result<()> {
     // ========================================================================
     // Console (3)
     // ========================================================================

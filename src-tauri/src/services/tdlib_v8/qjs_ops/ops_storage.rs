@@ -5,7 +5,7 @@ use rquickjs::{Ctx, Function, Object};
 use super::types::{js_err, SkillContext};
 use crate::services::tdlib_v8::storage::IdbStorage;
 
-pub fn register(ctx: &Ctx<'_>, ops: &Object<'_>, storage: IdbStorage, skill_context: SkillContext) -> rquickjs::Result<()> {
+pub fn register<'js>(ctx: &Ctx<'js>, ops: &Object<'js>, storage: IdbStorage, skill_context: SkillContext) -> rquickjs::Result<()> {
     // ========================================================================
     // IndexedDB (11) - all sync
     // ========================================================================

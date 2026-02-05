@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use super::types::{js_err, SkillContext, SkillState};
 
-pub fn register(
-    ctx: &Ctx<'_>,
-    ops: &Object<'_>,
+pub fn register<'js>(
+    ctx: &Ctx<'js>,
+    ops: &Object<'js>,
     skill_state: Arc<RwLock<SkillState>>,
     skill_context: SkillContext,
 ) -> rquickjs::Result<()> {
