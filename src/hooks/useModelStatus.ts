@@ -8,6 +8,7 @@ export interface ModelStatus {
   available: boolean;
   loaded: boolean;
   loading: boolean;
+  downloaded: boolean;
   downloadProgress: number | null;
   error: string | null;
   modelPath: string | null;
@@ -17,6 +18,7 @@ const DEFAULT_STATUS: ModelStatus = {
   available: false,
   loaded: false,
   loading: false,
+  downloaded: false,
   downloadProgress: null,
   error: null,
   modelPath: null,
@@ -56,6 +58,25 @@ export const useModelStatus = (pollInterval = 1000) => {
       return false;
     }
   }, []);
+
+  // Start downloading the model without loading into memory
+  const startDownload = useCallback(async () => {
+    try {
+      setStatus(prev => ({ ...prev, loading: true, error: null }));
+      setIsPolling(true);
+      await invoke('model_start_download');
+      await fetchStatus();
+      setIsPolling(false);
+    } catch (error) {
+      console.error('[useModelStatus] Failed to start download:', error);
+      setStatus(prev => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to download model',
+      }));
+      setIsPolling(false);
+    }
+  }, [fetchStatus]);
 
   // Start loading/downloading the model
   const ensureLoaded = useCallback(async () => {
@@ -115,8 +136,10 @@ export const useModelStatus = (pollInterval = 1000) => {
     isAvailable: status.available,
     isLoaded: status.loaded,
     isLoading: status.loading,
+    isDownloaded: status.downloaded,
     downloadProgress: status.downloadProgress,
     error: status.error,
+    startDownload,
     ensureLoaded,
     unload,
     refresh: fetchStatus,
