@@ -30,7 +30,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # HTTP client (rustls for cross-platform TLS support including Android)
-reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls", "stream"] }
 
 # Async runtime
 tokio = { version = "1", features = ["full", "sync"] }
@@ -74,13 +74,8 @@ chrono = { version = "0.4", features = ["serde"] }
 # Cron expression parsing for scheduled skill tasks
 cron = "0.12"
 
-# Persistent Socket.io client (Rust-native, survives app backgrounding)
-# Note: Using default native-tls on desktop, but we'll handle Android separately
+# Stream/Sink utilities for WebSocket and HTTP streaming
 futures-util = "0.3"
-
-# Desktop/iOS use native-tls for Socket.io
-[target.'cfg(not(target_os = "android"))'.dependencies]
-tf-rust-socketio = { version = "0.7", features = ["async"] }
 
 # Android uses a simpler approach - no persistent Socket.io (use web socket from frontend)
 [target.'cfg(target_os = "android")'.dependencies]
