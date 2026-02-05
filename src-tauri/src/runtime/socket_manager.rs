@@ -127,7 +127,12 @@ impl SocketManager {
         // Disconnect existing connection first
         self.disconnect().await?;
 
-        log::info!("[socket-mgr] Connecting to {}", url);
+        // Convert https:// → wss:// and http:// → ws:// for direct WebSocket
+        let ws_url = url
+            .replace("https://", "wss://")
+            .replace("http://", "ws://");
+
+        log::info!("[socket-mgr] Connecting to {} (ws: {})", url, ws_url);
 
         // Update status
         *self.shared.status.write() = ConnectionStatus::Connecting;
@@ -144,12 +149,15 @@ impl SocketManager {
         let s_tool_call = Arc::clone(&self.shared);
         let s_any = Arc::clone(&self.shared);
 
-        let client = ClientBuilder::new(url)
+        let client = ClientBuilder::new(&ws_url)
             .namespace("/")
             .auth(json!({"token": token}))
+            // Pass JWT in opening headers so the server can authenticate
+            // the engine.io handshake before the Socket.io CONNECT packet
+            .opening_header("Authorization", format!("Bearer {}", token))
             .reconnect(true)
             .max_reconnect_attempts(0) // unlimited
-            .transport_type(rust_socketio::TransportType::WebsocketUpgrade)
+            .transport_type(rust_socketio::TransportType::Websocket)
             // --- Connection established ---
             .on("connect", move |_payload, _client: Client| {
                 let shared = Arc::clone(&s_connect);
@@ -265,8 +273,11 @@ impl SocketManager {
             .connect()
             .await
             .map_err(|e| {
-                log::error!("[socket-mgr] Connection error: {e}");
-                format!("Socket connection failed: {e}")
+                // Use {:?} to get the full error chain — Display loses inner detail
+                log::error!("[socket-mgr] Connection error: {e:?}");
+                *self.shared.status.write() = ConnectionStatus::Disconnected;
+                Self::emit_state_change(&self.shared);
+                format!("Socket connection failed: {e:?}")
             })?;
 
         log::info!("[socket-mgr] ClientBuilder.connect() returned successfully");
@@ -304,7 +315,12 @@ impl SocketManager {
         // Disconnect existing connection first
         self.disconnect().await?;
 
-        log::info!("[socket-mgr] Connecting to {} (iOS)", url);
+        // Convert https:// → wss:// and http:// → ws:// for direct WebSocket
+        let ws_url = url
+            .replace("https://", "wss://")
+            .replace("http://", "ws://");
+
+        log::info!("[socket-mgr] Connecting to {} (ws: {}, iOS)", url, ws_url);
 
         // Update status
         *self.shared.status.write() = ConnectionStatus::Connecting;
@@ -318,12 +334,13 @@ impl SocketManager {
         let s_error = Arc::clone(&self.shared);
         let s_any = Arc::clone(&self.shared);
 
-        let client = ClientBuilder::new(url)
+        let client = ClientBuilder::new(&ws_url)
             .namespace("/")
             .auth(json!({"token": token}))
+            .opening_header("Authorization", format!("Bearer {}", token))
             .reconnect(true)
             .max_reconnect_attempts(0) // unlimited
-            .transport_type(rust_socketio::TransportType::WebsocketUpgrade)
+            .transport_type(rust_socketio::TransportType::Websocket)
             // --- Connection established ---
             .on("connect", move |_payload, _client: Client| {
                 let shared = Arc::clone(&s_connect);
@@ -413,8 +430,10 @@ impl SocketManager {
             .connect()
             .await
             .map_err(|e| {
-                log::error!("[socket-mgr] Connection error: {e}");
-                format!("Socket connection failed: {e}")
+                log::error!("[socket-mgr] Connection error: {e:?}");
+                *self.shared.status.write() = ConnectionStatus::Disconnected;
+                Self::emit_state_change(&self.shared);
+                format!("Socket connection failed: {e:?}")
             })?;
 
         log::info!("[socket-mgr] ClientBuilder.connect() returned successfully");
