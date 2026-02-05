@@ -126,7 +126,11 @@ else
         -DTD_ENABLE_JNI=OFF
 
     cmake --build . --target tdjson -j"$(sysctl -n hw.ncpu)"
-    cmake --install .
+
+    # cmake --install may fail on missing static lib targets we don't need.
+    # Just install tdjson manually.
+    mkdir -p "$INSTALL_DIR/lib"
+    cp -a libtdjson*.dylib "$INSTALL_DIR/lib/"
 
     echo "==> TDLib installed to ${INSTALL_DIR}"
 fi

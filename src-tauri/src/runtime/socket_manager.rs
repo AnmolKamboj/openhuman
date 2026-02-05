@@ -178,7 +178,7 @@ impl SocketManager {
             .opening_header("Authorization", format!("Bearer {}", token))
             .reconnect(true)
             .max_reconnect_attempts(0) // unlimited
-            .transport_type(tf_rust_socketio::TransportType::Any)
+            .transport_type(tf_rust_socketio::TransportType::Websocket)
             // --- Connection established ---
             .on("connect", move |_payload, _client: Client| {
                 let shared = Arc::clone(&s_connect);
@@ -201,7 +201,7 @@ impl SocketManager {
                         Self::emit_state_change(&shared);
                     }
                     // Try to extract socket_id from the message payload
-                    if let Payload::Text(values) = &payload {
+                    if let Payload::Text(values, _) = &payload {
                         if let Some(val) = values.first() {
                             if let Some(sid) = val.get("sid").and_then(|v| v.as_str()) {
                                 *shared.socket_id.write() = Some(sid.to_string());
@@ -377,7 +377,7 @@ impl SocketManager {
                         *shared.status.write() = ConnectionStatus::Connected;
                         Self::emit_state_change(&shared);
                     }
-                    if let Payload::Text(values) = &payload {
+                    if let Payload::Text(values, _) = &payload {
                         if let Some(val) = values.first() {
                             if let Some(sid) = val.get("sid").and_then(|v| v.as_str()) {
                                 *shared.socket_id.write() = Some(sid.to_string());
@@ -695,7 +695,7 @@ impl Default for SocketManager {
 #[cfg(not(target_os = "android"))]
 fn extract_json(payload: &Payload) -> Option<serde_json::Value> {
     match payload {
-        Payload::Text(values) => values.first().cloned(),
+        Payload::Text(values, _) => values.first().cloned(),
         #[allow(unreachable_patterns)]
         _ => None,
     }
@@ -705,7 +705,7 @@ fn extract_json(payload: &Payload) -> Option<serde_json::Value> {
 #[cfg(not(target_os = "android"))]
 fn extract_text(payload: &Payload) -> String {
     match payload {
-        Payload::Text(values) => values
+        Payload::Text(values, _) => values
             .first()
             .map(|v| v.to_string())
             .unwrap_or_else(|| "unknown".to_string()),
