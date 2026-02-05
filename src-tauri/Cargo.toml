@@ -91,11 +91,16 @@ android_logger = "0.14"
 keyring = "3"
 tauri-plugin-autostart = "2"
 tauri-plugin-notification = "2"
-# V8 JavaScript runtime (via deno_core - powers Deno)
+
+# QuickJS JavaScript runtime (via quickjs-rs)
 # Only available on desktop - prebuilt binaries don't exist for Android/iOS
 rquickjs = { version = "0.11", features = ["futures", "macro", "loader", "parallel"] }
-# TDLib Rust bindings (desktop only - downloads prebuilt TDLib library)
+
+# TDLib Rust bindings (desktop only - downloads prebuilt TDLib for linking)
+# On macOS, the bundled dylib is replaced with a source-built version (see build.rs)
+# to ensure macOS 10.15 deployment target compatibility.
 tdlib-rs = { version = "1.2", features = ["download-tdlib"] }
+
 # Local LLM inference - desktop only (llama.cpp requires native C++ compilation)
 # Disable default features (including openmp) to avoid cross-compilation issues
 # on macOS where Homebrew installs ARM64-only OpenMP libraries
@@ -103,7 +108,7 @@ llama-cpp-2 = { version = "0.1", default-features = false }
 encoding_rs = "0.8"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.build-dependencies]
-# TDLib build configuration
+# TDLib build configuration (download-tdlib for all desktop platforms)
 tdlib-rs = { version = "1.2", features = ["download-tdlib"] }
 
 [features]
