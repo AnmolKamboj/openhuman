@@ -10,9 +10,9 @@ on:
         description: "Publish to release (requires main branch)"
         type: boolean
         default: false
-        push:
-          branches:
-            - develop
+  push:
+    branches:
+      - develop
   workflow_run:
     workflows: ["Version Bump"]
     types:
