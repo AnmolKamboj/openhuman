@@ -8,3 +8,7 @@
 
 # TDLib and dependencies copied by build.rs for macOS bundling
 /libraries/
+
+# TDLib built from source (see scripts/build-tdlib-from-source.sh)
+/tdlib-local/
+/tdlib-build/

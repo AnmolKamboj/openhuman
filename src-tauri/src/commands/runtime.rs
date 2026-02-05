@@ -386,6 +386,7 @@ pub async fn runtime_socket_connect(
     url: Option<String>,
 ) -> Result<(), String> {
     let backend_url = url.unwrap_or_else(get_backend_url);
+    log::info!("[socket-cmd] runtime_socket_connect to {}", backend_url);
     socket_mgr.connect(&backend_url, &token).await
 }
 

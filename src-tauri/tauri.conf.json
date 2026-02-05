@@ -44,9 +44,7 @@
         "background": "./images/background-dmg.png"
       },
       "frameworks": [
-        "./libraries/libtdjson.1.8.29.dylib",
-        "./libraries/libssl.3.dylib",
-        "./libraries/libcrypto.3.dylib"
+        "./libraries/libtdjson.1.8.29.dylib"
       ]
     }
   },
