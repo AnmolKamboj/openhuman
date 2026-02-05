@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback } from 'react';
 
 import DownloadScreen from '../components/DownloadScreen';
 import TelegramLoginButton from '../components/TelegramLoginButton';
@@ -18,17 +18,8 @@ const Welcome = ({ isWeb }: WelcomeProps) => {
 
   const { isAvailable, isDownloaded, isLoading, downloadProgress, error, startDownload } =
     useModelStatus();
-  const downloadTriggered = useRef(false);
-
-  // Auto-trigger model download on desktop
-  useEffect(() => {
-    if (isWeb || !isAvailable || isDownloaded || isLoading || downloadTriggered.current) return;
-    downloadTriggered.current = true;
-    startDownload();
-  }, [isWeb, isAvailable, isDownloaded, isLoading, startDownload]);
 
   const handleRetry = useCallback(() => {
-    downloadTriggered.current = false;
     startDownload();
   }, [startDownload]);
 
