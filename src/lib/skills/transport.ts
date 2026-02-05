@@ -10,6 +10,8 @@
  * no longer needs to handle reverse RPC from the skill.
  */
 
+import { invoke } from '@tauri-apps/api/core';
+
 export type ReverseRpcHandler = (
   method: string,
   params: Record<string, unknown>
@@ -58,7 +60,6 @@ export class SkillTransport {
       hasParams: params !== undefined,
     });
 
-    const { invoke } = await import("@tauri-apps/api/core");
     const result = await invoke<T>("runtime_rpc", {
       skillId: this.skillId,
       method,
@@ -89,14 +90,12 @@ export class SkillTransport {
     });
 
     // Fire and forget
-    import("@tauri-apps/api/core").then(({ invoke }) => {
-      invoke("runtime_rpc", {
-        skillId: this.skillId,
-        method,
-        params: params ?? {},
-      }).catch((err: unknown) => {
-        console.error("[skill-transport] Notification error:", err);
-      });
+    invoke("runtime_rpc", {
+      skillId: this.skillId,
+      method,
+      params: params ?? {},
+    }).catch((err: unknown) => {
+      console.error("[skill-transport] Notification error:", err);
     });
   }
 
@@ -107,7 +106,6 @@ export class SkillTransport {
   async kill(): Promise<void> {
     if (this.skillId && this._started) {
       try {
-        const { invoke } = await import("@tauri-apps/api/core");
         await invoke("runtime_stop_skill", { skillId: this.skillId });
       } catch {
         // Skill may already be stopped

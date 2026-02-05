@@ -1,3 +1,4 @@
+import { platform } from '@tauri-apps/plugin-os';
 import { useEffect, useState } from 'react';
 
 import { useModelStatus } from '../hooks/useModelStatus';
@@ -19,7 +20,6 @@ const ModelDownloadProgress = ({
     // Detect mobile platform
     const detectMobile = async () => {
       try {
-        const { platform } = await import('@tauri-apps/plugin-os');
         const currentPlatform = await platform();
         setIsMobile(currentPlatform === 'android' || currentPlatform === 'ios');
       } catch {

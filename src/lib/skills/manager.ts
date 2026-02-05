@@ -5,6 +5,8 @@
  * and tool invocation. Dispatches status changes to Redux.
  */
 
+import { invoke } from "@tauri-apps/api/core";
+
 import { SkillRuntime } from "./runtime";
 import type {
   SkillManifest,
@@ -367,7 +369,6 @@ class SkillManager {
       case "data/read": {
         const filename = params.filename as string;
         try {
-          const { invoke } = await import("@tauri-apps/api/core");
           const content = await invoke<string>("runtime_skill_data_read", {
             skillId,
             filename,
@@ -382,7 +383,6 @@ class SkillManager {
         const filename = params.filename as string;
         const content = params.content as string;
         try {
-          const { invoke } = await import("@tauri-apps/api/core");
           await invoke("runtime_skill_data_write", {
             skillId,
             filename,

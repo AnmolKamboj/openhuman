@@ -1,3 +1,5 @@
+import { invoke } from '@tauri-apps/api/core';
+import { platform } from '@tauri-apps/plugin-os';
 import { useEffect, useMemo, useState } from 'react';
 
 import GoogleIcon from '../assets/icons/GoogleIcon';
@@ -292,7 +294,6 @@ export default function SkillsGrid() {
     // Detect mobile platform
     const detectMobile = async () => {
       try {
-        const { platform } = await import('@tauri-apps/plugin-os');
         const currentPlatform = await platform();
         setIsMobile(currentPlatform === 'android' || currentPlatform === 'ios');
       } catch {
@@ -305,7 +306,6 @@ export default function SkillsGrid() {
     // Load skills from the V8 runtime engine.
     const loadSkills = async () => {
       try {
-        const { invoke } = await import('@tauri-apps/api/core');
         const manifests = await invoke<Array<Record<string, unknown>>>('runtime_discover_skills');
 
         console.log('manifests', manifests);

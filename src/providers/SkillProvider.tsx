@@ -7,6 +7,7 @@
  * The Rust V8 engine handles skill discovery and auto-start independently.
  * This provider bridges the Rust engine state with the frontend Redux store.
  */
+import { invoke } from '@tauri-apps/api/core';
 import { type ReactNode, useEffect, useRef } from 'react';
 
 import { skillManager } from '../lib/skills/manager';
@@ -19,7 +20,6 @@ import { DEV_AUTO_LOAD_SKILL } from '../utils/config';
 // ---------------------------------------------------------------------------
 
 async function discoverSkills(): Promise<SkillManifest[]> {
-  const { invoke } = await import('@tauri-apps/api/core');
   const raw = await invoke<Array<Record<string, unknown>>>('runtime_discover_skills');
   // Map the V8 manifest format to SkillManifest
   return raw.map(m => ({
