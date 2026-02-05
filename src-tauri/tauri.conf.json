@@ -41,7 +41,7 @@
     "macOS": {
       "minimumSystemVersion": "10.15",
       "dmg": {
-        "background": "./images/background-dmg.svg"
+        "background": "./images/background-dmg.png"
       },
       "frameworks": [
         "./libraries/libtdjson.1.8.29.dylib",

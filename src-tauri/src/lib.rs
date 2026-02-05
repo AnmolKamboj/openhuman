@@ -574,14 +574,32 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            // Handle macOS Dock icon click (reopen event)
-            #[cfg(target_os = "macos")]
-            if let RunEvent::Reopen { .. } = event {
-                show_main_window(app_handle);
-            }
+            match event {
+                // Handle macOS Dock icon click (reopen event)
+                #[cfg(target_os = "macos")]
+                RunEvent::Reopen { .. } => {
+                    show_main_window(app_handle);
+                }
 
-            // Suppress unused variable warnings on other platforms
-            #[cfg(not(target_os = "macos"))]
-            let _ = (app_handle, event);
+                // Gracefully shut down TDLib before process exit to prevent
+                // use-after-free crash in the blocking receive loop.
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                RunEvent::Exit => {
+                    log::info!("[app] Exit event received, shutting down TDLib");
+                    use crate::services::tdlib::TDLIB_MANAGER;
+                    // Signal the TDLib worker to stop. The blocking receive() call
+                    // has a 2-second internal timeout, so we must wait long enough
+                    // for any in-flight call to finish before process teardown runs
+                    // C++ destructors on TDLib's internal state.
+                    TDLIB_MANAGER.signal_shutdown();
+                    std::thread::sleep(std::time::Duration::from_millis(2500));
+                    log::info!("[app] TDLib shutdown wait complete");
+                    let _ = app_handle;
+                }
+
+                _ => {
+                    let _ = app_handle;
+                }
+            }
         });
 }
