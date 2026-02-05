@@ -135,12 +135,30 @@ impl V8SkillInstance {
                 }
             };
 
-            // Create V8 runtime
+            // Create V8 runtime with memory limits to prevent OOM crashes.
+            // Each skill gets its own V8 isolate; without limits V8 tries to reserve
+            // ~1.4 GB per isolate which can exhaust memory when multiple skills start.
             let extension = ops::build_extension(storage.clone());
-            let mut runtime = JsRuntime::new(RuntimeOptions {
+            let create_params = v8::CreateParams::default()
+                .heap_limits(0, config.memory_limit);
+            let mut runtime = match JsRuntime::try_new(RuntimeOptions {
                 extensions: vec![extension],
+                create_params: Some(create_params),
                 ..Default::default()
-            });
+            }) {
+                Ok(rt) => rt,
+                Err(e) => {
+                    let mut s = state.write();
+                    s.status = SkillStatus::Error;
+                    s.error = Some(format!("Failed to create V8 runtime: {e}"));
+                    log::error!(
+                        "[skill:{}] Failed to create V8 runtime (memory_limit={}): {e}",
+                        config.skill_id,
+                        config.memory_limit
+                    );
+                    return;
+                }
+            };
 
             // Set skill context in op state
             {
