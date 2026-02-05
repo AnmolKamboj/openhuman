@@ -17,14 +17,10 @@ const PublicRoute = ({ children, redirectTo }: PublicRouteProps) => {
   const token = useAppSelector(state => state.auth.token);
   const isOnboarded = useAppSelector(selectIsOnboarded);
 
-  // If user is logged in and onboarded, redirect to home
-  if (token && isOnboarded) {
+  // If user is logged in, always go to home.
+  // Home itself will redirect to onboarding if needed.
+  if (token) {
     return <Navigate to={redirectTo || '/home'} replace />;
-  }
-
-  // If user is logged in but not onboarded, redirect to onboarding
-  if (token && !isOnboarded) {
-    return <Navigate to="/onboarding" replace />;
   }
 
   // User is not logged in, show public route
