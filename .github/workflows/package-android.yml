@@ -195,8 +195,6 @@ jobs:
           VITE_BACKEND_URL: ${{ vars.VITE_BACKEND_URL }}
           VITE_TELEGRAM_BOT_USERNAME: ${{ secrets.VITE_TELEGRAM_BOT_USERNAME }}
           VITE_TELEGRAM_BOT_ID: ${{ secrets.VITE_TELEGRAM_BOT_ID }}
-          VITE_TELEGRAM_API_ID: ${{ secrets.VITE_TELEGRAM_API_ID }}
-          VITE_TELEGRAM_API_HASH: ${{ secrets.VITE_TELEGRAM_API_HASH }}
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           VITE_SKILLS_GITHUB_REPO: ${{ vars.VITE_SKILLS_GITHUB_REPO }}
           VITE_DEBUG: ${{ vars.VITE_DEBUG }}

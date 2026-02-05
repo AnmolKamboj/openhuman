@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   workflow_run:
-    workflows: ['Version Bump']
+    workflows: ["Version Bump"]
     types:
       - completed
     branches:
@@ -32,7 +32,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20.x
-          cache: 'yarn'
+          cache: "yarn"
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
@@ -44,8 +44,6 @@ jobs:
           VITE_BACKEND_URL: ${{ vars.VITE_BACKEND_URL }}
           VITE_TELEGRAM_BOT_USERNAME: ${{ secrets.VITE_TELEGRAM_BOT_USERNAME }}
           VITE_TELEGRAM_BOT_ID: ${{ secrets.VITE_TELEGRAM_BOT_ID }}
-          VITE_TELEGRAM_API_ID: ${{ secrets.VITE_TELEGRAM_API_ID }}
-          VITE_TELEGRAM_API_HASH: ${{ secrets.VITE_TELEGRAM_API_HASH }}
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
           VITE_SKILLS_GITHUB_REPO: ${{ vars.VITE_SKILLS_GITHUB_REPO }}
           VITE_SKILLS_GITHUB_TOKEN: ${{ secrets.VITE_SKILLS_GITHUB_TOKEN }}
@@ -58,11 +56,11 @@ jobs:
           external_repository: alphahumanxyz/alphahuman
           publish_dir: ./dist
           publish_branch: gh-pages
-          commit_message: 'chore: deploy to gh-pages [skip ci]'
-          user_name: 'github-actions[bot]'
+          commit_message: "chore: deploy to gh-pages [skip ci]"
+          user_name: "github-actions[bot]"
           cname: app.alphahuman.xyz
           force_orphan: true
-          user_email: 'github-actions[bot]@users.noreply.github.com'
+          user_email: "github-actions[bot]@users.noreply.github.com"
 
       - name: Update GH repo
         uses: peaceiris/actions-gh-pages@v4
@@ -71,6 +69,6 @@ jobs:
           external_repository: alphahumanxyz/alphahuman
           publish_dir: ./publish
           publish_branch: main
-          user_name: 'github-actions[bot]'
-          user_email: 'github-actions[bot]@users.noreply.github.com'
-          commit_message: 'chore: update main branch [skip ci]'
+          user_name: "github-actions[bot]"
+          user_email: "github-actions[bot]@users.noreply.github.com"
+          commit_message: "chore: update main branch [skip ci]"
