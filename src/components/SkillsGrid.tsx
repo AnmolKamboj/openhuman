@@ -190,7 +190,7 @@ function SkillActionButton({
         name: skill.name,
         version: '0.0.0',
         description: skill.description,
-        runtime: 'v8',
+        runtime: 'quickjs',
       });
       // If skill has setup, the manager will set setup_required status
       // and the grid will re-render with the "Setup" button

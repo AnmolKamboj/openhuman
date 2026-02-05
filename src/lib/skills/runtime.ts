@@ -53,7 +53,7 @@ export class SkillRuntime {
 
   /**
    * Send skill/load with manifest + data dir.
-   * With V8, loading is handled by the Rust engine during start_skill,
+   * Loading is handled by the Rust engine during start_skill,
    * so this sends a no-op skill/load RPC for protocol compatibility.
    */
   async load(additionalParams?: Record<string, unknown>): Promise<void> {

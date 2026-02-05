@@ -1,13 +1,10 @@
 /**
  * JSON-RPC 2.0 transport over Tauri IPC commands.
  *
- * Routes JSON-RPC requests to the Rust V8 runtime engine via
- * `invoke('runtime_rpc', ...)`. Replaces the previous stdin/stdout
- * subprocess transport while keeping the same public API.
- *
- * Reverse RPC (state/get, state/set, data/read, data/write) is now
- * handled by bridge globals inside the V8 engine, so the transport
- * no longer needs to handle reverse RPC from the skill.
+ * Routes JSON-RPC requests to the Rust QuickJS runtime engine via
+ * `invoke('runtime_rpc', ...)`. Reverse RPC (state/get, state/set,
+ * data/read, data/write) is handled by bridge globals inside the
+ * QuickJS engine.
  */
 
 import { invoke } from '@tauri-apps/api/core';
@@ -23,16 +20,16 @@ export class SkillTransport {
 
   /**
    * Set a handler for reverse RPC calls from the skill process.
-   * With V8, reverse RPC is handled by bridge globals, so this
+   * With QuickJS, reverse RPC is handled by bridge globals, so this
    * is kept for API compatibility but is a no-op.
    */
   onReverseRpc(_handler: ReverseRpcHandler): void {
-    // No-op: V8 bridge globals handle state/data directly
+    // No-op: QuickJS bridge globals handle state/data directly
   }
 
   /**
    * Initialize the transport for a skill.
-   * With V8, the skill process is managed by the Rust runtime engine,
+   * With QuickJS, the skill process is managed by the Rust runtime engine,
    * so this just stores the skill ID for routing RPC calls.
    *
    * @param skillId - The skill ID to route requests to.
@@ -100,7 +97,7 @@ export class SkillTransport {
   }
 
   /**
-   * Stop the transport. With V8, this is a no-op since the
+   * Stop the transport. With QuickJS, this is a no-op since the
    * Rust engine manages skill lifecycle. Use runtime_stop_skill instead.
    */
   async kill(): Promise<void> {
