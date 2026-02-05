@@ -31,7 +31,7 @@ const Welcome = ({ isWeb }: WelcomeProps) => {
   const isPreparing = isLoading && downloadProgress === null;
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center">
+    <div className="min-h-full relative flex items-center justify-center">
       {/* Main content */}
       <div className="relative z-10 max-w-md w-full mx-4 space-y-6">
         {/* Welcome card */}

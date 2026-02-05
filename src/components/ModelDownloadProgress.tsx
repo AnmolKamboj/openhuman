@@ -12,7 +12,7 @@ const ModelDownloadProgress = ({
   className = '',
   showWhenLoaded = false,
 }: ModelDownloadProgressProps) => {
-  const { isAvailable, isLoaded, isLoading, downloadProgress, error, ensureLoaded } =
+  const { isAvailable, isLoaded, isLoading, isDownloaded, downloadProgress, error, ensureLoaded } =
     useModelStatus();
   const [isMobile, setIsMobile] = useState(false);
 
@@ -63,8 +63,8 @@ const ModelDownloadProgress = ({
     return null;
   }
 
-  // Don't render if loaded and showWhenLoaded is false
-  if (isLoaded && !showWhenLoaded && !isLoading) {
+  // Hide when downloaded or loaded (nothing for the user to do)
+  if ((isDownloaded || isLoaded) && !showWhenLoaded && !isLoading) {
     return null;
   }
 

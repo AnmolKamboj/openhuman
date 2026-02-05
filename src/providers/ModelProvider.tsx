@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { platform } from '@tauri-apps/plugin-os';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
@@ -19,74 +19,67 @@ const POLL_INTERVAL = 1000;
  */
 const ModelProvider = ({ children }: { children: React.ReactNode }) => {
   const dispatch = useAppDispatch();
-  const { loading, downloaded, available, downloadTriggered } = useAppSelector(
-    state => state.model
-  );
-  const pollingRef = useRef(false);
-  const initDone = useRef(false);
+  const loading = useAppSelector(state => state.model.loading);
+  const downloadTriggered = useAppSelector(state => state.model.downloadTriggered);
 
-  // Initial status fetch + availability check (runs once)
+  // Single init effect: fetch status → check platform → auto-download if needed.
+  // No ref guard — safe to re-run; Rust backend prevents concurrent downloads.
   useEffect(() => {
-    if (initDone.current) return;
-    initDone.current = true;
+    let cancelled = false;
 
     const init = async () => {
-      console.log('[ModelProvider] Initializing...');
+      // 1. Fetch initial status
+      let status: ModelStatus;
       try {
-        const status = await invoke<ModelStatus>('model_get_status');
-        console.log('[ModelProvider] Initial status:', status);
+        status = await invoke<ModelStatus>('model_get_status');
+        console.log('[ModelProvider] Initial status:', JSON.stringify(status));
+        if (cancelled) return;
         dispatch(setModelStatus(status));
       } catch (err) {
-        console.log('[ModelProvider] model_get_status failed (non-Tauri?):', err);
-        return; // Not a Tauri environment, nothing more to do
+        console.log('[ModelProvider] Not in Tauri environment:', err);
+        return;
       }
 
+      // 2. Check availability
       try {
         const avail = await invoke<boolean>('model_is_available');
-        console.log('[ModelProvider] Model available:', avail);
-        if (avail) {
-          const status = await invoke<ModelStatus>('model_get_status');
-          dispatch(setModelStatus(status));
-        }
+        console.log('[ModelProvider] Available:', avail);
+        if (!avail || cancelled) return;
+        status = await invoke<ModelStatus>('model_get_status');
+        if (cancelled) return;
+        dispatch(setModelStatus(status));
       } catch (err) {
-        console.log('[ModelProvider] model_is_available failed:', err);
+        console.log('[ModelProvider] Availability check failed:', err);
+        return;
       }
-    };
-    init();
-  }, [dispatch]);
 
-  // Auto-trigger download on desktop when model is available but not downloaded
-  useEffect(() => {
-    if (downloadTriggered) {
-      console.log('[ModelProvider] Auto-download: already triggered, skipping');
-      return;
-    }
-    if (!available) {
-      console.log('[ModelProvider] Auto-download: not available yet, waiting');
-      return;
-    }
-    if (downloaded) {
-      console.log('[ModelProvider] Auto-download: already downloaded, skipping');
-      return;
-    }
-    if (loading) {
-      console.log('[ModelProvider] Auto-download: already loading, skipping');
-      return;
-    }
+      // 3. If already downloaded or already loading, nothing to do
+      if (status.downloaded) {
+        console.log('[ModelProvider] Already downloaded, skipping auto-download');
+        return;
+      }
+      if (status.loading) {
+        console.log('[ModelProvider] Already loading, will poll');
+        if (!cancelled) dispatch(setModelLoading(true));
+        return;
+      }
 
-    const tryAutoDownload = async () => {
+      // 4. Check platform — only auto-download on desktop
       try {
         const currentPlatform = await platform();
         console.log('[ModelProvider] Platform:', currentPlatform);
         if (currentPlatform === 'android' || currentPlatform === 'ios') {
-          console.log('[ModelProvider] Mobile platform, skipping auto-download');
+          console.log('[ModelProvider] Mobile platform, skipping');
           return;
         }
       } catch (err) {
-        console.log('[ModelProvider] Platform detection failed (likely web), skipping:', err);
+        console.log('[ModelProvider] Platform detection failed (web?), skipping:', err);
         return;
       }
 
+      if (cancelled) return;
+
+      // 5. Start download
       console.log('[ModelProvider] Starting auto-download...');
       dispatch(setDownloadTriggered(true));
       dispatch(setModelLoading(true));
@@ -94,43 +87,48 @@ const ModelProvider = ({ children }: { children: React.ReactNode }) => {
 
       try {
         await invoke('model_start_download');
-        const status = await invoke<ModelStatus>('model_get_status');
-        console.log('[ModelProvider] Download started, status:', status);
-        dispatch(setModelStatus(status));
+        if (cancelled) return;
+        const finalStatus = await invoke<ModelStatus>('model_get_status');
+        console.log('[ModelProvider] Download complete:', JSON.stringify(finalStatus));
+        if (!cancelled) dispatch(setModelStatus(finalStatus));
       } catch (err) {
-        console.error('[ModelProvider] Auto-download failed:', err);
-        dispatch(setModelError(err instanceof Error ? err.message : 'Failed to download model'));
+        console.error('[ModelProvider] Download failed:', err);
+        if (!cancelled)
+          dispatch(setModelError(err instanceof Error ? err.message : String(err)));
       }
     };
 
-    tryAutoDownload();
-  }, [dispatch, downloadTriggered, available, downloaded, loading]);
+    // Only run if download hasn't been triggered yet (Redux state, survives StrictMode)
+    if (!downloadTriggered) {
+      init();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dispatch, downloadTriggered]);
 
   // Poll status while loading/downloading
   useEffect(() => {
-    if (!loading) {
-      pollingRef.current = false;
-      return;
-    }
+    if (!loading) return;
 
-    pollingRef.current = true;
-    console.log('[ModelProvider] Polling started (loading=true)');
-
+    console.log('[ModelProvider] Polling started');
     const interval = setInterval(async () => {
-      if (!pollingRef.current) return;
       try {
         const status = await invoke<ModelStatus>('model_get_status');
         dispatch(setModelStatus(status));
         if (!status.loading) {
-          console.log('[ModelProvider] Polling stopped (loading done)', status);
-          pollingRef.current = false;
+          console.log('[ModelProvider] Loading finished:', JSON.stringify(status));
         }
       } catch {
-        // ignore polling errors
+        // ignore
       }
     }, POLL_INTERVAL);
 
-    return () => clearInterval(interval);
+    return () => {
+      console.log('[ModelProvider] Polling stopped');
+      clearInterval(interval);
+    };
   }, [dispatch, loading]);
 
   return <>{children}</>;

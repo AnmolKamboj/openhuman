@@ -22,13 +22,13 @@ function App() {
                 <AIProvider>
                   <SkillProvider>
                     <Router>
-                      <div className="relative min-h-screen">
-                        <div className="pointer-events-none fixed inset-x-0 top-0 flex justify-center z-50">
+                      <div className="relative h-screen flex flex-col overflow-hidden">
+                        <div className="pointer-events-none flex-shrink-0 flex justify-center z-50">
                           <div className="bg-black w-full px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-white/40 text-center">
                             AlphaHuman is in early beta.
                           </div>
                         </div>
-                        <div className="pt-7">
+                        <div className="flex-1 overflow-y-auto">
                           <AppRoutes />
                         </div>
                       </div>
