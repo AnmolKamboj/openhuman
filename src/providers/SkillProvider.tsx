@@ -1,11 +1,8 @@
 /**
  * Skill Provider — discovers and manages skill lifecycles.
  *
- * On mount (when authenticated): discovers skills from the V8 runtime
+ * On mount (when authenticated): discovers skills from the QuickJS runtime
  * engine, registers them in Redux, and auto-starts skills with completed setup.
- *
- * The Rust V8 engine handles skill discovery and auto-start independently.
- * This provider bridges the Rust engine state with the frontend Redux store.
  */
 import { invoke } from '@tauri-apps/api/core';
 import { type ReactNode, useEffect, useRef } from 'react';
@@ -13,7 +10,7 @@ import { type ReactNode, useEffect, useRef } from 'react';
 import { skillManager } from '../lib/skills/manager';
 import type { SkillManifest } from '../lib/skills/types';
 import { useAppSelector } from '../store/hooks';
-import { DEV_AUTO_LOAD_SKILL } from '../utils/config';
+import { DEV_AUTO_LOAD_SKILL, IS_DEV } from '../utils/config';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -21,14 +18,15 @@ import { DEV_AUTO_LOAD_SKILL } from '../utils/config';
 
 async function discoverSkills(): Promise<SkillManifest[]> {
   const raw = await invoke<Array<Record<string, unknown>>>('runtime_discover_skills');
-  // Map the V8 manifest format to SkillManifest
-  return raw.map(m => ({
+
+  const manifests: SkillManifest[] = raw.map(m => ({
     id: m.id as string,
     name: m.name as string,
     version: (m.version as string) || '0.0.0',
     description: (m.description as string) || '',
-    runtime: 'v8' as const,
+    runtime: 'quickjs' as const,
     entry: m.entry as string | undefined,
+    ignoreInProduction: (m.ignoreInProduction as boolean) ?? false,
     setup: m.setup
       ? {
           required: ((m.setup as Record<string, unknown>).required as boolean) ?? false,
@@ -36,6 +34,13 @@ async function discoverSkills(): Promise<SkillManifest[]> {
         }
       : undefined,
   }));
+
+  // In production, filter out skills marked as dev-only
+  if (!IS_DEV) {
+    return manifests.filter(m => !m.ignoreInProduction);
+  }
+
+  return manifests;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,7 +94,7 @@ export default function SkillProvider({ children }: { children: ReactNode }) {
 
     const init = async () => {
       try {
-        // Discover skills from the V8 runtime engine
+        // Discover skills from the QuickJS runtime engine
         const manifests = await discoverSkills();
         await registerAndStart(manifests);
       } catch (err) {

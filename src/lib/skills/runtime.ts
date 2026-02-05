@@ -2,7 +2,7 @@
  * Skill runtime — higher-level wrapper around SkillTransport
  * for managing a single skill's lifecycle.
  *
- * With V8, skills are managed by the Rust runtime engine.
+ * Skills are managed by the Rust QuickJS runtime engine.
  * This class wraps the transport layer to provide the same API
  * that the SkillManager expects.
  */
@@ -29,7 +29,7 @@ export class SkillRuntime {
 
   /**
    * Set a handler for reverse RPC calls from the skill process.
-   * With V8, reverse RPC is handled by bridge globals, so this
+   * Reverse RPC is handled by bridge globals, so this
    * is kept for API compatibility.
    */
   onReverseRpc(handler: ReverseRpcHandler): void {
@@ -38,12 +38,12 @@ export class SkillRuntime {
 
 
   /**
-   * Start the skill in the V8 runtime engine.
+   * Start the skill in the QuickJS runtime engine.
    * The Rust engine handles process management, so we just tell it to start
    * and then initialize the transport for RPC routing.
    */
   async start(): Promise<void> {
-    // Start the skill in the Rust V8 runtime
+    // Start the skill in the Rust QuickJS runtime
     await invoke("runtime_start_skill", { skillId: this.manifest.id });
 
     // Initialize the transport for RPC routing
