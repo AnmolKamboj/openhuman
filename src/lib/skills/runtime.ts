@@ -161,6 +161,29 @@ export class SkillRuntime {
   }
 
   /**
+   * Notify the skill that OAuth completed successfully.
+   * Sets the credential on the bridge and calls onOAuthComplete.
+   */
+  async oauthComplete(args: {
+    credentialId: string;
+    provider: string;
+    grantedScopes?: string[];
+    accountLabel?: string;
+  }): Promise<void> {
+    await this.transport.request("oauth/complete", args as unknown as Record<string, unknown>);
+  }
+
+  /**
+   * Notify the skill that an OAuth credential was revoked.
+   */
+  async oauthRevoked(args: {
+    credentialId: string;
+    reason: string;
+  }): Promise<void> {
+    await this.transport.request("oauth/revoked", args as unknown as Record<string, unknown>);
+  }
+
+  /**
    * Unload and stop the skill.
    */
   async stop(): Promise<void> {

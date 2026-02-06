@@ -234,6 +234,34 @@ class SkillManager {
   }
 
   /**
+   * Notify a skill that OAuth completed successfully.
+   * Called by the deep link handler after backend OAuth callback.
+   */
+  async notifyOAuthComplete(
+    skillId: string,
+    integrationId: string,
+    provider?: string,
+  ): Promise<void> {
+    const runtime = this.runtimes.get(skillId);
+    if (!runtime || !runtime.isRunning) {
+      console.warn(`[SkillManager] Cannot notify OAuth complete: skill ${skillId} not running`);
+      return;
+    }
+
+    const manifest = store.getState().skills.skills[skillId]?.manifest;
+
+    await runtime.oauthComplete({
+      credentialId: integrationId,
+      provider: provider ?? manifest?.setup?.oauth?.provider ?? "unknown",
+      grantedScopes: manifest?.setup?.oauth?.scopes ?? [],
+    });
+
+    // Mark setup as complete and activate
+    store.dispatch(setSkillSetupComplete({ skillId, complete: true }));
+    await this.activateSkill(skillId);
+  }
+
+  /**
    * Forward session start to all ready skills.
    */
   async sessionStart(sessionId: string): Promise<void> {

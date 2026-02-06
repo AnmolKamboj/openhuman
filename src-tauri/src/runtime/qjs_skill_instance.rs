@@ -410,8 +410,34 @@ async fn handle_message(
             let _ = reply.send(result);
         }
         SkillMessage::Rpc { method, params, reply } => {
-            let args = serde_json::json!({ "method": method, "params": params });
-            let result = handle_js_call(ctx, "onRpc", &args.to_string()).await;
+            let result = match method.as_str() {
+                "oauth/complete" => {
+                    // Set credential on the oauth bridge, then call onOAuthComplete
+                    let set_cred_code = format!(
+                        "if (typeof globalThis.oauth !== 'undefined' && globalThis.oauth.__setCredential) {{ globalThis.oauth.__setCredential({}); }}",
+                        serde_json::to_string(&params).unwrap_or_else(|_| "null".to_string())
+                    );
+                    ctx.with(|js_ctx| {
+                        let _ = js_ctx.eval::<rquickjs::Value, _>(set_cred_code.as_bytes());
+                    }).await;
+                    let params_str = serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string());
+                    handle_js_call(ctx, "onOAuthComplete", &params_str).await
+                }
+                "oauth/revoked" => {
+                    // Clear credential on the oauth bridge, then call onOAuthRevoked
+                    let clear_code = "if (typeof globalThis.oauth !== 'undefined' && globalThis.oauth.__setCredential) { globalThis.oauth.__setCredential(null); }";
+                    ctx.with(|js_ctx| {
+                        let _ = js_ctx.eval::<rquickjs::Value, _>(clear_code.as_bytes());
+                    }).await;
+                    let params_str = serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string());
+                    handle_js_void_call(ctx, "onOAuthRevoked", &params_str).await
+                        .map(|()| serde_json::json!({ "ok": true }))
+                }
+                _ => {
+                    let args = serde_json::json!({ "method": method, "params": params });
+                    handle_js_call(ctx, "onRpc", &args.to_string()).await
+                }
+            };
             let _ = reply.send(result);
         }
     }
