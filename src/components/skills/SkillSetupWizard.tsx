@@ -148,7 +148,7 @@ export default function SkillSetupWizard({
     try {
       // Call backend to get the real OAuth authorization URL
       const data = await apiClient.get<{ oauthUrl?: string }>(
-        `/auth/${oauth.provider}/connect?responseType=json&skillId=${skillId}`,
+        `/auth/${oauth.provider}/connect?skillId=${skillId}`,
       );
 
       if (!data.oauthUrl) {
