@@ -9,12 +9,15 @@ export interface AuthState {
   isOnboardedByUser: Record<string, boolean>;
   /** Analytics consent per user id (opt-in during onboarding) */
   isAnalyticsEnabledByUser: Record<string, boolean>;
+  /** AES encryption key (hex) derived from mnemonic, per user id */
+  encryptionKeyByUser: Record<string, string>;
 }
 
 const initialState: AuthState = {
   token: null,
   isOnboardedByUser: {},
   isAnalyticsEnabledByUser: {},
+  encryptionKeyByUser: {},
 };
 
 const authSlice = createSlice({
@@ -26,6 +29,7 @@ const authSlice = createSlice({
     },
     _clearToken: state => {
       state.token = null;
+      state.encryptionKeyByUser = {};
     },
     setOnboardedForUser: (state, action: PayloadAction<{ userId: string; value: boolean }>) => {
       const { userId, value } = action.payload;
@@ -34,6 +38,10 @@ const authSlice = createSlice({
     setAnalyticsForUser: (state, action: PayloadAction<{ userId: string; enabled: boolean }>) => {
       const { userId, enabled } = action.payload;
       state.isAnalyticsEnabledByUser[userId] = enabled;
+    },
+    setEncryptionKeyForUser: (state, action: PayloadAction<{ userId: string; key: string }>) => {
+      const { userId, key } = action.payload;
+      state.encryptionKeyByUser[userId] = key;
     },
   },
 });
@@ -45,5 +53,6 @@ export const clearToken = createAsyncThunk('auth/clearToken', async (_, { dispat
   dispatch(clearTeamState());
 });
 
-export const { setToken, setOnboardedForUser, setAnalyticsForUser } = authSlice.actions;
+export const { setToken, setOnboardedForUser, setAnalyticsForUser, setEncryptionKeyForUser } =
+  authSlice.actions;
 export default authSlice.reducer;

@@ -46,7 +46,7 @@ const Onboarding = () => {
     if (user?._id) {
       dispatch(setOnboardedForUser({ userId: user._id, value: true }));
     }
-    navigate('/home');
+    navigate('/mnemonic');
   };
 
   const renderStep = () => {

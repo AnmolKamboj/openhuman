@@ -5,3 +5,9 @@ export const selectIsOnboarded = (state: RootState): boolean => {
   if (!userId) return false;
   return state.auth.isOnboardedByUser[userId] ?? false;
 };
+
+export const selectHasEncryptionKey = (state: RootState): boolean => {
+  const userId = state.user.user?._id;
+  if (!userId) return false;
+  return !!state.auth.encryptionKeyByUser[userId];
+};
