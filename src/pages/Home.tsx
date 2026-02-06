@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import ConnectionIndicator from '../components/ConnectionIndicator';
 import ModelDownloadProgress from '../components/ModelDownloadProgress';
 import SkillsGrid from '../components/SkillsGrid';
+import WalletInfoSection from '../components/WalletInfoSection';
 import { useUser } from '../hooks/useUser';
 import { TELEGRAM_BOT_USERNAME } from '../utils/config';
 import { openUrl } from '../utils/openUrl';
@@ -102,6 +103,9 @@ const Home = () => {
                 Message AlphaHuman 🔥
               </button>
             </div>
+
+            {/* Web3 wallet info (address, balance, network) — only when wallet skill is connected */}
+            <WalletInfoSection />
 
             {/* Action buttons */}
             <div className="glass rounded-3xl p-0 shadow-large animate-fade-up mt-4 overflow-hidden">

@@ -13,7 +13,7 @@ use crate::runtime::cron_scheduler::CronScheduler;
 use crate::runtime::manifest::SkillManifest;
 use crate::runtime::preferences::PreferencesStore;
 use crate::runtime::skill_registry::SkillRegistry;
-use crate::runtime::types::{events, SkillSnapshot, SkillStatus, ToolResult};
+use crate::runtime::types::{events, SkillMessage, SkillSnapshot, SkillStatus, ToolResult};
 use crate::runtime::qjs_skill_instance::{BridgeDeps, QjsSkillInstance};
 use crate::services::tdlib_v8::storage::IdbStorage;
 
@@ -448,7 +448,27 @@ impl RuntimeEngine {
         use crate::runtime::types::SkillMessage;
 
         match method {
-            "skill/load" => Ok(serde_json::json!({ "ok": true })),
+            "skill/load" => {
+                // Extract load params (exclude manifest and dataDir) and send to skill
+                let load_params: serde_json::Map<String, serde_json::Value> = params
+                    .as_object()
+                    .map(|obj| {
+                        obj.iter()
+                            .filter(|(k, _)| k.as_str() != "manifest" && k.as_str() != "dataDir")
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                if !load_params.is_empty() {
+                    let msg = SkillMessage::LoadParams {
+                        params: serde_json::Value::Object(load_params),
+                    };
+                    if let Err(e) = self.registry.send_message(skill_id, msg) {
+                        log::warn!("[runtime] Failed to send LoadParams to skill '{}': {}", skill_id, e);
+                    }
+                }
+                Ok(serde_json::json!({ "ok": true }))
+            }
 
             "setup/start" => {
                 log::info!("[runtime] setup/start for '{}'", skill_id);

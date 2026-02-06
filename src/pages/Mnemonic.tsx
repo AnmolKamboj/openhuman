@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import LottieAnimation from '../components/LottieAnimation';
-import { setEncryptionKeyForUser } from '../store/authSlice';
+import { setEncryptionKeyForUser, setPrimaryWalletAddressForUser } from '../store/authSlice';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
   deriveAesKeyFromMnemonic,
+  deriveEvmAddressFromMnemonic,
   generateMnemonicPhrase,
   validateMnemonicPhrase,
 } from '../utils/cryptoKeys';
@@ -146,9 +147,11 @@ const Mnemonic = () => {
       }
 
       const aesKey = deriveAesKeyFromMnemonic(phraseToUse);
+      const walletAddress = deriveEvmAddressFromMnemonic(phraseToUse);
 
       if (user?._id) {
         dispatch(setEncryptionKeyForUser({ userId: user._id, key: aesKey }));
+        dispatch(setPrimaryWalletAddressForUser({ userId: user._id, address: walletAddress }));
       }
 
       navigate('/home');

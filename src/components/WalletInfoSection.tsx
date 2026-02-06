@@ -1,0 +1,149 @@
+import { useEffect, useState } from 'react';
+
+import { skillManager } from '../lib/skills/manager';
+import { useSkillConnectionStatus } from '../lib/skills/hooks';
+import { useAppSelector } from '../store/hooks';
+import { useUser } from '../hooks/useUser';
+
+function truncateAddress(address: string): string {
+  if (!address || address.length < 12) return address;
+  return `${address.slice(0, 6)}…${address.slice(-4)}`;
+}
+
+export default function WalletInfoSection() {
+  const walletStatus = useSkillConnectionStatus('wallet');
+  const { user } = useUser();
+  const primaryAddress = useAppSelector(state =>
+    user?._id ? state.auth.primaryWalletAddressByUser[user._id] : undefined
+  );
+
+  const [networkName, setNetworkName] = useState<string | null>(null);
+  const [balance, setBalance] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const isConnected = walletStatus === 'connected' && !!primaryAddress;
+
+  useEffect(() => {
+    if (!isConnected || !primaryAddress || !skillManager.isSkillRunning('wallet')) {
+      setLoading(false);
+      setNetworkName(null);
+      setBalance(null);
+      setError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    (async () => {
+      try {
+        const listRes = await skillManager.callTool('wallet', 'list_networks', {});
+        const listText = listRes.content?.[0]?.text;
+        if (!listText || listRes.isError) {
+          if (!cancelled) setError('Could not load networks');
+          return;
+        }
+        const listData = JSON.parse(listText) as { networks?: Array<{ chain_id: string; name: string; chain_type: string }> };
+        const networks = listData.networks ?? [];
+        const firstEvm = networks.find((n: { chain_type: string }) => n.chain_type === 'evm');
+        const first = firstEvm ?? networks[0];
+        if (!first || cancelled) return;
+
+        if (!cancelled) setNetworkName(first.name);
+
+        const balanceRes = await skillManager.callTool('wallet', 'get_balance', {
+          address: primaryAddress,
+          chain_id: first.chain_id,
+          chain_type: first.chain_type ?? 'evm',
+        });
+        const balanceText = balanceRes.content?.[0]?.text;
+        if (!balanceText || balanceRes.isError) {
+          if (!cancelled) setBalance('—');
+          return;
+        }
+        const balanceData = JSON.parse(balanceText) as {
+          balance_eth?: string;
+          symbol?: string;
+          error?: string;
+        };
+        if (balanceData.error && !cancelled) {
+          setBalance('—');
+          return;
+        }
+        const eth = balanceData.balance_eth ?? '0';
+        const symbol = balanceData.symbol ?? 'ETH';
+        const value = parseFloat(eth);
+        const display = value < 0.0001 ? '0' : value.toFixed(4);
+        if (!cancelled) setBalance(`${display} ${symbol}`);
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Failed to load wallet info');
+          setBalance(null);
+          setNetworkName(null);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isConnected, primaryAddress]);
+
+  if (!isConnected) return null;
+
+  return (
+    <div className="glass rounded-3xl p-4 shadow-large animate-fade-up mt-4">
+      <div className="flex items-center gap-2 mb-3">
+        <svg
+          className="w-5 h-5 text-primary-500"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+          />
+        </svg>
+        <span className="font-semibold text-sm">Web3 Wallet</span>
+      </div>
+      <div className="space-y-2 text-sm">
+        <div className="flex justify-between items-center">
+          <span className="opacity-70">Address</span>
+          <span className="font-mono text-xs" title={primaryAddress ?? ''}>
+            {primaryAddress ? truncateAddress(primaryAddress) : '—'}
+          </span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="opacity-70">Network</span>
+          <span>
+            {loading ? (
+              <span className="opacity-60">Loading…</span>
+            ) : error ? (
+              <span className="text-coral-500 text-xs">{error}</span>
+            ) : (
+              networkName ?? '—'
+            )}
+          </span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="opacity-70">Balance</span>
+          <span>
+            {loading ? (
+              <span className="opacity-60">Loading…</span>
+            ) : error ? (
+              '—'
+            ) : (
+              balance ?? '—'
+            )}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -32,13 +32,21 @@ class SkillManager {
   private runtimes = new Map<string, SkillRuntime>();
 
   /**
-   * Get skill-specific load parameters (e.g., session data for Telegram)
+   * Get skill-specific load parameters (e.g., wallet address for wallet skill)
    */
-  private getSkillLoadParams(_skillId: string): Record<string, unknown> {
+  private getSkillLoadParams(skillId: string): Record<string, unknown> {
     const params: Record<string, unknown> = {};
 
-    // For now, just return empty params - skill-specific session data
-    // will be handled through the skill's own setup process
+    if (skillId === "wallet") {
+      const state = store.getState();
+      const userId = state.user.user?._id;
+      const primaryAddress =
+        userId && state.auth.primaryWalletAddressByUser?.[userId];
+      if (primaryAddress) {
+        params.walletAddress = primaryAddress;
+      }
+    }
+
     return params;
   }
 

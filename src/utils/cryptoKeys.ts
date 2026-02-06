@@ -1,6 +1,9 @@
+import { getPublicKey } from '@noble/secp256k1';
+import { keccak_256 } from '@noble/hashes/sha3.js';
 import { pbkdf2 } from '@noble/hashes/pbkdf2.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
+import { HDKey } from '@scure/bip32';
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english.js';
 
@@ -32,4 +35,36 @@ export function deriveAesKeyFromMnemonic(mnemonic: string): string {
   const derivedKey = pbkdf2(sha256, seed, salt, { c: 100000, dkLen: 32 });
 
   return bytesToHex(derivedKey);
+}
+
+/** BIP44 path for first Ethereum account: m/44'/60'/0'/0/0 */
+const EVM_DERIVATION_PATH = "m/44'/60'/0'/0/0";
+
+/**
+ * Derive the first EVM wallet address (Ethereum BIP44) from a mnemonic phrase.
+ * Uses path m/44'/60'/0'/0/0. Returns a checksummed 0x-prefixed address.
+ */
+export function deriveEvmAddressFromMnemonic(mnemonic: string): string {
+  const seed = mnemonicToSeedSync(mnemonic);
+  const hdkey = HDKey.fromMasterSeed(seed);
+  const derived = hdkey.derive(EVM_DERIVATION_PATH);
+  const privateKey = derived.privateKey;
+  if (!privateKey) throw new Error('Failed to derive private key');
+  // Ethereum address = keccak256(uncompressed public key without 0x04)[12:]
+  const pubKey = getPublicKey(privateKey, false); // uncompressed, 65 bytes
+  const hash = keccak_256(pubKey.slice(1));
+  const addressBytes = hash.slice(-20);
+  const hex = bytesToHex(addressBytes);
+  return toChecksumAddress('0x' + hex);
+}
+
+/** Simple checksum: lowercase with 0x, then capitalize by hash. */
+function toChecksumAddress(address: string): string {
+  const a = address.replace(/^0x/i, '').toLowerCase();
+  const hash = bytesToHex(keccak_256(new TextEncoder().encode(a)));
+  let result = '0x';
+  for (let i = 0; i < 40; i++) {
+    result += parseInt(hash[i], 16) >= 8 ? a[i].toUpperCase() : a[i];
+  }
+  return result;
 }

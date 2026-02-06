@@ -25,7 +25,13 @@ import userReducer from './userSlice';
 const authPersistConfig = {
   key: 'auth',
   storage,
-  whitelist: ['token', 'isOnboardedByUser', 'isAnalyticsEnabledByUser', 'encryptionKeyByUser'],
+  whitelist: [
+    'token',
+    'isOnboardedByUser',
+    'isAnalyticsEnabledByUser',
+    'encryptionKeyByUser',
+    'primaryWalletAddressByUser',
+  ],
 };
 
 // Persist config for AI state (config only)
