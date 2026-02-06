@@ -21,7 +21,7 @@ use crate::runtime::skill_registry::SkillRegistry;
 use crate::runtime::types::{
     SkillConfig, SkillMessage, SkillSnapshot, SkillStatus, ToolContent, ToolDefinition, ToolResult,
 };
-use crate::services::tdlib_v8::{qjs_ops, IdbStorage};
+use crate::services::quickjs_libs::{qjs_ops, IdbStorage};
 
 /// Dependencies passed to a skill instance for bridge installation.
 #[allow(dead_code)]
@@ -109,7 +109,7 @@ impl QjsSkillInstance {
             state.write().status = SkillStatus::Initializing;
 
             // Create storage
-            let storage = match IdbStorage::new(&data_dir) {
+            let storage: IdbStorage = match IdbStorage::new(&data_dir) {
                 Ok(s) => s,
                 Err(e) => {
                     let mut s = state.write();
@@ -191,7 +191,7 @@ impl QjsSkillInstance {
                 }
 
                 // Load bootstrap
-                let bootstrap_code = include_str!("../services/tdlib_v8/bootstrap.js");
+                let bootstrap_code = include_str!("../services/quickjs-libs/bootstrap.js");
                 if let Err(e) = js_ctx.eval::<rquickjs::Value, _>(bootstrap_code) {
                     let detail = format_js_exception(&js_ctx, &e);
                     return Err(format!("Bootstrap failed: {detail}"));

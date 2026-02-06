@@ -976,7 +976,8 @@ globalThis.tdlib = {
    * @returns {Promise<object>} TDLib response object.
    */
   send: async function (request) {
-    return await __ops.tdlib_send(request);
+    const resultJson = await __ops.tdlib_send(JSON.stringify(request));
+    return JSON.parse(resultJson);
   },
 
   /**
@@ -985,7 +986,8 @@ globalThis.tdlib = {
    * @returns {Promise<object|null>} Update object or null if timeout.
    */
   receive: async function (timeoutMs = 1000) {
-    return await __ops.tdlib_receive(timeoutMs);
+    const resultJson = await __ops.tdlib_receive(timeoutMs);
+    return resultJson ? JSON.parse(resultJson) : null;
   },
 
   /**
