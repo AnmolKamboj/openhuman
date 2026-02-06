@@ -45,17 +45,24 @@ export default function WalletInfoSection() {
           if (!cancelled) setError('Could not load networks');
           return;
         }
-        const listData = JSON.parse(listText) as { networks?: Array<{ chain_id: string; name: string; chain_type: string }> };
-        const networks = listData.networks ?? [];
-        const firstEvm = networks.find((n: { chain_type: string }) => n.chain_type === 'evm');
-        const first = firstEvm ?? networks[0];
+        const listData = JSON.parse(listText) as { networks?: Array<{ chain_id?: string; name?: string; chain_type?: string }> };
+        const networks = Array.isArray(listData.networks) ? listData.networks : [];
+        const firstEvm = networks.find((n) => n && n.chain_type === 'evm');
+        const first = firstEvm ?? networks.find(Boolean);
         if (!first || cancelled) return;
 
-        if (!cancelled) setNetworkName(first.name);
+        const networkNameVal = first.name ?? first.chain_id ?? 'Unknown';
+        if (!cancelled) setNetworkName(networkNameVal);
+
+        const chainId = first.chain_id ?? '';
+        if (!chainId) {
+          if (!cancelled) setBalance('—');
+          return;
+        }
 
         const balanceRes = await skillManager.callTool('wallet', 'get_balance', {
           address: primaryAddress,
-          chain_id: first.chain_id,
+          chain_id: chainId,
           chain_type: first.chain_type ?? 'evm',
         });
         const balanceText = balanceRes.content?.[0]?.text;
@@ -78,6 +85,7 @@ export default function WalletInfoSection() {
         const display = value < 0.0001 ? '0' : value.toFixed(4);
         if (!cancelled) setBalance(`${display} ${symbol}`);
       } catch (e) {
+        console.error(e);
         if (!cancelled) {
           setError(e instanceof Error ? e.message : 'Failed to load wallet info');
           setBalance(null);
