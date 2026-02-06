@@ -10,7 +10,7 @@ import { store } from "../../store";
 import { useAppSelector } from "../../store/hooks";
 import { skillManager } from "../../lib/skills/manager";
 import { setSkillSetupComplete } from "../../store/skillsSlice";
-import { BACKEND_URL } from "../../utils/config";
+import { apiClient } from "../../services/apiClient";
 import { openUrl } from "../../utils/openUrl";
 import type { SetupStep, SetupFieldError } from "../../lib/skills/types";
 import SetupFormRenderer from "./SetupFormRenderer";
@@ -144,22 +144,26 @@ export default function SkillSetupWizard({
     if (state.phase !== "oauth") return;
 
     const { oauth } = state;
-    const token = store.getState().auth.token;
-    const params = new URLSearchParams({
-      provider: oauth.provider,
-      skill_id: skillId,
-    });
-    if (token) {
-      params.set("token", token);
-    }
-    if (oauth.scopes.length > 0) {
-      params.set("scopes", oauth.scopes.join(","));
-    }
 
-    const oauthUrl = `${BACKEND_URL}/oauth/authorize?${params.toString()}`;
-    await openUrl(oauthUrl);
+    try {
+      // Call backend to get the real OAuth authorization URL
+      const data = await apiClient.get<{ oauthUrl?: string }>(
+        `/auth/${oauth.provider}/connect?responseType=json&skillId=${skillId}`,
+      );
 
-    setState({ phase: "oauth_waiting", oauth });
+      if (!data.oauthUrl) {
+        console.error("[SkillSetupWizard] Backend did not return oauthUrl:", data);
+        setState({ phase: "error", message: "Failed to get OAuth URL from backend." });
+        return;
+      }
+
+      await openUrl(data.oauthUrl);
+      setState({ phase: "oauth_waiting", oauth });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[SkillSetupWizard] OAuth connect error:", err);
+      setState({ phase: "error", message: `OAuth connection failed: ${msg}` });
+    }
   }, [state, skillId]);
 
   const handleSubmit = useCallback(
