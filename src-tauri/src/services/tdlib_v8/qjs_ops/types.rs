@@ -117,8 +117,6 @@ pub struct WebSocketState {
 
 pub const ALLOWED_ENV_VARS: &[&str] = &[
     "VITE_BACKEND_URL",
-    "VITE_TELEGRAM_API_ID",
-    "VITE_TELEGRAM_API_HASH",
     "VITE_TELEGRAM_BOT_USERNAME",
     "VITE_TELEGRAM_BOT_ID",
     "NODE_ENV",
