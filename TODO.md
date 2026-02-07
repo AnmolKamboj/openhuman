@@ -14,3 +14,4 @@ todo
 [] - get all the remaining skills working
 [] - allow bundling of unverified skills
 [] - allow for new skills to be coded on their own
+[] - allow for multiple instances of a skill to be loaded
