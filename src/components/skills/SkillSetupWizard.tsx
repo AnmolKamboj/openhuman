@@ -14,6 +14,7 @@ import { apiClient } from "../../services/apiClient";
 import { openUrl } from "../../utils/openUrl";
 import type { SetupStep, SetupFieldError } from "../../lib/skills/types";
 import SetupFormRenderer from "./SetupFormRenderer";
+import {IS_DEV} from "../../utils/config.ts";
 
 interface SkillSetupWizardProps {
   skillId: string;
@@ -146,9 +147,10 @@ export default function SkillSetupWizard({
     const { oauth } = state;
 
     try {
+      const shouldShowJson = IS_DEV ? 'responseType=json&' : ''
       // Call backend to get the real OAuth authorization URL
       const data = await apiClient.get<{ oauthUrl?: string }>(
-        `/auth/${oauth.provider}/connect?skillId=${skillId}`,
+        `/auth/${oauth.provider}/connect?${shouldShowJson}skillId=${skillId}`,
       );
 
       if (!data.oauthUrl) {
