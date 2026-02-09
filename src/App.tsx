@@ -6,7 +6,6 @@ import { PersistGate } from 'redux-persist/integration/react';
 import AppRoutes from './AppRoutes';
 import MiniSidebar from './components/MiniSidebar';
 import AIProvider from './providers/AIProvider';
-import ModelProvider from './providers/ModelProvider';
 import SkillProvider from './providers/SkillProvider';
 import SocketProvider from './providers/SocketProvider';
 import UserProvider from './providers/UserProvider';
@@ -17,8 +16,7 @@ function App() {
     <Sentry.ErrorBoundary fallback={<div>Something went wrong.</div>}>
       <Provider store={store}>
         <PersistGate loading={null} persistor={persistor}>
-          <ModelProvider>
-            <UserProvider>
+          <UserProvider>
               <SocketProvider>
                 <AIProvider>
                   <SkillProvider>
@@ -43,7 +41,6 @@ function App() {
                 </AIProvider>
               </SocketProvider>
             </UserProvider>
-          </ModelProvider>
         </PersistGate>
       </Provider>
     </Sentry.ErrorBoundary>

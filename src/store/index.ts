@@ -15,7 +15,6 @@ import storage from 'redux-persist/lib/storage';
 import { IS_DEV } from '../utils/config';
 import aiReducer from './aiSlice';
 import authReducer, { setOnboardedForUser, setToken } from './authSlice';
-import modelReducer from './modelSlice';
 import skillsReducer from './skillsSlice';
 import socketReducer from './socketSlice';
 import teamReducer from './teamSlice';
@@ -46,7 +45,6 @@ export const store = configureStore({
     ai: persistedAiReducer,
     skills: persistedSkillsReducer,
     team: teamReducer,
-    model: modelReducer,
   },
   middleware: getDefaultMiddleware => {
     const middleware = getDefaultMiddleware({
