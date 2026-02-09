@@ -672,7 +672,7 @@ async fn handle_js_call(
                 if (typeof fn === 'function') {{
                     var args = {args_json};
                     var result = fn.call(skill, args);
-                    return JSON.stringify(result);
+                    return JSON.stringify(result === undefined ? null : result);
                 }}
                 return "null";
             }})()"#
