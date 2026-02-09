@@ -43,21 +43,22 @@ export default function SkillSetupWizard({
 }: SkillSetupWizardProps) {
   const [state, setState] = useState<WizardState>({ phase: "loading" });
 
-  // Watch skill state for OAuth completion (skill pushes connected: true)
+  // Watch skill state for OAuth completion (skill pushes connection_status: "connected")
   const skillState = useAppSelector(
     (s) => s.skills.skillStates[skillId],
   );
+  const isConnected = skillState?.connection_status === "connected";
 
   // When skill state changes to connected during OAuth waiting, mark complete
   useEffect(() => {
     if (
       (state.phase === "oauth" || state.phase === "oauth_waiting") &&
-      skillState?.connected === true
+      isConnected
     ) {
       store.dispatch(setSkillSetupComplete({ skillId, complete: true }));
       setState({ phase: "complete", message: "Successfully connected!" });
     }
-  }, [skillState?.connected, state.phase, skillId]);
+  }, [isConnected, state.phase, skillId]);
 
   // Start the skill (if not running) then start the setup flow on mount
   useEffect(() => {
