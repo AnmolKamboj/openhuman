@@ -145,14 +145,17 @@ function deriveConnectionStatus(
   if (connStatus === 'error' || authStatus === 'error') {
     return 'error';
   }
-  if (connStatus === 'connected' && authStatus === 'authenticated') {
-    return 'connected';
+  // Connected: treat missing auth_status as connected (e.g. wallet skill doesn't set auth_status)
+  if (connStatus === 'connected') {
+    if (!authStatus || authStatus === 'authenticated') {
+      return 'connected';
+    }
+    if (authStatus === 'not_authenticated') {
+      return 'not_authenticated';
+    }
   }
   if (connStatus === 'connecting' || authStatus === 'authenticating') {
     return 'connecting';
-  }
-  if (connStatus === 'connected' && authStatus === 'not_authenticated') {
-    return 'not_authenticated';
   }
   if (connStatus === 'disconnected') {
     return setupComplete ? 'disconnected' : 'setup_required';

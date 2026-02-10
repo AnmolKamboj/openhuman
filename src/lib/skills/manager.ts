@@ -17,6 +17,7 @@ import type {
   SkillOptionDefinition,
 } from "./types";
 import { store } from "../../store";
+import { setPrimaryWalletAddressForUser } from "../../store/authSlice";
 import {
   addSkill,
   setSkillStatus,
@@ -372,6 +373,24 @@ class SkillManager {
       }
     } catch (err) {
       console.error(`Error reloading skill ${skillId}:`, err);
+    }
+  }
+
+  /**
+   * Set the wallet address in the frontend app and notify the wallet skill (onLoad).
+   * Updates Redux (primaryWalletAddressByUser) and, if the wallet skill is running,
+   * sends load params so the skill receives onLoad({ walletAddress }).
+   */
+  async setWalletAddress(address: string): Promise<void> {
+    const state = store.getState();
+    const userId = state.user.user?._id;
+    if (!userId) {
+      return;
+    }
+    store.dispatch(setPrimaryWalletAddressForUser({ userId, address }));
+    const runtime = this.runtimes.get("wallet");
+    if (runtime?.isRunning) {
+      await runtime.load({ walletAddress: address });
     }
   }
 

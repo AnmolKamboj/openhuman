@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import LottieAnimation from '../components/LottieAnimation';
-import { setEncryptionKeyForUser, setPrimaryWalletAddressForUser } from '../store/authSlice';
+import { skillManager } from '../lib/skills/manager';
+import { setEncryptionKeyForUser } from '../store/authSlice';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
   deriveAesKeyFromMnemonic,
@@ -151,7 +152,7 @@ const Mnemonic = () => {
 
       if (user?._id) {
         dispatch(setEncryptionKeyForUser({ userId: user._id, key: aesKey }));
-        dispatch(setPrimaryWalletAddressForUser({ userId: user._id, address: walletAddress }));
+        await skillManager.setWalletAddress(walletAddress);
       }
 
       navigate('/home');

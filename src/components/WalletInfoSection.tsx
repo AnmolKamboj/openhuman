@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { skillManager } from '../lib/skills/manager';
 import { useSkillConnectionStatus } from '../lib/skills/hooks';
@@ -19,13 +19,132 @@ export default function WalletInfoSection() {
 
   const [networkName, setNetworkName] = useState<string | null>(null);
   const [balance, setBalance] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isConnected = walletStatus === 'connected' && !!primaryAddress;
+  const cancelledRef = useRef(false);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fetchWalletInfoRef = useRef<(address: string, attempt?: number) => Promise<void>>(null!);
+
+  const fetchWalletInfo = useCallback(async (address: string, attempt = 0): Promise<void> => {
+    if (cancelledRef.current) return;
+
+    if (!skillManager.isSkillRunning('wallet')) {
+      if (attempt < 5 && !cancelledRef.current) {
+        retryTimerRef.current = setTimeout(
+          () => fetchWalletInfoRef.current(address, attempt + 1),
+          1500
+        );
+        return;
+      }
+      if (!cancelledRef.current) {
+        setLoading(false);
+        setNetworkName(null);
+        setBalance(null);
+        setError(null);
+      }
+      return;
+    }
+
+    try {
+      // Wallet skill only supports Ethereum Mainnet (chain_id "1")
+      const listRes = await skillManager.callTool('wallet', 'list_networks', {});
+      if (cancelledRef.current) return;
+      const listText = listRes.content?.[0]?.text;
+      if (!listText || listRes.isError) {
+        if (!cancelledRef.current) {
+          setError('Could not load networks');
+          setLoading(false);
+        }
+        return;
+      }
+      const listData = JSON.parse(listText) as {
+        networks?: Array<{ chain_id?: string; name?: string; chain_type?: string }>;
+      };
+      const networks = Array.isArray(listData.networks) ? listData.networks : [];
+      // Prefer Ethereum Mainnet (skill always has it); else first EVM, else first network
+      const ethMainnet = networks.find((n) => n?.chain_id === '1' && n?.chain_type === 'evm');
+      const firstEvm = networks.find((n) => n && n.chain_type === 'evm');
+      const chosen = ethMainnet ?? firstEvm ?? networks.find(Boolean);
+      if (!chosen || cancelledRef.current) {
+        if (!cancelledRef.current) setLoading(false);
+        return;
+      }
+
+      const networkNameVal = chosen.name ?? chosen.chain_id ?? 'Unknown';
+      if (!cancelledRef.current) setNetworkName(networkNameVal);
+
+      const chainId = chosen.chain_id ?? '';
+      if (!chainId) {
+        if (!cancelledRef.current) {
+          setBalance('—');
+          setLoading(false);
+        }
+        return;
+      }
+
+      const balanceRes = await skillManager.callTool('wallet', 'get_balance', {
+        address,
+        chain_id: chainId,
+        chain_type: chosen.chain_type ?? 'evm',
+      });
+      if (cancelledRef.current) return;
+      const balanceText = balanceRes.content?.[0]?.text;
+      if (!balanceText || balanceRes.isError) {
+        if (!cancelledRef.current) {
+          setBalance('—');
+          setLoading(false);
+        }
+        return;
+      }
+      const balanceData = JSON.parse(balanceText) as {
+        balance_eth?: string;
+        symbol?: string;
+        error?: string;
+      };
+      if (balanceData.error) {
+        if (!cancelledRef.current) {
+          setBalance('—');
+          setLoading(false);
+        }
+        return;
+      }
+      const eth = balanceData.balance_eth ?? '0';
+      const symbol = balanceData.symbol ?? 'ETH';
+      const value = parseFloat(eth);
+      const display = value < 0.0001 ? '0' : value.toFixed(4);
+      if (!cancelledRef.current) {
+        setBalance(`${display} ${symbol}`);
+        setLoading(false);
+      }
+    } catch (e) {
+      if (!cancelledRef.current) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const isTransient = msg.includes('not running') || msg.includes('not started') || msg.includes('transport');
+        if (isTransient && attempt < 3) {
+          retryTimerRef.current = setTimeout(() => fetchWalletInfoRef.current(address, attempt + 1), 2000);
+          return;
+        }
+        console.error('[WalletInfoSection] Failed to load wallet info:', e);
+        setError('Failed to load wallet info');
+        setBalance(null);
+        setNetworkName(null);
+        setLoading(false);
+      }
+    }
+  }, []);
+
+  fetchWalletInfoRef.current = fetchWalletInfo;
 
   useEffect(() => {
-    if (!isConnected || !primaryAddress || !skillManager.isSkillRunning('wallet')) {
+    cancelledRef.current = false;
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+
+    if (!isConnected || !primaryAddress) {
       setLoading(false);
       setNetworkName(null);
       setBalance(null);
@@ -33,73 +152,16 @@ export default function WalletInfoSection() {
       return;
     }
 
-    let cancelled = false;
     setLoading(true);
     setError(null);
 
-    (async () => {
-      try {
-        const listRes = await skillManager.callTool('wallet', 'list_networks', {});
-        const listText = listRes.content?.[0]?.text;
-        if (!listText || listRes.isError) {
-          if (!cancelled) setError('Could not load networks');
-          return;
-        }
-        const listData = JSON.parse(listText) as { networks?: Array<{ chain_id?: string; name?: string; chain_type?: string }> };
-        const networks = Array.isArray(listData.networks) ? listData.networks : [];
-        const firstEvm = networks.find((n) => n && n.chain_type === 'evm');
-        const first = firstEvm ?? networks.find(Boolean);
-        if (!first || cancelled) return;
-
-        const networkNameVal = first.name ?? first.chain_id ?? 'Unknown';
-        if (!cancelled) setNetworkName(networkNameVal);
-
-        const chainId = first.chain_id ?? '';
-        if (!chainId) {
-          if (!cancelled) setBalance('—');
-          return;
-        }
-
-        const balanceRes = await skillManager.callTool('wallet', 'get_balance', {
-          address: primaryAddress,
-          chain_id: chainId,
-          chain_type: first.chain_type ?? 'evm',
-        });
-        const balanceText = balanceRes.content?.[0]?.text;
-        if (!balanceText || balanceRes.isError) {
-          if (!cancelled) setBalance('—');
-          return;
-        }
-        const balanceData = JSON.parse(balanceText) as {
-          balance_eth?: string;
-          symbol?: string;
-          error?: string;
-        };
-        if (balanceData.error && !cancelled) {
-          setBalance('—');
-          return;
-        }
-        const eth = balanceData.balance_eth ?? '0';
-        const symbol = balanceData.symbol ?? 'ETH';
-        const value = parseFloat(eth);
-        const display = value < 0.0001 ? '0' : value.toFixed(4);
-        if (!cancelled) setBalance(`${display} ${symbol}`);
-      } catch (e) {
-        console.error(e);
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : 'Failed to load wallet info');
-          setBalance(null);
-          setNetworkName(null);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+    fetchWalletInfo(primaryAddress);
 
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     };
-  }, [isConnected, primaryAddress]);
+  }, [isConnected, primaryAddress, fetchWalletInfo]);
 
   if (!isConnected) return null;
 
