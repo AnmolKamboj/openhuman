@@ -8,6 +8,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { SkillRuntime } from "./runtime";
+import { syncToolsToBackend } from "./sync";
 import type {
   SkillManifest,
   SkillStatus,
@@ -23,6 +24,7 @@ import {
   setSkillStatus,
   setSkillError,
   setSkillSetupComplete,
+  setSkillOAuthCredential,
   setSkillTools,
   setSkillState,
 } from "../../store/skillsSlice";
@@ -107,6 +109,15 @@ class SkillManager {
       if (setupRequired) {
         store.dispatch(setSkillStatus({ skillId, status: "setup_required" }));
       } else {
+        // Re-inject persisted OAuth credential if available
+        const oauthCred = skillState?.oauthCredential;
+        if (oauthCred) {
+          try {
+            await runtime.oauthComplete(oauthCred);
+          } catch (err) {
+            console.warn(`[SkillManager] Failed to restore OAuth credential for ${skillId}:`, err);
+          }
+        }
         // Skill is ready — list tools
         await this.activateSkill(skillId);
       }
@@ -129,6 +140,7 @@ class SkillManager {
       const tools = await runtime.listTools();
       store.dispatch(setSkillTools({ skillId, tools }));
       store.dispatch(setSkillStatus({ skillId, status: "ready" }));
+      syncToolsToBackend();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       store.dispatch(setSkillError({ skillId, error: msg }));
@@ -260,12 +272,16 @@ class SkillManager {
 
     const manifest = store.getState().skills.skills[skillId]?.manifest;
 
-    await runtime.oauthComplete({
+    const credential = {
       credentialId: integrationId,
       provider: provider ?? manifest?.setup?.oauth?.provider ?? "unknown",
       grantedScopes: manifest?.setup?.oauth?.scopes ?? [],
-    });
+    };
 
+    await runtime.oauthComplete(credential);
+
+    // Persist credential so it survives app restarts
+    store.dispatch(setSkillOAuthCredential({ skillId, credential }));
     // Mark setup as complete and activate
     store.dispatch(setSkillSetupComplete({ skillId, complete: true }));
     await this.activateSkill(skillId);
@@ -307,7 +323,9 @@ class SkillManager {
   async disconnectSkill(skillId: string): Promise<void> {
     await this.stopSkill(skillId);
     store.dispatch(setSkillSetupComplete({ skillId, complete: false }));
+    store.dispatch(setSkillOAuthCredential({ skillId, credential: undefined }));
     store.dispatch(setSkillState({ skillId, state: {} }));
+    syncToolsToBackend();
   }
 
   /**
@@ -325,6 +343,7 @@ class SkillManager {
     }
     this.runtimes.delete(skillId);
     store.dispatch(setSkillStatus({ skillId, status: "installed" }));
+    syncToolsToBackend();
   }
 
   /**
@@ -419,6 +438,7 @@ class SkillManager {
           type: "skills/setSkillState",
           payload: { skillId, state: newState },
         });
+        syncToolsToBackend();
         return { ok: true };
       }
 

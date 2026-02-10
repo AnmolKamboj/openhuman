@@ -182,11 +182,29 @@ export interface SkillHostConnectionState {
 // Redux skill state shape
 // ---------------------------------------------------------------------------
 
+export interface OAuthCredential {
+  credentialId: string;
+  provider: string;
+  grantedScopes?: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Ping / Health-Check
+// ---------------------------------------------------------------------------
+
+export interface PingResult {
+  ok: boolean;
+  errorType?: "network" | "auth";
+  errorMessage?: string;
+}
+
 export interface SkillState {
   manifest: SkillManifest;
   status: SkillStatus;
   error?: string;
   setupComplete: boolean;
   tools: SkillToolDefinition[];
+  /** Persisted OAuth credential so it survives app restarts. */
+  oauthCredential?: OAuthCredential;
 }
 
