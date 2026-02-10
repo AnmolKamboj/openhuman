@@ -318,6 +318,12 @@ pub fn run() {
                             cron.start();
                         });
 
+                        // Start the ping scheduler (health-checks running skills)
+                        let ping = engine.ping_scheduler();
+                        tauri::async_runtime::spawn(async move {
+                            ping.start();
+                        });
+
                         // Auto-start skills in background (no delay needed for QuickJS -
                         // lightweight contexts don't have V8's memory reservation issue)
                         let engine_clone = engine.clone();
