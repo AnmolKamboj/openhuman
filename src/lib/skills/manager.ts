@@ -8,6 +8,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { SkillRuntime } from "./runtime";
+import { syncToolsToBackend } from "./sync";
 import type {
   SkillManifest,
   SkillStatus,
@@ -137,6 +138,7 @@ class SkillManager {
       this.pingSkill(skillId).catch((err) => {
         console.warn(`[SkillManager] Initial ping failed for ${skillId}:`, err);
       });
+      syncToolsToBackend();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       store.dispatch(setSkillError({ skillId, error: msg }));
@@ -321,6 +323,7 @@ class SkillManager {
     store.dispatch(setSkillSetupComplete({ skillId, complete: false }));
     store.dispatch(setSkillOAuthCredential({ skillId, credential: undefined }));
     store.dispatch(setSkillState({ skillId, state: {} }));
+    syncToolsToBackend();
   }
 
   /**
@@ -338,6 +341,7 @@ class SkillManager {
     }
     this.runtimes.delete(skillId);
     store.dispatch(setSkillStatus({ skillId, status: "installed" }));
+    syncToolsToBackend();
   }
 
   /**
@@ -506,6 +510,7 @@ class SkillManager {
           type: "skills/setSkillState",
           payload: { skillId, state: newState },
         });
+        syncToolsToBackend();
         return { ok: true };
       }
 

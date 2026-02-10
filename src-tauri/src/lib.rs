@@ -307,6 +307,8 @@ pub fn run() {
 
                         // Wire the SkillRegistry into the SocketManager for MCP
                         socket_mgr.set_registry(engine.registry());
+                        // Wire the SocketManager into the engine for tool:sync
+                        engine.set_socket_manager(socket_mgr.clone());
 
                         app.manage(engine.clone());
 
