@@ -13,6 +13,7 @@ use crate::runtime::cron_scheduler::CronScheduler;
 use crate::runtime::manifest::SkillManifest;
 use crate::runtime::preferences::PreferencesStore;
 use crate::runtime::skill_registry::SkillRegistry;
+use crate::runtime::socket_manager::SocketManager;
 use crate::runtime::types::{events, SkillSnapshot, SkillStatus, ToolResult};
 use crate::runtime::qjs_skill_instance::{BridgeDeps, QjsSkillInstance};
 use crate::services::quickjs_libs::storage::IdbStorage;
@@ -33,6 +34,8 @@ pub struct RuntimeEngine {
     resource_dir: RwLock<Option<PathBuf>>,
     /// Tauri app handle for emitting events.
     app_handle: RwLock<Option<AppHandle>>,
+    /// Socket manager for emitting tool:sync events.
+    socket_manager: RwLock<Option<Arc<SocketManager>>>,
 }
 
 impl RuntimeEngine {
@@ -53,6 +56,7 @@ impl RuntimeEngine {
             skills_source_dir: RwLock::new(None),
             resource_dir: RwLock::new(None),
             app_handle: RwLock::new(None),
+            socket_manager: RwLock::new(None),
         })
     }
 
@@ -81,6 +85,19 @@ impl RuntimeEngine {
     pub fn set_resource_dir(&self, dir: PathBuf) {
         log::info!("[runtime] Resource directory set to: {:?}", dir);
         *self.resource_dir.write() = Some(dir);
+    }
+
+    /// Set the socket manager for emitting `tool:sync` events.
+    pub fn set_socket_manager(&self, mgr: Arc<SocketManager>) {
+        *self.socket_manager.write() = Some(mgr);
+    }
+
+    /// Notify the backend of the current tool state via `tool:sync`.
+    async fn sync_tools(&self) {
+        let mgr = { self.socket_manager.read().clone() };
+        if let Some(mgr) = mgr {
+            mgr.sync_tools().await;
+        }
     }
 
     /// Get the skills source directory.
@@ -274,6 +291,7 @@ impl RuntimeEngine {
             match current_status {
                 SkillStatus::Running => {
                     self.emit_status_change(&skill_id_owned);
+                    self.sync_tools().await;
                     return Ok(instance.snapshot());
                 }
                 SkillStatus::Error => {
@@ -321,6 +339,7 @@ impl RuntimeEngine {
         self.registry.stop_skill(skill_id).await?;
         self.cron_scheduler.unregister_all_for_skill(skill_id);
         self.emit_status_change(skill_id);
+        self.sync_tools().await;
         Ok(())
     }
 
@@ -391,6 +410,8 @@ impl RuntimeEngine {
                 log::warn!("[runtime] Failed to discover skills for auto-start: {e}");
             }
         }
+        // Sync all tool state to backend after auto-start completes
+        self.sync_tools().await;
     }
 
     /// Enable a skill.
