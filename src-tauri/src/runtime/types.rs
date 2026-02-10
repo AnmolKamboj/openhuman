@@ -87,6 +87,7 @@ pub enum SkillMessage {
         reply: tokio::sync::oneshot::Sender<Result<(), String>>,
     },
     /// Notify the skill of an error from an async operation.
+    #[allow(dead_code)]
     Error {
         error_type: String,
         message: String,
