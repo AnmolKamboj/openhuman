@@ -12,7 +12,7 @@ import { skillManager } from '../lib/skills/manager';
 import type { SkillManifest } from '../lib/skills/types';
 import { buildManualSentryEvent, enqueueError } from '../services/errorReportQueue';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
-import { setSkillError, setSkillState } from '../store/skillsSlice';
+import { setSkillError, setSkillState, setSkillStatus } from '../store/skillsSlice';
 import { DEV_AUTO_LOAD_SKILL, IS_DEV } from '../utils/config';
 
 // ---------------------------------------------------------------------------
@@ -100,6 +100,10 @@ export default function SkillProvider({ children }: { children: ReactNode }) {
               { skill_id, ...(name ? { skill_name: name } : {}) }
             ),
           });
+        } else if (status === 'stopped' || status === 'pending') {
+          // Skill process has stopped — reset to "installed" so the UI
+          // shows the Enable button instead of staying in setup mode.
+          dispatch(setSkillStatus({ skillId: skill_id, status: 'installed' }));
         }
       }
     )

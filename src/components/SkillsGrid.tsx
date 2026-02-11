@@ -121,7 +121,7 @@ function deriveConnectionStatus(
   setupComplete: boolean | undefined,
   skillState: Record<string, unknown> | undefined
 ): SkillConnectionStatus {
-  if (!lifecycleStatus || lifecycleStatus === 'installed') {
+  if (!lifecycleStatus || lifecycleStatus === 'installed' || lifecycleStatus === 'stopping') {
     return 'offline';
   }
   if (lifecycleStatus === 'error') {
