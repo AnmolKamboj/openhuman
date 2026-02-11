@@ -101,6 +101,8 @@ pub struct TdLibManager {
     request_tx: Arc<RwLock<Option<mpsc::Sender<TdRequest>>>>,
     /// Handle to the worker thread.
     worker_handle: RwLock<Option<std::thread::JoinHandle<()>>>,
+    /// True while a destroy is in progress (prevents concurrent create_client).
+    is_destroying: AtomicBool,
 }
 
 impl TdLibManager {
@@ -112,12 +114,20 @@ impl TdLibManager {
             data_dir: RwLock::new(None),
             request_tx: Arc::new(RwLock::new(None)),
             worker_handle: RwLock::new(None),
+            is_destroying: AtomicBool::new(false),
         }
     }
 
     /// Create and start a TDLib client with the given data directory.
     /// Returns the client ID. If a client already exists, returns its ID.
+    /// Only one client can exist at a time; blocks if a destroy is in progress.
     pub fn create_client(&self, data_dir: PathBuf) -> Result<i32, String> {
+        // Block creation while a destroy is in progress to prevent
+        // creating a new C++ client before the old one releases its database lock.
+        if self.is_destroying.load(Ordering::SeqCst) {
+            return Err("TDLib client is currently being destroyed, please retry".to_string());
+        }
+
         // Check if already initialized - return existing client ID
         if let Some(existing_id) = *self.client_id.read() {
             log::info!("[tdlib] Client already exists with ID: {}, reusing", existing_id);
@@ -574,15 +584,40 @@ impl TdLibManager {
     }
 
     /// Destroy the TDLib client and clean up resources.
+    /// Sends a `close` command to TDLib first to properly release the database lock,
+    /// then tears down the worker thread and clears state.
     pub async fn destroy(&self) -> Result<(), String> {
         log::info!("[tdlib] Destroying client");
+
+        self.is_destroying.store(true, Ordering::SeqCst);
+
+        // Close TDLib properly to release the td.binlog database lock.
+        // Without this, a subsequent create_client + setTdlibParameters will fail
+        // with "Can't lock file ... already in use by current program".
+        if self.client_id.read().is_some() {
+            log::info!("[tdlib] Sending close command to release database locks");
+            match tokio::time::timeout(
+                Duration::from_secs(5),
+                self.send(serde_json::json!({ "@type": "close" })),
+            )
+            .await
+            {
+                Ok(Ok(_)) => {
+                    log::info!("[tdlib] TDLib close acknowledged, waiting for lock release");
+                    // Give TDLib time to fully close the database and release the file lock.
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                }
+                Ok(Err(e)) => log::warn!("[tdlib] TDLib close command failed: {}", e),
+                Err(_) => log::warn!("[tdlib] TDLib close command timed out after 5s"),
+            }
+        }
 
         // Get the request_tx without holding the lock across await
         let request_tx = {
             self.request_tx.read().clone()
         };
 
-        // Send destroy request
+        // Send destroy request to stop the worker loop
         if let Some(request_tx) = request_tx {
             let (reply_tx, reply_rx) = oneshot::channel();
 
@@ -600,6 +635,7 @@ impl TdLibManager {
             let _ = handle.join();
         }
 
+        self.is_destroying.store(false, Ordering::SeqCst);
         log::info!("[tdlib] Client destroyed");
         Ok(())
     }

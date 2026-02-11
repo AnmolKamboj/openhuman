@@ -23,7 +23,7 @@ use crate::runtime::skill_registry::SkillRegistry;
 use crate::runtime::types::{events, SkillMessage, SkillStatus};
 
 /// Interval between ping sweeps.
-const PING_INTERVAL: Duration = Duration::from_secs(5);
+const PING_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Per-skill timeout when waiting for a ping reply.
 const PING_TIMEOUT: Duration = Duration::from_secs(30);
@@ -109,11 +109,19 @@ impl PingScheduler {
             None => return,
         };
 
-        // Collect running skill IDs
+        // Collect skill IDs that are running AND actively connected.
+        // Skills in setup mode or not yet connected are excluded to avoid
+        // interfering with the setup flow.
         let running: Vec<String> = registry
             .list_skills()
             .into_iter()
-            .filter(|s| s.status == SkillStatus::Running)
+            .filter(|s| {
+                s.status == SkillStatus::Running
+                    && s.state
+                        .get("connection_status")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|cs| cs == "connected")
+            })
             .map(|s| s.skill_id)
             .collect();
 
