@@ -118,6 +118,13 @@ impl SkillRegistry {
             let entry = skills
                 .get(skill_id)
                 .ok_or_else(|| format!("Skill '{}' not found", skill_id))?;
+            let status = entry.state.read().status;
+            if status != SkillStatus::Running {
+                return Err(format!(
+                    "Skill '{}' is not running (status: {:?})",
+                    skill_id, status
+                ));
+            }
             entry.sender.clone()
         };
 
@@ -198,8 +205,8 @@ impl SkillRegistry {
         // Wait for the skill to acknowledge stopping
         let _ = tokio::time::timeout(std::time::Duration::from_secs(5), reply_rx).await;
 
-        // Remove from registry
-        self.unregister(skill_id);
+        // Don't unregister — the skill stays in the registry with Stopped status
+        // so the UI can still query it and allow restart without full rediscovery.
         Ok(())
     }
 
@@ -235,6 +242,13 @@ impl SkillRegistry {
             let entry = skills
                 .get(skill_id)
                 .ok_or_else(|| format!("Skill '{}' not found", skill_id))?;
+            let status = entry.state.read().status;
+            if status != SkillStatus::Running {
+                return Err(format!(
+                    "Skill '{}' is not running (status: {:?})",
+                    skill_id, status
+                ));
+            }
             entry.sender.clone()
         };
 
