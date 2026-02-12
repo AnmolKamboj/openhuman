@@ -10,9 +10,9 @@ name: Package and publish
 
 on:
   workflow_dispatch:
-  # push:
-  #   branches:
-  #     - develop
+  push:
+    branches:
+      - main
   workflow_run:
     workflows: ["Version Bump"]
     types:
