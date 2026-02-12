@@ -10,18 +10,18 @@ name: Package and publish
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-  # workflow_run:
-  #   workflows: ["Version Bump"]
-  #   types:
-  #     - completed
+  # push:
   #   branches:
   #     - main
-  pull_request:
+  workflow_run:
+    workflows: ["Version Bump"]
+    types:
+      - completed
     branches:
       - main
+  # pull_request:
+  #   branches:
+  #     - main
 
 env:
   IS_PR: ${{ github.event_name == 'pull_request' }}
