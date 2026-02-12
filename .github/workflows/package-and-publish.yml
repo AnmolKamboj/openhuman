@@ -69,6 +69,7 @@ jobs:
   check-version:
     runs-on: ubuntu-latest
     needs: get-version
+    environment: ${{ github.ref == 'refs/heads/main' && 'Production' || '' }}
     outputs:
       should-skip: ${{ steps.check-release.outputs.should-skip }}
     steps:
