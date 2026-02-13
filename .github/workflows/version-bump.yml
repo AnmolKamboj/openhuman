@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: Production
     # Skip if this is a version bump commit to avoid infinite loop
-    if: "!contains(github.event.head_commit.message, 'chore: bump version') && !contains(github.event.head_commit.message, '[skip ci]')"
+    if: "!contains(github.event.head_commit.message, 'chore: bump version')"
 
     steps:
       - name: Generate GitHub App token
@@ -54,40 +54,19 @@ jobs:
       - name: Bump version
         id: version
         run: |
-          # Get current version from package.json
+          # Get current version
           CURRENT_VERSION=$(node -p "require('./package.json').version")
-          export CURRENT_VERSION
           echo "Current version: $CURRENT_VERSION"
 
-          # Compute new version (minor bump: x.y.z -> x.(y+1).0)
-          NEW_VERSION=$(node -e "
-            const v = process.env.CURRENT_VERSION.split('.').map(Number);
-            console.log([v[0], (v[1] || 0) + 1, 0].join('.'));
-          ")
-          export NEW_VERSION
+          # Bump minor version (creates commit and tag)
+          # The commit message includes [skip ci] to prevent triggering this workflow again
+          NEW_VERSION=$(npm version minor -m "chore: bump version to %s" | sed 's/v//')
           echo "New version: $NEW_VERSION"
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
-          # Update package.json
-          node -e "
-            const p = require('./package.json');
-            p.version = process.env.NEW_VERSION;
-            require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
-          "
-
-          # Update tauri.conf.json to match
-          node -e "
-            const c = require('./src-tauri/tauri.conf.json');
-            c.version = process.env.NEW_VERSION;
-            require('fs').writeFileSync('src-tauri/tauri.conf.json', JSON.stringify(c, null, 2) + '\n');
-          "
-
-          # Single commit and tag for package.json and tauri.conf.json
-          git add package.json src-tauri/tauri.conf.json
-          git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
-          git tag "v$NEW_VERSION"
-
       - name: Push changes
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           # Push to main and tags using GitHub App token (remote URL already configured)
           git push origin main
