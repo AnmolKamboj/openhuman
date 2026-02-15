@@ -13,7 +13,7 @@
 ![The Tet](./docs/the-tet.png)
 
 <p align="center" style="font-style: italic">
-  "The Tet. What a brilliant machine" Morgan Freeman as he <a href="https://www.youtube.com/watch?v=SveLVpqy_Rc">reminisces about the Tet</a> in the movie Oblivion
+  "The Tet. What a brilliant machine" Morgan Freeman as he <a href="https://youtu.be/SveLVpqy_Rc?si=y83aZNokPiUjILN0&t=60">reminisces about the Tet</a> in the movie Oblivion
 </p>
 
 ## What is AlphaHuman?
