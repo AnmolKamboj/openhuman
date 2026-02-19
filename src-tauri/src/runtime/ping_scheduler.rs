@@ -109,11 +109,19 @@ impl PingScheduler {
             None => return,
         };
 
-        // Collect running skill IDs
+        // Collect skill IDs that are running AND actively connected.
+        // Skills in setup mode or not yet connected are excluded to avoid
+        // interfering with the setup flow.
         let running: Vec<String> = registry
             .list_skills()
             .into_iter()
-            .filter(|s| s.status == SkillStatus::Running)
+            .filter(|s| {
+                s.status == SkillStatus::Running
+                    && s.state
+                        .get("connection_status")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|cs| cs == "connected")
+            })
             .map(|s| s.skill_id)
             .collect();
 

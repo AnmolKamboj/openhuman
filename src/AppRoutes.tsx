@@ -7,6 +7,8 @@ import PublicRoute from './components/PublicRoute';
 import Agents from './pages/Agents';
 import Conversations from './pages/Conversations';
 import Home from './pages/Home';
+import Intelligence from './pages/Intelligence';
+import Invites from './pages/Invites';
 import Login from './pages/Login';
 import Mnemonic from './pages/Mnemonic';
 import Onboarding from './pages/onboarding/Onboarding';
@@ -108,12 +110,40 @@ const AppRoutes = () => {
           }
         />
 
+        {/* Intelligence */}
+        <Route
+          path="/intelligence"
+          element={
+            <ProtectedRoute requireAuth={true}>
+              <Intelligence />
+            </ProtectedRoute>
+          }
+        />
+
         {/* Conversations */}
         <Route
           path="/conversations"
           element={
             <ProtectedRoute requireAuth={true}>
               <Conversations />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/conversations/:threadId"
+          element={
+            <ProtectedRoute requireAuth={true}>
+              <Conversations />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Invites */}
+        <Route
+          path="/invites"
+          element={
+            <ProtectedRoute requireAuth={true}>
+              <Invites />
             </ProtectedRoute>
           }
         />

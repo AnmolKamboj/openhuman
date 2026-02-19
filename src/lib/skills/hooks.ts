@@ -18,8 +18,8 @@ export function deriveConnectionStatus(
   setupComplete: boolean | undefined,
   skillState: Record<string, unknown> | undefined,
 ): SkillConnectionStatus {
-  // Skill not registered or not started
-  if (!lifecycleStatus || lifecycleStatus === "installed") {
+  // Skill not registered, not started, or shutting down
+  if (!lifecycleStatus || lifecycleStatus === "installed" || lifecycleStatus === "stopping") {
     return "offline";
   }
 

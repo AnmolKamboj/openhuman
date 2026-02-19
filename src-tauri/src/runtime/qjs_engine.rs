@@ -312,7 +312,8 @@ impl RuntimeEngine {
                         .error
                         .clone()
                         .unwrap_or_else(|| "Unknown initialization error".to_string());
-                    self.registry.unregister(&skill_id_owned);
+                    // Don't unregister — keep the skill with Error status so the
+                    // UI can see what happened and allow restart.
                     self.emit_status_change(&skill_id_owned);
                     return Err(format!(
                         "Skill '{}' failed to start: {}",
@@ -320,7 +321,9 @@ impl RuntimeEngine {
                     ));
                 }
                 SkillStatus::Stopped => {
-                    self.registry.unregister(&skill_id_owned);
+                    // Don't unregister — keep the skill with Stopped status so the
+                    // UI can still query it and allow restart.
+                    self.emit_status_change(&skill_id_owned);
                     return Err(format!(
                         "Skill '{}' stopped unexpectedly during initialization",
                         skill_id_owned

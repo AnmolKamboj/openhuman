@@ -1,5 +1,4 @@
-import type { Middleware } from '@reduxjs/toolkit';
-import { configureStore } from '@reduxjs/toolkit';
+import { configureStore, type Middleware } from '@reduxjs/toolkit';
 import { createLogger } from 'redux-logger';
 import {
   FLUSH,
@@ -13,13 +12,16 @@ import {
 } from 'redux-persist';
 import storage from 'redux-persist/lib/storage';
 
+import { setStoreForApiClient } from '../services/apiClient';
 import { IS_DEV } from '../utils/config';
 import { storeSession } from '../utils/tauriCommands';
 import aiReducer from './aiSlice';
 import authReducer, { setOnboardedForUser, setToken } from './authSlice';
+import inviteReducer from './inviteSlice';
 import skillsReducer from './skillsSlice';
 import socketReducer from './socketSlice';
 import teamReducer from './teamSlice';
+import threadReducer from './threadSlice';
 import userReducer from './userSlice';
 
 // Persist config for auth only
@@ -41,9 +43,17 @@ const aiPersistConfig = { key: 'ai', storage, whitelist: ['config'] };
 // Persist config for skills state (setupComplete per skill)
 const skillsPersistConfig = { key: 'skills', storage, whitelist: ['skills'] };
 
+// Persist config for thread UI prefs only (panel width, last viewed for unread)
+const threadPersistConfig = {
+  key: 'thread',
+  storage,
+  whitelist: ['panelWidth', 'lastViewedAt'],
+};
+
 const persistedAuthReducer = persistReducer(authPersistConfig, authReducer);
 const persistedAiReducer = persistReducer(aiPersistConfig, aiReducer);
 const persistedSkillsReducer = persistReducer(skillsPersistConfig, skillsReducer);
+const persistedThreadReducer = persistReducer(threadPersistConfig, threadReducer);
 
 /**
  * Middleware that syncs the JWT token to the Rust SESSION_SERVICE whenever
@@ -84,6 +94,8 @@ export const store = configureStore({
     ai: persistedAiReducer,
     skills: persistedSkillsReducer,
     team: teamReducer,
+    thread: persistedThreadReducer,
+    invite: inviteReducer,
   },
   middleware: getDefaultMiddleware => {
     const middleware = getDefaultMiddleware({
@@ -97,6 +109,9 @@ export const store = configureStore({
     return middleware;
   },
 });
+
+// Wire up the apiClient so it can read the token without a circular import
+setStoreForApiClient(() => store.getState().auth.token);
 
 export const persistor = persistStore(store, null, () => {
   // Dev-only: auto-inject JWT token for testing (e.g. Android without login flow)

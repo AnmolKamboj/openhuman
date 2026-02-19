@@ -18,36 +18,51 @@ const navItems = [
       </svg>
     ),
   },
-  // {
-  //   id: 'conversations',
-  //   label: 'Conversations',
-  //   path: '/conversations',
-  //   icon: (
-  //     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-  //       <path
-  //         strokeLinecap="round"
-  //         strokeLinejoin="round"
-  //         strokeWidth={2}
-  //         d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-  //       />
-  //     </svg>
-  //   ),
-  // },
-  // {
-  //   id: 'agents',
-  //   label: 'Agents',
-  //   path: '/agents',
-  //   icon: (
-  //     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-  //       <path
-  //         strokeLinecap="round"
-  //         strokeLinejoin="round"
-  //         strokeWidth={2}
-  //         d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-  //       />
-  //     </svg>
-  //   ),
-  // },
+  {
+    id: 'conversations',
+    label: 'Conversations',
+    path: '/conversations',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+        />
+      </svg>
+    ),
+  },
+  {
+    id: 'intelligence',
+    label: 'Intelligence',
+    path: '/intelligence',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+        />
+      </svg>
+    ),
+  },
+  {
+    id: 'invites',
+    label: 'Invite Friends',
+    path: '/invites',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
+        />
+      </svg>
+    ),
+  },
   {
     id: 'settings',
     label: 'Settings',
@@ -76,6 +91,17 @@ const MiniSidebar = () => {
   const navigate = useNavigate();
   const token = useAppSelector(state => state.auth.token);
 
+  // Unread count for Conversations: threads with lastMessageAt > lastViewedAt (must be before early return)
+  const conversationsUnreadCount = useAppSelector(state => {
+    const { threads, lastViewedAt } = state.thread;
+    if (threads.length === 0) return 0;
+    return threads.filter(t => {
+      const viewed = lastViewedAt[t.id];
+      const lastMsg = new Date(t.lastMessageAt || t.createdAt).getTime();
+      return viewed == null || lastMsg > viewed;
+    }).length;
+  });
+
   // Hide sidebar when not authenticated or on public/onboarding routes
   const hiddenPaths = ['/', '/login', '/onboarding'];
   if (!token || hiddenPaths.includes(location.pathname)) {
@@ -84,6 +110,7 @@ const MiniSidebar = () => {
 
   const isActive = (path: string) => {
     if (path === '/settings') return location.pathname.startsWith('/settings');
+    if (path === '/conversations') return location.pathname.startsWith('/conversations');
     return location.pathname === path;
   };
 
@@ -91,6 +118,7 @@ const MiniSidebar = () => {
     <div className="w-14 flex-shrink-0 bg-black backdrop-blur-md border-r border-white/10 flex flex-col items-center py-4 gap-2 z-50 relative">
       {navItems.map(item => {
         const active = isActive(item.path);
+        const showUnreadBadge = item.id === 'conversations' && conversationsUnreadCount > 0;
         return (
           <div key={item.id} className="relative group">
             <button
@@ -103,6 +131,13 @@ const MiniSidebar = () => {
               aria-label={item.label}>
               {item.icon}
             </button>
+            {showUnreadBadge && (
+              <span
+                className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-primary-500 text-white text-[10px] font-medium"
+                aria-label={`${conversationsUnreadCount} unread`}>
+                {conversationsUnreadCount > 99 ? '99+' : conversationsUnreadCount}
+              </span>
+            )}
             {/* Tooltip - appears to the right */}
             <div className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-stone-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150">
               {item.label}
