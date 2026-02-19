@@ -535,7 +535,7 @@ async fn handle_message(
         }
         SkillMessage::LoadParams { params } => {
             let params_str = serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string());
-            if let Err(e) = handle_js_void_call(ctx, "onLoad", &params_str).await {
+            if let Err(e) = handle_js_void_call(rt, ctx, "onLoad", &params_str).await {
                 log::warn!("[skill:{}] onLoad failed (skill may not export it): {}", skill_id, e);
             }
         }
