@@ -93,7 +93,7 @@ function syncGmailStateToSlice(
       Array.isArray(gmailState.emails) ? (gmailState.emails as GmailEmailSummary[]) : []
     )
   );
-  syncGmailMetadataToBackend(gmailState as GmailStateForSync);
+  syncGmailMetadataToBackend(gmailState.profile as GmailStateForSync);
 }
 
 export default function SkillProvider({ children }: { children: ReactNode }) {

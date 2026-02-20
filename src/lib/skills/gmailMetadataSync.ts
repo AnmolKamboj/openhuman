@@ -6,7 +6,7 @@
 import { emitViaRustSocket } from '../../utils/tauriSocket';
 
 const INTEGRATION_METADATA_SYNC_EVENT = 'integration:metadata-sync';
-const PROVIDER_GOOGLE = 'google';
+const PROVIDER_GOOGLE = 'gmail';
 
 /** Gmail profile shape from skill state (snake_case). */
 interface GmailProfileLike {
@@ -48,9 +48,9 @@ export function syncGmailMetadataToBackend(gmailState: GmailStateForSync | undef
     history_id: profile.history_id,
   };
 
-  if (Array.isArray(gmailState.emails) && gmailState.emails.length > 0) {
-    metadata.emails = gmailState.emails as GmailEmailSummaryLike[];
-  }
+  // if (Array.isArray(gmailState.emails) && gmailState.emails.length > 0) {
+  //   metadata.emails = gmailState.emails as GmailEmailSummaryLike[];
+  // }
 
   const payload = {
     requestId: crypto.randomUUID(),
