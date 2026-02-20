@@ -6,13 +6,7 @@ import { consumeLoginToken, fetchIntegrationTokens } from '../services/api/authA
 import { store } from '../store';
 import { setToken } from '../store/authSlice';
 import { setSkillState } from '../store/skillsSlice';
-
-type IntegrationTokensPayload = {
-  accessToken: string;
-  refreshToken: string;
-  /** ISO timestamp string */
-  expiresAt: string;
-};
+import { hexToBase64 } from './integrationTokensCrypto';
 
 function getCurrentUserId(): string | null {
   const state = store.getState();
@@ -33,85 +27,6 @@ function getCurrentUserId(): string | null {
     return null;
   }
 }
-
-function hexToBase64(hex: string): string {
-  const bytes = hexToBytes(hex);
-  if (bytes.length === 0) return '';
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-function hexToBytes(hex: string): Uint8Array {
-  const cleanHex = hex.trim().replace(/^0x/i, '');
-  if (!cleanHex) return new Uint8Array();
-  const bytes = new Uint8Array(cleanHex.length / 2);
-  for (let i = 0; i < cleanHex.length; i += 2) {
-    bytes[i / 2] = parseInt(cleanHex.slice(i, i + 2), 16);
-  }
-  return bytes;
-}
-
-function base64ToBytes(b64: string): Uint8Array {
-  // Normalize potential URL-safe base64 and missing padding
-  let normalized = b64.replace(/-/g, '+').replace(/_/g, '/');
-  const pad = normalized.length % 4;
-  if (pad === 2) normalized += '==';
-  else if (pad === 3) normalized += '=';
-
-  const binary = atob(normalized);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-async function decryptIntegrationTokensWithKey(
-  encryptedPayload: string,
-  keyHex: string
-): Promise<string> {
-  if (typeof crypto === 'undefined' || !crypto.subtle) {
-    throw new Error('Web Crypto API is not available for decryption');
-  }
-
-  const keyBytes = hexToBytes(keyHex);
-  if (keyBytes.length === 0) {
-    throw new Error('Invalid encryption key');
-  }
-
-  const combined = base64ToBytes(encryptedPayload);
-  // Backend format: IV (16 bytes) + AuthTag (16 bytes) + EncryptedData (rest)
-  if (combined.length <= 32) {
-    throw new Error('Encrypted payload too short');
-  }
-
-  const iv = combined.slice(0, 16);
-  const authTag = combined.slice(16, 32);
-  const encryptedData = combined.slice(32);
-  const ciphertextWithTag = new Uint8Array(encryptedData.length + authTag.length);
-  ciphertextWithTag.set(encryptedData, 0);
-  ciphertextWithTag.set(authTag, encryptedData.length);
-
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyBytes as unknown as BufferSource,
-    { name: 'AES-GCM' },
-    false,
-    ['decrypt']
-  );
-
-  const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv, tagLength: 128 },
-    cryptoKey,
-    ciphertextWithTag as unknown as BufferSource
-  );
-
-  return new TextDecoder().decode(decrypted);
-}
-
 
 /**
  * Handle an `alphahuman://auth?token=...` deep link for login.
@@ -189,18 +104,6 @@ const handleOAuthDeepLink = async (parsed: URL) => {
         return;
       }
 
-      let decryptedTokens: IntegrationTokensPayload;
-      try {
-        const plaintext = await decryptIntegrationTokensWithKey(
-          response.data.encrypted,
-          encryptionKeyHex
-        );
-        decryptedTokens = JSON.parse(plaintext) as IntegrationTokensPayload;
-      } catch (err) {
-        console.error('[DeepLink] Failed to decrypt integration tokens:', err);
-        return;
-      }
-
       const existingState = state.skills.skillStates[skillId] ?? {};
       store.dispatch(
         setSkillState({
@@ -208,8 +111,8 @@ const handleOAuthDeepLink = async (parsed: URL) => {
           state: {
             ...existingState,
             oauthTokens: {
-              ...(existingState.oauthTokens as Record<string, unknown> | undefined),
-              [integrationId]: decryptedTokens,
+              ...(existingState.oauthTokens as Record<string, { encrypted: string }> | undefined),
+              [integrationId]: { encrypted: response.data.encrypted },
             },
           },
         })
