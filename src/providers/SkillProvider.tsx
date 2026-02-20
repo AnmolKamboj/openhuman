@@ -12,6 +12,12 @@ import { skillManager } from '../lib/skills/manager';
 import type { SkillManifest } from '../lib/skills/types';
 import { buildManualSentryEvent, enqueueError } from '../services/errorReportQueue';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
+import {
+  setGmailEmails,
+  setGmailProfile,
+  type GmailEmailSummary,
+  type GmailProfile,
+} from '../store/gmailSlice';
 import { setSkillError, setSkillState, setSkillStatus } from '../store/skillsSlice';
 import { DEV_AUTO_LOAD_SKILL, IS_DEV } from '../utils/config';
 
@@ -53,19 +59,66 @@ async function discoverSkills(): Promise<SkillManifest[]> {
 // Provider
 // ---------------------------------------------------------------------------
 
+/** Normalize event payload: Rust emits { skillId, state }; ensure we get both. */
+function parseSkillStatePayload(
+  payload: unknown
+): { skillId: string; state: Record<string, unknown> } | null {
+  if (payload == null || typeof payload !== 'object') return null;
+  const raw = payload as Record<string, unknown>;
+  const skillId = raw.skillId as string | undefined;
+  const state = (raw.state ?? raw) as Record<string, unknown> | undefined;
+  if (!skillId || state == null || typeof state !== 'object') return null;
+  return { skillId, state };
+}
+
+/** Sync profile and emails from gmail skill state into gmailSlice. */
+function syncGmailStateToSlice(
+  gmailState: Record<string, unknown> | undefined,
+  dispatch: ReturnType<typeof useAppDispatch>
+): void {
+  if (!gmailState || typeof gmailState !== 'object') return;
+  dispatch(
+    setGmailProfile(
+      gmailState.profile !== undefined && gmailState.profile != null
+        ? (gmailState.profile as GmailProfile)
+        : null
+    )
+  );
+  dispatch(
+    setGmailEmails(
+      Array.isArray(gmailState.emails) ? (gmailState.emails as GmailEmailSummary[]) : []
+    )
+  );
+}
+
 export default function SkillProvider({ children }: { children: ReactNode }) {
   const { token } = useAppSelector(state => state.auth);
   const skillsState = useAppSelector(state => state.skills.skills);
+  const skillStates = useAppSelector(state => state.skills.skillStates);
   const dispatch = useAppDispatch();
   const initRef = useRef(false);
+
+  // Keep gmailSlice in sync with skills.skillStates.gmail (event handler + rehydration)
+  const gmailSkillState = skillStates?.gmail as Record<string, unknown> | undefined;
+  useEffect(() => {
+    if (!gmailSkillState) return;
+    syncGmailStateToSlice(gmailSkillState, dispatch);
+  }, [gmailSkillState, dispatch]);
 
   // Listen for skill state changes emitted from the Rust runtime event loop
   useEffect(() => {
     let unlisten: (() => void) | undefined;
 
     listen<{ skillId: string; state: Record<string, unknown> }>('skill-state-changed', event => {
-      const { skillId, state: newState } = event.payload;
+      const parsed = parseSkillStatePayload(event.payload);
+      if (!parsed) return;
+      const { skillId, state: newState } = parsed;
       dispatch(setSkillState({ skillId, state: newState }));
+
+      // Transfer Gmail skill state to gmail store (also synced by effect from skillStates.gmail)
+      if (skillId === 'gmail') {
+        syncGmailStateToSlice(newState, dispatch);
+      }
     })
       .then(fn => {
         unlisten = fn;
@@ -78,6 +131,25 @@ export default function SkillProvider({ children }: { children: ReactNode }) {
       unlisten?.();
     };
   }, [dispatch]);
+
+  // Fallback: when gmail skill is ready, fetch state from backend (covers events missed before listener attached)
+  const gmailStatus = skillsState?.gmail?.status;
+  useEffect(() => {
+    if (gmailStatus !== 'ready') return;
+    const timeoutId = window.setTimeout(() => {
+      invoke<{ state?: Record<string, unknown> } | null>('runtime_get_skill_state', {
+        skillId: 'gmail',
+      })
+        .then(snapshot => {
+          if (snapshot?.state && typeof snapshot.state === 'object') {
+            dispatch(setSkillState({ skillId: 'gmail', state: snapshot.state }));
+            syncGmailStateToSlice(snapshot.state, dispatch);
+          }
+        })
+        .catch(() => {});
+    }, 800);
+    return () => window.clearTimeout(timeoutId);
+  }, [gmailStatus, dispatch]);
 
   // Listen for skill runtime errors and surface them in the error notification
   useEffect(() => {

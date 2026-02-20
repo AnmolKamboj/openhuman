@@ -296,7 +296,7 @@ impl PingScheduler {
                         "skillId": skill_id,
                         "state": state_map,
                     });
-                    let _ = handle.emit("skill-state-changed", &payload);
+                    let _ = handle.emit_to("main", "skill-state-changed", payload);
                 }
             }
         }

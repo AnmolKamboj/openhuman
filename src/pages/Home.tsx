@@ -2,7 +2,6 @@ import { useNavigate } from 'react-router-dom';
 
 import ConnectionIndicator from '../components/ConnectionIndicator';
 import SkillsGrid from '../components/SkillsGrid';
-import WalletInfoSection from '../components/WalletInfoSection';
 import { useUser } from '../hooks/useUser';
 import { TELEGRAM_BOT_USERNAME } from '../utils/config';
 import { openUrl } from '../utils/openUrl';

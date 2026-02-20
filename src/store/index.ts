@@ -17,6 +17,7 @@ import { IS_DEV } from '../utils/config';
 import { storeSession } from '../utils/tauriCommands';
 import aiReducer from './aiSlice';
 import authReducer, { setOnboardedForUser, setToken } from './authSlice';
+import gmailReducer from './gmailSlice';
 import inviteReducer from './inviteSlice';
 import skillsReducer from './skillsSlice';
 import socketReducer from './socketSlice';
@@ -93,6 +94,7 @@ export const store = configureStore({
     user: userReducer,
     ai: persistedAiReducer,
     skills: persistedSkillsReducer,
+    gmail: gmailReducer,
     team: teamReducer,
     thread: persistedThreadReducer,
     invite: inviteReducer,

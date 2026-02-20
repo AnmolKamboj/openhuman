@@ -270,11 +270,13 @@ class SkillManager {
   /**
    * Notify a skill that OAuth completed successfully.
    * Called by the deep link handler after backend OAuth callback.
+   * For Gmail, pass extraCredential.accessToken so the skill uses the token directly.
    */
   async notifyOAuthComplete(
     skillId: string,
     integrationId: string,
     provider?: string,
+    extraCredential?: { accessToken?: string },
   ): Promise<void> {
     const runtime = this.runtimes.get(skillId);
     if (!runtime || !runtime.isRunning) {
@@ -288,6 +290,7 @@ class SkillManager {
       credentialId: integrationId,
       provider: provider ?? manifest?.setup?.oauth?.provider ?? "unknown",
       grantedScopes: manifest?.setup?.oauth?.scopes ?? [],
+      ...extraCredential,
     };
 
     await runtime.oauthComplete(credential);

@@ -387,16 +387,16 @@ async fn run_event_loop(
                     .collect();
                 state.write().published_state = new_map.clone();
 
-                // Emit Tauri event so the frontend picks up the change
+                // Emit Tauri event to the main window so the frontend receives it (Tauri 2: target explicitly)
                 if let Some(handle) = app_handle {
                     use tauri::Emitter;
-                    let _ = handle.emit(
-                        "skill-state-changed",
-                        serde_json::json!({
-                            "skillId": skill_id,
-                            "state": new_map,
-                        }),
-                    );
+                    let payload = serde_json::json!({
+                        "skillId": skill_id,
+                        "state": new_map,
+                    });
+                    if let Err(e) = handle.emit_to("main", "skill-state-changed", payload) {
+                        log::warn!("[skill:{}] Failed to emit skill-state-changed to main: {}", skill_id, e);
+                    }
                 }
             }
         }

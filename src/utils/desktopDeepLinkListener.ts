@@ -4,9 +4,13 @@ import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { skillManager } from '../lib/skills/manager';
 import { consumeLoginToken, fetchIntegrationTokens } from '../services/api/authApi';
 import { store } from '../store';
+import {
+  decryptIntegrationTokens,
+  hexToBase64,
+  type IntegrationTokensPayload,
+} from './integrationTokensCrypto';
 import { setToken } from '../store/authSlice';
 import { setSkillState } from '../store/skillsSlice';
-import { hexToBase64 } from './integrationTokensCrypto';
 
 function getCurrentUserId(): string | null {
   const state = store.getState();
@@ -118,7 +122,24 @@ const handleOAuthDeepLink = async (parsed: URL) => {
         })
       );
 
-      await skillManager.notifyOAuthComplete(skillId, integrationId);
+      // For Gmail, pass decrypted access token so the skill uses it instead of the proxy
+      let extraCredential: { accessToken?: string } | undefined;
+      if (skillId === 'gmail') {
+        try {
+          const decryptedJson = await decryptIntegrationTokens(
+            response.data.encrypted,
+            encryptionKeyHex
+          );
+          const payload = JSON.parse(decryptedJson) as IntegrationTokensPayload;
+          if (payload.accessToken) {
+            extraCredential = { accessToken: payload.accessToken };
+          }
+        } catch (e) {
+          console.warn('[DeepLink] Could not decrypt Gmail token for skill:', e);
+        }
+      }
+
+      await skillManager.notifyOAuthComplete(skillId, integrationId, undefined, extraCredential);
     } catch (err) {
       console.error('[DeepLink] Failed to notify OAuth complete:', err);
     }
@@ -191,9 +212,10 @@ export const setupDesktopDeepLinkListener = async () => {
     if (typeof window !== 'undefined') {
       // window.__simulateDeepLink('alphahuman://auth?token=1234567890')
       // window.__simulateDeepLink('alphahuman://oauth/success?integrationId=6989ef9c8e8bf1b6d991a08c&skillId=notion')
-      (
-        window as Window & { __simulateDeepLink?: (url: string) => Promise<void> }
-      ).__simulateDeepLink = (url: string) => handleDeepLinkUrls([url]);
+      const win = window as Window & {
+        __simulateDeepLink?: (url: string) => Promise<void>;
+      };
+      win.__simulateDeepLink = (url: string) => handleDeepLinkUrls([url]);
     }
   } catch (err) {
     console.error('[DeepLink] Setup failed:', err);
