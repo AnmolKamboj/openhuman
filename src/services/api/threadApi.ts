@@ -44,11 +44,14 @@ export const threadApi = {
   },
 
   /** POST /chat/sendMessage — send a user message to a thread and get the agent response */
-  sendMessage: async (message: string, conversationId: string): Promise<SendMessageResponseData> => {
-    const response = await apiClient.post<ApiResponse<SendMessageResponseData>>('/chat/sendMessage', {
-      message,
-      conversationId,
-    });
+  sendMessage: async (
+    message: string,
+    conversationId: string
+  ): Promise<SendMessageResponseData> => {
+    const response = await apiClient.post<ApiResponse<SendMessageResponseData>>(
+      '/chat/sendMessage',
+      { message, conversationId }
+    );
     return response.data;
   },
 

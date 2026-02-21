@@ -386,15 +386,11 @@ const Conversations = () => {
                   <div
                     key={thread.id}
                     className={`group relative transition-colors ${
-                      thread.id === selectedThreadId
-                        ? 'bg-white/10'
-                        : 'hover:bg-white/[0.07]'
+                      thread.id === selectedThreadId ? 'bg-white/10' : 'hover:bg-white/[0.07]'
                     }`}>
                     {confirmDeleteId === thread.id ? (
                       <div className="flex items-center justify-between py-3 px-4">
-                        <span className="text-xs text-stone-400 truncate">
-                          Delete this thread?
-                        </span>
+                        <span className="text-xs text-stone-400 truncate">Delete this thread?</span>
                         <div className="flex gap-2 flex-shrink-0 ml-2">
                           <button
                             onClick={() => setConfirmDeleteId(null)}
@@ -554,11 +550,7 @@ const Conversations = () => {
                   <button
                     onClick={handleMobileBack}
                     className="p-1 rounded-lg hover:bg-white/10 text-stone-400 hover:text-stone-200 transition-colors flex-shrink-0 -ml-1">
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"

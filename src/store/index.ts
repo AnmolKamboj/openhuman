@@ -38,11 +38,7 @@ const aiPersistConfig = { key: 'ai', storage, whitelist: ['config'] };
 const skillsPersistConfig = { key: 'skills', storage, whitelist: ['skills'] };
 
 // Persist config for thread UI prefs only (panel width, last viewed for unread)
-const threadPersistConfig = {
-  key: 'thread',
-  storage,
-  whitelist: ['panelWidth', 'lastViewedAt'],
-};
+const threadPersistConfig = { key: 'thread', storage, whitelist: ['panelWidth', 'lastViewedAt'] };
 
 const persistedAuthReducer = persistReducer(authPersistConfig, authReducer);
 const persistedAiReducer = persistReducer(aiPersistConfig, aiReducer);

@@ -264,6 +264,10 @@ async function handleRequest(req, res) {
 
   // POST /payments/stripe/purchasePlan
   if (method === 'POST' && /^\/payments\/stripe\/purchasePlan\/?$/.test(url)) {
+    if (mockBehavior['purchaseError'] === 'true') {
+      json(res, 500, { success: false, error: 'Payment service unavailable' });
+      return;
+    }
     json(res, 200, {
       success: true,
       data: {
@@ -282,15 +286,243 @@ async function handleRequest(req, res) {
 
   // POST /payments/coinbase/charge
   if (method === 'POST' && /^\/payments\/coinbase\/charge\/?$/.test(url)) {
+    if (mockBehavior['coinbaseError'] === 'true') {
+      json(res, 500, { success: false, error: 'Coinbase service unavailable' });
+      return;
+    }
+    const chargeId = 'coinbase_mock_' + Date.now();
     json(res, 200, {
       success: true,
       data: {
-        gatewayTransactionId: 'coinbase_mock_' + Date.now(),
+        gatewayTransactionId: chargeId,
         hostedUrl: 'http://127.0.0.1:18473/mock-coinbase-checkout',
         status: 'NEW',
         expiresAt: new Date(Date.now() + 3600000).toISOString(),
       },
     });
+    return;
+  }
+
+  // GET /payments/coinbase/charge/:id — crypto payment status check
+  if (method === 'GET' && /^\/payments\/coinbase\/charge\/[^/]+\/?(\?.*)?$/.test(url)) {
+    const status = mockBehavior['cryptoStatus'] || 'NEW';
+    const underpaidAmount = mockBehavior['cryptoUnderpaidAmount'] || '0';
+    const overpaidAmount = mockBehavior['cryptoOverpaidAmount'] || '0';
+    json(res, 200, {
+      success: true,
+      data: {
+        status,
+        payment: {
+          status,
+          amountPaid:
+            status === 'UNDERPAID' ? '150.00' : status === 'OVERPAID' ? '350.00' : '250.00',
+          amountExpected: '250.00',
+          currency: 'USDC',
+          underpaidAmount,
+          overpaidAmount,
+        },
+        expiresAt: new Date(Date.now() + 3600000).toISOString(),
+      },
+    });
+    return;
+  }
+
+  // GET /auth/telegram/connect — OAuth connect URL for Telegram setup
+  if (method === 'GET' && /^\/auth\/telegram\/connect\/?(\?.*)?$/.test(url)) {
+    if (mockBehavior['telegramDuplicate'] === 'true') {
+      json(res, 409, { success: false, error: 'Telegram account already linked to another user' });
+      return;
+    }
+    json(res, 200, {
+      success: true,
+      data: { oauthUrl: 'http://127.0.0.1:18473/mock-telegram-oauth' },
+    });
+    return;
+  }
+
+  // POST /telegram/command — process a Telegram command
+  if (method === 'POST' && /^\/telegram\/command\/?$/.test(url)) {
+    if (mockBehavior['telegramUnauthorized'] === 'true') {
+      json(res, 403, { success: false, error: 'Unauthorized: insufficient permissions' });
+      return;
+    }
+    if (mockBehavior['telegramCommandError'] === 'true') {
+      json(res, 400, { success: false, error: 'Invalid command format' });
+      return;
+    }
+    json(res, 200, { success: true, data: { result: 'Command executed successfully' } });
+    return;
+  }
+
+  // GET /telegram/permissions — get current permission levels
+  if (method === 'GET' && /^\/telegram\/permissions\/?(\?.*)?$/.test(url)) {
+    const level = mockBehavior['telegramPermission'] || 'read';
+    json(res, 200, {
+      success: true,
+      data: { level, canRead: true, canWrite: level !== 'read', canInitiate: level === 'admin' },
+    });
+    return;
+  }
+
+  // POST /telegram/webhook/configure — configure webhook
+  if (method === 'POST' && /^\/telegram\/webhook\/configure\/?$/.test(url)) {
+    json(res, 200, {
+      success: true,
+      data: { webhookUrl: 'https://api.example.com/webhook/telegram', active: true },
+    });
+    return;
+  }
+
+  // POST /telegram/disconnect — disconnect Telegram skill
+  if (method === 'POST' && /^\/telegram\/disconnect\/?$/.test(url)) {
+    json(res, 200, { success: true, data: { disconnected: true } });
+    return;
+  }
+
+  // GET /skills — list available skills
+  if (method === 'GET' && /^\/skills\/?(\?.*)?$/.test(url)) {
+    json(res, 200, {
+      success: true,
+      data: [
+        {
+          id: 'telegram',
+          name: 'Telegram',
+          status: mockBehavior['telegramSkillStatus'] || 'installed',
+          setupComplete: mockBehavior['telegramSetupComplete'] === 'true',
+        },
+        {
+          id: 'notion',
+          name: 'Notion',
+          status: mockBehavior['notionSkillStatus'] || 'installed',
+          setupComplete: mockBehavior['notionSetupComplete'] === 'true',
+        },
+        {
+          id: 'email',
+          name: 'Email',
+          status: mockBehavior['gmailSkillStatus'] || 'installed',
+          setupComplete: mockBehavior['gmailSetupComplete'] === 'true',
+        },
+      ],
+    });
+    return;
+  }
+
+  // GET /mock-telegram-oauth — mock OAuth page
+  if (method === 'GET' && /^\/mock-telegram-oauth\/?(\?.*)?$/.test(url)) {
+    setCors(res);
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end('<html><body><h1>Mock Telegram OAuth</h1></body></html>');
+    return;
+  }
+
+  // GET /auth/notion/connect — OAuth connect URL for Notion setup
+  if (method === 'GET' && /^\/auth\/notion\/connect\/?(\?.*)?$/.test(url)) {
+    if (mockBehavior['notionTokenRevoked'] === 'true') {
+      json(res, 401, { success: false, error: 'OAuth token has been revoked' });
+      return;
+    }
+    const workspace = mockBehavior['notionWorkspace'] || "Test User's Workspace";
+    json(res, 200, {
+      success: true,
+      data: { oauthUrl: 'http://127.0.0.1:18473/mock-notion-oauth', workspace },
+    });
+    return;
+  }
+
+  // GET /notion/permissions — get current Notion permission level
+  if (method === 'GET' && /^\/notion\/permissions\/?(\?.*)?$/.test(url)) {
+    const level = mockBehavior['notionPermission'] || 'read';
+    json(res, 200, {
+      success: true,
+      data: {
+        level,
+        canRead: true,
+        canWrite: level === 'write' || level === 'admin',
+        canCreate: level === 'write' || level === 'admin',
+      },
+    });
+    return;
+  }
+
+  // GET /mock-notion-oauth — mock Notion OAuth page
+  if (method === 'GET' && /^\/mock-notion-oauth\/?(\?.*)?$/.test(url)) {
+    setCors(res);
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(
+      '<html><body><h1>Mock Notion OAuth</h1><p>Authorize workspace access</p></body></html>'
+    );
+    return;
+  }
+
+  // GET /auth/google/connect — OAuth connect URL for Gmail/Email setup
+  if (method === 'GET' && /^\/auth\/google\/connect\/?(\?.*)?$/.test(url)) {
+    if (mockBehavior['gmailTokenRevoked'] === 'true') {
+      json(res, 401, { success: false, error: 'OAuth token has been revoked' });
+      return;
+    }
+    if (mockBehavior['gmailTokenExpired'] === 'true') {
+      json(res, 401, { success: false, error: 'OAuth token has expired' });
+      return;
+    }
+    json(res, 200, {
+      success: true,
+      data: { oauthUrl: 'http://127.0.0.1:18473/mock-google-oauth' },
+    });
+    return;
+  }
+
+  // GET /gmail/permissions — get current Gmail/Email permission level
+  if (method === 'GET' && /^\/gmail\/permissions\/?(\?.*)?$/.test(url)) {
+    const level = mockBehavior['gmailPermission'] || 'read';
+    json(res, 200, {
+      success: true,
+      data: {
+        level,
+        canRead: true,
+        canWrite: level === 'write' || level === 'admin',
+        canInitiate: level === 'admin',
+      },
+    });
+    return;
+  }
+
+  // POST /gmail/disconnect — disconnect Gmail/Email skill
+  if (method === 'POST' && /^\/gmail\/disconnect\/?$/.test(url)) {
+    json(res, 200, { success: true, data: { disconnected: true } });
+    return;
+  }
+
+  // GET /gmail/emails — fetch emails (mock list)
+  if (method === 'GET' && /^\/gmail\/emails\/?(\?.*)?$/.test(url)) {
+    json(res, 200, {
+      success: true,
+      data: [
+        {
+          id: 'msg-1',
+          subject: 'Welcome to AlphaHuman',
+          from: 'team@alphahuman.com',
+          date: new Date().toISOString(),
+          snippet: 'Welcome to the platform!',
+          hasAttachments: false,
+        },
+        {
+          id: 'msg-2',
+          subject: 'Weekly Crypto Report',
+          from: 'reports@crypto.com',
+          date: new Date(Date.now() - 86400000).toISOString(),
+          snippet: 'Your weekly summary is ready.',
+          hasAttachments: true,
+        },
+      ],
+    });
+    return;
+  }
+
+  // GET /mock-google-oauth — mock Google OAuth page
+  if (method === 'GET' && /^\/mock-google-oauth\/?(\?.*)?$/.test(url)) {
+    setCors(res);
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end('<html><body><h1>Mock Google OAuth</h1><p>Authorize email access</p></body></html>');
     return;
   }
 
