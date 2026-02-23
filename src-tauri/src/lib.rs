@@ -506,7 +506,7 @@ pub fn run() {
                     && !daemon_mode
                     && !daemon_foreground_requested()
                     && !cfg!(debug_assertions)  // Always use internal supervisor in debug builds
-                    && std::env::var("ALPHAHUMAN_DAEMON_INTERNAL").is_err()  // Allow override via env var
+                    && std::env::var("ALPHAHUMAN_DAEMON_INTERNAL").unwrap_or("false".to_string()) != "true"  // Allow override via env var
                 {
                     // On macOS, start external LaunchAgent service for background daemon
                     tauri::async_runtime::spawn(async move {

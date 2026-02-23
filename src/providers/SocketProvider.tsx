@@ -26,11 +26,13 @@ import {
  * In web mode: uses the frontend Socket.io client directly.
  */
 const SocketProvider = ({ children }: { children: React.ReactNode }) => {
+  console.log('[SocketProvider] Component mounting/re-rendering');
   const token = useAppSelector(state => state.auth.token);
   const socketStatus = useAppSelector(selectSocketStatus);
   const previousTokenRef = useRef<string | null>(null);
   const tauriListenersSetup = useRef(false);
   const usesRustSocket = isTauri();
+  console.log('[SocketProvider] usesRustSocket:', usesRustSocket, 'isTauri():', isTauri());
 
   // Setup daemon lifecycle management in Tauri mode
   const daemonLifecycle = useDaemonLifecycle();
@@ -55,13 +57,40 @@ const SocketProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Setup Tauri event listeners once
   useEffect(() => {
+    console.log('[SocketProvider] useEffect triggered, usesRustSocket:', usesRustSocket, 'tauriListenersSetup:', tauriListenersSetup.current);
+
     if (usesRustSocket && !tauriListenersSetup.current) {
-      setupTauriSocketListeners();
+      console.log('[SocketProvider] Condition met - calling setupTauriSocketListeners()');
+      console.log('[SocketProvider] About to call setupTauriSocketListeners()');
+
+      // Set this immediately to prevent multiple calls
       tauriListenersSetup.current = true;
+
+      setupTauriSocketListeners()
+        .then(() => {
+          console.log('[SocketProvider] setupTauriSocketListeners() completed successfully');
+        })
+        .catch((error) => {
+          console.error('[SocketProvider] setupTauriSocketListeners() failed:', error);
+          console.error('[SocketProvider] Error details:', {
+            message: error?.message,
+            stack: error?.stack,
+            toString: error?.toString(),
+          });
+          // Reset flag on failure so it can retry
+          tauriListenersSetup.current = false;
+        });
+    } else if (usesRustSocket && tauriListenersSetup.current) {
+      console.log('[SocketProvider] Tauri listeners already set up, skipping');
+    } else if (!usesRustSocket) {
+      console.log('[SocketProvider] Not using Rust socket, skipping Tauri listener setup');
+    } else {
+      console.log('[SocketProvider] Unexpected condition - usesRustSocket:', usesRustSocket, 'tauriListenersSetup.current:', tauriListenersSetup.current);
     }
 
     return () => {
       if (usesRustSocket && tauriListenersSetup.current) {
+        console.log('[SocketProvider] Cleaning up Tauri socket listeners');
         cleanupTauriSocketListeners();
         tauriListenersSetup.current = false;
       }

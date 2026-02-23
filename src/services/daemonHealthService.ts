@@ -25,7 +25,9 @@ export class DaemonHealthService {
    * Should be called once when the app starts in Tauri mode.
    */
   async setupHealthListener(): Promise<UnlistenFn | null> {
+    console.log('[DaemonHealth] setupHealthListener() called - starting setup process');
     try {
+      console.log('[DaemonHealth] About to call listen() for alphahuman:health event');
       console.log('[DaemonHealth] Setting up alphahuman:health event listener');
 
       this.healthEventListener = await listen<unknown>('alphahuman:health', event => {
@@ -39,9 +41,12 @@ export class DaemonHealthService {
           console.warn('[DaemonHealth] Failed to parse health snapshot:', event.payload);
         }
       });
+      console.log('[DaemonHealth] alphahuman:health listener created successfully');
 
       // Start initial timeout
+      console.log('[DaemonHealth] Starting health timeout');
       this.startHealthTimeout();
+      console.log('[DaemonHealth] Health timeout started');
 
       console.log('[DaemonHealth] Health listener setup complete');
       return this.healthEventListener;
