@@ -37,8 +37,8 @@ import {
   runtimeEnableSkill,
   runtimeIsSkillEnabled,
   runtimeListSkills,
-  SkillSnapshot,
-  TunnelConfig,
+  type SkillSnapshot,
+  type TunnelConfig,
 } from '../../../utils/tauriCommands';
 import SettingsHeader from '../components/SettingsHeader';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
@@ -554,9 +554,9 @@ const TauriCommandsPanel = () => {
             defaultExpanded={!isCollapsed('security-data')}
             hasChanges={false}
             loading={
-              operationLoading?.includes('Secret') ||
-              operationLoading?.includes('Models') ||
-              operationLoading?.includes('Integration')
+              operationLoading?.toLowerCase()?.includes('secret') ||
+              operationLoading?.toLowerCase()?.includes('models') ||
+              operationLoading?.toLowerCase()?.includes('integration')
             }>
             <div className="grid gap-6 lg:grid-cols-2">
               <InputGroup
@@ -680,9 +680,9 @@ const TauriCommandsPanel = () => {
             defaultExpanded={!isCollapsed('network-infrastructure')}
             hasChanges={false}
             loading={
-              operationLoading?.includes('Gateway') ||
-              operationLoading?.includes('Tunnel') ||
-              operationLoading?.includes('Memory')
+              operationLoading?.toLowerCase()?.includes('gateway') ||
+              operationLoading?.toLowerCase()?.includes('tunnel') ||
+              operationLoading?.toLowerCase()?.includes('memory')
             }>
             <div className="grid gap-8 lg:grid-cols-2">
               <InputGroup
@@ -861,9 +861,9 @@ const TauriCommandsPanel = () => {
             defaultExpanded={!isCollapsed('development-operations')}
             hasChanges={false}
             loading={
-              operationLoading?.includes('Doctor') ||
-              operationLoading?.includes('Hardware') ||
-              operationLoading?.includes('Migration')
+              operationLoading?.toLowerCase()?.includes('doctor') ||
+              operationLoading?.toLowerCase()?.includes('hardware') ||
+              operationLoading?.toLowerCase()?.includes('migration')
             }>
             <div className="grid gap-8 lg:grid-cols-2">
               <InputGroup title="Diagnostics" description="System health checks and model probing">

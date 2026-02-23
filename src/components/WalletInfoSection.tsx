@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useUser } from '../hooks/useUser';
 import { useSkillConnectionStatus } from '../lib/skills/hooks';
 import { skillManager } from '../lib/skills/manager';
+import { buildManualSentryEvent, enqueueError } from '../services/errorReportQueue';
 import { useAppSelector } from '../store/hooks';
 
 function truncateAddress(address: string): string {
@@ -131,6 +132,18 @@ export default function WalletInfoSection() {
           return;
         }
         console.error('[WalletInfoSection] Failed to load wallet info:', e);
+        enqueueError({
+          id: crypto.randomUUID(),
+          timestamp: Date.now(),
+          source: 'manual',
+          title: 'Failed to load wallet info',
+          message: e instanceof Error ? e.message : String(e),
+          sentryEvent: buildManualSentryEvent(
+            { type: 'WalletInfoLoadError', value: e instanceof Error ? e.message : String(e) },
+            { component: 'WalletInfoSection' }
+          ),
+          originalError: e instanceof Error ? e : new Error(String(e)),
+        });
         setError('Failed to load wallet info');
         setBalance(null);
         setNetworkName(null);

@@ -150,11 +150,14 @@ const Mnemonic = () => {
       const aesKey = deriveAesKeyFromMnemonic(phraseToUse);
       const walletAddress = deriveEvmAddressFromMnemonic(phraseToUse);
 
-      if (user?._id) {
-        dispatch(setEncryptionKeyForUser({ userId: user._id, key: aesKey }));
-        await skillManager.setWalletAddress(walletAddress);
+      if (!user?._id) {
+        const msg = 'User not loaded. Please sign in again or refresh the page.';
+        setError(msg);
+        console.error('[Mnemonic] Cannot save encryption key: user not loaded');
+        return;
       }
-
+      dispatch(setEncryptionKeyForUser({ userId: user._id, key: aesKey }));
+      await skillManager.setWalletAddress(walletAddress);
       navigate('/home');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.');

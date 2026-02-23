@@ -146,7 +146,7 @@ const handleOAuthDeepLink = async (parsed: URL) => {
 
       let keyForBackend: string;
       try {
-        keyForBackend = hexToBase64(encryptionKeyHex);
+        keyForBackend = hexToBase64(trimmedHex);
       } catch (e) {
         console.error(
           '[DeepLink] Cannot fetch integration tokens: encryption key conversion failed',
@@ -191,7 +191,7 @@ const handleOAuthDeepLink = async (parsed: URL) => {
         try {
           const decryptedJson = await decryptIntegrationTokens(
             response.data.encrypted,
-            encryptionKeyHex
+            trimmedHex
           );
           const payload = JSON.parse(decryptedJson) as IntegrationTokensPayload;
           if (payload.accessToken) {
