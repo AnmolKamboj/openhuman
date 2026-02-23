@@ -1,8 +1,8 @@
-import { getPublicKey } from '@noble/secp256k1';
-import { keccak_256 } from '@noble/hashes/sha3.js';
 import { pbkdf2 } from '@noble/hashes/pbkdf2.js';
 import { sha256 } from '@noble/hashes/sha2.js';
+import { keccak_256 } from '@noble/hashes/sha3.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
+import { getPublicKey } from '@noble/secp256k1';
 import { HDKey } from '@scure/bip32';
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english.js';

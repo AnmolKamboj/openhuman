@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 
+import { alphahumanAgentChat } from '../../../utils/tauriCommands';
 import SettingsHeader from '../components/SettingsHeader';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
-import { alphahumanAgentChat } from '../../../utils/tauriCommands';
 
 type ChatMessage = { role: 'user' | 'agent'; text: string };
 
@@ -46,12 +46,7 @@ const AgentChatPanel = () => {
   }, []);
 
   useEffect(() => {
-    const payload = {
-      messages,
-      providerOverride,
-      modelOverride,
-      temperature,
-    };
+    const payload = { messages, providerOverride, modelOverride, temperature };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
@@ -65,7 +60,7 @@ const AgentChatPanel = () => {
     setError('');
     setSending(true);
     setInput('');
-    setMessages((prev) => [...prev, { role: 'user', text }]);
+    setMessages(prev => [...prev, { role: 'user', text }]);
     try {
       const response = await alphahumanAgentChat(
         text,
@@ -73,7 +68,7 @@ const AgentChatPanel = () => {
         modelOverride.trim() ? modelOverride : undefined,
         Number.isFinite(Number(temperature)) ? Number(temperature) : undefined
       );
-      setMessages((prev) => [...prev, { role: 'agent', text: response.result }]);
+      setMessages(prev => [...prev, { role: 'agent', text: response.result }]);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
@@ -96,7 +91,7 @@ const AgentChatPanel = () => {
                 className="input input-bordered w-full text-slate-900 bg-white"
                 placeholder="openai"
                 value={providerOverride}
-                onChange={(event) => setProviderOverride(event.target.value)}
+                onChange={event => setProviderOverride(event.target.value)}
               />
             </label>
             <label className="space-y-2 text-sm text-gray-300">
@@ -105,7 +100,7 @@ const AgentChatPanel = () => {
                 className="input input-bordered w-full text-slate-900 bg-white"
                 placeholder="gpt-4.1-mini"
                 value={modelOverride}
-                onChange={(event) => setModelOverride(event.target.value)}
+                onChange={event => setModelOverride(event.target.value)}
               />
             </label>
             <label className="space-y-2 text-sm text-gray-300">
@@ -114,7 +109,7 @@ const AgentChatPanel = () => {
                 className="input input-bordered w-full text-slate-900 bg-white"
                 placeholder="0.7"
                 value={temperature}
-                onChange={(event) => setTemperature(event.target.value)}
+                onChange={event => setTemperature(event.target.value)}
               />
             </label>
           </div>
@@ -139,8 +134,7 @@ const AgentChatPanel = () => {
                 <div
                   className={`text-sm whitespace-pre-wrap ${
                     message.role === 'user' ? 'text-white' : 'text-emerald-200'
-                  }`}
-                >
+                  }`}>
                   {message.text}
                 </div>
               </div>
@@ -151,7 +145,7 @@ const AgentChatPanel = () => {
               className="textarea textarea-bordered w-full min-h-[140px] text-slate-900 bg-white"
               placeholder="Ask the agent anything..."
               value={input}
-              onChange={(event) => setInput(event.target.value)}
+              onChange={event => setInput(event.target.value)}
             />
             <button className="btn btn-primary" onClick={sendMessage} disabled={sending}>
               {sending ? 'Sending…' : 'Send Message'}

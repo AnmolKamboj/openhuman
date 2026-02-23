@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import LottieAnimation from '../components/LottieAnimation';
@@ -92,7 +92,7 @@ const Mnemonic = () => {
         inputRefs.current[index + 1]?.focus();
       }
     },
-    [importWords],
+    [importWords]
   );
 
   const handleImportKeyDown = useCallback(
@@ -101,7 +101,7 @@ const Mnemonic = () => {
         inputRefs.current[index - 1]?.focus();
       }
     },
-    [importWords],
+    [importWords]
   );
 
   const handleValidateImport = useCallback(() => {

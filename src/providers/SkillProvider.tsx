@@ -8,21 +8,21 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { type ReactNode, useEffect, useRef } from 'react';
 
+import {
+  type GmailStateForSync,
+  syncGmailMetadataToBackend,
+} from '../lib/gmail/services/metadataSync';
 import { skillManager } from '../lib/skills/manager';
 import type { SkillManifest } from '../lib/skills/types';
 import { buildManualSentryEvent, enqueueError } from '../services/errorReportQueue';
-import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
-  setGmailEmails,
-  setGmailProfile,
   type GmailEmailSummary,
   type GmailProfile,
+  setGmailEmails,
+  setGmailProfile,
 } from '../store/gmailSlice';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { setSkillError, setSkillState, setSkillStatus } from '../store/skillsSlice';
-import {
-  syncGmailMetadataToBackend,
-  type GmailStateForSync,
-} from '../lib/gmail/services/metadataSync';
 import { DEV_AUTO_LOAD_SKILL, IS_DEV } from '../utils/config';
 
 // ---------------------------------------------------------------------------

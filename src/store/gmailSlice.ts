@@ -23,10 +23,7 @@ interface GmailState {
   profile: GmailProfile | null;
 }
 
-const initialState: GmailState = {
-  emails: [],
-  profile: null,
-};
+const initialState: GmailState = { emails: [], profile: null };
 
 const gmailSlice = createSlice({
   name: 'gmail',

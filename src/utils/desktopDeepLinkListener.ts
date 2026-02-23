@@ -4,13 +4,13 @@ import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
 import { skillManager } from '../lib/skills/manager';
 import { consumeLoginToken, fetchIntegrationTokens } from '../services/api/authApi';
 import { store } from '../store';
+import { setToken } from '../store/authSlice';
+import { setSkillState } from '../store/skillsSlice';
 import {
   decryptIntegrationTokens,
   hexToBase64,
   type IntegrationTokensPayload,
 } from './integrationTokensCrypto';
-import { setToken } from '../store/authSlice';
-import { setSkillState } from '../store/skillsSlice';
 
 function getCurrentUserId(): string | null {
   const state = store.getState();
@@ -80,9 +80,7 @@ const handlePaymentDeepLink = async (parsed: URL) => {
     console.log('[DeepLink] Payment success, session_id:', sessionId);
 
     // Broadcast to the app so billing components can react
-    window.dispatchEvent(
-      new CustomEvent('payment:success', { detail: { sessionId } }),
-    );
+    window.dispatchEvent(new CustomEvent('payment:success', { detail: { sessionId } }));
 
     // Navigate to billing settings to show confirmation
     window.location.hash = '/settings/billing';
@@ -121,7 +119,6 @@ const handleOAuthDeepLink = async (parsed: URL) => {
     console.log(`[DeepLink] OAuth success for skill=${skillId} integration=${integrationId}`);
 
     try {
-
       const state = store.getState();
       const userId = getCurrentUserId();
       if (!userId) {
@@ -283,9 +280,7 @@ export const setupDesktopDeepLinkListener = async () => {
     if (typeof window !== 'undefined') {
       // window.__simulateDeepLink('alphahuman://auth?token=1234567890')
       // window.__simulateDeepLink('alphahuman://oauth/success?integrationId=6989ef9c8e8bf1b6d991a08c&skillId=notion')
-      const win = window as Window & {
-        __simulateDeepLink?: (url: string) => Promise<void>;
-      };
+      const win = window as Window & { __simulateDeepLink?: (url: string) => Promise<void> };
       win.__simulateDeepLink = (url: string) => handleDeepLinkUrls([url]);
     }
   } catch (err) {

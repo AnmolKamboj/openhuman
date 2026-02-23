@@ -7,9 +7,7 @@ interface ConsumeLoginTokenResponse {
 
 interface IntegrationTokensResponse {
   success: boolean;
-  data?: {
-    encrypted: string;
-  };
+  data?: { encrypted: string };
 }
 
 /**

@@ -52,11 +52,7 @@ export function syncGmailMetadataToBackend(gmailState: GmailStateForSync | undef
   //   metadata.emails = gmailState.emails as GmailEmailSummaryLike[];
   // }
 
-  const payload = {
-    requestId: crypto.randomUUID(),
-    provider: PROVIDER_GOOGLE,
-    metadata,
-  };
+  const payload = { requestId: crypto.randomUUID(), provider: PROVIDER_GOOGLE, metadata };
 
   void emitViaRustSocket(INTEGRATION_METADATA_SYNC_EVENT, payload);
 }

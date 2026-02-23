@@ -20,14 +20,10 @@ export function hexToBytes(hex: string): Uint8Array {
   const cleanHex = hex.trim().replace(/^0x/i, '');
   if (!cleanHex) return new Uint8Array();
   if (cleanHex.length % 2 !== 0) {
-    throw new TypeError(
-      `hexToBytes: hex string must have even length (got ${cleanHex.length})`
-    );
+    throw new TypeError(`hexToBytes: hex string must have even length (got ${cleanHex.length})`);
   }
   if (!HEX_REGEX.test(cleanHex)) {
-    throw new TypeError(
-      'hexToBytes: hex string must contain only [0-9a-fA-F] characters'
-    );
+    throw new TypeError('hexToBytes: hex string must contain only [0-9a-fA-F] characters');
   }
   const bytes = new Uint8Array(cleanHex.length / 2);
   for (let i = 0; i < cleanHex.length; i += 2) {

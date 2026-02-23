@@ -1,50 +1,50 @@
-import { useMemo, useState } from 'react';
 import {
+  ChatBubbleLeftRightIcon,
   CogIcon,
   CpuChipIcon,
-  ShieldCheckIcon,
-  ServerIcon,
-  WrenchScrewdriverIcon,
-  ChatBubbleLeftRightIcon,
   DocumentTextIcon,
+  ServerIcon,
+  ShieldCheckIcon,
+  WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline';
+import { useMemo, useState } from 'react';
 
-import SettingsHeader from '../components/SettingsHeader';
-import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
-import SectionCard from './components/SectionCard';
-import InputGroup, { Field, CheckboxField } from './components/InputGroup';
-import ActionPanel, { PrimaryButton } from './components/ActionPanel';
 import {
   alphahumanAgentChat,
   alphahumanDecryptSecret,
   alphahumanDoctorModels,
   alphahumanDoctorReport,
-  alphahumanGetIntegrationInfo,
+  alphahumanEncryptSecret,
   alphahumanGetConfig,
+  alphahumanGetIntegrationInfo,
   alphahumanHardwareDiscover,
   alphahumanHardwareIntrospect,
   alphahumanListIntegrations,
   alphahumanMigrateOpenclaw,
   alphahumanModelsRefresh,
-  alphahumanUpdateGatewaySettings,
-  alphahumanUpdateMemorySettings,
-  alphahumanUpdateModelSettings,
-  alphahumanUpdateRuntimeSettings,
-  alphahumanUpdateTunnelSettings,
   alphahumanServiceInstall,
   alphahumanServiceStart,
   alphahumanServiceStatus,
   alphahumanServiceStop,
   alphahumanServiceUninstall,
-  alphahumanEncryptSecret,
+  alphahumanUpdateGatewaySettings,
+  alphahumanUpdateMemorySettings,
+  alphahumanUpdateModelSettings,
+  alphahumanUpdateRuntimeSettings,
+  alphahumanUpdateTunnelSettings,
   isTauri,
-  TunnelConfig,
   runtimeDisableSkill,
   runtimeEnableSkill,
   runtimeIsSkillEnabled,
   runtimeListSkills,
   SkillSnapshot,
+  TunnelConfig,
 } from '../../../utils/tauriCommands';
+import SettingsHeader from '../components/SettingsHeader';
+import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
+import ActionPanel, { PrimaryButton } from './components/ActionPanel';
+import InputGroup, { CheckboxField, Field } from './components/InputGroup';
+import SectionCard from './components/SectionCard';
 
 const formatJson = (value: unknown) => JSON.stringify(value, null, 2);
 
@@ -53,7 +53,14 @@ const TauriCommandsPanel = () => {
 
   // View mode removed - always show all sections
   const [expandedSections] = useState<Set<string>>(
-    new Set(['system-configuration', 'runtime-execution', 'security-data', 'network-infrastructure', 'development-operations', 'interactive-tools'])
+    new Set([
+      'system-configuration',
+      'runtime-execution',
+      'security-data',
+      'network-infrastructure',
+      'development-operations',
+      'interactive-tools',
+    ])
   );
 
   // Output and error states
@@ -88,9 +95,7 @@ const TauriCommandsPanel = () => {
   const [embeddingDims, setEmbeddingDims] = useState<string>('1536');
   const [runtimeKind, setRuntimeKind] = useState<string>('native');
   const [reasoningEnabled, setReasoningEnabled] = useState<boolean>(false);
-  const [skills, setSkills] = useState<
-    Array<{ snapshot: SkillSnapshot; enabled: boolean }>
-  >([]);
+  const [skills, setSkills] = useState<Array<{ snapshot: SkillSnapshot; enabled: boolean }>>([]);
   const [skillsLoading, setSkillsLoading] = useState<boolean>(false);
   const [chatInput, setChatInput] = useState<string>('');
   const [chatProvider, setChatProvider] = useState<string>('');
@@ -124,7 +129,10 @@ const TauriCommandsPanel = () => {
     }
   };
 
-  const runWithResult = async <T,>(fn: () => Promise<T>, operationName?: string): Promise<T | null> => {
+  const runWithResult = async <T,>(
+    fn: () => Promise<T>,
+    operationName?: string
+  ): Promise<T | null> => {
     setError('');
     if (operationName) setOperationLoading(operationName);
     try {
@@ -158,7 +166,9 @@ const TauriCommandsPanel = () => {
       setTunnelProvider((tunnel.provider as string) ?? 'none');
       setCloudflareToken(((tunnel.cloudflare as Record<string, unknown>)?.token as string) ?? '');
       setNgrokToken(((tunnel.ngrok as Record<string, unknown>)?.auth_token as string) ?? '');
-      setTailscaleHostname(((tunnel.tailscale as Record<string, unknown>)?.hostname as string) ?? '');
+      setTailscaleHostname(
+        ((tunnel.tailscale as Record<string, unknown>)?.hostname as string) ?? ''
+      );
       setCustomCommand(((tunnel.custom as Record<string, unknown>)?.start_command as string) ?? '');
 
       const gateway = (config.gateway as Record<string, unknown>) ?? {};
@@ -185,75 +195,68 @@ const TauriCommandsPanel = () => {
 
   const buildTunnelConfig = (): TunnelConfig => {
     if (tunnelProvider === 'cloudflare') {
-      return {
-        provider: 'cloudflare',
-        cloudflare: { token: cloudflareToken },
-      };
+      return { provider: 'cloudflare', cloudflare: { token: cloudflareToken } };
     }
     if (tunnelProvider === 'ngrok') {
-      return {
-        provider: 'ngrok',
-        ngrok: { auth_token: ngrokToken },
-      };
+      return { provider: 'ngrok', ngrok: { auth_token: ngrokToken } };
     }
     if (tunnelProvider === 'tailscale') {
-      return {
-        provider: 'tailscale',
-        tailscale: { hostname: tailscaleHostname || null },
-      };
+      return { provider: 'tailscale', tailscale: { hostname: tailscaleHostname || null } };
     }
     if (tunnelProvider === 'custom') {
-      return {
-        provider: 'custom',
-        custom: { start_command: customCommand },
-      };
+      return { provider: 'custom', custom: { start_command: customCommand } };
     }
     return { provider: 'none' };
   };
 
   const saveModelSettings = () =>
-    run(() =>
-      alphahumanUpdateModelSettings({
-        api_key: apiKey.trim() ? apiKey : null,
-        api_url: apiUrl.trim() ? apiUrl : null,
-        default_provider: defaultProvider.trim() ? defaultProvider : null,
-        default_model: defaultModel.trim() ? defaultModel : null,
-        default_temperature: parseOptionalNumber(defaultTemp),
-      }),
+    run(
+      () =>
+        alphahumanUpdateModelSettings({
+          api_key: apiKey.trim() ? apiKey : null,
+          api_url: apiUrl.trim() ? apiUrl : null,
+          default_provider: defaultProvider.trim() ? defaultProvider : null,
+          default_model: defaultModel.trim() ? defaultModel : null,
+          default_temperature: parseOptionalNumber(defaultTemp),
+        }),
       'saveModelSettings'
     );
 
-  const saveTunnelSettings = () => run(() => alphahumanUpdateTunnelSettings(buildTunnelConfig()), 'saveTunnelSettings');
+  const saveTunnelSettings = () =>
+    run(() => alphahumanUpdateTunnelSettings(buildTunnelConfig()), 'saveTunnelSettings');
 
   const saveGatewaySettings = () =>
-    run(() =>
-      alphahumanUpdateGatewaySettings({
-        host: gatewayHost.trim() ? gatewayHost : null,
-        port: parseOptionalNumber(gatewayPort),
-        require_pairing: gatewayPairing,
-        allow_public_bind: gatewayPublic,
-      }),
+    run(
+      () =>
+        alphahumanUpdateGatewaySettings({
+          host: gatewayHost.trim() ? gatewayHost : null,
+          port: parseOptionalNumber(gatewayPort),
+          require_pairing: gatewayPairing,
+          allow_public_bind: gatewayPublic,
+        }),
       'saveGatewaySettings'
     );
 
   const saveMemorySettings = () =>
-    run(() =>
-      alphahumanUpdateMemorySettings({
-        backend: memoryBackend.trim() ? memoryBackend : null,
-        auto_save: memoryAutoSave,
-        embedding_provider: embeddingProvider.trim() ? embeddingProvider : null,
-        embedding_model: embeddingModel.trim() ? embeddingModel : null,
-        embedding_dimensions: parseOptionalNumber(embeddingDims),
-      }),
+    run(
+      () =>
+        alphahumanUpdateMemorySettings({
+          backend: memoryBackend.trim() ? memoryBackend : null,
+          auto_save: memoryAutoSave,
+          embedding_provider: embeddingProvider.trim() ? embeddingProvider : null,
+          embedding_model: embeddingModel.trim() ? embeddingModel : null,
+          embedding_dimensions: parseOptionalNumber(embeddingDims),
+        }),
       'saveMemorySettings'
     );
 
   const saveRuntimeSettings = () =>
-    run(() =>
-      alphahumanUpdateRuntimeSettings({
-        kind: runtimeKind.trim() ? runtimeKind : null,
-        reasoning_enabled: reasoningEnabled,
-      }),
+    run(
+      () =>
+        alphahumanUpdateRuntimeSettings({
+          kind: runtimeKind.trim() ? runtimeKind : null,
+          reasoning_enabled: reasoningEnabled,
+        }),
       'saveRuntimeSettings'
     );
 
@@ -262,7 +265,7 @@ const TauriCommandsPanel = () => {
     try {
       const snapshots = await runtimeListSkills();
       const enriched = await Promise.all(
-        snapshots.map(async (snapshot) => ({
+        snapshots.map(async snapshot => ({
           snapshot,
           enabled: await runtimeIsSkillEnabled(snapshot.skill_id),
         }))
@@ -283,11 +286,9 @@ const TauriCommandsPanel = () => {
     } else {
       await run(() => runtimeDisableSkill(skillId), 'disableSkill');
     }
-    setSkills((prev) =>
-      prev.map((item) =>
-        item.snapshot.skill_id === skillId
-          ? { ...item, enabled: nextEnabled }
-          : item
+    setSkills(prev =>
+      prev.map(item =>
+        item.snapshot.skill_id === skillId ? { ...item, enabled: nextEnabled } : item
       )
     );
   };
@@ -297,19 +298,20 @@ const TauriCommandsPanel = () => {
       return;
     }
     const userMessage = chatInput.trim();
-    setChatLog((prev) => [...prev, { role: 'user', text: userMessage }]);
+    setChatLog(prev => [...prev, { role: 'user', text: userMessage }]);
     setChatInput('');
-    const response = await runWithResult(() =>
-      alphahumanAgentChat(
-        userMessage,
-        chatProvider.trim() ? chatProvider : undefined,
-        chatModel.trim() ? chatModel : undefined,
-        parseOptionalNumber(chatTemperature) ?? undefined
-      ),
+    const response = await runWithResult(
+      () =>
+        alphahumanAgentChat(
+          userMessage,
+          chatProvider.trim() ? chatProvider : undefined,
+          chatModel.trim() ? chatModel : undefined,
+          parseOptionalNumber(chatTemperature) ?? undefined
+        ),
       'sendChat'
     );
     if (response) {
-      setChatLog((prev) => [...prev, { role: 'agent', text: response.result }]);
+      setChatLog(prev => [...prev, { role: 'agent', text: response.result }]);
     }
   };
 
@@ -335,11 +337,7 @@ const TauriCommandsPanel = () => {
 
   return (
     <div className="h-full flex flex-col">
-      <SettingsHeader
-        title="Tauri Command Console"
-        showBackButton={true}
-        onBack={navigateBack}
-      />
+      <SettingsHeader title="Tauri Command Console" showBackButton={true} onBack={navigateBack} />
 
       <div className="flex-1 overflow-y-auto px-6 pb-12 space-y-10">
         {!tauriAvailable && (
@@ -368,84 +366,75 @@ const TauriCommandsPanel = () => {
               collapsible={true}
               defaultExpanded={!isCollapsed('system-configuration')}
               hasChanges={false}
-              loading={operationLoading === 'loadConfig' || operationLoading === 'saveModelSettings'}
-          >
-            <InputGroup
-              title="Model API Keys"
-              description="Configure your AI model provider settings"
-            >
-              <Field
-                label="API Key"
-                helpText="Enter your AI provider's API key for authentication. This enables the agent to access language models for conversation and reasoning. Keep this secure and never share it publicly."
-              >
-                <input
-                  className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
-                  placeholder="sk-..."
-                  value={apiKey}
-                  onChange={(event) => setApiKey(event.target.value)}
-                />
-              </Field>
-              <Field
-                label="API Base URL"
-                helpText="Custom API endpoint for your AI provider. Default URLs work for standard providers. Change only when using custom deployments, proxy servers, or alternative API-compatible services."
-              >
-                <input
-                  className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
-                  placeholder="https://api.openai.com/v1"
-                  value={apiUrl}
-                  onChange={(event) => setApiUrl(event.target.value)}
-                />
-              </Field>
-              <Field
-                label="Default Provider"
-                helpText="Primary AI provider for agent operations. Supported providers include 'openai', 'anthropic', 'azure', 'cohere'. This determines which AI service processes your conversations and reasoning tasks."
-              >
-                <input
-                  className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
-                  placeholder="openai"
-                  value={defaultProvider}
-                  onChange={(event) => setDefaultProvider(event.target.value)}
-                />
-              </Field>
-              <Field
-                label="Default Model"
-                helpText="Primary language model for agent interactions. GPT-4 offers advanced reasoning but higher costs, GPT-3.5-turbo is faster and economical. Claude models excel at analysis and safety."
-              >
-                <input
-                  className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
-                  placeholder="gpt-4.1-mini"
-                  value={defaultModel}
-                  onChange={(event) => setDefaultModel(event.target.value)}
-                />
-              </Field>
-              <Field
-                label="Temperature"
-                helpText="Controls randomness in AI responses (0.0-2.0). Lower values (0.1-0.3) for factual tasks, medium (0.5-0.8) for balanced responses, higher (0.8-1.5) for creative tasks. Default 0.7 works well for most conversations."
-              >
-                <input
-                  className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
-                  placeholder="0.7"
-                  value={defaultTemp}
-                  onChange={(event) => setDefaultTemp(event.target.value)}
-                />
-              </Field>
-            </InputGroup>
+              loading={
+                operationLoading === 'loadConfig' || operationLoading === 'saveModelSettings'
+              }>
+              <InputGroup
+                title="Model API Keys"
+                description="Configure your AI model provider settings">
+                <Field
+                  label="API Key"
+                  helpText="Enter your AI provider's API key for authentication. This enables the agent to access language models for conversation and reasoning. Keep this secure and never share it publicly.">
+                  <input
+                    className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
+                    placeholder="sk-..."
+                    value={apiKey}
+                    onChange={event => setApiKey(event.target.value)}
+                  />
+                </Field>
+                <Field
+                  label="API Base URL"
+                  helpText="Custom API endpoint for your AI provider. Default URLs work for standard providers. Change only when using custom deployments, proxy servers, or alternative API-compatible services.">
+                  <input
+                    className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
+                    placeholder="https://api.openai.com/v1"
+                    value={apiUrl}
+                    onChange={event => setApiUrl(event.target.value)}
+                  />
+                </Field>
+                <Field
+                  label="Default Provider"
+                  helpText="Primary AI provider for agent operations. Supported providers include 'openai', 'anthropic', 'azure', 'cohere'. This determines which AI service processes your conversations and reasoning tasks.">
+                  <input
+                    className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
+                    placeholder="openai"
+                    value={defaultProvider}
+                    onChange={event => setDefaultProvider(event.target.value)}
+                  />
+                </Field>
+                <Field
+                  label="Default Model"
+                  helpText="Primary language model for agent interactions. GPT-4 offers advanced reasoning but higher costs, GPT-3.5-turbo is faster and economical. Claude models excel at analysis and safety.">
+                  <input
+                    className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
+                    placeholder="gpt-4.1-mini"
+                    value={defaultModel}
+                    onChange={event => setDefaultModel(event.target.value)}
+                  />
+                </Field>
+                <Field
+                  label="Temperature"
+                  helpText="Controls randomness in AI responses (0.0-2.0). Lower values (0.1-0.3) for factual tasks, medium (0.5-0.8) for balanced responses, higher (0.8-1.5) for creative tasks. Default 0.7 works well for most conversations.">
+                  <input
+                    className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
+                    placeholder="0.7"
+                    value={defaultTemp}
+                    onChange={event => setDefaultTemp(event.target.value)}
+                  />
+                </Field>
+              </InputGroup>
 
-            <ActionPanel>
-              <PrimaryButton
-                onClick={loadConfig}
-                loading={operationLoading === 'loadConfig'}
-              >
-                Load Config
-              </PrimaryButton>
-              <PrimaryButton
-                onClick={saveModelSettings}
-                loading={operationLoading === 'saveModelSettings'}
-              >
-                Save Model Settings
-              </PrimaryButton>
-            </ActionPanel>
-          </SectionCard>
+              <ActionPanel>
+                <PrimaryButton onClick={loadConfig} loading={operationLoading === 'loadConfig'}>
+                  Load Config
+                </PrimaryButton>
+                <PrimaryButton
+                  onClick={saveModelSettings}
+                  loading={operationLoading === 'saveModelSettings'}>
+                  Save Model Settings
+                </PrimaryButton>
+              </ActionPanel>
+            </SectionCard>
           )}
 
           {/* Category 2: Runtime & Execution */}
@@ -457,117 +446,101 @@ const TauriCommandsPanel = () => {
               collapsible={true}
               defaultExpanded={!isCollapsed('runtime-execution')}
               hasChanges={false}
-              loading={operationLoading === 'saveRuntimeSettings' || skillsLoading}
-          >
-            <InputGroup
-              title="Runtime Settings"
-              description="Configure V8 runtime and skill execution"
-            >
-              <Field
-                label="Runtime Kind"
-                helpText="JavaScript execution environment for skills. 'native' uses V8 engine for maximum performance and compatibility. 'docker' provides isolation but requires Docker. 'wasm' offers security with some limitations."
-              >
-                <input
-                  className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
-                  placeholder="native"
-                  value={runtimeKind}
-                  onChange={(event) => setRuntimeKind(event.target.value)}
+              loading={operationLoading === 'saveRuntimeSettings' || skillsLoading}>
+              <InputGroup
+                title="Runtime Settings"
+                description="Configure V8 runtime and skill execution">
+                <Field
+                  label="Runtime Kind"
+                  helpText="JavaScript execution environment for skills. 'native' uses V8 engine for maximum performance and compatibility. 'docker' provides isolation but requires Docker. 'wasm' offers security with some limitations.">
+                  <input
+                    className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
+                    placeholder="native"
+                    value={runtimeKind}
+                    onChange={event => setRuntimeKind(event.target.value)}
+                  />
+                </Field>
+                <CheckboxField
+                  label="Reasoning enabled"
+                  helpText="Activates advanced step-by-step reasoning capabilities in AI responses. Improves accuracy for complex tasks but increases response time and token usage. Recommended for analytical and problem-solving tasks."
+                  checked={reasoningEnabled}
+                  onChange={setReasoningEnabled}
                 />
-              </Field>
-              <CheckboxField
-                label="Reasoning enabled"
-                helpText="Activates advanced step-by-step reasoning capabilities in AI responses. Improves accuracy for complex tasks but increases response time and token usage. Recommended for analytical and problem-solving tasks."
-                checked={reasoningEnabled}
-                onChange={setReasoningEnabled}
-              />
-            </InputGroup>
+              </InputGroup>
 
-            <ActionPanel>
-              <PrimaryButton
-                onClick={saveRuntimeSettings}
-                loading={operationLoading === 'saveRuntimeSettings'}
-              >
-                Save Runtime Settings
-              </PrimaryButton>
-              <PrimaryButton
-                onClick={loadSkills}
-                loading={skillsLoading}
-                variant="outline"
-              >
-                {skillsLoading ? 'Loading Skills…' : 'Load Skills'}
-              </PrimaryButton>
-            </ActionPanel>
+              <ActionPanel>
+                <PrimaryButton
+                  onClick={saveRuntimeSettings}
+                  loading={operationLoading === 'saveRuntimeSettings'}>
+                  Save Runtime Settings
+                </PrimaryButton>
+                <PrimaryButton onClick={loadSkills} loading={skillsLoading} variant="outline">
+                  {skillsLoading ? 'Loading Skills…' : 'Load Skills'}
+                </PrimaryButton>
+              </ActionPanel>
 
-            {skills.length > 0 && (
-              <div className="space-y-4">
-                <h5 className="text-sm font-medium text-gray-300">Skills</h5>
-                <div className="grid gap-3 max-h-52 overflow-y-auto">
-                  {skills.map((item) => (
-                    <div
-                      key={item.snapshot.skill_id}
-                      className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 backdrop-blur-sm px-4 py-3"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-white font-medium">{item.snapshot.name}</div>
-                        <div className="text-xs text-gray-400 truncate">
-                          {item.snapshot.skill_id}
+              {skills.length > 0 && (
+                <div className="space-y-4">
+                  <h5 className="text-sm font-medium text-gray-300">Skills</h5>
+                  <div className="grid gap-3 max-h-52 overflow-y-auto">
+                    {skills.map(item => (
+                      <div
+                        key={item.snapshot.skill_id}
+                        className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 backdrop-blur-sm px-4 py-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-white font-medium">{item.snapshot.name}</div>
+                          <div className="text-xs text-gray-400 truncate">
+                            {item.snapshot.skill_id}
+                          </div>
                         </div>
+                        <CheckboxField
+                          label={item.enabled ? 'Active' : 'Inactive'}
+                          checked={item.enabled}
+                          onChange={checked => toggleSkill(item.snapshot.skill_id, checked)}
+                          className="text-xs ml-4 flex-shrink-0"
+                        />
                       </div>
-                      <CheckboxField
-                        label={item.enabled ? 'Active' : 'Inactive'}
-                        checked={item.enabled}
-                        onChange={(checked) =>
-                          toggleSkill(item.snapshot.skill_id, checked)
-                        }
-                        className="text-xs ml-4 flex-shrink-0"
-                      />
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            <InputGroup title="Service Management">
-              <div className="md:col-span-2">
-                <ActionPanel>
-                  <PrimaryButton
-                    onClick={() => run(alphahumanServiceStatus, 'serviceStatus')}
-                    loading={operationLoading === 'serviceStatus'}
-                  >
-                    Status
-                  </PrimaryButton>
-                  <PrimaryButton
-                    onClick={() => run(alphahumanServiceInstall, 'serviceInstall')}
-                    loading={operationLoading === 'serviceInstall'}
-                    variant="outline"
-                  >
-                    Install
-                  </PrimaryButton>
-                  <PrimaryButton
-                    onClick={() => run(alphahumanServiceStart, 'serviceStart')}
-                    loading={operationLoading === 'serviceStart'}
-                    variant="outline"
-                  >
-                    Start
-                  </PrimaryButton>
-                  <PrimaryButton
-                    onClick={() => run(alphahumanServiceStop, 'serviceStop')}
-                    loading={operationLoading === 'serviceStop'}
-                    variant="outline"
-                  >
-                    Stop
-                  </PrimaryButton>
-                  <PrimaryButton
-                    onClick={() => run(alphahumanServiceUninstall, 'serviceUninstall')}
-                    loading={operationLoading === 'serviceUninstall'}
-                    variant="outline"
-                  >
-                    Uninstall
-                  </PrimaryButton>
-                </ActionPanel>
-              </div>
-            </InputGroup>
-          </SectionCard>
+              <InputGroup title="Service Management">
+                <div className="md:col-span-2">
+                  <ActionPanel>
+                    <PrimaryButton
+                      onClick={() => run(alphahumanServiceStatus, 'serviceStatus')}
+                      loading={operationLoading === 'serviceStatus'}>
+                      Status
+                    </PrimaryButton>
+                    <PrimaryButton
+                      onClick={() => run(alphahumanServiceInstall, 'serviceInstall')}
+                      loading={operationLoading === 'serviceInstall'}
+                      variant="outline">
+                      Install
+                    </PrimaryButton>
+                    <PrimaryButton
+                      onClick={() => run(alphahumanServiceStart, 'serviceStart')}
+                      loading={operationLoading === 'serviceStart'}
+                      variant="outline">
+                      Start
+                    </PrimaryButton>
+                    <PrimaryButton
+                      onClick={() => run(alphahumanServiceStop, 'serviceStop')}
+                      loading={operationLoading === 'serviceStop'}
+                      variant="outline">
+                      Stop
+                    </PrimaryButton>
+                    <PrimaryButton
+                      onClick={() => run(alphahumanServiceUninstall, 'serviceUninstall')}
+                      loading={operationLoading === 'serviceUninstall'}
+                      variant="outline">
+                      Uninstall
+                    </PrimaryButton>
+                  </ActionPanel>
+                </div>
+              </InputGroup>
+            </SectionCard>
           )}
         </div>
 
@@ -580,117 +553,121 @@ const TauriCommandsPanel = () => {
             collapsible={true}
             defaultExpanded={!isCollapsed('security-data')}
             hasChanges={false}
-            loading={operationLoading?.includes('Secret') || operationLoading?.includes('Models') || operationLoading?.includes('Integration')}
-        >
-          <div className="grid gap-6 lg:grid-cols-2">
-            <InputGroup
-              title="Secrets Management"
-              description="Encrypt and decrypt sensitive data"
-            >
-              <Field
-                label="Encrypt"
-                helpText="Convert sensitive data to encrypted format using the system's secure encryption. Useful for safely storing API keys, tokens, or other confidential information in configuration files."
-                fullWidth
-              >
-                <textarea
-                  className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200 min-h-[90px] resize-y"
-                  placeholder="Plaintext"
-                  value={encryptInput}
-                  onChange={(event) => setEncryptInput(event.target.value)}
-                />
-              </Field>
-              <Field
-                label="Decrypt"
-                helpText="Convert encrypted data back to readable format. Only works with data encrypted by this system. Use this to verify encrypted values or retrieve original content when needed."
-                fullWidth
-              >
-                <textarea
-                  className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200 min-h-[90px] resize-y"
-                  placeholder="Ciphertext"
-                  value={decryptInput}
-                  onChange={(event) => setDecryptInput(event.target.value)}
-                />
-              </Field>
-            </InputGroup>
-
-            <div className="space-y-6">
-              <InputGroup title="Models">
+            loading={
+              operationLoading?.includes('Secret') ||
+              operationLoading?.includes('Models') ||
+              operationLoading?.includes('Integration')
+            }>
+            <div className="grid gap-6 lg:grid-cols-2">
+              <InputGroup
+                title="Secrets Management"
+                description="Encrypt and decrypt sensitive data">
                 <Field
-                  label="Provider Override"
-                  helpText="Temporarily override the default AI provider for model operations. Leave empty to use the configured default provider. Useful for testing different providers or accessing provider-specific models."
-                  fullWidth
-                >
-                  <input
-                    className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
-                    placeholder="Provider override (optional)"
-                    value={providerOverride}
-                    onChange={(event) => setProviderOverride(event.target.value)}
+                  label="Encrypt"
+                  helpText="Convert sensitive data to encrypted format using the system's secure encryption. Useful for safely storing API keys, tokens, or other confidential information in configuration files."
+                  fullWidth>
+                  <textarea
+                    className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200 min-h-[90px] resize-y"
+                    placeholder="Plaintext"
+                    value={encryptInput}
+                    onChange={event => setEncryptInput(event.target.value)}
+                  />
+                </Field>
+                <Field
+                  label="Decrypt"
+                  helpText="Convert encrypted data back to readable format. Only works with data encrypted by this system. Use this to verify encrypted values or retrieve original content when needed."
+                  fullWidth>
+                  <textarea
+                    className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200 min-h-[90px] resize-y"
+                    placeholder="Ciphertext"
+                    value={decryptInput}
+                    onChange={event => setDecryptInput(event.target.value)}
                   />
                 </Field>
               </InputGroup>
 
-              <InputGroup title="Integrations">
-                <Field
-                  label="Integration Name"
-                  helpText="Name of the platform integration to query or manage. Examples: 'telegram', 'gmail', 'discord'. Use this to get detailed information about specific platform connections and their status."
-                  fullWidth
-                >
-                  <input
-                    className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
-                    placeholder="Integration name"
-                    value={integrationName}
-                    onChange={(event) => setIntegrationName(event.target.value)}
-                  />
-                </Field>
-              </InputGroup>
+              <div className="space-y-6">
+                <InputGroup title="Models">
+                  <Field
+                    label="Provider Override"
+                    helpText="Temporarily override the default AI provider for model operations. Leave empty to use the configured default provider. Useful for testing different providers or accessing provider-specific models."
+                    fullWidth>
+                    <input
+                      className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
+                      placeholder="Provider override (optional)"
+                      value={providerOverride}
+                      onChange={event => setProviderOverride(event.target.value)}
+                    />
+                  </Field>
+                </InputGroup>
+
+                <InputGroup title="Integrations">
+                  <Field
+                    label="Integration Name"
+                    helpText="Name of the platform integration to query or manage. Examples: 'telegram', 'gmail', 'discord'. Use this to get detailed information about specific platform connections and their status."
+                    fullWidth>
+                    <input
+                      className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
+                      placeholder="Integration name"
+                      value={integrationName}
+                      onChange={event => setIntegrationName(event.target.value)}
+                    />
+                  </Field>
+                </InputGroup>
+              </div>
             </div>
-          </div>
 
-          <ActionPanel>
-            <PrimaryButton
-              onClick={() => run(() => alphahumanEncryptSecret(encryptInput), 'encryptSecret')}
-              loading={operationLoading === 'encryptSecret'}
-              disabled={!encryptInput.trim()}
-            >
-              Encrypt
-            </PrimaryButton>
-            <PrimaryButton
-              onClick={() => run(() => alphahumanDecryptSecret(decryptInput), 'decryptSecret')}
-              loading={operationLoading === 'decryptSecret'}
-              disabled={!decryptInput.trim()}
-              variant="outline"
-            >
-              Decrypt
-            </PrimaryButton>
-            <PrimaryButton
-              onClick={() => run(() => alphahumanModelsRefresh(providerOverride || undefined, false), 'modelsRefresh')}
-              loading={operationLoading === 'modelsRefresh'}
-            >
-              Refresh Models
-            </PrimaryButton>
-            <PrimaryButton
-              onClick={() => run(() => alphahumanModelsRefresh(providerOverride || undefined, true), 'modelsForceRefresh')}
-              loading={operationLoading === 'modelsForceRefresh'}
-              variant="outline"
-            >
-              Force Refresh
-            </PrimaryButton>
-            <PrimaryButton
-              onClick={() => run(alphahumanListIntegrations, 'listIntegrations')}
-              loading={operationLoading === 'listIntegrations'}
-            >
-              List Integrations
-            </PrimaryButton>
-            <PrimaryButton
-              onClick={() => run(() => alphahumanGetIntegrationInfo(integrationName), 'getIntegrationInfo')}
-              loading={operationLoading === 'getIntegrationInfo'}
-              disabled={!integrationName.trim()}
-              variant="outline"
-            >
-              Get Integration Info
-            </PrimaryButton>
-          </ActionPanel>
-        </SectionCard>
+            <ActionPanel>
+              <PrimaryButton
+                onClick={() => run(() => alphahumanEncryptSecret(encryptInput), 'encryptSecret')}
+                loading={operationLoading === 'encryptSecret'}
+                disabled={!encryptInput.trim()}>
+                Encrypt
+              </PrimaryButton>
+              <PrimaryButton
+                onClick={() => run(() => alphahumanDecryptSecret(decryptInput), 'decryptSecret')}
+                loading={operationLoading === 'decryptSecret'}
+                disabled={!decryptInput.trim()}
+                variant="outline">
+                Decrypt
+              </PrimaryButton>
+              <PrimaryButton
+                onClick={() =>
+                  run(
+                    () => alphahumanModelsRefresh(providerOverride || undefined, false),
+                    'modelsRefresh'
+                  )
+                }
+                loading={operationLoading === 'modelsRefresh'}>
+                Refresh Models
+              </PrimaryButton>
+              <PrimaryButton
+                onClick={() =>
+                  run(
+                    () => alphahumanModelsRefresh(providerOverride || undefined, true),
+                    'modelsForceRefresh'
+                  )
+                }
+                loading={operationLoading === 'modelsForceRefresh'}
+                variant="outline">
+                Force Refresh
+              </PrimaryButton>
+              <PrimaryButton
+                onClick={() => run(alphahumanListIntegrations, 'listIntegrations')}
+                loading={operationLoading === 'listIntegrations'}>
+                List Integrations
+              </PrimaryButton>
+              <PrimaryButton
+                onClick={() =>
+                  run(() => alphahumanGetIntegrationInfo(integrationName), 'getIntegrationInfo')
+                }
+                loading={operationLoading === 'getIntegrationInfo'}
+                disabled={!integrationName.trim()}
+                variant="outline">
+                Get Integration Info
+              </PrimaryButton>
+            </ActionPanel>
+          </SectionCard>
         )}
 
         {/* Category 4: Network & Infrastructure */}
@@ -702,33 +679,33 @@ const TauriCommandsPanel = () => {
             collapsible={true}
             defaultExpanded={!isCollapsed('network-infrastructure')}
             hasChanges={false}
-            loading={operationLoading?.includes('Gateway') || operationLoading?.includes('Tunnel') || operationLoading?.includes('Memory')}
-          >
+            loading={
+              operationLoading?.includes('Gateway') ||
+              operationLoading?.includes('Tunnel') ||
+              operationLoading?.includes('Memory')
+            }>
             <div className="grid gap-8 lg:grid-cols-2">
               <InputGroup
                 title="Gateway Settings"
-                description="Configure API gateway host and port"
-              >
+                description="Configure API gateway host and port">
                 <Field
                   label="Host"
-                  helpText="IP address for the API gateway server. Use '127.0.0.1' for local-only access or '0.0.0.0' to accept connections from any network interface. Change with caution for security."
-                >
+                  helpText="IP address for the API gateway server. Use '127.0.0.1' for local-only access or '0.0.0.0' to accept connections from any network interface. Change with caution for security.">
                   <input
                     className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
                     placeholder="127.0.0.1"
                     value={gatewayHost}
-                    onChange={(event) => setGatewayHost(event.target.value)}
+                    onChange={event => setGatewayHost(event.target.value)}
                   />
                 </Field>
                 <Field
                   label="Port"
-                  helpText="Network port for the agent's API server. Default 3000 works for most setups. Change if this port conflicts with other services. Ports below 1024 may require administrator privileges."
-                >
+                  helpText="Network port for the agent's API server. Default 3000 works for most setups. Change if this port conflicts with other services. Ports below 1024 may require administrator privileges.">
                   <input
                     className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
                     placeholder="3000"
                     value={gatewayPort}
-                    onChange={(event) => setGatewayPort(event.target.value)}
+                    onChange={event => setGatewayPort(event.target.value)}
                   />
                 </Field>
                 <CheckboxField
@@ -747,14 +724,12 @@ const TauriCommandsPanel = () => {
 
               <InputGroup
                 title="Tunnel Configuration"
-                description="Configure external tunnel providers"
-              >
+                description="Configure external tunnel providers">
                 <Field label="Provider" fullWidth>
                   <select
                     className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
                     value={tunnelProvider}
-                    onChange={(event) => setTunnelProvider(event.target.value)}
-                  >
+                    onChange={event => setTunnelProvider(event.target.value)}>
                     <option value="none">none</option>
                     <option value="cloudflare">cloudflare</option>
                     <option value="ngrok">ngrok</option>
@@ -768,7 +743,7 @@ const TauriCommandsPanel = () => {
                       className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
                       placeholder="cloudflare token"
                       value={cloudflareToken}
-                      onChange={(event) => setCloudflareToken(event.target.value)}
+                      onChange={event => setCloudflareToken(event.target.value)}
                     />
                   </Field>
                 )}
@@ -778,7 +753,7 @@ const TauriCommandsPanel = () => {
                       className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
                       placeholder="ngrok token"
                       value={ngrokToken}
-                      onChange={(event) => setNgrokToken(event.target.value)}
+                      onChange={event => setNgrokToken(event.target.value)}
                     />
                   </Field>
                 )}
@@ -788,7 +763,7 @@ const TauriCommandsPanel = () => {
                       className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
                       placeholder="alpha.local"
                       value={tailscaleHostname}
-                      onChange={(event) => setTailscaleHostname(event.target.value)}
+                      onChange={event => setTailscaleHostname(event.target.value)}
                     />
                   </Field>
                 )}
@@ -798,7 +773,7 @@ const TauriCommandsPanel = () => {
                       className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
                       placeholder="ngrok http 3000"
                       value={customCommand}
-                      onChange={(event) => setCustomCommand(event.target.value)}
+                      onChange={event => setCustomCommand(event.target.value)}
                     />
                   </Field>
                 )}
@@ -807,17 +782,15 @@ const TauriCommandsPanel = () => {
 
             <InputGroup
               title="Memory Settings"
-              description="Configure memory backend and embedding models"
-            >
+              description="Configure memory backend and embedding models">
               <Field
                 label="Backend"
-                helpText="Memory storage system for conversations and agent memory. 'sqlite' for local file storage (default), 'postgres' for scalable database, 'redis' for high-performance caching, 'neo4j' for graph relationships."
-              >
+                helpText="Memory storage system for conversations and agent memory. 'sqlite' for local file storage (default), 'postgres' for scalable database, 'redis' for high-performance caching, 'neo4j' for graph relationships.">
                 <input
                   className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
                   placeholder="sqlite"
                   value={memoryBackend}
-                  onChange={(event) => setMemoryBackend(event.target.value)}
+                  onChange={event => setMemoryBackend(event.target.value)}
                 />
               </Field>
               <CheckboxField
@@ -828,35 +801,32 @@ const TauriCommandsPanel = () => {
               />
               <Field
                 label="Embedding Provider"
-                helpText="AI service for generating vector embeddings for semantic search and memory retrieval. 'openai' for high quality, 'cohere' for multilingual, 'huggingface' for local models, 'none' to disable."
-              >
+                helpText="AI service for generating vector embeddings for semantic search and memory retrieval. 'openai' for high quality, 'cohere' for multilingual, 'huggingface' for local models, 'none' to disable.">
                 <input
                   className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
                   placeholder="openai"
                   value={embeddingProvider}
-                  onChange={(event) => setEmbeddingProvider(event.target.value)}
+                  onChange={event => setEmbeddingProvider(event.target.value)}
                 />
               </Field>
               <Field
                 label="Embedding Model"
-                helpText="Specific model for generating vector embeddings. OpenAI: 'text-embedding-3-small' (fast, cost-effective) or 'text-embedding-3-large' (higher accuracy). Must match your provider."
-              >
+                helpText="Specific model for generating vector embeddings. OpenAI: 'text-embedding-3-small' (fast, cost-effective) or 'text-embedding-3-large' (higher accuracy). Must match your provider.">
                 <input
                   className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
                   placeholder="text-embedding-3-small"
                   value={embeddingModel}
-                  onChange={(event) => setEmbeddingModel(event.target.value)}
+                  onChange={event => setEmbeddingModel(event.target.value)}
                 />
               </Field>
               <Field
                 label="Embedding Dimensions"
-                helpText="Vector size for embeddings. Must match your model: text-embedding-3-small supports 512-1536 (default 1536), text-embedding-3-large supports up to 3072. Higher dimensions = better accuracy, more storage."
-              >
+                helpText="Vector size for embeddings. Must match your model: text-embedding-3-small supports 512-1536 (default 1536), text-embedding-3-large supports up to 3072. Higher dimensions = better accuracy, more storage.">
                 <input
                   className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
                   placeholder="1536"
                   value={embeddingDims}
-                  onChange={(event) => setEmbeddingDims(event.target.value)}
+                  onChange={event => setEmbeddingDims(event.target.value)}
                 />
               </Field>
             </InputGroup>
@@ -864,20 +834,17 @@ const TauriCommandsPanel = () => {
             <ActionPanel>
               <PrimaryButton
                 onClick={saveGatewaySettings}
-                loading={operationLoading === 'saveGatewaySettings'}
-              >
+                loading={operationLoading === 'saveGatewaySettings'}>
                 Save Gateway Settings
               </PrimaryButton>
               <PrimaryButton
                 onClick={saveTunnelSettings}
-                loading={operationLoading === 'saveTunnelSettings'}
-              >
+                loading={operationLoading === 'saveTunnelSettings'}>
                 Save Tunnel Settings
               </PrimaryButton>
               <PrimaryButton
                 onClick={saveMemorySettings}
-                loading={operationLoading === 'saveMemorySettings'}
-              >
+                loading={operationLoading === 'saveMemorySettings'}>
                 Save Memory Settings
               </PrimaryButton>
             </ActionPanel>
@@ -893,70 +860,60 @@ const TauriCommandsPanel = () => {
             collapsible={true}
             defaultExpanded={!isCollapsed('development-operations')}
             hasChanges={false}
-            loading={operationLoading?.includes('Doctor') || operationLoading?.includes('Hardware') || operationLoading?.includes('Migration')}
-          >
+            loading={
+              operationLoading?.includes('Doctor') ||
+              operationLoading?.includes('Hardware') ||
+              operationLoading?.includes('Migration')
+            }>
             <div className="grid gap-8 lg:grid-cols-2">
-              <InputGroup
-                title="Diagnostics"
-                description="System health checks and model probing"
-              >
+              <InputGroup title="Diagnostics" description="System health checks and model probing">
                 <div className="md:col-span-2">
                   <ActionPanel>
                     <PrimaryButton
                       onClick={() => run(alphahumanDoctorReport, 'doctorReport')}
-                      loading={operationLoading === 'doctorReport'}
-                    >
+                      loading={operationLoading === 'doctorReport'}>
                       Run Doctor Report
                     </PrimaryButton>
                     <PrimaryButton
                       onClick={() =>
-                        run(() =>
-                          alphahumanDoctorModels(providerOverride || undefined, true),
+                        run(
+                          () => alphahumanDoctorModels(providerOverride || undefined, true),
                           'probeModels'
                         )
                       }
                       loading={operationLoading === 'probeModels'}
-                      variant="outline"
-                    >
+                      variant="outline">
                       Probe Models
                     </PrimaryButton>
                   </ActionPanel>
                 </div>
               </InputGroup>
 
-              <InputGroup
-                title="Hardware"
-                description="Discover and introspect hardware devices"
-              >
+              <InputGroup title="Hardware" description="Discover and introspect hardware devices">
                 <Field
                   label="Device Path"
                   helpText="Full path to hardware device for introspection. Common paths: /dev/tty.usbmodem* (macOS USB), /dev/ttyUSB* (Linux), COM* (Windows). Use 'Discover Devices' to find available hardware."
-                  fullWidth
-                >
+                  fullWidth>
                   <input
                     className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
                     placeholder="Device path (e.g. /dev/tty.usbmodem)"
                     value={hardwarePath}
-                    onChange={(event) => setHardwarePath(event.target.value)}
+                    onChange={event => setHardwarePath(event.target.value)}
                   />
                 </Field>
               </InputGroup>
             </div>
 
-            <InputGroup
-              title="Migration"
-              description="Migrate data from external sources"
-            >
+            <InputGroup title="Migration" description="Migrate data from external sources">
               <Field
                 label="Source Workspace"
                 helpText="Path to existing agent workspace for data migration. Leave empty to migrate from default locations. Supports importing from OpenClaw, AutoGen, and other agent frameworks. Run dry-run first to preview changes."
-                fullWidth
-              >
+                fullWidth>
                 <input
                   className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
                   placeholder="Source workspace (optional)"
                   value={migrationSource}
-                  onChange={(event) => setMigrationSource(event.target.value)}
+                  onChange={event => setMigrationSource(event.target.value)}
                 />
               </Field>
             </InputGroup>
@@ -964,8 +921,7 @@ const TauriCommandsPanel = () => {
             <ActionPanel>
               <PrimaryButton
                 onClick={() => run(alphahumanHardwareDiscover, 'hardwareDiscover')}
-                loading={operationLoading === 'hardwareDiscover'}
-              >
+                loading={operationLoading === 'hardwareDiscover'}>
                 Discover Devices
               </PrimaryButton>
               <PrimaryButton
@@ -974,37 +930,28 @@ const TauriCommandsPanel = () => {
                 }
                 loading={operationLoading === 'hardwareIntrospect'}
                 disabled={!hardwarePath.trim()}
-                variant="outline"
-              >
+                variant="outline">
                 Introspect Device
               </PrimaryButton>
               <PrimaryButton
                 onClick={() =>
-                  run(() =>
-                    alphahumanMigrateOpenclaw(
-                      migrationSource || undefined,
-                      true
-                    ),
+                  run(
+                    () => alphahumanMigrateOpenclaw(migrationSource || undefined, true),
                     'migrationDryRun'
                   )
                 }
-                loading={operationLoading === 'migrationDryRun'}
-              >
+                loading={operationLoading === 'migrationDryRun'}>
                 Dry Run Migration
               </PrimaryButton>
               <PrimaryButton
                 onClick={() =>
-                  run(() =>
-                    alphahumanMigrateOpenclaw(
-                      migrationSource || undefined,
-                      false
-                    ),
+                  run(
+                    () => alphahumanMigrateOpenclaw(migrationSource || undefined, false),
                     'runMigration'
                   )
                 }
                 loading={operationLoading === 'runMigration'}
-                variant="outline"
-              >
+                variant="outline">
                 Run Migration
               </PrimaryButton>
             </ActionPanel>
@@ -1020,8 +967,7 @@ const TauriCommandsPanel = () => {
             collapsible={true}
             defaultExpanded={!isCollapsed('interactive-tools')}
             hasChanges={false}
-            loading={operationLoading === 'sendChat'}
-          >
+            loading={operationLoading === 'sendChat'}>
             {/* Agent Chat - Preserve original styling */}
             <div className="space-y-6">
               <h4 className="text-lg font-medium text-white">Agent Chat</h4>
@@ -1032,10 +978,11 @@ const TauriCommandsPanel = () => {
                     className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
                     placeholder="openai"
                     value={chatProvider}
-                    onChange={(event) => setChatProvider(event.target.value)}
+                    onChange={event => setChatProvider(event.target.value)}
                   />
                   <p className="text-xs text-gray-400">
-                    Override the default AI provider for this chat session. Leave empty to use system default. Useful for testing different AI providers.
+                    Override the default AI provider for this chat session. Leave empty to use
+                    system default. Useful for testing different AI providers.
                   </p>
                 </label>
                 <label className="space-y-2 text-sm text-gray-300">
@@ -1044,10 +991,11 @@ const TauriCommandsPanel = () => {
                     className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
                     placeholder="gpt-4.1-mini"
                     value={chatModel}
-                    onChange={(event) => setChatModel(event.target.value)}
+                    onChange={event => setChatModel(event.target.value)}
                   />
                   <p className="text-xs text-gray-400">
-                    Specific AI model for this chat session. Examples: gpt-4, gpt-3.5-turbo, claude-3-sonnet. Leave empty for system default.
+                    Specific AI model for this chat session. Examples: gpt-4, gpt-3.5-turbo,
+                    claude-3-sonnet. Leave empty for system default.
                   </p>
                 </label>
                 <label className="space-y-2 text-sm text-gray-300">
@@ -1056,10 +1004,11 @@ const TauriCommandsPanel = () => {
                     className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
                     placeholder="0.7"
                     value={chatTemperature}
-                    onChange={(event) => setChatTemperature(event.target.value)}
+                    onChange={event => setChatTemperature(event.target.value)}
                   />
                   <p className="text-xs text-gray-400">
-                    Creativity level for responses (0.0-2.0). Lower = more focused, higher = more creative. Leave empty for system default.
+                    Creativity level for responses (0.0-2.0). Lower = more focused, higher = more
+                    creative. Leave empty for system default.
                   </p>
                 </label>
               </div>
@@ -1068,16 +1017,16 @@ const TauriCommandsPanel = () => {
                   className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200 min-h-[120px] resize-y"
                   placeholder="Send a message to the agent..."
                   value={chatInput}
-                  onChange={(event) => setChatInput(event.target.value)}
+                  onChange={event => setChatInput(event.target.value)}
                 />
                 <p className="text-xs text-gray-400 leading-relaxed">
-                  Direct chat interface with the AI agent. Test conversations, debug responses, or interact with the agent using the configured settings above.
+                  Direct chat interface with the AI agent. Test conversations, debug responses, or
+                  interact with the agent using the configured settings above.
                 </p>
               </div>
               <button
                 className="bg-primary-600 hover:bg-primary-500 active:bg-primary-700 text-white font-medium px-6 py-3 rounded-lg transition-all duration-200 ease-in-out shadow-soft hover:shadow-medium focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:ring-offset-2 focus:ring-offset-black disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={sendChat}
-              >
+                onClick={sendChat}>
                 Send Message
               </button>
               {chatLog.length > 0 && (
@@ -1087,8 +1036,7 @@ const TauriCommandsPanel = () => {
                       key={`${entry.role}-${index}`}
                       className={`text-sm ${
                         entry.role === 'user' ? 'text-white' : 'text-emerald-200'
-                      }`}
-                    >
+                      }`}>
                       <span className="font-semibold uppercase text-[10px] tracking-wide">
                         {entry.role}
                       </span>
@@ -1107,7 +1055,8 @@ const TauriCommandsPanel = () => {
                   Output Console
                 </h4>
                 <p className="text-sm text-gray-400 mt-2">
-                  Real-time command results and system responses. Shows JSON output, error messages, and operation status from all Tauri commands.
+                  Real-time command results and system responses. Shows JSON output, error messages,
+                  and operation status from all Tauri commands.
                 </p>
               </div>
               {error && (
@@ -1123,7 +1072,8 @@ const TauriCommandsPanel = () => {
                   placeholder="Command output will appear here..."
                 />
                 <p className="text-xs text-gray-400 leading-relaxed">
-                  Read-only console showing formatted JSON responses, error details, and debugging information from system operations.
+                  Read-only console showing formatted JSON responses, error details, and debugging
+                  information from system operations.
                 </p>
               </div>
             </div>

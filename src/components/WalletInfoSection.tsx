@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { skillManager } from '../lib/skills/manager';
-import { useSkillConnectionStatus } from '../lib/skills/hooks';
-import { useAppSelector } from '../store/hooks';
 import { useUser } from '../hooks/useUser';
+import { useSkillConnectionStatus } from '../lib/skills/hooks';
+import { skillManager } from '../lib/skills/manager';
+import { useAppSelector } from '../store/hooks';
 
 function truncateAddress(address: string): string {
   if (!address || address.length < 12) return address;
@@ -64,8 +64,8 @@ export default function WalletInfoSection() {
       };
       const networks = Array.isArray(listData.networks) ? listData.networks : [];
       // Prefer Ethereum Mainnet (skill always has it); else first EVM, else first network
-      const ethMainnet = networks.find((n) => n?.chain_id === '1' && n?.chain_type === 'evm');
-      const firstEvm = networks.find((n) => n && n.chain_type === 'evm');
+      const ethMainnet = networks.find(n => n?.chain_id === '1' && n?.chain_type === 'evm');
+      const firstEvm = networks.find(n => n && n.chain_type === 'evm');
       const chosen = ethMainnet ?? firstEvm ?? networks.find(Boolean);
       if (!chosen || cancelledRef.current) {
         if (!cancelledRef.current) setLoading(false);
@@ -121,9 +121,13 @@ export default function WalletInfoSection() {
     } catch (e) {
       if (!cancelledRef.current) {
         const msg = e instanceof Error ? e.message : String(e);
-        const isTransient = msg.includes('not running') || msg.includes('not started') || msg.includes('transport');
+        const isTransient =
+          msg.includes('not running') || msg.includes('not started') || msg.includes('transport');
         if (isTransient && attempt < 3) {
-          retryTimerRef.current = setTimeout(() => fetchWalletInfoRef.current(address, attempt + 1), 2000);
+          retryTimerRef.current = setTimeout(
+            () => fetchWalletInfoRef.current(address, attempt + 1),
+            2000
+          );
           return;
         }
         console.error('[WalletInfoSection] Failed to load wallet info:', e);
@@ -197,7 +201,7 @@ export default function WalletInfoSection() {
             ) : error ? (
               <span className="text-coral-500 text-xs">{error}</span>
             ) : (
-              networkName ?? '—'
+              (networkName ?? '—')
             )}
           </span>
         </div>
@@ -209,7 +213,7 @@ export default function WalletInfoSection() {
             ) : error ? (
               '—'
             ) : (
-              balance ?? '—'
+              (balance ?? '—')
             )}
           </span>
         </div>

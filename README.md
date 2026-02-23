@@ -54,16 +54,16 @@ AlphaHuman is designed to be simpler to deploy, cheaper to run, and more intelli
 
 > **Early Beta** — AlphaHuman is under active development. Expect rough edges.
 
-| Platform    | Variant                     | Download                                                                                                      |
-| ----------- | --------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Platform    | Variant                     | Download                                                                                                       |
+| ----------- | --------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | **macOS**   | Apple Silicon (M1/M2/M3/M4) | [`.dmg` (aarch64)](https://github.com/alphahumanai/alphahuman/releases/latest/download/AlphaHuman_aarch64.dmg) |
 | **macOS**   | Intel                       | [`.dmg` (x64)](https://github.com/alphahumanai/alphahuman/releases/latest/download/AlphaHuman_x64.dmg)         |
 | **Windows** | x64                         | [`.msi`](https://github.com/alphahumanai/alphahuman/releases/latest/download/AlphaHuman_x64_en-US.msi)         |
 | **Linux**   | Debian / Ubuntu             | [`.deb` (amd64)](https://github.com/alphahumanai/alphahuman/releases/latest/download/AlphaHuman_amd64.deb)     |
 | **Linux**   | Fedora / RHEL               | [`.rpm` (x86_64)](https://github.com/alphahumanai/alphahuman/releases/latest/download/AlphaHuman_x86_64.rpm)   |
 | **Linux**   | Universal                   | [`.AppImage`](https://github.com/alphahumanai/alphahuman/releases/latest/download/AlphaHuman_amd64.AppImage)   |
-| **Android** | —                           | Coming soon                                                                                                   |
-| **iOS**     | —                           | Coming soon                                                                                                   |
+| **Android** | —                           | Coming soon                                                                                                    |
+| **iOS**     | —                           | Coming soon                                                                                                    |
 
 Browse all releases: [github.com/alphahumanai/alphahuman/releases](https://github.com/alphahumanai/alphahuman/releases)
 
