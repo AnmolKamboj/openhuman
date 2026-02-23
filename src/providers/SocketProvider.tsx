@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 
+import { useDaemonLifecycle } from '../hooks/useDaemonLifecycle';
 import { socketService } from '../services/socketService';
 import { store } from '../store';
 import { useAppSelector } from '../store/hooks';
@@ -30,6 +31,27 @@ const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   const previousTokenRef = useRef<string | null>(null);
   const tauriListenersSetup = useRef(false);
   const usesRustSocket = isTauri();
+
+  // Setup daemon lifecycle management in Tauri mode
+  const daemonLifecycle = useDaemonLifecycle();
+
+  // Log daemon lifecycle state for debugging
+  useEffect(() => {
+    if (usesRustSocket && process.env.NODE_ENV === 'development') {
+      console.log('[SocketProvider] Daemon lifecycle state:', {
+        isAutoStartEnabled: daemonLifecycle.isAutoStartEnabled,
+        connectionAttempts: daemonLifecycle.connectionAttempts,
+        isRecovering: daemonLifecycle.isRecovering,
+        maxAttemptsReached: daemonLifecycle.maxAttemptsReached,
+      });
+    }
+  }, [
+    usesRustSocket,
+    daemonLifecycle.isAutoStartEnabled,
+    daemonLifecycle.connectionAttempts,
+    daemonLifecycle.isRecovering,
+    daemonLifecycle.maxAttemptsReached,
+  ]);
 
   // Setup Tauri event listeners once
   useEffect(() => {

@@ -14,6 +14,8 @@ import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
 import SectionCard from './components/SectionCard';
 import InputGroup, { Field, CheckboxField } from './components/InputGroup';
 import ActionPanel, { PrimaryButton } from './components/ActionPanel';
+import DaemonHealthIndicator from '../../daemon/DaemonHealthIndicator';
+import { useDaemonHealth, formatRelativeTime } from '../../../hooks/useDaemonHealth';
 import {
   alphahumanAgentChat,
   alphahumanDecryptSecret,
@@ -32,9 +34,7 @@ import {
   alphahumanUpdateRuntimeSettings,
   alphahumanUpdateTunnelSettings,
   alphahumanServiceInstall,
-  alphahumanServiceStart,
   alphahumanServiceStatus,
-  alphahumanServiceStop,
   alphahumanServiceUninstall,
   alphahumanEncryptSecret,
   isTauri,
@@ -50,6 +50,7 @@ const formatJson = (value: unknown) => JSON.stringify(value, null, 2);
 
 const TauriCommandsPanel = () => {
   const { navigateBack } = useSettingsNavigation();
+  const daemonHealth = useDaemonHealth();
 
   // View mode removed - always show all sections
   const [expandedSections] = useState<Set<string>>(
@@ -527,44 +528,120 @@ const TauriCommandsPanel = () => {
               </div>
             )}
 
-            <InputGroup title="Service Management">
+            <InputGroup title="Daemon Service Management">
               <div className="md:col-span-2">
-                <ActionPanel>
-                  <PrimaryButton
-                    onClick={() => run(alphahumanServiceStatus, 'serviceStatus')}
-                    loading={operationLoading === 'serviceStatus'}
-                  >
-                    Status
-                  </PrimaryButton>
-                  <PrimaryButton
-                    onClick={() => run(alphahumanServiceInstall, 'serviceInstall')}
-                    loading={operationLoading === 'serviceInstall'}
-                    variant="outline"
-                  >
-                    Install
-                  </PrimaryButton>
-                  <PrimaryButton
-                    onClick={() => run(alphahumanServiceStart, 'serviceStart')}
-                    loading={operationLoading === 'serviceStart'}
-                    variant="outline"
-                  >
-                    Start
-                  </PrimaryButton>
-                  <PrimaryButton
-                    onClick={() => run(alphahumanServiceStop, 'serviceStop')}
-                    loading={operationLoading === 'serviceStop'}
-                    variant="outline"
-                  >
-                    Stop
-                  </PrimaryButton>
-                  <PrimaryButton
-                    onClick={() => run(alphahumanServiceUninstall, 'serviceUninstall')}
-                    loading={operationLoading === 'serviceUninstall'}
-                    variant="outline"
-                  >
-                    Uninstall
-                  </PrimaryButton>
-                </ActionPanel>
+                <div className="space-y-4">
+                  {/* Live Status Display */}
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-stone-900/40 border border-stone-800/60">
+                    <div className="flex items-center gap-3">
+                      <DaemonHealthIndicator size="md" />
+                      <div>
+                        <div className="text-white font-medium">Daemon Status: {daemonHealth.status}</div>
+                        <div className="text-xs text-gray-400">
+                          Last update: {daemonHealth.lastUpdate ? formatRelativeTime(daemonHealth.lastUpdate) : 'Never'}
+                        </div>
+                        {daemonHealth.healthSnapshot && (
+                          <div className="text-xs text-gray-500">
+                            PID: {daemonHealth.healthSnapshot.pid} • Uptime: {daemonHealth.uptimeText}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {daemonHealth.status === 'error' && (
+                      <PrimaryButton
+                        onClick={() => daemonHealth.restartDaemon()}
+                        variant="outline"
+                        loading={daemonHealth.isRecovering}
+                      >
+                        Restart
+                      </PrimaryButton>
+                    )}
+                  </div>
+
+                  {/* Component Health */}
+                  {daemonHealth.componentCount > 0 && (
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      {Object.entries(daemonHealth.components).map(([name, health]) => (
+                        <div key={name} className="flex items-center gap-2 p-2 rounded bg-stone-800/40">
+                          <div className={`w-2 h-2 rounded-full ${
+                            health.status === 'ok' ? 'bg-green-500' :
+                            health.status === 'starting' ? 'bg-yellow-500' : 'bg-red-500'
+                          }`} />
+                          <span className="capitalize text-gray-300">{name}</span>
+                          {health.restart_count > 0 && (
+                            <span className="text-xs text-yellow-400">({health.restart_count})</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Service Controls */}
+                  <ActionPanel>
+                    <PrimaryButton
+                      onClick={() => daemonHealth.startDaemon()}
+                      loading={operationLoading === 'serviceStart'}
+                      disabled={daemonHealth.status === 'running'}
+                    >
+                      Start
+                    </PrimaryButton>
+                    <PrimaryButton
+                      onClick={() => daemonHealth.stopDaemon()}
+                      loading={operationLoading === 'serviceStop'}
+                      disabled={daemonHealth.status === 'disconnected'}
+                      variant="outline"
+                    >
+                      Stop
+                    </PrimaryButton>
+                    <PrimaryButton
+                      onClick={() => run(alphahumanServiceStatus, 'serviceStatus')}
+                      loading={operationLoading === 'serviceStatus'}
+                      variant="outline"
+                    >
+                      Status
+                    </PrimaryButton>
+                    <PrimaryButton
+                      onClick={() => run(alphahumanServiceInstall, 'serviceInstall')}
+                      loading={operationLoading === 'serviceInstall'}
+                      variant="outline"
+                    >
+                      Install
+                    </PrimaryButton>
+                    <PrimaryButton
+                      onClick={() => run(alphahumanServiceUninstall, 'serviceUninstall')}
+                      loading={operationLoading === 'serviceUninstall'}
+                      variant="outline"
+                    >
+                      Uninstall
+                    </PrimaryButton>
+                  </ActionPanel>
+
+                  {/* Auto-start Toggle */}
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-stone-800/40 border border-stone-700/60">
+                    <div>
+                      <div className="text-sm font-medium text-gray-300">Auto-start Daemon</div>
+                      <div className="text-xs text-gray-500">Automatically start daemon on app launch</div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="sr-only peer"
+                        checked={daemonHealth.isAutoStartEnabled}
+                        onChange={(e) => daemonHealth.setAutoStart(e.target.checked)}
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+
+                  {/* Connection Info */}
+                  {daemonHealth.connectionAttempts > 0 && (
+                    <div className="p-3 rounded-lg bg-yellow-900/20 border border-yellow-500/30">
+                      <div className="text-sm text-yellow-400">
+                        Connection attempts: {daemonHealth.connectionAttempts}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </InputGroup>
           </SectionCard>

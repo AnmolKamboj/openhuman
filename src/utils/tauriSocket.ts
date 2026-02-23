@@ -17,6 +17,7 @@ import { isTauri as coreIsTauri, invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 
 import { syncToolsToBackend } from '../lib/skills/sync';
+import { daemonHealthService } from '../services/daemonHealthService';
 import { store } from '../store';
 import { setSocketIdForUser, setStatusForUser } from '../store/socketSlice';
 import { BACKEND_URL } from './config';
@@ -102,6 +103,7 @@ let unlistenConnect: UnlistenFn | null = null;
 let unlistenDisconnect: UnlistenFn | null = null;
 let unlistenSocketState: UnlistenFn | null = null;
 let unlistenServerEvent: UnlistenFn | null = null;
+let unlistenDaemonHealth: UnlistenFn | null = null;
 
 function getSocketUserId(): string {
   const token = store.getState().auth.token;
@@ -179,6 +181,9 @@ export async function setupTauriSocketListeners(): Promise<void> {
       // No-op: Rust socket handles disconnection now
     });
 
+    // Setup daemon health monitoring
+    unlistenDaemonHealth = await daemonHealthService.setupHealthListener();
+
     console.log('[TauriSocket] Event listeners setup complete');
   } catch (error) {
     console.error('[TauriSocket] Failed to setup listeners:', error);
@@ -205,6 +210,13 @@ export function cleanupTauriSocketListeners(): void {
     unlistenServerEvent();
     unlistenServerEvent = null;
   }
+  if (unlistenDaemonHealth) {
+    unlistenDaemonHealth();
+    unlistenDaemonHealth = null;
+  }
+
+  // Cleanup daemon health service
+  daemonHealthService.cleanup();
 }
 
 // ---------------------------------------------------------------------------
