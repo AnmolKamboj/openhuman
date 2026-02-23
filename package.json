@@ -1,7 +1,7 @@
 {
   "name": "alphahuman",
   "private": true,
-  "version": "0.47.0",
+  "version": "0.48.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -28,7 +28,12 @@
     "test:e2e:build": "bash scripts/e2e-build.sh",
     "test:e2e:login": "bash scripts/e2e-login.sh",
     "test:e2e:auth": "bash scripts/e2e-auth.sh",
-    "test:e2e": "yarn test:e2e:build && yarn test:e2e:login && yarn test:e2e:auth",
+    "test:e2e:payment": "bash scripts/e2e-payment.sh",
+    "test:e2e:crypto-payment": "bash scripts/e2e-crypto-payment.sh",
+    "test:e2e:telegram": "bash scripts/e2e-telegram.sh",
+    "test:e2e:notion": "bash scripts/e2e-notion.sh",
+    "test:e2e:gmail": "bash scripts/e2e-gmail.sh",
+    "test:e2e": "yarn test:e2e:build && yarn test:e2e:login && yarn test:e2e:auth && yarn test:e2e:payment && yarn test:e2e:crypto-payment && yarn test:e2e:telegram && yarn test:e2e:notion && yarn test:e2e:gmail",
     "test:all": "yarn test:coverage && yarn test:rust && yarn test:e2e",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -39,6 +44,7 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
     "@reduxjs/toolkit": "^2.11.2",
     "@sentry/react": "^10.38.0",
     "@tauri-apps/api": "^2",
