@@ -175,6 +175,11 @@ impl RuntimeEngine {
         Ok(prod_dir)
     }
 
+    /// Expose the resolved skills source directory (for external callers like unified registry).
+    pub fn skills_source_dir(&self) -> Result<PathBuf, String> {
+        self.get_skills_source_dir()
+    }
+
     /// Discover all JavaScript skills from the skills directory.
     pub async fn discover_skills(&self) -> Result<Vec<SkillManifest>, String> {
         let skills_dir = self.get_skills_source_dir()?;

@@ -15,9 +15,11 @@ mod models;
 mod runtime;
 mod services;
 pub mod alphahuman;
+mod unified_skills;
 mod utils;
 
 use ai::*;
+use commands::unified_skills::{unified_execute_skill, unified_generate_skill, unified_list_skills};
 use commands::*;
 use services::socket_service::SOCKET_SERVICE;
 use tauri::{AppHandle, Manager, RunEvent};
@@ -691,6 +693,10 @@ pub fn run() {
                     alphahuman_service_stop,
                     alphahuman_service_status,
                     alphahuman_service_uninstall,
+                    // Unified skill registry commands
+                    unified_list_skills,
+                    unified_execute_skill,
+                    unified_generate_skill,
                 ]
             }
             #[cfg(not(desktop))]
@@ -803,6 +809,10 @@ pub fn run() {
                     alphahuman_service_stop,
                     alphahuman_service_status,
                     alphahuman_service_uninstall,
+                    // Unified skill registry commands (mobile stubs)
+                    unified_list_skills,
+                    unified_execute_skill,
+                    unified_generate_skill,
                 ]
             }
         })

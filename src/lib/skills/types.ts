@@ -9,6 +9,9 @@
 
 export type SkillPlatform = "windows" | "macos" | "linux" | "android" | "ios";
 
+/** Unified registry skill type discriminant. */
+export type SkillType = 'alphahuman' | 'openclaw';
+
 export interface SkillManifest {
   id: string;
   name: string;
@@ -33,6 +36,8 @@ export interface SkillManifest {
   platforms?: SkillPlatform[];
   /** When true, skill is hidden in production builds. */
   ignoreInProduction?: boolean;
+  /** Unified registry type: "alphahuman" (QuickJS) or "openclaw" (skill.md/TOML). */
+  skill_type?: SkillType;
 }
 
 // ---------------------------------------------------------------------------
