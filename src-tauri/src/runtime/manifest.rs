@@ -50,6 +50,15 @@ pub struct SkillManifest {
     /// When absent or empty, the skill is available on all platforms.
     #[serde(default)]
     pub platforms: Option<Vec<String>>,
+    /// Skill type for the unified registry dispatch.
+    /// "alphahuman" → executed via QuickJS runtime (default).
+    /// "openclaw"   → loaded and executed from SKILL.md/SKILL.toml.
+    #[serde(default = "default_skill_type")]
+    pub skill_type: String,
+}
+
+fn default_skill_type() -> String {
+    "alphahuman".to_string()
 }
 
 fn default_runtime() -> String {

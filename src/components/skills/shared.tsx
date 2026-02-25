@@ -4,7 +4,7 @@ import GoogleIcon from '../../assets/icons/GoogleIcon';
 import NotionIcon from '../../assets/icons/notion.svg';
 import TelegramIcon from '../../assets/icons/telegram.svg';
 import { skillManager } from '../../lib/skills/manager';
-import type { SkillConnectionStatus } from '../../lib/skills/types';
+import type { SkillConnectionStatus, SkillType } from '../../lib/skills/types';
 
 // Map skill IDs to icons
 export const SKILL_ICONS: Record<string, React.ReactElement> = {
@@ -66,6 +66,8 @@ export interface SkillListEntry {
   ignoreInProduction?: boolean;
   icon?: React.ReactElement;
   hasSetup: boolean;
+  /** Unified registry type: "alphahuman" (QuickJS) or "openclaw" (SKILL.md/TOML). */
+  skill_type?: SkillType;
 }
 
 // Contextual action button for skills

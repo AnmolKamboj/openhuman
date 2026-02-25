@@ -4,6 +4,7 @@ pub mod runtime;
 pub mod socket;
 pub mod tdlib;
 pub mod alphahuman;
+pub mod unified_skills;
 
 #[cfg(desktop)]
 pub mod window;
