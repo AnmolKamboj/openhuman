@@ -22,7 +22,9 @@ use ai::*;
 use commands::unified_skills::{unified_execute_skill, unified_generate_skill, unified_list_skills};
 use commands::*;
 use services::socket_service::SOCKET_SERVICE;
-use tauri::{AppHandle, Manager, RunEvent};
+use std::path::PathBuf;
+use tauri::{AppHandle, Manager, RunEvent, Emitter};
+use tokio::{fs, time::{interval, Duration}};
 
 #[cfg(desktop)]
 use tauri::{
@@ -220,6 +222,49 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .build(app)?;
 
     Ok(())
+}
+
+/// Watch daemon health file and bridge changes to frontend Tauri events
+async fn watch_daemon_health_file(app_handle: AppHandle, data_dir: PathBuf) {
+    let state_file = data_dir.join("daemon_state.json");
+    let mut interval = interval(Duration::from_secs(2));
+    let mut last_modified: Option<std::time::SystemTime> = None;
+
+    log::info!("[alphahuman] Watching daemon health file: {}", state_file.display());
+
+    loop {
+        interval.tick().await;
+
+        // Check if file exists and was modified
+        if let Ok(metadata) = fs::metadata(&state_file).await {
+            if let Ok(modified) = metadata.modified() {
+                if last_modified.map_or(true, |last| modified > last) {
+                    last_modified = Some(modified);
+
+                    // Read and parse health data
+                    if let Ok(content) = fs::read_to_string(&state_file).await {
+                        if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&content) {
+                            log::debug!("[alphahuman] Broadcasting health event from file: {:?}", json_value);
+
+                            // Emit Tauri event to frontend (same as internal daemon)
+                            if let Err(e) = app_handle.emit("alphahuman:health", &json_value) {
+                                log::error!("[alphahuman] Failed to emit health event from file: {}", e);
+                            } else {
+                                log::debug!("[alphahuman] Health event emitted successfully from file");
+                            }
+                        } else {
+                            log::debug!("[alphahuman] Failed to parse health file as JSON: {}", state_file.display());
+                        }
+                    } else {
+                        log::debug!("[alphahuman] Failed to read health file: {}", state_file.display());
+                    }
+                }
+            }
+        } else {
+            // File doesn't exist yet - external daemon may not be writing yet
+            log::debug!("[alphahuman] Health file not found yet: {}", state_file.display());
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -504,34 +549,23 @@ pub fn run() {
                 };
                 app.manage(daemon_handle);
 
-                if cfg!(target_os = "macos")
-                    && !daemon_mode
-                    && !daemon_foreground_requested()
-                {
-                    tauri::async_runtime::spawn(async move {
-                        match alphahuman::config::Config::load_or_init().await {
-                            Ok(config) => {
-                                if let Err(e) = alphahuman::service::install(&config) {
-                                    log::warn!(
-                                        "[alphahuman] LaunchAgent install failed: {e}"
-                                    );
-                                }
-                                if let Err(e) = alphahuman::service::start(&config) {
-                                    log::warn!(
-                                        "[alphahuman] LaunchAgent start failed: {e}"
-                                    );
-                                }
-                            }
-                            Err(e) => {
-                                log::warn!(
-                                    "[alphahuman] Failed to load config for LaunchAgent: {e}"
-                                );
-                            }
-                        }
-                    });
-                } else {
+                // Determine daemon mode: internal supervisor vs external platform service
+                let use_internal_daemon = daemon_mode
+                    || daemon_foreground_requested()
+                    || cfg!(debug_assertions)  // Always use internal supervisor in debug builds
+                    || std::env::var("ALPHAHUMAN_DAEMON_INTERNAL").unwrap_or("false".to_string()) == "true";  // Cross-platform override via env var
+
+                if use_internal_daemon {
+                    // Run internal daemon supervisor with health event emission
+                    // This path is taken when:
+                    // - Daemon mode enabled, OR
+                    // - Foreground daemon requested, OR
+                    // - Debug build (for easier development), OR
+                    // - ALPHAHUMAN_DAEMON_INTERNAL=true env var (any platform)
+                    log::info!("[alphahuman] Using internal daemon supervisor (ALPHAHUMAN_DAEMON_INTERNAL=true or debug build)");
                     let app_handle_for_daemon = app.handle().clone();
                     tauri::async_runtime::spawn(async move {
+                        log::info!("[alphahuman] Starting daemon supervisor with health monitoring");
                         if let Err(e) = alphahuman::daemon::run(
                             daemon_config,
                             app_handle_for_daemon,
@@ -540,6 +574,39 @@ pub fn run() {
                         .await
                         {
                             log::error!("[alphahuman] Daemon supervisor error: {e}");
+                        }
+                    });
+                } else {
+                    // Start external platform-specific service for background daemon
+                    // This path is taken on all platforms when ALPHAHUMAN_DAEMON_INTERNAL=false/unset
+                    // and not in daemon mode, foreground mode, or debug build
+                    log::info!("[alphahuman] Using external daemon service (ALPHAHUMAN_DAEMON_INTERNAL=false/unset)");
+
+                    // Setup file watching to bridge external daemon health events to frontend
+                    let app_handle_for_watcher = app.handle().clone();
+                    let data_dir_clone = data_dir.clone();
+                    tauri::async_runtime::spawn(async move {
+                        watch_daemon_health_file(app_handle_for_watcher, data_dir_clone).await;
+                    });
+
+                    // Start the external platform service
+                    tauri::async_runtime::spawn(async move {
+                        match alphahuman::config::Config::load_or_init().await {
+                            Ok(config) => {
+                                match alphahuman::service::install(&config) {
+                                    Ok(status) => log::info!("[alphahuman] External daemon service installed: {:?}", status),
+                                    Err(e) => log::error!("[alphahuman] Failed to install external daemon service: {e}"),
+                                }
+                                match alphahuman::service::start(&config) {
+                                    Ok(status) => log::info!("[alphahuman] External daemon service started: {:?}", status),
+                                    Err(e) => log::error!("[alphahuman] Failed to start external daemon service: {e}"),
+                                }
+                            }
+                            Err(e) => {
+                                log::error!(
+                                    "[alphahuman] Failed to load config for external service: {e}"
+                                );
+                            }
                         }
                     });
                 }

@@ -17,13 +17,18 @@ import { isTauri as coreIsTauri, invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 
 import { syncToolsToBackend } from '../lib/skills/sync';
+import { daemonHealthService } from '../services/daemonHealthService';
 import { store } from '../store';
 import { setSocketIdForUser, setStatusForUser } from '../store/socketSlice';
 import { BACKEND_URL } from './config';
 
 // Check if we're running in Tauri
 export const isTauri = (): boolean => {
-  return coreIsTauri();
+  const isTauriEnv = coreIsTauri();
+  const windowTauri = typeof window !== 'undefined' ? !!window.__TAURI__ : 'undefined';
+  const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : 'undefined';
+  console.log('[TauriSocket] isTauri() check:', isTauriEnv, 'window.__TAURI__:', windowTauri, 'userAgent:', userAgent);
+  return isTauriEnv;
 };
 
 // ---------------------------------------------------------------------------
@@ -102,6 +107,7 @@ let unlistenConnect: UnlistenFn | null = null;
 let unlistenDisconnect: UnlistenFn | null = null;
 let unlistenSocketState: UnlistenFn | null = null;
 let unlistenServerEvent: UnlistenFn | null = null;
+let unlistenDaemonHealth: UnlistenFn | null = null;
 
 function getSocketUserId(): string {
   const token = store.getState().auth.token;
@@ -124,10 +130,17 @@ function getSocketUserId(): string {
  * This should be called once when the app starts in Tauri mode.
  */
 export async function setupTauriSocketListeners(): Promise<void> {
-  if (!isTauri()) return;
+  console.log('[TauriSocket] setupTauriSocketListeners() called');
+  if (!isTauri()) {
+    console.log('[TauriSocket] Not in Tauri environment, returning early');
+    return;
+  }
+  console.log('[TauriSocket] In Tauri environment, proceeding with listener setup');
 
   try {
+    console.log('[TauriSocket] Starting listener setup sequence');
     // Listen for Rust socket state changes (Phase 2 — primary)
+    console.log('[TauriSocket] Setting up runtime:socket-state-changed listener');
     unlistenSocketState = await listen<{ status: string; socket_id: string | null }>(
       'runtime:socket-state-changed',
       event => {
@@ -156,14 +169,18 @@ export async function setupTauriSocketListeners(): Promise<void> {
         }
       }
     );
+    console.log('[TauriSocket] runtime:socket-state-changed listener setup complete');
 
     // Listen for forwarded server events
+    console.log('[TauriSocket] Setting up server:event listener');
     unlistenServerEvent = await listen<{ event: string; data: unknown }>('server:event', event => {
       console.log('[TauriSocket] Server event:', event.payload.event, event.payload.data);
       // Future: dispatch to specific handlers based on event type
     });
+    console.log('[TauriSocket] server:event listener setup complete');
 
     // Legacy: Listen for connect requests from Rust (backwards compat)
+    console.log('[TauriSocket] Setting up legacy socket:should_connect listener');
     unlistenConnect = await listen<{ backendUrl: string; token: string }>(
       'socket:should_connect',
       async event => {
@@ -172,12 +189,20 @@ export async function setupTauriSocketListeners(): Promise<void> {
         void event;
       }
     );
+    console.log('[TauriSocket] socket:should_connect listener setup complete');
 
     // Legacy: Listen for disconnect requests from Rust
+    console.log('[TauriSocket] Setting up legacy socket:should_disconnect listener');
     unlistenDisconnect = await listen('socket:should_disconnect', async () => {
       console.log('[TauriSocket] Legacy disconnect request (ignored — using Rust socket)');
       // No-op: Rust socket handles disconnection now
     });
+    console.log('[TauriSocket] socket:should_disconnect listener setup complete');
+
+    // Setup daemon health monitoring
+    console.log('[TauriSocket] About to setup daemon health listener');
+    unlistenDaemonHealth = await daemonHealthService.setupHealthListener();
+    console.log('[TauriSocket] Daemon health listener setup result:', unlistenDaemonHealth);
 
     console.log('[TauriSocket] Event listeners setup complete');
   } catch (error) {
@@ -205,6 +230,13 @@ export function cleanupTauriSocketListeners(): void {
     unlistenServerEvent();
     unlistenServerEvent = null;
   }
+  if (unlistenDaemonHealth) {
+    unlistenDaemonHealth();
+    unlistenDaemonHealth = null;
+  }
+
+  // Cleanup daemon health service
+  daemonHealthService.cleanup();
 }
 
 // ---------------------------------------------------------------------------

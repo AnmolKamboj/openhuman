@@ -219,6 +219,7 @@ Set in `.env` (Vite exposes `VITE_*` prefixed vars):
 | `VITE_TELEGRAM_BOT_ID`       | Telegram bot numeric ID                            |
 | `VITE_SENTRY_DSN`            | Sentry DSN for error reporting (optional)          |
 | `VITE_DEBUG`                 | Debug mode flag                                    |
+| `ALPHAHUMAN_DAEMON_INTERNAL` | Force internal daemon mode (default: false, uses external services) |
 
 Production defaults are in `src/utils/config.ts`.
 
