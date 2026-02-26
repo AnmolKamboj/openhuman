@@ -112,6 +112,7 @@ export default function SkillsGrid() {
   const [activeSkillName, setActiveSkillName] = useState<string>('');
   const [activeSkillDescription, setActiveSkillDescription] = useState<string>('');
   const [activeSkillHasSetup, setActiveSkillHasSetup] = useState(false);
+  const [activeSkillType, setActiveSkillType] = useState<'alphahuman' | 'openclaw'>('alphahuman');
 
   // Get Redux state for sorting
   const skillsState = useAppSelector(state => state.skills.skills);
@@ -248,6 +249,7 @@ export default function SkillsGrid() {
     setActiveSkillName(skill.name);
     setActiveSkillDescription(skill.description);
     setActiveSkillHasSetup(skill.hasSetup);
+    setActiveSkillType(skill.skill_type ?? 'alphahuman');
     setSetupModalOpen(true);
   };
 
@@ -354,6 +356,7 @@ export default function SkillsGrid() {
           skillName={activeSkillName}
           skillDescription={activeSkillDescription}
           hasSetup={activeSkillHasSetup}
+          skillType={activeSkillType}
           onClose={() => {
             setSetupModalOpen(false);
             setActiveSkillId(null);
@@ -424,6 +427,7 @@ export default function SkillsGrid() {
                           setActiveSkillName(skill.name);
                           setActiveSkillDescription(skill.description);
                           setActiveSkillHasSetup(skill.hasSetup);
+                          setActiveSkillType(skill.skill_type ?? 'alphahuman');
                           setSetupModalOpen(true);
                         }}
                       />
