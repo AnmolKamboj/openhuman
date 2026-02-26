@@ -218,6 +218,16 @@ const threadSlice = createSlice({
         createdAt: new Date().toISOString(),
       });
     },
+    addInferenceResponse: (state, action: { payload: { content: string } }) => {
+      state.messages.push({
+        id: `inference-${Date.now()}`,
+        content: action.payload.content,
+        type: 'text',
+        extraMetadata: {},
+        sender: 'agent',
+        createdAt: new Date().toISOString(),
+      });
+    },
     removeOptimisticMessages: state => {
       state.messages = state.messages.filter(m => !m.id.startsWith('optimistic-'));
     },
@@ -345,6 +355,7 @@ export const {
   clearDeleteStatus,
   clearPurgeStatus,
   addOptimisticMessage,
+  addInferenceResponse,
   removeOptimisticMessages,
   clearSendError,
   clearSuggestedQuestions,
