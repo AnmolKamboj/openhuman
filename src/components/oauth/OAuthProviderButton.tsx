@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { OAuthProviderConfig } from '../../types/oauth';
 import { openUrl } from '../../utils/openUrl';
 import { isTauri } from '../../utils/tauriCommands';
+import { IS_DEV } from '../../utils/config';
 
 interface OAuthProviderButtonProps {
   provider: OAuthProviderConfig;
@@ -20,6 +21,13 @@ const OAuthProviderButton = ({
     if (externalDisabled || isLoading) return;
 
     console.log(`Starting ${provider.name} OAuth login`, isTauri());
+
+    if (IS_DEV) {
+      console.log(`[dev] OAuth debug mode enabled. OAuth URL: ${provider.loginUrl}`);
+      console.log('[dev] In debug mode, OAuth will return JSON response instead of redirect.');
+      console.log('[dev] After OAuth completion, copy the loginToken and use: window.__simulateDeepLink("alphahuman://auth?token=YOUR_TOKEN")');
+    }
+
     setIsLoading(true);
 
     try {
