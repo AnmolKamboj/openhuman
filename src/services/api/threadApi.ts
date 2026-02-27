@@ -12,33 +12,33 @@ import type {
 import { apiClient } from '../apiClient';
 
 export const threadApi = {
-  /** GET /telegram/threads — list all threads for the authenticated user */
+  /** GET /threads — list all threads for the authenticated user */
   getThreads: async (): Promise<ThreadsListData> => {
-    const response = await apiClient.get<ApiResponse<ThreadsListData>>('/telegram/threads');
+    const response = await apiClient.get<ApiResponse<ThreadsListData>>('/threads');
     return response.data;
   },
 
-  /** POST /telegram/threads — create a new thread */
+  /** POST /threads — create a new thread */
   createThread: async (chatId?: number): Promise<ThreadCreateData> => {
     const response = await apiClient.post<ApiResponse<ThreadCreateData>>(
-      '/telegram/threads',
+      '/threads',
       chatId != null ? { chatId } : undefined
     );
     return response.data;
   },
 
-  /** GET /telegram/threads/:threadId/messages — get messages for a thread */
+  /** GET /threads/:threadId/messages — get messages for a thread */
   getThreadMessages: async (threadId: string): Promise<ThreadMessagesData> => {
     const response = await apiClient.get<ApiResponse<ThreadMessagesData>>(
-      `/telegram/threads/${encodeURIComponent(threadId)}/messages`
+      `/threads/${encodeURIComponent(threadId)}/messages`
     );
     return response.data;
   },
 
-  /** DELETE /telegram/threads/:threadId — delete a single thread */
+  /** DELETE /threads/:threadId — delete a single thread */
   deleteThread: async (threadId: string): Promise<ThreadDeleteData> => {
     const response = await apiClient.delete<ApiResponse<ThreadDeleteData>>(
-      `/telegram/threads/${encodeURIComponent(threadId)}`
+      `/threads/${encodeURIComponent(threadId)}`
     );
     return response.data;
   },
@@ -65,9 +65,9 @@ export const threadApi = {
     return response.data;
   },
 
-  /** POST /telegram/purge — purge messages and/or threads */
+  /** POST /purge — purge messages and/or threads */
   purge: async (body: PurgeRequestBody): Promise<PurgeResultData> => {
-    const response = await apiClient.post<ApiResponse<PurgeResultData>>('/telegram/purge', body);
+    const response = await apiClient.post<ApiResponse<PurgeResultData>>('/purge', body);
     return response.data;
   },
 };
