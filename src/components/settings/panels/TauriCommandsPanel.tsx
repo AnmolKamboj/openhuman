@@ -7,7 +7,7 @@ import {
   ShieldCheckIcon,
   WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline';
-import { useMemo, useState } from 'react';
+import {useCallback, useEffect, useMemo, useState} from 'react';
 
 import SettingsHeader from '../components/SettingsHeader';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
@@ -46,11 +46,6 @@ import {
   SkillSnapshot,
   TunnelConfig,
 } from '../../../utils/tauriCommands';
-import SettingsHeader from '../components/SettingsHeader';
-import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
-import ActionPanel, { PrimaryButton } from './components/ActionPanel';
-import InputGroup, { CheckboxField, Field } from './components/InputGroup';
-import SectionCard from './components/SectionCard';
 
 const formatJson = (value: unknown) => JSON.stringify(value, null, 2);
 
