@@ -16,6 +16,7 @@ interface SkillSetupModalProps {
   skillDescription: string;
   /** Whether this skill has interactive setup hooks. */
   hasSetup?: boolean;
+  skillType?: 'alphahuman' | 'openclaw';
   onClose: () => void;
 }
 
@@ -24,6 +25,7 @@ export default function SkillSetupModal({
   skillName,
   skillDescription,
   hasSetup = true,
+  skillType = 'alphahuman',
   onClose,
 }: SkillSetupModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
@@ -92,12 +94,23 @@ export default function SkillSetupModal({
         <div className="p-4 border-b border-stone-700/50">
           <div className="flex items-start justify-between">
             <div className="flex-1 min-w-0 pr-2">
-              <h2
-                id="skill-setup-title"
-                className="text-base font-semibold text-white"
-              >
-                {headerTitle}
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2
+                  id="skill-setup-title"
+                  className="text-base font-semibold text-white"
+                >
+                  {headerTitle}
+                </h2>
+                <span
+                  className={`px-1.5 py-0.5 text-[10px] font-medium rounded-md ${
+                    skillType === 'openclaw'
+                      ? 'bg-violet-500/15 text-violet-400'
+                      : 'bg-sage-500/15 text-sage-400'
+                  }`}
+                >
+                  {skillType}
+                </span>
+              </div>
               {skillDescription && (
                 <p className="text-xs text-stone-400 mt-1.5 line-clamp-2">
                   {skillDescription}

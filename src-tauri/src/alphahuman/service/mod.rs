@@ -49,20 +49,82 @@ pub fn install(config: &Config) -> Result<ServiceStatus> {
 pub fn start(config: &Config) -> Result<ServiceStatus> {
     if cfg!(target_os = "macos") {
         let plist = macos_service_file()?;
-        run_checked(Command::new("launchctl").arg("load").arg("-w").arg(&plist))?;
-        run_checked(Command::new("launchctl").arg("start").arg(SERVICE_LABEL))?;
+
+        // Check if service is already loaded to avoid "Input/output error"
+        if !is_service_loaded_macos()? {
+            log::info!("[service] Loading macOS LaunchAgent service");
+            run_checked(Command::new("launchctl").arg("load").arg("-w").arg(&plist))?;
+        } else {
+            log::info!("[service] LaunchAgent service already loaded, skipping load step");
+        }
+
+        // Always try to start - this is safe even if already running
+        log::info!("[service] Starting macOS LaunchAgent service");
+        let start_result = run_checked(Command::new("launchctl").arg("start").arg(SERVICE_LABEL));
+        if let Err(e) = start_result {
+            // Check if it's already running - that's not an error for us
+            let status_check = status(config)?;
+            if matches!(status_check.state, ServiceState::Running) {
+                log::info!("[service] Service was already running - operation successful");
+            } else {
+                return Err(e);
+            }
+        }
         return status(config);
     }
 
     if cfg!(target_os = "linux") {
+        // Check if service is enabled before trying to start
+        if !is_service_enabled_linux()? {
+            log::info!("[service] Enabling systemd service");
+            let _ = run_checked(Command::new("systemctl").args(["--user", "enable", "alphahuman.service"]));
+        } else {
+            log::info!("[service] Systemd service already enabled");
+        }
+
         run_checked(Command::new("systemctl").args(["--user", "daemon-reload"]))?;
-        run_checked(Command::new("systemctl").args(["--user", "start", "alphahuman.service"]))?;
+
+        // Try to start - systemctl start is idempotent
+        log::info!("[service] Starting systemd service");
+        let start_result = run_checked(Command::new("systemctl").args(["--user", "start", "alphahuman.service"]));
+        if let Err(e) = start_result {
+            // Check if it's already active - that's success for us
+            let status_check = status(config)?;
+            if matches!(status_check.state, ServiceState::Running) {
+                log::info!("[service] Service was already running - operation successful");
+            } else {
+                return Err(e);
+            }
+        }
         return status(config);
     }
 
     if cfg!(target_os = "windows") {
-        let _ = config;
-        run_checked(Command::new("schtasks").args(["/Run", "/TN", windows_task_name()]))?;
+        let task_name = windows_task_name();
+
+        // Check if task exists before trying to run
+        if !is_task_exists_windows(task_name)? {
+            log::warn!("[service] Windows scheduled task does not exist, please install first");
+            return Ok(ServiceStatus {
+                state: ServiceState::NotInstalled,
+                unit_path: None,
+                label: task_name.to_string(),
+                details: Some("Task not installed".to_string()),
+            });
+        }
+
+        // Try to run task - this may fail if already running, which is OK
+        log::info!("[service] Starting Windows scheduled task");
+        let run_result = run_checked(Command::new("schtasks").args(["/Run", "/TN", task_name]));
+        if let Err(e) = run_result {
+            // Check if it's already running - that's success for us
+            let status_check = status(config)?;
+            if matches!(status_check.state, ServiceState::Running) {
+                log::info!("[service] Task was already running - operation successful");
+            } else {
+                return Err(e);
+            }
+        }
         return status(config);
     }
 
@@ -263,6 +325,11 @@ fn install_macos(config: &Config) -> Result<()> {
   <string>{stdout}</string>
   <key>StandardErrorPath</key>
   <string>{stderr}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>ALPHAHUMAN_DAEMON_INTERNAL</key>
+    <string>false</string>
+  </dict>
 </dict>
 </plist>
 "#,
@@ -389,6 +456,41 @@ fn run_capture(cmd: &mut Command) -> Result<String> {
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Check if the macOS LaunchAgent service is loaded (regardless of running state)
+fn is_service_loaded_macos() -> Result<bool> {
+    let out = run_capture(Command::new("launchctl").arg("list"))?;
+    Ok(out.lines().any(|line| {
+        line.contains(SERVICE_LABEL) || line.contains(LEGACY_SERVICE_LABEL)
+    }))
+}
+
+/// Check if the Linux systemd service is enabled
+fn is_service_enabled_linux() -> Result<bool> {
+    let result = Command::new("systemctl")
+        .args(["--user", "is-enabled", "alphahuman.service"])
+        .output();
+
+    match result {
+        Ok(output) => {
+            let status_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            Ok(status_str == "enabled")
+        }
+        Err(_) => Ok(false), // Service not found or other error means not enabled
+    }
+}
+
+/// Check if the Windows scheduled task exists
+fn is_task_exists_windows(task_name: &str) -> Result<bool> {
+    let result = Command::new("schtasks")
+        .args(["/Query", "/TN", task_name])
+        .output();
+
+    match result {
+        Ok(output) => Ok(output.status.success()),
+        Err(_) => Ok(false), // Command failed means task doesn't exist
+    }
 }
 
 #[cfg(test)]

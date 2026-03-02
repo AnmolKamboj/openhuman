@@ -4,7 +4,7 @@ import React from 'react';
 interface ActionPanelProps {
   children: React.ReactNode;
   hasChanges?: boolean;
-  success?: boolean;
+  success?: boolean | string;
   error?: string;
   className?: string;
 }
@@ -31,7 +31,7 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
       {success && (
         <div className="flex items-center gap-2 rounded-lg border border-sage-500/40 bg-sage-500/10 px-3 py-2 text-sm text-sage-200">
           <CheckIcon className="h-4 w-4" />
-          Operation completed successfully
+          {typeof success === 'string' ? success : 'Operation completed successfully'}
         </div>
       )}
 
@@ -75,7 +75,7 @@ const PrimaryButton: React.FC<PrimaryButtonProps> = ({
 
   return (
     <button
-      className={`${baseClasses} ${variantClasses[variant]} ${className}`}
+      className={`${baseClasses} ${variantClasses[variant]} ${className} flex items-center justify-center`}
       onClick={onClick}
       disabled={disabled || loading}>
       {loading && (

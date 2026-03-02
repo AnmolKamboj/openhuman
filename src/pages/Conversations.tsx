@@ -9,21 +9,22 @@ import {
 import Markdown from 'react-markdown';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { inferenceApi, type ModelInfo } from '../services/api/inferenceApi';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
+  addInferenceResponse,
   addOptimisticMessage,
   clearCreateStatus,
   clearDeleteStatus,
   clearPurgeStatus,
   clearSelectedThread,
-  clearSendError,
   createThread,
   deleteThread,
   fetchSuggestedQuestions,
   fetchThreadMessages,
   fetchThreads,
   purgeThreads,
-  sendMessage,
+  removeOptimisticMessages,
   setLastViewed,
   setPanelWidth,
   setSelectedThread,
@@ -60,8 +61,6 @@ const Conversations = () => {
     createStatus,
     deleteStatus,
     purgeStatus,
-    sendStatus,
-    sendError,
     panelWidth,
     lastViewedAt,
     suggestedQuestions,
@@ -73,6 +72,13 @@ const Conversations = () => {
   const [inputValue, setInputValue] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+
+  // Inference model state
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
+  const [selectedModel, setSelectedModel] = useState('neocortex-mk1');
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const isDragging = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastPanelWidthRef = useRef(panelWidth);
@@ -133,6 +139,23 @@ const Conversations = () => {
     },
     [panelWidth, dispatch]
   );
+
+  // Fetch available inference models on mount
+  useEffect(() => {
+    setIsLoadingModels(true);
+    inferenceApi
+      .listModels()
+      .then(data => {
+        if (data.data.length > 0) {
+          setAvailableModels(data.data);
+          setSelectedModel(data.data[0].id);
+        }
+      })
+      .catch(() => {
+        // Keep default model on failure
+      })
+      .finally(() => setIsLoadingModels(false));
+  }, []);
 
   // Fetch threads on mount
   useEffect(() => {
@@ -196,9 +219,9 @@ const Conversations = () => {
   // Clear send error when user starts typing again
   useEffect(() => {
     if (sendError && inputValue.length > 0) {
-      dispatch(clearSendError());
+      setSendError(null);
     }
-  }, [inputValue, sendError, dispatch]);
+  }, [inputValue, sendError]);
 
   const handleSelectThread = (threadId: string) => {
     if (threadId === selectedThreadId) return;
@@ -228,12 +251,44 @@ const Conversations = () => {
     }
   };
 
-  const handleSendMessage = (text?: string) => {
+  const handleSendMessage = async (text?: string) => {
     const trimmed = text ?? inputValue.trim();
-    if (!trimmed || !selectedThreadId || sendStatus === 'loading') return;
+    if (!trimmed || !selectedThreadId || isSending) return;
+
+    // Snapshot history before the optimistic update (exclude stale optimistic msgs)
+    const historySnapshot = messages.filter(m => !m.id.startsWith('optimistic-'));
+
     dispatch(addOptimisticMessage({ content: trimmed }));
     setInputValue('');
-    dispatch(sendMessage({ threadId: selectedThreadId, message: trimmed }));
+    setSendError(null);
+    setIsSending(true);
+
+    try {
+      const chatMessages = [
+        ...historySnapshot.map(m => ({
+          role: (m.sender === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+          content: m.content,
+        })),
+        { role: 'user' as const, content: trimmed },
+      ];
+
+      const response = await inferenceApi.createChatCompletion({
+        model: selectedModel,
+        messages: chatMessages,
+      });
+
+      const content = response.choices[0]?.message?.content ?? '';
+      dispatch(addInferenceResponse({ content }));
+    } catch (err) {
+      dispatch(removeOptimisticMessages());
+      const msg =
+        err && typeof err === 'object' && 'error' in err
+          ? String((err as { error: unknown }).error)
+          : 'Failed to get response';
+      setSendError(msg);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -683,7 +738,7 @@ const Conversations = () => {
                       </div>
                     ))}
                     {/* Typing indicator (#14) */}
-                    {sendStatus === 'loading' && (
+                    {isSending && (
                       <div className="flex justify-start">
                         <div className="bg-white/5 rounded-2xl rounded-bl-md px-4 py-3">
                           <div className="flex items-center gap-1">
@@ -712,7 +767,7 @@ const Conversations = () => {
                         key={i}
                         type="button"
                         onClick={() => handleSendMessage(s.text)}
-                        disabled={sendStatus === 'loading'}
+                        disabled={isSending}
                         className="flex-shrink-0 px-3 py-1.5 rounded-lg text-[12px] whitespace-nowrap bg-white/5 text-stone-400 hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                         {s.text}
                       </button>
@@ -723,11 +778,38 @@ const Conversations = () => {
 
               {/* Message Input */}
               <div className="flex-shrink-0 border-t border-white/10 px-4 py-3">
+                {/* Model selector */}
+                <div className="flex items-center gap-2 mb-2">
+                  {isLoadingModels ? (
+                    <span className="text-xs text-stone-600">Loading models…</span>
+                  ) : (
+                    <>
+                      <span className="text-xs text-stone-500">Model</span>
+                      <select
+                        value={selectedModel}
+                        onChange={e => setSelectedModel(e.target.value)}
+                        disabled={isSending}
+                        className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-stone-300 focus:outline-none focus:ring-1 focus:ring-primary-500/50 disabled:opacity-50 cursor-pointer">
+                        {availableModels.length > 0 ? (
+                          availableModels.map(m => (
+                            <option key={m.id} value={m.id} className="bg-stone-900">
+                              {m.id}
+                            </option>
+                          ))
+                        ) : (
+                          <option value={selectedModel} className="bg-stone-900">
+                            {selectedModel}
+                          </option>
+                        )}
+                      </select>
+                    </>
+                  )}
+                </div>
                 {sendError && (
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs text-coral-500">{sendError}</p>
                     <button
-                      onClick={() => dispatch(clearSendError())}
+                      onClick={() => setSendError(null)}
                       className="text-xs text-stone-500 hover:text-stone-300 transition-colors ml-2 flex-shrink-0">
                       Dismiss
                     </button>
@@ -744,9 +826,9 @@ const Conversations = () => {
                   />
                   <button
                     onClick={() => handleSendMessage()}
-                    disabled={!inputValue.trim() || sendStatus === 'loading'}
+                    disabled={!inputValue.trim() || isSending}
                     className="p-2.5 rounded-xl bg-primary-600 hover:bg-primary-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0">
-                    {sendStatus === 'loading' ? (
+                    {isSending ? (
                       <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                         <circle
                           className="opacity-25"
