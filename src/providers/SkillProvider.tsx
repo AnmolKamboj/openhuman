@@ -94,7 +94,6 @@ async function syncNotionUserOnConnect(
   try {
     const toolResult = await skillManager.callTool('notion', 'get-user', { user_id: 'me' });
     if (!toolResult || toolResult.isError || toolResult.content.length === 0) {
-      console.warn('[SkillProvider] Notion get-user tool returned no content or an error');
       return;
     }
     const first = toolResult.content[0];
@@ -103,7 +102,6 @@ async function syncNotionUserOnConnect(
 
     const parsed = JSON.parse(raw) as NotionUserProfile | { error?: string };
     if ('error' in parsed && parsed.error) {
-      console.warn('[SkillProvider] Notion get-user error:', parsed.error);
       return;
     }
 
@@ -245,17 +243,11 @@ export default function SkillProvider({ children }: { children: ReactNode }) {
       if (DEV_AUTO_LOAD_SKILL) {
         const autoLoadManifest = manifests.find(m => m.id === DEV_AUTO_LOAD_SKILL);
         if (autoLoadManifest) {
-          console.log(`[SkillProvider] Auto-loading skill from env: ${DEV_AUTO_LOAD_SKILL}`);
           try {
             await skillManager.startSkill(autoLoadManifest);
-            console.log(`[SkillProvider] Successfully auto-loaded skill: ${DEV_AUTO_LOAD_SKILL}`);
           } catch (err) {
             console.error(`[SkillProvider] Failed to auto-load skill ${DEV_AUTO_LOAD_SKILL}:`, err);
           }
-        } else {
-          console.warn(
-            `[SkillProvider] DEV_AUTO_LOAD_SKILL="${DEV_AUTO_LOAD_SKILL}" specified but skill not found in discovered skills`
-          );
         }
       }
 
