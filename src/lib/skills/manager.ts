@@ -18,6 +18,7 @@ import type {
   SkillOptionDefinition,
 } from "./types";
 import { store } from "../../store";
+import { setPrimaryWalletAddressForUser } from "../../store/authSlice";
 import {
   addSkill,
   setSkillStatus,
@@ -34,13 +35,21 @@ class SkillManager {
   private runtimes = new Map<string, SkillRuntime>();
 
   /**
-   * Get skill-specific load parameters (e.g., session data for Telegram)
+   * Get skill-specific load parameters (e.g., wallet address for wallet skill)
    */
-  private getSkillLoadParams(_skillId: string): Record<string, unknown> {
+  private getSkillLoadParams(skillId: string): Record<string, unknown> {
     const params: Record<string, unknown> = {};
 
-    // For now, just return empty params - skill-specific session data
-    // will be handled through the skill's own setup process
+    if (skillId === "wallet") {
+      const state = store.getState();
+      const userId = state.user.user?._id;
+      const primaryAddress =
+        userId && state.auth.primaryWalletAddressByUser?.[userId];
+      if (primaryAddress) {
+        params.walletAddress = primaryAddress;
+      }
+    }
+
     return params;
   }
 
@@ -72,7 +81,14 @@ class SkillManager {
       // Dead runtime — clean up
       this.runtimes.delete(skillId);
     }
-
+// Ensure the skill is registered in Redux before dispatching status updates.
+    // Self-evolved skills are started directly by the Rust engine and never go
+    // through registerSkill(), so state.skills[skillId] is undefined. Every
+    // setSkillStatus / setSkillSetupComplete / setSkillTools reducer silently
+    // no-ops when the key is missing, making the Enable button appear broken.
+    if (!store.getState().skills.skills[skillId]) {
+      store.dispatch(addSkill({ manifest }));
+    }
     store.dispatch(setSkillStatus({ skillId, status: "starting" }));
 
     const runtime = new SkillRuntime(manifest);
@@ -267,11 +283,13 @@ class SkillManager {
   /**
    * Notify a skill that OAuth completed successfully.
    * Called by the deep link handler after backend OAuth callback.
+   * For Gmail, pass extraCredential.accessToken so the skill uses the token directly.
    */
   async notifyOAuthComplete(
     skillId: string,
     integrationId: string,
     provider?: string,
+    extraCredential?: { accessToken?: string },
   ): Promise<void> {
     const runtime = this.runtimes.get(skillId);
     if (!runtime || !runtime.isRunning) {
@@ -285,6 +303,7 @@ class SkillManager {
       credentialId: integrationId,
       provider: provider ?? manifest?.setup?.oauth?.provider ?? "unknown",
       grantedScopes: manifest?.setup?.oauth?.scopes ?? [],
+      ...extraCredential,
     };
 
     await runtime.oauthComplete(credential);
@@ -401,6 +420,24 @@ class SkillManager {
       }
     } catch (err) {
       console.error(`Error reloading skill ${skillId}:`, err);
+    }
+  }
+
+  /**
+   * Set the wallet address in the frontend app and notify the wallet skill (onLoad).
+   * Updates Redux (primaryWalletAddressByUser) and, if the wallet skill is running,
+   * sends load params so the skill receives onLoad({ walletAddress }).
+   */
+  async setWalletAddress(address: string): Promise<void> {
+    const state = store.getState();
+    const userId = state.user.user?._id;
+    if (!userId) {
+      return;
+    }
+    store.dispatch(setPrimaryWalletAddressForUser({ userId, address }));
+    const runtime = this.runtimes.get("wallet");
+    if (runtime?.isRunning) {
+      await runtime.load({ walletAddress: address });
     }
   }
 

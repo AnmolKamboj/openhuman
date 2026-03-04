@@ -170,6 +170,10 @@ const socket = io(BACKEND_URL, {
 });
 ```
 
+### Socket event contract (Tauri)
+
+In Tauri mode, the Rust socket forwards server events to the frontend via the `server:event` Tauri event. The frontend listens and can emit back via `emitViaRustSocket` (see `utils/tauriSocket.ts`). Encryption key is handled via the API, not the socket.
+
 ## MTProto Service (`services/mtprotoService.ts`)
 
 Telegram MTProto client singleton.

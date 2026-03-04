@@ -186,11 +186,7 @@ export interface SkillSnapshot {
   skill_id: string;
   name: string;
   status: unknown;
-  tools: Array<{
-    name: string;
-    description: string;
-    input_schema?: unknown;
-  }>;
+  tools: Array<{ name: string; description: string; input_schema?: unknown }>;
   error?: string | null;
   state?: Record<string, unknown>;
 }
@@ -308,7 +304,11 @@ export interface TunnelConfig {
   cloudflare?: { token: string } | null;
   tailscale?: { funnel?: boolean; hostname?: string | null } | null;
   ngrok?: { auth_token: string; domain?: string | null } | null;
-  custom?: { start_command: string; health_url?: string | null; url_pattern?: string | null } | null;
+  custom?: {
+    start_command: string;
+    health_url?: string | null;
+    url_pattern?: string | null;
+  } | null;
 }
 
 export async function alphahumanGetConfig(): Promise<CommandResponse<ConfigSnapshot>> {
@@ -405,9 +405,7 @@ export async function alphahumanAgentChat(
   });
 }
 
-export async function alphahumanEncryptSecret(
-  plaintext: string
-): Promise<CommandResponse<string>> {
+export async function alphahumanEncryptSecret(plaintext: string): Promise<CommandResponse<string>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
@@ -437,10 +435,7 @@ export async function alphahumanDoctorModels(
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_doctor_models', {
-    providerOverride,
-    useCache,
-  });
+  return await invoke('alphahuman_doctor_models', { providerOverride, useCache });
 }
 
 export async function alphahumanListIntegrations(): Promise<CommandResponse<IntegrationInfo[]>> {
@@ -476,10 +471,7 @@ export async function alphahumanMigrateOpenclaw(
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_migrate_openclaw', {
-    sourceWorkspace,
-    dryRun,
-  });
+  return await invoke('alphahuman_migrate_openclaw', { sourceWorkspace, dryRun });
 }
 
 export async function alphahumanHardwareDiscover(): Promise<CommandResponse<DiscoveredDevice[]>> {

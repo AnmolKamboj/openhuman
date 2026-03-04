@@ -44,8 +44,12 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@noble/hashes": "^2.0.1",
+    "@noble/secp256k1": "^2.0.0",
     "@heroicons/react": "^2.2.0",
     "@reduxjs/toolkit": "^2.11.2",
+    "@scure/bip32": "^1.5.1",
+    "@scure/bip39": "^2.0.1",
     "@sentry/react": "^10.38.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-deep-link": "^2",

@@ -27,7 +27,14 @@ export const isTauri = (): boolean => {
   const isTauriEnv = coreIsTauri();
   const windowTauri = typeof window !== 'undefined' ? !!window.__TAURI__ : 'undefined';
   const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : 'undefined';
-  console.log('[TauriSocket] isTauri() check:', isTauriEnv, 'window.__TAURI__:', windowTauri, 'userAgent:', userAgent);
+  console.log(
+    '[TauriSocket] isTauri() check:',
+    isTauriEnv,
+    'window.__TAURI__:',
+    windowTauri,
+    'userAgent:',
+    userAgent
+  );
   return isTauriEnv;
 };
 
@@ -174,8 +181,8 @@ export async function setupTauriSocketListeners(): Promise<void> {
     // Listen for forwarded server events
     console.log('[TauriSocket] Setting up server:event listener');
     unlistenServerEvent = await listen<{ event: string; data: unknown }>('server:event', event => {
-      console.log('[TauriSocket] Server event:', event.payload.event, event.payload.data);
-      // Future: dispatch to specific handlers based on event type
+      const { event: eventName, data } = event.payload;
+      console.log('[TauriSocket] Server event:', eventName, data);
     });
     console.log('[TauriSocket] server:event listener setup complete');
 

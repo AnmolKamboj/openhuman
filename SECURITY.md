@@ -4,11 +4,11 @@
 
 We provide security updates for the following versions of AlphaHuman:
 
-| Version | Supported          |
-| ------- | ------------------ |
-| Latest  | :white_check_mark: |
-| Previous minor     | :white_check_mark: |
-| Older  | :x:                |
+| Version        | Supported          |
+| -------------- | ------------------ |
+| Latest         | :white_check_mark: |
+| Previous minor | :white_check_mark: |
+| Older          | :x:                |
 
 We recommend always running the [latest release](https://github.com/alphahumanxyz/alphahuman/releases/latest). AlphaHuman is in early beta; older versions may not receive patches.
 

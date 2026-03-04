@@ -211,11 +211,13 @@ const Conversations = () => {
 
   const handleNewThread = () => {
     const threadId = crypto.randomUUID();
-    dispatch(createThreadLocal({
-      id: threadId,
-      title: 'New Conversation',
-      createdAt: new Date().toISOString(),
-    }));
+    dispatch(
+      createThreadLocal({
+        id: threadId,
+        title: 'New Conversation',
+        createdAt: new Date().toISOString(),
+      })
+    );
     navigate(`/conversations/${threadId}`, { replace: true });
   };
 
