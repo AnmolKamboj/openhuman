@@ -79,7 +79,14 @@ const skillsSlice = createSlice({
       state,
       action: PayloadAction<{ skillId: string; state: Record<string, unknown> }>
     ) {
-      state.skillStates[action.payload.skillId] = action.payload.state;
+      const { skillId, state: incomingState } = action.payload;
+      const existing = state.skillStates[skillId] as Record<string, unknown> | undefined;
+      // Preserve frontend-only keys (e.g. oauthTokens from deep link) that the skill never sends
+      const preserved =
+        existing && typeof existing.oauthTokens === 'object' && existing.oauthTokens !== null
+          ? { oauthTokens: existing.oauthTokens }
+          : {};
+      state.skillStates[skillId] = { ...incomingState, ...preserved };
     },
 
     removeSkill(state, action: PayloadAction<string>) {

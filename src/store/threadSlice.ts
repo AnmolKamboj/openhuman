@@ -17,8 +17,8 @@ interface ThreadState {
   messages: ThreadMessage[];
 
   // Keep these API states (NOT persisted)
-  isLoadingMessages: boolean;    // For AI response waiting
-  messagesError: string | null;  // For send API errors
+  isLoadingMessages: boolean; // For AI response waiting
+  messagesError: string | null; // For send API errors
   sendStatus: 'idle' | 'loading' | 'success' | 'error';
   sendError: string | null;
   deleteStatus: 'idle' | 'loading' | 'success' | 'error';
@@ -194,9 +194,7 @@ const threadSlice = createSlice({
 
         // CRITICAL FIX: Ensure the preceding user message is also persisted
         // Find the last user message that might not be in persistent storage yet
-        const lastUserMessage = state.messages
-          .filter(m => m.sender === 'user')
-          .pop();
+        const lastUserMessage = state.messages.filter(m => m.sender === 'user').pop();
 
         if (lastUserMessage) {
           const persistedMessages = state.messagesByThreadId[state.selectedThreadId];
@@ -233,7 +231,10 @@ const threadSlice = createSlice({
       state.lastViewedAt[action.payload] = ts;
     },
     // Local thread management
-    createThreadLocal: (state, action: { payload: { id: string; title: string; createdAt: string } }) => {
+    createThreadLocal: (
+      state,
+      action: { payload: { id: string; title: string; createdAt: string } }
+    ) => {
       const newThread: Thread = {
         id: action.payload.id,
         title: action.payload.title,
@@ -269,7 +270,10 @@ const threadSlice = createSlice({
         state.selectedThreadId = null;
       }
     },
-    updateMessagesForThread: (state, action: { payload: { threadId: string; messages: ThreadMessage[] } }) => {
+    updateMessagesForThread: (
+      state,
+      action: { payload: { threadId: string; messages: ThreadMessage[] } }
+    ) => {
       const { threadId, messages } = action.payload;
       state.messagesByThreadId[threadId] = messages;
 
@@ -277,10 +281,11 @@ const threadSlice = createSlice({
       const thread = state.threads.find(t => t.id === threadId);
       if (thread) {
         thread.messageCount = messages.length;
-        thread.lastMessageAt = messages.length > 0 ? messages[messages.length - 1].createdAt : thread.createdAt;
+        thread.lastMessageAt =
+          messages.length > 0 ? messages[messages.length - 1].createdAt : thread.createdAt;
       }
     },
-    clearAllThreads: (state) => {
+    clearAllThreads: state => {
       state.threads = [];
       state.messagesByThreadId = {};
       state.selectedThreadId = null;

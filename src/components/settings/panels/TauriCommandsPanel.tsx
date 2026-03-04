@@ -7,16 +7,9 @@ import {
   ShieldCheckIcon,
   WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline';
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import SettingsHeader from '../components/SettingsHeader';
-import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
-import SectionCard from './components/SectionCard';
-import InputGroup, { Field, CheckboxField } from './components/InputGroup';
-import ValidatedField, { ValidatedSelect } from './components/ValidatedField';
-import ActionPanel, { PrimaryButton } from './components/ActionPanel';
-import DaemonHealthIndicator from '../../daemon/DaemonHealthIndicator';
-import { useDaemonHealth, formatRelativeTime } from '../../../hooks/useDaemonHealth';
+import { formatRelativeTime, useDaemonHealth } from '../../../hooks/useDaemonHealth';
 import {
   alphahumanAgentChat,
   alphahumanDecryptSecret,
@@ -46,6 +39,13 @@ import {
   SkillSnapshot,
   TunnelConfig,
 } from '../../../utils/tauriCommands';
+import DaemonHealthIndicator from '../../daemon/DaemonHealthIndicator';
+import SettingsHeader from '../components/SettingsHeader';
+import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
+import ActionPanel, { PrimaryButton } from './components/ActionPanel';
+import InputGroup, { CheckboxField, Field } from './components/InputGroup';
+import SectionCard from './components/SectionCard';
+import ValidatedField, { ValidatedSelect } from './components/ValidatedField';
 
 const formatJson = (value: unknown) => JSON.stringify(value, null, 2);
 
@@ -126,48 +126,58 @@ const TauriCommandsPanel = () => {
   };
 
   // Provider configurations for smart defaults
-  const providerConfigs = useMemo(() => ({
-    openai: {
-      defaultUrl: 'https://api.openai.com/v1',
-      keyPattern: /^sk-[a-zA-Z0-9]{32,}$/,
-      models: ['gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-3.5-turbo']
-    },
-    anthropic: {
-      defaultUrl: 'https://api.anthropic.com',
-      keyPattern: /^sk-ant-[a-zA-Z0-9_-]{32,}$/,
-      models: ['claude-sonnet-4-5-20250929', 'claude-opus-4-6', 'claude-haiku-3-5']
-    },
-    ollama: {
-      defaultUrl: 'http://localhost:11434',
-      keyPattern: null, // No API key required
-      models: ['llama3', 'llama3:8b', 'codellama', 'mistral', 'phi3']
-    },
-    groq: {
-      defaultUrl: 'https://api.groq.com/openai/v1',
-      keyPattern: /^gsk_[a-zA-Z0-9]{32,}$/,
-      models: ['llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768']
-    },
-    cohere: {
-      defaultUrl: 'https://api.cohere.ai/v1',
-      keyPattern: /^[a-zA-Z0-9]{32,}$/,
-      models: ['command-r', 'command-r-plus', 'command-light']
-    }
-  }), []);
+  const providerConfigs = useMemo(
+    () => ({
+      openai: {
+        defaultUrl: 'https://api.openai.com/v1',
+        keyPattern: /^sk-[a-zA-Z0-9]{32,}$/,
+        models: ['gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-3.5-turbo'],
+      },
+      anthropic: {
+        defaultUrl: 'https://api.anthropic.com',
+        keyPattern: /^sk-ant-[a-zA-Z0-9_-]{32,}$/,
+        models: ['claude-sonnet-4-5-20250929', 'claude-opus-4-6', 'claude-haiku-3-5'],
+      },
+      ollama: {
+        defaultUrl: 'http://localhost:11434',
+        keyPattern: null, // No API key required
+        models: ['llama3', 'llama3:8b', 'codellama', 'mistral', 'phi3'],
+      },
+      groq: {
+        defaultUrl: 'https://api.groq.com/openai/v1',
+        keyPattern: /^gsk_[a-zA-Z0-9]{32,}$/,
+        models: ['llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'],
+      },
+      cohere: {
+        defaultUrl: 'https://api.cohere.ai/v1',
+        keyPattern: /^[a-zA-Z0-9]{32,}$/,
+        models: ['command-r', 'command-r-plus', 'command-light'],
+      },
+    }),
+    []
+  );
 
   // Validation functions
-  const validateApiKey = useCallback((key: string, provider: string): string | null => {
-    if (!provider || provider === 'none') return null;
-    if (!key.trim() && provider && provider !== 'none' && provider !== 'ollama') {
-      return 'API key is required for this provider';
-    }
-    if (key.trim() && provider && providerConfigs[provider as keyof typeof providerConfigs]?.keyPattern) {
-      const pattern = providerConfigs[provider as keyof typeof providerConfigs].keyPattern;
-      if (pattern && !pattern.test(key)) {
-        return `Invalid API key format for ${provider}`;
+  const validateApiKey = useCallback(
+    (key: string, provider: string): string | null => {
+      if (!provider || provider === 'none') return null;
+      if (!key.trim() && provider && provider !== 'none' && provider !== 'ollama') {
+        return 'API key is required for this provider';
       }
-    }
-    return null;
-  }, [providerConfigs]);
+      if (
+        key.trim() &&
+        provider &&
+        providerConfigs[provider as keyof typeof providerConfigs]?.keyPattern
+      ) {
+        const pattern = providerConfigs[provider as keyof typeof providerConfigs].keyPattern;
+        if (pattern && !pattern.test(key)) {
+          return `Invalid API key format for ${provider}`;
+        }
+      }
+      return null;
+    },
+    [providerConfigs]
+  );
 
   const validateApiUrl = useCallback((url: string): string | null => {
     if (!url.trim()) return null;
@@ -176,7 +186,11 @@ const TauriCommandsPanel = () => {
       if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
         return 'URL must use HTTP or HTTPS protocol';
       }
-      if (parsedUrl.protocol === 'http:' && !parsedUrl.hostname.includes('localhost') && !parsedUrl.hostname.includes('127.0.0.1')) {
+      if (
+        parsedUrl.protocol === 'http:' &&
+        !parsedUrl.hostname.includes('localhost') &&
+        !parsedUrl.hostname.includes('127.0.0.1')
+      ) {
         return 'HTTP URLs are only allowed for localhost';
       }
       return null;
@@ -185,23 +199,29 @@ const TauriCommandsPanel = () => {
     }
   }, []);
 
-  const validateProvider = useCallback((provider: string): string | null => {
-    if (!provider.trim()) return null;
-    const supportedProviders = Object.keys(providerConfigs);
-    if (!supportedProviders.includes(provider)) {
-      return `Unsupported provider. Supported: ${supportedProviders.join(', ')}`;
-    }
-    return null;
-  }, [providerConfigs]);
+  const validateProvider = useCallback(
+    (provider: string): string | null => {
+      if (!provider.trim()) return null;
+      const supportedProviders = Object.keys(providerConfigs);
+      if (!supportedProviders.includes(provider)) {
+        return `Unsupported provider. Supported: ${supportedProviders.join(', ')}`;
+      }
+      return null;
+    },
+    [providerConfigs]
+  );
 
-  const validateModel = useCallback((model: string, provider: string): string | null => {
-    if (!model.trim() || !provider.trim()) return null;
-    const config = providerConfigs[provider as keyof typeof providerConfigs];
-    if (config && !config.models.includes(model)) {
-      return `Model not available for ${provider}. Try: ${config.models.slice(0, 3).join(', ')}`;
-    }
-    return null;
-  }, [providerConfigs]);
+  const validateModel = useCallback(
+    (model: string, provider: string): string | null => {
+      if (!model.trim() || !provider.trim()) return null;
+      const config = providerConfigs[provider as keyof typeof providerConfigs];
+      if (config && !config.models.includes(model)) {
+        return `Model not available for ${provider}. Try: ${config.models.slice(0, 3).join(', ')}`;
+      }
+      return null;
+    },
+    [providerConfigs]
+  );
 
   const validateTemperature = useCallback((temp: string): string | null => {
     if (!temp.trim()) return null;
@@ -232,7 +252,18 @@ const TauriCommandsPanel = () => {
 
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
-  }, [apiKey, apiUrl, defaultProvider, defaultModel, defaultTemp, validateApiKey, validateApiUrl, validateProvider, validateModel, validateTemperature]);
+  }, [
+    apiKey,
+    apiUrl,
+    defaultProvider,
+    defaultModel,
+    defaultTemp,
+    validateApiKey,
+    validateApiUrl,
+    validateProvider,
+    validateModel,
+    validateTemperature,
+  ]);
 
   // Format timestamp for display
   const formatTime = useCallback((date: Date): string => {
@@ -256,11 +287,24 @@ const TauriCommandsPanel = () => {
 
     // Perform validation on changes
     performValidation();
-  }, [apiKey, apiUrl, defaultProvider, defaultModel, defaultTemp, originalConfig, configLoaded, performValidation]);
+  }, [
+    apiKey,
+    apiUrl,
+    defaultProvider,
+    defaultModel,
+    defaultTemp,
+    originalConfig,
+    configLoaded,
+    performValidation,
+  ]);
 
   // Auto-populate URL based on provider
   useEffect(() => {
-    if (defaultProvider && !apiUrl && providerConfigs[defaultProvider as keyof typeof providerConfigs]) {
+    if (
+      defaultProvider &&
+      !apiUrl &&
+      providerConfigs[defaultProvider as keyof typeof providerConfigs]
+    ) {
       const config = providerConfigs[defaultProvider as keyof typeof providerConfigs];
       setApiUrl(config.defaultUrl);
     }
@@ -419,15 +463,20 @@ const TauriCommandsPanel = () => {
         default_model: defaultModel,
         default_temperature: defaultTemp,
       });
-
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes('API key')) {
         setFieldErrors(prev => ({ ...prev, apiKey: 'Invalid API key or authentication failed' }));
       } else if (message.includes('provider')) {
-        setFieldErrors(prev => ({ ...prev, defaultProvider: 'Provider not supported or misconfigured' }));
+        setFieldErrors(prev => ({
+          ...prev,
+          defaultProvider: 'Provider not supported or misconfigured',
+        }));
       } else if (message.includes('model')) {
-        setFieldErrors(prev => ({ ...prev, defaultModel: 'Model not available for this provider' }));
+        setFieldErrors(prev => ({
+          ...prev,
+          defaultModel: 'Model not available for this provider',
+        }));
       }
       setError(message);
     } finally {
@@ -464,7 +513,7 @@ const TauriCommandsPanel = () => {
       // Test connection by attempting to refresh models with current settings
       const result = await Promise.race([
         alphahumanModelsRefresh(defaultProvider, false),
-        timeoutPromise
+        timeoutPromise,
       ]);
 
       setOutput(formatJson(result));
@@ -480,7 +529,6 @@ const TauriCommandsPanel = () => {
         delete newErrors.defaultProvider;
         return newErrors;
       });
-
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error('Test connection error:', err);
@@ -491,9 +539,15 @@ const TauriCommandsPanel = () => {
       } else if (message.includes('provider') || message.includes('404')) {
         setFieldErrors(prev => ({ ...prev, defaultProvider: 'Provider not found or unavailable' }));
       } else if (message.includes('network') || message.includes('timeout')) {
-        setFieldErrors(prev => ({ ...prev, apiUrl: 'Network error - check API URL and connectivity' }));
+        setFieldErrors(prev => ({
+          ...prev,
+          apiUrl: 'Network error - check API URL and connectivity',
+        }));
       } else if (message.includes('Not running in Tauri')) {
-        setFieldErrors(prev => ({ ...prev, defaultProvider: 'Desktop application required for testing' }));
+        setFieldErrors(prev => ({
+          ...prev,
+          defaultProvider: 'Desktop application required for testing',
+        }));
       }
 
       setError(`Connection test failed: ${message}`);
@@ -646,153 +700,210 @@ const TauriCommandsPanel = () => {
               collapsible={true}
               defaultExpanded={!isCollapsed('system-configuration')}
               hasChanges={hasUnsavedChanges}
-              loading={operationLoading === 'loadConfig' || operationLoading === 'saveModelSettings' || validationLoading}
-          >
-            <InputGroup
-              title="Model API Keys"
-              description="Configure your AI model provider settings with real-time validation"
-            >
-              <ValidatedSelect
-                label="Default Provider"
-                value={defaultProvider}
-                onChange={(value) => {
-                  setDefaultProvider(value);
-                  // Auto-populate URL when provider changes
-                  if (value && providerConfigs[value as keyof typeof providerConfigs]) {
-                    const config = providerConfigs[value as keyof typeof providerConfigs];
-                    if (!apiUrl || Object.values(providerConfigs).some(c => c.defaultUrl === apiUrl)) {
-                      setApiUrl(config.defaultUrl);
+              loading={
+                operationLoading === 'loadConfig' ||
+                operationLoading === 'saveModelSettings' ||
+                validationLoading
+              }>
+              <InputGroup
+                title="Model API Keys"
+                description="Configure your AI model provider settings with real-time validation">
+                <ValidatedSelect
+                  label="Default Provider"
+                  value={defaultProvider}
+                  onChange={value => {
+                    setDefaultProvider(value);
+                    // Auto-populate URL when provider changes
+                    if (value && providerConfigs[value as keyof typeof providerConfigs]) {
+                      const config = providerConfigs[value as keyof typeof providerConfigs];
+                      if (
+                        !apiUrl ||
+                        Object.values(providerConfigs).some(c => c.defaultUrl === apiUrl)
+                      ) {
+                        setApiUrl(config.defaultUrl);
+                      }
                     }
+                  }}
+                  options={[
+                    {
+                      value: '',
+                      label: 'Select provider...',
+                      description: 'Choose your AI service provider',
+                    },
+                    {
+                      value: 'openai',
+                      label: 'OpenAI',
+                      description: 'GPT models with high performance',
+                    },
+                    {
+                      value: 'anthropic',
+                      label: 'Anthropic',
+                      description: 'Claude models with safety focus',
+                    },
+                    {
+                      value: 'ollama',
+                      label: 'Ollama',
+                      description: 'Local models, no API key needed',
+                    },
+                    {
+                      value: 'groq',
+                      label: 'Groq',
+                      description: 'Fast inference with LPU acceleration',
+                    },
+                    {
+                      value: 'cohere',
+                      label: 'Cohere',
+                      description: 'Enterprise-grade language models',
+                    },
+                  ]}
+                  error={fieldErrors.defaultProvider}
+                  required={true}
+                  helpText="Primary AI provider for agent operations. Each provider offers different models with unique capabilities and pricing."
+                />
+
+                <ValidatedField
+                  label="API Key"
+                  value={apiKey}
+                  onChange={setApiKey}
+                  error={fieldErrors.apiKey}
+                  required={!!defaultProvider && defaultProvider !== 'ollama'}
+                  type="password"
+                  placeholder={
+                    defaultProvider === 'openai'
+                      ? 'sk-...'
+                      : defaultProvider === 'anthropic'
+                        ? 'sk-ant-...'
+                        : defaultProvider === 'groq'
+                          ? 'gsk_...'
+                          : defaultProvider === 'ollama'
+                            ? 'Not required for Ollama'
+                            : 'Enter your API key...'
                   }
-                }}
-                options={[
-                  { value: '', label: 'Select provider...', description: 'Choose your AI service provider' },
-                  { value: 'openai', label: 'OpenAI', description: 'GPT models with high performance' },
-                  { value: 'anthropic', label: 'Anthropic', description: 'Claude models with safety focus' },
-                  { value: 'ollama', label: 'Ollama', description: 'Local models, no API key needed' },
-                  { value: 'groq', label: 'Groq', description: 'Fast inference with LPU acceleration' },
-                  { value: 'cohere', label: 'Cohere', description: 'Enterprise-grade language models' },
-                ]}
-                error={fieldErrors.defaultProvider}
-                required={true}
-                helpText="Primary AI provider for agent operations. Each provider offers different models with unique capabilities and pricing."
-              />
+                  helpText={
+                    defaultProvider === 'ollama'
+                      ? 'API key not required for Ollama (local models)'
+                      : "Enter your AI provider's API key for authentication. Keep this secure and never share it publicly."
+                  }
+                  validation={
+                    !apiKey
+                      ? 'none'
+                      : fieldErrors.apiKey
+                        ? 'invalid'
+                        : defaultProvider && validateApiKey(apiKey, defaultProvider) === null
+                          ? 'valid'
+                          : 'none'
+                  }
+                  disabled={defaultProvider === 'ollama'}
+                />
 
-              <ValidatedField
-                label="API Key"
-                value={apiKey}
-                onChange={setApiKey}
-                error={fieldErrors.apiKey}
-                required={!!defaultProvider && defaultProvider !== 'ollama'}
-                type="password"
-                placeholder={
-                  defaultProvider === 'openai' ? 'sk-...' :
-                  defaultProvider === 'anthropic' ? 'sk-ant-...' :
-                  defaultProvider === 'groq' ? 'gsk_...' :
-                  defaultProvider === 'ollama' ? 'Not required for Ollama' :
-                  'Enter your API key...'
-                }
-                helpText={
-                  defaultProvider === 'ollama'
-                    ? 'API key not required for Ollama (local models)'
-                    : 'Enter your AI provider\'s API key for authentication. Keep this secure and never share it publicly.'
-                }
-                validation={
-                  !apiKey ? 'none' :
-                  fieldErrors.apiKey ? 'invalid' :
-                  defaultProvider && validateApiKey(apiKey, defaultProvider) === null ? 'valid' : 'none'
-                }
-                disabled={defaultProvider === 'ollama'}
-              />
+                <ValidatedField
+                  label="API Base URL"
+                  value={apiUrl}
+                  onChange={setApiUrl}
+                  error={fieldErrors.apiUrl}
+                  type="url"
+                  placeholder="https://api.openai.com/v1"
+                  helpText="Custom API endpoint for your AI provider. Auto-populated when you select a provider. Change only for custom deployments or proxy servers."
+                  validation={
+                    !apiUrl
+                      ? 'none'
+                      : fieldErrors.apiUrl
+                        ? 'invalid'
+                        : validateApiUrl(apiUrl) === null
+                          ? 'valid'
+                          : 'none'
+                  }
+                />
 
-              <ValidatedField
-                label="API Base URL"
-                value={apiUrl}
-                onChange={setApiUrl}
-                error={fieldErrors.apiUrl}
-                type="url"
-                placeholder="https://api.openai.com/v1"
-                helpText="Custom API endpoint for your AI provider. Auto-populated when you select a provider. Change only for custom deployments or proxy servers."
-                validation={
-                  !apiUrl ? 'none' :
-                  fieldErrors.apiUrl ? 'invalid' :
-                  validateApiUrl(apiUrl) === null ? 'valid' : 'none'
-                }
-              />
+                <ValidatedSelect
+                  label="Default Model"
+                  value={defaultModel}
+                  onChange={setDefaultModel}
+                  options={[
+                    {
+                      value: '',
+                      label: 'Select model...',
+                      description: 'Choose specific model for this provider',
+                    },
+                    ...((defaultProvider &&
+                      providerConfigs[defaultProvider as keyof typeof providerConfigs]?.models.map(
+                        model => ({
+                          value: model,
+                          label: model,
+                          description: model.includes('gpt-4')
+                            ? 'Advanced reasoning, higher cost'
+                            : model.includes('gpt-3.5')
+                              ? 'Fast and economical'
+                              : model.includes('claude')
+                                ? 'Excellent analysis and safety'
+                                : model.includes('llama')
+                                  ? 'Open source, good performance'
+                                  : model.includes('mixtral')
+                                    ? 'Mixture of experts model'
+                                    : 'High-quality language model',
+                        })
+                      )) ||
+                      []),
+                  ]}
+                  error={fieldErrors.defaultModel}
+                  helpText="Primary language model for agent interactions. Available models are filtered based on your selected provider."
+                  disabled={!defaultProvider}
+                  validation={
+                    !defaultModel
+                      ? 'none'
+                      : fieldErrors.defaultModel
+                        ? 'invalid'
+                        : defaultProvider && validateModel(defaultModel, defaultProvider) === null
+                          ? 'valid'
+                          : 'none'
+                  }
+                />
 
-              <ValidatedSelect
-                label="Default Model"
-                value={defaultModel}
-                onChange={setDefaultModel}
-                options={[
-                  { value: '', label: 'Select model...', description: 'Choose specific model for this provider' },
-                  ...(defaultProvider && providerConfigs[defaultProvider as keyof typeof providerConfigs]?.models.map(model => ({
-                    value: model,
-                    label: model,
-                    description:
-                      model.includes('gpt-4') ? 'Advanced reasoning, higher cost' :
-                      model.includes('gpt-3.5') ? 'Fast and economical' :
-                      model.includes('claude') ? 'Excellent analysis and safety' :
-                      model.includes('llama') ? 'Open source, good performance' :
-                      model.includes('mixtral') ? 'Mixture of experts model' :
-                      'High-quality language model'
-                  })) || [])
-                ]}
-                error={fieldErrors.defaultModel}
-                helpText="Primary language model for agent interactions. Available models are filtered based on your selected provider."
-                disabled={!defaultProvider}
-                validation={
-                  !defaultModel ? 'none' :
-                  fieldErrors.defaultModel ? 'invalid' :
-                  defaultProvider && validateModel(defaultModel, defaultProvider) === null ? 'valid' : 'none'
-                }
-              />
+                <ValidatedField
+                  label="Temperature"
+                  value={defaultTemp}
+                  onChange={setDefaultTemp}
+                  error={fieldErrors.defaultTemp}
+                  type="number"
+                  placeholder="0.7"
+                  helpText="Controls randomness in AI responses (0.0-2.0). Lower values (0.1-0.3) for factual tasks, medium (0.5-0.8) for balanced responses, higher (0.8-1.5) for creative tasks."
+                  validation={
+                    !defaultTemp
+                      ? 'none'
+                      : fieldErrors.defaultTemp
+                        ? 'invalid'
+                        : validateTemperature(defaultTemp) === null
+                          ? 'valid'
+                          : 'none'
+                  }
+                />
+              </InputGroup>
 
-              <ValidatedField
-                label="Temperature"
-                value={defaultTemp}
-                onChange={setDefaultTemp}
-                error={fieldErrors.defaultTemp}
-                type="number"
-                placeholder="0.7"
-                helpText="Controls randomness in AI responses (0.0-2.0). Lower values (0.1-0.3) for factual tasks, medium (0.5-0.8) for balanced responses, higher (0.8-1.5) for creative tasks."
-                validation={
-                  !defaultTemp ? 'none' :
-                  fieldErrors.defaultTemp ? 'invalid' :
-                  validateTemperature(defaultTemp) === null ? 'valid' : 'none'
-                }
-              />
-            </InputGroup>
-
-            <ActionPanel
-              hasChanges={hasUnsavedChanges}
-              success={lastSaveTime ? `Settings saved at ${formatTime(lastSaveTime)}` : false}
-              error={Object.values(fieldErrors).find(Boolean)}
-            >
-              <PrimaryButton
-                onClick={loadConfig}
-                loading={operationLoading === 'loadConfig'}
-                variant="outline"
-              >
-                Load Config
-              </PrimaryButton>
-              <PrimaryButton
-                onClick={testConnection}
-                loading={validationLoading}
-                disabled={!defaultProvider || (!apiKey && defaultProvider !== 'ollama')}
-                variant="outline"
-              >
-                Test Connection
-              </PrimaryButton>
-              <PrimaryButton
-                onClick={saveModelSettings}
-                loading={operationLoading === 'saveModelSettings'}
-                disabled={Object.keys(fieldErrors).length > 0 || !hasUnsavedChanges}
-              >
-                Save Settings
-              </PrimaryButton>
-            </ActionPanel>
-          </SectionCard>
+              <ActionPanel
+                hasChanges={hasUnsavedChanges}
+                success={lastSaveTime ? `Settings saved at ${formatTime(lastSaveTime)}` : false}
+                error={Object.values(fieldErrors).find(Boolean)}>
+                <PrimaryButton
+                  onClick={loadConfig}
+                  loading={operationLoading === 'loadConfig'}
+                  variant="outline">
+                  Load Config
+                </PrimaryButton>
+                <PrimaryButton
+                  onClick={testConnection}
+                  loading={validationLoading}
+                  disabled={!defaultProvider || (!apiKey && defaultProvider !== 'ollama')}
+                  variant="outline">
+                  Test Connection
+                </PrimaryButton>
+                <PrimaryButton
+                  onClick={saveModelSettings}
+                  loading={operationLoading === 'saveModelSettings'}
+                  disabled={Object.keys(fieldErrors).length > 0 || !hasUnsavedChanges}>
+                  Save Settings
+                </PrimaryButton>
+              </ActionPanel>
+            </SectionCard>
           )}
 
           {/* Category 2: Runtime & Execution */}
@@ -863,123 +974,134 @@ const TauriCommandsPanel = () => {
                 </div>
               )}
 
-            <InputGroup title="Daemon Service Management">
-              <div className="md:col-span-2">
-                <div className="space-y-4">
-                  {/* Live Status Display */}
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-stone-900/40 border border-stone-800/60">
-                    <div className="flex items-center gap-3">
-                      <DaemonHealthIndicator size="md" />
-                      <div>
-                        <div className="text-white font-medium">Daemon Status: {daemonHealth.status}</div>
-                        <div className="text-xs text-gray-400">
-                          Last update: {daemonHealth.lastUpdate ? formatRelativeTime(daemonHealth.lastUpdate) : 'Never'}
-                        </div>
-                        {daemonHealth.healthSnapshot && (
-                          <div className="text-xs text-gray-500">
-                            PID: {daemonHealth.healthSnapshot.pid} • Uptime: {daemonHealth.uptimeText}
+              <InputGroup title="Daemon Service Management">
+                <div className="md:col-span-2">
+                  <div className="space-y-4">
+                    {/* Live Status Display */}
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-stone-900/40 border border-stone-800/60">
+                      <div className="flex items-center gap-3">
+                        <DaemonHealthIndicator size="md" />
+                        <div>
+                          <div className="text-white font-medium">
+                            Daemon Status: {daemonHealth.status}
                           </div>
-                        )}
-                      </div>
-                    </div>
-                    {daemonHealth.status === 'error' && (
-                      <PrimaryButton
-                        onClick={() => daemonHealth.restartDaemon()}
-                        variant="outline"
-                        loading={daemonHealth.isRecovering}
-                      >
-                        Restart
-                      </PrimaryButton>
-                    )}
-                  </div>
-
-                  {/* Component Health */}
-                  {daemonHealth.componentCount > 0 && (
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      {Object.entries(daemonHealth.components).map(([name, health]) => (
-                        <div key={name} className="flex items-center gap-2 p-2 rounded bg-stone-800/40">
-                          <div className={`w-2 h-2 rounded-full ${
-                            health.status === 'ok' ? 'bg-green-500' :
-                            health.status === 'starting' ? 'bg-yellow-500' : 'bg-red-500'
-                          }`} />
-                          <span className="capitalize text-gray-300">{name}</span>
-                          {health.restart_count > 0 && (
-                            <span className="text-xs text-yellow-400">({health.restart_count})</span>
+                          <div className="text-xs text-gray-400">
+                            Last update:{' '}
+                            {daemonHealth.lastUpdate
+                              ? formatRelativeTime(daemonHealth.lastUpdate)
+                              : 'Never'}
+                          </div>
+                          {daemonHealth.healthSnapshot && (
+                            <div className="text-xs text-gray-500">
+                              PID: {daemonHealth.healthSnapshot.pid} • Uptime:{' '}
+                              {daemonHealth.uptimeText}
+                            </div>
                           )}
                         </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Service Controls */}
-                  <ActionPanel>
-                    <PrimaryButton
-                      onClick={() => daemonHealth.startDaemon()}
-                      loading={operationLoading === 'serviceStart'}
-                      disabled={daemonHealth.status === 'running'}
-                    >
-                      Start
-                    </PrimaryButton>
-                    <PrimaryButton
-                      onClick={() => daemonHealth.stopDaemon()}
-                      loading={operationLoading === 'serviceStop'}
-                      disabled={daemonHealth.status === 'disconnected'}
-                      variant="outline"
-                    >
-                      Stop
-                    </PrimaryButton>
-                    <PrimaryButton
-                      onClick={() => run(alphahumanServiceStatus, 'serviceStatus')}
-                      loading={operationLoading === 'serviceStatus'}
-                      variant="outline"
-                    >
-                      Status
-                    </PrimaryButton>
-                    <PrimaryButton
-                      onClick={() => run(alphahumanServiceInstall, 'serviceInstall')}
-                      loading={operationLoading === 'serviceInstall'}
-                      variant="outline"
-                    >
-                      Install
-                    </PrimaryButton>
-                    <PrimaryButton
-                      onClick={() => run(alphahumanServiceUninstall, 'serviceUninstall')}
-                      loading={operationLoading === 'serviceUninstall'}
-                      variant="outline"
-                    >
-                      Uninstall
-                    </PrimaryButton>
-                  </ActionPanel>
-
-                  {/* Auto-start Toggle */}
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-stone-800/40 border border-stone-700/60">
-                    <div>
-                      <div className="text-sm font-medium text-gray-300">Auto-start Daemon</div>
-                      <div className="text-xs text-gray-500">Automatically start daemon on app launch</div>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="sr-only peer"
-                        checked={daemonHealth.isAutoStartEnabled}
-                        onChange={(e) => daemonHealth.setAutoStart(e.target.checked)}
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                    </label>
-                  </div>
-
-                  {/* Connection Info */}
-                  {daemonHealth.connectionAttempts > 0 && (
-                    <div className="p-3 rounded-lg bg-yellow-900/20 border border-yellow-500/30">
-                      <div className="text-sm text-yellow-400">
-                        Connection attempts: {daemonHealth.connectionAttempts}
                       </div>
+                      {daemonHealth.status === 'error' && (
+                        <PrimaryButton
+                          onClick={() => daemonHealth.restartDaemon()}
+                          variant="outline"
+                          loading={daemonHealth.isRecovering}>
+                          Restart
+                        </PrimaryButton>
+                      )}
                     </div>
-                  )}
+
+                    {/* Component Health */}
+                    {daemonHealth.componentCount > 0 && (
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        {Object.entries(daemonHealth.components).map(([name, health]) => (
+                          <div
+                            key={name}
+                            className="flex items-center gap-2 p-2 rounded bg-stone-800/40">
+                            <div
+                              className={`w-2 h-2 rounded-full ${
+                                health.status === 'ok'
+                                  ? 'bg-green-500'
+                                  : health.status === 'starting'
+                                    ? 'bg-yellow-500'
+                                    : 'bg-red-500'
+                              }`}
+                            />
+                            <span className="capitalize text-gray-300">{name}</span>
+                            {health.restart_count > 0 && (
+                              <span className="text-xs text-yellow-400">
+                                ({health.restart_count})
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Service Controls */}
+                    <ActionPanel>
+                      <PrimaryButton
+                        onClick={() => daemonHealth.startDaemon()}
+                        loading={operationLoading === 'serviceStart'}
+                        disabled={daemonHealth.status === 'running'}>
+                        Start
+                      </PrimaryButton>
+                      <PrimaryButton
+                        onClick={() => daemonHealth.stopDaemon()}
+                        loading={operationLoading === 'serviceStop'}
+                        disabled={daemonHealth.status === 'disconnected'}
+                        variant="outline">
+                        Stop
+                      </PrimaryButton>
+                      <PrimaryButton
+                        onClick={() => run(alphahumanServiceStatus, 'serviceStatus')}
+                        loading={operationLoading === 'serviceStatus'}
+                        variant="outline">
+                        Status
+                      </PrimaryButton>
+                      <PrimaryButton
+                        onClick={() => run(alphahumanServiceInstall, 'serviceInstall')}
+                        loading={operationLoading === 'serviceInstall'}
+                        variant="outline">
+                        Install
+                      </PrimaryButton>
+                      <PrimaryButton
+                        onClick={() => run(alphahumanServiceUninstall, 'serviceUninstall')}
+                        loading={operationLoading === 'serviceUninstall'}
+                        variant="outline">
+                        Uninstall
+                      </PrimaryButton>
+                    </ActionPanel>
+
+                    {/* Auto-start Toggle */}
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-stone-800/40 border border-stone-700/60">
+                      <div>
+                        <div className="text-sm font-medium text-gray-300">Auto-start Daemon</div>
+                        <div className="text-xs text-gray-500">
+                          Automatically start daemon on app launch
+                        </div>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={daemonHealth.isAutoStartEnabled}
+                          onChange={e => daemonHealth.setAutoStart(e.target.checked)}
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+
+                    {/* Connection Info */}
+                    {daemonHealth.connectionAttempts > 0 && (
+                      <div className="p-3 rounded-lg bg-yellow-900/20 border border-yellow-500/30">
+                        <div className="text-sm text-yellow-400">
+                          Connection attempts: {daemonHealth.connectionAttempts}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </InputGroup>
-          </SectionCard>
+              </InputGroup>
+            </SectionCard>
           )}
         </div>
 

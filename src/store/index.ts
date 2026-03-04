@@ -18,7 +18,9 @@ import { storeSession } from '../utils/tauriCommands';
 import aiReducer from './aiSlice';
 import authReducer, { setOnboardedForUser, setToken } from './authSlice';
 import daemonReducer from './daemonSlice';
+import gmailReducer from './gmailSlice';
 import inviteReducer from './inviteSlice';
+import notionReducer from './notionSlice';
 import skillsReducer from './skillsSlice';
 import socketReducer from './socketSlice';
 import teamReducer from './teamSlice';
@@ -29,7 +31,13 @@ import userReducer from './userSlice';
 const authPersistConfig = {
   key: 'auth',
   storage,
-  whitelist: ['token', 'isOnboardedByUser', 'isAnalyticsEnabledByUser'],
+  whitelist: [
+    'token',
+    'isOnboardedByUser',
+    'isAnalyticsEnabledByUser',
+    'encryptionKeyByUser',
+    'primaryWalletAddressByUser',
+  ],
 };
 
 // Persist config for AI state (config only)
@@ -42,7 +50,7 @@ const skillsPersistConfig = { key: 'skills', storage, whitelist: ['skills'] };
 const threadPersistConfig = {
   key: 'thread',
   storage,
-  whitelist: ['panelWidth', 'lastViewedAt', 'threads', 'messagesByThreadId', 'selectedThreadId']
+  whitelist: ['panelWidth', 'lastViewedAt', 'threads', 'messagesByThreadId', 'selectedThreadId'],
 };
 
 const persistedAuthReducer = persistReducer(authPersistConfig, authReducer);
@@ -89,9 +97,11 @@ export const store = configureStore({
     daemon: daemonReducer,
     ai: persistedAiReducer,
     skills: persistedSkillsReducer,
+    gmail: gmailReducer,
     team: teamReducer,
     thread: persistedThreadReducer,
     invite: inviteReducer,
+    notion: notionReducer,
   },
   middleware: getDefaultMiddleware => {
     const middleware = getDefaultMiddleware({

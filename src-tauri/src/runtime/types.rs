@@ -100,6 +100,11 @@ pub enum SkillMessage {
         params: serde_json::Value,
         reply: tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>,
     },
+    /// Load params from frontend (e.g. wallet address for wallet skill).
+    /// Delivered after skill/load RPC; skill may export onLoad(params) to receive them.
+    LoadParams {
+        params: serde_json::Value,
+    },
 }
 
 /// Result of executing a tool.
@@ -180,6 +185,9 @@ pub struct UnifiedSkillEntry {
     pub description: String,
     /// Tools exposed by this skill.
     pub tools: Vec<ToolDefinition>,
+    /// Setup configuration from manifest.json (e.g. whether setup is required).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub setup: Option<crate::runtime::manifest::SkillSetup>,
 }
 
 /// Standardized result returned by any skill execution in the unified registry.
