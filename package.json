@@ -8,7 +8,7 @@
     "dev:web": "vite",
     "dev:app": "source scripts/load-dotenv.sh && tauri dev",
     "build": "tsc && vite build",
-    "build:app": "yarn skills:build && tsc && vite build",
+    "build:app": "yarn skills:build && yarn tools:generate && tsc && vite build",
     "compile": "tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri",
@@ -41,6 +41,8 @@
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "skills:build": "cd skills && yarn build",
     "skills:watch": "cd skills && yarn build:watch",
+    "tools:generate": "node scripts/tools-generator/discover-tools.js",
+    "tools:generate:verbose": "VERBOSE=true node scripts/tools-generator/discover-tools.js",
     "prepare": "husky"
   },
   "dependencies": {
