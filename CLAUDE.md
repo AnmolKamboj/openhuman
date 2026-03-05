@@ -259,6 +259,12 @@ loadAIConfig() → AIConfig   // Combined SOUL + TOOLS configuration
 - GitHub remote (latest)
 - Bundled fallback (reliable)
 
+**TODO**: Set up public AI configuration repository to eliminate 404 fallback errors
+  - Current: AI config loaders try GitHub URLs first (fail with 404), then fallback to bundled files
+  - Console shows: "Failed to load resource: the server responded with a status of 404"
+  - Affected: Settings → AI Configuration "Refresh Soul/Tools" buttons
+  - Files: `src/lib/ai/soul/loader.ts`, `src/lib/ai/tools/loader.ts`
+
 ### Unified Injection System
 
 Every user message automatically gets AI context injected:
