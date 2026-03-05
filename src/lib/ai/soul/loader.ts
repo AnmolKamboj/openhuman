@@ -1,7 +1,7 @@
-import soulMd from '../../../SOUL.md?raw';
+import soulMd from '../../../../ai/SOUL.md?raw';
 import type { SoulConfig, SoulIdentity, PersonalityTrait, VoiceToneGuideline, BehaviorPattern, SafetyRule, Interaction, MemorySettings, EmergencyResponse } from './types';
 
-const SOUL_GITHUB_URL = 'https://raw.githubusercontent.com/alphahumanxyz/alphahuman/refs/heads/main/SOUL.md';
+const SOUL_GITHUB_URL = 'https://raw.githubusercontent.com/alphahumanxyz/alphahuman/refs/heads/main/ai/SOUL.md';
 const SOUL_CACHE_KEY = 'alphahuman.soul.cache';
 const SOUL_CACHE_TTL = 1000 * 60 * 30; // 30 minutes
 
