@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom';
 
 import AdvancedPanel from '../components/settings/panels/AdvancedPanel';
 import AgentChatPanel from '../components/settings/panels/AgentChatPanel';
+import AIPanel from '../components/settings/panels/AIPanel';
 import BillingPanel from '../components/settings/panels/BillingPanel';
 import ConnectionsPanel from '../components/settings/panels/ConnectionsPanel';
 import MessagingPanel from '../components/settings/panels/MessagingPanel';
@@ -26,6 +27,7 @@ const Settings = () => {
         <Route path="profile" element={<ProfilePanel />} />
         <Route path="advanced" element={<AdvancedPanel />} />
         <Route path="agent-chat" element={<AgentChatPanel />} />
+        <Route path="ai" element={<AIPanel />} />
         <Route path="billing" element={<BillingPanel />} />
         <Route path="skills" element={<SkillsPanel />} />
         <Route path="team" element={<TeamPanel />} />
