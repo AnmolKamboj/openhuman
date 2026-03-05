@@ -10,6 +10,9 @@ import Markdown from 'react-markdown';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { inferenceApi, type ModelInfo } from '../services/api/inferenceApi';
+import { loadSoul } from '../lib/ai/soul/loader';
+import { injectSoulIntoMessage } from '../lib/ai/soul/injector';
+import type { Message } from '../lib/ai/providers/interface';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
   addInferenceResponse,
@@ -250,12 +253,38 @@ const Conversations = () => {
     setIsSending(true);
 
     try {
+      // Process user message with SOUL injection
+      let processedUserContent = trimmed;
+      try {
+        const soulConfig = await loadSoul();
+        const userMessage: Message = {
+          role: 'user',
+          content: [{ type: 'text', text: trimmed }]
+        };
+
+        const injectedMessage = injectSoulIntoMessage(userMessage, soulConfig, {
+          mode: 'context-block',
+          includeMetadata: false
+        });
+
+        // Extract the processed text
+        processedUserContent = injectedMessage.content
+          .filter(block => block.type === 'text')
+          .map(block => (block as { text: string }).text)
+          .join('\n');
+
+        console.log('✅ SOUL injection successful in Conversations page');
+      } catch (soulError) {
+        console.warn('⚠️ SOUL injection failed in Conversations page:', soulError);
+        // Continue with original message
+      }
+
       const chatMessages = [
         ...historySnapshot.map(m => ({
           role: (m.sender === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
           content: m.content,
         })),
-        { role: 'user' as const, content: trimmed },
+        { role: 'user' as const, content: processedUserContent },
       ];
 
       const response = await inferenceApi.createChatCompletion({

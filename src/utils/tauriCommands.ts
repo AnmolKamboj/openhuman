@@ -4,6 +4,9 @@
  * Helper functions for invoking Tauri commands from the frontend.
  */
 import { isTauri as coreIsTauri, invoke } from '@tauri-apps/api/core';
+import { loadSoul } from '../lib/ai/soul/loader';
+import { injectSoulIntoMessage } from '../lib/ai/soul/injector';
+import type { Message } from '../lib/ai/providers/interface';
 
 // Check if we're running in Tauri
 export const isTauri = (): boolean => {
@@ -392,13 +395,42 @@ export async function alphahumanAgentChat(
   message: string,
   providerOverride?: string,
   modelOverride?: string,
-  temperature?: number
+  temperature?: number,
+  options: { injectSoul?: boolean } = { injectSoul: true }
 ): Promise<CommandResponse<string>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
+
+  let processedMessage = message;
+
+  if (options.injectSoul) {
+    try {
+      const soulConfig = await loadSoul();
+      const userMessage: Message = {
+        role: 'user',
+        content: [{ type: 'text', text: message }]
+      };
+
+      const injectedMessage = injectSoulIntoMessage(userMessage, soulConfig, {
+        mode: 'context-block',
+        includeMetadata: false
+      });
+
+      // Extract the processed text
+      const textContent = injectedMessage.content
+        .filter(block => block.type === 'text')
+        .map(block => (block as { text: string }).text)
+        .join('\n');
+
+      processedMessage = textContent;
+    } catch (error) {
+      console.warn('SOUL injection failed, using original message:', error);
+    }
+  }
+
   return await invoke('alphahuman_agent_chat', {
-    message,
+    message: processedMessage,
     providerOverride,
     modelOverride,
     temperature,

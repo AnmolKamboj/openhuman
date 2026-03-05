@@ -2,6 +2,9 @@ import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 
 import { threadApi } from '../services/api/threadApi';
 import type { Thread, ThreadMessage } from '../types/thread';
+import { loadSoul } from '../lib/ai/soul/loader';
+import { injectSoulIntoMessage } from '../lib/ai/soul/injector';
+import type { Message } from '../lib/ai/providers/interface';
 
 interface ThreadState {
   // Existing local data (will be persisted)
@@ -95,8 +98,34 @@ export const sendMessage = createAsyncThunk(
     try {
       dispatch(addMessageLocal({ threadId, message: userMessage }));
 
-      // 2. Send to API (existing logic)
-      const data = await threadApi.sendMessage(message, threadId);
+      // 2. Process message with SOUL injection before sending to API
+      let processedMessage = message;
+      try {
+        const soulConfig = await loadSoul();
+        const userMessage: Message = {
+          role: 'user',
+          content: [{ type: 'text', text: message }]
+        };
+
+        const injectedMessage = injectSoulIntoMessage(userMessage, soulConfig, {
+          mode: 'context-block',
+          includeMetadata: false
+        });
+
+        // Extract the processed text
+        processedMessage = injectedMessage.content
+          .filter(block => block.type === 'text')
+          .map(block => (block as { text: string }).text)
+          .join('\n');
+
+        console.log('✅ SOUL injection successful in Redux sendMessage thunk');
+      } catch (soulError) {
+        console.warn('⚠️ SOUL injection failed in Redux sendMessage thunk:', soulError);
+        // Continue with original message
+      }
+
+      // 3. Send to API with processed message (disable injection in threadApi to avoid double injection)
+      const data = await threadApi.sendMessage(processedMessage, threadId, { injectSoul: false });
 
       // 3. For now, we'll handle AI response via the existing inference API
       // The AI response will be added separately via addInferenceResponse
