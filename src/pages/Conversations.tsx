@@ -381,12 +381,27 @@ const Conversations = () => {
       const MAX_TOOL_ROUNDS = 5;
 
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-        const response = await inferenceApi.createChatCompletion({
+        const request: Parameters<typeof inferenceApi.createChatCompletion>[0] = {
           model: selectedModel,
           messages: loopMessages,
-          ...(allSkillTools.length > 0 ? { tools: allSkillTools, tool_choice: 'auto' } : {}),
+          ...(allSkillTools.length > 0
+            ? { tools: allSkillTools, tool_choice: 'auto' as const }
+            : {}),
+        };
+        console.log('[Conversations] inference request:', {
+          round: round + 1,
+          model: request.model,
+          messageCount: request.messages.length,
+          tools: request.tools?.length ?? 0,
+          payload: request,
         });
-        console.log('🚀 ~ handleSendMessage ~ response:', response);
+        const response = await inferenceApi.createChatCompletion(request);
+        console.log('[Conversations] inference response:', {
+          round: round + 1,
+          choices: response.choices?.length ?? 0,
+          usage: response.usage,
+          payload: response,
+        });
 
         const choice = response.choices[0];
         if (!choice) break;
@@ -401,8 +416,19 @@ const Conversations = () => {
             tool_calls: message.tool_calls,
           });
 
-          // Execute each tool and collect results
-          for (const tc of message.tool_calls) {
+          const latestIndex = message.tool_calls.length - 1;
+          // API requires a tool message for every tool_call_id; we execute only the latest and send placeholders for the rest
+          for (let i = 0; i < message.tool_calls.length; i++) {
+            const tc = message.tool_calls[i];
+            if (i !== latestIndex) {
+              loopMessages.push({
+                role: 'tool',
+                tool_call_id: tc.id,
+                content: '',
+              });
+              continue;
+            }
+
             const dunderIdx = tc.function.name.indexOf('__');
             const skillId = dunderIdx !== -1 ? tc.function.name.substring(0, dunderIdx) : '';
             const toolName =
@@ -426,12 +452,26 @@ const Conversations = () => {
               );
               const result = await skillManager.callTool(skillId, toolName, toolArgs);
               toolResultContent = result.content.map(c => c.text).join('\n');
-              if (result.isError) {
+              let toolReturnedError = result.isError;
+              if (!toolReturnedError && toolResultContent) {
+                try {
+                  const parsed = JSON.parse(toolResultContent) as Record<string, unknown>;
+                  if (parsed && typeof parsed.error === 'string') {
+                    toolReturnedError = true;
+                    toolResultContent = `Error: ${parsed.error}`;
+                  }
+                } catch {
+                  // not JSON or no error key — keep content as-is
+                }
+              }
+              if (toolReturnedError) {
                 console.warn(
                   `[Conversations] tool "${toolName}" returned an error:`,
                   toolResultContent
                 );
-                toolResultContent = `Error: ${toolResultContent}`;
+                if (!toolResultContent.startsWith('Error: ')) {
+                  toolResultContent = `Error: ${toolResultContent}`;
+                }
               } else {
                 console.log(
                   `[Conversations] tool "${toolName}" succeeded:`,
