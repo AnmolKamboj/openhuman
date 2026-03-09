@@ -2,16 +2,40 @@ import { apiClient } from '../apiClient';
 
 // ── Request types ────────────────────────────────────────────────────────────
 
-export type ChatRole = 'system' | 'user' | 'assistant';
+export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
+
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
 
 export interface ChatMessage {
   role: ChatRole;
-  content: string;
+  content: string | null;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+}
+
+export interface ToolFunction {
+  name: string;
+  description: string;
+  parameters: any;
+}
+
+export interface Tool {
+  type: 'function';
+  function: ToolFunction;
 }
 
 export interface ChatCompletionRequest {
   model: string;
   messages: ChatMessage[];
+  tools?: Tool[];
+  tool_choice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
   stream?: boolean;
   temperature?: number;
   max_tokens?: number;

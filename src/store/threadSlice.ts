@@ -4,7 +4,6 @@ import { threadApi } from '../services/api/threadApi';
 import type { Thread, ThreadMessage } from '../types/thread';
 import { injectAll } from '../lib/ai/injector';
 import type { Message } from '../lib/ai/providers/interface';
-import { executeAgentTask, selectAgentModeForThread } from './agentSlice';
 import type { RootState } from './index';
 
 interface ThreadState {
@@ -124,39 +123,13 @@ export const sendMessage = createAsyncThunk(
         // Continue with original message
       }
 
-      // 3. Check if agent mode is enabled for this thread
-      const state = getState() as RootState;
-      const agentMode = selectAgentModeForThread(state, threadId);
+      // 3. Send to API with processed message (disable injection in threadApi to avoid double injection)
+      const data = await threadApi.sendMessage(processedMessage, threadId, { injectSoul: false });
 
-      if (agentMode) {
-        // Execute agent task instead of sending to inference API
-        console.log('🤖 Agent mode enabled - executing agent task');
+      // 4. For now, we'll handle AI response via the existing inference API
+      // The AI response will be added separately via addInferenceResponse
 
-        const agentResult = await dispatch(executeAgentTask({
-          userMessage: message,
-          threadId,
-          options: state.agent.configByThreadId[threadId] || {}
-        })).unwrap();
-
-        // Add the agent's final response as an AI message with execution metadata
-        if (agentResult.result.finalResponse) {
-          dispatch(addInferenceResponse({
-            content: agentResult.result.finalResponse,
-            agentExecutionId: agentResult.result.executionId,
-            toolExecutions: agentResult.result.toolExecutions
-          }));
-        }
-
-        return agentResult;
-      } else {
-        // 4. Send to API with processed message (disable injection in threadApi to avoid double injection)
-        const data = await threadApi.sendMessage(processedMessage, threadId, { injectSoul: false });
-
-        // 5. For now, we'll handle AI response via the existing inference API
-        // The AI response will be added separately via addInferenceResponse
-
-        return data;
-      }
+      return data;
     } catch (error) {
       // Remove optimistic user message on failure
       const state = (getState() as { thread: ThreadState }).thread;
@@ -228,17 +201,12 @@ const threadSlice = createSlice({
         createdAt: new Date().toISOString(),
       });
     },
-    addInferenceResponse: (state, action: { payload: { content: string; agentExecutionId?: string; toolExecutions?: any[] } }) => {
+    addInferenceResponse: (state, action: { payload: { content: string } }) => {
       const aiMessage: ThreadMessage = {
         id: `inference-${Date.now()}`,
         content: action.payload.content,
         type: 'text',
-        extraMetadata: {
-          ...(action.payload.agentExecutionId && {
-            agentExecutionId: action.payload.agentExecutionId,
-            toolExecutions: action.payload.toolExecutions || []
-          })
-        },
+        extraMetadata: {},
         sender: 'agent',
         createdAt: new Date().toISOString(),
       };

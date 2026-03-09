@@ -9,10 +9,10 @@ import {
 import Markdown from 'react-markdown';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { inferenceApi, type ModelInfo } from '../services/api/inferenceApi';
+import { inferenceApi, type ModelInfo, type Tool, type ChatMessage } from '../services/api/inferenceApi';
+import { AgentToolRegistry } from '../services/agentToolRegistry';
 import { injectAll } from '../lib/ai/injector';
 import type { Message } from '../lib/ai/providers/interface';
-import { AgentToggle, AgentStatusIndicator, AgentExecutionPanel } from '../components/agent';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
   addInferenceResponse,
@@ -278,21 +278,110 @@ const Conversations = () => {
         // Continue with original message
       }
 
-      const chatMessages = [
+      // Load available tools for transparent tool calling
+      const toolRegistry = AgentToolRegistry.getInstance();
+      let availableTools: Tool[] = [];
+
+      try {
+        const toolSchemas = await toolRegistry.loadToolSchemas();
+        availableTools = toolSchemas.map(schema => ({
+          type: 'function' as const,
+          function: {
+            name: schema.function.name,
+            description: schema.function.description,
+            parameters: schema.function.parameters
+          }
+        }));
+        console.log(`🔧 Loaded ${availableTools.length} tools for transparent execution`);
+      } catch (error) {
+        console.warn('⚠️ Failed to load tools, continuing without tool support:', error);
+      }
+
+      const chatMessages: ChatMessage[] = [
         ...historySnapshot.map(m => ({
-          role: (m.sender === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+          role: (m.sender === 'user' ? 'user' : 'assistant') as ChatMessage['role'],
           content: m.content,
         })),
         { role: 'user' as const, content: processedUserContent },
       ];
 
-      const response = await inferenceApi.createChatCompletion({
-        model: selectedModel,
-        messages: chatMessages,
-      });
+      // Tool calling loop - continue until no more tool calls needed
+      let currentMessages = [...chatMessages];
+      let finalResponse = '';
+      let iterations = 0;
+      const maxIterations = 10;
 
-      const content = response.choices[0]?.message?.content ?? '';
-      dispatch(addInferenceResponse({ content }));
+      while (iterations < maxIterations) {
+        iterations++;
+        console.log(`🔄 Tool calling iteration ${iterations}`);
+
+        const response = await inferenceApi.createChatCompletion({
+          model: selectedModel,
+          messages: currentMessages,
+          tools: availableTools.length > 0 ? availableTools : undefined,
+          tool_choice: availableTools.length > 0 ? 'auto' : undefined,
+        });
+
+        const assistantMessage = response.choices[0]?.message;
+        if (!assistantMessage) {
+          throw new Error('No assistant message in response');
+        }
+
+        // Add assistant message to conversation
+        currentMessages.push({
+          role: 'assistant',
+          content: assistantMessage.content,
+          tool_calls: assistantMessage.tool_calls,
+        });
+
+        // If no tool calls, we're done
+        if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
+          finalResponse = assistantMessage.content || '';
+          break;
+        }
+
+        console.log(`🛠️ Executing ${assistantMessage.tool_calls.length} tool calls`);
+
+        // Execute each tool call
+        for (const toolCall of assistantMessage.tool_calls) {
+          try {
+            const { function: { name: toolName, arguments: toolArgs } } = toolCall;
+
+            // Extract skill ID from tool name (format: skillId_toolName)
+            const underscoreIndex = toolName.lastIndexOf('_');
+            const skillId = underscoreIndex > -1 ? toolName.substring(0, underscoreIndex) : 'unknown';
+
+            console.log(`⚡ Executing tool: ${toolName} with args: ${toolArgs}`);
+
+            const execution = await toolRegistry.executeTool(skillId, toolName, toolArgs);
+
+            // Add tool result to conversation
+            currentMessages.push({
+              role: 'tool',
+              content: execution.result || execution.errorMessage || 'Tool executed',
+              tool_call_id: toolCall.id,
+            });
+
+            console.log(`✅ Tool ${toolName} completed: ${execution.status}`);
+          } catch (error) {
+            console.error(`❌ Tool execution failed for ${toolCall.function.name}:`, error);
+
+            // Add error result to conversation
+            currentMessages.push({
+              role: 'tool',
+              content: `Tool execution failed: ${error}`,
+              tool_call_id: toolCall.id,
+            });
+          }
+        }
+      }
+
+      if (iterations >= maxIterations) {
+        console.warn(`⚠️ Tool calling loop exceeded maximum iterations (${maxIterations})`);
+        finalResponse = finalResponse || 'Task completed with maximum iterations reached.';
+      }
+
+      dispatch(addInferenceResponse({ content: finalResponse }));
     } catch (err) {
       dispatch(removeOptimisticMessages());
       const msg =
@@ -596,9 +685,6 @@ const Conversations = () => {
                     Created {formatRelativeTime(selectedThread.createdAt)}
                   </p>
                 </div>
-                <div className="flex-shrink-0">
-                  <AgentToggle threadId={selectedThread.id} size="sm" />
-                </div>
               </div>
 
               {/* Messages */}
@@ -743,18 +829,6 @@ const Conversations = () => {
                 </div>
               )}
 
-              {/* Agent Status and Execution Panel */}
-              <div className="flex-shrink-0">
-                <AgentStatusIndicator
-                  threadId={selectedThread.id}
-                  className="px-4 py-2 border-t border-white/10"
-                />
-                <AgentExecutionPanel
-                  threadId={selectedThread.id}
-                  className="border-t border-white/10"
-                  maxHeight="200px"
-                />
-              </div>
 
               {/* Message Input */}
               <div className="flex-shrink-0 border-t border-white/10 px-4 py-3">
