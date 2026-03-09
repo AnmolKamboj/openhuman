@@ -9,9 +9,15 @@ import {
 import Markdown from 'react-markdown';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { inferenceApi, type ModelInfo } from '../services/api/inferenceApi';
 import { injectAll } from '../lib/ai/injector';
 import type { Message } from '../lib/ai/providers/interface';
+import { skillManager } from '../lib/skills/manager';
+import {
+  type ChatMessage,
+  inferenceApi,
+  type ModelInfo,
+  type Tool,
+} from '../services/api/inferenceApi';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
   addInferenceResponse,
@@ -62,6 +68,8 @@ const Conversations = () => {
     suggestedQuestions,
     isLoadingSuggestions,
   } = useAppSelector(state => state.thread);
+
+  const skillsState = useAppSelector(state => state.skills);
 
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -255,14 +263,11 @@ const Conversations = () => {
       // Process user message with SOUL + TOOLS injection
       let processedUserContent = trimmed;
       try {
-        const userMessage: Message = {
-          role: 'user',
-          content: [{ type: 'text', text: trimmed }]
-        };
+        const userMessage: Message = { role: 'user', content: [{ type: 'text', text: trimmed }] };
 
         const injectedMessage = await injectAll(userMessage, {
           mode: 'context-block',
-          includeMetadata: false
+          includeMetadata: false,
         });
 
         // Extract the processed text
@@ -277,7 +282,7 @@ const Conversations = () => {
         // Continue with original message
       }
 
-      const chatMessages = [
+      const chatMessages: ChatMessage[] = [
         ...historySnapshot.map(m => ({
           role: (m.sender === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
           content: m.content,
@@ -285,13 +290,105 @@ const Conversations = () => {
         { role: 'user' as const, content: processedUserContent },
       ];
 
-      const response = await inferenceApi.createChatCompletion({
-        model: selectedModel,
-        messages: chatMessages,
-      });
+      // Build tool definitions for ALL ready skills — namespaced as {skillId}__{toolName}
+      const allSkillTools: Tool[] = Object.entries(skillsState.skills)
+        .filter(([, skill]) => skill.status === 'ready' && skill.tools?.length)
+        .flatMap(([skillId, skill]) =>
+          (skill.tools ?? []).map(t => ({
+            type: 'function' as const,
+            function: {
+              name: `${skillId}__${t.name}`,
+              description: t.description,
+              parameters: t.inputSchema as Tool['function']['parameters'],
+            },
+          }))
+        );
 
-      const content = response.choices[0]?.message?.content ?? '';
-      dispatch(addInferenceResponse({ content }));
+      console.log(
+        `[Conversations] active skill tools: ${allSkillTools.length}`,
+        allSkillTools.map(t => t.function.name)
+      );
+
+      // Agentic tool calling loop — handles multi-turn tool execution
+      const loopMessages = [...chatMessages];
+      let finalContent = '';
+      const MAX_TOOL_ROUNDS = 5;
+
+      for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+        const response = await inferenceApi.createChatCompletion({
+          model: selectedModel,
+          messages: loopMessages,
+          ...(allSkillTools.length > 0 ? { tools: allSkillTools, tool_choice: 'auto' } : {}),
+        });
+        console.log('🚀 ~ handleSendMessage ~ response:', response);
+
+        const choice = response.choices[0];
+        if (!choice) break;
+
+        const { finish_reason, message } = choice;
+
+        if (finish_reason === 'tool_calls' && message.tool_calls?.length) {
+          // Append assistant message with tool_calls
+          loopMessages.push({
+            role: 'assistant',
+            content: message.content ?? '',
+            tool_calls: message.tool_calls,
+          });
+
+          // Execute each tool and collect results
+          for (const tc of message.tool_calls) {
+            const dunderIdx = tc.function.name.indexOf('__');
+            const skillId = dunderIdx !== -1 ? tc.function.name.substring(0, dunderIdx) : '';
+            const toolName =
+              dunderIdx !== -1 ? tc.function.name.substring(dunderIdx + 2) : tc.function.name;
+
+            console.log(
+              `[Conversations] tool_call dispatched — skill="${skillId}" tool="${toolName}" call_id="${tc.id}"`
+            );
+
+            let toolResultContent = '';
+            try {
+              let toolArgs: Record<string, unknown> = {};
+              try {
+                toolArgs = JSON.parse(tc.function.arguments) as Record<string, unknown>;
+              } catch {
+                toolArgs = {};
+              }
+              console.log(
+                `[Conversations] calling skillManager.callTool("${skillId}", "${toolName}")`,
+                toolArgs
+              );
+              const result = await skillManager.callTool(skillId, toolName, toolArgs);
+              toolResultContent = result.content.map(c => c.text).join('\n');
+              if (result.isError) {
+                console.warn(
+                  `[Conversations] tool "${toolName}" returned an error:`,
+                  toolResultContent
+                );
+                toolResultContent = `Error: ${toolResultContent}`;
+              } else {
+                console.log(
+                  `[Conversations] tool "${toolName}" succeeded:`,
+                  toolResultContent.slice(0, 200)
+                );
+              }
+            } catch (toolErr) {
+              console.error(`[Conversations] tool "${toolName}" threw:`, toolErr);
+              toolResultContent = `Tool execution failed: ${toolErr instanceof Error ? toolErr.message : String(toolErr)}`;
+            }
+
+            loopMessages.push({ role: 'tool', tool_call_id: tc.id, content: toolResultContent });
+          }
+          // Continue loop to get final response after tool results
+          continue;
+        }
+
+        // Normal (non-tool) response — done
+        finalContent = message.content ?? '';
+        break;
+      }
+
+      dispatch(addInferenceResponse({ content: finalContent }));
     } catch (err) {
       dispatch(removeOptimisticMessages());
       const msg =

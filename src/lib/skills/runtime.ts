@@ -141,7 +141,10 @@ export class SkillRuntime {
     content: Array<{ type: string; text: string }>;
     isError: boolean;
   }> {
-    return this.transport.request("tools/call", { name, arguments: args });
+    console.log(`[SkillRuntime] callTool skill="${this.manifest.id}" tool="${name}"`);
+    const result = await this.transport.request<{ content: Array<{ type: string; text: string }>; isError: boolean }>("tools/call", { name, arguments: args });
+    console.log(`[SkillRuntime] tools/call response skill="${this.manifest.id}" tool="${name}" isError=${result.isError}`);
+    return result;
   }
 
   /**

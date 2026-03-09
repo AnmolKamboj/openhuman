@@ -27,8 +27,8 @@ export class DaemonHealthService {
   async setupHealthListener(): Promise<UnlistenFn | null> {
     console.log('[DaemonHealth] setupHealthListener() called - starting setup process');
     try {
-      console.log('[DaemonHealth] About to call listen() for alphahuman:health event');
-      console.log('[DaemonHealth] Setting up alphahuman:health event listener');
+      // console.log('[DaemonHealth] About to call listen() for alphahuman:health event');
+      // console.log('[DaemonHealth] Setting up alphahuman:health event listener');
 
       this.healthEventListener = await listen<unknown>('alphahuman:health', event => {
         console.log('[DaemonHealth] Received health event:', event.payload);
@@ -44,11 +44,11 @@ export class DaemonHealthService {
       console.log('[DaemonHealth] alphahuman:health listener created successfully');
 
       // Start initial timeout
-      console.log('[DaemonHealth] Starting health timeout');
+      // console.log('[DaemonHealth] Starting health timeout');
       this.startHealthTimeout();
-      console.log('[DaemonHealth] Health timeout started');
+      // console.log('[DaemonHealth] Health timeout started');
 
-      console.log('[DaemonHealth] Health listener setup complete');
+      // console.log('[DaemonHealth] Health listener setup complete');
       return this.healthEventListener;
     } catch (error) {
       console.error('[DaemonHealth] Failed to setup health listener:', error);
@@ -147,7 +147,7 @@ export class DaemonHealthService {
       // Update the health snapshot in Redux
       store.dispatch(updateHealthSnapshot({ userId, healthSnapshot: snapshot }));
 
-      console.log('[DaemonHealth] Updated health snapshot for user:', userId, snapshot);
+      // console.log('[DaemonHealth] Updated health snapshot for user:', userId, snapshot);
     } catch (error) {
       console.error('[DaemonHealth] Error updating Redux from health:', error);
     }
@@ -175,12 +175,7 @@ export class DaemonHealthService {
     }, this.HEALTH_TIMEOUT_MS);
 
     // Store timeout ID in Redux for cleanup
-    store.dispatch(
-      setHealthTimeoutId({
-        userId,
-        timeoutId: this.healthTimeoutId.toString(),
-      })
-    );
+    store.dispatch(setHealthTimeoutId({ userId, timeoutId: this.healthTimeoutId.toString() }));
   }
 
   /**

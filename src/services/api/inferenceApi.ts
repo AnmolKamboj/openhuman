@@ -2,11 +2,41 @@ import { apiClient } from '../apiClient';
 
 // ── Request types ────────────────────────────────────────────────────────────
 
-export type ChatRole = 'system' | 'user' | 'assistant';
+export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
 
 export interface ChatMessage {
   role: ChatRole;
   content: string;
+  /** tool_call_id for role=tool messages */
+  tool_call_id?: string;
+  /** tool_calls emitted by the assistant */
+  tool_calls?: ToolCall[];
+}
+
+// ── Tool calling types (OpenAI-compatible) ───────────────────────────────────
+
+export interface ToolFunction {
+  name: string;
+  description: string;
+  parameters: {
+    type: 'object';
+    properties: Record<string, unknown>;
+    required?: string[];
+  };
+}
+
+export interface Tool {
+  type: 'function';
+  function: ToolFunction;
+}
+
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
 }
 
 export interface ChatCompletionRequest {
@@ -15,6 +45,8 @@ export interface ChatCompletionRequest {
   stream?: boolean;
   temperature?: number;
   max_tokens?: number;
+  tools?: Tool[];
+  tool_choice?: 'none' | 'auto' | 'required';
 }
 
 export interface TextCompletionRequest {
@@ -41,7 +73,7 @@ export interface ModelsListResponse {
 
 export interface ChatCompletionChoice {
   index: number;
-  message: ChatMessage;
+  message: ChatMessage & { tool_calls?: ToolCall[] };
   finish_reason: string | null;
 }
 
