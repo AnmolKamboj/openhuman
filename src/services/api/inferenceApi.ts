@@ -4,25 +4,23 @@ import { apiClient } from '../apiClient';
 
 export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
 
-export interface ChatMessage {
-  role: ChatRole;
-  content: string;
-  /** tool_call_id for role=tool messages */
-  tool_call_id?: string;
-  /** tool_calls emitted by the assistant */
-  tool_calls?: ToolCall[];
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
 }
 
-// ── Tool calling types (OpenAI-compatible) ───────────────────────────────────
+export interface ChatMessage {
+  role: ChatRole;
+  content: string | null;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+}
 
 export interface ToolFunction {
   name: string;
   description: string;
-  parameters: {
-    type: 'object';
-    properties: Record<string, unknown>;
-    required?: string[];
-  };
+  parameters: any;
 }
 
 export interface Tool {
@@ -30,23 +28,14 @@ export interface Tool {
   function: ToolFunction;
 }
 
-export interface ToolCall {
-  id: string;
-  type: 'function';
-  function: {
-    name: string;
-    arguments: string;
-  };
-}
-
 export interface ChatCompletionRequest {
   model: string;
   messages: ChatMessage[];
+  tools?: Tool[];
+  tool_choice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
   stream?: boolean;
   temperature?: number;
   max_tokens?: number;
-  tools?: Tool[];
-  tool_choice?: 'none' | 'auto' | 'required';
 }
 
 export interface TextCompletionRequest {
@@ -116,16 +105,12 @@ export const inferenceApi = {
   },
 
   /** POST /openai/v1/chat/completions — create a chat completion */
-  createChatCompletion: async (
-    body: ChatCompletionRequest
-  ): Promise<ChatCompletionResponse> => {
+  createChatCompletion: async (body: ChatCompletionRequest): Promise<ChatCompletionResponse> => {
     return apiClient.post<ChatCompletionResponse>('/openai/v1/chat/completions', body);
   },
 
   /** POST /openai/v1/completions — create a text completion */
-  createCompletion: async (
-    body: TextCompletionRequest
-  ): Promise<TextCompletionResponse> => {
+  createCompletion: async (body: TextCompletionRequest): Promise<TextCompletionResponse> => {
     return apiClient.post<TextCompletionResponse>('/openai/v1/completions', body);
   },
 };

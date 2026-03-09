@@ -120,7 +120,10 @@ const Conversations = () => {
   const notionPages = useAppSelector(state => state.notion.pages);
   const notionSummaries = useAppSelector(state => state.notion.summaries);
   const notionWorkspaceName = useAppSelector(
-    state => (state.skills.skillStates?.notion as Record<string, unknown> | undefined)?.workspaceName as string | null ?? null
+    state =>
+      ((state.skills.skillStates?.notion as Record<string, unknown> | undefined)?.workspaceName as
+        | string
+        | null) ?? null
   );
 
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
@@ -347,7 +350,7 @@ const Conversations = () => {
 
       const chatMessages: ChatMessage[] = [
         ...historySnapshot.map(m => ({
-          role: (m.sender === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+          role: (m.sender === 'user' ? 'user' : 'assistant') as ChatMessage['role'],
           content: m.content,
         })),
         { role: 'user' as const, content: processedUserContent },

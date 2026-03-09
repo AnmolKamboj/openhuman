@@ -31,7 +31,7 @@ export class DaemonHealthService {
       // console.log('[DaemonHealth] Setting up alphahuman:health event listener');
 
       this.healthEventListener = await listen<unknown>('alphahuman:health', event => {
-        console.log('[DaemonHealth] Received health event:', event.payload);
+        // console.log('[DaemonHealth] Received health event:', event.payload);
 
         const healthSnapshot = this.parseHealthSnapshot(event.payload);
         if (healthSnapshot) {

@@ -4,6 +4,7 @@ import { threadApi } from '../services/api/threadApi';
 import type { Thread, ThreadMessage } from '../types/thread';
 import { injectAll } from '../lib/ai/injector';
 import type { Message } from '../lib/ai/providers/interface';
+import type { RootState } from './index';
 
 interface ThreadState {
   // Existing local data (will be persisted)
@@ -125,7 +126,7 @@ export const sendMessage = createAsyncThunk(
       // 3. Send to API with processed message (disable injection in threadApi to avoid double injection)
       const data = await threadApi.sendMessage(processedMessage, threadId, { injectSoul: false });
 
-      // 3. For now, we'll handle AI response via the existing inference API
+      // 4. For now, we'll handle AI response via the existing inference API
       // The AI response will be added separately via addInferenceResponse
 
       return data;
