@@ -65,7 +65,7 @@ export class AgentToolRegistry implements IAgentToolRegistry {
 
       // Tools are already in OpenAI format, just map to our interface
       this.toolSchemas = zeroClawTools.map(tool => ({
-        type: tool.type,
+        type: 'function' as const,
         function: {
           name: tool.function.name,
           description: tool.function.description,
