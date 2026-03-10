@@ -2,38 +2,29 @@
  * Unit tests for the unified AI loader system.
  * Tests loading, parallel execution, and error handling.
  */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { loadAIConfig, refreshSoul, refreshTools, refreshAll, clearAICache } from '../loader';
+import { clearAICache, loadAIConfig, refreshAll, refreshSoul, refreshTools } from '../loader';
+// Import the mocked functions
+import { clearSoulCache, loadSoul } from '../soul/loader';
 import type { SoulConfig } from '../soul/types';
+import { clearToolsCache, loadTools } from '../tools/loader';
 import type { ToolsConfig } from '../tools/types';
 
 // Mock the individual loaders
-vi.mock('../soul/loader', () => ({
-  loadSoul: vi.fn(),
-  clearSoulCache: vi.fn()
-}));
+vi.mock('../soul/loader', () => ({ loadSoul: vi.fn(), clearSoulCache: vi.fn() }));
 
-vi.mock('../tools/loader', () => ({
-  loadTools: vi.fn(),
-  clearToolsCache: vi.fn()
-}));
+vi.mock('../tools/loader', () => ({ loadTools: vi.fn(), clearToolsCache: vi.fn() }));
 
 // Mock localStorage
 const localStorageMock = {
   getItem: vi.fn(),
   setItem: vi.fn(),
   removeItem: vi.fn(),
-  clear: vi.fn()
+  clear: vi.fn(),
 };
 
-Object.defineProperty(window, 'localStorage', {
-  value: localStorageMock
-});
-
-// Import the mocked functions
-import { loadSoul, clearSoulCache } from '../soul/loader';
-import { loadTools, clearToolsCache } from '../tools/loader';
+Object.defineProperty(window, 'localStorage', { value: localStorageMock });
 
 describe('Unified AI Loader', () => {
   const mockSoulConfig: SoulConfig = {
@@ -47,7 +38,7 @@ describe('Unified AI Loader', () => {
     memorySettings: { remember: [] },
     emergencyResponses: [],
     isDefault: false,
-    loadedAt: Date.now()
+    loadedAt: Date.now(),
   };
 
   const mockToolsConfig: ToolsConfig = {
@@ -61,10 +52,10 @@ describe('Unified AI Loader', () => {
       activeSkills: 0,
       categoriesCount: 0,
       toolsByCategory: {},
-      skillsByCategory: {}
+      skillsByCategory: {},
     },
     isDefault: false,
-    loadedAt: Date.now()
+    loadedAt: Date.now(),
   };
 
   beforeEach(() => {
@@ -109,15 +100,11 @@ describe('Unified AI Loader', () => {
           loadedAt: Date.now(),
           loadingDuration: 100,
           hasFallbacks: false,
-          sources: { soul: 'github', tools: 'github' }
-        }
+          sources: { soul: 'github', tools: 'github' },
+        },
       };
 
-      const cacheEntry = {
-        config: cachedConfig,
-        timestamp: Date.now(),
-        version: '1.0.0'
-      };
+      const cacheEntry = { config: cachedConfig, timestamp: Date.now(), version: '1.0.0' };
 
       localStorageMock.getItem.mockReturnValue(JSON.stringify(cacheEntry));
 
@@ -182,14 +169,16 @@ describe('Unified AI Loader', () => {
 
     it('should handle timeout correctly', async () => {
       // Make loadSoul take a long time
-      (loadSoul as any).mockImplementation(() =>
-        new Promise(resolve => setTimeout(() => resolve(mockSoulConfig), 100))
+      (loadSoul as any).mockImplementation(
+        () => new Promise(resolve => setTimeout(() => resolve(mockSoulConfig), 100))
       );
 
       const config = await loadAIConfig({ timeout: 50 });
 
       expect(config.soul.isDefault).toBe(true); // Should use fallback due to timeout
-      expect(config.metadata.errors).toContain('Soul loading failed: Error: Operation timed out after 50ms');
+      expect(config.metadata.errors).toContain(
+        'Soul loading failed: Error: Operation timed out after 50ms'
+      );
     }, 10000);
   });
 
@@ -200,7 +189,10 @@ describe('Unified AI Loader', () => {
 
       // Reset mocks
       vi.clearAllMocks();
-      const newSoulConfig = { ...mockSoulConfig, identity: { name: 'Updated', description: 'Updated' } };
+      const newSoulConfig = {
+        ...mockSoulConfig,
+        identity: { name: 'Updated', description: 'Updated' },
+      };
       (loadSoul as any).mockResolvedValue(newSoulConfig);
 
       const result = await refreshSoul();
@@ -220,7 +212,10 @@ describe('Unified AI Loader', () => {
 
       // Reset mocks
       vi.clearAllMocks();
-      const newToolsConfig = { ...mockToolsConfig, statistics: { ...mockToolsConfig.statistics, totalTools: 10 } };
+      const newToolsConfig = {
+        ...mockToolsConfig,
+        statistics: { ...mockToolsConfig.statistics, totalTools: 10 },
+      };
       (loadTools as any).mockResolvedValue(newToolsConfig);
 
       const result = await refreshTools();

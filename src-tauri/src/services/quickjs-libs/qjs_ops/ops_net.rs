@@ -20,6 +20,10 @@ pub fn register<'js>(ctx: &Ctx<'js>, ops: &Object<'js>, ws_state: Arc<RwLock<Web
             let method = opts["method"].as_str().unwrap_or("GET");
             let headers_obj = opts["headers"].as_object();
             let body = opts["body"].as_str();
+            let timeout_secs = opts["timeout"]
+                .as_u64()
+                .or_else(|| opts["timeout"].as_f64().map(|f| f as u64))
+                .unwrap_or(30);
 
             let client = reqwest::Client::builder()
                 .use_rustls_tls()
@@ -29,9 +33,12 @@ pub fn register<'js>(ctx: &Ctx<'js>, ops: &Object<'js>, ws_state: Arc<RwLock<Web
                 "GET" => client.get(&url),
                 "POST" => client.post(&url),
                 "PUT" => client.put(&url),
+                "PATCH" => client.patch(&url),
                 "DELETE" => client.delete(&url),
                 _ => client.get(&url),
             };
+
+            req = req.timeout(std::time::Duration::from_secs(timeout_secs));
 
             if let Some(h) = headers_obj {
                 for (k, v) in h {

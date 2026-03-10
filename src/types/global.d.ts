@@ -2,9 +2,7 @@
 
 declare global {
   interface Window {
-    __TAURI__?: {
-      [key: string]: unknown;
-    };
+    __TAURI__?: { [key: string]: unknown };
   }
 }
 

@@ -4,9 +4,8 @@
  * This module sets up automatic cache invalidation whenever the bundled TOOLS.md
  * file is updated, ensuring the UI reflects the latest tool data immediately.
  */
-
-import { clearToolsCache } from '../ai/tools/loader';
 import { clearAICache, loadAIConfig } from '../ai/loader';
+import { clearToolsCache } from '../ai/tools/loader';
 
 // Track file modification time to detect changes
 let lastModifiedTime: number | null = null;
@@ -71,9 +70,9 @@ async function checkForToolsChanges(): Promise<void> {
         console.log('✅ AI configuration cache refreshed successfully');
 
         // Dispatch custom event for components to react to
-        window.dispatchEvent(new CustomEvent('tools-updated', {
-          detail: { timestamp: Date.now() }
-        }));
+        window.dispatchEvent(
+          new CustomEvent('tools-updated', { detail: { timestamp: Date.now() } })
+        );
       } catch (error) {
         console.error('❌ Failed to reload AI config after file change:', error);
       }
@@ -91,7 +90,7 @@ function simpleHash(str: string): number {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash; // Convert to 32-bit integer
   }
   return hash;

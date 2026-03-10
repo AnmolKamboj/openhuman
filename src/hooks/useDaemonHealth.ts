@@ -6,7 +6,6 @@
  */
 import { useCallback } from 'react';
 
-import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
   resetConnectionAttempts,
   selectDaemonComponents,
@@ -19,10 +18,11 @@ import {
   setAutoStartEnabled,
   setIsRecovering,
 } from '../store/daemonSlice';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
   alphahumanServiceStart,
-  alphahumanServiceStop,
   alphahumanServiceStatus,
+  alphahumanServiceStop,
   type CommandResponse,
   type ServiceStatus,
 } from '../utils/tauriCommands';
@@ -94,14 +94,15 @@ export const useDaemonHealth = (userId?: string) => {
     }
   }, [dispatch, userId]);
 
-  const checkDaemonStatus = useCallback(async (): Promise<CommandResponse<ServiceStatus> | null> => {
-    try {
-      return await alphahumanServiceStatus();
-    } catch (error) {
-      console.error('[useDaemonHealth] Failed to check daemon status:', error);
-      return null;
-    }
-  }, []);
+  const checkDaemonStatus =
+    useCallback(async (): Promise<CommandResponse<ServiceStatus> | null> => {
+      try {
+        return await alphahumanServiceStatus();
+      } catch (error) {
+        console.error('[useDaemonHealth] Failed to check daemon status:', error);
+        return null;
+      }
+    }, []);
 
   const setAutoStart = useCallback(
     (enabled: boolean) => {
@@ -121,9 +122,7 @@ export const useDaemonHealth = (userId?: string) => {
   const errorComponentCount = Object.values(components).filter(c => c.status === 'error').length;
 
   // Get uptime in human readable format
-  const uptimeText = healthSnapshot
-    ? formatUptime(healthSnapshot.uptime_seconds)
-    : 'Unknown';
+  const uptimeText = healthSnapshot ? formatUptime(healthSnapshot.uptime_seconds) : 'Unknown';
 
   return {
     // State

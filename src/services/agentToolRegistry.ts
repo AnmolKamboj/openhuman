@@ -6,22 +6,14 @@
  * - runtime_get_tool_schemas: Get all tools in OpenAI-compatible format
  * - runtime_execute_tool: Execute a tool with enhanced validation and timing
  */
-
 import { invoke } from '@tauri-apps/api/core';
-import type {
-  AgentToolSchema,
-  AgentToolExecution,
-  IAgentToolRegistry
-} from '../types/agent';
+
+import type { AgentToolExecution, AgentToolSchema, IAgentToolRegistry } from '../types/agent';
 
 // ZeroClaw format types from Rust
 interface ZeroClawToolSchema {
   type: string;
-  function: {
-    name: string;
-    description: string;
-    parameters: any;
-  };
+  function: { name: string; description: string; parameters: any };
 }
 
 interface ZeroClawToolResult {
@@ -51,7 +43,7 @@ export class AgentToolRegistry implements IAgentToolRegistry {
     const now = Date.now();
 
     // Return cached tools if still fresh
-    if (!forceReload && this.toolSchemas.length > 0 && (now - this.lastLoadTime) < this.CACHE_TTL) {
+    if (!forceReload && this.toolSchemas.length > 0 && now - this.lastLoadTime < this.CACHE_TTL) {
       return this.toolSchemas;
     }
 
@@ -69,8 +61,8 @@ export class AgentToolRegistry implements IAgentToolRegistry {
         function: {
           name: tool.function.name,
           description: tool.function.description,
-          parameters: tool.function.parameters
-        }
+          parameters: tool.function.parameters,
+        },
       }));
 
       this.lastLoadTime = now;
@@ -110,7 +102,7 @@ export class AgentToolRegistry implements IAgentToolRegistry {
         } catch (e) {
           return 'Failed to parse: ' + e;
         }
-      })()
+      })(),
     });
 
     const execution: AgentToolExecution = {
@@ -119,7 +111,7 @@ export class AgentToolRegistry implements IAgentToolRegistry {
       skillId,
       arguments: toolArguments,
       status: 'running',
-      startTime
+      startTime,
     };
 
     try {
@@ -130,15 +122,15 @@ export class AgentToolRegistry implements IAgentToolRegistry {
       console.log(`   args type: ${typeof toolArguments}`);
 
       const result = await invoke<ZeroClawToolResult>('runtime_execute_tool', {
-        toolId: toolId,  // Use camelCase as expected by current Rust version
-        args: toolArguments  // Use "args" instead of "arguments"
+        toolId: toolId, // Use camelCase as expected by current Rust version
+        args: toolArguments, // Use "args" instead of "arguments"
       });
 
       console.log(`🔧 [AFTER INVOKE] Tool execution result:`, result);
 
       execution.endTime = Date.now();
       // Use execution time from Rust if available, otherwise calculate locally
-      execution.executionTimeMs = result.execution_time || (execution.endTime - execution.startTime);
+      execution.executionTimeMs = result.execution_time || execution.endTime - execution.startTime;
 
       if (!result.success) {
         execution.status = 'error';
@@ -155,7 +147,6 @@ export class AgentToolRegistry implements IAgentToolRegistry {
       }
 
       return execution;
-
     } catch (error) {
       execution.endTime = Date.now();
       execution.executionTimeMs = execution.endTime - execution.startTime;
@@ -205,11 +196,7 @@ export class AgentToolRegistry implements IAgentToolRegistry {
   /**
    * Get tool execution statistics
    */
-  getToolStats(): {
-    totalTools: number;
-    skillCount: number;
-    categories: Record<string, number>;
-  } {
+  getToolStats(): { totalTools: number; skillCount: number; categories: Record<string, number> } {
     const categories: Record<string, number> = {};
     const skills = new Set<string>();
 
@@ -222,11 +209,7 @@ export class AgentToolRegistry implements IAgentToolRegistry {
       categories[category] = (categories[category] || 0) + 1;
     }
 
-    return {
-      totalTools: this.toolSchemas.length,
-      skillCount: skills.size,
-      categories
-    };
+    return { totalTools: this.toolSchemas.length, skillCount: skills.size, categories };
   }
 
   /**

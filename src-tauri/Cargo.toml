@@ -165,14 +165,13 @@ tauri-plugin-notification = "2"
 # Only available on desktop - prebuilt binaries don't exist for Android/iOS
 rquickjs = { version = "0.11", features = ["futures", "macro", "loader", "parallel"] }
 
-# TDLib Rust bindings (desktop only - downloads prebuilt TDLib for linking)
-# On macOS, the bundled dylib is replaced with a source-built version (see build.rs)
-# to ensure macOS 10.15 deployment target compatibility.
-tdlib-rs = { version = "1.2", features = ["download-tdlib"] }
+# TDLib Rust bindings (desktop only - uses local prebuilt via LOCAL_TDLIB_PATH)
+# Run: cd src-tauri && ./scripts/download-tdlib.sh  (once, to populate tdlib-cache/)
+tdlib-rs = { version = "1.2", features = ["local-tdlib"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.build-dependencies]
-# TDLib build configuration (download-tdlib for all desktop platforms)
-tdlib-rs = { version = "1.2", features = ["download-tdlib"] }
+# TDLib build (local-tdlib avoids reqwest timeout during Cargo build)
+tdlib-rs = { version = "1.2", features = ["local-tdlib"] }
 
 [dev-dependencies]
 tempfile = "3"

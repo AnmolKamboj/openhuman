@@ -2,7 +2,6 @@
  * Unified types for the AI configuration system.
  * Combines SOUL persona and TOOLS configurations.
  */
-
 import type { SoulConfig } from './soul/types';
 import type { ToolsConfig } from './tools/types';
 

@@ -39,10 +39,7 @@ export const creditsApi = {
    * Get paginated credit transaction history
    * GET /credits/transactions
    */
-  getTransactions: async (
-    page = 1,
-    limit = 50
-  ): Promise<PaginatedTransactions> => {
+  getTransactions: async (page = 1, limit = 50): Promise<PaginatedTransactions> => {
     const response = await apiClient.get<ApiResponse<PaginatedTransactions>>(
       `/credits/transactions?page=${page}&limit=${limit}`
     );

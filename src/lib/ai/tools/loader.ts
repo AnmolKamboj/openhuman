@@ -1,13 +1,13 @@
 import toolsMd from '../../../../ai/TOOLS.md?raw';
 import type {
-  ToolsConfig,
-  ToolDefinition,
   SkillGroup,
   ToolCategory,
+  ToolDefinition,
   ToolEnvironment,
-  ToolStatistics,
   ToolParseResult,
-  ToolsCacheEntry
+  ToolsCacheEntry,
+  ToolsConfig,
+  ToolStatistics,
 } from './types';
 
 // GitHub URL removed - always use bundled file updated by auto-update system
@@ -34,10 +34,7 @@ export async function loadTools(): Promise<ToolsConfig> {
     const cached = localStorage.getItem(TOOLS_CACHE_KEY);
     if (cached) {
       const parsed = JSON.parse(cached) as ToolsCacheEntry;
-      if (
-        Date.now() - parsed.timestamp < TOOLS_CACHE_TTL &&
-        parsed.version === CACHE_VERSION
-      ) {
+      if (Date.now() - parsed.timestamp < TOOLS_CACHE_TTL && parsed.version === CACHE_VERSION) {
         cachedToolsConfig = parsed.config;
         return parsed.config;
       }
@@ -55,11 +52,7 @@ export async function loadTools(): Promise<ToolsConfig> {
   // Cache the result
   cachedToolsConfig = config;
   try {
-    const cacheEntry: ToolsCacheEntry = {
-      config,
-      timestamp: Date.now(),
-      version: CACHE_VERSION
-    };
+    const cacheEntry: ToolsCacheEntry = { config, timestamp: Date.now(), version: CACHE_VERSION };
     localStorage.setItem(TOOLS_CACHE_KEY, JSON.stringify(cacheEntry));
   } catch {
     // Ignore storage errors
@@ -86,7 +79,7 @@ export function parseTools(raw: string, isDefault: boolean): ToolsConfig {
     environments,
     statistics,
     isDefault,
-    loadedAt: Date.now()
+    loadedAt: Date.now(),
   };
 }
 
@@ -111,7 +104,9 @@ function parseToolsFromMarkdown(raw: string): ToolParseResult {
       warnings.push(...sectionTools.warnings);
     }
   } catch (error) {
-    errors.push(`Failed to parse tools markdown: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    errors.push(
+      `Failed to parse tools markdown: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
   }
 
   return { tools, errors, warnings };
@@ -146,7 +141,9 @@ function parseToolsSection(section: string, sectionIndex: number): ToolParseResu
         tools.push(tool);
       }
     } catch (error) {
-      errors.push(`Error parsing tool in section ${sectionIndex}, block ${j}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      errors.push(
+        `Error parsing tool in section ${sectionIndex}, block ${j}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
@@ -174,23 +171,14 @@ function parseToolBlock(block: string, defaultSkillId: string): ToolDefinition |
   // Try to determine actual skillId from tool name or description
   const skillId = inferSkillIdFromTool(name, description, defaultSkillId);
 
-  return {
-    skillId,
-    name,
-    description,
-    inputSchema
-  };
+  return { skillId, name, description, inputSchema };
 }
 
 /**
  * Parse parameters section to JSON Schema
  */
 function parseParametersToSchema(parametersText: string): ToolDefinition['inputSchema'] {
-  const schema: ToolDefinition['inputSchema'] = {
-    type: 'object',
-    properties: {},
-    required: []
-  };
+  const schema: ToolDefinition['inputSchema'] = { type: 'object', properties: {}, required: [] };
 
   if (!parametersText || parametersText.includes('*None*')) {
     return schema;
@@ -205,7 +193,7 @@ function parseParametersToSchema(parametersText: string): ToolDefinition['inputS
 
       schema.properties[paramName] = {
         type: paramType === 'any' ? 'string' : paramType,
-        description: paramDescription.trim()
+        description: paramDescription.trim(),
       };
 
       if (isRequired) {
@@ -231,7 +219,7 @@ function groupToolsBySkill(tools: ToolDefinition[]): Record<string, SkillGroup> 
         skillId,
         name: formatSkillName(skillId),
         category: categorizeSkill(skillId),
-        tools: []
+        tools: [],
       };
     }
 
@@ -253,49 +241,49 @@ function generateCategories(skillGroups: Record<string, SkillGroup>): Record<str
       id: 'communication',
       name: 'Communication',
       description: 'Tools for messaging, email, and social interaction',
-      skills: ['telegram', 'gmail', 'discord', 'slack']
+      skills: ['telegram', 'gmail', 'discord', 'slack'],
     },
     productivity: {
       id: 'productivity',
       name: 'Productivity',
       description: 'Tools for task management, note-taking, and organization',
-      skills: ['notion', 'todoist', 'calendar', 'trello']
+      skills: ['notion', 'todoist', 'calendar', 'trello'],
     },
     automation: {
       id: 'automation',
       name: 'Automation',
       description: 'Tools for workflow automation and task scheduling',
-      skills: ['zapier', 'ifttt', 'scheduler', 'webhook']
+      skills: ['zapier', 'ifttt', 'scheduler', 'webhook'],
     },
     data: {
       id: 'data',
       name: 'Data & Analytics',
       description: 'Tools for data processing, analysis, and storage',
-      skills: ['database', 'csv', 'json', 'analytics']
+      skills: ['database', 'csv', 'json', 'analytics'],
     },
     media: {
       id: 'media',
       name: 'Media & Content',
       description: 'Tools for image, video, and content processing',
-      skills: ['image', 'video', 'audio', 'pdf']
+      skills: ['image', 'video', 'audio', 'pdf'],
     },
     utility: {
       id: 'utility',
       name: 'Utilities',
       description: 'General-purpose utility tools and helpers',
-      skills: ['file', 'text', 'crypto', 'converter']
-    }
+      skills: ['file', 'text', 'crypto', 'converter'],
+    },
   };
 
   // Initialize categories with actual skill data
   for (const [categoryId, categoryConfig] of Object.entries(predefinedCategories)) {
-    const skillsInCategory = Object.values(skillGroups).filter(group =>
-      group.category === categoryId
+    const skillsInCategory = Object.values(skillGroups).filter(
+      group => group.category === categoryId
     );
 
     categories[categoryId] = {
       ...categoryConfig,
-      toolCount: skillsInCategory.reduce((sum, group) => sum + group.tools.length, 0)
+      toolCount: skillsInCategory.reduce((sum, group) => sum + group.tools.length, 0),
     };
   }
 
@@ -330,7 +318,7 @@ function parseEnvironments(raw: string): Record<string, ToolEnvironment> {
       accessLevel: extractListItem(envContent, 'Access Level'),
       rateLimits: extractListItem(envContent, 'Rate Limits'),
       authentication: extractListItem(envContent, 'Authentication'),
-      logging: extractListItem(envContent, 'Logging')
+      logging: extractListItem(envContent, 'Logging'),
     };
   }
 
@@ -364,7 +352,7 @@ function generateStatistics(
     activeSkills: Object.keys(skillGroups).length,
     categoriesCount: Object.keys(categories).length,
     toolsByCategory,
-    skillsByCategory
+    skillsByCategory,
   };
 }
 
@@ -416,7 +404,7 @@ function categorizeSkill(skillId: string): string {
     image: 'media',
     video: 'media',
     audio: 'media',
-    pdf: 'media'
+    pdf: 'media',
   };
 
   for (const [skill, category] of Object.entries(categoryMap)) {
@@ -430,11 +418,11 @@ function categorizeSkill(skillId: string): string {
 
 function inferSkillIdFromCategory(category: string): string {
   const categorySkillMap: Record<string, string> = {
-    'Communication': 'telegram',
-    'Productivity': 'notion',
-    'Automation': 'zapier',
+    Communication: 'telegram',
+    Productivity: 'notion',
+    Automation: 'zapier',
     'Data & Analytics': 'database',
-    'Media & Content': 'image'
+    'Media & Content': 'image',
   };
 
   return categorySkillMap[category] || 'unknown';
@@ -453,7 +441,7 @@ function inferSkillIdFromTool(name: string, description: string, defaultSkillId:
     calendar: ['calendar', 'event'],
     trello: ['trello', 'board'],
     zapier: ['zapier'],
-    ifttt: ['ifttt']
+    ifttt: ['ifttt'],
   };
 
   for (const [skillId, keywords] of Object.entries(skillKeywords)) {
@@ -474,7 +462,7 @@ function getDefaultEnvironments(): Record<string, ToolEnvironment> {
       accessLevel: 'Full access to all tools',
       rateLimits: 'Relaxed for testing',
       authentication: 'Development credentials',
-      logging: 'Verbose logging enabled'
+      logging: 'Verbose logging enabled',
     },
     production: {
       id: 'production',
@@ -483,7 +471,7 @@ function getDefaultEnvironments(): Record<string, ToolEnvironment> {
       accessLevel: 'Production-safe tools only',
       rateLimits: 'Standard API limits enforced',
       authentication: 'Production credentials required',
-      logging: 'Essential logs only'
+      logging: 'Essential logs only',
     },
     testing: {
       id: 'testing',
@@ -492,8 +480,8 @@ function getDefaultEnvironments(): Record<string, ToolEnvironment> {
       accessLevel: 'Safe tools for automated testing',
       rateLimits: 'Testing-specific limits',
       authentication: 'Test credentials',
-      logging: 'Test execution logs'
-    }
+      logging: 'Test execution logs',
+    },
   };
 }
 

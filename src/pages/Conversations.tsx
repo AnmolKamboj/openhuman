@@ -9,11 +9,17 @@ import {
 import Markdown from 'react-markdown';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { inferenceApi, type ModelInfo, type Tool, type ChatMessage } from '../services/api/inferenceApi';
-import { AgentToolRegistry } from '../services/agentToolRegistry';
 import { injectAll } from '../lib/ai/injector';
 import type { Message } from '../lib/ai/providers/interface';
+import { skillManager } from '../lib/skills/manager';
+import {
+  type ChatMessage,
+  inferenceApi,
+  type ModelInfo,
+  type Tool,
+} from '../services/api/inferenceApi';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
+import type { NotionPageSummary, NotionSummary, NotionUserProfile } from '../store/notionSlice';
 import {
   addInferenceResponse,
   addOptimisticMessage,
@@ -32,6 +38,51 @@ import {
 
 const MIN_PANEL_WIDTH = 200;
 const MAX_PANEL_WIDTH = 480;
+
+// ---------------------------------------------------------------------------
+// Notion context builder
+// ---------------------------------------------------------------------------
+
+function buildNotionContext(
+  profile: NotionUserProfile | null,
+  pages: NotionPageSummary[],
+  summaries: NotionSummary[],
+  workspaceName: string | null
+): string | null {
+  if (!profile && pages.length === 0) return null;
+
+  const lines: string[] = ['[NOTION_CONTEXT]'];
+
+  if (workspaceName) lines.push(`Workspace: ${workspaceName}`);
+  if (profile) {
+    const who = [profile.name, profile.email].filter(Boolean).join(' · ');
+    if (who) lines.push(`Connected as: ${who}`);
+  }
+
+  if (pages.length > 0) {
+    lines.push(`\nRecent Pages (${pages.length} total):`);
+    const top = pages.slice(0, 10);
+    for (const p of top) {
+      const urlPart = p.url ? ` — ${p.url}` : '';
+      lines.push(`• ${p.title}${urlPart}`);
+    }
+  }
+
+  if (summaries.length > 0) {
+    lines.push('\nAI Page Summaries:');
+    const top = summaries.slice(0, 5);
+    for (const s of top) {
+      const meta = [s.category, s.sentiment !== 'neutral' ? s.sentiment : null]
+        .filter(Boolean)
+        .join(', ');
+      const topicStr = s.topics.length > 0 ? ` | Topics: ${s.topics.slice(0, 4).join(', ')}` : '';
+      lines.push(`• ${s.summary}${meta ? ` [${meta}]` : ''}${topicStr}`);
+    }
+  }
+
+  lines.push('[/NOTION_CONTEXT]');
+  return lines.join('\n');
+}
 
 function formatRelativeTime(dateStr: string): string {
   const now = Date.now();
@@ -63,6 +114,17 @@ const Conversations = () => {
     suggestedQuestions,
     isLoadingSuggestions,
   } = useAppSelector(state => state.thread);
+
+  const skillsState = useAppSelector(state => state.skills);
+  const notionProfile = useAppSelector(state => state.notion.profile);
+  const notionPages = useAppSelector(state => state.notion.pages);
+  const notionSummaries = useAppSelector(state => state.notion.summaries);
+  const notionWorkspaceName = useAppSelector(
+    state =>
+      ((state.skills.skillStates?.notion as Record<string, unknown> | undefined)?.workspaceName as
+        | string
+        | null) ?? null
+  );
 
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -256,14 +318,11 @@ const Conversations = () => {
       // Process user message with SOUL + TOOLS injection
       let processedUserContent = trimmed;
       try {
-        const userMessage: Message = {
-          role: 'user',
-          content: [{ type: 'text', text: trimmed }]
-        };
+        const userMessage: Message = { role: 'user', content: [{ type: 'text', text: trimmed }] };
 
         const injectedMessage = await injectAll(userMessage, {
           mode: 'context-block',
-          includeMetadata: false
+          includeMetadata: false,
         });
 
         // Extract the processed text
@@ -278,37 +337,15 @@ const Conversations = () => {
         // Continue with original message
       }
 
-      // Load available tools for transparent tool calling
-      const toolRegistry = AgentToolRegistry.getInstance();
-      let availableTools: Tool[] = [];
-
-      try {
-        const toolSchemas = await toolRegistry.loadToolSchemas();
-        const allTools = toolSchemas.map(schema => ({
-          type: 'function' as const,
-          function: {
-            name: schema.function.name,
-            description: schema.function.description,
-            parameters: schema.function.parameters
-          }
-        }));
-
-        // Filter to only Gmail and Notion tools
-        console.log(`🔧 All tools available:`, allTools.map(t => t.function.name));
-
-        availableTools = allTools.filter(tool => {
-          const toolName = tool.function.name.toLowerCase();
-          const isMatch = toolName.includes('gmail') || toolName.includes('notion');
-          if (isMatch) {
-            console.log(`✅ Including tool: ${tool.function.name}`);
-          }
-          return isMatch;
-        });
-
-        console.log(`🔧 Loaded ${availableTools.length} Gmail and Notion tools (from ${allTools.length} total) for transparent execution`);
-        console.log(`🔧 Filtered tools:`, availableTools.map(t => t.function.name));
-      } catch (error) {
-        console.warn('⚠️ Failed to load tools, continuing without tool support:', error);
+      // Prepend Notion workspace context if connected
+      const notionContext = buildNotionContext(
+        notionProfile,
+        notionPages,
+        notionSummaries,
+        notionWorkspaceName
+      );
+      if (notionContext) {
+        processedUserContent = `${notionContext}\n\n${processedUserContent}`;
       }
 
       const chatMessages: ChatMessage[] = [
@@ -319,132 +356,141 @@ const Conversations = () => {
         { role: 'user' as const, content: processedUserContent },
       ];
 
-      // Tool calling loop - continue until no more tool calls needed
-      let currentMessages = [...chatMessages];
-      let finalResponse = '';
-      let iterations = 0;
-      const maxIterations = 10;
+      // Build tool definitions for ALL ready skills — namespaced as {skillId}__{toolName}
+      const allSkillTools: Tool[] = Object.entries(skillsState.skills)
+        .filter(([, skill]) => skill.status === 'ready' && skill.tools?.length)
+        .flatMap(([skillId, skill]) =>
+          (skill.tools ?? []).map(t => ({
+            type: 'function' as const,
+            function: {
+              name: `${skillId}__${t.name}`,
+              description: t.description,
+              parameters: t.inputSchema as Tool['function']['parameters'],
+            },
+          }))
+        );
 
-      while (iterations < maxIterations) {
-        iterations++;
-        console.log(`🔄 Tool calling iteration ${iterations}`);
+      console.log(
+        `[Conversations] active skill tools: ${allSkillTools.length}`,
+        allSkillTools.map(t => t.function.name)
+      );
 
-        // Log the full request being sent to inference API
-        const requestPayload = {
+      // Agentic tool calling loop — handles multi-turn tool execution
+      const loopMessages = [...chatMessages];
+      let finalContent = '';
+      const MAX_TOOL_ROUNDS = 5;
+
+      for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+        const request: Parameters<typeof inferenceApi.createChatCompletion>[0] = {
           model: selectedModel,
-          messages: currentMessages,
-          tools: availableTools.length > 0 ? availableTools : undefined,
-          tool_choice: availableTools.length > 0 ? 'auto' : undefined,
+          messages: loopMessages,
+          ...(allSkillTools.length > 0
+            ? { tools: allSkillTools, tool_choice: 'auto' as const }
+            : {}),
         };
-
-        console.log(`📤 [INFERENCE REQUEST] Iteration ${iterations}:`, {
-          model: requestPayload.model,
-          messagesCount: requestPayload.messages.length,
-          toolsCount: requestPayload.tools?.length || 0,
-          toolChoice: requestPayload.tool_choice,
-          lastMessage: requestPayload.messages[requestPayload.messages.length - 1],
+        console.log('[Conversations] inference request:', {
+          round: round + 1,
+          model: request.model,
+          messageCount: request.messages.length,
+          tools: request.tools?.length ?? 0,
+          payload: request,
         });
-
-        console.log(`📋 [INFERENCE REQUEST FULL]`, JSON.stringify(requestPayload, null, 2));
-
-        const response = await inferenceApi.createChatCompletion(requestPayload);
-
-        console.log(`📥 [INFERENCE RESPONSE] Iteration ${iterations}:`, {
-          id: response.id,
-          model: response.model,
-          choicesCount: response.choices.length,
+        const response = await inferenceApi.createChatCompletion(request);
+        console.log('[Conversations] inference response:', {
+          round: round + 1,
+          choices: response.choices?.length ?? 0,
           usage: response.usage,
-          assistantMessage: response.choices[0]?.message,
-          toolCallsCount: response.choices[0]?.message?.tool_calls?.length || 0,
+          payload: response,
         });
 
-        console.log(`📋 [INFERENCE RESPONSE FULL]`, JSON.stringify(response, null, 2));
+        const choice = response.choices[0];
+        if (!choice) break;
 
-        const assistantMessage = response.choices[0]?.message;
-        if (!assistantMessage) {
-          throw new Error('No assistant message in response');
-        }
+        const { finish_reason, message } = choice;
 
-        // Add assistant message to conversation
-        currentMessages.push({
-          role: 'assistant',
-          content: assistantMessage.content,
-          tool_calls: assistantMessage.tool_calls,
-        });
+        if (finish_reason === 'tool_calls' && message.tool_calls?.length) {
+          // Append assistant message with tool_calls
+          loopMessages.push({
+            role: 'assistant',
+            content: message.content ?? '',
+            tool_calls: message.tool_calls,
+          });
 
-        // If no tool calls, we're done
-        if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
-          finalResponse = assistantMessage.content || '';
-          break;
-        }
+          const latestIndex = message.tool_calls.length - 1;
+          // API requires a tool message for every tool_call_id; we execute only the latest and send placeholders for the rest
+          for (let i = 0; i < message.tool_calls.length; i++) {
+            const tc = message.tool_calls[i];
+            if (i !== latestIndex) {
+              loopMessages.push({ role: 'tool', tool_call_id: tc.id, content: '' });
+              continue;
+            }
 
-        console.log(`🛠️ Executing ${assistantMessage.tool_calls.length} tool calls`);
+            const dunderIdx = tc.function.name.indexOf('__');
+            const skillId = dunderIdx !== -1 ? tc.function.name.substring(0, dunderIdx) : '';
+            const toolName =
+              dunderIdx !== -1 ? tc.function.name.substring(dunderIdx + 2) : tc.function.name;
 
-        // Execute each tool call
-        for (const toolCall of assistantMessage.tool_calls) {
-          try {
-            const { function: { name: toolName, arguments: toolArgs } } = toolCall;
+            console.log(
+              `[Conversations] tool_call dispatched — skill="${skillId}" tool="${toolName}" call_id="${tc.id}"`
+            );
 
-            // Extract skill ID from tool name (format: skillId_toolName)
-            const underscoreIndex = toolName.lastIndexOf('_');
-            const skillId = underscoreIndex > -1 ? toolName.substring(0, underscoreIndex) : 'unknown';
-
-            console.log(`⚡ [TOOL CALL] Processing tool call:`, {
-              id: toolCall.id,
-              name: toolName,
-              skillId,
-              arguments: toolArgs,
-              argumentsType: typeof toolArgs,
-              argumentsLength: toolArgs?.length
-            });
-
-            const execution = await toolRegistry.executeTool(skillId, toolName, toolArgs);
-
-            console.log(`⚡ [TOOL RESULT] Tool execution completed:`, {
-              toolName,
-              status: execution.status,
-              executionTimeMs: execution.executionTimeMs,
-              resultLength: execution.result?.length,
-              hasError: !!execution.errorMessage
-            });
-
-            // Add tool result to conversation
-            currentMessages.push({
-              role: 'tool',
-              content: execution.result || execution.errorMessage || 'Tool executed',
-              tool_call_id: toolCall.id,
-            });
-
-            console.log(`✅ Tool ${toolName} completed: ${execution.status}`);
-          } catch (error) {
-            console.error(`❌ [TOOL ERROR] Tool execution failed for ${toolCall.function.name}:`, {
-              error: error,
-              errorMessage: error instanceof Error ? error.message : String(error),
-              errorStack: error instanceof Error ? error.stack : undefined,
-              toolCall: {
-                id: toolCall.id,
-                name: toolCall.function.name,
-                arguments: toolCall.function.arguments
+            let toolResultContent = '';
+            try {
+              let toolArgs: Record<string, unknown> = {};
+              try {
+                toolArgs = JSON.parse(tc.function.arguments) as Record<string, unknown>;
+              } catch {
+                toolArgs = {};
               }
-            });
+              console.log(
+                `[Conversations] calling skillManager.callTool("${skillId}", "${toolName}")`,
+                toolArgs
+              );
+              const result = await skillManager.callTool(skillId, toolName, toolArgs);
+              toolResultContent = result.content.map(c => c.text).join('\n');
+              let toolReturnedError = result.isError;
+              if (!toolReturnedError && toolResultContent) {
+                try {
+                  const parsed = JSON.parse(toolResultContent) as Record<string, unknown>;
+                  if (parsed && typeof parsed.error === 'string') {
+                    toolReturnedError = true;
+                    toolResultContent = `Error: ${parsed.error}`;
+                  }
+                } catch {
+                  // not JSON or no error key — keep content as-is
+                }
+              }
+              if (toolReturnedError) {
+                console.warn(
+                  `[Conversations] tool "${toolName}" returned an error:`,
+                  toolResultContent
+                );
+                if (!toolResultContent.startsWith('Error: ')) {
+                  toolResultContent = `Error: ${toolResultContent}`;
+                }
+              } else {
+                console.log(
+                  `[Conversations] tool "${toolName}" succeeded:`,
+                  toolResultContent.slice(0, 200)
+                );
+              }
+            } catch (toolErr) {
+              console.error(`[Conversations] tool "${toolName}" threw:`, toolErr);
+              toolResultContent = `Tool execution failed: ${toolErr instanceof Error ? toolErr.message : String(toolErr)}`;
+            }
 
-            // Add error result to conversation
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            currentMessages.push({
-              role: 'tool',
-              content: `Tool execution failed: ${errorMessage}`,
-              tool_call_id: toolCall.id,
-            });
+            loopMessages.push({ role: 'tool', tool_call_id: tc.id, content: toolResultContent });
           }
+          // Continue loop to get final response after tool results
+          continue;
         }
+
+        // Normal (non-tool) response — done
+        finalContent = message.content ?? '';
+        break;
       }
 
-      if (iterations >= maxIterations) {
-        console.warn(`⚠️ Tool calling loop exceeded maximum iterations (${maxIterations})`);
-        finalResponse = finalResponse || 'Task completed with maximum iterations reached.';
-      }
-
-      dispatch(addInferenceResponse({ content: finalResponse }));
+      dispatch(addInferenceResponse({ content: finalContent }));
     } catch (err) {
       dispatch(removeOptimisticMessages());
       const msg =
@@ -891,7 +937,6 @@ const Conversations = () => {
                   </div>
                 </div>
               )}
-
 
               {/* Message Input */}
               <div className="flex-shrink-0 border-t border-white/10 px-4 py-3">

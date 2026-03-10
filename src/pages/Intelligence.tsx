@@ -14,9 +14,9 @@ import SkillSetupModal from '../components/skills/SkillSetupModal';
 import { useIntelligenceStats } from '../hooks/useIntelligenceStats';
 import { deriveConnectionStatus, useSkillConnectionStatus } from '../lib/skills/hooks';
 import { skillManager } from '../lib/skills/manager';
+import type { SkillConnectionStatus, SkillHostConnectionState } from '../lib/skills/types';
 import { updateToolsDocumentation } from '../lib/tools/auto-update';
 import { forceToolsCacheRefresh } from '../lib/tools/file-watcher';
-import type { SkillConnectionStatus, SkillHostConnectionState } from '../lib/skills/types';
 import { useAppSelector } from '../store/hooks';
 import { IS_DEV } from '../utils/config';
 

@@ -1,13 +1,14 @@
-import { describe, test, expect, beforeEach, vi, type Mock } from 'vitest';
+import { beforeEach, describe, expect, type Mock, test, vi } from 'vitest';
+
+import type {
+  AgentExecutionOptions,
+  AgentExecutionResult,
+  AgentToolExecution,
+  AgentToolSchema,
+} from '../../types/agent';
 import { AgentLoopService } from '../agentLoop';
 import { AgentToolRegistry } from '../agentToolRegistry';
 import { apiClient } from '../apiClient';
-import type {
-  AgentToolSchema,
-  AgentExecutionResult,
-  AgentToolExecution,
-  AgentExecutionOptions
-} from '../../types/agent';
 
 // Mock dependencies
 vi.mock('../agentToolRegistry');
@@ -20,35 +21,35 @@ describe('AgentLoopService', () => {
 
   const mockToolSchemas: AgentToolSchema[] = [
     {
-      type: "function",
+      type: 'function',
       function: {
-        name: "github_list_issues",
-        description: "List GitHub issues for a repository",
+        name: 'github_list_issues',
+        description: 'List GitHub issues for a repository',
         parameters: {
-          type: "object",
+          type: 'object',
           properties: {
-            owner: { type: "string", description: "Repository owner" },
-            repo: { type: "string", description: "Repository name" }
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
           },
-          required: ["owner", "repo"]
-        }
-      }
+          required: ['owner', 'repo'],
+        },
+      },
     },
     {
-      type: "function",
+      type: 'function',
       function: {
-        name: "notion_create_page",
-        description: "Create a new Notion page",
+        name: 'notion_create_page',
+        description: 'Create a new Notion page',
         parameters: {
-          type: "object",
+          type: 'object',
           properties: {
-            title: { type: "string", description: "Page title" },
-            content: { type: "string", description: "Page content" }
+            title: { type: 'string', description: 'Page title' },
+            content: { type: 'string', description: 'Page content' },
           },
-          required: ["title"]
-        }
-      }
-    }
+          required: ['title'],
+        },
+      },
+    },
   ];
 
   beforeEach(() => {
@@ -56,10 +57,7 @@ describe('AgentLoopService', () => {
     vi.clearAllMocks();
 
     // Setup default mock implementations
-    const mockRegistryInstance = {
-      loadToolSchemas: vi.fn(),
-      executeTool: vi.fn()
-    };
+    const mockRegistryInstance = { loadToolSchemas: vi.fn(), executeTool: vi.fn() };
 
     mockToolRegistry.getInstance.mockReturnValue(mockRegistryInstance as any);
     mockRegistryInstance.loadToolSchemas.mockResolvedValue(mockToolSchemas);
@@ -68,28 +66,25 @@ describe('AgentLoopService', () => {
   describe('executeTask', () => {
     test('should execute simple task without tool calls', async () => {
       const mockResponse = {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            content: 'Hello! How can I help you today?',
-            tool_calls: undefined
+        choices: [
+          {
+            message: {
+              role: 'assistant' as const,
+              content: 'Hello! How can I help you today?',
+              tool_calls: undefined,
+            },
+            finish_reason: 'stop' as const,
           },
-          finish_reason: 'stop' as const
-        }],
-        usage: {
-          prompt_tokens: 20,
-          completion_tokens: 10,
-          total_tokens: 30
-        }
+        ],
+        usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 },
       };
 
       mockApiClient.post.mockResolvedValue({ data: mockResponse });
 
-      const result = await service.executeTask(
-        'Hello',
-        'conv_123',
-        { maxIterations: 5, timeoutMs: 30000 }
-      );
+      const result = await service.executeTask('Hello', 'conv_123', {
+        maxIterations: 5,
+        timeoutMs: 30000,
+      });
 
       expect(result.status).toBe('completed');
       expect(result.finalResponse).toBe('Hello! How can I help you today?');
@@ -103,50 +98,49 @@ describe('AgentLoopService', () => {
         expect.objectContaining({
           model: expect.any(String),
           messages: expect.arrayContaining([
-            expect.objectContaining({
-              role: 'user',
-              content: 'Hello'
-            })
+            expect.objectContaining({ role: 'user', content: 'Hello' }),
           ]),
           tools: mockToolSchemas,
-          tool_choice: 'auto'
+          tool_choice: 'auto',
         })
       );
     });
 
     test('should execute task with single tool call', async () => {
       const mockToolCallResponse = {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            content: null,
-            tool_calls: [{
-              id: 'call_123',
-              type: 'function' as const,
-              function: {
-                name: 'github_list_issues',
-                arguments: '{"owner":"user","repo":"test"}'
-              }
-            }]
+        choices: [
+          {
+            message: {
+              role: 'assistant' as const,
+              content: null,
+              tool_calls: [
+                {
+                  id: 'call_123',
+                  type: 'function' as const,
+                  function: {
+                    name: 'github_list_issues',
+                    arguments: '{"owner":"user","repo":"test"}',
+                  },
+                },
+              ],
+            },
+            finish_reason: 'tool_calls' as const,
           },
-          finish_reason: 'tool_calls' as const
-        }]
+        ],
       };
 
       const mockFinalResponse = {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            content: 'I found 3 open issues in your repository.',
-            tool_calls: undefined
+        choices: [
+          {
+            message: {
+              role: 'assistant' as const,
+              content: 'I found 3 open issues in your repository.',
+              tool_calls: undefined,
+            },
+            finish_reason: 'stop' as const,
           },
-          finish_reason: 'stop' as const
-        }],
-        usage: {
-          prompt_tokens: 50,
-          completion_tokens: 20,
-          total_tokens: 70
-        }
+        ],
+        usage: { prompt_tokens: 50, completion_tokens: 20, total_tokens: 70 },
       };
 
       const mockToolExecution: AgentToolExecution = {
@@ -158,7 +152,7 @@ describe('AgentLoopService', () => {
         startTime: Date.now() - 1500,
         endTime: Date.now(),
         executionTimeMs: 1500,
-        result: '{"issues":[{"title":"Bug fix","number":1}]}'
+        result: '{"issues":[{"title":"Bug fix","number":1}]}',
       };
 
       // Setup mocks
@@ -169,10 +163,7 @@ describe('AgentLoopService', () => {
         .mockResolvedValueOnce({ data: mockToolCallResponse })
         .mockResolvedValueOnce({ data: mockFinalResponse });
 
-      const result = await service.executeTask(
-        'Show me GitHub issues',
-        'conv_123'
-      );
+      const result = await service.executeTask('Show me GitHub issues', 'conv_123');
 
       expect(result.status).toBe('completed');
       expect(result.finalResponse).toBe('I found 3 open issues in your repository.');
@@ -191,50 +182,57 @@ describe('AgentLoopService', () => {
 
     test('should handle multiple tool calls in sequence', async () => {
       const mockFirstToolCallResponse = {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            content: null,
-            tool_calls: [{
-              id: 'call_1',
-              type: 'function' as const,
-              function: {
-                name: 'github_list_issues',
-                arguments: '{"owner":"user","repo":"test"}'
-              }
-            }]
+        choices: [
+          {
+            message: {
+              role: 'assistant' as const,
+              content: null,
+              tool_calls: [
+                {
+                  id: 'call_1',
+                  type: 'function' as const,
+                  function: {
+                    name: 'github_list_issues',
+                    arguments: '{"owner":"user","repo":"test"}',
+                  },
+                },
+              ],
+            },
+            finish_reason: 'tool_calls' as const,
           },
-          finish_reason: 'tool_calls' as const
-        }]
+        ],
       };
 
       const mockSecondToolCallResponse = {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            content: null,
-            tool_calls: [{
-              id: 'call_2',
-              type: 'function' as const,
-              function: {
-                name: 'notion_create_page',
-                arguments: '{"title":"Issues Summary"}'
-              }
-            }]
+        choices: [
+          {
+            message: {
+              role: 'assistant' as const,
+              content: null,
+              tool_calls: [
+                {
+                  id: 'call_2',
+                  type: 'function' as const,
+                  function: { name: 'notion_create_page', arguments: '{"title":"Issues Summary"}' },
+                },
+              ],
+            },
+            finish_reason: 'tool_calls' as const,
           },
-          finish_reason: 'tool_calls' as const
-        }]
+        ],
       };
 
       const mockFinalResponse = {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            content: 'I created a summary page with your GitHub issues.',
-            tool_calls: undefined
+        choices: [
+          {
+            message: {
+              role: 'assistant' as const,
+              content: 'I created a summary page with your GitHub issues.',
+              tool_calls: undefined,
+            },
+            finish_reason: 'stop' as const,
           },
-          finish_reason: 'stop' as const
-        }]
+        ],
       };
 
       const mockToolExecution1: AgentToolExecution = {
@@ -246,7 +244,7 @@ describe('AgentLoopService', () => {
         startTime: Date.now() - 2000,
         endTime: Date.now() - 1000,
         executionTimeMs: 1000,
-        result: '{"issues":[{"title":"Bug fix","number":1}]}'
+        result: '{"issues":[{"title":"Bug fix","number":1}]}',
       };
 
       const mockToolExecution2: AgentToolExecution = {
@@ -258,7 +256,7 @@ describe('AgentLoopService', () => {
         startTime: Date.now() - 800,
         endTime: Date.now(),
         executionTimeMs: 800,
-        result: '{"page_id":"page_123"}'
+        result: '{"page_id":"page_123"}',
       };
 
       // Setup mocks
@@ -300,17 +298,21 @@ describe('AgentLoopService', () => {
 
     test('should respect maximum iterations limit', async () => {
       const mockToolCallResponse = {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            tool_calls: [{
-              id: 'call_1',
-              type: 'function' as const,
-              function: { name: 'github_list_issues', arguments: '{}' }
-            }]
+        choices: [
+          {
+            message: {
+              role: 'assistant' as const,
+              tool_calls: [
+                {
+                  id: 'call_1',
+                  type: 'function' as const,
+                  function: { name: 'github_list_issues', arguments: '{}' },
+                },
+              ],
+            },
+            finish_reason: 'tool_calls' as const,
           },
-          finish_reason: 'tool_calls' as const
-        }]
+        ],
       };
 
       // Mock to always return tool calls (infinite loop scenario)
@@ -325,17 +327,16 @@ describe('AgentLoopService', () => {
         startTime: Date.now() - 100,
         endTime: Date.now(),
         executionTimeMs: 100,
-        result: '{}'
+        result: '{}',
       };
 
       const mockRegistryInstance = mockToolRegistry.getInstance();
       mockRegistryInstance.executeTool.mockResolvedValue(mockToolExecution);
 
-      const result = await service.executeTask(
-        'Infinite loop test',
-        'conv_123',
-        { maxIterations: 2, timeoutMs: 10000 }
-      );
+      const result = await service.executeTask('Infinite loop test', 'conv_123', {
+        maxIterations: 2,
+        timeoutMs: 10000,
+      });
 
       expect(result.status).toBe('max_iterations');
       expect(result.iterations).toBe(2);
@@ -344,31 +345,34 @@ describe('AgentLoopService', () => {
 
     test('should handle tool execution error gracefully', async () => {
       const mockToolCallResponse = {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            tool_calls: [{
-              id: 'call_1',
-              type: 'function' as const,
-              function: {
-                name: 'invalid_tool',
-                arguments: '{}'
-              }
-            }]
+        choices: [
+          {
+            message: {
+              role: 'assistant' as const,
+              tool_calls: [
+                {
+                  id: 'call_1',
+                  type: 'function' as const,
+                  function: { name: 'invalid_tool', arguments: '{}' },
+                },
+              ],
+            },
+            finish_reason: 'tool_calls' as const,
           },
-          finish_reason: 'tool_calls' as const
-        }]
+        ],
       };
 
       const mockErrorResponse = {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            content: 'I encountered an error while executing the tool.',
-            tool_calls: undefined
+        choices: [
+          {
+            message: {
+              role: 'assistant' as const,
+              content: 'I encountered an error while executing the tool.',
+              tool_calls: undefined,
+            },
+            finish_reason: 'stop' as const,
           },
-          finish_reason: 'stop' as const
-        }]
+        ],
       };
 
       const mockToolExecution: AgentToolExecution = {
@@ -380,7 +384,7 @@ describe('AgentLoopService', () => {
         startTime: Date.now() - 100,
         endTime: Date.now(),
         executionTimeMs: 100,
-        errorMessage: 'Tool not found'
+        errorMessage: 'Tool not found',
       };
 
       const mockRegistryInstance = mockToolRegistry.getInstance();
@@ -390,10 +394,7 @@ describe('AgentLoopService', () => {
         .mockResolvedValueOnce({ data: mockToolCallResponse })
         .mockResolvedValueOnce({ data: mockErrorResponse });
 
-      const result = await service.executeTask(
-        'Test error handling',
-        'conv_123'
-      );
+      const result = await service.executeTask('Test error handling', 'conv_123');
 
       expect(result.status).toBe('completed');
       expect(result.toolExecutions).toHaveLength(1);
@@ -404,10 +405,7 @@ describe('AgentLoopService', () => {
     test('should handle API client errors', async () => {
       mockApiClient.post.mockRejectedValue(new Error('Network error'));
 
-      const result = await service.executeTask(
-        'Test API error',
-        'conv_123'
-      );
+      const result = await service.executeTask('Test API error', 'conv_123');
 
       expect(result.status).toBe('error');
       expect(result.error).toContain('Network error');
@@ -417,31 +415,33 @@ describe('AgentLoopService', () => {
 
     test('should parse tool name from function name correctly', async () => {
       const mockToolCallResponse = {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            tool_calls: [{
-              id: 'call_1',
-              type: 'function' as const,
-              function: {
-                name: 'github_list_issues', // Should parse to skillId=github, toolName=list_issues
-                arguments: '{"owner":"user","repo":"test"}'
-              }
-            }]
+        choices: [
+          {
+            message: {
+              role: 'assistant' as const,
+              tool_calls: [
+                {
+                  id: 'call_1',
+                  type: 'function' as const,
+                  function: {
+                    name: 'github_list_issues', // Should parse to skillId=github, toolName=list_issues
+                    arguments: '{"owner":"user","repo":"test"}',
+                  },
+                },
+              ],
+            },
+            finish_reason: 'tool_calls' as const,
           },
-          finish_reason: 'tool_calls' as const
-        }]
+        ],
       };
 
       const mockFinalResponse = {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            content: 'Done',
-            tool_calls: undefined
+        choices: [
+          {
+            message: { role: 'assistant' as const, content: 'Done', tool_calls: undefined },
+            finish_reason: 'stop' as const,
           },
-          finish_reason: 'stop' as const
-        }]
+        ],
       };
 
       const mockToolExecution: AgentToolExecution = {
@@ -453,7 +453,7 @@ describe('AgentLoopService', () => {
         startTime: Date.now() - 100,
         endTime: Date.now(),
         executionTimeMs: 100,
-        result: '{}'
+        result: '{}',
       };
 
       const mockRegistryInstance = mockToolRegistry.getInstance();
@@ -486,13 +486,12 @@ describe('AgentLoopService', () => {
   describe('task execution options', () => {
     test('should use default options when none provided', async () => {
       const mockResponse = {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            content: 'Test response'
+        choices: [
+          {
+            message: { role: 'assistant' as const, content: 'Test response' },
+            finish_reason: 'stop' as const,
           },
-          finish_reason: 'stop' as const
-        }]
+        ],
       };
 
       mockApiClient.post.mockResolvedValue({ data: mockResponse });
@@ -506,13 +505,12 @@ describe('AgentLoopService', () => {
 
     test('should respect custom execution options', async () => {
       const mockResponse = {
-        choices: [{
-          message: {
-            role: 'assistant' as const,
-            content: 'Test response'
+        choices: [
+          {
+            message: { role: 'assistant' as const, content: 'Test response' },
+            finish_reason: 'stop' as const,
           },
-          finish_reason: 'stop' as const
-        }]
+        ],
       };
 
       mockApiClient.post.mockResolvedValue({ data: mockResponse });
@@ -521,7 +519,7 @@ describe('AgentLoopService', () => {
         maxIterations: 3,
         timeoutMs: 5000,
         model: 'gpt-3.5-turbo',
-        temperature: 0.7
+        temperature: 0.7,
       };
 
       const result = await service.executeTask('Test', 'conv_123', customOptions);
@@ -531,10 +529,7 @@ describe('AgentLoopService', () => {
       // Verify custom options were passed to API
       expect(mockApiClient.post).toHaveBeenCalledWith(
         '/api/v1/conversations/conv_123/messages',
-        expect.objectContaining({
-          model: 'gpt-3.5-turbo',
-          temperature: 0.7
-        })
+        expect.objectContaining({ model: 'gpt-3.5-turbo', temperature: 0.7 })
       );
     });
   });

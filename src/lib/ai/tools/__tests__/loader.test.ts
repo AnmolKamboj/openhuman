@@ -2,9 +2,9 @@
  * Unit tests for the tools loader system.
  * Tests loading, parsing, and caching functionality.
  */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { loadTools, parseTools, clearToolsCache } from '../loader';
+import { clearToolsCache, loadTools, parseTools } from '../loader';
 import type { ToolsConfig } from '../types';
 
 // Mock the bundled tools markdown
@@ -54,7 +54,7 @@ AlphaHuman has access to **4 tools** across **2 integrations**.
 - **to** (string) **(required)**: Recipient email address
 - **subject** (string) **(required)**: Email subject line
 - **body** (string) **(required)**: Email body content
-`
+`,
 }));
 
 // Mock localStorage
@@ -62,12 +62,10 @@ const localStorageMock = {
   getItem: vi.fn(),
   setItem: vi.fn(),
   removeItem: vi.fn(),
-  clear: vi.fn()
+  clear: vi.fn(),
 };
 
-Object.defineProperty(window, 'localStorage', {
-  value: localStorageMock
-});
+Object.defineProperty(window, 'localStorage', { value: localStorageMock });
 
 // Mock fetch
 global.fetch = vi.fn();
@@ -110,7 +108,7 @@ describe('Tools Loader', () => {
       expect(config.tools[0]).toMatchObject({
         name: 'send_message',
         description: 'Send a message to a Telegram chat',
-        skillId: 'telegram'
+        skillId: 'telegram',
       });
 
       expect(config.tools[0].inputSchema.properties).toHaveProperty('chat_id');
@@ -121,7 +119,7 @@ describe('Tools Loader', () => {
       expect(config.tools[1]).toMatchObject({
         name: 'get_history',
         description: 'Get chat history',
-        skillId: 'telegram'
+        skillId: 'telegram',
       });
 
       expect(config.tools[1].inputSchema.properties).toEqual({});
@@ -206,17 +204,13 @@ describe('Tools Loader', () => {
           activeSkills: 0,
           categoriesCount: 0,
           toolsByCategory: {},
-          skillsByCategory: {}
+          skillsByCategory: {},
         },
         isDefault: false,
-        loadedAt: Date.now()
+        loadedAt: Date.now(),
       };
 
-      const cacheEntry = {
-        config: mockConfig,
-        timestamp: Date.now(),
-        version: '1.0.0'
-      };
+      const cacheEntry = { config: mockConfig, timestamp: Date.now(), version: '1.0.0' };
 
       localStorageMock.getItem.mockReturnValue(JSON.stringify(cacheEntry));
 
@@ -229,16 +223,13 @@ describe('Tools Loader', () => {
     it('should load from GitHub when cache is expired', async () => {
       const expiredCacheEntry = {
         config: {} as ToolsConfig,
-        timestamp: Date.now() - (1000 * 60 * 60), // 1 hour ago
-        version: '1.0.0'
+        timestamp: Date.now() - 1000 * 60 * 60, // 1 hour ago
+        version: '1.0.0',
       };
 
       localStorageMock.getItem.mockReturnValue(JSON.stringify(expiredCacheEntry));
 
-      (fetch as any).mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve('# Remote Tools')
-      });
+      (fetch as any).mockResolvedValue({ ok: true, text: () => Promise.resolve('# Remote Tools') });
 
       const result = await loadTools();
 
@@ -263,10 +254,7 @@ describe('Tools Loader', () => {
     it('should cache the loaded configuration', async () => {
       localStorageMock.getItem.mockReturnValue(null);
 
-      (fetch as any).mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve('# Remote Tools')
-      });
+      (fetch as any).mockResolvedValue({ ok: true, text: () => Promise.resolve('# Remote Tools') });
 
       await loadTools();
 

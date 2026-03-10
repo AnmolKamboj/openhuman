@@ -1,7 +1,18 @@
 import soulMd from '../../../../ai/SOUL.md?raw';
-import type { SoulConfig, SoulIdentity, PersonalityTrait, VoiceToneGuideline, BehaviorPattern, SafetyRule, Interaction, MemorySettings, EmergencyResponse } from './types';
+import type {
+  BehaviorPattern,
+  EmergencyResponse,
+  Interaction,
+  MemorySettings,
+  PersonalityTrait,
+  SafetyRule,
+  SoulConfig,
+  SoulIdentity,
+  VoiceToneGuideline,
+} from './types';
 
-const SOUL_GITHUB_URL = 'https://raw.githubusercontent.com/alphahumanxyz/alphahuman/refs/heads/main/ai/SOUL.md';
+const SOUL_GITHUB_URL =
+  'https://raw.githubusercontent.com/alphahumanxyz/alphahuman/refs/heads/main/ai/SOUL.md';
 const SOUL_CACHE_KEY = 'alphahuman.soul.cache';
 const SOUL_CACHE_TTL = 1000 * 60 * 30; // 30 minutes
 
@@ -53,10 +64,7 @@ export async function loadSoul(): Promise<SoulConfig> {
   // Cache the result
   cachedSoulConfig = config;
   try {
-    localStorage.setItem(SOUL_CACHE_KEY, JSON.stringify({
-      config,
-      timestamp: Date.now()
-    }));
+    localStorage.setItem(SOUL_CACHE_KEY, JSON.stringify({ config, timestamp: Date.now() }));
   } catch {
     // Ignore storage errors
   }
@@ -88,7 +96,7 @@ export function parseSoul(raw: string, isDefault: boolean): SoulConfig {
     memorySettings,
     emergencyResponses,
     isDefault,
-    loadedAt: Date.now()
+    loadedAt: Date.now(),
   };
 }
 
@@ -127,10 +135,7 @@ function parsePersonality(raw: string): PersonalityTrait[] {
   for (const line of lines) {
     const match = line.match(/- \*\*(.+?)\*\*:\s*(.+)/);
     if (match) {
-      traits.push({
-        trait: match[1].trim(),
-        description: match[2].trim()
-      });
+      traits.push({ trait: match[1].trim(), description: match[2].trim() });
     }
   }
 
@@ -194,7 +199,7 @@ function parseSafetyRules(raw: string): SafetyRule[] {
       rules.push({
         id: `safety-${i + 1}`,
         rule,
-        priority: 10 - i // Earlier rules have higher priority
+        priority: 10 - i, // Earlier rules have higher priority
       });
     }
   }
@@ -212,10 +217,7 @@ function parseInteractions(raw: string): Interaction[] {
   for (const line of lines) {
     const match = line.match(/^\d+\.\s*\*\*(.+?)\*\*:\s*(.+)/);
     if (match) {
-      interactions.push({
-        name: match[1].trim(),
-        description: match[2].trim()
-      });
+      interactions.push({ name: match[1].trim(), description: match[2].trim() });
     }
   }
 
@@ -249,10 +251,7 @@ function parseEmergencyResponses(raw: string): EmergencyResponse[] {
   for (const line of lines) {
     const match = line.match(/- \*\*(.+?)\*\*:\s*(.+)/);
     if (match) {
-      responses.push({
-        trigger: match[1].trim(),
-        response: match[2].trim()
-      });
+      responses.push({ trigger: match[1].trim(), response: match[2].trim() });
     }
   }
 

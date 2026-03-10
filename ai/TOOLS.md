@@ -7,12 +7,12 @@ This document lists all available tools that AlphaHuman can use to interact with
 AlphaHuman has access to **104 tools** across **3 integrations**.
 
 **Quick Statistics:**
+
 - **Github**: 72 tools
 - **Gmail**: 7 tools
 - **Notion**: 25 tools
 
 ## Available Tools
-
 
 ### Github Tools
 
@@ -23,6 +23,7 @@ This skill provides 72 tools for github integration.
 **Description**: List repositories for the authenticated user or a specific owner
 
 **Parameters**:
+
 - **limit** (number): Maximum number of repositories to return
 - **owner** (string): Repository owner (user or org). Defaults to the authenticated user
 - **sort** (string): Sort field
@@ -31,6 +32,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "list-repos",
@@ -50,20 +52,16 @@ This skill provides 72 tools for github integration.
 **Description**: Get detailed information about a specific repository
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "get-repo",
-  "parameters": {
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
-}
+{ "tool": "get-repo", "parameters": { "owner": "example_owner", "repo": "example_repo" } }
 ```
 
 ---
@@ -73,6 +71,7 @@ This skill provides 72 tools for github integration.
 **Description**: Create a new repository for the authenticated user
 
 **Parameters**:
+
 - **auto_init** (boolean): Initialize with a README
 - **description** (string): Repository description
 - **name** (string) **(required)**: Repository name
@@ -81,6 +80,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "create-repo",
@@ -100,6 +100,7 @@ This skill provides 72 tools for github integration.
 **Description**: Fork a repository to the authenticated user's account
 
 **Parameters**:
+
 - **fork_name** (string): Custom name for the forked repository
 - **owner** (string) **(required)**: Owner of the repository to fork
 - **repo** (string) **(required)**: Repository name to fork
@@ -107,6 +108,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "fork-repo",
@@ -125,6 +127,7 @@ This skill provides 72 tools for github integration.
 **Description**: Permanently delete a repository. This action cannot be undone
 
 **Parameters**:
+
 - **confirm** (boolean) **(required)**: Must be true to confirm deletion
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
@@ -132,14 +135,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "delete-repo",
-  "parameters": {
-    "confirm": true,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "confirm": true, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -150,20 +150,16 @@ This skill provides 72 tools for github integration.
 **Description**: Get clone URLs for a repository
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "clone-repo",
-  "parameters": {
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
-}
+{ "tool": "clone-repo", "parameters": { "owner": "example_owner", "repo": "example_repo" } }
 ```
 
 ---
@@ -173,6 +169,7 @@ This skill provides 72 tools for github integration.
 **Description**: List collaborators on a repository
 
 **Parameters**:
+
 - **limit** (number): Maximum number of collaborators to return
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
@@ -180,14 +177,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "list-collaborators",
-  "parameters": {
-    "limit": 10,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "limit": 10, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -198,6 +192,7 @@ This skill provides 72 tools for github integration.
 **Description**: Add a collaborator to a repository
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **permission** (string): Permission level to grant
 - **repo** (string) **(required)**: Repository name
@@ -206,6 +201,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "add-collaborator",
@@ -225,6 +221,7 @@ This skill provides 72 tools for github integration.
 **Description**: Remove a collaborator from a repository
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
 - **username** (string) **(required)**: GitHub username of the collaborator to remove
@@ -232,14 +229,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "remove-collaborator",
-  "parameters": {
-    "owner": "example_owner",
-    "repo": "example_repo",
-    "username": "example_username"
-  }
+  "parameters": { "owner": "example_owner", "repo": "example_repo", "username": "example_username" }
 }
 ```
 
@@ -250,20 +244,16 @@ This skill provides 72 tools for github integration.
 **Description**: List topics (tags) on a repository
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "list-topics",
-  "parameters": {
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
-}
+{ "tool": "list-topics", "parameters": { "owner": "example_owner", "repo": "example_repo" } }
 ```
 
 ---
@@ -273,6 +263,7 @@ This skill provides 72 tools for github integration.
 **Description**: Replace all topics on a repository
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
 - **topics** (array) **(required)**: List of topic names to set
@@ -280,14 +271,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "set-topics",
-  "parameters": {
-    "owner": "example_owner",
-    "repo": "example_repo",
-    "topics": []
-  }
+  "parameters": { "owner": "example_owner", "repo": "example_repo", "topics": [] }
 }
 ```
 
@@ -298,20 +286,16 @@ This skill provides 72 tools for github integration.
 **Description**: List programming languages detected in a repository
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "list-languages",
-  "parameters": {
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
-}
+{ "tool": "list-languages", "parameters": { "owner": "example_owner", "repo": "example_repo" } }
 ```
 
 ---
@@ -321,6 +305,7 @@ This skill provides 72 tools for github integration.
 **Description**: List issues in a repository with optional filters
 
 **Parameters**:
+
 - **assignee** (string): Filter by assignee username
 - **label** (string): Filter by label name
 - **limit** (number): Maximum number of issues to return
@@ -331,6 +316,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "list-issues",
@@ -352,6 +338,7 @@ This skill provides 72 tools for github integration.
 **Description**: Get detailed information about a specific issue
 
 **Parameters**:
+
 - **number** (number) **(required)**: Issue number
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
@@ -359,14 +346,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "get-issue",
-  "parameters": {
-    "number": 10,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "number": 10, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -377,6 +361,7 @@ This skill provides 72 tools for github integration.
 **Description**: Create a new issue in a repository
 
 **Parameters**:
+
 - **assignees** (array): Usernames to assign
 - **body** (string): Issue body (Markdown supported)
 - **labels** (array): Labels to apply
@@ -387,6 +372,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "create-issue",
@@ -408,6 +394,7 @@ This skill provides 72 tools for github integration.
 **Description**: Close an issue
 
 **Parameters**:
+
 - **number** (number) **(required)**: Issue number
 - **owner** (string) **(required)**: Repository owner
 - **reason** (string): Reason for closing
@@ -416,6 +403,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "close-issue",
@@ -435,6 +423,7 @@ This skill provides 72 tools for github integration.
 **Description**: Reopen a closed issue
 
 **Parameters**:
+
 - **number** (number) **(required)**: Issue number
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
@@ -442,14 +431,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "reopen-issue",
-  "parameters": {
-    "number": 10,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "number": 10, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -460,6 +446,7 @@ This skill provides 72 tools for github integration.
 **Description**: Edit an existing issue's title or body
 
 **Parameters**:
+
 - **body** (string): New issue body
 - **number** (number) **(required)**: Issue number
 - **owner** (string) **(required)**: Repository owner
@@ -469,6 +456,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "edit-issue",
@@ -489,6 +477,7 @@ This skill provides 72 tools for github integration.
 **Description**: Add a comment to an issue
 
 **Parameters**:
+
 - **body** (string) **(required)**: Comment body (Markdown supported)
 - **number** (number) **(required)**: Issue number
 - **owner** (string) **(required)**: Repository owner
@@ -497,6 +486,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "comment-on-issue",
@@ -516,6 +506,7 @@ This skill provides 72 tools for github integration.
 **Description**: List comments on an issue
 
 **Parameters**:
+
 - **limit** (number): Maximum number of comments to return
 - **number** (number) **(required)**: Issue number
 - **owner** (string) **(required)**: Repository owner
@@ -524,15 +515,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "list-issue-comments",
-  "parameters": {
-    "limit": 10,
-    "number": 10,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "limit": 10, "number": 10, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -543,6 +530,7 @@ This skill provides 72 tools for github integration.
 **Description**: Add labels to an issue
 
 **Parameters**:
+
 - **labels** (array) **(required)**: Labels to add
 - **number** (number) **(required)**: Issue number
 - **owner** (string) **(required)**: Repository owner
@@ -551,15 +539,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "add-issue-labels",
-  "parameters": {
-    "labels": [],
-    "number": 10,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "labels": [], "number": 10, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -570,6 +554,7 @@ This skill provides 72 tools for github integration.
 **Description**: Remove labels from an issue
 
 **Parameters**:
+
 - **labels** (array) **(required)**: Labels to remove
 - **number** (number) **(required)**: Issue number
 - **owner** (string) **(required)**: Repository owner
@@ -578,15 +563,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "remove-issue-labels",
-  "parameters": {
-    "labels": [],
-    "number": 10,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "labels": [], "number": 10, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -597,6 +578,7 @@ This skill provides 72 tools for github integration.
 **Description**: Add assignees to an issue
 
 **Parameters**:
+
 - **assignees** (array) **(required)**: Usernames to assign
 - **number** (number) **(required)**: Issue number
 - **owner** (string) **(required)**: Repository owner
@@ -605,15 +587,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "add-issue-assignees",
-  "parameters": {
-    "assignees": [],
-    "number": 10,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "assignees": [], "number": 10, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -624,6 +602,7 @@ This skill provides 72 tools for github integration.
 **Description**: Remove assignees from an issue
 
 **Parameters**:
+
 - **assignees** (array) **(required)**: Usernames to remove
 - **number** (number) **(required)**: Issue number
 - **owner** (string) **(required)**: Repository owner
@@ -632,15 +611,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "remove-issue-assignees",
-  "parameters": {
-    "assignees": [],
-    "number": 10,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "assignees": [], "number": 10, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -651,6 +626,7 @@ This skill provides 72 tools for github integration.
 **Description**: List pull requests in a repository with optional filters
 
 **Parameters**:
+
 - **base** (string): Filter by base branch name
 - **limit** (number): Maximum number of pull requests to return
 - **owner** (string) **(required)**: Repository owner
@@ -660,6 +636,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "list-prs",
@@ -680,6 +657,7 @@ This skill provides 72 tools for github integration.
 **Description**: Get detailed information about a specific pull request
 
 **Parameters**:
+
 - **number** (number) **(required)**: Pull request number
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
@@ -687,14 +665,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "get-pr",
-  "parameters": {
-    "number": 10,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "number": 10, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -705,6 +680,7 @@ This skill provides 72 tools for github integration.
 **Description**: Create a new pull request
 
 **Parameters**:
+
 - **base** (string): The branch to merge into (defaults to repo default branch)
 - **body** (string): Pull request body (Markdown supported)
 - **draft** (boolean): Create as a draft pull request
@@ -716,6 +692,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "create-pr",
@@ -738,6 +715,7 @@ This skill provides 72 tools for github integration.
 **Description**: Close a pull request without merging
 
 **Parameters**:
+
 - **number** (number) **(required)**: Pull request number
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
@@ -745,14 +723,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "close-pr",
-  "parameters": {
-    "number": 10,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "number": 10, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -763,6 +738,7 @@ This skill provides 72 tools for github integration.
 **Description**: Reopen a closed pull request
 
 **Parameters**:
+
 - **number** (number) **(required)**: Pull request number
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
@@ -770,14 +746,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "reopen-pr",
-  "parameters": {
-    "number": 10,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "number": 10, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -788,6 +761,7 @@ This skill provides 72 tools for github integration.
 **Description**: Merge a pull request
 
 **Parameters**:
+
 - **commit_message** (string): Custom merge commit message
 - **delete_branch** (boolean): Delete the head branch after merging
 - **method** (string): Merge method to use
@@ -798,6 +772,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "merge-pr",
@@ -819,6 +794,7 @@ This skill provides 72 tools for github integration.
 **Description**: Edit a pull request's title, body, or base branch
 
 **Parameters**:
+
 - **base** (string): New base branch
 - **body** (string): New pull request body
 - **number** (number) **(required)**: Pull request number
@@ -829,6 +805,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "edit-pr",
@@ -850,6 +827,7 @@ This skill provides 72 tools for github integration.
 **Description**: Add a comment to a pull request
 
 **Parameters**:
+
 - **body** (string) **(required)**: Comment body (Markdown supported)
 - **number** (number) **(required)**: Pull request number
 - **owner** (string) **(required)**: Repository owner
@@ -858,6 +836,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "comment-on-pr",
@@ -877,6 +856,7 @@ This skill provides 72 tools for github integration.
 **Description**: List comments on a pull request
 
 **Parameters**:
+
 - **limit** (number): Maximum number of comments to return
 - **number** (number) **(required)**: Pull request number
 - **owner** (string) **(required)**: Repository owner
@@ -885,15 +865,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "list-pr-comments",
-  "parameters": {
-    "limit": 10,
-    "number": 10,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "limit": 10, "number": 10, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -904,6 +880,7 @@ This skill provides 72 tools for github integration.
 **Description**: List reviews on a pull request
 
 **Parameters**:
+
 - **number** (number) **(required)**: Pull request number
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
@@ -911,14 +888,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "list-pr-reviews",
-  "parameters": {
-    "number": 10,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "number": 10, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -929,6 +903,7 @@ This skill provides 72 tools for github integration.
 **Description**: Submit a review on a pull request
 
 **Parameters**:
+
 - **body** (string): Review comment body
 - **event** (string) **(required)**: Review action to perform
 - **number** (number) **(required)**: Pull request number
@@ -938,6 +913,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "create-pr-review",
@@ -958,6 +934,7 @@ This skill provides 72 tools for github integration.
 **Description**: List files changed in a pull request
 
 **Parameters**:
+
 - **number** (number) **(required)**: Pull request number
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
@@ -965,14 +942,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "list-pr-files",
-  "parameters": {
-    "number": 10,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "number": 10, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -983,6 +957,7 @@ This skill provides 72 tools for github integration.
 **Description**: Get the unified diff for a pull request
 
 **Parameters**:
+
 - **number** (number) **(required)**: Pull request number
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
@@ -990,14 +965,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "get-pr-diff",
-  "parameters": {
-    "number": 10,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "number": 10, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -1008,6 +980,7 @@ This skill provides 72 tools for github integration.
 **Description**: Get CI/CD check runs and status for a pull request
 
 **Parameters**:
+
 - **number** (number) **(required)**: Pull request number
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
@@ -1015,14 +988,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "get-pr-checks",
-  "parameters": {
-    "number": 10,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "number": 10, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -1033,6 +1003,7 @@ This skill provides 72 tools for github integration.
 **Description**: Request reviews from specific users on a pull request
 
 **Parameters**:
+
 - **number** (number) **(required)**: Pull request number
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
@@ -1041,15 +1012,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "request-pr-reviewers",
-  "parameters": {
-    "number": 10,
-    "owner": "example_owner",
-    "repo": "example_repo",
-    "reviewers": []
-  }
+  "parameters": { "number": 10, "owner": "example_owner", "repo": "example_repo", "reviewers": [] }
 }
 ```
 
@@ -1060,6 +1027,7 @@ This skill provides 72 tools for github integration.
 **Description**: Mark a draft pull request as ready for review
 
 **Parameters**:
+
 - **number** (number) **(required)**: Pull request number
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
@@ -1067,14 +1035,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "mark-pr-ready",
-  "parameters": {
-    "number": 10,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "number": 10, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -1085,6 +1050,7 @@ This skill provides 72 tools for github integration.
 **Description**: Search GitHub repositories by query
 
 **Parameters**:
+
 - **limit** (number): Maximum number of results to return
 - **order** (string): Sort order
 - **query** (string) **(required)**: Search query (supports GitHub search syntax)
@@ -1093,6 +1059,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "search-repos",
@@ -1112,6 +1079,7 @@ This skill provides 72 tools for github integration.
 **Description**: Search issues and pull requests across GitHub
 
 **Parameters**:
+
 - **limit** (number): Maximum number of results to return
 - **query** (string) **(required)**: Search query (supports GitHub search syntax, e.g. 'is:issue is:open label:bug')
 - **sort** (string): Sort field
@@ -1119,14 +1087,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "search-issues",
-  "parameters": {
-    "limit": 10,
-    "query": "example_query",
-    "sort": "example_sort"
-  }
+  "parameters": { "limit": 10, "query": "example_query", "sort": "example_sort" }
 }
 ```
 
@@ -1137,6 +1102,7 @@ This skill provides 72 tools for github integration.
 **Description**: Search code across GitHub repositories
 
 **Parameters**:
+
 - **language** (string): Filter by programming language
 - **limit** (number): Maximum number of results to return
 - **query** (string) **(required)**: Search query (supports GitHub code search syntax)
@@ -1145,6 +1111,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "search-code",
@@ -1164,6 +1131,7 @@ This skill provides 72 tools for github integration.
 **Description**: Search commits across GitHub repositories
 
 **Parameters**:
+
 - **limit** (number): Maximum number of results to return
 - **query** (string) **(required)**: Search query (supports GitHub commit search syntax)
 - **repo** (string): Restrict search to a specific repo (owner/name format)
@@ -1171,14 +1139,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "search-commits",
-  "parameters": {
-    "limit": 10,
-    "query": "example_query",
-    "repo": "example_repo"
-  }
+  "parameters": { "limit": 10, "query": "example_query", "repo": "example_repo" }
 }
 ```
 
@@ -1189,6 +1154,7 @@ This skill provides 72 tools for github integration.
 **Description**: View the contents of a file in a repository
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **path** (string) **(required)**: File path within the repository
 - **ref** (string): Git ref (branch, tag, or commit SHA). Defaults to the default branch
@@ -1197,6 +1163,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "view-file",
@@ -1216,6 +1183,7 @@ This skill provides 72 tools for github integration.
 **Description**: List the contents of a directory in a repository
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **path** (string): Directory path within the repository. Defaults to the root
 - **ref** (string): Git ref (branch, tag, or commit SHA). Defaults to the default branch
@@ -1224,6 +1192,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "list-directory",
@@ -1243,20 +1212,16 @@ This skill provides 72 tools for github integration.
 **Description**: Get the README file for a repository
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "get-readme",
-  "parameters": {
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
-}
+{ "tool": "get-readme", "parameters": { "owner": "example_owner", "repo": "example_repo" } }
 ```
 
 ---
@@ -1266,6 +1231,7 @@ This skill provides 72 tools for github integration.
 **Description**: List releases for a repository
 
 **Parameters**:
+
 - **limit** (number): Maximum number of releases to return
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
@@ -1273,14 +1239,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "list-releases",
-  "parameters": {
-    "limit": 10,
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
+  "parameters": { "limit": 10, "owner": "example_owner", "repo": "example_repo" }
 }
 ```
 
@@ -1291,6 +1254,7 @@ This skill provides 72 tools for github integration.
 **Description**: Get a specific release by tag name
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
 - **tag** (string) **(required)**: Release tag name (e.g. 'v1.0.0')
@@ -1298,14 +1262,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "get-release",
-  "parameters": {
-    "owner": "example_owner",
-    "repo": "example_repo",
-    "tag": "example_tag"
-  }
+  "parameters": { "owner": "example_owner", "repo": "example_repo", "tag": "example_tag" }
 }
 ```
 
@@ -1316,6 +1277,7 @@ This skill provides 72 tools for github integration.
 **Description**: Create a new release for a repository
 
 **Parameters**:
+
 - **draft** (boolean): Create as a draft release
 - **generate_notes** (boolean): Auto-generate release notes from commits
 - **notes** (string): Release notes body (Markdown supported)
@@ -1329,6 +1291,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "create-release",
@@ -1353,6 +1316,7 @@ This skill provides 72 tools for github integration.
 **Description**: Delete a release by tag name
 
 **Parameters**:
+
 - **cleanup_tag** (boolean): Also delete the associated git tag
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
@@ -1361,6 +1325,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "delete-release",
@@ -1380,6 +1345,7 @@ This skill provides 72 tools for github integration.
 **Description**: List assets (downloadable files) attached to a release
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
 - **tag** (string) **(required)**: Release tag name
@@ -1387,14 +1353,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "list-release-assets",
-  "parameters": {
-    "owner": "example_owner",
-    "repo": "example_repo",
-    "tag": "example_tag"
-  }
+  "parameters": { "owner": "example_owner", "repo": "example_repo", "tag": "example_tag" }
 }
 ```
 
@@ -1405,20 +1368,16 @@ This skill provides 72 tools for github integration.
 **Description**: Get the latest published release for a repository
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "get-latest-release",
-  "parameters": {
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
-}
+{ "tool": "get-latest-release", "parameters": { "owner": "example_owner", "repo": "example_repo" } }
 ```
 
 ---
@@ -1428,20 +1387,16 @@ This skill provides 72 tools for github integration.
 **Description**: List gists for the authenticated user or a specific user
 
 **Parameters**:
+
 - **limit** (number): Maximum number of gists to return
 - **username** (string): GitHub username. Defaults to the authenticated user
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "list-gists",
-  "parameters": {
-    "limit": 10,
-    "username": "example_username"
-  }
-}
+{ "tool": "list-gists", "parameters": { "limit": 10, "username": "example_username" } }
 ```
 
 ---
@@ -1451,18 +1406,15 @@ This skill provides 72 tools for github integration.
 **Description**: Get a specific gist by ID, including its files and content
 
 **Parameters**:
+
 - **gist_id** (string) **(required)**: The gist ID
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "get-gist",
-  "parameters": {
-    "gist_id": "example_gist_id"
-  }
-}
+{ "tool": "get-gist", "parameters": { "gist_id": "example_gist_id" } }
 ```
 
 ---
@@ -1472,6 +1424,7 @@ This skill provides 72 tools for github integration.
 **Description**: Create a new gist with one or more files
 
 **Parameters**:
+
 - **description** (string): Gist description
 - **files** (object) **(required)**: Map of filename to file content, e.g. {"hello.py": {"content": "print('hello')"}}
 - **public** (boolean): Whether the gist is public
@@ -1479,14 +1432,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "create-gist",
-  "parameters": {
-    "description": "example_description",
-    "files": {},
-    "public": true
-  }
+  "parameters": { "description": "example_description", "files": {}, "public": true }
 }
 ```
 
@@ -1497,6 +1447,7 @@ This skill provides 72 tools for github integration.
 **Description**: Edit an existing gist's description or files
 
 **Parameters**:
+
 - **description** (string): New gist description
 - **files** (object): Map of filename to new content. Set content to null to delete a file
 - **gist_id** (string) **(required)**: The gist ID
@@ -1504,14 +1455,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "edit-gist",
-  "parameters": {
-    "description": "example_description",
-    "files": {},
-    "gist_id": "example_gist_id"
-  }
+  "parameters": { "description": "example_description", "files": {}, "gist_id": "example_gist_id" }
 }
 ```
 
@@ -1522,18 +1470,15 @@ This skill provides 72 tools for github integration.
 **Description**: Permanently delete a gist
 
 **Parameters**:
+
 - **gist_id** (string) **(required)**: The gist ID to delete
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "delete-gist",
-  "parameters": {
-    "gist_id": "example_gist_id"
-  }
-}
+{ "tool": "delete-gist", "parameters": { "gist_id": "example_gist_id" } }
 ```
 
 ---
@@ -1543,18 +1488,15 @@ This skill provides 72 tools for github integration.
 **Description**: Get the clone URL for a gist
 
 **Parameters**:
+
 - **gist_id** (string) **(required)**: The gist ID to clone
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "clone-gist",
-  "parameters": {
-    "gist_id": "example_gist_id"
-  }
-}
+{ "tool": "clone-gist", "parameters": { "gist_id": "example_gist_id" } }
 ```
 
 ---
@@ -1564,20 +1506,16 @@ This skill provides 72 tools for github integration.
 **Description**: List GitHub Actions workflows defined in a repository
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "list-workflows",
-  "parameters": {
-    "owner": "example_owner",
-    "repo": "example_repo"
-  }
-}
+{ "tool": "list-workflows", "parameters": { "owner": "example_owner", "repo": "example_repo" } }
 ```
 
 ---
@@ -1587,6 +1525,7 @@ This skill provides 72 tools for github integration.
 **Description**: List recent workflow runs for a repository
 
 **Parameters**:
+
 - **branch** (string): Filter by branch name
 - **limit** (number): Maximum number of runs to return
 - **owner** (string) **(required)**: Repository owner
@@ -1597,6 +1536,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "list-workflow-runs",
@@ -1618,6 +1558,7 @@ This skill provides 72 tools for github integration.
 **Description**: Get detailed information about a specific workflow run
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
 - **run_id** (number) **(required)**: Workflow run ID
@@ -1625,14 +1566,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "get-workflow-run",
-  "parameters": {
-    "owner": "example_owner",
-    "repo": "example_repo",
-    "run_id": 10
-  }
+  "parameters": { "owner": "example_owner", "repo": "example_repo", "run_id": 10 }
 }
 ```
 
@@ -1643,6 +1581,7 @@ This skill provides 72 tools for github integration.
 **Description**: List jobs for a specific workflow run
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
 - **run_id** (number) **(required)**: Workflow run ID
@@ -1650,14 +1589,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "list-run-jobs",
-  "parameters": {
-    "owner": "example_owner",
-    "repo": "example_repo",
-    "run_id": 10
-  }
+  "parameters": { "owner": "example_owner", "repo": "example_repo", "run_id": 10 }
 }
 ```
 
@@ -1668,6 +1604,7 @@ This skill provides 72 tools for github integration.
 **Description**: Get the logs URL for a specific workflow run
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
 - **run_id** (number) **(required)**: Workflow run ID
@@ -1675,14 +1612,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "get-run-logs",
-  "parameters": {
-    "owner": "example_owner",
-    "repo": "example_repo",
-    "run_id": 10
-  }
+  "parameters": { "owner": "example_owner", "repo": "example_repo", "run_id": 10 }
 }
 ```
 
@@ -1693,6 +1627,7 @@ This skill provides 72 tools for github integration.
 **Description**: Re-run an entire workflow run
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
 - **run_id** (number) **(required)**: Workflow run ID to re-run
@@ -1700,14 +1635,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "rerun-workflow",
-  "parameters": {
-    "owner": "example_owner",
-    "repo": "example_repo",
-    "run_id": 10
-  }
+  "parameters": { "owner": "example_owner", "repo": "example_repo", "run_id": 10 }
 }
 ```
 
@@ -1718,6 +1650,7 @@ This skill provides 72 tools for github integration.
 **Description**: Cancel a workflow run that is in progress
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
 - **run_id** (number) **(required)**: Workflow run ID to cancel
@@ -1725,14 +1658,11 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "cancel-workflow-run",
-  "parameters": {
-    "owner": "example_owner",
-    "repo": "example_repo",
-    "run_id": 10
-  }
+  "parameters": { "owner": "example_owner", "repo": "example_repo", "run_id": 10 }
 }
 ```
 
@@ -1743,6 +1673,7 @@ This skill provides 72 tools for github integration.
 **Description**: Manually trigger a workflow dispatch event
 
 **Parameters**:
+
 - **inputs** (object): Input key-value pairs for the workflow_dispatch event
 - **owner** (string) **(required)**: Repository owner
 - **ref** (string): Git ref (branch or tag) to run the workflow on
@@ -1752,6 +1683,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "trigger-workflow",
@@ -1772,6 +1704,7 @@ This skill provides 72 tools for github integration.
 **Description**: View the YAML source of a workflow definition
 
 **Parameters**:
+
 - **owner** (string) **(required)**: Repository owner
 - **repo** (string) **(required)**: Repository name
 - **workflow_id** (string) **(required)**: Workflow ID or filename (e.g. 'ci.yml')
@@ -1779,6 +1712,7 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "view-workflow-yaml",
@@ -1797,20 +1731,16 @@ This skill provides 72 tools for github integration.
 **Description**: List GitHub notifications for the authenticated user
 
 **Parameters**:
+
 - **all** (boolean): Include read notifications
 - **limit** (number): Maximum number of notifications to return
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "list-notifications",
-  "parameters": {
-    "all": true,
-    "limit": 10
-  }
-}
+{ "tool": "list-notifications", "parameters": { "all": true, "limit": 10 } }
 ```
 
 ---
@@ -1820,18 +1750,15 @@ This skill provides 72 tools for github integration.
 **Description**: Mark a specific notification thread as read
 
 **Parameters**:
+
 - **thread_id** (string) **(required)**: Notification thread ID
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "mark-notification-read",
-  "parameters": {
-    "thread_id": "example_thread_id"
-  }
-}
+{ "tool": "mark-notification-read", "parameters": { "thread_id": "example_thread_id" } }
 ```
 
 ---
@@ -1840,16 +1767,14 @@ This skill provides 72 tools for github integration.
 
 **Description**: Mark all notifications as read
 
-**Parameters**: *None*
+**Parameters**: _None_
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "mark-all-notifications-read",
-  "parameters": {}
-}
+{ "tool": "mark-all-notifications-read", "parameters": {} }
 ```
 
 ---
@@ -1859,6 +1784,7 @@ This skill provides 72 tools for github integration.
 **Description**: Make a raw GitHub REST API request. Use this for any endpoint not covered by the other tools
 
 **Parameters**:
+
 - **body** (object): Request body (for POST/PUT/PATCH)
 - **endpoint** (string) **(required)**: API endpoint path (e.g. '/repos/owner/repo/branches')
 - **method** (string): HTTP method
@@ -1866,19 +1792,15 @@ This skill provides 72 tools for github integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "gh-api",
-  "parameters": {
-    "body": {},
-    "endpoint": "example_endpoint",
-    "method": "example_method"
-  }
+  "parameters": { "body": {}, "endpoint": "example_endpoint", "method": "example_method" }
 }
 ```
 
 ---
-
 
 ### Gmail Tools
 
@@ -1889,6 +1811,7 @@ This skill provides 7 tools for gmail integration.
 **Description**: Get full details of a specific email by its ID, including headers, body content, and attachments.
 
 **Parameters**:
+
 - **format** (string): Message format level (default: full)
 - **include_body** (boolean): Include email body content (default: true)
 - **message_id** (string) **(required)**: The Gmail message ID to retrieve
@@ -1896,6 +1819,7 @@ This skill provides 7 tools for gmail integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "get-email",
@@ -1914,6 +1838,7 @@ This skill provides 7 tools for gmail integration.
 **Description**: Get emails from Gmail with optional filtering by query, labels, and pagination. Supports Gmail search syntax. When accessToken is provided (e.g. from frontend after OAuth), uses it directly; otherwise uses the skill OAuth credential.
 
 **Parameters**:
+
 - **accessToken** (string): Optional OAuth access token. When provided (e.g. by frontend after OAuth), Gmail API is called directly with this token instead of the skill credential.
 - **include_spam_trash** (boolean): Include emails from spam and trash (default: false)
 - **label_ids** (array): Filter by specific label IDs (e.g., ["INBOX", "IMPORTANT"])
@@ -1925,6 +1850,7 @@ This skill provides 7 tools for gmail integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "get-emails",
@@ -1947,20 +1873,16 @@ This skill provides 7 tools for gmail integration.
 **Description**: Get all Gmail labels including system and user-created labels with message counts and details.
 
 **Parameters**:
+
 - **include_hidden** (boolean): Include hidden labels (default: false)
 - **type** (string): Filter labels by type (default: all)
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "get-labels",
-  "parameters": {
-    "include_hidden": true,
-    "type": "example_type"
-  }
-}
+{ "tool": "get-labels", "parameters": { "include_hidden": true, "type": "example_type" } }
 ```
 
 ---
@@ -1970,18 +1892,15 @@ This skill provides 7 tools for gmail integration.
 **Description**: Get Gmail user profile information including email address, total message counts, and account details. Optional accessToken for frontend calls.
 
 **Parameters**:
+
 - **accessToken** (string): Optional OAuth access token (e.g. from frontend).
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "get-profile",
-  "parameters": {
-    "accessToken": "example_accessToken"
-  }
-}
+{ "tool": "get-profile", "parameters": { "accessToken": "example_accessToken" } }
 ```
 
 ---
@@ -1991,6 +1910,7 @@ This skill provides 7 tools for gmail integration.
 **Description**: Mark emails with specific status (read/unread, important, starred) or add/remove labels.
 
 **Parameters**:
+
 - **action** (string) **(required)**: Action to perform on the messages
 - **label_ids** (array): Label IDs to add or remove (required for add_labels/remove_labels actions)
 - **message_ids** (array) **(required)**: Array of message IDs to modify
@@ -1998,14 +1918,11 @@ This skill provides 7 tools for gmail integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "mark-email",
-  "parameters": {
-    "action": "example_action",
-    "label_ids": [],
-    "message_ids": []
-  }
+  "parameters": { "action": "example_action", "label_ids": [], "message_ids": [] }
 }
 ```
 
@@ -2016,6 +1933,7 @@ This skill provides 7 tools for gmail integration.
 **Description**: Search emails using advanced Gmail query syntax. Supports complex queries with operators like from:, to:, subject:, has:attachment, is:unread, etc.
 
 **Parameters**:
+
 - **include_spam_trash** (boolean): Include results from spam and trash folders (default: false)
 - **max_results** (number): Maximum number of results to return (default: 20, max: 100)
 - **page_token** (string): Token for pagination (from previous search)
@@ -2024,6 +1942,7 @@ This skill provides 7 tools for gmail integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "search-emails",
@@ -2043,6 +1962,7 @@ This skill provides 7 tools for gmail integration.
 **Description**: Send an email through Gmail with support for HTML/text content, attachments, CC/BCC recipients, and reply threading.
 
 **Parameters**:
+
 - **attachments** (array): File attachments (optional)
 - **bcc** (array): BCC recipients (optional)
 - **body_html** (string): HTML email body (optional if body_text provided)
@@ -2056,6 +1976,7 @@ This skill provides 7 tools for gmail integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "send-email",
@@ -2075,7 +1996,6 @@ This skill provides 7 tools for gmail integration.
 
 ---
 
-
 ### Notion Tools
 
 This skill provides 25 tools for notion integration.
@@ -2085,19 +2005,18 @@ This skill provides 25 tools for notion integration.
 **Description**: Append child blocks to a page or block. Supports various block types.
 
 **Parameters**:
+
 - **block_id** (string) **(required)**: The parent page or block ID
 - **blocks** (string) **(required)**: JSON string of blocks array. Example: [{"type":"paragraph","paragraph":{"rich_text":[{"text":{"content":"Hello"}}]}}]
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "append-blocks",
-  "parameters": {
-    "block_id": "example_block_id",
-    "blocks": "example_blocks"
-  }
+  "parameters": { "block_id": "example_block_id", "blocks": "example_blocks" }
 }
 ```
 
@@ -2108,20 +2027,16 @@ This skill provides 25 tools for notion integration.
 **Description**: Append text content to a page or block. Creates paragraph blocks with the given text.
 
 **Parameters**:
+
 - **block_id** (string) **(required)**: The page or block ID to append to
 - **text** (string) **(required)**: Text content to append
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "append-text",
-  "parameters": {
-    "block_id": "example_block_id",
-    "text": "example_text"
-  }
-}
+{ "tool": "append-text", "parameters": { "block_id": "example_block_id", "text": "example_text" } }
 ```
 
 ---
@@ -2131,6 +2046,7 @@ This skill provides 25 tools for notion integration.
 **Description**: Create a comment on a page or in a discussion thread. Must specify either page_id (for new discussion) or discussion_id (to reply).
 
 **Parameters**:
+
 - **discussion_id** (string): Discussion ID to reply to an existing thread
 - **page_id** (string): Page ID to start a new discussion on
 - **text** (string) **(required)**: Comment text content
@@ -2138,6 +2054,7 @@ This skill provides 25 tools for notion integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "create-comment",
@@ -2156,6 +2073,7 @@ This skill provides 25 tools for notion integration.
 **Description**: Create a new database in Notion. Must specify parent page and property schema.
 
 **Parameters**:
+
 - **parent_page_id** (string) **(required)**: Parent page ID where the database will be created
 - **properties** (string): JSON string of properties schema. Example: {"Name":{"title":{}},"Status":{"select":{"options":[{"name":"Todo"},{"name":"Done"}]}}}
 - **title** (string) **(required)**: Database title
@@ -2163,6 +2081,7 @@ This skill provides 25 tools for notion integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "create-database",
@@ -2181,6 +2100,7 @@ This skill provides 25 tools for notion integration.
 **Description**: Create a new page in Notion. Parent can be another page or a database. For database parents, properties must match the database schema.
 
 **Parameters**:
+
 - **content** (string): Initial text content (creates a paragraph block)
 - **parent_id** (string) **(required)**: Parent page ID or database ID
 - **parent_type** (string): Type of parent (default: page_id)
@@ -2190,6 +2110,7 @@ This skill provides 25 tools for notion integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "create-page",
@@ -2210,18 +2131,15 @@ This skill provides 25 tools for notion integration.
 **Description**: Delete a block. This permanently removes the block from Notion.
 
 **Parameters**:
+
 - **block_id** (string) **(required)**: The block ID to delete
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "delete-block",
-  "parameters": {
-    "block_id": "example_block_id"
-  }
-}
+{ "tool": "delete-block", "parameters": { "block_id": "example_block_id" } }
 ```
 
 ---
@@ -2231,18 +2149,15 @@ This skill provides 25 tools for notion integration.
 **Description**: Delete (archive) a page. Archived pages can be restored from Notion's trash.
 
 **Parameters**:
+
 - **page_id** (string) **(required)**: The page ID to delete/archive
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "delete-page",
-  "parameters": {
-    "page_id": "example_page_id"
-  }
-}
+{ "tool": "delete-page", "parameters": { "page_id": "example_page_id" } }
 ```
 
 ---
@@ -2252,18 +2167,15 @@ This skill provides 25 tools for notion integration.
 **Description**: Get a block by its ID. Returns the block's type and content.
 
 **Parameters**:
+
 - **block_id** (string) **(required)**: The block ID
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "get-block",
-  "parameters": {
-    "block_id": "example_block_id"
-  }
-}
+{ "tool": "get-block", "parameters": { "block_id": "example_block_id" } }
 ```
 
 ---
@@ -2273,20 +2185,16 @@ This skill provides 25 tools for notion integration.
 **Description**: Get the children blocks of a block or page.
 
 **Parameters**:
+
 - **block_id** (string) **(required)**: The parent block or page ID
 - **page_size** (number): Number of blocks (default 50, max 100)
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "get-block-children",
-  "parameters": {
-    "block_id": "example_block_id",
-    "page_size": 10
-  }
-}
+{ "tool": "get-block-children", "parameters": { "block_id": "example_block_id", "page_size": 10 } }
 ```
 
 ---
@@ -2296,18 +2204,15 @@ This skill provides 25 tools for notion integration.
 **Description**: Get a database's schema and metadata. Shows all properties and their types.
 
 **Parameters**:
+
 - **database_id** (string) **(required)**: The database ID
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "get-database",
-  "parameters": {
-    "database_id": "example_database_id"
-  }
-}
+{ "tool": "get-database", "parameters": { "database_id": "example_database_id" } }
 ```
 
 ---
@@ -2317,18 +2222,15 @@ This skill provides 25 tools for notion integration.
 **Description**: Get a page's metadata and properties by its ID. Use notion-get-page-content to get the actual content/blocks.
 
 **Parameters**:
+
 - **page_id** (string) **(required)**: The page ID (UUID format, with or without dashes)
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "get-page",
-  "parameters": {
-    "page_id": "example_page_id"
-  }
-}
+{ "tool": "get-page", "parameters": { "page_id": "example_page_id" } }
 ```
 
 ---
@@ -2338,6 +2240,7 @@ This skill provides 25 tools for notion integration.
 **Description**: Get the content blocks of a page. Returns the text and structure of the page. Use recursive=true to also get nested blocks.
 
 **Parameters**:
+
 - **page_id** (string) **(required)**: The page ID to get content from
 - **page_size** (number): Number of blocks to return (default 50, max 100)
 - **recursive** (string): Whether to fetch nested blocks (default: false)
@@ -2345,14 +2248,11 @@ This skill provides 25 tools for notion integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "get-page-content",
-  "parameters": {
-    "page_id": "example_page_id",
-    "page_size": 10,
-    "recursive": "example_recursive"
-  }
+  "parameters": { "page_id": "example_page_id", "page_size": 10, "recursive": "example_recursive" }
 }
 ```
 
@@ -2363,18 +2263,15 @@ This skill provides 25 tools for notion integration.
 **Description**: Get a user by their ID.
 
 **Parameters**:
+
 - **user_id** (string) **(required)**: The user ID
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "get-user",
-  "parameters": {
-    "user_id": "example_user_id"
-  }
-}
+{ "tool": "get-user", "parameters": { "user_id": "example_user_id" } }
 ```
 
 ---
@@ -2384,18 +2281,15 @@ This skill provides 25 tools for notion integration.
 **Description**: List all databases in the workspace that the integration has access to.
 
 **Parameters**:
+
 - **page_size** (number): Number of results (default 20, max 100)
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "list-all-databases",
-  "parameters": {
-    "page_size": 10
-  }
-}
+{ "tool": "list-all-databases", "parameters": { "page_size": 10 } }
 ```
 
 ---
@@ -2405,18 +2299,15 @@ This skill provides 25 tools for notion integration.
 **Description**: List all pages in the workspace that the integration has access to.
 
 **Parameters**:
+
 - **page_size** (number): Number of results to return (default 20, max 100)
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "list-all-pages",
-  "parameters": {
-    "page_size": 10
-  }
-}
+{ "tool": "list-all-pages", "parameters": { "page_size": 10 } }
 ```
 
 ---
@@ -2426,20 +2317,16 @@ This skill provides 25 tools for notion integration.
 **Description**: List comments on a block or page.
 
 **Parameters**:
+
 - **block_id** (string) **(required)**: Block or page ID to get comments for
 - **page_size** (number): Number of results (default 20, max 100)
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "list-comments",
-  "parameters": {
-    "block_id": "example_block_id",
-    "page_size": 10
-  }
-}
+{ "tool": "list-comments", "parameters": { "block_id": "example_block_id", "page_size": 10 } }
 ```
 
 ---
@@ -2449,18 +2336,15 @@ This skill provides 25 tools for notion integration.
 **Description**: List all users in the workspace that the integration can see.
 
 **Parameters**:
+
 - **page_size** (number): Number of results (default 20, max 100)
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "list-users",
-  "parameters": {
-    "page_size": 10
-  }
-}
+{ "tool": "list-users", "parameters": { "page_size": 10 } }
 ```
 
 ---
@@ -2470,6 +2354,7 @@ This skill provides 25 tools for notion integration.
 **Description**: Query a database with optional filters and sorts. Returns database rows/pages.
 
 **Parameters**:
+
 - **database_id** (string) **(required)**: The database ID to query
 - **filter** (string): JSON string of filter object (Notion filter syntax)
 - **page_size** (number): Number of results (default 20, max 100)
@@ -2478,6 +2363,7 @@ This skill provides 25 tools for notion integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "query-database",
@@ -2497,6 +2383,7 @@ This skill provides 25 tools for notion integration.
 **Description**: Search for pages and databases in your Notion workspace. Can filter by type (page or database) and returns matching results.
 
 **Parameters**:
+
 - **filter** (string): Filter results by type
 - **page_size** (number): Number of results to return (default 20, max 100)
 - **query** (string): Search query (optional, returns recent if empty)
@@ -2504,14 +2391,11 @@ This skill provides 25 tools for notion integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "search",
-  "parameters": {
-    "filter": "example_filter",
-    "page_size": 10,
-    "query": "example_query"
-  }
+  "parameters": { "filter": "example_filter", "page_size": 10, "query": "example_query" }
 }
 ```
 
@@ -2521,16 +2405,14 @@ This skill provides 25 tools for notion integration.
 
 **Description**: AI summarization of Notion pages is now handled by the backend server. Synced page content is submitted to the server which runs summarization.
 
-**Parameters**: *None*
+**Parameters**: _None_
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "summarize-pages",
-  "parameters": {}
-}
+{ "tool": "summarize-pages", "parameters": {} }
 ```
 
 ---
@@ -2539,16 +2421,14 @@ This skill provides 25 tools for notion integration.
 
 **Description**: Trigger an immediate Notion sync to refresh local data. Returns sync results including counts of synced pages and databases.
 
-**Parameters**: *None*
+**Parameters**: _None_
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "sync-now",
-  "parameters": {}
-}
+{ "tool": "sync-now", "parameters": {} }
 ```
 
 ---
@@ -2557,16 +2437,14 @@ This skill provides 25 tools for notion integration.
 
 **Description**: Get the current Notion sync status including last sync time, total synced pages/databases, sync progress, and any errors.
 
-**Parameters**: *None*
+**Parameters**: _None_
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
-{
-  "tool": "sync-status",
-  "parameters": {}
-}
+{ "tool": "sync-status", "parameters": {} }
 ```
 
 ---
@@ -2576,6 +2454,7 @@ This skill provides 25 tools for notion integration.
 **Description**: Update a block's content. The structure depends on the block type.
 
 **Parameters**:
+
 - **archived** (string): Set to true to archive the block
 - **block_id** (string) **(required)**: The block ID to update
 - **content** (string): JSON string of the block type content. Example for paragraph: {"paragraph":{"rich_text":[{"text":{"content":"Updated text"}}]}}
@@ -2583,6 +2462,7 @@ This skill provides 25 tools for notion integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "update-block",
@@ -2601,6 +2481,7 @@ This skill provides 25 tools for notion integration.
 **Description**: Update a database's title or properties schema.
 
 **Parameters**:
+
 - **database_id** (string) **(required)**: The database ID to update
 - **properties** (string): JSON string of properties to add or update
 - **title** (string): New title (optional)
@@ -2608,6 +2489,7 @@ This skill provides 25 tools for notion integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "update-database",
@@ -2626,6 +2508,7 @@ This skill provides 25 tools for notion integration.
 **Description**: Update a page's properties. Can update title and other properties. Use notion-append-text to add content blocks.
 
 **Parameters**:
+
 - **archived** (string): Set to true to archive the page
 - **page_id** (string) **(required)**: The page ID to update
 - **properties** (string): JSON string of properties to update
@@ -2634,6 +2517,7 @@ This skill provides 25 tools for notion integration.
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
   "tool": "update-page",
@@ -2648,28 +2532,31 @@ This skill provides 25 tools for notion integration.
 
 ---
 
-
 ## Tool Usage Guidelines
 
 ### Authentication
+
 - All tools require proper authentication setup through the Skills system
 - OAuth credentials are managed securely and refreshed automatically
 - API keys are stored encrypted in the application keychain
 
 ### Rate Limiting
+
 - Tools automatically respect API rate limits of external services
 - Intelligent retry logic handles temporary failures with exponential backoff
 
 ### Error Handling
+
 - All tools return structured error responses with detailed information
 - Network failures trigger automatic retry with configurable attempts
 
 ---
 
 **Tool Statistics**
+
 - Total Tools: 104
 - Active Skills: 3
 - Last Updated: 2026-03-06T10:39:36.767Z
 
-*This file was automatically generated when the app loaded.*
-*Tools are discovered from the running V8 skills runtime.*
+_This file was automatically generated when the app loaded._
+_Tools are discovered from the running V8 skills runtime._

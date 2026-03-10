@@ -1,9 +1,9 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 
-import { threadApi } from '../services/api/threadApi';
-import type { Thread, ThreadMessage } from '../types/thread';
 import { injectAll } from '../lib/ai/injector';
 import type { Message } from '../lib/ai/providers/interface';
+import { threadApi } from '../services/api/threadApi';
+import type { Thread, ThreadMessage } from '../types/thread';
 import type { RootState } from './index';
 
 interface ThreadState {
@@ -101,14 +101,11 @@ export const sendMessage = createAsyncThunk(
       // 2. Process message with SOUL + TOOLS injection before sending to API
       let processedMessage = message;
       try {
-        const userMessage: Message = {
-          role: 'user',
-          content: [{ type: 'text', text: message }]
-        };
+        const userMessage: Message = { role: 'user', content: [{ type: 'text', text: message }] };
 
         const injectedMessage = await injectAll(userMessage, {
           mode: 'context-block',
-          includeMetadata: false
+          includeMetadata: false,
         });
 
         // Extract the processed text
@@ -119,7 +116,10 @@ export const sendMessage = createAsyncThunk(
 
         console.log('✅ SOUL + TOOLS injection successful in Redux sendMessage thunk');
       } catch (injectionError) {
-        console.warn('⚠️ SOUL + TOOLS injection failed in Redux sendMessage thunk:', injectionError);
+        console.warn(
+          '⚠️ SOUL + TOOLS injection failed in Redux sendMessage thunk:',
+          injectionError
+        );
         // Continue with original message
       }
 
@@ -228,9 +228,17 @@ const threadSlice = createSlice({
           const persistedMessages = state.messagesByThreadId[state.selectedThreadId];
           const userMessageExists = persistedMessages.some(m => m.id === lastUserMessage.id);
 
-          // If user message isn't persisted yet, add it first
+          // If user message isn't persisted yet, add it first.
+          // Replace optimistic- prefix with a stable id so historySnapshot
+          // (which filters out optimistic- ids) includes it on future sends.
           if (!userMessageExists) {
-            persistedMessages.push(lastUserMessage);
+            const stableMessage = lastUserMessage.id.startsWith('optimistic-')
+              ? { ...lastUserMessage, id: `msg_${Date.now()}_user` }
+              : lastUserMessage;
+            persistedMessages.push(stableMessage);
+            // Keep state.messages in sync with the stable id
+            const idx = state.messages.findLastIndex(m => m.id === lastUserMessage.id);
+            if (idx !== -1) state.messages[idx] = stableMessage;
           }
         }
 

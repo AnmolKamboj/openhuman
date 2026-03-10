@@ -7,10 +7,7 @@ export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
 export interface ToolCall {
   id: string;
   type: 'function';
-  function: {
-    name: string;
-    arguments: string;
-  };
+  function: { name: string; arguments: string };
 }
 
 export interface ChatMessage {
@@ -65,7 +62,7 @@ export interface ModelsListResponse {
 
 export interface ChatCompletionChoice {
   index: number;
-  message: ChatMessage;
+  message: ChatMessage & { tool_calls?: ToolCall[] };
   finish_reason: string | null;
 }
 
@@ -108,16 +105,12 @@ export const inferenceApi = {
   },
 
   /** POST /openai/v1/chat/completions — create a chat completion */
-  createChatCompletion: async (
-    body: ChatCompletionRequest
-  ): Promise<ChatCompletionResponse> => {
+  createChatCompletion: async (body: ChatCompletionRequest): Promise<ChatCompletionResponse> => {
     return apiClient.post<ChatCompletionResponse>('/openai/v1/chat/completions', body);
   },
 
   /** POST /openai/v1/completions — create a text completion */
-  createCompletion: async (
-    body: TextCompletionRequest
-  ): Promise<TextCompletionResponse> => {
+  createCompletion: async (body: TextCompletionRequest): Promise<TextCompletionResponse> => {
     return apiClient.post<TextCompletionResponse>('/openai/v1/completions', body);
   },
 };

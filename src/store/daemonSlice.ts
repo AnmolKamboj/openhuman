@@ -92,10 +92,7 @@ const daemonSlice = createSlice({
       }
     },
 
-    setDaemonStatus: (
-      state,
-      action: PayloadAction<{ userId: string; status: DaemonStatus }>
-    ) => {
+    setDaemonStatus: (state, action: PayloadAction<{ userId: string; status: DaemonStatus }>) => {
       const { userId, status } = action.payload;
       const user = ensureUserState(state, userId);
       user.status = status;
@@ -107,37 +104,25 @@ const daemonSlice = createSlice({
       }
     },
 
-    incrementConnectionAttempts: (
-      state,
-      action: PayloadAction<{ userId: string }>
-    ) => {
+    incrementConnectionAttempts: (state, action: PayloadAction<{ userId: string }>) => {
       const { userId } = action.payload;
       const user = ensureUserState(state, userId);
       user.connectionAttempts += 1;
     },
 
-    resetConnectionAttempts: (
-      state,
-      action: PayloadAction<{ userId: string }>
-    ) => {
+    resetConnectionAttempts: (state, action: PayloadAction<{ userId: string }>) => {
       const { userId } = action.payload;
       const user = ensureUserState(state, userId);
       user.connectionAttempts = 0;
     },
 
-    setAutoStartEnabled: (
-      state,
-      action: PayloadAction<{ userId: string; enabled: boolean }>
-    ) => {
+    setAutoStartEnabled: (state, action: PayloadAction<{ userId: string; enabled: boolean }>) => {
       const { userId, enabled } = action.payload;
       const user = ensureUserState(state, userId);
       user.autoStartEnabled = enabled;
     },
 
-    setIsRecovering: (
-      state,
-      action: PayloadAction<{ userId: string; isRecovering: boolean }>
-    ) => {
+    setIsRecovering: (state, action: PayloadAction<{ userId: string; isRecovering: boolean }>) => {
       const { userId, isRecovering } = action.payload;
       const user = ensureUserState(state, userId);
       user.isRecovering = isRecovering;

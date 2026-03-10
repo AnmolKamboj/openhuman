@@ -1,5 +1,5 @@
-import OAuthProviderButton from './OAuthProviderButton';
 import TelegramLoginButton from '../TelegramLoginButton';
+import OAuthProviderButton from './OAuthProviderButton';
 import { oauthProviderConfigs } from './providerConfigs';
 
 interface OAuthLoginSectionProps {
@@ -11,18 +11,14 @@ interface OAuthLoginSectionProps {
 const OAuthLoginSection = ({
   className = '',
   disabled = false,
-  showTelegram = true
+  showTelegram = true,
 }: OAuthLoginSectionProps) => {
   return (
     <div className={`space-y-4 ${className}`}>
       {/* OAuth Providers */}
       <div className="space-y-3">
-        {oauthProviderConfigs.map((provider) => (
-          <OAuthProviderButton
-            key={provider.id}
-            provider={provider}
-            disabled={disabled}
-          />
+        {oauthProviderConfigs.map(provider => (
+          <OAuthProviderButton key={provider.id} provider={provider} disabled={disabled} />
         ))}
       </div>
 

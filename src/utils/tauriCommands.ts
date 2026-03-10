@@ -4,6 +4,7 @@
  * Helper functions for invoking Tauri commands from the frontend.
  */
 import { isTauri as coreIsTauri, invoke } from '@tauri-apps/api/core';
+
 import { injectAll } from '../lib/ai/injector';
 import type { Message } from '../lib/ai/providers/interface';
 
@@ -405,14 +406,11 @@ export async function alphahumanAgentChat(
 
   if (options.injectSoul) {
     try {
-      const userMessage: Message = {
-        role: 'user',
-        content: [{ type: 'text', text: message }]
-      };
+      const userMessage: Message = { role: 'user', content: [{ type: 'text', text: message }] };
 
       const injectedMessage = await injectAll(userMessage, {
         mode: 'context-block',
-        includeMetadata: false
+        includeMetadata: false,
       });
 
       // Extract the processed text

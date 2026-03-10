@@ -57,7 +57,12 @@ const SocketProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Setup Tauri event listeners once
   useEffect(() => {
-    console.log('[SocketProvider] useEffect triggered, usesRustSocket:', usesRustSocket, 'tauriListenersSetup:', tauriListenersSetup.current);
+    console.log(
+      '[SocketProvider] useEffect triggered, usesRustSocket:',
+      usesRustSocket,
+      'tauriListenersSetup:',
+      tauriListenersSetup.current
+    );
 
     if (usesRustSocket && !tauriListenersSetup.current) {
       console.log('[SocketProvider] Condition met - calling setupTauriSocketListeners()');
@@ -70,7 +75,7 @@ const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         .then(() => {
           console.log('[SocketProvider] setupTauriSocketListeners() completed successfully');
         })
-        .catch((error) => {
+        .catch(error => {
           console.error('[SocketProvider] setupTauriSocketListeners() failed:', error);
           console.error('[SocketProvider] Error details:', {
             message: error?.message,
@@ -85,7 +90,12 @@ const SocketProvider = ({ children }: { children: React.ReactNode }) => {
     } else if (!usesRustSocket) {
       console.log('[SocketProvider] Not using Rust socket, skipping Tauri listener setup');
     } else {
-      console.log('[SocketProvider] Unexpected condition - usesRustSocket:', usesRustSocket, 'tauriListenersSetup.current:', tauriListenersSetup.current);
+      console.log(
+        '[SocketProvider] Unexpected condition - usesRustSocket:',
+        usesRustSocket,
+        'tauriListenersSetup.current:',
+        tauriListenersSetup.current
+      );
     }
 
     return () => {
