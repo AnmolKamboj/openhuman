@@ -136,6 +136,26 @@ pub fn check_telegram_skill(skill_id: &str) -> Result<(), String> {
     }
 }
 
-pub fn js_err(msg: String) -> rquickjs::Error {
-    rquickjs::Error::new_from_js_message("skill", "RuntimeError", msg)
+/// Sanitize error message for use with QuickJS/rquickjs.
+/// Some messages (e.g. from SQLite "Invalid symbol 45, offset 19") can trigger
+/// "Invalid symbol" when rquickjs creates the JS exception — avoid comma and hyphen.
+fn sanitize_error_message(msg: &str) -> String {
+    msg.chars()
+        .map(|c| {
+            if c == ',' || c == '-' {
+                ' '
+            } else if c.is_ascii() && !c.is_ascii_control() {
+                c
+            } else if c == '\n' || c == '\r' || c == '\t' {
+                ' '
+            } else {
+                '?'
+            }
+        })
+        .collect()
+}
+
+pub fn js_err(msg: impl AsRef<str>) -> rquickjs::Error {
+    let sanitized = sanitize_error_message(msg.as_ref());
+    rquickjs::Error::new_from_js_message("skill", "RuntimeError", sanitized)
 }

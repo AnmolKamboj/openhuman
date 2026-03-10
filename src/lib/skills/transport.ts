@@ -51,11 +51,7 @@ export class SkillTransport {
       throw new Error("Skill transport not started");
     }
 
-    console.log("[skill-transport] Sending request", {
-      skillId: this.skillId,
-      method,
-      hasParams: params !== undefined,
-    });
+    console.log("[skill-transport] →", { skillId: this.skillId, method, params });
 
     const result = await invoke<T>("runtime_rpc", {
       skillId: this.skillId,
@@ -63,10 +59,7 @@ export class SkillTransport {
       params: params ?? {},
     });
 
-    console.debug("[skill-transport] Received response", {
-      skillId: this.skillId,
-      method,
-    });
+    console.log("[skill-transport] ←", { skillId: this.skillId, method, result });
 
     return result;
   }

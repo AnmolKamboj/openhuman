@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import {
-  alphahumanListIntegrations,
   alphahumanGetConfig,
   alphahumanGetRuntimeFlags,
+  alphahumanListIntegrations,
   alphahumanSetBrowserAllowAll,
   alphahumanUpdateBrowserSettings,
   type IntegrationCategory,
@@ -50,7 +50,7 @@ const SkillsPanel = () => {
         const runtimeFlags = await alphahumanGetRuntimeFlags();
         setBrowserAllowAll(runtimeFlags.result.browser_allow_all);
         const entries = await Promise.all(
-          response.result.map(async (integration) => {
+          response.result.map(async integration => {
             const skillId = integrationSkillId(integration);
             try {
               const enabled =
@@ -99,7 +99,8 @@ const SkillsPanel = () => {
           <div>
             <h3 className="text-lg font-semibold text-white">Browser Access</h3>
             <p className="text-xs text-stone-400">
-              Allow the browser tool to visit any public domain (private and file URLs are still blocked).
+              Allow the browser tool to visit any public domain (private and file URLs are still
+              blocked).
             </p>
           </div>
           <label className="flex items-center gap-3 text-sm text-stone-300">
@@ -108,7 +109,7 @@ const SkillsPanel = () => {
               className="checkbox checkbox-primary"
               checked={browserAllowAll}
               disabled={browserAllowAllBusy}
-              onChange={async (event) => {
+              onChange={async event => {
                 const next = event.target.checked;
                 setBrowserAllowAllBusy(true);
                 try {
@@ -136,9 +137,7 @@ const SkillsPanel = () => {
           </div>
         )}
         <div className="rounded-xl border border-stone-800/60 bg-black/40">
-          {loading && (
-            <div className="p-4 text-sm text-stone-400">Loading integrations...</div>
-          )}
+          {loading && <div className="p-4 text-sm text-stone-400">Loading integrations...</div>}
           {!loading && integrations.length === 0 && (
             <div className="p-4 text-sm text-stone-400">
               No integrations registered in Alphahuman.
@@ -159,9 +158,9 @@ const SkillsPanel = () => {
                       enabled={enabledMap[integration.name] ?? false}
                       busy={toggleBusy[integration.name] ?? false}
                       toggleable={isIntegrationToggleable(integration)}
-                      onToggle={async (nextEnabled) => {
+                      onToggle={async nextEnabled => {
                         const key = integration.name;
-                        setToggleBusy((prev) => ({ ...prev, [key]: true }));
+                        setToggleBusy(prev => ({ ...prev, [key]: true }));
                         try {
                           if (integration.name === 'Browser') {
                             await alphahumanUpdateBrowserSettings({ enabled: nextEnabled });
@@ -173,12 +172,12 @@ const SkillsPanel = () => {
                               await runtimeDisableSkill(skillId);
                             }
                           }
-                          setEnabledMap((prev) => ({ ...prev, [key]: nextEnabled }));
+                          setEnabledMap(prev => ({ ...prev, [key]: nextEnabled }));
                         } catch (err) {
                           const message = err instanceof Error ? err.message : String(err);
                           setError(message);
                         } finally {
-                          setToggleBusy((prev) => ({ ...prev, [key]: false }));
+                          setToggleBusy(prev => ({ ...prev, [key]: false }));
                         }
                       }}
                     />
@@ -218,31 +217,23 @@ function IntegrationRow({
     <div
       className={`flex items-center justify-between gap-4 p-4 ${
         isLast ? '' : 'border-b border-stone-800/60'
-      }`}
-    >
+      }`}>
       <div className="flex items-center gap-3 text-left flex-1 min-w-0">
         <div className="w-6 h-6 flex items-center justify-center text-white/70">
-          <span className="text-xs font-semibold uppercase">
-            {integration.name.slice(0, 2)}
-          </span>
+          <span className="text-xs font-semibold uppercase">{integration.name.slice(0, 2)}</span>
         </div>
         <div className="min-w-0">
           <div className="text-sm font-semibold text-white truncate">{integration.name}</div>
-          <div className="text-xs text-stone-400 line-clamp-2">
-            {integration.description}
-          </div>
+          <div className="text-xs text-stone-400 line-clamp-2">{integration.description}</div>
           {integration.setup_hints.length > 0 && (
-            <div className="mt-1 text-[11px] text-stone-500">
-              {integration.setup_hints[0]}
-            </div>
+            <div className="mt-1 text-[11px] text-stone-500">{integration.setup_hints[0]}</div>
           )}
         </div>
       </div>
 
       <div className="flex items-center gap-3">
         <span
-          className={`px-2 py-1 text-[11px] font-semibold uppercase border rounded-full ${statusStyle}`}
-        >
+          className={`px-2 py-1 text-[11px] font-semibold uppercase border rounded-full ${statusStyle}`}>
           {integration.status}
         </span>
         <label className="flex items-center gap-2 text-xs text-stone-300">
@@ -251,7 +242,7 @@ function IntegrationRow({
             className="checkbox checkbox-primary"
             checked={enabled}
             disabled={busy || !toggleable}
-            onChange={(event) => onToggle(event.target.checked)}
+            onChange={event => onToggle(event.target.checked)}
           />
           {busy ? 'Saving…' : enabled ? 'Enabled' : toggleable ? 'Disabled' : 'Managed'}
         </label>
@@ -274,8 +265,5 @@ function isIntegrationToggleable(integration: IntegrationInfo): boolean {
   if (integration.name === 'Browser') {
     return true;
   }
-  return (
-    integration.category === 'Chat' ||
-    integration.category === 'ToolsAutomation'
-  );
+  return integration.category === 'Chat' || integration.category === 'ToolsAutomation';
 }

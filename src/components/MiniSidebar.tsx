@@ -1,6 +1,10 @@
+import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useAppSelector } from '../store/hooks';
+import { isTauri } from '../utils/tauriCommands';
+import DaemonHealthIndicator from './daemon/DaemonHealthIndicator';
+import DaemonHealthPanel from './daemon/DaemonHealthPanel';
 
 const navItems = [
   {
@@ -90,6 +94,7 @@ const MiniSidebar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const token = useAppSelector(state => state.auth.token);
+  const [showDaemonPanel, setShowDaemonPanel] = useState(false);
 
   // Unread count for Conversations: threads with lastMessageAt > lastViewedAt (must be before early return)
   const conversationsUnreadCount = useAppSelector(state => {
@@ -115,37 +120,64 @@ const MiniSidebar = () => {
   };
 
   return (
-    <div className="w-14 flex-shrink-0 bg-black backdrop-blur-md border-r border-white/10 flex flex-col items-center py-4 gap-2 z-50 relative">
-      {navItems.map(item => {
-        const active = isActive(item.path);
-        const showUnreadBadge = item.id === 'conversations' && conversationsUnreadCount > 0;
-        return (
-          <div key={item.id} className="relative group">
-            <button
-              onClick={() => navigate(item.path)}
-              className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-200 cursor-pointer ${
-                active
-                  ? 'bg-white/10 text-black'
-                  : 'text-stone-500 hover:text-stone-300 hover:bg-white/5'
-              }`}
-              aria-label={item.label}>
-              {item.icon}
-            </button>
-            {showUnreadBadge && (
-              <span
-                className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-primary-500 text-white text-[10px] font-medium"
-                aria-label={`${conversationsUnreadCount} unread`}>
-                {conversationsUnreadCount > 99 ? '99+' : conversationsUnreadCount}
-              </span>
-            )}
-            {/* Tooltip - appears to the right */}
+    <>
+      <div className="w-14 flex-shrink-0 bg-black backdrop-blur-md border-r border-white/10 flex flex-col items-center py-4 gap-2 z-50 relative">
+        {/* Navigation Items */}
+        <div className="flex flex-col items-center gap-2 flex-1">
+          {navItems.map(item => {
+            const active = isActive(item.path);
+            const showUnreadBadge = item.id === 'conversations' && conversationsUnreadCount > 0;
+            return (
+              <div key={item.id} className="relative group">
+                <button
+                  onClick={() => navigate(item.path)}
+                  className={`w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-200 cursor-pointer ${
+                    active
+                      ? 'bg-white/10 text-black'
+                      : 'text-stone-500 hover:text-stone-300 hover:bg-white/5'
+                  }`}
+                  aria-label={item.label}>
+                  {item.icon}
+                </button>
+                {showUnreadBadge && (
+                  <span
+                    className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-primary-500 text-white text-[10px] font-medium"
+                    aria-label={`${conversationsUnreadCount} unread`}>
+                    {conversationsUnreadCount > 99 ? '99+' : conversationsUnreadCount}
+                  </span>
+                )}
+                {/* Tooltip - appears to the right */}
+                <div className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-stone-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                  {item.label}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Daemon Health Indicator - Only show in Tauri mode */}
+        {isTauri() && (
+          <div className="relative group">
+            <div className="w-10 h-10 flex items-center justify-center rounded-xl text-stone-500 hover:text-stone-300 hover:bg-white/5 transition-all duration-200 cursor-pointer">
+              <DaemonHealthIndicator size="md" onClick={() => setShowDaemonPanel(true)} />
+            </div>
+            {/* Tooltip */}
             <div className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-stone-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-              {item.label}
+              Daemon Status
             </div>
           </div>
-        );
-      })}
-    </div>
+        )}
+      </div>
+
+      {/* Daemon Health Panel Modal */}
+      {showDaemonPanel && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9999]">
+          <div className="max-w-2xl w-full mx-4">
+            <DaemonHealthPanel onClose={() => setShowDaemonPanel(false)} />
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

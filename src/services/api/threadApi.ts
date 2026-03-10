@@ -1,3 +1,5 @@
+import { injectAll } from '../../lib/ai/injector';
+import type { Message } from '../../lib/ai/providers/interface';
 import type { ApiResponse } from '../../types/api';
 import type {
   PurgeRequestBody,
@@ -12,45 +14,71 @@ import type {
 import { apiClient } from '../apiClient';
 
 export const threadApi = {
-  /** GET /telegram/threads — list all threads for the authenticated user */
+  /** GET /threads — list all threads for the authenticated user */
   getThreads: async (): Promise<ThreadsListData> => {
-    const response = await apiClient.get<ApiResponse<ThreadsListData>>('/telegram/threads');
+    const response = await apiClient.get<ApiResponse<ThreadsListData>>('/threads');
     return response.data;
   },
 
-  /** POST /telegram/threads — create a new thread */
+  /** POST /threads — create a new thread */
   createThread: async (chatId?: number): Promise<ThreadCreateData> => {
     const response = await apiClient.post<ApiResponse<ThreadCreateData>>(
-      '/telegram/threads',
+      '/threads',
       chatId != null ? { chatId } : undefined
     );
     return response.data;
   },
 
-  /** GET /telegram/threads/:threadId/messages — get messages for a thread */
+  /** GET /threads/:threadId/messages — get messages for a thread */
   getThreadMessages: async (threadId: string): Promise<ThreadMessagesData> => {
     const response = await apiClient.get<ApiResponse<ThreadMessagesData>>(
-      `/telegram/threads/${encodeURIComponent(threadId)}/messages`
+      `/threads/${encodeURIComponent(threadId)}/messages`
     );
     return response.data;
   },
 
-  /** DELETE /telegram/threads/:threadId — delete a single thread */
+  /** DELETE /threads/:threadId — delete a single thread */
   deleteThread: async (threadId: string): Promise<ThreadDeleteData> => {
     const response = await apiClient.delete<ApiResponse<ThreadDeleteData>>(
-      `/telegram/threads/${encodeURIComponent(threadId)}`
+      `/threads/${encodeURIComponent(threadId)}`
     );
     return response.data;
   },
 
-  /** POST /chat/sendMessage — send a user message to a thread and get the agent response */
+  /** POST /chat/sendMessage — send a user message with SOUL + TOOLS injection */
   sendMessage: async (
     message: string,
-    conversationId: string
+    conversationId: string,
+    options: { injectSoul?: boolean } = { injectSoul: true }
   ): Promise<SendMessageResponseData> => {
+    let processedMessage = message;
+
+    if (options.injectSoul) {
+      try {
+        const userMessage: Message = { role: 'user', content: [{ type: 'text', text: message }] };
+
+        const injectedMessage = await injectAll(userMessage, {
+          mode: 'context-block',
+          includeMetadata: false,
+        });
+
+        // Extract the processed text
+        const textContent = injectedMessage.content
+          .filter(block => block.type === 'text')
+          .map(block => (block as { text: string }).text)
+          .join('\n');
+
+        processedMessage = textContent;
+        console.log('✅ SOUL + TOOLS injection successful in threadApi sendMessage');
+      } catch (error) {
+        // Graceful degradation - log error but continue with original message
+        console.warn('⚠️ SOUL + TOOLS injection failed in threadApi sendMessage:', error);
+      }
+    }
+
     const response = await apiClient.post<ApiResponse<SendMessageResponseData>>(
       '/chat/sendMessage',
-      { message, conversationId }
+      { message: processedMessage, conversationId }
     );
     return response.data;
   },
@@ -65,9 +93,9 @@ export const threadApi = {
     return response.data;
   },
 
-  /** POST /telegram/purge — purge messages and/or threads */
+  /** POST /purge — purge messages and/or threads */
   purge: async (body: PurgeRequestBody): Promise<PurgeResultData> => {
-    const response = await apiClient.post<ApiResponse<PurgeResultData>>('/telegram/purge', body);
+    const response = await apiClient.post<ApiResponse<PurgeResultData>>('/purge', body);
     return response.data;
   },
 };

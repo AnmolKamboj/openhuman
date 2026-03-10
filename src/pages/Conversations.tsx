@@ -9,21 +9,28 @@ import {
 import Markdown from 'react-markdown';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { injectAll } from '../lib/ai/injector';
+import type { Message } from '../lib/ai/providers/interface';
+import { skillManager } from '../lib/skills/manager';
 import {
+  type ChatMessage,
+  inferenceApi,
+  type ModelInfo,
+  type Tool,
+} from '../services/api/inferenceApi';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import type { NotionPageSummary, NotionSummary, NotionUserProfile } from '../store/notionSlice';
+import {
+  addInferenceResponse,
   addOptimisticMessage,
-  clearCreateStatus,
   clearDeleteStatus,
   clearPurgeStatus,
   clearSelectedThread,
-  clearSendError,
-  createThread,
-  deleteThread,
+  createThreadLocal,
+  deleteThreadLocal,
   fetchSuggestedQuestions,
-  fetchThreadMessages,
-  fetchThreads,
   purgeThreads,
-  sendMessage,
+  removeOptimisticMessages,
   setLastViewed,
   setPanelWidth,
   setSelectedThread,
@@ -31,6 +38,51 @@ import {
 
 const MIN_PANEL_WIDTH = 200;
 const MAX_PANEL_WIDTH = 480;
+
+// ---------------------------------------------------------------------------
+// Notion context builder
+// ---------------------------------------------------------------------------
+
+function buildNotionContext(
+  profile: NotionUserProfile | null,
+  pages: NotionPageSummary[],
+  summaries: NotionSummary[],
+  workspaceName: string | null
+): string | null {
+  if (!profile && pages.length === 0) return null;
+
+  const lines: string[] = ['[NOTION_CONTEXT]'];
+
+  if (workspaceName) lines.push(`Workspace: ${workspaceName}`);
+  if (profile) {
+    const who = [profile.name, profile.email].filter(Boolean).join(' · ');
+    if (who) lines.push(`Connected as: ${who}`);
+  }
+
+  if (pages.length > 0) {
+    lines.push(`\nRecent Pages (${pages.length} total):`);
+    const top = pages.slice(0, 10);
+    for (const p of top) {
+      const urlPart = p.url ? ` — ${p.url}` : '';
+      lines.push(`• ${p.title}${urlPart}`);
+    }
+  }
+
+  if (summaries.length > 0) {
+    lines.push('\nAI Page Summaries:');
+    const top = summaries.slice(0, 5);
+    for (const s of top) {
+      const meta = [s.category, s.sentiment !== 'neutral' ? s.sentiment : null]
+        .filter(Boolean)
+        .join(', ');
+      const topicStr = s.topics.length > 0 ? ` | Topics: ${s.topics.slice(0, 4).join(', ')}` : '';
+      lines.push(`• ${s.summary}${meta ? ` [${meta}]` : ''}${topicStr}`);
+    }
+  }
+
+  lines.push('[/NOTION_CONTEXT]');
+  return lines.join('\n');
+}
 
 function formatRelativeTime(dateStr: string): string {
   const now = Date.now();
@@ -51,28 +103,41 @@ const Conversations = () => {
   const { threadId: urlThreadId } = useParams<{ threadId?: string }>();
   const {
     threads,
-    isLoading,
-    error,
     selectedThreadId,
     messages,
     isLoadingMessages,
     messagesError,
-    createStatus,
     deleteStatus,
     purgeStatus,
-    sendStatus,
-    sendError,
     panelWidth,
     lastViewedAt,
     suggestedQuestions,
     isLoadingSuggestions,
   } = useAppSelector(state => state.thread);
 
+  const skillsState = useAppSelector(state => state.skills);
+  const notionProfile = useAppSelector(state => state.notion.profile);
+  const notionPages = useAppSelector(state => state.notion.pages);
+  const notionSummaries = useAppSelector(state => state.notion.summaries);
+  const notionWorkspaceName = useAppSelector(
+    state =>
+      ((state.skills.skillStates?.notion as Record<string, unknown> | undefined)?.workspaceName as
+        | string
+        | null) ?? null
+  );
+
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+
+  // Inference model state
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
+  const [selectedModel, setSelectedModel] = useState('neocortex-mk1');
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const isDragging = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastPanelWidthRef = useRef(panelWidth);
@@ -134,10 +199,24 @@ const Conversations = () => {
     [panelWidth, dispatch]
   );
 
-  // Fetch threads on mount
+  // Fetch available inference models on mount
   useEffect(() => {
-    dispatch(fetchThreads());
-  }, [dispatch]);
+    setIsLoadingModels(true);
+    inferenceApi
+      .listModels()
+      .then(data => {
+        if (data.data.length > 0) {
+          setAvailableModels(data.data);
+          setSelectedModel(data.data[0].id);
+        }
+      })
+      .catch(() => {
+        // Keep default model on failure
+      })
+      .finally(() => setIsLoadingModels(false));
+  }, []);
+
+  // Remove thread fetching - threads are now loaded from Redux persist
 
   // Sync URL → Redux: when URL has a threadId param, select that thread
   useEffect(() => {
@@ -153,12 +232,7 @@ const Conversations = () => {
     if (selectedThreadId) dispatch(setLastViewed(selectedThreadId));
   }, [selectedThreadId, dispatch]);
 
-  // Fetch messages when a thread is selected
-  useEffect(() => {
-    if (selectedThreadId) {
-      dispatch(fetchThreadMessages(selectedThreadId));
-    }
-  }, [dispatch, selectedThreadId]);
+  // Remove message fetching - messages load from local storage automatically
 
   // Fetch suggested questions when thread is empty (beginning of new thread)
   useEffect(() => {
@@ -174,12 +248,7 @@ const Conversations = () => {
     }
   }, [messages]);
 
-  // Clear transient status flags after they settle
-  useEffect(() => {
-    if (createStatus === 'success' || createStatus === 'error') {
-      dispatch(clearCreateStatus());
-    }
-  }, [createStatus, dispatch]);
+  // Remove create status handling - using local thread creation
 
   useEffect(() => {
     if (deleteStatus === 'success' || deleteStatus === 'error') {
@@ -196,26 +265,31 @@ const Conversations = () => {
   // Clear send error when user starts typing again
   useEffect(() => {
     if (sendError && inputValue.length > 0) {
-      dispatch(clearSendError());
+      setSendError(null);
     }
-  }, [inputValue, sendError, dispatch]);
+  }, [inputValue, sendError]);
 
   const handleSelectThread = (threadId: string) => {
     if (threadId === selectedThreadId) return;
     navigate(`/conversations/${threadId}`, { replace: true });
   };
 
-  const handleNewThread = async () => {
-    const result = await dispatch(createThread(undefined));
-    if (createThread.fulfilled.match(result)) {
-      navigate(`/conversations/${result.payload.id}`, { replace: true });
-    }
+  const handleNewThread = () => {
+    const threadId = crypto.randomUUID();
+    dispatch(
+      createThreadLocal({
+        id: threadId,
+        title: 'New Conversation',
+        createdAt: new Date().toISOString(),
+      })
+    );
+    navigate(`/conversations/${threadId}`, { replace: true });
   };
 
-  const handleDeleteThread = async (threadId: string) => {
-    const result = await dispatch(deleteThread(threadId));
+  const handleDeleteThread = (threadId: string) => {
+    dispatch(deleteThreadLocal(threadId));
     setConfirmDeleteId(null);
-    if (deleteThread.fulfilled.match(result) && threadId === selectedThreadId) {
+    if (threadId === selectedThreadId) {
       navigate('/conversations', { replace: true });
     }
   };
@@ -228,12 +302,205 @@ const Conversations = () => {
     }
   };
 
-  const handleSendMessage = (text?: string) => {
+  const handleSendMessage = async (text?: string) => {
     const trimmed = text ?? inputValue.trim();
-    if (!trimmed || !selectedThreadId || sendStatus === 'loading') return;
+    if (!trimmed || !selectedThreadId || isSending) return;
+
+    // Snapshot history before the optimistic update (exclude stale optimistic msgs)
+    const historySnapshot = messages.filter(m => !m.id.startsWith('optimistic-'));
+
     dispatch(addOptimisticMessage({ content: trimmed }));
     setInputValue('');
-    dispatch(sendMessage({ threadId: selectedThreadId, message: trimmed }));
+    setSendError(null);
+    setIsSending(true);
+
+    try {
+      // Process user message with SOUL + TOOLS injection
+      let processedUserContent = trimmed;
+      try {
+        const userMessage: Message = { role: 'user', content: [{ type: 'text', text: trimmed }] };
+
+        const injectedMessage = await injectAll(userMessage, {
+          mode: 'context-block',
+          includeMetadata: false,
+        });
+
+        // Extract the processed text
+        processedUserContent = injectedMessage.content
+          .filter(block => block.type === 'text')
+          .map(block => (block as { text: string }).text)
+          .join('\n');
+
+        console.log('✅ SOUL + TOOLS injection successful in Conversations page');
+      } catch (injectionError) {
+        console.warn('⚠️ SOUL + TOOLS injection failed in Conversations page:', injectionError);
+        // Continue with original message
+      }
+
+      // Prepend Notion workspace context if connected
+      const notionContext = buildNotionContext(
+        notionProfile,
+        notionPages,
+        notionSummaries,
+        notionWorkspaceName
+      );
+      if (notionContext) {
+        processedUserContent = `${notionContext}\n\n${processedUserContent}`;
+      }
+
+      const chatMessages: ChatMessage[] = [
+        ...historySnapshot.map(m => ({
+          role: (m.sender === 'user' ? 'user' : 'assistant') as ChatMessage['role'],
+          content: m.content,
+        })),
+        { role: 'user' as const, content: processedUserContent },
+      ];
+
+      // Build tool definitions for ALL ready skills — namespaced as {skillId}__{toolName}
+      const allSkillTools: Tool[] = Object.entries(skillsState.skills)
+        .filter(([, skill]) => skill.status === 'ready' && skill.tools?.length)
+        .flatMap(([skillId, skill]) =>
+          (skill.tools ?? []).map(t => ({
+            type: 'function' as const,
+            function: {
+              name: `${skillId}__${t.name}`,
+              description: t.description,
+              parameters: t.inputSchema as Tool['function']['parameters'],
+            },
+          }))
+        );
+
+      console.log(
+        `[Conversations] active skill tools: ${allSkillTools.length}`,
+        allSkillTools.map(t => t.function.name)
+      );
+
+      // Agentic tool calling loop — handles multi-turn tool execution
+      const loopMessages = [...chatMessages];
+      let finalContent = '';
+      const MAX_TOOL_ROUNDS = 5;
+
+      for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+        const request: Parameters<typeof inferenceApi.createChatCompletion>[0] = {
+          model: selectedModel,
+          messages: loopMessages,
+          ...(allSkillTools.length > 0
+            ? { tools: allSkillTools, tool_choice: 'auto' as const }
+            : {}),
+        };
+        console.log('[Conversations] inference request:', {
+          round: round + 1,
+          model: request.model,
+          messageCount: request.messages.length,
+          tools: request.tools?.length ?? 0,
+          payload: request,
+        });
+        const response = await inferenceApi.createChatCompletion(request);
+        console.log('[Conversations] inference response:', {
+          round: round + 1,
+          choices: response.choices?.length ?? 0,
+          usage: response.usage,
+          payload: response,
+        });
+
+        const choice = response.choices[0];
+        if (!choice) break;
+
+        const { finish_reason, message } = choice;
+
+        if (finish_reason === 'tool_calls' && message.tool_calls?.length) {
+          // Append assistant message with tool_calls
+          loopMessages.push({
+            role: 'assistant',
+            content: message.content ?? '',
+            tool_calls: message.tool_calls,
+          });
+
+          const latestIndex = message.tool_calls.length - 1;
+          // API requires a tool message for every tool_call_id; we execute only the latest and send placeholders for the rest
+          for (let i = 0; i < message.tool_calls.length; i++) {
+            const tc = message.tool_calls[i];
+            if (i !== latestIndex) {
+              loopMessages.push({ role: 'tool', tool_call_id: tc.id, content: '' });
+              continue;
+            }
+
+            const dunderIdx = tc.function.name.indexOf('__');
+            const skillId = dunderIdx !== -1 ? tc.function.name.substring(0, dunderIdx) : '';
+            const toolName =
+              dunderIdx !== -1 ? tc.function.name.substring(dunderIdx + 2) : tc.function.name;
+
+            console.log(
+              `[Conversations] tool_call dispatched — skill="${skillId}" tool="${toolName}" call_id="${tc.id}"`
+            );
+
+            let toolResultContent = '';
+            try {
+              let toolArgs: Record<string, unknown> = {};
+              try {
+                toolArgs = JSON.parse(tc.function.arguments) as Record<string, unknown>;
+              } catch {
+                toolArgs = {};
+              }
+              console.log(
+                `[Conversations] calling skillManager.callTool("${skillId}", "${toolName}")`,
+                toolArgs
+              );
+              const result = await skillManager.callTool(skillId, toolName, toolArgs);
+              toolResultContent = result.content.map(c => c.text).join('\n');
+              let toolReturnedError = result.isError;
+              if (!toolReturnedError && toolResultContent) {
+                try {
+                  const parsed = JSON.parse(toolResultContent) as Record<string, unknown>;
+                  if (parsed && typeof parsed.error === 'string') {
+                    toolReturnedError = true;
+                    toolResultContent = `Error: ${parsed.error}`;
+                  }
+                } catch {
+                  // not JSON or no error key — keep content as-is
+                }
+              }
+              if (toolReturnedError) {
+                console.warn(
+                  `[Conversations] tool "${toolName}" returned an error:`,
+                  toolResultContent
+                );
+                if (!toolResultContent.startsWith('Error: ')) {
+                  toolResultContent = `Error: ${toolResultContent}`;
+                }
+              } else {
+                console.log(
+                  `[Conversations] tool "${toolName}" succeeded:`,
+                  toolResultContent.slice(0, 200)
+                );
+              }
+            } catch (toolErr) {
+              console.error(`[Conversations] tool "${toolName}" threw:`, toolErr);
+              toolResultContent = `Tool execution failed: ${toolErr instanceof Error ? toolErr.message : String(toolErr)}`;
+            }
+
+            loopMessages.push({ role: 'tool', tool_call_id: tc.id, content: toolResultContent });
+          }
+          // Continue loop to get final response after tool results
+          continue;
+        }
+
+        // Normal (non-tool) response — done
+        finalContent = message.content ?? '';
+        break;
+      }
+
+      dispatch(addInferenceResponse({ content: finalContent }));
+    } catch (err) {
+      dispatch(removeOptimisticMessages());
+      const msg =
+        err && typeof err === 'object' && 'error' in err
+          ? String((err as { error: unknown }).error)
+          : 'Failed to get response';
+      setSendError(msg);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -277,35 +544,16 @@ const Conversations = () => {
             <h2 className="text-sm font-semibold">Conversations</h2>
             <button
               onClick={handleNewThread}
-              disabled={createStatus === 'loading'}
-              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-stone-400 hover:text-stone-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-stone-400 hover:text-stone-200"
               title="New Thread">
-              {createStatus === 'loading' ? (
-                <svg className="w-4.5 h-4.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                  />
-                </svg>
-              ) : (
-                <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
-              )}
+              <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
             </button>
           </div>
 
@@ -352,35 +600,7 @@ const Conversations = () => {
 
           {/* Thread list */}
           <div className="flex-1 overflow-y-auto">
-            {isLoading ? (
-              <div className="space-y-1 p-2">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="h-16 bg-white/5 rounded-xl animate-pulse" />
-                ))}
-              </div>
-            ) : error ? (
-              <div className="flex-1 flex flex-col items-center justify-center py-16 px-4">
-                <svg
-                  className="w-8 h-8 text-coral-500/70 mb-3"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                  />
-                </svg>
-                <p className="text-sm text-stone-400 mb-1">Failed to load conversations</p>
-                <p className="text-xs text-stone-600 mb-3 text-center">{error}</p>
-                <button
-                  onClick={() => dispatch(fetchThreads())}
-                  className="text-xs text-primary-400 hover:text-primary-300 transition-colors">
-                  Retry
-                </button>
-              </div>
-            ) : filteredThreads.length > 0 ? (
+            {filteredThreads.length > 0 ? (
               <div className="py-1">
                 {filteredThreads.map(thread => (
                   <div
@@ -490,8 +710,7 @@ const Conversations = () => {
                 <p className="text-sm text-stone-500 mb-3">No conversations yet</p>
                 <button
                   onClick={handleNewThread}
-                  disabled={createStatus === 'loading'}
-                  className="text-xs text-primary-400 hover:text-primary-300 transition-colors disabled:opacity-50">
+                  className="text-xs text-primary-400 hover:text-primary-300 transition-colors">
                   Start a new conversation
                 </button>
               </div>
@@ -610,11 +829,9 @@ const Conversations = () => {
                     <p className="text-sm text-stone-400 mb-1">Failed to load messages</p>
                     <p className="text-xs text-stone-600 mb-3 text-center">{messagesError}</p>
                     <button
-                      onClick={() =>
-                        selectedThreadId && dispatch(fetchThreadMessages(selectedThreadId))
-                      }
+                      onClick={() => window.location.reload()}
                       className="text-xs text-primary-400 hover:text-primary-300 transition-colors">
-                      Retry
+                      Reload
                     </button>
                   </div>
                 ) : messages.length > 0 ? (
@@ -683,7 +900,7 @@ const Conversations = () => {
                       </div>
                     ))}
                     {/* Typing indicator (#14) */}
-                    {sendStatus === 'loading' && (
+                    {isSending && (
                       <div className="flex justify-start">
                         <div className="bg-white/5 rounded-2xl rounded-bl-md px-4 py-3">
                           <div className="flex items-center gap-1">
@@ -712,7 +929,7 @@ const Conversations = () => {
                         key={i}
                         type="button"
                         onClick={() => handleSendMessage(s.text)}
-                        disabled={sendStatus === 'loading'}
+                        disabled={isSending}
                         className="flex-shrink-0 px-3 py-1.5 rounded-lg text-[12px] whitespace-nowrap bg-white/5 text-stone-400 hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                         {s.text}
                       </button>
@@ -723,11 +940,38 @@ const Conversations = () => {
 
               {/* Message Input */}
               <div className="flex-shrink-0 border-t border-white/10 px-4 py-3">
+                {/* Model selector */}
+                <div className="flex items-center gap-2 mb-2">
+                  {isLoadingModels ? (
+                    <span className="text-xs text-stone-600">Loading models…</span>
+                  ) : (
+                    <>
+                      <span className="text-xs text-stone-500">Model</span>
+                      <select
+                        value={selectedModel}
+                        onChange={e => setSelectedModel(e.target.value)}
+                        disabled={isSending}
+                        className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-stone-300 focus:outline-none focus:ring-1 focus:ring-primary-500/50 disabled:opacity-50 cursor-pointer">
+                        {availableModels.length > 0 ? (
+                          availableModels.map(m => (
+                            <option key={m.id} value={m.id} className="bg-stone-900">
+                              {m.id}
+                            </option>
+                          ))
+                        ) : (
+                          <option value={selectedModel} className="bg-stone-900">
+                            {selectedModel}
+                          </option>
+                        )}
+                      </select>
+                    </>
+                  )}
+                </div>
                 {sendError && (
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs text-coral-500">{sendError}</p>
                     <button
-                      onClick={() => dispatch(clearSendError())}
+                      onClick={() => setSendError(null)}
                       className="text-xs text-stone-500 hover:text-stone-300 transition-colors ml-2 flex-shrink-0">
                       Dismiss
                     </button>
@@ -744,9 +988,9 @@ const Conversations = () => {
                   />
                   <button
                     onClick={() => handleSendMessage()}
-                    disabled={!inputValue.trim() || sendStatus === 'loading'}
+                    disabled={!inputValue.trim() || isSending}
                     className="p-2.5 rounded-xl bg-primary-600 hover:bg-primary-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0">
-                    {sendStatus === 'loading' ? (
+                    {isSending ? (
                       <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                         <circle
                           className="opacity-25"

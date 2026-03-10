@@ -11,7 +11,8 @@ export type SettingsRoute =
   | 'billing'
   | 'team'
   | 'team-members'
-  | 'team-invites';
+  | 'team-invites'
+  | 'ai';
 
 interface SettingsNavigationHook {
   currentRoute: SettingsRoute;
@@ -42,6 +43,7 @@ export const useSettingsNavigation = (): SettingsNavigationHook => {
     if (path.includes('/settings/profile')) return 'profile';
     if (path.includes('/settings/advanced')) return 'advanced';
     if (path.includes('/settings/billing')) return 'billing';
+    if (path.includes('/settings/ai')) return 'ai';
     return 'home';
   };
 

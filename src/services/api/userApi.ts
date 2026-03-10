@@ -19,12 +19,9 @@ export const userApi = {
 
   /**
    * Mark onboarding complete for the current user.
-   * POST /telegram/settings/onboarding-complete
+   * POST /settings/onboarding-complete
    */
   onboardingComplete: async (): Promise<void> => {
-    await apiClient.post<{ success: boolean; data: unknown }>(
-      '/telegram/settings/onboarding-complete',
-      {}
-    );
+    await apiClient.post<{ success: boolean; data: unknown }>('/settings/onboarding-complete', {});
   },
 };

@@ -12,3 +12,5 @@
 # TDLib built from source (see scripts/build-tdlib-from-source.sh)
 /tdlib-local/
 /tdlib-build/
+# TDLib downloaded by scripts/download-tdlib.sh (avoids build timeout)
+/tdlib-cache/

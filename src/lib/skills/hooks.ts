@@ -43,27 +43,25 @@ export function deriveConnectionStatus(
 
   // Process is running or ready — use the skill's self-reported state
   const hostState = skillState as SkillHostConnectionState | undefined;
-  if (!hostState) {
-    // No state pushed yet. Skills that don't maintain an external connection
-    // (e.g. cron-based skills) may never push host state. If setup is complete
-    // and the lifecycle says "ready", treat it as connected.
-    if (setupComplete && lifecycleStatus === "ready") {
+  const connStatus = hostState?.connection_status;
+  const authStatus = hostState?.auth_status;
+
+  // If the skill hasn't pushed any state, or pushed state without standard
+  // connection_status / auth_status fields, fall back to lifecycle + setupComplete.
+  if (!connStatus && !authStatus) {
+    if (setupComplete && (lifecycleStatus === "ready" || lifecycleStatus === "running")) {
       return "connected";
     }
+    if (!hostState) {
+      return "connecting";
+    }
+    // Skill pushed custom state but no connection fields — treat as connecting
     return "connecting";
   }
-
-  const connStatus = hostState.connection_status;
-  const authStatus = hostState.auth_status;
 
   // Check for errors first
   if (connStatus === "error" || authStatus === "error") {
     return "error";
-  }
-
-  // Fully connected and authenticated
-  if (connStatus === "connected" && authStatus === "authenticated") {
-    return "connected";
   }
 
   // Connecting or authenticating
@@ -71,14 +69,18 @@ export function deriveConnectionStatus(
     return "connecting";
   }
 
-  // Connected but not authenticated
-  if (connStatus === "connected" && authStatus === "not_authenticated") {
-    return "not_authenticated";
+  // Connected — check auth if the skill uses it
+  if (connStatus === "connected") {
+    if (!authStatus || authStatus === "authenticated") {
+      return "connected";
+    }
+    if (authStatus === "not_authenticated") {
+      return "not_authenticated";
+    }
   }
 
   // Disconnected from service
   if (connStatus === "disconnected") {
-    // If setup is complete but we're disconnected, it might be a reconnecting state
     if (setupComplete) {
       return "disconnected";
     }

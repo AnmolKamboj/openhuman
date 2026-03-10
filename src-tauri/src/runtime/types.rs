@@ -100,6 +100,11 @@ pub enum SkillMessage {
         params: serde_json::Value,
         reply: tokio::sync::oneshot::Sender<Result<serde_json::Value, String>>,
     },
+    /// Load params from frontend (e.g. wallet address for wallet skill).
+    /// Delivered after skill/load RPC; skill may export onLoad(params) to receive them.
+    LoadParams {
+        params: serde_json::Value,
+    },
 }
 
 /// Result of executing a tool.
@@ -163,6 +168,41 @@ pub struct SkillConfig {
 
 fn default_memory_limit() -> usize {
     256 * 1024 * 1024 // 256 MB
+}
+
+/// A skill entry in the unified registry (covers both alphahuman and openclaw types).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnifiedSkillEntry {
+    /// Unique skill identifier.
+    pub id: String,
+    /// Human-readable name.
+    pub name: String,
+    /// Skill type: "alphahuman" (QuickJS) or "openclaw" (SKILL.md/TOML).
+    pub skill_type: String,
+    /// Version string.
+    pub version: String,
+    /// Description of what the skill does.
+    pub description: String,
+    /// Tools exposed by this skill.
+    pub tools: Vec<ToolDefinition>,
+    /// Setup configuration from manifest.json (e.g. whether setup is required).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub setup: Option<crate::runtime::manifest::SkillSetup>,
+}
+
+/// Standardized result returned by any skill execution in the unified registry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnifiedSkillResult {
+    /// The skill that produced this result.
+    pub skill_id: String,
+    /// The tool that was called, if any.
+    pub tool_name: Option<String>,
+    /// Output content blocks (MCP-spec compatible, same as ToolResult).
+    pub content: Vec<ToolContent>,
+    /// Whether the execution produced an error.
+    pub is_error: bool,
+    /// ISO8601 timestamp of when execution completed.
+    pub executed_at: String,
 }
 
 /// Events emitted from the runtime to the frontend via Tauri.

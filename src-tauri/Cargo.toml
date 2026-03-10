@@ -4,6 +4,7 @@ version = "0.30.0"
 description = "AlphaHuman - AI-powered Super Assistant"
 authors = ["AlphaHuman"]
 edition = "2021"
+default-run = "AlphaHuman"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -11,8 +12,16 @@ edition = "2021"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "tauri_app_lib"
+name = "alphahuman"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "AlphaHuman"
+path = "src/main.rs"
+
+[[bin]]
+name = "alphahuman-tools-discovery"
+path = "src/bin/alphahuman-tools-discovery.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -156,14 +165,13 @@ tauri-plugin-notification = "2"
 # Only available on desktop - prebuilt binaries don't exist for Android/iOS
 rquickjs = { version = "0.11", features = ["futures", "macro", "loader", "parallel"] }
 
-# TDLib Rust bindings (desktop only - downloads prebuilt TDLib for linking)
-# On macOS, the bundled dylib is replaced with a source-built version (see build.rs)
-# to ensure macOS 10.15 deployment target compatibility.
-tdlib-rs = { version = "1.2", features = ["download-tdlib"] }
+# TDLib Rust bindings (desktop only - uses local prebuilt via LOCAL_TDLIB_PATH)
+# Run: cd src-tauri && ./scripts/download-tdlib.sh  (once, to populate tdlib-cache/)
+tdlib-rs = { version = "1.2", features = ["local-tdlib"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.build-dependencies]
-# TDLib build configuration (download-tdlib for all desktop platforms)
-tdlib-rs = { version = "1.2", features = ["download-tdlib"] }
+# TDLib build (local-tdlib avoids reqwest timeout during Cargo build)
+tdlib-rs = { version = "1.2", features = ["local-tdlib"] }
 
 [dev-dependencies]
 tempfile = "3"

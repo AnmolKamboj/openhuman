@@ -8,10 +8,29 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { type ReactNode, useEffect, useRef } from 'react';
 
+import {
+  type GmailStateForSync,
+  syncGmailMetadataToBackend,
+} from '../lib/gmail/services/metadataSync';
+import { syncNotionMetadataToBackend } from '../lib/notion/services/metadataSync';
 import { skillManager } from '../lib/skills/manager';
 import type { SkillManifest } from '../lib/skills/types';
 import { buildManualSentryEvent, enqueueError } from '../services/errorReportQueue';
+import {
+  GmailEmailSummary,
+  type GmailProfile,
+  setGmailEmails,
+  setGmailProfile,
+} from '../store/gmailSlice';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
+import {
+  type NotionPageSummary,
+  type NotionSummary,
+  type NotionUserProfile,
+  setNotionPages,
+  setNotionProfile,
+  setNotionSummaries,
+} from '../store/notionSlice';
 import { setSkillError, setSkillState, setSkillStatus } from '../store/skillsSlice';
 import { DEV_AUTO_LOAD_SKILL, IS_DEV } from '../utils/config';
 
@@ -53,19 +72,132 @@ async function discoverSkills(): Promise<SkillManifest[]> {
 // Provider
 // ---------------------------------------------------------------------------
 
+/** Normalize event payload: Rust emits { skillId, state }; ensure we get both. */
+function parseSkillStatePayload(
+  payload: unknown
+): { skillId: string; state: Record<string, unknown> } | null {
+  if (payload == null || typeof payload !== 'object') return null;
+  const raw = payload as Record<string, unknown>;
+  const skillId = raw.skillId as string | undefined;
+  const state = (raw.state ?? raw) as Record<string, unknown> | undefined;
+  if (!skillId || state == null || typeof state !== 'object') return null;
+  return { skillId, state };
+}
+
+/** Sync profile and emails from gmail skill state into gmailSlice and send to backend via socket. */
+function syncGmailStateToSlice(
+  gmailState: Record<string, unknown> | undefined,
+  dispatch: ReturnType<typeof useAppDispatch>
+): void {
+  if (!gmailState || typeof gmailState !== 'object') return;
+  dispatch(
+    setGmailProfile(
+      gmailState.profile !== undefined && gmailState.profile != null
+        ? (gmailState.profile as GmailProfile)
+        : null
+    )
+  );
+  dispatch(
+    setGmailEmails(
+      Array.isArray(gmailState.emails) ? (gmailState.emails as GmailEmailSummary[]) : []
+    )
+  );
+
+  syncGmailMetadataToBackend(gmailState as GmailStateForSync);
+}
+
+/** Sync pages and summaries from notion skill state into notionSlice. */
+function syncNotionStateToSlice(
+  notionState: Record<string, unknown> | undefined,
+  dispatch: ReturnType<typeof useAppDispatch>
+): void {
+  if (!notionState || typeof notionState !== 'object') return;
+  if (Array.isArray(notionState.pages)) {
+    dispatch(setNotionPages(notionState.pages as NotionPageSummary[]));
+  }
+  if (Array.isArray(notionState.summaries)) {
+    dispatch(setNotionSummaries(notionState.summaries as NotionSummary[]));
+  }
+}
+
+async function syncNotionUserOnConnect(dispatch: ReturnType<typeof useAppDispatch>): Promise<void> {
+  try {
+    const toolResult = await skillManager.callTool('notion', 'get-user', { user_id: 'me' });
+    if (!toolResult || toolResult.isError || toolResult.content.length === 0) {
+      return;
+    }
+    const first = toolResult.content[0];
+    const raw = first?.text;
+    if (!raw) return;
+
+    const parsed = JSON.parse(raw) as NotionUserProfile | { error?: string };
+    if ('error' in parsed && parsed.error) {
+      return;
+    }
+
+    const profile = parsed as NotionUserProfile;
+    dispatch(setNotionProfile(profile));
+    syncNotionMetadataToBackend(profile);
+  } catch (e) {
+    console.error('[SkillProvider] Failed to call Notion get-user tool after connect:', e);
+  }
+}
+
 export default function SkillProvider({ children }: { children: ReactNode }) {
   const { token } = useAppSelector(state => state.auth);
   const skillsState = useAppSelector(state => state.skills.skills);
+  const skillStates = useAppSelector(state => state.skills.skillStates);
   const dispatch = useAppDispatch();
   const initRef = useRef(false);
+  const lastNotionConnectionStatusRef = useRef<string | undefined>(undefined);
+
+  // Keep gmailSlice in sync with skills.skillStates.gmail (event handler + rehydration)
+  const gmailSkillState = skillStates?.gmail as Record<string, unknown> | undefined;
+  useEffect(() => {
+    if (!gmailSkillState) return;
+    syncGmailStateToSlice(gmailSkillState, dispatch);
+  }, [gmailSkillState, dispatch]);
+
+  // Keep notionSlice pages in sync with skills.skillStates.notion
+  const notionSkillState = skillStates?.notion as Record<string, unknown> | undefined;
+  useEffect(() => {
+    if (!notionSkillState) return;
+    syncNotionStateToSlice(notionSkillState, dispatch);
+  }, [notionSkillState, dispatch]);
+
+  // When Notion connection_status transitions to "connected", fetch the current user
+  // via the notion get-user tool, store it in notionSlice, and sync metadata to backend.
+  useEffect(() => {
+    if (!notionSkillState || typeof notionSkillState !== 'object') return;
+    const connectionStatus = notionSkillState.connection_status as string | undefined;
+    const prev = lastNotionConnectionStatusRef.current;
+    lastNotionConnectionStatusRef.current = connectionStatus;
+
+    if (connectionStatus === 'connected' && prev !== 'connected') {
+      void syncNotionUserOnConnect(dispatch);
+    }
+  }, [notionSkillState, dispatch]);
 
   // Listen for skill state changes emitted from the Rust runtime event loop
   useEffect(() => {
     let unlisten: (() => void) | undefined;
 
     listen<{ skillId: string; state: Record<string, unknown> }>('skill-state-changed', event => {
-      const { skillId, state: newState } = event.payload;
+      const parsed = parseSkillStatePayload(event.payload);
+      console.log('🚀 ~ SkillProvider ~ parsed:', parsed);
+      if (!parsed) return;
+      const { skillId, state: newState } = parsed;
+      console.log('🚀 ~ SkillProvider ~ newState:', skillId, newState);
       dispatch(setSkillState({ skillId, state: newState }));
+
+      // Transfer Gmail skill state to gmail store (also synced by effect from skillStates.gmail)
+      if (skillId === 'gmail') {
+        syncGmailStateToSlice(newState, dispatch);
+      }
+      // Transfer Notion skill state to notion store (also synced by effect from skillStates.notion)
+      if (skillId === 'notion') {
+        syncNotionStateToSlice(newState, dispatch);
+      }
     })
       .then(fn => {
         unlisten = fn;
@@ -78,6 +210,25 @@ export default function SkillProvider({ children }: { children: ReactNode }) {
       unlisten?.();
     };
   }, [dispatch]);
+
+  // Fallback: when gmail skill is ready, fetch state from backend (covers events missed before listener attached)
+  const gmailStatus = skillsState?.gmail?.status;
+  useEffect(() => {
+    if (gmailStatus !== 'ready') return;
+    const timeoutId = window.setTimeout(() => {
+      invoke<{ state?: Record<string, unknown> } | null>('runtime_get_skill_state', {
+        skillId: 'gmail',
+      })
+        .then(snapshot => {
+          if (snapshot?.state && typeof snapshot.state === 'object') {
+            dispatch(setSkillState({ skillId: 'gmail', state: snapshot.state }));
+            syncGmailStateToSlice(snapshot.state, dispatch);
+          }
+        })
+        .catch(() => {});
+    }, 800);
+    return () => window.clearTimeout(timeoutId);
+  }, [gmailStatus, dispatch]);
 
   // Listen for skill runtime errors and surface them in the error notification
   useEffect(() => {
@@ -134,17 +285,11 @@ export default function SkillProvider({ children }: { children: ReactNode }) {
       if (DEV_AUTO_LOAD_SKILL) {
         const autoLoadManifest = manifests.find(m => m.id === DEV_AUTO_LOAD_SKILL);
         if (autoLoadManifest) {
-          console.log(`[SkillProvider] Auto-loading skill from env: ${DEV_AUTO_LOAD_SKILL}`);
           try {
             await skillManager.startSkill(autoLoadManifest);
-            console.log(`[SkillProvider] Successfully auto-loaded skill: ${DEV_AUTO_LOAD_SKILL}`);
           } catch (err) {
             console.error(`[SkillProvider] Failed to auto-load skill ${DEV_AUTO_LOAD_SKILL}:`, err);
           }
-        } else {
-          console.warn(
-            `[SkillProvider] DEV_AUTO_LOAD_SKILL="${DEV_AUTO_LOAD_SKILL}" specified but skill not found in discovered skills`
-          );
         }
       }
 

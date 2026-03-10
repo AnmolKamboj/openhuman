@@ -10,17 +10,26 @@ import Home from './pages/Home';
 import Intelligence from './pages/Intelligence';
 import Invites from './pages/Invites';
 import Login from './pages/Login';
+import Mnemonic from './pages/Mnemonic';
 import Onboarding from './pages/onboarding/Onboarding';
 import Settings from './pages/Settings';
 import Welcome from './pages/Welcome';
-import { selectIsOnboarded } from './store/authSelectors';
+import { selectHasEncryptionKey, selectIsOnboarded } from './store/authSelectors';
 import { useAppSelector } from './store/hooks';
 import { isTauri } from './utils/tauriCommands';
 
 const OnboardingRoute = () => {
   const isOnboarded = useAppSelector(selectIsOnboarded);
+  const hasEncryptionKey = useAppSelector(selectHasEncryptionKey);
+  if (isOnboarded && !hasEncryptionKey) return <Navigate to="/mnemonic" replace />;
   if (isOnboarded) return <Navigate to="/home" replace />;
   return <Onboarding />;
+};
+
+const MnemonicRoute = () => {
+  const hasEncryptionKey = useAppSelector(selectHasEncryptionKey);
+  if (hasEncryptionKey) return <Navigate to="/home" replace />;
+  return <Mnemonic />;
 };
 
 /**
@@ -30,12 +39,16 @@ const OnboardingRoute = () => {
 const HomeRoute = () => {
   const user = useAppSelector(state => state.user.user);
   const isOnboarded = useAppSelector(selectIsOnboarded);
+  const hasEncryptionKey = useAppSelector(selectHasEncryptionKey);
 
   // While user profile is still loading, show Home (avoid flash to onboarding)
   if (!user) return <Home />;
 
   // User loaded but onboarding not done → redirect to onboarding
   if (!isOnboarded) return <Navigate to="/onboarding" replace />;
+
+  // Onboarded but no encryption key → redirect to mnemonic page
+  if (!hasEncryptionKey) return <Navigate to="/mnemonic" replace />;
 
   return <Home />;
 };
@@ -77,6 +90,14 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute requireAuth={true} requireOnboarded={false}>
               <OnboardingRoute />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/mnemonic"
+          element={
+            <ProtectedRoute requireAuth={true}>
+              <MnemonicRoute />
             </ProtectedRoute>
           }
         />
