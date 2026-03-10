@@ -7,20 +7,20 @@
  * - Exponential backoff for restart attempts
  * - Error recovery logic
  */
-import { useEffect, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
-import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
   incrementConnectionAttempts,
   resetConnectionAttempts,
+  selectDaemonConnectionAttempts,
   selectDaemonStatus,
   selectIsDaemonAutoStartEnabled,
-  selectDaemonConnectionAttempts,
   selectIsDaemonRecovering,
   setIsRecovering,
 } from '../store/daemonSlice';
-import { useDaemonHealth } from './useDaemonHealth';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { isTauri } from '../utils/tauriCommands';
+import { useDaemonHealth } from './useDaemonHealth';
 
 // Configuration constants
 const MAX_RECONNECTION_ATTEMPTS = 5;
@@ -105,7 +105,9 @@ export const useDaemonLifecycle = (userId?: string) => {
     }
 
     const retryDelay = calculateRetryDelay(connectionAttempts + 1);
-    console.log(`[DaemonLifecycle] Scheduling retry attempt ${connectionAttempts + 1} in ${retryDelay}ms`);
+    console.log(
+      `[DaemonLifecycle] Scheduling retry attempt ${connectionAttempts + 1} in ${retryDelay}ms`
+    );
 
     // Clear existing timeout
     if (retryTimeoutRef.current) {
@@ -259,8 +261,9 @@ export const useDaemonLifecycle = (userId?: string) => {
 
     // Config
     MAX_RECONNECTION_ATTEMPTS,
-    nextRetryDelay: connectionAttempts < MAX_RECONNECTION_ATTEMPTS
-      ? calculateRetryDelay(connectionAttempts + 1)
-      : null,
+    nextRetryDelay:
+      connectionAttempts < MAX_RECONNECTION_ATTEMPTS
+        ? calculateRetryDelay(connectionAttempts + 1)
+        : null,
   };
 };

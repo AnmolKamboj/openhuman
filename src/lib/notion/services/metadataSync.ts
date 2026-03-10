@@ -34,12 +34,7 @@ export function syncNotionMetadataToBackend(
     avatar_url: profile.avatar_url ?? null,
   };
 
-  const payload = {
-    requestId: crypto.randomUUID(),
-    provider: PROVIDER_NOTION,
-    metadata,
-  };
+  const payload = { requestId: crypto.randomUUID(), provider: PROVIDER_NOTION, metadata };
 
   void emitViaRustSocket(INTEGRATION_METADATA_SYNC_EVENT, payload);
 }
-

@@ -1,3 +1,5 @@
+import { injectAll } from '../../lib/ai/injector';
+import type { Message } from '../../lib/ai/providers/interface';
 import type { ApiResponse } from '../../types/api';
 import type {
   PurgeRequestBody,
@@ -10,8 +12,6 @@ import type {
   ThreadsListData,
 } from '../../types/thread';
 import { apiClient } from '../apiClient';
-import { injectAll } from '../../lib/ai/injector';
-import type { Message } from '../../lib/ai/providers/interface';
 
 export const threadApi = {
   /** GET /threads — list all threads for the authenticated user */
@@ -55,14 +55,11 @@ export const threadApi = {
 
     if (options.injectSoul) {
       try {
-        const userMessage: Message = {
-          role: 'user',
-          content: [{ type: 'text', text: message }]
-        };
+        const userMessage: Message = { role: 'user', content: [{ type: 'text', text: message }] };
 
         const injectedMessage = await injectAll(userMessage, {
           mode: 'context-block',
-          includeMetadata: false
+          includeMetadata: false,
         });
 
         // Extract the processed text

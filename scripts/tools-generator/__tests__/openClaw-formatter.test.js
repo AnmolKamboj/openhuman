@@ -2,15 +2,15 @@
  * Unit tests for the OpenClaw formatter.
  * Tests markdown generation, tool formatting, and categorization.
  */
+import { describe, expect, it } from 'vitest';
 
-import { describe, it, expect } from 'vitest';
 import {
+  ENVIRONMENTS,
   formatParameters,
+  generateOpenClawMarkdown,
   generateToolExample,
   groupToolsBySkill,
-  generateOpenClawMarkdown,
-  ENVIRONMENTS,
-  TOOL_CATEGORIES
+  TOOL_CATEGORIES,
 } from '../openClaw-formatter.js';
 
 describe('OpenClaw Formatter', () => {
@@ -19,16 +19,10 @@ describe('OpenClaw Formatter', () => {
       const schema = {
         type: 'object',
         properties: {
-          required_param: {
-            type: 'string',
-            description: 'A required parameter'
-          },
-          optional_param: {
-            type: 'number',
-            description: 'An optional parameter'
-          }
+          required_param: { type: 'string', description: 'A required parameter' },
+          optional_param: { type: 'number', description: 'An optional parameter' },
         },
-        required: ['required_param']
+        required: ['required_param'],
       };
 
       const result = formatParameters(schema);
@@ -41,12 +35,8 @@ describe('OpenClaw Formatter', () => {
       const schema = {
         type: 'object',
         properties: {
-          mode: {
-            type: 'string',
-            description: 'Selection mode',
-            enum: ['auto', 'manual']
-          }
-        }
+          mode: { type: 'string', description: 'Selection mode', enum: ['auto', 'manual'] },
+        },
       };
 
       const result = formatParameters(schema);
@@ -74,9 +64,9 @@ describe('OpenClaw Formatter', () => {
           properties: {
             chat_id: { type: 'string', description: 'Chat ID' },
             message: { type: 'string', description: 'Message text' },
-            count: { type: 'number', default: 5 }
-          }
-        }
+            count: { type: 'number', default: 5 },
+          },
+        },
       };
 
       const result = generateToolExample(tool);
@@ -96,9 +86,9 @@ describe('OpenClaw Formatter', () => {
           properties: {
             enabled: { type: 'boolean', default: true },
             tags: { type: 'array' },
-            config: { type: 'object' }
-          }
-        }
+            config: { type: 'object' },
+          },
+        },
       };
 
       const result = generateToolExample(tool);
@@ -116,20 +106,20 @@ describe('OpenClaw Formatter', () => {
           skillId: 'telegram',
           name: 'send_message',
           description: 'Send message',
-          inputSchema: { type: 'object', properties: {} }
+          inputSchema: { type: 'object', properties: {} },
         },
         {
           skillId: 'telegram',
           name: 'get_history',
           description: 'Get history',
-          inputSchema: { type: 'object', properties: {} }
+          inputSchema: { type: 'object', properties: {} },
         },
         {
           skillId: 'gmail',
           name: 'send_email',
           description: 'Send email',
-          inputSchema: { type: 'object', properties: {} }
-        }
+          inputSchema: { type: 'object', properties: {} },
+        },
       ];
 
       const grouped = groupToolsBySkill(tools);
@@ -148,20 +138,20 @@ describe('OpenClaw Formatter', () => {
           skillId: 'telegram',
           name: 'send_message',
           description: 'Send message',
-          inputSchema: { type: 'object', properties: {} }
+          inputSchema: { type: 'object', properties: {} },
         },
         {
           skillId: 'notion',
           name: 'create_page',
           description: 'Create page',
-          inputSchema: { type: 'object', properties: {} }
+          inputSchema: { type: 'object', properties: {} },
         },
         {
           skillId: 'unknown_skill',
           name: 'unknown_tool',
           description: 'Unknown tool',
-          inputSchema: { type: 'object', properties: {} }
-        }
+          inputSchema: { type: 'object', properties: {} },
+        },
       ];
 
       const grouped = groupToolsBySkill(tools);
@@ -183,11 +173,11 @@ describe('OpenClaw Formatter', () => {
             type: 'object',
             properties: {
               chat_id: { type: 'string', description: 'Chat ID' },
-              message: { type: 'string', description: 'Message text' }
+              message: { type: 'string', description: 'Message text' },
             },
-            required: ['chat_id', 'message']
-          }
-        }
+            required: ['chat_id', 'message'],
+          },
+        },
       ];
 
       const result = generateOpenClawMarkdown(tools);
@@ -233,14 +223,14 @@ describe('OpenClaw Formatter', () => {
           skillId: 'telegram',
           name: 'send_message',
           description: 'Send message',
-          inputSchema: { type: 'object', properties: {} }
+          inputSchema: { type: 'object', properties: {} },
         },
         {
           skillId: 'gmail',
           name: 'send_email',
           description: 'Send email',
-          inputSchema: { type: 'object', properties: {} }
-        }
+          inputSchema: { type: 'object', properties: {} },
+        },
       ];
 
       const result = generateOpenClawMarkdown(tools);

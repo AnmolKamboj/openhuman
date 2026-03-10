@@ -226,11 +226,15 @@ class SkillManager {
     name: string,
     args: Record<string, unknown>,
   ): Promise<{ content: Array<{ type: string; text: string }>; isError: boolean }> {
+    console.log(`[SkillManager] callTool skill="${skillId}" tool="${name}"`);
     const runtime = this.runtimes.get(skillId);
     if (!runtime) {
+      console.error(`[SkillManager] callTool failed — skill "${skillId}" has no running runtime`);
       throw new Error(`Skill ${skillId} is not running`);
     }
-    return runtime.callTool(name, args);
+    const result = await runtime.callTool(name, args);
+    console.log(`[SkillManager] callTool result skill="${skillId}" tool="${name}" isError=${result.isError}`);
+    return result;
   }
 
   /**

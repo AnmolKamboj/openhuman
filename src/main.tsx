@@ -5,10 +5,10 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import ErrorReportNotification from './components/ErrorReportNotification';
 import './index.css';
+import { startToolsFileWatcher } from './lib/tools/file-watcher';
 import './polyfills';
 import { initSentry } from './services/analytics';
 import { setupDesktopDeepLinkListener } from './utils/desktopDeepLinkListener';
-import { startToolsFileWatcher } from './lib/tools/file-watcher';
 
 // Initialize Sentry early (before React renders)
 initSentry();

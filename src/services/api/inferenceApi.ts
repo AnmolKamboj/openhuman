@@ -2,16 +2,37 @@ import { apiClient } from '../apiClient';
 
 // ── Request types ────────────────────────────────────────────────────────────
 
-export type ChatRole = 'system' | 'user' | 'assistant';
+export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
+
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
 
 export interface ChatMessage {
   role: ChatRole;
-  content: string;
+  content: string | null;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+}
+
+export interface ToolFunction {
+  name: string;
+  description: string;
+  parameters: any;
+}
+
+export interface Tool {
+  type: 'function';
+  function: ToolFunction;
 }
 
 export interface ChatCompletionRequest {
   model: string;
   messages: ChatMessage[];
+  tools?: Tool[];
+  tool_choice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
   stream?: boolean;
   temperature?: number;
   max_tokens?: number;
@@ -41,7 +62,7 @@ export interface ModelsListResponse {
 
 export interface ChatCompletionChoice {
   index: number;
-  message: ChatMessage;
+  message: ChatMessage & { tool_calls?: ToolCall[] };
   finish_reason: string | null;
 }
 
@@ -84,16 +105,12 @@ export const inferenceApi = {
   },
 
   /** POST /openai/v1/chat/completions — create a chat completion */
-  createChatCompletion: async (
-    body: ChatCompletionRequest
-  ): Promise<ChatCompletionResponse> => {
+  createChatCompletion: async (body: ChatCompletionRequest): Promise<ChatCompletionResponse> => {
     return apiClient.post<ChatCompletionResponse>('/openai/v1/chat/completions', body);
   },
 
   /** POST /openai/v1/completions — create a text completion */
-  createCompletion: async (
-    body: TextCompletionRequest
-  ): Promise<TextCompletionResponse> => {
+  createCompletion: async (body: TextCompletionRequest): Promise<TextCompletionResponse> => {
     return apiClient.post<TextCompletionResponse>('/openai/v1/completions', body);
   },
 };

@@ -1,10 +1,10 @@
-import { useLocation, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
-import DaemonHealthIndicator from './daemon/DaemonHealthIndicator';
-import DaemonHealthPanel from './daemon/DaemonHealthPanel';
 import { useAppSelector } from '../store/hooks';
 import { isTauri } from '../utils/tauriCommands';
+import DaemonHealthIndicator from './daemon/DaemonHealthIndicator';
+import DaemonHealthPanel from './daemon/DaemonHealthPanel';
 
 const navItems = [
   {
@@ -159,10 +159,7 @@ const MiniSidebar = () => {
         {isTauri() && (
           <div className="relative group">
             <div className="w-10 h-10 flex items-center justify-center rounded-xl text-stone-500 hover:text-stone-300 hover:bg-white/5 transition-all duration-200 cursor-pointer">
-              <DaemonHealthIndicator
-                size="md"
-                onClick={() => setShowDaemonPanel(true)}
-              />
+              <DaemonHealthIndicator size="md" onClick={() => setShowDaemonPanel(true)} />
             </div>
             {/* Tooltip */}
             <div className="pointer-events-none absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-stone-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150">
@@ -176,9 +173,7 @@ const MiniSidebar = () => {
       {showDaemonPanel && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9999]">
           <div className="max-w-2xl w-full mx-4">
-            <DaemonHealthPanel
-              onClose={() => setShowDaemonPanel(false)}
-            />
+            <DaemonHealthPanel onClose={() => setShowDaemonPanel(false)} />
           </div>
         </div>
       )}

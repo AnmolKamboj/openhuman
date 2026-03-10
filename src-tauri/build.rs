@@ -48,7 +48,34 @@ fn maybe_override_tauri_config_for_tests() {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn setup_tdlib() {
-    // download-tdlib: downloads prebuilt TDLib and configures linker flags
+    // local-tdlib: use LOCAL_TDLIB_PATH or auto-detect tdlib-cache/
+    if std::env::var("LOCAL_TDLIB_PATH").is_err() {
+        let manifest_dir =
+            PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+        let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_else(|_| "aarch64".into());
+        let arch_name = if arch == "aarch64" { "aarch64" } else { "x86_64" };
+        let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_else(|_| "macos".into());
+        let os_arch = if os == "macos" || os == "darwin" {
+            format!("macos-{arch_name}")
+        } else if os == "linux" {
+            format!("linux-{arch_name}")
+        } else if os == "windows" {
+            format!("windows-{arch_name}")
+        } else {
+            arch_name.to_string()
+        };
+        let default = manifest_dir.join("tdlib-cache").join(&os_arch);
+        if default.join("lib").exists() {
+            std::env::set_var("LOCAL_TDLIB_PATH", &default);
+        } else {
+            panic!(
+                "LOCAL_TDLIB_PATH not set and tdlib-cache not found at {}.\n\
+                 Run: cd src-tauri && ./scripts/download-tdlib.sh\n\
+                 Then retry the build.",
+                default.display()
+            );
+        }
+    }
     tdlib_rs::build::build(None);
 
     // On macOS, replace the bundled dylib with our source-built version
@@ -105,14 +132,16 @@ fn copy_local_tdlib_for_bundle() {
         println!("cargo:warning=Using locally-built TDLib from {}", local.display());
         local
     } else {
-        // 3. Fall back to the download-tdlib output
-        println!(
-            "cargo:warning=No source-built TDLib found for macos-{arch_name}. \
-             The prebuilt TDLib will be bundled instead (targets macOS 14.0+). \
-             Run: cd src-tauri && ./scripts/build-tdlib-from-source.sh"
-        );
-        let out_dir = env::var("OUT_DIR").unwrap();
-        PathBuf::from(&out_dir).join("tdlib").join("lib").join(&dylib_name)
+        // 3. Fall back to tdlib-cache (from download-tdlib.sh) or LOCAL_TDLIB_PATH
+        let local_tdlib = env::var("LOCAL_TDLIB_PATH")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                manifest_dir
+                    .join("tdlib-cache")
+                    .join(format!("macos-{arch_name}"))
+            });
+        println!("cargo:warning=Using TDLib from {}", local_tdlib.display());
+        local_tdlib.join("lib").join(&dylib_name)
     };
 
     if !src_dylib.exists() {

@@ -4,19 +4,19 @@
  * Detailed health breakdown component showing daemon status, component health,
  * and providing manual control buttons for daemon lifecycle management.
  */
-import { useState } from 'react';
 import {
-  CheckCircleIcon,
-  XCircleIcon,
-  ClockIcon,
   ArrowPathIcon,
+  CheckCircleIcon,
+  ClockIcon,
   PlayIcon,
   StopIcon,
+  XCircleIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
+import { useState } from 'react';
 
-import { useDaemonHealth, formatRelativeTime } from '../../hooks/useDaemonHealth';
-import type { DaemonStatus, ComponentHealth } from '../../store/daemonSlice';
+import { formatRelativeTime, useDaemonHealth } from '../../hooks/useDaemonHealth';
+import type { ComponentHealth, DaemonStatus } from '../../store/daemonSlice';
 
 interface Props {
   userId?: string;
@@ -56,11 +56,7 @@ const DaemonHealthPanel = ({ userId, onClose, className = '' }: Props) => {
           icon: ClockIcon,
         };
       case 'error':
-        return {
-          bg: 'bg-red-900/20 border-red-500/30',
-          text: 'text-red-400',
-          icon: XCircleIcon,
-        };
+        return { bg: 'bg-red-900/20 border-red-500/30', text: 'text-red-400', icon: XCircleIcon };
       case 'disconnected':
       default:
         return {
@@ -75,23 +71,11 @@ const DaemonHealthPanel = ({ userId, onClose, className = '' }: Props) => {
   const getComponentStyling = (component: ComponentHealth) => {
     switch (component.status) {
       case 'ok':
-        return {
-          bg: 'bg-green-500',
-          text: 'text-green-400',
-          icon: CheckCircleIcon,
-        };
+        return { bg: 'bg-green-500', text: 'text-green-400', icon: CheckCircleIcon };
       case 'error':
-        return {
-          bg: 'bg-red-500',
-          text: 'text-red-400',
-          icon: XCircleIcon,
-        };
+        return { bg: 'bg-red-500', text: 'text-red-400', icon: XCircleIcon };
       case 'starting':
-        return {
-          bg: 'bg-yellow-500',
-          text: 'text-yellow-400',
-          icon: ClockIcon,
-        };
+        return { bg: 'bg-yellow-500', text: 'text-yellow-400', icon: ClockIcon };
     }
   };
 
@@ -104,10 +88,7 @@ const DaemonHealthPanel = ({ userId, onClose, className = '' }: Props) => {
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-white">Daemon Health</h3>
         {onClose && (
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
-          >
+          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
             <XMarkIcon className="w-5 h-5" />
           </button>
         )}
@@ -148,7 +129,9 @@ const DaemonHealthPanel = ({ userId, onClose, className = '' }: Props) => {
       {/* Component Health */}
       {daemonHealth.componentCount > 0 && (
         <div className="space-y-3">
-          <h4 className="text-sm font-medium text-gray-300">Components ({daemonHealth.healthyComponentCount}/{daemonHealth.componentCount} healthy)</h4>
+          <h4 className="text-sm font-medium text-gray-300">
+            Components ({daemonHealth.healthyComponentCount}/{daemonHealth.componentCount} healthy)
+          </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {Object.entries(daemonHealth.components).map(([name, component]) => {
               const componentStyling = getComponentStyling(component);
@@ -157,8 +140,7 @@ const DaemonHealthPanel = ({ userId, onClose, className = '' }: Props) => {
               return (
                 <div
                   key={name}
-                  className="flex items-center gap-3 p-3 rounded-lg bg-stone-800/40 border border-stone-700/60"
-                >
+                  className="flex items-center gap-3 p-3 rounded-lg bg-stone-800/40 border border-stone-700/60">
                   <div className={`w-2 h-2 rounded-full ${componentStyling.bg}`} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -197,7 +179,7 @@ const DaemonHealthPanel = ({ userId, onClose, className = '' }: Props) => {
             type="checkbox"
             className="sr-only peer"
             checked={daemonHealth.isAutoStartEnabled}
-            onChange={(e) => daemonHealth.setAutoStart(e.target.checked)}
+            onChange={e => daemonHealth.setAutoStart(e.target.checked)}
           />
           <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
         </label>
@@ -208,8 +190,7 @@ const DaemonHealthPanel = ({ userId, onClose, className = '' }: Props) => {
         <button
           onClick={() => handleOperation(daemonHealth.startDaemon, 'start')}
           disabled={daemonHealth.status === 'running' || operationLoading !== null}
-          className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors"
-        >
+          className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors">
           {operationLoading === 'start' ? (
             <ArrowPathIcon className="w-4 h-4 animate-spin" />
           ) : (
@@ -221,8 +202,7 @@ const DaemonHealthPanel = ({ userId, onClose, className = '' }: Props) => {
         <button
           onClick={() => handleOperation(daemonHealth.stopDaemon, 'stop')}
           disabled={daemonHealth.status === 'disconnected' || operationLoading !== null}
-          className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors"
-        >
+          className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors">
           {operationLoading === 'stop' ? (
             <ArrowPathIcon className="w-4 h-4 animate-spin" />
           ) : (
@@ -234,8 +214,7 @@ const DaemonHealthPanel = ({ userId, onClose, className = '' }: Props) => {
         <button
           onClick={() => handleOperation(daemonHealth.restartDaemon, 'restart')}
           disabled={operationLoading !== null}
-          className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors"
-        >
+          className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors">
           {operationLoading === 'restart' ? (
             <ArrowPathIcon className="w-4 h-4 animate-spin" />
           ) : (
@@ -247,8 +226,7 @@ const DaemonHealthPanel = ({ userId, onClose, className = '' }: Props) => {
         <button
           onClick={() => handleOperation(daemonHealth.checkDaemonStatus, 'check')}
           disabled={operationLoading !== null}
-          className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed rounded-lg transition-colors"
-        >
+          className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-300 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:cursor-not-allowed rounded-lg transition-colors">
           {operationLoading === 'check' ? (
             <ArrowPathIcon className="w-4 h-4 animate-spin" />
           ) : (

@@ -4,17 +4,16 @@
  * Provides a single interface for loading both SOUL and TOOLS configurations
  * with parallel loading, caching, and fallback strategies.
  */
-
-import { loadSoul, clearSoulCache } from './soul/loader';
-import { loadTools, clearToolsCache } from './tools/loader';
+import { clearSoulCache, loadSoul } from './soul/loader';
 import type { SoulConfig } from './soul/types';
+import { clearToolsCache, loadTools } from './tools/loader';
 import type { ToolsConfig } from './tools/types';
 import type {
   AIConfig,
-  AIConfigMetadata,
-  AIConfigLoadOptions,
   AIConfigCacheEntry,
-  AIConfigLoadResult
+  AIConfigLoadOptions,
+  AIConfigLoadResult,
+  AIConfigMetadata,
 } from './types';
 
 const AI_CACHE_KEY = 'alphahuman.ai.cache';
@@ -27,11 +26,7 @@ let cachedAIConfig: AIConfig | null = null;
  * Load complete AI configuration (SOUL + TOOLS) with caching and parallel loading
  */
 export async function loadAIConfig(options: AIConfigLoadOptions = {}): Promise<AIConfig> {
-  const {
-    forceRefresh = false,
-    includeMetadata = true,
-    timeout = 30000
-  } = options;
+  const { forceRefresh = false, includeMetadata = true, timeout = 30000 } = options;
 
   const startTime = Date.now();
 
@@ -46,10 +41,7 @@ export async function loadAIConfig(options: AIConfigLoadOptions = {}): Promise<A
       const cached = localStorage.getItem(AI_CACHE_KEY);
       if (cached) {
         const parsed = JSON.parse(cached) as AIConfigCacheEntry;
-        if (
-          Date.now() - parsed.timestamp < AI_CACHE_TTL &&
-          parsed.version === CACHE_VERSION
-        ) {
+        if (Date.now() - parsed.timestamp < AI_CACHE_TTL && parsed.version === CACHE_VERSION) {
           cachedAIConfig = parsed.config;
           return parsed.config;
         }
@@ -68,7 +60,7 @@ export async function loadAIConfig(options: AIConfigLoadOptions = {}): Promise<A
   // Load both configurations in parallel
   const [soulResult, toolsResult] = await Promise.allSettled([
     loadWithTimeout(loadSoul(), timeout),
-    loadWithTimeout(loadTools(), timeout)
+    loadWithTimeout(loadTools(), timeout),
   ]);
 
   // Extract results and handle errors
@@ -98,10 +90,7 @@ export async function loadAIConfig(options: AIConfigLoadOptions = {}): Promise<A
     loadedAt: endTime,
     loadingDuration: endTime - startTime,
     hasFallbacks: soul.isDefault || tools.isDefault,
-    sources: {
-      soul: getSoulSource(soul),
-      tools: getToolsSource(tools)
-    }
+    sources: { soul: getSoulSource(soul), tools: getToolsSource(tools) },
   };
 
   if (errors.length > 0 && includeMetadata) {
@@ -109,11 +98,7 @@ export async function loadAIConfig(options: AIConfigLoadOptions = {}): Promise<A
   }
 
   // Combine into unified config
-  const config: AIConfig = {
-    soul,
-    tools,
-    metadata
-  };
+  const config: AIConfig = { soul, tools, metadata };
 
   // Cache the result
   cachedAIConfig = config;
@@ -121,7 +106,7 @@ export async function loadAIConfig(options: AIConfigLoadOptions = {}): Promise<A
     const cacheEntry: AIConfigCacheEntry = {
       config,
       timestamp: Date.now(),
-      version: CACHE_VERSION
+      version: CACHE_VERSION,
     };
     localStorage.setItem(AI_CACHE_KEY, JSON.stringify(cacheEntry));
   } catch {
@@ -134,7 +119,9 @@ export async function loadAIConfig(options: AIConfigLoadOptions = {}): Promise<A
 /**
  * Load AI configuration with detailed result information
  */
-export async function loadAIConfigWithResult(options: AIConfigLoadOptions = {}): Promise<AIConfigLoadResult> {
+export async function loadAIConfigWithResult(
+  options: AIConfigLoadOptions = {}
+): Promise<AIConfigLoadResult> {
   const startTime = Date.now();
 
   try {
@@ -145,7 +132,7 @@ export async function loadAIConfigWithResult(options: AIConfigLoadOptions = {}):
       config,
       success: true,
       errors: config.metadata.errors || [],
-      duration: endTime - startTime
+      duration: endTime - startTime,
     };
   } catch (error) {
     const endTime = Date.now();
@@ -155,7 +142,7 @@ export async function loadAIConfigWithResult(options: AIConfigLoadOptions = {}):
       config: createFallbackAIConfig(),
       success: false,
       errors: [errorMessage],
-      duration: endTime - startTime
+      duration: endTime - startTime,
     };
   }
 }
@@ -180,7 +167,7 @@ export async function refreshSoul(): Promise<SoulConfig> {
       const cacheEntry: AIConfigCacheEntry = {
         config: cachedAIConfig,
         timestamp: Date.now(),
-        version: CACHE_VERSION
+        version: CACHE_VERSION,
       };
       localStorage.setItem(AI_CACHE_KEY, JSON.stringify(cacheEntry));
     }
@@ -211,7 +198,7 @@ export async function refreshTools(): Promise<ToolsConfig> {
       const cacheEntry: AIConfigCacheEntry = {
         config: cachedAIConfig,
         timestamp: Date.now(),
-        version: CACHE_VERSION
+        version: CACHE_VERSION,
       };
       localStorage.setItem(AI_CACHE_KEY, JSON.stringify(cacheEntry));
     }
@@ -265,7 +252,7 @@ async function loadWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promi
     promise,
     new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error(`Operation timed out after ${timeoutMs}ms`)), timeoutMs)
-    )
+    ),
   ]);
 }
 
@@ -286,7 +273,7 @@ function createFallbackSoulConfig(): SoulConfig {
     raw: '# Fallback SOUL Configuration\n\nThis is a fallback configuration used when the main SOUL config cannot be loaded.',
     identity: {
       name: 'AlphaHuman Assistant',
-      description: 'AI assistant with fallback configuration'
+      description: 'AI assistant with fallback configuration',
     },
     personality: [],
     voiceTone: [],
@@ -296,7 +283,7 @@ function createFallbackSoulConfig(): SoulConfig {
     memorySettings: { remember: [] },
     emergencyResponses: [],
     isDefault: true,
-    loadedAt: Date.now()
+    loadedAt: Date.now(),
   };
 }
 
@@ -312,10 +299,10 @@ function createFallbackToolsConfig(): ToolsConfig {
       activeSkills: 0,
       categoriesCount: 0,
       toolsByCategory: {},
-      skillsByCategory: {}
+      skillsByCategory: {},
     },
     isDefault: true,
-    loadedAt: Date.now()
+    loadedAt: Date.now(),
   };
 }
 
@@ -330,11 +317,8 @@ function createFallbackAIConfig(): AIConfig {
       loadedAt: Date.now(),
       loadingDuration: 0,
       hasFallbacks: true,
-      sources: {
-        soul: 'bundled',
-        tools: 'bundled'
-      },
-      errors: ['Failed to load AI configuration, using fallbacks']
-    }
+      sources: { soul: 'bundled', tools: 'bundled' },
+      errors: ['Failed to load AI configuration, using fallbacks'],
+    },
   };
 }

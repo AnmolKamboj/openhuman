@@ -4,7 +4,6 @@
  * Components using this hook will automatically re-render when TOOLS.md
  * is updated and the cache is refreshed.
  */
-
 import { useEffect, useState } from 'react';
 
 interface ToolsUpdateEvent {

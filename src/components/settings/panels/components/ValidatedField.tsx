@@ -1,5 +1,5 @@
+import { CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import React from 'react';
-import { ExclamationTriangleIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 
 interface ValidatedFieldProps {
   label: string;
@@ -28,7 +28,7 @@ const ValidatedField: React.FC<ValidatedFieldProps> = ({
   className = '',
   fullWidth = false,
   validation = 'none',
-  disabled = false
+  disabled = false,
 }) => {
   const hasError = !!error;
   const isValid = validation === 'valid' && !hasError && value.trim() !== '';
@@ -37,26 +37,24 @@ const ValidatedField: React.FC<ValidatedFieldProps> = ({
     w-full px-4 py-3 rounded-lg border transition-all duration-200
     focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black
     disabled:opacity-50 disabled:cursor-not-allowed
-    ${hasError
-      ? 'border-coral-500/60 bg-coral-500/10 text-coral-200 placeholder-coral-400/50 focus:border-coral-500 focus:ring-coral-500/30'
-      : isValid
-        ? 'border-sage-500/60 bg-sage-500/5 text-white placeholder-stone-400 focus:border-sage-500 focus:ring-sage-500/30'
-        : 'border-stone-800/60 bg-stone-900/40 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-primary-500/30'
+    ${
+      hasError
+        ? 'border-coral-500/60 bg-coral-500/10 text-coral-200 placeholder-coral-400/50 focus:border-coral-500 focus:ring-coral-500/30'
+        : isValid
+          ? 'border-sage-500/60 bg-sage-500/5 text-white placeholder-stone-400 focus:border-sage-500 focus:ring-sage-500/30'
+          : 'border-stone-800/60 bg-stone-900/40 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-primary-500/30'
     }
   `;
 
   return (
-    <label className={`space-y-3 text-sm text-gray-300 ${fullWidth ? 'md:col-span-2' : ''} ${className}`}>
+    <label
+      className={`space-y-3 text-sm text-gray-300 ${fullWidth ? 'md:col-span-2' : ''} ${className}`}>
       <div>
         <span className="font-medium">
           {label}
           {required && <span className="text-coral-400 ml-1">*</span>}
         </span>
-        {helpText && (
-          <p className="text-xs text-gray-400 leading-relaxed mt-1">
-            {helpText}
-          </p>
-        )}
+        {helpText && <p className="text-xs text-gray-400 leading-relaxed mt-1">{helpText}</p>}
       </div>
 
       <div className="relative">
@@ -65,7 +63,7 @@ const ValidatedField: React.FC<ValidatedFieldProps> = ({
           className={inputClasses}
           placeholder={placeholder}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={e => onChange(e.target.value)}
           disabled={disabled}
         />
 
@@ -119,7 +117,7 @@ const ValidatedSelect: React.FC<ValidatedSelectProps> = ({
   className = '',
   fullWidth = false,
   disabled = false,
-  validation = 'none'
+  validation = 'none',
 }) => {
   const hasError = !!error;
   const isValid = validation === 'valid' && !hasError && value.trim() !== '';
@@ -128,35 +126,32 @@ const ValidatedSelect: React.FC<ValidatedSelectProps> = ({
     w-full px-4 py-3 rounded-lg border transition-all duration-200
     focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black
     disabled:opacity-50 disabled:cursor-not-allowed
-    ${hasError
-      ? 'border-coral-500/60 bg-coral-500/10 text-coral-200 focus:border-coral-500 focus:ring-coral-500/30'
-      : isValid
-        ? 'border-sage-500/60 bg-sage-500/5 text-white focus:border-sage-500 focus:ring-sage-500/30'
-        : 'border-stone-800/60 bg-stone-900/40 text-white focus:border-primary-500/50 focus:ring-primary-500/30'
+    ${
+      hasError
+        ? 'border-coral-500/60 bg-coral-500/10 text-coral-200 focus:border-coral-500 focus:ring-coral-500/30'
+        : isValid
+          ? 'border-sage-500/60 bg-sage-500/5 text-white focus:border-sage-500 focus:ring-sage-500/30'
+          : 'border-stone-800/60 bg-stone-900/40 text-white focus:border-primary-500/50 focus:ring-primary-500/30'
     }
   `;
 
   return (
-    <label className={`space-y-3 text-sm text-gray-300 ${fullWidth ? 'md:col-span-2' : ''} ${className}`}>
+    <label
+      className={`space-y-3 text-sm text-gray-300 ${fullWidth ? 'md:col-span-2' : ''} ${className}`}>
       <div>
         <span className="font-medium">
           {label}
           {required && <span className="text-coral-400 ml-1">*</span>}
         </span>
-        {helpText && (
-          <p className="text-xs text-gray-400 leading-relaxed mt-1">
-            {helpText}
-          </p>
-        )}
+        {helpText && <p className="text-xs text-gray-400 leading-relaxed mt-1">{helpText}</p>}
       </div>
 
       <div className="relative">
         <select
           className={selectClasses}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
-          disabled={disabled}
-        >
+          onChange={e => onChange(e.target.value)}
+          disabled={disabled}>
           {placeholder && <option value="">{placeholder}</option>}
           {options.map(option => (
             <option key={option.value} value={option.value}>

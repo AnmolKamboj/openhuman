@@ -12,11 +12,7 @@ export interface ToolDefinition {
   /** Tool description for AI understanding */
   description: string;
   /** JSON Schema for input validation */
-  inputSchema: {
-    type: "object";
-    properties: Record<string, unknown>;
-    required?: string[];
-  };
+  inputSchema: { type: 'object'; properties: Record<string, unknown>; required?: string[] };
 }
 
 /** Tool category for organization */
