@@ -8,10 +8,9 @@ import type { SoulConfig } from './types';
 export function injectSoulIntoMessage(
   message: Message,
   soulConfig: SoulConfig,
-  options: {
-    mode: 'prepend' | 'context-block' | 'invisible';
-    includeMetadata?: boolean;
-  } = { mode: 'context-block' }
+  options: { mode: 'prepend' | 'context-block' | 'invisible'; includeMetadata?: boolean } = {
+    mode: 'context-block',
+  }
 ): Message {
   if (message.role !== 'user') {
     return message; // Only inject into user messages
@@ -21,21 +20,18 @@ export function injectSoulIntoMessage(
 
   switch (options.mode) {
     case 'prepend':
-      return {
-        ...message,
-        content: [
-          { type: 'text', text: soulContext },
-          ...message.content
-        ]
-      };
+      return { ...message, content: [{ type: 'text', text: soulContext }, ...message.content] };
 
     case 'context-block':
       return {
         ...message,
         content: [
-          { type: 'text', text: `[PERSONA_CONTEXT]\n${soulContext}\n[/PERSONA_CONTEXT]\n\nUser message:` },
-          ...message.content
-        ]
+          {
+            type: 'text',
+            text: `[PERSONA_CONTEXT]\n${soulContext}\n[/PERSONA_CONTEXT]\n\nUser message:`,
+          },
+          ...message.content,
+        ],
       };
 
     case 'invisible':
@@ -44,13 +40,10 @@ export function injectSoulIntoMessage(
         ...message,
         content: message.content.map((block, index) => {
           if (index === 0 && block.type === 'text') {
-            return {
-              ...block,
-              text: `<!--SOUL_CONTEXT:${btoa(soulContext)}-->${block.text}`
-            };
+            return { ...block, text: `<!--SOUL_CONTEXT:${btoa(soulContext)}-->${block.text}` };
           }
           return block;
-        })
+        }),
       };
 
     default:
@@ -75,7 +68,10 @@ function buildSoulContext(soulConfig: SoulConfig, includeMetadata = false): stri
 
   // Voice guidelines (condensed)
   if (soulConfig.voiceTone.length > 0) {
-    const guidelines = soulConfig.voiceTone.slice(0, 2).map(v => v.guideline).join(', ');
+    const guidelines = soulConfig.voiceTone
+      .slice(0, 2)
+      .map(v => v.guideline)
+      .join(', ');
     parts.push(`Voice: ${guidelines}`);
   }
 
@@ -105,12 +101,15 @@ export function stripSoulFromMessage(message: Message): Message {
     content: message.content.map(block => {
       if (block.type === 'text') {
         // Remove context blocks
-        let text = block.text.replace(/\[PERSONA_CONTEXT\][\s\S]*?\[\/PERSONA_CONTEXT\]\s*User message:\s*/g, '');
+        let text = block.text.replace(
+          /\[PERSONA_CONTEXT\][\s\S]*?\[\/PERSONA_CONTEXT\]\s*User message:\s*/g,
+          ''
+        );
         // Remove invisible context
         text = text.replace(/<!--SOUL_CONTEXT:[^>]+-->/g, '');
         return { ...block, text };
       }
       return block;
-    })
+    }),
   };
 }

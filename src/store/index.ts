@@ -53,7 +53,6 @@ const threadPersistConfig = {
   whitelist: ['panelWidth', 'lastViewedAt', 'threads', 'messagesByThreadId', 'selectedThreadId'],
 };
 
-
 const persistedAuthReducer = persistReducer(authPersistConfig, authReducer);
 const persistedAiReducer = persistReducer(aiPersistConfig, aiReducer);
 const persistedSkillsReducer = persistReducer(skillsPersistConfig, skillsReducer);

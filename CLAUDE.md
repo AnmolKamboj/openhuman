@@ -213,15 +213,15 @@ Advanced JavaScript execution engine for skills using V8 (via deno_core):
 
 Set in `.env` (Vite exposes `VITE_*` prefixed vars):
 
-| Variable                     | Purpose                                            |
-| ---------------------------- | -------------------------------------------------- |
-| `VITE_BACKEND_URL`           | Backend API URL (default: `http://localhost:5005`) |
-| `VITE_TELEGRAM_API_ID`       | Telegram MTProto API ID                            |
-| `VITE_TELEGRAM_API_HASH`     | Telegram MTProto API hash                          |
-| `VITE_TELEGRAM_BOT_USERNAME` | Telegram bot username                              |
-| `VITE_TELEGRAM_BOT_ID`       | Telegram bot numeric ID                            |
-| `VITE_SENTRY_DSN`            | Sentry DSN for error reporting (optional)          |
-| `VITE_DEBUG`                 | Debug mode flag                                    |
+| Variable                     | Purpose                                                             |
+| ---------------------------- | ------------------------------------------------------------------- |
+| `VITE_BACKEND_URL`           | Backend API URL (default: `http://localhost:5005`)                  |
+| `VITE_TELEGRAM_API_ID`       | Telegram MTProto API ID                                             |
+| `VITE_TELEGRAM_API_HASH`     | Telegram MTProto API hash                                           |
+| `VITE_TELEGRAM_BOT_USERNAME` | Telegram bot username                                               |
+| `VITE_TELEGRAM_BOT_ID`       | Telegram bot numeric ID                                             |
+| `VITE_SENTRY_DSN`            | Sentry DSN for error reporting (optional)                           |
+| `VITE_DEBUG`                 | Debug mode flag                                                     |
 | `ALPHAHUMAN_DAEMON_INTERNAL` | Force internal daemon mode (default: false, uses external services) |
 
 Production defaults are in `src/utils/config.ts`.
@@ -254,16 +254,18 @@ loadAIConfig() → AIConfig   // Combined SOUL + TOOLS configuration
 ```
 
 **Caching Strategy:**
+
 - Memory cache (immediate)
 - localStorage cache (30min TTL)
 - GitHub remote (latest)
 - Bundled fallback (reliable)
 
 **TODO**: Set up public AI configuration repository to eliminate 404 fallback errors
-  - Current: AI config loaders try GitHub URLs first (fail with 404), then fallback to bundled files
-  - Console shows: "Failed to load resource: the server responded with a status of 404"
-  - Affected: Settings → AI Configuration "Refresh Soul/Tools" buttons
-  - Files: `src/lib/ai/soul/loader.ts`, `src/lib/ai/tools/loader.ts`
+
+- Current: AI config loaders try GitHub URLs first (fail with 404), then fallback to bundled files
+- Console shows: "Failed to load resource: the server responded with a status of 404"
+- Affected: Settings → AI Configuration "Refresh Soul/Tools" buttons
+- Files: `src/lib/ai/soul/loader.ts`, `src/lib/ai/tools/loader.ts`
 
 ### Unified Injection System
 
@@ -272,15 +274,17 @@ Every user message automatically gets AI context injected:
 ```typescript
 // Unified injection (recommended)
 import { injectAll } from '../lib/ai/injector';
-const injectedMessage = await injectAll(userMessage);
-
 // Individual injections (for specific needs)
 import { injectSoul, injectTools } from '../lib/ai/injector';
+
+const injectedMessage = await injectAll(userMessage);
+
 const soulMessage = await injectSoul(userMessage);
 const toolsMessage = await injectTools(userMessage);
 ```
 
 **Message Format:**
+
 ```
 [PERSONA_CONTEXT]
 I am AlphaHuman: that incredibly smart, funny friend who loves helping people get stuff done
@@ -310,12 +314,14 @@ yarn skills:build && yarn tools:generate && tsc && vite build
 ```
 
 **Process:**
+
 1. **Discovery**: Spawns Tauri runtime to call `runtime_all_tools()`
 2. **Parsing**: Extracts tool definitions with JSON Schema
 3. **Formatting**: Generates OpenClaw-compliant markdown
 4. **Bundling**: Includes in app for AI context injection
 
 **Generated Output:**
+
 - Professional documentation with usage examples
 - Environment-specific configurations
 - Tool categorization by skill
@@ -335,6 +341,7 @@ All use the unified `injectAll()` function for consistency.
 ### Settings UI
 
 View and manage AI configuration in **Settings → AI Configuration**:
+
 - Live SOUL personality preview
 - TOOLS statistics and categories
 - Individual refresh buttons

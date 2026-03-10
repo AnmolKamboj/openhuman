@@ -25,21 +25,18 @@ export function injectToolsIntoMessage(
 
   switch (options.mode) {
     case 'prepend':
-      return {
-        ...message,
-        content: [
-          { type: 'text', text: toolsContext },
-          ...message.content
-        ]
-      };
+      return { ...message, content: [{ type: 'text', text: toolsContext }, ...message.content] };
 
     case 'context-block':
       return {
         ...message,
         content: [
-          { type: 'text', text: `[TOOLS_CONTEXT]\n${toolsContext}\n[/TOOLS_CONTEXT]\n\nUser message:` },
-          ...message.content
-        ]
+          {
+            type: 'text',
+            text: `[TOOLS_CONTEXT]\n${toolsContext}\n[/TOOLS_CONTEXT]\n\nUser message:`,
+          },
+          ...message.content,
+        ],
       };
 
     case 'invisible':
@@ -48,13 +45,10 @@ export function injectToolsIntoMessage(
         ...message,
         content: message.content.map((block, index) => {
           if (index === 0 && block.type === 'text') {
-            return {
-              ...block,
-              text: `<!--TOOLS_CONTEXT:${btoa(toolsContext)}-->${block.text}`
-            };
+            return { ...block, text: `<!--TOOLS_CONTEXT:${btoa(toolsContext)}-->${block.text}` };
           }
           return block;
-        })
+        }),
       };
 
     default:
@@ -69,11 +63,13 @@ function buildToolsContext(toolsConfig: ToolsConfig, options: ToolsInjectionOpti
   const parts: string[] = [];
 
   // Compact format - statistics and key info
-  parts.push(`${toolsConfig.statistics.totalTools} tools across ${toolsConfig.statistics.activeSkills} skills`);
+  parts.push(
+    `${toolsConfig.statistics.totalTools} tools across ${toolsConfig.statistics.activeSkills} skills`
+  );
 
   // Top categories by tool count
   const topCategories = Object.entries(toolsConfig.statistics.toolsByCategory)
-    .sort(([,a], [,b]) => b - a)
+    .sort(([, a], [, b]) => b - a)
     .slice(0, 4)
     .map(([cat, count]) => `${toolsConfig.categories[cat]?.name || cat} (${count})`)
     .join(', ');
@@ -119,12 +115,15 @@ export function stripToolsFromMessage(message: Message): Message {
     content: message.content.map(block => {
       if (block.type === 'text') {
         // Remove context blocks
-        let text = block.text.replace(/\[TOOLS_CONTEXT\][\s\S]*?\[\/TOOLS_CONTEXT\]\s*User message:\s*/g, '');
+        let text = block.text.replace(
+          /\[TOOLS_CONTEXT\][\s\S]*?\[\/TOOLS_CONTEXT\]\s*User message:\s*/g,
+          ''
+        );
         // Remove invisible context
         text = text.replace(/<!--TOOLS_CONTEXT:[^>]+-->/g, '');
         return { ...block, text };
       }
       return block;
-    })
+    }),
   };
 }

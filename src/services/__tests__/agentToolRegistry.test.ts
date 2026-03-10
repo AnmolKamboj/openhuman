@@ -1,6 +1,7 @@
-import { describe, test, expect, beforeEach, vi, type Mock } from 'vitest';
-import { AgentToolRegistry } from '../agentToolRegistry';
 import { invoke } from '@tauri-apps/api/core';
+import { beforeEach, describe, expect, type Mock, test, vi } from 'vitest';
+
+import { AgentToolRegistry } from '../agentToolRegistry';
 
 // Mock Tauri invoke
 vi.mock('@tauri-apps/api/core');
@@ -19,35 +20,35 @@ describe('AgentToolRegistry', () => {
     test('should load tool schemas from Tauri using ZeroClaw format', async () => {
       const mockSchemas = [
         {
-          type: "function",
+          type: 'function',
           function: {
-            name: "github_list_issues",
-            description: "List GitHub issues for a repository",
+            name: 'github_list_issues',
+            description: 'List GitHub issues for a repository',
             parameters: {
-              type: "object",
+              type: 'object',
               properties: {
-                owner: { type: "string", description: "Repository owner" },
-                repo: { type: "string", description: "Repository name" }
+                owner: { type: 'string', description: 'Repository owner' },
+                repo: { type: 'string', description: 'Repository name' },
               },
-              required: ["owner", "repo"]
-            }
-          }
+              required: ['owner', 'repo'],
+            },
+          },
         },
         {
-          type: "function",
+          type: 'function',
           function: {
-            name: "notion_create_page",
-            description: "Create a new Notion page",
+            name: 'notion_create_page',
+            description: 'Create a new Notion page',
             parameters: {
-              type: "object",
+              type: 'object',
               properties: {
-                title: { type: "string", description: "Page title" },
-                content: { type: "string", description: "Page content" }
+                title: { type: 'string', description: 'Page title' },
+                content: { type: 'string', description: 'Page content' },
               },
-              required: ["title"]
-            }
-          }
-        }
+              required: ['title'],
+            },
+          },
+        },
       ];
 
       mockInvoke.mockResolvedValue(mockSchemas);
@@ -55,21 +56,21 @@ describe('AgentToolRegistry', () => {
       const schemas = await service.loadToolSchemas();
 
       expect(schemas).toHaveLength(2);
-      expect(schemas[0].function.name).toBe("github_list_issues");
-      expect(schemas[1].function.name).toBe("notion_create_page");
+      expect(schemas[0].function.name).toBe('github_list_issues');
+      expect(schemas[1].function.name).toBe('notion_create_page');
       expect(mockInvoke).toHaveBeenCalledWith('runtime_get_tool_schemas');
     });
 
     test('should cache tool schemas to avoid repeated calls', async () => {
       const mockSchemas = [
         {
-          type: "function",
+          type: 'function',
           function: {
-            name: "test_tool",
-            description: "Test tool",
-            parameters: { type: "object", properties: {} }
-          }
-        }
+            name: 'test_tool',
+            description: 'Test tool',
+            parameters: { type: 'object', properties: {} },
+          },
+        },
       ];
 
       mockInvoke.mockResolvedValue(mockSchemas);
@@ -87,13 +88,13 @@ describe('AgentToolRegistry', () => {
     test('should force reload when requested', async () => {
       const mockSchemas = [
         {
-          type: "function",
+          type: 'function',
           function: {
-            name: "test_tool",
-            description: "Test tool",
-            parameters: { type: "object", properties: {} }
-          }
-        }
+            name: 'test_tool',
+            description: 'Test tool',
+            parameters: { type: 'object', properties: {} },
+          },
+        },
       ];
 
       mockInvoke.mockResolvedValue(mockSchemas);
@@ -120,7 +121,9 @@ describe('AgentToolRegistry', () => {
       const errorMessage = 'Failed to load tool schemas';
       mockInvoke.mockRejectedValue(new Error(errorMessage));
 
-      await expect(service.loadToolSchemas()).rejects.toThrow(`Failed to load tool schemas: Error: ${errorMessage}`);
+      await expect(service.loadToolSchemas()).rejects.toThrow(
+        `Failed to load tool schemas: Error: ${errorMessage}`
+      );
     });
   });
 
@@ -130,7 +133,7 @@ describe('AgentToolRegistry', () => {
         success: true,
         output: '{"issues": [{"title": "Bug fix", "number": 1}]}',
         error: null,
-        execution_time: 1500
+        execution_time: 1500,
       };
 
       mockInvoke.mockResolvedValue(mockResult);
@@ -150,7 +153,7 @@ describe('AgentToolRegistry', () => {
       // Verify correct tool_id format and arguments
       expect(mockInvoke).toHaveBeenCalledWith('runtime_execute_tool', {
         toolId: 'github_list_issues',
-        arguments: '{"owner":"user","repo":"test"}'
+        arguments: '{"owner":"user","repo":"test"}',
       });
     });
 
@@ -159,16 +162,12 @@ describe('AgentToolRegistry', () => {
         success: false,
         output: '',
         error: 'Tool not found: invalid_tool',
-        execution_time: 100
+        execution_time: 100,
       };
 
       mockInvoke.mockResolvedValue(mockResult);
 
-      const result = await service.executeTool(
-        'invalid',
-        'tool',
-        '{}'
-      );
+      const result = await service.executeTool('invalid', 'tool', '{}');
 
       expect(result.status).toBe('error');
       expect(result.errorMessage).toBe('Tool not found: invalid_tool');
@@ -180,7 +179,7 @@ describe('AgentToolRegistry', () => {
       const mockResult = {
         success: true,
         output: 'Success',
-        error: null
+        error: null,
         // No execution_time provided
       };
 
@@ -208,12 +207,7 @@ describe('AgentToolRegistry', () => {
     });
 
     test('should generate unique execution IDs', async () => {
-      const mockResult = {
-        success: true,
-        output: 'test',
-        error: null,
-        execution_time: 100
-      };
+      const mockResult = { success: true, output: 'test', error: null, execution_time: 100 };
 
       mockInvoke.mockResolvedValue(mockResult);
 
@@ -230,29 +224,29 @@ describe('AgentToolRegistry', () => {
     beforeEach(async () => {
       const mockSchemas = [
         {
-          type: "function",
+          type: 'function',
           function: {
-            name: "github_list_issues",
-            description: "List GitHub issues",
-            parameters: { type: "object", properties: {} }
-          }
+            name: 'github_list_issues',
+            description: 'List GitHub issues',
+            parameters: { type: 'object', properties: {} },
+          },
         },
         {
-          type: "function",
+          type: 'function',
           function: {
-            name: "github_create_issue",
-            description: "Create GitHub issue",
-            parameters: { type: "object", properties: {} }
-          }
+            name: 'github_create_issue',
+            description: 'Create GitHub issue',
+            parameters: { type: 'object', properties: {} },
+          },
         },
         {
-          type: "function",
+          type: 'function',
           function: {
-            name: "notion_create_page",
-            description: "Create Notion page",
-            parameters: { type: "object", properties: {} }
-          }
-        }
+            name: 'notion_create_page',
+            description: 'Create Notion page',
+            parameters: { type: 'object', properties: {} },
+          },
+        },
       ];
 
       mockInvoke.mockResolvedValue(mockSchemas);
@@ -280,7 +274,7 @@ describe('AgentToolRegistry', () => {
       expect(tools.map(t => t.function.name)).toEqual([
         'github_list_issues',
         'github_create_issue',
-        'notion_create_page'
+        'notion_create_page',
       ]);
     });
 
@@ -294,7 +288,7 @@ describe('AgentToolRegistry', () => {
 
       expect(toolsBySkill.github.map(t => t.function.name)).toEqual([
         'github_list_issues',
-        'github_create_issue'
+        'github_create_issue',
       ]);
       expect(toolsBySkill.notion[0].function.name).toBe('notion_create_page');
     });
@@ -341,13 +335,13 @@ describe('AgentToolRegistry', () => {
     test('should clear cached tool schemas', async () => {
       const mockSchemas = [
         {
-          type: "function",
+          type: 'function',
           function: {
-            name: "test_tool",
-            description: "Test tool",
-            parameters: { type: "object", properties: {} }
-          }
-        }
+            name: 'test_tool',
+            description: 'Test tool',
+            parameters: { type: 'object', properties: {} },
+          },
+        },
       ];
 
       mockInvoke.mockResolvedValue(mockSchemas);

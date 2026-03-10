@@ -113,6 +113,7 @@ interface DaemonUserState {
 ```
 
 **Key Features**:
+
 - Per-user daemon state isolation (following existing patterns)
 - Component-level health tracking with error details
 - Connection attempt management with exponential backoff
@@ -128,14 +129,15 @@ export class DaemonHealthService {
   private healthTimeoutId: NodeJS.Timeout | null = null;
   private readonly HEALTH_TIMEOUT_MS = 30000; // 30 seconds
 
-  async setupHealthListener(): Promise<UnlistenFn | null>
-  private parseHealthSnapshot(payload: unknown): HealthSnapshot | null
-  private updateReduxFromHealth(snapshot: HealthSnapshot): void
-  startHealthTimeout(): void
+  async setupHealthListener(): Promise<UnlistenFn | null>;
+  private parseHealthSnapshot(payload: unknown): HealthSnapshot | null;
+  private updateReduxFromHealth(snapshot: HealthSnapshot): void;
+  startHealthTimeout(): void;
 }
 ```
 
 **Responsibilities**:
+
 - Listen for `alphahuman:health` Tauri events from Rust
 - Parse and validate health snapshot data
 - Update Redux state with component health information
@@ -151,12 +153,14 @@ export class DaemonHealthService {
 **Purpose**: Compact status indicator for main application UI
 
 **Visual States**:
+
 - 🟢 **Green**: All components running healthy (`status: 'running'`)
 - 🟡 **Yellow**: Daemon starting or recovering (`status: 'starting'`)
 - 🔴 **Red**: One or more components in error state (`status: 'error'`)
 - ⚪ **Gray**: Daemon disconnected or not running (`status: 'disconnected'`)
 
 **Features**:
+
 - Click to open detailed health panel
 - Tooltip showing component health summary
 - Responsive sizing (sm/md/lg variants)
@@ -169,6 +173,7 @@ export class DaemonHealthService {
 **Purpose**: Detailed health breakdown and manual controls
 
 **Features**:
+
 - Component health table with status, last update, restart counts
 - Manual restart buttons for individual components
 - Auto-start toggle with persistence
@@ -218,6 +223,7 @@ export class DaemonHealthService {
 - **Better Error Messages**: User-friendly errors with troubleshooting hints
 
 **Before vs After**:
+
 ```typescript
 // Before: Manual status check
 <PrimaryButton onClick={() => run(alphahumanServiceStatus, 'serviceStatus')}>
@@ -239,6 +245,7 @@ export class DaemonHealthService {
 **File**: `src/providers/SocketProvider.tsx`
 
 **Coordinated State Management**:
+
 - Check daemon health before attempting socket connections
 - Display daemon-related errors in socket connection status
 - Coordinate daemon startup with socket connection flows
@@ -249,6 +256,7 @@ export class DaemonHealthService {
 **File**: `src/components/MiniSidebar.tsx`
 
 **User-Facing Integration**:
+
 - Daemon health indicator in main navigation (Tauri-only)
 - Click to open detailed health modal
 - Non-intrusive but easily accessible
@@ -329,6 +337,7 @@ Users can control daemon auto-start behavior through:
 ### Extensibility
 
 The architecture supports easy extension for:
+
 - Additional daemon components
 - Custom health check logic
 - Third-party integrations

@@ -7,17 +7,17 @@
  *
  * Usage: node scripts/tools-generator/discover-tools.js
  */
-
-import { writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import {
-  validateTauriEnvironment,
-  executeTauriDiscovery,
-  prepareTauriEnvironment,
-  getTauriEnvironmentInfo
-} from './tauri-integration.js';
+
 import { generateOpenClawMarkdown } from './openClaw-formatter.js';
+import {
+  executeTauriDiscovery,
+  getTauriEnvironmentInfo,
+  prepareTauriEnvironment,
+  validateTauriEnvironment,
+} from './tauri-integration.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '../..');
@@ -26,9 +26,15 @@ const TOOLS_OUTPUT = join(AI_DIR, 'TOOLS.md');
 
 // Environment categories for OpenClaw compatibility
 const ENVIRONMENTS = {
-  development: { name: 'Development', description: 'Local development environment with full access' },
-  production: { name: 'Production', description: 'Production environment with security restrictions' },
-  testing: { name: 'Testing', description: 'Testing environment for automated validation' }
+  development: {
+    name: 'Development',
+    description: 'Local development environment with full access',
+  },
+  production: {
+    name: 'Production',
+    description: 'Production environment with security restrictions',
+  },
+  testing: { name: 'Testing', description: 'Testing environment for automated validation' },
 };
 
 /**
@@ -50,11 +56,13 @@ async function discoverTools() {
       const realTools = await executeTauriDiscovery({
         timeout: 60000, // 60 seconds
         retries: 2,
-        verbose: process.env.VERBOSE === 'true'
+        verbose: process.env.VERBOSE === 'true',
       });
 
       if (realTools && realTools.length > 0) {
-        console.log(`✅ Discovered ${realTools.length} tools from ${new Set(realTools.map(t => t.skillId)).size} skills via Tauri`);
+        console.log(
+          `✅ Discovered ${realTools.length} tools from ${new Set(realTools.map(t => t.skillId)).size} skills via Tauri`
+        );
         return realTools;
       }
     } catch (error) {
@@ -68,7 +76,9 @@ async function discoverTools() {
 
   // Fallback to mock data for development
   const mockTools = generateMockToolsForDevelopment();
-  console.log(`✅ Using mock data: ${mockTools.length} tools from ${new Set(mockTools.map(t => t.skillId)).size} skills`);
+  console.log(
+    `✅ Using mock data: ${mockTools.length} tools from ${new Set(mockTools.map(t => t.skillId)).size} skills`
+  );
   return mockTools;
 }
 
@@ -87,10 +97,14 @@ function generateMockToolsForDevelopment() {
         properties: {
           chat_id: { type: 'string', description: 'Telegram chat ID or username' },
           message: { type: 'string', description: 'Message text to send' },
-          parse_mode: { type: 'string', enum: ['HTML', 'Markdown'], description: 'Message formatting mode' }
+          parse_mode: {
+            type: 'string',
+            enum: ['HTML', 'Markdown'],
+            description: 'Message formatting mode',
+          },
         },
-        required: ['chat_id', 'message']
-      }
+        required: ['chat_id', 'message'],
+      },
     },
     {
       skillId: 'telegram',
@@ -101,10 +115,10 @@ function generateMockToolsForDevelopment() {
         properties: {
           chat_id: { type: 'string', description: 'Telegram chat ID or username' },
           limit: { type: 'number', description: 'Number of messages to retrieve (max 100)' },
-          offset: { type: 'number', description: 'Offset for pagination' }
+          offset: { type: 'number', description: 'Offset for pagination' },
         },
-        required: ['chat_id']
-      }
+        required: ['chat_id'],
+      },
     },
     {
       skillId: 'notion',
@@ -116,10 +130,10 @@ function generateMockToolsForDevelopment() {
           parent_id: { type: 'string', description: 'Parent database or page ID' },
           title: { type: 'string', description: 'Page title' },
           content: { type: 'array', description: 'Page content blocks' },
-          properties: { type: 'object', description: 'Page properties for database pages' }
+          properties: { type: 'object', description: 'Page properties for database pages' },
         },
-        required: ['parent_id', 'title']
-      }
+        required: ['parent_id', 'title'],
+      },
     },
     {
       skillId: 'gmail',
@@ -131,11 +145,11 @@ function generateMockToolsForDevelopment() {
           to: { type: 'string', description: 'Recipient email address' },
           subject: { type: 'string', description: 'Email subject line' },
           body: { type: 'string', description: 'Email body content' },
-          attachments: { type: 'array', description: 'File attachments' }
+          attachments: { type: 'array', description: 'File attachments' },
         },
-        required: ['to', 'subject', 'body']
-      }
-    }
+        required: ['to', 'subject', 'body'],
+      },
+    },
   ];
 }
 
@@ -152,7 +166,9 @@ async function main() {
     const tools = await discoverTools();
 
     if (tools.length === 0) {
-      console.warn('⚠️  No tools discovered. This might indicate an issue with the skills runtime.');
+      console.warn(
+        '⚠️  No tools discovered. This might indicate an issue with the skills runtime.'
+      );
     }
 
     // Ensure AI directory exists
@@ -170,8 +186,9 @@ async function main() {
     writeFileSync(TOOLS_OUTPUT, markdownContent, 'utf8');
 
     console.log('✅ TOOLS.md generated successfully!');
-    console.log(`📊 Generated documentation for ${tools.length} tools across ${new Set(tools.map(t => t.skillId)).size} skills`);
-
+    console.log(
+      `📊 Generated documentation for ${tools.length} tools across ${new Set(tools.map(t => t.skillId)).size} skills`
+    );
   } catch (error) {
     console.error('❌ Error generating TOOLS.md:', error.message);
     process.exit(1);
@@ -193,7 +210,7 @@ async function discoverToolsFromTauri() {
       '--manifest-path',
       join(PROJECT_ROOT, 'src-tauri', 'Cargo.toml'),
       '--bin',
-      'alphahuman-tools-discovery'
+      'alphahuman-tools-discovery',
     ];
 
     console.log('🔧 Attempting to run tools discovery via Cargo...');
@@ -201,24 +218,21 @@ async function discoverToolsFromTauri() {
     const child = spawn(tauriCommand, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: PROJECT_ROOT,
-      env: {
-        ...process.env,
-        TAURI_TOOLS_DISCOVERY: 'true'
-      }
+      env: { ...process.env, TAURI_TOOLS_DISCOVERY: 'true' },
     });
 
     let output = '';
     let errorOutput = '';
 
-    child.stdout.on('data', (data) => {
+    child.stdout.on('data', data => {
       output += data.toString();
     });
 
-    child.stderr.on('data', (data) => {
+    child.stderr.on('data', data => {
       errorOutput += data.toString();
     });
 
-    child.on('close', (code) => {
+    child.on('close', code => {
       if (code === 0 && output.trim()) {
         try {
           const result = JSON.parse(output.trim());
@@ -235,7 +249,7 @@ async function discoverToolsFromTauri() {
       }
     });
 
-    child.on('error', (error) => {
+    child.on('error', error => {
       reject(new Error(`Failed to spawn Tauri process: ${error.message}`));
     });
 

@@ -1,12 +1,12 @@
 import { isTauri as coreIsTauri, invoke } from '@tauri-apps/api/core';
 import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
 
+import { skillManager } from '../lib/skills/manager';
 import { consumeLoginToken, fetchIntegrationTokens } from '../services/api/authApi';
 import { buildManualSentryEvent, enqueueError } from '../services/errorReportQueue';
 import { store } from '../store';
 import { setToken } from '../store/authSlice';
 import { setSkillState } from '../store/skillsSlice';
-import { skillManager } from '../lib/skills/manager';
 import {
   decryptIntegrationTokens,
   hexToBase64,

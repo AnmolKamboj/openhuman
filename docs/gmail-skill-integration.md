@@ -147,17 +147,18 @@ The `redirect_uri` is the **tunnel public URL** with the path `/auth/callback/gm
 
 ZeroClaw's tunnel system (`src/tunnel/mod.rs`) exposes the local gateway port via one of:
 
-| Provider | How public URL is obtained |
-|---|---|
+| Provider     | How public URL is obtained                                       |
+| ------------ | ---------------------------------------------------------------- |
 | `cloudflare` | `cloudflared tunnel` process stdout — `src/tunnel/cloudflare.rs` |
-| `ngrok` | ngrok local API `GET /api/tunnels` — `src/tunnel/ngrok.rs` |
-| `tailscale` | `tailscale funnel` + hostname — `src/tunnel/tailscale.rs` |
-| `custom` | user-supplied URL or stdout pattern — `src/tunnel/custom.rs` |
+| `ngrok`      | ngrok local API `GET /api/tunnels` — `src/tunnel/ngrok.rs`       |
+| `tailscale`  | `tailscale funnel` + hostname — `src/tunnel/tailscale.rs`        |
+| `custom`     | user-supplied URL or stdout pattern — `src/tunnel/custom.rs`     |
 
 The tunnel's `start(local_host, local_port)` method returns the public URL string.
 This URL is what gets used as the `redirect_uri`.
 
 Example with Cloudflare Tunnel:
+
 ```
 https://your-subdomain.trycloudflare.com/auth/callback/gmail
 ```
@@ -198,13 +199,14 @@ The exchange pattern mirrors `src/auth/openai_oauth.rs:exchange_code_for_tokens(
 which posts a form body and parses the JSON response into `TokenSet`.
 
 Google returns:
+
 ```json
 {
-  "access_token":  "ya29.a0...",
-  "expires_in":    3599,
+  "access_token": "ya29.a0...",
+  "expires_in": 3599,
   "refresh_token": "1//0g...",
-  "scope":         "https://www.googleapis.com/auth/gmail.send ...",
-  "token_type":    "Bearer"
+  "scope": "https://www.googleapis.com/auth/gmail.send ...",
+  "token_type": "Bearer"
 }
 ```
 
@@ -275,11 +277,11 @@ The stored profile entry looks like:
   "profile_name": "default",
   "kind": "oauth",
   "token_set": {
-    "access_token":  "enc2:a1b2c3...",
+    "access_token": "enc2:a1b2c3...",
     "refresh_token": "enc2:d4e5f6...",
-    "expires_at":    "2026-03-09T12:00:00Z",
-    "token_type":    "Bearer",
-    "scope":         "https://www.googleapis.com/auth/gmail.send ..."
+    "expires_at": "2026-03-09T12:00:00Z",
+    "token_type": "Bearer",
+    "scope": "https://www.googleapis.com/auth/gmail.send ..."
   },
   "created_at": "2026-03-09T11:00:00Z",
   "updated_at": "2026-03-09T11:00:00Z"
@@ -349,11 +351,11 @@ GET /gmail/v1/users/me/messages/{id1}?format=full
 
 Each email is stored via `memory_store` (`src/tools/memory_store.rs`) with:
 
-| Field | Value |
-|---|---|
-| `key` | `gmail_msg_<message_id>` |
-| `content` | Formatted string: `From: ... Subject: ... Date: ... Snippet: ...` |
-| `category` | `MemoryCategory::Custom("gmail")` |
+| Field      | Value                                                             |
+| ---------- | ----------------------------------------------------------------- |
+| `key`      | `gmail_msg_<message_id>`                                          |
+| `content`  | Formatted string: `From: ... Subject: ... Date: ... Snippet: ...` |
+| `category` | `MemoryCategory::Custom("gmail")`                                 |
 
 This makes every synced email searchable via `memory_recall` with queries like
 `"gmail from:zeroclaw@example.com"`.
@@ -414,9 +416,9 @@ The LLM emits a tool call:
 {
   "name": "gmail_send_email",
   "arguments": {
-    "to":      "recipient@example.com",
+    "to": "recipient@example.com",
     "subject": "Hello from ZeroClaw",
-    "body":    "This is a test email sent by the agent."
+    "body": "This is a test email sent by the agent."
   }
 }
 ```
@@ -458,9 +460,7 @@ This is a test email sent by the agent.
 Then the entire string is base64url-encoded (no padding) and placed in the `raw` field:
 
 ```json
-{
-  "raw": "RnJvbTogbWVAZ21haWwuY29tCi..."
-}
+{ "raw": "RnJvbTogbWVAZ21haWwuY29tCi..." }
 ```
 
 ### 7.5 Security enforcement
@@ -491,10 +491,7 @@ allowed_domains = ["googleapis.com"]
 To send a reply within an existing thread, add the Gmail `threadId` to the request body:
 
 ```json
-{
-  "raw": "<base64url_message_with_In-Reply-To_header>",
-  "threadId": "18de7f2a1b3c4e5d"
-}
+{ "raw": "<base64url_message_with_In-Reply-To_header>", "threadId": "18de7f2a1b3c4e5d" }
 ```
 
 The RFC 2822 message must include `In-Reply-To: <original_message_id>` and
@@ -593,22 +590,22 @@ secrets (`src/security/secrets.rs`).
 
 ## 10. Key Source Files
 
-| File | Role |
-|---|---|
-| `src/skills/mod.rs` | Skill loading, `SkillTool` struct, `load_skills_with_config()` |
-| `src/auth/mod.rs` | `AuthService` — store/retrieve/refresh OAuth tokens |
-| `src/auth/profiles.rs` | `AuthProfile`, `TokenSet`, `AuthProfilesStore` — JSON persistence |
-| `src/auth/openai_oauth.rs` | PKCE generation, code exchange, refresh — reference pattern |
-| `src/security/secrets.rs` | `SecretStore` — ChaCha20-Poly1305 encrypt/decrypt |
-| `src/tunnel/mod.rs` | `Tunnel` trait + factory — public URL for OAuth redirect |
-| `src/tunnel/cloudflare.rs` | Cloudflare Tunnel implementation |
-| `src/tunnel/ngrok.rs` | ngrok implementation |
-| `src/gateway/mod.rs` | Axum HTTP gateway — where `/auth/callback/gmail` is registered |
-| `src/tools/http_request.rs` | `HttpRequestTool` — dispatches Gmail API calls |
-| `src/tools/memory_store.rs` | `MemoryStoreTool` — stores synced emails |
-| `src/tools/memory_recall.rs` | `MemoryRecallTool` — searches synced emails |
-| `src/security/policy.rs` | `SecurityPolicy` — enforces `ToolOperation::Act` guards |
-| `docs/config-reference.md` | Full config schema including `[http]`, `[tunnel]` |
+| File                         | Role                                                              |
+| ---------------------------- | ----------------------------------------------------------------- |
+| `src/skills/mod.rs`          | Skill loading, `SkillTool` struct, `load_skills_with_config()`    |
+| `src/auth/mod.rs`            | `AuthService` — store/retrieve/refresh OAuth tokens               |
+| `src/auth/profiles.rs`       | `AuthProfile`, `TokenSet`, `AuthProfilesStore` — JSON persistence |
+| `src/auth/openai_oauth.rs`   | PKCE generation, code exchange, refresh — reference pattern       |
+| `src/security/secrets.rs`    | `SecretStore` — ChaCha20-Poly1305 encrypt/decrypt                 |
+| `src/tunnel/mod.rs`          | `Tunnel` trait + factory — public URL for OAuth redirect          |
+| `src/tunnel/cloudflare.rs`   | Cloudflare Tunnel implementation                                  |
+| `src/tunnel/ngrok.rs`        | ngrok implementation                                              |
+| `src/gateway/mod.rs`         | Axum HTTP gateway — where `/auth/callback/gmail` is registered    |
+| `src/tools/http_request.rs`  | `HttpRequestTool` — dispatches Gmail API calls                    |
+| `src/tools/memory_store.rs`  | `MemoryStoreTool` — stores synced emails                          |
+| `src/tools/memory_recall.rs` | `MemoryRecallTool` — searches synced emails                       |
+| `src/security/policy.rs`     | `SecurityPolicy` — enforces `ToolOperation::Act` guards           |
+| `docs/config-reference.md`   | Full config schema including `[http]`, `[tunnel]`                 |
 
 ---
 

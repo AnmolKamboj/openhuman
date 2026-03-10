@@ -32,7 +32,9 @@ export const actionableItemsApi = {
    * GET /telegram/actionable-items
    */
   getActionableItems: async (): Promise<ActionableItem[]> => {
-    const response = await apiClient.get<ApiResponse<ActionableItem[]>>('/telegram/actionable-items');
+    const response = await apiClient.get<ApiResponse<ActionableItem[]>>(
+      '/telegram/actionable-items'
+    );
     return response.data;
   },
 

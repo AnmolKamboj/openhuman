@@ -16,7 +16,7 @@ export const ENVIRONMENTS = {
     accessLevel: 'Full access to all tools',
     rateLimits: 'Relaxed for testing',
     authentication: 'Development credentials',
-    logging: 'Verbose logging enabled'
+    logging: 'Verbose logging enabled',
   },
   production: {
     name: 'Production',
@@ -24,7 +24,7 @@ export const ENVIRONMENTS = {
     accessLevel: 'Production-safe tools only',
     rateLimits: 'Standard API limits enforced',
     authentication: 'Production credentials required',
-    logging: 'Essential logs only'
+    logging: 'Essential logs only',
   },
   testing: {
     name: 'Testing',
@@ -32,8 +32,8 @@ export const ENVIRONMENTS = {
     accessLevel: 'Safe tools for automated testing',
     rateLimits: 'Testing-specific limits',
     authentication: 'Test credentials',
-    logging: 'Test execution logs'
-  }
+    logging: 'Test execution logs',
+  },
 };
 
 /**
@@ -43,33 +43,33 @@ export const TOOL_CATEGORIES = {
   communication: {
     name: 'Communication',
     description: 'Tools for messaging, email, and social interaction',
-    skills: ['telegram', 'gmail', 'discord', 'slack']
+    skills: ['telegram', 'gmail', 'discord', 'slack'],
   },
   productivity: {
     name: 'Productivity',
     description: 'Tools for task management, note-taking, and organization',
-    skills: ['notion', 'todoist', 'calendar', 'trello']
+    skills: ['notion', 'todoist', 'calendar', 'trello'],
   },
   automation: {
     name: 'Automation',
     description: 'Tools for workflow automation and task scheduling',
-    skills: ['zapier', 'ifttt', 'scheduler', 'webhook']
+    skills: ['zapier', 'ifttt', 'scheduler', 'webhook'],
   },
   data: {
     name: 'Data & Analytics',
     description: 'Tools for data processing, analysis, and storage',
-    skills: ['database', 'csv', 'json', 'analytics']
+    skills: ['database', 'csv', 'json', 'analytics'],
   },
   media: {
     name: 'Media & Content',
     description: 'Tools for image, video, and content processing',
-    skills: ['image', 'video', 'audio', 'pdf']
+    skills: ['image', 'video', 'audio', 'pdf'],
   },
   utility: {
     name: 'Utilities',
     description: 'General-purpose utility tools and helpers',
-    skills: ['file', 'text', 'crypto', 'converter']
-  }
+    skills: ['file', 'text', 'crypto', 'converter'],
+  },
 };
 
 /**
@@ -174,7 +174,7 @@ export function groupToolsBySkill(tools) {
         skillId,
         name: formatSkillName(skillId),
         category: categorizeSkill(skillId),
-        tools: []
+        tools: [],
       };
     }
     grouped[skillId].tools.push(tool);

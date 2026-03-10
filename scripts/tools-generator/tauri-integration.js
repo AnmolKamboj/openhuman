@@ -5,11 +5,10 @@
  * Provides integration utilities for discovering tools via Tauri runtime.
  * Handles cross-platform execution, error handling, and fallbacks.
  */
-
 import { spawn } from 'child_process';
 import { join } from 'path';
-import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '../..');
@@ -28,8 +27,8 @@ export function getTauriCommand() {
       '--manifest-path',
       join(PROJECT_ROOT, 'src-tauri', 'Cargo.toml'),
       '--bin',
-      'alphahuman-tools-discovery'
-    ]
+      'alphahuman-tools-discovery',
+    ],
   };
 }
 
@@ -38,14 +37,12 @@ export function getTauriCommand() {
  * @returns {Promise<boolean>} True if Tauri can be used
  */
 export async function validateTauriEnvironment() {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const { command } = getTauriCommand();
 
-    const child = spawn(command, ['--version'], {
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
+    const child = spawn(command, ['--version'], { stdio: ['pipe', 'pipe', 'pipe'] });
 
-    child.on('close', (code) => {
+    child.on('close', code => {
       resolve(code === 0);
     });
 
@@ -70,7 +67,7 @@ export async function executeTauriDiscovery(options = {}) {
   const {
     timeout = 45000, // 45 seconds
     retries = 2,
-    verbose = false
+    verbose = false,
   } = options;
 
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -115,14 +112,14 @@ async function runTauriDiscovery(timeout, verbose) {
         ...process.env,
         TAURI_TOOLS_DISCOVERY: 'true',
         RUST_LOG: verbose ? 'debug' : 'warn',
-        RUST_BACKTRACE: '1'
-      }
+        RUST_BACKTRACE: '1',
+      },
     });
 
     let output = '';
     let errorOutput = '';
 
-    child.stdout.on('data', (data) => {
+    child.stdout.on('data', data => {
       const text = data.toString();
       output += text;
 
@@ -131,7 +128,7 @@ async function runTauriDiscovery(timeout, verbose) {
       }
     });
 
-    child.stderr.on('data', (data) => {
+    child.stderr.on('data', data => {
       const text = data.toString();
       errorOutput += text;
 
@@ -140,7 +137,7 @@ async function runTauriDiscovery(timeout, verbose) {
       }
     });
 
-    child.on('close', (code) => {
+    child.on('close', code => {
       if (code === 0) {
         try {
           // Extract JSON from output (may have other log lines)
@@ -166,7 +163,7 @@ async function runTauriDiscovery(timeout, verbose) {
       }
     });
 
-    child.on('error', (error) => {
+    child.on('error', error => {
       reject(new Error(`Failed to spawn Tauri process: ${error.message}`));
     });
 
@@ -219,6 +216,6 @@ export async function getTauriEnvironmentInfo() {
     platform: process.platform,
     architecture: process.arch,
     projectRoot: PROJECT_ROOT,
-    command: getTauriCommand()
+    command: getTauriCommand(),
   };
 }

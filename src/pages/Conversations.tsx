@@ -421,11 +421,7 @@ const Conversations = () => {
           for (let i = 0; i < message.tool_calls.length; i++) {
             const tc = message.tool_calls[i];
             if (i !== latestIndex) {
-              loopMessages.push({
-                role: 'tool',
-                tool_call_id: tc.id,
-                content: '',
-              });
+              loopMessages.push({ role: 'tool', tool_call_id: tc.id, content: '' });
               continue;
             }
 

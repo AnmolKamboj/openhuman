@@ -1,20 +1,14 @@
 import { loadAIConfig } from './loader';
+import type { Message } from './providers/interface';
 import { injectSoulIntoMessage } from './soul/injector';
 import { injectToolsIntoMessage } from './tools/injector';
-import type { Message } from './providers/interface';
 import type { AIConfig } from './types';
 
 export interface UnifiedInjectionOptions {
   mode: 'prepend' | 'context-block' | 'invisible';
   includeMetadata?: boolean;
-  soul?: {
-    enabled?: boolean;
-  };
-  tools?: {
-    enabled?: boolean;
-    maxTools?: number;
-    format?: 'list' | 'categories' | 'compact';
-  };
+  soul?: { enabled?: boolean };
+  tools?: { enabled?: boolean; maxTools?: number; format?: 'list' | 'categories' | 'compact' };
 }
 
 /**
@@ -30,7 +24,12 @@ export async function injectAll(
   let config: AIConfig;
   let options: UnifiedInjectionOptions;
 
-  if (configOrOptions && 'soul' in configOrOptions && 'tools' in configOrOptions && 'metadata' in configOrOptions) {
+  if (
+    configOrOptions &&
+    'soul' in configOrOptions &&
+    'tools' in configOrOptions &&
+    'metadata' in configOrOptions
+  ) {
     // First param is AIConfig
     config = configOrOptions;
     options = optionsWhenConfigProvided || { mode: 'context-block' };
@@ -46,7 +45,7 @@ export async function injectAll(
     soul: { enabled: true },
     tools: { enabled: true, maxTools: 20, format: 'compact' },
     ...options,
-    mode: options.mode || 'context-block'
+    mode: options.mode || 'context-block',
   };
 
   let injectedMessage = message;
@@ -56,7 +55,7 @@ export async function injectAll(
     try {
       injectedMessage = injectSoulIntoMessage(injectedMessage, config.soul, {
         mode: finalOptions.mode,
-        includeMetadata: finalOptions.includeMetadata
+        includeMetadata: finalOptions.includeMetadata,
       });
     } catch (error) {
       console.warn('⚠️ SOUL injection failed, continuing with TOOLS only:', error);
@@ -70,7 +69,7 @@ export async function injectAll(
         mode: finalOptions.mode,
         includeMetadata: finalOptions.includeMetadata,
         maxTools: finalOptions.tools.maxTools,
-        format: finalOptions.tools.format
+        format: finalOptions.tools.format,
       });
     } catch (error) {
       console.warn('⚠️ TOOLS injection failed, continuing without tools context:', error);
@@ -96,11 +95,7 @@ export function hasInjectedContext(message: Message): {
   const hasSoul = text.includes('[PERSONA_CONTEXT]') || text.includes('<!--SOUL_CONTEXT:');
   const hasTools = text.includes('[TOOLS_CONTEXT]') || text.includes('<!--TOOLS_CONTEXT:');
 
-  return {
-    hasSoul,
-    hasTools,
-    hasAny: hasSoul || hasTools
-  };
+  return { hasSoul, hasTools, hasAny: hasSoul || hasTools };
 }
 
 /**
@@ -125,8 +120,14 @@ export function extractContextInfo(message: Message): {
 
   // Calculate original message length (without injected context)
   let originalText = text;
-  originalText = originalText.replace(/\[PERSONA_CONTEXT\][\s\S]*?\[\/PERSONA_CONTEXT\]\s*User message:\s*/g, '');
-  originalText = originalText.replace(/\[TOOLS_CONTEXT\][\s\S]*?\[\/TOOLS_CONTEXT\]\s*User message:\s*/g, '');
+  originalText = originalText.replace(
+    /\[PERSONA_CONTEXT\][\s\S]*?\[\/PERSONA_CONTEXT\]\s*User message:\s*/g,
+    ''
+  );
+  originalText = originalText.replace(
+    /\[TOOLS_CONTEXT\][\s\S]*?\[\/TOOLS_CONTEXT\]\s*User message:\s*/g,
+    ''
+  );
   originalText = originalText.replace(/<!--SOUL_CONTEXT:[^>]+-->/g, '');
   originalText = originalText.replace(/<!--TOOLS_CONTEXT:[^>]+-->/g, '');
 
@@ -134,6 +135,6 @@ export function extractContextInfo(message: Message): {
     soulContextLength,
     toolsContextLength,
     totalInjectedLength: soulContextLength + toolsContextLength,
-    originalLength: originalText.length
+    originalLength: originalText.length,
   };
 }

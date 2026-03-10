@@ -6,7 +6,7 @@
  */
 import type React from 'react';
 
-import { useDaemonHealth, formatRelativeTime } from '../../hooks/useDaemonHealth';
+import { formatRelativeTime, useDaemonHealth } from '../../hooks/useDaemonHealth';
 import type { DaemonStatus } from '../../store/daemonSlice';
 
 interface Props {
@@ -28,21 +28,9 @@ const DaemonHealthIndicator: React.FC<Props> = ({
 
   // Size configurations
   const sizeConfig = {
-    sm: {
-      dot: 'w-2 h-2',
-      text: 'text-xs',
-      container: 'gap-1.5',
-    },
-    md: {
-      dot: 'w-3 h-3',
-      text: 'text-sm',
-      container: 'gap-2',
-    },
-    lg: {
-      dot: 'w-4 h-4',
-      text: 'text-base',
-      container: 'gap-2.5',
-    },
+    sm: { dot: 'w-2 h-2', text: 'text-xs', container: 'gap-1.5' },
+    md: { dot: 'w-3 h-3', text: 'text-sm', container: 'gap-2' },
+    lg: { dot: 'w-4 h-4', text: 'text-base', container: 'gap-2.5' },
   };
 
   const config = sizeConfig[size];
@@ -79,7 +67,8 @@ const DaemonHealthIndicator: React.FC<Props> = ({
 
   // Tooltip content
   const getTooltipContent = (): string => {
-    const { status, componentCount, healthyComponentCount, errorComponentCount, lastUpdate } = daemonHealth;
+    const { status, componentCount, healthyComponentCount, errorComponentCount, lastUpdate } =
+      daemonHealth;
 
     let tooltip = `Status: ${getStatusText(status)}`;
 
@@ -107,16 +96,10 @@ const DaemonHealthIndicator: React.FC<Props> = ({
   `.trim();
 
   return (
-    <div
-      className={containerClasses}
-      onClick={onClick}
-      title={getTooltipContent()}
-    >
+    <div className={containerClasses} onClick={onClick} title={getTooltipContent()}>
       <div className={`${config.dot} rounded-full ${statusColor} flex-shrink-0`} />
       {showLabel && (
-        <span className={`${config.text} text-gray-300 font-medium`}>
-          {statusText}
-        </span>
+        <span className={`${config.text} text-gray-300 font-medium`}>{statusText}</span>
       )}
     </div>
   );

@@ -4,8 +4,8 @@
  * This module provides functionality to automatically update the TOOLS.md file
  * with all tools discovered from the running skills system.
  */
-
 import { invoke } from '@tauri-apps/api/core';
+
 import { clearToolsCache } from '../ai/tools/loader';
 import { forceToolsCacheRefresh } from './file-watcher';
 
@@ -18,11 +18,7 @@ interface RuntimeToolResponse {
   tool: {
     name: string;
     description: string;
-    input_schema: {
-      type: string;
-      properties: Record<string, any>;
-      required?: string[];
-    };
+    input_schema: { type: string; properties: Record<string, any>; required?: string[] };
   };
 }
 
@@ -68,7 +64,10 @@ export async function updateToolsDocumentation(): Promise<void> {
     // Transform the tools data into grouped format
     console.log('🔍 Step 4: Grouping tools by skill...');
     const toolsBySkill = groupToolsBySkill(toolsResponse);
-    console.log('🔧 Tools by skill:', Object.keys(toolsBySkill).map(skillId => `${skillId}: ${toolsBySkill[skillId].length} tools`));
+    console.log(
+      '🔧 Tools by skill:',
+      Object.keys(toolsBySkill).map(skillId => `${skillId}: ${toolsBySkill[skillId].length} tools`)
+    );
 
     // Generate the TOOLS.md content
     console.log('🔍 Step 5: Generating TOOLS.md markdown content...');
@@ -83,7 +82,7 @@ export async function updateToolsDocumentation(): Promise<void> {
     try {
       const writeResult = await invoke('write_ai_config_file', {
         filename: 'TOOLS.md',
-        content: markdownContent
+        content: markdownContent,
       });
       console.log('🔧 Write command result:', writeResult);
     } catch (writeError) {
@@ -101,11 +100,11 @@ export async function updateToolsDocumentation(): Promise<void> {
 
     // Manually dispatch tools-updated event to ensure UI updates
     console.log('📡 Dispatching tools-updated event for UI components...');
-    window.dispatchEvent(new CustomEvent('tools-updated', {
-      detail: { timestamp: Date.now() }
-    }));
+    window.dispatchEvent(new CustomEvent('tools-updated', { detail: { timestamp: Date.now() } }));
 
-    console.log(`📄 Final result: ${toolsResponse.length} tools from ${Object.keys(toolsBySkill).length} skills`);
+    console.log(
+      `📄 Final result: ${toolsResponse.length} tools from ${Object.keys(toolsBySkill).length} skills`
+    );
     console.log('=== AUTO-UPDATE TOOLS.md COMPLETE ===');
   } catch (error) {
     console.error('❌ FATAL ERROR in updateToolsDocumentation:', error);
@@ -117,7 +116,9 @@ export async function updateToolsDocumentation(): Promise<void> {
 /**
  * Group tools by skill for organized documentation
  */
-function groupToolsBySkill(toolsResponse: RuntimeToolResponse[]): Record<string, RuntimeToolResponse[]> {
+function groupToolsBySkill(
+  toolsResponse: RuntimeToolResponse[]
+): Record<string, RuntimeToolResponse[]> {
   const grouped: Record<string, RuntimeToolResponse[]> = {};
 
   for (const toolResponse of toolsResponse) {
@@ -138,7 +139,8 @@ function generateToolsMarkdown(toolsBySkill: Record<string, RuntimeToolResponse[
   const totalTools = Object.values(toolsBySkill).flat().length;
   const skillCount = Object.keys(toolsBySkill).length;
 
-  const content = [`# AlphaHuman Tools
+  const content = [
+    `# AlphaHuman Tools
 
 This document lists all available tools that AlphaHuman can use to interact with external services and perform actions. Tools are organized by integration and automatically updated when the app loads.
 
@@ -152,7 +154,8 @@ ${Object.entries(toolsBySkill)
   .join('\n')}
 
 ## Available Tools
-`];
+`,
+  ];
 
   // Generate tool documentation for each skill
   for (const [skillId, tools] of Object.entries(toolsBySkill)) {
@@ -192,10 +195,7 @@ ${Object.entries(toolsBySkill)
 
       content.push('**Example**:');
       content.push('```json');
-      content.push(JSON.stringify({
-        tool: tool.name,
-        parameters: exampleParams
-      }, null, 2));
+      content.push(JSON.stringify({ tool: tool.name, parameters: exampleParams }, null, 2));
       content.push('```\n');
 
       content.push('---\n');
