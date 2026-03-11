@@ -338,7 +338,7 @@ async fn spawn_state_writer(
             _ = interval.tick() => {
                 event_count += 1;
                 if event_count % 12 == 1 { // Log every minute (12 * 5s = 60s)
-                    log::info!("[alphahuman] Health monitoring active (event #{})", event_count);
+//                     log::info!("[alphahuman] Health monitoring active (event #{})", event_count);
                 }
             },
             _ = cancel.cancelled() => {
