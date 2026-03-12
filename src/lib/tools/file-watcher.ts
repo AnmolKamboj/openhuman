@@ -99,10 +99,10 @@ function simpleHash(str: string): number {
 /**
  * Force a cache refresh (useful for manual triggers)
  */
-export function forceToolsCacheRefresh(): Promise<void> {
+export async function forceToolsCacheRefresh(): Promise<void> {
   console.log('🔄 Forcing tools cache refresh...');
   clearToolsCache();
   clearAICache();
   lastModifiedTime = null; // Reset to trigger next check
-  return loadAIConfig();
+  await loadAIConfig();
 }

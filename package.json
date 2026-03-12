@@ -22,7 +22,7 @@
     "android:build": "tauri android build",
     "test": "vitest run",
     "test:unit": "vitest run",
-    "test:unit:watch": "vitest",
+    "test:unit:watch": "vi13:17:20.609 ERROR [skill:gmail] start() failed: start() timed out after 30s\ntest",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:rust": "source $HOME/.cargo/env 2>/dev/null; cargo test --manifest-path src-tauri/Cargo.toml",

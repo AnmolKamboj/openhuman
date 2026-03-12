@@ -4,7 +4,6 @@ import { injectAll } from '../lib/ai/injector';
 import type { Message } from '../lib/ai/providers/interface';
 import { threadApi } from '../services/api/threadApi';
 import type { Thread, ThreadMessage } from '../types/thread';
-import type { RootState } from './index';
 
 interface ThreadState {
   // Existing local data (will be persisted)
@@ -237,8 +236,13 @@ const threadSlice = createSlice({
               : lastUserMessage;
             persistedMessages.push(stableMessage);
             // Keep state.messages in sync with the stable id
-            const idx = state.messages.findLastIndex(m => m.id === lastUserMessage.id);
-            if (idx !== -1) state.messages[idx] = stableMessage;
+            const messages = state.messages;
+            for (let i = messages.length - 1; i >= 0; i--) {
+              if (messages[i].id === lastUserMessage.id) {
+                messages[i] = stableMessage;
+                break;
+              }
+            }
           }
         }
 

@@ -6,7 +6,6 @@
  */
 import { invoke } from '@tauri-apps/api/core';
 
-import { clearToolsCache } from '../ai/tools/loader';
 import { forceToolsCacheRefresh } from './file-watcher';
 
 // Prevent excessive updates - limit to once per 10 seconds
