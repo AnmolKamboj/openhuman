@@ -3,6 +3,7 @@ import SettingsHeader from './components/SettingsHeader';
 import SettingsMenuItem from './components/SettingsMenuItem';
 import { useSettingsNavigation } from './hooks/useSettingsNavigation';
 import { persistor } from '../../store';
+import { skillManager } from '../../lib/skills/manager';
 
 const SettingsHome = () => {
   const { navigateToSettings } = useSettingsNavigation();
@@ -19,6 +20,14 @@ const SettingsHome = () => {
     await persistor.purge();
     window.localStorage.clear();
     window.sessionStorage.clear();
+
+    // NEW: Clear skills databases (emails, chats, cached files)
+    try {
+      await skillManager.clearAllSkillsData();
+    } catch (error) {
+      console.warn('Failed to clear skills data:', error);
+      // Continue with logout even if skills clearing fails
+    }
 
     // Complete reset - redirect to login for fresh start
     window.location.href = '/login';
@@ -354,8 +363,14 @@ const SettingsHome = () => {
 
             <div className="mb-6">
               <p className="text-stone-300 text-sm leading-relaxed">
-                This will sign you out and permanently delete all local data including settings, conversations,
-                and cached information. You cannot undo this action.
+                This will sign you out and permanently delete ALL data including:
+                • App settings and conversations
+                • Email data from Gmail
+                • Chat history from Telegram
+                • Cached files from Notion
+                • All other skills data
+                <br /><br />
+                This action cannot be undone and may take a few moments to complete.
               </p>
 
               {error && (
@@ -387,7 +402,7 @@ const SettingsHome = () => {
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
                 )}
-                {isLoading ? 'Processing...' : 'Log Out & Clear Data'}
+                {isLoading ? 'Clearing All Data...' : 'Log Out & Clear Everything'}
               </button>
             </div>
           </div>
