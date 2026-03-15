@@ -40,6 +40,7 @@ function getCurrentUserId(): string | null {
  */
 const handleAuthDeepLink = async (parsed: URL) => {
   const token = parsed.searchParams.get('token');
+  const key = parsed.searchParams.get('key');
   if (!token) {
     console.warn('[DeepLink] URL did not contain a token query parameter');
     return;
@@ -53,9 +54,14 @@ const handleAuthDeepLink = async (parsed: URL) => {
     console.warn('[DeepLink] Failed to show window:', err);
   }
 
-  const jwtToken = await consumeLoginToken(token);
-  store.dispatch(setToken(jwtToken));
-  window.location.hash = '/onboarding';
+  if (key === 'auth') {
+    store.dispatch(setToken(token));
+    window.location.hash = '/onboarding';
+  } else {
+    const jwtToken = await consumeLoginToken(token);
+    store.dispatch(setToken(jwtToken));
+    window.location.hash = '/onboarding';
+  }
 };
 
 /**
@@ -234,6 +240,7 @@ const handleOAuthDeepLink = async (parsed: URL) => {
       }
 
       await skillManager.notifyOAuthComplete(skillId, integrationId, undefined, extraCredential);
+      await skillManager.triggerSync(skillId);
     } catch (err) {
       console.error('[DeepLink] Failed to notify OAuth complete:', err);
     }
