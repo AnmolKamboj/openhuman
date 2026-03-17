@@ -4,9 +4,7 @@ import BinanceIcon from '../../../assets/icons/binance.svg';
 import GoogleIcon from '../../../assets/icons/GoogleIcon';
 import MetamaskIcon from '../../../assets/icons/metamask.svg';
 import NotionIcon from '../../../assets/icons/notion.svg';
-import TelegramIcon from '../../../assets/icons/telegram.svg';
 import SkillSetupModal from '../../../components/skills/SkillSetupModal';
-import { useSkillConnectionStatus } from '../../../lib/skills/hooks';
 import type { SkillConnectionStatus } from '../../../lib/skills/types';
 
 interface ConnectStepProps {
@@ -39,7 +37,7 @@ function ConnectOptionRow({
   option: ConnectOption;
   onConnect: (option: ConnectOption) => void;
 }) {
-  const connectionStatus = useSkillConnectionStatus(option.skillId ?? '');
+  const connectionStatus = 'setup_required' as SkillConnectionStatus;
   const disabled = option.comingSoon;
 
   let badge: React.ReactElement;
@@ -84,13 +82,6 @@ const ConnectStep = ({ onNext }: ConnectStepProps) => {
   const [activeSkillDescription, setActiveSkillDescription] = useState<string>('');
 
   const connectOptions: ConnectOption[] = [
-    {
-      id: 'telegram',
-      name: 'Telegram',
-      description: 'Organize chats, automate messages and get insights.',
-      icon: <img src={TelegramIcon} alt="Telegram" className="w-5 h-5" />,
-      skillId: 'telegram',
-    },
     {
       id: 'google',
       name: 'Google',

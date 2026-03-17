@@ -2,7 +2,6 @@ pub mod auth;
 pub mod model;
 pub mod runtime;
 pub mod socket;
-pub mod tdlib;
 pub mod alphahuman;
 pub mod unified_skills;
 
@@ -14,7 +13,6 @@ pub use auth::*;
 pub use model::*;
 pub use runtime::*;
 pub use socket::*;
-pub use tdlib::*;
 pub use alphahuman::*;
 
 #[cfg(desktop)]

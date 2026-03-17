@@ -70,7 +70,6 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-opener",
  "tauri-plugin-os",
- "tdlib-rs",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
@@ -8289,38 +8288,6 @@ dependencies = [
  "windows",
  "windows-version",
 ]
-
-[[package]]
-name = "tdlib-rs"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c309480dcdd6d5dc2f37866d9063fed280780ddfeb51ae3a0adc2b52b0c0bc3"
-dependencies = [
- "dirs 6.0.0",
- "futures-channel",
- "log",
- "once_cell",
- "serde",
- "serde_json",
- "serde_with",
- "tdlib-rs-gen",
- "tdlib-rs-parser",
-]
-
-[[package]]
-name = "tdlib-rs-gen"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff69c8cab3e5285d2f79f53263077b2cdb12a841b230406e3b1230a345c78968"
-dependencies = [
- "tdlib-rs-parser",
-]
-
-[[package]]
-name = "tdlib-rs-parser"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20b1c6703d2284b9d4ddb620cd350f726a1c43bb6f7801f4361b55db2421caa8"
 
 [[package]]
 name = "tempfile"
