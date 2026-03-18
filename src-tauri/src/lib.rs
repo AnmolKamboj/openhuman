@@ -11,6 +11,7 @@
 mod ai;
 mod auth;
 mod commands;
+pub mod memory;
 mod models;
 mod runtime;
 mod services;
@@ -643,6 +644,10 @@ pub fn run() {
                 }
             }
 
+            // Initialize TinyHumans memory state (empty until the frontend provides the JWT)
+            app.manage(commands::memory::MemoryState(std::sync::Mutex::new(None)));
+            log::info!("[memory] Memory state registered — awaiting JWT from frontend");
+
             // Store SocketManager as Tauri state
             app.manage(socket_mgr.clone());
 
@@ -789,6 +794,9 @@ pub fn run() {
                     unified_execute_skill,
                     unified_generate_skill,
                     unified_self_evolve_skill,
+                    // Memory commands (TinyHumans Neocortex)
+                    init_memory_client,
+                    memory_query,
                 ]
             }
             #[cfg(not(desktop))]
@@ -905,6 +913,9 @@ pub fn run() {
                     unified_execute_skill,
                     unified_generate_skill,
                     unified_self_evolve_skill,
+                    // Memory commands (TinyHumans Neocortex)
+                    init_memory_client,
+                    memory_query,
                 ]
             }
         })

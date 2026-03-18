@@ -107,8 +107,9 @@ export default function SkillManagementPanel({
     if (!skill?.manifest) return;
     setRestarting(true);
     try {
-      await skillManager.stopSkill(skillId);
-      await skillManager.startSkill(skill.manifest);
+      // await skillManager.stopSkill(skillId);
+      // await skillManager.startSkill(skill.manifest);
+      await skillManager.triggerSync(skillId);
     } catch (err) {
       console.error("[SkillManagementPanel] Restart failed:", err);
     } finally {

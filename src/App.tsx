@@ -12,6 +12,7 @@ import SocketProvider from './providers/SocketProvider';
 import UserProvider from './providers/UserProvider';
 import { tagErrorSource } from './services/errorReportQueue';
 import { persistor, store } from './store';
+import { syncMemoryClientToken } from './utils/tauriCommands';
 
 function App() {
   return (
@@ -23,7 +24,14 @@ function App() {
         tagErrorSource(eventId, 'react', componentStack);
       }}>
       <Provider store={store}>
-        <PersistGate loading={null} persistor={persistor}>
+        <PersistGate
+          loading={null}
+          persistor={persistor}
+          onBeforeLift={() => {
+            const token = store.getState().auth.token;
+            console.info('[memory] PersistGate onBeforeLift: token_present=%s', !!token);
+            if (token) void syncMemoryClientToken(token);
+          }}>
           <UserProvider>
             <SocketProvider>
               <AIProvider>
