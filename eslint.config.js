@@ -31,7 +31,7 @@ export default [
       'scripts/**',
       '*.config.js',
       '*.config.ts',
-      'vitest.config.ts',
+      'test/vitest.config.ts',
       'tsconfig.tsbuildinfo',
     ],
   },
@@ -207,13 +207,13 @@ export default [
 
   // E2E test files (Appium/WebDriverIO) — use tsconfig.e2e.json for parsing
   {
-    files: ['test/e2e/**/*.ts', 'wdio.conf.ts'],
+    files: ['test/e2e/**/*.ts', 'test/wdio.conf.ts'],
     languageOptions: {
       parser: tsparser,
       parserOptions: {
         ecmaVersion: 'latest',
         sourceType: 'module',
-        project: './tsconfig.e2e.json',
+        project: './test/tsconfig.e2e.json',
         tsconfigRootDir: __dirname,
       },
       globals: {

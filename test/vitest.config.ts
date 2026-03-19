@@ -1,7 +1,13 @@
 import { defineConfig } from "vitest/config";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = path.resolve(configDir, "..");
 
 export default defineConfig({
+  root: projectRoot,
   plugins: [
     nodePolyfills({
       include: ["buffer", "process", "util", "os", "crypto", "stream"],

@@ -33,18 +33,16 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Install dependencies
-        run: cd lander && npm ci
+        run: cd lander && yarn install --frozen-lockfile
 
       - name: Build (static export)
-        env:
-          NEXT_PUBLIC_BASE_PATH: ${{ github.event.repository.name == format('{0}.github.io', github.repository_owner) && '' || format('/{0}', github.event.repository.name) }}
         run: |
           cd lander
-          npm run build
+          yarn build
 
           # If Next doesn't emit `out/` automatically, fall back to `next export`.
           if [ ! -d out ]; then
-            npx next export --out-dir out
+            ./node_modules/.bin/next export --out-dir out
           fi
 
           # GitHub Pages custom domain support: CNAME must be present at the site root.
@@ -58,4 +56,3 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-

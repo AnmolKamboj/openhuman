@@ -1,21 +1,18 @@
-<h1 align="center">AlphaHuman Mk1</h1>
+<h1 align="center">OpenHuman</h1>
 
 <p align="center">
-  <strong>Your most productive co-worker</strong><br>
-  A user-friendly (GUI-first) AI agent. AlphaHuman uses the
-  Neocortex Mk1 model to co-ordinate memories &
-  realtime-data, cheaper and faster than other models.
+  <strong>The age of super intelligence is here. OpenHuman is your artificial conscious human.</strong>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/status-early%20beta-orange" alt="Early Beta" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux%20%7C%20Android%20%7C%20iOS-blue" alt="Platforms" />
-  <a href="https://github.com/alphahumanai/alphahuman/releases/latest"><img src="https://img.shields.io/github/v/release/alphahumanai/alphahuman?label=latest" alt="Latest Release" /></a>
+  <a href="https://github.com/tinyhumansai/openhuman/releases/latest"><img src="https://img.shields.io/github/v/release/tinyhumansai/openhuman?label=latest" alt="Latest Release" /></a>
 </p>
 
 <p align="center">
-  <a href="#what-is-alphahuman">About</a> ·
-  <a href="#alphahuman-vs-openclaw">vs OpenClaw</a> ·
+  <a href="#what-is-openhuman">About</a> ·
+  <a href="#openhuman-vs-openclaw">vs OpenClaw</a> ·
   <a href="#download">Download</a> ·
   <a href="#getting-started">Getting Started</a> ·
   <a href="docs/ARCHITECTURE.md">Architecture</a> ·
@@ -25,18 +22,18 @@
 ![The Tet](./docs/the-tet.png)
 
 <p align="center" style="font-style: italic">
-  "The Tet. What a brilliant machine" — Morgan Freeman in <a href="https://youtu.be/SveLVpqy_Rc?si=y83aZNokPiUjILN0&t=60">Oblivion</a>
+  "No Soul. No Humanity. The Tet. What a brilliant machine" — Morgan Freeman <a href="https://youtu.be/SveLVpqy_Rc?si=y83aZNokPiUjILN0&t=60">as he remenisences about alien superintelligence</a> in the movie Oblivion
 </p>
 
-AlphaHuman is a personal AI assistant that helps you manage high-volume communication without reading everything yourself. It connects to your messaging platforms and productivity tools, understands conversations in context, and produces clear, actionable outputs you can use immediately.
+OpenHuman is a personal AI assistant that helps you manage high-volume communication without reading everything yourself. It connects to your messaging platforms and productivity tools, understands conversations in context, and produces clear, actionable outputs you can use immediately.
 
-AlphaHuman is **not** a chatbot, browser extension, or cloud-only service. It is a **native application** that runs on your device, connects to your tools, and works only when you ask it to. Think of it as a second brain that sits across your communication and productivity stack.
+OpenHuman is **not** a chatbot, browser extension, or cloud-only service. It is a **native application** that runs on your device, connects to your tools, and works only when you ask it to. Think of it as a second brain that sits across your communication and productivity stack.
 
-## AlphaHuman vs OpenClaw
+## OpenHuman vs OpenClaw
 
-AlphaHuman is designed to be simpler to deploy, cheaper to run, and more intelligent in how it uses models and memory.
+OpenHuman is designed to be simpler to deploy, cheaper to run, and more intelligent in how it uses models and memory.
 
-|                  | OpenClaw                                                | AlphaHuman                                                                                                  |
+|                  | OpenClaw                                                | OpenHuman                                                                                                   |
 | ---------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | **Runtime**      | Node.js (TypeScript)                                    | Tauri (Rust + React), native binary                                                                         |
 | **Inference**    | Single-tier or manual routing                           | **Custom two-tier**: task-routed (summarize/vibe/memory → cheap; complex/tools → premium)                   |
@@ -52,24 +49,24 @@ AlphaHuman is designed to be simpler to deploy, cheaper to run, and more intelli
 
 ## Download
 
-> **Early Beta** — AlphaHuman is under active development. Expect rough edges.
+> **Early Beta** — OpenHuman is under active development. Expect rough edges.
 
-| Platform    | Variant                     | Download                                                                                                       |
-| ----------- | --------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **macOS**   | Apple Silicon (M1/M2/M3/M4) | [`.dmg` (aarch64)](https://github.com/alphahumanai/alphahuman/releases/latest/download/AlphaHuman_aarch64.dmg) |
-| **macOS**   | Intel                       | [`.dmg` (x64)](https://github.com/alphahumanai/alphahuman/releases/latest/download/AlphaHuman_x64.dmg)         |
-| **Windows** | x64                         | [`.msi`](https://github.com/alphahumanai/alphahuman/releases/latest/download/AlphaHuman_x64_en-US.msi)         |
-| **Linux**   | Debian / Ubuntu             | [`.deb` (amd64)](https://github.com/alphahumanai/alphahuman/releases/latest/download/AlphaHuman_amd64.deb)     |
-| **Linux**   | Fedora / RHEL               | [`.rpm` (x86_64)](https://github.com/alphahumanai/alphahuman/releases/latest/download/AlphaHuman_x86_64.rpm)   |
-| **Linux**   | Universal                   | [`.AppImage`](https://github.com/alphahumanai/alphahuman/releases/latest/download/AlphaHuman_amd64.AppImage)   |
-| **Android** | —                           | Coming soon                                                                                                    |
-| **iOS**     | —                           | Coming soon                                                                                                    |
+| Platform    | Variant                     | Download                                                                                                     |
+| ----------- | --------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **macOS**   | Apple Silicon (M1/M2/M3/M4) | [`.dmg` (aarch64)](https://github.com/tinyhumansai/openhuman/releases/latest/download/OpenHuman_aarch64.dmg) |
+| **macOS**   | Intel                       | [`.dmg` (x64)](https://github.com/tinyhumansai/openhuman/releases/latest/download/OpenHuman_x64.dmg)         |
+| **Windows** | x64                         | [`.msi`](https://github.com/tinyhumansai/openhuman/releases/latest/download/OpenHuman_x64_en-US.msi)         |
+| **Linux**   | Debian / Ubuntu             | [`.deb` (amd64)](https://github.com/tinyhumansai/openhuman/releases/latest/download/OpenHuman_amd64.deb)     |
+| **Linux**   | Fedora / RHEL               | [`.rpm` (x86_64)](https://github.com/tinyhumansai/openhuman/releases/latest/download/OpenHuman_x86_64.rpm)   |
+| **Linux**   | Universal                   | [`.AppImage`](https://github.com/tinyhumansai/openhuman/releases/latest/download/OpenHuman_amd64.AppImage)   |
+| **Android** | —                           | Coming soon                                                                                                  |
+| **iOS**     | —                           | Coming soon                                                                                                  |
 
-Browse all releases: [github.com/alphahumanai/alphahuman/releases](https://github.com/alphahumanai/alphahuman/releases)
+Browse all releases: [github.com/tinyhumansai/openhuman/releases](https://github.com/tinyhumansai/openhuman/releases)
 
 ## Getting Started
 
-1. **Download** the installer for your platform from the [releases page](https://github.com/alphahumanai/alphahuman/releases/latest)
+1. **Download** the installer for your platform from the [releases page](https://github.com/tinyhumansai/openhuman/releases/latest)
 2. **Install** the app (drag to Applications on macOS, or use your package manager on Linux)
 3. **Connect a source** — follow the in-app onboarding to link Telegram, Notion, Gmail, or other services
 4. **Run your first request** — ask the AI to summarize what you missed, extract action items, or surface key decisions
@@ -78,9 +75,9 @@ Browse all releases: [github.com/alphahumanai/alphahuman/releases](https://githu
 
 ## Links
 
-- [Architecture Overview](docs/ARCHITECTURE.md) — How AlphaHuman is built
+- [Architecture Overview](docs/ARCHITECTURE.md) — How OpenHuman is built
 - [Changelog](CHANGELOG.md) — Release history
-- [Website](https://alphahuman.xyz) — Learn more
+- [Website](https://openhuman.xyz) — Learn more
 
 ---
 
@@ -89,5 +86,5 @@ Browse all releases: [github.com/alphahumanai/alphahuman/releases](https://githu
 </p>
 
 <p align="center">
-  <sub>AlphaHuman is in early beta. Features may change, break, or disappear. Use at your own risk.</sub>
+  <sub>OpenHuman is in early beta. Features may change, break, or disappear. Use at your own risk.</sub>
 </p>

@@ -87,4 +87,4 @@ done
 
 # --- Run WebDriverIO ----------------------------------------------------------
 echo "Running E2E crypto payment flow tests ($SPEC)..."
-npx wdio run wdio.conf.ts --spec "$SPEC"
+npx wdio run test/wdio.conf.ts --spec "$SPEC"

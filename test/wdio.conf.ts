@@ -1,5 +1,10 @@
 import type { Options } from '@wdio/types';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = path.resolve(configDir, '..');
+const tsconfigE2ePath = path.join(projectRoot, 'test', 'tsconfig.e2e.json');
 
 /**
  * Resolve the path to the built Tauri application bundle.
@@ -51,5 +56,5 @@ export const config: Options.Testrunner = {
     ui: 'bdd',
     timeout: 60_000, // App startup can be slow
   },
-  autoCompileOpts: { tsNodeOpts: { project: './tsconfig.e2e.json' } },
+  autoCompileOpts: { tsNodeOpts: { project: tsconfigE2ePath } },
 };
