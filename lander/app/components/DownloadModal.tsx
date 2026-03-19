@@ -153,7 +153,7 @@ export default function DownloadModal({ isOpen, onClose }: DownloadModalProps) {
       <div className="relative z-10 w-full max-w-lg rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl transition-all duration-200">
         <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
           <h2 id="download-modal-title" className="text-lg font-semibold text-white">
-            Download AlphaHuman
+            Download OpenHuman
           </h2>
           <button
             type="button"

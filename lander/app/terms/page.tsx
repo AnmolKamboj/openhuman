@@ -14,7 +14,7 @@ export default function TermsAndConditions() {
                     <section>
                         <h2 className="text-2xl font-semibold text-white mb-4">1. Acceptance of Terms</h2>
                         <p className="leading-relaxed">
-                            By accessing and using AlphaHuman, you accept and agree to be bound by the terms and
+                            By accessing and using OpenHuman, you accept and agree to be bound by the terms and
                             provision of this agreement.
                         </p>
                     </section>
@@ -22,7 +22,7 @@ export default function TermsAndConditions() {
                     <section>
                         <h2 className="text-2xl font-semibold text-white mb-4">2. Use License</h2>
                         <p className="leading-relaxed">
-                            Permission is granted to temporarily use AlphaHuman for personal, non-commercial
+                            Permission is granted to temporarily use OpenHuman for personal, non-commercial
                             transitory viewing only. This is the grant of a license, not a transfer of title.
                         </p>
                     </section>
@@ -54,7 +54,7 @@ export default function TermsAndConditions() {
                     <section>
                         <h2 className="text-2xl font-semibold text-white mb-4">6. Limitation of Liability</h2>
                         <p className="leading-relaxed">
-                            In no event shall AlphaHuman be liable for any indirect, incidental, special,
+                            In no event shall OpenHuman be liable for any indirect, incidental, special,
                             consequential, or punitive damages resulting from your use of the service.
                         </p>
                     </section>
@@ -71,8 +71,8 @@ export default function TermsAndConditions() {
                         <h2 className="text-2xl font-semibold text-white mb-4">8. Contact Information</h2>
                         <p className="leading-relaxed">
                             If you have any questions about these Terms & Conditions, please contact us at{' '}
-                            <a href="mailto:legal@alphahuman.xyz" className="text-white underline hover:text-zinc-300">
-                                legal@alphahuman.xyz
+                            <a href="mailto:legal@openhuman.xyz" className="text-white underline hover:text-zinc-300">
+                                legal@openhuman.xyz
                             </a>
                         </p>
                     </section>

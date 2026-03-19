@@ -5,9 +5,9 @@ export default function Home() {
     <div className="min-h-screen bg-black text-white relative">
       <main className="mx-auto max-w-7xl px-6 sm:px-8 sm:pt-32 relative z-10">
         <div className="mx-auto max-w-3xl text-center">
-          <img src="/android-chrome-192x192.png" alt="AlphaHuman" className="w-[150px] h-[150px] mx-auto mb-4" />
+          <img src="/android-chrome-192x192.png" alt="OpenHuman" className="w-[150px] h-[150px] mx-auto mb-4" />
           <h1 className="text-5xl font-bold tracking-tight sm:text-6xl lg:text-7xl">
-            AlphaHuman
+            OpenHuman
           </h1>
           <p className="mt-6 text-lg leading-8 text-zinc-400 sm:text-xl">
             Your AI superhuman for your personal and business life. In private beta.
@@ -32,7 +32,7 @@ export default function Home() {
             <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
               <h3 className="text-lg font-semibold text-white text-center">Take Action</h3>
               <p className="mt-2 text-sm text-zinc-400">
-                Let AlphaHuman do the heavy lifting. Automatically create tasks,
+                Let OpenHuman do the heavy lifting. Automatically create tasks,
                 send messages, get reports, and more.
               </p>
             </div>

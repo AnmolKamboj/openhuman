@@ -56,8 +56,8 @@ export default function PrivacyPolicy() {
                         <h2 className="text-2xl font-semibold text-white mb-4">6. Contact Us</h2>
                         <p className="leading-relaxed">
                             If you have any questions about this Privacy Policy, please contact us at{' '}
-                            <a href="mailto:privacy@alphahuman.xyz" className="text-white underline hover:text-zinc-300">
-                                privacy@alphahuman.xyz
+                            <a href="mailto:privacy@openhuman.xyz" className="text-white underline hover:text-zinc-300">
+                                privacy@openhuman.xyz
                             </a>
                         </p>
                     </section>

@@ -480,7 +480,7 @@ export default function FeedbackPage() {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                                 </svg>
                             </button>
-                            <h1 className="text-lg sm:text-xl font-semibold text-white">AlphaHuman</h1>
+                            <h1 className="text-lg sm:text-xl font-semibold text-white">OpenHuman</h1>
                             <div className="hidden sm:flex items-center gap-4">
                                 <button
                                     onClick={() => window.location.href = '/feedback?view=roadmap'}
@@ -571,7 +571,7 @@ export default function FeedbackPage() {
                                 </div>
                             </div>
                             <div className="mt-8 text-xs text-zinc-500">
-                                Powered by AlphaHuman
+                                Powered by OpenHuman
                             </div>
                         </div>
                     </aside>

@@ -61,7 +61,7 @@ export default function Downloads() {
                         Download for Free
                     </h1>
                     <p className="mt-4 text-lg text-zinc-400">
-                        Get AlphaHuman on your preferred platform. All our frontend code is open source
+                        Get OpenHuman on your preferred platform. All our frontend code is open source
                         for transparency and privacy. Anyone can audit and contribute to our codebase.
                     </p>
 
@@ -105,7 +105,7 @@ export default function Downloads() {
                         </p>
                         <div className="flex flex-wrap gap-4">
                             <a
-                                href="https://github.com/alphahumanxyz"
+                                href="https://github.com/openhumanxyz"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 px-4 py-2 text-sm font-semibold text-white transition-colors hover:border-zinc-700"
@@ -153,7 +153,7 @@ export default function Downloads() {
                         <p className="text-sm text-zinc-400">
                             Questions about downloads or open source?{' '}
                             <a
-                                href="mailto:support@alphahuman.xyz"
+                                href="mailto:support@openhuman.xyz"
                                 className="text-white underline hover:text-zinc-300"
                             >
                                 Contact us

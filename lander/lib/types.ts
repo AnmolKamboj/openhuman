@@ -1,5 +1,5 @@
 // Payment API Type Definitions
-// Based on AlphaHuman Payment Integration API Documentation
+// Based on OpenHuman Payment Integration API Documentation
 
 // ============================================================================
 // Common Types

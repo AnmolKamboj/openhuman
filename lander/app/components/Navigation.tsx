@@ -6,7 +6,7 @@ export default function Navigation() {
             <div className="mx-auto max-w-7xl px-6 sm:px-8">
                 <div className="flex h-16 items-center justify-between">
                     <Link href="/" className="text-xl font-semibold text-white">
-                        AlphaHuman
+                        OpenHuman
                     </Link>
                     <div className="flex items-center gap-4">
                         <Link

@@ -18,7 +18,7 @@ export default function HeroCTA() {
           Download 🔥
         </button>
         <Link
-          href="https://x.com/alphahumanxyz"
+          href="https://x.com/openhumanxyz"
           target="_blank"
           rel="noopener noreferrer"
           className="rounded-lg border border-zinc-800 px-6 py-3 text-sm font-semibold text-white transition-colors hover:border-zinc-700"
@@ -26,7 +26,7 @@ export default function HeroCTA() {
           Join the Community
         </Link>
         <Link
-          href="https://alphahuman.gitbook.io/docs"
+          href="https://openhuman.gitbook.io/docs"
           target="_blank"
           rel="noopener noreferrer"
           className="rounded-lg border border-zinc-800 px-6 py-3 text-sm font-semibold text-white transition-colors hover:border-zinc-700"

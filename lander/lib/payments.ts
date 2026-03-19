@@ -12,7 +12,7 @@ import type {
   ErrorResponse,
 } from './types';
 
-const ALPHAHUMAN_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+const OPENHUMAN_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 type HttpMethod = "GET" | "POST";
 
@@ -40,7 +40,7 @@ async function apiFetch<T = unknown>(
     mergedHeaders["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${ALPHAHUMAN_API_BASE_URL}${path}`, {
+  const response = await fetch(`${OPENHUMAN_API_BASE_URL}${path}`, {
     method,
     headers: mergedHeaders,
     body,
@@ -76,7 +76,7 @@ async function apiFetch<T = unknown>(
  * @returns Available plans with pricing information
  *
  * Docs:
- * https://alphahuman.readme.io/reference/get_payments-stripe-plans
+ * https://openhuman.readme.io/reference/get_payments-stripe-plans
  */
 export async function getStripePlans(): Promise<GetPlansResponse> {
   return apiFetch<GetPlansResponse>("/stripe/plans", {
@@ -93,7 +93,7 @@ export async function getStripePlans(): Promise<GetPlansResponse> {
  * @throws Error if token is not found in localStorage
  *
  * Docs:
- * https://alphahuman.readme.io/reference/post_payments-stripe-purchaseplan
+ * https://openhuman.readme.io/reference/post_payments-stripe-purchaseplan
  */
 export async function createStripeCheckoutSession(
   params: PurchasePlanRequest
@@ -118,7 +118,7 @@ export async function createStripeCheckoutSession(
  * @returns Subscription activation details
  *
  * Docs:
- * https://alphahuman.readme.io/reference/get_payments-stripe-subscription-success
+ * https://openhuman.readme.io/reference/get_payments-stripe-subscription-success
  */
 export async function handleStripeSubscriptionSuccess(
   sessionId: string
@@ -139,7 +139,7 @@ export async function handleStripeSubscriptionSuccess(
  * @returns Cancel confirmation
  *
  * Docs:
- * https://alphahuman.readme.io/reference/get_payments-stripe-subscription-cancel
+ * https://openhuman.readme.io/reference/get_payments-stripe-subscription-cancel
  */
 export async function handleStripeSubscriptionCancel(
   acceptHtml: boolean = false
@@ -160,7 +160,7 @@ export async function handleStripeSubscriptionCancel(
  * @throws Error if token is not found in localStorage
  *
  * Docs:
- * https://alphahuman.readme.io/reference/get_payments-stripe-currentplan
+ * https://openhuman.readme.io/reference/get_payments-stripe-currentplan
  */
 export async function getCurrentSubscriptionPlan(): Promise<CurrentPlanResponse> {
   const token = getAuthToken();
@@ -187,7 +187,7 @@ export async function getCurrentSubscriptionPlan(): Promise<CurrentPlanResponse>
  * @throws Error if token is not found in localStorage
  *
  * Docs:
- * https://alphahuman.readme.io/reference/post_payments-coinbase-charge
+ * https://openhuman.readme.io/reference/post_payments-coinbase-charge
  */
 export async function createCoinbaseCharge(
   params: CreateChargeRequest
@@ -215,7 +215,7 @@ export async function createCoinbaseCharge(
  * @throws Error if token is not found in localStorage
  *
  * Docs:
- * https://alphahuman.readme.io/reference/get_payments-coinbase-charge-gatewaytransactionid
+ * https://openhuman.readme.io/reference/get_payments-coinbase-charge-gatewaytransactionid
  */
 export async function getCoinbaseChargeStatus(
   gatewayTransactionId: string,

@@ -3,10 +3,10 @@ export default function Footer() {
         <footer className="border-t border-zinc-800 bg-zinc-950">
             <div className="mx-auto max-w-7xl px-6 py-6 sm:px-8">
                 <div className="flex flex-wrap items-center justify-center gap-4 text-sm text-zinc-400">
-                    <span>© {new Date().getFullYear()} AlphaHuman</span>
+                    <span>© {new Date().getFullYear()} OpenHuman</span>
                     <span className="text-zinc-600">•</span>
                     <a
-                        href="https://alphahuman.xyz/privacy"
+                        href="https://openhuman.xyz/privacy"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="transition-colors hover:text-white"
@@ -15,7 +15,7 @@ export default function Footer() {
                     </a>
                     <span className="text-zinc-600">•</span>
                     <a
-                        href="https://alphahuman.xyz/terms"
+                        href="https://openhuman.xyz/terms"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="transition-colors hover:text-white"

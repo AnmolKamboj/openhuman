@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AlphaHuman",
+  title: "OpenHuman",
   description: "⁠Your personal Telegram assistant. Join waitlist for early access",
 };
 
