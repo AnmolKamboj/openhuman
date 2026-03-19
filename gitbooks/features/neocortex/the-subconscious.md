@@ -1,4 +1,4 @@
-# The Subconscious
+# Subconscious Loop
 
 OpenHuman's subconscious is what separates it from every other AI agent. Most AI systems follow the conscious mind model: they wait for instructions and execute them. They cannot think on their own. OpenHuman can.
 
@@ -28,7 +28,7 @@ The outputs are proactive. You do not need to prompt OpenHuman to get value from
 
 #### The mirror test
 
-<figure><img src="../.gitbook/assets/V14_Mirror_Test_Concept@2x.png" alt=""><figcaption></figcaption></figure>
+<figure><img src="../../.gitbook/assets/V14_Mirror_Test_Concept@2x.png" alt=""><figcaption></figcaption></figure>
 
 The team uses an internal success metric called the "mirror test." When you read the subconscious output, it should feel like looking at yourself in a mirror. Not generic AI analysis. A reflection of your own thinking patterns, priorities, and concerns.
 

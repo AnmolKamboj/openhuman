@@ -2,23 +2,20 @@
 
 ## Overview
 
-* [Welcome to OpenHuman](README.md)
-* [How It Works](overview/how-it-works.md)
+* [Welcome](README.md)
 * [Getting Started](overview/getting-started.md)
+* [How Does It Work?](overview/how-it-works.md)
+* [Architecture](overview/architecture.md)
 
-## Technology
+## Features
 
-* [Neocortex](technology/neocortex.md)
-* [The Subconscious](technology/the-subconscious.md)
-* [Architecture](technology/architecture.md)
-
-## Product
-
-* [Platform & Availability](product/platform.md)
-* [Skills & Integrations](product/skills-and-integrations.md)
-* [Teams & Organizations](product/teams.md)
-* [Privacy & Security](product/privacy-and-security.md)
-* [Pricing](product/pricing.md)
+* [Neocortex](features/neocortex/README.md)
+  * [Subconscious Loop](features/neocortex/the-subconscious.md)
+* [Platform & Availability](features/platform.md)
+* [Skills & Integrations](features/skills-and-integrations.md)
+* [Teams & Organizations](features/teams.md)
+* [Privacy & Security](features/privacy-and-security.md)
+* [Pricing](features/pricing.md)
 
 ## Use Cases
 
