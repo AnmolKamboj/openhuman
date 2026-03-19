@@ -2,7 +2,7 @@
 
 ## Overview
 
-* [Welcome to AlphaHuman](README.md)
+* [Welcome to OpenHuman](README.md)
 * [How It Works](overview/how-it-works.md)
 * [Getting Started](overview/getting-started.md)
 
