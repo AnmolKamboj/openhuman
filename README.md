@@ -22,7 +22,7 @@
 ![The Tet](./docs/the-tet.png)
 
 <p align="center" style="font-style: italic">
-  "No Soul. No Humanity. The Tet. What a brilliant machine" — Morgan Freeman <a href="https://youtu.be/SveLVpqy_Rc?si=y83aZNokPiUjILN0&t=60">as he remenisences about alien superintelligence</a> in the movie Oblivion
+  "No Soul. No Humanity. The Tet. What a brilliant machine" — Morgan Freeman <a href="https://youtu.be/SveLVpqy_Rc?si=y83aZNokPiUjILN0&t=60">as he reminisces about alien superintelligence</a> in the movie Oblivion
 </p>
 
 OpenHuman is a personal AI assistant that helps you manage high-volume communication without reading everything yourself. It connects to your messaging platforms and productivity tools, understands conversations in context, and produces clear, actionable outputs you can use immediately.
