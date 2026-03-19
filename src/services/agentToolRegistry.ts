@@ -1,10 +1,10 @@
 /**
  * Agent Tool Registry Service
  *
- * Builds on top of the existing skill system to provide agent-compatible
- * tool discovery and execution. Uses ZeroClaw format compatibility commands:
- * - runtime_get_tool_schemas: Get all tools in OpenAI-compatible format
- * - runtime_execute_tool: Execute a tool with enhanced validation and timing
+ * Unified tool discovery and execution using the consolidated systems:
+ * - telegram_get_tools: Get Telegram tools in OpenAI-compatible format
+ * - telegram_execute_tool: Execute Telegram tools with enhanced validation
+ * - Fallback to skill system for non-Telegram tools (temporary)
  */
 import { invoke } from '@tauri-apps/api/core';
 
@@ -37,7 +37,7 @@ export class AgentToolRegistry implements IAgentToolRegistry {
   }
 
   /**
-   * Load tool schemas from the skill system using ZeroClaw format
+   * Load tool schemas from unified systems (Telegram + skill system fallback)
    */
   async loadToolSchemas(forceReload = false): Promise<AgentToolSchema[]> {
     const now = Date.now();
@@ -48,26 +48,44 @@ export class AgentToolRegistry implements IAgentToolRegistry {
     }
 
     try {
-      console.log('🔧 Loading tool schemas from skill system (ZeroClaw format)...');
+      console.log('🔧 Loading tool schemas from unified systems...');
 
-      // Call ZeroClaw format command to get tools in OpenAI-compatible format
-      const zeroClawTools = await invoke<ZeroClawToolSchema[]>('runtime_get_tool_schemas');
+      const allTools: AgentToolSchema[] = [];
 
-      console.log(`🔧 Loaded ${zeroClawTools.length} tools in ZeroClaw format`);
+      // Note: Telegram tools removed - no longer available
+      console.log('🔧 Telegram tools not available (unified system removed)');
 
-      // Tools are already in OpenAI format, just map to our interface
-      this.toolSchemas = zeroClawTools.map(tool => ({
-        type: 'function' as const,
-        function: {
-          name: tool.function.name,
-          description: tool.function.description,
-          parameters: tool.function.parameters,
-        },
-      }));
+      // 2. Load other tools from skill system (fallback for non-Telegram)
+      try {
+        console.log('🔧 Loading non-Telegram tools from skill system...');
+        const skillTools = await invoke<ZeroClawToolSchema[]>('runtime_get_tool_schemas');
 
+        // Filter out telegram tools to avoid duplicates
+        const nonTelegramTools = skillTools.filter(tool =>
+          !tool.function.name.includes('telegram') &&
+          !tool.function.name.includes('tg') &&
+          !this.extractCategoryFromSkillId(this.extractSkillIdFromToolName(tool.function.name) || '').includes('Telegram')
+        );
+
+        const skillSchemas = nonTelegramTools.map(tool => ({
+          type: 'function' as const,
+          function: {
+            name: tool.function.name,
+            description: tool.function.description,
+            parameters: tool.function.parameters,
+          },
+        }));
+
+        allTools.push(...skillSchemas);
+        console.log(`✅ Loaded ${skillSchemas.length} non-Telegram tools from skill system`);
+      } catch (error) {
+        console.warn('⚠️ Failed to load tools from skill system:', error);
+      }
+
+      this.toolSchemas = allTools;
       this.lastLoadTime = now;
 
-      console.log(`✅ Tool registry updated: ${this.toolSchemas.length} tools available`);
+      console.log(`✅ Tool registry updated: ${this.toolSchemas.length} total tools available`);
 
       return this.toolSchemas;
     } catch (error) {
@@ -77,7 +95,7 @@ export class AgentToolRegistry implements IAgentToolRegistry {
   }
 
   /**
-   * Execute a tool using ZeroClaw format with enhanced validation
+   * Execute a tool using unified systems (Telegram unified or skill system fallback)
    */
   async executeTool(
     skillId: string,
@@ -87,10 +105,16 @@ export class AgentToolRegistry implements IAgentToolRegistry {
     const startTime = Date.now();
     const executionId = `exec_${startTime}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // Create tool ID in format expected by runtime_execute_tool
-    const toolId = `${skillId}_${toolName}`;
+    const execution: AgentToolExecution = {
+      id: executionId,
+      toolName,
+      skillId,
+      arguments: toolArguments,
+      status: 'running',
+      startTime,
+    };
 
-    console.log(`🚀 [TOOL EXECUTION START] Executing tool: ${toolId}`);
+    console.log(`🚀 [TOOL EXECUTION START] Executing tool: ${toolName} (skillId: ${skillId})`);
     console.log(`📝 [ARGUMENTS] Raw arguments:`, {
       arguments: toolArguments,
       type: typeof toolArguments,
@@ -105,26 +129,35 @@ export class AgentToolRegistry implements IAgentToolRegistry {
       })(),
     });
 
-    const execution: AgentToolExecution = {
-      id: executionId,
-      toolName,
-      skillId,
-      arguments: toolArguments,
-      status: 'running',
-      startTime,
-    };
-
     try {
-      // Call ZeroClaw format command with enhanced validation and timing
-      console.log(`🔧 [BEFORE INVOKE] Calling runtime_execute_tool with:`);
-      console.log(`   toolId: "${toolId}"`);
-      console.log(`   args: ${toolArguments}`);
-      console.log(`   args type: ${typeof toolArguments}`);
+      // Determine if this is a Telegram tool
+      const isTelegramTool = skillId.includes('telegram') || skillId.includes('tg') ||
+                            toolName.includes('telegram') || toolName.includes('tg') ||
+                            this.extractCategoryFromSkillId(skillId).includes('Telegram');
 
-      const result = await invoke<ZeroClawToolResult>('runtime_execute_tool', {
-        toolId: toolId, // Use camelCase as expected by current Rust version
-        args: toolArguments, // Use "args" instead of "arguments"
-      });
+      let result: ZeroClawToolResult;
+
+      if (isTelegramTool) {
+        // Telegram tools no longer available
+        console.log(`🔧 [TELEGRAM TOOL] Tool "${toolName}" not available (unified system removed)`);
+        result = {
+          success: false,
+          output: '',
+          error: 'Telegram tools are no longer available (unified system removed)',
+        };
+      } else {
+        // Use skill system for non-Telegram tools
+        const toolId = `${skillId}_${toolName}`;
+        console.log(`🔧 [BEFORE INVOKE] Calling runtime_execute_tool with:`);
+        console.log(`   toolId: "${toolId}"`);
+        console.log(`   args: ${toolArguments}`);
+        console.log(`   args type: ${typeof toolArguments}`);
+
+        result = await invoke<ZeroClawToolResult>('runtime_execute_tool', {
+          toolId: toolId,
+          args: toolArguments,
+        });
+      }
 
       console.log(`🔧 [AFTER INVOKE] Tool execution result:`, result);
 

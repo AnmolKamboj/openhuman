@@ -1,122 +1,121 @@
 # AlphaHuman Tools
 
-This document lists all available tools that AlphaHuman can use to interact with external services and perform actions. Tools are organized by integration and automatically updated during build time.
+This document lists all available tools that AlphaHuman can use to interact with external services and perform actions. Tools are organized by integration and automatically updated when the app loads.
 
 ## Overview
 
-AlphaHuman has access to **4 tools** across **3 integrations** organized into **6 categories**.
+AlphaHuman has access to **25 tools** across **1 integrations**.
 
 **Quick Statistics:**
-- **Telegram**: 2 tools
-- **Notion**: 1 tools
-- **Gmail**: 1 tools
 
-## Environment Configuration
-
-Tools are available in different environments with varying capabilities:
-
-### Development Environment
-
-Local development environment with full access
-
-- **Access Level**: Full access to all tools
-- **Rate Limits**: Relaxed for testing
-- **Authentication**: Development credentials
-- **Logging**: Verbose logging enabled
-
-### Production Environment
-
-Production environment with security restrictions
-
-- **Access Level**: Production-safe tools only
-- **Rate Limits**: Standard API limits enforced
-- **Authentication**: Production credentials required
-- **Logging**: Essential logs only
-
-### Testing Environment
-
-Testing environment for automated validation
-
-- **Access Level**: Safe tools for automated testing
-- **Rate Limits**: Testing-specific limits
-- **Authentication**: Test credentials
-- **Logging**: Test execution logs
-
-## Tool Categories
-
-### Communication
-
-Tools for messaging, email, and social interaction
-
-- **Skills**: 2
-- **Tools**: 3
-- **Available Skills**: Telegram, Gmail
-
-### Productivity
-
-Tools for task management, note-taking, and organization
-
-- **Skills**: 1
-- **Tools**: 1
-- **Available Skills**: Notion
+- **Notion**: 25 tools
 
 ## Available Tools
 
-### Gmail Tools
+### Notion Tools
 
-**Category**: Communication
+This skill provides 25 tools for notion integration.
 
-This skill provides 1 tool for gmail integration.
+#### append-blocks
 
-#### send_email
-
-**Description**: Send an email via Gmail
+**Description**: Append child blocks to a page or block. Supports various block types.
 
 **Parameters**:
-- **body** (string) **(required)**: Email body content
-- **subject** (string) **(required)**: Email subject line
-- **to** (string) **(required)**: Recipient email address
+
+- **block_id** (string) **(required)**: The parent page or block ID
+- **blocks** (string) **(required)**: JSON string of blocks array. Example: [{"type":"paragraph","paragraph":{"rich_text":[{"text":{"content":"Hello"}}]}}]
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
-  "tool": "send_email",
+  "tool": "append-blocks",
+  "parameters": { "block_id": "example_block_id", "blocks": "example_blocks" }
+}
+```
+
+---
+
+#### append-text
+
+**Description**: Append text content to a page or block. Use the page id (or block_id) from list-all-pages or get-page. Creates paragraph blocks with the given text.
+
+**Parameters**:
+
+- **block_id** (string): The page or block ID to append to (use page id from list-all-pages)
+- **content** (string): Alias for text — the content to append to the page
+- **page_id** (string): Alias for block_id when appending to a page (same as block_id)
+- **text** (string) **(required)**: The text to append (required). Pass the exact content to add to the page.
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{
+  "tool": "append-text",
   "parameters": {
-    "body": "example_body",
-    "subject": "example_subject",
-    "to": "example_to"
+    "block_id": "example_block_id",
+    "content": "example_content",
+    "page_id": "example_page_id",
+    "text": "example_text"
   }
 }
 ```
 
 ---
 
-### Notion Tools
+#### create-comment
 
-**Category**: Productivity
-
-This skill provides 1 tool for notion integration.
-
-#### create_page
-
-**Description**: Create a new page in Notion workspace
+**Description**: Create a comment on a page or block, or reply to a discussion. Provide either page_id (new comment on page) or discussion_id (reply). Requires Notion integration to have insert comment capability.
 
 **Parameters**:
-- **content** (array): Page content blocks
-- **parent_id** (string) **(required)**: Parent database or page ID
-- **title** (string) **(required)**: Page title
+
+- **block_id** (string): Block ID to comment on (optional, use instead of page_id)
+- **discussion_id** (string): Discussion ID to reply to an existing thread (use instead of page_id)
+- **page_id** (string): Page ID to create a comment on (new discussion)
+- **text** (string) **(required)**: Comment text content
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
-  "tool": "create_page",
+  "tool": "create-comment",
   "parameters": {
-    "content": [],
-    "parent_id": "example_parent_id",
+    "block_id": "example_block_id",
+    "discussion_id": "example_discussion_id",
+    "page_id": "example_page_id",
+    "text": "example_text"
+  }
+}
+```
+
+---
+
+#### create-database
+
+**Description**: Create a new database in Notion. Specify parent page_id and title. Optionally provide properties schema as JSON.
+
+**Parameters**:
+
+- **parent_page_id** (string) **(required)**: Parent page ID where the database will be created
+- **properties** (string): JSON string of properties schema. Example: {"Name":{"title":{}},"Status":{"select":{"options":[{"name":"Todo"},{"name":"Done"}]}}}
+- **title** (string) **(required)**: Database title
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{
+  "tool": "create-database",
+  "parameters": {
+    "parent_page_id": "example_parent_page_id",
+    "properties": "example_properties",
     "title": "example_title"
   }
 }
@@ -124,54 +123,443 @@ This skill provides 1 tool for notion integration.
 
 ---
 
-### Telegram Tools
+#### create-page
 
-**Category**: Communication
-
-This skill provides 2 tools for telegram integration.
-
-#### send_message
-
-**Description**: Send a message to a Telegram chat or user
+**Description**: Create a new page in Notion. Parent can be another page or a database. For database parents, properties must match the database schema.
 
 **Parameters**:
-- **chat_id** (string) **(required)**: Telegram chat ID or username
-- **message** (string) **(required)**: Message text to send
-- **parse_mode** (string): Message formatting mode
+
+- **content** (string): Initial text content (creates a paragraph block)
+- **parent_id** (string) **(required)**: Parent page ID or database ID
+- **parent_type** (string): Type of parent (default: page_id)
+- **properties** (string): JSON string of additional properties (for database pages)
+- **title** (string) **(required)**: Page title
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
 ```json
 {
-  "tool": "send_message",
+  "tool": "create-page",
   "parameters": {
-    "chat_id": "example_chat_id",
-    "message": "example_message",
-    "parse_mode": "example_parse_mode"
+    "content": "example_content",
+    "parent_id": "example_parent_id",
+    "parent_type": "example_parent_type",
+    "properties": "example_properties",
+    "title": "example_title"
   }
 }
 ```
 
 ---
 
-#### get_chat_history
+#### delete-block
 
-**Description**: Retrieve message history from a Telegram chat
+**Description**: Delete a block. Permanently removes the block from Notion.
 
 **Parameters**:
-- **chat_id** (string) **(required)**: Telegram chat ID or username
-- **limit** (number): Number of messages to retrieve
+
+- **block_id** (string) **(required)**: The block ID to delete
 
 **Usage Context**: Available in all environments
 
 **Example**:
+
+```json
+{ "tool": "delete-block", "parameters": { "block_id": "example_block_id" } }
+```
+
+---
+
+#### delete-page
+
+**Description**: Delete (archive) a page. Archived pages can be restored from Notion's trash.
+
+**Parameters**:
+
+- **page_id** (string) **(required)**: The page ID to delete/archive
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{ "tool": "delete-page", "parameters": { "page_id": "example_page_id" } }
+```
+
+---
+
+#### get-block
+
+**Description**: Get a block by its ID. Returns the block's type and content.
+
+**Parameters**:
+
+- **block_id** (string) **(required)**: The block ID
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{ "tool": "get-block", "parameters": { "block_id": "example_block_id" } }
+```
+
+---
+
+#### get-block-children
+
+**Description**: Get the children blocks of a block or page.
+
+**Parameters**:
+
+- **block_id** (string) **(required)**: The parent block or page ID
+- **page_size** (number): Number of blocks (default 50, max 100)
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{ "tool": "get-block-children", "parameters": { "block_id": "example_block_id", "page_size": 10 } }
+```
+
+---
+
+#### get-database
+
+**Description**: Get a database's schema and metadata. Shows all properties and their types.
+
+**Parameters**:
+
+- **database_id** (string) **(required)**: The database ID
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{ "tool": "get-database", "parameters": { "database_id": "example_database_id" } }
+```
+
+---
+
+#### get-page
+
+**Description**: Get a page's metadata and properties by its ID. Use notion-get-page-content to get the actual content/blocks.
+
+**Parameters**:
+
+- **page_id** (string) **(required)**: The page ID (UUID format, with or without dashes)
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{ "tool": "get-page", "parameters": { "page_id": "example_page_id" } }
+```
+
+---
+
+#### get-page-content
+
+**Description**: Get the content blocks of a page. Returns the text and structure of the page. Use recursive=true to also get nested blocks.
+
+**Parameters**:
+
+- **page_id** (string) **(required)**: The page ID to get content from
+- **page_size** (number): Number of blocks to return (default 50, max 100)
+- **recursive** (string): Whether to fetch nested blocks (default: false)
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
 ```json
 {
-  "tool": "get_chat_history",
+  "tool": "get-page-content",
+  "parameters": { "page_id": "example_page_id", "page_size": 10, "recursive": "example_recursive" }
+}
+```
+
+---
+
+#### get-user
+
+**Description**: Get a user by their ID.
+
+**Parameters**:
+
+- **user_id** (string) **(required)**: The user ID
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{ "tool": "get-user", "parameters": { "user_id": "example_user_id" } }
+```
+
+---
+
+#### list-all-databases
+
+**Description**: List all databases in the workspace that the integration has access to.
+
+**Parameters**:
+
+- **page_size** (number): Number of results (default 20, max 100)
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{ "tool": "list-all-databases", "parameters": { "page_size": 10 } }
+```
+
+---
+
+#### list-all-pages
+
+**Description**: List pages in the workspace (from last sync). Returns synced pages; run a sync in Settings to refresh.
+
+**Parameters**:
+
+- **page_size** (number): Number of results to return (default 20, max 100)
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{ "tool": "list-all-pages", "parameters": { "page_size": 10 } }
+```
+
+---
+
+#### list-comments
+
+**Description**: List comments on a block or page.
+
+**Parameters**:
+
+- **block_id** (string) **(required)**: Block or page ID to get comments for
+- **page_size** (number): Number of results (default 20, max 100)
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{ "tool": "list-comments", "parameters": { "block_id": "example_block_id", "page_size": 10 } }
+```
+
+---
+
+#### list-users
+
+**Description**: List all users in the workspace that the integration can see.
+
+**Parameters**:
+
+- **page_size** (number): Number of results (default 20, max 100)
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{ "tool": "list-users", "parameters": { "page_size": 10 } }
+```
+
+---
+
+#### query-database
+
+**Description**: Query a database with optional filters and sorts. Returns database rows/pages. Automatically handles API version compatibility.
+
+**Parameters**:
+
+- **database_id** (string) **(required)**: The database ID to query. Can be either a legacy database ID or a new data source ID - the tool will handle both automatically
+- **filter** (string): JSON string of filter object (Notion filter syntax)
+- **page_size** (number): Number of results (default 20, max 100)
+- **sorts** (string): JSON string of sorts array (Notion sort syntax)
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{
+  "tool": "query-database",
   "parameters": {
-    "chat_id": "example_chat_id",
-    "limit": 10
+    "database_id": "example_database_id",
+    "filter": "example_filter",
+    "page_size": 10,
+    "sorts": "example_sorts"
+  }
+}
+```
+
+---
+
+#### search
+
+**Description**: Search for pages and databases in your Notion workspace. Supports query, filter by object type (page or database), and sort by last_edited_time.
+
+**Parameters**:
+
+- **filter** (string): Filter results by type: page or database
+- **page_size** (number): Number of results to return (default 20, max 100)
+- **query** (string): Search query (optional, returns recent if empty)
+- **sort_direction** (string): Sort direction (default: descending by last_edited_time)
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{
+  "tool": "search",
+  "parameters": {
+    "filter": "example_filter",
+    "page_size": 10,
+    "query": "example_query",
+    "sort_direction": "example_sort_direction"
+  }
+}
+```
+
+---
+
+#### summarize-pages
+
+**Description**: AI summarization of Notion pages is now handled by the backend server. Synced page content is submitted to the server which runs summarization.
+
+**Parameters**: _None_
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{ "tool": "summarize-pages", "parameters": {} }
+```
+
+---
+
+#### sync-now
+
+**Description**: Trigger an immediate Notion sync to refresh local data. Returns sync results including counts of synced pages and databases.
+
+**Parameters**: _None_
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{ "tool": "sync-now", "parameters": {} }
+```
+
+---
+
+#### sync-status
+
+**Description**: Get the current Notion sync status including last sync time, total synced pages/databases, sync progress, and any errors.
+
+**Parameters**: _None_
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{ "tool": "sync-status", "parameters": {} }
+```
+
+---
+
+#### update-block
+
+**Description**: Update a block's content. The structure depends on the block type.
+
+**Parameters**:
+
+- **archived** (string): Set to true to archive the block
+- **block_id** (string) **(required)**: The block ID to update
+- **content** (string): JSON string of the block type content. Example for paragraph: {"paragraph":{"rich_text":[{"text":{"content":"Updated text"}}]}}
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{
+  "tool": "update-block",
+  "parameters": {
+    "archived": "example_archived",
+    "block_id": "example_block_id",
+    "content": "example_content"
+  }
+}
+```
+
+---
+
+#### update-database
+
+**Description**: Update a database's title or properties schema.
+
+**Parameters**:
+
+- **database_id** (string) **(required)**: The database ID to update
+- **properties** (string): JSON string of properties to add or update
+- **title** (string): New title (optional)
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{
+  "tool": "update-database",
+  "parameters": {
+    "database_id": "example_database_id",
+    "properties": "example_properties",
+    "title": "example_title"
+  }
+}
+```
+
+---
+
+#### update-page
+
+**Description**: Update a page's properties. Can update title and other properties. Use notion-append-text to add content blocks.
+
+**Parameters**:
+
+- **archived** (string): Set to true to archive the page
+- **page_id** (string) **(required)**: The page ID to update
+- **properties** (string): JSON string of properties to update
+- **title** (string): New title (optional)
+
+**Usage Context**: Available in all environments
+
+**Example**:
+
+```json
+{
+  "tool": "update-page",
+  "parameters": {
+    "archived": "example_archived",
+    "page_id": "example_page_id",
+    "properties": "example_properties",
+    "title": "example_title"
   }
 }
 ```
@@ -181,99 +569,28 @@ This skill provides 2 tools for telegram integration.
 ## Tool Usage Guidelines
 
 ### Authentication
+
 - All tools require proper authentication setup through the Skills system
 - OAuth credentials are managed securely and refreshed automatically
 - API keys are stored encrypted in the application keychain
-- Test credentials are available for development and testing environments
 
 ### Rate Limiting
+
 - Tools automatically respect API rate limits of external services
 - Intelligent retry logic handles temporary failures with exponential backoff
-- Bulk operations are automatically chunked to avoid hitting limits
-- Rate limit status is monitored and reported in real-time
 
 ### Error Handling
+
 - All tools return structured error responses with detailed information
 - Network failures trigger automatic retry with configurable attempts
-- Invalid parameters return clear validation messages with examples
-- Tool execution timeouts are handled gracefully with partial results
-
-### Security & Privacy
-- Input validation is performed on all parameters using JSON Schema
-- Output sanitization prevents injection attacks and data leakage
-- Sensitive data is never logged or exposed in error messages
-- All API communications use secure protocols (HTTPS/TLS)
-
-### Performance Optimization
-- Tool results are cached when appropriate to reduce API calls
-- Parallel execution is used for independent operations
-- Connection pooling minimizes overhead for repeated API calls
-- Background sync keeps data fresh without blocking operations
-
-### Monitoring & Observability
-- Tool execution metrics are collected for performance analysis
-- Error rates and response times are monitored continuously
-- Debug logging is available in development environments
-- Tool usage analytics help optimize integration performance
-
-## Skill Management
-
-Tools are provided by Skills, which are JavaScript modules running in a secure V8 runtime:
-
-- **Discovery**: Tools are automatically discovered at build time from running skills
-- **Lifecycle**: Skills can be enabled/disabled independently without affecting others
-- **Configuration**: Each skill has its own configuration panel with setup wizards
-- **Updates**: Skills are updated through Git submodules and the Skills management system
-- **Security**: Skills run in sandboxed environments with limited system access
-
-## Integration Architecture
-
-### V8 Runtime
-- Skills execute in isolated V8 JavaScript contexts on desktop platforms
-- Mobile platforms use lightweight alternatives with server-side execution
-- Memory limits and execution timeouts prevent resource exhaustion
-- Inter-skill communication is managed through secure message passing
-
-### API Bridge
-- Tools communicate with external services through standardized API bridges
-- Rate limiting, retry logic, and error handling are implemented at the bridge level
-- Authentication tokens are managed centrally and shared across tools
-- Response caching and optimization are handled transparently
-
-### Data Flow
-1. Tool request received from AI agent
-2. Input validation and parameter processing
-3. Skill execution in secure V8 context
-4. API calls through standardized bridges
-5. Response processing and formatting
-6. Result delivery to AI agent
-
-## Support & Troubleshooting
-
-### Common Issues
-1. **Tool Not Available**: Check if the associated skill is enabled in Settings → Skills
-2. **Authentication Errors**: Verify credentials in the skill's configuration panel
-3. **Rate Limit Exceeded**: Wait for the limit to reset or upgrade your API plan
-4. **Invalid Parameters**: Review the parameter documentation and examples above
-
-### Getting Help
-- **Skill Documentation**: Each skill has detailed setup and usage instructions
-- **Debug Logs**: Enable verbose logging in development mode for detailed error information
-- **Community Support**: Join our Discord community for help from other users
-- **Technical Support**: Contact our support team for critical issues
-
-### Contributing
-- **New Tools**: Submit tool requests through our GitHub repository
-- **Bug Reports**: Report issues with specific tools and include error logs
-- **Improvements**: Suggest enhancements to existing tools and their documentation
 
 ---
 
 **Tool Statistics**
-- Total Tools: 4
-- Active Skills: 3
-- Categories: 6
-- Last Updated: 2026-03-16T12:17:45.377Z
 
-*This file was automatically generated at build time from the V8 skills runtime.*
-*For the most up-to-date information, regenerate this file by running `yarn tools:generate`.*
+- Total Tools: 25
+- Active Skills: 1
+- Last Updated: 2026-03-17T17:02:14.087Z
+
+_This file was automatically generated when the app loaded._
+_Tools are discovered from the running V8 skills runtime._

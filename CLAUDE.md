@@ -198,10 +198,10 @@ Advanced JavaScript execution engine for skills using V8 (via deno_core):
 
 **Quickjs Integration (`src-tauri/src/services/quickjs/`):**
 
-- `service.rs` — High-level TDLib client management with V8 integration
+- `service.rs` — High-level client management with V8 integration
 - `bootstrap.js` — V8 JavaScript bootstrap environment
 - `ops/mod.rs` — Native operations for WebSocket, timers, and async handling
-- `storage.rs` — Persistent storage for TDLib sessions and data
+- `storage.rs` — Persistent storage for sessions and data
 
 **Platform Support:**
 

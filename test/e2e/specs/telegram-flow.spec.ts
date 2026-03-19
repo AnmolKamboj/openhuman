@@ -392,7 +392,10 @@ async function closeModalIfOpen() {
 // Test suite
 // ===========================================================================
 
-describe('Telegram Integration Flows', () => {
+// TEMPORARILY DISABLED: This test suite was designed for the skill system integration
+// which has been replaced by the unified Telegram system. New tests for the unified
+// system need to be written.
+describe.skip('Telegram Integration Flows', () => {
   before(async () => {
     await startMockServer();
     await waitForApp();

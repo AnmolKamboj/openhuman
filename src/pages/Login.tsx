@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { consumeLoginToken } from '../services/api/authApi';
 import { setToken } from '../store/authSlice';
 import { useAppDispatch } from '../store/hooks';
+import { syncMemoryClientToken } from '../utils/tauriCommands';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -26,6 +27,8 @@ const Login = () => {
         if (cancelled) return;
 
         dispatch(setToken(jwtToken));
+        console.info('[memory] Login: dispatching syncMemoryClientToken after setToken');
+        void syncMemoryClientToken(jwtToken);
         navigate('/onboarding/', { replace: true });
       } catch (err) {
         if (!cancelled) {
