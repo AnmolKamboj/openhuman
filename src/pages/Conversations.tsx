@@ -365,6 +365,15 @@ const Conversations = () => {
     // Set this thread as active
     dispatch(setActiveThread(sendingThreadId));
 
+    // Safety-net timeout: force-clear loading states if everything hangs
+    const OVERALL_TIMEOUT_MS = 240_000;
+    const safetyTimeout = setTimeout(() => {
+      console.error('[Conversations] overall safety timeout reached — clearing loading states');
+      setIsSending(false);
+      dispatch(setActiveThread(null));
+      setSendError('Request timed out. Please try again.');
+    }, OVERALL_TIMEOUT_MS);
+
     try {
       // Process user message with SOUL + TOOLS injection
       let processedUserContent = trimmed;
@@ -446,7 +455,13 @@ const Conversations = () => {
           tools: request.tools?.length ?? 0,
           payload: request,
         });
-        const response = await inferenceApi.createChatCompletion(request);
+        const INFERENCE_TIMEOUT_MS = 120_000;
+        const response = await Promise.race([
+          inferenceApi.createChatCompletion(request),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Inference request timed out')), INFERENCE_TIMEOUT_MS)
+          ),
+        ]);
         console.log('[Conversations] inference response:', {
           round: round + 1,
           choices: response.choices?.length ?? 0,
@@ -497,7 +512,16 @@ const Conversations = () => {
                 `[Conversations] calling skillManager.callTool("${skillId}", "${toolName}")`,
                 toolArgs
               );
-              const result = await skillManager.callTool(skillId, toolName, toolArgs);
+              const TOOL_TIMEOUT_MS = 60_000;
+              const result = await Promise.race([
+                skillManager.callTool(skillId, toolName, toolArgs),
+                new Promise<never>((_, reject) =>
+                  setTimeout(
+                    () => reject(new Error(`Tool "${toolName}" timed out after ${TOOL_TIMEOUT_MS / 1000}s`)),
+                    TOOL_TIMEOUT_MS
+                  )
+                ),
+              ]);
               console.log(`[Conversations] tool "${toolName}" calling result:`, result);
               toolResultContent = result.content.map(c => c.text).join('\n');
               let toolReturnedError = result.isError;
@@ -528,7 +552,9 @@ const Conversations = () => {
               }
             } catch (toolErr) {
               console.error(`[Conversations] tool "${toolName}" threw:`, toolErr);
-              toolResultContent = `Tool execution failed: ${toolErr instanceof Error ? toolErr.message : String(toolErr)}`;
+              throw new Error(
+                `Tool "${toolName}" failed: ${toolErr instanceof Error ? toolErr.message : String(toolErr)}`
+              );
             }
 
             loopMessages.push({ role: 'tool', tool_call_id: tc.id, content: toolResultContent });
@@ -569,6 +595,7 @@ const Conversations = () => {
       // Clear active thread on error
       dispatch(setActiveThread(null));
     } finally {
+      clearTimeout(safetyTimeout);
       setIsSending(false);
     }
   };
