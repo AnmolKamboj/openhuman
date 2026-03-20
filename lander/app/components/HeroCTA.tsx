@@ -9,7 +9,7 @@ export default function HeroCTA() {
 
   return (
     <>
-      <div className="mt-10 flex items-center justify-center gap-4">
+      <div className="mt-10 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center sm:gap-4">
         <button
           type="button"
           onClick={() => setDownloadModalOpen(true)}
