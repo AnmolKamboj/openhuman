@@ -27,11 +27,11 @@
 
 **OpenHuman** is built around a different idea. What if built on top of current agentic solutions but instead gave it a **subconscious loop** based on all the possible contextual data-points about a user/entity?
 
-**The challenge?** Current memory/context systems make it impossible to have a subsconscious mind. They cannot intelligently remember information because either your data is too noisy or irrelevant or too expenstive.
+**The challenge?** Current memory/context systems make it impossible to have a subsconscious mind. They cannot intelligently remember information because either your data is too noisy or irrelevant or too expenstive. HEARTBEAT.md and other implementations in OpenClaw-style forks evolve way too slowly and often misses realtime context about a user.
 
-**The solution?** OpenHuman uses [Neocortex](https://github.com/tinyhumansai/neocortex), a highly scalable context-aware memory layer that processed 1000s of unstrucutred memories (even those that have happened in the past), understands interactions and builds a personalized model of _you_. OpenHuman also runs it's own subconscious loop allowing to think on it's own 1000 times a day, have it's own thoughts and take decisions for you on it's own.
+**The solution?** OpenHuman uses [Neocortex](https://github.com/tinyhumansai/neocortex), a highly scalable context-aware memory layer that can process millions of unstrucutred memories (emails, messages, documents both in the past and in the present), understands interactions and builds a personalized model of _you_. OpenHuman also runs it's own subconscious loop allowing to think on it's own, have it's own thoughts and take decisions for you on it's own.
 
-**The result?** It's like looking at yourself in the mirror. Except it's your AI living in your machine. OpenHuman is the first self aware agent personalized to you.
+**The result?** It's like looking at yourself in the mirror. Except it's your AI living in your machine. OpenHuman is the first self aware agent personalized to you and ready to work for you.
 
 # Download
 
@@ -48,13 +48,7 @@
 
 Browse all releases: [github.com/tinyhumansai/openhuman/releases](https://github.com/tinyhumansai/openhuman/releases)
 
-## Links
-
-- [Architecture Overview](docs/ARCHITECTURE.md) — How OpenHuman is built
-- [Changelog](CHANGELOG.md) — Release history
-- [Website](https://openhuman.xyz) — Learn more
-
----
+# Architecture
 
 # Star us on GitHub
 
