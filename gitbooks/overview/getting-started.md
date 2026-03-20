@@ -12,18 +12,17 @@ OpenHuman is open source under the GNU GPL3 license. The codebase is available a
 
 ## Download & Install
 
-OpenHuman runs natively on:
+OpenHuman runs natively on **desktop** today:
 
 * **macOS** (Intel and Apple Silicon)
 * **Windows** (x64 and ARM64)
 * **Linux** (x64 and ARM64: AppImage and .deb)
-* **Android**
-* **iOS**
-* **Web** (any modern browser)
 
-Download the app for your platform from the official OpenHuman website, or use the web version directly in your browser.
+**Android, iOS, and a web/browser build are not supported yet**—use a desktop install.
 
-The native app has a small footprint, starts fast, and uses your operating system's secure credential storage. The web version provides the same core functionality when a native install is not practical.
+Download the app for your platform from the official OpenHuman website.
+
+The native app has a small footprint, starts fast, and uses your operating system's secure credential storage.
 
 ***
 

@@ -11,7 +11,7 @@ The Outsourced platform is built on a layered architecture supporting:
 - Multi-step onboarding flow
 - URL-based settings modal system
 - Deep link authentication handoff
-- Cross-platform compatibility (desktop + mobile)
+- Cross-platform desktop compatibility (mobile not supported in product docs yet)
 
 ## Entry Points
 

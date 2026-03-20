@@ -1,8 +1,8 @@
 ---
 description: >-
-  OpenHuman is a personal AI assistant that runs natively across desktop,
-  mobile, and web that connects your communication platforms, tools, and
-  workflows into a single intelligence layer you control.
+  OpenHuman is a personal AI assistant that runs natively on desktop
+  (macOS, Windows, Linux) and connects your communication platforms, tools,
+  and workflows into a single intelligence layer you control.
 icon: hand-wave
 ---
 

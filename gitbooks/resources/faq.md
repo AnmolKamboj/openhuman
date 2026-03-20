@@ -87,7 +87,7 @@ You do not need to be technical to use it.
 
 #### What platforms does OpenHuman support?
 
-OpenHuman runs natively on **macOS, Windows, Linux, Android, and iOS**, with a **web version** for browser access. Your account and settings sync across all platforms.
+**Desktop only for now:** **macOS**, **Windows**, and **Linux**. Android, iOS, and a browser/web client are **not** documented or supported in releases yet.
 
 ***
 

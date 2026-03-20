@@ -2,27 +2,27 @@
 
 **AI-powered super assistant for crypto communities, built on Rust.**
 
-AlphaHuman is a cross-platform communication and automation platform purpose-built for the cryptocurrency ecosystem. A single React + Rust codebase compiles to native apps across six platforms — Windows, macOS, Linux, Android, iOS, and Web — with a sandboxed JavaScript skills engine, persistent Rust-native WebSocket infrastructure, and an AI tool protocol that lets language models invoke any connected service in real time.
+AlphaHuman is a cross-platform communication and automation platform purpose-built for the cryptocurrency ecosystem. A single React + Rust (Tauri) codebase can target multiple platforms; **what we document and ship for users today is desktop only** — **Windows, macOS, and Linux**. Android, iOS, and web are **not** supported in current docs or releases. The stack includes a sandboxed JavaScript skills engine, persistent Rust-native WebSocket infrastructure, and an AI tool protocol that lets language models invoke any connected service in real time.
 
 ---
 
-## Platform Reach
+## Platform reach
 
-One codebase, six platforms, architecture-aware distribution:
+**Supported today (end users):** desktop — Windows, macOS, Linux (native installers).
+
+**Not supported yet:** Android, iOS, standalone web client (may exist as experimental targets in the repo; do not treat as product-ready).
 
 ```
-                        AlphaHuman
+                        AlphaHuman (shipping)
                             |
-            +---------------+---------------+
-            |               |               |
-         Desktop          Mobile           Web
-        /   |   \        /     \            |
-  Windows macOS Linux  Android  iOS      Browser
-  x64    x64   x64    ARM     ARM64     Any
-  ARM64  ARM64  ARM64
+                         Desktop
+                    /      |      \
+               Windows   macOS   Linux
+                x64      x64     x64
+               ARM64    ARM64   ARM64
 ```
 
-Tauri v2 compiles the Rust core into native binaries per platform, embedding the React frontend as a lightweight WebView. Desktop builds produce `.dmg`, `.msi`, `.AppImage`, and `.deb` installers. Mobile builds produce `.apk` and `.ipa` packages. The web target runs the React frontend directly with a JavaScript Socket.io client replacing the Rust networking layer.
+Tauri v2 compiles the Rust core into native binaries per platform, embedding the React frontend as a lightweight WebView. Desktop builds produce `.dmg`, `.msi`, `.AppImage`, and `.deb` installers. Additional targets (mobile, web) are out of scope until explicitly documented as supported.
 
 ---
 

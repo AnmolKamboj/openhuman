@@ -4,24 +4,21 @@ icon: layer-plus
 
 # Platform & Availability
 
-OpenHuman is a native application that runs on six platforms from a single codebase. It is not a web-only tool, browser extension, or Electron wrapper. It is built for performance, security, and a small footprint on every device you use.
+OpenHuman is a native **desktop** application. It is not a web-only tool, browser extension, or Electron wrapper. It is built for performance, security, and a small footprint on the machines where we officially support it today.
 
 ***
 
-## Six Platforms, One Experience
+## Supported today: desktop
 
-OpenHuman compiles to native binaries for each supported platform:
+OpenHuman ships native installers for:
 
 | Platform    | Architectures        | Distribution   |
 | ----------- | -------------------- | -------------- |
 | **macOS**   | Intel, Apple Silicon | .dmg installer |
 | **Windows** | x64, ARM64           | .msi installer |
 | **Linux**   | x64, ARM64           | AppImage, .deb |
-| **Android** | ARM                  | .apk package   |
-| **iOS**     | ARM64                | App Store      |
-| **Web**     | Any browser          | Direct access  |
 
-Your account, connected sources, preferences, and settings sync across all platforms. You can start a request on your desktop and review the output on your phone.
+**Android, iOS, and a standalone web client are not supported** in documentation or releases yet. The codebase may contain experimental mobile or web targets; they are out of scope for current user-facing docs.
 
 ***
 
@@ -45,7 +42,7 @@ OpenHuman operates across three layers:
 
 **Intelligence layer.** OpenHuman's analysis, coordination, and intelligence systems run as a secure backend service. When a request requires deeper language processing, it is handled here. This layer is operated and maintained by OpenHuman.
 
-**External services.** Connected tools and platforms:Telegram, Notion, Google Sheets, and others are accessed only when you explicitly request it. OpenHuman acts as a bridge between your sources and the intelligence layer, not as a replacement for any of them.
+**External services.** Connected tools and platforms: Telegram, Notion, Google Sheets, and others are accessed only when you explicitly request it. OpenHuman acts as a bridge between your sources and the intelligence layer, not as a replacement for any of them.
 
 {% hint style="info" %}
 The intelligence layer is not part of the client application. It performs analysis, coordination, and trust scoring separately from the frontend.

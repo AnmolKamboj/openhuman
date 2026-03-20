@@ -3,6 +3,8 @@
 ```md
 # Cross-Platform Tauri Agent Assistant — MVP Specification
 
+> **Current product docs:** we **ship and support desktop only** (Windows, macOS, Linux). This spec still describes a **broader platform vision** (including mobile) for engineering planning—it is not a promise of availability on Android/iOS or web yet.
+
 ## Overview
 
 This MVP defines a **Telegram-based Agent Assistant** built with **Tauri (Rust + Web UI)** targeting:
