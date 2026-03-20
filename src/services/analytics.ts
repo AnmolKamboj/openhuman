@@ -21,10 +21,10 @@
 import * as Sentry from '@sentry/react';
 
 import { store } from '../store';
+import { IS_DEV } from '../utils/config';
 import { enqueueError, registerSentrySender, type SanitizedSentryEvent } from './errorReportQueue';
 
 const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN as string | undefined;
-const IS_DEV = Boolean(import.meta.env.DEV) || import.meta.env.MODE === 'development';
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 import { useDaemonLifecycle } from '../hooks/useDaemonLifecycle';
 import { socketService } from '../services/socketService';
 import { store } from '../store';
+import { IS_DEV } from '../utils/config';
 import { useAppSelector } from '../store/hooks';
 import { selectSocketStatus } from '../store/socketSelectors';
 import {
@@ -39,7 +40,7 @@ const SocketProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Log daemon lifecycle state for debugging
   useEffect(() => {
-    if (usesRustSocket && process.env.NODE_ENV === 'development') {
+    if (usesRustSocket && IS_DEV) {
       console.log('[SocketProvider] Daemon lifecycle state:', {
         isAutoStartEnabled: daemonLifecycle.isAutoStartEnabled,
         connectionAttempts: daemonLifecycle.connectionAttempts,
