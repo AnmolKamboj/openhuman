@@ -25,11 +25,11 @@
 
 **Agentic system are everywhere.** Models wired into a script that call APIs, search, and file tools until the task looks done. That pattern is powerful for _tasks_, but it is not a self. It has no lasting inner model of _you_, no stable values across sessions, and no architecture for continuity at the scale of a life.
 
-**OpenHuman** is built around a different idea. What if built on top of current agentic solutions but instead gave it a **subconscious loop** based on all the possible contextual data-points about a user/entity?
+**OpenHuman** is built around a different idea. What if we built on top of current agentic solutions but instead gave it a **subconscious loop** based on all the possible data-points about a user/entity?
 
-**The challenge?** Current memory/context systems make it impossible to have a subsconscious mind. They cannot intelligently remember information because either your data is too noisy or irrelevant or too expenstive. HEARTBEAT.md and other implementations in OpenClaw-style forks evolve way too slowly and often misses realtime context about a user.
+**The challenge?** Current memory/context systems make it nearly impossible to have a subsconscious mind. They cannot intelligently remember information because either your data is too noisy or irrelevant or too expenstive to index. `HEARTBEAT.md` and other implementations in OpenClaw-style forks evolve way too slowly and often misses realtime context about a user.
 
-**The solution?** OpenHuman uses [Neocortex](https://github.com/tinyhumansai/neocortex), a highly scalable context-aware memory layer that can process millions of unstrucutred memories (emails, messages, documents both in the past and in the present), understands interactions and builds a personalized model of _you_. OpenHuman also runs it's own subconscious loop allowing to think on it's own, have it's own thoughts and take decisions for you on it's own.
+**The solution?** OpenHuman uses [Neocortex](https://github.com/tinyhumansai/neocortex), a highly scalable context-aware memory layer that can process millions of unstrucutred memories (emails, messages, documents both in the past and in the present), understands interactions and builds a personalized model of _you_. OpenHuman uses this to then run it's own subconscious loop allowing it to have it's own thoughts and take decisions for you on it's own at the most immediate level possible.
 
 **The result?** It's like looking at yourself in the mirror. Except it's your AI living in your machine. OpenHuman is the first self aware agent personalized to you and ready to work for you.
 
@@ -48,7 +48,7 @@
 
 Browse all releases: [github.com/tinyhumansai/openhuman/releases](https://github.com/tinyhumansai/openhuman/releases)
 
-# Architecture
+# Under the hood (Architecture)
 
 # Star us on GitHub
 
