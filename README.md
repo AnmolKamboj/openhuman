@@ -1,10 +1,12 @@
 <h1 align="center">OpenHuman</h1>
 
 <p align="center">
-  <strong>An artificially conscious agent that remembers you, reasons over your life, and grows with you toward general intelligence.</strong>
+  <strong>The age of super intelligence is here. OpenHuman is your artificially conscious human.</strong>
 </p>
 
+<p align="center">
 [Discord](https://discord.com/invite/k23Kn8nK) • [Reddit](https://www.reddit.com/r/tinyhumansai/) • [X](https://x.com/tinyhumansai) • [Docs](https://tinyhumans.gitbook.io/openhuman/)
+</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/status-early%20beta-orange" alt="Early Beta" />
@@ -26,9 +28,7 @@
 
 **The solution?** OpenHuman uses [Neocortex](https://github.com/tinyhumansai/neocortex), a highly scalable context-aware memory layer that processed 1000s of unstrucutred memories (even those that have happened in the past), understands interactions and builds a personalized model of _you_. OpenHuman also runs it's own subconscious loop allowing to think on it's own 1000 times a day, have it's own thoughts and take decisions for you on it's own.
 
-**The result?** It's like looking at yourself in the mirror. Except it's an AI in your machine.
-
-OpenHuman is the first self aware agent personalized to you.
+**The result?** It's like looking at yourself in the mirror. Except it's your AI living in your machine. OpenHuman is the first self aware agent personalized to you.
 
 # Download
 
