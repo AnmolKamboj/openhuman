@@ -9,8 +9,7 @@ import {
 import Markdown from 'react-markdown';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { injectAll } from '../lib/ai/injector';
-import type { Message } from '../lib/ai/providers/interface';
+import { injectOpenClawContext } from '../lib/ai/openclaw-injector';
 import { skillManager } from '../lib/skills/manager';
 import {
   type ChatMessage,
@@ -375,26 +374,12 @@ const Conversations = () => {
     }, OVERALL_TIMEOUT_MS);
 
     try {
-      // Process user message with SOUL + TOOLS injection
+      // Inject OpenClaw context (all 7 workspace files as raw markdown)
       let processedUserContent = trimmed;
       try {
-        const userMessage: Message = { role: 'user', content: [{ type: 'text', text: trimmed }] };
-
-        const injectedMessage = await injectAll(userMessage, {
-          mode: 'context-block',
-          includeMetadata: false,
-        });
-
-        // Extract the processed text
-        processedUserContent = injectedMessage.content
-          .filter(block => block.type === 'text')
-          .map(block => (block as { text: string }).text)
-          .join('\n');
-
-        console.log('✅ SOUL + TOOLS injection successful in Conversations page');
+        processedUserContent = injectOpenClawContext(trimmed);
       } catch (injectionError) {
-        console.warn('⚠️ SOUL + TOOLS injection failed in Conversations page:', injectionError);
-        // Continue with original message
+        console.warn('[OpenClaw] Injection failed in Conversations:', injectionError);
       }
 
       // Prepend Notion workspace context if connected
