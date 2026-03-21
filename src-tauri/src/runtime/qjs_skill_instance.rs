@@ -22,6 +22,7 @@ use crate::runtime::types::{
     SkillConfig, SkillMessage, SkillSnapshot, SkillStatus, ToolContent, ToolDefinition, ToolResult,
 };
 use crate::services::quickjs_libs::{qjs_ops, IdbStorage};
+use tauri::Manager;
 
 /// Dependencies passed to a skill instance for bridge installation.
 #[allow(dead_code)]
@@ -191,7 +192,7 @@ impl QjsSkillInstance {
                 }
 
                 // Load bootstrap
-                let bootstrap_code = include_str!("../services/quickjs-libs/bootstrap.js");
+                let bootstrap_code = include_str!("../services/quickjs_libs/bootstrap.js");
                 if let Err(e) = js_ctx.eval::<rquickjs::Value, _>(bootstrap_code) {
                     let detail = format_js_exception(&js_ctx, &e);
                     return Err(format!("Bootstrap failed: {detail}"));
@@ -329,7 +330,7 @@ async fn run_event_loop(
         //    messages (events, pings, etc.) but queue any new CallTool.
         match rx.try_recv() {
             Ok(msg) => {
-                let should_stop = handle_message(rt, ctx, msg, state, skill_id, &mut pending_tool).await;
+                let should_stop = handle_message(rt, ctx, msg, state, skill_id, &mut pending_tool, app_handle).await;
                 if should_stop {
                     break;
                 }
@@ -383,7 +384,7 @@ async fn run_event_loop(
                 let new_map: HashMap<String, serde_json::Value> = ops
                     .data
                     .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .map(|(k, v): (&String, &serde_json::Value)| (k.clone(), v.clone()))
                     .collect();
                 state.write().published_state = new_map.clone();
 
@@ -445,6 +446,7 @@ async fn handle_message(
     state: &Arc<RwLock<SkillState>>,
     skill_id: &str,
     pending_tool: &mut Option<PendingToolCall>,
+    app_handle: Option<&tauri::AppHandle>,
 ) -> bool {
     match msg {
         SkillMessage::CallTool { tool_name, arguments, reply } => {
@@ -551,6 +553,13 @@ async fn handle_message(
             }
         }
         SkillMessage::Rpc { method, params, reply } => {
+            // Resolve the optional memory client once for this RPC call
+            let memory_client_opt: Option<crate::memory::MemoryClientRef> =
+                app_handle.and_then(|ah| {
+                    ah.try_state::<Option<crate::memory::MemoryClientRef>>()
+                        .and_then(|s: tauri::State<'_, Option<crate::memory::MemoryClientRef>>| s.inner().clone())
+                });
+
             let result = match method.as_str() {
                 "oauth/complete" => {
                     // Set credential on the oauth bridge + persist to store
@@ -571,13 +580,60 @@ async fn handle_message(
                     }).await;
                     log::info!("[skill:{}] OAuth credential set and persisted to store", skill_id);
                     let params_str = serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string());
-                    handle_js_call(rt, ctx, "onOAuthComplete", &params_str).await
+                    let result = handle_js_call(rt, ctx, "onOAuthComplete", &params_str).await;
+
+                    // Fire-and-forget: persist returned payload to TinyHumans memory
+                    if let Ok(ref payload) = result {
+                        if let Some(client) = memory_client_opt.clone() {
+                            let skill = skill_id.to_string();
+                            let integration_id = params
+                                .get("integrationId")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("unknown")
+                                .to_string();
+                            let content = serde_json::to_string_pretty(payload)
+                                .unwrap_or_else(|_| payload.to_string());
+                            let title = format!("{} OAuth sync — {}", skill, integration_id);
+                            tokio::spawn(async move {
+                                if let Err(e) = client
+                                    .store_skill_sync(&skill, &integration_id, &title, &content)
+                                    .await
+                                {
+                                    log::warn!("[memory] store_skill_sync failed: {e}");
+                                } else {
+                                    log::info!("[memory] Stored sync for {}:{}", skill, integration_id);
+                                }
+                            });
+                        }
+                    }
+
+                    result
                 }
                 "skill/ping" => {
                     handle_js_call(rt, ctx, "onPing", "{}").await
                 }
                 "skill/sync" => {
-                    handle_js_call(rt, ctx, "onSync", "{}").await
+                    let result = handle_js_call(rt, ctx, "onSync", "{}").await;
+
+                    // Fire-and-forget: persist sync payload to TinyHumans memory
+                    if let Ok(ref payload) = result {
+                        if let Some(client) = memory_client_opt.clone() {
+                            let skill = skill_id.to_string();
+                            let content = serde_json::to_string_pretty(payload)
+                                .unwrap_or_else(|_| payload.to_string());
+                            let title = format!("{} periodic sync", skill);
+                            tokio::spawn(async move {
+                                if let Err(e) = client
+                                    .store_skill_sync(&skill, "default", &title, &content)
+                                    .await
+                                {
+                                    log::warn!("[memory] store_skill_sync failed: {e}");
+                                }
+                            });
+                        }
+                    }
+
+                    result
                 }
                 "oauth/revoked" => {
                     // Clear credential: set to empty string so it's clearly "disconnected"
@@ -593,6 +649,24 @@ async fn handle_message(
                         let _ = js_ctx.eval::<rquickjs::Value, _>(clear_code.as_bytes());
                     }).await;
                     log::info!("[skill:{}] OAuth credential cleared from store", skill_id);
+
+                    // Fire-and-forget: delete memory for this integration
+                    if let Some(client) = memory_client_opt {
+                        let skill = skill_id.to_string();
+                        let integration_id = params
+                            .get("integrationId")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown")
+                            .to_string();
+                        tokio::spawn(async move {
+                            if let Err(e) = client.clear_skill_memory(&skill, &integration_id).await {
+                                log::warn!("[memory] clear_skill_memory failed: {e}");
+                            } else {
+                                log::info!("[memory] Cleared memory for {}:{}", skill, integration_id);
+                            }
+                        });
+                    }
+
                     let params_str = serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string());
                     handle_js_void_call(rt, ctx, "onOAuthRevoked", &params_str).await
                         .map(|()| serde_json::json!({ "ok": true }))
@@ -753,7 +827,7 @@ fn extract_tools(js_ctx: &rquickjs::Ctx<'_>, state: &Arc<RwLock<SkillState>>) {
                 return {
                     name: t.name || "",
                     description: t.description || "",
-                    input_schema: t.inputSchema || t.input_schema || {}
+                    inputSchema: t.inputSchema || t.input_schema || {}
                 };
             }));
         })()

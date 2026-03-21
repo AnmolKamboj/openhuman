@@ -48,8 +48,8 @@ Tauri v2 compiles the Rust core into native binaries per platform, embedding the
 |  +------------------+  +------------------+  +-----------------+ |
 |                                                                  |
 |  +------------------+  +------------------+  +-----------------+ |
-|  |  TDLib Telegram  |  |  SQLite Storage  |  |  OS Keychain    | |
-|  |  Client (Desktop)|  |  (rusqlite)      |  |  Integration    | |
+|  |   Telegram       |  |  SQLite Storage  |  |  OS Keychain    | |
+|  |   Integration    |  |  (rusqlite)      |  |  Integration    | |
 |  +------------------+  +------------------+  +-----------------+ |
 +------------------------------------------------------------------+
                           |
@@ -328,7 +328,7 @@ Every layer is async and non-blocking. The Rust core processes thousands of conc
 | **HTTP**       | reqwest                         | Async HTTP with rustls + native-tLS dual support         |
 | **Encryption** | aes-gcm + argon2                | AES-256-GCM encryption, Argon2id key derivation          |
 | **Scheduling** | cron crate + custom scheduler   | Standard cron expressions, 5-second resolution           |
-| **Telegram**   | TDLib (tdlib-rs)                | Official Telegram client library, desktop only           |
+| **Telegram**   | Removed                         | Telegram integration removed                             |
 | **Realtime**   | Socket.io (client)              | Bidirectional event-based communication                  |
 | **AI**         | MCP (JSON-RPC 2.0)              | Standardized tool protocol for LLM integration           |
 | **Search**     | OpenAI embeddings + SQLite FTS5 | Hybrid semantic + keyword search                         |

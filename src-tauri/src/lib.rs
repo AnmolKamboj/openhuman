@@ -11,6 +11,7 @@
 mod ai;
 mod auth;
 mod commands;
+pub mod memory;
 mod models;
 mod runtime;
 mod services;
@@ -374,7 +375,7 @@ pub fn run() {
 
                 let msg = format!("{}", record.args());
 
-                // Extract tag from message (e.g. "[tdlib]", "[socket-mgr]", "[skill:x]")
+                // Extract tag from message (e.g. "[socket-mgr]", "[skill:x]")
                 let (tag, rest) = if msg.starts_with('[') {
                     if let Some(end) = msg.find(']') {
                         let tag = &msg[..=end];
@@ -390,9 +391,7 @@ pub fn run() {
                 // Tag-based colors
                 let tag_style = if let Some(ref t) = tag {
                     let t_lower = t.to_lowercase();
-                    if t_lower.contains("tdlib") {
-                        Style::new().fg_color(Some(AnsiColor::Magenta.into())).bold()
-                    } else if t_lower.contains("socket") {
+                    if t_lower.contains("socket") {
                         Style::new().fg_color(Some(AnsiColor::Blue.into())).bold()
                     } else if t_lower.contains("runtime") {
                         Style::new().fg_color(Some(AnsiColor::Cyan.into())).bold()
@@ -482,25 +481,6 @@ pub fn run() {
                 }
             }
 
-            // Start the TDLib client early so it's ready before any skill
-            // starts.  The worker loop auto-sends setTdlibParameters when
-            // TDLib requests them — no JS involvement needed.
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            {
-                let data_dir = app
-                    .path()
-                    .app_data_dir()
-                    .unwrap_or_else(|_| {
-                        dirs::home_dir()
-                            .unwrap_or_else(|| std::path::PathBuf::from("."))
-                            .join(".alphahuman")
-                    });
-                let tdlib_data_dir = data_dir.join("telegram");
-                match crate::services::tdlib::TDLIB_MANAGER.create_client(tdlib_data_dir) {
-                    Ok(id) => log::info!("[tdlib] Client created at app startup (ID {})", id),
-                    Err(e) => log::error!("[tdlib] Failed to create client at startup: {}", e),
-                }
-            }
 
             // Create the SocketManager (persistent Rust-native Socket.io)
             let socket_mgr = std::sync::Arc::new(
@@ -664,6 +644,10 @@ pub fn run() {
                 }
             }
 
+            // Initialize TinyHumans memory state (empty until the frontend provides the JWT)
+            app.manage(commands::memory::MemoryState(std::sync::Mutex::new(None)));
+            log::info!("[memory] Memory state registered — awaiting JWT from frontend");
+
             // Store SocketManager as Tauri state
             app.manage(socket_mgr.clone());
 
@@ -773,12 +757,7 @@ pub fn run() {
                     runtime_socket_disconnect,
                     runtime_socket_state,
                     runtime_socket_emit,
-                    // TDLib commands (native Telegram library)
-                    tdlib_create_client,
-                    tdlib_send,
-                    tdlib_receive,
-                    tdlib_destroy,
-                    tdlib_is_available,
+                    // Telegram commands removed (unified system eliminated as per user request)
                     // Model commands (backend API proxy)
                     model_summarize,
                     model_generate,
@@ -815,6 +794,9 @@ pub fn run() {
                     unified_execute_skill,
                     unified_generate_skill,
                     unified_self_evolve_skill,
+                    // Memory commands (TinyHumans Neocortex)
+                    init_memory_client,
+                    memory_query,
                 ]
             }
             #[cfg(not(desktop))]
@@ -894,12 +876,7 @@ pub fn run() {
                     runtime_socket_disconnect,
                     runtime_socket_state,
                     runtime_socket_emit,
-                    // TDLib commands (native Telegram library)
-                    tdlib_create_client,
-                    tdlib_send,
-                    tdlib_receive,
-                    tdlib_destroy,
-                    tdlib_is_available,
+                    // Telegram commands removed (unified system eliminated as per user request)
                     // Model commands (backend API proxy)
                     model_summarize,
                     model_generate,
@@ -936,6 +913,9 @@ pub fn run() {
                     unified_execute_skill,
                     unified_generate_skill,
                     unified_self_evolve_skill,
+                    // Memory commands (TinyHumans Neocortex)
+                    init_memory_client,
+                    memory_query,
                 ]
             }
         })
@@ -969,14 +949,6 @@ pub fn run() {
                         log::info!("[alphahuman] Daemon shutdown signalled");
                     }
 
-                    use crate::services::tdlib::TDLIB_MANAGER;
-                    // Signal the TDLib worker to stop. The blocking receive() call
-                    // has a 2-second internal timeout, so we must wait long enough
-                    // for any in-flight call to finish before process teardown runs
-                    // C++ destructors on TDLib's internal state.
-                    TDLIB_MANAGER.signal_shutdown();
-                    std::thread::sleep(std::time::Duration::from_millis(2500));
-                    log::info!("[app] TDLib shutdown wait complete");
                     let _ = app_handle;
                 }
 

@@ -1,6 +1,6 @@
 //! Daemon supervisor adapted for Tauri.
 //!
-//! Runs alongside the existing QuickJS runtime, TDLib, and Socket.io systems.
+//! Runs alongside the existing QuickJS runtime and Socket.io systems.
 //! Uses `CancellationToken` for lifecycle management (Tauri controls shutdown).
 //! Periodically emits health snapshots as Tauri events.
 
