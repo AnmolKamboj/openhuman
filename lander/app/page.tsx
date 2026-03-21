@@ -1,11 +1,14 @@
 import HeroCTA from './components/HeroCTA';
+import RotatingTetrahedronCanvas from './components/RotatingTetrahedronCanvas';
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-black text-white relative">
       <main className="mx-auto max-w-7xl px-6 sm:px-8 sm:pt-32 relative z-10">
         <div className="mx-auto max-w-3xl text-center">
-          <img src="/android-chrome-192x192.png" alt="OpenHuman" className="w-[150px] h-[150px] mx-auto mb-4" />
+          <div className="mx-auto mb-6 h-[180px] w-[180px] sm:h-[200px] sm:w-[200px]">
+            <RotatingTetrahedronCanvas />
+          </div>
           <h1 className="text-5xl font-bold tracking-tight sm:text-6xl lg:text-7xl">
             OpenHuman
           </h1>
