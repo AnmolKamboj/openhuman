@@ -1,5 +1,3 @@
-import { injectAll } from '../../lib/ai/injector';
-import type { Message } from '../../lib/ai/providers/interface';
 import type { ApiResponse } from '../../types/api';
 import type {
   PurgeRequestBody,
@@ -45,40 +43,14 @@ export const threadApi = {
     return response.data;
   },
 
-  /** POST /chat/sendMessage — send a user message with SOUL + TOOLS injection */
+  /** POST /chat/sendMessage — send a user message (context injection done by caller) */
   sendMessage: async (
     message: string,
-    conversationId: string,
-    options: { injectSoul?: boolean } = { injectSoul: true }
+    conversationId: string
   ): Promise<SendMessageResponseData> => {
-    let processedMessage = message;
-
-    if (options.injectSoul) {
-      try {
-        const userMessage: Message = { role: 'user', content: [{ type: 'text', text: message }] };
-
-        const injectedMessage = await injectAll(userMessage, {
-          mode: 'context-block',
-          includeMetadata: false,
-        });
-
-        // Extract the processed text
-        const textContent = injectedMessage.content
-          .filter(block => block.type === 'text')
-          .map(block => (block as { text: string }).text)
-          .join('\n');
-
-        processedMessage = textContent;
-        console.log('✅ SOUL + TOOLS injection successful in threadApi sendMessage');
-      } catch (error) {
-        // Graceful degradation - log error but continue with original message
-        console.warn('⚠️ SOUL + TOOLS injection failed in threadApi sendMessage:', error);
-      }
-    }
-
     const response = await apiClient.post<ApiResponse<SendMessageResponseData>>(
       '/chat/sendMessage',
-      { message: processedMessage, conversationId }
+      { message, conversationId }
     );
     return response.data;
   },

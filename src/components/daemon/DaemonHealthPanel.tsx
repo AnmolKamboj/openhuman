@@ -17,6 +17,7 @@ import { useState } from 'react';
 
 import { formatRelativeTime, useDaemonHealth } from '../../hooks/useDaemonHealth';
 import type { ComponentHealth, DaemonStatus } from '../../store/daemonSlice';
+import { IS_DEV } from '../../utils/config';
 
 interface Props {
   userId?: string;
@@ -246,7 +247,7 @@ const DaemonHealthPanel = ({ userId, onClose, className = '' }: Props) => {
       )}
 
       {/* Debug Info (development only) */}
-      {process.env.NODE_ENV === 'development' && daemonHealth.healthSnapshot && (
+      {IS_DEV && daemonHealth.healthSnapshot && (
         <details className="text-xs">
           <summary className="cursor-pointer text-gray-400 hover:text-white">Debug Info</summary>
           <pre className="mt-2 p-3 bg-stone-800 rounded text-gray-300 overflow-x-auto">
