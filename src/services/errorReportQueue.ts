@@ -7,6 +7,8 @@
  */
 import * as Sentry from '@sentry/react';
 
+import { IS_DEV } from '../utils/config';
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -191,7 +193,7 @@ export function buildManualSentryEvent(
     platform: 'javascript',
     exception: { values: [{ type: error.type, value: error.value }] },
     tags,
-    environment: import.meta.env.DEV ? 'development' : 'production',
+    environment: IS_DEV ? 'development' : 'production',
   };
 }
 

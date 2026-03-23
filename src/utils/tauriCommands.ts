@@ -5,8 +5,7 @@
  */
 import { isTauri as coreIsTauri, invoke } from '@tauri-apps/api/core';
 
-import { injectAll } from '../lib/ai/injector';
-import type { Message } from '../lib/ai/providers/interface';
+import { injectOpenClawContext } from '../lib/ai/openclaw-injector';
 
 // Check if we're running in Tauri
 export const isTauri = (): boolean => {
@@ -424,35 +423,17 @@ export async function alphahumanAgentChat(
   message: string,
   providerOverride?: string,
   modelOverride?: string,
-  temperature?: number,
-  options: { injectSoul?: boolean } = { injectSoul: true }
+  temperature?: number
 ): Promise<CommandResponse<string>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
 
   let processedMessage = message;
-
-  if (options.injectSoul) {
-    try {
-      const userMessage: Message = { role: 'user', content: [{ type: 'text', text: message }] };
-
-      const injectedMessage = await injectAll(userMessage, {
-        mode: 'context-block',
-        includeMetadata: false,
-      });
-
-      // Extract the processed text
-      const textContent = injectedMessage.content
-        .filter(block => block.type === 'text')
-        .map(block => (block as { text: string }).text)
-        .join('\n');
-
-      processedMessage = textContent;
-      console.log('✅ SOUL + TOOLS injection successful in alphahumanAgentChat');
-    } catch (error) {
-      console.warn('⚠️ SOUL + TOOLS injection failed in alphahumanAgentChat:', error);
-    }
+  try {
+    processedMessage = injectOpenClawContext(message);
+  } catch (error) {
+    console.warn('[OpenClaw] Injection failed in agentChat:', error);
   }
 
   return await invoke('alphahuman_agent_chat', {

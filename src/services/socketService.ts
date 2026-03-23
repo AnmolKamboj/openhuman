@@ -6,7 +6,7 @@ import { MCPTool, MCPToolCall, SocketIOMCPTransportImpl } from '../lib/mcp';
 import { skillManager, syncToolsToBackend } from '../lib/skills';
 import { store } from '../store';
 import { resetForUser, setSocketIdForUser, setStatusForUser } from '../store/socketSlice';
-import { BACKEND_URL } from '../utils/config';
+import { BACKEND_URL, IS_DEV } from '../utils/config';
 import { createSafeLogData, sanitizeError } from '../utils/sanitize';
 
 // Socket service logger using debug package
@@ -16,7 +16,7 @@ const socketWarn = debug('socket:warn');
 const socketError = debug('socket:error');
 
 // Enable socket logging in development by default
-if (import.meta.env.DEV || import.meta.env.MODE === 'development') {
+if (IS_DEV) {
   debug.enable('socket*');
 }
 

@@ -8,6 +8,7 @@ interface RequestOptions {
   body?: unknown;
   headers?: Record<string, string>;
   requireAuth?: boolean;
+  timeout?: number;
 }
 
 /**
@@ -62,12 +63,15 @@ class ApiClient {
    * Make an API request
    */
   private async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-    const { method = 'GET', body, requireAuth = true } = options;
+    const { method = 'GET', body, requireAuth = true, timeout = 120_000 } = options;
 
     const url = `${this.baseUrl}${endpoint}`;
     const headers = this.buildHeaders({ ...options, requireAuth });
 
-    const config: RequestInit = { method, headers };
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    const config: RequestInit = { method, headers, signal: controller.signal };
 
     if (body && method !== 'GET') {
       config.body = JSON.stringify(body);
@@ -102,11 +106,21 @@ class ApiClient {
         throw error;
       }
 
+      // Handle abort/timeout specifically
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw {
+          success: false,
+          error: `Request timed out after ${timeout / 1000}s`,
+        } as ApiError;
+      }
+
       // Wrap network/other errors
       throw {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred',
       } as ApiError;
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 

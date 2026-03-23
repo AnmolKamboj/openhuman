@@ -1,6 +1,7 @@
 /**
  * Utilities for sanitizing sensitive data before logging
  */
+import { IS_DEV } from './config';
 
 const SENSITIVE_KEYS = [
   'token',
@@ -75,8 +76,7 @@ function sanitizeObject(obj: unknown, depth = 0): unknown {
  */
 export function sanitizeError(error: unknown): unknown {
   if (error instanceof Error) {
-    const isDev = import.meta.env.DEV || import.meta.env.MODE === 'development';
-    return { name: error.name, message: error.message, stack: isDev ? error.stack : undefined };
+    return { name: error.name, message: error.message, stack: IS_DEV ? error.stack : undefined };
   }
   if (typeof error === 'object' && error !== null) {
     return sanitizeObject(error);

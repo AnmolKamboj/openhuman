@@ -1,7 +1,6 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 
-import { injectAll } from '../lib/ai/injector';
-import type { Message } from '../lib/ai/providers/interface';
+import { injectOpenClawContext } from '../lib/ai/openclaw-injector';
 import { threadApi } from '../services/api/threadApi';
 import type { Thread, ThreadMessage } from '../types/thread';
 
@@ -99,33 +98,16 @@ export const sendMessage = createAsyncThunk(
     try {
       dispatch(addMessageLocal({ threadId, message: userMessage }));
 
-      // 2. Process message with SOUL + TOOLS injection before sending to API
+      // 2. Inject OpenClaw context (all 7 workspace files as raw markdown)
       let processedMessage = message;
       try {
-        const userMessage: Message = { role: 'user', content: [{ type: 'text', text: message }] };
-
-        const injectedMessage = await injectAll(userMessage, {
-          mode: 'context-block',
-          includeMetadata: false,
-        });
-
-        // Extract the processed text
-        processedMessage = injectedMessage.content
-          .filter(block => block.type === 'text')
-          .map(block => (block as { text: string }).text)
-          .join('\n');
-
-        console.log('✅ SOUL + TOOLS injection successful in Redux sendMessage thunk');
+        processedMessage = injectOpenClawContext(message);
       } catch (injectionError) {
-        console.warn(
-          '⚠️ SOUL + TOOLS injection failed in Redux sendMessage thunk:',
-          injectionError
-        );
-        // Continue with original message
+        console.warn('[OpenClaw] Injection failed in sendMessage thunk:', injectionError);
       }
 
-      // 3. Send to API with processed message (disable injection in threadApi to avoid double injection)
-      const data = await threadApi.sendMessage(processedMessage, threadId, { injectSoul: false });
+      // 3. Send to API with processed message (injection already done above)
+      const data = await threadApi.sendMessage(processedMessage, threadId);
 
       // 4. For now, we'll handle AI response via the existing inference API
       // The AI response will be added separately via addInferenceResponse
