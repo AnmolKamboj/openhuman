@@ -53,6 +53,7 @@
     "@tauri-apps/plugin-os": "^2.3.2",
     "@tauri-apps/plugin-shell": "~2",
     "@types/react-router-dom": "^5.3.3",
+    "@types/three": "^0.183.1",
     "buffer": "^6.0.3",
     "debug": "^4.4.3",
     "immer": "^11.1.3",
