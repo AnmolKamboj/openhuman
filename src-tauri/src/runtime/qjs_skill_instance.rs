@@ -178,6 +178,7 @@ impl QjsSkillInstance {
                 let skill_context = qjs_ops::SkillContext {
                     skill_id: skill_id.clone(),
                     data_dir: data_dir.clone(),
+                    app_handle: _deps.app_handle.clone(),
                 };
 
                 if let Err(e) = qjs_ops::register_ops(
@@ -603,7 +604,18 @@ async fn handle_message(
                             let title = format!("{} OAuth sync — {}", skill, integration_id);
                             tokio::spawn(async move {
                                 if let Err(e) = client
-                                    .store_skill_sync(&skill, &integration_id, &title, &content)
+                                    .store_skill_sync(
+                                        &skill,
+                                        &integration_id,
+                                        &title,
+                                        &content,
+                                        None,
+                                        None,
+                                        None,
+                                        None,
+                                        None,
+                                        None,
+                                    )
                                     .await
                                 {
                                     log::warn!("[memory] store_skill_sync failed: {e}");
@@ -639,7 +651,18 @@ async fn handle_message(
                             let title = format!("{} periodic sync", skill);
                             tokio::spawn(async move {
                                 if let Err(e) = client
-                                    .store_skill_sync(&skill, "default", &title, &content)
+                                    .store_skill_sync(
+                                        &skill,
+                                        "default",
+                                        &title,
+                                        &content,
+                                        None,
+                                        None,
+                                        None,
+                                        None,
+                                        None,
+                                        None,
+                                    )
                                     .await
                                 {
                                     log::warn!("[memory] store_skill_sync failed: {e}");

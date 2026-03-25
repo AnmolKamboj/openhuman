@@ -742,6 +742,26 @@ globalThis.platform = {
 };
 
 // ============================================================================
+// Memory Bridge (for skills to send memory payloads to backend)
+// ============================================================================
+globalThis.memory = {
+  /**
+   * Insert a memory payload through the native memory bridge.
+   * Provider is inferred from the current skill ID on the Rust side.
+   * @param {object} metadata - Memory payload metadata.
+   * @returns {boolean}
+   */
+  insert: function (metadata) {
+    if (!metadata || typeof metadata !== 'object') {
+      throw new Error('memory.insert requires an object payload');
+    }
+
+    __ops.memory_insert(JSON.stringify(metadata));
+    return true;
+  },
+};
+
+// ============================================================================
 // State Bridge API (for skills to publish state)
 // ============================================================================
 globalThis.__state = {
