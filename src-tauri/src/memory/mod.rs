@@ -180,11 +180,11 @@ impl MemoryClient {
     pub async fn query_skill_context(
         &self,
         skill_id: &str,
-        integration_id: &str,
+        _integration_id: &str,
         query: &str,
         max_chunks: u32,
     ) -> Result<String, String> {
-        let namespace = format!("skill:{skill_id}:{integration_id}");
+        let namespace = skill_id.to_string();
         log::info!("[memory] query_skill_context: entry (namespace={namespace}, max_chunks={max_chunks}, query={query:?})");
         log::debug!(
             "[memory] query_skill_context: payload → namespace={namespace} | max_chunks={max_chunks} | query={query}"
