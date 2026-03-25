@@ -80,7 +80,7 @@ const AppRoutes = () => {
           path="/login"
           element={
             <PublicRoute>
-              <Login />
+              <Login isWeb={isWeb} />
             </PublicRoute>
           }
         />

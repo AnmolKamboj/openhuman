@@ -1294,12 +1294,7 @@
   dependencies:
     postcss-selector-parser "6.0.10"
 
-"@tauri-apps/api@2.10.1":
-  version "2.10.1"
-  resolved "https://registry.yarnpkg.com/@tauri-apps/api/-/api-2.10.1.tgz#57c1bae6114ec33d977eb2b50dfefc25fa84fc93"
-  integrity sha512-hKL/jWf293UDSUN09rR69hrToyIXBb8CjGaWC7gfinvnQrBVvnLr08FeFi38gxtugAVyVcTa5/FD/Xnkb1siBw==
-
-"@tauri-apps/api@^2.8.0":
+"@tauri-apps/api@2.9.1", "@tauri-apps/api@^2.8.0":
   version "2.9.1"
   resolved "https://registry.npmjs.org/@tauri-apps/api/-/api-2.9.1.tgz"
   integrity sha512-IGlhP6EivjXHepbBic618GOmiWe4URJiIeZFlB7x3czM0yDHHYviH1Xvoiv4FefdkQtn6v7TuwWCRfOGdnVUGw==
@@ -1359,9 +1354,9 @@
   resolved "https://registry.yarnpkg.com/@tauri-apps/cli-win32-x64-msvc/-/cli-win32-x64-msvc-2.9.6.tgz#d58c9f8af835b7e4fc30e201e979342c70bea426"
   integrity sha512-ldWuWSSkWbKOPjQMJoYVj9wLHcOniv7diyI5UAJ4XsBdtaFB0pKHQsqw/ItUma0VXGC7vB4E9fZjivmxur60aw==
 
-"@tauri-apps/cli@^2":
+"@tauri-apps/cli@2.9.6":
   version "2.9.6"
-  resolved "https://registry.npmjs.org/@tauri-apps/cli/-/cli-2.9.6.tgz"
+  resolved "https://registry.yarnpkg.com/@tauri-apps/cli/-/cli-2.9.6.tgz#f15ae8e03bf48308055c15ab25b439bed9906bc9"
   integrity sha512-3xDdXL5omQ3sPfBfdC8fCtDKcnyV7OqyzQgfyT5P3+zY6lcPqIYKQBvUasNvppi21RSdfhy44ttvJmftb0PCDw==
   optionalDependencies:
     "@tauri-apps/cli-darwin-arm64" "2.9.6"
@@ -7688,6 +7683,11 @@ thenify-all@^1.0.0:
   integrity sha512-RVZSIV5IG10Hk3enotrhvz0T9em6cyHBLkH/YAZuKqd8hRkKhSfCGIcP2KUY0EPxndzANBmNllzWPwak+bheSw==
   dependencies:
     any-promise "^1.0.0"
+
+three@^0.183.2:
+  version "0.183.2"
+  resolved "https://registry.yarnpkg.com/three/-/three-0.183.2.tgz#606e3195bf210ef8d1eaaca2ab8c59d92d2bbc18"
+  integrity sha512-di3BsL2FEQ1PA7Hcvn4fyJOlxRRgFYBpMTcyOgkwJIaDOdJMebEFPA+t98EvjuljDx4hNulAGwF6KIjtwI5jgQ==
 
 timers-browserify@^2.0.4:
   version "2.0.12"

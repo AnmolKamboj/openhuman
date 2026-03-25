@@ -7,14 +7,15 @@
 use std::sync::Arc;
 use tinyhumansai::{
     DeleteMemoryParams, InsertMemoryParams, QueryMemoryParams, RecallMemoryParams,
-    TinyHumanConfig, TinyHumanMemoryClient,
+    TinyHumanConfig, TinyHumansMemoryClient,
 };
+use uuid::Uuid;
 
 /// Shared, cloneable handle to the memory client.
 pub type MemoryClientRef = Arc<MemoryClient>;
 
 pub struct MemoryClient {
-    inner: TinyHumanMemoryClient,
+    inner: TinyHumansMemoryClient,
 }
 
 impl MemoryClient {
@@ -38,7 +39,7 @@ impl MemoryClient {
                 TinyHumanConfig::new(jwt_token)
             }
         };
-        match TinyHumanMemoryClient::new(config) {
+        match TinyHumansMemoryClient::new(config) {
             Ok(inner) => {
                 log::info!("[memory] from_token: exit — client created successfully");
                 Some(Self { inner })
@@ -66,9 +67,10 @@ impl MemoryClient {
             "[memory] store_skill_sync: payload → namespace={namespace} | title={title} | content={}",
             content
         );
-        log::info!("[memory] insert_memory: calling SDK (namespace={namespace}, title={title:?})");
+        log::info!("[memory] insert_memory: calling SDK (namespace={namespace}, title={title:?}), content_len={}", content.len());
         let result = self.inner
             .insert_memory(InsertMemoryParams {
+                document_id: Some(Uuid::new_v4().to_string()),
                 title: title.to_string(),
                 content: content.to_string(),
                 namespace: namespace.clone(),
@@ -175,7 +177,7 @@ impl MemoryClient {
     }
 }
 
-fn classify_insert_error(e: &tinyhumansai::TinyHumanError) -> &'static str {
+fn classify_insert_error(e: &tinyhumansai::TinyHumansError) -> &'static str {
     let msg = e.to_string();
     if msg.contains("dns") || msg.contains("resolve") || msg.contains("lookup") {
         "dns_failure"

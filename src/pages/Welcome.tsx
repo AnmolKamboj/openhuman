@@ -1,3 +1,5 @@
+import { useNavigate } from 'react-router-dom';
+
 import RotatingTetrahedronCanvas from '../components/RotatingTetrahedronCanvas';
 
 interface WelcomeProps {
@@ -5,6 +7,8 @@ interface WelcomeProps {
 }
 
 const Welcome = ({ isWeb }: WelcomeProps) => {
+  const navigate = useNavigate();
+
   return (
     <div className="min-h-full w-full bg-[#090b12] px-4 py-6 md:px-10 md:py-10">
       <div className="mx-auto grid min-h-[calc(100vh-3.5rem)] w-full max-w-5xl grid-rows-[1fr_auto] border border-[#24293d] bg-[#0b0f18] text-white">
@@ -21,14 +25,15 @@ const Welcome = ({ isWeb }: WelcomeProps) => {
             </h1>
 
             <p className="max-w-xl text-sm text-[#8e96b8] md:text-base">
-              A focused command center for AI-driven execution. Minimal surfaces, hard edges, and
-              no visual noise.
+              A focused command center for AI-driven execution. Minimal surfaces, hard edges, and no
+              visual noise.
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-3">
               <button
                 className="border border-[#3d2f68] bg-[#201732] px-5 py-2 text-sm font-medium tracking-wide text-[#d4c8ff] transition-colors hover:bg-[#2a1d44]"
-                type="button">
+                type="button"
+                onClick={() => navigate('/login')}>
                 {isWeb ? 'Download AlphaHuman' : 'Continue'}
               </button>
               <button
