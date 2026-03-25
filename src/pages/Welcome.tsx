@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import RotatingTetrahedronCanvas from '../components/RotatingTetrahedronCanvas';
 
 interface WelcomeProps {
-  isWeb: boolean;
+  isWeb?: boolean;
 }
 
 const Welcome = ({ isWeb }: WelcomeProps) => {
@@ -16,9 +16,7 @@ const Welcome = ({ isWeb }: WelcomeProps) => {
           <RotatingTetrahedronCanvas />
         </div>
 
-        <h1 className="text-4xl font-semibold tracking-tight text-white md:text-6xl">
-          OpenHuman
-        </h1>
+        <h1 className="text-4xl font-semibold tracking-tight text-white md:text-6xl">OpenHuman</h1>
 
         <p className="max-w-xl text-sm opacity-70 md:text-base">
           Your AI superhuman for personal and business life.
