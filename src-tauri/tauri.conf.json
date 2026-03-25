@@ -44,17 +44,14 @@
       "minimumSystemVersion": "10.15",
       "dmg": {
         "background": "./images/background-dmg.png"
-      },
-      "frameworks": [
-        "./libraries/libtdjson.1.8.29.dylib"
-      ]
+      }
     }
   },
   "plugins": {
     "deep-link": {
       "desktop": {
         "schemes": [
-          "alphahuman"
+          "openhuman"
         ]
       }
     }

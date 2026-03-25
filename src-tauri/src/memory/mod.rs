@@ -6,8 +6,8 @@
 
 use std::sync::Arc;
 use tinyhumansai::{
-    DeleteMemoryParams, InsertMemoryParams, QueryMemoryParams, RecallMemoryParams,
-    TinyHumanConfig, TinyHumansMemoryClient,
+    DeleteMemoryParams, InsertMemoryParams, Priority, QueryMemoryParams, RecallMemoryParams,
+    SourceType, TinyHumanConfig, TinyHumanMemoryClient,
 };
 use uuid::Uuid;
 
@@ -60,6 +60,12 @@ impl MemoryClient {
         integration_id: &str,
         title: &str,
         content: &str,
+        source_type: Option<SourceType>,
+        metadata: Option<serde_json::Value>,
+        priority: Option<Priority>,
+        created_at: Option<f64>,
+        updated_at: Option<f64>,
+        document_id: Option<String>,
     ) -> Result<(), String> {
         let namespace = format!("skill:{skill_id}:{integration_id}");
         log::info!("[memory] store_skill_sync: entry (namespace={namespace}, title={title:?}, content_len={})", content.len());
@@ -74,6 +80,12 @@ impl MemoryClient {
                 title: title.to_string(),
                 content: content.to_string(),
                 namespace: namespace.clone(),
+                source_type,
+                metadata,
+                priority,
+                created_at,
+                updated_at,
+                document_id,
                 ..Default::default()
             })
             .await
@@ -238,6 +250,11 @@ mod tests {
                 integration_id,
                 "Gmail OAuth sync — test@alphahuman.dev",
                 &serde_json::to_string_pretty(&dummy_content).unwrap(),
+                None,
+                None,
+                None,
+                None,
+                None,
             )
             .await;
 

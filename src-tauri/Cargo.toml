@@ -23,6 +23,14 @@ path = "src/main.rs"
 name = "alphahuman-tools-discovery"
 path = "src/bin/alphahuman-tools-discovery.rs"
 
+[[bin]]
+name = "alphahuman-core"
+path = "src/bin/alphahuman-core.rs"
+
+[[bin]]
+name = "alphahuman-cli"
+path = "src/bin/alphahuman-cli.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
@@ -30,7 +38,7 @@ serde_json = "1"
 
 [dependencies]
 # Tauri core and plugins
-tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
+tauri = { version = "2.10", features = ["tray-icon", "macos-private-api"] }
 tauri-plugin-opener = "2"
 tauri-plugin-deep-link = "2.0.0"
 tauri-plugin-os = "2"
@@ -119,6 +127,7 @@ rustls = { version = "0.23", features = ["ring"] }
 rustls-pki-types = "1.14.0"
 tokio-rustls = "0.26.4"
 webpki-roots = "1.0.6"
+clap = { version = "4.5", features = ["derive"] }
 lettre = { version = "0.11.19", default-features = false, features = ["builder", "smtp-transport", "rustls-tls"] }
 mail-parser = "0.11.2"
 async-imap = { version = "0.11", features = ["runtime-tokio"], default-features = false }
