@@ -261,7 +261,7 @@ const Mnemonic = () => {
                 </svg>
                 <p className="text-xs text-amber-800">
                   Never share your recovery phrase with anyone. Anyone with these words can access
-                  your encrypted data. AlphaHuman will never ask for your recovery phrase.
+                  your encrypted data. OpenHuman will never ask for your recovery phrase.
                 </p>
               </div>
 

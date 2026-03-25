@@ -9,11 +9,11 @@ import type { ToolsConfig } from '../types';
 
 // Mock the bundled tools markdown
 vi.mock('../../../../../ai/TOOLS.md?raw', () => ({
-  default: `# AlphaHuman Tools
+  default: `# OpenHuman Tools
 
 ## Overview
 
-AlphaHuman has access to **4 tools** across **2 integrations**.
+OpenHuman has access to **4 tools** across **2 integrations**.
 
 ## Environment Configuration
 
@@ -82,7 +82,7 @@ describe('Tools Loader', () => {
 
   describe('parseTools', () => {
     it('should parse tools from markdown correctly', () => {
-      const mockMarkdown = `# AlphaHuman Tools
+      const mockMarkdown = `# OpenHuman Tools
 
 ### Telegram Tools
 
@@ -126,7 +126,7 @@ describe('Tools Loader', () => {
     });
 
     it('should group tools by skill correctly', () => {
-      const mockMarkdown = `# AlphaHuman Tools
+      const mockMarkdown = `# OpenHuman Tools
 
 ### Telegram Tools
 
@@ -152,7 +152,7 @@ describe('Tools Loader', () => {
     });
 
     it('should generate statistics correctly', () => {
-      const mockMarkdown = `# AlphaHuman Tools
+      const mockMarkdown = `# OpenHuman Tools
 
 ### Telegram Tools
 

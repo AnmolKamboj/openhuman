@@ -151,7 +151,7 @@ const AIPanel = () => {
         <section className="space-y-4">
           <h3 className="text-lg font-semibold text-white">AI System Overview</h3>
           <p className="text-sm text-gray-400">
-            AlphaHuman uses SOUL for persona configuration and TOOLS for external service
+            OpenHuman uses SOUL for persona configuration and TOOLS for external service
             integration.
           </p>
 
@@ -263,7 +263,7 @@ const AIPanel = () => {
             </button>
           </div>
           <p className="text-sm text-gray-400">
-            TOOLS provide AlphaHuman with the ability to interact with external services and perform
+            TOOLS provide OpenHuman with the ability to interact with external services and perform
             actions.
           </p>
 

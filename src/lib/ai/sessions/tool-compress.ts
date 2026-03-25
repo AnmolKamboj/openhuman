@@ -22,7 +22,7 @@ function truncate(str: string | undefined, maxLen = 50): string {
 
 /**
  * Compress a tool observation into a human-readable one-liner.
- * Ported from claude-supermemory's compress.js, adapted for AlphaHuman tools.
+ * Ported from claude-supermemory's compress.js, adapted for OpenHuman tools.
  */
 export function compressObservation(
   toolName: string,

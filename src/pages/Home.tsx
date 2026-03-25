@@ -42,7 +42,7 @@ const Home = () => {
               <button
                 onClick={handleStartCooking}
                 className="btn-primary w-full py-2.5 text-sm font-medium rounded-xl">
-                Message AlphaHuman 🔥
+                Message OpenHuman 🔥
               </button>
             </div>
 

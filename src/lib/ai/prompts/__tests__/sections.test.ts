@@ -60,7 +60,7 @@ describe('buildConstitutionSection', () => {
 describe('buildIdentitySection', () => {
   it('should use default identity', () => {
     const result = buildIdentitySection();
-    expect(result).toContain('AlphaHuman');
+    expect(result).toContain('OpenHuman');
     expect(result).toContain('Crypto-native AI assistant');
   });
 

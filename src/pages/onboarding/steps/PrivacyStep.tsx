@@ -28,7 +28,7 @@ const PrivacyStep = ({ onNext }: PrivacyStepProps) => {
       <div className="text-center mb-4">
         <h1 className="text-xl font-bold mb-2">A Quick Privacy Note</h1>
         <p className="opacity-70 text-sm">
-          Since AlphaHuman handles criticial information about you, here's how it handles your data
+          Since OpenHuman handles criticial information about you, here's how it handles your data
           and manages your privacy.
         </p>
       </div>
