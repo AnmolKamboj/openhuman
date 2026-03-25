@@ -2,11 +2,11 @@ import DownloadScreen from '../components/DownloadScreen';
 import OAuthLoginSection from '../components/oauth/OAuthLoginSection';
 import TypewriterGreeting from '../components/TypewriterGreeting';
 
-interface WelcomeProps {
-  isWeb: boolean;
+interface LoginProps {
+  isWeb?: boolean;
 }
 
-const Login = ({ isWeb }: WelcomeProps) => {
+const Login = ({ isWeb }: LoginProps) => {
   const greetings = ['Hello HAL9000! 👋', "Let's cook! 🔥", 'The A-Team is here! 👊'];
 
   return (

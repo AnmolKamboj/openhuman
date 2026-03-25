@@ -525,20 +525,75 @@ async fn chat_send_inner(
     let openclaw_context = load_openclaw_context(app);
 
     // ── Step 2: Recall memory context ───────────────────────────────────
+    log::info!("[chat] Recalling conversation memory (thread_id={thread_id})");
     let memory_context: Option<String> = if let Some(ref mem) = memory_client {
         match mem
             .recall_skill_context("conversations", thread_id, 10)
             .await
         {
-            Ok(ctx) => ctx,
+            Ok(ctx) => {
+                log::info!(
+                    "[chat] Conversation memory recall: has_data={}, len={}",
+                    ctx.is_some(),
+                    ctx.as_deref().map(|s| s.len()).unwrap_or(0)
+                );
+                if let Some(ref data) = ctx {
+                    log::debug!("[chat] Conversation memory content:\n{}", data);
+                }
+                ctx
+            }
             Err(e) => {
-                log::warn!("[chat] Memory recall failed: {}", e);
+                log::warn!("[chat] Conversation memory recall failed: {}", e);
                 None
             }
         }
     } else {
+        log::info!("[chat] No memory client — skipping conversation memory recall");
         None
     };
+
+    // ── Step 2b: Recall skill contexts ──────────────────────────────────
+    let skill_ids: std::collections::HashSet<String> = engine
+        .all_tools()
+        .into_iter()
+        .map(|(skill_id, _)| skill_id)
+        .collect();
+
+    log::info!("[chat] Recalling skill contexts for {} skill(s): {:?}", skill_ids.len(), skill_ids);
+
+    let mut skill_contexts: Vec<String> = Vec::new();
+    for sid in &skill_ids {
+        if let Some(ref mem) = memory_client {
+            log::info!("[chat] Recalling memory for skill={sid}");
+            match mem.recall_skill_context(sid, sid, 10).await {
+                Ok(Some(ctx)) => {
+                    log::info!(
+                        "[chat] Skill memory recall ok: skill={sid}, len={}",
+                        ctx.len()
+                    );
+                    log::debug!("[chat] Skill memory content (skill={sid}):\n{}", ctx);
+                    skill_contexts.push(format!(
+                        "[{}_CONTEXT]\n{}\n[/{}_CONTEXT]",
+                        sid.to_uppercase(),
+                        ctx,
+                        sid.to_uppercase()
+                    ));
+                }
+                Ok(None) => {
+                    log::info!("[chat] Skill memory recall: no data for skill={sid}");
+                }
+                Err(e) => {
+                    log::warn!("[chat] Skill memory recall failed for skill={sid}: {}", e);
+                }
+            }
+        }
+    }
+
+    log::info!(
+        "[chat] Context assembly: conversation_memory={}, skill_contexts={}",
+        memory_context.is_some(),
+        skill_contexts.len()
+    );
 
     // ── Step 3: Build processed user message ────────────────────────────
     let mut processed = user_message.to_string();
@@ -552,6 +607,10 @@ async fn chat_send_inner(
             "[MEMORY_CONTEXT]\n{}\n[/MEMORY_CONTEXT]\n\n{}",
             mem, processed
         );
+    }
+
+    if !skill_contexts.is_empty() {
+        processed = format!("{}\n\n{}", skill_contexts.join("\n\n"), processed);
     }
 
     if let Some(ref notion) = notion_context {
