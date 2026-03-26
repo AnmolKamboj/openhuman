@@ -299,3 +299,49 @@ jobs:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           owner: tinyhumansai
           repo: openhuman
+
+  cleanup-failed-release:
+    name: Remove release and tag after failed build
+    runs-on: ubuntu-latest
+    environment: Production
+    needs: [prepare-release, create-release, build-artifacts]
+    if: always() && needs.create-release.result == 'success' && (needs.build-artifacts.result == 'failure' || needs.build-artifacts.result == 'cancelled')
+    steps:
+      - name: Delete GitHub release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const releaseId = Number('${{ needs.create-release.outputs.release_id }}');
+
+            if (!Number.isFinite(releaseId) || releaseId <= 0) {
+              core.setFailed('Invalid or missing release_id; cannot delete release.');
+              return;
+            }
+
+            try {
+              await github.rest.repos.deleteRelease({ owner, repo, release_id: releaseId });
+              core.info(`Deleted release ${releaseId}`);
+            } catch (e) {
+              core.warning(`deleteRelease failed: ${e.message}`);
+            }
+
+      - name: Delete remote tag
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const tag = '${{ needs.prepare-release.outputs.tag }}';
+
+            try {
+              await github.rest.git.deleteRef({ owner, repo, ref: `tags/${tag}` });
+              core.info(`Deleted remote tag ${tag}`);
+            } catch (e) {
+              if (e.status === 404) {
+                core.info(`Tag ${tag} already absent on remote`);
+              } else {
+                throw e;
+              }
+            }
