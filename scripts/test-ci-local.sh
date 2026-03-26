@@ -60,11 +60,19 @@ SECRETS_FILE=$(mktemp)
 VARS_FILE=$(mktemp)
 trap 'rm -f "$SECRETS_FILE" "$VARS_FILE"' EXIT
 
-# Extract "secrets" object → KEY=VALUE
-jq -r '.secrets // {} | to_entries[] | "\(.key)=\(.value)"' "$SECRETS_JSON" > "$SECRETS_FILE"
+# Extract "secrets" object → KEY=VALUE (quoted/escaped for act dotenv parsing)
+jq -r '
+def dotenv_escape:
+  gsub("\""; "\\\"") | gsub("\r"; "\\r") | gsub("\n"; "\\n");
+(.secrets // {}) | to_entries[] | "\(.key)=\"\(.value | dotenv_escape)\""
+' "$SECRETS_JSON" > "$SECRETS_FILE"
 
 # Extract "vars" object → KEY=VALUE
-jq -r '.vars // {} | to_entries[] | "\(.key)=\(.value)"' "$SECRETS_JSON" > "$VARS_FILE"
+jq -r '
+def dotenv_escape:
+  gsub("\""; "\\\"") | gsub("\r"; "\\r") | gsub("\n"; "\\n");
+(.vars // {}) | to_entries[] | "\(.key)=\"\(.value | dotenv_escape)\""
+' "$SECRETS_JSON" > "$VARS_FILE"
 
 echo "Loaded $(wc -l < "$SECRETS_FILE" | tr -d ' ') secrets and $(wc -l < "$VARS_FILE" | tr -d ' ') vars from $SECRETS_JSON"
 

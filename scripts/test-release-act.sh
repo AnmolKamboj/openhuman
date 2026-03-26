@@ -5,6 +5,10 @@
 # - Uses scripts/ci-secrets.example.json for secrets/vars.
 # - Runs in dry-run mode unless --run is passed.
 #
+# For --run: set XGH_TOKEN in scripts/ci-secrets.json (PAT with repo scope). nektos/act sets
+# ACT=true and uses a fake repository name, so the GitHub App token step is skipped and the
+# workflow uses XGH_TOKEN instead (see "Resolve release git token" in release.yml).
+#
 # Usage:
 #   ./scripts/test-release-act.sh
 #   ./scripts/test-release-act.sh --run
@@ -88,8 +92,18 @@ VARS_FILE="$(mktemp)"
 EVENT_JSON="$(mktemp)"
 trap 'rm -f "$SECRETS_FILE" "$VARS_FILE" "$EVENT_JSON"' EXIT
 
-jq -r '.secrets // {} | to_entries[] | "\(.key)=\(.value)"' "$SECRETS_JSON" > "$SECRETS_FILE"
-jq -r '.vars // {} | to_entries[] | "\(.key)=\(.value)"' "$SECRETS_JSON" > "$VARS_FILE"
+# act --secret-file/--var-file expect dotenv format. Unquoted multiline values break the
+# parser (PEM/private keys look like extra KEY= lines and trigger errors on '/' etc.).
+jq -r '
+def dotenv_escape:
+  gsub("\""; "\\\"") | gsub("\r"; "\\r") | gsub("\n"; "\\n");
+(.secrets // {}) | to_entries[] | "\(.key)=\"\(.value | dotenv_escape)\""
+' "$SECRETS_JSON" > "$SECRETS_FILE"
+jq -r '
+def dotenv_escape:
+  gsub("\""; "\\\"") | gsub("\r"; "\\r") | gsub("\n"; "\\n");
+(.vars // {}) | to_entries[] | "\(.key)=\"\(.value | dotenv_escape)\""
+' "$SECRETS_JSON" > "$VARS_FILE"
 
 cat > "$EVENT_JSON" <<EOF
 {
