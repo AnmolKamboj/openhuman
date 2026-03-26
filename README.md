@@ -17,7 +17,7 @@
   <a href="https://github.com/tinyhumansai/openhuman/releases/latest"><img src="https://img.shields.io/github/v/release/tinyhumansai/openhuman?label=latest" alt="Latest Release" /></a>
 </p>
 
-![The Tet](./docs/the-tet.png)
+![The Tet](./docs/the-tet.jpg)
 
 <p align="center" style="font-style: italic">
   "No Soul. No Humanity. The Tet. What a brilliant machine" — Morgan Freeman <a href="https://youtu.be/SveLVpqy_Rc?si=y83aZNokPiUjILN0&t=60">on alien superintelligence</a> in <em>Oblivion</em>
