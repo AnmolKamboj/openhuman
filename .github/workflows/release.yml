@@ -159,6 +159,7 @@ jobs:
   create-release:
     name: Create GitHub release
     runs-on: ubuntu-latest
+    environment: Production
     needs: prepare-release
     outputs:
       release_id: ${{ steps.create.outputs.release_id }}
@@ -203,6 +204,7 @@ jobs:
     name: Build and upload artifacts
     needs: [prepare-release, create-release]
     runs-on: ${{ matrix.settings.platform }}
+    environment: Production
     strategy:
       fail-fast: false
       matrix:
