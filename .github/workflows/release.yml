@@ -251,6 +251,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Install skills dependencies
+        run: cd skills && yarn install --frozen-lockfile
+
       - name: Build skills
         run: cd skills && yarn build
 
