@@ -17,10 +17,12 @@
   <a href="https://github.com/tinyhumansai/openhuman/releases/latest"><img src="https://img.shields.io/github/v/release/tinyhumansai/openhuman?label=latest" alt="Latest Release" /></a>
 </p>
 
-![The Tet](./docs/the-tet.jpg)
+<p align="center">
+  <img src="./docs/the-tet.jpg" alt="The Tet" />
+</p>
 
 <p align="center" style="font-style: italic">
-  "No Soul. No Humanity. The Tet. What a brilliant machine" — Morgan Freeman <a href="https://youtu.be/SveLVpqy_Rc?si=y83aZNokPiUjILN0&t=60">on alien superintelligence</a> in <em>Oblivion</em>
+  "The Tet. What a brilliant machine" — Morgan Freeman as he recalls about <a href="https://youtu.be/SveLVpqy_Rc?si=y83aZNokPiUjILN0&t=60">alien superintelligence</a> in the movie <em>Oblivion</em>
 </p>
 
 **Agentic system are everywhere.** Models wired into a script that call APIs, search, and file tools until the task looks done. That pattern is powerful for _tasks_, but it is not a self. It has no lasting inner model of _you_, no stable values across sessions, and no architecture for continuity at the scale of a life.
