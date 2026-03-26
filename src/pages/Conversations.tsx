@@ -44,7 +44,6 @@ import {
   setLastViewed,
   setPanelWidth,
   setSelectedThread,
-  updateMessagesForThread,
 } from '../store/threadSlice';
 import type { ThreadMessage } from '../types/thread';
 
@@ -344,31 +343,19 @@ const Conversations = () => {
       },
       onError: event => {
         if (event.thread_id !== selectedThreadIdRef.current) return;
-        if (event.error_type !== 'cancelled') {
-          setSendError(event.message);
-        }
         setIsSending(false);
         setActiveToolCall(null);
-        dispatch(setActiveThread(null));
 
-        // Remove the optimistic user message on error
-        dispatch((innerDispatch, getState) => {
-          const state = getState() as {
-            thread: { messagesByThreadId: Record<string, ThreadMessage[]> };
-          };
-          const persistedMessages = state.thread.messagesByThreadId[event.thread_id] || [];
-          const lastUserIdx = [...persistedMessages]
-            .reverse()
-            .findIndex(m => m.sender === 'user');
-          if (lastUserIdx !== -1) {
-            const actualIdx = persistedMessages.length - 1 - lastUserIdx;
-            const updated = persistedMessages.filter((_, i) => i !== actualIdx);
-            innerDispatch(updateMessagesForThread({ threadId: event.thread_id, messages: updated }));
-            if (event.thread_id === selectedThreadIdRef.current) {
-              innerDispatch(setSelectedThread(event.thread_id));
-            }
-          }
-        });
+        if (event.error_type !== 'cancelled') {
+          dispatch(
+            addInferenceResponse({
+              content: 'Something went wrong — please try again.',
+              threadId: event.thread_id,
+            })
+          );
+        } else {
+          dispatch(setActiveThread(null));
+        }
       },
     }).then(fn => {
       if (mounted) cleanup = fn;
@@ -633,32 +620,13 @@ const Conversations = () => {
 
       // Pass the original sending thread ID to ensure response goes to correct thread
       dispatch(addInferenceResponse({ content: finalContent, threadId: sendingThreadId }));
-    } catch (err) {
-      // Remove the user message from persistent storage on error
-      // We'll use a thunk-like approach to access current state
-      dispatch((innerDispatch, getState) => {
-        const state = getState() as {
-          thread: { messagesByThreadId: Record<string, ThreadMessage[]> };
-        };
-        const persistedMessages = state.thread.messagesByThreadId[sendingThreadId] || [];
-        const currentMessages = persistedMessages.filter(m => m.id !== userMessage.id);
-        innerDispatch(
-          updateMessagesForThread({ threadId: sendingThreadId, messages: currentMessages })
-        );
-
-        // Also remove from current view if this is the selected thread
-        if (sendingThreadId === selectedThreadId) {
-          innerDispatch(setSelectedThread(sendingThreadId));
-        }
-      });
-
-      const msg =
-        err && typeof err === 'object' && 'error' in err
-          ? String((err as { error: unknown }).error)
-          : 'Failed to get response';
-      setSendError(msg);
-      // Clear active thread on error
-      dispatch(setActiveThread(null));
+    } catch {
+      dispatch(
+        addInferenceResponse({
+          content: 'Something went wrong — please try again.',
+          threadId: sendingThreadId,
+        })
+      );
     } finally {
       clearTimeout(safetyTimeout);
       setIsSending(false);
