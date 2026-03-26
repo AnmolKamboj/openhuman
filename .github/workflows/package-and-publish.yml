@@ -6,19 +6,10 @@
 #
 # Jobs in this workflow will skip the "publish" step when `SHOULD_PUBLISH` is not set.
 
-name: Package and publish
+name: Package and publish (Legacy)
 
 on:
   workflow_dispatch:
-  # push:
-  #   branches:
-  #     - main
-  workflow_run:
-    workflows: ["Version Bump"]
-    types:
-      - completed
-    branches:
-      - main
   # pull_request:
   #   branches:
   #     - main
