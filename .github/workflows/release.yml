@@ -301,7 +301,7 @@ jobs:
           repo: openhuman
 
   cleanup-failed-release:
-    name: Remove release and tag after failed build
+    name: Remove release and tag if build failed
     runs-on: ubuntu-latest
     environment: Production
     needs: [prepare-release, create-release, build-artifacts]
