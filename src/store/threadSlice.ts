@@ -114,11 +114,13 @@ export const sendMessage = createAsyncThunk(
 
       return data;
     } catch (error) {
-      // Remove optimistic user message on failure
-      const state = (getState() as { thread: ThreadState }).thread;
-      const messages = state.messagesByThreadId[threadId] || [];
-      const filteredMessages = messages.filter(m => m.id !== userMessage.id);
-      dispatch(updateMessagesForThread({ threadId, messages: filteredMessages }));
+      // Add an error message as an agent response so the conversation flow continues
+      dispatch(
+        addInferenceResponse({
+          content: 'Something went wrong — please try again.',
+          threadId,
+        })
+      );
 
       const msg =
         error && typeof error === 'object' && 'error' in error
