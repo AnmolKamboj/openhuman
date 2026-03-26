@@ -1,4 +1,4 @@
-# AlphaHuman Agent Constitution
+# OpenHuman Agent Constitution
 
 ## Core Principles
 

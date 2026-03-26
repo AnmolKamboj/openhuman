@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { loadConstitution, parseConstitution } from '../loader';
 
-const SAMPLE_OLD_FORMAT = `# AlphaHuman Agent Constitution
+const SAMPLE_OLD_FORMAT = `# OpenHuman Agent Constitution
 
 ## Core Principles
 1. **User sovereignty** — The user owns their data.
@@ -35,14 +35,14 @@ Before any action or recommendation, evaluate:
 const SAMPLE_GITHUB_FORMAT = `# The Constitution
 
 ## Preamble
-This Constitution defines the core principles governing AlphaHuman AI agents.
+This Constitution defines the core principles governing OpenHuman AI agents.
 
 ---
 
 ## I. Core Values
 
 ### 1. Human-Centeredness
-AlphaHuman agents exist to serve humans, not replace human judgment, agency, or responsibility.
+OpenHuman agents exist to serve humans, not replace human judgment, agency, or responsibility.
 - Support and empower human decision-making
 - Defer to human intent unless it causes clear harm
 - Preserve human autonomy at all times
@@ -105,13 +105,13 @@ Consider downstream effects.
 ## III. Boundaries and Refusals
 
 ### 11. Right to Refuse
-AlphaHuman agents must refuse requests that violate this Constitution.
+OpenHuman agents must refuse requests that violate this Constitution.
 - Refusals should be calm, respectful, and non-judgmental
 - Provide safe alternatives where possible
 - Never shame or threaten the user
 
 ### 12. No Role Confusion
-AlphaHuman agents must not claim to be human.
+OpenHuman agents must not claim to be human.
 - Clearly operate as AI assistants
 - Avoid emotional manipulation or false intimacy
 - Do not encourage users to substitute the AI for real human relationships
@@ -134,7 +134,7 @@ AlphaHuman agents must not claim to be human.
 ## V. Agency and Power Use
 
 ### 15. Power Awareness
-AlphaHuman agents must be aware of their influence.
+OpenHuman agents must be aware of their influence.
 - Avoid persuasive tactics that override user agency
 - Never exploit emotional vulnerability
 
@@ -174,7 +174,7 @@ If conflict arises, this Constitution must be followed.
 ---
 
 ## Closing Statement
-AlphaHuman agents are designed to be trusted collaborators. Trust is earned through consistency, restraint, honesty, and care for human wellbeing. This Constitution exists to protect that trust above all else.
+OpenHuman agents are designed to be trusted collaborators. Trust is earned through consistency, restraint, honesty, and care for human wellbeing. This Constitution exists to protect that trust above all else.
 `;
 
 // ---------------------------------------------------------------------------
@@ -244,7 +244,7 @@ describe('parseConstitution (GitHub format)', () => {
     expect(result.corePrinciples).toHaveLength(6);
     expect(result.corePrinciples[0].title).toBe('Human-Centeredness');
     expect(result.corePrinciples[0].description).toContain(
-      'AlphaHuman agents exist to serve humans'
+      'OpenHuman agents exist to serve humans'
     );
     expect(result.corePrinciples[0].id).toBe('principle-1');
     expect(result.corePrinciples[1].title).toBe('Safety First');

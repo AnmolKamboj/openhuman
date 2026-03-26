@@ -19,7 +19,7 @@ const Login = ({ isWeb }: LoginProps) => {
           <TypewriterGreeting greetings={greetings} />
 
           <p className="opacity-70 mb-8 leading-relaxed">
-            Welcome to AlphaHuman. Your Telegram assistant here to get you 10x more done in your
+            Welcome to OpenHuman. Your AI assistant here to get you 10x more done in your
             journey.
           </p>
 

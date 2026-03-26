@@ -36,7 +36,7 @@ function getCurrentUserId(): string | null {
 }
 
 /**
- * Handle an `alphahuman://auth?token=...` deep link for login.
+ * Handle an `openhuman://auth?token=...` deep link for login.
  */
 const handleAuthDeepLink = async (parsed: URL) => {
   const token = parsed.searchParams.get('token');
@@ -65,7 +65,7 @@ const handleAuthDeepLink = async (parsed: URL) => {
 };
 
 /**
- * Handle `alphahuman://payment/success?session_id=...` deep links.
+ * Handle `openhuman://payment/success?session_id=...` deep links.
  * Fired when a Stripe checkout session completes and the browser redirects
  * back to the desktop app.
  */
@@ -103,8 +103,8 @@ const handlePaymentDeepLink = async (parsed: URL) => {
 };
 
 /**
- * Handle `alphahuman://oauth/success?integrationId=...&skillId=...`
- * and `alphahuman://oauth/error?error=...&provider=...` deep links.
+ * Handle `openhuman://oauth/success?integrationId=...&skillId=...`
+ * and `openhuman://oauth/error?error=...&provider=...` deep links.
  */
 const handleOAuthDeepLink = async (parsed: URL) => {
   // pathname is "/success" or "/error" (hostname is "oauth")
@@ -256,11 +256,11 @@ const handleOAuthDeepLink = async (parsed: URL) => {
 /**
  * Handle a list of deep link URLs delivered by the Tauri deep-link plugin.
  * Routes to the appropriate handler based on the URL hostname:
- *   - `alphahuman://auth?token=...` → login flow
- *   - `alphahuman://oauth/success?...` → OAuth completion
- *   - `alphahuman://oauth/error?...` → OAuth failure
- *   - `alphahuman://payment/success?session_id=...` → Stripe payment confirmation
- *   - `alphahuman://payment/cancel` → Stripe payment cancellation
+ *   - `openhuman://auth?token=...` → login flow
+ *   - `openhuman://oauth/success?...` → OAuth completion
+ *   - `openhuman://oauth/error?...` → OAuth failure
+ *   - `openhuman://payment/success?session_id=...` → Stripe payment confirmation
+ *   - `openhuman://payment/cancel` → Stripe payment cancellation
  */
 const handleDeepLinkUrls = async (urls: string[] | null | undefined) => {
   if (!urls || urls.length === 0) {
@@ -271,7 +271,7 @@ const handleDeepLinkUrls = async (urls: string[] | null | undefined) => {
 
   try {
     const parsed = new URL(url);
-    if (parsed.protocol !== 'alphahuman:' && parsed.protocol !== 'openhuman:') {
+    if (parsed.protocol !== 'openhuman:' && parsed.protocol !== 'alphahuman:') {
       return;
     }
 
@@ -296,7 +296,7 @@ const handleDeepLinkUrls = async (urls: string[] | null | undefined) => {
 
 /**
  * Set up listeners for deep links so that when the desktop app is opened
- * via a URL like `alphahuman://auth?token=...`, we can react to it.
+ * via a URL like `openhuman://auth?token=...`, we can react to it.
  * Only works in Tauri desktop app environment.
  */
 export const setupDesktopDeepLinkListener = async () => {
@@ -316,8 +316,8 @@ export const setupDesktopDeepLinkListener = async () => {
     });
 
     if (typeof window !== 'undefined') {
-      // window.__simulateDeepLink('alphahuman://auth?token=1234567890')
-      // window.__simulateDeepLink('alphahuman://oauth/success?integrationId=6989ef9c8e8bf1b6d991a08c&skillId=notion')
+      // window.__simulateDeepLink('openhuman://auth?token=1234567890')
+      // window.__simulateDeepLink('openhuman://oauth/success?integrationId=6989ef9c8e8bf1b6d991a08c&skillId=notion')
       const win = window as Window & { __simulateDeepLink?: (url: string) => Promise<void> };
       win.__simulateDeepLink = (url: string) => handleDeepLinkUrls([url]);
     }

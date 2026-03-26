@@ -54,7 +54,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
   const { mode = 'full' } = params;
 
   if (mode === 'none') {
-    const name = params.identity?.name || 'AlphaHuman';
+    const name = params.identity?.name || 'OpenHuman';
     return `You are ${name}, a crypto-native AI assistant.`;
   }
 

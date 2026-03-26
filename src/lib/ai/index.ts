@@ -1,5 +1,5 @@
 /**
- * AlphaHuman AI Intelligence System
+ * OpenHuman AI Intelligence System
  *
  * Client-side AI system inspired by OpenClaw's architecture, adapted for Tauri.
  *

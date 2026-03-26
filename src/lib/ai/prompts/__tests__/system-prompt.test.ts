@@ -45,9 +45,9 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('test assistant');
   });
 
-  it('should default to AlphaHuman identity', () => {
+  it('should default to OpenHuman identity', () => {
     const prompt = buildSystemPrompt({ constitution: mockConstitution });
-    expect(prompt).toContain('AlphaHuman');
+    expect(prompt).toContain('OpenHuman');
   });
 
   it('should include crypto intelligence section', () => {
@@ -121,7 +121,7 @@ describe('buildSystemPrompt', () => {
 
   it('should return minimal prompt in none mode', () => {
     const prompt = buildSystemPrompt({ constitution: mockConstitution, mode: 'none' });
-    expect(prompt).toContain('AlphaHuman');
+    expect(prompt).toContain('OpenHuman');
     expect(prompt).not.toContain('Constitution');
     expect(prompt).not.toContain('Crypto Intelligence');
   });

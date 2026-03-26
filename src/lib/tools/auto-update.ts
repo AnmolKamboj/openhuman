@@ -139,13 +139,13 @@ function generateToolsMarkdown(toolsBySkill: Record<string, RuntimeToolResponse[
   const skillCount = Object.keys(toolsBySkill).length;
 
   const content = [
-    `# AlphaHuman Tools
+    `# OpenHuman Tools
 
-This document lists all available tools that AlphaHuman can use to interact with external services and perform actions. Tools are organized by integration and automatically updated when the app loads.
+This document lists all available tools that OpenHuman can use to interact with external services and perform actions. Tools are organized by integration and automatically updated when the app loads.
 
 ## Overview
 
-AlphaHuman has access to **${totalTools} tools** across **${skillCount} integrations**.
+OpenHuman has access to **${totalTools} tools** across **${skillCount} integrations**.
 
 **Quick Statistics:**
 ${Object.entries(toolsBySkill)

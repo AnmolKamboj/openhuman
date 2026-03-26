@@ -7,7 +7,7 @@ import ConnectionIndicator from '../ConnectionIndicator';
 describe('ConnectionIndicator', () => {
   it('renders connected state with override prop', () => {
     renderWithProviders(<ConnectionIndicator status="connected" />);
-    expect(screen.getByText(/Connected to AlphaHuman AI/)).toBeInTheDocument();
+    expect(screen.getByText(/Connected to OpenHuman AI/)).toBeInTheDocument();
   });
 
   it('renders disconnected state', () => {

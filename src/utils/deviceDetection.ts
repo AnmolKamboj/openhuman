@@ -366,12 +366,12 @@ export function getDownloadLink(platform: Platform, releaseLinks?: PlatformDownl
 
   // Fallback to dummy links
   const links: Record<Platform, string> = {
-    windows: 'https://example.com/download/alphahuman-windows.exe',
-    macos: 'https://example.com/download/alphahuman-macos.dmg',
-    linux: 'https://example.com/download/alphahuman-linux.AppImage',
-    android: 'https://example.com/download/alphahuman-android.apk',
-    ios: 'https://apps.apple.com/app/alphahuman',
-    unknown: 'https://example.com/download',
+    windows: 'https://tryopenhuman.com/download/openhuman-windows.exe',
+    macos: 'https://tryopenhuman.com/download/openhuman-macos.dmg',
+    linux: 'https://tryopenhuman.com/download/openhuman-linux.AppImage',
+    android: 'https://tryopenhuman.com/download/openhuman-android.apk',
+    ios: 'https://apps.apple.com/app/openhuman',
+    unknown: 'https://tryopenhuman.com/download',
   };
 
   return links[platform];

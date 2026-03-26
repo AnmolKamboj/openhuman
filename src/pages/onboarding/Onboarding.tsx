@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import LottieAnimation from '../../components/LottieAnimation';
 import ProgressIndicator from '../../components/ProgressIndicator';
 import { userApi } from '../../services/api/userApi';
 import { setOnboardedForUser } from '../../store/authSlice';
@@ -16,13 +15,6 @@ const Onboarding = () => {
   const user = useAppSelector(state => state.user.user);
   const [currentStep, setCurrentStep] = useState(0);
   const totalSteps = 3;
-
-  // Lottie animation files for each step
-  const stepAnimations = [
-    '/lottie/wave.json', // Step 1 - Features
-    '/lottie/safe3.json', // Step 2 - Privacy
-    '/lottie/trophy.json', // Step 3 - Get Started
-  ];
 
   const handleNext = () => {
     if (currentStep < totalSteps) {

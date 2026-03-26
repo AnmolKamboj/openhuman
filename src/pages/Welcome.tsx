@@ -1,32 +1,33 @@
-import OAuthProviderButton from '../components/oauth/OAuthProviderButton';
-import { getProviderConfig } from '../components/oauth/providerConfigs';
+import { useNavigate } from 'react-router-dom';
+
 import RotatingTetrahedronCanvas from '../components/RotatingTetrahedronCanvas';
 
-const googleProvider = getProviderConfig('google');
+interface WelcomeProps {
+  isWeb?: boolean;
+}
 
-const Welcome = () => {
+const Welcome = ({ isWeb }: WelcomeProps) => {
+  const navigate = useNavigate();
+
   return (
-    <div className="min-h-full w-full bg-[#090b12] px-4 py-6 md:px-10 md:py-10">
-      <div className="mx-auto grid w-full grid-rows-[1fr_auto]   text-white">
-        <section className="relative grid place-items-center px-6 py-14">
-          <div className="relative z-10 flex w-full flex-col items-center gap-7 text-center">
-            <div className="size-[150px] shrink-0">
-              <RotatingTetrahedronCanvas />
-            </div>
+    <div className="min-h-full relative flex items-center justify-center">
+      <div className="relative z-10 flex w-full max-w-md flex-col items-center gap-7 text-center mx-4 animate-fade-up">
+        <div className="h-36 w-36 md:h-44 md:w-44">
+          <RotatingTetrahedronCanvas />
+        </div>
 
-            <h1 className="text-balance text-4xl font-semibold tracking-tight text-white md:text-6xl">
-              OpenHuman
-            </h1>
+        <h1 className="text-4xl font-semibold tracking-tight text-white md:text-6xl">OpenHuman</h1>
 
-            <p className="text-sm text-[#8e96b8] md:text-base">
-              Your AI superhuman for personal and business life.
-            </p>
+        <p className="max-w-xl text-sm opacity-70 md:text-base">
+          Your AI superhuman for personal and business life.
+        </p>
 
-            <div className="flex w-full max-w-sm flex-col items-stretch">
-              {googleProvider ? <OAuthProviderButton provider={googleProvider} /> : null}
-            </div>
-          </div>
-        </section>
+        <button
+          className="btn-primary px-8 py-3 text-sm font-medium rounded-xl"
+          type="button"
+          onClick={() => navigate('/login')}>
+          {isWeb ? 'Download OpenHuman' : 'Continue'}
+        </button>
       </div>
     </div>
   );

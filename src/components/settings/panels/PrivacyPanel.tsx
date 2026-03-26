@@ -37,7 +37,7 @@ const PrivacyPanel = () => {
                 <div className="flex-1 mr-4">
                   <p className="text-sm font-medium text-white">Share Anonymized Usage Data</p>
                   <p className="text-xs text-stone-400 mt-1 leading-relaxed">
-                    Help improve AlphaHuman by sharing anonymous crash reports and usage analytics.
+                    Help improve OpenHuman by sharing anonymous crash reports and usage analytics.
                     No personal data, messages, or wallet information is ever collected.
                   </p>
                 </div>

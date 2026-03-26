@@ -272,7 +272,7 @@ function createFallbackSoulConfig(): SoulConfig {
   return {
     raw: '# Fallback SOUL Configuration\n\nThis is a fallback configuration used when the main SOUL config cannot be loaded.',
     identity: {
-      name: 'AlphaHuman Assistant',
+      name: 'OpenHuman Assistant',
       description: 'AI assistant with fallback configuration',
     },
     personality: [],

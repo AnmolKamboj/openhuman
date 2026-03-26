@@ -9,7 +9,7 @@ interface ConnectionIndicatorProps {
 
 const ConnectionIndicator = ({
   status: overrideStatus,
-  description = 'Your device is now connected to the AlphaHuman AI. Keep the app running to keep the connection alive. You can message your assistant with the button below.',
+  description = 'Your device is now connected to the OpenHuman AI. Keep the app running to keep the connection alive. You can message your assistant with the button below.',
   className = '',
 }: ConnectionIndicatorProps) => {
   // Use socket store status, but allow override via props
@@ -19,7 +19,7 @@ const ConnectionIndicator = ({
     connected: {
       color: 'bg-sage-500',
       textColor: 'text-sage-500',
-      text: 'Connected to AlphaHuman AI 🚀',
+      text: 'Connected to OpenHuman AI 🚀',
     },
     disconnected: { color: 'bg-coral-500', textColor: 'text-coral-500', text: 'Disconnected' },
     connecting: { color: 'bg-amber-500', textColor: 'text-amber-500', text: 'Connecting' },
