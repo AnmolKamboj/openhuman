@@ -19,6 +19,7 @@ import aiReducer from './aiSlice';
 import authReducer, { setOnboardedForUser, setToken } from './authSlice';
 import daemonReducer from './daemonSlice';
 import gmailReducer from './gmailSlice';
+import intelligenceReducer from './intelligenceSlice';
 import inviteReducer from './inviteSlice';
 import notionReducer from './notionSlice';
 import skillsReducer from './skillsSlice';
@@ -104,6 +105,7 @@ export const store = configureStore({
     gmail: gmailReducer,
     team: teamReducer,
     thread: persistedThreadReducer,
+    intelligence: intelligenceReducer,
     invite: inviteReducer,
     notion: notionReducer,
   },
