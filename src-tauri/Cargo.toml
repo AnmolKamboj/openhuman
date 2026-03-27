@@ -22,10 +22,12 @@ path = "src/main.rs"
 [[bin]]
 name = "openhuman-core"
 path = "src/bin/openhuman-core.rs"
+required-features = ["standalone-bins"]
 
 [[bin]]
 name = "openhuman-cli"
 path = "src/bin/openhuman-cli.rs"
+required-features = ["standalone-bins"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -191,3 +193,4 @@ landlock = ["sandbox-landlock"]
 probe = ["dep:probe-rs"]
 rag-pdf = ["dep:pdf-extract"]
 whatsapp-web = ["dep:wa-rs", "dep:wa-rs-core", "dep:wa-rs-binary", "dep:wa-rs-proto", "dep:wa-rs-ureq-http", "dep:wa-rs-tokio-transport", "serde-big-array"]
+standalone-bins = []
