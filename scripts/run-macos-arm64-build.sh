@@ -1,35 +1,19 @@
 #!/usr/bin/env bash
-# Test the Release workflow locally using act.
-#
-# Defaults are safe:
-# - Uses scripts/ci-secrets.example.json for secrets/vars.
-# - Runs in dry-run mode unless --run is passed.
-#
-# For --run: set XGH_TOKEN in scripts/ci-secrets.json (PAT with repo scope). prepare-release uses
-# XGH_TOKEN for checkout/push. Do not put a bad GITHUB_TOKEN in ci-secrets.json — act uses it to
-# clone action repos and an invalid PAT breaks even public clones. github-script steps use
-# secrets.XGH_TOKEN (see release.yml).
+# Run the standalone macOS ARM64 Tauri build via nektos/act (self-hosted = your Mac).
+# No prepare-release, no tagging, no GitHub release upload (includeUpdaterJson: false).
 #
 # Usage:
-#   ./scripts/test-release-act.sh
-#   ./scripts/test-release-act.sh --run
-#   ./scripts/test-release-act.sh --list
-#   ./scripts/test-release-act.sh --job prepare-release
-#   ./scripts/test-release-act.sh --release-type minor
-#   ./scripts/test-release-act.sh --secrets-json scripts/ci-secrets.json --run
-#   # Single macOS (Apple Silicon) build for signing — pass through to act --matrix:
-#   ./scripts/test-release-act.sh --run --job build-artifacts \
-#     --matrix 'settings.platform:macos-latest' --matrix 'settings.args:--target aarch64-apple-darwin'
+#   ./scripts/run-macos-arm64-build.sh          # dry-run
+#   ./scripts/run-macos-arm64-build.sh --run    # full signed build on this machine
+#
+# Requires: act, jq, scripts/ci-secrets.json (copy from ci-secrets.example.json)
 
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
-WORKFLOW=".github/workflows/release.yml"
+WORKFLOW=".github/workflows/macos-arm64-build.yml"
 SECRETS_JSON="scripts/ci-secrets.json"
-RELEASE_TYPE="patch"
 RUN_MODE="dryrun"
-JOB_NAME=""
-MATRIX_ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -37,28 +21,12 @@ while [[ $# -gt 0 ]]; do
       RUN_MODE="run"
       shift
       ;;
-    --dryrun)
+    --dryrun|-n)
       RUN_MODE="dryrun"
       shift
       ;;
-    --list)
-      RUN_MODE="list"
-      shift
-      ;;
-    --job)
-      JOB_NAME="${2:-}"
-      shift 2
-      ;;
-    --release-type)
-      RELEASE_TYPE="${2:-patch}"
-      shift 2
-      ;;
     --secrets-json)
       SECRETS_JSON="${2:-}"
-      shift 2
-      ;;
-    --matrix)
-      MATRIX_ARGS+=(--matrix "${2:-}")
       shift 2
       ;;
     *)
@@ -83,27 +51,12 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-case "$RELEASE_TYPE" in
-  major|minor|patch) ;;
-  *)
-    echo "--release-type must be one of: major, minor, patch" >&2
-    exit 1
-    ;;
-esac
-
-if [[ "$RUN_MODE" == "list" ]]; then
-  act -W "$WORKFLOW" --list
-  exit 0
-fi
-
 SECRETS_FILE="$(mktemp)"
 VARS_FILE="$(mktemp)"
 EVENT_JSON="$(mktemp)"
 MERGED_SECRETS="$(mktemp)"
 trap 'rm -f "$SECRETS_FILE" "$VARS_FILE" "$EVENT_JSON" "$MERGED_SECRETS"' EXIT
 
-# Merge defaults: APPLE_APP_SPECIFIC_PASSWORD (APPLE_PASSWORD is a common alias).
-# Do not put GITHUB_TOKEN in the act secret file — an invalid PAT breaks act's clone of public actions.
 jq '
   .secrets |= (
     . + {
@@ -115,8 +68,6 @@ jq '
   )
 ' "$SECRETS_JSON" > "$MERGED_SECRETS"
 
-# act --secret-file/--var-file expect dotenv format. Unquoted multiline values break the
-# parser (PEM/private keys look like extra KEY= lines and trigger errors on '/' etc.).
 jq -r '
 def dotenv_escape:
   gsub("\""; "\\\"") | gsub("\r"; "\\r") | gsub("\n"; "\\n");
@@ -128,7 +79,6 @@ def dotenv_escape:
 (.vars // {}) | to_entries[] | "\(.key)=\"\(.value | dotenv_escape)\""
 ' "$SECRETS_JSON" > "$VARS_FILE"
 
-# Use real owner/repo from git so context.repo and tauri-action match your fork (not local/openhuman).
 REPO_FULL="${GITHUB_REPOSITORY:-}"
 if [[ -z "$REPO_FULL" ]]; then
   REPO_FULL="$(git remote get-url origin 2>/dev/null | sed -E 's#^git@github\.com:([^/]+)/([^/.]+)(\.git)?$#\1/\2#; s#^https://github\.com/([^/]+)/([^/.]+)(\.git)?$#\1/\2#')"
@@ -140,15 +90,19 @@ fi
 OWNER="${REPO_FULL%%/*}"
 REPO_NAME="${REPO_FULL##*/}"
 
+REF="$(git symbolic-ref -q HEAD || true)"
+if [[ -z "$REF" ]]; then
+  REF="refs/heads/main"
+fi
+
 jq -n \
-  --arg ref "refs/heads/main" \
-  --arg rt "$RELEASE_TYPE" \
+  --arg ref "$REF" \
   --arg full "$REPO_FULL" \
   --arg owner "$OWNER" \
   --arg name "$REPO_NAME" \
   '{
     ref: $ref,
-    inputs: { release_type: $rt },
+    inputs: {},
     repository: {
       full_name: $full,
       default_branch: "main",
@@ -160,13 +114,14 @@ jq -n \
 
 echo "Workflow: $WORKFLOW"
 echo "Secrets:  $SECRETS_JSON"
-echo "Input:    release_type=$RELEASE_TYPE"
+echo "Ref:      $REF"
 echo "Mode:     $RUN_MODE"
-if [[ -n "$JOB_NAME" ]]; then
-  echo "Job:      $JOB_NAME"
-fi
-if [[ ${#MATRIX_ARGS[@]} -gt 0 ]]; then
-  echo "Matrix:   ${MATRIX_ARGS[*]}"
+echo
+
+# act -b copies the tree without .git — submodules must be materialized here first.
+if [[ -d .git ]]; then
+  echo "Syncing git submodules (required for skills/, etc.)..."
+  git submodule update --init --recursive
 fi
 echo
 
@@ -176,22 +131,12 @@ ACT_ARGS=(
   --eventpath "$EVENT_JSON"
   --secret-file "$SECRETS_FILE"
   --var-file "$VARS_FILE"
-  --container-architecture linux/amd64
-  -P ubuntu-latest=catthehacker/ubuntu:act-latest
-  -P ubuntu-22.04=catthehacker/ubuntu:act-22.04
+  -b
   -P macos-latest=-self-hosted
 )
 
-if [[ -n "$JOB_NAME" ]]; then
-  ACT_ARGS+=(-j "$JOB_NAME")
-fi
-
-if [[ ${#MATRIX_ARGS[@]} -gt 0 ]]; then
-  ACT_ARGS+=("${MATRIX_ARGS[@]}")
-fi
-
 if [[ "$RUN_MODE" == "dryrun" ]]; then
-  echo "Dry-run only. Use --run to execute."
+  echo "Dry-run only. Use --run for the full macOS ARM64 build."
   act "${ACT_ARGS[@]}" -n
 else
   act "${ACT_ARGS[@]}"
