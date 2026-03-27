@@ -61,9 +61,8 @@ struct SharedState {
 // ---------------------------------------------------------------------------
 
 #[cfg(not(target_os = "android"))]
-type WsStream = tokio_tungstenite::WebSocketStream<
-    tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
->;
+type WsStream =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 // ---------------------------------------------------------------------------
 // Connection outcome (desktop + iOS)
@@ -191,8 +190,7 @@ impl SocketManager {
             let payload =
                 serde_json::to_string(&json!([event, data])).map_err(|e| format!("{e}"))?;
             let msg = format!("42{}", payload);
-            tx.send(msg)
-                .map_err(|_| "Socket not connected".to_string())
+            tx.send(msg).map_err(|_| "Socket not connected".to_string())
         } else {
             Err("Not connected".to_string())
         }
@@ -377,13 +375,12 @@ async fn run_connection(
     let (mut ws_write, mut ws_read) = ws_stream.split();
 
     // 4. Read Engine.IO OPEN packet
-    let open_data = match tokio::time::timeout(Duration::from_secs(10), read_eio_open(&mut ws_read))
-        .await
-    {
-        Ok(Ok(data)) => data,
-        Ok(Err(e)) => return ConnectionOutcome::Failed(format!("EIO OPEN: {e}")),
-        Err(_) => return ConnectionOutcome::Failed("Timeout waiting for EIO OPEN".into()),
-    };
+    let open_data =
+        match tokio::time::timeout(Duration::from_secs(10), read_eio_open(&mut ws_read)).await {
+            Ok(Ok(data)) => data,
+            Ok(Err(e)) => return ConnectionOutcome::Failed(format!("EIO OPEN: {e}")),
+            Err(_) => return ConnectionOutcome::Failed("Timeout waiting for EIO OPEN".into()),
+        };
 
     let ping_interval = open_data
         .get("pingInterval")
@@ -393,10 +390,7 @@ async fn run_connection(
         .get("pingTimeout")
         .and_then(|v| v.as_u64())
         .unwrap_or(20000);
-    let eio_sid = open_data
-        .get("sid")
-        .and_then(|v| v.as_str())
-        .unwrap_or("?");
+    let eio_sid = open_data.get("sid").and_then(|v| v.as_str()).unwrap_or("?");
     log::info!(
         "[socket-mgr] EIO OPEN: sid={}, ping={}ms, timeout={}ms",
         eio_sid,
@@ -407,10 +401,7 @@ async fn run_connection(
     // 5. Send Socket.IO CONNECT with auth
     let connect_payload = json!({"token": token});
     let connect_msg = format!("40{}", serde_json::to_string(&connect_payload).unwrap());
-    if let Err(e) = ws_write
-        .send(WsMessage::Text(connect_msg.into()))
-        .await
-    {
+    if let Err(e) = ws_write.send(WsMessage::Text(connect_msg.into())).await {
         return ConnectionOutcome::Failed(format!("Send SIO CONNECT: {e}"));
     }
 
@@ -661,7 +652,11 @@ fn handle_sio_packet(
         }
         b'4' => {
             // Socket.IO CONNECT_ERROR
-            let error_str = if text.len() > 1 { &text[1..] } else { "unknown" };
+            let error_str = if text.len() > 1 {
+                &text[1..]
+            } else {
+                "unknown"
+            };
             log::error!("[socket-mgr] SIO CONNECT_ERROR: {}", error_str);
         }
         _ => {
@@ -770,10 +765,7 @@ async fn handle_mcp_list_tools(
         Vec::new()
     };
 
-    log::info!(
-        "[socket-mgr] mcp:listToolsResponse — {} tools",
-        tools.len()
-    );
+    log::info!("[socket-mgr] mcp:listToolsResponse — {} tools", tools.len());
 
     emit_via_channel(
         emit_tx,
@@ -884,11 +876,7 @@ fn build_ws_url(url: &str) -> String {
 /// Send a Socket.IO event through the emit channel.
 /// Formats: `42["eventName", data]`
 #[cfg(not(target_os = "android"))]
-fn emit_via_channel(
-    tx: &mpsc::UnboundedSender<String>,
-    event: &str,
-    data: serde_json::Value,
-) {
+fn emit_via_channel(tx: &mpsc::UnboundedSender<String>, event: &str, data: serde_json::Value) {
     let payload = serde_json::to_string(&json!([event, data])).unwrap_or_default();
     let msg = format!("42{}", payload);
     if let Err(e) = tx.send(msg) {

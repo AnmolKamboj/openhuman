@@ -118,9 +118,8 @@ pub fn run_models_refresh(
                 });
             }
 
-            Err(error).with_context(|| {
-                format!("failed to refresh models for provider '{provider_name}'")
-            })
+            Err(error)
+                .with_context(|| format!("failed to refresh models for provider '{provider_name}'"))
         }
     }
 }
@@ -501,7 +500,10 @@ fn save_model_cache_state(workspace_dir: &Path, state: &ModelCacheState) -> Resu
     let path = model_cache_path(workspace_dir);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| {
-            format!("failed to create model cache directory {}", parent.display())
+            format!(
+                "failed to create model cache directory {}",
+                parent.display()
+            )
         })?;
     }
 

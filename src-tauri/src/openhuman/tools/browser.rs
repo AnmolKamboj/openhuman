@@ -430,8 +430,7 @@ impl BrowserTool {
             anyhow::bail!("Blocked local/private host: {host}");
         }
 
-        if !self.allowed_domains.is_empty()
-            && !host_matches_allowlist(&host, &self.allowed_domains)
+        if !self.allowed_domains.is_empty() && !host_matches_allowlist(&host, &self.allowed_domains)
         {
             anyhow::bail!("Host '{host}' not in browser.allowed_domains");
         }
@@ -2077,9 +2076,7 @@ fn is_non_global_v6(v6: std::net::Ipv6Addr) -> bool {
 
 fn allow_all_browser_domains() -> bool {
     matches!(
-        std::env::var("OPENHUMAN_BROWSER_ALLOW_ALL")
-            .ok()
-            .as_deref(),
+        std::env::var("OPENHUMAN_BROWSER_ALLOW_ALL").ok().as_deref(),
         Some("1") | Some("true") | Some("TRUE") | Some("yes") | Some("YES")
     )
 }

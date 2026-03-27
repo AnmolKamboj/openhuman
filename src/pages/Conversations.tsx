@@ -297,8 +297,7 @@ const Conversations = () => {
           const currentState = store.getState() as {
             thread: { messagesByThreadId: Record<string, ThreadMessage[]> };
           };
-          const threadMessages =
-            currentState.thread.messagesByThreadId[event.thread_id] || [];
+          const threadMessages = currentState.thread.messagesByThreadId[event.thread_id] || [];
           const lastMsg = threadMessages[threadMessages.length - 1];
           if (
             lastMsg?.sender === 'agent' &&

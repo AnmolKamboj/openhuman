@@ -62,16 +62,16 @@ pub async fn run(
     }
 
     log::info!("[openhuman] Daemon supervisor started");
-    log::info!(
-        "[openhuman]   data_dir:  {}",
-        config.data_dir.display()
-    );
+    log::info!("[openhuman]   data_dir:  {}", config.data_dir.display());
     log::info!(
         "[openhuman]   backoff:   {}s initial, {}s max",
         initial_backoff,
         max_backoff
     );
-    log::info!("[openhuman]   health:    Events will be emitted every {}s to frontend", STATUS_FLUSH_SECONDS);
+    log::info!(
+        "[openhuman]   health:    Events will be emitted every {}s to frontend",
+        STATUS_FLUSH_SECONDS
+    );
 
     // Wait for cancellation (Tauri exit)
     cancel.cancelled().await;
@@ -107,11 +107,10 @@ pub async fn run_full(
     crate::openhuman::health::mark_component_ok("daemon");
 
     if config.heartbeat.enabled {
-        let _ =
-            crate::openhuman::heartbeat::engine::HeartbeatEngine::ensure_heartbeat_file(
-                &config.workspace_dir,
-            )
-            .await;
+        let _ = crate::openhuman::heartbeat::engine::HeartbeatEngine::ensure_heartbeat_file(
+            &config.workspace_dir,
+        )
+        .await;
     }
 
     let mut handles: Vec<JoinHandle<()>> =
@@ -127,9 +126,7 @@ pub async fn run_full(
             move || {
                 let cfg = gateway_cfg.clone();
                 let host = gateway_host.clone();
-                async move {
-                    crate::openhuman::gateway::run_gateway(&host, port, cfg).await
-                }
+                async move { crate::openhuman::gateway::run_gateway(&host, port, cfg).await }
             },
         ));
     }
@@ -198,7 +195,6 @@ pub async fn run_full(
     Ok(())
 }
 
-
 /// Get the path to the daemon state file shared between internal and external processes.
 pub fn state_file_path(config: &Config) -> PathBuf {
     config
@@ -246,8 +242,7 @@ async fn run_heartbeat_worker(config: Config) -> Result<()> {
     );
 
     let interval_mins = config.heartbeat.interval_minutes.max(5);
-    let mut interval =
-        tokio::time::interval(Duration::from_secs(u64::from(interval_mins) * 60));
+    let mut interval = tokio::time::interval(Duration::from_secs(u64::from(interval_mins) * 60));
 
     loop {
         interval.tick().await;
@@ -260,15 +255,9 @@ async fn run_heartbeat_worker(config: Config) -> Result<()> {
         for task in tasks {
             let prompt = format!("[Heartbeat Task] {task}");
             let temp = config.default_temperature;
-            if let Err(e) = crate::openhuman::agent::run(
-                config.clone(),
-                Some(prompt),
-                None,
-                None,
-                temp,
-                vec![],
-            )
-            .await
+            if let Err(e) =
+                crate::openhuman::agent::run(config.clone(), Some(prompt), None, None, temp, vec![])
+                    .await
             {
                 crate::openhuman::health::mark_component_error("heartbeat", e.to_string());
                 log::warn!("Heartbeat task failed: {e}");
@@ -327,7 +316,10 @@ async fn spawn_state_writer(
         let _ = tokio::fs::create_dir_all(parent).await;
     }
 
-    log::info!("[openhuman] Health state writer starting ({}s intervals)", STATUS_FLUSH_SECONDS);
+    log::info!(
+        "[openhuman] Health state writer starting ({}s intervals)",
+        STATUS_FLUSH_SECONDS
+    );
     log::info!("[openhuman] Health state file: {}", state_path.display());
 
     let mut interval = tokio::time::interval(Duration::from_secs(STATUS_FLUSH_SECONDS));
@@ -335,17 +327,17 @@ async fn spawn_state_writer(
 
     loop {
         tokio::select! {
-            _ = interval.tick() => {
-                event_count += 1;
-                if event_count % 12 == 1 { // Log every minute (12 * 5s = 60s)
-//                     log::info!("[openhuman] Health monitoring active (event #{})", event_count);
+                    _ = interval.tick() => {
+                        event_count += 1;
+                        if event_count % 12 == 1 { // Log every minute (12 * 5s = 60s)
+        //                     log::info!("[openhuman] Health monitoring active (event #{})", event_count);
+                        }
+                    },
+                    _ = cancel.cancelled() => {
+                        log::info!("[openhuman] Health state writer received shutdown signal");
+                        break;
+                    }
                 }
-            },
-            _ = cancel.cancelled() => {
-                log::info!("[openhuman] Health state writer received shutdown signal");
-                break;
-            }
-        }
 
         let mut json = crate::openhuman::health::snapshot_json();
         if let Some(obj) = json.as_object_mut() {
@@ -353,22 +345,22 @@ async fn spawn_state_writer(
                 "written_at".into(),
                 serde_json::json!(Utc::now().to_rfc3339()),
             );
-            obj.insert(
-                "event_count".into(),
-                serde_json::json!(event_count),
-            );
+            obj.insert("event_count".into(), serde_json::json!(event_count));
         }
 
         // Emit Tauri event for frontend consumption
         // log::debug!("[openhuman] Emitting health event #{}: {:?}", event_count, json); // Removed noisy log
         if let Err(e) = app_handle.emit("openhuman:health", &json) {
-            log::error!("[openhuman] Failed to emit health event #{}: {}", event_count, e);
+            log::error!(
+                "[openhuman] Failed to emit health event #{}: {}",
+                event_count,
+                e
+            );
         }
         // log::debug!("[openhuman] Health event #{} emitted successfully", event_count); // Removed noisy log
 
         // Also persist to disk
-        let data =
-            serde_json::to_vec_pretty(&json).unwrap_or_else(|_| b"{}".to_vec());
+        let data = serde_json::to_vec_pretty(&json).unwrap_or_else(|_| b"{}".to_vec());
         if let Err(e) = tokio::fs::write(&state_path, data).await {
             log::debug!("[openhuman] Failed to write health state to disk: {}", e);
         }
@@ -446,8 +438,7 @@ mod tests {
 
     #[tokio::test]
     async fn supervisor_marks_unexpected_exit_as_error() {
-        let handle =
-            spawn_component_supervisor("th-daemon-test-exit", 1, 1, || async { Ok(()) });
+        let handle = spawn_component_supervisor("th-daemon-test-exit", 1, 1, || async { Ok(()) });
 
         tokio::time::sleep(Duration::from_millis(50)).await;
         handle.abort();

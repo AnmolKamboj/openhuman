@@ -26,8 +26,8 @@ pub async fn handle_metrics(State(state): State<AppState>) -> impl IntoResponse 
         .observer
         .as_ref()
         .as_any()
-        .downcast_ref::<crate::openhuman::observability::PrometheusObserver>()
-    {
+        .downcast_ref::<crate::openhuman::observability::PrometheusObserver>(
+    ) {
         prom.encode()
     } else {
         String::from(

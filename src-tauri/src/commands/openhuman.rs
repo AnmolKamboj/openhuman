@@ -1,10 +1,10 @@
 //! Tauri command proxies for the standalone openhuman core process.
 
-use crate::openhuman::{doctor, hardware, integrations, migration, onboard, service};
 use crate::core_server::{
     BrowserSettingsUpdate, CommandResponse, ConfigSnapshot, GatewaySettingsUpdate,
     MemorySettingsUpdate, ModelSettingsUpdate, RuntimeFlags, RuntimeSettingsUpdate,
 };
+use crate::openhuman::{doctor, hardware, integrations, migration, onboard, service};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
@@ -347,7 +347,8 @@ pub async fn openhuman_hardware_introspect(
 /// Return whether the local core agent server is reachable.
 #[tauri::command]
 pub async fn openhuman_agent_server_status() -> Result<CommandResponse<AgentServerStatus>, String> {
-    let url = std::env::var("OPENHUMAN_CORE_RPC_URL").unwrap_or_else(|_| DEFAULT_CORE_RPC_URL.to_string());
+    let url = std::env::var("OPENHUMAN_CORE_RPC_URL")
+        .unwrap_or_else(|_| DEFAULT_CORE_RPC_URL.to_string());
     let running = crate::core_rpc::ping().await;
     Ok(CommandResponse {
         result: AgentServerStatus { running, url },
@@ -389,8 +390,7 @@ pub async fn openhuman_service_stop(
     app: tauri::AppHandle,
 ) -> Result<CommandResponse<service::ServiceStatus>, String> {
     let config = load_config_local().await?;
-    let status = service::stop(&config)
-        .map_err(|e| e.to_string())?;
+    let status = service::stop(&config).map_err(|e| e.to_string())?;
 
     // Also stop any locally managed core process in this Tauri app.
     if let Some(core) = app.try_state::<crate::core_process::CoreProcessHandle>() {
@@ -424,8 +424,7 @@ pub async fn openhuman_service_uninstall(
     app: tauri::AppHandle,
 ) -> Result<CommandResponse<service::ServiceStatus>, String> {
     let config = load_config_local().await?;
-    let status = service::uninstall(&config)
-        .map_err(|e| e.to_string())?;
+    let status = service::uninstall(&config).map_err(|e| e.to_string())?;
 
     if let Some(core) = app.try_state::<crate::core_process::CoreProcessHandle>() {
         let core_handle: crate::core_process::CoreProcessHandle = (*core).clone();

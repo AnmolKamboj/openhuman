@@ -45,10 +45,7 @@ impl SkillTester {
         // rquickjs AsyncRuntime is Send so we can use tokio::task::spawn_blocking
         // or just run inline — we use spawn_blocking to avoid blocking the executor
         // on a potentially long-running JS init/start sequence.
-        let result = tokio::task::spawn_blocking(move || {
-            run_in_sync_context(&js_source)
-        })
-        .await;
+        let result = tokio::task::spawn_blocking(move || run_in_sync_context(&js_source)).await;
 
         match result {
             Ok(test_result) => test_result,
@@ -306,20 +303,15 @@ async fn run_async_test(js_source: &str) -> TestResult {
             }
             Ok(s) if s == "__promise__" => {
                 // Drive promises until done
-                let deadline =
-                    tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+                let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
                 loop {
                     drive_jobs(&qjs_rt).await;
 
                     let done = ctx
                         .with(move |js_ctx| {
-                            let check = format!(
-                                "globalThis.__testToolDone_{idx} === true",
-                                idx = idx
-                            );
-                            js_ctx
-                                .eval::<bool, _>(check.as_bytes())
-                                .unwrap_or(false)
+                            let check =
+                                format!("globalThis.__testToolDone_{idx} === true", idx = idx);
+                            js_ctx.eval::<bool, _>(check.as_bytes()).unwrap_or(false)
                         })
                         .await;
 
@@ -388,10 +380,7 @@ async fn run_async_test(js_source: &str) -> TestResult {
     TestResult {
         passed: true,
         output: if tool_outputs.is_empty() {
-            format!(
-                "All {} tool(s) passed",
-                tool_count
-            )
+            format!("All {} tool(s) passed", tool_count)
         } else {
             tool_outputs.join("; ")
         },
@@ -481,11 +470,7 @@ async fn call_lifecycle_fn(
                 })
                 .await;
 
-            return if err.is_empty() {
-                Ok(())
-            } else {
-                Err(err)
-            };
+            return if err.is_empty() { Ok(()) } else { Err(err) };
         }
 
         if tokio::time::Instant::now() > deadline {

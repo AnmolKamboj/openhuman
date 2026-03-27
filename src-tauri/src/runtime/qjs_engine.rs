@@ -13,10 +13,10 @@ use crate::runtime::cron_scheduler::CronScheduler;
 use crate::runtime::manifest::SkillManifest;
 use crate::runtime::ping_scheduler::PingScheduler;
 use crate::runtime::preferences::PreferencesStore;
+use crate::runtime::qjs_skill_instance::{BridgeDeps, QjsSkillInstance};
 use crate::runtime::skill_registry::SkillRegistry;
 use crate::runtime::socket_manager::SocketManager;
 use crate::runtime::types::{events, SkillMessage, SkillSnapshot, SkillStatus, ToolResult};
-use crate::runtime::qjs_skill_instance::{BridgeDeps, QjsSkillInstance};
 // IdbStorage removed during runtime cleanup
 
 /// The central runtime engine using QuickJS.
@@ -248,10 +248,7 @@ impl RuntimeEngine {
         let manifest_path = skill_dir.join("manifest.json");
 
         if !manifest_path.exists() {
-            return Err(format!(
-                "Skill '{}' not found (no manifest.json)",
-                skill_id
-            ));
+            return Err(format!("Skill '{}' not found (no manifest.json)", skill_id));
         }
 
         let manifest = SkillManifest::from_path(&manifest_path).await?;
@@ -266,12 +263,18 @@ impl RuntimeEngine {
         let data_dir = self.skills_data_dir.join(skill_id);
 
         // Create the QuickJS skill instance
-        log::info!("[runtime] Creating QuickJS skill instance for '{}'", skill_id);
+        log::info!(
+            "[runtime] Creating QuickJS skill instance for '{}'",
+            skill_id
+        );
         log::info!("[runtime] Config: {:?}", config);
         log::info!("[runtime] Skill dir: {:?}", skill_dir);
         log::info!("[runtime] Data dir: {:?}", data_dir);
         let (instance, rx) = QjsSkillInstance::new(config.clone(), skill_dir, data_dir.clone());
-        log::info!("[runtime] QuickJS skill instance created for '{}'", skill_id);
+        log::info!(
+            "[runtime] QuickJS skill instance created for '{}'",
+            skill_id
+        );
 
         // Bundle bridge dependencies (no creation lock needed for QuickJS)
         let deps = BridgeDeps {
@@ -380,7 +383,9 @@ impl RuntimeEngine {
         tool_name: &str,
         arguments: serde_json::Value,
     ) -> Result<ToolResult, String> {
-        self.registry.call_tool(skill_id, tool_name, arguments).await
+        self.registry
+            .call_tool(skill_id, tool_name, arguments)
+            .await
     }
 
     /// Broadcast a server event to all running skills.
@@ -505,7 +510,11 @@ impl RuntimeEngine {
                         params: serde_json::Value::Object(load_params),
                     };
                     if let Err(e) = self.registry.send_message(skill_id, msg) {
-                        log::warn!("[runtime] Failed to send LoadParams to skill '{}': {}", skill_id, e);
+                        log::warn!(
+                            "[runtime] Failed to send LoadParams to skill '{}': {}",
+                            skill_id,
+                            e
+                        );
                     }
                 }
                 Ok(serde_json::json!({ "ok": true }))
@@ -566,10 +575,7 @@ impl RuntimeEngine {
             }
 
             "tools/call" => {
-                let tool_name = params
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let tool_name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 let arguments = params
                     .get("arguments")
                     .cloned()

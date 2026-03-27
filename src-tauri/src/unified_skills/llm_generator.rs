@@ -81,13 +81,9 @@ impl LlmGenerator {
     }
 
     /// Generate a skill from scratch based on `task_description`.
-    pub async fn generate_spec(
-        &self,
-        task_description: &str,
-    ) -> Result<GenerateSkillSpec, String> {
-        let prompt = format!(
-            "Generate a QuickJS skill for the following task:\n\n{task_description}"
-        );
+    pub async fn generate_spec(&self, task_description: &str) -> Result<GenerateSkillSpec, String> {
+        let prompt =
+            format!("Generate a QuickJS skill for the following task:\n\n{task_description}");
         let code = self.call_anthropic(SYSTEM_PROMPT, &prompt).await?;
         Ok(self.build_spec(task_description, code))
     }
@@ -114,11 +110,7 @@ impl LlmGenerator {
     // -----------------------------------------------------------------------
 
     /// POST a single-turn chat to the Anthropic API and return the text response.
-    async fn call_anthropic(
-        &self,
-        system: &str,
-        user_message: &str,
-    ) -> Result<String, String> {
+    async fn call_anthropic(&self, system: &str, user_message: &str) -> Result<String, String> {
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(90))
             .build()
@@ -163,9 +155,7 @@ impl LlmGenerator {
             } else {
                 &body
             };
-            return Err(format!(
-                "Anthropic API error {status}: {trimmed}"
-            ));
+            return Err(format!("Anthropic API error {status}: {trimmed}"));
         }
 
         let resp: AnthropicResponse = response
@@ -193,10 +183,7 @@ impl LlmGenerator {
 
         GenerateSkillSpec {
             name,
-            description: task_description
-                .chars()
-                .take(200)
-                .collect::<String>(),
+            description: task_description.chars().take(200).collect::<String>(),
             skill_type: "openhuman".to_string(),
             // `tool_code` holds the full source when `full_index_js` is set;
             // this ensures the fallback path in `generate_openhuman` also has
@@ -224,37 +211,75 @@ impl LlmGenerator {
 fn smart_name(task_description: &str) -> String {
     // Preambles are checked case-insensitively (longest first to avoid partial matches).
     const PREAMBLES: &[&str] = &[
-        "create a skill that ", "create a skill to ", "create a skill which ",
-        "create a skill for ",  "create a skill ",
-        "write a skill that ",  "write a skill to ",  "write a skill which ",
-        "write a skill for ",   "write a skill ",
-        "build a skill that ",  "build a skill to ",  "build a skill which ",
-        "build a skill for ",   "build a skill ",
-        "make a skill that ",   "make a skill to ",   "make a skill which ",
-        "make a skill for ",    "make a skill ",
-        "generate a skill that ","generate a skill to ","generate a skill which ",
-        "generate a skill for ", "generate a skill ",
-        "a skill that ", "a skill to ", "a skill which ", "a skill for ",
+        "create a skill that ",
+        "create a skill to ",
+        "create a skill which ",
+        "create a skill for ",
+        "create a skill ",
+        "write a skill that ",
+        "write a skill to ",
+        "write a skill which ",
+        "write a skill for ",
+        "write a skill ",
+        "build a skill that ",
+        "build a skill to ",
+        "build a skill which ",
+        "build a skill for ",
+        "build a skill ",
+        "make a skill that ",
+        "make a skill to ",
+        "make a skill which ",
+        "make a skill for ",
+        "make a skill ",
+        "generate a skill that ",
+        "generate a skill to ",
+        "generate a skill which ",
+        "generate a skill for ",
+        "generate a skill ",
+        "a skill that ",
+        "a skill to ",
+        "a skill which ",
+        "a skill for ",
     ];
 
     // Leading fillers that add no meaning when they open the core phrase.
     const LEAD_FILLERS: &[&str] = &[
-        "returns ", "return ", "fetches ", "fetch ", "gets ", "get ",
-        "shows ", "show ", "displays ", "display ", "outputs ", "output ",
-        "reads ", "read ", "calculates ", "calculate ", "computes ", "compute ",
-        "lists ", "list ", "the ", "a ", "an ",
+        "returns ",
+        "return ",
+        "fetches ",
+        "fetch ",
+        "gets ",
+        "get ",
+        "shows ",
+        "show ",
+        "displays ",
+        "display ",
+        "outputs ",
+        "output ",
+        "reads ",
+        "read ",
+        "calculates ",
+        "calculate ",
+        "computes ",
+        "compute ",
+        "lists ",
+        "list ",
+        "the ",
+        "a ",
+        "an ",
     ];
 
     // Stop words skipped when selecting the 3 display tokens.
     const STOP_WORDS: &[&str] = &[
-        "a", "an", "the", "of", "from", "in", "at", "by", "for",
-        "with", "using", "via", "and", "or", "as", "to", "that",
+        "a", "an", "the", "of", "from", "in", "at", "by", "for", "with", "using", "via", "and",
+        "or", "as", "to", "that",
     ];
 
     let lower = task_description.to_lowercase();
 
     // Step 1 — strip preamble
-    let preamble_skip = PREAMBLES.iter()
+    let preamble_skip = PREAMBLES
+        .iter()
         .find(|p| lower.starts_with(*p))
         .map(|p| p.len())
         .unwrap_or(0);
@@ -262,12 +287,14 @@ fn smart_name(task_description: &str) -> String {
 
     // Step 2 — strip leading filler (up to two passes, e.g. "returns the ")
     let core_lower = core.to_lowercase();
-    let after_filler1 = LEAD_FILLERS.iter()
+    let after_filler1 = LEAD_FILLERS
+        .iter()
         .find(|f| core_lower.starts_with(*f))
         .map(|f| core[f.len()..].trim())
         .unwrap_or(core);
     let after_filler1_lower = after_filler1.to_lowercase();
-    let content = LEAD_FILLERS.iter()
+    let content = LEAD_FILLERS
+        .iter()
         .find(|f| after_filler1_lower.starts_with(*f))
         .map(|f| after_filler1[f.len()..].trim())
         .unwrap_or(after_filler1);
@@ -427,10 +454,7 @@ mod tests {
 
     #[test]
     fn smart_name_get_btc_eth() {
-        assert_eq!(
-            smart_name("Get BTC/ETH prices (live)"),
-            "BTC ETH Prices"
-        );
+        assert_eq!(smart_name("Get BTC/ETH prices (live)"), "BTC ETH Prices");
     }
 
     #[test]

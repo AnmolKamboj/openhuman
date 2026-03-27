@@ -95,7 +95,10 @@ async fn process_due_jobs(config: &Config, security: &Arc<SecurityPolicy>, jobs:
 
     while let Some((job_id, success)) = in_flight.next().await {
         if !success {
-            crate::openhuman::health::mark_component_error("scheduler", format!("job {job_id} failed"));
+            crate::openhuman::health::mark_component_error(
+                "scheduler",
+                format!("job {job_id} failed"),
+            );
         }
     }
 }

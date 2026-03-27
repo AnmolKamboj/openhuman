@@ -239,9 +239,7 @@ pub enum ToolsPayload {
 
 fn should_log_prompts() -> bool {
     matches!(
-        std::env::var("OPENHUMAN_LOG_PROMPTS")
-            .ok()
-            .as_deref(),
+        std::env::var("OPENHUMAN_LOG_PROMPTS").ok().as_deref(),
         Some("1") | Some("true") | Some("TRUE") | Some("yes") | Some("YES")
     )
 }

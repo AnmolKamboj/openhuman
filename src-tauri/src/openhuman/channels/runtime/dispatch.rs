@@ -1,16 +1,16 @@
 //! Channel runtime loop and message processing.
 
+use crate::openhuman::agent::loop_::run_tool_call_loop;
 use crate::openhuman::channels::context::{
-    build_memory_context, compact_sender_history, conversation_history_key, conversation_memory_key,
-    is_context_window_overflow_error, ChannelRuntimeContext, CHANNEL_TYPING_REFRESH_INTERVAL_SECS,
-    MAX_CHANNEL_HISTORY,
+    build_memory_context, compact_sender_history, conversation_history_key,
+    conversation_memory_key, is_context_window_overflow_error, ChannelRuntimeContext,
+    CHANNEL_TYPING_REFRESH_INTERVAL_SECS, MAX_CHANNEL_HISTORY,
 };
 use crate::openhuman::channels::routes::{
     get_or_create_provider, get_route_selection, handle_runtime_command_if_needed,
 };
 use crate::openhuman::channels::traits;
 use crate::openhuman::channels::{Channel, SendMessage};
-use crate::openhuman::agent::loop_::run_tool_call_loop;
 use crate::openhuman::providers::{self, ChatMessage};
 use crate::openhuman::util::truncate_with_ellipsis;
 use std::sync::Arc;

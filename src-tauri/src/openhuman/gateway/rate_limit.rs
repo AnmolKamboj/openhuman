@@ -85,7 +85,8 @@ pub struct GatewayRateLimiter {
 
 impl GatewayRateLimiter {
     pub fn new(pair_per_minute: u32, webhook_per_minute: u32, max_keys: usize) -> Self {
-        let window = Duration::from_secs(crate::openhuman::gateway::constants::RATE_LIMIT_WINDOW_SECS);
+        let window =
+            Duration::from_secs(crate::openhuman::gateway::constants::RATE_LIMIT_WINDOW_SECS);
         Self {
             pair: SlidingWindowRateLimiter::new(pair_per_minute, window, max_keys),
             webhook: SlidingWindowRateLimiter::new(webhook_per_minute, window, max_keys),

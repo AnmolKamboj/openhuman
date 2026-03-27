@@ -133,7 +133,10 @@ impl AgentBuilder {
         self
     }
 
-    pub fn identity_config(mut self, identity_config: crate::openhuman::config::IdentityConfig) -> Self {
+    pub fn identity_config(
+        mut self,
+        identity_config: crate::openhuman::config::IdentityConfig,
+    ) -> Self {
         self.identity_config = Some(identity_config);
         self
     }
@@ -664,7 +667,10 @@ mod tests {
             serde_json::json!({"type": "object"})
         }
 
-        async fn execute(&self, _args: serde_json::Value) -> Result<crate::openhuman::tools::ToolResult> {
+        async fn execute(
+            &self,
+            _args: serde_json::Value,
+        ) -> Result<crate::openhuman::tools::ToolResult> {
             Ok(crate::openhuman::tools::ToolResult {
                 success: true,
                 output: "tool-out".into(),
@@ -687,10 +693,16 @@ mod tests {
             ..crate::openhuman::config::MemoryConfig::default()
         };
         let mem: Arc<dyn Memory> = Arc::from(
-            crate::openhuman::memory::create_memory(&memory_cfg, std::path::Path::new("/tmp"), None).unwrap(),
+            crate::openhuman::memory::create_memory(
+                &memory_cfg,
+                std::path::Path::new("/tmp"),
+                None,
+            )
+            .unwrap(),
         );
 
-        let observer: Arc<dyn Observer> = Arc::from(crate::openhuman::observability::NoopObserver {});
+        let observer: Arc<dyn Observer> =
+            Arc::from(crate::openhuman::observability::NoopObserver {});
         let mut agent = Agent::builder()
             .provider(provider)
             .tools(vec![Box::new(MockTool)])
@@ -729,10 +741,16 @@ mod tests {
             ..crate::openhuman::config::MemoryConfig::default()
         };
         let mem: Arc<dyn Memory> = Arc::from(
-            crate::openhuman::memory::create_memory(&memory_cfg, std::path::Path::new("/tmp"), None).unwrap(),
+            crate::openhuman::memory::create_memory(
+                &memory_cfg,
+                std::path::Path::new("/tmp"),
+                None,
+            )
+            .unwrap(),
         );
 
-        let observer: Arc<dyn Observer> = Arc::from(crate::openhuman::observability::NoopObserver {});
+        let observer: Arc<dyn Observer> =
+            Arc::from(crate::openhuman::observability::NoopObserver {});
         let mut agent = Agent::builder()
             .provider(provider)
             .tools(vec![Box::new(MockTool)])

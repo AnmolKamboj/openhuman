@@ -102,9 +102,7 @@ pub enum SkillMessage {
     },
     /// Load params from frontend (e.g. wallet address for wallet skill).
     /// Delivered after skill/load RPC; skill may export onLoad(params) to receive them.
-    LoadParams {
-        params: serde_json::Value,
-    },
+    LoadParams { params: serde_json::Value },
 }
 
 /// Result of executing a tool.

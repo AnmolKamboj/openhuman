@@ -104,7 +104,9 @@ async fn metrics_endpoint_returns_hint_when_prometheus_is_disabled() {
         observer: Arc::new(crate::openhuman::observability::NoopObserver),
     };
 
-    let response = handle_metrics(axum::extract::State(state)).await.into_response();
+    let response = handle_metrics(axum::extract::State(state))
+        .await
+        .into_response();
     assert_eq!(response.status(), axum::http::StatusCode::OK);
     assert_eq!(
         response
@@ -147,7 +149,9 @@ async fn metrics_endpoint_renders_prometheus_output() {
         observer,
     };
 
-    let response = handle_metrics(axum::extract::State(state)).await.into_response();
+    let response = handle_metrics(axum::extract::State(state))
+        .await
+        .into_response();
     assert_eq!(response.status(), axum::http::StatusCode::OK);
 
     let body = response.into_body().collect().await.unwrap().to_bytes();

@@ -2,10 +2,10 @@
 
 use crate::openhuman::channels::{LinqChannel, WhatsAppChannel};
 use crate::openhuman::config::Config;
+use crate::openhuman::gateway::rate_limit::{GatewayRateLimiter, IdempotencyStore};
 use crate::openhuman::memory::Memory;
 use crate::openhuman::providers::Provider;
 use crate::openhuman::security::pairing::PairingGuard;
-use crate::openhuman::gateway::rate_limit::{GatewayRateLimiter, IdempotencyStore};
 use parking_lot::Mutex;
 use std::sync::Arc;
 

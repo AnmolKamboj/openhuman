@@ -221,7 +221,11 @@ impl OpenRouterProvider {
     }
 
     fn http_client(&self) -> Client {
-        crate::openhuman::config::build_runtime_proxy_client_with_timeouts("provider.openrouter", 120, 10)
+        crate::openhuman::config::build_runtime_proxy_client_with_timeouts(
+            "provider.openrouter",
+            120,
+            10,
+        )
     }
 }
 

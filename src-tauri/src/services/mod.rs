@@ -6,4 +6,3 @@ pub mod quickjs_libs;
 
 #[cfg(desktop)]
 pub mod notification_service;
-

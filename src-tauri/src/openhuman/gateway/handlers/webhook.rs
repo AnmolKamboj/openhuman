@@ -72,7 +72,8 @@ pub async fn handle_webhook(
     headers: HeaderMap,
     body: Result<Json<WebhookBody>, axum::extract::rejection::JsonRejection>,
 ) -> impl IntoResponse {
-    let rate_key = client_key_from_request(Some(peer_addr), &headers, state.trust_forwarded_headers);
+    let rate_key =
+        client_key_from_request(Some(peer_addr), &headers, state.trust_forwarded_headers);
     if !state.rate_limiter.allow_webhook(&rate_key) {
         tracing::warn!("/webhook rate limit exceeded");
         let err = serde_json::json!({
@@ -110,8 +111,7 @@ pub async fn handle_webhook(
             Some(val) if constant_time_eq(&val, secret_hash.as_ref()) => {}
             _ => {
                 tracing::warn!("Webhook: rejected request — invalid or missing X-Webhook-Secret");
-                let err =
-                    serde_json::json!({"error": "Unauthorized — invalid or missing X-Webhook-Secret header"});
+                let err = serde_json::json!({"error": "Unauthorized — invalid or missing X-Webhook-Secret header"});
                 return (StatusCode::UNAUTHORIZED, Json(err));
             }
         }
@@ -179,44 +179,44 @@ pub async fn handle_webhook(
     let model_label = state.model.clone();
     let started_at = Instant::now();
 
-    state
-        .observer
-        .record_event(&crate::openhuman::observability::ObserverEvent::AgentStart {
+    state.observer.record_event(
+        &crate::openhuman::observability::ObserverEvent::AgentStart {
             provider: provider_label.clone(),
             model: model_label.clone(),
-        });
-    state
-        .observer
-        .record_event(&crate::openhuman::observability::ObserverEvent::LlmRequest {
+        },
+    );
+    state.observer.record_event(
+        &crate::openhuman::observability::ObserverEvent::LlmRequest {
             provider: provider_label.clone(),
             model: model_label.clone(),
             messages_count: 1,
-        });
+        },
+    );
 
     match run_gateway_chat_with_multimodal(&state, &provider_label, message).await {
         Ok(response) => {
             let duration = started_at.elapsed();
-            state
-                .observer
-                .record_event(&crate::openhuman::observability::ObserverEvent::LlmResponse {
+            state.observer.record_event(
+                &crate::openhuman::observability::ObserverEvent::LlmResponse {
                     provider: provider_label.clone(),
                     model: model_label.clone(),
                     duration,
                     success: true,
                     error_message: None,
-                });
+                },
+            );
             state.observer.record_metric(
                 &crate::openhuman::observability::traits::ObserverMetric::RequestLatency(duration),
             );
-            state
-                .observer
-                .record_event(&crate::openhuman::observability::ObserverEvent::AgentEnd {
+            state.observer.record_event(
+                &crate::openhuman::observability::ObserverEvent::AgentEnd {
                     provider: provider_label,
                     model: model_label,
                     duration,
                     tokens_used: None,
                     cost_usd: None,
-                });
+                },
+            );
 
             let body = serde_json::json!({"response": response, "model": state.model});
             (StatusCode::OK, Json(body))
@@ -225,15 +225,15 @@ pub async fn handle_webhook(
             let duration = started_at.elapsed();
             let sanitized = providers::sanitize_api_error(&e.to_string());
 
-            state
-                .observer
-                .record_event(&crate::openhuman::observability::ObserverEvent::LlmResponse {
+            state.observer.record_event(
+                &crate::openhuman::observability::ObserverEvent::LlmResponse {
                     provider: provider_label.clone(),
                     model: model_label.clone(),
                     duration,
                     success: false,
                     error_message: Some(sanitized.clone()),
-                });
+                },
+            );
             state.observer.record_metric(
                 &crate::openhuman::observability::traits::ObserverMetric::RequestLatency(duration),
             );
@@ -243,15 +243,15 @@ pub async fn handle_webhook(
                     component: "gateway".to_string(),
                     message: sanitized.clone(),
                 });
-            state
-                .observer
-                .record_event(&crate::openhuman::observability::ObserverEvent::AgentEnd {
+            state.observer.record_event(
+                &crate::openhuman::observability::ObserverEvent::AgentEnd {
                     provider: provider_label,
                     model: model_label,
                     duration,
                     tokens_used: None,
                     cost_usd: None,
-                });
+                },
+            );
 
             tracing::error!("Webhook provider error: {}", sanitized);
             let err = serde_json::json!({"error": "LLM request failed"});

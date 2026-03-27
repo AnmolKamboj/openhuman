@@ -11,8 +11,8 @@
 // Many types/functions are not yet consumed but are intentionally exported.
 #![allow(dead_code)]
 
-pub mod approval;
 pub mod agent;
+pub mod approval;
 pub mod channels;
 pub mod config;
 pub mod cost;
@@ -28,8 +28,8 @@ pub mod integrations;
 pub mod memory;
 pub mod migration;
 pub mod multimodal;
-pub mod onboard;
 pub mod observability;
+pub mod onboard;
 pub mod peripherals;
 pub mod providers;
 pub mod rag;

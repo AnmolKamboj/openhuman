@@ -66,7 +66,7 @@ where
 
         let result = match runtime_result {
             Ok(value) => Ok(value),
-            Err(e) => Err(format!("Runtime creation failed: {}", e))
+            Err(e) => Err(format!("Runtime creation failed: {}", e)),
         };
 
         let _ = tx.send(result);

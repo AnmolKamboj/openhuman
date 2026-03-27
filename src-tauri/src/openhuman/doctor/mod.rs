@@ -87,7 +87,11 @@ pub fn run(config: &Config) -> Result<DoctorReport> {
 
     Ok(DoctorReport {
         items,
-        summary: DoctorSummary { ok, warnings, errors },
+        summary: DoctorSummary {
+            ok,
+            warnings,
+            errors,
+        },
     })
 }
 
@@ -618,7 +622,10 @@ fn check_daemon_state(config: &Config, items: &mut Vec<DiagnosticItem>) {
     let raw = match std::fs::read_to_string(&state_file) {
         Ok(r) => r,
         Err(e) => {
-            items.push(DiagnosticItem::error(cat, format!("cannot read state file: {e}")));
+            items.push(DiagnosticItem::error(
+                cat,
+                format!("cannot read state file: {e}"),
+            ));
             return;
         }
     };
@@ -626,7 +633,10 @@ fn check_daemon_state(config: &Config, items: &mut Vec<DiagnosticItem>) {
     let snapshot: serde_json::Value = match serde_json::from_str(&raw) {
         Ok(v) => v,
         Err(e) => {
-            items.push(DiagnosticItem::error(cat, format!("invalid state JSON: {e}")));
+            items.push(DiagnosticItem::error(
+                cat,
+                format!("invalid state JSON: {e}"),
+            ));
             return;
         }
     };
@@ -642,7 +652,10 @@ fn check_daemon_state(config: &Config, items: &mut Vec<DiagnosticItem>) {
             .signed_duration_since(ts.with_timezone(&Utc))
             .num_seconds();
         if age <= DAEMON_STALE_SECONDS {
-            items.push(DiagnosticItem::ok(cat, format!("heartbeat fresh ({age}s ago)")));
+            items.push(DiagnosticItem::ok(
+                cat,
+                format!("heartbeat fresh ({age}s ago)"),
+            ));
         } else {
             items.push(DiagnosticItem::error(
                 cat,
@@ -687,7 +700,10 @@ fn check_daemon_state(config: &Config, items: &mut Vec<DiagnosticItem>) {
                 ));
             }
         } else {
-            items.push(DiagnosticItem::warn(cat, "scheduler component not tracked yet"));
+            items.push(DiagnosticItem::warn(
+                cat,
+                "scheduler component not tracked yet",
+            ));
         }
 
         // Channels
@@ -711,7 +727,10 @@ fn check_daemon_state(config: &Config, items: &mut Vec<DiagnosticItem>) {
                 });
 
             if status_ok && age <= CHANNEL_STALE_SECONDS {
-                items.push(DiagnosticItem::ok(cat, format!("{name} fresh ({age}s ago)")));
+                items.push(DiagnosticItem::ok(
+                    cat,
+                    format!("{name} fresh ({age}s ago)"),
+                ));
             } else {
                 stale += 1;
                 items.push(DiagnosticItem::error(
@@ -722,7 +741,10 @@ fn check_daemon_state(config: &Config, items: &mut Vec<DiagnosticItem>) {
         }
 
         if channel_count == 0 {
-            items.push(DiagnosticItem::warn(cat, "no channel components tracked yet"));
+            items.push(DiagnosticItem::warn(
+                cat,
+                "no channel components tracked yet",
+            ));
         } else if stale > 0 {
             items.push(DiagnosticItem::warn(
                 cat,
@@ -762,7 +784,12 @@ fn check_environment(items: &mut Vec<DiagnosticItem>) {
     check_command_available("curl", &["--version"], cat, items);
 }
 
-fn check_command_available(cmd: &str, args: &[&str], cat: &'static str, items: &mut Vec<DiagnosticItem>) {
+fn check_command_available(
+    cmd: &str,
+    args: &[&str],
+    cat: &'static str,
+    items: &mut Vec<DiagnosticItem>,
+) {
     match std::process::Command::new(cmd)
         .args(args)
         .stdout(std::process::Stdio::piped())

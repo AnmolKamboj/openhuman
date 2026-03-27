@@ -86,9 +86,7 @@ pub fn start(config: &Config) -> Result<ServiceStatus> {
                     .arg(&plist),
             );
             if let Err(err) = bootstrap_ok {
-                log::warn!(
-                    "[service] launchctl bootstrap failed, falling back to load -w: {err}"
-                );
+                log::warn!("[service] launchctl bootstrap failed, falling back to load -w: {err}");
                 run_checked(Command::new("launchctl").arg("load").arg("-w").arg(&plist))?;
             }
         } else {
@@ -217,7 +215,11 @@ pub fn stop(config: &Config) -> Result<ServiceStatus> {
 
         // Compatibility fallback.
         run_best_effort(Command::new("launchctl").arg("stop").arg(SERVICE_LABEL));
-        run_best_effort(Command::new("launchctl").arg("stop").arg(LEGACY_SERVICE_LABEL));
+        run_best_effort(
+            Command::new("launchctl")
+                .arg("stop")
+                .arg(LEGACY_SERVICE_LABEL),
+        );
         return status(config);
     }
 
@@ -579,8 +581,12 @@ fn run_best_effort(cmd: &mut Command) {
 
 /// Check if the macOS LaunchAgent service is loaded (regardless of running state)
 fn is_service_loaded_macos() -> Result<bool> {
-    if run_checked(Command::new("launchctl").arg("print").arg(macos_target(SERVICE_LABEL)?))
-        .is_ok()
+    if run_checked(
+        Command::new("launchctl")
+            .arg("print")
+            .arg(macos_target(SERVICE_LABEL)?),
+    )
+    .is_ok()
     {
         return Ok(true);
     }

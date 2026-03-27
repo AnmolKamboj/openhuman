@@ -966,7 +966,9 @@ pub(crate) async fn run_tool_call_loop(
                         model: model.to_string(),
                         duration: llm_started_at.elapsed(),
                         success: false,
-                        error_message: Some(crate::openhuman::providers::sanitize_api_error(&e.to_string())),
+                        error_message: Some(crate::openhuman::providers::sanitize_api_error(
+                            &e.to_string(),
+                        )),
                     });
                     return Err(e);
                 }
@@ -1567,7 +1569,10 @@ pub async fn run(
             final_output = response.clone();
             if let Err(e) = crate::openhuman::channels::Channel::send(
                 &cli,
-                &crate::openhuman::channels::traits::SendMessage::new(format!("\n{response}\n"), "user"),
+                &crate::openhuman::channels::traits::SendMessage::new(
+                    format!("\n{response}\n"),
+                    "user",
+                ),
             )
             .await
             {
@@ -2792,7 +2797,10 @@ browser_open/url>https://example.com"#;
     fn parse_tool_calls_closing_tag_only_returns_text() {
         let response = "Some text </tool_call> more text";
         let (text, calls) = parse_tool_calls(response);
-        assert!(calls.is_empty(), "closing tag only should not produce calls");
+        assert!(
+            calls.is_empty(),
+            "closing tag only should not produce calls"
+        );
         assert!(
             !text.is_empty(),
             "text around orphaned closing tag should be preserved"
@@ -2841,7 +2849,11 @@ browser_open/url>https://example.com"#;
 
 Let me check the result."#;
         let (text, calls) = parse_tool_calls(response);
-        assert_eq!(calls.len(), 1, "should extract one tool call from mixed content");
+        assert_eq!(
+            calls.len(),
+            1,
+            "should extract one tool call from mixed content"
+        );
         assert_eq!(calls[0].name, "shell");
         assert!(
             text.contains("help you"),
@@ -2863,7 +2875,10 @@ Let me check the result."#;
     fn scrub_credentials_no_sensitive_data() {
         let input = "normal text without any secrets";
         let result = scrub_credentials(input);
-        assert_eq!(result, input, "non-sensitive text should pass through unchanged");
+        assert_eq!(
+            result, input,
+            "non-sensitive text should pass through unchanged"
+        );
     }
 
     #[test]
@@ -2887,7 +2902,9 @@ Let me check the result."#;
 
     #[test]
     fn trim_history_system_only() {
-        let mut history = vec![crate::openhuman::providers::ChatMessage::system("system prompt")];
+        let mut history = vec![crate::openhuman::providers::ChatMessage::system(
+            "system prompt",
+        )];
         trim_history(&mut history, 10);
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].role, "system");

@@ -8,7 +8,6 @@ use std::sync::Arc;
 pub static SESSION_SERVICE: Lazy<Arc<SessionService>> =
     Lazy::new(|| Arc::new(SessionService::new()));
 
-
 /// Get the current authentication state
 #[tauri::command]
 pub fn get_auth_state() -> AuthState {

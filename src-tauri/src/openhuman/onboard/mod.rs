@@ -2,9 +2,7 @@
 
 pub mod models;
 
-pub use models::{
-    run_models_refresh, ModelCacheSnapshot, ModelRefreshResult, ModelRefreshSource,
-};
+pub use models::{run_models_refresh, ModelCacheSnapshot, ModelRefreshResult, ModelRefreshSource};
 
 #[cfg(test)]
 mod tests {

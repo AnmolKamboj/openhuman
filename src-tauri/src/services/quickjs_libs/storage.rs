@@ -201,7 +201,10 @@ impl IdbStorage {
 
         // Remove from registry
         conn_guard
-            .execute("DELETE FROM _idb_stores WHERE name = ?", params![store_name])
+            .execute(
+                "DELETE FROM _idb_stores WHERE name = ?",
+                params![store_name],
+            )
             .map_err(|e| format!("Failed to delete object store: {e}"))?;
 
         // Drop the table
@@ -401,8 +404,7 @@ impl IdbStorage {
             .map(|v| -> Box<dyn rusqlite::ToSql> { Box::new(json_to_sql(v)) })
             .collect();
 
-        let params_refs: Vec<&dyn rusqlite::ToSql> =
-            params.iter().map(|b| b.as_ref()).collect();
+        let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|b| b.as_ref()).collect();
 
         conn_guard
             .execute(sql, params_refs.as_slice())
@@ -425,8 +427,7 @@ impl IdbStorage {
             .map(|v| -> Box<dyn rusqlite::ToSql> { Box::new(json_to_sql(v)) })
             .collect();
 
-        let params_refs: Vec<&dyn rusqlite::ToSql> =
-            params.iter().map(|b| b.as_ref()).collect();
+        let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|b| b.as_ref()).collect();
 
         let mut stmt = conn_guard
             .prepare(sql)
@@ -470,8 +471,7 @@ impl IdbStorage {
             .map(|v| -> Box<dyn rusqlite::ToSql> { Box::new(json_to_sql(v)) })
             .collect();
 
-        let params_refs: Vec<&dyn rusqlite::ToSql> =
-            params.iter().map(|b| b.as_ref()).collect();
+        let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|b| b.as_ref()).collect();
 
         let mut stmt = conn_guard
             .prepare(sql)
@@ -519,9 +519,7 @@ impl IdbStorage {
             .ok();
 
         match result {
-            Some(v) => {
-                serde_json::from_str(&v).map_err(|e| format!("Failed to parse value: {e}"))
-            }
+            Some(v) => serde_json::from_str(&v).map_err(|e| format!("Failed to parse value: {e}")),
             None => Ok(serde_json::Value::Null),
         }
     }
@@ -624,7 +622,13 @@ impl IdbStorage {
 /// Sanitize a name for use as a table name.
 fn sanitize_name(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 

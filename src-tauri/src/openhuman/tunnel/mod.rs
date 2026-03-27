@@ -130,9 +130,7 @@ pub fn create_tunnel(config: &TunnelConfig) -> Result<Option<Box<dyn Tunnel>>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openhuman::config::{
-        CloudflareTunnelConfig, CustomTunnelConfig, NgrokTunnelConfig,
-    };
+    use crate::openhuman::config::{CloudflareTunnelConfig, CustomTunnelConfig, NgrokTunnelConfig};
 
     /// Helper: assert `create_tunnel` returns an error containing `needle`.
     fn assert_tunnel_err(cfg: &TunnelConfig, needle: &str) {

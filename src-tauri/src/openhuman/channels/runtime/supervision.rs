@@ -1,11 +1,10 @@
 //! Supervisor helpers for channel listeners.
 
+use super::super::context::{
+    CHANNEL_MAX_IN_FLIGHT_MESSAGES, CHANNEL_MIN_IN_FLIGHT_MESSAGES, CHANNEL_PARALLELISM_PER_CHANNEL,
+};
 use super::super::traits;
 use super::super::Channel;
-use super::super::context::{
-    CHANNEL_MAX_IN_FLIGHT_MESSAGES, CHANNEL_MIN_IN_FLIGHT_MESSAGES,
-    CHANNEL_PARALLELISM_PER_CHANNEL,
-};
 use std::sync::Arc;
 use std::time::Duration;
 

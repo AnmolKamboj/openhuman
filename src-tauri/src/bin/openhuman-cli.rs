@@ -80,14 +80,10 @@ enum Command {
     },
 
     /// Encrypt a secret
-    Encrypt {
-        plaintext: String,
-    },
+    Encrypt { plaintext: String },
 
     /// Decrypt a secret
-    Decrypt {
-        ciphertext: String,
-    },
+    Decrypt { ciphertext: String },
 
     /// Toggle browser allow-all runtime flag
     BrowserAllowAll {
@@ -324,7 +320,9 @@ fn load_config() -> Result<openhuman::openhuman::config::Config, String> {
         .map_err(|e| format!("failed to load config: {e}"))
 }
 
-fn status_value(status: openhuman::openhuman::service::ServiceStatus) -> Result<serde_json::Value, String> {
+fn status_value(
+    status: openhuman::openhuman::service::ServiceStatus,
+) -> Result<serde_json::Value, String> {
     serde_json::to_value(status).map_err(|e| format!("failed to serialize service status: {e}"))
 }
 

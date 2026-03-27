@@ -307,12 +307,15 @@ impl Config {
             let contents = fs::read_to_string(&config_path)
                 .await
                 .context("Failed to read config file")?;
-            let mut config: Config = toml::from_str(&contents)
-                .with_context(|| format!("Failed to parse config file {}", config_path.display()))?;
+            let mut config: Config = toml::from_str(&contents).with_context(|| {
+                format!("Failed to parse config file {}", config_path.display())
+            })?;
             config.config_path = config_path.clone();
             config.workspace_dir = workspace_dir;
-            let store =
-                crate::openhuman::security::SecretStore::new(&openhuman_dir, config.secrets.encrypt);
+            let store = crate::openhuman::security::SecretStore::new(
+                &openhuman_dir,
+                config.secrets.encrypt,
+            );
             decrypt_optional_secret(&store, &mut config.api_key, "config.api_key")?;
             decrypt_optional_secret(
                 &store,
@@ -396,9 +399,10 @@ impl Config {
                 self.default_provider = Some(provider);
             }
         } else if let Ok(provider) = std::env::var("PROVIDER") {
-            let should_apply_legacy_provider = self.default_provider.as_deref().map_or(true, |c| {
-                c.trim().eq_ignore_ascii_case("openrouter")
-            });
+            let should_apply_legacy_provider = self
+                .default_provider
+                .as_deref()
+                .map_or(true, |c| c.trim().eq_ignore_ascii_case("openrouter"));
             if should_apply_legacy_provider && !provider.is_empty() {
                 self.default_provider = Some(provider);
             }
@@ -412,7 +416,8 @@ impl Config {
 
         if let Ok(workspace) = std::env::var("OPENHUMAN_WORKSPACE") {
             if !workspace.is_empty() {
-                let (_, workspace_dir) = resolve_config_dir_for_workspace(&PathBuf::from(workspace));
+                let (_, workspace_dir) =
+                    resolve_config_dir_for_workspace(&PathBuf::from(workspace));
                 self.workspace_dir = workspace_dir;
             }
         }
@@ -425,8 +430,7 @@ impl Config {
             }
         }
 
-        if let Ok(host) =
-            std::env::var("OPENHUMAN_GATEWAY_HOST").or_else(|_| std::env::var("HOST"))
+        if let Ok(host) = std::env::var("OPENHUMAN_GATEWAY_HOST").or_else(|_| std::env::var("HOST"))
         {
             if !host.is_empty() {
                 self.gateway.host = host;

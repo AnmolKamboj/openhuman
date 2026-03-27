@@ -98,13 +98,8 @@ impl CronScheduler {
     /// Unregister all schedules for a skill (called when skill stops).
     pub fn unregister_all_for_skill(&self, skill_id: &str) {
         let prefix = format!("{}:", skill_id);
-        self.entries
-            .write()
-            .retain(|k, _| !k.starts_with(&prefix));
-        log::info!(
-            "[cron] Unregistered all schedules for skill '{}'",
-            skill_id
-        );
+        self.entries.write().retain(|k, _| !k.starts_with(&prefix));
+        log::info!("[cron] Unregistered all schedules for skill '{}'", skill_id);
     }
 
     /// List all registered schedules for a skill.
@@ -200,11 +195,7 @@ impl CronScheduler {
 
         if let Some(registry) = registry {
             for (skill_id, schedule_id) in to_fire {
-                log::info!(
-                    "[cron] Firing '{}' for skill '{}'",
-                    schedule_id,
-                    skill_id
-                );
+                log::info!("[cron] Firing '{}' for skill '{}'", schedule_id, skill_id);
                 if let Err(e) = registry.trigger_cron(&skill_id, &schedule_id).await {
                     log::warn!(
                         "[cron] Failed to trigger '{}:{}': {e}",

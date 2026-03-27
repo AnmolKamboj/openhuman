@@ -23,7 +23,10 @@ impl CoreProcessHandle {
 
     pub async fn ensure_running(&self) -> Result<(), String> {
         if crate::core_rpc::ping().await {
-            log::info!("[core] found existing core rpc endpoint at {}", self.rpc_url());
+            log::info!(
+                "[core] found existing core rpc endpoint at {}",
+                self.rpc_url()
+            );
             return Ok(());
         }
 
@@ -38,7 +41,11 @@ impl CoreProcessHandle {
                 .arg("--port")
                 .arg(self.port.to_string());
 
-            log::info!("[core] spawning core process: {:?} core serve --port {}", cmd.as_std().get_program(), self.port);
+            log::info!(
+                "[core] spawning core process: {:?} core serve --port {}",
+                cmd.as_std().get_program(),
+                self.port
+            );
 
             let child = cmd
                 .spawn()

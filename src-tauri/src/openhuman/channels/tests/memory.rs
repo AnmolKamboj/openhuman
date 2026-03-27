@@ -1,7 +1,10 @@
-use super::common::{HistoryCaptureProvider, NoopMemory, RecordingChannel};
-use super::super::context::{build_memory_context, conversation_memory_key, ChannelRuntimeContext, CHANNEL_MESSAGE_TIMEOUT_SECS, MAX_CHANNEL_HISTORY};
+use super::super::context::{
+    build_memory_context, conversation_memory_key, ChannelRuntimeContext,
+    CHANNEL_MESSAGE_TIMEOUT_SECS, MAX_CHANNEL_HISTORY,
+};
 use super::super::runtime::process_channel_message;
 use super::super::{traits, Channel};
+use super::common::{HistoryCaptureProvider, NoopMemory, RecordingChannel};
 use crate::openhuman::memory::{Memory, MemoryCategory, SqliteMemory};
 use crate::openhuman::observability::NoopObserver;
 use crate::openhuman::providers::{self, ChatMessage, Provider};

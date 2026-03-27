@@ -1,11 +1,13 @@
-use super::common::{
-    HistoryCaptureProvider, IterativeToolProvider, MockPriceTool, ModelCaptureProvider,
-    NoopMemory, RecordingChannel, SlowProvider, TelegramRecordingChannel, ToolCallingAliasProvider,
-    ToolCallingProvider,
+use super::super::context::{
+    ChannelRouteSelection, ChannelRuntimeContext, CHANNEL_MESSAGE_TIMEOUT_SECS,
 };
-use super::super::context::{ChannelRuntimeContext, ChannelRouteSelection, CHANNEL_MESSAGE_TIMEOUT_SECS};
 use super::super::runtime::{process_channel_message, run_message_dispatch_loop};
 use super::super::{traits, Channel, SendMessage};
+use super::common::{
+    HistoryCaptureProvider, IterativeToolProvider, MockPriceTool, ModelCaptureProvider, NoopMemory,
+    RecordingChannel, SlowProvider, TelegramRecordingChannel, ToolCallingAliasProvider,
+    ToolCallingProvider,
+};
 use crate::openhuman::observability::NoopObserver;
 use crate::openhuman::providers::{self, ChatMessage, Provider};
 use crate::openhuman::tools::Tool;

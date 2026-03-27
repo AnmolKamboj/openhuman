@@ -22,15 +22,20 @@ impl MemoryClient {
     /// Construct from a JWT token (sourced from `authSlice.token` in the Redux store).
     /// Returns `None` if the token is empty or client construction fails.
     pub fn from_token(jwt_token: String) -> Option<Self> {
-        log::info!("[memory] from_token: entry (token_len={})", jwt_token.trim().len());
+        log::info!(
+            "[memory] from_token: entry (token_len={})",
+            jwt_token.trim().len()
+        );
         if jwt_token.trim().is_empty() {
             log::warn!("[memory] from_token: exit — token is empty, returning None");
             return None;
         }
-        let config = if let Ok(base_url) = std::env::var("OPENHUMAN_BASE_URL")
-            .or_else(|_| std::env::var("TINYHUMANS_BASE_URL"))
+        let config = if let Ok(base_url) =
+            std::env::var("OPENHUMAN_BASE_URL").or_else(|_| std::env::var("TINYHUMANS_BASE_URL"))
         {
-            log::info!("[memory] from_token: constructing client (base_url={base_url}, source=memory_env)");
+            log::info!(
+                "[memory] from_token: constructing client (base_url={base_url}, source=memory_env)"
+            );
             TinyHumanConfig::new(jwt_token).with_base_url(base_url)
         } else {
             let backend_url = crate::utils::config::get_backend_url();
@@ -120,11 +125,7 @@ impl MemoryClient {
 
                 match self.inner.ingestion_job_status(&job_id).await {
                     Ok(status_resp) => {
-                        let state = status_resp
-                            .data
-                            .state
-                            .as_deref()
-                            .unwrap_or("unknown");
+                        let state = status_resp.data.state.as_deref().unwrap_or("unknown");
 
                         log::info!(
                             "[memory] ingestion job status: job_id={job_id}, state={state}, \
@@ -199,11 +200,16 @@ impl MemoryClient {
             })
             .await
             .map_err(|e| {
-                log::warn!("[memory] query_skill_context: exit — error (namespace={namespace}): {e}");
+                log::warn!(
+                    "[memory] query_skill_context: exit — error (namespace={namespace}): {e}"
+                );
                 format!("Memory query failed: {e}")
             })?;
         let response = res.data.response.unwrap_or_default();
-        log::info!("[memory] query_skill_context: exit — ok (namespace={namespace}, response_len={})", response.len());
+        log::info!(
+            "[memory] query_skill_context: exit — ok (namespace={namespace}, response_len={})",
+            response.len()
+        );
         Ok(response)
     }
 
@@ -227,7 +233,9 @@ impl MemoryClient {
             })
             .await
             .map_err(|e| {
-                log::warn!("[memory] recall_skill_context: exit — error (namespace={namespace}): {e}");
+                log::warn!(
+                    "[memory] recall_skill_context: exit — error (namespace={namespace}): {e}"
+                );
                 format!("Memory recall failed: {e}")
             })?;
         let response = res.data.context;
@@ -247,7 +255,11 @@ impl MemoryClient {
     }
 
     /// Delete a specific document from a namespace.
-    pub async fn delete_document(&self, document_id: &str, namespace: &str) -> Result<serde_json::Value, String> {
+    pub async fn delete_document(
+        &self,
+        document_id: &str,
+        namespace: &str,
+    ) -> Result<serde_json::Value, String> {
         self.inner
             .delete_document(document_id, namespace)
             .await
@@ -300,7 +312,8 @@ impl MemoryClient {
         let namespace = format!("skill:{skill_id}:{integration_id}");
         log::info!("[memory] clear_skill_memory: entry (namespace={namespace})");
         log::debug!("[memory] clear_skill_memory: payload → namespace={namespace}");
-        let result = self.inner
+        let result = self
+            .inner
             .delete_memory(DeleteMemoryParams {
                 namespace: Some(namespace.clone()),
             })
@@ -309,7 +322,9 @@ impl MemoryClient {
             .map_err(|e| format!("Memory delete failed: {e}"));
         match &result {
             Ok(()) => log::info!("[memory] clear_skill_memory: exit — ok (namespace={namespace})"),
-            Err(e) => log::warn!("[memory] clear_skill_memory: exit — error (namespace={namespace}): {e}"),
+            Err(e) => {
+                log::warn!("[memory] clear_skill_memory: exit — error (namespace={namespace}): {e}")
+            }
         }
         result
     }
@@ -350,11 +365,9 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_memory_skill_sync_flow() {
-        let jwt_token =
-            std::env::var("JWT_TOKEN").expect("JWT_TOKEN must be set");
+        let jwt_token = std::env::var("JWT_TOKEN").expect("JWT_TOKEN must be set");
 
-        let client = MemoryClient::from_token(jwt_token)
-            .expect("client creation failed");
+        let client = MemoryClient::from_token(jwt_token).expect("client creation failed");
 
         let skill_id = "gmail";
         let integration_id = "test@openhuman.dev";
