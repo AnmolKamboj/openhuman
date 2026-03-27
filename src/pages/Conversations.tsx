@@ -314,39 +314,6 @@ const Conversations = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rustChat]);
 
-  const handleSelectThread = (threadId: string) => {
-    if (threadId === selectedThreadId) return;
-    navigate(`/conversations/${threadId}`, { replace: true });
-  };
-
-  const handleNewThread = () => {
-    const threadId = crypto.randomUUID();
-    dispatch(
-      createThreadLocal({
-        id: threadId,
-        title: 'New Conversation',
-        createdAt: new Date().toISOString(),
-      })
-    );
-    navigate(`/conversations/${threadId}`, { replace: true });
-  };
-
-  const handleDeleteThread = (threadId: string) => {
-    dispatch(deleteThreadLocal(threadId));
-    setConfirmDeleteId(null);
-    if (threadId === selectedThreadId) {
-      navigate('/conversations', { replace: true });
-    }
-  };
-
-  const handlePurge = async () => {
-    const result = await dispatch(purgeThreads());
-    if (purgeThreads.fulfilled.match(result)) {
-      setShowPurgeConfirm(false);
-      navigate('/conversations', { replace: true });
-    }
-  };
-
   const handleSendMessage = async (text?: string) => {
     const normalized = text ?? inputValue;
     const trimmed = normalized.trim();
@@ -452,6 +419,9 @@ const Conversations = () => {
   };
 
   const selectedThread = threads.find(t => t.id === selectedThreadId);
+  const selectedThreadToolTimeline = selectedThreadId
+    ? (toolTimelineByThread[selectedThreadId] ?? [])
+    : [];
 
   return (
     <div className="h-full relative z-10 flex overflow-hidden">
