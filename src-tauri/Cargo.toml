@@ -20,11 +20,6 @@ name = "OpenHuman"
 path = "src/main.rs"
 
 [[bin]]
-name = "openhuman-tools-discovery"
-path = "src/bin/openhuman-tools-discovery.rs"
-required-features = ["tools-discovery-bin"]
-
-[[bin]]
 name = "openhuman-core"
 path = "src/bin/openhuman-core.rs"
 
@@ -185,7 +180,6 @@ tempfile = "3"
 custom-protocol = ["tauri/custom-protocol"]
 sandbox-landlock = ["dep:landlock"]
 sandbox-bubblewrap = []
-tools-discovery-bin = []
 
 # OpenHuman feature flags
 hardware = ["dep:nusb", "dep:tokio-serial"]

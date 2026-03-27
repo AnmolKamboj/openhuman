@@ -12,12 +12,6 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 import { generateOpenClawMarkdown } from './openClaw-formatter.js';
-import {
-  executeTauriDiscovery,
-  getTauriEnvironmentInfo,
-  prepareTauriEnvironment,
-  validateTauriEnvironment,
-} from './tauri-integration.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '../..');
@@ -42,39 +36,7 @@ const ENVIRONMENTS = {
  * @returns {Promise<Array>} Array of discovered tools with skill metadata
  */
 async function discoverTools() {
-  console.log('🔍 Discovering tools from V8 skills runtime...');
-
-  // Check if Tauri environment is available
-  const tauriAvailable = await validateTauriEnvironment();
-
-  if (tauriAvailable) {
-    try {
-      console.log('🔧 Preparing Tauri environment...');
-      await prepareTauriEnvironment();
-
-      console.log('🚀 Executing Tauri tools discovery...');
-      const realTools = await executeTauriDiscovery({
-        timeout: 60000, // 60 seconds
-        retries: 2,
-        verbose: process.env.VERBOSE === 'true',
-      });
-
-      if (realTools && realTools.length > 0) {
-        console.log(
-          `✅ Discovered ${realTools.length} tools from ${new Set(realTools.map(t => t.skillId)).size} skills via Tauri`
-        );
-        return realTools;
-      }
-    } catch (error) {
-      console.warn('⚠️  Could not discover tools from Tauri runtime:', error.message);
-      console.log('📋 Using development mock data instead');
-    }
-  } else {
-    console.warn('⚠️  Tauri environment not available');
-    console.log('📋 Using development mock data instead');
-  }
-
-  // Fallback to mock data for development
+  console.log('🔍 Discovering tools from mock registry...');
   const mockTools = generateMockToolsForDevelopment();
   console.log(
     `✅ Using mock data: ${mockTools.length} tools from ${new Set(mockTools.map(t => t.skillId)).size} skills`
@@ -195,77 +157,9 @@ async function main() {
   }
 }
 
-/**
- * Attempts to discover tools from a running Tauri process
- * @returns {Promise<Array>} Array of tools from Tauri runtime
- */
-async function discoverToolsFromTauri() {
-  return new Promise((resolve, reject) => {
-    // Try to spawn a minimal Tauri process for tool discovery
-    const isWindows = process.platform === 'win32';
-    const tauriCommand = isWindows ? 'cargo.exe' : 'cargo';
-
-    const args = [
-      'run',
-      '--manifest-path',
-      join(PROJECT_ROOT, 'src-tauri', 'Cargo.toml'),
-      '--bin',
-      'openhuman-tools-discovery',
-      '--features',
-      'tools-discovery-bin',
-    ];
-
-    console.log('🔧 Attempting to run tools discovery via Cargo...');
-
-    const child = spawn(tauriCommand, args, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      cwd: PROJECT_ROOT,
-      env: { ...process.env, TAURI_TOOLS_DISCOVERY: 'true' },
-    });
-
-    let output = '';
-    let errorOutput = '';
-
-    child.stdout.on('data', data => {
-      output += data.toString();
-    });
-
-    child.stderr.on('data', data => {
-      errorOutput += data.toString();
-    });
-
-    child.on('close', code => {
-      if (code === 0 && output.trim()) {
-        try {
-          const result = JSON.parse(output.trim());
-          if (result.success && result.tools) {
-            resolve(result.tools);
-          } else {
-            reject(new Error(result.error || 'Unknown error from Tauri'));
-          }
-        } catch (parseError) {
-          reject(new Error(`Failed to parse Tauri output: ${parseError.message}`));
-        }
-      } else {
-        reject(new Error(`Tauri process failed (code ${code}): ${errorOutput}`));
-      }
-    });
-
-    child.on('error', error => {
-      reject(new Error(`Failed to spawn Tauri process: ${error.message}`));
-    });
-
-    // Timeout after 30 seconds
-    setTimeout(() => {
-      child.kill();
-      reject(new Error('Tauri discovery process timed out'));
-    }, 30000);
-  });
-}
-
 // Run if called directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   main();
 }
 
-export { discoverTools, discoverToolsFromTauri, generateMockToolsForDevelopment };
+export { discoverTools, generateMockToolsForDevelopment };

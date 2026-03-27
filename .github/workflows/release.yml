@@ -313,9 +313,9 @@ jobs:
           WITH_UPDATER: 'true'
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.settings.platform == 'macos-latest' && '10.15' || '' }}
         with:
-          # `openhuman-tools-discovery` is feature-gated in Cargo.toml so it
-          # does not get bundled into release app packages and break macOS
-          # codesign as an unsigned subcomponent.
+          # Tools discovery now uses a JS mock registry (no Rust discovery
+          # binary target), so there is no extra helper executable for Tauri
+          # to copy/sign inside release app bundles.
           args: -c ${{ steps.config-overrides.outputs.json }} ${{ matrix.settings.args }}
           includeDebug: false
           includeRelease: true
