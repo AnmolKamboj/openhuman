@@ -21,6 +21,7 @@ let config = config.with_base_url("https://staging-api.alphahuman.xyz");
 ```
 
 Base URL resolution order:
+
 1. `with_base_url(...)` call
 2. `TINYHUMANS_BASE_URL` env var
 3. `NEOCORTEX_BASE_URL` env var
@@ -60,17 +61,17 @@ let job_id = res.data.job_id; // Option<String>
 
 **`InsertMemoryParams`**
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `title` | `String` | Yes | Document title |
-| `content` | `String` | Yes | Document text content |
-| `namespace` | `String` | Yes | Logical partition for the document |
-| `document_id` | `String` | Yes | Caller-supplied unique ID |
-| `source_type` | `Option<SourceType>` | No | `Doc` (default), `Chat`, or `Email` |
-| `metadata` | `Option<serde_json::Value>` | No | Arbitrary JSON metadata |
-| `priority` | `Option<Priority>` | No | `High`, `Medium`, or `Low` |
-| `created_at` | `Option<f64>` | No | Unix timestamp (ms) |
-| `updated_at` | `Option<f64>` | No | Unix timestamp (ms) |
+| Field         | Type                        | Required | Description                         |
+| ------------- | --------------------------- | -------- | ----------------------------------- |
+| `title`       | `String`                    | Yes      | Document title                      |
+| `content`     | `String`                    | Yes      | Document text content               |
+| `namespace`   | `String`                    | Yes      | Logical partition for the document  |
+| `document_id` | `String`                    | Yes      | Caller-supplied unique ID           |
+| `source_type` | `Option<SourceType>`        | No       | `Doc` (default), `Chat`, or `Email` |
+| `metadata`    | `Option<serde_json::Value>` | No       | Arbitrary JSON metadata             |
+| `priority`    | `Option<Priority>`          | No       | `High`, `Medium`, or `Low`          |
+| `created_at`  | `Option<f64>`               | No       | Unix timestamp (ms)                 |
+| `updated_at`  | `Option<f64>`               | No       | Unix timestamp (ms)                 |
 
 **Serialised request body** (fields with `None` values are omitted):
 
@@ -115,17 +116,17 @@ println!("{:?}", res.data.state); // Some("processing") | Some("completed") | ..
 
 **`IngestionJobStatusResponse`**
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `job_id` | `Option<String>` | The job ID |
-| `state` | `Option<String>` | `pending`, `processing`, `completed`, `failed`, etc. |
-| `endpoint` | `Option<String>` | API endpoint that created the job |
-| `attempts` | `Option<f64>` | Number of execution attempts |
-| `error` | `Option<String>` | Error message if failed |
-| `response` | `Option<serde_json::Value>` | Full ingestion result (stats, timings, usage) on completion |
-| `created_at` | `Option<String>` | ISO 8601 timestamp |
-| `started_at` | `Option<String>` | ISO 8601 timestamp |
-| `completed_at` | `Option<String>` | ISO 8601 timestamp |
+| Field          | Type                        | Description                                                 |
+| -------------- | --------------------------- | ----------------------------------------------------------- |
+| `job_id`       | `Option<String>`            | The job ID                                                  |
+| `state`        | `Option<String>`            | `pending`, `processing`, `completed`, `failed`, etc.        |
+| `endpoint`     | `Option<String>`            | API endpoint that created the job                           |
+| `attempts`     | `Option<f64>`               | Number of execution attempts                                |
+| `error`        | `Option<String>`            | Error message if failed                                     |
+| `response`     | `Option<serde_json::Value>` | Full ingestion result (stats, timings, usage) on completion |
+| `created_at`   | `Option<String>`            | ISO 8601 timestamp                                          |
+| `started_at`   | `Option<String>`            | ISO 8601 timestamp                                          |
+| `completed_at` | `Option<String>`            | ISO 8601 timestamp                                          |
 
 Completed response includes ingestion stats (chunk count, entity count, relation count, timings, embedding token usage, and cost in USD).
 
@@ -143,11 +144,11 @@ let res = client.wait_for_ingestion_job(
 ).await?;
 ```
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `job_id` | `&str` | — | Job to poll |
-| `timeout_ms` | `Option<u64>` | 30 000 | Max wait in milliseconds |
-| `poll_interval_ms` | `Option<u64>` | 1 000 | Polling interval |
+| Parameter          | Type          | Default | Description              |
+| ------------------ | ------------- | ------- | ------------------------ |
+| `job_id`           | `&str`        | —       | Job to poll              |
+| `timeout_ms`       | `Option<u64>` | 30 000  | Max wait in milliseconds |
+| `poll_interval_ms` | `Option<u64>` | 1 000   | Polling interval         |
 
 **Terminal states:** `completed`, `done`, `succeeded`, `success` → returns `Ok`.
 **Failure states:** `failed`, `error`, `cancelled` → returns `Err`.
@@ -173,14 +174,14 @@ let res = client.query_memory(QueryMemoryParams {
 
 **`QueryMemoryParams`** (`#[serde(rename_all = "camelCase")]`)
 
-| Field | Type | Serialised as | Description |
-|-------|------|---------------|-------------|
-| `query` | `String` | `"query"` | The search query |
-| `namespace` | `Option<String>` | `"namespace"` | Filter by namespace |
-| `include_references` | `Option<bool>` | `"includeReferences"` | Include source chunk metadata |
-| `max_chunks` | `Option<f64>` | `"maxChunks"` | Max chunks to retrieve |
-| `document_ids` | `Option<Vec<String>>` | `"documentIds"` | Filter to specific documents |
-| `llm_query` | `Option<String>` | `"llmQuery"` | Override query sent to LLM |
+| Field                | Type                  | Serialised as         | Description                   |
+| -------------------- | --------------------- | --------------------- | ----------------------------- |
+| `query`              | `String`              | `"query"`             | The search query              |
+| `namespace`          | `Option<String>`      | `"namespace"`         | Filter by namespace           |
+| `include_references` | `Option<bool>`        | `"includeReferences"` | Include source chunk metadata |
+| `max_chunks`         | `Option<f64>`         | `"maxChunks"`         | Max chunks to retrieve        |
+| `document_ids`       | `Option<Vec<String>>` | `"documentIds"`       | Filter to specific documents  |
+| `llm_query`          | `Option<String>`      | `"llmQuery"`          | Override query sent to LLM    |
 
 **`QueryMemoryResponse`**
 
@@ -225,10 +226,10 @@ let res = client.recall_memory(RecallMemoryParams {
 
 **`RecallMemoryParams`** (`#[serde(rename_all = "camelCase")]`)
 
-| Field | Type | Serialised as | Description |
-|-------|------|---------------|-------------|
-| `namespace` | `Option<String>` | `"namespace"` | Namespace to recall from |
-| `max_chunks` | `Option<f64>` | `"maxChunks"` | Max chunks to return |
+| Field        | Type             | Serialised as | Description              |
+| ------------ | ---------------- | ------------- | ------------------------ |
+| `namespace`  | `Option<String>` | `"namespace"` | Namespace to recall from |
+| `max_chunks` | `Option<f64>`    | `"maxChunks"` | Max chunks to return     |
 
 **`RecallMemoryResponse`**
 
@@ -297,11 +298,11 @@ let res = client.list_documents(ListDocumentsParams {
 
 **`ListDocumentsParams`**
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `namespace` | `Option<String>` | Filter by namespace |
-| `limit` | `Option<f64>` | Max results to return |
-| `offset` | `Option<f64>` | Pagination offset |
+| Field       | Type             | Description           |
+| ----------- | ---------------- | --------------------- |
+| `namespace` | `Option<String>` | Filter by namespace   |
+| `limit`     | `Option<f64>`    | Max results to return |
+| `offset`    | `Option<f64>`    | Pagination offset     |
 
 Returns `serde_json::Value` with a `data.documents` array. Each document includes `document_id`, `namespace`, `title`, `chunk_count`, `created_at`, `updated_at`, `user_id`.
 
@@ -337,21 +338,21 @@ Both `document_id` and `namespace` are required (validated before the request is
 
 ### Other SDK Methods (Available, Not Used in Project)
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `insert_document` | `POST /memory/documents` | Insert via documents route |
-| `insert_documents_batch` | `POST /memory/documents/batch` | Batch insert documents |
-| `recall_memories` | `POST /memory/memories/recall` | Recall from Ebbinghaus bank |
-| `recall_memories_context` | `POST /memory/memories/context` | Recall context from memories |
-| `recall_thoughts` | `POST /memory/memories/thoughts` | Reflective thought generation |
-| `interact_memory` | `POST /memory/interact` | Record entity interactions |
-| `record_interactions` | `POST /memory/interactions` | Record interaction signals |
-| `query_memory_context` | `POST /memory/queries` | Query alias route |
-| `chat_memory_context` | `POST /memory/conversations` | Chat with memory context |
-| `chat_memory` | `POST /memory/chat` | Chat via DeltaNet cache |
-| `sync_memory` | `POST /memory/sync` | Sync OpenClaw workspace files |
-| `memory_health` | `GET /memory/health` | Health check |
-| `get_graph_snapshot` | `GET /memory/admin/graph-snapshot` | Admin graph data |
+| Method                    | Endpoint                           | Description                   |
+| ------------------------- | ---------------------------------- | ----------------------------- |
+| `insert_document`         | `POST /memory/documents`           | Insert via documents route    |
+| `insert_documents_batch`  | `POST /memory/documents/batch`     | Batch insert documents        |
+| `recall_memories`         | `POST /memory/memories/recall`     | Recall from Ebbinghaus bank   |
+| `recall_memories_context` | `POST /memory/memories/context`    | Recall context from memories  |
+| `recall_thoughts`         | `POST /memory/memories/thoughts`   | Reflective thought generation |
+| `interact_memory`         | `POST /memory/interact`            | Record entity interactions    |
+| `record_interactions`     | `POST /memory/interactions`        | Record interaction signals    |
+| `query_memory_context`    | `POST /memory/queries`             | Query alias route             |
+| `chat_memory_context`     | `POST /memory/conversations`       | Chat with memory context      |
+| `chat_memory`             | `POST /memory/chat`                | Chat via DeltaNet cache       |
+| `sync_memory`             | `POST /memory/sync`                | Sync OpenClaw workspace files |
+| `memory_health`           | `GET /memory/health`               | Health check                  |
+| `get_graph_snapshot`      | `GET /memory/admin/graph-snapshot` | Admin graph data              |
 
 ---
 
@@ -359,12 +360,12 @@ Both `document_id` and `namespace` are required (validated before the request is
 
 **`TinyHumansError`**
 
-| Variant | When |
-|---------|------|
-| `Validation(String)` | Client-side validation failed (empty token, empty title, etc.) |
-| `Http(String)` | Network/transport error from `reqwest` |
-| `Api { message, status, body }` | Non-2xx response from the API |
-| `Decode(String)` | Failed to deserialise response JSON |
+| Variant                         | When                                                           |
+| ------------------------------- | -------------------------------------------------------------- |
+| `Validation(String)`            | Client-side validation failed (empty token, empty title, etc.) |
+| `Http(String)`                  | Network/transport error from `reqwest`                         |
+| `Api { message, status, body }` | Non-2xx response from the API                                  |
+| `Decode(String)`                | Failed to deserialise response JSON                            |
 
 ---
 
@@ -521,28 +522,28 @@ User message: {original message}
 
 ### Namespace Conventions
 
-| Context | Namespace pattern | Set by |
-|---------|-------------------|--------|
-| Skill sync (OAuth / periodic) | `{skill_id}` | `store_skill_sync` — uses `skill_id` directly as namespace |
-| Skill memory clear | `{skill_id}` | `clear_skill_memory` |
-| Conversation recall | `conversations` | `chat_send_inner` hardcoded |
-| Skill context recall (in chat) | `{skill_id}` | `chat_send_inner` per-skill loop |
-| E2E test | `sdk-rust-e2e` | `example_e2e.rs` |
+| Context                        | Namespace pattern | Set by                                                     |
+| ------------------------------ | ----------------- | ---------------------------------------------------------- |
+| Skill sync (OAuth / periodic)  | `{skill_id}`      | `store_skill_sync` — uses `skill_id` directly as namespace |
+| Skill memory clear             | `{skill_id}`      | `clear_skill_memory`                                       |
+| Conversation recall            | `conversations`   | `chat_send_inner` hardcoded                                |
+| Skill context recall (in chat) | `{skill_id}`      | `chat_send_inner` per-skill loop                           |
+| E2E test                       | `sdk-rust-e2e`    | `example_e2e.rs`                                           |
 
 ---
 
 ### All SDK Calls in the Project
 
-| Location | SDK method called | Purpose |
-|----------|-------------------|---------|
-| `memory/mod.rs::store_skill_sync` | `insert_memory` | Write skill sync data |
-| `memory/mod.rs::store_skill_sync` | `ingestion_job_status` (poll loop) | Wait for ingestion to complete |
-| `memory/mod.rs::query_skill_context` | `query_memory` | RAG query for skill context |
-| `memory/mod.rs::recall_skill_context` | `recall_memory` | Recall synthesised context |
-| `memory/mod.rs::recall_namespace_context` | `recall_memory` | Direct namespace recall |
-| `memory/mod.rs::query_namespace_context` | `query_memory` | Direct namespace query |
-| `memory/mod.rs::list_documents` | `list_documents` | List ingested documents |
-| `memory/mod.rs::delete_document` | `delete_document` | Remove a document |
-| `memory/mod.rs::clear_skill_memory` | `delete_memory` | Wipe skill namespace on disconnect |
-| `commands/chat.rs` (step 2) | via `recall_skill_context` | Inject conversation history into prompt |
-| `commands/chat.rs` (step 2b) | via `recall_skill_context` | Inject per-skill context into prompt |
+| Location                                  | SDK method called                  | Purpose                                 |
+| ----------------------------------------- | ---------------------------------- | --------------------------------------- |
+| `memory/mod.rs::store_skill_sync`         | `insert_memory`                    | Write skill sync data                   |
+| `memory/mod.rs::store_skill_sync`         | `ingestion_job_status` (poll loop) | Wait for ingestion to complete          |
+| `memory/mod.rs::query_skill_context`      | `query_memory`                     | RAG query for skill context             |
+| `memory/mod.rs::recall_skill_context`     | `recall_memory`                    | Recall synthesised context              |
+| `memory/mod.rs::recall_namespace_context` | `recall_memory`                    | Direct namespace recall                 |
+| `memory/mod.rs::query_namespace_context`  | `query_memory`                     | Direct namespace query                  |
+| `memory/mod.rs::list_documents`           | `list_documents`                   | List ingested documents                 |
+| `memory/mod.rs::delete_document`          | `delete_document`                  | Remove a document                       |
+| `memory/mod.rs::clear_skill_memory`       | `delete_memory`                    | Wipe skill namespace on disconnect      |
+| `commands/chat.rs` (step 2)               | via `recall_skill_context`         | Inject conversation history into prompt |
+| `commands/chat.rs` (step 2b)              | via `recall_skill_context`         | Inject per-skill context into prompt    |

@@ -12,14 +12,14 @@
 
 The file is a standalone end-to-end integration program (not a `#[test]`-annotated unit test). It exercises the `tinyhumansai` Rust SDK against the staging API in six sequential steps:
 
-| Step | Operation | SDK method |
-|------|-----------|------------|
-| 1 | Insert a memory document | `insert_memory` |
-| 2 | Poll ingestion job until complete | `get_ingestion_job` + `wait_for_ingestion_job` |
-| 3 | List documents filtered by namespace | `list_documents` |
-| 4 | Fetch the specific document | `get_document` |
-| 5 | Semantic query over the namespace | `query_memory` |
-| 6 | Recall all memory context | `recall_memory` |
+| Step | Operation                            | SDK method                                     |
+| ---- | ------------------------------------ | ---------------------------------------------- |
+| 1    | Insert a memory document             | `insert_memory`                                |
+| 2    | Poll ingestion job until complete    | `get_ingestion_job` + `wait_for_ingestion_job` |
+| 3    | List documents filtered by namespace | `list_documents`                               |
+| 4    | Fetch the specific document          | `get_document`                                 |
+| 5    | Semantic query over the namespace    | `query_memory`                                 |
+| 6    | Recall all memory context            | `recall_memory`                                |
 
 The document inserted contains sprint velocity data for four teams (Atlas, Beacon, Comet, Delta).
 
@@ -98,30 +98,30 @@ Initial poll returned state `processing`, so the SDK waited. Job completed succe
 
 Key stats from the completed job response:
 
-| Metric | Value |
-|--------|-------|
-| Chunks new | 1 |
-| Chunks total | 1 |
-| Chunks deduplicated | 0 |
-| Entities extracted | 15 |
-| Relations extracted | 25 |
-| Sections | 1 |
-| Source type | `doc` |
-| Embedding tokens used | 244 |
-| Cost (USD) | $0.00000488 |
+| Metric                | Value       |
+| --------------------- | ----------- |
+| Chunks new            | 1           |
+| Chunks total          | 1           |
+| Chunks deduplicated   | 0           |
+| Entities extracted    | 15          |
+| Relations extracted   | 25          |
+| Sections              | 1           |
+| Source type           | `doc`       |
+| Embedding tokens used | 244         |
+| Cost (USD)            | $0.00000488 |
 
 Timing breakdown (selected):
 
-| Stage | Seconds |
-|-------|---------|
-| Chunking | 0.000826 |
-| Chunk embedding | 0.2688 |
-| Chunk storage | 0.2049 |
-| Entity extraction | 0.8131 |
-| Entity embedding | 0.0476 |
-| Graph structure | 0.2427 |
-| Relationship storage | 0.3800 |
-| Storage total | 1.2504 |
+| Stage                | Seconds  |
+| -------------------- | -------- |
+| Chunking             | 0.000826 |
+| Chunk embedding      | 0.2688   |
+| Chunk storage        | 0.2049   |
+| Entity extraction    | 0.8131   |
+| Entity embedding     | 0.0476   |
+| Graph structure      | 0.2427   |
+| Relationship storage | 0.3800   |
+| Storage total        | 1.2504   |
 
 ---
 
@@ -133,11 +133,11 @@ This run uses the updated `list_documents(ListDocumentsParams { namespace, limit
 
 **4 documents returned** (all previous E2E runs in this namespace):
 
-| Document ID | Created at |
-|-------------|------------|
-| `sdk-rust-e2e-doc-single-1774598994566` | 2026-03-27T08:09:56 |
-| `sdk-rust-e2e-doc-single-1774600415507` | 2026-03-27T08:33:37 |
-| `sdk-rust-e2e-doc-single-1774604625874` | 2026-03-27T09:43:47 |
+| Document ID                             | Created at                     |
+| --------------------------------------- | ------------------------------ |
+| `sdk-rust-e2e-doc-single-1774598994566` | 2026-03-27T08:09:56            |
+| `sdk-rust-e2e-doc-single-1774600415507` | 2026-03-27T08:33:37            |
+| `sdk-rust-e2e-doc-single-1774604625874` | 2026-03-27T09:43:47            |
 | `sdk-rust-e2e-doc-single-1774605977640` | 2026-03-27T10:06:20 ← this run |
 
 All share `namespace: "sdk-rust-e2e"`, `title: "Sprint Dataset - Team Velocity"`, `chunk_count: 1`.
@@ -200,15 +200,16 @@ The relevant chunk was retrieved correctly. The LLM context message assembled by
 
 Top entity mentions extracted from the chunk (by normalized importance):
 
-| Entity | Normalized importance | Count |
-|--------|-----------------------|-------|
-| THE FEWEST BLOCKERS TEAM | 1.000 | 6 |
-| 42 STORY POINTS | 0.842 | 14 |
-| TEAM BEACON | 0.486 | 2 |
-| TEAM COMET | 0.476 | 2 |
-| THE HIGHEST VELOCITY TEAM | 0.440 | 4 |
+| Entity                    | Normalized importance | Count |
+| ------------------------- | --------------------- | ----- |
+| THE FEWEST BLOCKERS TEAM  | 1.000                 | 6     |
+| 42 STORY POINTS           | 0.842                 | 14    |
+| TEAM BEACON               | 0.486                 | 2     |
+| TEAM COMET                | 0.476                 | 2     |
+| THE HIGHEST VELOCITY TEAM | 0.440                 | 4     |
 
 **Usage:**
+
 - Embedding tokens: 20
 - Cost: $0.0000004
 - Cached: false
@@ -222,10 +223,7 @@ Top entity mentions extracted from the chunk (by normalized importance):
 **Request body** (serialized from `RecallMemoryParams` with `#[serde(rename_all = "camelCase")]`):
 
 ```json
-{
-  "namespace": "sdk-rust-e2e",
-  "maxChunks": 5.0
-}
+{ "namespace": "sdk-rust-e2e", "maxChunks": 5.0 }
 ```
 
 Recall (no query — returns all recent/relevant context) returned the same chunk with a higher score of `31.357` (recall scoring differs from query scoring).
@@ -241,14 +239,14 @@ The LLM context message was identical to step 5.
 
 ## Changes since previous run
 
-| Area | Previous run | This run |
-|------|-------------|----------|
-| `step3_list_documents` signature | `list_documents()` — no args | `list_documents(ListDocumentsParams { namespace, limit, offset })` |
-| Step 3 result | Empty `documents: []` (no filter) | 4 documents returned (namespace filter working) |
-| Job ID | `4b3cc8e2-...` | `a2a1396c-...` |
-| Document ID | `sdk-rust-e2e-doc-single-1774600415507` | `sdk-rust-e2e-doc-single-1774605977640` |
-| Ingestion latency | 1.7791 s | 2.6173 s |
-| Entity extraction time | 0.0117 s | 0.8131 s |
+| Area                             | Previous run                            | This run                                                           |
+| -------------------------------- | --------------------------------------- | ------------------------------------------------------------------ |
+| `step3_list_documents` signature | `list_documents()` — no args            | `list_documents(ListDocumentsParams { namespace, limit, offset })` |
+| Step 3 result                    | Empty `documents: []` (no filter)       | 4 documents returned (namespace filter working)                    |
+| Job ID                           | `4b3cc8e2-...`                          | `a2a1396c-...`                                                     |
+| Document ID                      | `sdk-rust-e2e-doc-single-1774600415507` | `sdk-rust-e2e-doc-single-1774605977640`                            |
+| Ingestion latency                | 1.7791 s                                | 2.6173 s                                                           |
+| Entity extraction time           | 0.0117 s                                | 0.8131 s                                                           |
 
 ---
 
@@ -259,6 +257,7 @@ E2E Rust SDK example completed.
 ```
 
 All 6 steps passed. The SDK correctly:
+
 - Inserted a document and received a job ID
 - Polled and waited for the ingestion job to reach `completed`
 - Listed documents filtered by namespace (returning all 4 prior E2E inserts)
