@@ -39,7 +39,10 @@
     ],
     "resources": [
       "../skills/skills",
-      "ai"
+      "../rust-core/ai"
+    ],
+    "externalBin": [
+      "binaries/openhuman-core"
     ],
     "createUpdaterArtifacts": true,
     "macOS": {

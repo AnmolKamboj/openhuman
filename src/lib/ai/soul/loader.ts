@@ -1,4 +1,6 @@
-import soulMd from '../../../../src-tauri/ai/SOUL.md?raw';
+import { isTauri as coreIsTauri, invoke } from '@tauri-apps/api/core';
+
+import soulMd from '../../../../rust-core/ai/SOUL.md?raw';
 import type {
   BehaviorPattern,
   EmergencyResponse,
@@ -12,7 +14,7 @@ import type {
 } from './types';
 
 const SOUL_GITHUB_URL =
-  'https://raw.githubusercontent.com/openhumanxyz/openhuman/refs/heads/main/src-tauri/ai/SOUL.md';
+  'https://raw.githubusercontent.com/openhumanxyz/openhuman/refs/heads/main/rust-core/ai/SOUL.md';
 const SOUL_CACHE_KEY = 'openhuman.soul.cache';
 const SOUL_CACHE_TTL = 1000 * 60 * 30; // 30 minutes
 
@@ -49,10 +51,16 @@ export async function loadSoul(): Promise<SoulConfig> {
   let isDefault = false;
 
   try {
-    // 3. GitHub remote
-    const response = await fetch(SOUL_GITHUB_URL);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    raw = await response.text();
+    if (coreIsTauri()) {
+      // 3a. Tauri command is the source of truth in desktop app mode.
+      const aiConfig = await invoke<{ soul: { raw: string } }>('ai_get_config');
+      raw = aiConfig.soul.raw;
+    } else {
+      // 3b. Web fallback (non-Tauri contexts)
+      const response = await fetch(SOUL_GITHUB_URL);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      raw = await response.text();
+    }
   } catch {
     // 4. Fallback to bundled
     raw = soulMd;

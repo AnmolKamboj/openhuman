@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use tokio::process::{Child, Command};
@@ -7,13 +8,15 @@ use tokio::sync::Mutex;
 pub struct CoreProcessHandle {
     child: Arc<Mutex<Option<Child>>>,
     port: u16,
+    core_bin: Option<PathBuf>,
 }
 
 impl CoreProcessHandle {
-    pub fn new(port: u16) -> Self {
+    pub fn new(port: u16, core_bin: Option<PathBuf>) -> Self {
         Self {
             child: Arc::new(Mutex::new(None)),
             port,
+            core_bin,
         }
     }
 
@@ -32,20 +35,28 @@ impl CoreProcessHandle {
 
         let mut guard = self.child.lock().await;
         if guard.is_none() {
-            let exe = std::env::current_exe()
-                .map_err(|e| format!("failed to resolve current executable: {e}"))?;
-
-            let mut cmd = Command::new(exe);
-            cmd.arg("core")
-                .arg("serve")
-                .arg("--port")
-                .arg(self.port.to_string());
-
-            log::info!(
-                "[core] spawning core process: {:?} core serve --port {}",
-                cmd.as_std().get_program(),
-                self.port
-            );
+            let mut cmd = if let Some(core_bin) = &self.core_bin {
+                let mut cmd = Command::new(core_bin);
+                cmd.arg("serve").arg("--port").arg(self.port.to_string());
+                log::info!(
+                    "[core] spawning dedicated core binary: {:?} serve --port {}",
+                    cmd.as_std().get_program(),
+                    self.port
+                );
+                cmd
+            } else {
+                let exe = std::env::current_exe()
+                    .map_err(|e| format!("failed to resolve current executable: {e}"))?;
+                let mut cmd = Command::new(exe);
+                cmd.arg("core")
+                    .arg("serve")
+                    .arg("--port")
+                    .arg(self.port.to_string());
+                log::warn!(
+                    "[core] dedicated core binary not found; falling back to self subcommand"
+                );
+                cmd
+            };
 
             let child = cmd
                 .spawn()
@@ -92,4 +103,61 @@ pub fn default_core_port() -> u16 {
         .ok()
         .and_then(|v| v.parse::<u16>().ok())
         .unwrap_or(7788)
+}
+
+pub fn default_core_bin() -> Option<PathBuf> {
+    if let Ok(path) = std::env::var("OPENHUMAN_CORE_BIN") {
+        let candidate = PathBuf::from(path);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    let exe = std::env::current_exe().ok()?;
+    let exe_dir = exe.parent()?;
+
+    #[cfg(windows)]
+    let standalone = exe_dir.join("openhuman-core.exe");
+    #[cfg(not(windows))]
+    let standalone = exe_dir.join("openhuman-core");
+
+    if standalone.exists() {
+        return Some(standalone);
+    }
+
+    // Sidecar layout: bundle.externalBin("binaries/openhuman-core") is emitted as
+    // openhuman-core-<target-triple>(.exe) under app resources.
+    let mut search_dirs = vec![exe_dir.to_path_buf()];
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(resources_dir) = exe_dir.parent().map(|p| p.join("Resources")) {
+            search_dirs.push(resources_dir);
+        }
+    }
+
+    for dir in search_dirs {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+
+            #[cfg(windows)]
+            let matches = file_name.starts_with("openhuman-core-") && file_name.ends_with(".exe");
+            #[cfg(not(windows))]
+            let matches = file_name.starts_with("openhuman-core-");
+
+            if matches {
+                return Some(path);
+            }
+        }
+    }
+
+    None
 }

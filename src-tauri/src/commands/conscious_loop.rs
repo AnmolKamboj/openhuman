@@ -17,7 +17,7 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
 
-use crate::commands::memory::MemoryState;
+use crate::memory::MemoryState;
 
 // ─── Event types (Rust → frontend) ──────────────────────────────────────────
 
@@ -103,13 +103,22 @@ fn find_ai_directory(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
         }
     }
     if let Ok(cwd) = std::env::current_dir() {
-        let root_dev = cwd.join("src-tauri").join("ai");
+        let root_dev = cwd.join("rust-core").join("ai");
         if root_dev.is_dir() {
             return Some(root_dev);
+        }
+        if let Some(src_tauri_dev) = cwd.parent().map(|p| p.join("rust-core").join("ai")) {
+            if src_tauri_dev.is_dir() {
+                return Some(src_tauri_dev);
+            }
         }
         let fallback = cwd.join("ai");
         if fallback.is_dir() {
             return Some(fallback);
+        }
+        let src_tauri_legacy = cwd.join("src-tauri").join("ai");
+        if src_tauri_legacy.is_dir() {
+            return Some(src_tauri_legacy);
         }
         if let Some(legacy) = cwd.parent().map(|p| p.join("ai")) {
             if legacy.is_dir() {
@@ -142,7 +151,6 @@ fn load_conscious_prompt(app: &tauri::AppHandle) -> String {
 // ─── Core logic ───────────────────────────────────────────────────────────────
 
 /// Inner implementation — runs one conscious loop pass.
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub async fn conscious_loop_run_inner(
     app: tauri::AppHandle,
     auth_token: String,
@@ -464,7 +472,6 @@ pub async fn conscious_loop_run_inner(
 // ─── Tauri command ────────────────────────────────────────────────────────────
 
 /// Manually trigger a conscious loop run from the frontend.
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 pub async fn conscious_loop_run(
     app: tauri::AppHandle,
@@ -494,19 +501,6 @@ pub async fn conscious_loop_run(
     });
 
     Ok(())
-}
-
-/// Mobile stub — conscious loop is desktop-only (requires V8 runtime for skill IDs).
-#[cfg(any(target_os = "android", target_os = "ios"))]
-#[tauri::command]
-pub async fn conscious_loop_run(
-    _app: tauri::AppHandle,
-    _auth_token: String,
-    _backend_url: String,
-    _model: Option<String>,
-    _memory_state: tauri::State<'_, MemoryState>,
-) -> Result<(), String> {
-    Err("Conscious loop is not supported on mobile".to_string())
 }
 
 // ─── Periodic timer ───────────────────────────────────────────────────────────
@@ -569,16 +563,7 @@ pub async fn conscious_loop_timer(app: tauri::AppHandle) {
         let model = std::env::var("OPENHUMAN_CONSCIOUS_MODEL")
             .unwrap_or_else(|_| DEFAULT_MODEL.to_string());
 
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        {
-            log::info!("[conscious_loop] Timer: firing periodic run");
-            conscious_loop_run_inner(app.clone(), auth_token, backend_url, model, memory_client)
-                .await;
-        }
-
-        #[cfg(any(target_os = "android", target_os = "ios"))]
-        {
-            log::info!("[conscious_loop] Timer: skipping on mobile platform");
-        }
+        log::info!("[conscious_loop] Timer: firing periodic run");
+        conscious_loop_run_inner(app.clone(), auth_token, backend_url, model, memory_client).await;
     }
 }

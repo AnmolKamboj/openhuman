@@ -22,9 +22,12 @@ export default [
   {
     ignores: [
       'node_modules/**',
+      'target/**',
+      '**/target/**',
       'dist/**',
       'coverage/**',
       'src-tauri/**',
+      'rust-core/**',
       'skills/**',
       'references/**',
       'scripts/**',
