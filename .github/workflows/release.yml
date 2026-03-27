@@ -324,11 +324,12 @@ jobs:
           # Tools discovery now uses a JS mock registry (no Rust discovery
           # binary target), so there is no extra helper executable for Tauri
           # to copy/sign inside release app bundles.
-          # Build/package only the app binary to keep standalone CLI bins
-          # out of the signed macOS app bundle.
-          # Yarn v1 strips one "--" layer when invoking scripts.
-          # Keep a second separator so `--bin OpenHuman` reaches cargo.
-          args: -c ${{ steps.config-overrides.outputs.json }} ${{ matrix.settings.args }} -- -- --bin OpenHuman
+          # Restrict Cargo bin selection only on macOS to keep standalone CLI bins
+          # out of the signed .app bundle. Linux packaging needs openhuman-cli
+          # available for deb data files, so do not pass --bin there.
+          # Yarn v1 strips one "--" layer when invoking scripts, hence the
+          # double-separator when forwarding flags to Cargo.
+          args: -c ${{ steps.config-overrides.outputs.json }} ${{ matrix.settings.args }} ${{ matrix.settings.platform == 'macos-latest' && '-- -- --bin OpenHuman' || '' }}
           includeDebug: false
           includeRelease: true
           releaseId: ${{ needs.create-release.outputs.release_id }}
