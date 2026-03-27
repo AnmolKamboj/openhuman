@@ -244,10 +244,7 @@ const Conversations = () => {
               entry.name === event.tool_name &&
               entry.round === event.round
             ) {
-              nextEntries[i] = {
-                ...entry,
-                status: event.success ? 'success' : 'error',
-              };
+              nextEntries[i] = { ...entry, status: event.success ? 'success' : 'error' };
               changed = true;
               break;
             }
@@ -559,7 +556,11 @@ const Conversations = () => {
                           />
                         </svg>
                       ) : (
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg
+                          className="w-3.5 h-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24">
                           <path
                             strokeLinecap="round"
                             strokeLinejoin="round"
@@ -712,7 +713,11 @@ const Conversations = () => {
                         ? `$${teamUsage.remainingUsd.toFixed(2)} of $${teamUsage.cycleBudgetUsd.toFixed(2)} remaining`
                         : 'Loading budget…'
                     }>
-                    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+                    <svg
+                      width={size}
+                      height={size}
+                      viewBox={`0 0 ${size} ${size}`}
+                      className="-rotate-90">
                       <circle
                         cx={size / 2}
                         cy={size / 2}
@@ -751,7 +756,9 @@ const Conversations = () => {
                       )}
                     </svg>
                     {teamUsage && (
-                      <span className="text-[10px] text-stone-500">${teamUsage.remainingUsd.toFixed(2)}</span>
+                      <span className="text-[10px] text-stone-500">
+                        ${teamUsage.remainingUsd.toFixed(2)}
+                      </span>
                     )}
                   </div>
                 );

@@ -219,8 +219,8 @@ jobs:
           #   target: x86_64-apple-darwin
           #   artifact_suffix: x86_64-apple-darwin
           - platform: ubuntu-22.04
-            args: ""
-            target: ""
+            args: ''
+            target: ''
             artifact_suffix: ubuntu
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -287,7 +287,7 @@ jobs:
         env:
           BASE_URL: ${{ vars.BASE_URL }}
           UPDATER_PUBLIC_KEY: ${{ secrets.UPDATER_PUBLIC_KEY }}
-          WITH_UPDATER: "true"
+          WITH_UPDATER: 'true'
         with:
           script: |
             const workspacePath = process.env.GITHUB_WORKSPACE.replace(/\\/g, '/');
@@ -318,7 +318,7 @@ jobs:
           BASE_URL: ${{ vars.BASE_URL }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.UPDATER_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
-          WITH_UPDATER: "true"
+          WITH_UPDATER: 'true'
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.settings.platform == 'macos-latest' && '10.15' || '' }}
         with:
           # Tools discovery now uses a JS mock registry (no Rust discovery
