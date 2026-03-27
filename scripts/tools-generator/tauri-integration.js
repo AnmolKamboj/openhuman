@@ -28,6 +28,8 @@ export function getTauriCommand() {
       join(PROJECT_ROOT, 'src-tauri', 'Cargo.toml'),
       '--bin',
       'openhuman-tools-discovery',
+      '--features',
+      'tools-discovery-bin',
     ],
   };
 }
