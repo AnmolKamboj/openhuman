@@ -45,9 +45,12 @@ pub async fn generate_openhuman(
         "auto_start": false
     });
     let manifest_path = skill_dir.join("manifest.json");
-    tokio::fs::write(&manifest_path, serde_json::to_string_pretty(&manifest).unwrap())
-        .await
-        .map_err(|e| format!("Failed to write manifest.json: {e}"))?;
+    tokio::fs::write(
+        &manifest_path,
+        serde_json::to_string_pretty(&manifest).unwrap(),
+    )
+    .await
+    .map_err(|e| format!("Failed to write manifest.json: {e}"))?;
 
     // Write index.js — use full LLM-generated source when available,
     // otherwise build from the minimal template.
@@ -55,9 +58,10 @@ pub async fn generate_openhuman(
     let index_js_content: String = if let Some(full) = spec.full_index_js.as_deref() {
         full.to_string()
     } else {
-        let tool_code = spec.tool_code.as_deref().unwrap_or(
-            "return { result: 'Generated skill executed successfully', args };",
-        );
+        let tool_code = spec
+            .tool_code
+            .as_deref()
+            .unwrap_or("return { result: 'Generated skill executed successfully', args };");
         let tool_fn_name = sanitize_fn_name(&spec.name);
         build_index_js(&tool_fn_name, &spec.description, tool_code)
     };
@@ -123,14 +127,17 @@ pub async fn generate_openclaw(spec: &GenerateSkillSpec) -> Result<PathBuf, Stri
             }],
         };
 
-        let toml_content = toml::to_string(&obj)
-            .map_err(|e| format!("Failed to serialize SKILL.toml: {e}"))?;
+        let toml_content =
+            toml::to_string(&obj).map_err(|e| format!("Failed to serialize SKILL.toml: {e}"))?;
         tokio::fs::write(skill_dir.join("SKILL.toml"), toml_content)
             .await
             .map_err(|e| format!("Failed to write SKILL.toml: {e}"))?;
     } else {
         // Markdown prompt skill.
-        let md_content = spec.markdown_content.as_deref().unwrap_or(&spec.description);
+        let md_content = spec
+            .markdown_content
+            .as_deref()
+            .unwrap_or(&spec.description);
         let full_md = format!("# {}\n\n{}\n", spec.name, md_content);
         tokio::fs::write(skill_dir.join("SKILL.md"), full_md)
             .await
@@ -155,8 +162,8 @@ fn workspace_skills_dir() -> Result<PathBuf, String> {
 /// always correctly escaped for embedding in a JS string literal.
 fn build_index_js(tool_fn: &str, description: &str, tool_code: &str) -> String {
     // serde_json::to_string produces a quoted, escaped JSON string literal.
-    let desc_json = serde_json::to_string(description)
-        .unwrap_or_else(|_| r#""unknown""#.to_string());
+    let desc_json =
+        serde_json::to_string(description).unwrap_or_else(|_| r#""unknown""#.to_string());
 
     format!(
         r#"// Auto-generated openhuman skill
@@ -204,7 +211,13 @@ fn sanitize_fn_name(name: &str) -> String {
     let joined = name
         .to_lowercase()
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>()
         .split('_')
         .filter(|s| !s.is_empty())

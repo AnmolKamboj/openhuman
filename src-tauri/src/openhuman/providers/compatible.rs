@@ -159,8 +159,10 @@ impl OpenAiCompatibleProvider {
                 .timeout(std::time::Duration::from_secs(120))
                 .connect_timeout(std::time::Duration::from_secs(10))
                 .default_headers(headers);
-            let builder =
-                crate::openhuman::config::apply_runtime_proxy_to_builder(builder, "provider.compatible");
+            let builder = crate::openhuman::config::apply_runtime_proxy_to_builder(
+                builder,
+                "provider.compatible",
+            );
 
             return builder.build().unwrap_or_else(|error| {
                 tracing::warn!("Failed to build proxied timeout client with user-agent: {error}");
@@ -168,7 +170,11 @@ impl OpenAiCompatibleProvider {
             });
         }
 
-        crate::openhuman::config::build_runtime_proxy_client_with_timeouts("provider.compatible", 120, 10)
+        crate::openhuman::config::build_runtime_proxy_client_with_timeouts(
+            "provider.compatible",
+            120,
+            10,
+        )
     }
 
     /// Build the full URL for chat completions, detecting if base_url already includes the path.
@@ -233,7 +239,9 @@ impl OpenAiCompatibleProvider {
         }
     }
 
-    fn tool_specs_to_openai_format(tools: &[crate::openhuman::tools::ToolSpec]) -> Vec<serde_json::Value> {
+    fn tool_specs_to_openai_format(
+        tools: &[crate::openhuman::tools::ToolSpec],
+    ) -> Vec<serde_json::Value> {
         tools
             .iter()
             .map(|tool| {

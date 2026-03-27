@@ -68,7 +68,9 @@ pub fn call_tool(
                     .build()
                     .map_err(|e| format!("Failed to create runtime: {e}"))
                     .map(|rt| {
-                        rt.block_on(async { registry.call_tool(&target, &tool, arguments_clone).await })
+                        rt.block_on(async {
+                            registry.call_tool(&target, &tool, arguments_clone).await
+                        })
                     })
             });
 

@@ -1,4 +1,6 @@
-use crate::openhuman::providers::{ChatMessage, ChatResponse, ConversationMessage, ToolResultMessage};
+use crate::openhuman::providers::{
+    ChatMessage, ChatResponse, ConversationMessage, ToolResultMessage,
+};
 use crate::openhuman::tools::{Tool, ToolSpec};
 use serde_json::Value;
 use std::fmt::Write;

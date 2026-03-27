@@ -276,7 +276,11 @@ impl GeminiProvider {
     }
 
     fn http_client(&self) -> Client {
-        crate::openhuman::config::build_runtime_proxy_client_with_timeouts("provider.gemini", 120, 10)
+        crate::openhuman::config::build_runtime_proxy_client_with_timeouts(
+            "provider.gemini",
+            120,
+            10,
+        )
     }
 
     fn build_generate_content_request(

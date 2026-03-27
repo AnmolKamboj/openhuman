@@ -9,10 +9,10 @@
 use crate::models::socket::SocketState;
 use crate::runtime::socket_manager::SocketManager;
 use crate::utils::config::get_backend_url;
-use std::sync::Arc;
-use std::collections::HashMap;
-use tauri::State;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Arc;
+use tauri::State;
 
 // Desktop-only imports
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -329,15 +329,24 @@ mod desktop {
             schemas.push(schema);
         }
 
-        log::info!("🔧 [RUNTIME] Generated {} ZeroClaw tool schemas", schemas.len());
+        log::info!(
+            "🔧 [RUNTIME] Generated {} ZeroClaw tool schemas",
+            schemas.len()
+        );
 
         // Log tools that contain 'notion' or 'gmail' for debugging
-        let gmail_notion_tools: Vec<String> = schemas.iter()
+        let gmail_notion_tools: Vec<String> = schemas
+            .iter()
             .map(|s| &s.function.name)
-            .filter(|name| name.to_lowercase().contains("gmail") || name.to_lowercase().contains("notion"))
+            .filter(|name| {
+                name.to_lowercase().contains("gmail") || name.to_lowercase().contains("notion")
+            })
             .cloned()
             .collect();
-        log::info!("🔧 [RUNTIME] Gmail/Notion tools found: {:?}", gmail_notion_tools);
+        log::info!(
+            "🔧 [RUNTIME] Gmail/Notion tools found: {:?}",
+            gmail_notion_tools
+        );
         Ok(schemas)
     }
 
@@ -351,12 +360,20 @@ mod desktop {
     ) -> Result<ZeroClawToolResult, String> {
         let start_time = std::time::Instant::now();
 
-        log::info!("🔧 [RUNTIME] Executing ZeroClaw tool: {} with args: {}", tool_id, args);
+        log::info!(
+            "🔧 [RUNTIME] Executing ZeroClaw tool: {} with args: {}",
+            tool_id,
+            args
+        );
 
         // Parse tool_id to get skill_id and tool_name (format: "skill_id_tool_name")
         let (skill_id, tool_name) = match parse_tool_id(&tool_id) {
             Ok((skill, tool)) => {
-                log::info!("🔧 [RUNTIME] Parsed tool_id: skill_id='{}', tool_name='{}'", skill, tool);
+                log::info!(
+                    "🔧 [RUNTIME] Parsed tool_id: skill_id='{}', tool_name='{}'",
+                    skill,
+                    tool
+                );
                 (skill, tool)
             }
             Err(e) => {
@@ -372,30 +389,51 @@ mod desktop {
         };
 
         // Log runtime state before execution
-        log::info!("🔧 [RUNTIME] Attempting to call tool '{}' on skill '{}'", tool_name, skill_id);
+        log::info!(
+            "🔧 [RUNTIME] Attempting to call tool '{}' on skill '{}'",
+            tool_name,
+            skill_id
+        );
 
         // Get available skills for debugging
         let skills = engine.list_skills();
-        log::info!("🔧 [RUNTIME] Available skills: {:?}", skills.iter().map(|s| &s.skill_id).collect::<Vec<_>>());
+        log::info!(
+            "🔧 [RUNTIME] Available skills: {:?}",
+            skills.iter().map(|s| &s.skill_id).collect::<Vec<_>>()
+        );
 
         // Check if the specific skill exists
         if let Some(skill) = skills.iter().find(|s| s.skill_id == skill_id) {
-            log::info!("🔧 [RUNTIME] Found skill '{}' with state: {:?}, tools: {:?}",
-                      skill_id, skill.state, skill.tools.iter().map(|t| &t.name).collect::<Vec<_>>());
+            log::info!(
+                "🔧 [RUNTIME] Found skill '{}' with state: {:?}, tools: {:?}",
+                skill_id,
+                skill.state,
+                skill.tools.iter().map(|t| &t.name).collect::<Vec<_>>()
+            );
         } else {
             log::error!("🔧 [RUNTIME] Skill '{}' not found in runtime!", skill_id);
         }
 
         // Execute the tool using the existing command
-        log::info!("🔧 [RUNTIME] Calling engine.call_tool('{}', '{}', {})", skill_id, tool_name, args);
+        log::info!(
+            "🔧 [RUNTIME] Calling engine.call_tool('{}', '{}', {})",
+            skill_id,
+            tool_name,
+            args
+        );
 
         match engine.call_tool(&skill_id, &tool_name, args).await {
             Ok(result) => {
                 let execution_time = start_time.elapsed().as_millis() as u64;
-                log::info!("🔧 [RUNTIME] Tool execution completed in {}ms, is_error: {}", execution_time, result.is_error);
+                log::info!(
+                    "🔧 [RUNTIME] Tool execution completed in {}ms, is_error: {}",
+                    execution_time,
+                    result.is_error
+                );
 
                 if result.is_error {
-                    let error_message = result.content
+                    let error_message = result
+                        .content
                         .iter()
                         .filter(|c| matches!(c, crate::runtime::types::ToolContent::Text { .. }))
                         .map(|c| match c {
@@ -405,7 +443,10 @@ mod desktop {
                         .collect::<Vec<_>>()
                         .join("\n");
 
-                    log::error!("🔧 [RUNTIME] Tool execution failed with error: {}", error_message);
+                    log::error!(
+                        "🔧 [RUNTIME] Tool execution failed with error: {}",
+                        error_message
+                    );
 
                     Ok(ZeroClawToolResult {
                         success: false,
@@ -414,12 +455,14 @@ mod desktop {
                         execution_time: Some(execution_time),
                     })
                 } else {
-                    let output = result.content
+                    let output = result
+                        .content
                         .iter()
                         .map(|c| match c {
                             crate::runtime::types::ToolContent::Text { text } => text.clone(),
                             crate::runtime::types::ToolContent::Json { data } => {
-                                serde_json::to_string(data).unwrap_or_else(|_| "Invalid JSON".to_string())
+                                serde_json::to_string(data)
+                                    .unwrap_or_else(|_| "Invalid JSON".to_string())
                             }
                         })
                         .collect::<Vec<_>>()
@@ -467,7 +510,9 @@ mod desktop {
     }
 
     // Helper function to convert MCP schema to OpenAI function calling format
-    pub fn convert_to_openai_schema(mcp_schema: serde_json::Value) -> Result<serde_json::Value, String> {
+    pub fn convert_to_openai_schema(
+        mcp_schema: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
         // If it's already in OpenAI format, return as-is
         if mcp_schema.is_object() && mcp_schema.get("type").is_some() {
             return Ok(mcp_schema);
@@ -514,7 +559,9 @@ mod mobile {
     }
 
     #[tauri::command]
-    pub async fn runtime_get_skill_state(_skill_id: String) -> Result<Option<SkillSnapshot>, String> {
+    pub async fn runtime_get_skill_state(
+        _skill_id: String,
+    ) -> Result<Option<SkillSnapshot>, String> {
         Ok(None)
     }
 
@@ -562,7 +609,10 @@ mod mobile {
     }
 
     #[tauri::command]
-    pub async fn runtime_skill_kv_get(_skill_id: String, _key: String) -> Result<serde_json::Value, String> {
+    pub async fn runtime_skill_kv_get(
+        _skill_id: String,
+        _key: String,
+    ) -> Result<serde_json::Value, String> {
         Err(MOBILE_ERROR.to_string())
     }
 
@@ -585,7 +635,10 @@ mod mobile {
     }
 
     #[tauri::command]
-    pub async fn runtime_skill_data_read(_skill_id: String, _filename: String) -> Result<String, String> {
+    pub async fn runtime_skill_data_read(
+        _skill_id: String,
+        _filename: String,
+    ) -> Result<String, String> {
         Err(MOBILE_ERROR.to_string())
     }
 
@@ -703,8 +756,8 @@ mod tests {
                             }
                         },
                         "required": ["message"]
-                    })
-                }
+                    }),
+                },
             };
 
             // Test serialization
@@ -714,8 +767,8 @@ mod tests {
             assert!(json.contains("A test tool"));
 
             // Test deserialization
-            let deserialized: ZeroClawToolSchema = serde_json::from_str(&json)
-                .expect("Should deserialize from JSON");
+            let deserialized: ZeroClawToolSchema =
+                serde_json::from_str(&json).expect("Should deserialize from JSON");
             assert_eq!(deserialized.type_field, "function");
             assert_eq!(deserialized.function.name, "test_tool");
         }
@@ -726,7 +779,7 @@ mod tests {
                 success: true,
                 output: "Test output".to_string(),
                 error: None,
-                execution_time: Some(1500)
+                execution_time: Some(1500),
             };
 
             // Test serialization
@@ -740,7 +793,7 @@ mod tests {
                 success: false,
                 output: String::new(),
                 error: Some("Tool not found".to_string()),
-                execution_time: Some(100)
+                execution_time: Some(100),
             };
 
             let error_json = serde_json::to_string(&error_result).expect("Should serialize error");
@@ -751,13 +804,13 @@ mod tests {
         #[test]
         fn test_parse_tool_id_valid_formats() {
             // Test valid tool ID formats
-            let (skill_id, tool_name) = desktop::parse_tool_id("github_list_issues")
-                .expect("Should parse valid tool ID");
+            let (skill_id, tool_name) =
+                desktop::parse_tool_id("github_list_issues").expect("Should parse valid tool ID");
             assert_eq!(skill_id, "github");
             assert_eq!(tool_name, "list_issues");
 
-            let (skill_id, tool_name) = desktop::parse_tool_id("notion_create_page")
-                .expect("Should parse valid tool ID");
+            let (skill_id, tool_name) =
+                desktop::parse_tool_id("notion_create_page").expect("Should parse valid tool ID");
             assert_eq!(skill_id, "notion");
             assert_eq!(tool_name, "create_page");
 
@@ -771,10 +824,22 @@ mod tests {
         #[test]
         fn test_parse_tool_id_invalid_formats() {
             // Test invalid formats
-            assert!(desktop::parse_tool_id("nounderscore").is_err(), "Should fail for no underscore");
-            assert!(desktop::parse_tool_id("_empty_skill").is_err(), "Should fail for empty skill ID");
-            assert!(desktop::parse_tool_id("empty_tool_").is_err(), "Should fail for empty tool name");
-            assert!(desktop::parse_tool_id("").is_err(), "Should fail for empty string");
+            assert!(
+                desktop::parse_tool_id("nounderscore").is_err(),
+                "Should fail for no underscore"
+            );
+            assert!(
+                desktop::parse_tool_id("_empty_skill").is_err(),
+                "Should fail for empty skill ID"
+            );
+            assert!(
+                desktop::parse_tool_id("empty_tool_").is_err(),
+                "Should fail for empty tool name"
+            );
+            assert!(
+                desktop::parse_tool_id("").is_err(),
+                "Should fail for empty string"
+            );
         }
 
         #[test]
@@ -823,8 +888,8 @@ mod tests {
                             "state": {"type": "string", "enum": ["open", "closed", "all"], "default": "open"}
                         },
                         "required": ["owner", "repo"]
-                    })
-                }
+                    }),
+                },
             };
 
             // Serialize and check format
@@ -860,10 +925,8 @@ mod tests {
 
         #[tokio::test]
         async fn test_mobile_stub_runtime_execute_tool() {
-            let result = mobile::runtime_execute_tool(
-                "test_tool".to_string(),
-                "{}".to_string()
-            ).await;
+            let result =
+                mobile::runtime_execute_tool("test_tool".to_string(), "{}".to_string()).await;
 
             // Mobile should return error
             assert!(result.is_err());
@@ -881,7 +944,8 @@ mod tests {
                 "description": "test",
                 "parameters": {}
             }
-        })).expect("Should deserialize from JSON");
+        }))
+        .expect("Should deserialize from JSON");
 
         assert_eq!(tool_schema.type_field, "function");
         assert_eq!(tool_schema.function.name, "test");
@@ -892,7 +956,8 @@ mod tests {
             "output": "result",
             "error": null,
             "execution_time": 1000
-        })).expect("Should deserialize tool result");
+        }))
+        .expect("Should deserialize tool result");
 
         assert!(tool_result.success);
         assert_eq!(tool_result.output, "result");
@@ -906,7 +971,7 @@ mod tests {
             success: false,
             output: String::new(),
             error: Some("Connection timeout".to_string()),
-            execution_time: Some(30000) // 30 second timeout
+            execution_time: Some(30000), // 30 second timeout
         };
 
         let json = serde_json::to_string(&error_result).expect("Should serialize error");
@@ -915,8 +980,8 @@ mod tests {
         assert!(json.contains("30000"));
 
         // Test deserialization back
-        let parsed: ZeroClawToolResult = serde_json::from_str(&json)
-            .expect("Should parse error result");
+        let parsed: ZeroClawToolResult =
+            serde_json::from_str(&json).expect("Should parse error result");
         assert!(!parsed.success);
         assert_eq!(parsed.error, Some("Connection timeout".to_string()));
     }

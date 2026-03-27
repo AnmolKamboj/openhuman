@@ -59,7 +59,10 @@ impl SkillDb {
 
     /// Execute a SQL statement (no result rows expected).
     pub fn exec(&self, sql: &str, params: &[JsonValue]) -> Result<usize, String> {
-        let conn = self.conn.lock().map_err(|e| format!("DB lock error: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| format!("DB lock error: {e}"))?;
         let sqlite_params = json_values_to_sqlite(params);
         conn.execute(sql, params_from_iter(sqlite_params.iter()))
             .map_err(|e| format!("SQL exec error: {e}"))
@@ -67,7 +70,10 @@ impl SkillDb {
 
     /// Fetch a single row as a JSON object. Returns `null` if no row matches.
     pub fn get(&self, sql: &str, params: &[JsonValue]) -> Result<JsonValue, String> {
-        let conn = self.conn.lock().map_err(|e| format!("DB lock error: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| format!("DB lock error: {e}"))?;
         let sqlite_params = json_values_to_sqlite(params);
         let mut stmt = conn
             .prepare(sql)
@@ -91,7 +97,10 @@ impl SkillDb {
 
     /// Fetch all matching rows as a JSON array of objects.
     pub fn all(&self, sql: &str, params: &[JsonValue]) -> Result<JsonValue, String> {
-        let conn = self.conn.lock().map_err(|e| format!("DB lock error: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| format!("DB lock error: {e}"))?;
         let sqlite_params = json_values_to_sqlite(params);
         let mut stmt = conn
             .prepare(sql)
@@ -124,10 +133,7 @@ impl SkillDb {
         match result {
             JsonValue::Null => Ok(JsonValue::Null),
             obj => {
-                let val_str = obj
-                    .get("value")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("null");
+                let val_str = obj.get("value").and_then(|v| v.as_str()).unwrap_or("null");
                 serde_json::from_str(val_str)
                     .map_err(|e| format!("Failed to parse KV value for '{key}': {e}"))
             }
@@ -213,12 +219,10 @@ fn row_to_json(row: &rusqlite::Row<'_>, column_names: &[String]) -> Result<JsonV
                 let text = String::from_utf8_lossy(s).to_string();
                 JsonValue::String(text)
             }
-            Ok(rusqlite::types::ValueRef::Blob(b)) => {
-                JsonValue::String(base64::Engine::encode(
-                    &base64::engine::general_purpose::STANDARD,
-                    b,
-                ))
-            }
+            Ok(rusqlite::types::ValueRef::Blob(b)) => JsonValue::String(base64::Engine::encode(
+                &base64::engine::general_purpose::STANDARD,
+                b,
+            )),
             Err(e) => return Err(format!("Failed to read column '{}': {}", name, e)),
         };
         obj.insert(name.clone(), value);

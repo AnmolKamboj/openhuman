@@ -341,9 +341,7 @@ fn is_read_tool(name: &str) -> bool {
 /// Tool names are namespaced as `{skill_id}__{tool_name}`.
 /// Read-only tools are excluded — their data comes from the memory layer (Step 2 context recall).
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn discover_tools(
-    engine: &crate::runtime::qjs_engine::RuntimeEngine,
-) -> Vec<serde_json::Value> {
+fn discover_tools(engine: &crate::runtime::qjs_engine::RuntimeEngine) -> Vec<serde_json::Value> {
     engine
         .all_tools()
         .into_iter()
@@ -436,15 +434,9 @@ pub async fn chat_send(
         chat_state_arc.remove(&thread_id_clone);
 
         if let Err(e) = result {
-            let _ = app_clone.emit(
-                "chat:error",
-                ChatErrorEvent {
-                    thread_id: thread_id_clone,
-                    message: e,
-                    error_type: "inference".to_string(),
-                    round: None,
-                },
-            );
+            // chat_send_inner already emits chat:error for known error paths.
+            // Only log here to avoid duplicate error events.
+            log::error!("[chat] chat_send_inner failed: {e}");
         }
     });
 
@@ -501,15 +493,9 @@ pub async fn chat_send(
         chat_state_arc.remove(&thread_id_clone);
 
         if let Err(e) = result {
-            let _ = app_clone.emit(
-                "chat:error",
-                ChatErrorEvent {
-                    thread_id: thread_id_clone,
-                    message: e,
-                    error_type: "inference".to_string(),
-                    round: None,
-                },
-            );
+            // chat_send_mobile already emits chat:error for known error paths.
+            // Only log here to avoid duplicate error events.
+            log::error!("[chat] chat_send_mobile failed: {e}");
         }
     });
 
@@ -546,7 +532,19 @@ async fn chat_send_inner(
     let client = reqwest::Client::builder()
         .use_rustls_tls()
         .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+        .map_err(|e| {
+            let msg = format!("Failed to build HTTP client: {}", e);
+            let _ = app.emit(
+                "chat:error",
+                ChatErrorEvent {
+                    thread_id: thread_id.to_string(),
+                    message: msg.clone(),
+                    error_type: "network".to_string(),
+                    round: None,
+                },
+            );
+            msg
+        })?;
 
     // ── Step 1: Load AI context ─────────────────────────────────────────
     let openclaw_context = load_openclaw_context(app);
@@ -583,7 +581,11 @@ async fn chat_send_inner(
         .map(|(skill_id, _)| skill_id)
         .collect();
 
-    log::info!("[chat] Recalling skill contexts for {} skill(s): {:?}", skill_ids.len(), skill_ids);
+    log::info!(
+        "[chat] Recalling skill contexts for {} skill(s): {:?}",
+        skill_ids.len(),
+        skill_ids
+    );
 
     let mut skill_contexts: Vec<String> = Vec::new();
     for sid in &skill_ids {
@@ -932,10 +934,19 @@ async fn chat_send_inner(
         }
 
         // Parse the completion response
-        let completion: ChatCompletionResponse = response
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse inference response: {}", e))?;
+        let completion: ChatCompletionResponse = response.json().await.map_err(|e| {
+            let msg = format!("Failed to parse inference response: {}", e);
+            let _ = app.emit(
+                "chat:error",
+                ChatErrorEvent {
+                    thread_id: thread_id.to_string(),
+                    message: msg.clone(),
+                    error_type: "inference".to_string(),
+                    round: Some(round),
+                },
+            );
+            msg
+        })?;
 
         // Accumulate token usage
         if let Some(ref usage) = completion.usage {
@@ -943,10 +954,19 @@ async fn chat_send_inner(
             total_output_tokens += usage.completion_tokens;
         }
 
-        let choice = completion
-            .choices
-            .first()
-            .ok_or_else(|| "No choices in inference response".to_string())?;
+        let choice = completion.choices.first().ok_or_else(|| {
+            let msg = "No choices in inference response".to_string();
+            let _ = app.emit(
+                "chat:error",
+                ChatErrorEvent {
+                    thread_id: thread_id.to_string(),
+                    message: msg.clone(),
+                    error_type: "inference".to_string(),
+                    round: Some(round),
+                },
+            );
+            msg
+        })?;
 
         log::info!(
             "[chat] Round {} — finish_reason={:?}, tool_calls={}",
@@ -989,9 +1009,8 @@ async fn chat_send_inner(
 
                 let (skill_id, tool_name) = parse_tool_name(&tc.function.name);
 
-                let args_value: serde_json::Value =
-                    serde_json::from_str(&tc.function.arguments)
-                        .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
+                let args_value: serde_json::Value = serde_json::from_str(&tc.function.arguments)
+                    .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
 
                 // Emit tool_call event before executing
                 let _ = app.emit(
@@ -1056,9 +1075,7 @@ async fn chat_send_inner(
                     .content
                     .iter()
                     .filter_map(|c| match c {
-                        crate::runtime::types::ToolContent::Text { text } => {
-                            Some(text.as_str())
-                        }
+                        crate::runtime::types::ToolContent::Text { text } => Some(text.as_str()),
                         crate::runtime::types::ToolContent::Json { .. } => None,
                     })
                     .collect::<Vec<&str>>()
@@ -1067,9 +1084,7 @@ async fn chat_send_inner(
                 // Check for JSON error pattern (matching TS behaviour)
                 let (final_tool_str, final_success) = if !tool_result.is_error {
                     if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&tool_content) {
-                        if let Some(error_str) =
-                            parsed.get("error").and_then(|e| e.as_str())
-                        {
+                        if let Some(error_str) = parsed.get("error").and_then(|e| e.as_str()) {
                             (format!("Error: {}", error_str), false)
                         } else {
                             (tool_content.clone(), true)
@@ -1162,7 +1177,19 @@ async fn chat_send_mobile(
     let client = reqwest::Client::builder()
         .use_rustls_tls()
         .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+        .map_err(|e| {
+            let msg = format!("Failed to build HTTP client: {}", e);
+            let _ = app.emit(
+                "chat:error",
+                ChatErrorEvent {
+                    thread_id: thread_id.to_string(),
+                    message: msg.clone(),
+                    error_type: "network".to_string(),
+                    round: None,
+                },
+            );
+            msg
+        })?;
 
     // ── Step 1: Load AI context ─────────────────────────────────────────
     let openclaw_context = load_openclaw_context(app);
@@ -1307,20 +1334,38 @@ async fn chat_send_mobile(
         return Err(msg);
     }
 
-    let completion: ChatCompletionResponse = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse inference response: {}", e))?;
+    let completion: ChatCompletionResponse = response.json().await.map_err(|e| {
+        let msg = format!("Failed to parse inference response: {}", e);
+        let _ = app.emit(
+            "chat:error",
+            ChatErrorEvent {
+                thread_id: thread_id.to_string(),
+                message: msg.clone(),
+                error_type: "inference".to_string(),
+                round: None,
+            },
+        );
+        msg
+    })?;
 
     let (total_input_tokens, total_output_tokens) = completion
         .usage
         .map(|u| (u.prompt_tokens, u.completion_tokens))
         .unwrap_or((0, 0));
 
-    let choice = completion
-        .choices
-        .first()
-        .ok_or_else(|| "No choices in inference response".to_string())?;
+    let choice = completion.choices.first().ok_or_else(|| {
+        let msg = "No choices in inference response".to_string();
+        let _ = app.emit(
+            "chat:error",
+            ChatErrorEvent {
+                thread_id: thread_id.to_string(),
+                message: msg.clone(),
+                error_type: "inference".to_string(),
+                round: None,
+            },
+        );
+        msg
+    })?;
 
     let full_response = choice.message.content.clone().unwrap_or_default();
 

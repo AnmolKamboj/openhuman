@@ -249,6 +249,11 @@ const threadSlice = createSlice({
       }
       state.messagesByThreadId[threadId].push(message);
 
+      // Also update current messages view if this is the selected thread
+      if (threadId === state.selectedThreadId) {
+        state.messages.push(message);
+      }
+
       // Update thread metadata
       const thread = state.threads.find(t => t.id === threadId);
       if (thread) {

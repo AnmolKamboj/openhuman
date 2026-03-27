@@ -25,9 +25,7 @@ pub fn create_sandbox(config: &SecurityConfig) -> Arc<dyn Sandbox> {
                     }
                 }
             }
-            log::warn!(
-                "Landlock requested but not available, falling back to application-layer"
-            );
+            log::warn!("Landlock requested but not available, falling back to application-layer");
             Arc::new(super::traits::NoopSandbox)
         }
         SandboxBackend::Firejail => {
@@ -37,9 +35,7 @@ pub fn create_sandbox(config: &SecurityConfig) -> Arc<dyn Sandbox> {
                     return Arc::new(sandbox);
                 }
             }
-            log::warn!(
-                "Firejail requested but not available, falling back to application-layer"
-            );
+            log::warn!("Firejail requested but not available, falling back to application-layer");
             Arc::new(super::traits::NoopSandbox)
         }
         SandboxBackend::Bubblewrap => {
@@ -52,9 +48,7 @@ pub fn create_sandbox(config: &SecurityConfig) -> Arc<dyn Sandbox> {
                     }
                 }
             }
-            log::warn!(
-                "Bubblewrap requested but not available, falling back to application-layer"
-            );
+            log::warn!("Bubblewrap requested but not available, falling back to application-layer");
             Arc::new(super::traits::NoopSandbox)
         }
         SandboxBackend::Docker => {

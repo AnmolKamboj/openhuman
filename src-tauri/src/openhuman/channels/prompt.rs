@@ -124,7 +124,11 @@ pub fn build_system_prompt(
         for skill in skills {
             let _ = writeln!(prompt, "  <skill>");
             let _ = writeln!(prompt, "    <name>{}</name>", skill.name);
-            let _ = writeln!(prompt, "    <description>{}</description>", skill.description);
+            let _ = writeln!(
+                prompt,
+                "    <description>{}</description>",
+                skill.description
+            );
             let location = skill.location.clone().unwrap_or_else(|| {
                 workspace_dir
                     .join("skills")
@@ -217,7 +221,12 @@ pub fn build_system_prompt(
 }
 
 /// Inject a single workspace file into the prompt with truncation and missing-file markers.
-fn inject_workspace_file(prompt: &mut String, workspace_dir: &Path, filename: &str, max_chars: usize) {
+fn inject_workspace_file(
+    prompt: &mut String,
+    workspace_dir: &Path,
+    filename: &str,
+    max_chars: usize,
+) {
     use std::fmt::Write;
 
     let path = workspace_dir.join(filename);

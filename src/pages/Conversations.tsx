@@ -152,10 +152,10 @@ const Conversations = () => {
       );
     }
 
-    if (selectedThreadId !== DEFAULT_THREAD_ID) {
-      dispatch(setSelectedThread(DEFAULT_THREAD_ID));
-    }
-  }, [dispatch, selectedThreadId, threads]);
+    // Always set selected thread to ensure messages view is synced from persisted storage
+    dispatch(setSelectedThread(DEFAULT_THREAD_ID));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch]);
 
   useEffect(() => {
     setIsLoadingModels(true);
@@ -293,6 +293,19 @@ const Conversations = () => {
         });
 
         if (event.error_type !== 'cancelled') {
+          // Deduplicate: skip if the last message is already an error
+          const currentState = store.getState() as {
+            thread: { messagesByThreadId: Record<string, ThreadMessage[]> };
+          };
+          const threadMessages = currentState.thread.messagesByThreadId[event.thread_id] || [];
+          const lastMsg = threadMessages[threadMessages.length - 1];
+          if (
+            lastMsg?.sender === 'agent' &&
+            lastMsg?.content === 'Something went wrong — please try again.'
+          ) {
+            return;
+          }
+
           dispatch(
             addInferenceResponse({
               content: 'Something went wrong — please try again.',
@@ -340,7 +353,6 @@ const Conversations = () => {
     };
 
     dispatch(addMessageLocal({ threadId: sendingThreadId, message: userMessage }));
-    dispatch(setSelectedThread(sendingThreadId));
 
     const historySnapshot = messages.filter(
       m => !m.id.startsWith('optimistic-') && m.id !== userMessage.id

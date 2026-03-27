@@ -115,12 +115,12 @@ pub async fn create_peripheral_tools(config: &PeripheralsConfig) -> Result<Vec<B
     if !tools.is_empty() {
         let board_names: Vec<String> = config.boards.iter().map(|b| b.board.clone()).collect();
         tools.push(Box::new(HardwareMemoryMapTool::new(board_names.clone())));
-        tools.push(Box::new(crate::openhuman::tools::HardwareBoardInfoTool::new(
-            board_names.clone(),
-        )));
-        tools.push(Box::new(crate::openhuman::tools::HardwareMemoryReadTool::new(
-            board_names,
-        )));
+        tools.push(Box::new(
+            crate::openhuman::tools::HardwareBoardInfoTool::new(board_names.clone()),
+        ));
+        tools.push(Box::new(
+            crate::openhuman::tools::HardwareMemoryReadTool::new(board_names),
+        ));
     }
 
     // Phase C: Add hardware_capabilities tool when any serial boards

@@ -7,8 +7,8 @@
 //! Commands are desktop-only — mobile stubs return empty/error results.
 
 use crate::runtime::types::{UnifiedSkillEntry, UnifiedSkillResult};
-use crate::unified_skills::GenerateSkillSpec;
 use crate::unified_skills::self_evolve::{SelfEvolveRequest, SelfEvolveResult};
+use crate::unified_skills::GenerateSkillSpec;
 use std::sync::Arc;
 use tauri::State;
 
@@ -140,12 +140,10 @@ mod mobile {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use desktop::{
-    unified_execute_skill, unified_generate_skill, unified_list_skills,
-    unified_self_evolve_skill,
+    unified_execute_skill, unified_generate_skill, unified_list_skills, unified_self_evolve_skill,
 };
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 pub use mobile::{
-    unified_execute_skill, unified_generate_skill, unified_list_skills,
-    unified_self_evolve_skill,
+    unified_execute_skill, unified_generate_skill, unified_list_skills, unified_self_evolve_skill,
 };

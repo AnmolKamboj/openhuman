@@ -1,5 +1,5 @@
-use super::common::make_workspace;
 use super::super::prompt::{build_system_prompt, BOOTSTRAP_MAX_CHARS};
+use super::common::make_workspace;
 use tempfile::TempDir;
 
 #[test]
@@ -205,7 +205,8 @@ fn channel_log_truncation_is_utf8_safe_for_multibyte_text() {
     let msg = "Hello from OpenHuman 🌍. Current status is healthy, and café-style UTF-8 text stays safe in logs.";
 
     // Reproduces the production crash path where channel logs truncate at 80 chars.
-    let result = std::panic::catch_unwind(|| crate::openhuman::util::truncate_with_ellipsis(msg, 80));
+    let result =
+        std::panic::catch_unwind(|| crate::openhuman::util::truncate_with_ellipsis(msg, 80));
     assert!(
         result.is_ok(),
         "truncate_with_ellipsis should never panic on UTF-8"

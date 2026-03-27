@@ -121,12 +121,7 @@ pub struct WebSocketState {
 // Constants & Helpers
 // ============================================================================
 
-pub const ALLOWED_ENV_VARS: &[&str] = &[
-    "VITE_BACKEND_URL",
-    "BACKEND_URL",
-    "JWT_TOKEN",
-    "NODE_ENV",
-];
+pub const ALLOWED_ENV_VARS: &[&str] = &["VITE_BACKEND_URL", "BACKEND_URL", "JWT_TOKEN", "NODE_ENV"];
 
 /// Sanitize error message for use with QuickJS/rquickjs.
 /// Some messages (e.g. from SQLite "Invalid symbol 45, offset 19") can trigger

@@ -88,13 +88,7 @@ impl SkillEvolver {
 
         let loop_result = tokio::time::timeout(
             std::time::Duration::from_secs(timeout_secs),
-            Self::run_loop(
-                registry,
-                api_key,
-                task_description,
-                max_iter,
-                on_progress,
-            ),
+            Self::run_loop(registry, api_key, task_description, max_iter, on_progress),
         )
         .await;
 
@@ -137,11 +131,7 @@ impl SkillEvolver {
                 let prev_code = last_spec
                     .as_ref()
                     .and_then(|s| s.full_index_js.clone())
-                    .or_else(|| {
-                        last_spec
-                            .as_ref()
-                            .and_then(|s| s.tool_code.clone())
-                    })
+                    .or_else(|| last_spec.as_ref().and_then(|s| s.tool_code.clone()))
                     .unwrap_or_default();
 
                 generator_llm

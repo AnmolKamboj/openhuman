@@ -1,5 +1,5 @@
-use super::common::make_workspace;
 use super::super::prompt::build_system_prompt;
+use super::common::make_workspace;
 
 #[test]
 fn aieos_identity_from_file() {

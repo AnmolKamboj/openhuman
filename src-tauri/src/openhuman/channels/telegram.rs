@@ -45,10 +45,7 @@ fn split_message_for_telegram(message: &str) -> Vec<String> {
                     pos + 1
                 } else {
                     // Try space as fallback
-                    search_area
-                        .rfind(' ')
-                        .unwrap_or(hard_split)
-                        + 1
+                    search_area.rfind(' ').unwrap_or(hard_split) + 1
                 }
             } else if let Some(pos) = search_area.rfind(' ') {
                 pos + 1
@@ -2844,7 +2841,10 @@ mod tests {
         msg.push_str(&"x".repeat(4085));
         msg.push_str("\n```\nMore text after code block");
         let parts = split_message_for_telegram(&msg);
-        assert!(parts.len() >= 2, "code block spanning boundary should split");
+        assert!(
+            parts.len() >= 2,
+            "code block spanning boundary should split"
+        );
         for part in &parts {
             assert!(
                 part.len() <= TELEGRAM_MAX_MESSAGE_LENGTH,

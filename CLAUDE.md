@@ -471,6 +471,12 @@ Key updates from recent commits (cd9ebcd to current):
 
 ## Key Patterns
 
+- **MANDATORY: Pre-completion checks**: Before considering ANY task complete, ALWAYS run these checks and fix all errors:
+  1. `npx prettier --check .` (formatting)
+  2. `npx eslint .` (lint)
+  3. `npx tsc --noEmit` (TypeScript)
+  4. `cargo fmt --manifest-path src-tauri/Cargo.toml` (Rust formatting, if Rust files were changed)
+  5. `cargo check --manifest-path src-tauri/Cargo.toml` (Rust compilation, if Rust files were changed)
 - **Code Quality**: ESLint and Prettier enforce code standards with Husky hooks. Use type-only imports (`import type`) and consolidate imports from same modules.
 - **No dynamic imports**: All imports must be static `import` statements at the top of the file. Do not use `await import()` or `import().then()` inside functions or code blocks. Use try/catch around Tauri API calls for non-Tauri environments instead.
 - **No localStorage**: Avoid `localStorage` and `sessionStorage`; use Redux (and persist) for app state. Remove any direct usage when working on affected code.

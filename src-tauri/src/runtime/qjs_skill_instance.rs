@@ -129,7 +129,10 @@ impl QjsSkillInstance {
                     let mut s = state.write();
                     s.status = SkillStatus::Error;
                     s.error = Some(format!("Failed to read {}: {e}", config.entry_point));
-                    log::error!("[skill:{}] Failed to read entry point: {e}", config.skill_id);
+                    log::error!(
+                        "[skill:{}] Failed to read entry point: {e}",
+                        config.skill_id
+                    );
                     return;
                 }
             };
@@ -141,7 +144,10 @@ impl QjsSkillInstance {
                     let mut s = state.write();
                     s.status = SkillStatus::Error;
                     s.error = Some(format!("Failed to create QuickJS runtime: {e}"));
-                    log::error!("[skill:{}] Failed to create QuickJS runtime: {e}", config.skill_id);
+                    log::error!(
+                        "[skill:{}] Failed to create QuickJS runtime: {e}",
+                        config.skill_id
+                    );
                     return;
                 }
             };
@@ -173,53 +179,55 @@ impl QjsSkillInstance {
 
             // Register ops and run bootstrap + skill code
             let skill_id = config.skill_id.clone();
-            let init_result = ctx.with(|js_ctx| {
-                // Register native ops as __ops global
-                let skill_context = qjs_ops::SkillContext {
-                    skill_id: skill_id.clone(),
-                    data_dir: data_dir.clone(),
-                    app_handle: _deps.app_handle.clone(),
-                };
+            let init_result = ctx
+                .with(|js_ctx| {
+                    // Register native ops as __ops global
+                    let skill_context = qjs_ops::SkillContext {
+                        skill_id: skill_id.clone(),
+                        data_dir: data_dir.clone(),
+                        app_handle: _deps.app_handle.clone(),
+                    };
 
-                if let Err(e) = qjs_ops::register_ops(
-                    &js_ctx,
-                    storage.clone(),
-                    skill_context,
-                    published_state.clone(),
-                    timer_state.clone(),
-                    ws_state.clone(),
-                ) {
-                    return Err(format!("Failed to register ops: {e}"));
-                }
+                    if let Err(e) = qjs_ops::register_ops(
+                        &js_ctx,
+                        storage.clone(),
+                        skill_context,
+                        published_state.clone(),
+                        timer_state.clone(),
+                        ws_state.clone(),
+                    ) {
+                        return Err(format!("Failed to register ops: {e}"));
+                    }
 
-                // Load bootstrap
-                let bootstrap_code = include_str!("../services/quickjs_libs/bootstrap.js");
-                if let Err(e) = js_ctx.eval::<rquickjs::Value, _>(bootstrap_code) {
-                    let detail = format_js_exception(&js_ctx, &e);
-                    return Err(format!("Bootstrap failed: {detail}"));
-                }
+                    // Load bootstrap
+                    let bootstrap_code = include_str!("../services/quickjs_libs/bootstrap.js");
+                    if let Err(e) = js_ctx.eval::<rquickjs::Value, _>(bootstrap_code) {
+                        let detail = format_js_exception(&js_ctx, &e);
+                        return Err(format!("Bootstrap failed: {detail}"));
+                    }
 
-                // Set skill ID
-                let bridge_code = format!(
-                    r#"globalThis.__skillId = "{}";"#,
-                    skill_id.replace('"', r#"\""#)
-                );
-                if let Err(e) = js_ctx.eval::<rquickjs::Value, _>(bridge_code.as_bytes()) {
-                    let detail = format_js_exception(&js_ctx, &e);
-                    return Err(format!("Skill init failed: {detail}"));
-                }
+                    // Set skill ID
+                    let bridge_code = format!(
+                        r#"globalThis.__skillId = "{}";"#,
+                        skill_id.replace('"', r#"\""#)
+                    );
+                    if let Err(e) = js_ctx.eval::<rquickjs::Value, _>(bridge_code.as_bytes()) {
+                        let detail = format_js_exception(&js_ctx, &e);
+                        return Err(format!("Skill init failed: {detail}"));
+                    }
 
-                // Execute the skill's entry point
-                if let Err(e) = js_ctx.eval::<rquickjs::Value, _>(js_source.as_bytes()) {
-                    let detail = format_js_exception(&js_ctx, &e);
-                    return Err(format!("Skill load failed: {detail}"));
-                }
+                    // Execute the skill's entry point
+                    if let Err(e) = js_ctx.eval::<rquickjs::Value, _>(js_source.as_bytes()) {
+                        let detail = format_js_exception(&js_ctx, &e);
+                        return Err(format!("Skill load failed: {detail}"));
+                    }
 
-                // Extract tool definitions
-                extract_tools(&js_ctx, &state);
+                    // Extract tool definitions
+                    extract_tools(&js_ctx, &state);
 
-                Ok(())
-            }).await;
+                    Ok(())
+                })
+                .await;
 
             if let Err(e) = init_result {
                 let mut s = state.write();
@@ -271,7 +279,17 @@ impl QjsSkillInstance {
             drive_jobs(&rt).await;
 
             // Run the event loop
-            run_event_loop(&rt, &ctx, &mut rx, &state, &config.skill_id, &timer_state, &published_state, _deps.app_handle.as_ref()).await;
+            run_event_loop(
+                &rt,
+                &ctx,
+                &mut rx,
+                &state,
+                &config.skill_id,
+                &timer_state,
+                &published_state,
+                _deps.app_handle.as_ref(),
+            )
+            .await;
         })
     }
 }
@@ -331,7 +349,17 @@ async fn run_event_loop(
         //    messages (events, pings, etc.) but queue any new CallTool.
         match rx.try_recv() {
             Ok(msg) => {
-                let should_stop = handle_message(rt, ctx, msg, state, skill_id, &mut pending_tool, app_handle, ops_state).await;
+                let should_stop = handle_message(
+                    rt,
+                    ctx,
+                    msg,
+                    state,
+                    skill_id,
+                    &mut pending_tool,
+                    app_handle,
+                    ops_state,
+                )
+                .await;
                 if should_stop {
                     break;
                 }
@@ -341,7 +369,10 @@ async fn run_event_loop(
             }
             Err(mpsc::error::TryRecvError::Disconnected) => {
                 // Channel closed, exit
-                log::info!("[skill:{}] Message channel disconnected, stopping", skill_id);
+                log::info!(
+                    "[skill:{}] Message channel disconnected, stopping",
+                    skill_id
+                );
                 break;
             }
         }
@@ -351,12 +382,13 @@ async fn run_event_loop(
 
         // 4. Check if pending async tool call has completed
         if pending_tool.is_some() {
-            let done = ctx.with(|js_ctx| {
-                js_ctx
-                    .eval::<bool, _>(b"globalThis.__pendingToolDone === true")
-                    .unwrap_or(false)
-            })
-            .await;
+            let done = ctx
+                .with(|js_ctx| {
+                    js_ctx
+                        .eval::<bool, _>(b"globalThis.__pendingToolDone === true")
+                        .unwrap_or(false)
+                })
+                .await;
 
             if done {
                 // Read the resolved value and send it back
@@ -397,7 +429,11 @@ async fn run_event_loop(
                         "state": new_map,
                     });
                     if let Err(e) = handle.emit_to("main", "skill-state-changed", payload) {
-                        log::warn!("[skill:{}] Failed to emit skill-state-changed to main: {}", skill_id, e);
+                        log::warn!(
+                            "[skill:{}] Failed to emit skill-state-changed to main: {}",
+                            skill_id,
+                            e
+                        );
                     }
                 }
             }
@@ -435,7 +471,8 @@ async fn fire_timer_callback(ctx: &rquickjs::AsyncContext, timer_id: u32) {
         if let Err(e) = js_ctx.eval::<rquickjs::Value, _>(code.as_bytes()) {
             log::error!("[timer] Callback for timer {} failed: {}", timer_id, e);
         }
-    }).await;
+    })
+    .await;
 }
 
 /// Handle a single message from the channel.
@@ -451,7 +488,11 @@ async fn handle_message(
     ops_state: &Arc<RwLock<qjs_ops::SkillState>>,
 ) -> bool {
     match msg {
-        SkillMessage::CallTool { tool_name, arguments, reply } => {
+        SkillMessage::CallTool {
+            tool_name,
+            arguments,
+            reply,
+        } => {
             // Lazy-load persisted OAuth credential before calling the tool
             restore_oauth_credential(ctx, skill_id).await;
 
@@ -494,7 +535,8 @@ async fn handle_message(
             })()"#;
             ctx.with(|js_ctx| {
                 let _ = js_ctx.eval::<rquickjs::Value, _>(clear_code.as_bytes());
-            }).await;
+            })
+            .await;
             state.write().status = SkillStatus::Stopped;
             log::info!("[skill:{}] Stopped (OAuth credential cleared)", skill_id);
             let _ = reply.send(());
@@ -505,7 +547,11 @@ async fn handle_message(
             let result = handle_js_call(rt, ctx, "onSetupStart", "{}").await;
             let _ = reply.send(result);
         }
-        SkillMessage::SetupSubmit { step_id, values, reply } => {
+        SkillMessage::SetupSubmit {
+            step_id,
+            values,
+            reply,
+        } => {
             let args = serde_json::json!({ "stepId": step_id, "values": values });
             let result = handle_js_call(rt, ctx, "onSetupSubmit", &args.to_string()).await;
             let _ = reply.send(result);
@@ -540,10 +586,19 @@ async fn handle_message(
         SkillMessage::LoadParams { params } => {
             let params_str = serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string());
             if let Err(e) = handle_js_void_call(rt, ctx, "onLoad", &params_str).await {
-                log::warn!("[skill:{}] onLoad failed (skill may not export it): {}", skill_id, e);
+                log::warn!(
+                    "[skill:{}] onLoad failed (skill may not export it): {}",
+                    skill_id,
+                    e
+                );
             }
         }
-        SkillMessage::Error { error_type, message, source, recoverable } => {
+        SkillMessage::Error {
+            error_type,
+            message,
+            source,
+            recoverable,
+        } => {
             let args = serde_json::json!({
                 "type": error_type,
                 "message": message,
@@ -554,19 +609,24 @@ async fn handle_message(
                 log::warn!("[skill:{}] onError() handler failed: {e}", skill_id);
             }
         }
-        SkillMessage::Rpc { method, params, reply } => {
-            // Resolve the optional memory client once for this RPC call.                                                                                                 
-            // State is registered as MemoryState(Mutex<Option<MemoryClientRef>>), not                                                                             
-            // Option<MemoryClientRef> directly, so we must use the newtype wrapper. 
+        SkillMessage::Rpc {
+            method,
+            params,
+            reply,
+        } => {
+            // Resolve the optional memory client once for this RPC call.
+            // State is registered as MemoryState(Mutex<Option<MemoryClientRef>>), not
+            // Option<MemoryClientRef> directly, so we must use the newtype wrapper.
             let memory_client_opt = app_handle.and_then(|ah| {
                 ah.try_state::<crate::commands::memory::MemoryState>()
-                   .and_then(|s| s.0.lock().ok().and_then(|g| g.clone()))
+                    .and_then(|s| s.0.lock().ok().and_then(|g| g.clone()))
             });
 
             let result = match method.as_str() {
                 "oauth/complete" => {
                     // Set credential on the oauth bridge + persist to store
-                    let cred_json = serde_json::to_string(&params).unwrap_or_else(|_| "null".to_string());
+                    let cred_json =
+                        serde_json::to_string(&params).unwrap_or_else(|_| "null".to_string());
                     let code = format!(
                         r#"(function() {{
                             if (typeof globalThis.oauth !== 'undefined' && globalThis.oauth.__setCredential) {{
@@ -580,14 +640,17 @@ async fn handle_message(
                     );
                     ctx.with(|js_ctx| {
                         let _ = js_ctx.eval::<rquickjs::Value, _>(code.as_bytes());
-                    }).await;
-                    log::info!("[skill:{}] OAuth credential set and persisted to store", skill_id);
-                    let params_str = serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string());
+                    })
+                    .await;
+                    log::info!(
+                        "[skill:{}] OAuth credential set and persisted to store",
+                        skill_id
+                    );
+                    let params_str =
+                        serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string());
                     handle_js_call(rt, ctx, "onOAuthComplete", &params_str).await
                 }
-                "skill/ping" => {
-                    handle_js_call(rt, ctx, "onPing", "{}").await
-                }
+                "skill/ping" => handle_js_call(rt, ctx, "onPing", "{}").await,
                 "skill/sync" => {
                     let result = handle_js_call(rt, ctx, "onSync", "{}").await;
                     // Fire-and-forget: persist published ops state to TinyHumans memory.
@@ -601,24 +664,16 @@ async fn handle_message(
                     if !state_snapshot.is_empty() {
                         if let Some(client) = memory_client_opt.clone() {
                             let skill = skill_id.to_string();
-                            let content = serde_json::to_string_pretty(
-                                &serde_json::Value::Object(state_snapshot),
-                            )
+                            let content = serde_json::to_string_pretty(&serde_json::Value::Object(
+                                state_snapshot,
+                            ))
                             .unwrap_or_else(|_| "{}".to_string());
                             let title = format!("{} periodic sync", skill);
                             tokio::spawn(async move {
                                 if let Err(e) = client
                                     .store_skill_sync(
-                                        &skill,
-                                        "default",
-                                        &title,
-                                        &content,
-                                        None,
-                                        None,
-                                        None,
-                                        None,
-                                        None,
-                                        None,
+                                        &skill, "default", &title, &content, None, None, None,
+                                        None, None, None,
                                     )
                                     .await
                                 {
@@ -642,7 +697,8 @@ async fn handle_message(
                     })()"#;
                     ctx.with(|js_ctx| {
                         let _ = js_ctx.eval::<rquickjs::Value, _>(clear_code.as_bytes());
-                    }).await;
+                    })
+                    .await;
                     log::info!("[skill:{}] OAuth credential cleared from store", skill_id);
 
                     // Fire-and-forget: delete memory for this integration
@@ -654,16 +710,23 @@ async fn handle_message(
                             .unwrap_or("unknown")
                             .to_string();
                         tokio::spawn(async move {
-                            if let Err(e) = client.clear_skill_memory(&skill, &integration_id).await {
+                            if let Err(e) = client.clear_skill_memory(&skill, &integration_id).await
+                            {
                                 log::warn!("[memory] clear_skill_memory failed: {e}");
                             } else {
-                                log::info!("[memory] Cleared memory for {}:{}", skill, integration_id);
+                                log::info!(
+                                    "[memory] Cleared memory for {}:{}",
+                                    skill,
+                                    integration_id
+                                );
                             }
                         });
                     }
 
-                    let params_str = serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string());
-                    handle_js_void_call(rt, ctx, "onOAuthRevoked", &params_str).await
+                    let params_str =
+                        serde_json::to_string(&params).unwrap_or_else(|_| "{}".to_string());
+                    handle_js_void_call(rt, ctx, "onOAuthRevoked", &params_str)
+                        .await
                         .map(|()| serde_json::json!({ "ok": true }))
                 }
                 _ => {
@@ -693,12 +756,8 @@ fn format_js_exception(js_ctx: &rquickjs::Ctx<'_>, err: &rquickjs::Error) -> Str
 
     // Try to get .message and .stack from the exception object
     if let Some(obj) = exception.as_object() {
-        let message: String = obj
-            .get::<_, String>("message")
-            .unwrap_or_default();
-        let stack: String = obj
-            .get::<_, String>("stack")
-            .unwrap_or_default();
+        let message: String = obj.get::<_, String>("message").unwrap_or_default();
+        let stack: String = obj.get::<_, String>("stack").unwrap_or_default();
 
         if !message.is_empty() {
             if !stack.is_empty() {
@@ -764,11 +823,13 @@ async fn call_lifecycle(
         loop {
             drive_jobs(rt).await;
 
-            let done = ctx.with(|js_ctx| {
-                js_ctx
-                    .eval::<bool, _>(b"globalThis.__pendingLifecycleDone === true")
-                    .unwrap_or(false)
-            }).await;
+            let done = ctx
+                .with(|js_ctx| {
+                    js_ctx
+                        .eval::<bool, _>(b"globalThis.__pendingLifecycleDone === true")
+                        .unwrap_or(false)
+                })
+                .await;
 
             if done {
                 let error = ctx.with(|js_ctx| {
@@ -830,16 +891,14 @@ fn extract_tools(js_ctx: &rquickjs::Ctx<'_>, state: &Arc<RwLock<SkillState>>) {
 
     // eval with String type hint tells rquickjs to convert the result to a Rust String
     match js_ctx.eval::<String, _>(code) {
-        Ok(json_str) => {
-            match serde_json::from_str::<Vec<ToolDefinition>>(&json_str) {
-                Ok(tools) => {
-                    state.write().tools = tools;
-                }
-                Err(e) => {
-                    log::warn!("[tools] Failed to parse tools JSON: {e}");
-                }
+        Ok(json_str) => match serde_json::from_str::<Vec<ToolDefinition>>(&json_str) {
+            Ok(tools) => {
+                state.write().tools = tools;
             }
-        }
+            Err(e) => {
+                log::warn!("[tools] Failed to parse tools JSON: {e}");
+            }
+        },
         Err(e) => {
             log::warn!("[tools] Failed to extract tools: {e}");
         }
@@ -859,8 +918,8 @@ async fn start_async_tool_call(
     tool_name: &str,
     arguments: serde_json::Value,
 ) -> Result<Option<ToolResult>, String> {
-    let args_str = serde_json::to_string(&arguments)
-        .map_err(|e| format!("Failed to serialize args: {e}"))?;
+    let args_str =
+        serde_json::to_string(&arguments).map_err(|e| format!("Failed to serialize args: {e}"))?;
     let tool_name = tool_name.to_string();
 
     let eval_result = ctx
@@ -928,9 +987,7 @@ async fn start_async_tool_call(
 
 /// Read the result of a completed async tool call from JS globals.
 /// Call this only after `globalThis.__pendingToolDone === true`.
-async fn read_pending_tool_result(
-    ctx: &rquickjs::AsyncContext,
-) -> Result<ToolResult, String> {
+async fn read_pending_tool_result(ctx: &rquickjs::AsyncContext) -> Result<ToolResult, String> {
     let result_text = ctx
         .with(|js_ctx| {
             let code = r#"(function() {
@@ -1018,11 +1075,13 @@ async fn handle_server_event(
         loop {
             drive_jobs(rt).await;
 
-            let done = ctx.with(|js_ctx| {
-                js_ctx
-                    .eval::<bool, _>(b"globalThis.__pendingEventDone === true")
-                    .unwrap_or(false)
-            }).await;
+            let done = ctx
+                .with(|js_ctx| {
+                    js_ctx
+                        .eval::<bool, _>(b"globalThis.__pendingEventDone === true")
+                        .unwrap_or(false)
+                })
+                .await;
 
             if done {
                 let error = ctx.with(|js_ctx| {
@@ -1111,11 +1170,13 @@ async fn handle_cron_trigger(
         loop {
             drive_jobs(rt).await;
 
-            let done = ctx.with(|js_ctx| {
-                js_ctx
-                    .eval::<bool, _>(b"globalThis.__pendingCronDone === true")
-                    .unwrap_or(false)
-            }).await;
+            let done = ctx
+                .with(|js_ctx| {
+                    js_ctx
+                        .eval::<bool, _>(b"globalThis.__pendingCronDone === true")
+                        .unwrap_or(false)
+                })
+                .await;
 
             if done {
                 let error = ctx.with(|js_ctx| {
@@ -1215,11 +1276,13 @@ async fn handle_js_call(
         loop {
             drive_jobs(rt).await;
 
-            let done = ctx.with(|js_ctx| {
-                js_ctx
-                    .eval::<bool, _>(b"globalThis.__pendingRpcDone === true")
-                    .unwrap_or(false)
-            }).await;
+            let done = ctx
+                .with(|js_ctx| {
+                    js_ctx
+                        .eval::<bool, _>(b"globalThis.__pendingRpcDone === true")
+                        .unwrap_or(false)
+                })
+                .await;
 
             if done {
                 let result = ctx.with(|js_ctx| {
@@ -1324,11 +1387,13 @@ async fn handle_js_void_call(
         loop {
             drive_jobs(rt).await;
 
-            let done = ctx.with(|js_ctx| {
-                js_ctx
-                    .eval::<bool, _>(b"globalThis.__pendingRpcVoidDone === true")
-                    .unwrap_or(false)
-            }).await;
+            let done = ctx
+                .with(|js_ctx| {
+                    js_ctx
+                        .eval::<bool, _>(b"globalThis.__pendingRpcVoidDone === true")
+                        .unwrap_or(false)
+                })
+                .await;
 
             if done {
                 let error = ctx.with(|js_ctx| {
@@ -1384,9 +1449,9 @@ async fn restore_oauth_credential(ctx: &rquickjs::AsyncContext, skill_id: &str) 
         return false;
     })()"#;
 
-    let restored = ctx.with(|js_ctx| {
-        js_ctx.eval::<bool, _>(code.as_bytes()).unwrap_or(false)
-    }).await;
+    let restored = ctx
+        .with(|js_ctx| js_ctx.eval::<bool, _>(code.as_bytes()).unwrap_or(false))
+        .await;
 
     if restored {
         log::info!("[skill:{}] Restored OAuth credential from store", skill_id);

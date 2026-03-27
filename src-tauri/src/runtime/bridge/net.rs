@@ -91,11 +91,7 @@ fn do_fetch(url: &str, options_json: &str) -> Result<String, String> {
     let headers: HashMap<String, String> = resp
         .headers()
         .iter()
-        .filter_map(|(k, v)| {
-            v.to_str()
-                .ok()
-                .map(|val| (k.to_string(), val.to_string()))
-        })
+        .filter_map(|(k, v)| v.to_str().ok().map(|val| (k.to_string(), val.to_string())))
         .collect();
     let body = resp
         .text()

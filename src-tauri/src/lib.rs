@@ -9,7 +9,6 @@
 //! - Native notifications
 
 mod ai;
-pub mod openhuman;
 mod auth;
 mod commands;
 mod core_process;
@@ -17,6 +16,7 @@ mod core_rpc;
 pub mod core_server;
 pub mod memory;
 mod models;
+pub mod openhuman;
 mod runtime;
 mod services;
 mod unified_skills;
@@ -457,9 +457,7 @@ fn is_daemon_mode() -> bool {
 
 fn daemon_foreground_requested() -> bool {
     matches!(
-        std::env::var("OPENHUMAN_DAEMON_FOREGROUND")
-            .ok()
-            .as_deref(),
+        std::env::var("OPENHUMAN_DAEMON_FOREGROUND").ok().as_deref(),
         Some("1") | Some("true") | Some("TRUE") | Some("yes") | Some("YES")
     )
 }

@@ -1,7 +1,7 @@
 //! Autonomy and security policy configuration.
 
-use crate::openhuman::security::AutonomyLevel;
 use super::defaults;
+use crate::openhuman::security::AutonomyLevel;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

@@ -725,7 +725,9 @@ pub fn all_integrations() -> Vec<IntegrationEntry> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openhuman::config::schema::{IMessageConfig, MatrixConfig, StreamMode, TelegramConfig};
+    use crate::openhuman::config::schema::{
+        IMessageConfig, MatrixConfig, StreamMode, TelegramConfig,
+    };
     use crate::openhuman::config::Config;
 
     #[test]

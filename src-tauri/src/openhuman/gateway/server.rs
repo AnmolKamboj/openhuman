@@ -247,8 +247,9 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
     crate::openhuman::health::mark_component_ok("gateway");
 
     // Build shared state
-    let observer: Arc<dyn crate::openhuman::observability::Observer> =
-        Arc::from(crate::openhuman::observability::create_observer(&config.observability));
+    let observer: Arc<dyn crate::openhuman::observability::Observer> = Arc::from(
+        crate::openhuman::observability::create_observer(&config.observability),
+    );
 
     let state = AppState {
         config: config_state,

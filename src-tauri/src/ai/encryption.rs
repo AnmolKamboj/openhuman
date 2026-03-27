@@ -4,12 +4,12 @@
 //! encrypted at rest using AES-256-GCM. Keys are derived from a user
 //! password via Argon2id.
 
+use aes_gcm::aead::rand_core::RngCore;
 use aes_gcm::{
     aead::{Aead, KeyInit, OsRng},
     Aes256Gcm, Nonce,
 };
 use argon2::{self, Algorithm, Argon2, Params, Version};
-use aes_gcm::aead::rand_core::RngCore;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 

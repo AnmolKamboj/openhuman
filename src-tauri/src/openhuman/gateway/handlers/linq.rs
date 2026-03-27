@@ -1,8 +1,8 @@
 //! Linq webhook handlers.
 
 use super::webhook::run_gateway_chat_with_multimodal;
-use crate::openhuman::channels::SendMessage;
 use crate::openhuman::channels::traits::Channel;
+use crate::openhuman::channels::SendMessage;
 use crate::openhuman::gateway::state::AppState;
 use crate::openhuman::memory::MemoryCategory;
 use crate::openhuman::util::truncate_with_ellipsis;
@@ -48,7 +48,11 @@ pub async fn handle_linq_webhook(
         ) {
             tracing::warn!(
                 "Linq webhook signature verification failed (signature: {})",
-                if signature.is_empty() { "missing" } else { "invalid" }
+                if signature.is_empty() {
+                    "missing"
+                } else {
+                    "invalid"
+                }
             );
             return (
                 StatusCode::UNAUTHORIZED,

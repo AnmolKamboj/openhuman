@@ -88,7 +88,10 @@ impl UnifiedSkillRegistry {
                     id: manifest.id.clone(),
                     name: manifest.name.clone(),
                     skill_type: manifest.skill_type.clone(),
-                    version: manifest.version.clone().unwrap_or_else(|| "0.1.0".to_string()),
+                    version: manifest
+                        .version
+                        .clone()
+                        .unwrap_or_else(|| "0.1.0".to_string()),
                     description: manifest.description.clone().unwrap_or_default(),
                     tools,
                     setup: manifest.setup.clone(),
@@ -227,7 +230,9 @@ impl UnifiedSkillRegistry {
                     setup: None,
                 })
             }
-            other => Err(format!("Unknown skill_type: '{other}'. Use 'openhuman' or 'openclaw'.")),
+            other => Err(format!(
+                "Unknown skill_type: '{other}'. Use 'openhuman' or 'openclaw'."
+            )),
         }
     }
 }

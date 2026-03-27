@@ -1,8 +1,8 @@
 //! WhatsApp webhook handlers and signature verification.
 
 use super::webhook::run_gateway_chat_with_multimodal;
-use crate::openhuman::channels::SendMessage;
 use crate::openhuman::channels::traits::Channel;
+use crate::openhuman::channels::SendMessage;
 use crate::openhuman::gateway::models::WhatsAppVerifyQuery;
 use crate::openhuman::gateway::state::AppState;
 use crate::openhuman::memory::MemoryCategory;
@@ -91,7 +91,11 @@ pub async fn handle_whatsapp_message(
         if !verify_whatsapp_signature(app_secret, &body, signature) {
             tracing::warn!(
                 "WhatsApp webhook signature verification failed (signature: {})",
-                if signature.is_empty() { "missing" } else { "invalid" }
+                if signature.is_empty() {
+                    "missing"
+                } else {
+                    "invalid"
+                }
             );
             return (
                 StatusCode::UNAUTHORIZED,

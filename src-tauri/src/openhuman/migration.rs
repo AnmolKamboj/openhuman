@@ -291,7 +291,13 @@ fn normalize_key(raw: &str, idx: usize) -> String {
 
     trimmed
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>()
         .trim_matches('_')
         .to_string()
@@ -380,10 +386,7 @@ fn pick_column_expr<'a>(
     fallback
 }
 
-fn pick_optional_column_expr<'a>(
-    columns: &'a [String],
-    candidates: &[&'a str],
-) -> Option<&'a str> {
+fn pick_optional_column_expr<'a>(columns: &'a [String], candidates: &[&'a str]) -> Option<&'a str> {
     for candidate in candidates {
         if columns.iter().any(|c| c.eq_ignore_ascii_case(candidate)) {
             return Some(candidate);

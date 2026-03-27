@@ -254,7 +254,10 @@ impl SkillRegistry {
 
         match sender.try_send(msg) {
             Ok(()) => {
-                log::info!("[runtime] Successfully sent message to skill '{}'", skill_id);
+                log::info!(
+                    "[runtime] Successfully sent message to skill '{}'",
+                    skill_id
+                );
                 Ok(())
             }
             Err(e) => {

@@ -86,7 +86,10 @@ pub async fn init_memory_client(
     jwt_token: String,
     state: tauri::State<'_, MemoryState>,
 ) -> Result<(), String> {
-    log::info!("[memory] init_memory_client: entry (token_present={})", !jwt_token.trim().is_empty());
+    log::info!(
+        "[memory] init_memory_client: entry (token_present={})",
+        !jwt_token.trim().is_empty()
+    );
     let client = MemoryClient::from_token(jwt_token).map(Arc::new);
     if client.is_none() {
         log::warn!("[memory] init_memory_client: exit — empty token, memory layer disabled");
@@ -149,7 +152,10 @@ pub async fn memory_query(
                 .query_skill_context(&skill_id, &integration_id, &query, max_chunks.unwrap_or(10))
                 .await;
             match &result {
-                Ok(ctx) => log::info!("[memory] memory_query: exit — ok (context_len={})", ctx.len()),
+                Ok(ctx) => log::info!(
+                    "[memory] memory_query: exit — ok (context_len={})",
+                    ctx.len()
+                ),
                 Err(e) => log::warn!("[memory] memory_query: exit — error: {e}"),
             }
             result
@@ -218,9 +224,10 @@ pub async fn memory_query_namespace(
 ) -> Result<String, String> {
     let client = state.0.lock().map_err(|e| e.to_string())?.clone();
     match client {
-        Some(c) => c
-            .query_namespace_context(&namespace, &query, max_chunks.unwrap_or(10))
-            .await,
+        Some(c) => {
+            c.query_namespace_context(&namespace, &query, max_chunks.unwrap_or(10))
+                .await
+        }
         None => Err("Memory layer not configured — JWT token not yet set".into()),
     }
 }
@@ -233,9 +240,10 @@ pub async fn memory_recall_namespace(
 ) -> Result<Option<String>, String> {
     let client = state.0.lock().map_err(|e| e.to_string())?.clone();
     match client {
-        Some(c) => c
-            .recall_namespace_context(&namespace, max_chunks.unwrap_or(10))
-            .await,
+        Some(c) => {
+            c.recall_namespace_context(&namespace, max_chunks.unwrap_or(10))
+                .await
+        }
         None => Err("Memory layer not configured — JWT token not yet set".into()),
     }
 }

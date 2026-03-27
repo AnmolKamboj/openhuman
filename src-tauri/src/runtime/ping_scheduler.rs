@@ -78,7 +78,10 @@ impl PingScheduler {
         let mut stop_rx = self.stop_tx.subscribe();
 
         tokio::spawn(async move {
-            log::info!("[ping] Scheduler started ({}s interval)", PING_INTERVAL.as_secs());
+            log::info!(
+                "[ping] Scheduler started ({}s interval)",
+                PING_INTERVAL.as_secs()
+            );
 
             loop {
                 tokio::select! {
