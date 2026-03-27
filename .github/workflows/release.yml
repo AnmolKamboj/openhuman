@@ -23,6 +23,7 @@ jobs:
   prepare-release:
     name: Prepare release commit and tag
     runs-on: ubuntu-latest
+    environment: Production
     outputs:
       version: ${{ steps.bump.outputs.version }}
       tag: ${{ steps.bump.outputs.tag }}
@@ -158,6 +159,7 @@ jobs:
   create-release:
     name: Create GitHub release
     runs-on: ubuntu-latest
+    environment: Production
     needs: prepare-release
     outputs:
       release_id: ${{ steps.create.outputs.release_id }}
@@ -202,16 +204,24 @@ jobs:
     name: Build and upload artifacts
     needs: [prepare-release, create-release]
     runs-on: ${{ matrix.settings.platform }}
+    environment: Production
     strategy:
       fail-fast: false
       matrix:
         settings:
-          - platform: macos-latest
-            args: --target aarch64-apple-darwin
-          - platform: macos-latest
-            args: --target x86_64-apple-darwin
+          # macOS builds are disabled for now to ensure the flow works first
+          # - platform: macos-latest
+          #   args: --target aarch64-apple-darwin
+          #   target: aarch64-apple-darwin
+          #   artifact_suffix: aarch64-apple-darwin
+          # - platform: macos-latest
+          #   args: --target x86_64-apple-darwin
+          #   target: x86_64-apple-darwin
+          #   artifact_suffix: x86_64-apple-darwin
           - platform: ubuntu-22.04
-            args: ""
+            args: ''
+            target: ''
+            artifact_suffix: ubuntu
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -245,8 +255,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
+      # Skip first 7 lines of Cargo.lock (workspace package version bumps) so the key tracks dependency changes only
+      - name: Cargo.lock fingerprint (deps only)
+        id: cargo-lock-fingerprint
+        shell: bash
+        run: |
+          echo "hash=$(tail -n +8 src-tauri/Cargo.lock | openssl dgst -sha256 | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Cargo registry and git sources
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ steps.cargo-lock-fingerprint.outputs.hash }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
       - name: Install dependencies
         run: yarn install --frozen-lockfile
+
+      - name: Install skills dependencies
+        run: cd skills && yarn install --frozen-lockfile
 
       - name: Build skills
         run: cd skills && yarn build
@@ -257,7 +287,7 @@ jobs:
         env:
           BASE_URL: ${{ vars.BASE_URL }}
           UPDATER_PUBLIC_KEY: ${{ secrets.UPDATER_PUBLIC_KEY }}
-          WITH_UPDATER: "true"
+          WITH_UPDATER: 'true'
         with:
           script: |
             const workspacePath = process.env.GITHUB_WORKSPACE.replace(/\\/g, '/');
@@ -272,34 +302,127 @@ jobs:
         env:
           NODE_ENV: production
           VITE_BACKEND_URL: ${{ vars.VITE_BACKEND_URL }}
-          VITE_TELEGRAM_BOT_USERNAME: ${{ secrets.VITE_TELEGRAM_BOT_USERNAME }}
-          VITE_TELEGRAM_BOT_ID: ${{ secrets.VITE_TELEGRAM_BOT_ID }}
-          VITE_TELEGRAM_API_ID: ${{ secrets.VITE_TELEGRAM_API_ID }}
-          VITE_TELEGRAM_API_HASH: ${{ secrets.VITE_TELEGRAM_API_HASH }}
-          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
-          VITE_SKILLS_GITHUB_REPO: ${{ vars.VITE_SKILLS_GITHUB_REPO }}
+          VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
           VITE_DEBUG: ${{ vars.VITE_DEBUG }}
 
       - name: Build, package and upload to release
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v0.6.2
+        id: tauri-build
         env:
-          TELEGRAM_API_ID: ${{ secrets.VITE_TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH: ${{ secrets.VITE_TELEGRAM_API_HASH }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           BASE_URL: ${{ vars.BASE_URL }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATER_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
-          WITH_UPDATER: "true"
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
+          WITH_UPDATER: 'true'
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.settings.platform == 'macos-latest' && '10.15' || '' }}
         with:
-          args: -c ${{ steps.config-overrides.outputs.json }} ${{ matrix.settings.args }}
+          # Tools discovery now uses a JS mock registry (no Rust discovery
+          # binary target), so there is no extra helper executable for Tauri
+          # to copy/sign inside release app bundles.
+          # Restrict Cargo bin selection for the Tauri bundle build so only
+          # the desktop UI app binary is packaged.
+          # Yarn v1 strips one "--" layer when invoking scripts, hence the
+          # double-separator when forwarding flags to Cargo.
+          args: -c ${{ steps.config-overrides.outputs.json }} ${{ matrix.settings.args }} -- -- --bin OpenHuman
           includeDebug: false
           includeRelease: true
           releaseId: ${{ needs.create-release.outputs.release_id }}
-          owner: ${{ github.repository_owner }}
-          repo: ${{ github.event.repository.name }}
+          owner: tinyhumansai
+          repo: openhuman
+
+      - name: Verify macOS app bundle excludes standalone core binary
+        if: matrix.settings.platform == 'macos-latest'
+        shell: bash
+        run: |
+          APP_PATH="src-tauri/target/${{ matrix.settings.target }}/release/bundle/macos/OpenHuman.app"
+          echo "Inspecting bundle at: $APP_PATH"
+          ls -la "$APP_PATH/Contents/MacOS"
+          if [ -f "$APP_PATH/Contents/MacOS/openhuman-core" ]; then
+            echo "Unexpected standalone binary found inside app bundle: openhuman-core"
+            exit 1
+          fi
+
+      - name: Build standalone CLI binaries
+        shell: bash
+        run: |
+          CARGO_TARGET=""
+          if [ -n "$MATRIX_TARGET" ]; then
+            CARGO_TARGET="--target $MATRIX_TARGET"
+          fi
+          cargo build --manifest-path src-tauri/Cargo.toml --release --features standalone-bins $CARGO_TARGET --bin openhuman-core --bin openhuman-cli
+        env:
+          MATRIX_TARGET: ${{ matrix.settings.target }}
+
+      - name: Resolve standalone CLI artifact paths
+        id: cli-paths
+        shell: bash
+        run: |
+          if [ -n "$MATRIX_TARGET" ]; then
+            BASE_DIR="src-tauri/target/$MATRIX_TARGET/release"
+          else
+            BASE_DIR="src-tauri/target/release"
+          fi
+          echo "base_dir=$BASE_DIR" >> "$GITHUB_OUTPUT"
+          echo "core_path=$BASE_DIR/openhuman-core" >> "$GITHUB_OUTPUT"
+          echo "cli_path=$BASE_DIR/openhuman-cli" >> "$GITHUB_OUTPUT"
+        env:
+          MATRIX_TARGET: ${{ matrix.settings.target }}
+
+      - name: Upload standalone CLI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-bins-${{ matrix.settings.platform }}-${{ matrix.settings.artifact_suffix }}
+          path: |
+            ${{ steps.cli-paths.outputs.core_path }}
+            ${{ steps.cli-paths.outputs.cli_path }}
+
+  cleanup-failed-release:
+    name: Remove release and tag if build failed
+    runs-on: ubuntu-latest
+    environment: Production
+    needs: [prepare-release, create-release, build-artifacts]
+    if: always() && needs.create-release.result == 'success' && (needs.build-artifacts.result == 'failure' || needs.build-artifacts.result == 'cancelled')
+    steps:
+      - name: Delete GitHub release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const releaseId = Number('${{ needs.create-release.outputs.release_id }}');
+
+            if (!Number.isFinite(releaseId) || releaseId <= 0) {
+              core.setFailed('Invalid or missing release_id; cannot delete release.');
+              return;
+            }
+
+            try {
+              await github.rest.repos.deleteRelease({ owner, repo, release_id: releaseId });
+              core.info(`Deleted release ${releaseId}`);
+            } catch (e) {
+              core.warning(`deleteRelease failed: ${e.message}`);
+            }
+
+      - name: Delete remote tag
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const tag = '${{ needs.prepare-release.outputs.tag }}';
+
+            try {
+              await github.rest.git.deleteRef({ owner, repo, ref: `tags/${tag}` });
+              core.info(`Deleted remote tag ${tag}`);
+            } catch (e) {
+              if (e.status === 404) {
+                core.info(`Tag ${tag} already absent on remote`);
+              } else {
+                throw e;
+              }
+            }

@@ -5,8 +5,6 @@
  */
 import { isTauri as coreIsTauri, invoke } from '@tauri-apps/api/core';
 
-import { injectOpenClawContext } from '../lib/ai/openclaw-injector';
-
 // Check if we're running in Tauri
 export const isTauri = (): boolean => {
   // Tauri v2: prefer the official runtime check over window globals.
@@ -241,7 +239,7 @@ export async function memoryRecallNamespace(
   return await invoke('memory_recall_namespace', { namespace, maxChunks });
 }
 
-// --- Alphahuman Commands ---
+// --- OpenHuman Commands ---
 
 export type DoctorSeverity = 'Ok' | 'Warn' | 'Error';
 export type ModelProbeOutcome = 'Ok' | 'Skipped' | 'AuthOrAccess' | 'Error';
@@ -258,6 +256,31 @@ export type IntegrationCategory =
   | 'Platform';
 export type ModelRefreshSource = 'Live' | 'CacheFresh' | 'CacheStaleFallback';
 export type ServiceState = 'Running' | 'Stopped' | 'NotInstalled' | { Unknown: string };
+
+export interface AIPreview {
+  soul: {
+    raw: string;
+    name: string;
+    description: string;
+    personalityPreview: string[];
+    safetyRulesPreview: string[];
+    loadedAt: number;
+  };
+  tools: {
+    raw: string;
+    totalTools: number;
+    activeSkills: number;
+    skillsPreview: string[];
+    loadedAt: number;
+  };
+  metadata: {
+    loadedAt: number;
+    loadingDuration: number;
+    hasFallbacks: boolean;
+    sources: { soul: string; tools: string };
+    errors: string[];
+  };
+}
 export type HardwareTransport = 'Native' | 'Serial' | 'Probe' | 'None';
 
 export interface CommandResponse<T> {
@@ -399,84 +422,84 @@ export interface TunnelConfig {
   } | null;
 }
 
-export async function alphahumanGetConfig(): Promise<CommandResponse<ConfigSnapshot>> {
+export async function openhumanGetConfig(): Promise<CommandResponse<ConfigSnapshot>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_get_config');
+  return await invoke('openhuman_get_config');
 }
 
-export async function alphahumanUpdateModelSettings(
+export async function openhumanUpdateModelSettings(
   update: ModelSettingsUpdate
 ): Promise<CommandResponse<ConfigSnapshot>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_update_model_settings', { update });
+  return await invoke('openhuman_update_model_settings', { update });
 }
 
-export async function alphahumanUpdateMemorySettings(
+export async function openhumanUpdateMemorySettings(
   update: MemorySettingsUpdate
 ): Promise<CommandResponse<ConfigSnapshot>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_update_memory_settings', { update });
+  return await invoke('openhuman_update_memory_settings', { update });
 }
 
-export async function alphahumanUpdateGatewaySettings(
+export async function openhumanUpdateGatewaySettings(
   update: GatewaySettingsUpdate
 ): Promise<CommandResponse<ConfigSnapshot>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_update_gateway_settings', { update });
+  return await invoke('openhuman_update_gateway_settings', { update });
 }
 
-export async function alphahumanUpdateTunnelSettings(
+export async function openhumanUpdateTunnelSettings(
   tunnel: TunnelConfig
 ): Promise<CommandResponse<ConfigSnapshot>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_update_tunnel_settings', { tunnel });
+  return await invoke('openhuman_update_tunnel_settings', { tunnel });
 }
 
-export async function alphahumanUpdateRuntimeSettings(
+export async function openhumanUpdateRuntimeSettings(
   update: RuntimeSettingsUpdate
 ): Promise<CommandResponse<ConfigSnapshot>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_update_runtime_settings', { update });
+  return await invoke('openhuman_update_runtime_settings', { update });
 }
 
-export async function alphahumanUpdateBrowserSettings(
+export async function openhumanUpdateBrowserSettings(
   update: BrowserSettingsUpdate
 ): Promise<CommandResponse<ConfigSnapshot>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_update_browser_settings', { update });
+  return await invoke('openhuman_update_browser_settings', { update });
 }
 
-export async function alphahumanGetRuntimeFlags(): Promise<CommandResponse<RuntimeFlags>> {
+export async function openhumanGetRuntimeFlags(): Promise<CommandResponse<RuntimeFlags>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_get_runtime_flags');
+  return await invoke('openhuman_get_runtime_flags');
 }
 
-export async function alphahumanSetBrowserAllowAll(
+export async function openhumanSetBrowserAllowAll(
   enabled: boolean
 ): Promise<CommandResponse<RuntimeFlags>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_set_browser_allow_all', { enabled });
+  return await invoke('openhuman_set_browser_allow_all', { enabled });
 }
 
-export async function alphahumanAgentChat(
+export async function openhumanAgentChat(
   message: string,
   providerOverride?: string,
   modelOverride?: string,
@@ -486,146 +509,151 @@ export async function alphahumanAgentChat(
     throw new Error('Not running in Tauri');
   }
 
-  let processedMessage = message;
-  try {
-    processedMessage = injectOpenClawContext(message);
-  } catch (error) {
-    console.warn('[OpenClaw] Injection failed in agentChat:', error);
-  }
-
-  return await invoke('alphahuman_agent_chat', {
-    message: processedMessage,
+  return await invoke('openhuman_agent_chat', {
+    message,
     providerOverride,
     modelOverride,
     temperature,
   });
 }
 
-export async function alphahumanEncryptSecret(plaintext: string): Promise<CommandResponse<string>> {
+export async function aiGetConfig(): Promise<AIPreview> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_encrypt_secret', { plaintext });
+  return await invoke('ai_get_config');
 }
 
-export async function alphahumanDecryptSecret(
-  ciphertext: string
-): Promise<CommandResponse<string>> {
+export async function aiRefreshConfig(): Promise<AIPreview> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_decrypt_secret', { ciphertext });
+  return await invoke('ai_refresh_config');
 }
 
-export async function alphahumanDoctorReport(): Promise<CommandResponse<DoctorReport>> {
+export async function openhumanEncryptSecret(plaintext: string): Promise<CommandResponse<string>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_doctor_report');
+  return await invoke('openhuman_encrypt_secret', { plaintext });
 }
 
-export async function alphahumanDoctorModels(
+export async function openhumanDecryptSecret(ciphertext: string): Promise<CommandResponse<string>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('openhuman_decrypt_secret', { ciphertext });
+}
+
+export async function openhumanDoctorReport(): Promise<CommandResponse<DoctorReport>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('openhuman_doctor_report');
+}
+
+export async function openhumanDoctorModels(
   providerOverride?: string,
   useCache = true
 ): Promise<CommandResponse<ModelProbeReport>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_doctor_models', { providerOverride, useCache });
+  return await invoke('openhuman_doctor_models', { providerOverride, useCache });
 }
 
-export async function alphahumanListIntegrations(): Promise<CommandResponse<IntegrationInfo[]>> {
+export async function openhumanListIntegrations(): Promise<CommandResponse<IntegrationInfo[]>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_list_integrations');
+  return await invoke('openhuman_list_integrations');
 }
 
-export async function alphahumanGetIntegrationInfo(
+export async function openhumanGetIntegrationInfo(
   name: string
 ): Promise<CommandResponse<IntegrationInfo>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_get_integration_info', { name });
+  return await invoke('openhuman_get_integration_info', { name });
 }
 
-export async function alphahumanModelsRefresh(
+export async function openhumanModelsRefresh(
   providerOverride?: string,
   force = false
 ): Promise<CommandResponse<ModelRefreshResult>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_models_refresh', { providerOverride, force });
+  return await invoke('openhuman_models_refresh', { providerOverride, force });
 }
 
-export async function alphahumanMigrateOpenclaw(
+export async function openhumanMigrateOpenclaw(
   sourceWorkspace?: string,
   dryRun = true
 ): Promise<CommandResponse<MigrationReport>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_migrate_openclaw', { sourceWorkspace, dryRun });
+  return await invoke('openhuman_migrate_openclaw', { sourceWorkspace, dryRun });
 }
 
-export async function alphahumanHardwareDiscover(): Promise<CommandResponse<DiscoveredDevice[]>> {
+export async function openhumanHardwareDiscover(): Promise<CommandResponse<DiscoveredDevice[]>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_hardware_discover');
+  return await invoke('openhuman_hardware_discover');
 }
 
-export async function alphahumanHardwareIntrospect(
+export async function openhumanHardwareIntrospect(
   path: string
 ): Promise<CommandResponse<HardwareIntrospect>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_hardware_introspect', { path });
+  return await invoke('openhuman_hardware_introspect', { path });
 }
 
-export async function alphahumanServiceInstall(): Promise<CommandResponse<ServiceStatus>> {
+export async function openhumanServiceInstall(): Promise<CommandResponse<ServiceStatus>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_service_install');
+  return await invoke('openhuman_service_install');
 }
 
-export async function alphahumanServiceStart(): Promise<CommandResponse<ServiceStatus>> {
+export async function openhumanServiceStart(): Promise<CommandResponse<ServiceStatus>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_service_start');
+  return await invoke('openhuman_service_start');
 }
 
-export async function alphahumanServiceStop(): Promise<CommandResponse<ServiceStatus>> {
+export async function openhumanServiceStop(): Promise<CommandResponse<ServiceStatus>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_service_stop');
+  return await invoke('openhuman_service_stop');
 }
 
-export async function alphahumanServiceStatus(): Promise<CommandResponse<ServiceStatus>> {
+export async function openhumanServiceStatus(): Promise<CommandResponse<ServiceStatus>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_service_status');
+  return await invoke('openhuman_service_status');
 }
 
-export async function alphahumanServiceUninstall(): Promise<CommandResponse<ServiceStatus>> {
+export async function openhumanServiceUninstall(): Promise<CommandResponse<ServiceStatus>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_service_uninstall');
+  return await invoke('openhuman_service_uninstall');
 }
 
-export async function alphahumanAgentServerStatus(): Promise<CommandResponse<AgentServerStatus>> {
+export async function openhumanAgentServerStatus(): Promise<CommandResponse<AgentServerStatus>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
-  return await invoke('alphahuman_agent_server_status');
+  return await invoke('openhuman_agent_server_status');
 }
 
 export async function runtimeListSkills(): Promise<SkillSnapshot[]> {

@@ -20,7 +20,7 @@ export interface ChatMessage {
 export interface ToolFunction {
   name: string;
   description: string;
-  parameters: any;
+  parameters: Record<string, unknown>;
 }
 
 export interface Tool {
@@ -33,6 +33,7 @@ export interface ChatCompletionRequest {
   messages: ChatMessage[];
   tools?: Tool[];
   tool_choice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
+  openhuman?: { trace_tools?: boolean };
   stream?: boolean;
   temperature?: number;
   max_tokens?: number;

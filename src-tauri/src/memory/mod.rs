@@ -27,7 +27,7 @@ impl MemoryClient {
             log::warn!("[memory] from_token: exit — token is empty, returning None");
             return None;
         }
-        let config = if let Ok(base_url) = std::env::var("ALPHAHUMAN_BASE_URL")
+        let config = if let Ok(base_url) = std::env::var("OPENHUMAN_BASE_URL")
             .or_else(|_| std::env::var("TINYHUMANS_BASE_URL"))
         {
             log::info!("[memory] from_token: constructing client (base_url={base_url}, source=memory_env)");
@@ -85,7 +85,7 @@ impl MemoryClient {
         let insert_resp = self
             .inner
             .insert_memory(InsertMemoryParams {
-                document_id: Some(document_id_final),
+                document_id: document_id_final,
                 title: title.to_string(),
                 content: content.to_string(),
                 namespace: namespace.clone(),
@@ -118,7 +118,7 @@ impl MemoryClient {
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(30)).await;
 
-                match self.inner.ingestion_job_status(&job_id).await {
+                match self.inner.get_ingestion_job(&job_id).await {
                     Ok(status_resp) => {
                         let state = status_resp
                             .data
@@ -241,7 +241,7 @@ impl MemoryClient {
     /// List all ingested memory documents as returned by the API.
     pub async fn list_documents(&self) -> Result<serde_json::Value, String> {
         self.inner
-            .list_documents()
+            .list_documents(tinyhumansai::ListDocumentsParams::default())
             .await
             .map_err(|e| format!("Memory list documents failed: {e}"))
     }
@@ -295,9 +295,9 @@ impl MemoryClient {
     pub async fn clear_skill_memory(
         &self,
         skill_id: &str,
-        integration_id: &str,
+        _integration_id: &str,
     ) -> Result<(), String> {
-        let namespace = format!("skill:{skill_id}:{integration_id}");
+        let namespace = skill_id.to_string();
         log::info!("[memory] clear_skill_memory: entry (namespace={namespace})");
         log::debug!("[memory] clear_skill_memory: payload → namespace={namespace}");
         let result = self.inner
@@ -345,7 +345,7 @@ mod tests {
     ///   - the account quota is the only limiting factor
     ///
     /// Run with:
-    ///   JWT_TOKEN=<your-alphahuman-jwt> \
+    ///   JWT_TOKEN=<your-openhuman-jwt> \
     ///   cargo test --manifest-path src-tauri/Cargo.toml test_memory_skill_sync_flow -- --ignored --nocapture
     #[tokio::test]
     #[ignore]
@@ -357,7 +357,7 @@ mod tests {
             .expect("client creation failed");
 
         let skill_id = "gmail";
-        let integration_id = "test@alphahuman.dev";
+        let integration_id = "test@openhuman.dev";
 
         let dummy_content = serde_json::json!({
             "integrationId": integration_id,
@@ -374,7 +374,7 @@ mod tests {
             .store_skill_sync(
                 skill_id,
                 integration_id,
-                "Gmail OAuth sync — test@alphahuman.dev",
+                "Gmail OAuth sync — test@openhuman.dev",
                 &serde_json::to_string_pretty(&dummy_content).unwrap(),
                 None,
                 None,
