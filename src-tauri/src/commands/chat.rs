@@ -436,15 +436,9 @@ pub async fn chat_send(
         chat_state_arc.remove(&thread_id_clone);
 
         if let Err(e) = result {
-            let _ = app_clone.emit(
-                "chat:error",
-                ChatErrorEvent {
-                    thread_id: thread_id_clone,
-                    message: e,
-                    error_type: "inference".to_string(),
-                    round: None,
-                },
-            );
+            // chat_send_inner already emits chat:error for known error paths.
+            // Only log here to avoid duplicate error events.
+            log::error!("[chat] chat_send_inner failed: {e}");
         }
     });
 
@@ -501,15 +495,9 @@ pub async fn chat_send(
         chat_state_arc.remove(&thread_id_clone);
 
         if let Err(e) = result {
-            let _ = app_clone.emit(
-                "chat:error",
-                ChatErrorEvent {
-                    thread_id: thread_id_clone,
-                    message: e,
-                    error_type: "inference".to_string(),
-                    round: None,
-                },
-            );
+            // chat_send_mobile already emits chat:error for known error paths.
+            // Only log here to avoid duplicate error events.
+            log::error!("[chat] chat_send_mobile failed: {e}");
         }
     });
 
@@ -546,7 +534,16 @@ async fn chat_send_inner(
     let client = reqwest::Client::builder()
         .use_rustls_tls()
         .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+        .map_err(|e| {
+            let msg = format!("Failed to build HTTP client: {}", e);
+            let _ = app.emit("chat:error", ChatErrorEvent {
+                thread_id: thread_id.to_string(),
+                message: msg.clone(),
+                error_type: "network".to_string(),
+                round: None,
+            });
+            msg
+        })?;
 
     // ── Step 1: Load AI context ─────────────────────────────────────────
     let openclaw_context = load_openclaw_context(app);
@@ -775,7 +772,16 @@ async fn chat_send_inner(
         let completion: ChatCompletionResponse = response
             .json()
             .await
-            .map_err(|e| format!("Failed to parse inference response: {}", e))?;
+            .map_err(|e| {
+                let msg = format!("Failed to parse inference response: {}", e);
+                let _ = app.emit("chat:error", ChatErrorEvent {
+                    thread_id: thread_id.to_string(),
+                    message: msg.clone(),
+                    error_type: "inference".to_string(),
+                    round: Some(round),
+                });
+                msg
+            })?;
 
         // Accumulate token usage
         if let Some(ref usage) = completion.usage {
@@ -786,7 +792,16 @@ async fn chat_send_inner(
         let choice = completion
             .choices
             .first()
-            .ok_or_else(|| "No choices in inference response".to_string())?;
+            .ok_or_else(|| {
+                let msg = "No choices in inference response".to_string();
+                let _ = app.emit("chat:error", ChatErrorEvent {
+                    thread_id: thread_id.to_string(),
+                    message: msg.clone(),
+                    error_type: "inference".to_string(),
+                    round: Some(round),
+                });
+                msg
+            })?;
 
         log::info!(
             "[chat] Round {} — finish_reason={:?}, tool_calls={}",
@@ -1002,7 +1017,16 @@ async fn chat_send_mobile(
     let client = reqwest::Client::builder()
         .use_rustls_tls()
         .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+        .map_err(|e| {
+            let msg = format!("Failed to build HTTP client: {}", e);
+            let _ = app.emit("chat:error", ChatErrorEvent {
+                thread_id: thread_id.to_string(),
+                message: msg.clone(),
+                error_type: "network".to_string(),
+                round: None,
+            });
+            msg
+        })?;
 
     // ── Step 1: Load AI context ─────────────────────────────────────────
     let openclaw_context = load_openclaw_context(app);
@@ -1146,7 +1170,16 @@ async fn chat_send_mobile(
     let completion: ChatCompletionResponse = response
         .json()
         .await
-        .map_err(|e| format!("Failed to parse inference response: {}", e))?;
+        .map_err(|e| {
+            let msg = format!("Failed to parse inference response: {}", e);
+            let _ = app.emit("chat:error", ChatErrorEvent {
+                thread_id: thread_id.to_string(),
+                message: msg.clone(),
+                error_type: "inference".to_string(),
+                round: None,
+            });
+            msg
+        })?;
 
     let (total_input_tokens, total_output_tokens) = completion
         .usage
@@ -1156,7 +1189,16 @@ async fn chat_send_mobile(
     let choice = completion
         .choices
         .first()
-        .ok_or_else(|| "No choices in inference response".to_string())?;
+        .ok_or_else(|| {
+            let msg = "No choices in inference response".to_string();
+            let _ = app.emit("chat:error", ChatErrorEvent {
+                thread_id: thread_id.to_string(),
+                message: msg.clone(),
+                error_type: "inference".to_string(),
+                round: None,
+            });
+            msg
+        })?;
 
     let full_response = choice.message.content.clone().unwrap_or_default();
 
