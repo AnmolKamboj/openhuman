@@ -152,10 +152,10 @@ const Conversations = () => {
       );
     }
 
-    if (selectedThreadId !== DEFAULT_THREAD_ID) {
-      dispatch(setSelectedThread(DEFAULT_THREAD_ID));
-    }
-  }, [dispatch, selectedThreadId, threads]);
+    // Always set selected thread to ensure messages view is synced from persisted storage
+    dispatch(setSelectedThread(DEFAULT_THREAD_ID));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch]);
 
   useEffect(() => {
     setIsLoadingModels(true);
@@ -340,7 +340,6 @@ const Conversations = () => {
     };
 
     dispatch(addMessageLocal({ threadId: sendingThreadId, message: userMessage }));
-    dispatch(setSelectedThread(sendingThreadId));
 
     const historySnapshot = messages.filter(
       m => !m.id.startsWith('optimistic-') && m.id !== userMessage.id
