@@ -36,6 +36,7 @@ pub mod peripherals;
 pub mod providers;
 pub mod rag;
 pub mod runtime;
+pub mod screen_intelligence;
 pub mod security;
 pub mod service;
 pub mod skillforge;
