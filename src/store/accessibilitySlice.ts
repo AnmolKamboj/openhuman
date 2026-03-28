@@ -2,30 +2,41 @@ import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/tool
 
 import {
   type AccessibilityInputActionParams,
+  type AccessibilityPermissionKind,
   type AccessibilitySessionStatus,
   type AccessibilityStatus,
+  type AccessibilityVisionSummary,
   openhumanAccessibilityInputAction,
+  openhumanAccessibilityRequestPermission,
   openhumanAccessibilityRequestPermissions,
   openhumanAccessibilityStartSession,
   openhumanAccessibilityStatus,
   openhumanAccessibilityStopSession,
+  openhumanAccessibilityVisionFlush,
+  openhumanAccessibilityVisionRecent,
 } from '../utils/tauriCommands';
 
 interface AccessibilityState {
   status: AccessibilityStatus | null;
+  recentVisionSummaries: AccessibilityVisionSummary[];
   isLoading: boolean;
   isRequestingPermissions: boolean;
   isStartingSession: boolean;
   isStoppingSession: boolean;
+  isLoadingVision: boolean;
+  isFlushingVision: boolean;
   lastError: string | null;
 }
 
 const initialState: AccessibilityState = {
   status: null,
+  recentVisionSummaries: [],
   isLoading: false,
   isRequestingPermissions: false,
   isStartingSession: false,
   isStoppingSession: false,
+  isLoadingVision: false,
+  isFlushingVision: false,
   lastError: null,
 };
 
@@ -57,6 +68,19 @@ export const requestAccessibilityPermissions = createAsyncThunk(
       return response.result;
     } catch (error) {
       return rejectWithValue(extractError(error, 'Failed to request accessibility permissions'));
+    }
+  }
+);
+
+export const requestAccessibilityPermission = createAsyncThunk(
+  'accessibility/requestPermission',
+  async (permission: AccessibilityPermissionKind, { rejectWithValue }) => {
+    try {
+      await openhumanAccessibilityRequestPermission(permission);
+      const response = await openhumanAccessibilityStatus();
+      return response.result;
+    } catch (error) {
+      return rejectWithValue(extractError(error, 'Failed to request accessibility permission'));
     }
   }
 );
@@ -108,6 +132,30 @@ export const executeAccessibilityInputAction = createAsyncThunk(
   }
 );
 
+export const fetchAccessibilityVisionRecent = createAsyncThunk(
+  'accessibility/fetchVisionRecent',
+  async (limit: number | undefined, { rejectWithValue }) => {
+    try {
+      const response = await openhumanAccessibilityVisionRecent(limit);
+      return response.result.summaries;
+    } catch (error) {
+      return rejectWithValue(extractError(error, 'Failed to fetch accessibility vision summaries'));
+    }
+  }
+);
+
+export const flushAccessibilityVision = createAsyncThunk(
+  'accessibility/flushVision',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await openhumanAccessibilityVisionFlush();
+      return response.result.summary;
+    } catch (error) {
+      return rejectWithValue(extractError(error, 'Failed to flush accessibility vision'));
+    }
+  }
+);
+
 const accessibilitySlice = createSlice({
   name: 'accessibility',
   initialState,
@@ -122,6 +170,9 @@ const accessibilitySlice = createSlice({
       if (state.status) {
         state.status.session = action.payload;
       }
+    },
+    setAccessibilityVisionSummaries(state, action: PayloadAction<AccessibilityVisionSummary[]>) {
+      state.recentVisionSummaries = action.payload;
     },
   },
   extraReducers: builder => {
@@ -151,6 +202,19 @@ const accessibilitySlice = createSlice({
         state.lastError =
           (action.payload as string) ?? 'Failed to request accessibility permissions';
       })
+      .addCase(requestAccessibilityPermission.pending, state => {
+        state.isRequestingPermissions = true;
+        state.lastError = null;
+      })
+      .addCase(requestAccessibilityPermission.fulfilled, (state, action) => {
+        state.isRequestingPermissions = false;
+        state.status = action.payload;
+      })
+      .addCase(requestAccessibilityPermission.rejected, (state, action) => {
+        state.isRequestingPermissions = false;
+        state.lastError =
+          (action.payload as string) ?? 'Failed to request accessibility permission';
+      })
       .addCase(startAccessibilitySession.pending, state => {
         state.isStartingSession = true;
         state.lastError = null;
@@ -177,11 +241,43 @@ const accessibilitySlice = createSlice({
       })
       .addCase(executeAccessibilityInputAction.rejected, (state, action) => {
         state.lastError = (action.payload as string) ?? 'Failed to execute accessibility action';
+      })
+      .addCase(fetchAccessibilityVisionRecent.pending, state => {
+        state.isLoadingVision = true;
+      })
+      .addCase(fetchAccessibilityVisionRecent.fulfilled, (state, action) => {
+        state.isLoadingVision = false;
+        state.recentVisionSummaries = action.payload;
+      })
+      .addCase(fetchAccessibilityVisionRecent.rejected, (state, action) => {
+        state.isLoadingVision = false;
+        state.lastError =
+          (action.payload as string) ?? 'Failed to fetch accessibility vision summaries';
+      })
+      .addCase(flushAccessibilityVision.pending, state => {
+        state.isFlushingVision = true;
+      })
+      .addCase(flushAccessibilityVision.fulfilled, (state, action) => {
+        state.isFlushingVision = false;
+        if (action.payload) {
+          state.recentVisionSummaries = [action.payload, ...state.recentVisionSummaries].slice(
+            0,
+            30
+          );
+        }
+      })
+      .addCase(flushAccessibilityVision.rejected, (state, action) => {
+        state.isFlushingVision = false;
+        state.lastError = (action.payload as string) ?? 'Failed to flush accessibility vision';
       });
   },
 });
 
-export const { clearAccessibilityError, setAccessibilitySessionFeatures, setAccessibilityStatus } =
-  accessibilitySlice.actions;
+export const {
+  clearAccessibilityError,
+  setAccessibilitySessionFeatures,
+  setAccessibilityStatus,
+  setAccessibilityVisionSummaries,
+} = accessibilitySlice.actions;
 
 export default accessibilitySlice.reducer;

@@ -239,6 +239,27 @@ export async function memoryRecallNamespace(
   return await invoke('memory_recall_namespace', { namespace, maxChunks });
 }
 
+export async function aiListMemoryFiles(relativeDir = 'memory'): Promise<string[]> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('ai_list_memory_files', { relativeDir });
+}
+
+export async function aiReadMemoryFile(relativePath: string): Promise<string> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('ai_read_memory_file', { relativePath });
+}
+
+export async function aiWriteMemoryFile(relativePath: string, content: string): Promise<void> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  await invoke('ai_write_memory_file', { relativePath, content });
+}
+
 /**
  * Trigger a conscious loop run manually.
  * The loop recalls all skill memory, extracts actionable items via LLM,
@@ -313,6 +334,29 @@ export interface SkillSnapshot {
   state?: Record<string, unknown>;
 }
 
+export interface RuntimeDiscoveredSkill {
+  id: string;
+  name: string;
+  runtime?: string;
+  entry?: string;
+  autoStart?: boolean;
+  version?: string;
+  ignoreInProduction?: boolean;
+  description?: string;
+  platforms?: string[];
+  tickInterval?: number | null;
+}
+
+export interface RuntimeSkillOption {
+  name: string;
+  type: 'boolean' | 'text' | 'number' | 'select';
+  label: string;
+  description?: string | null;
+  default?: string | number | boolean | null;
+  options?: Array<{ label: string; value: string }> | null;
+  value?: string | number | boolean | null;
+}
+
 export interface DoctorReport {
   items: { severity: DoctorSeverity; category: string; message: string }[];
   summary: { ok: number; warnings: number; errors: number };
@@ -384,6 +428,7 @@ export interface AgentServerStatus {
 }
 
 export type AccessibilityPermissionState = 'granted' | 'denied' | 'unknown' | 'unsupported';
+export type AccessibilityPermissionKind = 'screen_recording' | 'accessibility' | 'input_monitoring';
 
 export interface AccessibilityPermissionStatus {
   screen_recording: AccessibilityPermissionState;
@@ -408,6 +453,11 @@ export interface AccessibilitySessionStatus {
   frames_in_memory: number;
   last_capture_at_ms: number | null;
   last_context: string | null;
+  vision_enabled: boolean;
+  vision_state: string;
+  vision_queue_depth: number;
+  last_vision_at_ms: number | null;
+  last_vision_summary: string | null;
 }
 
 export interface AccessibilityConfig {
@@ -446,6 +496,7 @@ export interface AccessibilityCaptureFrame {
   reason: string;
   app_name: string | null;
   window_title: string | null;
+  image_ref?: string | null;
 }
 
 export interface AccessibilityCaptureNowResult {
@@ -491,6 +542,26 @@ export interface AccessibilityAutocompleteCommitResult {
   committed: boolean;
 }
 
+export interface AccessibilityVisionSummary {
+  id: string;
+  captured_at_ms: number;
+  app_name: string | null;
+  window_title: string | null;
+  ui_state: string;
+  key_text: string;
+  actionable_notes: string;
+  confidence: number;
+}
+
+export interface AccessibilityVisionRecentResult {
+  summaries: AccessibilityVisionSummary[];
+}
+
+export interface AccessibilityVisionFlushResult {
+  accepted: boolean;
+  summary: AccessibilityVisionSummary | null;
+}
+
 export interface ConfigSnapshot {
   config: Record<string, unknown>;
   workspace_dir: string;
@@ -534,9 +605,21 @@ export interface RuntimeFlags {
   log_prompts: boolean;
 }
 
+export const DEFAULT_WORKSPACE_ONBOARDING_FLAG = '.skip_onboarding';
+
 export interface LocalAiStatus {
   state: string;
   model_id: string;
+  chat_model_id: string;
+  vision_model_id: string;
+  embedding_model_id: string;
+  stt_model_id: string;
+  tts_voice_id: string;
+  quantization: string;
+  vision_state: string;
+  embedding_state: string;
+  stt_state: string;
+  tts_state: string;
   provider: string;
   download_progress?: number | null;
   downloaded_bytes?: number | null;
@@ -545,11 +628,104 @@ export interface LocalAiStatus {
   eta_seconds?: number | null;
   warning?: string | null;
   model_path?: string | null;
+  active_backend: string;
+  backend_reason?: string | null;
+  last_latency_ms?: number | null;
+  prompt_toks_per_sec?: number | null;
+  gen_toks_per_sec?: number | null;
 }
 
 export interface LocalAiSuggestion {
   text: string;
   confidence: number;
+}
+
+export interface LocalAiAssetStatus {
+  state: string;
+  id: string;
+  provider: string;
+  path?: string | null;
+  warning?: string | null;
+}
+
+export interface LocalAiAssetsStatus {
+  chat: LocalAiAssetStatus;
+  vision: LocalAiAssetStatus;
+  embedding: LocalAiAssetStatus;
+  stt: LocalAiAssetStatus;
+  tts: LocalAiAssetStatus;
+  quantization: string;
+}
+
+export interface LocalAiEmbeddingResult {
+  model_id: string;
+  dimensions: number;
+  vectors: number[][];
+}
+
+export interface LocalAiSpeechResult {
+  text: string;
+  model_id: string;
+}
+
+export interface LocalAiTtsResult {
+  output_path: string;
+  voice_id: string;
+}
+
+export interface RuntimeSkillDataStats {
+  exists: boolean;
+  path: string;
+  total_bytes: number;
+  file_count: number;
+}
+
+export interface CoreCronScheduleCron {
+  kind: 'cron';
+  expr: string;
+  tz?: string | null;
+}
+
+export interface CoreCronScheduleAt {
+  kind: 'at';
+  at: string;
+}
+
+export interface CoreCronScheduleEvery {
+  kind: 'every';
+  every_ms: number;
+}
+
+export type CoreCronSchedule = CoreCronScheduleCron | CoreCronScheduleAt | CoreCronScheduleEvery;
+
+export interface CoreCronJob {
+  id: string;
+  expression: string;
+  schedule: CoreCronSchedule;
+  command: string;
+  prompt?: string | null;
+  name?: string | null;
+  job_type: 'shell' | 'agent' | string;
+  session_target: 'isolated' | 'main' | string;
+  model?: string | null;
+  enabled: boolean;
+  delivery: { mode: string; channel?: string | null; to?: string | null; best_effort: boolean };
+  delete_after_run: boolean;
+  created_at: string;
+  next_run: string;
+  last_run?: string | null;
+  last_status?: string | null;
+  last_output?: string | null;
+}
+
+export interface CoreCronRun {
+  id: number;
+  job_id: string;
+  started_at: string;
+  finished_at: string;
+  status: string;
+  output?: string | null;
+  duration_ms?: number | null;
 }
 
 function tauriErrorMessage(err: unknown): string {
@@ -652,6 +828,15 @@ export async function openhumanGetRuntimeFlags(): Promise<CommandResponse<Runtim
   return await invoke('openhuman_get_runtime_flags');
 }
 
+export async function openhumanWorkspaceOnboardingFlagExists(
+  flagName = DEFAULT_WORKSPACE_ONBOARDING_FLAG
+): Promise<boolean> {
+  if (!isTauri()) {
+    return false;
+  }
+  return await invoke('openhuman_workspace_onboarding_flag_exists', { flagName });
+}
+
 export async function openhumanSetBrowserAllowAll(
   enabled: boolean
 ): Promise<CommandResponse<RuntimeFlags>> {
@@ -659,6 +844,58 @@ export async function openhumanSetBrowserAllowAll(
     throw new Error('Not running in Tauri');
   }
   return await invoke('openhuman_set_browser_allow_all', { enabled });
+}
+
+export async function openhumanCronList(): Promise<CommandResponse<CoreCronJob[]>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('openhuman_cron_list');
+}
+
+export async function openhumanCronUpdate(
+  jobId: string,
+  patch: Record<string, unknown>
+): Promise<CommandResponse<CoreCronJob>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('openhuman_cron_update', { jobId, patch });
+}
+
+export async function openhumanCronRemove(
+  jobId: string
+): Promise<CommandResponse<{ job_id: string; removed: boolean }>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('openhuman_cron_remove', { jobId });
+}
+
+export async function openhumanCronRun(
+  jobId: string
+): Promise<
+  CommandResponse<{
+    job_id: string;
+    status: 'ok' | 'error' | string;
+    duration_ms: number;
+    output: string;
+  }>
+> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('openhuman_cron_run', { jobId });
+}
+
+export async function openhumanCronRuns(
+  jobId: string,
+  limit = 20
+): Promise<CommandResponse<CoreCronRun[]>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('openhuman_cron_runs', { jobId, limit });
 }
 
 export async function openhumanAgentChat(
@@ -731,6 +968,84 @@ export async function openhumanLocalAiSuggestQuestions(
     throw new Error('Not running in Tauri');
   }
   return await invoke('openhuman_local_ai_suggest_questions', { context, lines });
+}
+
+export async function openhumanLocalAiPrompt(
+  prompt: string,
+  maxTokens?: number,
+  noThink?: boolean
+): Promise<CommandResponse<string>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('openhuman_local_ai_prompt', { prompt, maxTokens, noThink });
+}
+
+export async function openhumanLocalAiVisionPrompt(
+  prompt: string,
+  imageRefs: string[],
+  maxTokens?: number
+): Promise<CommandResponse<string>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('openhuman_local_ai_vision_prompt', { prompt, imageRefs, maxTokens });
+}
+
+export async function openhumanLocalAiEmbed(
+  inputs: string[]
+): Promise<CommandResponse<LocalAiEmbeddingResult>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('openhuman_local_ai_embed', { inputs });
+}
+
+export async function openhumanLocalAiTranscribe(
+  audioPath: string
+): Promise<CommandResponse<LocalAiSpeechResult>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('openhuman_local_ai_transcribe', { audioPath });
+}
+
+export async function openhumanLocalAiTranscribeBytes(
+  audioBytes: number[],
+  extension?: string
+): Promise<CommandResponse<LocalAiSpeechResult>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('openhuman_local_ai_transcribe_bytes', { audioBytes, extension });
+}
+
+export async function openhumanLocalAiTts(
+  text: string,
+  outputPath?: string
+): Promise<CommandResponse<LocalAiTtsResult>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('openhuman_local_ai_tts', { text, outputPath });
+}
+
+export async function openhumanLocalAiAssetsStatus(): Promise<
+  CommandResponse<LocalAiAssetsStatus>
+> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('openhuman_local_ai_assets_status');
+}
+
+export async function openhumanLocalAiDownloadAsset(
+  capability: 'chat' | 'vision' | 'embedding' | 'stt' | 'tts'
+): Promise<CommandResponse<LocalAiAssetsStatus>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('openhuman_local_ai_download_asset', { capability });
 }
 
 export async function aiGetConfig(): Promise<AIPreview> {
@@ -890,6 +1205,15 @@ export async function openhumanAccessibilityRequestPermissions(): Promise<
   return await invoke('openhuman_accessibility_request_permissions');
 }
 
+export async function openhumanAccessibilityRequestPermission(
+  permission: AccessibilityPermissionKind
+): Promise<CommandResponse<AccessibilityPermissionStatus>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('openhuman_accessibility_request_permission', { params: { permission } });
+}
+
 export async function openhumanAccessibilityStartSession(
   params: AccessibilityStartSessionParams
 ): Promise<CommandResponse<AccessibilitySessionStatus>> {
@@ -944,11 +1268,59 @@ export async function openhumanAccessibilityAutocompleteCommit(
   return await invoke('openhuman_accessibility_autocomplete_commit', { params });
 }
 
+export async function openhumanAccessibilityVisionRecent(
+  limit?: number
+): Promise<CommandResponse<AccessibilityVisionRecentResult>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('openhuman_accessibility_vision_recent', { limit });
+}
+
+export async function openhumanAccessibilityVisionFlush(): Promise<
+  CommandResponse<AccessibilityVisionFlushResult>
+> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('openhuman_accessibility_vision_flush');
+}
+
 export async function runtimeListSkills(): Promise<SkillSnapshot[]> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
   }
   return await invoke('runtime_list_skills');
+}
+
+export async function runtimeDiscoverSkills(): Promise<RuntimeDiscoveredSkill[]> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('runtime_discover_skills');
+}
+
+export async function runtimeListSkillOptions(skillId: string): Promise<RuntimeSkillOption[]> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  const response = await invoke<{ options?: RuntimeSkillOption[] }>('runtime_rpc', {
+    skillId,
+    method: 'options/list',
+    params: {},
+  });
+  return response.options ?? [];
+}
+
+export async function runtimeSetSkillOption(
+  skillId: string,
+  name: string,
+  value: unknown
+): Promise<void> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  await invoke('runtime_rpc', { skillId, method: 'options/set', params: { name, value } });
 }
 
 export async function runtimeIsSkillEnabled(skillId: string): Promise<boolean> {
@@ -970,4 +1342,11 @@ export async function runtimeDisableSkill(skillId: string): Promise<void> {
     throw new Error('Not running in Tauri');
   }
   await invoke('runtime_disable_skill', { skill_id: skillId });
+}
+
+export async function runtimeSkillDataStats(skillId: string): Promise<RuntimeSkillDataStats> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke('runtime_skill_data_stats', { skill_id: skillId });
 }

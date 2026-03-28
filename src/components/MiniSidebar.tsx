@@ -103,6 +103,36 @@ const navItems = [
       </svg>
     ),
   },
+  {
+    id: 'channels',
+    label: 'Channels',
+    path: '/settings/messaging',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M8 10h.01M12 10h.01M16 10h.01M21 11c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 19l1.395-3.72C3.512 14.042 3 12.574 3 11c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+        />
+      </svg>
+    ),
+  },
+  {
+    id: 'cron-jobs',
+    label: 'Cron Jobs',
+    path: '/settings/cron-jobs',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+        />
+      </svg>
+    ),
+  },
 ];
 
 const MiniSidebar = () => {
@@ -129,7 +159,16 @@ const MiniSidebar = () => {
   }
 
   const isActive = (path: string) => {
-    if (path === '/settings') return location.pathname.startsWith('/settings');
+    if (path === '/settings') {
+      return (
+        location.pathname === '/settings' ||
+        (location.pathname.startsWith('/settings/') &&
+          !location.pathname.startsWith('/settings/messaging') &&
+          !location.pathname.startsWith('/settings/cron-jobs'))
+      );
+    }
+    if (path === '/settings/messaging') return location.pathname.startsWith('/settings/messaging');
+    if (path === '/settings/cron-jobs') return location.pathname.startsWith('/settings/cron-jobs');
     if (path === '/conversations') return location.pathname.startsWith('/conversations');
     return location.pathname === path;
   };

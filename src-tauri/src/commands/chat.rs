@@ -166,6 +166,27 @@ pub struct CompletionUsage {
     pub total_tokens: u64,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct CoreCommandResponse<T> {
+    result: T,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct VisionRecentPayload {
+    summaries: Vec<VisionSummaryPayload>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct VisionSummaryPayload {
+    #[allow(dead_code)]
+    id: String,
+    captured_at_ms: i64,
+    app_name: Option<String>,
+    window_title: Option<String>,
+    actionable_notes: String,
+    confidence: f32,
+}
+
 // ─── Internal state ───────────────────────────────────────────────────────────
 
 /// Tracks in-flight chat requests for cancellation support.
@@ -517,12 +538,18 @@ async fn chat_send_inner(
             .await
         {
             Ok(ctx) => {
+                let rendered = ctx.as_ref().map(|value| {
+                    value
+                        .as_str()
+                        .map(str::to_string)
+                        .unwrap_or_else(|| value.to_string())
+                });
                 log::info!(
                     "[chat] Conversation memory recall: has_data={}, len={}",
                     ctx.is_some(),
-                    ctx.as_ref().map(|ctx| ctx.to_string().len()).unwrap_or(0)
+                    rendered.as_ref().map(|text| text.len()).unwrap_or(0)
                 );
-                ctx.map(|ctx| ctx.to_string())
+                rendered
             }
             Err(e) => {
                 log::warn!("[chat] Conversation memory recall failed: {}", e);
@@ -748,6 +775,10 @@ async fn chat_send_inner(
     if let Some(ref qctx) = query_memory_context {
         processed =
             format!("[QUERY_MEMORY_CONTEXT]\n{qctx}\n[/QUERY_MEMORY_CONTEXT]\n\n{processed}");
+    }
+
+    if let Some(vision_context) = load_vision_context_block().await {
+        processed = format!("{vision_context}\n\n{processed}");
     }
 
     if let Some(ref notion) = notion_context {
@@ -1111,4 +1142,37 @@ async fn chat_send_inner(
     );
 
     Ok(())
+}
+
+async fn load_vision_context_block() -> Option<String> {
+    let response = crate::core_rpc::call::<CoreCommandResponse<VisionRecentPayload>>(
+        "openhuman.accessibility_vision_recent",
+        serde_json::json!({ "limit": 3 }),
+    )
+    .await
+    .ok()?;
+
+    if response.result.summaries.is_empty() {
+        return None;
+    }
+
+    let mut lines = Vec::with_capacity(response.result.summaries.len() + 2);
+    lines.push("[VISION_CONTEXT]".to_string());
+    for summary in response.result.summaries {
+        let ts = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(summary.captured_at_ms)
+            .map(|v| v.format("%H:%M:%S").to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        let scope = match (summary.app_name.as_deref(), summary.window_title.as_deref()) {
+            (Some(app), Some(win)) if !win.trim().is_empty() => format!("{app} / {win}"),
+            (Some(app), _) => app.to_string(),
+            _ => "unknown app".to_string(),
+        };
+        lines.push(format!(
+            "- {ts} [{scope}] ({:.0}%): {}",
+            (summary.confidence * 100.0).clamp(0.0, 100.0),
+            summary.actionable_notes
+        ));
+    }
+    lines.push("[/VISION_CONTEXT]".to_string());
+    Some(lines.join("\n"))
 }

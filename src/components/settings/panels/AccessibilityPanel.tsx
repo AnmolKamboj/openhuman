@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 
 import {
   fetchAccessibilityStatus,
-  requestAccessibilityPermissions,
+  fetchAccessibilityVisionRecent,
+  flushAccessibilityVision,
+  requestAccessibilityPermission,
   startAccessibilitySession,
   stopAccessibilitySession,
 } from '../../../store/accessibilitySlice';
@@ -50,6 +52,9 @@ const AccessibilityPanel = () => {
     isRequestingPermissions,
     isStartingSession,
     isStoppingSession,
+    isLoadingVision,
+    isFlushingVision,
+    recentVisionSummaries,
     lastError,
   } = useAppSelector(state => state.accessibility);
   const [featureOverrides, setFeatureOverrides] = useState<{
@@ -68,9 +73,14 @@ const AccessibilityPanel = () => {
     }
     const intervalId = window.setInterval(() => {
       void dispatch(fetchAccessibilityStatus());
+      void dispatch(fetchAccessibilityVisionRecent(10));
     }, 1000);
     return () => window.clearInterval(intervalId);
   }, [dispatch, status?.session.active]);
+
+  useEffect(() => {
+    void dispatch(fetchAccessibilityVisionRecent(10));
+  }, [dispatch]);
 
   const screenMonitoring =
     featureOverrides.screen_monitoring ?? status?.features.screen_monitoring ?? true;
@@ -117,10 +127,31 @@ const AccessibilityPanel = () => {
 
           <button
             type="button"
-            onClick={() => void dispatch(requestAccessibilityPermissions())}
+            onClick={() => void dispatch(requestAccessibilityPermission('screen_recording'))}
             disabled={isRequestingPermissions}
             className="mt-1 rounded-lg border border-primary-500/60 bg-primary-500/20 px-3 py-2 text-sm text-primary-200 disabled:opacity-50">
-            {isRequestingPermissions ? 'Requesting…' : 'Check / Request Permissions'}
+            {isRequestingPermissions ? 'Requesting…' : 'Request Screen Recording'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void dispatch(requestAccessibilityPermission('accessibility'))}
+            disabled={isRequestingPermissions}
+            className="rounded-lg border border-primary-500/60 bg-primary-500/20 px-3 py-2 text-sm text-primary-200 disabled:opacity-50">
+            {isRequestingPermissions ? 'Requesting…' : 'Request Accessibility'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void dispatch(requestAccessibilityPermission('input_monitoring'))}
+            disabled={isRequestingPermissions}
+            className="rounded-lg border border-primary-500/60 bg-primary-500/20 px-3 py-2 text-sm text-primary-200 disabled:opacity-50">
+            {isRequestingPermissions ? 'Requesting…' : 'Open Input Monitoring'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void dispatch(fetchAccessibilityStatus())}
+            disabled={isLoading}
+            className="rounded-lg border border-stone-600 bg-stone-800/60 px-3 py-2 text-sm text-stone-200 disabled:opacity-50">
+            {isLoading ? 'Refreshing…' : 'Refresh Status'}
           </button>
         </section>
 
@@ -177,6 +208,14 @@ const AccessibilityPanel = () => {
             <div>Remaining: {remaining}</div>
             <div>Frames (ephemeral): {status?.session.frames_in_memory ?? 0}</div>
             <div>Panic stop: {status?.session.panic_hotkey ?? 'Cmd+Shift+.'}</div>
+            <div>Vision: {status?.session.vision_state ?? 'idle'}</div>
+            <div>Vision queue: {status?.session.vision_queue_depth ?? 0}</div>
+            <div>
+              Last vision:{' '}
+              {status?.session.last_vision_at_ms
+                ? new Date(status.session.last_vision_at_ms).toLocaleTimeString()
+                : 'n/a'}
+            </div>
           </div>
 
           <div className="flex gap-2">
@@ -204,7 +243,46 @@ const AccessibilityPanel = () => {
               className="rounded-lg border border-red-500/60 bg-red-500/20 px-3 py-2 text-sm text-red-200 disabled:opacity-50">
               {isStoppingSession ? 'Stopping…' : 'Stop Session'}
             </button>
+            <button
+              type="button"
+              onClick={() => void dispatch(flushAccessibilityVision())}
+              disabled={isFlushingVision || !status?.session.active}
+              className="rounded-lg border border-cyan-500/60 bg-cyan-500/20 px-3 py-2 text-sm text-cyan-200 disabled:opacity-50">
+              {isFlushingVision ? 'Analyzing…' : 'Analyze Now'}
+            </button>
           </div>
+        </section>
+
+        <section className="rounded-2xl border border-stone-700 bg-black/30 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-white">Vision Summaries</h3>
+            <button
+              type="button"
+              onClick={() => void dispatch(fetchAccessibilityVisionRecent(10))}
+              disabled={isLoadingVision}
+              className="rounded-lg border border-stone-600 bg-stone-800/60 px-3 py-1.5 text-xs text-stone-200 disabled:opacity-50">
+              {isLoadingVision ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+
+          {recentVisionSummaries.length === 0 ? (
+            <div className="text-xs text-stone-400">No summaries yet.</div>
+          ) : (
+            <div className="space-y-2">
+              {recentVisionSummaries.map(summary => (
+                <div
+                  key={summary.id}
+                  className="rounded-xl border border-stone-700 bg-stone-900/50 p-3 text-xs text-stone-200">
+                  <div className="text-stone-400">
+                    {new Date(summary.captured_at_ms).toLocaleTimeString()} ·{' '}
+                    {summary.app_name ?? 'Unknown App'}
+                    {summary.window_title ? ` · ${summary.window_title}` : ''}
+                  </div>
+                  <div className="mt-1 text-stone-100">{summary.actionable_notes}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         {!status?.platform_supported && (

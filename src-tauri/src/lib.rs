@@ -923,9 +923,14 @@ pub fn run() {
                 }
             }
 
-            // Initialize TinyHumans memory state (empty until the frontend provides the JWT)
-            app.manage(crate::memory::MemoryState(std::sync::Mutex::new(None)));
-            log::info!("[memory] Memory state registered — awaiting JWT from frontend");
+            // Initialize local memory state at startup (token-independent).
+            let memory_client = crate::memory::MemoryClient::new_local()
+                .map(std::sync::Arc::new)
+                .ok();
+            app.manage(crate::memory::MemoryState(std::sync::Mutex::new(
+                memory_client,
+            )));
+            log::info!("[memory] Local memory state registered");
 
             // Spawn conscious loop periodic timer
             let app_for_conscious = app.handle().clone();
@@ -1044,6 +1049,7 @@ pub fn run() {
                     runtime_skill_data_read,
                     runtime_skill_data_write,
                     runtime_skill_data_dir,
+                    runtime_skill_data_stats,
                     // Socket.io commands (Rust-native persistent connection)
                     runtime_socket_connect,
                     runtime_socket_disconnect,
@@ -1066,20 +1072,37 @@ pub fn run() {
                     openhuman_update_runtime_settings,
                     openhuman_update_browser_settings,
                     openhuman_get_runtime_flags,
+                    openhuman_workspace_onboarding_flag_exists,
                     openhuman_set_browser_allow_all,
+                    openhuman_cron_list,
+                    openhuman_cron_update,
+                    openhuman_cron_remove,
+                    openhuman_cron_run,
+                    openhuman_cron_runs,
                     openhuman_agent_chat,
                     openhuman_accessibility_status,
                     openhuman_accessibility_request_permissions,
+                    openhuman_accessibility_request_permission,
                     openhuman_accessibility_start_session,
                     openhuman_accessibility_stop_session,
                     openhuman_accessibility_capture_now,
                     openhuman_accessibility_input_action,
                     openhuman_accessibility_autocomplete_suggest,
                     openhuman_accessibility_autocomplete_commit,
+                    openhuman_accessibility_vision_recent,
+                    openhuman_accessibility_vision_flush,
                     openhuman_local_ai_status,
                     openhuman_local_ai_download,
                     openhuman_local_ai_summarize,
                     openhuman_local_ai_suggest_questions,
+                    openhuman_local_ai_prompt,
+                    openhuman_local_ai_vision_prompt,
+                    openhuman_local_ai_embed,
+                    openhuman_local_ai_transcribe,
+                    openhuman_local_ai_transcribe_bytes,
+                    openhuman_local_ai_tts,
+                    openhuman_local_ai_assets_status,
+                    openhuman_local_ai_download_asset,
                     openhuman_doctor_report,
                     openhuman_doctor_models,
                     openhuman_list_integrations,

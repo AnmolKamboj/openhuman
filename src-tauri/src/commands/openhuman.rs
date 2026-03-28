@@ -4,18 +4,28 @@ use openhuman_core::core_server::{
     AccessibilityStatus, AutocompleteCommitParams, AutocompleteCommitResult,
     AutocompleteSuggestParams, AutocompleteSuggestResult, BrowserSettingsUpdate, CaptureNowResult,
     CommandResponse, ConfigSnapshot, GatewaySettingsUpdate, InputActionParams, InputActionResult,
-    MemorySettingsUpdate, ModelSettingsUpdate, PermissionStatus, RuntimeFlags,
-    RuntimeSettingsUpdate, SessionStatus, StartSessionParams, StopSessionParams,
+    MemorySettingsUpdate, ModelSettingsUpdate, PermissionRequestParams, PermissionStatus,
+    RuntimeFlags, RuntimeSettingsUpdate, SessionStatus, StartSessionParams, StopSessionParams,
+    VisionFlushResult, VisionRecentResult,
 };
 use openhuman_core::openhuman::{doctor, hardware, integrations, migration, onboard, service};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use tauri::{Emitter, Manager};
 
 #[cfg(desktop)]
 use crate::services::notification_service::NotificationService;
 
 const DEFAULT_CORE_RPC_URL: &str = "http://127.0.0.1:7788/rpc";
+const DEFAULT_ONBOARDING_FLAG_NAME: &str = ".skip_onboarding";
+
+fn workspace_dir() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".openhuman")
+        .join("workspace")
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -90,6 +100,16 @@ pub struct AgentServerStatus {
 pub struct LocalAiStatus {
     pub state: String,
     pub model_id: String,
+    pub chat_model_id: String,
+    pub vision_model_id: String,
+    pub embedding_model_id: String,
+    pub stt_model_id: String,
+    pub tts_voice_id: String,
+    pub quantization: String,
+    pub vision_state: String,
+    pub embedding_state: String,
+    pub stt_state: String,
+    pub tts_state: String,
     pub provider: String,
     pub download_progress: Option<f32>,
     pub downloaded_bytes: Option<u64>,
@@ -98,12 +118,55 @@ pub struct LocalAiStatus {
     pub eta_seconds: Option<u64>,
     pub warning: Option<String>,
     pub model_path: Option<String>,
+    pub active_backend: String,
+    pub backend_reason: Option<String>,
+    pub last_latency_ms: Option<u64>,
+    pub prompt_toks_per_sec: Option<f32>,
+    pub gen_toks_per_sec: Option<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocalAiSuggestion {
     pub text: String,
     pub confidence: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalAiAssetStatus {
+    pub state: String,
+    pub id: String,
+    pub provider: String,
+    pub path: Option<String>,
+    pub warning: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalAiAssetsStatus {
+    pub chat: LocalAiAssetStatus,
+    pub vision: LocalAiAssetStatus,
+    pub embedding: LocalAiAssetStatus,
+    pub stt: LocalAiAssetStatus,
+    pub tts: LocalAiAssetStatus,
+    pub quantization: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalAiEmbeddingResult {
+    pub model_id: String,
+    pub dimensions: usize,
+    pub vectors: Vec<Vec<f32>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalAiSpeechResult {
+    pub text: String,
+    pub model_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalAiTtsResult {
+    pub output_path: String,
+    pub voice_id: String,
 }
 
 /// Return the current health snapshot as JSON.
@@ -250,6 +313,24 @@ pub async fn openhuman_get_runtime_flags(
     call_core(&app, "openhuman.get_runtime_flags", params_none()).await
 }
 
+/// Check whether a workspace onboarding bypass flag file exists.
+#[tauri::command]
+pub async fn openhuman_workspace_onboarding_flag_exists(
+    flag_name: Option<String>,
+) -> Result<bool, String> {
+    let name = flag_name.unwrap_or_else(|| DEFAULT_ONBOARDING_FLAG_NAME.to_string());
+    let trimmed = name.trim();
+    if trimmed.is_empty()
+        || trimmed.contains('/')
+        || trimmed.contains('\\')
+        || trimmed.contains("..")
+    {
+        return Err("Invalid onboarding flag name".to_string());
+    }
+
+    Ok(workspace_dir().join(trimmed).is_file())
+}
+
 /// Set browser allow-all flag for the current process.
 #[tauri::command]
 pub async fn openhuman_set_browser_allow_all(
@@ -260,6 +341,72 @@ pub async fn openhuman_set_browser_allow_all(
         &app,
         "openhuman.set_browser_allow_all",
         serde_json::json!({ "enabled": enabled }),
+    )
+    .await
+}
+
+/// List cron jobs managed by the OpenHuman core scheduler.
+#[tauri::command]
+pub async fn openhuman_cron_list(
+    app: tauri::AppHandle,
+) -> Result<CommandResponse<serde_json::Value>, String> {
+    call_core(&app, "openhuman.cron_list", params_none()).await
+}
+
+/// Update a cron job with a partial patch payload.
+#[tauri::command]
+pub async fn openhuman_cron_update(
+    app: tauri::AppHandle,
+    job_id: String,
+    patch: serde_json::Value,
+) -> Result<CommandResponse<serde_json::Value>, String> {
+    call_core(
+        &app,
+        "openhuman.cron_update",
+        serde_json::json!({ "job_id": job_id, "patch": patch }),
+    )
+    .await
+}
+
+/// Remove a cron job by id.
+#[tauri::command]
+pub async fn openhuman_cron_remove(
+    app: tauri::AppHandle,
+    job_id: String,
+) -> Result<CommandResponse<serde_json::Value>, String> {
+    call_core(
+        &app,
+        "openhuman.cron_remove",
+        serde_json::json!({ "job_id": job_id }),
+    )
+    .await
+}
+
+/// Force-run a cron job immediately and record run metadata.
+#[tauri::command]
+pub async fn openhuman_cron_run(
+    app: tauri::AppHandle,
+    job_id: String,
+) -> Result<CommandResponse<serde_json::Value>, String> {
+    call_core(
+        &app,
+        "openhuman.cron_run",
+        serde_json::json!({ "job_id": job_id }),
+    )
+    .await
+}
+
+/// Read recent run history for a cron job.
+#[tauri::command]
+pub async fn openhuman_cron_runs(
+    app: tauri::AppHandle,
+    job_id: String,
+    limit: Option<usize>,
+) -> Result<CommandResponse<serde_json::Value>, String> {
+    call_core(
+        &app,
+        "openhuman.cron_runs",
+        serde_json::json!({ "job_id": job_id, "limit": limit }),
     )
     .await
 }
@@ -308,6 +455,26 @@ pub async fn openhuman_accessibility_request_permissions(
     emit_accessibility_event(
         &app,
         "permissions_requested",
+        serde_json::json!(response.result),
+    );
+    Ok(response)
+}
+
+/// Request one accessibility-related permission on macOS.
+#[tauri::command]
+pub async fn openhuman_accessibility_request_permission(
+    app: tauri::AppHandle,
+    params: PermissionRequestParams,
+) -> Result<CommandResponse<PermissionStatus>, String> {
+    let response: CommandResponse<PermissionStatus> = call_core(
+        &app,
+        "openhuman.accessibility_request_permission",
+        serde_json::json!(params),
+    )
+    .await?;
+    emit_accessibility_event(
+        &app,
+        "permission_requested",
         serde_json::json!(response.result),
     );
     Ok(response)
@@ -403,6 +570,26 @@ pub async fn openhuman_accessibility_autocomplete_commit(
 }
 
 #[tauri::command]
+pub async fn openhuman_accessibility_vision_recent(
+    app: tauri::AppHandle,
+    limit: Option<usize>,
+) -> Result<CommandResponse<VisionRecentResult>, String> {
+    call_core(
+        &app,
+        "openhuman.accessibility_vision_recent",
+        serde_json::json!({ "limit": limit }),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn openhuman_accessibility_vision_flush(
+    app: tauri::AppHandle,
+) -> Result<CommandResponse<VisionFlushResult>, String> {
+    call_core(&app, "openhuman.accessibility_vision_flush", params_none()).await
+}
+
+#[tauri::command]
 pub async fn openhuman_local_ai_status(
     app: tauri::AppHandle,
 ) -> Result<CommandResponse<LocalAiStatus>, String> {
@@ -452,6 +639,161 @@ pub async fn openhuman_local_ai_suggest_questions(
             "context": context,
             "lines": lines
         }),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn openhuman_local_ai_prompt(
+    app: tauri::AppHandle,
+    prompt: String,
+    max_tokens: Option<u32>,
+    no_think: Option<bool>,
+) -> Result<CommandResponse<String>, String> {
+    call_core(
+        &app,
+        "openhuman.local_ai_prompt",
+        serde_json::json!({
+            "prompt": prompt,
+            "max_tokens": max_tokens,
+            "no_think": no_think
+        }),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn openhuman_local_ai_vision_prompt(
+    app: tauri::AppHandle,
+    prompt: String,
+    image_refs: Vec<String>,
+    max_tokens: Option<u32>,
+) -> Result<CommandResponse<String>, String> {
+    call_core(
+        &app,
+        "openhuman.local_ai_vision_prompt",
+        serde_json::json!({
+            "prompt": prompt,
+            "image_refs": image_refs,
+            "max_tokens": max_tokens
+        }),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn openhuman_local_ai_embed(
+    app: tauri::AppHandle,
+    inputs: Vec<String>,
+) -> Result<CommandResponse<LocalAiEmbeddingResult>, String> {
+    call_core(
+        &app,
+        "openhuman.local_ai_embed",
+        serde_json::json!({
+            "inputs": inputs
+        }),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn openhuman_local_ai_transcribe(
+    app: tauri::AppHandle,
+    audio_path: String,
+) -> Result<CommandResponse<LocalAiSpeechResult>, String> {
+    call_core(
+        &app,
+        "openhuman.local_ai_transcribe",
+        serde_json::json!({
+            "audio_path": audio_path
+        }),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn openhuman_local_ai_transcribe_bytes(
+    app: tauri::AppHandle,
+    audio_bytes: Vec<u8>,
+    extension: Option<String>,
+) -> Result<CommandResponse<LocalAiSpeechResult>, String> {
+    let ext = extension
+        .unwrap_or_else(|| "webm".to_string())
+        .trim()
+        .trim_start_matches('.')
+        .to_ascii_lowercase();
+
+    if ext.is_empty() || !ext.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err("Invalid audio extension".to_string());
+    }
+
+    let base_dir = app
+        .path()
+        .app_cache_dir()
+        .or_else(|_| app.path().app_data_dir())
+        .map_err(|e| format!("Failed to resolve app data path: {e}"))?;
+    let voice_dir = base_dir.join("voice_input");
+    tokio::fs::create_dir_all(&voice_dir)
+        .await
+        .map_err(|e| format!("Failed to create voice input directory: {e}"))?;
+
+    let filename = format!(
+        "voice-{}-{}.{}",
+        chrono::Utc::now().timestamp_millis(),
+        uuid::Uuid::new_v4(),
+        ext
+    );
+    let file_path = voice_dir.join(filename);
+
+    tokio::fs::write(&file_path, &audio_bytes)
+        .await
+        .map_err(|e| format!("Failed to write audio file: {e}"))?;
+
+    let audio_path = file_path.to_string_lossy().to_string();
+    let result = call_core(
+        &app,
+        "openhuman.local_ai_transcribe",
+        serde_json::json!({ "audio_path": audio_path }),
+    )
+    .await;
+
+    let _ = tokio::fs::remove_file(&file_path).await;
+    result
+}
+
+#[tauri::command]
+pub async fn openhuman_local_ai_tts(
+    app: tauri::AppHandle,
+    text: String,
+    output_path: Option<String>,
+) -> Result<CommandResponse<LocalAiTtsResult>, String> {
+    call_core(
+        &app,
+        "openhuman.local_ai_tts",
+        serde_json::json!({
+            "text": text,
+            "output_path": output_path
+        }),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn openhuman_local_ai_assets_status(
+    app: tauri::AppHandle,
+) -> Result<CommandResponse<LocalAiAssetsStatus>, String> {
+    call_core(&app, "openhuman.local_ai_assets_status", params_none()).await
+}
+
+#[tauri::command]
+pub async fn openhuman_local_ai_download_asset(
+    app: tauri::AppHandle,
+    capability: String,
+) -> Result<CommandResponse<LocalAiAssetsStatus>, String> {
+    call_core(
+        &app,
+        "openhuman.local_ai_download_asset",
+        serde_json::json!({ "capability": capability }),
     )
     .await
 }

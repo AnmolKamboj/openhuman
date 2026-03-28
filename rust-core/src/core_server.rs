@@ -9,17 +9,23 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::openhuman::config::Config;
+use crate::openhuman::cron;
 use crate::openhuman::health;
-use crate::openhuman::local_ai::{self, Suggestion};
+use crate::openhuman::local_ai::{
+    self, LocalAiAssetsStatus, LocalAiEmbeddingResult, LocalAiSpeechResult, LocalAiTtsResult,
+    Suggestion,
+};
 use crate::openhuman::security::{SecretStore, SecurityPolicy};
 use crate::openhuman::{
     accessibility, doctor, hardware, integrations, migration, onboard, service,
 };
+use chrono::Utc;
 
 pub use crate::openhuman::accessibility::{
     AccessibilityStatus, AutocompleteCommitParams, AutocompleteCommitResult,
     AutocompleteSuggestParams, AutocompleteSuggestResult, CaptureNowResult, InputActionParams,
-    InputActionResult, PermissionStatus, SessionStatus, StartSessionParams, StopSessionParams,
+    InputActionResult, PermissionRequestParams, PermissionStatus, SessionStatus,
+    StartSessionParams, StopSessionParams, VisionFlushResult, VisionRecentResult,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,11 +187,68 @@ struct LocalAiSummarizeParams {
 }
 
 #[derive(Debug, Deserialize)]
+struct LocalAiPromptParams {
+    prompt: String,
+    max_tokens: Option<u32>,
+    no_think: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
 struct LocalAiSuggestParams {
     #[serde(default)]
     context: Option<String>,
     #[serde(default)]
     lines: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LocalAiVisionPromptParams {
+    prompt: String,
+    image_refs: Vec<String>,
+    max_tokens: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LocalAiEmbedParams {
+    inputs: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LocalAiTranscribeParams {
+    audio_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct LocalAiTtsParams {
+    text: String,
+    output_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AccessibilityVisionRecentParams {
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LocalAiDownloadAssetParams {
+    capability: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CronJobIdParams {
+    job_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CronUpdateParams {
+    job_id: String,
+    patch: cron::CronJobPatch,
+}
+
+#[derive(Debug, Deserialize)]
+struct CronRunsParams {
+    job_id: String,
+    limit: Option<usize>,
 }
 
 async fn load_openhuman_config() -> Result<Config, String> {
@@ -490,6 +553,122 @@ async fn dispatch(
             ))
         }
 
+        "openhuman.cron_list" => {
+            let config = load_openhuman_config().await?;
+            if !config.cron.enabled {
+                return Err("cron is disabled by config (cron.enabled=false)".to_string());
+            }
+            let jobs = cron::list_jobs(&config).map_err(|e| e.to_string())?;
+            to_json_value(command_response(jobs, vec!["cron jobs listed".to_string()]))
+        }
+
+        "openhuman.cron_update" => {
+            let payload: CronUpdateParams = parse_params(params)?;
+            if payload.job_id.trim().is_empty() {
+                return Err("Missing 'job_id' parameter".to_string());
+            }
+
+            let config = load_openhuman_config().await?;
+            if !config.cron.enabled {
+                return Err("cron is disabled by config (cron.enabled=false)".to_string());
+            }
+
+            if let Some(command) = &payload.patch.command {
+                let security = SecurityPolicy::from_config(&config.autonomy, &config.workspace_dir);
+                if !security.is_command_allowed(command) {
+                    return Err(format!("Command blocked by security policy: {command}"));
+                }
+            }
+
+            let updated = cron::update_job(&config, payload.job_id.trim(), payload.patch)
+                .map_err(|e| e.to_string())?;
+            to_json_value(command_response(
+                updated,
+                vec![format!("cron job updated: {}", payload.job_id.trim())],
+            ))
+        }
+
+        "openhuman.cron_remove" => {
+            let payload: CronJobIdParams = parse_params(params)?;
+            if payload.job_id.trim().is_empty() {
+                return Err("Missing 'job_id' parameter".to_string());
+            }
+
+            let config = load_openhuman_config().await?;
+            if !config.cron.enabled {
+                return Err("cron is disabled by config (cron.enabled=false)".to_string());
+            }
+
+            cron::remove_job(&config, payload.job_id.trim()).map_err(|e| e.to_string())?;
+            to_json_value(command_response(
+                json!({ "job_id": payload.job_id.trim(), "removed": true }),
+                vec![format!("cron job removed: {}", payload.job_id.trim())],
+            ))
+        }
+
+        "openhuman.cron_run" => {
+            let payload: CronJobIdParams = parse_params(params)?;
+            if payload.job_id.trim().is_empty() {
+                return Err("Missing 'job_id' parameter".to_string());
+            }
+
+            let config = load_openhuman_config().await?;
+            if !config.cron.enabled {
+                return Err("cron is disabled by config (cron.enabled=false)".to_string());
+            }
+
+            let job = cron::get_job(&config, payload.job_id.trim()).map_err(|e| e.to_string())?;
+            let started_at = Utc::now();
+            let (success, output) = cron::scheduler::execute_job_now(&config, &job).await;
+            let finished_at = Utc::now();
+            let duration_ms = (finished_at - started_at).num_milliseconds();
+            let status = if success { "ok" } else { "error" };
+
+            let _ = cron::record_run(
+                &config,
+                &job.id,
+                started_at,
+                finished_at,
+                status,
+                Some(&output),
+                duration_ms,
+            );
+            let _ = cron::record_last_run(&config, &job.id, finished_at, success, &output);
+
+            to_json_value(command_response(
+                json!({
+                    "job_id": job.id,
+                    "status": status,
+                    "duration_ms": duration_ms,
+                    "output": output
+                }),
+                vec![format!("cron job run: {}", payload.job_id.trim())],
+            ))
+        }
+
+        "openhuman.cron_runs" => {
+            let payload: CronRunsParams = parse_params(params)?;
+            if payload.job_id.trim().is_empty() {
+                return Err("Missing 'job_id' parameter".to_string());
+            }
+
+            let config = load_openhuman_config().await?;
+            if !config.cron.enabled {
+                return Err("cron is disabled by config (cron.enabled=false)".to_string());
+            }
+
+            let limit = payload.limit.unwrap_or(20).max(1);
+            let runs = cron::list_runs(&config, payload.job_id.trim(), limit)
+                .map_err(|e| e.to_string())?;
+            to_json_value(command_response(
+                runs,
+                vec![format!(
+                    "cron run history loaded: {}",
+                    payload.job_id.trim()
+                )],
+            ))
+        }
+
         "openhuman.agent_chat" => {
             let p: AgentChatParams = parse_params(params)?;
             let mut config = load_openhuman_config().await?;
@@ -542,11 +721,13 @@ async fn dispatch(
             let service_clone = service.clone();
             let config_clone = config.clone();
             tokio::spawn(async move {
-                service_clone.bootstrap(&config_clone).await;
+                if let Err(err) = service_clone.download_all_models(&config_clone).await {
+                    service_clone.mark_degraded(err);
+                }
             });
             to_json_value(command_response(
                 service.status(),
-                vec!["local ai bootstrap triggered".to_string()],
+                vec!["local ai full model download triggered".to_string()],
             ))
         }
 
@@ -583,6 +764,99 @@ async fn dispatch(
             to_json_value(command_response(
                 suggestions,
                 vec!["local ai suggestions generated".to_string()],
+            ))
+        }
+
+        "openhuman.local_ai_prompt" => {
+            let p: LocalAiPromptParams = parse_params(params)?;
+            let config = load_openhuman_config().await?;
+            let service = local_ai::global(&config);
+            let status = service.status();
+            if !matches!(status.state.as_str(), "ready") {
+                service.bootstrap(&config).await;
+            }
+            let output = service
+                .prompt(
+                    &config,
+                    p.prompt.trim(),
+                    p.max_tokens,
+                    p.no_think.unwrap_or(true),
+                )
+                .await?;
+            to_json_value(command_response(
+                output,
+                vec!["local ai prompt completed".to_string()],
+            ))
+        }
+
+        "openhuman.local_ai_vision_prompt" => {
+            let p: LocalAiVisionPromptParams = parse_params(params)?;
+            let config = load_openhuman_config().await?;
+            let service = local_ai::global(&config);
+            let output = service
+                .vision_prompt(&config, p.prompt.trim(), &p.image_refs, p.max_tokens)
+                .await?;
+            to_json_value(command_response(
+                output,
+                vec!["local ai vision prompt completed".to_string()],
+            ))
+        }
+
+        "openhuman.local_ai_embed" => {
+            let p: LocalAiEmbedParams = parse_params(params)?;
+            let config = load_openhuman_config().await?;
+            let service = local_ai::global(&config);
+            let output: LocalAiEmbeddingResult = service.embed(&config, &p.inputs).await?;
+            to_json_value(command_response(
+                output,
+                vec!["local ai embedding completed".to_string()],
+            ))
+        }
+
+        "openhuman.local_ai_transcribe" => {
+            let p: LocalAiTranscribeParams = parse_params(params)?;
+            let config = load_openhuman_config().await?;
+            let service = local_ai::global(&config);
+            let output: LocalAiSpeechResult =
+                service.transcribe(&config, p.audio_path.trim()).await?;
+            to_json_value(command_response(
+                output,
+                vec!["local ai transcription completed".to_string()],
+            ))
+        }
+
+        "openhuman.local_ai_tts" => {
+            let p: LocalAiTtsParams = parse_params(params)?;
+            let config = load_openhuman_config().await?;
+            let service = local_ai::global(&config);
+            let output: LocalAiTtsResult = service
+                .tts(&config, p.text.trim(), p.output_path.as_deref())
+                .await?;
+            to_json_value(command_response(
+                output,
+                vec!["local ai tts completed".to_string()],
+            ))
+        }
+
+        "openhuman.local_ai_assets_status" => {
+            let config = load_openhuman_config().await?;
+            let service = local_ai::global(&config);
+            let output: LocalAiAssetsStatus = service.assets_status(&config).await?;
+            to_json_value(command_response(
+                output,
+                vec!["local ai assets status fetched".to_string()],
+            ))
+        }
+
+        "openhuman.local_ai_download_asset" => {
+            let p: LocalAiDownloadAssetParams = parse_params(params)?;
+            let config = load_openhuman_config().await?;
+            let service = local_ai::global(&config);
+            let output: LocalAiAssetsStatus =
+                service.download_asset(&config, p.capability.trim()).await?;
+            to_json_value(command_response(
+                output,
+                vec!["local ai asset download triggered".to_string()],
             ))
         }
 
@@ -752,6 +1026,17 @@ async fn dispatch(
             ))
         }
 
+        "openhuman.accessibility_request_permission" => {
+            let payload: PermissionRequestParams = parse_params(params)?;
+            let permissions = accessibility::global_engine()
+                .request_permission(payload.permission)
+                .await?;
+            to_json_value(command_response(
+                permissions,
+                vec!["accessibility permission requested".to_string()],
+            ))
+        }
+
         "openhuman.accessibility_start_session" => {
             let payload: StartSessionParams = parse_params(params)?;
             let session = accessibility::global_engine()
@@ -810,6 +1095,25 @@ async fn dispatch(
             to_json_value(command_response(
                 result,
                 vec!["accessibility autocomplete suggestion committed".to_string()],
+            ))
+        }
+
+        "openhuman.accessibility_vision_recent" => {
+            let payload: AccessibilityVisionRecentParams = parse_params(params)?;
+            let result: VisionRecentResult = accessibility::global_engine()
+                .vision_recent(payload.limit)
+                .await;
+            to_json_value(command_response(
+                result,
+                vec!["accessibility vision summaries fetched".to_string()],
+            ))
+        }
+
+        "openhuman.accessibility_vision_flush" => {
+            let result: VisionFlushResult = accessibility::global_engine().vision_flush().await?;
+            to_json_value(command_response(
+                result,
+                vec!["accessibility vision flush completed".to_string()],
             ))
         }
 

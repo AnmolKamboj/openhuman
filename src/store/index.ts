@@ -18,6 +18,7 @@ import { storeSession, syncMemoryClientToken } from '../utils/tauriCommands';
 import accessibilityReducer from './accessibilitySlice';
 import aiReducer from './aiSlice';
 import authReducer, { setOnboardedForUser, setToken } from './authSlice';
+import channelConnectionsReducer from './channelConnectionsSlice';
 import daemonReducer from './daemonSlice';
 import gmailReducer from './gmailSlice';
 import intelligenceReducer from './intelligenceSlice';
@@ -36,6 +37,8 @@ const authPersistConfig = {
   whitelist: [
     'token',
     'isOnboardedByUser',
+    'onboardingTasksByUser',
+    'hasIncompleteOnboardingByUser',
     'isAnalyticsEnabledByUser',
     'encryptionKeyByUser',
     'primaryWalletAddressByUser',
@@ -45,8 +48,8 @@ const authPersistConfig = {
 // Persist config for AI state (config only)
 const aiPersistConfig = { key: 'ai', storage, whitelist: ['config'] };
 
-// Persist config for skills state (setupComplete per skill)
-const skillsPersistConfig = { key: 'skills', storage, whitelist: ['skills'] };
+// Persist config for skills state (setupComplete + sync metrics per skill)
+const skillsPersistConfig = { key: 'skills', storage, whitelist: ['skills', 'syncStatsBySkill'] };
 
 // Persist config for thread data and UI prefs (includes threads and messages)
 // Note: activeThreadId is intentionally excluded as it's transient state
@@ -60,6 +63,15 @@ const persistedAuthReducer = persistReducer(authPersistConfig, authReducer);
 const persistedAiReducer = persistReducer(aiPersistConfig, aiReducer);
 const persistedSkillsReducer = persistReducer(skillsPersistConfig, skillsReducer);
 const persistedThreadReducer = persistReducer(threadPersistConfig, threadReducer);
+const channelConnectionsPersistConfig = {
+  key: 'channelConnections',
+  storage,
+  whitelist: ['schemaVersion', 'migrationCompleted', 'defaultMessagingChannel', 'connections'],
+};
+const persistedChannelConnectionsReducer = persistReducer(
+  channelConnectionsPersistConfig,
+  channelConnectionsReducer
+);
 
 /**
  * Middleware that syncs the JWT token to the Rust SESSION_SERVICE whenever
@@ -110,6 +122,7 @@ export const store = configureStore({
     invite: inviteReducer,
     notion: notionReducer,
     accessibility: accessibilityReducer,
+    channelConnections: persistedChannelConnectionsReducer,
   },
   middleware: getDefaultMiddleware => {
     const middleware = getDefaultMiddleware({

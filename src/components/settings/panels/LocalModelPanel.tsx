@@ -2,12 +2,23 @@ import { useEffect, useMemo, useState } from 'react';
 
 import {
   isTauri,
+  type LocalAiAssetsStatus,
+  type LocalAiEmbeddingResult,
+  type LocalAiSpeechResult,
   type LocalAiStatus,
   type LocalAiSuggestion,
+  type LocalAiTtsResult,
+  openhumanLocalAiAssetsStatus,
   openhumanLocalAiDownload,
+  openhumanLocalAiDownloadAsset,
+  openhumanLocalAiEmbed,
+  openhumanLocalAiPrompt,
   openhumanLocalAiStatus,
   openhumanLocalAiSuggestQuestions,
   openhumanLocalAiSummarize,
+  openhumanLocalAiTranscribe,
+  openhumanLocalAiTts,
+  openhumanLocalAiVisionPrompt,
 } from '../../../utils/tauriCommands';
 import SettingsHeader from '../components/SettingsHeader';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
@@ -92,8 +103,10 @@ const formatEta = (etaSeconds?: number | null): string => {
 const LocalModelPanel = () => {
   const { navigateBack } = useSettingsNavigation();
   const [status, setStatus] = useState<LocalAiStatus | null>(null);
+  const [assets, setAssets] = useState<LocalAiAssetsStatus | null>(null);
   const [statusError, setStatusError] = useState<string>('');
   const [isTriggeringDownload, setIsTriggeringDownload] = useState(false);
+  const [assetDownloadBusy, setAssetDownloadBusy] = useState<Record<string, boolean>>({});
 
   const [summaryInput, setSummaryInput] = useState('');
   const [summaryOutput, setSummaryOutput] = useState('');
@@ -102,6 +115,29 @@ const LocalModelPanel = () => {
   const [suggestInput, setSuggestInput] = useState('');
   const [suggestions, setSuggestions] = useState<LocalAiSuggestion[]>([]);
   const [isSuggestLoading, setIsSuggestLoading] = useState(false);
+
+  const [promptInput, setPromptInput] = useState('');
+  const [promptOutput, setPromptOutput] = useState('');
+  const [isPromptLoading, setIsPromptLoading] = useState(false);
+  const [promptNoThink, setPromptNoThink] = useState(true);
+
+  const [visionPromptInput, setVisionPromptInput] = useState('');
+  const [visionImageInput, setVisionImageInput] = useState('');
+  const [visionOutput, setVisionOutput] = useState('');
+  const [isVisionLoading, setIsVisionLoading] = useState(false);
+
+  const [embeddingInput, setEmbeddingInput] = useState('');
+  const [embeddingOutput, setEmbeddingOutput] = useState<LocalAiEmbeddingResult | null>(null);
+  const [isEmbeddingLoading, setIsEmbeddingLoading] = useState(false);
+
+  const [audioPathInput, setAudioPathInput] = useState('');
+  const [transcribeOutput, setTranscribeOutput] = useState<LocalAiSpeechResult | null>(null);
+  const [isTranscribeLoading, setIsTranscribeLoading] = useState(false);
+
+  const [ttsInput, setTtsInput] = useState('');
+  const [ttsOutputPath, setTtsOutputPath] = useState('');
+  const [ttsOutput, setTtsOutput] = useState<LocalAiTtsResult | null>(null);
+  const [isTtsLoading, setIsTtsLoading] = useState(false);
 
   const progress = useMemo(() => progressFromStatus(status), [status]);
   const isIndeterminateDownload =
@@ -125,12 +161,15 @@ const LocalModelPanel = () => {
 
     try {
       const response = await openhumanLocalAiStatus();
+      const assetResponse = await openhumanLocalAiAssetsStatus();
       setStatus(response.result);
+      setAssets(assetResponse.result);
       setStatusError('');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to read local model status';
       setStatusError(message);
       setStatus(null);
+      setAssets(null);
     }
   };
 
@@ -192,6 +231,120 @@ const LocalModelPanel = () => {
     }
   };
 
+  const runPromptTest = async () => {
+    if (!promptInput.trim() || !isTauri()) return;
+    setIsPromptLoading(true);
+    setPromptOutput('');
+    setStatusError('');
+    try {
+      const result = await openhumanLocalAiPrompt(promptInput.trim(), 180, promptNoThink);
+      setPromptOutput(result.result);
+      await loadStatus();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Prompt test failed';
+      setStatusError(message);
+    } finally {
+      setIsPromptLoading(false);
+    }
+  };
+
+  const runVisionTest = async () => {
+    if (!visionPromptInput.trim() || !visionImageInput.trim() || !isTauri()) return;
+    setIsVisionLoading(true);
+    setVisionOutput('');
+    setStatusError('');
+    try {
+      const imageRefs = visionImageInput
+        .split('\n')
+        .map(v => v.trim())
+        .filter(Boolean);
+      const result = await openhumanLocalAiVisionPrompt(visionPromptInput.trim(), imageRefs, 220);
+      setVisionOutput(result.result);
+      await loadStatus();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Vision test failed';
+      setStatusError(message);
+    } finally {
+      setIsVisionLoading(false);
+    }
+  };
+
+  const runEmbeddingTest = async () => {
+    if (!embeddingInput.trim() || !isTauri()) return;
+    setIsEmbeddingLoading(true);
+    setEmbeddingOutput(null);
+    setStatusError('');
+    try {
+      const inputs = embeddingInput
+        .split('\n')
+        .map(v => v.trim())
+        .filter(Boolean);
+      const result = await openhumanLocalAiEmbed(inputs);
+      setEmbeddingOutput(result.result);
+      await loadStatus();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Embedding test failed';
+      setStatusError(message);
+    } finally {
+      setIsEmbeddingLoading(false);
+    }
+  };
+
+  const runTranscribeTest = async () => {
+    if (!audioPathInput.trim() || !isTauri()) return;
+    setIsTranscribeLoading(true);
+    setTranscribeOutput(null);
+    setStatusError('');
+    try {
+      const result = await openhumanLocalAiTranscribe(audioPathInput.trim());
+      setTranscribeOutput(result.result);
+      await loadStatus();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Transcription test failed';
+      setStatusError(message);
+    } finally {
+      setIsTranscribeLoading(false);
+    }
+  };
+
+  const runTtsTest = async () => {
+    if (!ttsInput.trim() || !isTauri()) return;
+    setIsTtsLoading(true);
+    setTtsOutput(null);
+    setStatusError('');
+    try {
+      const result = await openhumanLocalAiTts(
+        ttsInput.trim(),
+        ttsOutputPath.trim() ? ttsOutputPath.trim() : undefined
+      );
+      setTtsOutput(result.result);
+      await loadStatus();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'TTS test failed';
+      setStatusError(message);
+    } finally {
+      setIsTtsLoading(false);
+    }
+  };
+
+  const triggerAssetDownload = async (
+    capability: 'chat' | 'vision' | 'embedding' | 'stt' | 'tts'
+  ) => {
+    if (!isTauri()) return;
+    setAssetDownloadBusy(prev => ({ ...prev, [capability]: true }));
+    setStatusError('');
+    try {
+      const result = await openhumanLocalAiDownloadAsset(capability);
+      setAssets(result.result);
+      await loadStatus();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : `Failed to download ${capability} asset`;
+      setStatusError(message);
+    } finally {
+      setAssetDownloadBusy(prev => ({ ...prev, [capability]: false }));
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       <SettingsHeader title="Local Model" showBackButton={true} onBack={navigateBack} />
@@ -247,10 +400,36 @@ const LocalModelPanel = () => {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+              <div className="rounded-md border border-gray-700 p-2">
+                <div className="text-stone-400 text-xs uppercase tracking-wide">Backend</div>
+                <div className="text-stone-100 mt-1">{status?.active_backend ?? 'cpu'}</div>
+              </div>
+              <div className="rounded-md border border-gray-700 p-2">
+                <div className="text-stone-400 text-xs uppercase tracking-wide">Last Latency</div>
+                <div className="text-stone-100 mt-1">
+                  {typeof status?.last_latency_ms === 'number'
+                    ? `${status.last_latency_ms} ms`
+                    : 'n/a'}
+                </div>
+              </div>
+              <div className="rounded-md border border-gray-700 p-2">
+                <div className="text-stone-400 text-xs uppercase tracking-wide">Generation TPS</div>
+                <div className="text-stone-100 mt-1">
+                  {typeof status?.gen_toks_per_sec === 'number'
+                    ? `${status.gen_toks_per_sec.toFixed(1)} tok/s`
+                    : 'n/a'}
+                </div>
+              </div>
+            </div>
+
             {status?.model_path && (
               <div className="text-xs text-stone-400 break-all">Artifact: {status.model_path}</div>
             )}
 
+            {status?.backend_reason && (
+              <div className="text-xs text-blue-300">{status.backend_reason}</div>
+            )}
             {status?.warning && <div className="text-xs text-amber-300">{status.warning}</div>}
             {statusError && <div className="text-xs text-red-300">{statusError}</div>}
 
@@ -267,6 +446,41 @@ const LocalModelPanel = () => {
                 className="px-3 py-1.5 text-xs rounded-md border border-gray-600 hover:border-gray-500 disabled:opacity-60 text-stone-200">
                 Force Re-bootstrap
               </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-lg font-semibold text-white">Capability Assets</h3>
+          <div className="bg-gray-900 rounded-lg border border-gray-700 p-4 space-y-3">
+            <div className="text-xs text-stone-400">
+              Quantization preference: {assets?.quantization ?? 'q4'}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              {[
+                { label: 'Chat', key: 'chat' as const, item: assets?.chat },
+                { label: 'Vision', key: 'vision' as const, item: assets?.vision },
+                { label: 'Embedding', key: 'embedding' as const, item: assets?.embedding },
+                { label: 'STT', key: 'stt' as const, item: assets?.stt },
+                { label: 'TTS', key: 'tts' as const, item: assets?.tts },
+              ].map(({ label, key, item }) => (
+                <div key={String(label)} className="rounded-md border border-gray-700 p-2">
+                  <div className="text-stone-400 text-xs uppercase tracking-wide">{label}</div>
+                  <div className="text-stone-100 mt-1 break-all">{item?.id ?? 'n/a'}</div>
+                  <div className={`text-xs mt-1 ${statusTone(item?.state ?? 'idle')}`}>
+                    {statusLabel(item?.state ?? 'idle')}
+                  </div>
+                  {item?.path && (
+                    <div className="text-[10px] text-stone-500 mt-1 break-all">{item.path}</div>
+                  )}
+                  <button
+                    onClick={() => void triggerAssetDownload(key)}
+                    disabled={assetDownloadBusy[key] || !isTauri()}
+                    className="mt-2 px-2 py-1 text-[10px] rounded border border-gray-600 hover:border-gray-500 disabled:opacity-60 text-stone-200">
+                    {assetDownloadBusy[key] ? 'Downloading...' : 'Download'}
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         </section>
@@ -332,6 +546,156 @@ const LocalModelPanel = () => {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-lg font-semibold text-white">Test Custom Prompt</h3>
+          <div className="bg-gray-900 rounded-lg border border-gray-700 p-4 space-y-3">
+            <textarea
+              value={promptInput}
+              onChange={e => setPromptInput(e.target.value)}
+              placeholder="Type any prompt and run it against the local model..."
+              className="w-full min-h-28 rounded-md bg-stone-950 border border-gray-700 px-3 py-2 text-sm text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="flex items-center gap-2 text-xs text-stone-300">
+                <input
+                  type="checkbox"
+                  checked={promptNoThink}
+                  onChange={e => setPromptNoThink(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-gray-600 bg-stone-900 text-blue-500 focus:ring-blue-500"
+                />
+                No-think mode
+              </label>
+              <button
+                onClick={() => void runPromptTest()}
+                disabled={isPromptLoading || !promptInput.trim() || !isTauri()}
+                className="px-3 py-1.5 text-xs rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white">
+                {isPromptLoading ? 'Running...' : 'Run Prompt Test'}
+              </button>
+            </div>
+            <div className="text-xs text-stone-400">
+              Calls `openhuman.local_ai_prompt` via Rust core
+            </div>
+            {promptOutput && (
+              <pre className="whitespace-pre-wrap rounded-md bg-stone-950 border border-gray-700 p-3 text-xs text-stone-200">
+                {promptOutput}
+              </pre>
+            )}
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-lg font-semibold text-white">Test Vision Prompt</h3>
+          <div className="bg-gray-900 rounded-lg border border-gray-700 p-4 space-y-3">
+            <textarea
+              value={visionPromptInput}
+              onChange={e => setVisionPromptInput(e.target.value)}
+              placeholder="Enter a prompt for the vision model..."
+              className="w-full min-h-20 rounded-md bg-stone-950 border border-gray-700 px-3 py-2 text-sm text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <textarea
+              value={visionImageInput}
+              onChange={e => setVisionImageInput(e.target.value)}
+              placeholder="One image reference per line (data URI, URL, or local path marker)"
+              className="w-full min-h-20 rounded-md bg-stone-950 border border-gray-700 px-3 py-2 text-sm text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <button
+              onClick={() => void runVisionTest()}
+              disabled={
+                isVisionLoading ||
+                !visionPromptInput.trim() ||
+                !visionImageInput.trim() ||
+                !isTauri()
+              }
+              className="px-3 py-1.5 text-xs rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white">
+              {isVisionLoading ? 'Running...' : 'Run Vision Test'}
+            </button>
+            {visionOutput && (
+              <pre className="whitespace-pre-wrap rounded-md bg-stone-950 border border-gray-700 p-3 text-xs text-stone-200">
+                {visionOutput}
+              </pre>
+            )}
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-lg font-semibold text-white">Test Embeddings</h3>
+          <div className="bg-gray-900 rounded-lg border border-gray-700 p-4 space-y-3">
+            <textarea
+              value={embeddingInput}
+              onChange={e => setEmbeddingInput(e.target.value)}
+              placeholder="One input string per line..."
+              className="w-full min-h-20 rounded-md bg-stone-950 border border-gray-700 px-3 py-2 text-sm text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <button
+              onClick={() => void runEmbeddingTest()}
+              disabled={isEmbeddingLoading || !embeddingInput.trim() || !isTauri()}
+              className="px-3 py-1.5 text-xs rounded-md bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white">
+              {isEmbeddingLoading ? 'Running...' : 'Run Embedding Test'}
+            </button>
+            {embeddingOutput && (
+              <div className="rounded-md bg-stone-950 border border-gray-700 p-3 text-xs text-stone-200 space-y-1">
+                <div>Model: {embeddingOutput.model_id}</div>
+                <div>Dimensions: {embeddingOutput.dimensions}</div>
+                <div>Vectors: {embeddingOutput.vectors.length}</div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-lg font-semibold text-white">Test Voice Input (STT)</h3>
+          <div className="bg-gray-900 rounded-lg border border-gray-700 p-4 space-y-3">
+            <input
+              value={audioPathInput}
+              onChange={e => setAudioPathInput(e.target.value)}
+              placeholder="Absolute path to audio file"
+              className="w-full rounded-md bg-stone-950 border border-gray-700 px-3 py-2 text-sm text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <button
+              onClick={() => void runTranscribeTest()}
+              disabled={isTranscribeLoading || !audioPathInput.trim() || !isTauri()}
+              className="px-3 py-1.5 text-xs rounded-md bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white">
+              {isTranscribeLoading ? 'Running...' : 'Run Transcription Test'}
+            </button>
+            {transcribeOutput && (
+              <div className="rounded-md bg-stone-950 border border-gray-700 p-3 text-xs text-stone-200 space-y-1">
+                <div>Model: {transcribeOutput.model_id}</div>
+                <pre className="whitespace-pre-wrap">{transcribeOutput.text}</pre>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-lg font-semibold text-white">Test Voice Output (TTS)</h3>
+          <div className="bg-gray-900 rounded-lg border border-gray-700 p-4 space-y-3">
+            <textarea
+              value={ttsInput}
+              onChange={e => setTtsInput(e.target.value)}
+              placeholder="Enter text to synthesize..."
+              className="w-full min-h-20 rounded-md bg-stone-950 border border-gray-700 px-3 py-2 text-sm text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <input
+              value={ttsOutputPath}
+              onChange={e => setTtsOutputPath(e.target.value)}
+              placeholder="Optional output WAV path"
+              className="w-full rounded-md bg-stone-950 border border-gray-700 px-3 py-2 text-sm text-stone-100 placeholder:text-stone-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            <button
+              onClick={() => void runTtsTest()}
+              disabled={isTtsLoading || !ttsInput.trim() || !isTauri()}
+              className="px-3 py-1.5 text-xs rounded-md bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white">
+              {isTtsLoading ? 'Running...' : 'Run TTS Test'}
+            </button>
+            {ttsOutput && (
+              <div className="rounded-md bg-stone-950 border border-gray-700 p-3 text-xs text-stone-200 space-y-1">
+                <div>Voice: {ttsOutput.voice_id}</div>
+                <div className="break-all">Output: {ttsOutput.output_path}</div>
               </div>
             )}
           </div>
