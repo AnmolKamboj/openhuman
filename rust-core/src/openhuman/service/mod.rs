@@ -7,12 +7,71 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-const SERVICE_LABEL: &str = "com.openhuman.daemon";
-const LEGACY_SERVICE_LABEL: &str = "com.openhuman.app";
-const WINDOWS_TASK_NAME: &str = "OpenHuman Daemon";
+const SERVICE_LABEL: &str = "com.openhuman.core";
+const LEGACY_SERVICE_LABEL: &str = "com.openhuman.daemon";
+const LEGACY_APP_LABEL: &str = "com.openhuman.app";
+const WINDOWS_TASK_NAME: &str = "OpenHuman Core";
 
 fn windows_task_name() -> &'static str {
     WINDOWS_TASK_NAME
+}
+
+fn resolve_daemon_executable() -> Result<PathBuf> {
+    if let Ok(path) = std::env::var("OPENHUMAN_CORE_BIN") {
+        let candidate = PathBuf::from(path);
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+
+    let exe = std::env::current_exe().context("Failed to resolve current executable")?;
+    let exe_dir = exe
+        .parent()
+        .map(PathBuf::from)
+        .ok_or_else(|| anyhow::anyhow!("Failed to resolve executable directory"))?;
+
+    #[cfg(target_os = "macos")]
+    let mut search_dirs = vec![
+        exe_dir.clone(),
+        exe_dir
+            .parent()
+            .map(|p| p.join("Resources"))
+            .unwrap_or_else(|| exe_dir.clone()),
+    ];
+    #[cfg(not(target_os = "macos"))]
+    let search_dirs = vec![exe_dir.clone()];
+
+    for dir in search_dirs.drain(..) {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() || is_current_executable(&path) {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+
+            #[cfg(windows)]
+            let matches = name.starts_with("openhuman-")
+                || name.starts_with("openhuman-core-")
+                || name.eq_ignore_ascii_case("openhuman.exe")
+                || name.eq_ignore_ascii_case("openhuman-core.exe");
+            #[cfg(not(windows))]
+            let matches = name.starts_with("openhuman-")
+                || name.starts_with("openhuman-core-")
+                || name == "openhuman"
+                || name == "openhuman-core";
+
+            if matches {
+                return Ok(path);
+            }
+        }
+    }
+
+    Ok(exe)
 }
 
 fn daemon_program_args(exe: &std::path::Path) -> Vec<String> {
@@ -20,6 +79,7 @@ fn daemon_program_args(exe: &std::path::Path) -> Vec<String> {
     let file_name = raw_file_name.to_ascii_lowercase();
     let standalone_core_binary = !is_current_executable(exe)
         && (file_name.contains("openhuman-core")
+            || file_name.starts_with("openhuman-")
             || file_name.starts_with("openhuman-core-")
             || raw_file_name == "openhuman"
             || raw_file_name == "openhuman.exe");
@@ -95,9 +155,25 @@ pub fn start(config: &Config) -> Result<ServiceStatus> {
         let domain = macos_gui_domain()?;
         let primary_target = macos_target(SERVICE_LABEL)?;
 
+        if !plist.exists() {
+            log::info!(
+                "[service] LaunchAgent plist missing, installing it before start: {}",
+                plist.display()
+            );
+            install_macos(config)?;
+        }
+
+        validate_macos_plist(&plist)?;
+
         // Prefer modern launchctl lifecycle commands on macOS.
         if !is_service_loaded_macos()? {
             log::info!("[service] Loading macOS LaunchAgent service");
+            run_best_effort(
+                Command::new("launchctl")
+                    .arg("bootout")
+                    .arg(&domain)
+                    .arg(&primary_target),
+            );
             let bootstrap_ok = run_checked(
                 Command::new("launchctl")
                     .arg("bootstrap")
@@ -205,6 +281,8 @@ pub fn stop(config: &Config) -> Result<ServiceStatus> {
 
         let legacy_plist = macos_service_file_for(LEGACY_SERVICE_LABEL)?;
         let legacy_target = macos_target(LEGACY_SERVICE_LABEL)?;
+        let legacy_app_plist = macos_service_file_for(LEGACY_APP_LABEL)?;
+        let legacy_app_target = macos_target(LEGACY_APP_LABEL)?;
 
         // Modern lifecycle path first.
         run_best_effort(
@@ -231,6 +309,18 @@ pub fn stop(config: &Config) -> Result<ServiceStatus> {
                 .arg(&domain)
                 .arg(&legacy_plist),
         );
+        run_best_effort(
+            Command::new("launchctl")
+                .arg("bootout")
+                .arg(&domain)
+                .arg(&legacy_app_target),
+        );
+        run_best_effort(
+            Command::new("launchctl")
+                .arg("bootout")
+                .arg(&domain)
+                .arg(&legacy_app_plist),
+        );
 
         // Compatibility fallback.
         run_best_effort(Command::new("launchctl").arg("stop").arg(SERVICE_LABEL));
@@ -239,6 +329,7 @@ pub fn stop(config: &Config) -> Result<ServiceStatus> {
                 .arg("stop")
                 .arg(LEGACY_SERVICE_LABEL),
         );
+        run_best_effort(Command::new("launchctl").arg("stop").arg(LEGACY_APP_LABEL));
         return status(config);
     }
 
@@ -261,9 +352,11 @@ pub fn stop(config: &Config) -> Result<ServiceStatus> {
 pub fn status(config: &Config) -> Result<ServiceStatus> {
     if std::env::consts::OS == "macos" {
         let out = run_capture(Command::new("launchctl").arg("list"))?;
-        let running = out
-            .lines()
-            .any(|line| line.contains(SERVICE_LABEL) || line.contains(LEGACY_SERVICE_LABEL));
+        let running = out.lines().any(|line| {
+            line.contains(SERVICE_LABEL)
+                || line.contains(LEGACY_SERVICE_LABEL)
+                || line.contains(LEGACY_APP_LABEL)
+        });
         return Ok(ServiceStatus {
             state: if running {
                 ServiceState::Running
@@ -342,6 +435,10 @@ pub fn uninstall(config: &Config) -> Result<ServiceStatus> {
         if legacy_file.exists() {
             let _ = fs::remove_file(&legacy_file);
         }
+        let legacy_app_file = macos_service_file_for(LEGACY_APP_LABEL)?;
+        if legacy_app_file.exists() {
+            let _ = fs::remove_file(&legacy_app_file);
+        }
         return Ok(ServiceStatus {
             state: ServiceState::NotInstalled,
             unit_path: Some(file),
@@ -395,7 +492,7 @@ fn install_macos(config: &Config) -> Result<()> {
         fs::create_dir_all(parent)?;
     }
 
-    let exe = std::env::current_exe().context("Failed to resolve current executable")?;
+    let exe = resolve_daemon_executable()?;
     let logs_dir = config
         .config_path
         .parent()
@@ -412,9 +509,9 @@ fn install_macos(config: &Config) -> Result<()> {
         .collect::<String>();
 
     let plist = format!(
-        r#"<?xml version=\"1.0\" encoding=\"UTF-8\"?>
-<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
-<plist version=\"1.0\">
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
 <dict>
   <key>Label</key>
   <string>{label}</string>
@@ -465,7 +562,7 @@ fn install_linux(config: &Config) -> Result<()> {
         fs::create_dir_all(parent)?;
     }
 
-    let exe = std::env::current_exe().context("Failed to resolve current executable")?;
+    let exe = resolve_daemon_executable()?;
     let logs_dir = config
         .config_path
         .parent()
@@ -490,7 +587,7 @@ fn install_linux(config: &Config) -> Result<()> {
 }
 
 fn install_windows(config: &Config) -> Result<()> {
-    let exe = std::env::current_exe().context("Failed to resolve current executable")?;
+    let exe = resolve_daemon_executable()?;
     let logs_dir = config
         .config_path
         .parent()
@@ -555,6 +652,11 @@ fn macos_target(label: &str) -> Result<String> {
     Ok(format!("{}/{}", macos_gui_domain()?, label))
 }
 
+fn validate_macos_plist(path: &std::path::Path) -> Result<()> {
+    run_checked(Command::new("plutil").arg("-lint").arg(path))
+        .with_context(|| format!("Invalid launch agent plist: {}", path.display()))
+}
+
 fn linux_service_file(config: &Config) -> Result<PathBuf> {
     let config_dir = config
         .config_path
@@ -598,24 +700,35 @@ fn run_best_effort(cmd: &mut Command) {
     }
 }
 
+fn run_check_silent(cmd: &mut Command) -> bool {
+    cmd.stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
 /// Check if the macOS LaunchAgent service is loaded (regardless of running state)
 fn is_service_loaded_macos() -> Result<bool> {
-    if run_checked(
+    if run_check_silent(
         Command::new("launchctl")
             .arg("print")
             .arg(macos_target(SERVICE_LABEL)?),
-    )
-    .is_ok()
-    {
+    ) {
         return Ok(true);
     }
-    if run_checked(
+    if run_check_silent(
         Command::new("launchctl")
             .arg("print")
             .arg(macos_target(LEGACY_SERVICE_LABEL)?),
-    )
-    .is_ok()
-    {
+    ) {
+        return Ok(true);
+    }
+    if run_check_silent(
+        Command::new("launchctl")
+            .arg("print")
+            .arg(macos_target(LEGACY_APP_LABEL)?),
+    ) {
         return Ok(true);
     }
     Ok(false)
