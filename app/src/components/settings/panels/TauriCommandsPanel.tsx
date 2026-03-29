@@ -20,12 +20,9 @@ import {
   openhumanEncryptSecret,
   openhumanGetConfig,
   openhumanGetDaemonHostConfig,
-  openhumanGetIntegrationInfo,
   openhumanHardwareDiscover,
   openhumanHardwareIntrospect,
-  openhumanListIntegrations,
   openhumanMigrateOpenclaw,
-  openhumanModelsRefresh,
   openhumanServiceInstall,
   openhumanServiceStatus,
   openhumanServiceUninstall,
@@ -72,7 +69,6 @@ const TauriCommandsPanel = () => {
   const [error, setError] = useState<string>('');
 
   // Form states (preserved from original)
-  const [integrationName, setIntegrationName] = useState<string>('');
   const [hardwarePath, setHardwarePath] = useState<string>('');
   const [migrationSource, setMigrationSource] = useState<string>('');
   const [encryptInput, setEncryptInput] = useState<string>('');
@@ -437,7 +433,7 @@ const TauriCommandsPanel = () => {
       );
 
       // Test connection by attempting to refresh models with current settings
-      const result = await Promise.race([openhumanModelsRefresh(false), timeoutPromise]);
+      const result = await Promise.race([openhumanDoctorReport(), timeoutPromise]);
 
       setOutput(formatJson(result));
 
@@ -999,22 +995,6 @@ const TauriCommandsPanel = () => {
                   />
                 </Field>
               </InputGroup>
-
-              <div className="space-y-6">
-                <InputGroup title="Integrations">
-                  <Field
-                    label="Integration Name"
-                    helpText="Name of the platform integration to query or manage. Examples: 'telegram', 'gmail', 'discord'. Use this to get detailed information about specific platform connections and their status."
-                    fullWidth>
-                    <input
-                      className="w-full px-4 py-3 rounded-lg bg-stone-900/40 border border-stone-800/60 text-white placeholder-stone-400 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/30 focus:outline-none transition-all duration-200"
-                      placeholder="Integration name"
-                      value={integrationName}
-                      onChange={event => setIntegrationName(event.target.value)}
-                    />
-                  </Field>
-                </InputGroup>
-              </div>
             </div>
 
             <ActionPanel>
@@ -1030,31 +1010,6 @@ const TauriCommandsPanel = () => {
                 disabled={!decryptInput.trim()}
                 variant="outline">
                 Decrypt
-              </PrimaryButton>
-              <PrimaryButton
-                onClick={() => run(() => openhumanModelsRefresh(false), 'modelsRefresh')}
-                loading={operationLoading === 'modelsRefresh'}>
-                Refresh Models
-              </PrimaryButton>
-              <PrimaryButton
-                onClick={() => run(() => openhumanModelsRefresh(true), 'modelsForceRefresh')}
-                loading={operationLoading === 'modelsForceRefresh'}
-                variant="outline">
-                Force Refresh
-              </PrimaryButton>
-              <PrimaryButton
-                onClick={() => run(openhumanListIntegrations, 'listIntegrations')}
-                loading={operationLoading === 'listIntegrations'}>
-                List Integrations
-              </PrimaryButton>
-              <PrimaryButton
-                onClick={() =>
-                  run(() => openhumanGetIntegrationInfo(integrationName), 'getIntegrationInfo')
-                }
-                loading={operationLoading === 'getIntegrationInfo'}
-                disabled={!integrationName.trim()}
-                variant="outline">
-                Get Integration Info
               </PrimaryButton>
             </ActionPanel>
           </SectionCard>

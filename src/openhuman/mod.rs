@@ -1,6 +1,6 @@
 //! OpenHuman — lightweight agent runtime for OpenHuman.
 //!
-//! Ported from OpenHuman (MIT-licensed). Provides:
+//! Provides:
 //! - Health registry for component monitoring
 //! - Security policy, secrets, audit, channel pairing, and sandboxing
 //! - Daemon supervisor with exponential backoff
@@ -21,15 +21,13 @@ pub mod credentials;
 pub mod cron;
 pub mod dev_paths;
 pub mod doctor;
+pub mod encryption;
 pub mod health;
 pub mod heartbeat;
-pub mod integrations;
 pub mod local_ai;
 pub mod memory;
 pub mod migration;
-pub mod model_catalog;
 pub mod providers;
-pub mod rpc;
 pub mod screen_intelligence;
 pub mod security;
 pub mod service;

@@ -1,0 +1,269 @@
+use axum::extract::State;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::routing::{get, post};
+use axum::{Json, Router};
+use serde_json::{json, Map, Value};
+
+use crate::core::all;
+use crate::core::types::{AppState, RpcError, RpcFailure, RpcRequest, RpcSuccess};
+
+pub async fn rpc_handler(State(state): State<AppState>, Json(req): Json<RpcRequest>) -> Response {
+    let id = req.id.clone();
+    match invoke_method(state, req.method.as_str(), req.params).await {
+        Ok(value) => (
+            StatusCode::OK,
+            Json(RpcSuccess {
+                jsonrpc: "2.0",
+                id,
+                result: value,
+            }),
+        )
+            .into_response(),
+        Err(message) => (
+            StatusCode::OK,
+            Json(RpcFailure {
+                jsonrpc: "2.0",
+                id,
+                error: RpcError {
+                    code: -32000,
+                    message,
+                    data: None,
+                },
+            }),
+        )
+            .into_response(),
+    }
+}
+
+pub async fn invoke_method(state: AppState, method: &str, params: Value) -> Result<Value, String> {
+    if let Some(schema) = all::schema_for_rpc_method(method) {
+        let params_obj = params_to_object(params)?;
+        all::validate_params(&schema, &params_obj)?;
+        if let Some(result) = all::try_invoke_registered_rpc(method, params_obj).await {
+            return result;
+        }
+        return Err(format!("registered schema has no handler: {method}"));
+    }
+
+    crate::core::dispatch::dispatch(state, method, params).await
+}
+
+fn params_to_object(params: Value) -> Result<Map<String, Value>, String> {
+    match params {
+        Value::Object(map) => Ok(map),
+        Value::Null => Ok(Map::new()),
+        other => Err(format!(
+            "invalid params: expected object or null, got {}",
+            type_name(&other)
+        )),
+    }
+}
+
+fn type_name(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "bool",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
+pub fn parse_json_params(raw: &str) -> Result<Value, String> {
+    serde_json::from_str(raw).map_err(|e| format!("invalid JSON params: {e}"))
+}
+
+pub fn default_state() -> AppState {
+    AppState {
+        core_version: env!("CARGO_PKG_VERSION").to_string(),
+    }
+}
+
+// --- HTTP server (Axum) ----------------------------------------------------
+
+pub fn build_core_http_router() -> Router {
+    Router::new()
+        .route("/", get(root_handler))
+        .route("/health", get(health_handler))
+        .route("/rpc", post(rpc_handler))
+        .fallback(not_found_handler)
+        .with_state(AppState {
+            core_version: env!("CARGO_PKG_VERSION").to_string(),
+        })
+}
+
+async fn health_handler() -> impl IntoResponse {
+    (StatusCode::OK, Json(json!({ "ok": true })))
+}
+
+async fn root_handler() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        Json(json!({
+            "name": "openhuman",
+            "ok": true,
+            "endpoints": {
+                "health": "/health",
+                "rpc": "/rpc"
+            },
+            "usage": {
+                "jsonrpc": {
+                    "version": "2.0",
+                    "method": "core.ping",
+                    "params": {}
+                }
+            }
+        })),
+    )
+}
+
+async fn not_found_handler() -> impl IntoResponse {
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({
+            "ok": false,
+            "error": "not_found",
+            "message": "Route not found. Try /, /health, or /rpc."
+        })),
+    )
+}
+
+fn core_port() -> u16 {
+    std::env::var("OPENHUMAN_CORE_PORT")
+        .ok()
+        .and_then(|v| v.parse::<u16>().ok())
+        .unwrap_or(7788)
+}
+
+pub async fn run_server(port: Option<u16>) -> anyhow::Result<()> {
+    let _ = all::all_registered_controllers();
+    let port = port.unwrap_or_else(core_port);
+    let bind_addr = format!("127.0.0.1:{port}");
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
+
+    let app = build_core_http_router();
+
+    log::info!("[core] listening on http://{bind_addr}");
+    log::info!("[rpc:http] JSON-RPC server running — POST http://{bind_addr}/rpc (JSON-RPC 2.0)");
+
+    tokio::spawn(async {
+        match crate::openhuman::config::Config::load_or_init().await {
+            Ok(config) if config.local_ai.enabled => {
+                let service = crate::openhuman::local_ai::global(&config);
+                service.bootstrap(&config).await;
+            }
+            Ok(_) => {}
+            Err(err) => {
+                log::warn!("[core] local-ai bootstrap skipped: {err}");
+            }
+        }
+    });
+
+    axum::serve(listener, app).await?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::{default_state, invoke_method};
+
+    #[tokio::test]
+    async fn invoke_health_snapshot_via_registry() {
+        let result = invoke_method(default_state(), "openhuman.health_snapshot", json!({}))
+            .await
+            .expect("health snapshot should succeed");
+        assert!(result.get("result").is_some());
+    }
+
+    #[tokio::test]
+    async fn invoke_encrypt_secret_missing_required_param_fails_validation() {
+        let err = invoke_method(default_state(), "openhuman.encrypt_secret", json!({}))
+            .await
+            .expect_err("missing plaintext should fail");
+        assert!(err.contains("missing required param 'plaintext'"));
+    }
+
+    #[tokio::test]
+    async fn invoke_doctor_models_rejects_unknown_param() {
+        let err = invoke_method(
+            default_state(),
+            "openhuman.doctor_models",
+            json!({ "invalid": true }),
+        )
+        .await
+        .expect_err("unknown param should fail");
+        assert!(err.contains("unknown param 'invalid'"));
+    }
+
+    #[tokio::test]
+    async fn invoke_config_get_runtime_flags_via_registry() {
+        let result = invoke_method(
+            default_state(),
+            "openhuman.config_get_runtime_flags",
+            json!({}),
+        )
+        .await
+        .expect("runtime flags should succeed");
+        assert!(result.get("result").is_some());
+    }
+
+    #[tokio::test]
+    async fn invoke_autocomplete_status_rejects_unknown_param() {
+        let err = invoke_method(
+            default_state(),
+            "openhuman.autocomplete_status",
+            json!({ "extra": true }),
+        )
+        .await
+        .expect_err("unknown param should fail");
+        assert!(err.contains("unknown param 'extra'"));
+    }
+
+    #[tokio::test]
+    async fn invoke_auth_store_session_missing_token_fails_validation() {
+        let err = invoke_method(default_state(), "openhuman.auth_store_session", json!({}))
+            .await
+            .expect_err("missing token should fail");
+        assert!(err.contains("missing required param 'token'"));
+    }
+
+    #[tokio::test]
+    async fn invoke_service_status_rejects_unknown_param() {
+        let err = invoke_method(
+            default_state(),
+            "openhuman.service_status",
+            json!({ "x": 1 }),
+        )
+        .await
+        .expect_err("unknown param should fail");
+        assert!(err.contains("unknown param 'x'"));
+    }
+
+    #[tokio::test]
+    async fn invoke_migrate_openclaw_rejects_unknown_param() {
+        let err = invoke_method(
+            default_state(),
+            "openhuman.migrate_openclaw",
+            json!({ "x": 1 }),
+        )
+        .await
+        .expect_err("unknown param should fail");
+        assert!(err.contains("unknown param 'x'"));
+    }
+
+    #[tokio::test]
+    async fn invoke_local_ai_download_asset_missing_required_param_fails_validation() {
+        let err = invoke_method(
+            default_state(),
+            "openhuman.local_ai_download_asset",
+            json!({}),
+        )
+        .await
+        .expect_err("missing capability should fail");
+        assert!(err.contains("missing required param 'capability'"));
+    }
+}

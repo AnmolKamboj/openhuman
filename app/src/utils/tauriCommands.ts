@@ -315,7 +315,6 @@ export type IntegrationCategory =
   | 'MediaCreative'
   | 'Social'
   | 'Platform';
-export type ModelRefreshSource = 'Live' | 'CacheFresh' | 'CacheStaleFallback';
 export type ServiceState = 'Running' | 'Stopped' | 'NotInstalled' | { Unknown: string };
 
 export interface AIPreview {
@@ -406,14 +405,6 @@ export interface IntegrationInfo {
   category: IntegrationCategory;
   status: IntegrationStatus;
   setup_hints: string[];
-}
-
-export interface ModelRefreshResult {
-  provider: string;
-  models: string[];
-  source: ModelRefreshSource;
-  cache_age_secs?: number | null;
-  warnings: string[];
 }
 
 export interface MigrationStats {
@@ -1354,39 +1345,6 @@ export async function openhumanDoctorModels(
   return await callCoreRpc<CommandResponse<ModelProbeReport>>({
     method: 'openhuman.doctor_models',
     params: { use_cache: useCache },
-  });
-}
-
-export async function openhumanListIntegrations(): Promise<CommandResponse<IntegrationInfo[]>> {
-  if (!isTauri()) {
-    throw new Error('Not running in Tauri');
-  }
-  return await callCoreRpc<CommandResponse<IntegrationInfo[]>>({
-    method: 'openhuman.list_integrations',
-  });
-}
-
-export async function openhumanGetIntegrationInfo(
-  name: string
-): Promise<CommandResponse<IntegrationInfo>> {
-  if (!isTauri()) {
-    throw new Error('Not running in Tauri');
-  }
-  return await callCoreRpc<CommandResponse<IntegrationInfo>>({
-    method: 'openhuman.get_integration_info',
-    params: { name },
-  });
-}
-
-export async function openhumanModelsRefresh(
-  force = false
-): Promise<CommandResponse<ModelRefreshResult>> {
-  if (!isTauri()) {
-    throw new Error('Not running in Tauri');
-  }
-  return await callCoreRpc<CommandResponse<ModelRefreshResult>>({
-    method: 'openhuman.models_refresh',
-    params: { force },
   });
 }
 

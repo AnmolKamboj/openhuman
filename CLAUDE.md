@@ -1,6 +1,6 @@
 # OpenHuman
 
-**AI-powered assistant for crypto communities — React + Tauri v2 desktop app with a Rust core (JSON-RPC / CLI) and sandboxed QuickJS skills.**
+**AI-powered assistant for communities — React + Tauri v2 desktop app with a Rust core (JSON-RPC / CLI) and sandboxed QuickJS skills.**
 
 This file orients contributors and coding agents. Authoritative narrative architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Frontend layout: [`docs/src/README.md`](docs/src/README.md). Tauri shell: [`docs/src-tauri/README.md`](docs/src-tauri/README.md).
 
@@ -12,11 +12,13 @@ This file orients contributors and coding agents. Authoritative narrative archit
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **`app/`**              | Yarn workspace **`openhuman-app`**: Vite + React (`app/src/`), Tauri desktop host (`app/src-tauri/`), Vitest tests                                                                                        |
 | **Repo root `src/`**    | Rust library **`openhuman_core`** and **`openhuman`** CLI binary (`src/bin/openhuman.rs`) — `core_server`, `openhuman::*` domains, skills runtime (QuickJS / `rquickjs`), MCP routing in the core process |
-| **`skills/`**           | Skill packages (built into `skills/skills` for bundling)                                                                                                                                                  |
+| **Skills registry**     | **[`tinyhumansai/openhuman-skills`](https://github.com/tinyhumansai/openhuman-skills)** on GitHub — canonical skill packages and TS build; not vendored in this tree (see blurb below).                                                                                                                                                    |
 | **`Cargo.toml`** (root) | Core crate; `cargo build --bin openhuman` produces the sidecar the UI stages via `app`’s `core:stage`                                                                                                     |
 | **`docs/`**             | Architecture and module guides (numbered pages under `docs/src/`, `docs/src-tauri/`)                                                                                                                      |
 
 Commands in documentation assume the **repo root** unless noted: `yarn dev` runs the `app` workspace.
+
+**Skills registry:** Skill sources and the bundler live in **[github.com/tinyhumansai/openhuman-skills](https://github.com/tinyhumansai/openhuman-skills)**. Clone that repository to author or change skills (`yarn install`, `yarn build`). The desktop app’s skills catalog defaults to that GitHub slug; override with `VITE_SKILLS_GITHUB_REPO` (see [`app/src/utils/config.ts`](app/src/utils/config.ts)).
 
 ---
 
@@ -25,6 +27,11 @@ Commands in documentation assume the **repo root** unless noted: `yarn dev` runs
 - **Shipped product**: desktop — Windows, macOS, Linux (see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) “Platform reach”).
 - **Tauri host** (`app/src-tauri`): **desktop-only** (`compile_error!` for non-desktop targets). Do not add Android/iOS branches inside `app/src-tauri`.
 - **Core binary** (`openhuman`): spawned/staged as a **sidecar**; the Web UI talks to it over HTTP (`core_rpc_relay` + `core_rpc` client), not by re-implementing domain logic in the shell.
+
+**Where logic lives**
+
+- **Rust (`openhuman` / repo root `src/`)**: **Business logic and execution**—domains, skills runtime, RPC, persistence, and CLI behavior. This is the authoritative place for rules and side effects.
+- **Tauri + React (`app/`)**: **Interaction and UX**—screens, navigation, input, accessibility, windowing, and bridging to the core. The shell presents and orchestrates; it does not duplicate core business rules.
 
 ---
 
@@ -49,7 +56,8 @@ yarn format:check
 # Stage openhuman core binary next to Tauri resources (required for core RPC)
 cd app && yarn core:stage
 
-# Skills (under skills/)
+# Skills — develop in the GitHub registry repo, then build (see tinyhumansai/openhuman-skills).
+# If you keep a local clone path wired in app scripts, you can also run:
 yarn workspace openhuman-app skills:build
 yarn workspace openhuman-app skills:watch
 
@@ -95,7 +103,7 @@ Hash routes include `/`, `/onboarding`, `/mnemonic`, `/home`, `/intelligence`, `
 
 ### AI configuration
 
-Bundled prompts live under **`src/ai/prompts/`** at the **repository root** (also bundled via `app/src-tauri/tauri.conf.json` `resources`). Loaders under `app/src/lib/ai/` use `?raw` imports, optional remote fetch, and in Tauri **`ai_get_config` / `ai_refresh_config`** for packaged content.
+Bundled prompts live under **`src/openhuman/agent/prompts/`** at the **repository root** (also bundled via `app/src-tauri/tauri.conf.json` `resources`). Loaders under `app/src/lib/ai/` use `?raw` imports, optional remote fetch, and in Tauri **`ai_get_config` / `ai_refresh_config`** for packaged content.
 
 ---
 
@@ -113,28 +121,34 @@ Deep link plugin is registered where supported; behavior is platform-specific (s
 
 - **`openhuman/`** — Domain logic (skills, memory, channels, config, …). RPC controllers live in **`rpc.rs`** files per domain; use **`RpcOutcome<T>`** pattern per [`AGENTS.md`](AGENTS.md) / internal rules.
 - **`src/openhuman/` module layout**: **New** functionality must live in a **dedicated subdirectory** (its own folder/module, e.g. `openhuman/my_domain/mod.rs` plus related files, or a new subfolder under an existing domain). Do **not** add new standalone `*.rs` files directly at `src/openhuman/` root; place new code in a module directory and declare it from `mod.rs` (or merge into an existing domain folder).
+- **Controller schema contract**: Shared controller metadata types live in **`src/core/mod.rs`** (`ControllerSchema`, `FieldSchema`, `TypeSchema`) and are consumed by adapters (RPC/CLI) in different ways.
+- **Domain schema files**: For each domain, define controller schema metadata in a dedicated module inside the domain folder (example: **`src/openhuman/cron/schemas.rs`**) and export from the domain `mod.rs`.
+- **Light `mod.rs` rule**: Keep domain `mod.rs` files light and export-focused. Put operational code in sibling files (example: `ops.rs`, `store.rs`, `schedule.rs`, `types.rs`), then re-export the public API from `mod.rs`.
 - **`core_server/`** — Transport only: Axum/HTTP, JSON-RPC envelope, CLI parsing, **dispatch** (`core_server::dispatch`) — **no** heavy business logic here.
 - **Layering**: Implementation in `openhuman::<domain>/`, controllers in `openhuman::<domain>/rpc.rs`, routes in `core_server/`.
 
 Skills runtime uses **QuickJS** (`rquickjs`) in **`src/openhuman/skills/`** (e.g. `qjs_skill_instance.rs`, `qjs_engine.rs`), not V8/deno_core in this repository.
 
+### Controller migration checklist
+
+- `src/openhuman/<domain>/mod.rs`: keep export-focused, add `mod schemas;` and re-export:
+  - `all_controller_schemas as all_<domain>_controller_schemas`
+  - `all_registered_controllers as all_<domain>_registered_controllers`
+- `src/openhuman/<domain>/schemas.rs` must define:
+  - `schemas(function: &str) -> ControllerSchema`
+  - `all_controller_schemas() -> Vec<ControllerSchema>`
+  - `all_registered_controllers() -> Vec<RegisteredController>`
+  - domain handler fns `fn handle_*(_: Map<String, Value>) -> ControllerFuture`
+- Handlers should delegate to existing domain `rpc.rs` functions during migration.
+- Wire domain exports into `src/core/all.rs` for both declared schemas and registered handlers.
+- Keep adapters generic: do not add domain-specific logic to `src/core/cli.rs` or `src/core/jsonrpc.rs`.
+- Remove migrated method branches from `src/rpc/dispatch.rs` once registry coverage is in place.
+
 ---
 
 ## App theme & design system
 
-**Design intent**: Premium, calm crypto UI — ocean primary (`#4A83DD`), sage / amber / coral semantic colors, Inter + Cabinet Grotesk + JetBrains Mono, Tailwind with custom radii/spacing/shadows. Details: [`docs/DESIGN_GUIDELINES.md`](docs/DESIGN_GUIDELINES.md).
-
----
-
-## Environment variables (Vite)
-
-Set in `.env` for the **`app`** workspace (`VITE_*` exposed to the client):
-
-| Variable                  | Purpose                                                                   |
-| ------------------------- | ------------------------------------------------------------------------- |
-| `VITE_BACKEND_URL`        | API base (default in code: production API; see `app/src/utils/config.ts`) |
-| `VITE_SENTRY_DSN`         | Optional Sentry DSN                                                       |
-| `VITE_SKILLS_GITHUB_REPO` | Skills catalog GitHub repo slug                                           |
+**Design intent**: Premium, calm visual language — ocean primary (`#4A83DD`), sage / amber / coral semantic colors, Inter + Cabinet Grotesk + JetBrains Mono, Tailwind with custom radii/spacing/shadows. Details: [`docs/DESIGN_GUIDELINES.md`](docs/DESIGN_GUIDELINES.md).
 
 ---
 
@@ -142,6 +156,13 @@ Set in `.env` for the **`app`** workspace (`VITE_*` exposed to the client):
 
 - **Public repo**; push to your working branch; PRs target **`main`**.
 - Use [`.github/pull_request_template.md`](.github/pull_request_template.md); AI-generated PR text should follow its sections and checklist.
+
+---
+
+## Coding philosophy
+
+- **Unix-style modules**: Prefer **individual modules** with a **single, sharp responsibility**—each should do one thing really well. Compose behavior through small, well-named units and clear boundaries instead of monolithic code.
+- **Tests before the next layer**: Ship **enough unit tests and coverage** for the behavior you are adding or changing **before** building additional features on top of it. Treat untested code as incomplete; do not accumulate depth on a shaky base.
 
 ---
 
@@ -164,4 +185,4 @@ Set in `.env` for the **`app`** workspace (`VITE_*` exposed to the client):
 
 ---
 
-_Last aligned with monorepo layout (`app/` + root `src/`), QuickJS skills in `openhuman_core`, and Tauri shell IPC as of repo state._
+_Last aligned with monorepo layout (`app/` + root `src/`), QuickJS skills in `openhuman_core`, skills catalog on GitHub (`tinyhumansai/openhuman-skills`), and Tauri shell IPC as of repo state._
