@@ -37,7 +37,7 @@ export default defineConfig({
     mockReset: false,
     restoreMocks: false,
     setupFiles: ["src/test/setup.ts"],
-    include: ["src/**/*.test.{ts,tsx}"],
+    include: ["src/**/*.test.{ts,tsx}", "test/*.test.{ts,tsx}"],
     hookTimeout: 30000,
     testTimeout: 30000,
     coverage: {
