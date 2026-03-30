@@ -32,7 +32,7 @@ pub(crate) fn resolve_daemon_executable() -> Result<PathBuf> {
             .unwrap_or_else(|| exe_dir.clone()),
     ];
     #[cfg(not(target_os = "macos"))]
-    let search_dirs = vec![exe_dir.clone()];
+    let mut search_dirs = vec![exe_dir.clone()];
 
     for dir in search_dirs.drain(..) {
         let Ok(entries) = fs::read_dir(&dir) else {
