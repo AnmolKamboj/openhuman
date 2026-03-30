@@ -451,14 +451,10 @@ jobs:
           WITH_UPDATER: "true"
         with:
           projectPath: app
-          # Tools discovery now uses a JS mock registry (no Rust discovery
-          # binary target), so there is no extra helper executable for Tauri
-          # to copy/sign inside release app bundles.
-          # Restrict Cargo bin selection for the Tauri bundle build so only
-          # the desktop UI app binary is packaged.
-          # Yarn v1 strips one "--" layer when invoking scripts, hence the
-          # double-separator when forwarding flags to Cargo.
-          args: -c ${{ steps.config-overrides.outputs.json }} ${{ matrix.settings.args }} -- -- --bin OpenHuman
+          # OpenHuman is the only declared Tauri bin, so no extra Cargo bin
+          # forwarding is required here. Keep args minimal so --target is
+          # interpreted consistently by tauri-action artifact discovery.
+          args: -c ${{ steps.config-overrides.outputs.json }} ${{ matrix.settings.args }}
           includeDebug: false
           includeRelease: true
           releaseId: ${{ needs.create-release.outputs.release_id }}
