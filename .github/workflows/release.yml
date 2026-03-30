@@ -386,6 +386,24 @@ jobs:
           CORE_BIN_NAME: ${{ steps.core-paths.outputs.core_bin_name }}
           SIDECAR_BASE: ${{ steps.core-paths.outputs.sidecar_base }}
 
+      - name: Verify staged sidecar for bundler (all platforms)
+        shell: bash
+        run: |
+          SIDE_CAR_PATH="app/src-tauri/binaries/$SIDECAR_BASE-$MATRIX_TARGET"
+          echo "Checking staged sidecar: $SIDE_CAR_PATH"
+          if [ ! -f "$SIDE_CAR_PATH" ]; then
+            echo "Missing staged sidecar binary: $SIDE_CAR_PATH"
+            exit 1
+          fi
+          if [ "$MATRIX_PLATFORM" != "windows-latest" ] && [ ! -x "$SIDE_CAR_PATH" ]; then
+            echo "Staged sidecar is not executable: $SIDE_CAR_PATH"
+            exit 1
+          fi
+        env:
+          MATRIX_PLATFORM: ${{ matrix.settings.platform }}
+          MATRIX_TARGET: ${{ matrix.settings.target }}
+          SIDECAR_BASE: ${{ steps.core-paths.outputs.sidecar_base }}
+
       - name: Resolve standalone core CLI artifact path
         id: cli-paths
         shell: bash
