@@ -692,6 +692,25 @@ export interface AccessibilityVisionFlushResult {
   summary: AccessibilityVisionSummary | null;
 }
 
+export interface CaptureTestContextInfo {
+  app_name: string | null;
+  window_title: string | null;
+  bounds_x: number | null;
+  bounds_y: number | null;
+  bounds_width: number | null;
+  bounds_height: number | null;
+}
+
+export interface CaptureTestResult {
+  ok: boolean;
+  capture_mode: string;
+  context: CaptureTestContextInfo | null;
+  image_ref: string | null;
+  bytes_estimate: number | null;
+  error: string | null;
+  timing_ms: number;
+}
+
 export interface ConfigSnapshot {
   config: Record<string, unknown>;
   workspace_dir: string;
@@ -1579,6 +1598,18 @@ export async function openhumanAccessibilityVisionFlush(): Promise<
   });
 }
 
+export async function openhumanScreenIntelligenceCaptureTest(): Promise<
+  CommandResponse<CaptureTestResult>
+> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await callCoreRpc<CommandResponse<CaptureTestResult>>({
+    method: 'openhuman.screen_intelligence_capture_test',
+    serviceManaged: true,
+  });
+}
+
 export async function openhumanAutocompleteStatus(): Promise<CommandResponse<AutocompleteStatus>> {
   if (!isTauri()) {
     throw new Error('Not running in Tauri');
@@ -1698,15 +1729,11 @@ export async function openhumanAutocompleteClearHistory(): Promise<
 }
 
 export async function runtimeListSkills(): Promise<SkillSnapshot[]> {
-  return await callCoreRpc<SkillSnapshot[]>({
-    method: 'openhuman.skills_list',
-  });
+  return await callCoreRpc<SkillSnapshot[]>({ method: 'openhuman.skills_list' });
 }
 
 export async function runtimeDiscoverSkills(): Promise<RuntimeDiscoveredSkill[]> {
-  return await callCoreRpc<RuntimeDiscoveredSkill[]>({
-    method: 'openhuman.skills_discover',
-  });
+  return await callCoreRpc<RuntimeDiscoveredSkill[]>({ method: 'openhuman.skills_discover' });
 }
 
 export async function runtimeStartSkill(skillId: string): Promise<SkillSnapshot> {
@@ -1717,10 +1744,7 @@ export async function runtimeStartSkill(skillId: string): Promise<SkillSnapshot>
 }
 
 export async function runtimeStopSkill(skillId: string): Promise<void> {
-  await callCoreRpc({
-    method: 'openhuman.skills_stop',
-    params: { skill_id: skillId },
-  });
+  await callCoreRpc({ method: 'openhuman.skills_stop', params: { skill_id: skillId } });
 }
 
 export async function runtimeRpc<T = unknown>(
@@ -1793,17 +1817,11 @@ export async function runtimeIsSkillEnabled(skillId: string): Promise<boolean> {
 }
 
 export async function runtimeEnableSkill(skillId: string): Promise<void> {
-  await callCoreRpc({
-    method: 'openhuman.skills_enable',
-    params: { skill_id: skillId },
-  });
+  await callCoreRpc({ method: 'openhuman.skills_enable', params: { skill_id: skillId } });
 }
 
 export async function runtimeDisableSkill(skillId: string): Promise<void> {
-  await callCoreRpc({
-    method: 'openhuman.skills_disable',
-    params: { skill_id: skillId },
-  });
+  await callCoreRpc({ method: 'openhuman.skills_disable', params: { skill_id: skillId } });
 }
 
 export async function runtimeSkillDataStats(skillId: string): Promise<RuntimeSkillDataStats> {
