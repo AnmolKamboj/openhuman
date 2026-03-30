@@ -31,6 +31,7 @@ pub fn all_controller_schemas() -> Vec<ControllerSchema> {
         skills_schema("list_tools"),
         skills_schema("sync"),
         skills_schema("call_tool"),
+        skills_schema("rpc"),
     ]
 }
 
@@ -106,6 +107,10 @@ pub fn all_registered_controllers() -> Vec<RegisteredController> {
         RegisteredController {
             schema: skills_schema("call_tool"),
             handler: handle_skills_call_tool,
+        },
+        RegisteredController {
+            schema: skills_schema("rpc"),
+            handler: handle_skills_rpc,
         },
     ]
 }
@@ -360,6 +365,32 @@ fn skills_schema(function: &str) -> ControllerSchema {
                 required: true,
             }],
         },
+        "rpc" => ControllerSchema {
+            namespace: "skills",
+            function: "rpc",
+            description: "Send an arbitrary RPC method to a running skill (e.g. oauth/complete, skill/sync).",
+            inputs: vec![
+                skill_id_input("The target skill ID."),
+                FieldSchema {
+                    name: "method",
+                    ty: TypeSchema::String,
+                    comment: "RPC method name (e.g. oauth/complete, skill/ping).",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "params",
+                    ty: TypeSchema::Option(Box::new(TypeSchema::Json)),
+                    comment: "JSON params to pass to the RPC handler.",
+                    required: false,
+                },
+            ],
+            outputs: vec![FieldSchema {
+                name: "result",
+                ty: TypeSchema::Json,
+                comment: "RPC handler result.",
+                required: true,
+            }],
+        },
         _ => ControllerSchema {
             namespace: "skills",
             function: "unknown",
@@ -478,6 +509,14 @@ struct CallToolParams {
     arguments: Option<serde_json::Value>,
 }
 
+#[derive(Deserialize)]
+struct SkillRpcParams {
+    skill_id: String,
+    method: String,
+    #[serde(default)]
+    params: Option<serde_json::Value>,
+}
+
 fn handle_skills_start(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
         let p: SkillIdParams =
@@ -559,6 +598,21 @@ fn handle_skills_call_tool(params: Map<String, Value>) -> ControllerFuture {
             )
             .await?;
         serde_json::to_value(&result).map_err(|e| e.to_string())
+    })
+}
+
+fn handle_skills_rpc(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let p: SkillRpcParams =
+            serde_json::from_value(Value::Object(params)).map_err(|e| e.to_string())?;
+        let engine = require_engine()?;
+        engine
+            .rpc(
+                &p.skill_id,
+                &p.method,
+                p.params.unwrap_or(serde_json::json!({})),
+            )
+            .await
     })
 }
 
