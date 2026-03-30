@@ -1,14 +1,36 @@
 //! RuntimeEngine — top-level orchestrator for the QuickJS skill runtime.
 //!
-//! Manages skill lifecycle and provides the public API consumed by Tauri commands.
+//! Manages skill lifecycle and provides the public API consumed by RPC handlers.
 //! Uses QuickJS (via rquickjs) for JavaScript execution.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
-use tauri::{AppHandle, Emitter};
 
+/// Global RuntimeEngine instance. Uses `RwLock` so it can be swapped in tests.
+static GLOBAL_ENGINE: parking_lot::RwLock<Option<Arc<RuntimeEngine>>> =
+    parking_lot::RwLock::new(None);
+
+/// Store a reference to the RuntimeEngine so RPC handlers can access it.
+/// In production, call this once during app setup. In tests, can be called
+/// multiple times (each call replaces the previous engine).
+pub fn set_global_engine(engine: Arc<RuntimeEngine>) {
+    *GLOBAL_ENGINE.write() = Some(engine);
+}
+
+/// Get a clone of the global RuntimeEngine Arc.
+/// Returns `None` if the engine has not been initialized yet.
+pub fn global_engine() -> Option<Arc<RuntimeEngine>> {
+    GLOBAL_ENGINE.read().clone()
+}
+
+/// Get the global RuntimeEngine or return an error string.
+pub fn require_engine() -> Result<Arc<RuntimeEngine>, String> {
+    global_engine().ok_or_else(|| "skill runtime not initialized".to_string())
+}
+
+use crate::openhuman::memory::{MemoryClient, MemoryClientRef};
 use crate::openhuman::skills::cron_scheduler::CronScheduler;
 use crate::openhuman::skills::manifest::SkillManifest;
 use crate::openhuman::skills::ping_scheduler::PingScheduler;
@@ -16,7 +38,7 @@ use crate::openhuman::skills::preferences::PreferencesStore;
 use crate::openhuman::skills::qjs_skill_instance::{BridgeDeps, QjsSkillInstance};
 use crate::openhuman::skills::skill_registry::SkillRegistry;
 use crate::openhuman::skills::socket_manager::SocketManager;
-use crate::openhuman::skills::types::{events, SkillSnapshot, SkillStatus, ToolResult};
+use crate::openhuman::skills::types::{SkillSnapshot, SkillStatus, ToolResult};
 // IdbStorage removed during runtime cleanup
 
 /// The central runtime engine using QuickJS.
@@ -33,12 +55,14 @@ pub struct RuntimeEngine {
     skills_data_dir: PathBuf,
     /// Directory containing skill source files.
     skills_source_dir: RwLock<Option<PathBuf>>,
-    /// Tauri resource directory (bundled skills in production).
+    /// Resource directory (bundled skills in production).
     resource_dir: RwLock<Option<PathBuf>>,
-    /// Tauri app handle for emitting events.
-    app_handle: RwLock<Option<AppHandle>>,
+    /// Memory client for skill data persistence.
+    memory_client: RwLock<Option<MemoryClientRef>>,
     /// Socket manager for emitting tool:sync events.
     socket_manager: RwLock<Option<Arc<SocketManager>>>,
+    /// Workspace directory for user-installed skills from registry.
+    workspace_dir: RwLock<Option<PathBuf>>,
 }
 
 impl RuntimeEngine {
@@ -51,6 +75,18 @@ impl RuntimeEngine {
         ping_scheduler.set_registry(Arc::clone(&registry));
         let preferences = Arc::new(PreferencesStore::new(&skills_data_dir));
 
+        // Eagerly initialize local memory client for skill persistence.
+        let memory_client = match MemoryClient::new_local() {
+            Ok(client) => {
+                log::info!("[runtime] Local MemoryClient initialized");
+                Some(Arc::new(client))
+            }
+            Err(e) => {
+                log::warn!("[runtime] Failed to create local MemoryClient: {e}");
+                None
+            }
+        };
+
         log::info!("[runtime] QuickJS RuntimeEngine created");
 
         Ok(Self {
@@ -61,8 +97,9 @@ impl RuntimeEngine {
             skills_data_dir,
             skills_source_dir: RwLock::new(None),
             resource_dir: RwLock::new(None),
-            app_handle: RwLock::new(None),
+            memory_client: RwLock::new(memory_client),
             socket_manager: RwLock::new(None),
+            workspace_dir: RwLock::new(None),
         })
     }
 
@@ -81,10 +118,9 @@ impl RuntimeEngine {
         Arc::clone(&self.ping_scheduler)
     }
 
-    /// Set the Tauri app handle for emitting events to the frontend.
-    pub fn set_app_handle(&self, handle: AppHandle) {
-        self.ping_scheduler.set_app_handle(handle.clone());
-        *self.app_handle.write() = Some(handle);
+    /// Set the memory client for skill data persistence.
+    pub fn set_memory_client(&self, client: MemoryClientRef) {
+        *self.memory_client.write() = Some(client);
     }
 
     /// Set the directory containing skill source files.
@@ -102,6 +138,12 @@ impl RuntimeEngine {
     /// Set the socket manager for emitting `tool:sync` events.
     pub fn set_socket_manager(&self, mgr: Arc<SocketManager>) {
         *self.socket_manager.write() = Some(mgr);
+    }
+
+    /// Set the workspace directory for user-installed skills from the registry.
+    pub fn set_workspace_dir(&self, dir: PathBuf) {
+        log::info!("[runtime] Workspace directory set to: {:?}", dir);
+        *self.workspace_dir.write() = Some(dir);
     }
 
     /// Notify the backend of the current tool state via `tool:sync`.
@@ -180,17 +222,45 @@ impl RuntimeEngine {
         self.get_skills_source_dir()
     }
 
-    /// Discover all JavaScript skills from the skills directory.
+    /// Discover all JavaScript skills from the skills source directory and workspace.
     pub async fn discover_skills(&self) -> Result<Vec<SkillManifest>, String> {
+        let mut manifests = Vec::new();
+        let mut seen_ids = std::collections::HashSet::new();
+
+        // 1. Scan bundled/dev skills source directory
         let skills_dir = self.get_skills_source_dir()?;
-        if !skills_dir.exists() {
-            return Ok(Vec::new());
+        if skills_dir.exists() {
+            self.scan_skills_dir(&skills_dir, &mut manifests, &mut seen_ids)
+                .await?;
         }
 
-        let mut manifests = Vec::new();
-        let mut entries = tokio::fs::read_dir(&skills_dir)
+        // 2. Scan workspace skills directory (user-installed from registry)
+        let workspace_dir_opt = self.workspace_dir.read().clone();
+        if let Some(workspace_dir) = workspace_dir_opt {
+            let workspace_skills = workspace_dir.join("skills");
+            if workspace_skills.exists() {
+                log::info!(
+                    "[runtime] Also scanning workspace skills dir: {:?}",
+                    workspace_skills
+                );
+                self.scan_skills_dir(&workspace_skills, &mut manifests, &mut seen_ids)
+                    .await?;
+            }
+        }
+
+        Ok(manifests)
+    }
+
+    /// Scan a single directory for skill manifests, skipping already-seen IDs.
+    async fn scan_skills_dir(
+        &self,
+        dir: &std::path::Path,
+        manifests: &mut Vec<SkillManifest>,
+        seen_ids: &mut std::collections::HashSet<String>,
+    ) -> Result<(), String> {
+        let mut entries = tokio::fs::read_dir(dir)
             .await
-            .map_err(|e| format!("Failed to read skills dir: {e}"))?;
+            .map_err(|e| format!("Failed to read skills dir {:?}: {e}", dir))?;
 
         while let Ok(Some(entry)) = entries.next_entry().await {
             let path = entry.path();
@@ -201,11 +271,20 @@ impl RuntimeEngine {
                         Ok(manifest)
                             if manifest.is_javascript() && manifest.supports_current_platform() =>
                         {
+                            if seen_ids.contains(&manifest.id) {
+                                log::debug!(
+                                    "[runtime] Skipping duplicate skill '{}' from {:?}",
+                                    manifest.id,
+                                    dir
+                                );
+                                continue;
+                            }
                             log::info!(
                                 "[runtime] Discovered skill '{}': {}",
                                 manifest.id,
                                 manifest.name
                             );
+                            seen_ids.insert(manifest.id.clone());
                             manifests.push(manifest);
                         }
                         Ok(manifest) if manifest.is_javascript() => {
@@ -228,7 +307,7 @@ impl RuntimeEngine {
             }
         }
 
-        Ok(manifests)
+        Ok(())
     }
 
     /// Start a specific skill by its ID.
@@ -243,9 +322,23 @@ impl RuntimeEngine {
             }
         }
 
+        // Look in bundled/dev source dir first, then workspace
         let skills_dir = self.get_skills_source_dir()?;
-        let skill_dir = skills_dir.join(skill_id);
-        let manifest_path = skill_dir.join("manifest.json");
+        let mut skill_dir = skills_dir.join(skill_id);
+        let mut manifest_path = skill_dir.join("manifest.json");
+
+        if !manifest_path.exists() {
+            // Try workspace skills directory
+            if let Some(workspace_dir) = self.workspace_dir.read().as_ref() {
+                let ws_skill_dir = workspace_dir.join("skills").join(skill_id);
+                let ws_manifest = ws_skill_dir.join("manifest.json");
+                if ws_manifest.exists() {
+                    log::info!("[runtime] Found skill '{}' in workspace dir", skill_id);
+                    skill_dir = ws_skill_dir;
+                    manifest_path = ws_manifest;
+                }
+            }
+        }
 
         if !manifest_path.exists() {
             return Err(format!("Skill '{}' not found (no manifest.json)", skill_id));
@@ -280,7 +373,7 @@ impl RuntimeEngine {
         let deps = BridgeDeps {
             cron_scheduler: self.cron_scheduler.clone(),
             skill_registry: self.registry.clone(),
-            app_handle: self.app_handle.read().clone(),
+            memory_client: self.memory_client.read().clone(),
             data_dir: data_dir.clone(),
         };
 
@@ -398,12 +491,14 @@ impl RuntimeEngine {
         self.registry.all_tools()
     }
 
-    /// Emit a skill status change event to the frontend.
+    /// Log a skill status change (event emission moved to Socket.IO layer).
     fn emit_status_change(&self, skill_id: &str) {
-        if let Some(ref app) = *self.app_handle.read() {
-            if let Some(snap) = self.registry.get_skill(skill_id) {
-                let _ = app.emit(events::SKILL_STATUS_CHANGED, &snap);
-            }
+        if let Some(snap) = self.registry.get_skill(skill_id) {
+            log::debug!(
+                "[runtime] Skill status changed: {} → {:?}",
+                skill_id,
+                snap.status
+            );
         }
     }
 
