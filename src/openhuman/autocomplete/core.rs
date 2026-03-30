@@ -4,6 +4,14 @@ use chrono::Utc;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::sync::Mutex as StdMutex;
+#[cfg(target_os = "macos")]
+use std::{
+    fs,
+    io::Write,
+    path::PathBuf,
+    process::{Child, ChildStdin, Command, Stdio},
+};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::{self, Duration, Instant};
@@ -108,6 +116,15 @@ struct FocusedTextContext {
     text: String,
     selected_text: Option<String>,
     raw_error: Option<String>,
+    bounds: Option<FocusedElementBounds>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FocusedElementBounds {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
 }
 
 fn is_text_role(role: Option<&str>) -> bool {
@@ -301,7 +318,7 @@ impl AutocompleteEngine {
                             state.last_error.clone()
                         };
                         if let Some(error_message) = error_message {
-                            show_overflow_badge("error", None, Some(&error_message), None);
+                            show_overflow_badge("error", None, Some(&error_message), None, None);
                         }
                     } else {
                         let mut state = engine.inner.lock().await;
@@ -328,6 +345,8 @@ impl AutocompleteEngine {
         if let Some(task) = state.task.take() {
             task.abort();
         }
+        #[cfg(target_os = "macos")]
+        let _ = overlay_helper_quit();
         AutocompleteStopResult { stopped: true }
     }
 
@@ -395,7 +414,7 @@ impl AutocompleteEngine {
             state.updated_at_ms = Some(Utc::now().timestamp_millis());
             state.last_overlay_signature = None;
         }
-        show_overflow_badge("accepted", Some(&cleaned), None, None);
+        show_overflow_badge("accepted", Some(&cleaned), None, None, None);
 
         Ok(AutocompleteAcceptResult {
             accepted: true,
@@ -462,6 +481,8 @@ impl AutocompleteEngine {
             }
             state.suggestion = None;
             state.last_overlay_signature = None;
+            #[cfg(target_os = "macos")]
+            let _ = overlay_helper_quit();
         }
 
         Ok(AutocompleteSetStyleResult {
@@ -491,6 +512,7 @@ impl AutocompleteEngine {
                 text: context,
                 selected_text: None,
                 raw_error: None,
+                bounds: None,
             }
         } else {
             let focused = focused_text_context_verbose()?;
@@ -591,7 +613,13 @@ impl AutocompleteEngine {
         if state.last_overlay_signature.as_deref() != Some(ready_signature.as_str()) {
             state.last_overlay_signature = Some(ready_signature);
             drop(state);
-            show_overflow_badge("ready", Some(&suggestion), None, app_name.as_deref());
+            show_overflow_badge(
+                "ready",
+                Some(&suggestion),
+                None,
+                app_name.as_deref(),
+                focused.bounds.as_ref(),
+            );
             return Ok(());
         }
         Ok(())
@@ -635,7 +663,7 @@ impl AutocompleteEngine {
                     state.updated_at_ms = Some(Utc::now().timestamp_millis());
                     state.last_overlay_signature = None;
                 }
-                show_overflow_badge("accepted", Some(&cleaned), None, None);
+                show_overflow_badge("accepted", Some(&cleaned), None, None, None);
             }
         }
 
@@ -660,7 +688,7 @@ impl AutocompleteEngine {
             }
         };
         if let Some(value) = rejected {
-            show_overflow_badge("rejected", Some(&value), None, None);
+            show_overflow_badge("rejected", Some(&value), None, None, None);
         }
         Ok(())
     }
@@ -672,6 +700,20 @@ pub static AUTOCOMPLETE_ENGINE: Lazy<Arc<AutocompleteEngine>> =
 pub fn global_engine() -> Arc<AutocompleteEngine> {
     AUTOCOMPLETE_ENGINE.clone()
 }
+
+#[cfg(target_os = "macos")]
+static LAST_OVERFLOW_BADGE: Lazy<StdMutex<Option<(String, i64)>>> =
+    Lazy::new(|| StdMutex::new(None));
+
+#[cfg(target_os = "macos")]
+struct OverlayHelperProcess {
+    child: Child,
+    stdin: ChildStdin,
+}
+
+#[cfg(target_os = "macos")]
+static OVERLAY_HELPER_PROCESS: Lazy<StdMutex<Option<OverlayHelperProcess>>> =
+    Lazy::new(|| StdMutex::new(None));
 
 fn truncate_tail(text: &str, max_chars: usize) -> String {
     let chars: Vec<char> = text.chars().collect();
@@ -696,11 +738,343 @@ fn sanitize_suggestion(text: &str) -> String {
 }
 
 fn show_overflow_badge(
-    _kind: &str,
-    _suggestion: Option<&str>,
-    _error: Option<&str>,
-    _app_name: Option<&str>,
+    kind: &str,
+    suggestion: Option<&str>,
+    error: Option<&str>,
+    app_name: Option<&str>,
+    anchor_bounds: Option<&FocusedElementBounds>,
 ) {
+    #[cfg(target_os = "macos")]
+    {
+        const READY_THROTTLE_MS: i64 = 1_200;
+        let now_ms = Utc::now().timestamp_millis();
+        let signature = format!(
+            "{}:{}:{}:{}",
+            kind,
+            app_name.unwrap_or_default(),
+            suggestion.unwrap_or_default(),
+            error.unwrap_or_default()
+        );
+
+        if let Ok(mut guard) = LAST_OVERFLOW_BADGE.lock() {
+            if let Some((last_signature, last_ms)) = guard.as_ref() {
+                if *last_signature == signature {
+                    return;
+                }
+                if kind == "ready" && (now_ms - *last_ms) < READY_THROTTLE_MS {
+                    return;
+                }
+            }
+            *guard = Some((signature, now_ms));
+        }
+
+        if kind == "ready" {
+            if let (Some(bounds), Some(suggestion_text)) = (anchor_bounds, suggestion) {
+                if overlay_helper_show(bounds, suggestion_text).is_ok() {
+                    return;
+                }
+            }
+        } else {
+            let _ = overlay_helper_hide();
+        }
+
+        let title = match kind {
+            "ready" => "OpenHuman suggestion",
+            "accepted" => "OpenHuman applied",
+            "rejected" => "OpenHuman dismissed",
+            "error" => "OpenHuman autocomplete error",
+            _ => "OpenHuman autocomplete",
+        };
+
+        let mut body = match kind {
+            "ready" => suggestion.unwrap_or_default().to_string(),
+            "accepted" => format!("Inserted: {}", suggestion.unwrap_or_default()),
+            "rejected" => "Suggestion dismissed.".to_string(),
+            "error" => error.unwrap_or("Autocomplete failed").to_string(),
+            _ => suggestion.unwrap_or_default().to_string(),
+        };
+        if body.trim().is_empty() {
+            body = "No suggestion".to_string();
+        }
+        body = truncate_tail(&body, 140);
+
+        let subtitle = app_name.unwrap_or_default().trim().to_string();
+        let escaped_title = escape_osascript_text(title);
+        let escaped_body = escape_osascript_text(&body);
+        let escaped_subtitle = escape_osascript_text(&subtitle);
+
+        let script = if subtitle.is_empty() {
+            format!(
+                r#"display notification "{}" with title "{}""#,
+                escaped_body, escaped_title
+            )
+        } else {
+            format!(
+                r#"display notification "{}" with title "{}" subtitle "{}""#,
+                escaped_body, escaped_title, escaped_subtitle
+            )
+        };
+
+        std::thread::spawn(move || {
+            let _ = std::process::Command::new("osascript")
+                .arg("-e")
+                .arg(script)
+                .output();
+        });
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn escape_osascript_text(raw: &str) -> String {
+    raw.replace('\\', "\\\\")
+        .replace('\"', "\\\"")
+        .replace('\n', " ")
+        .replace('\r', " ")
+}
+
+#[cfg(target_os = "macos")]
+fn overlay_helper_show(bounds: &FocusedElementBounds, text: &str) -> Result<(), String> {
+    let message = serde_json::json!({
+        "type": "show",
+        "x": bounds.x,
+        "y": bounds.y,
+        "w": bounds.width,
+        "h": bounds.height,
+        "text": truncate_tail(text, 96),
+        "ttl_ms": 1100
+    })
+    .to_string();
+    overlay_helper_send_line(&message)
+}
+
+#[cfg(target_os = "macos")]
+fn overlay_helper_hide() -> Result<(), String> {
+    overlay_helper_send_line(r#"{"type":"hide"}"#)
+}
+
+#[cfg(target_os = "macos")]
+fn overlay_helper_quit() -> Result<(), String> {
+    let mut guard = OVERLAY_HELPER_PROCESS
+        .lock()
+        .map_err(|_| "overlay helper lock poisoned".to_string())?;
+    if let Some(mut helper) = guard.take() {
+        let _ = helper.stdin.write_all(br#"{"type":"quit"}"#);
+        let _ = helper.stdin.write_all(b"\n");
+        let _ = helper.stdin.flush();
+        let _ = helper.child.kill();
+        let _ = helper.child.wait();
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn overlay_helper_send_line(line: &str) -> Result<(), String> {
+    ensure_overlay_helper_running()?;
+    let mut guard = OVERLAY_HELPER_PROCESS
+        .lock()
+        .map_err(|_| "overlay helper lock poisoned".to_string())?;
+    let Some(helper) = guard.as_mut() else {
+        return Err("overlay helper unavailable".to_string());
+    };
+    helper
+        .stdin
+        .write_all(line.as_bytes())
+        .and_then(|_| helper.stdin.write_all(b"\n"))
+        .and_then(|_| helper.stdin.flush())
+        .map_err(|e| format!("failed to write overlay helper stdin: {e}"))?;
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn ensure_overlay_helper_running() -> Result<(), String> {
+    let mut guard = OVERLAY_HELPER_PROCESS
+        .lock()
+        .map_err(|_| "overlay helper lock poisoned".to_string())?;
+
+    if let Some(helper) = guard.as_mut() {
+        if helper
+            .child
+            .try_wait()
+            .map_err(|e| format!("failed to query overlay helper state: {e}"))?
+            .is_none()
+        {
+            return Ok(());
+        }
+        *guard = None;
+    }
+
+    let binary_path = ensure_overlay_helper_binary()?;
+    let mut child = Command::new(&binary_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("failed to spawn overlay helper: {e}"))?;
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "failed to capture overlay helper stdin".to_string())?;
+    *guard = Some(OverlayHelperProcess { child, stdin });
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn ensure_overlay_helper_binary() -> Result<PathBuf, String> {
+    let cache_dir = std::env::temp_dir().join("openhuman-autocomplete-overlay");
+    fs::create_dir_all(&cache_dir).map_err(|e| format!("failed to create cache dir: {e}"))?;
+    let source_path = cache_dir.join("overlay_helper.swift");
+    let binary_path = cache_dir.join("overlay_helper_bin");
+    let source = overlay_helper_swift_source();
+
+    let needs_write = match fs::read_to_string(&source_path) {
+        Ok(existing) => existing != source,
+        Err(_) => true,
+    };
+    if needs_write {
+        fs::write(&source_path, source)
+            .map_err(|e| format!("failed to write overlay helper source: {e}"))?;
+    }
+
+    let needs_compile = needs_write || !binary_path.exists();
+    if needs_compile {
+        let output = Command::new("xcrun")
+            .arg("swiftc")
+            .arg("-O")
+            .arg(&source_path)
+            .arg("-o")
+            .arg(&binary_path)
+            .output()
+            .or_else(|_| {
+                Command::new("swiftc")
+                    .arg("-O")
+                    .arg(&source_path)
+                    .arg("-o")
+                    .arg(&binary_path)
+                    .output()
+            })
+            .map_err(|e| format!("failed to invoke swiftc: {e}"))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(format!(
+                "failed to compile overlay helper: {}",
+                if stderr.is_empty() {
+                    "swiftc returned non-zero exit status".to_string()
+                } else {
+                    stderr
+                }
+            ));
+        }
+    }
+
+    Ok(binary_path)
+}
+
+#[cfg(target_os = "macos")]
+fn overlay_helper_swift_source() -> &'static str {
+    r#"import Cocoa
+import Foundation
+
+final class OverlayController {
+    private var panel: NSPanel?
+    private var textField: NSTextField?
+    private var hideWorkItem: DispatchWorkItem?
+
+    func show(x: CGFloat, yTop: CGFloat, width: CGFloat, height: CGFloat, text: String, ttlMs: Int) {
+        let screen = NSScreen.main ?? NSScreen.screens.first
+        let screenHeight = screen?.frame.height ?? 900
+        let panelWidth = min(420, max(140, CGFloat(text.count) * 7 + 26))
+        let panelHeight: CGFloat = 26
+        let originX = x + max(8, min(width - panelWidth - 8, 28))
+        let originYTop = yTop + max(5, min(height - panelHeight - 4, 10))
+        let originYCocoa = max(6, screenHeight - originYTop - panelHeight)
+
+        if panel == nil {
+            let p = NSPanel(
+                contentRect: NSRect(x: originX, y: originYCocoa, width: panelWidth, height: panelHeight),
+                styleMask: [.borderless, .nonactivatingPanel],
+                backing: .buffered,
+                defer: false
+            )
+            p.level = .statusBar
+            p.hasShadow = false
+            p.isOpaque = false
+            p.backgroundColor = .clear
+            p.ignoresMouseEvents = true
+            p.collectionBehavior = [.canJoinAllSpaces, .transient]
+
+            let content = NSView(frame: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight))
+            content.wantsLayer = true
+            content.layer?.cornerRadius = 6
+            content.layer?.backgroundColor = NSColor(white: 0.08, alpha: 0.35).cgColor
+            p.contentView = content
+
+            let label = NSTextField(labelWithString: text)
+            label.frame = NSRect(x: 8, y: 4, width: panelWidth - 12, height: 18)
+            label.textColor = NSColor(white: 1.0, alpha: 0.46)
+            label.font = NSFont.systemFont(ofSize: 13)
+            label.lineBreakMode = .byTruncatingTail
+            content.addSubview(label)
+
+            panel = p
+            textField = label
+        }
+
+        panel?.setFrame(NSRect(x: originX, y: originYCocoa, width: panelWidth, height: panelHeight), display: true)
+        panel?.contentView?.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
+        textField?.frame = NSRect(x: 8, y: 4, width: panelWidth - 12, height: 18)
+        textField?.stringValue = text
+        panel?.orderFrontRegardless()
+
+        hideWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.hide()
+        }
+        hideWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(max(120, ttlMs)), execute: work)
+    }
+
+    func hide() {
+        panel?.orderOut(nil)
+    }
+}
+
+let app = NSApplication.shared
+app.setActivationPolicy(.accessory)
+let controller = OverlayController()
+
+DispatchQueue.global(qos: .utility).async {
+    while let line = readLine() {
+        guard let data = line.data(using: .utf8),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let kind = payload["type"] as? String else {
+            continue
+        }
+        if kind == "show" {
+            let x = CGFloat((payload["x"] as? NSNumber)?.doubleValue ?? 0)
+            let y = CGFloat((payload["y"] as? NSNumber)?.doubleValue ?? 0)
+            let w = CGFloat((payload["w"] as? NSNumber)?.doubleValue ?? 0)
+            let h = CGFloat((payload["h"] as? NSNumber)?.doubleValue ?? 0)
+            let text = (payload["text"] as? String) ?? ""
+            let ttl = (payload["ttl_ms"] as? NSNumber)?.intValue ?? 900
+            DispatchQueue.main.async {
+                controller.show(x: x, yTop: y, width: w, height: h, text: text, ttlMs: ttl)
+            }
+        } else if kind == "hide" {
+            DispatchQueue.main.async {
+                controller.hide()
+            }
+        } else if kind == "quit" {
+            DispatchQueue.main.async {
+                controller.hide()
+                NSApplication.shared.terminate(nil)
+            }
+            break
+        }
+    }
+}
+
+app.run()
+"#
 }
 
 fn is_no_text_candidate_error(err: &str) -> bool {
@@ -729,6 +1103,10 @@ fn focused_text_context_verbose() -> Result<FocusedTextContext, String> {
         set textValue to ""
         set selectedValue to ""
         set errValue to ""
+        set posX to ""
+        set posY to ""
+        set sizeW to ""
+        set sizeH to ""
         set targetRoles to {"AXTextArea", "AXTextField", "AXSearchField", "AXComboBox", "AXEditableText"}
 
         try
@@ -738,6 +1116,16 @@ fn focused_text_context_verbose() -> Result<FocusedTextContext, String> {
           end try
           try
             set textValue to value of attribute "AXValue" of focusedElement as text
+          end try
+          try
+            set p to value of attribute "AXPosition" of focusedElement
+            set posX to item 1 of p as text
+            set posY to item 2 of p as text
+          end try
+          try
+            set s to value of attribute "AXSize" of focusedElement
+            set sizeW to item 1 of s as text
+            set sizeH to item 2 of s as text
           end try
           if textValue is "missing value" then set textValue to ""
           if textValue is "" then
@@ -774,6 +1162,20 @@ fn focused_text_context_verbose() -> Result<FocusedTextContext, String> {
                 try
                   set childValue to value of attribute "AXValue" of childElem as text
                 end try
+                set childPosX to ""
+                set childPosY to ""
+                set childSizeW to ""
+                set childSizeH to ""
+                try
+                  set cp to value of attribute "AXPosition" of childElem
+                  set childPosX to item 1 of cp as text
+                  set childPosY to item 2 of cp as text
+                end try
+                try
+                  set cs to value of attribute "AXSize" of childElem
+                  set childSizeW to item 1 of cs as text
+                  set childSizeH to item 2 of cs as text
+                end try
                 if childValue is "missing value" then set childValue to ""
                 if childValue is "" then
                   try
@@ -785,6 +1187,10 @@ fn focused_text_context_verbose() -> Result<FocusedTextContext, String> {
                 if childValue is not "" then
                   set roleValue to childRole
                   set textValue to childValue
+                  if childPosX is not "" then set posX to childPosX
+                  if childPosY is not "" then set posY to childPosY
+                  if childSizeW is not "" then set sizeW to childSizeW
+                  if childSizeH is not "" then set sizeH to childSizeH
                   exit repeat
                 end if
               end if
@@ -826,7 +1232,7 @@ fn focused_text_context_verbose() -> Result<FocusedTextContext, String> {
           set errValue to "ERROR:no_text_candidate_found"
         end if
 
-        return appName & sep & roleValue & sep & textValue & sep & selectedValue & sep & errValue
+        return appName & sep & roleValue & sep & textValue & sep & selectedValue & sep & errValue & sep & posX & sep & posY & sep & sizeW & sep & sizeH
       end tell
     "##;
 
@@ -845,7 +1251,7 @@ fn focused_text_context_verbose() -> Result<FocusedTextContext, String> {
 
     let text = String::from_utf8_lossy(&output.stdout);
     let trimmed = text.trim_end_matches(['\r', '\n']);
-    let mut segments = trimmed.splitn(5, '\u{1f}');
+    let mut segments = trimmed.splitn(9, '\u{1f}');
     let app_name = segments
         .next()
         .map(|s| normalize_ax_value(s.trim()))
@@ -863,6 +1269,10 @@ fn focused_text_context_verbose() -> Result<FocusedTextContext, String> {
         .next()
         .map(|s| normalize_ax_value(s.trim()))
         .filter(|s| !s.is_empty());
+    let pos_x = segments.next().and_then(parse_ax_number);
+    let pos_y = segments.next().and_then(parse_ax_number);
+    let size_w = segments.next().and_then(parse_ax_number);
+    let size_h = segments.next().and_then(parse_ax_number);
 
     let allow_terminal_text_value =
         is_terminal_app(app_name.as_deref()) && !value.trim().is_empty();
@@ -880,6 +1290,17 @@ fn focused_text_context_verbose() -> Result<FocusedTextContext, String> {
         text: value,
         selected_text,
         raw_error,
+        bounds: match (pos_x, pos_y, size_w, size_h) {
+            (Some(x), Some(y), Some(width), Some(height)) if width > 0 && height > 0 => {
+                Some(FocusedElementBounds {
+                    x,
+                    y,
+                    width,
+                    height,
+                })
+            }
+            _ => None,
+        },
     })
 }
 
@@ -900,6 +1321,15 @@ fn normalize_ax_value(raw: &str) -> String {
     } else {
         v.to_string()
     }
+}
+
+fn parse_ax_number(raw: &str) -> Option<i32> {
+    let trimmed = normalize_ax_value(raw);
+    if trimmed.is_empty() {
+        return None;
+    }
+    let cleaned = trimmed.replace(',', ".");
+    cleaned.parse::<f64>().ok().map(|v| v.round() as i32)
 }
 
 #[cfg(target_os = "macos")]

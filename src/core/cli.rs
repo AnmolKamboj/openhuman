@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use crate::core::all;
 use crate::core::jsonrpc::{default_state, invoke_method, parse_json_params};
 use crate::core::{ControllerSchema, TypeSchema};
+use crate::openhuman::autocomplete::ops::{autocomplete_start_cli, AutocompleteStartCliOptions};
 
 const CLI_BANNER: &str = r#"
 
@@ -37,6 +38,7 @@ pub fn run_from_cli_args(args: &[String]) -> Result<()> {
 fn run_server_command(args: &[String]) -> Result<()> {
     let mut port: Option<u16> = None;
     let mut socketio_enabled = true;
+    let mut verbose = false;
     let mut i = 0usize;
     while i < args.len() {
         match args[i].as_str() {
@@ -54,13 +56,27 @@ fn run_server_command(args: &[String]) -> Result<()> {
                 socketio_enabled = false;
                 i += 1;
             }
+            "-v" | "--verbose" => {
+                verbose = true;
+                i += 1;
+            }
             "-h" | "--help" => {
-                println!("Usage: openhuman run [--port <u16>] [--jsonrpc-only]");
+                println!("Usage: openhuman run [--port <u16>] [--jsonrpc-only] [-v|--verbose]");
+                println!();
+                println!(
+                    "  --port <u16>     Listen address port (default: 7788 or OPENHUMAN_CORE_PORT)"
+                );
+                println!("  --jsonrpc-only   HTTP JSON-RPC only; disable Socket.IO");
+                println!("  -v, --verbose    Shorthand for RUST_LOG=debug when RUST_LOG is unset");
+                println!();
+                println!("Logging: set RUST_LOG (e.g. RUST_LOG=debug openhuman run). Default level is info.");
                 return Ok(());
             }
             other => return Err(anyhow::anyhow!("unknown run arg: {other}")),
         }
     }
+
+    crate::core::logging::init_for_cli_run(verbose);
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -136,6 +152,22 @@ fn run_namespace_command(
         ));
     };
 
+    if namespace == "autocomplete" && function == "start" {
+        if args.len() > 1 && is_help(&args[1]) {
+            print_autocomplete_start_help();
+            return Ok(());
+        }
+        let cli_options = parse_autocomplete_start_cli_options(&args[1..])?;
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?;
+        let value = rt
+            .block_on(async { autocomplete_start_cli(cli_options).await })
+            .map_err(anyhow::Error::msg)?;
+        println!("{}", serde_json::to_string_pretty(&value)?);
+        return Ok(());
+    }
+
     if args.len() > 1 && is_help(&args[1]) {
         print_function_help(namespace, &schema);
         return Ok(());
@@ -154,6 +186,57 @@ fn run_namespace_command(
 
     println!("{}", serde_json::to_string_pretty(&value)?);
     Ok(())
+}
+
+fn parse_autocomplete_start_cli_options(args: &[String]) -> Result<AutocompleteStartCliOptions> {
+    let mut debounce_ms: Option<u64> = None;
+    let mut serve = false;
+    let mut spawn = false;
+    let mut i = 0usize;
+
+    while i < args.len() {
+        match args[i].as_str() {
+            "--debounce-ms" => {
+                let raw = args
+                    .get(i + 1)
+                    .ok_or_else(|| anyhow::anyhow!("missing value for --debounce-ms"))?;
+                debounce_ms = Some(
+                    raw.parse::<u64>()
+                        .map_err(|e| anyhow::anyhow!("invalid --debounce-ms: {e}"))?,
+                );
+                i += 2;
+            }
+            "--serve" => {
+                serve = true;
+                i += 1;
+            }
+            "--spawn" => {
+                spawn = true;
+                i += 1;
+            }
+            other => return Err(anyhow::anyhow!("unknown autocomplete start arg: {other}")),
+        }
+    }
+
+    if serve && spawn {
+        return Err(anyhow::anyhow!(
+            "--serve and --spawn are mutually exclusive"
+        ));
+    }
+
+    Ok(AutocompleteStartCliOptions {
+        debounce_ms,
+        serve,
+        spawn,
+    })
+}
+
+fn print_autocomplete_start_help() {
+    println!("Usage: openhuman autocomplete start [--debounce-ms <u64>] [--serve|--spawn]");
+    println!();
+    println!("  --debounce-ms <u64>  Override debounce in milliseconds.");
+    println!("  --serve              Run autocomplete loop in the current foreground process.");
+    println!("  --spawn              Spawn autocomplete loop as a background process.");
 }
 
 fn parse_function_params(
@@ -238,7 +321,7 @@ fn grouped_schemas() -> BTreeMap<String, Vec<ControllerSchema>> {
 fn print_general_help(grouped: &BTreeMap<String, Vec<ControllerSchema>>) {
     println!("OpenHuman core CLI\n");
     println!("Usage:");
-    println!("  openhuman run [--port <u16>]");
+    println!("  openhuman run [--port <u16>] [--jsonrpc-only] [--verbose]");
     println!("  openhuman call --method <name> [--params '<json>']");
     println!("  openhuman <namespace> <function> [--param value ...]\n");
     println!("Available namespaces:");

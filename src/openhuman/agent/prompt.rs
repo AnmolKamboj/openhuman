@@ -224,6 +224,13 @@ impl PromptSection for DateTimeSection {
 
 fn inject_workspace_file(prompt: &mut String, workspace_dir: &Path, filename: &str) {
     let path = workspace_dir.join(filename);
+    if !path.exists() {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(&path, default_workspace_file_content(filename));
+    }
+
     match std::fs::read_to_string(&path) {
         Ok(content) => {
             let trimmed = content.trim();
@@ -251,8 +258,25 @@ fn inject_workspace_file(prompt: &mut String, workspace_dir: &Path, filename: &s
             }
         }
         Err(_) => {
-            let _ = writeln!(prompt, "### {filename}\n\n[File not found: {filename}]\n");
+            // Keep prompt focused: missing optional identity/bootstrap files should not
+            // add noisy placeholders that dilute tool-calling instructions.
         }
+    }
+}
+
+fn default_workspace_file_content(filename: &str) -> &'static str {
+    match filename {
+        "AGENTS.md" => include_str!("prompts/AGENTS.md"),
+        "SOUL.md" => include_str!("prompts/SOUL.md"),
+        "TOOLS.md" => include_str!("prompts/TOOLS.md"),
+        "IDENTITY.md" => include_str!("prompts/IDENTITY.md"),
+        "USER.md" => include_str!("prompts/USER.md"),
+        "HEARTBEAT.md" => {
+            "# Periodic Tasks\n\n# Add tasks below (one per line, starting with `- `)\n"
+        }
+        "BOOTSTRAP.md" => include_str!("prompts/BOOTSTRAP.md"),
+        "MEMORY.md" => include_str!("prompts/MEMORY.md"),
+        _ => "",
     }
 }
 
@@ -347,6 +371,49 @@ mod tests {
         assert!(prompt.contains("## Tools"));
         assert!(prompt.contains("test_tool"));
         assert!(prompt.contains("instr"));
+    }
+
+    #[test]
+    fn identity_section_creates_missing_workspace_files() {
+        let workspace =
+            std::env::temp_dir().join(format!("openhuman_prompt_create_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&workspace).unwrap();
+
+        let tools: Vec<Box<dyn Tool>> = vec![];
+        let ctx = PromptContext {
+            workspace_dir: &workspace,
+            model_name: "test-model",
+            tools: &tools,
+            skills: &[],
+            identity_config: None,
+            dispatcher_instructions: "",
+        };
+
+        let section = IdentitySection;
+        let _ = section.build(&ctx).unwrap();
+
+        for file in [
+            "AGENTS.md",
+            "SOUL.md",
+            "TOOLS.md",
+            "IDENTITY.md",
+            "USER.md",
+            "HEARTBEAT.md",
+            "BOOTSTRAP.md",
+            "MEMORY.md",
+        ] {
+            assert!(
+                workspace.join(file).exists(),
+                "expected workspace file to be created: {file}"
+            );
+        }
+        let agents = std::fs::read_to_string(workspace.join("AGENTS.md")).unwrap();
+        assert!(
+            agents.starts_with("# OpenHuman Agents"),
+            "AGENTS.md should be seeded from src/openhuman/agent/prompts/AGENTS.md"
+        );
+
+        let _ = std::fs::remove_dir_all(workspace);
     }
 
     #[test]
