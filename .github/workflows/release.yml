@@ -386,6 +386,18 @@ jobs:
           CORE_BIN_NAME: ${{ steps.core-paths.outputs.core_bin_name }}
           SIDECAR_BASE: ${{ steps.core-paths.outputs.sidecar_base }}
 
+      - name: Resolve standalone core CLI artifact path
+        id: cli-paths
+        shell: bash
+        run: |
+          BASE_DIR="$CORE_TARGET_DIR"
+          echo "base_dir=$BASE_DIR" >> "$GITHUB_OUTPUT"
+          echo "cli_path=$BASE_DIR/$CORE_BIN_NAME" >> "$GITHUB_OUTPUT"
+        env:
+          MATRIX_TARGET: ${{ matrix.settings.target }}
+          CORE_TARGET_DIR: ${{ steps.core-paths.outputs.core_target_dir }}
+          CORE_BIN_NAME: ${{ steps.core-paths.outputs.core_bin_name }}
+
       - name: Build, package and upload to release
         uses: tauri-apps/tauri-action@v0.6.2
         id: tauri-build
@@ -433,27 +445,6 @@ jobs:
             echo "Sidecar core binary missing from app resources"
             exit 1
           fi
-
-      - name: Build standalone core CLI binary
-        shell: bash
-        run: |
-          cargo build --manifest-path "$CORE_MANIFEST" --release --target "$MATRIX_TARGET" --bin "$CORE_BIN_NAME"
-        env:
-          MATRIX_TARGET: ${{ matrix.settings.target }}
-          CORE_MANIFEST: ${{ steps.core-paths.outputs.core_manifest }}
-          CORE_BIN_NAME: ${{ steps.core-paths.outputs.core_bin_name }}
-
-      - name: Resolve standalone core CLI artifact path
-        id: cli-paths
-        shell: bash
-        run: |
-          BASE_DIR="$CORE_TARGET_DIR"
-          echo "base_dir=$BASE_DIR" >> "$GITHUB_OUTPUT"
-          echo "cli_path=$BASE_DIR/$CORE_BIN_NAME" >> "$GITHUB_OUTPUT"
-        env:
-          MATRIX_TARGET: ${{ matrix.settings.target }}
-          CORE_TARGET_DIR: ${{ steps.core-paths.outputs.core_target_dir }}
-          CORE_BIN_NAME: ${{ steps.core-paths.outputs.core_bin_name }}
 
       - name: Upload standalone CLI artifacts
         uses: actions/upload-artifact@v4
