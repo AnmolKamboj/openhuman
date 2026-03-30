@@ -280,13 +280,16 @@ pub fn default_core_bin() -> Option<PathBuf> {
 
     // Sidecar layout: bundle.externalBin("binaries/openhuman") is emitted as
     // openhuman-<target-triple>(.exe) under app resources.
-    let mut search_dirs = vec![exe_dir.to_path_buf()];
-    #[cfg(target_os = "macos")]
-    {
-        if let Some(resources_dir) = exe_dir.parent().map(|p| p.join("Resources")) {
-            search_dirs.push(resources_dir);
+    let search_dirs = {
+        let mut dirs = vec![exe_dir.to_path_buf()];
+        #[cfg(target_os = "macos")]
+        {
+            if let Some(resources_dir) = exe_dir.parent().map(|p| p.join("Resources")) {
+                dirs.push(resources_dir);
+            }
         }
-    }
+        dirs
+    };
 
     for dir in search_dirs {
         let Ok(entries) = std::fs::read_dir(&dir) else {

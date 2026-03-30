@@ -4,6 +4,7 @@ use chrono::Utc;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+#[cfg(target_os = "macos")]
 use std::sync::Mutex as StdMutex;
 #[cfg(target_os = "macos")]
 use std::{
@@ -737,6 +738,7 @@ fn sanitize_suggestion(text: &str) -> String {
     truncate_tail(&cleaned, MAX_SUGGESTION_CHARS)
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
 fn show_overflow_badge(
     kind: &str,
     suggestion: Option<&str>,

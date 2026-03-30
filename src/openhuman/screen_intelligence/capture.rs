@@ -1,8 +1,14 @@
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use chrono::Utc;
+
+#[cfg(target_os = "macos")]
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
+#[cfg(target_os = "macos")]
 use uuid::Uuid;
 
-use super::context::{AppContext, WindowBounds};
+use super::context::AppContext;
+#[cfg(target_os = "macos")]
+use super::context::WindowBounds;
+#[cfg(target_os = "macos")]
 use super::limits::MAX_SCREENSHOT_BYTES;
 
 pub(crate) fn now_ms() -> i64 {
@@ -55,6 +61,7 @@ pub(crate) fn capture_screen_image_ref_for_context(
 
     #[cfg(not(target_os = "macos"))]
     {
+        let _ = context;
         Err("screen capture is unsupported on this platform".to_string())
     }
 }

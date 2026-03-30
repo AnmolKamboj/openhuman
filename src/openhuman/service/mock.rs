@@ -7,6 +7,10 @@ use std::path::{Path, PathBuf};
 
 use crate::openhuman::config::Config;
 
+#[cfg(any(
+    target_os = "macos",
+    not(any(target_os = "macos", target_os = "linux", windows))
+))]
 use super::common::SERVICE_LABEL;
 use super::{ServiceState, ServiceStatus};
 
