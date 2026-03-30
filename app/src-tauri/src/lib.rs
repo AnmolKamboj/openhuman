@@ -12,11 +12,7 @@ mod core_process;
 mod core_rpc;
 mod utils;
 
-use aes_gcm::aead::{Aead, KeyInit};
-use aes_gcm::{Aes256Gcm, Key, Nonce};
-use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use commands::*;
-use rand::TryRngCore;
 use serde::Serialize;
 use serde_json::json;
 use std::collections::HashMap;
@@ -24,6 +20,7 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Manager, RunEvent};
 use tokio::time::{interval, Duration};
 
+// register_all() is only for Windows/Linux; macOS uses Info.plist (see docs).
 #[cfg(any(windows, target_os = "linux"))]
 use tauri_plugin_deep_link::DeepLinkExt;
 
@@ -31,16 +28,6 @@ use tauri_plugin_deep_link::DeepLinkExt;
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-fn derive_key(password: &str) -> [u8; 32] {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(password.as_bytes());
-    let hash = hasher.finalize();
-    let mut key = [0u8; 32];
-    key.copy_from_slice(&hash[..32]);
-    key
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -288,14 +275,13 @@ async fn write_ai_config_file(filename: String, content: String) -> Result<bool,
         return Err("Invalid filename: path traversal not allowed".to_string());
     }
 
-    let ai_dir = utils::dev_paths::repo_ai_prompts_dir(&current_dir)
-        .unwrap_or_else(|| {
-            current_dir
-                .join("src")
-                .join("openhuman")
-                .join("agent")
-                .join("prompts")
-        });
+    let ai_dir = utils::dev_paths::repo_ai_prompts_dir(&current_dir).unwrap_or_else(|| {
+        current_dir
+            .join("src")
+            .join("openhuman")
+            .join("agent")
+            .join("prompts")
+    });
     let file_path = ai_dir.join(&filename);
 
     // Ensure ai directory exists
@@ -323,14 +309,12 @@ async fn watch_daemon_health_rpc(app_handle: AppHandle) {
     loop {
         interval.tick().await;
 
-        match crate::core_rpc::call::<serde_json::Value>("openhuman.health_snapshot", json!({})).await
+        match crate::core_rpc::call::<serde_json::Value>("openhuman.health_snapshot", json!({}))
+            .await
         {
             Ok(raw_payload) => {
                 // RpcOutcome may be wrapped as {"result": {...}, "logs": [...]}; normalize to snapshot.
-                let snapshot = raw_payload
-                    .get("result")
-                    .cloned()
-                    .unwrap_or(raw_payload);
+                let snapshot = raw_payload.get("result").cloned().unwrap_or(raw_payload);
 
                 if last_snapshot.as_ref() != Some(&snapshot) {
                     if let Err(e) = app_handle.emit("openhuman:health", &snapshot) {
@@ -478,7 +462,7 @@ pub fn run() {
     builder
         // Setup
         .setup(move |app| {
-            // Register deep link handlers (Windows/Linux)
+            // Register schemes at runtime (Windows/Linux only). macOS uses bundle Info.plist.
             #[cfg(any(windows, target_os = "linux"))]
             {
                 app.deep_link().register_all()?;
@@ -501,24 +485,30 @@ pub fn run() {
                 }
             }
 
-            // Bridge daemon health via core RPC and ensure core background service.
+            // Bridge daemon health via core RPC; optionally ensure OS background service (release only).
             {
                 let app_handle_for_watcher = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     watch_daemon_health_rpc(app_handle_for_watcher).await;
                 });
-                tauri::async_runtime::spawn(async move {
-                    match commands::core_relay::ensure_service_managed_core_running().await {
-                        Ok(()) => {
-                            log::info!("[openhuman] Core background service ensured via core RPC");
+                if commands::core_relay::should_autostart_service_managed_core() {
+                    tauri::async_runtime::spawn(async move {
+                        match commands::core_relay::ensure_service_managed_core_running().await {
+                            Ok(()) => {
+                                log::info!("[openhuman] Core background service ensured via core RPC");
+                            }
+                            Err(e) => {
+                                log::error!(
+                                    "[openhuman] Failed to ensure core background service: {e}"
+                                );
+                            }
                         }
-                        Err(e) => {
-                            log::error!(
-                                "[openhuman] Failed to ensure core background service: {e}"
-                            );
-                        }
-                    }
-                });
+                    });
+                } else {
+                    log::info!(
+                        "[openhuman] Skipping OS background service autostart (dev build or OPENHUMAN_SKIP_SERVICE_AUTOSTART)"
+                    );
+                }
             }
 
             // Start/ensure standalone core process for business logic RPC.
@@ -581,6 +571,8 @@ pub fn run() {
                     openhuman_service_stop,
                     openhuman_service_status,
                     openhuman_service_uninstall,
+                    chat_send,
+                    chat_cancel,
                 ]
             }
         })
@@ -606,11 +598,16 @@ pub fn run() {
                     }
                 }
 
-                // Gracefully shut down background services before process exit.
+                // Stop the core sidecar we spawned so dev/prod do not leave orphan `openhuman core run`.
                 RunEvent::Exit => {
                     log::info!("[app] Exit event received, shutting down");
 
-                    let _ = app_handle;
+                    if let Some(core) = app_handle.try_state::<core_process::CoreProcessHandle>() {
+                        let core = core.inner().clone();
+                        tauri::async_runtime::block_on(async move {
+                            core.shutdown().await;
+                        });
+                    }
                 }
 
                 _ => {

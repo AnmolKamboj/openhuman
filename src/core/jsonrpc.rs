@@ -1,11 +1,13 @@
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::{header, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{extract::Request, Json, Router};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
+use tokio_stream::StreamExt;
 
 use crate::core::all;
 use crate::core::types::{AppState, RpcError, RpcFailure, RpcRequest, RpcSuccess};
@@ -85,17 +87,26 @@ pub fn default_state() -> AppState {
 
 // --- HTTP server (Axum) ----------------------------------------------------
 
-pub fn build_core_http_router() -> Router {
-    Router::new()
+pub fn build_core_http_router(socketio_enabled: bool) -> Router {
+    let router = Router::new()
         .route("/", get(root_handler))
         .route("/health", get(health_handler))
         .route("/schema", get(schema_handler))
+        .route("/events", get(events_handler))
         .route("/rpc", post(rpc_handler))
         .fallback(not_found_handler)
         .layer(middleware::from_fn(cors_middleware))
         .with_state(AppState {
             core_version: env!("CARGO_PKG_VERSION").to_string(),
-        })
+        });
+
+    if socketio_enabled {
+        let (socket_layer, io) = crate::core::socketio::attach_socketio();
+        crate::core::socketio::spawn_web_channel_bridge(io);
+        return router.layer(socket_layer);
+    }
+
+    router
 }
 
 async fn cors_middleware(req: Request, next: Next) -> Response {
@@ -136,15 +147,50 @@ async fn schema_handler(State(_state): State<AppState>) -> impl IntoResponse {
     (StatusCode::OK, Json(build_http_schema_dump())).into_response()
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct EventsQuery {
+    client_id: String,
+}
+
+async fn events_handler(
+    Query(query): Query<EventsQuery>,
+) -> Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>> {
+    let client_id = query.client_id;
+    let rx = crate::openhuman::web_channel::subscribe_web_channel_events();
+    let stream = tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(move |item| {
+        let event = match item {
+            Ok(ev) => ev,
+            Err(_) => return None,
+        };
+        if event.client_id != client_id {
+            return None;
+        }
+        let data = match serde_json::to_string(&event) {
+            Ok(data) => data,
+            Err(_) => return None,
+        };
+        Some(Ok(Event::default().event(event.event).data(data)))
+    });
+
+    Sse::new(stream).keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(10)))
+}
+
 async fn root_handler() -> impl IntoResponse {
+    let api_server = match crate::openhuman::config::Config::load_or_init().await {
+        Ok(cfg) => crate::api::config::effective_api_url(&cfg.api_url),
+        Err(_) => crate::api::config::effective_api_url(&None),
+    };
+
     (
         StatusCode::OK,
         Json(json!({
             "name": "openhuman",
             "ok": true,
+            "api_server": api_server,
             "endpoints": {
                 "health": "/health",
                 "schema": "/schema",
+                "events": "/events?client_id=<id>",
                 "rpc": "/rpc"
             },
             "usage": {
@@ -176,16 +222,21 @@ fn core_port() -> u16 {
         .unwrap_or(7788)
 }
 
-pub async fn run_server(port: Option<u16>) -> anyhow::Result<()> {
+pub async fn run_server(port: Option<u16>, socketio_enabled: bool) -> anyhow::Result<()> {
     let _ = all::all_registered_controllers();
     let port = port.unwrap_or_else(core_port);
     let bind_addr = format!("127.0.0.1:{port}");
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
 
-    let app = build_core_http_router();
+    let app = build_core_http_router(socketio_enabled);
 
     log::info!("[core] listening on http://{bind_addr}");
     log::info!("[rpc:http] JSON-RPC server running — POST http://{bind_addr}/rpc (JSON-RPC 2.0)");
+    if socketio_enabled {
+        log::info!("[rpc:socketio] Socket.IO server running — ws://{bind_addr}/socket.io/");
+    } else {
+        log::info!("[rpc:socketio] disabled (--jsonrpc-only)");
+    }
 
     tokio::spawn(async {
         match crate::openhuman::config::Config::load_or_init().await {

@@ -1,7 +1,10 @@
 import { isTauri as coreIsTauri, invoke } from '@tauri-apps/api/core';
+import debug from 'debug';
 
 import { dispatchLocalAiMethod } from '../lib/ai/localCoreAiMemory';
 import { CORE_RPC_URL } from '../utils/config';
+import { createSafeLogData, sanitizeError } from '../utils/sanitize';
+import { socketService } from './socketService';
 
 interface CoreRpcRelayRequest {
   method: string;
@@ -46,6 +49,9 @@ const LEGACY_METHOD_ALIASES: Record<string, string> = {
 let nextJsonRpcId = 1;
 let resolvedCoreRpcUrl: string | null = null;
 let resolvingCoreRpcUrl: Promise<string> | null = null;
+const SOCKET_RPC_TIMEOUT_MS = 15_000;
+const coreRpcSocketLog = debug('socket:rpc');
+const coreRpcSocketError = debug('socket:rpc:error');
 
 function coreRpcErrorMessage(err: unknown): string {
   if (err instanceof Error && err.message) {
@@ -135,6 +141,72 @@ export async function callCoreRpc<T>({
   };
 
   try {
+    const socket = socketService.getSocket();
+    if (socket?.connected) {
+      const socketResult = await new Promise<T>((resolve, reject) => {
+        coreRpcSocketLog(
+          'Socket RPC request',
+          createSafeLogData({ id: payload.id, method: payload.method }, payload.params)
+        );
+        const timer = setTimeout(() => {
+          socket.off('rpc:response', onResponse);
+          socket.off('rpc:error', onError);
+          coreRpcSocketError('Socket RPC timeout', {
+            id: payload.id,
+            method: payload.method,
+            timeoutMs: SOCKET_RPC_TIMEOUT_MS,
+          });
+          reject(new Error(`Core RPC socket timeout after ${SOCKET_RPC_TIMEOUT_MS}ms`));
+        }, SOCKET_RPC_TIMEOUT_MS);
+
+        const cleanup = () => {
+          clearTimeout(timer);
+          socket.off('rpc:response', onResponse);
+          socket.off('rpc:error', onError);
+        };
+
+        const matchesId = (candidate: unknown): boolean =>
+          typeof candidate !== 'undefined' && candidate === payload.id;
+
+        const onResponse = (msg: unknown) => {
+          const response = msg as { id?: unknown; result?: T };
+          if (!matchesId(response?.id)) return;
+          cleanup();
+          coreRpcSocketLog('Socket RPC response', {
+            id: response?.id,
+            method: payload.method,
+            hasResult: Object.prototype.hasOwnProperty.call(response ?? {}, 'result'),
+          });
+          if (!Object.prototype.hasOwnProperty.call(response, 'result')) {
+            reject(new Error('Core RPC response missing result'));
+            return;
+          }
+          resolve(response.result as T);
+        };
+
+        const onError = (msg: unknown) => {
+          const response = msg as { id?: unknown; error?: { message?: string } };
+          if (!matchesId(response?.id)) return;
+          cleanup();
+          coreRpcSocketError('Socket RPC error', {
+            id: response?.id,
+            method: payload.method,
+            message: response?.error?.message || 'Core RPC returned an error',
+          });
+          reject(new Error(response?.error?.message || 'Core RPC returned an error'));
+        };
+
+        socket.on('rpc:response', onResponse);
+        socket.on('rpc:error', onError);
+        socketService.emit('rpc:request', {
+          id: payload.id,
+          method: payload.method,
+          params: payload.params,
+        });
+      });
+      return socketResult;
+    }
+
     const rpcUrl = await getCoreRpcUrl();
     const response = await fetch(rpcUrl, {
       method: 'POST',
@@ -157,6 +229,7 @@ export async function callCoreRpc<T>({
 
     return json.result as T;
   } catch (err) {
+    coreRpcSocketError('Core RPC call failed', sanitizeError(err));
     throw new Error(coreRpcErrorMessage(err));
   }
 }

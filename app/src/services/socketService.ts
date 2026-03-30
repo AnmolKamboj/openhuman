@@ -1,15 +1,14 @@
-import { isTauri as coreIsTauri } from '@tauri-apps/api/core';
+import { isTauri as coreIsTauri, invoke } from '@tauri-apps/api/core';
 import debug from 'debug';
 import { io, Socket } from 'socket.io-client';
 
-import { MCPTool, MCPToolCall, SocketIOMCPTransportImpl } from '../lib/mcp';
-import { skillManager, syncToolsToBackend } from '../lib/skills';
-import { getBackendUrl } from '../services/backendUrl';
+import { SocketIOMCPTransportImpl } from '../lib/mcp';
+import { syncToolsToBackend } from '../lib/skills';
 import { store } from '../store';
 import { upsertChannelConnection } from '../store/channelConnectionsSlice';
 import { resetForUser, setSocketIdForUser, setStatusForUser } from '../store/socketSlice';
 import type { ChannelAuthMode, ChannelConnectionStatus, ChannelType } from '../types/channels';
-import { IS_DEV } from '../utils/config';
+import { CORE_RPC_URL, IS_DEV } from '../utils/config';
 import { createSafeLogData, sanitizeError } from '../utils/sanitize';
 
 // Socket service logger using debug package
@@ -21,6 +20,24 @@ const socketError = debug('socket:error');
 // Enable socket logging in development by default
 if (IS_DEV) {
   debug.enable('socket*');
+}
+
+function coreSocketBaseFromRpcUrl(rpcUrl: string): string {
+  const trimmed = rpcUrl.trim().replace(/\/+$/, '');
+  return trimmed.endsWith('/rpc') ? trimmed.slice(0, -4) : trimmed;
+}
+
+async function resolveCoreSocketBaseUrl(): Promise<string> {
+  if (!coreIsTauri()) {
+    return coreSocketBaseFromRpcUrl(CORE_RPC_URL);
+  }
+
+  try {
+    const rpcUrl = await invoke<string>('core_rpc_url');
+    return coreSocketBaseFromRpcUrl(String(rpcUrl || CORE_RPC_URL));
+  } catch {
+    return coreSocketBaseFromRpcUrl(CORE_RPC_URL);
+  }
 }
 
 interface JwtPayload {
@@ -75,19 +92,6 @@ function getSocketUserId(): string {
   }
 }
 
-/**
- * Check if running in Tauri (where Rust handles Socket.io).
- * When true, this service should NOT create its own socket connection
- * because the Rust-native SocketManager handles the connection and MCP.
- */
-function isRustSocketMode(): boolean {
-  try {
-    return coreIsTauri();
-  } catch {
-    return false;
-  }
-}
-
 class SocketService {
   private socket: Socket | null = null;
   private token: string | null = null;
@@ -95,9 +99,6 @@ class SocketService {
 
   /**
    * Connect to the socket server with authentication.
-   *
-   * NOTE: In Tauri mode, this is a NO-OP. The Rust-native SocketManager
-   * handles the connection. The frontend calls `connectRustSocket()` instead.
    */
   connect(token: string): void {
     void this.connectAsync(token);
@@ -105,14 +106,6 @@ class SocketService {
 
   private async connectAsync(token: string): Promise<void> {
     if (!token) return;
-
-    // In Tauri mode, Rust handles the socket connection.
-    // Don't create a duplicate frontend socket.
-    if (isRustSocketMode()) {
-      socketLog('Skipping frontend socket — Rust SocketManager handles connection');
-      this.token = token;
-      return;
-    }
 
     // Don't connect if already connected with the same token
     if (this.socket?.connected && this.token === token) return;
@@ -133,8 +126,8 @@ class SocketService {
     const uid = getSocketUserId();
     store.dispatch(setStatusForUser({ userId: uid, status: 'connecting' }));
 
-    const backendUrl = await getBackendUrl();
-    socketLog('Connecting', { userId: uid, backendUrl });
+    const backendUrl = await resolveCoreSocketBaseUrl();
+    socketLog('Connecting to core socket', { userId: uid, backendUrl });
 
     // Ensure we're not connecting to the wrong URL
     if (backendUrl.includes('localhost:1420') || backendUrl.includes(':1420')) {
@@ -155,6 +148,13 @@ class SocketService {
     };
 
     this.socket = io(backendUrl, socketOptions);
+    this.socket.onAny((event, ...args) => {
+      const firstArg = args.length > 0 ? args[0] : undefined;
+      socketLog(
+        'Inbound event',
+        createSafeLogData({ event, argsCount: args.length, hasData: args.length > 0 }, firstArg)
+      );
+    });
 
     // Initialize MCP transport for client→server MCP requests
     this.mcpTransport = new SocketIOMCPTransportImpl(this.socket);
@@ -205,80 +205,6 @@ class SocketService {
           },
         })
       );
-    });
-
-    // MCP handlers — only in web mode (Rust handles MCP in Tauri mode)
-    this.socket.on('mcp:listTools', (data: { requestId: string }) => {
-      socketLog('MCP list tools request', { requestId: data.requestId });
-
-      // Aggregate tools from all ready skills
-      const skillsState = store.getState().skills.skills;
-      const allTools: MCPTool[] = [];
-
-      for (const [skillId, skill] of Object.entries(skillsState)) {
-        if (skill.status === 'ready' && skill.tools?.length) {
-          for (const tool of skill.tools) {
-            allTools.push({
-              name: `${skillId}__${tool.name}`,
-              description: tool.description,
-              inputSchema: tool.inputSchema,
-            });
-          }
-        }
-      }
-
-      socketLog('MCP list tools response', {
-        requestId: data.requestId,
-        toolCount: allTools.length,
-      });
-
-      this.socket?.emit('mcp:listToolsResponse', { requestId: data.requestId, tools: allTools });
-    });
-
-    this.socket.on('mcp:toolCall', async (data: { requestId: string; toolCall: MCPToolCall }) => {
-      const { requestId, toolCall } = data;
-      socketLog('MCP tool call', createSafeLogData({ requestId, toolName: toolCall?.name }, data));
-
-      const separatorIdx = toolCall.name.indexOf('__');
-      if (separatorIdx === -1) {
-        socketError('MCP tool call - invalid tool name format', { requestId, name: toolCall.name });
-        this.socket?.emit('mcp:toolCallResponse', {
-          requestId,
-          result: {
-            content: [
-              {
-                type: 'text',
-                text: `Invalid tool name: ${toolCall.name}. Expected format: skillId__toolName`,
-              },
-            ],
-            isError: true,
-          },
-        });
-        return;
-      }
-
-      const skillId = toolCall.name.substring(0, separatorIdx);
-      const toolName = toolCall.name.substring(separatorIdx + 2);
-
-      try {
-        const result = await skillManager.callTool(skillId, toolName, toolCall.arguments);
-
-        socketLog('MCP tool call success', { requestId, skillId, toolName });
-
-        this.socket?.emit('mcp:toolCallResponse', { requestId, result });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        socketError('MCP tool call failed', {
-          requestId,
-          skillId,
-          toolName,
-          error: sanitizeError(err),
-        });
-        this.socket?.emit('mcp:toolCallResponse', {
-          requestId,
-          result: { content: [{ type: 'text', text: msg }], isError: true },
-        });
-      }
     });
 
     this.socket.connect();

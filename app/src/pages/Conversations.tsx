@@ -5,7 +5,6 @@ import { useNavigate } from 'react-router-dom';
 
 import { creditsApi, type TeamUsage } from '../services/api/creditsApi';
 import { inferenceApi, type ModelInfo } from '../services/api/inferenceApi';
-import { getBackendUrl } from '../services/backendUrl';
 import {
   chatCancel,
   chatSend,
@@ -16,7 +15,7 @@ import {
 } from '../services/chatService';
 import { store } from '../store';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
-import type { NotionPageSummary, NotionSummary, NotionUserProfile } from '../store/notionSlice';
+import { selectSocketStatus } from '../store/socketSelectors';
 import {
   addInferenceResponse,
   addMessageLocal,
@@ -27,11 +26,7 @@ import {
   setSelectedThread,
 } from '../store/threadSlice';
 import type { ThreadMessage } from '../types/thread';
-import {
-  openhumanAgentChat,
-  openhumanLocalAiTranscribeBytes,
-  openhumanLocalAiTts,
-} from '../utils/tauriCommands';
+import { openhumanLocalAiTranscribeBytes, openhumanLocalAiTts } from '../utils/tauriCommands';
 
 const DEFAULT_THREAD_ID = 'default-thread';
 const DEFAULT_THREAD_TITLE = 'Conversation';
@@ -44,47 +39,6 @@ interface ToolTimelineEntry {
   name: string;
   round: number;
   status: ToolTimelineEntryStatus;
-}
-
-function buildNotionContext(
-  profile: NotionUserProfile | null,
-  pages: NotionPageSummary[],
-  summaries: NotionSummary[],
-  workspaceName: string | null
-): string | null {
-  if (!profile && pages.length === 0) return null;
-
-  const lines: string[] = ['[NOTION_CONTEXT]'];
-
-  if (workspaceName) lines.push(`Workspace: ${workspaceName}`);
-  if (profile) {
-    const who = [profile.name, profile.email].filter(Boolean).join(' · ');
-    if (who) lines.push(`Connected as: ${who}`);
-  }
-
-  if (pages.length > 0) {
-    lines.push(`\nRecent Pages (${pages.length} total):`);
-    const top = pages.slice(0, 10);
-    for (const p of top) {
-      const urlPart = p.url ? ` — ${p.url}` : '';
-      lines.push(`• ${p.title}${urlPart}`);
-    }
-  }
-
-  if (summaries.length > 0) {
-    lines.push('\nAI Page Summaries:');
-    const top = summaries.slice(0, 5);
-    for (const s of top) {
-      const meta = [s.category, s.sentiment !== 'neutral' ? s.sentiment : null]
-        .filter(Boolean)
-        .join(', ');
-      const topicStr = s.topics.length > 0 ? ` | Topics: ${s.topics.slice(0, 4).join(', ')}` : '';
-      lines.push(`• ${s.summary}${meta ? ` [${meta}]` : ''}${topicStr}`);
-    }
-  }
-
-  lines.push('[/NOTION_CONTEXT]');
-  return lines.join('\n');
 }
 
 function formatRelativeTime(dateStr: string): string {
@@ -114,16 +68,6 @@ const Conversations = () => {
     activeThreadId,
   } = useAppSelector(state => state.thread);
 
-  const notionProfile = useAppSelector(state => state.notion.profile);
-  const notionPages = useAppSelector(state => state.notion.pages);
-  const notionSummaries = useAppSelector(state => state.notion.summaries);
-  const notionWorkspaceName = useAppSelector(
-    state =>
-      ((state.skills.skillStates?.notion as Record<string, unknown> | undefined)?.workspaceName as
-        | string
-        | null) ?? null
-  );
-
   const [inputValue, setInputValue] = useState('');
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<InputMode>('text');
@@ -138,6 +82,7 @@ const Conversations = () => {
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const socketStatus = useAppSelector(selectSocketStatus);
   const [toolTimelineByThread, setToolTimelineByThread] = useState<
     Record<string, ToolTimelineEntry[]>
   >({});
@@ -255,7 +200,7 @@ const Conversations = () => {
   }, [inputMode, isRecording]);
 
   useEffect(() => {
-    if (!rustChat) return;
+    if (!rustChat || socketStatus !== 'connected') return;
 
     let cleanup: (() => void) | null = null;
     let mounted = true;
@@ -373,15 +318,15 @@ const Conversations = () => {
       cleanup?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rustChat]);
+  }, [rustChat, socketStatus]);
 
   const handleSendMessage = async (text?: string) => {
     const normalized = text ?? inputValue;
     const trimmed = normalized.trim();
 
     if (!trimmed || !selectedThreadId || isSending) return;
-    if (!rustChat) {
-      setSendError('Desktop runtime required for chat in this build.');
+    if (socketStatus !== 'connected') {
+      setSendError('Realtime socket is not connected.');
       return;
     }
 
@@ -402,99 +347,22 @@ const Conversations = () => {
 
     dispatch(addMessageLocal({ threadId: sendingThreadId, message: userMessage }));
 
-    const historySnapshot = messages.filter(
-      m => !m.id.startsWith('optimistic-') && m.id !== userMessage.id
-    );
-
     setInputValue('');
     setSendError(null);
     setIsSending(true);
     setToolTimelineByThread(prev => ({ ...prev, [sendingThreadId]: [] }));
     dispatch(setActiveThread(sendingThreadId));
 
-    if (!rustChat) {
-      setSendError('Chat is only available in the Tauri runtime.');
-      setIsSending(false);
-      dispatch(setActiveThread(null));
-      return;
-    }
-
-    // ── Rust path ────────────────────────────────────────────────────────
     try {
-      const chatMessages = historySnapshot.map(m => ({
-        role: m.sender === 'user' ? 'user' : 'assistant',
-        content: m.content,
-      }));
-
-      const notionCtx = buildNotionContext(
-        notionProfile,
-        notionPages,
-        notionSummaries,
-        notionWorkspaceName
-      );
-
-      const authToken = (store.getState() as { auth: { token: string | null } }).auth.token;
-      if (!authToken) {
-        setSendError('Not authenticated');
-        setIsSending(false);
-        dispatch(setActiveThread(null));
-        return;
-      }
-
-      await chatSend({
-        threadId: sendingThreadId,
-        message: trimmed,
-        model: selectedModel,
-        authToken,
-        backendUrl: await getBackendUrl(),
-        messages: chatMessages,
-        notionContext: notionCtx,
-      });
+      await chatSend({ threadId: sendingThreadId, message: trimmed, model: selectedModel });
 
       // setIsSending(false) and setActiveThread(null) happen in the onDone/onError event handlers
     } catch (err) {
-      // invoke() itself failed (the chat loop reports errors via events)
+      // Chat loop errors are emitted via socket events; this catch handles emit-level failures.
       const msg = err instanceof Error ? err.message : String(err);
-      const unavailable =
-        msg.includes('chat_send is not available') || msg.includes('use the web stack or core RPC');
-
-      if (!unavailable) {
-        setSendError(msg);
-        setIsSending(false);
-        dispatch(setActiveThread(null));
-        return;
-      }
-
-      try {
-        const notionCtx = buildNotionContext(
-          notionProfile,
-          notionPages,
-          notionSummaries,
-          notionWorkspaceName
-        );
-        const conversationContext = historySnapshot
-          .slice(-20)
-          .map(m => `${m.sender === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
-          .join('\n');
-        const combinedPrompt = [
-          notionCtx ? notionCtx : '',
-          conversationContext ? `[RECENT_CONTEXT]\n${conversationContext}\n[/RECENT_CONTEXT]` : '',
-          `User message: ${trimmed}`,
-        ]
-          .filter(Boolean)
-          .join('\n\n');
-
-        const response = await openhumanAgentChat(combinedPrompt, selectedModel);
-        const content = response.result?.trim() || 'Something went wrong — please try again.';
-        dispatch(addInferenceResponse({ content, threadId: sendingThreadId }));
-      } catch (fallbackErr) {
-        const fallbackMsg =
-          fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-        setSendError(fallbackMsg);
-      } finally {
-        setIsSending(false);
-        dispatch(setActiveThread(null));
-      }
+      setSendError(msg);
+      setIsSending(false);
+      dispatch(setActiveThread(null));
     }
   };
 
