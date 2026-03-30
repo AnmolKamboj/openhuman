@@ -1,6 +1,7 @@
 import { Navigate } from 'react-router-dom';
 
 import { useAppSelector } from '../store/hooks';
+import RouteLoadingScreen from './RouteLoadingScreen';
 
 /**
  * Default redirect component that routes users based on their auth status.
@@ -9,6 +10,11 @@ import { useAppSelector } from '../store/hooks';
  */
 const DefaultRedirect = () => {
   const token = useAppSelector(state => state.auth.token);
+  const isAuthBootstrapComplete = useAppSelector(state => state.auth.isAuthBootstrapComplete);
+
+  if (!isAuthBootstrapComplete) {
+    return <RouteLoadingScreen />;
+  }
 
   if (token) {
     return <Navigate to="/home" replace />;

@@ -1,6 +1,7 @@
 import { Navigate } from 'react-router-dom';
 
 import { useAppSelector } from '../store/hooks';
+import RouteLoadingScreen from './RouteLoadingScreen';
 
 interface PublicRouteProps {
   children: React.ReactNode;
@@ -13,6 +14,11 @@ interface PublicRouteProps {
  */
 const PublicRoute = ({ children, redirectTo }: PublicRouteProps) => {
   const token = useAppSelector(state => state.auth.token);
+  const isAuthBootstrapComplete = useAppSelector(state => state.auth.isAuthBootstrapComplete);
+
+  if (!isAuthBootstrapComplete) {
+    return <RouteLoadingScreen />;
+  }
 
   // If user is logged in, always go to home.
   // Home itself will redirect to onboarding if needed.

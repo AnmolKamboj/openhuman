@@ -2,7 +2,7 @@
  * Global test setup for Vitest.
  *
  * - Extends expect with @testing-library/jest-dom matchers
- * - Sets up MSW server for API mocking
+ * - Starts local HTTP mock backend for API mocking
  * - Silences console output during tests (unless DEBUG_TESTS=1)
  * - Mocks Tauri-specific modules that aren't available in test env
  * - Resets rate limiter module-level state between tests
@@ -12,10 +12,15 @@ import { cleanup } from '@testing-library/react';
 import type React from 'react';
 import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest';
 
-import { server } from './server';
+// @ts-ignore - test-only JS module outside app/src
+import {
+  clearRequestLog,
+  resetMockBehavior,
+  startMockServer,
+  stopMockServer,
+} from '../../../scripts/mock-api-core.mjs';
 
 // Mock import.meta.env defaults for tests
-vi.stubEnv('VITE_BACKEND_URL', 'http://localhost:5005');
 vi.stubEnv('DEV', true);
 vi.stubEnv('MODE', 'test');
 
@@ -32,21 +37,34 @@ vi.mock('@tauri-apps/plugin-os', () => ({ platform: vi.fn().mockResolvedValue('m
 
 // Mock tauriCommands to prevent Tauri API calls in tests
 vi.mock('../utils/tauriCommands', () => ({
-  isTauri: () => false,
+  isTauri: vi.fn(() => false),
   storeSession: vi.fn().mockResolvedValue(undefined),
+  getSessionToken: vi.fn().mockResolvedValue(null),
   getAuthState: vi.fn().mockResolvedValue({ is_authenticated: false }),
+  logout: vi.fn().mockResolvedValue(undefined),
+  syncMemoryClientToken: vi.fn().mockResolvedValue(undefined),
+  openhumanServiceInstall: vi.fn().mockResolvedValue({ result: { state: 'Running' }, logs: [] }),
+  openhumanServiceStart: vi.fn().mockResolvedValue({ result: { state: 'Running' }, logs: [] }),
+  openhumanServiceStop: vi.fn().mockResolvedValue({ result: { state: 'Stopped' }, logs: [] }),
+  openhumanServiceStatus: vi.fn().mockResolvedValue({ result: { state: 'Running' }, logs: [] }),
+  openhumanServiceUninstall: vi
+    .fn()
+    .mockResolvedValue({ result: { state: 'NotInstalled' }, logs: [] }),
+  openhumanAgentServerStatus: vi.fn().mockResolvedValue({ result: { running: true }, logs: [] }),
   exchangeToken: vi.fn(),
   invoke: vi.fn(),
 }));
 
 // Mock the config module
 vi.mock('../utils/config', () => ({
-  BACKEND_URL: 'http://localhost:5005',
   TELEGRAM_BOT_USERNAME: 'test_bot',
   TELEGRAM_BOT_ID: '12345',
   IS_DEV: true,
   SKILLS_GITHUB_REPO: 'test/skills',
-  DEV_AUTO_LOAD_SKILL: undefined,
+}));
+
+vi.mock('../services/backendUrl', () => ({
+  getBackendUrl: vi.fn().mockResolvedValue('http://localhost:5005'),
 }));
 
 // Mock redux-persist to avoid CJS/ESM issues in vitest
@@ -109,16 +127,21 @@ if (!process.env.DEBUG_TESTS) {
   vi.spyOn(console, 'error').mockImplementation(() => {});
 }
 
-// MSW server lifecycle
-beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
+// Shared mock API server lifecycle for unit tests (default)
+beforeAll(async () => {
+  await startMockServer(5005);
+});
 afterEach(() => {
-  server.resetHandlers();
+  clearRequestLog();
   cleanup();
 });
-afterAll(() => server.close());
+afterAll(async () => {
+  await stopMockServer();
+});
 
 // Reset rate limiter per-request counter before each test.
 beforeEach(async () => {
+  resetMockBehavior();
   try {
     const { resetRequestCallCount } = await import('../lib/mcp/rateLimiter');
     if (typeof resetRequestCallCount === 'function') {

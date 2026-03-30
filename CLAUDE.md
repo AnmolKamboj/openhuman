@@ -11,7 +11,7 @@ This file orients contributors and coding agents. Authoritative narrative archit
 | Path                    | Role                                                                                                                                                                                                      |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **`app/`**              | Yarn workspace **`openhuman-app`**: Vite + React (`app/src/`), Tauri desktop host (`app/src-tauri/`), Vitest tests                                                                                        |
-| **Repo root `src/`**    | Rust library **`openhuman_core`** and **`openhuman`** CLI binary (`src/bin/openhuman.rs`) — `core_server`, `openhuman::*` domains, skills runtime (QuickJS / `rquickjs`), MCP routing in the core process |
+| **Repo root `src/`**    | Rust library **`openhuman_core`** and **`openhuman`** CLI binary entrypoint (`src/main.rs`) — `core_server`, `openhuman::*` domains, skills runtime (QuickJS / `rquickjs`), MCP routing in the core process |
 | **Skills registry**     | **[`tinyhumansai/openhuman-skills`](https://github.com/tinyhumansai/openhuman-skills)** on GitHub — canonical skill packages and TS build; not vendored in this tree (see blurb below).                                                                                                                                                    |
 | **`Cargo.toml`** (root) | Core crate; `cargo build --bin openhuman` produces the sidecar the UI stages via `app`’s `core:stage`                                                                                                     |
 | **`docs/`**             | Architecture and module guides (numbered pages under `docs/src/`, `docs/src-tauri/`)                                                                                                                      |
@@ -72,6 +72,122 @@ cargo check --manifest-path app/src-tauri/Cargo.toml
 **Tests**: Vitest in `app/` (`yarn test`, `yarn test:coverage`). Rust tests via `cargo test` at repo root as wired in `app/package.json`.
 
 **Quality**: ESLint + Prettier + Husky in the `app` workspace.
+
+---
+
+## Testing Guide (Unit + E2E)
+
+### Unit tests (Vitest)
+
+- **Where tests live**: co-locate as `*.test.ts` / `*.test.tsx` under `app/src/**`.
+- **Runner/config**: Vitest with `app/test/vitest.config.ts` and shared setup in `app/src/test/setup.ts`.
+- **Run**:
+
+```bash
+yarn test:unit
+yarn test:coverage
+```
+
+- **Authoring rules**:
+  - Prefer testing behavior over implementation details.
+  - Use existing helpers from `app/src/test/` (`test-utils.tsx`, shared mock backend) before adding new harness code.
+  - Keep tests deterministic: avoid real network calls, time-sensitive flakes, or hidden global state.
+
+### Shared mock backend (app + Rust tests)
+
+- **Core implementation**: `scripts/mock-api-core.mjs`
+- **Standalone server entrypoint**: `scripts/mock-api-server.mjs`
+- **E2E wrapper**: `app/test/e2e/mock-server.ts`
+- **Vitest unit setup**: `app/src/test/setup.ts` starts the shared mock server by default on `http://127.0.0.1:5005`.
+
+Key admin endpoints:
+
+- `GET /__admin/health`
+- `POST /__admin/reset`
+- `POST /__admin/behavior`
+- `GET /__admin/requests`
+
+Run manually:
+
+```bash
+yarn mock:api
+curl -s http://127.0.0.1:18473/__admin/health
+```
+
+### E2E tests (WDIO + Appium mac2)
+
+- **Where specs live**: `app/test/e2e/specs/*.spec.ts`
+- **Shared harness**:
+  - Helpers: `app/test/e2e/helpers/*`
+  - Mock backend: `app/test/e2e/mock-server.ts`
+  - WDIO config: `app/test/wdio.conf.ts`
+
+- **Build + run**:
+
+```bash
+# Build desktop app bundle + stage core sidecar
+yarn test:e2e:build
+
+# Run one spec
+bash app/scripts/e2e-run-spec.sh test/e2e/specs/smoke.spec.ts smoke
+
+# Run all flow specs
+yarn test:e2e:all:flows
+```
+
+- **Authoring rules**:
+  - Ensure each spec is runnable in isolation.
+  - Use helper waits (`waitForAppReady`, `waitForWebView`, etc.) instead of ad hoc long sleeps.
+  - Assert both UI outcomes and backend/mock effects when relevant.
+  - Add failure diagnostics (request logs, accessibility tree dump) for faster debugging by agents.
+
+### Deterministic core-sidecar reset
+
+By default, `app/scripts/e2e-run-spec.sh` creates and cleans a temp `OPENHUMAN_WORKSPACE`
+automatically when the variable is not provided.
+
+If you need a fixed workspace for debugging, provide one explicitly:
+
+```bash
+export OPENHUMAN_WORKSPACE="$(mktemp -d)"
+yarn test:e2e:build
+bash app/scripts/e2e-run-spec.sh test/e2e/specs/smoke.spec.ts smoke
+rm -rf "$OPENHUMAN_WORKSPACE"
+```
+
+- `OPENHUMAN_WORKSPACE` redirects core config + workspace storage away from `~/.openhuman`.
+- Default reset strategy:
+  - Rebuild/stage sidecar once per E2E run (`yarn test:e2e:build`).
+  - Isolate state per test case with a fresh temp workspace (default behavior in `e2e-run-spec.sh`).
+
+### Rust tests with mock backend
+
+Use the shared mock backend runner so Rust unit/integration tests get deterministic API behavior:
+
+```bash
+yarn test:rust
+# or targeted
+bash scripts/test-rust-with-mock.sh --test json_rpc_e2e
+```
+
+Example per-test-case pattern inside a harness script:
+
+```bash
+run_case() {
+  export OPENHUMAN_WORKSPACE="$(mktemp -d)"
+  bash app/scripts/e2e-run-spec.sh "$1" "$2"
+  rm -rf "$OPENHUMAN_WORKSPACE"
+}
+```
+
+### Test authoring checklist
+
+- Add/update unit tests for logic changes before stacking additional features.
+- Add/update E2E coverage for user-visible flows and cross-process integration behavior.
+- Keep new tests independent, deterministic, and debuggable from logs alone.
+- When touching core/sidecar behavior, validate both:
+  - `yarn test:unit`
+  - targeted E2E spec(s) via `app/scripts/e2e-run-spec.sh`
 
 ---
 
@@ -166,8 +282,26 @@ Skills runtime uses **QuickJS** (`rquickjs`) in **`src/openhuman/skills/`** (e.g
 
 ---
 
+## Feature design workflow (new capabilities)
+
+Follow this order so behavior is **specified**, **proven in Rust**, **proven over RPC**, then **surfaced in the UI** with matching tests.
+
+1. **Specify against the current codebase** — Ground the design in **existing** domains, controller/registry patterns, and JSON-RPC naming (`openhuman.<namespace>_<function>`). Reuse or extend documented flows in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and sibling guides; avoid parallel architectures.
+2. **Implement in Rust** — Add domain logic under `src/openhuman/<domain>/`, wire **schemas + registered handlers** into the shared registry, and land **unit tests** in the crate (`cargo test -p openhuman`, focused modules) until the feature is correct in isolation.
+3. **JSON-RPC E2E** — Add or extend **integration-style tests** that call the real HTTP JSON-RPC surface (e.g. [`tests/json_rpc_e2e.rs`](tests/json_rpc_e2e.rs), mock backend / [`scripts/test-rust-with-mock.sh`](scripts/test-rust-with-mock.sh) as appropriate) so methods, params, and outcomes match what the UI will call.
+4. **UI in the Tauri app** — Build **React** screens, state, and **`core_rpc_relay` / `coreRpcClient`** usage in `app/`; keep **business rules** in the core, not duplicated in the shell.
+5. **App unit tests** — Cover components, hooks, and clients with **Vitest** (`yarn test` / `yarn test:unit` in `app/`).
+6. **App E2E** — Add **desktop E2E** specs where the feature is user-visible (`yarn test:e2e*`, isolated workspace — see [Testing Guide (Unit + E2E)](#testing-guide-unit--e2e)) so the full stack (UI → Tauri → sidecar) behaves as intended.
+
+**Debug logging (throughout)** — Add **lots of development-oriented logging** as you build, not as an afterthought. In **Rust**, use `log` / `tracing` at **`debug`** or **`trace`** on RPC entry and exit, error paths, state transitions, and any branch that is hard to infer from tests alone. In **`app/`**, follow existing patterns (e.g. the **`debug`** npm package with a **namespace** per area) plus **dev-only** detail where useful. Prefer **grep-friendly prefixes** (`[feature]`, domain name, or JSON-RPC method) so terminal output from **sidecar**, **Tauri**, and **WebView** can be correlated during `yarn dev` / `tauri dev`. **Never** log secrets, raw JWTs, API keys, or full PII—redact or omit.
+
+**Planning rule:** When scoping a feature, define the **E2E scenarios (core RPC + app)** up front. Those scenarios should **cover the full intended scope**—happy paths, failure modes, auth or policy gates, and regressions you care about. If a scenario is not testable end-to-end, the spec is incomplete or the cut is too large; split or add harness support first.
+
+---
+
 ## Key patterns (concise)
 
+- **Debug logging**: Ship **heavy `debug`/`trace` (Rust)** and **namespaced `debug` / dev logs (`app/`)** on new flows so sidecar + WebView output is easy to grep; see [Feature design workflow](#feature-design-workflow-new-capabilities). Never log secrets or raw tokens.
 - **`src/openhuman/`**: New features go in a **folder/module**, not new root-level `src/openhuman/*.rs` files (see Rust core section).
 - **File size**: Prefer ≤ ~500 lines per source file; split modules when growing.
 - **Pre-merge checks** (when touching code): Prettier, ESLint, `tsc --noEmit` in `app/`; `cargo fmt` + `cargo check` for changed Rust (`Cargo.toml` at root and/or `app/src-tauri/Cargo.toml` as appropriate).

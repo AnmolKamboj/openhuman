@@ -2,6 +2,7 @@ import { Navigate } from 'react-router-dom';
 
 import { selectIsOnboarded } from '../store/authSelectors';
 import { useAppSelector } from '../store/hooks';
+import RouteLoadingScreen from './RouteLoadingScreen';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -20,7 +21,12 @@ const ProtectedRoute = ({
   redirectTo,
 }: ProtectedRouteProps) => {
   const token = useAppSelector(state => state.auth.token);
+  const isAuthBootstrapComplete = useAppSelector(state => state.auth.isAuthBootstrapComplete);
   const isOnboarded = useAppSelector(selectIsOnboarded);
+
+  if (!isAuthBootstrapComplete) {
+    return <RouteLoadingScreen />;
+  }
 
   // If auth is required but user is not logged in
   if (requireAuth && !token) {

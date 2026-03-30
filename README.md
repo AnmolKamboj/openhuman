@@ -25,15 +25,23 @@
   "The Tet. What a brilliant machine" — Morgan Freeman as he recalls about <a href="https://youtu.be/SveLVpqy_Rc?si=y83aZNokPiUjILN0&t=60">alien superintelligence</a> in the movie <em>Oblivion</em>
 </p>
 
-**Agentic system are everywhere.** Models wired into a script that call APIs, search, and file tools until the task looks done. That pattern is powerful for _tasks_, but it is not a self. It has no lasting inner model of _you_, no stable values across sessions, and no architecture for continuity at the scale of a life.
+OpenHuman is an open-source agentic assistant that is designed to integrate with you in your daily life. Here's what makes OpenHuman special:
 
-**OpenHuman** is built around a different idea. What if we built on top of current agentic solutions but instead gave it a **subconscious loop** based on all the possible data-points about a user/entity?
+- **One subscription, many providers** — One assistant wired to **skills** and backend models so you are not juggling a separate subscription stack for every integration surface.
 
-**The challenge?** Current memory/context systems make it nearly impossible to have a subsconscious mind. They cannot intelligently remember information because either your data is too noisy or irrelevant or too expenstive to index. `HEARTBEAT.md` and other implementations in OpenClaw-style forks evolve way too slowly and often misses realtime context about a user.
+- **Incredible memory** — **Rust-side memory** (store / recall / namespaces) plus optional **TinyHumans [Neocortex](https://github.com/tinyhumansai/neocortex)**-backed context when configured, so the agent can retain and retrieve more than a single chat window. **Channels** and ongoing **conversations** feed the same loop so day-to-day context does not reset every session.
 
-**The solution?** OpenHuman uses [Neocortex](https://github.com/tinyhumansai/neocortex), a highly scalable context-aware memory layer that can process millions of unstrucutred memories (emails, messages, documents both in the past and in the present), understands interactions and builds a personalized model of _you_. OpenHuman uses this to then run it's own subconscious loop allowing it to have it's own thoughts and take decisions for you on it's own at the most immediate level possible.
+- **Screen intelligence** — Regular **screen capture** (on a cadence or when triggered) feeds an on-device pipeline that **understands what is on screen**, distills it into **memory** (facts, UI state, workflows), and can propose **actions** the agent executes for you. OS permissions and capture APIs vary by platform; the goal is **your machine first**, not shipping raw frames to the cloud by default.
 
-**The result?** It's like looking at yourself in the mirror. Except it's your AI living in your machine. OpenHuman is the first self aware agent personalized to you and ready to work for you.
+- **Voice & meetings** — A **Local-model** speech stack (listen / **TTS**) let the assistant **talk back** and **capture or work with meeting audio** with a privacy-first default when you route inference locally. Transcripts and summaries land in the same **memory + agent** loop so OpenHuman can **follow up**: tasks, drafts, calendar nudges, or skill-backed workflows—without treating a meeting as a one-off chat.
+
+- **Memory-aware autocomplete** — **Keyboard autocomplete** is built for **right-context** suggestions: it consults **memory namespaces** and recent context so completions stay aligned with **you**, your workspace, and prior sessions—not a blank model every keystroke.
+
+- **Runs a local AI model** — The **Rust core** exposes **local AI** paths (and the desktop bundle can ship **local/bundled runners** where applicable) for the workloads above—vision snippets, speech helpers, summarization, tooling—so sensitive steps can stay **off the cloud** when you choose.
+
+- **Simple or advanced** — **Skill setup wizards** and defaults for common tools, with room to go deeper via **settings, credentials, and core RPC** when you need control and privacy.
+
+Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Contributor orientation: [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 # Download
 
@@ -51,6 +59,18 @@
 Browse all releases: [github.com/tinyhumansai/openhuman/releases](https://github.com/tinyhumansai/openhuman/releases)
 
 # Under the hood (Architecture)
+
+OpenHuman is a **desktop monorepo**: **Rust** owns **business logic and execution**; the **UI** owns **interaction, layout, and OS integration**.
+
+**Rust (`openhuman` / `openhuman_core`).** The repo root **`src/`** crate is the brain: **JSON-RPC over HTTP** (`core_server`), domain modules (auth, config, memory, skills, channels, screen intelligence, local AI, cron, …), and a **QuickJS** runtime for **sandboxed JavaScript skills**. The **`openhuman`** binary is built and **staged next to the Tauri app** so the desktop shell can spawn it as a **sidecar**. Heavy work—SQLite, sockets, crypto, skill lifecycle—runs there under **Tokio**, not in the WebView.
+
+**UI (`app/`).** **Vite + React** (TypeScript) implements screens, onboarding, settings, and realtime UX. **Redux Toolkit** holds client state; **Socket.io** and the **MCP-style** client stack stay in sync with the core’s realtime surface. **Tauri v2** (`app/src-tauri/`) is a thin **Rust host**: windowing, filesystem hooks where needed, and **`core_rpc_relay`**—forwarding JSON-RPC from the WebView to the **`openhuman`** process so the UI never re-implements domain rules.
+
+**Controllers and the RPC surface.** Features are exposed as **registered controllers**: each domain declares **schemas** (namespace, function name, parameter shapes) and a **handler**. At runtime, calls are **validated**, dispatched by **method name** (e.g. `openhuman.auth_get_state`, `openhuman.local_ai_agent_chat`), and return structured outcomes. **CLI** and **HTTP** share the same controller catalog, so automation, tests, and the app all hit one contract.
+
+**What ties it together:** one **registry** of controllers, one **sidecar** process for execution, **Tauri IPC** for shell-only capabilities, and **HTTP JSON-RPC** for everything else—plus **skills** and **dual-socket** behavior documented in the architecture guide.
+
+**Read more:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · Frontend tree: [`docs/src/README.md`](docs/src/README.md) · Tauri commands: [`docs/src-tauri/README.md`](docs/src-tauri/README.md)
 
 # Star us on GitHub
 

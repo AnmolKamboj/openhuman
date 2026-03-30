@@ -62,20 +62,8 @@ pub(crate) fn resolve_daemon_executable() -> Result<PathBuf> {
     Ok(exe)
 }
 
-pub(crate) fn daemon_program_args(exe: &std::path::Path) -> Vec<String> {
-    let raw_file_name = exe.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-    let file_name = raw_file_name.to_ascii_lowercase();
-    let standalone_core_binary = !is_current_executable(exe)
-        && (file_name.contains("openhuman")
-            || file_name.starts_with("openhuman-")
-            || raw_file_name == "openhuman"
-            || raw_file_name == "openhuman.exe");
-
-    if standalone_core_binary {
-        vec!["serve".to_string()]
-    } else {
-        vec!["core".to_string(), "serve".to_string()]
-    }
+pub(crate) fn daemon_program_args(_exe: &std::path::Path) -> Vec<String> {
+    vec!["run".to_string()]
 }
 
 fn is_current_executable(candidate: &std::path::Path) -> bool {

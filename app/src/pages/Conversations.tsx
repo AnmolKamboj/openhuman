@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { creditsApi, type TeamUsage } from '../services/api/creditsApi';
 import { inferenceApi, type ModelInfo } from '../services/api/inferenceApi';
+import { getBackendUrl } from '../services/backendUrl';
 import {
   chatCancel,
   chatSend,
@@ -26,7 +27,6 @@ import {
   setSelectedThread,
 } from '../store/threadSlice';
 import type { ThreadMessage } from '../types/thread';
-import { BACKEND_URL } from '../utils/config';
 import {
   openhumanAgentChat,
   openhumanLocalAiTranscribeBytes,
@@ -446,7 +446,7 @@ const Conversations = () => {
         message: trimmed,
         model: selectedModel,
         authToken,
-        backendUrl: BACKEND_URL,
+        backendUrl: await getBackendUrl(),
         messages: chatMessages,
         notionContext: notionCtx,
       });

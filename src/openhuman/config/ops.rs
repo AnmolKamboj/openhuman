@@ -320,6 +320,12 @@ pub async fn load_and_apply_browser_settings(
     apply_browser_settings(&mut config, update).await
 }
 
+pub async fn load_and_resolve_api_url() -> Result<RpcOutcome<serde_json::Value>, String> {
+    let config = load_config_with_timeout().await?;
+    let resolved = crate::api::config::effective_api_url(&config.api_url);
+    Ok(RpcOutcome::new(json!({ "api_url": resolved }), Vec::new()))
+}
+
 /// Resolves workspace (load config or fallback), validates flag name, returns whether the flag file exists.
 pub async fn workspace_onboarding_flag_resolve(
     flag_name: Option<String>,
@@ -383,8 +389,10 @@ pub fn workspace_onboarding_flag_exists(
 }
 
 pub fn agent_server_status() -> RpcOutcome<serde_json::Value> {
+    let running = crate::openhuman::service::mock::mock_agent_running().unwrap_or(true);
+    log::info!("[config] agent_server_status requested: running={running}");
     let payload = json!({
-        "running": true,
+        "running": running,
         "url": core_rpc_url_from_env(),
     });
     RpcOutcome::single_log(payload, "agent server status checked")
