@@ -210,6 +210,49 @@ export default [
     },
   },
 
+  // Unit test files in test/ — TypeScript + JSX, parsed with main tsconfig
+  {
+    files: ['test/*.test.ts', 'test/*.test.tsx'],
+    languageOptions: {
+      parser: tsparser,
+      parserOptions: {
+        ecmaVersion: 'latest',
+        sourceType: 'module',
+        ecmaFeatures: { jsx: true },
+        project: './test/tsconfig.unit.json',
+        tsconfigRootDir: __dirname,
+      },
+      globals: {
+        describe: 'readonly',
+        it: 'readonly',
+        test: 'readonly',
+        expect: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly',
+        vi: 'readonly',
+      },
+    },
+    plugins: {
+      '@typescript-eslint': tseslint,
+      react: reactPlugin,
+      'react-hooks': reactHooksPlugin,
+    },
+    settings: { react: { version: 'detect' } },
+    rules: {
+      'react/react-in-jsx-scope': 'off',
+      'react/prop-types': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
+      'no-undef': 'off',
+    },
+  },
+
   // E2E test files (Appium/WebDriverIO) — use tsconfig.e2e.json for parsing
   {
     files: ['test/e2e/**/*.ts', 'test/wdio.conf.ts'],
