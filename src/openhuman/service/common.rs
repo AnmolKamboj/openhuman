@@ -49,9 +49,9 @@ pub(crate) fn resolve_daemon_executable() -> Result<PathBuf> {
 
             #[cfg(windows)]
             let matches =
-                name.starts_with("openhuman-") || name.eq_ignore_ascii_case("openhuman.exe");
+                name.starts_with("openhuman-core-") || name.eq_ignore_ascii_case("openhuman-core.exe");
             #[cfg(not(windows))]
-            let matches = name.starts_with("openhuman-") || name == "openhuman";
+            let matches = name.starts_with("openhuman-core-") || name == "openhuman-core";
 
             if matches {
                 return Ok(path);

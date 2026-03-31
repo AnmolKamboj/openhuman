@@ -351,7 +351,7 @@ jobs:
             exit 1
           fi
 
-          SIDE_CAR_BASE="$(node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('app/src-tauri/tauri.conf.json','utf8'));const b=(c.bundle&&Array.isArray(c.bundle.externalBin)&&c.bundle.externalBin[0])||'binaries/openhuman';process.stdout.write(String(b).split('/').pop());")"
+          SIDE_CAR_BASE="$(node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('app/src-tauri/tauri.conf.json','utf8'));const b=(c.bundle&&Array.isArray(c.bundle.externalBin)&&c.bundle.externalBin[0])||'binaries/openhuman-core';process.stdout.write(String(b).split('/').pop());")"
           CORE_BIN_NAME="${SIDE_CAR_BASE}"
 
           echo "core_dir=$CORE_DIR" >> "$GITHUB_OUTPUT"
@@ -522,12 +522,21 @@ jobs:
           rm -f "$CERT_FILE"
           echo "Signing identity imported into $KEYCHAIN"
 
-          echo "=== Re-signing binaries inside the .app with hardened runtime ==="
+          echo "=== Fixing executable name and signing ==="
 
-          # The .app contains only the main Tauri binary (openhuman) — no
-          # separate sidecar. Just sign the whole bundle with hardened runtime.
+          # Tauri/Cargo may produce the binary as lowercase "openhuman" but
+          # Info.plist sets CFBundleExecutable to "OpenHuman". codesign
+          # verification fails when these don't match. Rename to match plist.
+          EXPECTED_EXE="$(defaults read "$APP_PATH/Contents/Info.plist" CFBundleExecutable 2>/dev/null || echo "OpenHuman")"
+          ACTUAL_EXE="$(ls "$APP_PATH/Contents/MacOS/" | head -1)"
+
           echo "Bundle contents:"
           ls -la "$APP_PATH/Contents/MacOS/"
+
+          if [ "$ACTUAL_EXE" != "$EXPECTED_EXE" ]; then
+            echo "Fixing executable name: $ACTUAL_EXE -> $EXPECTED_EXE"
+            mv "$APP_PATH/Contents/MacOS/$ACTUAL_EXE" "$APP_PATH/Contents/MacOS/$EXPECTED_EXE"
+          fi
 
           echo "Signing .app bundle with hardened runtime..."
           codesign --force --options runtime \

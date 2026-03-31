@@ -155,16 +155,25 @@ fi
 echo
 echo "App bundle: $APP_PATH"
 
-# ── Sign the .app bundle with hardened runtime ───────────────────────
-# The .app contains only the main Tauri binary (openhuman) — no separate
-# sidecar binary. We just need to sign the whole bundle with hardened
-# runtime + entitlements for notarization.
+# ── Fix CFBundleExecutable case mismatch ──────────────────────────────
+# Tauri/Cargo produces the binary as lowercase "openhuman" but Info.plist
+# sets CFBundleExecutable to "OpenHuman". codesign verification fails
+# when these don't match exactly. Rename to match the plist.
 ENTITLEMENTS="app/src-tauri/entitlements.sidecar.plist"
+EXPECTED_EXE="$(defaults read "$APP_PATH/Contents/Info.plist" CFBundleExecutable 2>/dev/null || echo "OpenHuman")"
+ACTUAL_EXE="$(ls "$APP_PATH/Contents/MacOS/" | head -1)"
 
 echo
 echo "Bundle contents:"
 ls -la "$APP_PATH/Contents/MacOS/"
 
+if [[ "$ACTUAL_EXE" != "$EXPECTED_EXE" ]]; then
+  echo
+  echo "Fixing executable name: $ACTUAL_EXE -> $EXPECTED_EXE"
+  mv "$APP_PATH/Contents/MacOS/$ACTUAL_EXE" "$APP_PATH/Contents/MacOS/$EXPECTED_EXE"
+fi
+
+# ── Sign the .app bundle with hardened runtime ───────────────────────
 echo
 echo "Signing .app bundle with hardened runtime..."
 codesign --force --options runtime \

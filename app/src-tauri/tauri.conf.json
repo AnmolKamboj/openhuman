@@ -48,7 +48,7 @@
       "../../src/openhuman/agent/prompts"
     ],
     "externalBin": [
-      "binaries/openhuman"
+      "binaries/openhuman-core"
     ],
     "createUpdaterArtifacts": false,
     "macOS": {

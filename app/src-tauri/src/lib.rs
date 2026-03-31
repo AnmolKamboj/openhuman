@@ -98,7 +98,7 @@ pub fn run() {
 
 pub fn run_core_from_args(args: &[String]) -> Result<(), String> {
     let core_bin = crate::core_process::default_core_bin()
-        .ok_or_else(|| "openhuman core binary not found".to_string())?;
+        .ok_or_else(|| "openhuman-core binary not found".to_string())?;
     let status = std::process::Command::new(core_bin)
         .args(args)
         .status()

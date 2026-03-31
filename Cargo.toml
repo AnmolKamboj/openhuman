@@ -3,7 +3,11 @@ name = "openhuman"
 version = "0.49.17"
 edition = "2021"
 description = "OpenHuman core business logic and RPC server"
-autobins = true
+autobins = false
+
+[[bin]]
+name = "openhuman-core"
+path = "src/main.rs"
 
 [lib]
 name = "openhuman_core"
