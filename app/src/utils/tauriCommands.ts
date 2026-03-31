@@ -1294,6 +1294,60 @@ export async function openhumanLocalAiDownloadAsset(
   });
 }
 
+// --- Device profile & model tier presets ---
+
+export interface DeviceProfileResult {
+  total_ram_bytes: number;
+  cpu_count: number;
+  cpu_brand: string;
+  os_name: string;
+  os_version: string;
+  has_gpu: boolean;
+  gpu_description: string | null;
+}
+
+export interface ModelPresetResult {
+  tier: string;
+  label: string;
+  description: string;
+  chat_model_id: string;
+  vision_model_id: string;
+  embedding_model_id: string;
+  quantization: string;
+  min_ram_gb: number;
+  approx_download_gb: number;
+}
+
+export interface PresetsResponse {
+  presets: ModelPresetResult[];
+  recommended_tier: string;
+  current_tier: string;
+  device: DeviceProfileResult;
+}
+
+export interface ApplyPresetResult {
+  applied_tier: string;
+  chat_model_id: string;
+  vision_model_id: string;
+  embedding_model_id: string;
+  quantization: string;
+}
+
+export async function openhumanLocalAiDeviceProfile(): Promise<DeviceProfileResult> {
+  return await callCoreRpc<DeviceProfileResult>({ method: 'openhuman.local_ai_device_profile' });
+}
+
+export async function openhumanLocalAiPresets(): Promise<PresetsResponse> {
+  return await callCoreRpc<PresetsResponse>({ method: 'openhuman.local_ai_presets' });
+}
+
+export async function openhumanLocalAiApplyPreset(tier: string): Promise<ApplyPresetResult> {
+  return await callCoreRpc<ApplyPresetResult>({
+    method: 'openhuman.local_ai_apply_preset',
+    params: { tier },
+  });
+}
+
 export async function aiGetConfig(): Promise<AIPreview> {
   return {
     soul: {

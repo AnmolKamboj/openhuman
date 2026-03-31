@@ -53,7 +53,10 @@ export default function SkillSetupWizard({
       isConnected
     ) {
       setSetupComplete(skillId, true).catch(() => {});
-      setState({ phase: "complete", message: "Successfully connected!" });
+      // Schedule state update to avoid synchronous setState inside an effect
+      setTimeout(() => {
+        setState({ phase: "complete", message: "Successfully connected!" });
+      }, 0);
     }
   }, [isConnected, state.phase, skillId]);
 

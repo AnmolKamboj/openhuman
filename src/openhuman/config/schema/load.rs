@@ -570,6 +570,28 @@ impl Config {
             self.proxy.enabled = false;
         }
 
+        if let Ok(tier_str) = std::env::var("OPENHUMAN_LOCAL_AI_TIER") {
+            let tier_str = tier_str.trim().to_ascii_lowercase();
+            if !tier_str.is_empty() {
+                if let Some(tier) =
+                    crate::openhuman::local_ai::presets::ModelTier::from_str_opt(&tier_str)
+                {
+                    if tier != crate::openhuman::local_ai::presets::ModelTier::Custom {
+                        crate::openhuman::local_ai::presets::apply_preset_to_config(
+                            &mut self.local_ai,
+                            tier,
+                        );
+                        tracing::debug!(tier = %tier_str, "applied local AI tier from OPENHUMAN_LOCAL_AI_TIER");
+                    }
+                } else {
+                    tracing::warn!(
+                        tier = %tier_str,
+                        "ignoring invalid OPENHUMAN_LOCAL_AI_TIER (valid: low, medium, high)"
+                    );
+                }
+            }
+        }
+
         if self.proxy.enabled && self.proxy.scope == ProxyScope::Environment {
             self.proxy.apply_to_process_env();
         }
