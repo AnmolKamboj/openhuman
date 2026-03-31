@@ -5,9 +5,8 @@ import MetamaskIcon from '../../../assets/icons/metamask.svg';
 import NotionIcon from '../../../assets/icons/notion.svg';
 import TelegramIcon from '../../../assets/icons/telegram.svg';
 import SkillSetupModal from '../../../components/skills/SkillSetupModal';
-import { deriveConnectionStatus } from '../../../lib/skills/hooks';
+import { useAllSkillSnapshots } from '../../../lib/skills/hooks';
 import type { SkillConnectionStatus } from '../../../lib/skills/types';
-import { useAppSelector } from '../../../store/hooks';
 
 interface SkillsStepProps {
   onComplete: (connectedSources: string[]) => void | Promise<void>;
@@ -81,27 +80,25 @@ const SkillsStep = ({ onComplete }: SkillsStepProps) => {
   const [activeSkillId, setActiveSkillId] = useState<string | null>(null);
   const [activeSkillName, setActiveSkillName] = useState('');
   const [activeSkillDescription, setActiveSkillDescription] = useState('');
-  const skills = useAppSelector(state => state.skills.skills);
-  const skillStates = useAppSelector(state => state.skills.skillStates);
+  const snapshots = useAllSkillSnapshots();
 
   const sources = useMemo(() => {
     return SOURCE_OPTIONS.map(option => {
-      const skill = skills[option.skillId];
-      const connectionStatus: SkillConnectionStatus = skill
-        ? deriveConnectionStatus(skill.status, skill.setupComplete, skillStates[option.skillId])
+      const snap = snapshots.find(s => s.skill_id === option.skillId);
+      const connectionStatus: SkillConnectionStatus = snap
+        ? (snap.connection_status as SkillConnectionStatus) || 'offline'
         : 'offline';
-      return { ...option, skill, connectionStatus };
+      return { ...option, snap, connectionStatus };
     });
-  }, [skillStates, skills]);
+  }, [snapshots]);
 
   const connectedSources = sources
     .filter(source => source.connectionStatus === 'connected')
     .map(source => source.id);
 
   const handleConnect = (source: (typeof sources)[number]) => {
-    if (!source.skill) return;
     setActiveSkillId(source.skillId);
-    setActiveSkillName(source.skill.manifest.name || source.name);
+    setActiveSkillName(source.snap?.name || source.name);
     setActiveSkillDescription(source.description);
     setSetupModalOpen(true);
   };
@@ -136,9 +133,9 @@ const SkillsStep = ({ onComplete }: SkillsStepProps) => {
               key={source.id}
               type="button"
               onClick={() => handleConnect(source)}
-              disabled={!source.skill}
+              disabled={!source.snap}
               className={`w-full flex items-start space-x-3 p-3 bg-black/50 border border-stone-700 rounded-xl text-left transition-all ${
-                source.skill
+                source.snap
                   ? 'hover:border-stone-600 hover:shadow-medium'
                   : 'opacity-60 cursor-not-allowed'
               }`}>

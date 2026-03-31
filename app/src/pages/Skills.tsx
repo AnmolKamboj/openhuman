@@ -7,12 +7,12 @@ import {
   type SkillListEntry,
   STATUS_DISPLAY,
 } from '../components/skills/shared';
+import SkillDebugModal from '../components/skills/SkillDebugModal';
 import SkillSetupModal from '../components/skills/SkillSetupModal';
-import { useAvailableSkills, useSkillConnectionStatus } from '../lib/skills/hooks';
+import { useAvailableSkills, useSkillConnectionStatus, useSkillState } from '../lib/skills/hooks';
 import { skillManager } from '../lib/skills/manager';
 import { installSkill } from '../lib/skills/skillsApi';
 import type { SkillConnectionStatus, SkillHostConnectionState } from '../lib/skills/types';
-import { useAppSelector } from '../store/hooks';
 import { IS_DEV } from '../utils/config';
 import { deriveSkillSyncSummaryText, deriveSkillSyncUiState } from './skillsSyncUi';
 
@@ -40,11 +40,10 @@ interface SkillCardProps {
 function SkillCard({ skill, onSetup }: SkillCardProps) {
   const connectionStatus = useSkillConnectionStatus(skill.id);
   const statusDisplay = STATUS_DISPLAY[connectionStatus] || STATUS_DISPLAY.offline;
-  const skillState = useAppSelector(state => state.skills.skillStates[skill.id]) as
-    | (SkillHostConnectionState & Record<string, unknown>)
-    | undefined;
-  const syncStats = useAppSelector(state => state.skills.syncStatsBySkill[skill.id]);
+  const skillState = useSkillState<SkillHostConnectionState & Record<string, unknown>>(skill.id);
+  const syncStats = undefined; // TODO: sync stats will come from RPC in future
   const [manualSyncing, setManualSyncing] = useState(false);
+  const [debugOpen, setDebugOpen] = useState(false);
   const syncUi = useMemo(
     () => deriveSkillSyncUiState(skill.id, skillState),
     [skill.id, skillState]
@@ -156,6 +155,23 @@ function SkillCard({ skill, onSetup }: SkillCardProps) {
                 />
               </svg>
             </button>
+            {/* Debug */}
+            <button
+              onClick={e => {
+                e.stopPropagation();
+                setDebugOpen(true);
+              }}
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-stone-400 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+              title="Debug">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </button>
           </>
         )}
         <SkillActionButton
@@ -164,6 +180,14 @@ function SkillCard({ skill, onSetup }: SkillCardProps) {
           onOpenModal={onSetup}
         />
       </div>
+
+      {debugOpen && (
+        <SkillDebugModal
+          skillId={skill.id}
+          skillName={skill.name}
+          onClose={() => setDebugOpen(false)}
+        />
+      )}
     </div>
   );
 }
