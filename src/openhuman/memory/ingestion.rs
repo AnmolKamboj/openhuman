@@ -1571,12 +1571,19 @@ mod tests {
     use serde_json::json;
     use tempfile::TempDir;
 
-    use serial_test::serial;
-
     use crate::openhuman::memory::{
         embeddings::NoopEmbedding, MemoryIngestionConfig, MemoryIngestionRequest,
         NamespaceDocumentInput, UnifiedMemory,
     };
+
+    /// Config that skips relex model loading (avoids ORT init which panics on
+    /// CI runners that lack libonnxruntime).  Heuristic extraction still runs.
+    fn ci_safe_config() -> MemoryIngestionConfig {
+        MemoryIngestionConfig {
+            model_name: "__test_no_model__".to_string(),
+            ..MemoryIngestionConfig::default()
+        }
+    }
 
     fn fixture(path: &str) -> String {
         let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -1590,7 +1597,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[serial]
     async fn gmail_fixture_ingestion_recovers_required_signals() {
         let tmp = TempDir::new().unwrap();
         let memory = UnifiedMemory::new(tmp.path(), Arc::new(NoopEmbedding), None).unwrap();
@@ -1609,7 +1615,7 @@ mod tests {
                     session_id: None,
                     document_id: None,
                 },
-                config: MemoryIngestionConfig::default(),
+                config: ci_safe_config(),
             })
             .await
             .unwrap();
@@ -1685,7 +1691,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[serial]
     async fn notion_fixture_ingestion_recovers_required_signals() {
         let tmp = TempDir::new().unwrap();
         let memory = UnifiedMemory::new(tmp.path(), Arc::new(NoopEmbedding), None).unwrap();
@@ -1704,7 +1709,7 @@ mod tests {
                     session_id: None,
                     document_id: None,
                 },
-                config: MemoryIngestionConfig::default(),
+                config: ci_safe_config(),
             })
             .await
             .unwrap();

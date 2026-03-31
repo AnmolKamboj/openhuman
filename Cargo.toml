@@ -83,8 +83,6 @@ opentelemetry_sdk = { version = "0.31", default-features = false, features = ["t
 opentelemetry-otlp = { version = "0.31", default-features = false, features = ["trace", "metrics", "http-proto", "reqwest-client", "reqwest-rustls-webpki-roots"] }
 tokio-stream = { version = "0.1.18", features = ["full"] }
 url = "2"
-openssl = "0.10"
-openssl-sys = { version = "0.9", features = ["vendored"] }
 socketioxide = { version = "0.15", features = ["extensions"] }
 
 matrix-sdk = { version = "0.16", optional = true, default-features = false, features = ["e2e-encryption", "rustls-tls", "markdown"] }
@@ -107,7 +105,6 @@ rppal = { version = "0.22", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
-serial_test = "3"
 
 [features]
 sandbox-landlock = ["dep:landlock"]
