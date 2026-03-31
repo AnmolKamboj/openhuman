@@ -1,8 +1,8 @@
+use crate::openhuman::agent::loop_::parse_tool_calls;
 use crate::openhuman::providers::{
     ChatMessage, ChatResponse, ConversationMessage, ToolResultMessage,
 };
 use crate::openhuman::tools::{Tool, ToolSpec};
-use crate::openhuman::agent::loop_::parse_tool_calls;
 use serde_json::Value;
 use std::fmt::Write;
 
@@ -159,7 +159,8 @@ impl ToolDispatcher for NativeToolDispatcher {
         }
 
         if !text.is_empty() {
-            let (fallback_text, fallback_calls) = XmlToolDispatcher::parse_tool_calls_from_text(&text);
+            let (fallback_text, fallback_calls) =
+                XmlToolDispatcher::parse_tool_calls_from_text(&text);
             if !fallback_calls.is_empty() {
                 let display_text = if fallback_text.is_empty() {
                     text

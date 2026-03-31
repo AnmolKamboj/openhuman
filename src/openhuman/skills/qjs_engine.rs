@@ -183,7 +183,10 @@ impl RuntimeEngine {
 
         // 4. Production: bundled resources
         if let Some(resource_dir) = self.resource_dir.read().as_ref() {
-            let bundled_skills = resource_dir.join("_up_").join("openhuman-skills").join("skills");
+            let bundled_skills = resource_dir
+                .join("_up_")
+                .join("openhuman-skills")
+                .join("skills");
             if bundled_skills.exists() {
                 log::info!(
                     "[runtime] Using bundled skills from resources: {:?}",
