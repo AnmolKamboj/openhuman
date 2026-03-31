@@ -1,4 +1,10 @@
 use async_trait::async_trait;
+use parking_lot::Mutex;
+use std::str::FromStr;
+use std::sync::Arc;
+
+pub const DEFAULT_FASTEMBED_MODEL: &str = "BGESmallENV15";
+pub const DEFAULT_FASTEMBED_DIMENSIONS: usize = 384;
 
 /// Trait for embedding providers — convert text to vectors
 #[async_trait]
@@ -37,6 +43,103 @@ impl EmbeddingProvider for NoopEmbedding {
 
     async fn embed(&self, _texts: &[&str]) -> anyhow::Result<Vec<Vec<f32>>> {
         Ok(Vec::new())
+    }
+}
+
+enum FastembedState {
+    Uninitialized,
+    Ready(fastembed::TextEmbedding),
+    Failed(String),
+}
+
+pub struct FastembedEmbedding {
+    model: String,
+    dims: usize,
+    state: Arc<Mutex<FastembedState>>,
+}
+
+impl FastembedEmbedding {
+    pub fn new(model: &str, dims: usize) -> Self {
+        Self {
+            model: if model.trim().is_empty() {
+                DEFAULT_FASTEMBED_MODEL.to_string()
+            } else {
+                model.trim().to_string()
+            },
+            dims: if dims == 0 {
+                DEFAULT_FASTEMBED_DIMENSIONS
+            } else {
+                dims
+            },
+            state: Arc::new(Mutex::new(FastembedState::Uninitialized)),
+        }
+    }
+
+    fn resolve_model(&self) -> fastembed::EmbeddingModel {
+        fastembed::EmbeddingModel::from_str(&self.model)
+            .unwrap_or(fastembed::EmbeddingModel::BGESmallENV15)
+    }
+
+    fn init_model(&self) -> anyhow::Result<fastembed::TextEmbedding> {
+        fastembed::TextEmbedding::try_new(
+            fastembed::InitOptions::new(self.resolve_model()).with_show_download_progress(false),
+        )
+        .map_err(|e| anyhow::anyhow!("fastembed init failed for {}: {e}", self.model))
+    }
+}
+
+#[async_trait]
+impl EmbeddingProvider for FastembedEmbedding {
+    fn name(&self) -> &str {
+        "fastembed"
+    }
+
+    fn dimensions(&self) -> usize {
+        self.dims
+    }
+
+    async fn embed(&self, texts: &[&str]) -> anyhow::Result<Vec<Vec<f32>>> {
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let items = texts
+            .iter()
+            .map(|text| (*text).to_string())
+            .collect::<Vec<_>>();
+        let state = Arc::clone(&self.state);
+        let provider = self.model.clone();
+        let join_result = tokio::task::spawn_blocking(move || {
+            let mut guard = state.lock();
+            if matches!(*guard, FastembedState::Uninitialized) {
+                match fastembed::TextEmbedding::try_new(
+                    fastembed::InitOptions::new(
+                        fastembed::EmbeddingModel::from_str(&provider)
+                            .unwrap_or(fastembed::EmbeddingModel::BGESmallENV15),
+                    )
+                    .with_show_download_progress(false),
+                ) {
+                    Ok(model) => *guard = FastembedState::Ready(model),
+                    Err(err) => {
+                        let message = format!("fastembed init failed for {provider}: {err}");
+                        *guard = FastembedState::Failed(message.clone());
+                    }
+                }
+            }
+
+            match &mut *guard {
+                FastembedState::Ready(model) => model
+                    .embed(items, None)
+                    .map_err(|e| anyhow::anyhow!("fastembed embed failed: {e}")),
+                FastembedState::Failed(message) => Err(anyhow::anyhow!(message.clone())),
+                FastembedState::Uninitialized => {
+                    Err(anyhow::anyhow!("fastembed provider did not initialize"))
+                }
+            }
+        })
+        .await;
+
+        join_result.map_err(|e| anyhow::anyhow!("fastembed task join failed: {e}"))?
     }
 }
 
@@ -163,6 +266,7 @@ pub fn create_embedding_provider(
     dims: usize,
 ) -> Box<dyn EmbeddingProvider> {
     match provider {
+        "fastembed" => Box::new(FastembedEmbedding::new(model, dims)),
         "openai" => {
             let key = api_key.unwrap_or("");
             Box::new(OpenAiEmbedding::new(
@@ -179,6 +283,13 @@ pub fn create_embedding_provider(
         }
         _ => Box::new(NoopEmbedding),
     }
+}
+
+pub fn default_local_embedding_provider() -> Arc<dyn EmbeddingProvider> {
+    Arc::new(FastembedEmbedding::new(
+        DEFAULT_FASTEMBED_MODEL,
+        DEFAULT_FASTEMBED_DIMENSIONS,
+    ))
 }
 
 #[cfg(test)]
@@ -210,6 +321,13 @@ mod tests {
         let p = create_embedding_provider("openai", Some("key"), "text-embedding-3-small", 1536);
         assert_eq!(p.name(), "openai");
         assert_eq!(p.dimensions(), 1536);
+    }
+
+    #[test]
+    fn factory_fastembed() {
+        let p = create_embedding_provider("fastembed", None, DEFAULT_FASTEMBED_MODEL, 384);
+        assert_eq!(p.name(), "fastembed");
+        assert_eq!(p.dimensions(), 384);
     }
 
     #[test]
@@ -253,6 +371,13 @@ mod tests {
     fn factory_unknown_provider_returns_noop() {
         let p = create_embedding_provider("cohere", None, "model", 1536);
         assert_eq!(p.name(), "none");
+    }
+
+    #[test]
+    fn default_local_provider_uses_fastembed_defaults() {
+        let p = default_local_embedding_provider();
+        assert_eq!(p.name(), "fastembed");
+        assert_eq!(p.dimensions(), DEFAULT_FASTEMBED_DIMENSIONS);
     }
 
     #[test]
