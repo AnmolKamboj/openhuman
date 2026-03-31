@@ -1098,7 +1098,6 @@ async fn parse_document(
                 }
                 continue;
             }
-
         }
 
         if let Some(captures) = explicit_owner_regex().captures(&line) {
