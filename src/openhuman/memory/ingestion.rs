@@ -1571,6 +1571,8 @@ mod tests {
     use serde_json::json;
     use tempfile::TempDir;
 
+    use serial_test::serial;
+
     use crate::openhuman::memory::{
         embeddings::NoopEmbedding, MemoryIngestionConfig, MemoryIngestionRequest,
         NamespaceDocumentInput, UnifiedMemory,
@@ -1588,6 +1590,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn gmail_fixture_ingestion_recovers_required_signals() {
         let tmp = TempDir::new().unwrap();
         let memory = UnifiedMemory::new(tmp.path(), Arc::new(NoopEmbedding), None).unwrap();
@@ -1682,6 +1685,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn notion_fixture_ingestion_recovers_required_signals() {
         let tmp = TempDir::new().unwrap();
         let memory = UnifiedMemory::new(tmp.path(), Arc::new(NoopEmbedding), None).unwrap();

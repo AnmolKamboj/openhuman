@@ -107,6 +107,7 @@ rppal = { version = "0.22", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
+serial_test = "3"
 
 [features]
 sandbox-landlock = ["dep:landlock"]
