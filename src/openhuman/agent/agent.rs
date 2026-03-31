@@ -578,7 +578,8 @@ impl Agent {
                 iteration + 1,
                 tool_names
             );
-            let persisted_tool_calls = Self::persisted_tool_calls_for_history(&response, &calls, iteration);
+            let persisted_tool_calls =
+                Self::persisted_tool_calls_for_history(&response, &calls, iteration);
             log::info!(
                 "[agent_loop] persisting assistant tool calls i={} persisted_tool_calls={} parsed_tool_calls={}",
                 iteration + 1,
@@ -586,7 +587,11 @@ impl Agent {
                 calls.len()
             );
             self.history.push(ConversationMessage::AssistantToolCalls {
-                text: if text.is_empty() { None } else { Some(text.clone()) },
+                text: if text.is_empty() {
+                    None
+                } else {
+                    Some(text.clone())
+                },
                 tool_calls: persisted_tool_calls,
             });
 
