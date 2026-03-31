@@ -25,6 +25,15 @@ Quick reference for anyone starting with Claude on this project. Updated by the 
 - **Ask user when in doubt** — never assume scope or approach
 - **PRs target upstream** — `tinyhumansai/openhuman` main branch, not fork
 
+## Local AI Presets & Daemon Gotcha
+
+- **Tier system lives in `src/openhuman/local_ai/presets.rs`** — single source of truth for tier→model ID mapping. To change default models for a release, edit `all_presets()` there.
+- **Device detection** uses `sysinfo` crate (`src/openhuman/local_ai/device.rs`). Apple Silicon = GPU always; others = best-effort.
+- **`OPENHUMAN_LOCAL_AI_TIER` env var** overrides the selected tier at config load time (in `load.rs`).
+- **Frontend tier selector** is in `LocalModelPanel.tsx` under Settings > Local AI Model. Uses `coreRpcClient` to call 3 RPC methods: `local_ai_device_profile`, `local_ai_presets`, `local_ai_apply_preset`.
+- **Default config maps to Medium tier** (`gemma3:4b-it-qat`). If someone changes `model_ids.rs` defaults, they should keep `presets.rs` in sync.
+- **Daemon binary gotcha** — A daemon process (`openhuman-aarch64-apple-darwin run`) auto-starts on port 7788 and respawns on kill. `yarn tauri dev` reuses it if already running. When adding new RPC methods, you must replace this binary: `cp -f target/debug/openhuman-core app/src-tauri/binaries/openhuman-aarch64-apple-darwin`, then kill the old PID so it respawns with the new binary.
+
 ## Environment
 
 - **Core sidecar port** — `7788` (default). Check with `lsof -i :7788`.
