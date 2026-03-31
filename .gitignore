@@ -9,6 +9,8 @@ lerna-debug.log*
 
 package-lock.json
 
+workflow
+
 node_modules
 dist
 dist-ssr
@@ -19,7 +21,7 @@ dist-ssr
 .env.local
 .env.*.local
 
-my_docs/*
+my_docs
 
 # CI secrets for local testing (contains real tokens)
 scripts/ci-secrets.json
