@@ -75,6 +75,19 @@ cargo check --manifest-path app/src-tauri/Cargo.toml
 
 ---
 
+## Configuration
+
+Environment variables are documented in two `.env.example` files:
+
+- **[`.env.example`](.env.example)** (repo root) — Rust core, Tauri shell, backend URL, logging, proxy, storage, web search, local AI binary overrides. Loaded via `source scripts/load-dotenv.sh`.
+- **[`app/.env.example`](app/.env.example)** — Frontend `VITE_*` vars (core RPC URL, backend URL, Sentry DSN, skills repo, dev helpers). Copy to `app/.env.local` for local overrides.
+
+**Frontend config** is centralized in [`app/src/utils/config.ts`](app/src/utils/config.ts). All `VITE_*` env vars should be read there and re-exported — do not read `import.meta.env` directly in other files.
+
+**Rust config** uses a TOML-based `Config` struct (`src/openhuman/config/schema/types.rs`) with env var overrides applied in `src/openhuman/config/schema/load.rs`. Env vars override config file values at runtime (e.g. `OPENHUMAN_API_KEY` overrides `config.api_key`).
+
+---
+
 ## Testing Guide (Unit + E2E)
 
 ### Unit tests (Vitest)
