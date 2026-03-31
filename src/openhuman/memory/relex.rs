@@ -1,6 +1,6 @@
 use std::env;
-use std::sync::Arc;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::OnceLock;
 
 use anyhow::{anyhow, Context, Result};
@@ -34,6 +34,10 @@ const GLINER_CONFIG_FILE_NAME: &str = "gliner_config.json";
 const ORT_DYLIB_FILE_NAME: &str = "onnxruntime.dll";
 #[cfg(target_os = "macos")]
 const ORT_DYLIB_FILE_NAME: &str = "libonnxruntime.dylib";
+#[cfg(target_os = "linux")]
+const ORT_DYLIB_FILE_NAME: &str = "libonnxruntime.so";
+#[cfg(target_os = "linux")]
+const ORT_SHARED_PROVIDER_FILE_NAME: &str = "libonnxruntime_providers_shared.so";
 
 struct BundleAsset {
     remote_name: &'static str,
@@ -76,7 +80,20 @@ const PLATFORM_BUNDLE_ASSETS: &[BundleAsset] = &[BundleAsset {
     local_name: ORT_DYLIB_FILE_NAME,
     sha256: "285C8CD1E53856507B9B2E38EE9AFFC69AA6E90AC30F8670DC8195710CA14B77",
 }];
-#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+#[cfg(target_os = "linux")]
+const PLATFORM_BUNDLE_ASSETS: &[BundleAsset] = &[
+    BundleAsset {
+        remote_name: ORT_DYLIB_FILE_NAME,
+        local_name: ORT_DYLIB_FILE_NAME,
+        sha256: "13AB8084954FA4A47C777880180B90810D6020F021441395712B48A75B74C68B",
+    },
+    BundleAsset {
+        remote_name: ORT_SHARED_PROVIDER_FILE_NAME,
+        local_name: ORT_SHARED_PROVIDER_FILE_NAME,
+        sha256: "086EC1D5388F64153D9C63470D126693DB9A182C8CE236D3A1119068471B8A0D",
+    },
+];
+#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
 const PLATFORM_BUNDLE_ASSETS: &[BundleAsset] = &[];
 
 const ENTITY_LABELS: &[&str] = &[
@@ -407,7 +424,7 @@ async fn resolve_bundle_dir(model_name: &str) -> Option<PathBuf> {
     }
 
     let managed_dir = default_managed_bundle_dir();
-    if bundle_complete(&managed_dir) {
+    if managed_bundle_complete(&managed_dir) {
         return Some(managed_dir);
     }
 
@@ -446,6 +463,13 @@ fn bundle_complete(bundle_dir: &Path) -> bool {
     bundle_dir.join(TOKENIZER_FILE_NAME).exists()
         && bundle_dir.join(GLINER_CONFIG_FILE_NAME).exists()
         && model_file_path(bundle_dir).is_some()
+}
+
+fn managed_bundle_complete(bundle_dir: &Path) -> bool {
+    bundle_complete(bundle_dir)
+        && PLATFORM_BUNDLE_ASSETS
+            .iter()
+            .all(|asset| bundle_dir.join(asset.local_name).exists())
 }
 
 fn model_file_path(bundle_dir: &Path) -> Option<PathBuf> {
@@ -487,21 +511,36 @@ fn ensure_ort_dylib_path(bundle_dir: &Path) {
 
     #[cfg(target_os = "windows")]
     {
-    let Some(user_profile) = env::var_os("USERPROFILE") else {
-        return;
-    };
-    let pattern = PathBuf::from(user_profile)
-        .join("AppData/Local/uv/cache/archive-v0/*/onnxruntime/capi/onnxruntime.dll")
-        .to_string_lossy()
-        .replace('\\', "/");
-    if let Ok(paths) = glob(&pattern) {
-        for candidate in paths.flatten() {
-            if candidate.exists() {
-                env::set_var("ORT_DYLIB_PATH", &candidate);
-                break;
+        let Some(user_profile) = env::var_os("USERPROFILE") else {
+            return;
+        };
+        let pattern = PathBuf::from(user_profile)
+            .join("AppData/Local/uv/cache/archive-v0/*/onnxruntime/capi/onnxruntime.dll")
+            .to_string_lossy()
+            .replace('\\', "/");
+        if let Ok(paths) = glob(&pattern) {
+            for candidate in paths.flatten() {
+                if candidate.exists() {
+                    env::set_var("ORT_DYLIB_PATH", &candidate);
+                    break;
+                }
             }
         }
     }
+
+    #[cfg(target_os = "linux")]
+    {
+        for candidate in [
+            "/usr/lib/x86_64-linux-gnu/libonnxruntime.so",
+            "/usr/local/lib/libonnxruntime.so",
+            "/usr/lib/libonnxruntime.so",
+        ] {
+            let candidate = PathBuf::from(candidate);
+            if candidate.exists() {
+                env::set_var("ORT_DYLIB_PATH", &candidate);
+                return;
+            }
+        }
     }
 }
 
@@ -512,7 +551,7 @@ async fn ensure_managed_bundle(bundle_dir: &Path) -> Result<()> {
         .lock()
         .await;
 
-    if bundle_complete(bundle_dir) {
+    if managed_bundle_complete(bundle_dir) {
         return Ok(());
     }
 
@@ -526,7 +565,10 @@ async fn ensure_managed_bundle(bundle_dir: &Path) -> Result<()> {
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| DEFAULT_RELEX_RELEASE_BASE_URL.to_string());
 
-    for asset in CORE_BUNDLE_ASSETS.iter().chain(PLATFORM_BUNDLE_ASSETS.iter()) {
+    for asset in CORE_BUNDLE_ASSETS
+        .iter()
+        .chain(PLATFORM_BUNDLE_ASSETS.iter())
+    {
         let target = bundle_dir.join(asset.local_name);
         download_asset_if_needed(&client, &base_url, asset, &target).await?;
     }
