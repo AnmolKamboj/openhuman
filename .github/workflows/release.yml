@@ -525,7 +525,7 @@ jobs:
           rm -f "$CERT_FILE"
           echo "Signing identity imported into $KEYCHAIN"
 
-          echo "=== Re-signing entire .app with hardened runtime (deep) ==="
+          echo "=== Re-signing .app with hardened runtime ==="
 
           # List what's inside for diagnostics
           echo "Contents/MacOS:"
@@ -535,9 +535,66 @@ jobs:
           echo "Contents/Frameworks:"
           ls -la "$APP_PATH/Contents/Frameworks/" 2>/dev/null || echo "  (none)"
 
-          # Single --deep --force pass re-signs everything atomically:
-          # the main binary, all sidecars, frameworks, and the outer seal.
-          codesign --deep --force --options runtime \
+          # Step 1: Strip ALL existing signatures (tauri-action's signing may
+          # produce signatures that --force can't cleanly overwrite).
+          echo "Stripping existing signatures..."
+          for bin in "$APP_PATH/Contents/MacOS/"*; do
+            [ -f "$bin" ] && [ -x "$bin" ] || continue
+            echo "  Stripping: $(basename "$bin")"
+            codesign --remove-signature "$bin" || true
+          done
+          for bin in "$APP_PATH/Contents/Resources/"openhuman-*; do
+            [ -f "$bin" ] || continue
+            echo "  Stripping: $(basename "$bin")"
+            codesign --remove-signature "$bin" || true
+          done
+          for lib in "$APP_PATH/Contents/Frameworks/"*.dylib "$APP_PATH/Contents/Frameworks/"*.framework; do
+            [ -e "$lib" ] || continue
+            echo "  Stripping: $(basename "$lib")"
+            codesign --remove-signature "$lib" || true
+          done
+          # Strip the bundle signature itself
+          codesign --remove-signature "$APP_PATH" || true
+
+          # Step 2: Sign inside-out — nested code first, then the bundle.
+          MAIN_EXE="$(defaults read "$APP_PATH/Contents/Info.plist" CFBundleExecutable 2>/dev/null || echo "OpenHuman")"
+          echo "Main executable: $MAIN_EXE"
+
+          # Sign frameworks/dylibs first
+          for lib in "$APP_PATH/Contents/Frameworks/"*.dylib "$APP_PATH/Contents/Frameworks/"*.framework; do
+            [ -e "$lib" ] || continue
+            echo "  Signing framework: $(basename "$lib")"
+            codesign --force --options runtime \
+              --sign "$APPLE_SIGNING_IDENTITY" \
+              --timestamp \
+              "$lib"
+          done
+
+          # Sign all binaries in MacOS/ (including sidecars and main exe)
+          for bin in "$APP_PATH/Contents/MacOS/"*; do
+            [ -f "$bin" ] && [ -x "$bin" ] || continue
+            echo "  Signing binary: $(basename "$bin")"
+            codesign --force --options runtime \
+              --entitlements "$ENTITLEMENTS" \
+              --sign "$APPLE_SIGNING_IDENTITY" \
+              --timestamp \
+              "$bin"
+          done
+
+          # Sign sidecars in Resources/
+          for bin in "$APP_PATH/Contents/Resources/"openhuman-*; do
+            [ -f "$bin" ] || continue
+            echo "  Signing resource binary: $(basename "$bin")"
+            codesign --force --options runtime \
+              --entitlements "$ENTITLEMENTS" \
+              --sign "$APPLE_SIGNING_IDENTITY" \
+              --timestamp \
+              "$bin"
+          done
+
+          # Step 3: Sign the outer .app bundle (updates the seal over everything)
+          echo "  Signing .app bundle..."
+          codesign --force --options runtime \
             --entitlements "$ENTITLEMENTS" \
             --sign "$APPLE_SIGNING_IDENTITY" \
             --timestamp \
