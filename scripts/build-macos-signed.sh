@@ -155,27 +155,41 @@ fi
 echo
 echo "App bundle: $APP_PATH"
 
-# ── Fix CFBundleExecutable case mismatch ──────────────────────────────
-# Tauri/Cargo produces the binary as lowercase "openhuman" but Info.plist
-# sets CFBundleExecutable to "OpenHuman". codesign verification fails
-# when these don't match exactly. Rename to match the plist.
+# ── Sign .app contents and bundle ─────────────────────────────────────
 ENTITLEMENTS="app/src-tauri/entitlements.sidecar.plist"
-EXPECTED_EXE="$(defaults read "$APP_PATH/Contents/Info.plist" CFBundleExecutable 2>/dev/null || echo "OpenHuman")"
-ACTUAL_EXE="$(ls "$APP_PATH/Contents/MacOS/" | head -1)"
+MAIN_EXE="$(defaults read "$APP_PATH/Contents/Info.plist" CFBundleExecutable 2>/dev/null || echo "OpenHuman")"
 
 echo
 echo "Bundle contents:"
 ls -la "$APP_PATH/Contents/MacOS/"
+echo "Main executable (from plist): $MAIN_EXE"
 
-if [[ "$ACTUAL_EXE" != "$EXPECTED_EXE" ]]; then
-  echo
-  echo "Fixing executable name: $ACTUAL_EXE -> $EXPECTED_EXE"
-  mv "$APP_PATH/Contents/MacOS/$ACTUAL_EXE" "$APP_PATH/Contents/MacOS/$EXPECTED_EXE"
-fi
+# Sign all non-main binaries (sidecars) first
+for bin in "$APP_PATH/Contents/MacOS/"*; do
+  [[ -f "$bin" && -x "$bin" ]] || continue
+  BASENAME="$(basename "$bin")"
+  [[ "$BASENAME" == "$MAIN_EXE" ]] && continue
+  echo "  Signing sidecar: $BASENAME"
+  codesign --force --options runtime \
+    --entitlements "$ENTITLEMENTS" \
+    --sign "$APPLE_SIGNING_IDENTITY" \
+    --timestamp \
+    "$bin"
+done
 
-# ── Sign the .app bundle with hardened runtime ───────────────────────
-echo
-echo "Signing .app bundle with hardened runtime..."
+# Sign sidecars in Resources/ if any
+for bin in "$APP_PATH/Contents/Resources/"openhuman-core-*; do
+  [[ -f "$bin" ]] || continue
+  echo "  Signing resource sidecar: $(basename "$bin")"
+  codesign --force --options runtime \
+    --entitlements "$ENTITLEMENTS" \
+    --sign "$APPLE_SIGNING_IDENTITY" \
+    --timestamp \
+    "$bin"
+done
+
+# Sign the .app bundle (signs main exe + updates seal)
+echo "  Signing .app bundle..."
 codesign --force --options runtime \
   --entitlements "$ENTITLEMENTS" \
   --sign "$APPLE_SIGNING_IDENTITY" \
