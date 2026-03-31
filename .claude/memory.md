@@ -14,7 +14,8 @@ Quick reference for anyone starting with Claude on this project. Updated by the 
 
 - **No dynamic imports in `app/src/`** — Use static `import` at file top. Guard call sites with `try/catch` for Tauri/non-Tauri safety. See CLAUDE.md.
 - **Service RPC calls must use Tauri IPC** — Never use `callCoreRpc()` for service operations. Use `invoke('core_rpc_relay', { request: { method, params } })`.
-- **Always run checks before commit** — `yarn typecheck`, `yarn lint`, `yarn format:check`, `yarn build`. Husky hooks enforce this but run manually first.
+- **All frontend env vars go through `app/src/utils/config.ts`** — Never read `import.meta.env.VITE_*` directly in other files. Import from config.ts instead. See `.env.example` files for the full list.
+- **Always run checks before commit** — `yarn typecheck`, `yarn lint`, `yarn format:check`, `yarn build`, `yarn tauri dev`. Husky hooks enforce some but run all manually first.
 - **Stage specific files** — Never `git add -A`. Always `git add <specific-files>`.
 
 ## Workflow
