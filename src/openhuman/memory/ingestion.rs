@@ -1578,8 +1578,13 @@ mod tests {
 
     fn fixture(path: &str) -> String {
         let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        std::fs::read_to_string(base.join("tests").join("fixtures").join("ingestion").join(path))
-            .expect("fixture should load")
+        std::fs::read_to_string(
+            base.join("tests")
+                .join("fixtures")
+                .join("ingestion")
+                .join(path),
+        )
+        .expect("fixture should load")
     }
 
     #[tokio::test]
