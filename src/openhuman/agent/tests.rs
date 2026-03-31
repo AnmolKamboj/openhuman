@@ -819,6 +819,59 @@ async fn turn_handles_multiple_tools_in_one_response() {
     );
 }
 
+#[tokio::test]
+async fn e2e_native_loop_executes_text_fallback_tool_calls_and_persists_history() {
+    let provider = Box::new(ScriptedProvider::new(vec![
+        ChatResponse {
+            text: Some(
+                "I'll inspect now.\n<invoke>{\"name\":\"echo\",\"arguments\":{\"message\":\"from-fallback\"}}</invoke>"
+                    .into(),
+            ),
+            tool_calls: vec![],
+        },
+        text_response("Completed via tool"),
+    ]));
+
+    let mut agent = build_agent_with(
+        provider,
+        vec![Box::new(EchoTool)],
+        Box::new(NativeToolDispatcher),
+    );
+
+    let response = agent.turn("please use a tool").await.unwrap();
+    assert_eq!(response, "Completed via tool");
+
+    let mut assistant_tool_calls: Option<Vec<ToolCall>> = None;
+    let mut tool_results: Option<Vec<ToolResultMessage>> = None;
+
+    for msg in agent.history() {
+        match msg {
+            ConversationMessage::AssistantToolCalls { tool_calls, .. } => {
+                assistant_tool_calls = Some(tool_calls.clone());
+            }
+            ConversationMessage::ToolResults(results) => {
+                tool_results = Some(results.clone());
+            }
+            _ => {}
+        }
+    }
+
+    let calls = assistant_tool_calls.expect("assistant tool calls should be persisted");
+    let results = tool_results.expect("tool results should be persisted");
+    assert_eq!(calls.len(), 1, "expected one parsed/persisted tool call");
+    assert_eq!(results.len(), 1, "expected one tool result");
+    assert_eq!(calls[0].name, "echo");
+    assert!(
+        calls[0].arguments.contains("from-fallback"),
+        "persisted tool-call arguments should include fallback payload"
+    );
+    assert_eq!(
+        calls[0].id, results[0].tool_call_id,
+        "tool result must map to persisted assistant tool-call id"
+    );
+    assert_eq!(results[0].content, "from-fallback");
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 14. System prompt generation & tool instructions
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1042,8 +1095,9 @@ fn xml_dispatcher_handles_unclosed_tool_call() {
 
     let dispatcher = XmlToolDispatcher;
     let (text, calls) = dispatcher.parse_response(&response);
-    // Should not panic — just treat as text
-    assert!(calls.is_empty());
+    // Should not panic; robust parser recovers the JSON tool call.
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "shell");
     assert!(text.contains("Before"));
 }
 
