@@ -438,14 +438,11 @@ jobs:
         uses: tauri-apps/tauri-action@v0.6.2
         id: tauri-build
         env:
-          # Certificate for codesigning — tauri-action imports this into a keychain
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # NOTE: APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID are intentionally
-          # omitted so tauri-action signs but does NOT notarize. Notarization is
-          # handled in a separate step after we re-sign the sidecar binary with
-          # hardened runtime + entitlements (required by Apple notarization).
+          # NOTE: APPLE_CERTIFICATE, APPLE_SIGNING_IDENTITY, APPLE_ID, etc. are
+          # intentionally omitted so tauri-action builds WITHOUT signing.
+          # Signing + notarization are handled in a dedicated step afterwards
+          # where we sign everything with hardened runtime + entitlements
+          # (required by Apple notarization).
           BASE_URL: ${{ vars.BASE_URL }}
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.settings.platform == 'macos-latest' && '10.15' || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
@@ -525,75 +522,41 @@ jobs:
           rm -f "$CERT_FILE"
           echo "Signing identity imported into $KEYCHAIN"
 
-          echo "=== Re-signing .app with hardened runtime ==="
+          echo "=== Re-signing binaries inside the .app with hardened runtime ==="
 
-          # List what's inside for diagnostics
-          echo "Contents/MacOS:"
-          ls -la "$APP_PATH/Contents/MacOS/"
-          echo "Contents/Resources (openhuman):"
-          ls -la "$APP_PATH/Contents/Resources/"openhuman-* 2>/dev/null || echo "  (none)"
-          echo "Contents/Frameworks:"
-          ls -la "$APP_PATH/Contents/Frameworks/" 2>/dev/null || echo "  (none)"
-
-          # Step 1: Strip ALL existing signatures (tauri-action's signing may
-          # produce signatures that --force can't cleanly overwrite).
-          echo "Stripping existing signatures..."
-          for bin in "$APP_PATH/Contents/MacOS/"*; do
-            [ -f "$bin" ] && [ -x "$bin" ] || continue
-            echo "  Stripping: $(basename "$bin")"
-            codesign --remove-signature "$bin" || true
-          done
-          for bin in "$APP_PATH/Contents/Resources/"openhuman-*; do
-            [ -f "$bin" ] || continue
-            echo "  Stripping: $(basename "$bin")"
-            codesign --remove-signature "$bin" || true
-          done
-          for lib in "$APP_PATH/Contents/Frameworks/"*.dylib "$APP_PATH/Contents/Frameworks/"*.framework; do
-            [ -e "$lib" ] || continue
-            echo "  Stripping: $(basename "$lib")"
-            codesign --remove-signature "$lib" || true
-          done
-          # Strip the bundle signature itself
-          codesign --remove-signature "$APP_PATH" || true
-
-          # Step 2: Sign inside-out — nested code first, then the bundle.
+          # Sign all executables in Contents/MacOS except the main app binary
           MAIN_EXE="$(defaults read "$APP_PATH/Contents/Info.plist" CFBundleExecutable 2>/dev/null || echo "OpenHuman")"
           echo "Main executable: $MAIN_EXE"
+          echo "Contents/MacOS:"
+          ls -la "$APP_PATH/Contents/MacOS/"
 
-          # Sign frameworks/dylibs first
+          for bin in "$APP_PATH/Contents/MacOS/"*; do
+            [ -f "$bin" ] && [ -x "$bin" ] || continue
+            BASENAME="$(basename "$bin")"
+            if [ "$BASENAME" = "$MAIN_EXE" ]; then
+              continue  # main binary — will be re-signed with the whole .app
+            fi
+            echo "  Re-signing sidecar: $BASENAME"
+            codesign --force --options runtime \
+              --entitlements "$ENTITLEMENTS" \
+              --sign "$APPLE_SIGNING_IDENTITY" \
+              --timestamp \
+              "$bin"
+            codesign --verify --strict --verbose=1 "$bin"
+          done
+
+          # Also sign any frameworks/dylibs inside the bundle
           for lib in "$APP_PATH/Contents/Frameworks/"*.dylib "$APP_PATH/Contents/Frameworks/"*.framework; do
             [ -e "$lib" ] || continue
-            echo "  Signing framework: $(basename "$lib")"
+            echo "  Re-signing framework: $(basename "$lib")"
             codesign --force --options runtime \
               --sign "$APPLE_SIGNING_IDENTITY" \
               --timestamp \
               "$lib"
           done
 
-          # Sign all binaries in MacOS/ (including sidecars and main exe)
-          for bin in "$APP_PATH/Contents/MacOS/"*; do
-            [ -f "$bin" ] && [ -x "$bin" ] || continue
-            echo "  Signing binary: $(basename "$bin")"
-            codesign --force --options runtime \
-              --entitlements "$ENTITLEMENTS" \
-              --sign "$APPLE_SIGNING_IDENTITY" \
-              --timestamp \
-              "$bin"
-          done
-
-          # Sign sidecars in Resources/
-          for bin in "$APP_PATH/Contents/Resources/"openhuman-*; do
-            [ -f "$bin" ] || continue
-            echo "  Signing resource binary: $(basename "$bin")"
-            codesign --force --options runtime \
-              --entitlements "$ENTITLEMENTS" \
-              --sign "$APPLE_SIGNING_IDENTITY" \
-              --timestamp \
-              "$bin"
-          done
-
-          # Step 3: Sign the outer .app bundle (updates the seal over everything)
-          echo "  Signing .app bundle..."
+          # Re-sign the entire .app so the seal covers the updated sidecar signatures
+          echo "  Re-signing .app bundle..."
           codesign --force --options runtime \
             --entitlements "$ENTITLEMENTS" \
             --sign "$APPLE_SIGNING_IDENTITY" \
@@ -602,6 +565,13 @@ jobs:
 
           echo "=== Verifying signatures ==="
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+          # Verify sidecar specifically
+          SIDECAR="$(find "$APP_PATH/Contents/MacOS" -name 'openhuman*' ! -name "$MAIN_EXE" 2>/dev/null | head -1)"
+          if [ -n "$SIDECAR" ]; then
+            echo "Verifying sidecar hardened runtime..."
+            codesign -d --verbose=4 "$SIDECAR" 2>&1 | grep -E 'flags|runtime' || true
+          fi
 
           echo "=== Notarizing ==="
           NOTARIZE_ZIP="$(mktemp /tmp/OpenHuman-notarize-XXXXXX.zip)"
