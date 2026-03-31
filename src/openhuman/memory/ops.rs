@@ -668,6 +668,9 @@ pub async fn memory_init(
     let client = Arc::new(MemoryClient::from_workspace_dir(workspace_dir.clone())?);
     *lock_memory_client_state()? = Some(client);
     let memory_dir = workspace_dir.join("memory");
+    tokio::spawn(async {
+        let _ = super::relex::warm_default_bundle().await;
+    });
     Ok(envelope(
         MemoryInitResponse {
             initialized: true,
