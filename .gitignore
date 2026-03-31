@@ -1,5 +1,6 @@
 # Workflow docs (local only)
-workflow/
+workflow
+create_issue
 
 # Logs
 logs
@@ -11,8 +12,6 @@ pnpm-debug.log*
 lerna-debug.log*
 
 package-lock.json
-
-workflow
 
 node_modules
 dist
