@@ -96,6 +96,16 @@ async fn service_uninstall_direct() -> Result<String, String> {
     run_core_cli(vec!["service".into(), "uninstall".into()]).await
 }
 
+#[tauri::command]
+async fn restart_core_process(
+    state: tauri::State<'_, core_process::CoreProcessHandle>,
+) -> Result<(), String> {
+    log::info!("[core] restart_core_process: command invoked from frontend");
+    let _guard = state.inner().restart_lock().await;
+    log::debug!("[core] restart_core_process: acquired restart lock");
+    state.inner().restart().await
+}
+
 fn is_daemon_mode() -> bool {
     std::env::args().any(|arg| arg == "daemon" || arg == "--daemon")
 }
@@ -220,6 +230,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             core_rpc_url,
+            restart_core_process,
             service_install_direct,
             service_start_direct,
             service_stop_direct,
