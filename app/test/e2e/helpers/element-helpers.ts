@@ -77,11 +77,15 @@ async function clickAtElement(el: ChainablePromiseElement): Promise<void> {
     } catch {
       // scrollIntoView may fail if element is detached
     }
+    // Use JS click directly on tauri-driver — bypasses "element not interactable"
+    // and "element click intercepted" errors that WebDriver click triggers
+    // (WDIO retries WebDriver clicks 3 times internally before reaching catch,
+    // causing noisy WARN logs and slow failures).
     try {
-      await el.click();
-    } catch {
-      // Fallback: use JS click which bypasses visibility checks
       await browser.execute((e: HTMLElement) => e.click(), el as unknown as HTMLElement);
+    } catch {
+      // Last resort: try WebDriver click
+      await el.click();
     }
     return;
   }
@@ -309,7 +313,7 @@ export async function clickToggle(_timeout: number = 15_000): Promise<void> {
     for (const sel of selectors) {
       const el = await browser.$(sel);
       if (await el.isExisting()) {
-        await el.click();
+        await clickAtElement(el);
         return;
       }
     }

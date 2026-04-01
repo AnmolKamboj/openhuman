@@ -570,6 +570,10 @@ async function handleRequest(req, res) {
     json(res, 200, { success: true, data: {} });
     return;
   }
+  if (method === "POST" && /^\/settings\/onboarding-complete\/?$/.test(url)) {
+    json(res, 200, { success: true, data: {} });
+    return;
+  }
 
   // currentPlan is handled by the earlier consolidated handler.
   if (method === "GET" && /^\/billing\/current-plan\/?(\?.*)?$/.test(url)) {
@@ -627,9 +631,9 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // Catch-all: log unhandled requests for debugging and return a safe default.
+  // Catch-all: fail fast so tests notice missing mock endpoints.
   console.log(`[MockServer] UNHANDLED ${method} ${url}`);
-  json(res, 200, { success: true, data: null });
+  json(res, 404, { success: false, error: `Mock server: no handler for ${method} ${url}` });
 }
 
 function handleSocketIOMessage(socket, text, sid) {

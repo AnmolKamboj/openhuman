@@ -1,4 +1,3 @@
-/* eslint-disable */
 // @ts-nocheck
 /**
  * E2E test: Card Payment Flow (Stripe).
@@ -11,16 +10,14 @@
  *   5.3.1  Plan transition FREE → PRO
  *   5.3.2  Manage Subscription opens Stripe portal
  */
-import { waitForApp, waitForAppReady } from '../helpers/app-helpers';
-import { triggerAuthDeepLink } from '../helpers/deep-link-helpers';
+import { waitForApp } from '../helpers/app-helpers';
+import { clickText, textExists } from '../helpers/element-helpers';
 import {
-  clickNativeButton,
-  clickText,
-  dumpAccessibilityTree,
-  textExists,
-  waitForWebView,
-  waitForWindowVisible,
-} from '../helpers/element-helpers';
+  navigateToBilling,
+  navigateToHome,
+  performFullLogin,
+  waitForTextToDisappear,
+} from '../helpers/shared-flows';
 import {
   clearRequestLog,
   getRequestLog,
@@ -36,33 +33,6 @@ const LOG_PREFIX = '[PaymentFlow]';
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function waitForHomePage(timeout = 15_000) {
-  const candidates = [
-    'Test',
-    'Good morning',
-    'Good afternoon',
-    'Good evening',
-    'Message OpenHuman',
-  ];
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    for (const text of candidates) {
-      if (await textExists(text)) return text;
-    }
-    await browser.pause(1_000);
-  }
-  return null;
-}
-
-async function waitForTextToDisappear(text, timeout = 10_000) {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    if (!(await textExists(text))) return true;
-    await browser.pause(500);
-  }
-  return false;
-}
-
 async function waitForRequest(method, urlFragment, timeout = 15_000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -72,91 +42,6 @@ async function waitForRequest(method, urlFragment, timeout = 15_000) {
     await browser.pause(500);
   }
   return undefined;
-}
-
-async function navigateToHome() {
-  try {
-    await clickNativeButton('Home', 10_000);
-  } catch {
-    /* ignore */
-  }
-  await browser.pause(2_000);
-  let homeText = await waitForHomePage(15_000);
-  if (!homeText) {
-    try {
-      await clickNativeButton('Home', 5_000);
-    } catch {
-      /* ignore */
-    }
-    await browser.pause(2_000);
-    homeText = await waitForHomePage(10_000);
-  }
-  if (!homeText) {
-    throw new Error('Failed to navigate to Home after retries');
-  }
-}
-
-async function navigateToBilling() {
-  await clickNativeButton('Settings', 10_000);
-  console.log(`${LOG_PREFIX} Clicked Settings nav`);
-  await browser.pause(3_000);
-
-  if (!(await textExists('Billing'))) {
-    try {
-      await clickNativeButton('Settings', 5_000);
-    } catch {
-      /* ignore */
-    }
-    await browser.pause(3_000);
-  }
-
-  if (await textExists('Billing')) {
-    await clickText('Billing', 10_000);
-    console.log(`${LOG_PREFIX} Clicked Billing`);
-  } else {
-    throw new Error('Billing not found in Settings');
-  }
-  await browser.pause(2_000);
-}
-
-async function performFullLogin(token = 'e2e-payment-token') {
-  await triggerAuthDeepLink(token);
-  await waitForWindowVisible(25_000);
-  await waitForWebView(15_000);
-  await waitForAppReady(15_000);
-
-  const skipVisible = await textExists('Skip for now');
-  if (skipVisible) {
-    await clickText('Skip for now', 10_000);
-    await browser.pause(2_000);
-    for (const t of ['Looks Amazing', 'Bring It On']) {
-      if (await textExists(t)) {
-        await clickText(t, 5_000);
-        break;
-      }
-    }
-    await browser.pause(2_000);
-    for (const t of ['Got it', 'Continue']) {
-      if (await textExists(t)) {
-        await clickText(t, 5_000);
-        break;
-      }
-    }
-    await browser.pause(2_000);
-    for (const t of ["Let's Go", "I'm Ready"]) {
-      if (await textExists(t)) {
-        await clickText(t, 5_000);
-        break;
-      }
-    }
-    await browser.pause(3_000);
-  } else {
-    await browser.pause(3_000);
-  }
-
-  const homeText = await waitForHomePage(15_000);
-  if (!homeText) throw new Error('Login did not reach Home');
-  console.log(`${LOG_PREFIX} Logged in, on Home`);
 }
 
 // ===========================================================================
@@ -207,8 +92,12 @@ describe('Card Payment Flow', () => {
   });
 
   it('5.2.1 — successful payment detected via polling', async () => {
-    // Mock still has BASIC active from 5.1.1
+    // Seed mock state explicitly so this test is self-contained
+    setMockBehavior('plan', 'BASIC');
+    setMockBehavior('planActive', 'true');
+    setMockBehavior('planExpiry', new Date(Date.now() + 30 * 86400000).toISOString());
     clearRequestLog();
+
     await navigateToBilling();
     await browser.pause(3_000);
 
@@ -258,6 +147,8 @@ describe('Card Payment Flow', () => {
   });
 
   it('5.3.1 — plan transition from FREE to PRO', async () => {
+    // Start from FREE plan
+    resetMockBehavior();
     clearRequestLog();
     await navigateToBilling();
 
@@ -278,19 +169,17 @@ describe('Card Payment Flow', () => {
   });
 
   it('5.3.2 — Manage Subscription opens Stripe portal', async () => {
+    // Seed mock with active subscription so "Manage" button appears
+    setMockBehavior('plan', 'PRO');
+    setMockBehavior('planActive', 'true');
+    setMockBehavior('planExpiry', new Date(Date.now() + 30 * 86400000).toISOString());
     clearRequestLog();
+
     await navigateToBilling();
     await browser.pause(3_000);
 
     const hasManage = await textExists('Manage');
-    if (!hasManage) {
-      console.log(
-        `${LOG_PREFIX} 5.3.2 — Manage not visible (stale team data). Verifying API only.`
-      );
-      resetMockBehavior();
-      await navigateToHome();
-      return;
-    }
+    expect(hasManage).toBe(true);
 
     await clickText('Manage', 10_000);
     console.log(`${LOG_PREFIX} Clicked Manage`);
