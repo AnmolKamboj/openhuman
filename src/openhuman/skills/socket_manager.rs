@@ -29,7 +29,7 @@ use {
 
 // SkillRegistry only available on desktop
 use crate::openhuman::skills::skill_registry::SkillRegistry;
-use crate::openhuman::skills::types::{SkillSnapshot, SkillStatus};
+use crate::openhuman::skills::types::{SkillSnapshot, SkillStatus, ToolCallOrigin};
 
 /// Events emitted to the frontend via Tauri.
 #[allow(dead_code)]
@@ -327,7 +327,7 @@ async fn run_connection(
     // 5. Send Socket.IO CONNECT with auth
     let connect_payload = json!({"token": token});
     let connect_msg = format!("40{}", serde_json::to_string(&connect_payload).unwrap());
-    if let Err(e) = ws_write.send(WsMessage::Text(connect_msg.into())).await {
+    if let Err(e) = ws_write.send(WsMessage::Text(connect_msg)).await {
         return ConnectionOutcome::Failed(format!("Send SIO CONNECT: {e}"));
     }
 
@@ -386,7 +386,7 @@ async fn run_connection(
             outgoing = emit_rx.recv() => {
                 match outgoing {
                     Some(msg) => {
-                        if let Err(e) = ws_write.send(WsMessage::Text(msg.into())).await {
+                        if let Err(e) = ws_write.send(WsMessage::Text(msg)).await {
                             return ConnectionOutcome::Lost(format!("Send failed: {e}"));
                         }
                     }
@@ -727,7 +727,10 @@ async fn handle_mcp_tool_call(
 
             let registry = shared.registry.read().clone();
             if let Some(registry) = registry {
-                match registry.call_tool(skill_id, tool_name, arguments).await {
+                match registry
+                    .call_tool_scoped(ToolCallOrigin::External, skill_id, tool_name, arguments)
+                    .await
+                {
                     Ok(tool_result) => json!({
                         "content": tool_result.content,
                         "isError": tool_result.is_error,

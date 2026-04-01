@@ -867,6 +867,21 @@ globalThis.data = {
       console.log('[oauth.fetch] ' + method + ' ' + proxyUrl + ' (credentialId=' + globalThis.__oauthCredential.credentialId + ')');
       var result = await net.fetch(proxyUrl, fetchOpts);
       console.log('[oauth.fetch] response status=' + result.status + ' body_len=' + (result.body ? result.body.length : 0));
+
+      // Auto-clear invalid/expired credentials so the user is prompted to re-auth
+      if (result.status === 401 || result.status === 403) {
+        console.warn('[oauth.fetch] Got ' + result.status + ' — clearing invalid credential for re-auth');
+        globalThis.__oauthCredential = null;
+        if (typeof globalThis.state !== 'undefined' && globalThis.state.set) {
+          globalThis.state.set('__oauth_credential', '');
+          globalThis.state.setPartial({
+            connection_status: 'error',
+            connection_error: 'Integration token expired or invalid. Please reconnect.',
+            auth_status: 'not_authenticated',
+          });
+        }
+      }
+
       return result;
     },
 
@@ -927,12 +942,12 @@ globalThis.cron = {
 // ============================================================================
 globalThis.skills = {
   list: function () {
-    console.warn('[skills] list not implemented in QuickJS runtime yet');
+    console.warn('[skills] list is intentionally unavailable in isolated runtime');
     return [];
   },
   callTool: function (skillId, toolName, args) {
-    console.warn('[skills] callTool not implemented in QuickJS runtime yet');
-    return { error: 'Not implemented' };
+    console.warn('[skills] callTool is disabled by runtime isolation policy');
+    return { error: 'Cross-skill invocation is disabled' };
   },
 };
 

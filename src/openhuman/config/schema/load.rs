@@ -592,6 +592,25 @@ impl Config {
             }
         }
 
+        let dsn_value = std::env::var("OPENHUMAN_SENTRY_DSN")
+            .ok()
+            .or_else(|| option_env!("OPENHUMAN_SENTRY_DSN").map(|s| s.to_string()));
+        if let Some(dsn) = dsn_value {
+            let dsn = dsn.trim();
+            if !dsn.is_empty() {
+                self.observability.sentry_dsn = Some(dsn.to_string());
+            }
+        }
+
+        if let Ok(flag) = std::env::var("OPENHUMAN_ANALYTICS_ENABLED") {
+            let normalized = flag.trim().to_ascii_lowercase();
+            match normalized.as_str() {
+                "1" | "true" | "yes" | "on" => self.observability.analytics_enabled = true,
+                "0" | "false" | "no" | "off" => self.observability.analytics_enabled = false,
+                _ => {}
+            }
+        }
+
         if self.proxy.enabled && self.proxy.scope == ProxyScope::Environment {
             self.proxy.apply_to_process_env();
         }
