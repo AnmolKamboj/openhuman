@@ -35,6 +35,7 @@ import {
   openhumanAutocompleteAccept,
   openhumanAutocompleteCurrent,
   openhumanLocalAiChat,
+  openhumanLocalAiShouldReact,
   openhumanVoiceStatus,
   openhumanVoiceTranscribeBytes,
   openhumanVoiceTts,
@@ -125,6 +126,12 @@ const Conversations = () => {
   const [isDelivering, setIsDelivering] = useState(false);
   const deliveryActiveRef = useRef(false);
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
+  const defaultChannelType = useAppSelector(
+    state => state.channelConnections?.defaultMessagingChannel ?? 'web'
+  );
+  const pendingReactionRef = useRef<
+    Map<string, { msgId: string; content: string; threadId: string }>
+  >(new Map());
 
   const selectedThreadIdRef = useRef(selectedThreadId);
   useEffect(() => {
@@ -377,6 +384,13 @@ const Conversations = () => {
           };
         });
 
+        // Fire-and-forget: auto-react to the user's message
+        const pending = pendingReactionRef.current.get(event.thread_id);
+        if (pending) {
+          maybeAutoReact(pending.msgId, pending.content, pending.threadId);
+          pendingReactionRef.current.delete(event.thread_id);
+        }
+
         // Multi-bubble delivery gate: only when local model is active
         if (!isLocalModelActiveRef.current) {
           dispatch(
@@ -436,6 +450,9 @@ const Conversations = () => {
             ),
           };
         });
+
+        // Clear pending reaction so stale callbacks are ignored
+        pendingReactionRef.current.delete(event.thread_id);
 
         if (event.error_type !== 'cancelled') {
           // Deduplicate: skip if the last message is already an error
@@ -499,6 +516,26 @@ const Conversations = () => {
     setIsDelivering(false);
   };
 
+  /**
+   * Fire-and-forget: ask the local model if we should auto-react to the
+   * user's message with an emoji. Adds a personal touch based on channel type.
+   */
+  const maybeAutoReact = (userMessageId: string, messageContent: string, threadId: string) => {
+    if (!isTauri() || !isLocalModelActiveRef.current) return;
+
+    void openhumanLocalAiShouldReact(messageContent, defaultChannelType)
+      .then(response => {
+        const decision = response.result;
+        if (decision?.should_react && decision.emoji) {
+          console.debug('[conversations:auto-react] reacting with', decision.emoji);
+          dispatch(addReaction({ threadId, messageId: userMessageId, emoji: decision.emoji }));
+        }
+      })
+      .catch(err => {
+        console.debug('[conversations:auto-react] failed:', err);
+      });
+  };
+
   const handleSendMessage = async (text?: string) => {
     const normalized = text ?? inputValue;
     const trimmed = normalized.trim();
@@ -525,6 +562,11 @@ const Conversations = () => {
     };
 
     dispatch(addMessageLocal({ threadId: sendingThreadId, message: userMessage }));
+    pendingReactionRef.current.set(sendingThreadId, {
+      msgId: userMessage.id,
+      content: trimmed,
+      threadId: sendingThreadId,
+    });
 
     setInputValue('');
     setSendError(null);
@@ -567,7 +609,10 @@ const Conversations = () => {
         }
 
         await deliverLocalResponse(reply, sendingThreadId);
+        pendingReactionRef.current.delete(sendingThreadId);
+        maybeAutoReact(userMessage.id, trimmed, sendingThreadId);
       } catch (err) {
+        pendingReactionRef.current.delete(sendingThreadId);
         const msg = err instanceof Error ? err.message : String(err);
         setSendError(msg);
         dispatch(
@@ -900,12 +945,16 @@ const Conversations = () => {
                         </svg>
                       )}
                     </button>
-                    {msg.sender === 'agent' && (
-                      <div className="mt-1 flex items-center gap-1 flex-wrap min-h-[20px]">
-                        {(() => {
-                          const myReactions =
-                            (msg.extraMetadata?.myReactions as string[] | undefined) ?? [];
-                          return myReactions.map(emoji => (
+                    {(() => {
+                      const myReactions =
+                        (msg.extraMetadata?.myReactions as string[] | undefined) ?? [];
+                      const hasReactions = myReactions.length > 0;
+                      // Show reaction row if there are existing reactions (any sender)
+                      // or if this is an agent message (manual picker available)
+                      if (!hasReactions && msg.sender !== 'agent') return null;
+                      return (
+                        <div className="mt-1 flex items-center gap-1 flex-wrap min-h-[20px]">
+                          {myReactions.map(emoji => (
                             <button
                               key={emoji}
                               onClick={() =>
@@ -922,46 +971,47 @@ const Conversations = () => {
                               title={`Remove ${emoji}`}>
                               {emoji}
                             </button>
-                          ));
-                        })()}
-                        {reactionPickerMsgId === msg.id ? (
-                          <div className="flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-white/10">
-                            {['👍', '❤️', '😂', '🔥', '👀', '🎯'].map(emoji => (
+                          ))}
+                          {msg.sender === 'agent' &&
+                            (reactionPickerMsgId === msg.id ? (
+                              <div className="flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-white/10">
+                                {['👍', '❤️', '😂', '🔥', '👀', '🎯'].map(emoji => (
+                                  <button
+                                    key={emoji}
+                                    onClick={() => {
+                                      if (selectedThreadId) {
+                                        dispatch(
+                                          addReaction({
+                                            threadId: selectedThreadId,
+                                            messageId: msg.id,
+                                            emoji,
+                                          })
+                                        );
+                                      }
+                                      setReactionPickerMsgId(null);
+                                    }}
+                                    className="px-0.5 rounded text-sm hover:scale-125 transition-transform"
+                                    title={emoji}>
+                                    {emoji}
+                                  </button>
+                                ))}
+                                <button
+                                  onClick={() => setReactionPickerMsgId(null)}
+                                  className="ml-0.5 text-stone-600 hover:text-stone-400 text-xs px-0.5">
+                                  ✕
+                                </button>
+                              </div>
+                            ) : (
                               <button
-                                key={emoji}
-                                onClick={() => {
-                                  if (selectedThreadId) {
-                                    dispatch(
-                                      addReaction({
-                                        threadId: selectedThreadId,
-                                        messageId: msg.id,
-                                        emoji,
-                                      })
-                                    );
-                                  }
-                                  setReactionPickerMsgId(null);
-                                }}
-                                className="px-0.5 rounded text-sm hover:scale-125 transition-transform"
-                                title={emoji}>
-                                {emoji}
+                                onClick={() => setReactionPickerMsgId(msg.id)}
+                                className="opacity-0 group-hover/msg:opacity-100 flex items-center px-1.5 py-0.5 rounded-full bg-white/5 hover:bg-white/15 text-stone-500 hover:text-stone-300 text-xs transition-all"
+                                title="Add reaction">
+                                +
                               </button>
                             ))}
-                            <button
-                              onClick={() => setReactionPickerMsgId(null)}
-                              className="ml-0.5 text-stone-600 hover:text-stone-400 text-xs px-0.5">
-                              ✕
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setReactionPickerMsgId(msg.id)}
-                            className="opacity-0 group-hover/msg:opacity-100 flex items-center px-1.5 py-0.5 rounded-full bg-white/5 hover:bg-white/15 text-stone-500 hover:text-stone-300 text-xs transition-all"
-                            title="Add reaction">
-                            +
-                          </button>
-                        )}
-                      </div>
-                    )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}
