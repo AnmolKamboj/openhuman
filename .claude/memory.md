@@ -57,6 +57,14 @@ Quick reference for anyone starting with Claude on this project. Updated by the 
 - **Patch is fragile** — Resets on `cargo clean`, crate version bump, or registry re-download. Deleting build cache alone (`target/debug/build/whisper-rs-sys-*`) is NOT enough — cmake regenerates with the same bad flags.
 - **Correct fix** — Needs an upstream patch in `whisper-rs-sys` or a Cargo feature to opt out of `GGML_NATIVE` on Apple Silicon cross-builds.
 
+## Build Blockers: macOS Tahoe + whisper-rs
+
+- **`whisper-rs` breaks `cargo build` on macOS Tahoe (Apple Silicon)** — Added in main via `whisper-rs = "0.16"` (voice feature #178). Apple clang 21+ refuses `-mcpu=native` when `--target=arm64-apple-macosx` is also set. This is NOT fixable by updating CLT.
+- **Root cause** — ggml cmake sets `GGML_NATIVE=ON` by default; the cmake crate appends `--target` to clang, triggering the incompatibility. Happens even with the latest toolchain.
+- **Workaround** — Patch `~/.cargo/registry/src/index.crates.io-*/whisper-rs-sys-0.15.0/build.rs`: add `config.define("GGML_NATIVE", "OFF");` (for `target_os = "macos" && target_arch = "aarch64"`) just before the `config.build()` call.
+- **Patch is fragile** — Resets on `cargo clean`, crate version bump, or registry re-download. Deleting build cache alone (`target/debug/build/whisper-rs-sys-*`) is NOT enough — cmake regenerates with the same bad flags.
+- **Correct fix** — Needs an upstream patch in `whisper-rs-sys` or a Cargo feature to opt out of `GGML_NATIVE` on Apple Silicon cross-builds.
+
 ## Environment
 
 - **Core sidecar port** — `7788` (default). Check with `lsof -i :7788`.
