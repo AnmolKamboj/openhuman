@@ -24,6 +24,14 @@ const OnboardingOverlay = () => {
   const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null);
   const [userLoadTimedOut, setUserLoadTimedOut] = useState(false);
 
+  // Reset local state on logout so re-login starts fresh.
+  useEffect(() => {
+    if (!token) {
+      setUserLoadTimedOut(false);
+      setOnboardingCompleted(null);
+    }
+  }, [token]);
+
   // Timeout: if user profile hasn't loaded after 3s but we have token + bootstrap,
   // proceed anyway so onboarding isn't permanently invisible.
   useEffect(() => {
@@ -33,6 +41,7 @@ const OnboardingOverlay = () => {
     return () => clearTimeout(timer);
   }, [token, isAuthBootstrapComplete, user?._id]);
 
+  // User is ready when profile loaded or timeout elapsed.
   const userReady = !!user?._id || userLoadTimedOut;
 
   // Read onboarding_completed from core config.
