@@ -562,22 +562,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push staging tag
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging-${{ needs.prepare-release.outputs.tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          labels: |
-            org.opencontainers.image.title=openhuman-core
-            org.opencontainers.image.description=OpenHuman core JSON-RPC server
-            org.opencontainers.image.version=${{ needs.prepare-release.outputs.version }}
-            org.opencontainers.image.source=https://github.com/tinyhumansai/openhuman
-            org.opencontainers.image.revision=${{ needs.prepare-release.outputs.sha }}
+      # TODO: Uncomment this when we have a staging tag
+      # - name: Build and push staging tag
+      #   uses: docker/build-push-action@v6
+      #   with:
+      #     context: .
+      #     file: Dockerfile
+      #     push: true
+      #     tags: |
+      #       ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging-${{ needs.prepare-release.outputs.tag }}
+      #     cache-from: type=gha
+      #     cache-to: type=gha,mode=max
+      #     labels: |
+      #       org.opencontainers.image.title=openhuman-core
+      #       org.opencontainers.image.description=OpenHuman core JSON-RPC server
+      #       org.opencontainers.image.version=${{ needs.prepare-release.outputs.version }}
+      #       org.opencontainers.image.source=https://github.com/tinyhumansai/openhuman
+      #       org.opencontainers.image.revision=${{ needs.prepare-release.outputs.sha }}
 
   # =========================================================================
   # Phase 4: Publish the draft release (waits for ALL build phases)
