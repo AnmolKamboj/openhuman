@@ -7,8 +7,10 @@ import {
   memoryListDocuments,
   memoryListNamespaces,
   memoryQueryNamespace,
+  type MemoryQueryResult,
   memoryRecallNamespace,
 } from '../../../utils/tauriCommands';
+import { MemoryTextWithEntities } from '../../intelligence/MemoryTextWithEntities';
 import SettingsHeader from '../components/SettingsHeader';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
 import { PrimaryButton } from './components/ActionPanel';
@@ -30,8 +32,8 @@ const MemoryDebugPanel = () => {
   const [namespaceInput, setNamespaceInput] = useState('');
   const [queryInput, setQueryInput] = useState('');
   const [maxChunksInput, setMaxChunksInput] = useState('10');
-  const [queryResult, setQueryResult] = useState<string | null>(null);
-  const [recallResult, setRecallResult] = useState<string | null>(null);
+  const [queryResult, setQueryResult] = useState<MemoryQueryResult | null>(null);
+  const [recallResult, setRecallResult] = useState<MemoryQueryResult | null>(null);
   const [queryError, setQueryError] = useState<string | null>(null);
   const [recallError, setRecallError] = useState<string | null>(null);
   const [queryLoading, setQueryLoading] = useState(false);
@@ -134,7 +136,7 @@ const MemoryDebugPanel = () => {
     setRecallResult(null);
     try {
       const result = await memoryRecallNamespace(namespaceInput.trim(), maxChunks);
-      setRecallResult(result ?? '');
+      setRecallResult(result);
     } catch (error) {
       setRecallError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -411,13 +413,17 @@ const MemoryDebugPanel = () => {
 
             <div className="space-y-2">
               <div className="text-xs text-stone-400">Query response</div>
-              <pre className="rounded border border-stone-700 bg-black/20 p-2 overflow-auto text-[11px] leading-5 min-h-16">
-                {queryResult ?? ''}
-              </pre>
+              <MemoryTextWithEntities
+                text={queryResult?.text ?? ''}
+                entities={queryResult?.entities}
+                className="rounded border border-stone-700 bg-black/20 p-2 overflow-auto text-[11px] leading-5 min-h-16 whitespace-pre-wrap"
+              />
               <div className="text-xs text-stone-400">Recall response</div>
-              <pre className="rounded border border-stone-700 bg-black/20 p-2 overflow-auto text-[11px] leading-5 min-h-16">
-                {recallResult ?? ''}
-              </pre>
+              <MemoryTextWithEntities
+                text={recallResult?.text ?? ''}
+                entities={recallResult?.entities}
+                className="rounded border border-stone-700 bg-black/20 p-2 overflow-auto text-[11px] leading-5 min-h-16 whitespace-pre-wrap"
+              />
             </div>
           </div>
         </SectionCard>
