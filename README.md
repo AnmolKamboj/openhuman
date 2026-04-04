@@ -59,8 +59,6 @@ Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Contributor orient
 
 High-level comparison (products evolve—verify against each vendor). OpenHuman is built to **minimize vendor sprawl**, keep **workflow knowledge on-device**, and ship **deep desktop** features—not only chat.
 
-Legend: **✅** strong fit · **🚫** not applicable / closed / extra keys & bills · **⚠️** partial or depends on setup
-
 |                                                                        | Claude Desktop                                         | OpenClaw                                       | Hermes                                     | OpenHuman                                                                                            |
 | ---------------------------------------------------------------------- | ------------------------------------------------------ | ---------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
 | **Open-source** Is the codebase open to review?                        | 🚫 Proprietary client                                  | ✅ MIT License                                 | ✅ MIT License                             | ✅ GNU License                                                                                       |
