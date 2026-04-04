@@ -57,17 +57,19 @@ Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Contributor orient
 
 High-level comparison (products evolve—verify against each vendor). OpenHuman is built to **minimize vendor sprawl**, keep **workflow knowledge on-device**, and ship **deep desktop** features—not only chat.
 
-|                                                                                         | Claude Desktop                                                                         | OpenClaw                                   | Hermes                                        | OpenHuman                                                                                                               |
-| --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------ | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| **Open-source app**                                                                     | No                                                                                     | Depends on distribution                    | Depends                                       | **Yes** ([`tinyhumansai/openhuman`](https://github.com/tinyhumansai/openhuman))                                         |
-| **Single subscription for models + platform APIs**                                      | Claude subscription; many workflows still need **separate API keys** / bills for tools | Often **BYOK** and **multi-vendor** setups | Often **multiple providers** / keys to manage | **One account** for bundled agentic APIs (models, search, tunnels/webhooks, third-party surfaces—per product packaging) |
-| **Local encrypted knowledge base**                                                      | Chat/session-centric; not a first-class local KB product                               | Varies by deployment                       | Varies                                        | **On-device** knowledge that compounds with **your** activity                                                           |
-| **Sandboxed skills + webhooks**                                                         | **MCP** connectors (different model)                                                   | Varies                                     | Varies                                        | **Skills** registry, setup wizards, **webhooks** for instant feedback                                                   |
-| **Deep desktop integrations** (screen intelligence, STT/TTS, memory-aware autocomplete) | Desktop app; depth varies by OS and feature                                            | Varies                                     | Varies                                        | **Native** stack: screen, voice, autocomplete, OS-level context loop                                                    |
+|                           | Claude Desktop                                         | OpenClaw                        | Hermes                                 | OpenHuman                                                           |
+| ------------------------- | ------------------------------------------------------ | ------------------------------- | -------------------------------------- | ------------------------------------------------------------------- |
+| **Open-source & Private** | 🚫                                                     | ✅                              | ✅                                     | ✅                                                                  |
+| **Cost**                  | Incredibly High                                        | Depends on the AI model used    | Depends on the AI model used           | Low (uses cloud + local AI models to save costs)                    |
+| **Self Learning**         | ⚠️ Uses built-in Memory                                | 🚫 Needs special plugins        | ✅ Reflects on every prompt/task       | ✅ Reflects on every prompt                                         |
+| **APIs Needed**           | 🚫 Claude + often **extra API keys** / bills for tools | 🚫 Often **BYOK**, multi-vendor | 🚫 Often **multiple providers** / keys | ✅ **One account**, bundled platform APIs                           |
+| **Knowledge base**        | ⚠️ Weak & Session-centric                              | ⚠️ Weak & Session-centric       | ⚠️ Weak & Session-centric              | ✅ Syncs with your workspace (GMail, Notion etc...) in a few clicks |
+| **Skills**                | _Varies_ — **MCP** (different integration model)       | _Varies_                        | _Varies_                               | ✅ Skills + wizards + **webhooks**                                  |
+| **Desktop integrations**  | _Varies_ — desktop app; depth depends on OS/features   | Basic                           | Basic                                  | Rich (SST, TTS, Screen Intelligence, Keyboard Autocomplete)         |
 
 <!-- # Star us on GitHub
 
-_Building toward AGI and artificial consciousness? Star the repo and help others find the path._
+_Building toward AGI and artificial consciousness? Star the repo and help ot hers find the path._
 
 <p align="center">
   <a href="https://www.star-history.com/#tinyhumansai/openhuman&type=date&legend=top-left">
