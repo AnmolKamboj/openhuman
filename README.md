@@ -57,19 +57,21 @@ Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Contributor orient
 
 High-level comparison (products evolve—verify against each vendor). OpenHuman is built to **minimize vendor sprawl**, keep **workflow knowledge on-device**, and ship **deep desktop** features—not only chat.
 
-|                           | Claude Desktop                                         | OpenClaw                        | Hermes                                 | OpenHuman                                                           |
-| ------------------------- | ------------------------------------------------------ | ------------------------------- | -------------------------------------- | ------------------------------------------------------------------- |
-| **Open-source & Private** | 🚫                                                     | ✅                              | ✅                                     | ✅                                                                  |
-| **Cost**                  | Incredibly High                                        | Depends on the AI model used    | Depends on the AI model used           | Low (uses cloud + local AI models to save costs)                    |
-| **Self Learning**         | ⚠️ Uses built-in Memory                                | 🚫 Needs special plugins        | ✅ Reflects on every prompt/task       | ✅ Reflects on every prompt                                         |
-| **APIs Needed**           | 🚫 Claude + often **extra API keys** / bills for tools | 🚫 Often **BYOK**, multi-vendor | 🚫 Often **multiple providers** / keys | ✅ **One account**, bundled platform APIs                           |
-| **Knowledge base**        | ⚠️ Weak & Session-centric                              | ⚠️ Weak & Session-centric       | ⚠️ Weak & Session-centric              | ✅ Syncs with your workspace (GMail, Notion etc...) in a few clicks |
-| **Skills**                | _Varies_ — **MCP** (different integration model)       | _Varies_                        | _Varies_                               | ✅ Skills + wizards + **webhooks**                                  |
-| **Desktop integrations**  | _Varies_ — desktop app; depth depends on OS/features   | Basic                           | Basic                                  | Rich (SST, TTS, Screen Intelligence, Keyboard Autocomplete)         |
+Legend: **✅** strong fit · **🚫** not applicable / closed / extra keys & bills · **⚠️** partial or depends on setup
+
+|                           | Claude Desktop                                         | OpenClaw                                       | Hermes                                     | OpenHuman                                                                   |
+| ------------------------- | ------------------------------------------------------ | ---------------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------- |
+| **Open-source**           | 🚫 Proprietary client                                  | ✅ Codebase is open under MIT License          | ✅ Codebase is open under MIT License      | ✅ Codebase is open under GNU License                                       |
+| **Cost**                  | ⚠️ Subscription plus **add-on** tool/API costs         | ⚠️ Tied to **models & hosting** you choose     | ⚠️ Tied to **models & hosting** you choose | ✅ **Cloud + local** models to **optimize** spend (per offering)            |
+| **Memory & adaptation**   | ⚠️ Built-in **memory**; mostly **chat/session** scoped | 🚫 Often needs **plugins** for richer behavior | ✅ **Reflection** / task loops (typical)   | ✅ **Local KB** + learning from **your** activity & prompts                 |
+| **API sprawl**            | 🚫 Claude bill + often **extra keys** for MCP/tools    | 🚫 **BYOK** / **multi-vendor** common          | 🚫 **Multiple providers** common           | ✅ **One account**, **bundled** platform APIs                               |
+| **Knowledge & workspace** | ⚠️ **Session-first**; not a full **workspace KB**      | ⚠️ **Session-first** unless you extend it      | ⚠️ **Session-first** unless you extend it  | ✅ **Syncs** Gmail, Notion, etc. via **skills**—usually **a few clicks**    |
+| **Extensibility**         | ⚠️ **MCP** (different model than sandboxed skills)     | ⚠️ _Varies_                                    | ⚠️ _Varies_                                | ✅ **Skills**, setup **wizards**, **webhooks**                              |
+| **Desktop depth**         | ⚠️ Desktop app; **OS** depth **varies**                | ⚠️ Often **lighter** native surface            | ⚠️ Often **lighter** native surface        | ✅ **STT**, **TTS**, **screen intelligence**, **memory-aware autocomplete** |
 
 <!-- # Star us on GitHub
 
-_Building toward AGI and artificial consciousness? Star the repo and help ot hers find the path._
+_Building toward AGI and artificial consciousness? Star the repo and help others find the path._
 
 <p align="center">
   <a href="https://www.star-history.com/#tinyhumansai/openhuman&type=date&legend=top-left">
