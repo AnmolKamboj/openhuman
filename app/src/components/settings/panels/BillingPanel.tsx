@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
 import createDebug from 'debug';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { useCoreState } from '../../../providers/CoreStateProvider';
 import { billingApi } from '../../../services/api/billingApi';
 import {
   type AutoRechargeSettings,
@@ -9,8 +10,6 @@ import {
   type SavedCard,
   type TeamUsage,
 } from '../../../services/api/creditsApi';
-import { useAppDispatch, useAppSelector } from '../../../store/hooks';
-import { fetchCurrentUser } from '../../../store/userSlice';
 import type { CurrentPlanData, PlanTier } from '../../../types/api';
 import { openUrl } from '../../../utils/openUrl';
 import SettingsHeader from '../components/SettingsHeader';
@@ -18,11 +17,11 @@ import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
 import {
   annualSavings,
   buildPlanId,
+  isUpgrade as checkIsUpgrade,
   displayPrice,
   formatStorageLimit,
   formatUsdAmount,
   getPlanMeta,
-  isUpgrade as checkIsUpgrade,
   PLANS,
 } from './billingHelpers';
 
@@ -49,9 +48,8 @@ function cardBrandLabel(brand: string) {
 // ── Component ───────────────────────────────────────────────────────────
 const BillingPanel = () => {
   const { navigateBack } = useSettingsNavigation();
-  const dispatch = useAppDispatch();
-  const user = useAppSelector(state => state.user.user);
-  const { teams } = useAppSelector(state => state.team);
+  const { snapshot, teams, refresh } = useCoreState();
+  const user = snapshot.currentUser;
 
   // Active team context
   const activeTeamId = user?.activeTeamId;
@@ -104,7 +102,9 @@ const BillingPanel = () => {
 
   const currentTier: PlanTier = currentPlan?.plan ?? activeTeam?.team.subscription?.plan ?? 'FREE';
   const hasActive =
-    currentPlan?.hasActiveSubscription ?? activeTeam?.team.subscription?.hasActiveSubscription ?? false;
+    currentPlan?.hasActiveSubscription ??
+    activeTeam?.team.subscription?.hasActiveSubscription ??
+    false;
   const planExpiry = currentPlan?.planExpiry ?? activeTeam?.team.subscription?.planExpiry ?? null;
   const currentPlanMeta = getPlanMeta(currentTier);
 
@@ -288,7 +288,7 @@ const BillingPanel = () => {
       } catch (e) {
         console.error('Failed to fetch current plan after payment', e);
       }
-      dispatch(fetchCurrentUser());
+      await refresh();
 
       // Auto-hide the success banner after 5 s
       timeoutRef.current = window.setTimeout(() => setPaymentConfirmed(false), 5_000);
@@ -302,7 +302,7 @@ const BillingPanel = () => {
         timeoutRef.current = null;
       }
     };
-  }, [dispatch]);
+  }, [refresh]);
 
   // ── Poll for plan change after checkout ─────────────────────────────
   const currentTierRef = useRef(currentTier);
@@ -328,7 +328,7 @@ const BillingPanel = () => {
         log('[poll] plan=%s active=%s', plan.plan, plan.hasActiveSubscription);
         setCurrentPlan(plan);
         if (plan.hasActiveSubscription && plan.plan !== currentTierRef.current) {
-          dispatch(fetchCurrentUser());
+          await refresh();
           setIsPurchasing(false);
           setPurchasingTier(null);
           if (pollRef.current) clearInterval(pollRef.current);
@@ -337,7 +337,7 @@ const BillingPanel = () => {
         // Ignore polling errors
       }
     }, 5_000);
-  }, [dispatch]);
+  }, [refresh]);
 
   // ── Purchase handlers ───────────────────────────────────────────────
   const handleUpgrade = async (tier: PlanTier) => {
@@ -1134,7 +1134,10 @@ const BillingPanel = () => {
                         d="M5 13l4 4L19 7"
                       />
                     </svg>
-                    <span>Higher tiers increase your premium-usage discount and included usage every cycle</span>
+                    <span>
+                      Higher tiers increase your premium-usage discount and included usage every
+                      cycle
+                    </span>
                   </li>
                   {currentTier === 'FREE' && (
                     <li className="flex items-start gap-2">

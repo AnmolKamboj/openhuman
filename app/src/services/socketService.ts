@@ -2,6 +2,7 @@ import { isTauri as coreIsTauri, invoke } from '@tauri-apps/api/core';
 import debug from 'debug';
 import { io, Socket } from 'socket.io-client';
 
+import { getCoreStateSnapshot } from '../lib/coreState/store';
 import { SocketIOMCPTransportImpl } from '../lib/mcp';
 import { skillManager, syncToolsToBackend } from '../lib/skills';
 import { store } from '../store';
@@ -94,7 +95,7 @@ function normalizeChannelConnectionUpdatePayload(
 }
 
 function getSocketUserId(): string {
-  const token = store.getState().auth.token;
+  const token = getCoreStateSnapshot().snapshot.sessionToken;
   if (!token) return '__pending__';
 
   try {
