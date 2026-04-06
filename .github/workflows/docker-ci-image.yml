@@ -18,6 +18,13 @@ jobs:
     name: Build and push CI image
     runs-on: ubuntu-latest
     steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: tibdex/github-app-token@v1
+        with:
+          app_id: ${{ secrets.XGITHUB_APP_ID }}
+          private_key: ${{ secrets.XGITHUB_APP_PRIVATE_KEY }}
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -26,7 +33,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ steps.app-token.outputs.token }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
