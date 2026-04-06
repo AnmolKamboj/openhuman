@@ -113,6 +113,9 @@ pub struct Config {
     pub local_ai: LocalAiConfig,
 
     #[serde(default)]
+    pub voice_server: VoiceServerConfig,
+
+    #[serde(default)]
     pub integrations: IntegrationsConfig,
 
     #[serde(default)]
@@ -123,6 +126,9 @@ pub struct Config {
 
     #[serde(default)]
     pub update: UpdateConfig,
+
+    #[serde(default)]
+    pub dictation: DictationConfig,
 
     /// Whether to launch the overlay Tauri app (floating debug/voice panel)
     /// when the core RPC server starts. Defaults to `true`.
@@ -175,11 +181,13 @@ impl Default for Config {
             agents: HashMap::new(),
             hardware: HardwareConfig::default(),
             local_ai: LocalAiConfig::default(),
+            voice_server: VoiceServerConfig::default(),
             query_classification: QueryClassificationConfig::default(),
             integrations: IntegrationsConfig::default(),
             learning: LearningConfig::default(),
             orchestrator: OrchestratorConfig::default(),
             update: UpdateConfig::default(),
+            dictation: DictationConfig::default(),
             overlay_enabled: true,
             onboarding_completed: false,
         }
