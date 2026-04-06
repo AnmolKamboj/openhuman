@@ -58,4 +58,4 @@ COPY e2e/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 # Verify installs
-RUN rustc --version && cargo --version && node --version && yarn --version && mold --version && sccache --version && tauri-driver --version
+RUN rustc --version && cargo --version && node --version && yarn --version && mold --version && sccache --version && which tauri-driver
