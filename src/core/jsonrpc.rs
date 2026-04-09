@@ -704,6 +704,21 @@ async fn run_server_inner(
                 crate::openhuman::screen_intelligence::server::start_if_enabled(&config).await;
                 crate::openhuman::autocomplete::start_if_enabled(&config).await;
 
+                // Register autocomplete shutdown hook so the engine (and its
+                // Swift overlay helper) are stopped cleanly on process exit.
+                crate::core::shutdown::register(|| async {
+                    let engine = crate::openhuman::autocomplete::global_engine();
+                    let status = engine.status().await;
+                    if status.running {
+                        log::info!(
+                            "[core] stopping autocomplete engine (phase={})",
+                            status.phase
+                        );
+                        engine.stop(None).await;
+                        log::info!("[core] autocomplete engine stopped");
+                    }
+                });
+
                 // Subconscious engine + heartbeat bootstrap is now gated on
                 // login so seed_default_tasks() runs against the per-user
                 // workspace (`~/.openhuman/users/<id>/workspace/`) instead
@@ -753,7 +768,9 @@ async fn run_server_inner(
         }
     });
 
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(crate::core::shutdown::signal())
+        .await?;
     Ok(())
 }
 
