@@ -39,6 +39,7 @@ export interface UnifiedSkillCardProps {
     metricsText?: string;
   };
   syncSummaryText?: string;
+  ctaDisabled?: boolean;
 }
 
 const CTA_STYLES: Record<string, string> = {
@@ -60,6 +61,7 @@ export function UnifiedSkillCard({
   secondaryActions,
   syncProgress,
   syncSummaryText,
+  ctaDisabled,
 }: UnifiedSkillCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -164,11 +166,12 @@ export function UnifiedSkillCard({
         )}
         <button
           type="button"
+          disabled={ctaDisabled}
           onClick={e => {
             e.stopPropagation();
             onCtaClick();
           }}
-          className={`flex-shrink-0 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors ${ctaStyle}`}>
+          className={`flex-shrink-0 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors ${ctaStyle} ${ctaDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}>
           {ctaLabel}
         </button>
       </div>
@@ -180,9 +183,10 @@ export function UnifiedSkillCard({
 interface ThirdPartySkillCardProps {
   skill: SkillListEntry;
   onSetup: () => void;
+  isInstalling?: boolean;
 }
 
-export function ThirdPartySkillCard({ skill, onSetup }: ThirdPartySkillCardProps) {
+export function ThirdPartySkillCard({ skill, onSetup, isInstalling }: ThirdPartySkillCardProps) {
   const connectionStatus = useSkillConnectionStatus(skill.id);
   const statusDisplay = STATUS_DISPLAY[connectionStatus] ?? STATUS_DISPLAY.offline;
   const skillState = useSkillState<SkillHostConnectionState & Record<string, unknown>>(skill.id);
@@ -239,6 +243,7 @@ export function ThirdPartySkillCard({ skill, onSetup }: ThirdPartySkillCardProps
   }
 
   function ctaLabel(): string {
+    if (isInstalling) return 'Enabling...';
     switch (connectionStatus) {
       case 'offline': return 'Enable';
       case 'setup_required': return 'Setup';
@@ -305,6 +310,7 @@ export function ThirdPartySkillCard({ skill, onSetup }: ThirdPartySkillCardProps
         statusColor={statusDisplay.color}
         ctaLabel={ctaLabel()}
         ctaVariant={ctaVariant()}
+        ctaDisabled={isInstalling}
         onCtaClick={() => onSetup()}
         secondaryActions={secondaryActions}
         syncProgress={

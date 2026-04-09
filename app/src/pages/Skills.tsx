@@ -353,11 +353,9 @@ export default function Skills() {
               onChange={setSelectedCategory}
             />
 
-            {skillsLoading || installing ? (
+            {skillsLoading ? (
               <div className="py-8 text-center">
-                <p className="text-sm text-stone-400">
-                  {installing ? `Installing ${installing}...` : 'Loading skills...'}
-                </p>
+                <p className="text-sm text-stone-400">Loading skills...</p>
               </div>
             ) : filteredItems.length === 0 ? (
               <div className="py-8 text-center">
@@ -406,6 +404,7 @@ export default function Skills() {
                         <ThirdPartySkillCard
                           key={item.id}
                           skill={item.skill!}
+                          isInstalling={installing === item.id}
                           onSetup={() => openSkillSetup(item.skill!)}
                         />
                       );
