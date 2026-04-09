@@ -8,11 +8,13 @@
 use super::dispatcher::{
     NativeToolDispatcher, ParsedToolCall, ToolDispatcher, ToolExecutionResult, XmlToolDispatcher,
 };
+use super::error::AgentError;
 use super::hooks::{self, sanitize_tool_output, PostTurnHook, ToolCallRecord, TurnContext};
 use super::memory_loader::{DefaultMemoryLoader, MemoryLoader};
 use super::prompt::{PromptContext, SystemPromptBuilder};
 use crate::openhuman::agent::host_runtime;
 use crate::openhuman::config::Config;
+use crate::openhuman::event_bus::{publish_global, DomainEvent};
 use crate::openhuman::memory::{self, Memory, MemoryCategory};
 use crate::openhuman::providers::{
     self, ChatMessage, ChatRequest, ConversationMessage, Provider, ToolCall,
@@ -49,6 +51,8 @@ pub struct Agent {
     available_hints: Vec<String>,
     post_turn_hooks: Vec<Arc<dyn PostTurnHook>>,
     learning_enabled: bool,
+    event_session_id: String,
+    event_channel: String,
 }
 
 /// A builder for creating `Agent` instances with custom configuration.
@@ -70,6 +74,8 @@ pub struct AgentBuilder {
     available_hints: Option<Vec<String>>,
     post_turn_hooks: Vec<Arc<dyn PostTurnHook>>,
     learning_enabled: bool,
+    event_session_id: Option<String>,
+    event_channel: Option<String>,
 }
 
 impl Default for AgentBuilder {
@@ -99,6 +105,8 @@ impl AgentBuilder {
             available_hints: None,
             post_turn_hooks: Vec::new(),
             learning_enabled: false,
+            event_session_id: None,
+            event_channel: None,
         }
     }
 
@@ -210,6 +218,16 @@ impl AgentBuilder {
         self
     }
 
+    pub fn event_context(
+        mut self,
+        session_id: impl Into<String>,
+        channel: impl Into<String>,
+    ) -> Self {
+        self.event_session_id = Some(session_id.into());
+        self.event_channel = Some(channel.into());
+        self
+    }
+
     /// Validates the configuration and builds the `Agent` instance.
     pub fn build(self) -> Result<Agent> {
         let tools = self
@@ -251,11 +269,95 @@ impl AgentBuilder {
             available_hints: self.available_hints.unwrap_or_default(),
             post_turn_hooks: self.post_turn_hooks,
             learning_enabled: self.learning_enabled,
+            event_session_id: self
+                .event_session_id
+                .unwrap_or_else(|| "standalone".to_string()),
+            event_channel: self.event_channel.unwrap_or_else(|| "internal".to_string()),
         })
     }
 }
 
 impl Agent {
+    const EVENT_ERROR_MAX_CHARS: usize = 256;
+
+    fn event_session_id(&self) -> &str {
+        &self.event_session_id
+    }
+
+    fn event_channel(&self) -> &str {
+        &self.event_channel
+    }
+
+    fn count_iterations(messages: &[ConversationMessage]) -> usize {
+        messages
+            .iter()
+            .filter(|message| matches!(message, ConversationMessage::AssistantToolCalls { .. }))
+            .count()
+            + 1
+    }
+
+    fn conversation_message_eq(left: &ConversationMessage, right: &ConversationMessage) -> bool {
+        serde_json::to_string(left).ok() == serde_json::to_string(right).ok()
+    }
+
+    fn message_slice_eq(left: &[ConversationMessage], right: &[ConversationMessage]) -> bool {
+        left.len() == right.len()
+            && left
+                .iter()
+                .zip(right.iter())
+                .all(|(left, right)| Self::conversation_message_eq(left, right))
+    }
+
+    fn new_entries_for_turn<'a>(
+        history_snapshot: &[ConversationMessage],
+        current_history: &'a [ConversationMessage],
+    ) -> &'a [ConversationMessage] {
+        let common_prefix_len = history_snapshot
+            .iter()
+            .zip(current_history.iter())
+            .take_while(|(left, right)| Self::conversation_message_eq(left, right))
+            .count();
+
+        if common_prefix_len == history_snapshot.len() {
+            return &current_history[common_prefix_len..];
+        }
+
+        let max_overlap = history_snapshot.len().min(current_history.len());
+        for overlap in (0..=max_overlap).rev() {
+            let snapshot_suffix = &history_snapshot[history_snapshot.len() - overlap..];
+            let current_prefix = &current_history[..overlap];
+            if Self::message_slice_eq(snapshot_suffix, current_prefix) {
+                return &current_history[overlap..];
+            }
+        }
+
+        current_history
+    }
+
+    fn sanitize_event_error_message(err: &anyhow::Error) -> String {
+        let kind = match err.downcast_ref::<AgentError>() {
+            Some(AgentError::ProviderError { .. }) => Some("provider_error"),
+            Some(AgentError::ContextLimitExceeded { .. }) => Some("context_limit_exceeded"),
+            Some(AgentError::ToolExecutionError { .. }) => Some("tool_execution_error"),
+            Some(AgentError::CostBudgetExceeded { .. }) => Some("cost_budget_exceeded"),
+            Some(AgentError::MaxIterationsExceeded { .. }) => Some("max_iterations_exceeded"),
+            Some(AgentError::CompactionFailed { .. }) => Some("compaction_failed"),
+            Some(AgentError::PermissionDenied { .. }) => Some("permission_denied"),
+            Some(AgentError::Other(_)) | None => None,
+        };
+
+        if let Some(kind) = kind {
+            return kind.to_string();
+        }
+
+        let scrubbed = providers::sanitize_api_error(&err.to_string())
+            .replace(['\n', '\r', '\t'], " ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        truncate_with_ellipsis(&scrubbed, Self::EVENT_ERROR_MAX_CHARS)
+    }
+
     /// Injects unique IDs into tool calls that are missing them.
     ///
     /// This is necessary for some tool dispatchers to correctly track and
@@ -307,6 +409,11 @@ impl Agent {
     /// Returns the current conversation history.
     pub fn history(&self) -> &[ConversationMessage] {
         &self.history
+    }
+
+    pub fn set_event_context(&mut self, session_id: impl Into<String>, channel: impl Into<String>) {
+        self.event_session_id = session_id.into();
+        self.event_channel = channel.into();
     }
 
     /// Clears the agent's conversation history.
@@ -633,6 +740,10 @@ impl Agent {
         call: &ParsedToolCall,
     ) -> (ToolExecutionResult, ToolCallRecord) {
         let started = std::time::Instant::now();
+        publish_global(DomainEvent::ToolExecutionStarted {
+            tool_name: call.name.clone(),
+            session_id: self.event_session_id().to_string(),
+        });
         log::info!("[agent_loop] tool start name={}", call.name);
         let (result, success) =
             if let Some(tool) = self.tools.iter().find(|t| t.name() == call.name) {
@@ -650,6 +761,12 @@ impl Agent {
                 (format!("Unknown tool: {}", call.name), false)
             };
         let elapsed_ms = started.elapsed().as_millis() as u64;
+        publish_global(DomainEvent::ToolExecutionCompleted {
+            tool_name: call.name.clone(),
+            session_id: self.event_session_id().to_string(),
+            success,
+            elapsed_ms,
+        });
         log::info!(
             "[agent_loop] tool finish name={} elapsed_ms={} output_chars={} success={}",
             call.name,
@@ -930,7 +1047,32 @@ impl Agent {
 
     /// Runs a single turn with the given message and returns the response.
     pub async fn run_single(&mut self, message: &str) -> Result<String> {
-        self.turn(message).await
+        let history_snapshot = self.history.clone();
+        publish_global(DomainEvent::AgentTurnStarted {
+            session_id: self.event_session_id().to_string(),
+            channel: self.event_channel().to_string(),
+        });
+
+        match self.turn(message).await {
+            Ok(response) => {
+                let new_entries = Self::new_entries_for_turn(&history_snapshot, &self.history);
+                publish_global(DomainEvent::AgentTurnCompleted {
+                    session_id: self.event_session_id().to_string(),
+                    text_chars: response.chars().count(),
+                    iterations: Self::count_iterations(new_entries),
+                });
+                Ok(response)
+            }
+            Err(err) => {
+                let sanitized_message = Self::sanitize_event_error_message(&err);
+                publish_global(DomainEvent::AgentError {
+                    session_id: self.event_session_id().to_string(),
+                    message: sanitized_message,
+                    recoverable: false,
+                });
+                Err(err)
+            }
+        }
     }
 
     /// Runs an interactive CLI loop, reading from standard input and printing to standard output.
