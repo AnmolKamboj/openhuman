@@ -108,6 +108,10 @@ impl CoreProcessHandle {
                 "[core] found existing core rpc endpoint at {}",
                 self.rpc_url()
             );
+            log::warn!(
+                "[core] reusing port {} — if channel/Telegram behavior mismatches the app, another stale `openhuman` core may be attached; check [core-update] logs for version skew.",
+                self.port
+            );
             return Ok(());
         }
 
