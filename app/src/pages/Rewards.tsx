@@ -5,8 +5,7 @@ import ReferralRewardsSection from '../components/referral/ReferralRewardsSectio
 import RewardsCouponSection from '../components/rewards/RewardsCouponSection';
 import { useUser } from '../hooks/useUser';
 import { useAppSelector } from '../store/hooks';
-
-const DISCORD_INVITE_URL = 'https://discord.com/invite/k23Kn8nK';
+import { DISCORD_INVITE_URL } from '../utils/links';
 
 interface RewardRole {
   id: string;
