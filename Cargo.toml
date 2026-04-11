@@ -64,7 +64,6 @@ dotenvy = "0.15"
 console = "0.16"
 regex = "1.10"
 hostname = "0.4.2"
-rustyline = { version = "15", features = ["with-file-history"] }
 rustls = { version = "0.23", features = ["ring"] }
 rustls-pki-types = "1.14.0"
 tokio-rustls = "0.26.4"
