@@ -31,11 +31,14 @@ use super::envelope::TriggerEnvelope;
 use super::evaluator::TriageRun;
 use super::events;
 
-/// Interpret a [`TriageRun`] and fire the matching side effects.
+/// Executes the side effects of a triage decision.
 ///
-/// Always publishes [`crate::core::event_bus::DomainEvent::TriggerEvaluated`].
-/// For `react`/`escalate`, also dispatches the named target agent via
-/// [`run_subagent`] and publishes `TriggerEscalated` on success.
+/// This function is responsible for:
+/// 1. Publishing the `TriggerEvaluated` telemetry event.
+/// 2. Logging the classification outcome.
+/// 3. If the action is `React` or `Escalate`, dispatching the appropriate
+///    sub-agent (`trigger_reactor` or `orchestrator`).
+/// 4. Publishing `TriggerEscalated` or `TriggerEscalationFailed` events.
 pub async fn apply_decision(run: TriageRun, envelope: &TriggerEnvelope) -> anyhow::Result<()> {
     // Always publish `TriggerEvaluated` — it's the single source of
     // truth for dashboards, counts every trigger regardless of action.
@@ -171,4 +174,209 @@ async fn dispatch_target_agent(agent_id: &str, prompt: &str) -> anyhow::Result<S
     );
 
     Ok(outcome.output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::event_bus::{global, init_global, DomainEvent};
+    use crate::openhuman::agent::harness::definition::AgentDefinitionRegistry;
+    use serde_json::json;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+    use tokio::time::{sleep, Duration};
+
+    fn envelope(external_id: &str) -> TriggerEnvelope {
+        TriggerEnvelope::from_composio(
+            "gmail",
+            "GMAIL_NEW_GMAIL_MESSAGE",
+            "triage-escalation",
+            external_id,
+            json!({ "subject": "hello" }),
+        )
+    }
+
+    fn run(action: TriageAction) -> TriageRun {
+        TriageRun {
+            decision: super::super::decision::TriageDecision {
+                action,
+                target_agent: None,
+                prompt: None,
+                reason: "because".into(),
+            },
+            used_local: false,
+            latency_ms: 9,
+        }
+    }
+
+    fn run_with_target(action: TriageAction, target_agent: &str, prompt: &str) -> TriageRun {
+        TriageRun {
+            decision: super::super::decision::TriageDecision {
+                action,
+                target_agent: Some(target_agent.into()),
+                prompt: Some(prompt.into()),
+                reason: "because".into(),
+            },
+            used_local: false,
+            latency_ms: 9,
+        }
+    }
+
+    #[tokio::test]
+    async fn apply_decision_drop_only_publishes_evaluated() {
+        let envelope = envelope("esc-drop");
+        let _ = init_global(32);
+        let seen = Arc::new(Mutex::new(Vec::<DomainEvent>::new()));
+        let seen_handler = Arc::clone(&seen);
+        let _handle = global()
+            .unwrap()
+            .on("triage-escalation-drop", move |event| {
+                let seen = Arc::clone(&seen_handler);
+                let cloned = event.clone();
+                Box::pin(async move {
+                    seen.lock().await.push(cloned);
+                })
+            });
+
+        apply_decision(run(TriageAction::Drop), &envelope)
+            .await
+            .expect("drop should not fail");
+        sleep(Duration::from_millis(20)).await;
+
+        let captured = seen.lock().await;
+        assert!(captured.iter().any(|event| matches!(
+            event,
+            DomainEvent::TriggerEvaluated {
+                decision,
+                external_id,
+                ..
+            } if decision == "drop" && external_id == "esc-drop"
+        )));
+        assert!(!captured.iter().any(|event| matches!(
+            event,
+            DomainEvent::TriggerEscalated { external_id, .. }
+                | DomainEvent::TriggerEscalationFailed { external_id, .. }
+                if external_id == "esc-drop"
+        )));
+    }
+
+    #[tokio::test]
+    async fn apply_decision_acknowledge_only_publishes_evaluated() {
+        let envelope = envelope("esc-ack");
+        let _ = init_global(32);
+        let seen = Arc::new(Mutex::new(Vec::<DomainEvent>::new()));
+        let seen_handler = Arc::clone(&seen);
+        let _handle = global().unwrap().on("triage-escalation-ack", move |event| {
+            let seen = Arc::clone(&seen_handler);
+            let cloned = event.clone();
+            Box::pin(async move {
+                seen.lock().await.push(cloned);
+            })
+        });
+
+        apply_decision(run(TriageAction::Acknowledge), &envelope)
+            .await
+            .expect("acknowledge should not fail");
+        sleep(Duration::from_millis(20)).await;
+
+        let captured = seen.lock().await;
+        assert!(captured.iter().any(|event| matches!(
+            event,
+            DomainEvent::TriggerEvaluated {
+                decision,
+                external_id,
+                ..
+            } if decision == "acknowledge" && external_id == "esc-ack"
+        )));
+        assert!(!captured.iter().any(|event| matches!(
+            event,
+            DomainEvent::TriggerEscalated { external_id, .. }
+                | DomainEvent::TriggerEscalationFailed { external_id, .. }
+                if external_id == "esc-ack"
+        )));
+    }
+
+    #[tokio::test]
+    async fn apply_decision_react_failure_publishes_failed_event() {
+        let envelope = envelope("esc-react-fail");
+        let _ = init_global(32);
+        let _ = AgentDefinitionRegistry::init_global_builtins();
+        let seen = Arc::new(Mutex::new(Vec::<DomainEvent>::new()));
+        let seen_handler = Arc::clone(&seen);
+        let _handle = global()
+            .unwrap()
+            .on("triage-escalation-react-fail", move |event| {
+                let seen = Arc::clone(&seen_handler);
+                let cloned = event.clone();
+                Box::pin(async move {
+                    seen.lock().await.push(cloned);
+                })
+            });
+
+        let err = apply_decision(
+            run_with_target(TriageAction::React, "missing-agent", "handle this"),
+            &envelope,
+        )
+        .await
+        .expect_err("missing target agent should fail");
+        assert!(err.to_string().contains("missing-agent"));
+
+        sleep(Duration::from_millis(20)).await;
+        let captured = seen.lock().await;
+        assert!(captured.iter().any(|event| matches!(
+            event,
+            DomainEvent::TriggerEvaluated {
+                decision,
+                external_id,
+                ..
+            } if decision == "react" && external_id == "esc-react-fail"
+        )));
+        assert!(captured.iter().any(|event| matches!(
+            event,
+            DomainEvent::TriggerEscalationFailed { external_id, reason, .. }
+                if external_id == "esc-react-fail" && reason.contains("missing-agent")
+        )));
+    }
+
+    #[tokio::test]
+    async fn apply_decision_escalate_failure_publishes_failed_event() {
+        let envelope = envelope("esc-escalate-fail");
+        let _ = init_global(32);
+        let _ = AgentDefinitionRegistry::init_global_builtins();
+        let seen = Arc::new(Mutex::new(Vec::<DomainEvent>::new()));
+        let seen_handler = Arc::clone(&seen);
+        let _handle = global()
+            .unwrap()
+            .on("triage-escalation-escalate-fail", move |event| {
+                let seen = Arc::clone(&seen_handler);
+                let cloned = event.clone();
+                Box::pin(async move {
+                    seen.lock().await.push(cloned);
+                })
+            });
+
+        let err = apply_decision(
+            run_with_target(TriageAction::Escalate, "missing-agent", "escalate this"),
+            &envelope,
+        )
+        .await
+        .expect_err("missing orchestrator target should fail");
+        assert!(err.to_string().contains("missing-agent"));
+
+        sleep(Duration::from_millis(20)).await;
+        let captured = seen.lock().await;
+        assert!(captured.iter().any(|event| matches!(
+            event,
+            DomainEvent::TriggerEvaluated {
+                decision,
+                external_id,
+                ..
+            } if decision == "escalate" && external_id == "esc-escalate-fail"
+        )));
+        assert!(captured.iter().any(|event| matches!(
+            event,
+            DomainEvent::TriggerEscalationFailed { external_id, reason, .. }
+                if external_id == "esc-escalate-fail" && reason.contains("missing-agent")
+        )));
+    }
 }

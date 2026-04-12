@@ -714,9 +714,7 @@ fn key_bytes_from_string(key: &str) -> Result<Vec<u8>> {
     let trimmed = key.trim();
 
     // Raw 32-byte ASCII key
-    if trimmed.len() == 32
-        && !trimmed.contains(|c: char| c == '+' || c == '/' || c == '-' || c == '_' || c == '=')
-    {
+    if trimmed.len() == 32 && !trimmed.contains(['+', '/', '-', '_', '=']) {
         return Ok(trimmed.as_bytes().to_vec());
     }
 

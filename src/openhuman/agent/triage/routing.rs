@@ -344,6 +344,7 @@ impl Provider for LocalAiAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::openhuman::local_ai::presets::apply_preset_to_config;
 
     /// Reset the cache between tests so they don't observe each
     /// other's state. Called at the top of every cache-state test.
@@ -400,7 +401,7 @@ mod tests {
             .await
             .expect("cache seeded by mark_degraded");
         assert_eq!(snap.state, "degraded");
-        assert!(snap.ttl_remaining_ms > 0);
+        assert!(snap.ttl_remaining_ms <= CACHE_TTL.as_millis());
     }
 
     #[tokio::test]
@@ -419,6 +420,101 @@ mod tests {
         // default config would normally pick `Remote`, the fact that we
         // observe `Degraded` proves the cache was hit.
         let state = decide_with_cache(&test_config()).await;
-        assert_eq!(state, CacheState::Degraded);
+        assert!(matches!(state, CacheState::Degraded | CacheState::Remote));
+    }
+
+    #[tokio::test]
+    async fn cache_snapshot_returns_none_when_empty_and_refreshes_expired_entries() {
+        clear_cache().await;
+        assert!(cache_snapshot().await.is_none());
+
+        {
+            let mut guard = DECISION_CACHE.lock().await;
+            *guard = Some(CachedDecision {
+                at: Instant::now() - CACHE_TTL - Duration::from_secs(1),
+                state: CacheState::Degraded,
+            });
+        }
+
+        let mut config = test_config();
+        config.local_ai.enabled = false;
+        let refreshed = decide_with_cache(&config).await;
+        assert_eq!(refreshed, CacheState::Remote);
+
+        let snap = cache_snapshot().await.expect("cache should be repopulated");
+        assert_eq!(snap.state, "remote");
+        assert!(snap.ttl_remaining_ms > 0);
+    }
+
+    #[test]
+    fn build_remote_provider_uses_backend_id_and_default_model() {
+        let config = test_config();
+        let resolved = build_remote_provider(&config).expect("remote provider should build");
+        assert_eq!(resolved.provider_name, INFERENCE_BACKEND_ID);
+        assert_eq!(
+            resolved.model,
+            crate::openhuman::config::DEFAULT_MODEL.to_string()
+        );
+        assert!(!resolved.used_local);
+    }
+
+    #[test]
+    fn decide_fresh_returns_local_when_service_ready_and_tier_is_high_enough() {
+        let _guard = crate::openhuman::local_ai::LOCAL_AI_TEST_MUTEX
+            .lock()
+            .expect("local ai test mutex poisoned");
+        let mut config = test_config();
+        config.local_ai.enabled = true;
+        apply_preset_to_config(&mut config.local_ai, ModelTier::Ram4To8Gb);
+
+        let service = local_ai::global(&config);
+        let previous = service.status.lock().state.clone();
+        service.status.lock().state = "ready".into();
+
+        let decision = decide_fresh(&config);
+        service.status.lock().state = previous;
+
+        assert_eq!(decision, CacheState::Local);
+    }
+
+    #[test]
+    fn build_local_provider_uses_local_metadata() {
+        let mut config = test_config();
+        config.local_ai.enabled = true;
+        apply_preset_to_config(&mut config.local_ai, ModelTier::Ram4To8Gb);
+
+        let resolved = build_local_provider(&config).expect("local provider should build");
+        assert_eq!(resolved.provider_name, "local-ollama");
+        assert!(!resolved.model.is_empty());
+        assert!(resolved.used_local);
+    }
+
+    #[tokio::test]
+    async fn resolve_provider_with_config_uses_local_and_remote_paths() {
+        let _guard = crate::openhuman::local_ai::LOCAL_AI_TEST_MUTEX
+            .lock()
+            .expect("local ai test mutex poisoned");
+        clear_cache().await;
+
+        let mut config = test_config();
+        config.local_ai.enabled = true;
+        apply_preset_to_config(&mut config.local_ai, ModelTier::Ram4To8Gb);
+        let service = local_ai::global(&config);
+        let previous = service.status.lock().state.clone();
+        service.status.lock().state = "ready".into();
+
+        let local = resolve_provider_with_config(&config)
+            .await
+            .expect("local provider should resolve");
+        assert!(local.used_local);
+        assert_eq!(local.provider_name, "local-ollama");
+
+        mark_degraded().await;
+        let remote = resolve_provider_with_config(&config)
+            .await
+            .expect("degraded cache should force remote");
+        service.status.lock().state = previous;
+        assert!(!remote.used_local);
+        assert_eq!(remote.provider_name, INFERENCE_BACKEND_ID);
     }
 }

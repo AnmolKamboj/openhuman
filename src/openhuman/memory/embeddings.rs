@@ -64,7 +64,7 @@ enum FastembedState {
     /// Initial state before the model is loaded.
     Uninitialized,
     /// Model is loaded into memory and ready for inference.
-    Ready(fastembed::TextEmbedding),
+    Ready(Box<fastembed::TextEmbedding>),
     /// An error occurred during model loading.
     Failed(String),
 }
@@ -142,7 +142,6 @@ fn ensure_fastembed_ort_dylib_path() {
 
         if runtime_lib.exists() {
             env::set_var("ORT_DYLIB_PATH", runtime_lib);
-            return;
         }
     }
 
@@ -218,7 +217,7 @@ impl EmbeddingProvider for FastembedEmbedding {
                 }));
 
                 match init_result {
-                    Ok(Ok(model)) => *guard = FastembedState::Ready(model),
+                    Ok(Ok(model)) => *guard = FastembedState::Ready(Box::new(model)),
                     Ok(Err(err)) => {
                         let message = format!("fastembed init failed for {provider}: {err}");
                         tracing::error!(target: "memory.embeddings", "[embeddings] {message}");
