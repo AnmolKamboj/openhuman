@@ -4,6 +4,7 @@ import { useCoreState } from '../../providers/CoreStateProvider';
 import { referralApi } from '../../services/api/referralApi';
 import { userApi } from '../../services/api/userApi';
 import { getDefaultEnabledTools } from '../../utils/toolDefinitions';
+import ContextGatheringStep from './steps/ContextGatheringStep';
 import ReferralApplyStep from './steps/ReferralApplyStep';
 import ScreenPermissionsStep from './steps/ScreenPermissionsStep';
 import SkillsStep from './steps/SkillsStep';
@@ -103,7 +104,7 @@ const Onboarding = ({ onComplete, onDefer }: OnboardingProps) => {
 
   const handleNext = () => {
     const logical = resolveOnboardingStep(currentStep, skipReferralStep);
-    if (logical < 3) {
+    if (logical < 4) {
       setCurrentStep(logical + 1);
     }
   };
@@ -127,29 +128,38 @@ const Onboarding = ({ onComplete, onDefer }: OnboardingProps) => {
   };
 
   const handleSkillsNext = async (connectedSources: string[]) => {
+    console.debug('[onboarding:handleSkillsNext]', { connectedSources });
     setDraft(prev => ({ ...prev, connectedSources }));
+    handleNext();
+  };
 
+  const handleContextNext = async () => {
+    console.debug('[onboarding:handleContextNext]', { connectedSources: draft.connectedSources });
     await setOnboardingTasks({
       accessibilityPermissionGranted: draft.accessibilityPermissionGranted,
       localModelConsentGiven: false,
       localModelDownloadStarted: false,
       enabledTools: getDefaultEnabledTools(),
-      connectedSources,
+      connectedSources: draft.connectedSources,
       updatedAtMs: Date.now(),
     });
 
     // Notify backend (best-effort — don't block onboarding completion)
+    console.debug('[onboarding:handleContextNext] notifying backend');
     try {
       await userApi.onboardingComplete();
     } catch {
       console.warn('[onboarding] Failed to notify backend of onboarding completion');
     }
 
-    // Write onboarding_completed to core config (source of truth)
+    // Write onboarding_completed to core config (source of truth).
+    // This is the authoritative flag — if it fails, don't complete.
+    console.debug('[onboarding:handleContextNext] setting onboarding completed flag');
     try {
       await setOnboardingCompletedFlag(true);
-    } catch {
-      console.warn('[onboarding] Failed to persist onboarding_completed to core config');
+    } catch (e) {
+      console.error('[onboarding] Failed to persist onboarding_completed to core config', e);
+      throw e;
     }
 
     onComplete?.();
@@ -178,6 +188,14 @@ const Onboarding = ({ onComplete, onDefer }: OnboardingProps) => {
         return <ScreenPermissionsStep onNext={handleAccessibilityNext} onBack={handleBack} />;
       case 3:
         return <SkillsStep onNext={handleSkillsNext} onBack={handleBack} />;
+      case 4:
+        return (
+          <ContextGatheringStep
+            connectedSources={draft.connectedSources}
+            onNext={handleContextNext}
+            onBack={handleBack}
+          />
+        );
       default:
         return null;
     }
