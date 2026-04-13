@@ -32,6 +32,36 @@ struct SessionEntry {
     agent: Agent,
     model_override: Option<String>,
     temperature: Option<f64>,
+    /// Which agent definition was used to build `agent`. Recorded so
+    /// that the cache hit predicate in `run_chat_task` can detect
+    /// when the routing decision (welcome vs orchestrator) flips
+    /// between turns and rebuild instead of reusing a stale agent.
+    /// Without this field the cache hit short-circuited the routing
+    /// fix from Commit 8 — the very first turn picked welcome,
+    /// welcome called `complete_onboarding(complete)`, the flag
+    /// flipped, but the next turn read the cached welcome agent
+    /// instead of invoking `build_session_agent` to re-resolve the
+    /// target.
+    target_agent_id: String,
+}
+
+/// Decide which agent definition this turn should run with.
+///
+/// Mirrors the routing decision inside `build_session_agent` so
+/// `run_chat_task` can compute it once up front and use it both as
+/// the cache hit predicate AND (transitively) as the target id the
+/// builder picks. Reads `chat_onboarding_completed` from a fresh
+/// disk-loaded `Config` (no in-process cache) so the value reflects
+/// the current persisted state — meaning the moment the welcome
+/// agent calls `complete_onboarding(complete)` and the flag flips
+/// to `true`, the very next chat turn observes the new value here
+/// and the cache miss + rebuild routes to orchestrator.
+fn pick_target_agent_id(config: &Config) -> &'static str {
+    if config.chat_onboarding_completed {
+        "orchestrator"
+    } else {
+        "welcome"
+    }
 }
 
 #[derive(Debug)]
@@ -241,6 +271,14 @@ async fn run_chat_task(
     let map_key = key_for(client_id, thread_id);
     let model_override = normalize_model_override(model_override);
 
+    // Compute the routing decision up front so the cache lookup can
+    // detect when it has changed. Without this, a turn that flips
+    // `chat_onboarding_completed` (welcome agent calling
+    // `complete_onboarding(complete)`) would still serve the next
+    // turn from the cached welcome agent — the cache hit predicate
+    // didn't know about the routing decision before Commit 13.
+    let target_agent_id = pick_target_agent_id(&config).to_string();
+
     let prior = {
         let mut sessions = THREAD_SESSIONS.lock().await;
         sessions.remove(&map_key)
@@ -248,11 +286,35 @@ async fn run_chat_task(
 
     let mut agent = match prior {
         Some(entry)
-            if entry.model_override == model_override && entry.temperature == temperature =>
+            if entry.model_override == model_override
+                && entry.temperature == temperature
+                && entry.target_agent_id == target_agent_id =>
         {
+            log::info!(
+                "[web-channel] reusing cached session agent id={} for client={} thread={}",
+                target_agent_id,
+                client_id,
+                thread_id
+            );
             entry.agent
         }
-        Some(_) | None => build_session_agent(
+        Some(prior_entry) => {
+            log::info!(
+                "[web-channel] cache miss — rebuilding session agent (was id={}, now id={}) for client={} thread={}",
+                prior_entry.target_agent_id,
+                target_agent_id,
+                client_id,
+                thread_id
+            );
+            build_session_agent(
+                &config,
+                client_id,
+                thread_id,
+                model_override.clone(),
+                temperature,
+            )?
+        }
+        None => build_session_agent(
             &config,
             client_id,
             thread_id,
@@ -286,6 +348,7 @@ async fn run_chat_task(
                 agent,
                 model_override,
                 temperature,
+                target_agent_id,
             },
         );
     }
@@ -508,7 +571,46 @@ fn build_session_agent(
         effective.default_temperature = temp;
     }
 
-    Agent::from_config(&effective)
+    // Route to welcome vs orchestrator based on the per-user
+    // **chat-onboarding** flag. #525 fix: pre-onboarding users see the
+    // welcome agent's persona with its 2-tool TOML scope
+    // (complete_onboarding + memory_recall) instead of the
+    // orchestrator's default delegation surface. Post-onboarding they
+    // transition automatically on the next chat turn because
+    // `Config::load_or_init` reads fresh from disk every call.
+    //
+    // We deliberately read `chat_onboarding_completed`, NOT
+    // `onboarding_completed`. The latter is the React UI wizard's
+    // gate (`OnboardingOverlay.tsx`) which flips to `true` the moment
+    // the user dismisses the wizard — which happens BEFORE they ever
+    // type in the chat pane. If we routed on that flag the welcome
+    // agent could never run from the Tauri desktop app. The chat
+    // flag is set only by the welcome agent itself via
+    // `complete_onboarding(action="complete")`, so it stays `false`
+    // for the user's actual first chat message regardless of what
+    // the React layer did, then flips on the welcome turn so the
+    // very next message routes to orchestrator.
+    //
+    // The config reached here has already been loaded by
+    // `run_chat_task` via `config_rpc::load_config_with_timeout`, so
+    // both flags reflect the current persisted state — no cache to
+    // invalidate.
+    let target_agent_id = if effective.chat_onboarding_completed {
+        "orchestrator"
+    } else {
+        "welcome"
+    };
+
+    log::info!(
+        "[web-channel] routing chat turn to '{}' (chat_onboarding_completed={}, ui_onboarding_completed={}, client_id={}, thread_id={})",
+        target_agent_id,
+        effective.chat_onboarding_completed,
+        effective.onboarding_completed,
+        client_id,
+        thread_id
+    );
+
+    Agent::from_config_for_agent(&effective, target_agent_id)
         .map(|mut agent| {
             agent.set_event_context(event_session_id_for(client_id, thread_id), "web_channel");
             agent

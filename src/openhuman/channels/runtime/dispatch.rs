@@ -4,6 +4,9 @@ use crate::core::event_bus::{
     publish_global, request_native_global, DomainEvent, NativeRequestError,
 };
 use crate::openhuman::agent::bus::{AgentTurnRequest, AgentTurnResponse, AGENT_RUN_TURN_METHOD};
+use crate::openhuman::agent::harness::definition::{
+    AgentDefinition, AgentDefinitionRegistry, ToolScope,
+};
 use crate::openhuman::channels::context::{
     build_memory_context, compact_sender_history, conversation_history_key,
     conversation_memory_key, is_context_window_overflow_error, ChannelRuntimeContext,
@@ -14,8 +17,12 @@ use crate::openhuman::channels::routes::{
 };
 use crate::openhuman::channels::traits;
 use crate::openhuman::channels::{Channel, SendMessage};
+use crate::openhuman::composio::fetch_connected_integrations;
+use crate::openhuman::config::Config;
 use crate::openhuman::providers::{self, ChatMessage};
+use crate::openhuman::tools::{orchestrator_tools, Tool};
 use crate::openhuman::util::truncate_with_ellipsis;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
@@ -174,6 +181,391 @@ fn spawn_scoped_typing_task(
     });
 
     handle
+}
+
+/// Per-turn scoping fields derived from the active agent definition.
+///
+/// Carries the three new fields that get spliced into [`AgentTurnRequest`]
+/// in [`process_channel_message`]. Constructed by [`resolve_target_agent`]
+/// after reading `config.onboarding_completed`, looking up the matching
+/// definition in [`AgentDefinitionRegistry`], and synthesising any
+/// per-turn delegation tools the agent needs.
+struct AgentScoping {
+    target_agent_id: Option<String>,
+    visible_tool_names: Option<HashSet<String>>,
+    extra_tools: Vec<Box<dyn Tool>>,
+}
+
+impl AgentScoping {
+    /// Empty scoping — preserves the legacy "every tool in the global
+    /// registry is visible" behaviour. Returned when the registry isn't
+    /// initialised yet (early startup) or when the target agent
+    /// definition isn't found, so the channel layer never crashes the
+    /// runtime over a routing miss.
+    fn unscoped() -> Self {
+        Self {
+            target_agent_id: None,
+            visible_tool_names: None,
+            extra_tools: Vec::new(),
+        }
+    }
+}
+
+/// Decide which agent should run for this channel turn and build the
+/// matching tool-scoping payload.
+///
+/// The selection is purely a function of
+/// `config.chat_onboarding_completed`:
+///
+/// * **`false`** → route to the `welcome` agent. Welcome's TOML
+///   restricts it to two tools (`complete_onboarding`, `memory_recall`)
+///   so the LLM cannot accidentally send messages or write files
+///   while guiding the user through setup. The welcome agent decides
+///   when the user is ready and calls
+///   `complete_onboarding(action="complete")`, which flips the flag.
+///
+/// * **`true`** → route to the `orchestrator` agent. Orchestrator
+///   delegates real work to specialist subagents via a `subagents`
+///   field in its TOML; this function expands that field into a list
+///   of `delegate_*` tools spliced alongside the global registry.
+///
+/// We deliberately read `chat_onboarding_completed` and NOT the
+/// React-UI-managed `onboarding_completed` flag. The latter is the
+/// gate `OnboardingOverlay.tsx` uses to render its full-screen wizard
+/// in the Tauri desktop app — by the time a desktop user can type a
+/// chat message it's already `true`, so routing on it would mean
+/// welcome could never run from the Tauri app. The chat flag is set
+/// exclusively by the welcome agent itself when it calls
+/// `complete_onboarding(complete)`, so it stays `false` for the
+/// user's actual first message regardless of what the React layer
+/// did. See `Config::chat_onboarding_completed` rustdoc for the full
+/// rationale.
+///
+/// The next channel message after `complete_onboarding` flips the
+/// flag is automatically routed to the orchestrator because
+/// `Config::load_or_init()` reads from disk every call (no in-process
+/// cache, verified at `config/schema/load.rs:409`), so the new value
+/// is observed on the next turn without any explicit handoff event.
+///
+/// On any failure path (missing registry, missing definition, missing
+/// orchestrator delegation targets) the function logs and returns
+/// [`AgentScoping::unscoped`], which lets the turn run with the legacy
+/// unfiltered behaviour rather than failing the whole message.
+async fn resolve_target_agent(channel: &str) -> AgentScoping {
+    let config = match Config::load_or_init().await {
+        Ok(c) => c,
+        Err(err) => {
+            tracing::warn!(
+                channel = %channel,
+                error = %err,
+                "[dispatch::routing] failed to load config — falling back to unscoped turn"
+            );
+            return AgentScoping::unscoped();
+        }
+    };
+
+    let target_id = if config.chat_onboarding_completed {
+        "orchestrator"
+    } else {
+        "welcome"
+    };
+
+    tracing::info!(
+        channel = %channel,
+        target_agent = target_id,
+        chat_onboarding_completed = config.chat_onboarding_completed,
+        ui_onboarding_completed = config.onboarding_completed,
+        "[dispatch::routing] selected target agent"
+    );
+
+    let registry = match AgentDefinitionRegistry::global() {
+        Some(reg) => reg,
+        None => {
+            tracing::warn!(
+                channel = %channel,
+                target_agent = target_id,
+                "[dispatch::routing] AgentDefinitionRegistry not initialised — falling back to unscoped turn"
+            );
+            return AgentScoping::unscoped();
+        }
+    };
+
+    let definition = match registry.get(target_id) {
+        Some(def) => def,
+        None => {
+            tracing::warn!(
+                channel = %channel,
+                target_agent = target_id,
+                "[dispatch::routing] target agent not in registry — falling back to unscoped turn"
+            );
+            return AgentScoping::unscoped();
+        }
+    };
+
+    // Synthesise per-turn delegation tools when the target agent has a
+    // `subagents = [...]` field. Today only the orchestrator does, but
+    // the helper is agent-agnostic so future agents that delegate
+    // (e.g. a custom workspace-override planner that subdivides work)
+    // pick this up for free.
+    let extra_tools = if !definition.subagents.is_empty() {
+        let connected = fetch_connected_integrations(&config).await;
+        tracing::debug!(
+            channel = %channel,
+            target_agent = target_id,
+            connected_integration_count = connected.len(),
+            "[dispatch::routing] fetched connected integrations for delegation expansion"
+        );
+        orchestrator_tools::collect_orchestrator_tools(definition, registry, &connected)
+    } else {
+        Vec::new()
+    };
+
+    let visible_tool_names = build_visible_tool_set(definition, &extra_tools);
+
+    tracing::debug!(
+        channel = %channel,
+        target_agent = target_id,
+        named_tool_count = match &definition.tools {
+            ToolScope::Named(names) => names.len(),
+            ToolScope::Wildcard => 0,
+        },
+        extra_tool_count = extra_tools.len(),
+        visible_tool_count = visible_tool_names.as_ref().map(|s| s.len()).unwrap_or(0),
+        "[dispatch::routing] assembled tool scoping for turn"
+    );
+
+    AgentScoping {
+        target_agent_id: Some(target_id.to_string()),
+        visible_tool_names,
+        extra_tools,
+    }
+}
+
+/// Build the visible-tool whitelist for an agent.
+///
+/// The set is the union of:
+/// * every tool name in the agent's `[tools] named = [...]` list
+///   (when the scope is [`ToolScope::Named`]); and
+/// * every name produced by the per-turn synthesised delegation tools
+///   in `extra_tools` (e.g. `research`, `delegate_gmail`).
+///
+/// When the agent's tool scope is [`ToolScope::Wildcard`] **and** there
+/// are no `extra_tools`, returns `None` to preserve the legacy
+/// "everything visible" semantics — a `Wildcard` agent that delegates
+/// nothing should still see the full registry. When `Wildcard` is
+/// combined with non-empty extras (an unusual but legal combination),
+/// the legacy unfiltered behaviour also wins because the wildcard
+/// implicitly covers anything in the registry plus the extras.
+fn build_visible_tool_set(
+    definition: &AgentDefinition,
+    extra_tools: &[Box<dyn Tool>],
+) -> Option<HashSet<String>> {
+    match &definition.tools {
+        ToolScope::Wildcard => None,
+        ToolScope::Named(names) => {
+            let mut set: HashSet<String> = names.iter().cloned().collect();
+            for tool in extra_tools {
+                set.insert(tool.name().to_string());
+            }
+            Some(set)
+        }
+    }
+}
+
+#[cfg(test)]
+mod scoping_tests {
+    //! Pure-function unit tests for the agent-scoping helpers added by
+    //! the #525/#526 fix. These exercise the synchronous logic without
+    //! touching the real `Config::load_or_init` disk read or the global
+    //! `AgentDefinitionRegistry`, so they can run in any environment.
+    //!
+    //! End-to-end exercise of the dispatch path is covered by the
+    //! existing `runtime_dispatch::dispatch_routes_through_agent_run_turn_
+    //! bus_handler` integration test, which still passes after the new
+    //! fields landed (the resolver gracefully falls back to
+    //! `AgentScoping::unscoped()` when no orchestrator is registered in
+    //! the test environment).
+
+    use super::*;
+    use crate::openhuman::agent::harness::definition::{
+        DefinitionSource, ModelSpec, PromptSource, SandboxMode,
+    };
+    use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolCategory, ToolResult};
+    use async_trait::async_trait;
+
+    /// Minimal owned tool stub — just enough for `build_visible_tool_set`
+    /// to read its `name()`.
+    struct StubTool {
+        name: &'static str,
+    }
+
+    #[async_trait]
+    impl Tool for StubTool {
+        fn name(&self) -> &str {
+            self.name
+        }
+        fn description(&self) -> &str {
+            "stub"
+        }
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object"})
+        }
+        fn category(&self) -> ToolCategory {
+            ToolCategory::System
+        }
+        fn permission_level(&self) -> PermissionLevel {
+            PermissionLevel::None
+        }
+        async fn execute(&self, _args: serde_json::Value) -> anyhow::Result<ToolResult> {
+            Ok(ToolResult::success("ok"))
+        }
+    }
+
+    fn def_with_scope(scope: ToolScope) -> AgentDefinition {
+        AgentDefinition {
+            id: "test_agent".into(),
+            when_to_use: "test".into(),
+            display_name: None,
+            system_prompt: PromptSource::Inline(String::new()),
+            omit_identity: true,
+            omit_memory_context: true,
+            omit_safety_preamble: true,
+            omit_skills_catalog: true,
+            model: ModelSpec::Inherit,
+            temperature: 0.4,
+            tools: scope,
+            disallowed_tools: vec![],
+            skill_filter: None,
+            category_filter: None,
+            max_iterations: 8,
+            timeout_secs: None,
+            sandbox_mode: SandboxMode::None,
+            background: false,
+            uses_fork_context: false,
+            subagents: vec![],
+            delegate_name: None,
+            source: DefinitionSource::Builtin,
+        }
+    }
+
+    /// `ToolScope::Wildcard` must yield `None` — the prompt builder
+    /// treats `None` as "no filter, every tool visible", which is the
+    /// correct behaviour for agents like `skills_agent` that want the
+    /// full skill-category catalogue. Even when extras are present, a
+    /// wildcard agent should not start filtering.
+    #[test]
+    fn wildcard_scope_yields_none_filter() {
+        let def = def_with_scope(ToolScope::Wildcard);
+        let extras: Vec<Box<dyn Tool>> = vec![Box::new(StubTool { name: "research" })];
+        assert!(build_visible_tool_set(&def, &extras).is_none());
+        assert!(build_visible_tool_set(&def, &[]).is_none());
+    }
+
+    /// `ToolScope::Named` with no extras returns exactly the named set.
+    /// This is the welcome agent's path: 2 tools in TOML, no
+    /// delegation, no extras → 2 entries in the visibility whitelist.
+    #[test]
+    fn named_scope_without_extras_returns_named_only() {
+        let def = def_with_scope(ToolScope::Named(vec![
+            "complete_onboarding".into(),
+            "memory_recall".into(),
+        ]));
+        let set = build_visible_tool_set(&def, &[]).expect("named scope yields Some");
+        assert_eq!(set.len(), 2);
+        assert!(set.contains("complete_onboarding"));
+        assert!(set.contains("memory_recall"));
+    }
+
+    /// `ToolScope::Named` with extras returns the union of the TOML
+    /// named list and the extras' names. This is the orchestrator's
+    /// path: 4 direct tools from the TOML + N synthesised delegation
+    /// tools (`research`, `plan`, `delegate_gmail`, …) → all of them
+    /// visible to the orchestrator's LLM.
+    #[test]
+    fn named_scope_with_extras_returns_union() {
+        let def = def_with_scope(ToolScope::Named(vec![
+            "query_memory".into(),
+            "ask_user_clarification".into(),
+            "spawn_subagent".into(),
+        ]));
+        let extras: Vec<Box<dyn Tool>> = vec![
+            Box::new(StubTool { name: "research" }),
+            Box::new(StubTool {
+                name: "delegate_gmail",
+            }),
+            Box::new(StubTool {
+                name: "delegate_github",
+            }),
+        ];
+        let set = build_visible_tool_set(&def, &extras).expect("named scope yields Some");
+        assert_eq!(set.len(), 6);
+        assert!(set.contains("query_memory"));
+        assert!(set.contains("ask_user_clarification"));
+        assert!(set.contains("spawn_subagent"));
+        assert!(set.contains("research"));
+        assert!(set.contains("delegate_gmail"));
+        assert!(set.contains("delegate_github"));
+    }
+
+    /// Empty `Named` list with extras still yields `Some` containing
+    /// just the extras — useful for hypothetical agents that only
+    /// reach the world via delegation, with no direct tools.
+    #[test]
+    fn empty_named_with_extras_returns_extras_only() {
+        let def = def_with_scope(ToolScope::Named(vec![]));
+        let extras: Vec<Box<dyn Tool>> = vec![Box::new(StubTool {
+            name: "delegate_only",
+        })];
+        let set = build_visible_tool_set(&def, &extras).expect("named scope yields Some");
+        assert_eq!(set.len(), 1);
+        assert!(set.contains("delegate_only"));
+    }
+
+    /// Empty `Named` list with no extras yields an empty `Some(set)` —
+    /// effectively "no tools visible". The prompt loop's `is_visible`
+    /// helper treats `Some(empty)` differently from `None`: the former
+    /// means "filter active, nothing matches" so the LLM gets an empty
+    /// tool list, while the latter means "no filter at all". This is
+    /// the welcome agent's emergency fallback if its TOML somehow
+    /// shipped without any tools.
+    #[test]
+    fn empty_named_with_no_extras_returns_empty_set() {
+        let def = def_with_scope(ToolScope::Named(vec![]));
+        let set = build_visible_tool_set(&def, &[]).expect("named scope yields Some");
+        assert!(set.is_empty());
+    }
+
+    /// Duplicate names across named + extras are de-duplicated by the
+    /// HashSet — no double-counting if a workspace override happens to
+    /// list a delegation tool name in the direct `named` list too.
+    #[test]
+    fn duplicate_names_across_named_and_extras_are_deduplicated() {
+        let def = def_with_scope(ToolScope::Named(vec![
+            "research".into(),
+            "query_memory".into(),
+        ]));
+        let extras: Vec<Box<dyn Tool>> = vec![
+            Box::new(StubTool { name: "research" }), // collides with named
+            Box::new(StubTool { name: "plan" }),
+        ];
+        let set = build_visible_tool_set(&def, &extras).expect("named scope yields Some");
+        assert_eq!(set.len(), 3);
+        assert!(set.contains("research"));
+        assert!(set.contains("query_memory"));
+        assert!(set.contains("plan"));
+    }
+
+    /// `AgentScoping::unscoped` is the safe-fallback constructor used
+    /// when the registry is uninitialised or the target agent isn't
+    /// found. All three fields must default to "no scoping applied"
+    /// so the channel turn runs with the legacy unfiltered behaviour.
+    #[test]
+    fn agent_scoping_unscoped_has_no_filter_or_extras() {
+        let scoping = AgentScoping::unscoped();
+        assert!(scoping.target_agent_id.is_none());
+        assert!(scoping.visible_tool_names.is_none());
+        assert!(scoping.extra_tools.is_empty());
+    }
 }
 
 pub(crate) async fn process_channel_message(
@@ -377,6 +769,12 @@ pub(crate) async fn process_channel_message(
     // The agent handler owns the history vector — we `mem::take` the
     // local one to avoid an unnecessary clone; `history` is not read
     // again below.
+    // Pick the active agent for this turn (welcome pre-onboarding,
+    // orchestrator post) and synthesise its delegation tool surface.
+    // Fresh disk read of `Config::onboarding_completed` happens inside
+    // `resolve_target_agent` — see the `[dispatch::routing]` traces.
+    let scoping = resolve_target_agent(&msg.channel).await;
+
     let turn_request = AgentTurnRequest {
         provider: Arc::clone(&active_provider),
         history: std::mem::take(&mut history),
@@ -389,6 +787,9 @@ pub(crate) async fn process_channel_message(
         multimodal: ctx.multimodal.clone(),
         max_tool_iterations: ctx.max_tool_iterations,
         on_delta: delta_tx,
+        target_agent_id: scoping.target_agent_id,
+        visible_tool_names: scoping.visible_tool_names,
+        extra_tools: scoping.extra_tools,
     };
     tracing::debug!(
         channel = %msg.channel,

@@ -2,6 +2,7 @@ mod archetype_delegation;
 mod ask_clarification;
 mod complete_onboarding;
 mod delegate;
+mod skill_delegation;
 mod spawn_subagent;
 
 use crate::core::event_bus::{publish_global, DomainEvent};
@@ -10,34 +11,11 @@ use crate::openhuman::agent::harness::fork_context::current_parent;
 use crate::openhuman::agent::harness::subagent_runner::{run_subagent, SubagentRunOptions};
 use crate::openhuman::tools::traits::ToolResult;
 
-pub(crate) const ARCHETYPE_TOOLS: &[(&str, &str, &str)] = &[
-    (
-        "research",
-        "researcher",
-        "Search the web, read docs, and gather information. Returns a dense markdown summary with sources.",
-    ),
-    (
-        "run_code",
-        "code_executor",
-        "Write, run, debug, and test code in a sandboxed environment. Has shell, file access, and git.",
-    ),
-    (
-        "review_code",
-        "critic",
-        "Review code changes for quality, security, and correctness. Read-only — returns findings, never edits.",
-    ),
-    (
-        "plan",
-        "planner",
-        "Break a complex goal into a structured step-by-step plan with dependencies. Use for tasks with 3+ steps.",
-    ),
-];
-
 pub(crate) async fn dispatch_subagent(
     agent_id: &str,
     tool_name: &str,
     prompt: &str,
-    _skill_filter: Option<&str>,
+    skill_filter: Option<&str>,
 ) -> anyhow::Result<ToolResult> {
     let registry = match AgentDefinitionRegistry::global() {
         Some(reg) => reg,
@@ -73,14 +51,22 @@ pub(crate) async fn dispatch_subagent(
     });
 
     log::info!(
-        "[agent] delegating to {} via {} prompt_chars={}",
+        "[agent] delegating to {} via {} (skill_filter={}) prompt_chars={}",
         agent_id,
         tool_name,
+        skill_filter.unwrap_or("<none>"),
         prompt.chars().count()
     );
 
+    // Propagate the per-call skill filter into the subagent runner so
+    // that `SkillDelegationTool`s can narrow `skills_agent` to a single
+    // Composio toolkit (e.g. `delegate_gmail` → skills_agent +
+    // skill_filter="gmail"). Previously this argument was hardcoded to
+    // `None`, which meant the toolkit pre-selection never reached the
+    // subagent and skills_agent always saw the full Composio catalog —
+    // the downstream half of the #526 leak.
     let options = SubagentRunOptions {
-        skill_filter_override: None,
+        skill_filter_override: skill_filter.map(str::to_string),
         category_filter_override: None,
         context: None,
         task_id: Some(task_id.clone()),
@@ -122,4 +108,5 @@ pub use archetype_delegation::ArchetypeDelegationTool;
 pub use ask_clarification::AskClarificationTool;
 pub use complete_onboarding::CompleteOnboardingTool;
 pub use delegate::DelegateTool;
+pub use skill_delegation::SkillDelegationTool;
 pub use spawn_subagent::SpawnSubagentTool;

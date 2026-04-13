@@ -1,15 +1,21 @@
-//! Tool: complete_onboarding — inspects workspace setup status and marks onboarding done.
+//! Tool: complete_onboarding — inspects workspace setup status and (when
+//! the user is authenticated) auto-finalizes the chat welcome flow.
 //!
-//! Used exclusively by the **welcome** agent. On `action: "check_status"` it
-//! reads the current config and app state to report what the user has and
-//! hasn't configured. On `action: "complete"` it flips
-//! `config.onboarding_completed = true` and seeds the default proactive
-//! cron jobs (morning briefing, etc.).
+//! Used exclusively by the **welcome** agent. There is only one normal
+//! path: call `check_status` once. The tool returns a structured JSON
+//! snapshot of the user's config AND, if the user is authenticated,
+//! flips `chat_onboarding_completed = true` + seeds proactive cron jobs
+//! as a side effect. The welcome agent then drafts a personalised
+//! welcome message based on the JSON in its next iteration. No second
+//! tool call. No race conditions. No way to forget the flip.
+//!
+//! The legacy `complete` action is kept as a manual override for admin
+//! tools and tests but the welcome agent should never call it directly.
 
 use crate::openhuman::config::Config;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult, ToolScope};
 use async_trait::async_trait;
-use serde_json::json;
+use serde_json::{json, Value};
 
 pub struct CompleteOnboardingTool;
 
@@ -26,11 +32,69 @@ impl Tool for CompleteOnboardingTool {
     }
 
     fn description(&self) -> &str {
-        "Check onboarding status or mark onboarding as complete. \
-         Use action=\"check_status\" to inspect what the user has configured \
-         (API key, channels, integrations, memory, etc.) and what still needs \
-         attention. Use action=\"complete\" to finalize onboarding once the \
-         user is ready."
+        "Read the user's OpenHuman config snapshot and auto-finalize the \
+         chat welcome flow when the user is authenticated. The welcome \
+         agent's single tool call.\n\
+         \n\
+         **action=\"check_status\"** — returns a JSON object describing \
+         the user's setup state and (as a side effect when the user has \
+         a valid session JWT) flips `chat_onboarding_completed` to true \
+         + seeds proactive agent cron jobs. Call this ONCE on your first \
+         iteration with no other parameters. Use the JSON to draft a \
+         personalised welcome message in your second iteration.\n\
+         \n\
+         The returned JSON has this shape:\n\
+         ```\n\
+         {\n\
+           \"authenticated\": true,                       // bool — JWT present\n\
+           \"auth_source\": \"session_token\",            // \"session_token\" | \"legacy_api_key\" | null\n\
+           \"default_model\": \"reasoning-v1\",           // string\n\
+           \"channels_connected\": [\"telegram\"],         // string[] — connected messaging platforms\n\
+           \"active_channel\": \"web\",                   // string — preferred channel for proactive messages\n\
+           \"integrations\": {                             // bool flags for each capability\n\
+             \"composio\": true,\n\
+             \"browser\": false,\n\
+             \"web_search\": true,\n\
+             \"http_request\": false,\n\
+             \"local_ai\": true\n\
+           },\n\
+           \"memory\": { \"backend\": \"sqlite\", \"auto_save\": true },\n\
+           \"delegate_agents\": [\"researcher\", \"coder\"], // configured custom agents\n\
+           \"ui_onboarding_completed\": true,             // React wizard flag\n\
+           \"chat_onboarding_completed\": true,           // POST-finalize value\n\
+           \"finalize_action\": \"flipped\"                // \"flipped\" | \"already_complete\" | \"skipped_no_auth\"\n\
+         }\n\
+         ```\n\
+         \n\
+         The `finalize_action` field tells you what side effect this \
+         call performed:\n\
+         * `\"flipped\"` — the user was authenticated and the chat flow \
+           was previously incomplete. Flag was just flipped to true and \
+           cron jobs were seeded. Welcome the user; the next chat turn \
+           will route to the orchestrator.\n\
+         * `\"already_complete\"` — the user was authenticated and the \
+           chat flow was already complete from a prior call. No state \
+           change. Welcome the user (this is a re-entry case).\n\
+         * `\"skipped_no_auth\"` — the user is not authenticated, so \
+           the flag was NOT flipped. The welcome agent should explain \
+           the auth problem to the user, point them at the desktop \
+           login flow, and stop. The next chat turn will re-route to \
+           welcome (because the flag is still false), so they'll get \
+           another chance once they log in.\n\
+         \n\
+         Use the JSON fields directly when drafting your welcome \
+         message. Don't quote the JSON back to the user — translate \
+         the field values into natural prose tailored to what they \
+         have and don't have. The status fields are a fact source, \
+         not a draft.\n\
+         \n\
+         **action=\"complete\"** — legacy manual finalize-only path. \
+         Flips `chat_onboarding_completed` to true unconditionally and \
+         seeds cron jobs without producing a status report. Returns \
+         the literal token \"ok\". Welcome agent should never call \
+         this; use `check_status` instead which performs the same \
+         finalize as a side effect under proper auth gating. Kept for \
+         backward compatibility with admin tools and tests."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -40,7 +104,7 @@ impl Tool for CompleteOnboardingTool {
                 "action": {
                     "type": "string",
                     "enum": ["check_status", "complete"],
-                    "description": "\"check_status\" to inspect current setup, \"complete\" to mark onboarding done."
+                    "description": "\"check_status\" → return JSON config snapshot AND auto-finalize the chat welcome flow when authenticated (welcome agent's only call). \"complete\" → legacy manual finalize-only; do not use from welcome agent."
                 }
             },
             "required": ["action"]
@@ -73,193 +137,212 @@ impl Tool for CompleteOnboardingTool {
     }
 }
 
-/// Reads the current config and produces a human-readable status report.
+/// Reads the user's config, builds a structured JSON snapshot, and
+/// (when the user is authenticated) flips `chat_onboarding_completed`
+/// + seeds proactive cron jobs as a side effect of the read.
+///
+/// This is the welcome agent's single tool call. The contract is:
+///
+/// 1. **Read** — load `Config`, check JWT via
+///    `crate::api::jwt::get_session_token`, gather every config flag
+///    the welcome message might mention.
+/// 2. **Auto-finalize** — if the user is authenticated AND
+///    `chat_onboarding_completed` is currently `false`, flip it to
+///    `true` and spawn the proactive agent cron seeder. If the user
+///    is NOT authenticated, leave the flag alone (the welcome agent
+///    will explain the auth problem and the next chat turn will
+///    re-run welcome).
+/// 3. **Return** — JSON object with all the config fields, the
+///    POST-finalize `chat_onboarding_completed` value, and a
+///    `finalize_action` discriminator describing what side effect
+///    happened (`flipped`, `already_complete`, or `skipped_no_auth`).
+///
+/// The welcome agent uses the JSON to draft a personalised welcome
+/// message in the next iteration. No second tool call needed.
 async fn check_status() -> anyhow::Result<ToolResult> {
-    let config = Config::load_or_init()
+    let mut config = Config::load_or_init()
         .await
         .map_err(|e| anyhow::anyhow!("Failed to load config: {e}"))?;
 
-    let mut report = String::new();
-    report.push_str("## Onboarding Status\n\n");
+    // ── Auth detection ────────────────────────────────────────────
+    //
+    // Two possible auth sources, in priority order:
+    //
+    // 1. The `app-session:default` profile in `auth-profiles.json` —
+    //    the canonical inference credential, populated by the desktop
+    //    OAuth deep-link flow's `exchange_token` Rust command. This is
+    //    where every production inference RPC reads from.
+    // 2. `config.api_key` — legacy free-form provider key field, kept
+    //    for CI / dev setups that bypass the desktop login flow.
+    //
+    // Either one counts as "authenticated" for the welcome flow.
+    let has_session_jwt = crate::api::jwt::get_session_token(&config)
+        .ok()
+        .flatten()
+        .is_some_and(|t| !t.is_empty());
+    let has_legacy_api_key = config.api_key.as_ref().is_some_and(|k| !k.is_empty());
+    let is_authenticated = has_session_jwt || has_legacy_api_key;
+    let auth_source: Value = if has_session_jwt {
+        Value::String("session_token".to_string())
+    } else if has_legacy_api_key {
+        Value::String("legacy_api_key".to_string())
+    } else {
+        Value::Null
+    };
 
-    // ── Core setup ──────────────────────────────────────────────────
-    report.push_str("### Core\n");
-    let has_api_key = config.api_key.as_ref().map_or(false, |k| !k.is_empty());
-    report.push_str(&format!(
-        "- API key: {}\n",
-        if has_api_key {
-            "configured ✓"
-        } else {
-            "**missing** — required for inference"
-        }
-    ));
-    report.push_str(&format!(
-        "- Default model: {}\n",
-        config
-            .default_model
-            .as_deref()
-            .unwrap_or(crate::openhuman::config::DEFAULT_MODEL)
-    ));
-    report.push_str(&format!(
-        "- Onboarding completed: {}\n",
-        config.onboarding_completed
-    ));
+    // ── Auto-finalize side effect ─────────────────────────────────
+    //
+    // When the user is authenticated AND the chat welcome flow has
+    // not yet completed, delegate to the legacy `complete()` action
+    // — single source of truth for "what does finalize mean". This
+    // is the welcome → orchestrator handoff: after the flag flips,
+    // the dispatch layer routes future chat turns to the orchestrator
+    // instead of the welcome agent (see
+    // `web.rs::build_session_agent` and
+    // `dispatch.rs::resolve_target_agent`).
+    //
+    // We discard `complete()`'s `ToolResult::success("ok")` return
+    // value because the caller (check_status) is producing its own
+    // JSON snapshot — the side effect is the only thing we want.
+    // After the call we mirror the flip into our local `config`
+    // variable so the JSON snapshot below reflects the post-finalize
+    // state (the disk has been updated, but our in-memory copy was
+    // loaded before the flip).
+    let finalize_action = if !is_authenticated {
+        "skipped_no_auth"
+    } else if config.chat_onboarding_completed {
+        "already_complete"
+    } else {
+        let _ = complete().await?;
+        config.chat_onboarding_completed = true;
+        tracing::info!(
+            "[complete_onboarding] chat welcome flow auto-finalized via check_status (delegated to complete())"
+        );
+        "flipped"
+    };
 
-    // ── Channels ────────────────────────────────────────────────────
-    report.push_str("\n### Channels\n");
-    let mut connected_channels: Vec<&str> = Vec::new();
+    // ── Connected messaging channels ──────────────────────────────
+    let mut channels_connected: Vec<&str> = Vec::new();
     if config.channels_config.telegram.is_some() {
-        connected_channels.push("Telegram");
+        channels_connected.push("telegram");
     }
     if config.channels_config.discord.is_some() {
-        connected_channels.push("Discord");
+        channels_connected.push("discord");
     }
     if config.channels_config.slack.is_some() {
-        connected_channels.push("Slack");
+        channels_connected.push("slack");
     }
     if config.channels_config.mattermost.is_some() {
-        connected_channels.push("Mattermost");
+        channels_connected.push("mattermost");
     }
     if config.channels_config.email.is_some() {
-        connected_channels.push("Email");
+        channels_connected.push("email");
     }
     if config.channels_config.whatsapp.is_some() {
-        connected_channels.push("WhatsApp");
+        channels_connected.push("whatsapp");
     }
     if config.channels_config.signal.is_some() {
-        connected_channels.push("Signal");
+        channels_connected.push("signal");
     }
     if config.channels_config.matrix.is_some() {
-        connected_channels.push("Matrix");
+        channels_connected.push("matrix");
     }
     if config.channels_config.imessage.is_some() {
-        connected_channels.push("iMessage");
+        channels_connected.push("imessage");
     }
     if config.channels_config.irc.is_some() {
-        connected_channels.push("IRC");
+        channels_connected.push("irc");
     }
     if config.channels_config.lark.is_some() {
-        connected_channels.push("Lark");
+        channels_connected.push("lark");
     }
     if config.channels_config.dingtalk.is_some() {
-        connected_channels.push("DingTalk");
+        channels_connected.push("dingtalk");
     }
     if config.channels_config.linq.is_some() {
-        connected_channels.push("Linq");
+        channels_connected.push("linq");
     }
     if config.channels_config.qq.is_some() {
-        connected_channels.push("QQ");
+        channels_connected.push("qq");
     }
-    if connected_channels.is_empty() {
-        report.push_str("- No messaging channels connected yet (Telegram, Discord, Slack, etc.)\n");
-    } else {
-        report.push_str(&format!("- Connected: {}\n", connected_channels.join(", ")));
-    }
-    report.push_str(&format!(
-        "- Active channel for proactive messages: {}\n",
-        config
-            .channels_config
-            .active_channel
-            .as_deref()
-            .unwrap_or("web (default)")
-    ));
 
-    // ── Integrations ────────────────────────────────────────────────
-    report.push_str("\n### Integrations\n");
-    let has_composio = config.composio.enabled
+    // ── Integrations ──────────────────────────────────────────────
+    let composio_enabled = config.composio.enabled
         && config
             .composio
             .api_key
             .as_ref()
-            .map_or(false, |k| !k.is_empty());
-    report.push_str(&format!(
-        "- Composio (1000+ OAuth apps): {}\n",
-        if has_composio {
-            "enabled ✓"
-        } else {
-            "not configured"
-        }
-    ));
-    report.push_str(&format!(
-        "- Browser automation: {}\n",
-        if config.browser.enabled {
-            "enabled ✓"
-        } else {
-            "disabled"
-        }
-    ));
-    report.push_str(&format!(
-        "- Web search: {}\n",
-        if config.web_search.enabled {
-            "enabled ✓"
-        } else {
-            "disabled"
-        }
-    ));
-    report.push_str(&format!(
-        "- HTTP requests: {}\n",
-        if config.http_request.enabled {
-            "enabled ✓"
-        } else {
-            "disabled"
-        }
-    ));
+            .is_some_and(|k| !k.is_empty());
 
-    // ── Memory ──────────────────────────────────────────────────────
-    report.push_str("\n### Memory\n");
-    report.push_str(&format!("- Backend: {}\n", config.memory.backend));
-    report.push_str(&format!(
-        "- Auto-save: {}\n",
-        if config.memory.auto_save { "on" } else { "off" }
-    ));
+    // ── Delegate agents ───────────────────────────────────────────
+    let delegate_agents: Vec<&str> = config.agents.keys().map(|s| s.as_str()).collect();
 
-    // ── Local AI ────────────────────────────────────────────────────
-    report.push_str("\n### Local AI\n");
-    report.push_str(&format!(
-        "- Local model: {}\n",
-        if config.local_ai.enabled {
-            "enabled ✓"
-        } else {
-            "not enabled"
-        }
-    ));
+    // ── Build the JSON snapshot ───────────────────────────────────
+    let snapshot = json!({
+        "authenticated": is_authenticated,
+        "auth_source": auth_source,
+        "default_model": config
+            .default_model
+            .as_deref()
+            .unwrap_or(crate::openhuman::config::DEFAULT_MODEL),
+        "channels_connected": channels_connected,
+        "active_channel": config
+            .channels_config
+            .active_channel
+            .as_deref()
+            .unwrap_or("web"),
+        "integrations": {
+            "composio": composio_enabled,
+            "browser": config.browser.enabled,
+            "web_search": config.web_search.enabled,
+            "http_request": config.http_request.enabled,
+            "local_ai": config.local_ai.enabled,
+        },
+        "memory": {
+            "backend": config.memory.backend,
+            "auto_save": config.memory.auto_save,
+        },
+        "delegate_agents": delegate_agents,
+        "ui_onboarding_completed": config.onboarding_completed,
+        "chat_onboarding_completed": config.chat_onboarding_completed,
+        "finalize_action": finalize_action,
+    });
 
-    // ── Delegate agents ─────────────────────────────────────────────
-    if !config.agents.is_empty() {
-        report.push_str("\n### Delegate Agents\n");
-        for (name, agent_cfg) in &config.agents {
-            report.push_str(&format!("- {name}: model={}\n", agent_cfg.model));
-        }
-    }
+    let payload = serde_json::to_string_pretty(&snapshot)
+        .map_err(|e| anyhow::anyhow!("Failed to serialize status snapshot: {e}"))?;
 
     tracing::debug!(
-        "[complete_onboarding] status report generated, length={}",
-        report.len()
+        "[complete_onboarding] check_status returned authenticated={} finalize_action={} chars={}",
+        is_authenticated,
+        finalize_action,
+        payload.len()
     );
 
-    Ok(ToolResult::success(report))
+    Ok(ToolResult::success(payload))
 }
 
-/// Marks onboarding as complete and seeds proactive cron jobs.
+/// Legacy manual finalize-only path. Flips `chat_onboarding_completed`
+/// to true unconditionally (no auth check) and seeds proactive cron
+/// jobs. Welcome agent should NOT call this — use `check_status`
+/// instead, which performs the same finalize as a side effect under
+/// proper auth gating. Kept for backward compatibility with admin
+/// tools and tests.
 async fn complete() -> anyhow::Result<ToolResult> {
     let mut config = Config::load_or_init()
         .await
         .map_err(|e| anyhow::anyhow!("Failed to load config: {e}"))?;
 
-    if config.onboarding_completed {
-        tracing::debug!("[complete_onboarding] already completed — no-op");
-        return Ok(ToolResult::success(
-            "Onboarding was already marked as complete.",
-        ));
+    if config.chat_onboarding_completed {
+        tracing::debug!("[complete_onboarding] chat welcome flow already completed — no-op");
+        return Ok(ToolResult::success("ok"));
     }
 
-    config.onboarding_completed = true;
+    config.chat_onboarding_completed = true;
     config
         .save()
         .await
         .map_err(|e| anyhow::anyhow!("Failed to save config: {e}"))?;
 
-    // Seed proactive agents (morning briefing, etc.) on the false→true transition.
     let seed_config = config.clone();
     tokio::spawn(async move {
         if let Err(e) = crate::openhuman::cron::seed::seed_proactive_agents(&seed_config) {
@@ -267,12 +350,11 @@ async fn complete() -> anyhow::Result<ToolResult> {
         }
     });
 
-    tracing::info!("[complete_onboarding] onboarding marked complete, proactive agents seeded");
+    tracing::info!(
+        "[complete_onboarding] chat welcome flow marked complete via legacy complete action"
+    );
 
-    Ok(ToolResult::success(
-        "Onboarding marked as complete. Morning briefing and proactive agent jobs have been \
-         set up. The user is all set!",
-    ))
+    Ok(ToolResult::success("ok"))
 }
 
 #[cfg(test)]
