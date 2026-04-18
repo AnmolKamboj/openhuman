@@ -63,7 +63,6 @@ struct RecordingProvider {
 struct CapturedCall {
     system_prompt: Option<String>,
     model: String,
-    cache_boundary: Option<usize>,
 }
 
 #[async_trait]
@@ -92,7 +91,6 @@ impl Provider for RecordingProvider {
         self.captures.lock().push(CapturedCall {
             system_prompt,
             model: model.to_string(),
-            cache_boundary: request.system_prompt_cache_boundary,
         });
 
         let mut guard = self.responses.lock();
@@ -203,13 +201,18 @@ fn build_minimal_agent_with_definition_name(definition_name: Option<&str>) -> Ag
 /// `.agent_definition_name(id)` on the builder chain produces an
 /// `Agent` whose [`Agent::agent_definition_name`] accessor returns
 /// that id verbatim. `"welcome"` and `"orchestrator"` exercise the
-/// two ids that reach `from_config_for_agent` today; `"skills_agent"`
+/// two ids that reach `from_config_for_agent` today; `"integrations_agent"`
 /// and `"trigger_triage"` are defensive coverage so that if a
 /// future commit adds a new top-level caller for one of those ids
 /// the builder contract is already pinned.
 #[test]
 fn agent_builder_threads_agent_definition_name_when_set() {
-    for expected in ["welcome", "skills_agent", "orchestrator", "trigger_triage"] {
+    for expected in [
+        "welcome",
+        "integrations_agent",
+        "orchestrator",
+        "trigger_triage",
+    ] {
         let agent = build_minimal_agent_with_definition_name(Some(expected));
         assert_eq!(
             agent.agent_definition_name(),
@@ -682,19 +685,9 @@ async fn system_prompt_and_model_are_byte_stable_across_turns() {
             "model name flipped on turn {} — KV cache namespace broken",
             idx
         );
-        assert_eq!(
-            cap.cache_boundary, captures[0].cache_boundary,
-            "cache boundary drifted on turn {} — provider prompt caching became unstable",
-            idx
-        );
-        assert!(
-            cap.cache_boundary.is_some(),
-            "turn {} should carry an explicit prompt cache boundary",
-            idx
-        );
         assert!(
             !sys.contains("<!-- CACHE_BOUNDARY -->"),
-            "system prompt should not leak the internal cache marker"
+            "system prompt should not leak any cache-boundary marker"
         );
     }
 }

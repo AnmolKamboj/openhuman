@@ -22,7 +22,7 @@ use crate::core::event_bus::{publish_global, DomainEvent};
 use crate::openhuman::agent::harness::definition::AgentDefinitionRegistry;
 use crate::openhuman::agent::harness::fork_context::current_parent;
 use crate::openhuman::agent::harness::subagent_runner::{run_subagent, SubagentRunOptions};
-use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolCategory, ToolResult};
+use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
 
@@ -75,7 +75,7 @@ impl Tool for SpawnSubagentTool {
     fn description(&self) -> &str {
         "Delegate a task to a specialised sub-agent. See the Delegation \
          Guide in the system prompt for available agent_ids and when to \
-         use each. When delegating to `skills_agent`, you MUST also pass \
+         use each. When delegating to `integrations_agent`, you MUST also pass \
          `toolkit=\"<name>\"` naming the Composio integration the \
          sub-task targets (e.g. `gmail`, `notion`); the sub-agent will \
          only see that toolkit's actions."
@@ -120,14 +120,9 @@ impl Tool for SpawnSubagentTool {
                     "type": "string",
                     "description": "Optional context blob from prior task results. Rendered as a `[Context]` block before the prompt."
                 },
-                "category_filter": {
-                    "type": "string",
-                    "enum": ["system", "skill"],
-                    "description": "Optional tool-category restriction. `skill` scopes the sub-agent to integration tools (for example Composio-backed SaaS actions); `system` scopes it to built-in Rust tools. Overrides the definition's `category_filter` for this single spawn."
-                },
                 "toolkit": {
                     "type": "string",
-                    "description": "Composio toolkit slug to scope this spawn to — e.g. `gmail`, `notion`, `slack`. REQUIRED when `agent_id = \"skills_agent\"`. Narrows the sub-agent's visible Composio actions AND its Connected Integrations prompt section to only that toolkit's catalogue, so the sub-agent's context window only carries the platform it was asked to operate on. Must match a currently-connected integration (see the Delegation Guide)."
+                    "description": "Composio toolkit slug to scope this spawn to — e.g. `gmail`, `notion`, `slack`. REQUIRED when `agent_id = \"integrations_agent\"`. Narrows the sub-agent's visible Composio actions AND its Connected Integrations prompt section to only that toolkit's catalogue, so the sub-agent's context window only carries the platform it was asked to operate on. Must match a currently-connected integration (see the Delegation Guide)."
                 },
                 "mode": {
                     "type": "string",
@@ -163,17 +158,6 @@ impl Tool for SpawnSubagentTool {
             .get("context")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-
-        let category_filter_override = match args.get("category_filter").and_then(|v| v.as_str()) {
-            Some("system") => Some(ToolCategory::System),
-            Some("skill") => Some(ToolCategory::Skill),
-            Some(other) => {
-                return Ok(ToolResult::error(format!(
-                    "spawn_subagent: unknown category_filter '{other}' (expected 'system' or 'skill')"
-                )));
-            }
-            None => None,
-        };
 
         let toolkit_override = args
             .get("toolkit")
@@ -222,14 +206,14 @@ impl Tool for SpawnSubagentTool {
             }
         };
 
-        // ── skills_agent toolkit gate ──────────────────────────────────
-        // skills_agent is a platform-parameterised specialist. Every
+        // ── integrations_agent toolkit gate ──────────────────────────────────
+        // integrations_agent is a platform-parameterised specialist. Every
         // spawn MUST name a CONNECTED toolkit so the sub-agent only
         // sees one integration's tool catalogue instead of all of
         // them. We split validation into three cases so the model
         // gets a precise, actionable error on every failure mode —
         // nothing reaches the LLM loop unless the spawn is valid.
-        if definition.id == "skills_agent" {
+        if definition.id == "integrations_agent" {
             let parent_ctx = current_parent();
             let allowlist: Vec<&crate::openhuman::context::prompt::ConnectedIntegration> =
                 parent_ctx
@@ -242,10 +226,19 @@ impl Tool for SpawnSubagentTool {
                 .map(|ci| ci.toolkit.clone())
                 .collect();
 
+            tracing::debug!(
+                target: "spawn_subagent",
+                toolkit = ?toolkit_override,
+                allowlist_count = allowlist.len(),
+                connected_count = connected_slugs.len(),
+                connected = ?connected_slugs,
+                "[spawn_subagent] integrations_agent gate: validating toolkit"
+            );
+
             match toolkit_override.as_deref() {
                 None => {
                     return Ok(ToolResult::error(format!(
-                        "spawn_subagent(skills_agent): the `toolkit` argument is required. \
+                        "spawn_subagent(integrations_agent): the `toolkit` argument is required. \
                          Pass one of the currently-connected toolkits: [{}]. \
                          See the Delegation Guide in your system prompt for which toolkit \
                          matches each task.",
@@ -260,7 +253,7 @@ impl Tool for SpawnSubagentTool {
                         None => {
                             // Toolkit isn't even in the backend allowlist.
                             return Ok(ToolResult::error(format!(
-                                "spawn_subagent(skills_agent): toolkit '{tk}' is not in \
+                                "spawn_subagent(integrations_agent): toolkit '{tk}' is not in \
                                  the backend allowlist. Valid toolkits: [{}]. Check the \
                                  Delegation Guide in your system prompt for the exact slug.",
                                 allowlist
@@ -292,7 +285,11 @@ impl Tool for SpawnSubagentTool {
                             )));
                         }
                         Some(_) => {
-                            // Connected — fall through to spawn.
+                            tracing::debug!(
+                                target: "spawn_subagent",
+                                toolkit = %tk,
+                                "[spawn_subagent] integrations_agent gate: toolkit connected, proceeding with spawn"
+                            );
                         }
                     }
                 }
@@ -316,7 +313,6 @@ impl Tool for SpawnSubagentTool {
         // ── Run the sub-agent ──────────────────────────────────────────
         let options = SubagentRunOptions {
             skill_filter_override: None,
-            category_filter_override,
             toolkit_override,
             context,
             task_id: Some(task_id.clone()),

@@ -12,7 +12,7 @@
 //!
 //! **Line 1 (meta):**
 //! ```json
-//! {"_meta":{"agent":"code_executor","dispatcher":"native","cache_boundary":1847,"created":"...","updated":"...","turn_count":3,"input_tokens":5000,"output_tokens":1200,"cached_input_tokens":3500,"charged_amount_usd":0.0045}}
+//! {"_meta":{"agent":"code_executor","dispatcher":"native","created":"...","updated":"...","turn_count":3,"input_tokens":5000,"output_tokens":1200,"cached_input_tokens":3500,"charged_amount_usd":0.0045}}
 //! ```
 //!
 //! **Message lines:**
@@ -67,7 +67,6 @@ pub struct TurnUsage {
 pub struct TranscriptMeta {
     pub agent_name: String,
     pub dispatcher: String,
-    pub cache_boundary: Option<usize>,
     pub created: String,
     pub updated: String,
     pub turn_count: usize,
@@ -101,8 +100,6 @@ struct MetaLine {
 struct MetaPayload {
     agent: String,
     dispatcher: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    cache_boundary: Option<usize>,
     created: String,
     updated: String,
     turn_count: usize,
@@ -157,7 +154,6 @@ pub fn write_transcript(
         meta: MetaPayload {
             agent: meta.agent_name.clone(),
             dispatcher: meta.dispatcher.clone(),
-            cache_boundary: meta.cache_boundary,
             created: meta.created.clone(),
             updated: meta.updated.clone(),
             turn_count: meta.turn_count,
@@ -320,7 +316,6 @@ fn read_transcript_jsonl(path: &Path) -> Result<SessionTranscript> {
             meta = Some(TranscriptMeta {
                 agent_name: mp.agent,
                 dispatcher: mp.dispatcher,
-                cache_boundary: mp.cache_boundary,
                 created: mp.created,
                 updated: mp.updated,
                 turn_count: mp.turn_count,
@@ -374,6 +369,47 @@ fn read_transcript_jsonl(path: &Path) -> Result<SessionTranscript> {
 /// Creates the date directory if needed. Index = max existing + 1.
 /// Scans both the new `session_raw/` dir (for `.jsonl`) **and** the legacy
 /// `sessions/` dir (for `.md`) so indices stay unique across migration.
+/// Resolve a transcript path under `session_raw/DDMMYYYY/{stem}.jsonl`
+/// where `stem` is deterministic (no auto-indexing). Used by the new
+/// session-key flow: the session-key stem is `"{unix_ts}_{agent_id}"`
+/// for a root session, or `"{parent_chain}__{session_key}"` for a
+/// sub-agent — so nested delegations produce a single flat filename
+/// that encodes the parent → child path.
+///
+/// Creates the date directory if needed. Overwrites are intentional:
+/// the Agent persists the same transcript file across every turn of a
+/// session, and every sub-agent spawn gets a unique timestamp in its
+/// own key so collisions are effectively impossible.
+pub fn resolve_keyed_transcript_path(workspace_dir: &Path, stem: &str) -> Result<PathBuf> {
+    let raw_dir = today_raw_session_dir(workspace_dir);
+    fs::create_dir_all(&raw_dir)
+        .with_context(|| format!("create session_raw dir {}", raw_dir.display()))?;
+    let sanitized = sanitize_stem(stem);
+    Ok(raw_dir.join(format!("{sanitized}.jsonl")))
+}
+
+/// Sanitize a user-supplied transcript stem so it never escapes the
+/// `session_raw/DDMMYYYY/` directory. Allows ASCII alphanumerics plus
+/// a small punctuation set (`_`, `-`, `.`); every other byte is
+/// replaced with `_`. Empty inputs fall back to `"session"`.
+fn sanitize_stem(stem: &str) -> String {
+    let cleaned: String = stem
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if cleaned.is_empty() {
+        "session".to_string()
+    } else {
+        cleaned
+    }
+}
+
 pub fn resolve_new_transcript_path(workspace_dir: &Path, agent_name: &str) -> Result<PathBuf> {
     let raw_dir = today_raw_session_dir(workspace_dir);
     fs::create_dir_all(&raw_dir)
@@ -442,9 +478,6 @@ fn render_markdown(
     let _ = writeln!(buf, "# Session transcript — {}", meta.agent_name);
     buf.push('\n');
     let _ = writeln!(buf, "- Dispatcher: {}", meta.dispatcher);
-    if let Some(boundary) = meta.cache_boundary {
-        let _ = writeln!(buf, "- Cache boundary: {}", boundary);
-    }
     let _ = writeln!(buf, "- Turns: {}", meta.turn_count);
     if meta.input_tokens > 0 || meta.output_tokens > 0 {
         let cache_pct = if meta.input_tokens > 0 {
@@ -543,7 +576,6 @@ fn parse_legacy_meta(raw: &str) -> Result<TranscriptMeta> {
     Ok(TranscriptMeta {
         agent_name: get("agent").unwrap_or_else(|| "unknown".into()),
         dispatcher: get("dispatcher").unwrap_or_else(|| "native".into()),
-        cache_boundary: get("cache_boundary").and_then(|s| s.parse().ok()),
         created: get("created").unwrap_or_default(),
         updated: get("updated").unwrap_or_default(),
         turn_count: get("turn_count").and_then(|s| s.parse().ok()).unwrap_or(0),
@@ -699,35 +731,66 @@ fn next_index(dir: &Path, agent_prefix: &str) -> Result<usize> {
 /// (legacy sessions). When both exist for the same index the `.jsonl`
 /// wins.
 fn latest_in_dir(dir: &Path, agent_prefix: &str) -> Option<PathBuf> {
-    let prefix = format!("{}_", agent_prefix);
-    // Track best (index, path) for each extension.
-    let mut best_jsonl: Option<(usize, PathBuf)> = None;
-    let mut best_md: Option<(usize, PathBuf)> = None;
+    // Two transcript-naming schemes coexist on disk:
+    //   * Legacy: `{agent}_{index}.jsonl|.md` — strictly increasing
+    //     index, used by the now-removed `resolve_new_transcript_path`.
+    //   * Keyed: `{unix_ts}_{agent}.jsonl` (root session) or
+    //     `{parent_chain}__{unix_ts}_{agent}.jsonl` (sub-agent). The
+    //     root stem starts with `{unix_ts}_{agent}` and has no `__`
+    //     prefix segment.
+    //
+    // For resume we only care about root sessions (sub-agents rebuild
+    // from scratch), so we scan for filenames matching either scheme
+    // and pick the newest. "Newest" is the largest sort key — indices
+    // and unix timestamps both order naturally as integers.
+    let legacy_prefix = format!("{}_", agent_prefix);
+    let keyed_suffix = format!("_{}", agent_prefix);
+    let mut best_jsonl: Option<(u64, PathBuf)> = None;
+    let mut best_md: Option<(u64, PathBuf)> = None;
 
     let entries = fs::read_dir(dir).ok()?;
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
-        if !name_str.starts_with(&prefix) {
+        // Extract the stem minus extension.
+        let (stem, is_jsonl) = if let Some(s) = name_str.strip_suffix(".jsonl") {
+            (s, true)
+        } else if let Some(s) = name_str.strip_suffix(".md") {
+            (s, false)
+        } else {
+            continue;
+        };
+        // Skip sub-agent transcripts — they carry at least one `__`
+        // separator in their stem (e.g.
+        // `{orch_key}__{planner_key}`). Root resume never targets a
+        // sub-agent's transcript directly.
+        if stem.contains("__") {
             continue;
         }
-        if name_str.ends_with(".jsonl") {
-            let idx_str = &name_str[prefix.len()..name_str.len() - 6];
-            if let Ok(idx) = idx_str.parse::<usize>() {
-                if best_jsonl
-                    .as_ref()
-                    .is_none_or(|(best_idx, _)| idx > *best_idx)
-                {
-                    best_jsonl = Some((idx, entry.path()));
-                }
+        // Determine sort key. Keyed filenames end with
+        // `_{agent_prefix}`: everything before that is the unix
+        // timestamp. Legacy filenames start with `{agent_prefix}_`:
+        // everything after is the numeric index.
+        let sort_key: u64 = if let Some(ts_part) = stem.strip_suffix(&keyed_suffix) {
+            match ts_part.parse::<u64>() {
+                Ok(ts) => ts,
+                Err(_) => continue,
             }
-        } else if name_str.ends_with(".md") {
-            let idx_str = &name_str[prefix.len()..name_str.len() - 3];
-            if let Ok(idx) = idx_str.parse::<usize>() {
-                if best_md.as_ref().is_none_or(|(best_idx, _)| idx > *best_idx) {
-                    best_md = Some((idx, entry.path()));
-                }
+        } else if let Some(idx_part) = stem.strip_prefix(&legacy_prefix) {
+            match idx_part.parse::<u64>() {
+                Ok(idx) => idx,
+                Err(_) => continue,
             }
+        } else {
+            continue;
+        };
+        let slot = if is_jsonl {
+            &mut best_jsonl
+        } else {
+            &mut best_md
+        };
+        if slot.as_ref().is_none_or(|(best, _)| sort_key > *best) {
+            *slot = Some((sort_key, entry.path()));
         }
     }
 
@@ -770,7 +833,6 @@ mod tests {
         TranscriptMeta {
             agent_name: "code_executor".into(),
             dispatcher: "native".into(),
-            cache_boundary: Some(1847),
             created: "2026-04-11T14:30:00Z".into(),
             updated: "2026-04-11T14:35:22Z".into(),
             turn_count: 3,
@@ -849,7 +911,6 @@ mod tests {
 
         assert_eq!(loaded.meta.agent_name, "code_executor");
         assert_eq!(loaded.meta.dispatcher, "native");
-        assert_eq!(loaded.meta.cache_boundary, Some(1847));
         assert_eq!(loaded.meta.created, "2026-04-11T14:30:00Z");
         assert_eq!(loaded.meta.updated, "2026-04-11T14:35:22Z");
         assert_eq!(loaded.meta.turn_count, 3);
@@ -857,19 +918,6 @@ mod tests {
         assert_eq!(loaded.meta.output_tokens, 1200);
         assert_eq!(loaded.meta.cached_input_tokens, 3500);
         assert!((loaded.meta.charged_amount_usd - 0.0045).abs() < 1e-8);
-    }
-
-    #[test]
-    fn meta_without_cache_boundary() {
-        let dir = TempDir::new().unwrap();
-        let path = dir.path().join("no_boundary.jsonl");
-        let mut meta = sample_meta();
-        meta.cache_boundary = None;
-
-        write_transcript(&path, &[], &meta, None).unwrap();
-        let loaded = read_transcript(&path).unwrap();
-
-        assert_eq!(loaded.meta.cache_boundary, None);
     }
 
     #[test]
@@ -1069,7 +1117,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         // Write a legacy .md file directly (old format).
         let md_path = dir.path().join("legacy.md");
-        let legacy_content = "<!-- session_transcript\nagent: test_agent\ndispatcher: native\ncache_boundary: 100\ncreated: 2026-01-01T00:00:00Z\nupdated: 2026-01-01T00:01:00Z\nturn_count: 1\ninput_tokens: 10\noutput_tokens: 5\ncached_input_tokens: 3\n-->\n\n<!--MSG role=\"system\"-->\nhello\n<!--/MSG-->\n";
+        let legacy_content = "<!-- session_transcript\nagent: test_agent\ndispatcher: native\ncreated: 2026-01-01T00:00:00Z\nupdated: 2026-01-01T00:01:00Z\nturn_count: 1\ninput_tokens: 10\noutput_tokens: 5\ncached_input_tokens: 3\n-->\n\n<!--MSG role=\"system\"-->\nhello\n<!--/MSG-->\n";
         fs::write(&md_path, legacy_content).unwrap();
 
         // read_transcript called with a .jsonl path that doesn't exist
@@ -1077,7 +1125,6 @@ mod tests {
         let jsonl_path = dir.path().join("legacy.jsonl");
         let loaded = read_transcript(&jsonl_path).unwrap();
         assert_eq!(loaded.meta.agent_name, "test_agent");
-        assert_eq!(loaded.meta.cache_boundary, Some(100));
         assert_eq!(loaded.messages.len(), 1);
         assert_eq!(loaded.messages[0].role, "system");
         assert_eq!(loaded.messages[0].content, "hello");

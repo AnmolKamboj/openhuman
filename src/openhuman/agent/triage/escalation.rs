@@ -157,7 +157,7 @@ async fn dispatch_target_agent(agent_id: &str, prompt: &str) -> anyhow::Result<S
         session_id: format!("triage-{}", uuid::Uuid::new_v4()),
         channel: "triage".to_string(),
         connected_integrations: agent.connected_integrations().to_vec(),
-        // Triage doesn't spawn `skills_agent(toolkit=…)`, so the
+        // Triage doesn't spawn `integrations_agent(toolkit=…)`, so the
         // dynamic per-action tool path is unused here. If a future
         // triage flow needs composio access, add a public
         // `composio_client()` accessor on `Agent` and wire it in.
@@ -167,6 +167,11 @@ async fn dispatch_target_agent(agent_id: &str, prompt: &str) -> anyhow::Result<S
         // doesn't currently spawn anything that depends on the new
         // dispatcher-aware sub-agent renderer.
         tool_call_format: crate::openhuman::context::prompt::ToolCallFormat::PFormat,
+        // Triage inherits the parent's session-key chain so escalated
+        // sub-agents write their transcripts alongside the parent's,
+        // preserving the `{parent}__{child}.jsonl` hierarchy.
+        session_key: agent.session_key().to_string(),
+        session_parent_prefix: agent.session_parent_prefix().map(str::to_string),
     };
 
     tracing::debug!(

@@ -10,6 +10,9 @@ use super::types::{Agent, AgentBuilder};
 use crate::openhuman::agent::dispatcher::{
     NativeToolDispatcher, PFormatToolDispatcher, ToolDispatcher, XmlToolDispatcher,
 };
+use crate::openhuman::agent::harness::definition::{
+    AgentDefinitionRegistry, PromptSource, ToolScope,
+};
 use crate::openhuman::agent::host_runtime;
 use crate::openhuman::agent::memory_loader::{DefaultMemoryLoader, MemoryLoader};
 use crate::openhuman::config::{Config, ContextConfig};
@@ -45,6 +48,7 @@ impl AgentBuilder {
             event_session_id: None,
             event_channel: None,
             agent_definition_name: None,
+            session_parent_prefix: None,
             omit_profile: None,
             omit_memory_md: None,
             payload_summarizer: None,
@@ -188,7 +192,7 @@ impl AgentBuilder {
     }
 
     /// Sets the agent definition id this session is running
-    /// (`welcome`, `orchestrator`, `skills_agent`, …).
+    /// (`welcome`, `orchestrator`, `integrations_agent`, …).
     ///
     /// This value is stamped onto the built [`Agent`] and surfaces in
     /// the following places:
@@ -209,13 +213,13 @@ impl AgentBuilder {
     /// * **[`PromptContext::agent_id`]** at prompt-build time (see
     ///   `turn.rs`). Today only one prompt section reads this field —
     ///   the `Connected Integrations` branch in `context/prompt.rs`
-    ///   that special-cases `skills_agent` vs every other agent — so
+    ///   that special-cases `integrations_agent` vs every other agent — so
     ///   the current user-visible impact of a wrong id is limited to
     ///   the two bullets above. The stamped `prompt_builder` injected
     ///   by [`Agent::from_config_for_agent`] is what actually drives
     ///   prompt flavour per archetype, independent of this field. That
     ///   said, any future prompt section that branches on a
-    ///   non-`skills_agent` id (e.g. welcome-specific banner, planner-
+    ///   non-`integrations_agent` id (e.g. welcome-specific banner, planner-
     ///   specific rubric) would silently never fire if the field were
     ///   left at `"main"`, so keeping it correctly stamped closes a
     ///   latent foot-gun for code that hasn't been written yet.
@@ -226,6 +230,18 @@ impl AgentBuilder {
     /// about any of the surfaces above.
     pub fn agent_definition_name(mut self, name: impl Into<String>) -> Self {
         self.agent_definition_name = Some(name.into());
+        self
+    }
+
+    /// Set the parent session-key chain for a sub-agent. Passing
+    /// `Some("1713000000_orchestrator")` produces a sub-agent whose
+    /// transcript filename is prefixed with the parent's session key,
+    /// yielding a flat hierarchy on disk
+    /// (`session_raw/DDMMYYYY/{parent}__{child}.jsonl`). Nested
+    /// delegations chain further prefixes with `__`. Leave `None`
+    /// (default) for root sessions.
+    pub fn session_parent_prefix(mut self, prefix: Option<String>) -> Self {
+        self.session_parent_prefix = prefix;
         self
     }
 
@@ -351,7 +367,6 @@ impl AgentBuilder {
             skills: self.skills.unwrap_or_default(),
             auto_save: self.auto_save.unwrap_or(false),
             last_memory_context: None,
-            system_prompt_cache_boundary: None,
             history: Vec::new(),
             post_turn_hooks: self.post_turn_hooks,
             learning_enabled: self.learning_enabled,
@@ -361,8 +376,28 @@ impl AgentBuilder {
             event_channel: self.event_channel.unwrap_or_else(|| "internal".to_string()),
             agent_definition_name: self
                 .agent_definition_name
+                .clone()
                 .unwrap_or_else(|| "main".to_string()),
             session_transcript_path: None,
+            session_key: {
+                let unix_ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let agent_id = self.agent_definition_name.as_deref().unwrap_or("main");
+                let sanitized: String = agent_id
+                    .chars()
+                    .map(|c| {
+                        if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                            c
+                        } else {
+                            '_'
+                        }
+                    })
+                    .collect();
+                format!("{unix_ts}_{sanitized}")
+            },
+            session_parent_prefix: self.session_parent_prefix,
             cached_transcript_messages: None,
             context,
             on_progress: None,
@@ -427,8 +462,6 @@ impl Agent {
     /// The welcome agent uses this entry point when routed from the
     /// Tauri web channel (see `channels::providers::web::build_session_agent`).
     pub fn from_config_for_agent(config: &Config, agent_id: &str) -> Result<Self> {
-        use crate::openhuman::agent::harness::definition::{AgentDefinitionRegistry, ToolScope};
-
         // Look up the target definition up front so we can fail fast
         // with a clear error instead of building half an agent and then
         // discovering the id is unknown. The registry is a singleton
@@ -511,7 +544,6 @@ impl Agent {
         agent_id: &str,
         target_def: Option<&crate::openhuman::agent::harness::definition::AgentDefinition>,
     ) -> Result<Self> {
-        use crate::openhuman::agent::harness::definition::{PromptSource, ToolScope};
         let runtime: Arc<dyn host_runtime::RuntimeAdapter> =
             Arc::from(host_runtime::create_runtime(&config.runtime)?);
         let security = Arc::new(SecurityPolicy::from_config(
@@ -552,6 +584,17 @@ impl Agent {
             config.api_key.as_deref(),
             config,
         );
+
+        // `complete_onboarding` is the terminal step of the welcome
+        // flow and must never be callable from any other session.
+        // Stripping it here (before prompt + delegation assembly) keeps
+        // it out of both the LLM's function-calling schema and the
+        // rendered `## Tools` section.
+        if agent_id != "welcome" {
+            tools.retain(|t| {
+                !crate::openhuman::agent::harness::subagent_runner::is_welcome_only_tool(t.name())
+            });
+        }
 
         let model_name = config
             .default_model
@@ -601,46 +644,55 @@ impl Agent {
         // prompt stays byte-identical to the legacy CLI/REPL behaviour
         // except for the tool-scope tightening we already landed in
         // earlier commits.
+        // Every agent with a resolved definition (built-in or workspace
+        // override) goes through the per-agent pipeline — the legacy
+        // `with_defaults()` branch only fires when the registry is
+        // unavailable (pre-startup, tests). `PromptSource::Dynamic`
+        // agents install a [`DynamicPromptSection`] that re-runs the
+        // builder against the live [`PromptContext`] at
+        // `build_system_prompt` time, so `connected_integrations`
+        // fetched asynchronously on session start land in the prompt.
+        // `Inline`/`File` sources still resolve to just the archetype
+        // body and get wrapped by [`SystemPromptBuilder::for_subagent`].
         let mut prompt_builder = match target_def {
-            Some(def) if agent_id != "orchestrator" => {
-                // Resolve the prompt body. For built-in agents,
-                // `system_prompt` is `PromptSource::Inline(...)` populated
-                // at crate-build time from the sibling `prompt.md` via
-                // `include_str!` in `agents/mod.rs`. File-based prompts
-                // (custom workspace overrides) read from disk.
-                let body = match &def.system_prompt {
-                    PromptSource::Inline(text) => text.clone(),
-                    PromptSource::File { path } => {
-                        let workspace_path = config
-                            .workspace_dir
-                            .join("agent")
-                            .join("prompts")
-                            .join(path);
-                        if workspace_path.is_file() {
-                            std::fs::read_to_string(&workspace_path).unwrap_or_else(|e| {
-                                log::warn!(
-                                    "[agent::builder] failed to read prompt {}: {e} — using empty body",
-                                    workspace_path.display()
-                                );
-                                String::new()
-                            })
-                        } else {
-                            log::warn!(
-                                "[agent::builder] prompt file {} not found — using empty body",
-                                path
-                            );
-                            String::new()
-                        }
-                    }
-                };
-                SystemPromptBuilder::for_subagent(
-                    body,
+            Some(def) => match &def.system_prompt {
+                PromptSource::Dynamic(build) => SystemPromptBuilder::from_dynamic(*build),
+                PromptSource::Inline(text) => SystemPromptBuilder::for_subagent(
+                    text.clone(),
                     def.omit_identity,
                     def.omit_safety_preamble,
                     def.omit_skills_catalog,
-                )
-            }
-            _ => SystemPromptBuilder::with_defaults(),
+                ),
+                PromptSource::File { path } => {
+                    let workspace_path = config
+                        .workspace_dir
+                        .join("agent")
+                        .join("prompts")
+                        .join(path);
+                    let body_text = if workspace_path.is_file() {
+                        std::fs::read_to_string(&workspace_path).unwrap_or_else(|e| {
+                            log::warn!(
+                                "[agent::builder] failed to read prompt {}: {e} — using empty body",
+                                workspace_path.display()
+                            );
+                            String::new()
+                        })
+                    } else {
+                        log::warn!(
+                            "[agent::builder] prompt file {} not found — using empty body",
+                            path
+                        );
+                        String::new()
+                    };
+                    SystemPromptBuilder::for_subagent(
+                        body_text,
+                        def.omit_identity,
+                        def.omit_safety_preamble,
+                        def.omit_skills_catalog,
+                    )
+                }
+            },
+            None => SystemPromptBuilder::with_defaults(),
         };
         if config.learning.enabled {
             prompt_builder = prompt_builder
@@ -829,10 +881,10 @@ impl Agent {
         // that even 16–25 of them blow past that ceiling, regardless of
         // how aggressively the fuzzy filter in `tool_filter.rs` narrows
         // the list. When that happens the provider rejects the request
-        // with a 400 before any generation starts, so skills_agent can
+        // with a 400 before any generation starts, so integrations_agent can
         // never actually invoke the toolkit.
         //
-        // Workaround: if we're building skills_agent and the selected
+        // Workaround: if we're building integrations_agent and the selected
         // dispatcher would ship `tools: [...]` in the API payload
         // (`should_send_tool_specs() == true`, i.e. native mode), swap
         // to XML mode. XmlToolDispatcher puts the tool catalogue inside
@@ -842,9 +894,9 @@ impl Agent {
         // than native; the existing `parse_tool_calls` recovers from
         // stray formatting and the loop retries on malformed output.
         let tool_dispatcher: Box<dyn ToolDispatcher> =
-            if agent_id == "skills_agent" && tool_dispatcher.should_send_tool_specs() {
+            if agent_id == "integrations_agent" && tool_dispatcher.should_send_tool_specs() {
                 log::info!(
-                    "[agent::builder] skills_agent: overriding native tool dispatcher with \
+                    "[agent::builder] integrations_agent: overriding native tool dispatcher with \
                      XmlToolDispatcher (native mode hits provider grammar-rule limits on \
                      large Composio toolkits)"
                 );

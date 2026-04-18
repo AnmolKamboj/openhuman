@@ -44,7 +44,7 @@ use super::{ArchetypeDelegationTool, SkillDelegationTool, Tool};
 /// Each [`SubagentEntry::Skills`] wildcard expands to one
 /// [`SkillDelegationTool`] per connected Composio integration in
 /// `connected_integrations`. The synthesised tool routes to the generic
-/// `skills_agent` with `skill_filter = Some("{toolkit_slug}")` pre-set.
+/// `integrations_agent` with `skill_filter = Some("{toolkit_slug}")` pre-set.
 ///
 /// Entries that reference unknown agent ids (not in the registry) are
 /// logged at `warn` and skipped — the orchestrator still builds, just
@@ -128,17 +128,17 @@ pub fn collect_orchestrator_tools(
                     // on brand-new or poorly-populated toolkits.
                     let description = if integration.description.trim().is_empty() {
                         format!(
-                            "Delegate to the skills agent with the `{}` integration pre-selected.",
+                            "Delegate to the integrations_agent with the `{}` integration pre-selected.",
                             integration.toolkit
                         )
                     } else {
                         format!(
-                            "Delegate to the skills agent using `{}`. {}",
+                            "Delegate to the integrations_agent using `{}`. {}",
                             integration.toolkit, integration.description
                         )
                     };
                     log::debug!(
-                        "[orchestrator_tools] registering skill delegation tool: {} -> skills_agent (skill_filter={})",
+                        "[orchestrator_tools] registering skill delegation tool: {} -> integrations_agent (skill_filter={})",
                         tool_name,
                         slug
                     );
@@ -202,7 +202,6 @@ mod tests {
             tools: ToolScope::Wildcard,
             disallowed_tools: vec![],
             skill_filter: None,
-            category_filter: None,
             extra_tools: vec![],
             max_iterations: 8,
             timeout_secs: None,

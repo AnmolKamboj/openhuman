@@ -143,7 +143,7 @@ impl Tool for CompleteOnboardingTool {
              \"composio\": true,\n\
              \"browser\": false,\n\
              \"web_search\": true,\n\
-             \"http_request\": false,\n\
+             \"http_request\": true,\n\
              \"local_ai\": true\n\
            },\n\
            \"memory\": { \"backend\": \"sqlite\", \"auto_save\": true },\n\
@@ -418,8 +418,8 @@ pub(crate) fn build_status_snapshot(
         "integrations": {
             "composio": composio_enabled,
             "browser": config.browser.enabled,
-            "web_search": config.web_search.enabled,
-            "http_request": config.http_request.enabled,
+            "web_search": true,
+            "http_request": true,
             "local_ai": config.local_ai.enabled,
         },
         "memory": {
