@@ -1,3 +1,7 @@
+---
+icon: code-branch
+---
+
 # Architecture
 
 OpenHuman is built on the OpenClaw architecture and open-sourced under the GNU GPL3 license. This page explains how the major components connect.

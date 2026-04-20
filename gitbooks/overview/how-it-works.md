@@ -8,7 +8,7 @@ OpenHuman is built on three technology pillars: a memory engine called Neocortex
 
 ### The problem OpenHuman solves
 
-Current AI systems fall into the category of Artificial Narrow Intelligence (ANI). They perform well within bounded domains, but they depend on carefully designed architectures and human-defined operational boundaries. They lack three things needed to get closer to general intelligence: persistent memory at scale, a form of consciousness or instinct, and the ability to ingest data without becoming inaccurate or expensive.
+Current AI systems fall into the category of Artificial Narrow Intelligence (ANI). They perform well within bounded domains but they depend on carefully designed architectures and human-defined operational boundaries. They lack three things needed to get closer to general intelligence: persistent memory at scale, a form of consciousness or instinct, and the ability to ingest data without becoming inaccurate or expensive.
 
 Research from Google's Titans project demonstrates the core issue clearly. As LLMs try to absorb more data, they become less accurate. Larger context windows do not solve this. They make the models slower, more expensive, and more prone to errors. This means the path to superhuman AI requires solving for context that is high accuracy, high speed, and low cost.
 

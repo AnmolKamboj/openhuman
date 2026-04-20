@@ -1,3 +1,7 @@
+---
+icon: head-side-brain
+---
+
 # Neocortex
 
 Neocortex is OpenHuman's memory engine. It is a human-like AI memory system designed to work accurately with over 1 billion tokens of data while supporting the computational demands of a subconscious system.

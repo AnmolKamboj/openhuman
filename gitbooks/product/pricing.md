@@ -4,44 +4,54 @@ icon: sack-dollar
 
 # Pricing
 
-OpenHuman is currently in early alpha. During this phase, access is free for early users.
+OpenHuman offers a free tier with optional paid upgrades for heavier usage.
 
-***
+#### Plans
 
-### Alpha Access
+**Free ($0/month)** Base access to integrations and inference. Pay-as-you-go top-ups when included usage runs out. No subscription discount on premium usage.
 
-All features are available at no cost during the alpha period, including Screen Intelligence, Auto-complete, Telegram integration, Notion and Google Sheets exports, and subconscious intelligence.
+| Included monthly value | 7-day cycle budget | 5-hour cap | Discount | Storage |
+| ---------------------- | ------------------ | ---------- | -------- | ------- |
+| $1                     | $0.50              | $0.15      | 0%       | 100 MB  |
 
-Early users who join during alpha will receive advance notice before paid plans take effect, along with a transition period and loyalty benefits.
+**Basic ($20/month)** Higher included premium usage every billing cycle. 20% premium-usage discount across integrations, bandwidth, and inference. Pay-as-you-go top-ups for overflow usage.
 
-***
+| Included monthly value | 7-day cycle budget | 5-hour cap | Discount | Storage |
+| ---------------------- | ------------------ | ---------- | -------- | ------- |
+| $20                    | $10                | $3         | 20%      | 10 GB   |
 
-### Planned Pricing Model
+**Pro ($200/month)** Largest included premium usage allocation. 40% premium-usage discount across integrations and inference. Best fit for heavy bandwidth and agent workloads.
 
-OpenHuman will be priced as a subscription for individuals and teams.
+| Included monthly value | 7-day cycle budget | 5-hour cap | Discount | Storage |
+| ---------------------- | ------------------ | ---------- | -------- | ------- |
+| $200                   | $100               | $30        | 40%      | 200 GB  |
 
-**Free tier:** Core functionality with local models. Screen Intelligence, Auto-complete, and basic Neocortex memory using on-device processing.
+Monthly and Annual billing options are available. Annual billing lowers the effective monthly price.
 
-**Paid subscription:** Access to premium cloud models for deeper analysis, full Neocortex intelligence at scale, unlimited subconscious processing, priority support, and advanced integrations.
+#### Pay as You Go
 
-Pricing details and tier breakdowns will be published before the alpha period ends.
+Buy credits as you need them with no subscription required. If you have a subscription, your included budget is consumed first.
 
-***
+Top-up options: +$5, +$10, +$25.
 
-### Team Plans
+**Coupon codes:** Enter a coupon code (format: XXXX-XXXX) in Settings > Account & Security > Billing & Usage to redeem credits.
 
-Team plans will support shared coordination environments where multiple members need access under a single workspace. Team plans will include shared workflows, community-level intelligence, coordination support, and centralized billing.
+#### Pay with Crypto
 
-***
+You can choose to pay annually using crypto. Toggle this option in Settings > Account & Security > Billing & Usage.
 
-### Credit System
+#### Inference Budget
 
-OpenHuman uses a credit-based system for usage-metered features beyond the subscription base. Credits are consumed when you use analysis, intelligence, and processing features. Credits can be earned through the referral program, in addition to purchase.
+Your billing dashboard tracks usage within each cycle: daily spending, tokens consumed, 5-hour cap usage, and cycle end date. A progress bar shows remaining budget.
 
-***
+#### Auto-Recharge
 
-### Payment Methods
+Toggle auto-recharge to automatically top up credits when your balance runs low. Requires a saved payment method (add a card in Settings > Account & Security > Billing & Usage).
 
-**Card payments:** Standard subscription billing with the ability to upgrade, downgrade, or cancel at any time.
+#### Why Upgrade?
 
-**Cryptocurrency:** Alternative payment path for users who prefer crypto.
+Higher tiers increase your premium-usage discount and included usage every cycle. Annual billing lowers the effective monthly price, and top-ups let you keep going when usage spikes.
+
+#### Where to Manage
+
+All billing, credits, and payment methods are managed in Settings > Account & Security > Billing & Usage.

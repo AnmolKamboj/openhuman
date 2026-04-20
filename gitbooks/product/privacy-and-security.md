@@ -18,7 +18,7 @@ OpenHuman operates on a principle of **zero retention** for message content. Whe
 
 **OS-level credential storage.** On desktop platforms, OpenHuman uses your operating system's secure keychain to store credentials and sensitive tokens. Credentials are never stored in plain text, browser storage, or application-level databases.
 
-**On-device where possible.** Screen Intelligence, Auto-complete, local chat, voice processing, and encryption all happen on your device. Only tasks requiring deeper language processing beyond local model capabilities are handled server-side, under the same privacy constraints.
+**On-device where possible.** Screen Intelligence, Inline autocomplete, local chat, voice processing, and encryption all happen on your device. Only tasks requiring deeper language processing beyond local model capabilities are handled server-side, under the same privacy constraints.
 
 ### Screen Intelligence Privacy
 
@@ -36,9 +36,9 @@ Screen Intelligence captures your screen approximately every 5 seconds and proce
 
 ***
 
-### Auto-complete Privacy
+### Inline autocomplete Privacy
 
-Auto-complete runs on the local model using cached memory context from Neocortex. No keystroke data, text input, or completion suggestions are sent to any server. The entire feature operates on-device.
+Inline autocomplete runs on the local model using cached memory context from Neocortex. No keystroke data, text input, or completion suggestions are sent to any server. The entire feature operates on-device.
 
 ***
 

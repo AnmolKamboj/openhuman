@@ -86,7 +86,7 @@ Messages are processed only to fulfill your request. They are **not permanently 
 
 #### Can OpenHuman send messages on my behalf?
 
-OpenHuman can send messages, reply, forward, and take other actions in your Telegram account, but only when you explicitly instruct it to. It never sends messages autonomously or acts without your direct request.
+OpenHuman can send messages, manage chats, and perform 80+ actions through your connected Telegram account. All actions use your own encrypted credentials and run locally. You control which capabilities are active through the Skills settings
 
 ***
 
@@ -208,3 +208,27 @@ Previously exported outputs (such as summaries written to Notion or Google Sheet
 If an issue persists after refining scope, checking permissions, and retrying the request, support may be required.
 
 Support is intended for system-level issues, not for disputing interpretations or outcomes. OpenHuman does not adjudicate trust or risk disagreements.
+
+***
+
+#### **What are the system requirements?**
+
+OpenHuman requires macOS. The Lightweight model tier works on machines with 4 GB+ RAM. The recommended Performance tier requires 16 GB+ RAM and Apple Silicon. The app detects your hardware and recommends the best tier automatically.
+
+***
+
+#### **How often does OpenHuman sync my email and Notion?**
+
+Gmail syncs every 15 minutes and Notion every 20 minutes by default. You can adjust these intervals in Settings > Automation & Channels > Cron Jobs.
+
+***
+
+#### **What is the panic stop shortcut?**
+
+Press Cmd+Shift+. to immediately stop all Screen Intelligence capture. Useful if you navigate to sensitive content unexpectedly.
+
+***
+
+#### **What apps are excluded from Screen Intelligence by default?**
+
+1password, keychain, and wallet are in the default denylist. You can add more apps in Settings > Automation & Channels > Screen Intelligence under the Denylist field.

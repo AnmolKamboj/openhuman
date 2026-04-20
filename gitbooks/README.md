@@ -14,8 +14,6 @@ Every AI model in the world, all 200+ of them, shares the same fundamental limit
 
 OpenHuman solves this with three core innovations:
 
-<figure><img src="/broken/files/YgapS9IPJjw1RqsSmLtW" alt=""><figcaption></figcaption></figure>
-
 **Neocortex**, a human-like memory engine that can accurately work with over 1 billion tokens. Neocortex indexes 10 million tokens in under 10 seconds, costs $1 to index 5 million tokens, and runs on a MacBook Air CPU with zero LLM dependency. Neocortex goes beyond vector databases. It understands time, entities, and relationships, and it models memory the way the human brain does: by compressing, forgetting strategically, and building knowledge graphs.
 
 **A personalized subconscious system** inspired by the Purkinje cell, a specialized neuron in the human brain responsible for random thoughts and consciousness. OpenHuman's subconscious triggers over 10,000 memory recall loops per day for under $1, producing proactive insights, pattern recognition, and emergent "thoughts" that feed into a self-learning loop.

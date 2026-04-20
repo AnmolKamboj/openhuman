@@ -10,9 +10,33 @@ OpenHuman is open source under the GNU GPL3 license. The codebase is available a
 
 ***
 
+#### System Requirements
+
+OpenHuman is a desktop application for macOS. Download it from [openhuman.ai](https://openhuman.ai).
+
+OpenHuman runs a local AI model on your machine. The experience scales with your hardware.
+
+| Model Tier                | Download Size | Minimum RAM | GPU Required              | Model                  |
+| ------------------------- | ------------- | ----------- | ------------------------- | ---------------------- |
+| Lightweight               | \~1 GB        | 4 GB        | No                        | gemma3:1b-it-q4\_0     |
+| Balanced                  | \~3 GB        | 8 GB        | No                        | gemma3:4b-it-qat       |
+| Performance (Recommended) | \~8 GB        | 16 GB       | Yes (Apple Silicon Metal) | gemma3:12b-it-q4\_K\_M |
+
+The app detects your system specs automatically and recommends the best tier. You can change the model tier at any time from Settings > AI & Skills > Local AI Model.
+
+#### macOS Permissions
+
+Some features require macOS permissions. You will be prompted during setup, but you can also configure them later in Settings > Automation & Channels.
+
+**Screen Intelligence** requires: Screen Recording, Accessibility, and Input Monitoring permissions.
+
+**Inline Autocomplete** requires: Accessibility and Input Monitoring permissions.
+
+After granting permissions in System Settings, return to OpenHuman and click "Restart & Refresh Permissions" so the app picks up the grants.
+
 ## Download & Install
 
-Download the OpenHuman desktop app from the official website at [tryopenhuman.com](https://tryopenhuman.com). The desktop app runs local AI models on your machine for private screen analysis, auto-complete, and chat.
+Download the OpenHuman desktop app from the official website at [tryopenhuman.com](https://tryopenhuman.com). The desktop app runs local AI models on your machine for private screen analysis, inline autocomplete, and chat.
 
 OpenHuman runs natively on
 
@@ -51,13 +75,13 @@ Screen Intelligence is one of OpenHuman's core capabilities. It captures your sc
 
 ***
 
-### Enable Auto-complete
+### Enable Inline Autocomplete
 
-Auto-complete uses your Neocortex memory combined with the local model to suggest relevant text completions on any input surface across your system.
+Inline autocomplete uses your Neocortex memory combined with the local model to suggest relevant text completions on any input surface across your system.
 
-Because it draws on your accumulated context, suggestions reflect your actual terminology, projects, contacts, and patterns. This is different from generic auto-complete: it knows what you have been working on, who you have been talking to, and what is currently relevant.
+Because it draws on your accumulated context, suggestions reflect your actual terminology, projects, contacts, and patterns. This is different from generic inline autocomplete: it knows what you have been working on, who you have been talking to, and what is currently relevant.
 
-Auto-complete runs entirely on your local model. No keystroke data or text input is sent to any server. You can enable or disable it from settings at any time.
+Inline autocomplete runs entirely on your local model. No keystroke data or text input is sent to any server. You can enable or disable it from settings at any time.
 
 ***
 

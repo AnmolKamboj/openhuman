@@ -1,3 +1,7 @@
+---
+icon: grid-4
+---
+
 # Overview
 
 OpenHuman adapts to different coordination and information environments across communication platforms. While the underlying system remains the same, the way value is realized depends on how your tools and conversations are used in each context. This section outlines common use cases to help you understand where OpenHuman fits naturally and where it may offer limited benefit.

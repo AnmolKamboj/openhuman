@@ -31,7 +31,7 @@ The desktop app is the primary OpenHuman experience. It runs local AI models on 
 
 **Screen Intelligence** captures your screen approximately every 5 seconds, processes captures through the on-device vision model, and produces structured context summaries. This feature requires the desktop app because it needs access to your screen and local compute for real-time processing. Per-app permissions let you control which applications are monitored.
 
-**Auto-complete** uses your Neocortex memory context combined with the local model to generate relevant text completions on any input surface. This runs entirely on-device and is available on desktop platforms.
+**Inline Autocomplete** uses your Neocortex memory context combined with the local model to generate relevant text completions on any input surface. This runs entirely on-device and is available on desktop platforms.
 
 **Local model inference** for chat, vision, speech-to-text, and text-to-speech runs on your desktop hardware. No GPU is required, though GPU acceleration is used when available.
 
@@ -55,7 +55,7 @@ OpenHuman is built as a native application rather than a web wrapper for three r
 
 OpenHuman operates across three layers:
 
-**Application layer.** The native app on your device handles the interface, user input, local state, credential management, local model inference, Screen Intelligence, Auto-complete, and skill execution. This layer is responsible for everything you see and interact with, and for all on-device AI processing.
+**Application layer.** The native app on your device handles the interface, user input, local state, credential management, local model inference, Screen Intelligence, **Inline Autocomplete**, and skill execution. This layer is responsible for everything you see and interact with, and for all on-device AI processing.
 
 **Intelligence layer.** OpenHuman's analysis, coordination, and intelligence systems run as a secure backend service. When a request requires deeper language processing, it is handled here. This layer is operated and maintained by OpenHuman.
 
@@ -79,6 +79,6 @@ The connection is designed for resilience. If the network drops, OpenHuman recon
 
 OpenHuman's local state persists on your device. Your preferences, settings, and connected source configurations remain available even when you are offline.
 
-On desktop, local model capabilities continue to function offline. Screen Intelligence continues capturing and processing locally. Auto-complete continues generating suggestions from cached memory context. Chat with the local model works without a network connection.
+On desktop, local model capabilities continue to function offline. Screen Intelligence continues capturing and processing locally. **Inline Autocomplete** continues generating suggestions from cached memory context. Chat with the local model works without a network connection.
 
 Full analysis and intelligence features that require the server-side intelligence layer need a network connection. When connectivity is restored, the app resumes normal operation without requiring you to re-authenticate or reconfigure.
