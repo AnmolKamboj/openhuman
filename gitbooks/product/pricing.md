@@ -4,56 +4,44 @@ icon: sack-dollar
 
 # Pricing
 
-OpenHuman is priced as a SaaS product for individuals and teams that rely on high-volume communication and need clarity, coordination, and safety across their tools. Pricing reflects the value of reduced cognitive load and better signal quality, not raw message volume.
+OpenHuman is currently in early alpha. During this phase, access is free for early users.
 
----
+***
 
-## Individual Plans
+### Alpha Access
 
-Individual plans are designed for power users who want help managing high-volume activity across multiple conversations and connected sources.
+All features are available at no cost during the alpha period, including Screen Intelligence, Auto-complete, Telegram integration, Notion and Google Sheets exports, and subconscious intelligence.
 
-Core analysis functionality is included so users can understand OpenHuman's value before committing. Deeper features, longer context windows, persistent workflows, richer integrations, and advanced intelligence are available in higher tiers.
+Early users who join during alpha will receive advance notice before paid plans take effect, along with a transition period and loyalty benefits.
 
-Plans are tiered to allow users to start lightweight and expand as their needs grow.
+***
 
----
+### Planned Pricing Model
 
-## Team Plans
+OpenHuman will be priced as a subscription for individuals and teams.
 
-Team plans are designed for shared coordination environments where multiple members need access under a single workspace.
+**Free tier:** Core functionality with local models. Screen Intelligence, Auto-complete, and basic Neocortex memory using on-device processing.
 
-Team plans include shared workflows, community-level intelligence, coordination support, and centralized billing. Pricing reflects the number of active participants and the coordination value created.
+**Paid subscription:** Access to premium cloud models for deeper analysis, full Neocortex intelligence at scale, unlimited subconscious processing, priority support, and advanced integrations.
 
-Individual user privacy is preserved even in shared team environments.
+Pricing details and tier breakdowns will be published before the alpha period ends.
 
----
+***
 
-## Credit System
+### Team Plans
 
-OpenHuman uses a credit-based system for usage-metered features.
+Team plans will support shared coordination environments where multiple members need access under a single workspace. Team plans will include shared workflows, community-level intelligence, coordination support, and centralized billing.
 
-- Credits are consumed when you use analysis, intelligence, and processing features
-- Oldest credits are consumed first, encouraging usage before expiry
-- Credits can be earned through the referral program, in addition to purchase
-- Every credit transaction is tracked in an auditable ledger
+***
 
-Credits provide flexibility as you pay for what you use, and you can supplement your plan with earned credits from referrals.
+### Credit System
 
----
+OpenHuman uses a credit-based system for usage-metered features beyond the subscription base. Credits are consumed when you use analysis, intelligence, and processing features. Credits can be earned through the referral program, in addition to purchase.
 
-## Payment Methods
+***
 
-OpenHuman supports standard and cryptocurrency payment options.
+### Payment Methods
 
-- **Card payments:** Standard subscription billing with the ability to upgrade, downgrade, or cancel at any time
-- **Cryptocurrency:** Alternative payment path for users who prefer crypto
+**Card payments:** Standard subscription billing with the ability to upgrade, downgrade, or cancel at any time.
 
-Changes to your plan take effect immediately. Cancellation does not affect outputs already exported to external tools.
-
----
-
-## Access During Launch
-
-During the initial launch phase, access to OpenHuman may be gated through a waitlist. This is done to manage platform stability and collect feedback from early users.
-
-Waitlist access does not imply long-term pricing commitments. Pricing and plan boundaries may evolve during this phase as usage patterns become clearer.
+**Cryptocurrency:** Alternative payment path for users who prefer crypto.
