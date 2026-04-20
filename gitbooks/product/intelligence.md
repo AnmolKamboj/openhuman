@@ -15,7 +15,7 @@ The top of the page shows the current system state (System Idle, Analyzing, etc.
 
 **Subconscious** (coming soon): Background reasoning loop that runs continuously between your prompts, synthesizing thoughts and detecting patterns.
 
-**Dreams** (coming soon): Deeper processing that consolidates and restructures memory during idle periods.
+**Dreams** (coming soon): Deeper processing that consolidates and restructures memory during idle periods
 
 ### Memory
 
