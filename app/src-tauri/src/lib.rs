@@ -9,6 +9,8 @@ mod discord_scanner;
 mod imessage_scanner;
 #[cfg(feature = "cef")]
 mod slack_scanner;
+#[cfg(feature = "cef")]
+mod telegram_scanner;
 mod webview_accounts;
 mod whatsapp_scanner;
 
@@ -458,7 +460,6 @@ fn show_main_window(app: &AppHandle<AppRuntime>) -> Result<(), String> {
         .map_err(|err| format!("failed to focus main window: {err}"))?;
     Ok(())
 }
-
 fn setup_tray(app: &AppHandle<AppRuntime>) -> tauri::Result<()> {
     log::info!("[tray] setting up tray icon");
 
@@ -581,6 +582,8 @@ pub fn run() {
     let builder = builder.manage(slack_scanner::ScannerRegistry::new());
     #[cfg(feature = "cef")]
     let builder = builder.manage(discord_scanner::ScannerRegistry::new());
+    #[cfg(feature = "cef")]
+    let builder = builder.manage(telegram_scanner::ScannerRegistry::new());
     builder
         .setup(move |app| {
             #[cfg(any(windows, target_os = "linux"))]
@@ -742,6 +745,48 @@ pub fn run() {
                 }
             }
 
+            // Same dev helper, Telegram flavour. OPENHUMAN_DEV_AUTO_TELEGRAM=<uuid>
+            // opens the Telegram Web K account webview on startup so the CDP
+            // scanner can iterate without manual UI clicks.
+            if let Ok(account_id) = std::env::var("OPENHUMAN_DEV_AUTO_TELEGRAM") {
+                let account_id = account_id.trim().to_string();
+                if !account_id.is_empty() {
+                    let app_handle = app.handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        let state = app_handle.state::<webview_accounts::WebviewAccountsState>();
+                        let args = webview_accounts::OpenArgs {
+                            account_id: account_id.clone(),
+                            provider: "telegram".to_string(),
+                            url: None,
+                            bounds: Some(webview_accounts::Bounds {
+                                x: 100.0,
+                                y: 100.0,
+                                width: 900.0,
+                                height: 700.0,
+                            }),
+                        };
+                        match webview_accounts::webview_account_open(
+                            app_handle.clone(),
+                            state,
+                            args,
+                        )
+                        .await
+                        {
+                            Ok(label) => log::info!(
+                                "[dev-auto-telegram] spawned label={} account={}",
+                                label,
+                                account_id
+                            ),
+                            Err(e) => log::error!(
+                                "[dev-auto-telegram] failed: {} (account={})",
+                                e,
+                                account_id
+                            ),
+                        }
+                    });
+                }
+            }
             // Same dev helper, Google Meet flavour.
             // OPENHUMAN_DEV_AUTO_GOOGLE_MEET=<uuid> opens the gmeet account
             // webview at startup so the caption-capture recipe runs
@@ -816,7 +861,6 @@ pub fn run() {
                     log::info!("[imessage] scanner scheduled (gates on config each tick)");
                 }
             }
-
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
