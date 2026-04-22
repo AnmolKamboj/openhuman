@@ -87,6 +87,15 @@ const AppRoutes = () => {
       />
 
       <Route
+        path="/notifications"
+        element={
+          <ProtectedRoute requireAuth={true}>
+            <Notifications />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
         path="/rewards"
         element={
           <ProtectedRoute requireAuth={true}>

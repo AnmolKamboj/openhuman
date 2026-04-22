@@ -16,7 +16,7 @@ import NotificationCard from './NotificationCard';
 
 const NotificationCenter = () => {
   const dispatch = useAppDispatch();
-  const { items, unreadCount, loading, error } = useAppSelector(s => s.notifications);
+  const { items, unreadCount, loading, error } = useAppSelector(s => s.integrationNotifications);
   const [selectedProvider, setSelectedProvider] = useState<string | undefined>(undefined);
   // All providers seen across unfiltered loads — kept separate so the filter
   // pill row doesn't collapse when a provider filter is active.
