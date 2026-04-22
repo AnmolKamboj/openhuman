@@ -147,6 +147,8 @@ fn build_registered_controllers() -> Vec<RegisteredController> {
     controllers.extend(
         crate::openhuman::webview_notifications::all_webview_notifications_registered_controllers(),
     );
+    // Integration notification ingest, triage, and per-provider settings
+    controllers.extend(crate::openhuman::notifications::all_notifications_registered_controllers());
     controllers
 }
 
@@ -200,6 +202,8 @@ fn build_declared_controller_schemas() -> Vec<ControllerSchema> {
     schemas.extend(
         crate::openhuman::webview_notifications::all_webview_notifications_controller_schemas(),
     );
+    // Integration notification ingest, triage, and per-provider settings
+    schemas.extend(crate::openhuman::notifications::all_notifications_controller_schemas());
     schemas
 }
 
@@ -265,6 +269,10 @@ pub fn namespace_description(namespace: &str) -> Option<&'static str> {
         }
         "learning" => Some(
             "User context enrichment — LinkedIn profile scraping and onboarding intelligence.",
+        ),
+        "notification" => Some(
+            "Integration notification ingest, triage scoring, listing, read-state, \
+             and per-provider routing settings.",
         ),
         _ => None,
     }
@@ -535,6 +543,7 @@ mod tests {
         assert!(namespace_description("health").is_some());
         assert!(namespace_description("voice").is_some());
         assert!(namespace_description("webhooks").is_some());
+        assert!(namespace_description("notification").is_some());
     }
 
     #[test]
