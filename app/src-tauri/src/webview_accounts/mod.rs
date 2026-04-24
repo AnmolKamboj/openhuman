@@ -191,13 +191,55 @@ fn popup_should_stay_in_app(provider: &str, url: &Url) -> bool {
         _ => false,
     }
 }
+/// Unwrap provider-side "link safety" redirects so the system browser
+/// lands on the real destination.
+///
+/// These wrappers (LinkedIn's `/safety/go/?url=…`, etc.) require the
+/// user to be logged into the provider in the destination browser. In
+/// our setup the session lives inside the embedded CEF webview's cookie
+/// jar, not the user's default browser — opening the wrapper URL there
+/// shows a broken safety page instead of completing the redirect.
+/// Extract the `url` query param and return the resolved destination.
+fn unwrap_provider_redirect(url: &Url) -> Option<Url> {
+    let host = url.host_str()?;
+    let path = url.path();
+    let matches_linkedin = (host == "www.linkedin.com" || host == "linkedin.com")
+        && (path == "/safety/go/" || path == "/safety/go" || path == "/redir/redirect");
+    if !matches_linkedin {
+        return None;
+    }
+    let (_, raw) = url.query_pairs().find(|(k, _)| k == "url")?;
+    Url::parse(&raw).ok()
+}
+
 /// Fire-and-forget handoff to the OS default URL handler. Any error is
 /// logged but not propagated — we've already cancelled the in-app
 /// navigation so there's nowhere to surface a failure to.
+///
+/// On macOS we shell out to `/usr/bin/open` directly rather than via
+/// `tauri_plugin_opener::open_url`: the plugin returned Ok but no browser
+/// actually launched in the CEF runtime (suspected sandbox/launch-service
+/// interaction with the `open` crate's detached spawn). The direct
+/// Command call is equivalent to what a user would type in Terminal and
+/// works reliably.
 fn open_in_system_browser(url: &str) {
-    match tauri_plugin_opener::open_url(url, None::<&str>) {
-        Ok(()) => log::info!("[webview-accounts] opened externally: {}", url),
-        Err(e) => log::warn!("[webview-accounts] open_url({}) failed: {}", url, e),
+    #[cfg(target_os = "macos")]
+    {
+        match std::process::Command::new("/usr/bin/open").arg(url).spawn() {
+            Ok(_) => log::info!("[webview-accounts] opened externally (macos open): {}", url),
+            Err(e) => log::warn!(
+                "[webview-accounts] /usr/bin/open {} failed: {} — falling back to opener plugin",
+                url,
+                e
+            ),
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        match tauri_plugin_opener::open_url(url, None::<&str>) {
+            Ok(()) => log::info!("[webview-accounts] opened externally: {}", url),
+            Err(e) => log::warn!("[webview-accounts] open_url({}) failed: {}", url, e),
+        }
     }
 }
 
@@ -552,9 +594,6 @@ fn build_init_script(account_id: &str, provider: &str) -> String {
     } else {
         ""
     };
-    // Migrated providers have no recipe under wry either (recipe.js
-    // files were deleted with the cef migration), but the UA shim is
-    // still worth shipping so fingerprint gates pass.
     let Some(recipe_js) = provider_recipe_js(provider) else {
         return spoof.to_string();
     };
@@ -686,11 +725,22 @@ pub async fn webview_account_open<R: Runtime>(
         if url_is_internal(&nav_provider, url) {
             true
         } else {
-            log::info!(
-                "[webview-accounts] external navigation {} → system browser",
-                url
-            );
-            open_in_system_browser(url.as_str());
+            let target = unwrap_provider_redirect(url)
+                .map(|u| u.to_string())
+                .unwrap_or_else(|| url.to_string());
+            if target != url.as_str() {
+                log::info!(
+                    "[webview-accounts] external navigation {} → (unwrapped) {} → system browser",
+                    url,
+                    target
+                );
+            } else {
+                log::info!(
+                    "[webview-accounts] external navigation {} → system browser",
+                    url
+                );
+            }
+            open_in_system_browser(&target);
             false
         }
     });
@@ -714,11 +764,22 @@ pub async fn webview_account_open<R: Runtime>(
             );
             NewWindowResponse::Allow
         } else {
-            log::info!(
-                "[webview-accounts] new-window request {} → system browser",
-                url
-            );
-            open_in_system_browser(url.as_str());
+            let target = unwrap_provider_redirect(&url)
+                .map(|u| u.to_string())
+                .unwrap_or_else(|| url.to_string());
+            if target != url.as_str() {
+                log::info!(
+                    "[webview-accounts] new-window request {} → (unwrapped) {} → system browser",
+                    url,
+                    target
+                );
+            } else {
+                log::info!(
+                    "[webview-accounts] new-window request {} → system browser",
+                    url
+                );
+            }
+            open_in_system_browser(&target);
             NewWindowResponse::Deny
         }
     });
