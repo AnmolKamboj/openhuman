@@ -2,12 +2,14 @@ import { isTauri } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import debug from 'debug';
 
+import { ingestNotification } from '../../services/notificationService';
 import { store } from '../../store';
 import {
   focusAccountFromNotification,
   noteWebviewNotificationFired,
 } from '../../store/accountsSlice';
 import { notificationReceived } from '../../store/notificationSlice';
+import { addNotification } from '../../store/notificationsSlice';
 import { WEBVIEW_NOTIFICATION_FIRED_EVENT, type WebviewNotificationFired } from './types';
 
 const log = debug('webview-notifications');
@@ -83,6 +85,46 @@ function handleFired(payload: WebviewNotificationFired): void {
       deepLink: `/accounts/${accountId}`,
     })
   );
+
+  // Mirror into the core triage pipeline — fire-and-forget.
+  log(
+    '[notification_intel] forwarding to core ingest provider=%s account_present=%s',
+    provider,
+    accountId ? 'yes' : 'no'
+  );
+  void ingestNotification({
+    provider,
+    account_id: accountId,
+    title,
+    body,
+    raw_payload: { tag, provider, account_id: accountId, title, body },
+  })
+    .then(result => {
+      if (!result.skipped) {
+        log('[notification_intel] ingest created id=%s', result.id);
+        store.dispatch(
+          addNotification({
+            id: result.id,
+            provider,
+            account_id: accountId,
+            title,
+            body,
+            raw_payload: { tag, provider, account_id: accountId, title, body },
+            status: 'unread',
+            received_at: new Date().toISOString(),
+            importance_score: undefined,
+            triage_action: undefined,
+            triage_reason: undefined,
+            scored_at: undefined,
+          })
+        );
+      } else {
+        log('[notification_intel] ingest skipped reason=%s', result.reason);
+      }
+    })
+    .catch(err => {
+      errLog('[notification_intel] ingest failed provider=%s: %O', provider, err);
+    });
 }
 
 /** Exposed for tests — resets module singletons between runs. */
