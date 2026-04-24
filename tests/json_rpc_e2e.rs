@@ -175,11 +175,31 @@ fn mock_upstream_router() -> Router {
         if let Some(model) = body.get("model").and_then(Value::as_str) {
             with_chat_completion_models(|models| models.push(model.to_string()));
         }
+        let is_triage_turn = body
+            .get("messages")
+            .and_then(Value::as_array)
+            .map(|messages| {
+                messages.iter().any(|m| {
+                    m.get("content")
+                        .and_then(Value::as_str)
+                        .is_some_and(|content| {
+                            content.contains("SOURCE: ")
+                                && content.contains("DISPLAY_LABEL: ")
+                                && content.contains("PAYLOAD:")
+                        })
+                })
+            })
+            .unwrap_or(false);
+        let content = if is_triage_turn {
+            "{\"action\":\"react\",\"reason\":\"e2e triage mock\"}"
+        } else {
+            "Hello from e2e mock agent"
+        };
         Json(json!({
             "choices": [{
                 "message": {
                     "role": "assistant",
-                    "content": "Hello from e2e mock agent"
+                    "content": content
                 }
             }]
         }))
