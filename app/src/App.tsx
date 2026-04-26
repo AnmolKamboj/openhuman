@@ -12,6 +12,7 @@ import DictationHotkeyManager from './components/DictationHotkeyManager';
 import ErrorFallbackScreen from './components/ErrorFallbackScreen';
 import LocalAIDownloadSnackbar from './components/LocalAIDownloadSnackbar';
 import MeshGradient from './components/MeshGradient';
+import OpenhumanLinkModal from './components/OpenhumanLinkModal';
 import RouteLoadingScreen from './components/RouteLoadingScreen';
 import GlobalUpsellBanner from './components/upsell/GlobalUpsellBanner';
 import { isWelcomeLocked } from './lib/coreState/store';
@@ -23,7 +24,8 @@ import SocketProvider from './providers/SocketProvider';
 import { tagErrorSource } from './services/errorReportQueue';
 import { startWebviewAccountService } from './services/webviewAccountService';
 import { persistor, store } from './store';
-import { useAppSelector } from './store/hooks';
+import { useAppDispatch, useAppSelector } from './store/hooks';
+import { clearSelectedThread, deleteThread, setWelcomeThreadId } from './store/threadSlice';
 import { isAccountsFullscreen } from './utils/accountsFullscreen';
 import { DEV_FORCE_ONBOARDING } from './utils/config';
 
@@ -107,6 +109,38 @@ function AppShell() {
     navigate,
   ]);
 
+  // After the welcome agent calls `complete_onboarding` and
+  // `chat_onboarding_completed` flips false→true, discard the transient
+  // welcome thread we created in `OnboardingLayout`. The next user
+  // message will route to the orchestrator and create its own thread.
+  const dispatch = useAppDispatch();
+  const welcomeThreadId = useAppSelector(state => state.thread.welcomeThreadId);
+  const chatOnboardingCompleted = snapshot.chatOnboardingCompleted;
+  useEffect(() => {
+    if (!chatOnboardingCompleted || !welcomeThreadId) return;
+    let cancelled = false;
+    console.debug(
+      `[welcome-cleanup] chat_onboarding_completed=true — deleting welcome thread ${welcomeThreadId}`
+    );
+    // Await the delete before dropping the local id so a backend failure
+    // leaves `welcomeThreadId` set for retry on the next render. Without
+    // the await, a 500 from `threads.delete` would leave a stale row in
+    // the user's thread list while the renderer thinks it's gone.
+    (async () => {
+      try {
+        await dispatch(deleteThread(welcomeThreadId)).unwrap();
+        if (cancelled) return;
+        dispatch(clearSelectedThread());
+        dispatch(setWelcomeThreadId(null));
+      } catch (err) {
+        console.warn('[welcome-cleanup] deleteThread failed; will retry on next render', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [chatOnboardingCompleted, welcomeThreadId, dispatch]);
+
   // Welcome lockdown (#883) — force any route other than `/chat` back to
   // `/chat` while the welcome-agent conversation is still in progress.
   // Skipped while onboarding is still pending (the onboarding gate above
@@ -134,6 +168,7 @@ function AppShell() {
         </div>
         {!onOnboardingRoute && <BottomTabBar />}
       </div>
+      <OpenhumanLinkModal />
     </div>
   );
 }

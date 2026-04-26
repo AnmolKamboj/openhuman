@@ -1,12 +1,39 @@
-import { invoke, isTauri } from '@tauri-apps/api/core';
 import { useCallback, useMemo, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 
 import { useCoreState } from '../../providers/CoreStateProvider';
 import { userApi } from '../../services/api/userApi';
+import { chatSend } from '../../services/chatService';
+import { useAppDispatch } from '../../store/hooks';
+import { createNewThread, setSelectedThread, setWelcomeThreadId } from '../../store/threadSlice';
 import { getDefaultEnabledTools } from '../../utils/toolDefinitions';
 import BetaBanner from './components/BetaBanner';
 import { OnboardingContext, type OnboardingDraft } from './OnboardingContext';
+
+/**
+ * Synthetic "user" message handed to the welcome agent on the first turn
+ * after onboarding completes. Routed through the normal `chat_send`
+ * dispatch path (instead of an out-of-band `agent.run_single` proactive
+ * bypass) so the welcome agent's reply lands in the thread's per-sender
+ * history cache. Subsequent real user messages then see the full prior
+ * turn and continue the conversation rather than starting fresh.
+ *
+ * The welcome agent's `prompt.md` matches on this exact string and
+ * applies its long-lost-friend opener voice. Don't change without
+ * updating the prompt's "Proactive opening" section.
+ *
+ * The trigger is **not** persisted as a user-side bubble (we skip
+ * `addMessageLocal`), so the user only sees the agent's reply.
+ */
+const WELCOME_TRIGGER_MESSAGE =
+  'the user just finished the desktop onboarding wizard. welcome the user like an old friend. say something interesting from the profile information above';
+
+/**
+ * Model id used for the welcome trigger send. Mirrors the constant in
+ * `pages/Conversations.tsx` (`CHAT_MODEL_ID`); duplicated here to avoid
+ * pulling the entire conversations module into onboarding.
+ */
+const WELCOME_TRIGGER_MODEL = 'reasoning-v1';
 
 /**
  * Full-page chrome for the onboarding flow. Hosts the shared draft + the
@@ -15,6 +42,7 @@ import { OnboardingContext, type OnboardingDraft } from './OnboardingContext';
  */
 const OnboardingLayout = () => {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
   const { setOnboardingCompletedFlag, setOnboardingTasks, snapshot } = useCoreState();
   const [draft, setDraftState] = useState<OnboardingDraft>({ connectedSources: [] });
 
@@ -51,20 +79,56 @@ const OnboardingLayout = () => {
       throw e;
     }
 
-    // Trigger the proactive welcome agent now that onboarding is done.
-    // The core no longer auto-fires it on the config-flag transition —
-    // the renderer owns the timing so we can fire after `/home` is the
-    // active surface and the chat UI is ready to receive the messages.
-    if (isTauri()) {
+    // Open a fresh chat thread for the welcome conversation so the
+    // welcome opener doesn't pile onto whatever thread the user had
+    // open before onboarding. We then fire the welcome trigger through
+    // the normal `chat_send` dispatch path (NOT an out-of-band proactive
+    // spawn) so the agent's reply lands in the thread's per-sender
+    // history cache and subsequent real user messages can continue the
+    // conversation with full prior context.
+    //
+    // If the thread create fails we skip the trigger; the user can fire
+    // the welcome again by sending their first message in chat (which
+    // routes to welcome while `chat_onboarding_completed` is still
+    // false).
+    let welcomeThread: { id: string } | null = null;
+    try {
+      const newThread = await dispatch(createNewThread()).unwrap();
+      dispatch(setSelectedThread(newThread.id));
+      // Track this thread so the post-onboarding watcher can delete it
+      // once `chat_onboarding_completed` flips. The welcome conversation
+      // is transient — we don't keep it in the user's thread list.
+      dispatch(setWelcomeThreadId(newThread.id));
+      welcomeThread = { id: newThread.id };
+    } catch (e) {
+      console.warn('[onboarding] failed to create welcome thread; skipping welcome trigger', e);
+    }
+
+    if (welcomeThread) {
       try {
-        await invoke('spawn_welcome_agent');
+        // NB: deliberately *not* calling `addMessageLocal` for the
+        // trigger so it doesn't render as a user-side bubble. The agent
+        // response comes back via socket → `addInferenceResponse` and
+        // is the first thing the user sees in the welcome thread.
+        await chatSend({
+          threadId: welcomeThread.id,
+          message: WELCOME_TRIGGER_MESSAGE,
+          model: WELCOME_TRIGGER_MODEL,
+        });
       } catch (e) {
-        console.warn('[onboarding] failed to spawn welcome agent', e);
+        console.warn('[onboarding] failed to fire welcome trigger', e);
       }
     }
 
     navigate('/home', { replace: true });
-  }, [draft.connectedSources, navigate, setOnboardingCompletedFlag, setOnboardingTasks, snapshot]);
+  }, [
+    draft.connectedSources,
+    dispatch,
+    navigate,
+    setOnboardingCompletedFlag,
+    setOnboardingTasks,
+    snapshot,
+  ]);
 
   const value = useMemo(
     () => ({ draft, setDraft, completeAndExit }),

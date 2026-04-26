@@ -8,6 +8,14 @@ interface ThreadState {
   threads: Thread[];
   selectedThreadId: string | null;
   activeThreadId: string | null;
+  /**
+   * Thread created by `OnboardingLayout` to host the proactive welcome
+   * conversation. Tracked so we can delete it once the welcome agent
+   * calls `complete_onboarding` and `chat_onboarding_completed` flips —
+   * the welcome thread is transient onboarding chat, not history we
+   * want to clutter the user's thread list with.
+   */
+  welcomeThreadId: string | null;
   messagesByThreadId: Record<string, ThreadMessage[]>;
   messages: ThreadMessage[];
   isLoadingThreads: boolean;
@@ -19,6 +27,7 @@ const initialState: ThreadState = {
   threads: [],
   selectedThreadId: null,
   activeThreadId: null,
+  welcomeThreadId: null,
   messagesByThreadId: {},
   messages: [],
   isLoadingThreads: false,
@@ -249,6 +258,10 @@ const threadSlice = createSlice({
       state.selectedThreadId = null;
       state.messages = [];
       state.activeThreadId = null;
+      state.welcomeThreadId = null;
+    },
+    setWelcomeThreadId: (state, action: { payload: string | null }) => {
+      state.welcomeThreadId = action.payload;
     },
   },
   extraReducers: builder => {
@@ -309,7 +322,12 @@ const threadSlice = createSlice({
   },
 });
 
-export const { setSelectedThread, clearSelectedThread, setActiveThread, clearAllThreads } =
-  threadSlice.actions;
+export const {
+  setSelectedThread,
+  clearSelectedThread,
+  setActiveThread,
+  clearAllThreads,
+  setWelcomeThreadId,
+} = threadSlice.actions;
 
 export default threadSlice.reducer;
