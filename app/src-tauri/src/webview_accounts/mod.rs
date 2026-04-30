@@ -243,10 +243,23 @@ fn popup_should_navigate_parent(provider: &str, url: &Url) -> Option<Url> {
                 return None;
             }
             if is_google_auth_popup(url) {
-                Some(url.clone())
-            } else {
-                None
+                return Some(url.clone());
             }
+            // Gmeet: "Start an instant meeting" / "New meeting" / clicking
+            // a meeting code link calls `window.open(meet.google.com/<roomid>)`
+            // to launch the room. Default popup handling would route the
+            // URL to the user's system browser, leaking the Meet session
+            // out of OpenHuman entirely. Deny the popup and navigate the
+            // embedded parent into the room URL instead — matches the
+            // user's expectation that the meeting stays in-app.
+            if provider == "google-meet" {
+                if let Some(host) = url.host_str() {
+                    if host == "meet.google.com" {
+                        return Some(url.clone());
+                    }
+                }
+            }
+            None
         }
         _ => None,
     }
@@ -1481,6 +1494,40 @@ pub async fn webview_account_open<R: Runtime>(
                 "[webview-accounts] emit webview-account:navigate failed: {}",
                 err
             );
+        }
+        // Google Meet: when Google's edge SSR-redirects the post-account-
+        // picker URL to `workspace.google.com/products/meet/...` (the
+        // marketing landing page), `workspace.google.com` matches the
+        // bare `google.com` suffix in `provider_allowed_hosts` so
+        // `url_is_internal` would commit the navigation and the user
+        // would land on the Workspace marketing page instead of Meet.
+        // Catch this here and replace the parent URL with the canonical
+        // Meet entry point so the embedded view stays on the app.
+        if nav_provider == "google-meet" {
+            if let Some(host) = url.host_str() {
+                if host == "workspace.google.com" || host.ends_with(".workspace.google.com") {
+                    log::info!(
+                        "[webview-accounts] gmeet workspace marketing redirect intercepted ({}); rewriting parent to https://meet.google.com/",
+                        url
+                    );
+                    let app = nav_app.clone();
+                    let label = nav_label.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Some(wv) = app.get_webview(&label) {
+                            if let Ok(target) = Url::parse("https://meet.google.com/") {
+                                if let Err(e) = wv.navigate(target) {
+                                    log::warn!(
+                                        "[webview-accounts] gmeet workspace rewrite navigate failed label={} err={}",
+                                        label,
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                    });
+                    return false;
+                }
+            }
         }
         if let Some(rewritten) = rewrite_provider_deep_link(&nav_provider, url) {
             log::info!(
@@ -2757,6 +2804,56 @@ mod tests {
             &url("https://accounts.google.com/signin/v2/identifier"),
         )
         .is_some());
+    }
+
+    #[test]
+    fn gmeet_room_popup_navigates_parent() {
+        // "Start an instant meeting" / "New meeting" calls
+        // window.open(meet.google.com/<roomid>) to launch a room.
+        // Without intervention this would route to system Chrome and
+        // leak the meeting out of OpenHuman.
+        assert_eq!(
+            popup_should_navigate_parent(
+                "google-meet",
+                &url("https://meet.google.com/abc-defg-hij"),
+            )
+            .map(|u| u.to_string()),
+            Some("https://meet.google.com/abc-defg-hij".to_string())
+        );
+    }
+
+    #[test]
+    fn gmeet_landing_popup_navigates_parent() {
+        // Bare meet.google.com (no room code) should also be kept
+        // in-app — matches the "back to Meet home" UX after hangup.
+        assert!(
+            popup_should_navigate_parent("google-meet", &url("https://meet.google.com/"),)
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn gmeet_workspace_popup_does_not_navigate_parent() {
+        // workspace.google.com is the marketing page; if it ever
+        // arrives via window.open() we let the default external-route
+        // logic handle it (covered in the on_navigation rewrite path
+        // separately).
+        assert!(popup_should_navigate_parent(
+            "google-meet",
+            &url("https://workspace.google.com/products/meet/"),
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn gmeet_unrelated_popup_does_not_navigate_parent() {
+        // External link in the post-call review screen, for instance.
+        // Should NOT navigate the parent — should fall through to the
+        // system-browser path.
+        assert!(
+            popup_should_navigate_parent("google-meet", &url("https://example.com/blog"),)
+                .is_none()
+        );
     }
 
     #[test]
