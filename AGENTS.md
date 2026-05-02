@@ -491,6 +491,79 @@ Follow this order so behavior is **specified**, **proven in Rust**, **proven ove
 
 _Last aligned with monorepo layout (`app/` + root `src/`), QuickJS skills in `openhuman_core`, skills catalog on GitHub (`tinyhumansai/openhuman-skills`), and Tauri shell IPC as of repo state._
 
+---
+
+## Cursor Cloud specific instructions
+
+### Environment overview
+
+Two services run independently for development:
+
+| Service | Start command | Port | Notes |
+|---------|--------------|------|-------|
+| **Vite dev server** | `pnpm dev` (from repo root) | 1420 | React frontend with HMR |
+| **Core JSON-RPC server** | `./target/debug/openhuman-core serve` | 7788 | Rust core, writes bearer token to `~/.openhuman-staging/core.token` |
+
+The app connects to a **remote staging backend** at `https://staging-api.tinyhumans.ai` — there is no local backend to run.
+
+### Running the core server standalone
+
+The core generates a bearer token at startup written to `{workspace_dir}/core.token` (default `~/.openhuman-staging/core.token` when `OPENHUMAN_APP_ENV=staging`). Read that file for authenticated RPC calls:
+
+```bash
+TOKEN=$(cat ~/.openhuman-staging/core.token)
+curl http://localhost:7788/rpc -X POST \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"jsonrpc":"2.0","method":"core.ping","params":{},"id":1}'
+```
+
+Public endpoints (no token needed): `GET /health`, `GET /schema`, `GET /events`.
+
+### Linux build dependencies (non-obvious)
+
+Compiling the Rust core on Linux requires these system packages beyond the basics:
+`libasound2-dev libxi-dev libxtst-dev libxdo-dev libudev-dev libssl-dev clang cmake pkg-config libstdc++-14-dev`
+
+The `libstdc++-14-dev` package is needed because clang selects GCC 14 headers; without it, whisper-rs-sys fails with `fatal error: 'array' file not found`. A symlink may also be needed: `ln -sf /usr/lib/gcc/x86_64-linux-gnu/13/libstdc++.so /usr/lib/x86_64-linux-gnu/libstdc++.so`.
+
+### Quick reference for common dev commands
+
+All commands are documented in `CLAUDE.md` and `AGENTS.md` above. The most-used subset:
+
+- **Lint**: `pnpm lint` (ESLint, 0 errors expected; warnings are acceptable)
+- **Typecheck**: `pnpm typecheck` (`tsc --noEmit`)
+- **Unit tests**: `pnpm test` (Vitest, runs 1000+ tests)
+- **Rust check**: `cargo check --manifest-path Cargo.toml`
+- **Rust tests**: `cargo test --lib` (5600+ tests)
+- **Format check**: `pnpm format:check`
+
+### Running the Tauri desktop app on Linux cloud VMs
+
+The full desktop app can be built and run on headless Linux VMs with:
+
+```bash
+export CEF_PATH="$HOME/Library/Caches/tauri-cef"
+export LD_LIBRARY_PATH="$CEF_PATH/146.0.9/cef_linux_x86_64:$LD_LIBRARY_PATH"
+source scripts/load-dotenv.sh
+cargo tauri dev -- -- --no-sandbox
+```
+
+Key requirements:
+- `--no-sandbox` is required because Chromium refuses to run as root without it.
+- `LD_LIBRARY_PATH` must include the CEF distribution directory so `libcef.so` is found at runtime.
+- The vendored CEF-aware `cargo-tauri` must be installed first via `bash scripts/ensure-tauri-cli.sh`.
+- First build downloads ~300MB CEF binary and compiles ~900 crates; subsequent builds are incremental.
+- GTK/cairo libraries are required: `libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libglib2.0-dev libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev libatk1.0-dev libdbus-1-dev`.
+- WebGL errors in the log (`ContextResult::kFatalFailure: WebGL1/2 blocklisted`) are normal on GPU-less VMs and do not affect app functionality.
+
+### Gotchas
+
+- `pnpm install` may warn about ignored build scripts (`@sentry/cli`, `esbuild`, etc.). The esbuild binary is correctly installed via its native platform package despite the warning — Vite and Vitest work fine.
+- Git submodules (`app/src-tauri/vendor/tauri-cef`, `app/src-tauri/vendor/tauri-plugin-notification`) must be initialized for Tauri shell compilation. Run `git submodule update --init --recursive` if not already done.
+- `pnpm test:unit` does not exist at the root level; use `pnpm test` instead (which delegates to `vitest run` in the `app` workspace).
+- The Tauri shell `cargo check` requires GTK/desktop system libraries; without them, the pre-push hook's `pnpm rust:check` will fail. Use `--no-verify` on push if GTK libs are missing and the change is unrelated to the Tauri shell.
+
 
 <claude-mem-context>
 # Memory Context
