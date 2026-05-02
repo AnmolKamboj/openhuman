@@ -30,6 +30,7 @@ import {
 } from '../../lib/composio/types';
 import { openUrl } from '../../utils/openUrl';
 import type { ComposioToolkitMeta } from './toolkitMeta';
+import TriggerToggles from './TriggerToggles';
 
 type Phase = 'idle' | 'authorizing' | 'waiting' | 'connected' | 'disconnecting' | 'error';
 
@@ -414,6 +415,13 @@ export default function ComposioConnectModal({
                 onToggle={handleToggleScope}
                 error={scopeError}
               />
+              {activeConnection && (
+                <TriggerToggles
+                  toolkitSlug={toolkit.slug}
+                  toolkitName={toolkit.name}
+                  connectionId={activeConnection.id}
+                />
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
