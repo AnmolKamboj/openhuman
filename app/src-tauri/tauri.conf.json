@@ -56,7 +56,8 @@
           "libx11-6",
           "libgdk-pixbuf-2.0-0",
           "libglib2.0-0"
-        ]
+        ],
+        "desktopTemplate": "main.desktop"
       }
     },
     "createUpdaterArtifacts": false,
