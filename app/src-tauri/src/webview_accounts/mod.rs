@@ -2080,25 +2080,76 @@ pub async fn webview_account_purge<R: Runtime>(
         .remove(&args.account_id);
 
     let data_dir = data_directory_for(&app, &args.account_id)?;
-    if data_dir.exists() {
-        if let Err(err) = std::fs::remove_dir_all(&data_dir) {
-            // WKWebView can keep handles open briefly after `close()` — log
-            // and keep going rather than failing the logout outright.
-            log::warn!(
-                "[webview-accounts] purge remove_dir_all {} failed: {}",
-                data_dir.display(),
-                err
-            );
-        } else {
-            log::info!("[webview-accounts] purged data dir {}", data_dir.display());
-        }
-    }
+    purge_data_dir_with_retry(&data_dir)
+        .await
+        .map_err(|e| format!("purge data dir {}: {e}", data_dir.display()))?;
 
     log::info!(
         "[webview-accounts] purged account={} label={:?}",
         args.account_id,
         label_opt
     );
+    Ok(())
+}
+
+/// CEF / WKWebView holds file handles briefly after `wv.close()` returns,
+/// so a single `remove_dir_all` racing the close call routinely fails on
+/// macOS and leaves the per-account cookie jar on disk. Re-adding the same
+/// account after a logout then lands the user already signed in (#1076).
+///
+/// Retry the deletion a handful of times with exponential backoff so the
+/// subprocess has a chance to drop its handles. Logs every attempt so a
+/// stuck handle is diagnosable from the audit log.
+async fn purge_data_dir_with_retry(data_dir: &std::path::Path) -> std::io::Result<()> {
+    if !data_dir.exists() {
+        return Ok(());
+    }
+    const MAX_ATTEMPTS: u32 = 5;
+    const INITIAL_BACKOFF_MS: u64 = 100;
+    let mut backoff = INITIAL_BACKOFF_MS;
+    for attempt in 1..=MAX_ATTEMPTS {
+        match std::fs::remove_dir_all(data_dir) {
+            Ok(()) => {
+                log::info!(
+                    "[webview-accounts] purged data dir {} (attempt {}/{})",
+                    data_dir.display(),
+                    attempt,
+                    MAX_ATTEMPTS
+                );
+                return Ok(());
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                log::info!(
+                    "[webview-accounts] purge data dir {} already removed before attempt {}/{}",
+                    data_dir.display(),
+                    attempt,
+                    MAX_ATTEMPTS
+                );
+                return Ok(());
+            }
+            Err(err) if attempt < MAX_ATTEMPTS => {
+                log::debug!(
+                    "[webview-accounts] purge remove_dir_all {} attempt {}/{} failed: {} — retrying in {}ms",
+                    data_dir.display(),
+                    attempt,
+                    MAX_ATTEMPTS,
+                    err,
+                    backoff
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(backoff)).await;
+                backoff *= 2;
+            }
+            Err(err) => {
+                log::warn!(
+                    "[webview-accounts] purge remove_dir_all {} failed after {} attempts: {} — cookies may persist; cross-launch fallback handled by schedule_cef_profile_purge",
+                    data_dir.display(),
+                    MAX_ATTEMPTS,
+                    err
+                );
+                return Err(err);
+            }
+        }
+    }
     Ok(())
 }
 
@@ -2877,5 +2928,46 @@ mod tests {
             "https://accounts.google.com/o/oauth2/v2/auth?code=secret#frag",
         ));
         assert_eq!(redacted, "https://accounts.google.com/o/oauth2/v2/auth");
+    }
+
+    // ── purge_data_dir_with_retry ──────────────────────────────────
+
+    #[tokio::test]
+    async fn purge_data_dir_with_retry_noop_when_missing() {
+        let dir = std::env::temp_dir().join(format!("openhuman-purge-noop-{}", std::process::id()));
+        // Sanity: dir must NOT exist
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!dir.exists());
+
+        // Should return without error or panic.
+        purge_data_dir_with_retry(&dir)
+            .await
+            .expect("missing dir should be treated as success");
+
+        assert!(!dir.exists());
+    }
+
+    #[tokio::test]
+    async fn purge_data_dir_with_retry_removes_existing_dir() {
+        let dir = std::env::temp_dir().join(format!(
+            "openhuman-purge-existing-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(dir.join("nested/dir")).expect("create test dir");
+        std::fs::write(dir.join("cookies.json"), b"{\"sid\":\"abc\"}")
+            .expect("write test cookie file");
+        std::fs::write(dir.join("nested/dir/local.storage"), b"key=value")
+            .expect("write nested file");
+        assert!(dir.exists());
+
+        purge_data_dir_with_retry(&dir)
+            .await
+            .expect("existing dir should be removed");
+
+        assert!(!dir.exists(), "data dir should be removed");
     }
 }
