@@ -1167,13 +1167,24 @@ async fn json_rpc_memory_tree_end_to_end() {
     write_min_config(&openhuman_home, &mock_origin);
 
     let controllers = all_memory_tree_registered_controllers();
+    // Sampled methods this test exercises end-to-end. Don't pin
+    // controllers.len() — the registry has grown organically
+    // (list_sources, search, recall, entity_index_for, top_entities,
+    // chunk_score, delete_chunk, get_llm, set_llm, chunks_for_entity, …)
+    // and adding a new RPC shouldn't break this smoke test. We just
+    // assert the four sampled methods exercised below are registered.
     let expected_methods = vec![
         "openhuman.memory_tree_ingest".to_string(),
         "openhuman.memory_tree_list_chunks".to_string(),
         "openhuman.memory_tree_get_chunk".to_string(),
         "openhuman.memory_tree_trigger_digest".to_string(),
     ];
-    assert_eq!(controllers.len(), expected_methods.len());
+    assert!(
+        controllers.len() >= expected_methods.len(),
+        "expected at least {} memory_tree controllers, found {}",
+        expected_methods.len(),
+        controllers.len()
+    );
     for method in &expected_methods {
         assert!(
             controllers
@@ -1226,9 +1237,8 @@ async fn json_rpc_memory_tree_end_to_end() {
         201,
         &expected_methods[1],
         json!({
-            "source_kind": "document",
-            "source_id": "notion:launch-plan",
-            "owner": "alice@example.com",
+            "source_kinds": ["document"],
+            "source_ids": ["notion:launch-plan"],
             "limit": 0
         }),
     )
@@ -1240,10 +1250,16 @@ async fn json_rpc_memory_tree_end_to_end() {
         .and_then(Value::as_array)
         .expect("chunks array");
     assert_eq!(chunks.len(), 1);
+    // `list_chunks` returns the flat `ChunkRow` projection (id, source_kind,
+    // source_id, source_ref as a flat string, owner, timestamp_ms, …), not
+    // the full `Chunk { metadata: Metadata { source_ref: Option<SourceRef>,
+    // … }, seq_in_source, … }` that `get_chunk` returns. Assert against
+    // the row shape here.
     let chunk = &chunks[0];
-    assert_eq!(chunk.get("seq_in_source"), Some(&json!(0)));
+    assert_eq!(chunk.get("source_kind"), Some(&json!("document")));
+    assert_eq!(chunk.get("source_id"), Some(&json!("notion:launch-plan")));
     assert_eq!(
-        chunk.pointer("/metadata/source_ref/value"),
+        chunk.get("source_ref"),
         Some(&json!("notion://page/launch-plan"))
     );
 
@@ -1259,6 +1275,14 @@ async fn json_rpc_memory_tree_end_to_end() {
     let get_outer = assert_no_jsonrpc_error(&get_chunk, "memory_tree_get_chunk");
     let get_result = get_outer.get("result").unwrap_or(get_outer);
     assert_eq!(get_result.pointer("/chunk/id"), Some(&chunk_ids[0]));
+    // Full-Chunk-shape assertions live here because `get_chunk` returns the
+    // canonical `Chunk` (with nested `metadata` + `seq_in_source`), unlike
+    // `list_chunks`'s `ChunkRow` projection above.
+    assert_eq!(get_result.pointer("/chunk/seq_in_source"), Some(&json!(0)));
+    assert_eq!(
+        get_result.pointer("/chunk/metadata/source_ref/value"),
+        Some(&json!("notion://page/launch-plan"))
+    );
 
     let invalid_ingest = post_json_rpc(
         &rpc_base,
