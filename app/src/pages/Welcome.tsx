@@ -3,7 +3,7 @@ import { useState } from 'react';
 import OAuthProviderButton from '../components/oauth/OAuthProviderButton';
 import { oauthProviderConfigs } from '../components/oauth/providerConfigs';
 import RotatingTetrahedronCanvas from '../components/RotatingTetrahedronCanvas';
-import { clearCoreRpcUrlCache } from '../services/coreRpcClient';
+import { clearCoreRpcUrlCache, testCoreRpcConnection } from '../services/coreRpcClient';
 import { useDeepLinkAuthState } from '../store/deepLinkAuthState';
 import {
   clearStoredRpcUrl,
@@ -65,11 +65,7 @@ const Welcome = () => {
     setRpcUrlError(null);
 
     try {
-      const response = await fetch(normalized, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'openhuman.ping', params: {} }),
-      });
+      const response = await testCoreRpcConnection(normalized);
 
       if (response.ok || response.status === 405) {
         setSaveSuccess(true);
