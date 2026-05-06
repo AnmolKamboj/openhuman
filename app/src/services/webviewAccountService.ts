@@ -872,6 +872,40 @@ export async function retryWebviewAccountLoad(
   await openWebviewAccount({ accountId, provider, bounds });
 }
 
+/**
+ * Spawn a hidden webview for an account so its CEF profile and provider
+ * page are warm by the time the user actually clicks the rail icon.
+ *
+ * Rust spawns the prewarm webview off-screen at 1×1, attaches CDP, navigates
+ * to the real provider URL, and registers it in the same `inner` map as a
+ * regular open. When the user later clicks the account, `webview_account_open`
+ * hits the warm-reopen branch and emits `state:"reused"` synchronously — no
+ * cold spinner.
+ *
+ * Idempotent — calling again for an already-warm account is a Rust-side no-op.
+ * Best-effort — any error is logged and swallowed; the worst case is a normal
+ * cold open later.
+ */
+export async function prewarmWebviewAccount(
+  accountId: string,
+  provider: AccountProvider
+): Promise<void> {
+  if (!isTauri()) return;
+  log('[webview-accounts] prewarm dispatch account=%s provider=%s', accountId, provider);
+  try {
+    await invoke('webview_account_prewarm', { args: { account_id: accountId, provider } });
+  } catch (err) {
+    // Don't surface to the user — prewarm failure means we fall back to the
+    // normal cold-open path on click. Logged for diagnosis.
+    errLog(
+      '[webview-accounts] prewarm failed account=%s provider=%s: %o',
+      accountId,
+      provider,
+      err
+    );
+  }
+}
+
 export async function setWebviewAccountBounds(
   accountId: string,
   bounds: WebviewAccountBounds
