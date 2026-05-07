@@ -436,6 +436,90 @@ describe('ChatRuntimeProvider — dedupe, proactive resolution, mid-turn invaria
       expect(timeline[0]?.status).toBe('error');
       expect(store.getState().chatRuntime.inferenceStatusByThread['t-err']).toBeUndefined();
     });
+
+    it('adds a sanitized user-facing error bubble with Discord report action on chat_error', async () => {
+      const listeners = renderProvider();
+
+      act(() => {
+        listeners.onError?.({
+          thread_id: 't-err-sanitized',
+          request_id: 'r1',
+          message:
+            'agent job failed: error sending request for url (https://staging-api.alphahuman.xyz/openai/v1/chat/completions)',
+          error_type: 'inference',
+          round: 0,
+        });
+      });
+
+      await waitFor(() =>
+        expect(threadApi.appendMessage).toHaveBeenCalledWith(
+          't-err-sanitized',
+          expect.objectContaining({
+            sender: 'agent',
+            content: expect.stringContaining('Something went wrong. Please try again.'),
+          })
+        )
+      );
+      expect(threadApi.appendMessage).toHaveBeenCalledWith(
+        't-err-sanitized',
+        expect.objectContaining({
+          content: expect.stringContaining(
+            '<openhuman-link path="community/discord">Report on Discord</openhuman-link>'
+          ),
+        })
+      );
+      expect(threadApi.appendMessage).not.toHaveBeenCalledWith(
+        't-err-sanitized',
+        expect.objectContaining({
+          content: expect.stringContaining('https://staging-api.alphahuman.xyz'),
+        })
+      );
+    });
+
+    it('does not append duplicate fallback error bubble when the previous message already matches', async () => {
+      const listeners = renderProvider();
+
+      act(() => {
+        listeners.onError?.({
+          thread_id: 't-err-dedupe',
+          request_id: 'r1',
+          message: 'transport fail one',
+          error_type: 'inference',
+          round: 0,
+        });
+      });
+
+      await waitFor(() =>
+        expect(threadApi.appendMessage).toHaveBeenCalledWith(
+          't-err-dedupe',
+          expect.objectContaining({
+            content: expect.stringContaining('Something went wrong. Please try again.'),
+          })
+        )
+      );
+
+      act(() => {
+        listeners.onError?.({
+          thread_id: 't-err-dedupe',
+          request_id: 'r2',
+          message: 'transport fail two',
+          error_type: 'inference',
+          round: 0,
+        });
+      });
+
+      await waitFor(() => {
+        const matchingCalls = vi
+          .mocked(threadApi.appendMessage)
+          .mock.calls.filter(
+            call =>
+              call[0] === 't-err-dedupe' &&
+              typeof call[1]?.content === 'string' &&
+              call[1].content.includes('Something went wrong. Please try again.')
+          );
+        expect(matchingCalls).toHaveLength(1);
+      });
+    });
   });
 
   // Live subagent activity (#1122) — the parent thread surfaces a

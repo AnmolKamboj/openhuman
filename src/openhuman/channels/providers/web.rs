@@ -86,6 +86,9 @@ static THREAD_SESSIONS: Lazy<Mutex<HashMap<String, SessionEntry>>> =
 
 static IN_FLIGHT: Lazy<Mutex<HashMap<String, InFlightEntry>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+#[cfg(test)]
+static TEST_FORCED_RUN_CHAT_TASK_ERROR: Lazy<Mutex<Option<String>>> =
+    Lazy::new(|| Mutex::new(None));
 static BUDGET_ERROR_NORMALIZE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"[-_\s]+").expect("budget normalize regex"));
 static BUDGET_ERROR_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
@@ -123,6 +126,10 @@ fn inference_budget_exceeded_user_message() -> &'static str {
     "I don't have any budget available right now. Please top up your credits or choose a plan to continue."
 }
 
+fn generic_inference_error_user_message() -> &'static str {
+    "Something went wrong. Please try again.\nThis error has been reported. You can also report it on Discord.\n<openhuman-link path=\"community/discord\">Report on Discord</openhuman-link>"
+}
+
 fn prompt_guard_user_message(action: PromptEnforcementAction) -> &'static str {
     match action {
         PromptEnforcementAction::Allow => "Message accepted.",
@@ -133,6 +140,12 @@ fn prompt_guard_user_message(action: PromptEnforcementAction) -> &'static str {
             "Your message was flagged for security review and was not processed. Please rephrase the request in a direct, task-focused way."
         }
     }
+}
+
+#[cfg(test)]
+pub(super) async fn set_test_forced_run_chat_task_error(message: Option<&str>) {
+    let mut slot = TEST_FORCED_RUN_CHAT_TASK_ERROR.lock().await;
+    *slot = message.map(str::to_string);
 }
 
 pub async fn start_chat(
@@ -263,13 +276,28 @@ pub async fn start_chat(
                     request_id_task,
                     err
                 );
+                let detailed = format!(
+                    "run_chat_task failed client_id={} thread_id={} request_id={} error={}",
+                    client_id_task, thread_id_task, request_id_task, err
+                );
+                crate::core::observability::report_error(
+                    detailed.as_str(),
+                    "web_channel",
+                    "run_chat_task",
+                    &[
+                        ("channel", "web"),
+                        ("error_type", "inference"),
+                        ("thread_id", thread_id_task.as_str()),
+                        ("request_id", request_id_task.as_str()),
+                    ],
+                );
                 publish_web_channel_event(WebChannelEvent {
                     event: "chat_error".to_string(),
                     client_id: client_id_task.clone(),
                     thread_id: thread_id_task.clone(),
                     request_id: request_id_task.clone(),
                     full_response: None,
-                    message: Some(err),
+                    message: Some(generic_inference_error_user_message().to_string()),
                     error_type: Some("inference".to_string()),
                     tool_name: None,
                     skill_id: None,
@@ -392,6 +420,20 @@ async fn run_chat_task(
     model_override: Option<String>,
     temperature: Option<f64>,
 ) -> Result<WebChatTaskResult, String> {
+    #[cfg(test)]
+    {
+        let mut slot = TEST_FORCED_RUN_CHAT_TASK_ERROR.lock().await;
+        if let Some(forced) = slot.take() {
+            log::debug!(
+                "[web-channel][test] forced run_chat_task failure client_id={} thread_id={} request_id={}",
+                client_id,
+                thread_id,
+                request_id
+            );
+            return Err(forced);
+        }
+    }
+
     let config = config_rpc::load_config_with_timeout().await?;
     let map_key = key_for(client_id, thread_id);
     let model_override = normalize_model_override(model_override);
