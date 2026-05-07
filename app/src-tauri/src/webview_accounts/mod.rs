@@ -113,7 +113,19 @@ fn provider_allowed_hosts(provider: &str) -> &'static [&'static str] {
             "gstatic.com",
             "googleapis.com",
         ],
-        "zoom" => &["zoom.us", "zoom.com", "zoomgov.com", "zdassets.com"],
+        "zoom" => &[
+            "zoom.us",
+            "zoom.com",
+            "zoomgov.com",
+            "zdassets.com",
+            "accounts.google.com",
+            "accounts.googleusercontent.com",
+            "ssl.gstatic.com",
+            "fonts.gstatic.com",
+            "lh3.googleusercontent.com",
+            "oauth2.googleapis.com",
+            "www.googleapis.com",
+        ],
         "browserscan" => &["browserscan.net"],
         _ => &[],
     }
@@ -275,7 +287,7 @@ fn is_provider_native_deep_link_scheme(scheme: &str) -> bool {
 /// `accounts.google.com` popups should be listed. Other providers
 /// continue to fall through to the default popup-handling path.
 fn provider_supports_google_sso(provider: &str) -> bool {
-    matches!(provider, "google-meet" | "slack")
+    matches!(provider, "google-meet" | "slack" | "zoom")
 }
 
 /// `true` if a popup request should be denied AND the parent webview
@@ -3342,6 +3354,55 @@ mod tests {
     }
 
     #[test]
+    fn zoom_allowed_hosts_covers_google_oauth() {
+        // Zoom's "Sign in with Google" reroutes the popup into the
+        // embedded webview (see popup_should_navigate_parent). The
+        // resulting accounts.google.com / oauth2.googleapis.com /
+        // www.googleapis.com hops MUST be classified internal so the
+        // auth chain doesn't escape to the system browser mid-flight
+        // and trigger Zoom error 300 (#1294).
+        assert!(url_is_internal(
+            "zoom",
+            &url("https://accounts.google.com/v3/signin/identifier"),
+        ));
+        assert!(url_is_internal(
+            "zoom",
+            &url("https://oauth2.googleapis.com/token"),
+        ));
+        assert!(url_is_internal(
+            "zoom",
+            &url("https://www.googleapis.com/oauth2/v3/userinfo"),
+        ));
+    }
+
+    #[test]
+    fn zoom_supports_google_sso() {
+        // Zoom's web client offers "Sign in with Google" via a popup
+        // window.open("https://accounts.google.com/..."). The popup
+        // gate at popup_should_navigate_parent gates on this helper —
+        // without zoom listed the popup falls through to the system
+        // browser and breaks the auth callback (#1294).
+        assert!(provider_supports_google_sso("zoom"));
+    }
+
+    #[test]
+    fn zoom_popup_navigates_parent_for_google_sso() {
+        // Mirror of slack_google_signin_popup_navigates_parent —
+        // clicking "Sign in with Google" inside Zoom MUST replace the
+        // parent webview's URL instead of escaping to the system
+        // browser, so the Google session cookie lands in the per-account
+        // CEF profile (#1294).
+        assert_eq!(
+            popup_should_navigate_parent(
+                "zoom",
+                &url("https://accounts.google.com/v3/signin/identifier"),
+            )
+            .map(|u| u.to_string()),
+            Some("https://accounts.google.com/v3/signin/identifier".to_string())
+        );
+    }
+
+    #[test]
     fn slack_allowed_hosts_include_google_oauth() {
         let hosts = provider_allowed_hosts("slack");
         for host in [
@@ -3800,11 +3861,11 @@ mod tests {
     fn provider_supports_google_sso_matrix() {
         assert!(provider_supports_google_sso("google-meet"));
         assert!(provider_supports_google_sso("slack"));
+        assert!(provider_supports_google_sso("zoom"));
         assert!(!provider_supports_google_sso("whatsapp"));
         assert!(!provider_supports_google_sso("telegram"));
         assert!(!provider_supports_google_sso("linkedin"));
         assert!(!provider_supports_google_sso("discord"));
-        assert!(!provider_supports_google_sso("zoom"));
         assert!(!provider_supports_google_sso("browserscan"));
         assert!(!provider_supports_google_sso(""));
         assert!(!provider_supports_google_sso("unknown-provider"));
