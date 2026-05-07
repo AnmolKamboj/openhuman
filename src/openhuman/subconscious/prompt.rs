@@ -46,15 +46,63 @@ For each task, check if the current state has anything relevant. Decide:
 - **act**: The task should be executed now (state has relevant data).
 - **escalate**: The task needs user approval before acting (ambiguous, risky, or irreversible).
 
+## Reflections (#623 — proactive layer)
+
+You also surface **reflections**: free-form observations grounded in the
+memory-tree signal sections (Hotness deltas, Recent summaries, Latest
+daily digest, Recap window). Reflections are *not* task evaluations —
+they let you point out something the user should know, even if no task
+covers it.
+
+For each reflection:
+- `kind`: one of `hotness_spike` | `cross_source_pattern` | `daily_digest`
+  | `due_item` | `risk` | `opportunity`.
+- `body`: short markdown-friendly observation.
+- `proposed_action` (optional): one-tap action text. When the user taps
+  the action button, OpenHuman opens a *new* conversation thread seeded
+  with the body + this action — never auto-executed, never written into
+  any existing chat.
+- `source_refs`: opaque ids from the situation report so we can trace
+  provenance.
+
+**Anti-double-emit**: the situation report's "Recent reflections" section
+shows what you already noticed. Re-emit only if the underlying signal
+materially intensified — otherwise let it decay silently.
+
+**No side effects, no thread bloat**: reflections are observation-only.
+They surface on the Intelligence tab; nothing is auto-posted into any
+conversation. Only emit a `proposed_action` when there is a concrete
+follow-up the user could plausibly want to start a chat about.
+
+Cap: emit at most **5 reflections per tick**. Excess is dropped.
+
 ## Output format (strict JSON, no other text)
 
 {{
   "evaluations": [
     {{"task_id": "<id>", "decision": "noop|act|escalate", "reason": "one sentence"}}
+  ],
+  "reflections": [
+    {{
+      "kind": "hotness_spike",
+      "body": "Phoenix mentions surged 4× in last hour across Slack + email.",
+      "proposed_action": "Pull the last 24h of Phoenix mentions into a thread",
+      "source_refs": ["entity:phoenix", "summary:abc123"]
+    }}
   ]
 }}
 "#
     )
+}
+
+/// Render a slice of recent reflections as a wire-format prompt block —
+/// matches what the LLM was taught about in `build_evaluation_prompt`.
+/// Used by the situation_report's "Recent reflections" section so the
+/// representation is identical between teaching and reading.
+pub fn format_recent_reflections_for_prompt(
+    reflections: &[crate::openhuman::subconscious::reflection::Reflection],
+) -> String {
+    crate::openhuman::subconscious::situation_report::reflections::build_section(reflections)
 }
 
 // ── Execution prompts ────────────────────────────────────────────────────────
