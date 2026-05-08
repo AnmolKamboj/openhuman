@@ -108,6 +108,21 @@ pub async fn install_audio_bridge(meet_url: &str) -> Result<(CdpConn, String), S
     // logs and we still return Ok so the listen path keeps working.
     confirm_bridge_alive(&mut cdp, &session).await;
 
+    // Camera bridge is injected *after* the audio bridge has confirmed
+    // the post-reload page is alive. Pre-document registration of a
+    // 56 KB script (the inlined mascot SVGs) reliably crashed the CEF
+    // 146 renderer during reload — see `meet_video::inject` for the
+    // rationale. Meet's first getUserMedia call only fires after the
+    // user clicks "Ask to join" (multiple seconds), so a post-reload
+    // Runtime.evaluate lands well before it's needed.
+    if let Err(err) =
+        crate::meet_video::inject::install_camera_bridge_post_reload(&mut cdp, &session).await
+    {
+        log::warn!("[meet-audio] camera bridge install failed: {err} (falling back to static Y4M)");
+    } else {
+        crate::meet_video::inject::confirm_bridge_alive(&mut cdp, &session).await;
+    }
+
     Ok((cdp, session))
 }
 
