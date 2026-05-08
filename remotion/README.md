@@ -37,6 +37,14 @@ pnpm render GhostyWave
 pnpm render:all
 ```
 
+**Render runtime mascot assets for the desktop app** (writes transparent animated WebP files for `yellow`, `burgundy`, `black`, `navy`, and `green` to `app/public/generated/remotion/`)
+
+> Requires a system `ffmpeg` binary on `PATH` for frame extraction. Install via `apt install ffmpeg`, `brew install ffmpeg`, or `choco install ffmpeg`.
+
+```console
+pnpm render:runtime-assets
+```
+
 **Upgrade Remotion**
 
 ```console
