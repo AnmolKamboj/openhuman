@@ -4,16 +4,24 @@
 
 * [Welcome to OpenHuman](README.md)
 * [How It Works](overview/how-it-works.md)
+* [Install](overview/install.md)
 * [Getting Started](overview/getting-started.md)
 * [App Navigation](overview/app-navigation.md)
+* [Auto-update](overview/auto-update.md)
 
-## FEATURES
+## Features
 
-* [Screen Intelligence](features/screen-intelligence.md)
-* [Inline Autocomplete](features/inline-autocomplete.md)
-* [Voice Speech To Text](features/voice-speech-to-text.md)
+* [Memory Tree](features/memory-tree.md)
+* [Obsidian Wiki](features/obsidian-wiki.md)
+* [Auto-fetch from Integrations](features/auto-fetch.md)
+* [Third-party Integrations (118+)](features/integrations.md)
+* [Smart Token Compression](features/token-compression.md)
+* [Automatic Model Routing](features/model-routing.md)
+* [Native Voice (ElevenLabs)](features/voice.md)
+* [Native Tools (search, scraper, coder)](features/native-tools.md)
+* [Local AI (optional)](features/local-ai.md)
 
-## SETTINGS REFERENCE
+## Settings Reference
 
 * [Account & Security](settings-reference/account-and-security.md)
 * [Automation & Channels](settings-reference/automation-and-channels.md)
@@ -22,8 +30,6 @@
 
 ## Technology
 
-* [Neocortex](technology/neocortex.md)
-* [The Subconscious](technology/the-subconscious.md)
 * [Architecture](technology/architecture.md)
 
 ## Product
@@ -49,9 +55,47 @@
 * [Distributed Teams](use-cases/distributed-teams.md)
 * [Service Providers & Contributors](use-cases/service-providers-and-contributors.md)
 
+## Developing
+
+* [Overview](developing/README.md)
+* [Getting Set Up](developing/getting-set-up.md)
+* [Testing Strategy](developing/testing-strategy.md)
+* [E2E Testing](developing/e2e-testing.md)
+* [Release Policy](developing/release-policy.md)
+* [Cloud Deploy](developing/cloud-deploy.md)
+* [Skills](developing/skills.md)
+* [Subconscious Loop](developing/subconscious.md)
+* [Conscious Loop](developing/conscious-loop.md)
+* [Webview Integration](developing/webview-integration.md)
+* [Chromium Embedded Framework](developing/cef.md)
+* [Coding Harness](developing/coding-harness.md)
+* [Agent Observability](developing/agent-observability.md)
+* [Memory Context Window](developing/memory-context-window.md)
+* [Memory Tree Pipeline](developing/memory-tree-pipeline.md)
+
+### Frontend (app/src/)
+
+* [Overview](developing/frontend/README.md)
+* [Architecture](developing/frontend/architecture.md)
+* [State Management](developing/frontend/state-management.md)
+* [Services](developing/frontend/services.md)
+* [MCP System](developing/frontend/mcp-system.md)
+* [Pages & Routing](developing/frontend/pages-routing.md)
+* [Components](developing/frontend/components.md)
+* [Providers](developing/frontend/providers.md)
+* [Hooks & Utilities](developing/frontend/hooks-utils.md)
+
+### Tauri shell (app/src-tauri/)
+
+* [Overview](developing/tauri-shell/README.md)
+* [Architecture](developing/tauri-shell/architecture.md)
+* [Commands](developing/tauri-shell/commands.md)
+* [Core Bridge](developing/tauri-shell/core-bridge.md)
+
 ## Resources
 
 * [FAQ & Troubleshooting](resources/faq.md)
+* [Design Language](resources/design-language.md)
 
 ## Legal
 
