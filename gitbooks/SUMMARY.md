@@ -8,7 +8,7 @@
 
 ## Features
 
-* [The Mascot](features/mascot.md)
+* [Realtime Live Mascot](features/mascot.md)
 * [Obsidian-Style Memory](features/obsidian-wiki/README.md)
   * [Memory Tree](features/obsidian-wiki/memory-tree.md)
   * [Auto-fetch from Integrations](features/obsidian-wiki/auto-fetch.md)
