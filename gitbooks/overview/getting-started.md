@@ -1,8 +1,7 @@
 ---
 description: >-
-  Install OpenHuman, walk through the in-app onboarding (sign in, connect
-  Gmail, choose how AI runs), and run your first request against your own
-  Memory Tree.
+  Install OpenHuman, walk through the in-app onboarding (sign in, connect Gmail,
+  choose how AI runs), and run your first request against your own Memory Tree.
 icon: play
 ---
 
@@ -14,11 +13,11 @@ OpenHuman is open source under the GNU GPL3 license. The codebase is at [github.
 
 ***
 
-#### System requirements
+## System requirements
 
-OpenHuman runs on **macOS, Windows and Linux** desktops. 8 GB+ RAM is recommended; 16 GB+ if you intend to ingest very large mailboxes or repos, or run a [local model](../features/model-routing/local-ai.md) on the same machine.
+OpenHuman runs on **macOS, Windows and Linux** desktops. 4 GB+ RAM is recommended; 16 GB+ if you intend to ingest very large mailboxes or repos, or run a [local model](../features/model-routing/local-ai.md) on the same machine.
 
-#### Permissions
+### Permissions
 
 The first time you launch OpenHuman, the OS will prompt for the permissions the app needs (Accessibility on macOS, Input Monitoring for the voice hotkey, Camera/Microphone if you plan to use the [Meeting Agent](../features/mascot/meeting-agents.md)). You can review and adjust these any time under **Settings → Automation & Channels**.
 
@@ -26,9 +25,7 @@ The first time you launch OpenHuman, the OS will prompt for the permissions the 
 
 ## 1. Download and install
 
-Get the OpenHuman desktop app from [openhuman.ai](https://openhuman.ai) or via your platform's package manager. Open the app once it's installed.
-
-***
+Get the OpenHuman desktop app from [http://tinyhumans.ai/openhuman](https://openhuman.ai) or via your platform's package manager. Open the app once it's installed.
 
 ## 2. Sign in
 
@@ -38,41 +35,7 @@ The first screen is **"Sign in! Let's Cook"**. Multiple sign-in options are avai
 **No permanent lock-in.** Signing in does not grant OpenHuman ongoing access to anything. All third-party access requires explicit OAuth approval per integration in the steps below.
 {% endhint %}
 
-***
-
-## 3. Onboarding flow
-
-After sign-in, OpenHuman runs you through a short routed onboarding under `/onboarding/*`. The flow is intentionally tiny: five short steps and you're in.
-
-### Step 1 - Welcome ("Hi. I'm OpenHuman.")
-
-The mascot introduces itself. This is the same character that lives on your desktop and can [join your meetings](../features/mascot/meeting-agents.md) once you're set up.
-
-### Step 2 - Connect your Gmail
-
-OpenHuman asks you to connect **Gmail** as the first source. Gmail is high-signal, has a native ingest path into the [Memory Tree](../features/obsidian-wiki/memory-tree.md), and is enough on its own to give the agent a real picture of you to work with.
-
-You connect via OAuth. Nothing is read until the next [auto-fetch](../features/obsidian-wiki/auto-fetch.md) tick.
-
-You can connect more sources later - the full [118+ catalog](../features/integrations/README.md) is available from **Settings**.
-
-### Step 3 - Building your profile ("Almost there!")
-
-OpenHuman runs a short context-gathering pass on what you just connected and builds an initial profile of you (recurring people, ongoing projects, timezone, working hours). This is the same memory pipeline that runs on every auto-fetch tick afterwards - it's just doing the first pass with the lights on.
-
-### Step 4 - Choose how AI runs
-
-Pick **Cloud Mode** (managed model routing - the fast default) or **Local AI** (run models on your own machine for full offline + privacy). You can switch any time later from **Settings → AI & Skills**. See [Local AI (optional)](../features/model-routing/local-ai.md) and [Automatic Model Routing](../features/model-routing/README.md) for what's behind each option.
-
-### Step 5 - Referral code (optional)
-
-If someone gave you a referral code, paste it here. Otherwise skip.
-
-When the flow finishes, OpenHuman flips your `onboarding_completed` flag and lands you on **/home**.
-
-***
-
-## 4. Run your first request
+## 3. Run your first request
 
 Once Gmail has been ingested (the first auto-fetch tick happens within twenty minutes), try prompts like:
 
@@ -88,28 +51,26 @@ Once Gmail has been ingested (the first auto-fetch tick happens within twenty mi
 * "Extract action items from my recent conversations."
 * "What did Sarah say about the project across email and chat?"
 
-OpenHuman picks the right model for each task automatically. See [Automatic Model Routing](../features/model-routing/README.md).
+OpenHuman picks the right model for each task automatically. See [Automatic Model Routing](../features/model-routing/).
 
 ***
 
-## 5. Open the Obsidian vault
+## 4. Open the Obsidian vault
 
 The Memory tab has a **View vault in Obsidian** button. Click it to open `<workspace>/wiki/` in [Obsidian](https://obsidian.md). You can browse the agent's summaries, drop in your own notes, and even build manual links - the agent will pick up your edits on the next ingest. See [Obsidian-Style Memory](../features/obsidian-wiki/).
 
 ***
 
-## 6. Let the mascot do more
+## 5. Let the mascot do more
 
 Now that the agent has memory and a model, the rest of the product is about giving it more surfaces:
 
-* **[Meeting Agents](../features/mascot/meeting-agents.md)** - drop a Google Meet link in and the mascot joins as a real participant: it listens, takes notes into the Memory Tree, speaks back into the call, and uses tools live.
-* **[Auto-fetch from Integrations](../features/obsidian-wiki/auto-fetch.md)** - connect more sources from **Settings**; every twenty minutes the scheduler pulls fresh data into your tree.
-* **[Native Voice](../features/native-tools/voice.md)** - push-to-talk dictation and TTS replies so you can talk to OpenHuman instead of typing.
-* **[Subconscious Loop](../features/subconscious.md)** - let the mascot keep working on standing tasks while you're away.
+* [**Meeting Agents**](../features/mascot/meeting-agents.md) - drop a Google Meet link in and the mascot joins as a real participant: it listens, takes notes into the Memory Tree, speaks back into the call, and uses tools live.
+* [**Auto-fetch from Integrations**](../features/obsidian-wiki/auto-fetch.md) - connect more sources from **Settings**; every twenty minutes the scheduler pulls fresh data into your tree.
+* [**Native Voice**](../features/native-tools/voice.md) - push-to-talk dictation and TTS replies so you can talk to OpenHuman instead of typing.
+* [**Subconscious Loop**](../features/subconscious.md) - let the mascot keep working on standing tasks while you're away.
 
-***
-
-#### Join the community
+## Join the community
 
 OpenHuman is in early beta. Feedback and contributions make a real difference at this stage.
 
