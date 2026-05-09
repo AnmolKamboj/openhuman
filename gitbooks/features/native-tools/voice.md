@@ -1,6 +1,6 @@
 ---
 description: >-
-  Native voice — speech-to-text in, text-to-speech out, mascot lip-sync,
+  Native voice - speech-to-text in, text-to-speech out, mascot lip-sync,
   and a live Google Meet agent that listens and speaks.
 icon: microphone
 ---
@@ -11,11 +11,11 @@ OpenHuman is voice-first when you want it to be. STT, TTS, and the live Google M
 
 ## Speech-to-text
 
-* **Hotkey** — push-to-talk and toggle modes.
-* **Audio capture** — cross-platform mic capture with voice-activity detection.
-* **Streaming transcription** — words appear as you speak.
-* **Hallucination filter** — strips well-known artefacts ("Thanks for watching", silence-induced phrases).
-* **Postprocess** — punctuation, capitalisation, dictation cleanup.
+* **Hotkey** - push-to-talk and toggle modes.
+* **Audio capture** - cross-platform mic capture with voice-activity detection.
+* **Streaming transcription** - words appear as you speak.
+* **Hallucination filter** - strips well-known artefacts ("Thanks for watching", silence-induced phrases).
+* **Postprocess** - punctuation, capitalisation, dictation cleanup.
 
 Dictation can replace the active text input on your desktop, or be sent straight into a chat with the agent.
 
@@ -34,10 +34,10 @@ OpenHuman's flagship voice integration:
 ## Privacy
 
 * Audio capture is local. Streaming STT goes through the OpenHuman backend; no recording is retained beyond the live transcript.
-* TTS audio is streamed and discarded — nothing stored.
+* TTS audio is streamed and discarded - nothing stored.
 * Meeting transcripts land in your local memory tree, like any other source.
 
 ## See also
 
-* [Memory Tree](../obsidian-wiki/memory-tree.md) — where Meet transcripts and notes live.
-* [Automatic Model Routing](../model-routing/) — Meet's brain uses `hint:fast` for low-latency conversational turns.
+* [Memory Tree](../obsidian-wiki/memory-tree.md) - where Meet transcripts and notes live.
+* [Automatic Model Routing](../model-routing/) - Meet's brain uses `hint:fast` for low-latency conversational turns.

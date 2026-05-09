@@ -1,5 +1,5 @@
 ---
-description: A complete toolset for working on real codebases — read, write, edit, search, git, lint, test.
+description: A complete toolset for working on real codebases - read, write, edit, search, git, lint, test.
 icon: code
 ---
 
@@ -13,7 +13,7 @@ The coder family is what makes OpenHuman a viable coding partner instead of a ch
 | ---------------- | ----------------------------------------------------------------- |
 | `file_read`      | Read a file (with line numbers, like `cat -n`).                   |
 | `file_write`     | Write a new file.                                                 |
-| `edit_file`      | Targeted edits — match-and-replace with strict uniqueness checks. |
+| `edit_file`      | Targeted edits - match-and-replace with strict uniqueness checks. |
 | `apply_patch`    | Apply a unified diff.                                             |
 | `glob_search`    | Find files by glob pattern.                                       |
 | `grep`           | Ripgrep-style search across the tree.                             |
@@ -35,9 +35,9 @@ A shell tool plus `cat`/`sed`/`awk` could *technically* do all of this. The nati
 
 ## Workspace scoping
 
-Filesystem tools respect a workspace boundary — the agent can't read or write outside it without explicit permission. Same boundary the rest of the app uses for `OPENHUMAN_WORKSPACE`.
+Filesystem tools respect a workspace boundary - the agent can't read or write outside it without explicit permission. Same boundary the rest of the app uses for `OPENHUMAN_WORKSPACE`.
 
 ## See also
 
-* [System & Utilities](system-and-utilities.md) — `shell`, `node_exec`, `npm_exec` for the rest of the dev loop.
-* [Agent Coordination](agent-coordination.md) — `todo_write`, `spawn_subagent` for larger refactors.
+* [System & Utilities](system-and-utilities.md) - `shell`, `node_exec`, `npm_exec` for the rest of the dev loop.
+* [Agent Coordination](agent-coordination.md) - `todo_write`, `spawn_subagent` for larger refactors.

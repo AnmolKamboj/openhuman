@@ -1,4 +1,7 @@
 ---
+description: >-
+  High-level shape of the OpenHuman system (desktop shell, Rust core, Memory
+  Tree, agent loop). Pointer to the deep developer architecture in the repo.
 icon: code-branch
 ---
 
@@ -31,7 +34,7 @@ OpenHuman is a **React + Tauri v2 desktop app** with a **Rust core** that does t
 │ React frontend (app/src/) │
 │ • Screens, navigation │
 │ • Talks to core over `coreRpcClient` │
-│ • No business logic — presentation only │
+│ • No business logic - presentation only │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -43,7 +46,7 @@ OpenHuman is a **React + Tauri v2 desktop app** with a **Rust core** that does t
 
 ## Data flow
 
-1. **Connect**. OAuth into a [integration](../../features/integrations.md). Backend stores the token; core never sees it in plaintext.
+1. **Connect**. OAuth into a [integration](../../features/integrations/README.md). Backend stores the token; core never sees it in plaintext.
 2. **Auto-fetch**. Every twenty minutes the [scheduler](../../features/obsidian-wiki/auto-fetch.md) walks every active connection and asks each native provider to sync.
 3. **Canonicalize**. Provider output (an email page, a GitHub diff, a Slack channel dump) is normalized into provenance-tagged Markdown.
 4. **Chunk**. Markdown is split into ≤3k-token deterministic chunks.

@@ -1,5 +1,5 @@
 ---
-description: Shell, node, SQL, current time, push notifications — the small tools that round out the toolbelt.
+description: Shell, node, SQL, current time, push notifications - the small tools that round out the toolbelt.
 icon: gear
 ---
 
@@ -12,16 +12,16 @@ The catch-all family. Small, sharp tools the agent reaches for to round out a ta
 | Tool                | What it does                                                                  |
 | ------------------- | ----------------------------------------------------------------------------- |
 | `shell`             | Run a shell command. Bounded output, captured exit code.                      |
-| `node_exec`         | Run a Node.js snippet — useful for one-off scripting.                         |
+| `node_exec`         | Run a Node.js snippet - useful for one-off scripting.                         |
 | `npm_exec`          | Run an `npm`/`pnpm`/`yarn` script.                                            |
 | `current_time`      | Get the current time in any timezone, with formatting options.                |
-| `schedule`          | One-shot "do this once at time T" — for recurring jobs see [Cron](cron.md).   |
+| `schedule`          | One-shot "do this once at time T" - for recurring jobs see [Cron](cron.md).   |
 | `pushover`          | Send a push notification to your devices.                                     |
 | `insert_sql_record` | Append a row to the agent's structured workspace SQL store.                   |
 | `lsp`               | Query a language server (definitions, references, diagnostics).               |
-| `workspace_state`   | Inspect the current workspace — open files, recent edits, environment.       |
+| `workspace_state`   | Inspect the current workspace - open files, recent edits, environment.       |
 | `proxy_config`      | Read or change proxy configuration for outbound requests.                     |
-| `tool_stats`        | Self-reflection — what tools have been used in this session and how often.    |
+| `tool_stats`        | Self-reflection - what tools have been used in this session and how often.    |
 
 ## What it's good for
 
@@ -32,5 +32,5 @@ The catch-all family. Small, sharp tools the agent reaches for to round out a ta
 
 ## See also
 
-* [Coder](coder.md) — for filesystem-heavy work, prefer the dedicated tools over `shell`.
-* [Cron & Scheduling](cron.md) — for anything recurring.
+* [Coder](coder.md) - for filesystem-heavy work, prefer the dedicated tools over `shell`.
+* [Cron & Scheduling](cron.md) - for anything recurring.

@@ -1,6 +1,6 @@
 ---
 description: >-
-  The full toolset OpenHuman's agent has out of the box — research, code,
+  The full toolset OpenHuman's agent has out of the box - research, code,
   control your machine, schedule jobs, talk back to you, and call into 118+
   third-party services.
 icon: toolbox
@@ -8,7 +8,7 @@ icon: toolbox
 
 # Native Tools
 
-OpenHuman's agent doesn't ship empty. Every model behind the agent has a curated set of tools available the moment you install — no plugin marketplace, no API keys to wire up, no MCP servers to register. The whole toolbelt is in the box.
+OpenHuman's agent doesn't ship empty. Every model behind the agent has a curated set of tools available the moment you install - no plugin marketplace, no API keys to wire up, no MCP servers to register. The whole toolbelt is in the box.
 
 This page is the index. Each subpage covers one family of tools.
 
@@ -19,25 +19,25 @@ A plugin-only model means tools live in different processes, behind RPC, with th
 * Consistent error handling.
 * Zero install friction.
 * All output passes through [Smart Token Compression](../token-compression.md) for free.
-* Predictable security boundary — filesystem tools respect workspace scoping, network tools go through the OpenHuman proxy.
+* Predictable security boundary - filesystem tools respect workspace scoping, network tools go through the OpenHuman proxy.
 
 ## The toolbelt
 
 | Family | What it covers |
 | ------ | -------------- |
 | [Web Search](web-search.md) | Search the live web without bringing your own API key. |
-| [Web Scraper](web-scraper.md) | Pull clean text out of any URL — articles, docs, READMEs. |
+| [Web Scraper](web-scraper.md) | Pull clean text out of any URL - articles, docs, READMEs. |
 | [Coder](coder.md) | Read/write/edit/patch files, glob, grep, git, lint, test. |
 | [Browser & Computer Control](browser-and-computer.md) | Open URLs, screenshot, click, type, move the mouse. |
 | [Cron & Scheduling](cron.md) | Recurring jobs, one-off reminders, scheduled agent runs. |
 | [Voice](voice.md) | Speech-to-text in, text-to-speech out, live Google Meet agent. |
 | [Memory Tools](memory-tools.md) | Recall, store, forget, and search the [Memory Tree](../obsidian-wiki/memory-tree.md). |
-| [Third-party Integrations](integrations.md) | The agent's view of the [118+ connected services](../integrations.md). |
+| [Third-party Integrations](../integrations/README.md) | The agent's view of the [118+ connected services](../integrations/README.md). |
 | [Agent Coordination](agent-coordination.md) | Spawn subagents, delegate to skills, plan, ask the user. |
 | [System & Utilities](system-and-utilities.md) | Shell, node, SQL, current time, push notifications, LSP. |
 
 ## See also
 
-* [Smart Token Compression](../token-compression.md) — what keeps tool output costs bounded.
-* [Third-party Integrations](../integrations.md) — the user-facing pitch and OAuth flow for the 118+ catalog.
-* [Privacy & Security](../privacy-and-security.md) — the boundary every tool runs inside.
+* [Smart Token Compression](../token-compression.md) - what keeps tool output costs bounded.
+* [Third-party Integrations](../integrations/README.md) - the user-facing pitch and OAuth flow for the 118+ catalog.
+* [Privacy & Security](../privacy-and-security.md) - the boundary every tool runs inside.

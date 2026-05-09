@@ -5,11 +5,11 @@ icon: plug
 
 # Third-party Integrations
 
-OpenHuman's agent can call into [118+ third-party services](../integrations.md) — Gmail, Notion, GitHub, Slack, Stripe, Calendar, and the long tail — through a single proxied tool surface.
+OpenHuman's agent can call into [118+ third-party services](../integrations/README.md) - Gmail, Notion, GitHub, Slack, Stripe, Calendar, and the long tail - through a single proxied tool surface.
 
 ## How it shows up to the agent
 
-Once you've connected a service via OAuth, its actions become callable tools. The agent doesn't need to know whether a tool talks to Gmail or to a local file — it just calls the tool, the proxy routes the request through the OpenHuman backend with your token, and the result comes back like any other tool output.
+Once you've connected a service via OAuth, its actions become callable tools. The agent doesn't need to know whether a tool talks to Gmail or to a local file - it just calls the tool, the proxy routes the request through the OpenHuman backend with your token, and the result comes back like any other tool output.
 
 A few examples of what becomes available:
 
@@ -20,7 +20,7 @@ A few examples of what becomes available:
 
 ## Native vs proxied
 
-Some services have **native providers** — Rust modules that know how to ingest the service into the [Memory Tree](../obsidian-wiki/memory-tree.md) directly (e.g. Gmail's native ingest path). Others are exposed as **proxied tools** only: the agent can call them, but there's no automatic ingest yet. New native providers are added as features land.
+Some services have **native providers** - Rust modules that know how to ingest the service into the [Memory Tree](../obsidian-wiki/memory-tree.md) directly (e.g. Gmail's native ingest path). Others are exposed as **proxied tools** only: the agent can call them, but there's no automatic ingest yet. New native providers are added as features land.
 
 ## Privacy boundary
 
@@ -28,6 +28,6 @@ OpenHuman's core never calls any third-party API directly. All requests go throu
 
 ## See also
 
-* [Third-party Integrations (catalog)](../integrations.md) — the user-facing pitch, OAuth flow, and connection management.
-* [Auto-fetch](../obsidian-wiki/auto-fetch.md) — how connected services flow into the Memory Tree.
-* [Privacy & Security](../privacy-and-security.md) — the full boundary.
+* [Third-party Integrations (catalog)](../integrations/README.md) - the user-facing pitch, OAuth flow, and connection management.
+* [Auto-fetch](../obsidian-wiki/auto-fetch.md) - how connected services flow into the Memory Tree.
+* [Privacy & Security](../privacy-and-security.md) - the full boundary.

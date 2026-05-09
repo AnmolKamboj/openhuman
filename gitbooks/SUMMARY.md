@@ -7,11 +7,13 @@
 
 ## Features
 
-* [Realtime Mascot](features/mascot.md)
+* [Realtime Mascot](features/mascot/README.md)
+  * [Meeting Agents](features/mascot/meeting-agents.md)
 * [Obsidian-Style Memory](features/obsidian-wiki/README.md)
   * [Memory Tree](features/obsidian-wiki/memory-tree.md)
   * [Auto-fetch from Integrations](features/obsidian-wiki/auto-fetch.md)
-* [Third-party Integrations (118+)](features/integrations.md)
+* [Third-party Integrations (118+)](features/integrations/README.md)
+  * [Triggers](features/integrations/triggers.md)
 * [Smart Token Compression](features/token-compression.md)
 * [Automatic Model Routing](features/model-routing/README.md)
   * [Local AI (optional)](features/model-routing/local-ai.md)

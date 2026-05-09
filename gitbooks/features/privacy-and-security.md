@@ -26,8 +26,8 @@ OpenHuman is designed so that the **memory of your life lives on your machine**.
 
 |                                 |                                                                 |
 | ------------------------------- | --------------------------------------------------------------- |
-| **Memory Tree SQLite database** | Local — `<workspace>/memory_tree/chunks.db`.                    |
-| **Obsidian Markdown vault**     | Local — `<workspace>/wiki/`. Yours to read, edit, copy, delete. |
+| **Memory Tree SQLite database** | Local - `<workspace>/memory_tree/chunks.db`.                    |
+| **Obsidian Markdown vault**     | Local - `<workspace>/wiki/`. Yours to read, edit, copy, delete. |
 | **Audio capture buffers**       | Local. Discarded after STT.                                     |
 | **Local model state**           | Local.                                                          |
 
@@ -37,8 +37,8 @@ OpenHuman is designed so that the **memory of your life lives on your machine**.
 | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **LLM calls**                      | Proxied through the backend under one subscription, then forwarded to the underlying provider (Anthropic / OpenAI / Google / etc.) per the [model router](model-routing/). |
 | **Web search proxy**               | The native [web search tool](native-tools/web-search.md) calls a backend proxy so you don't carry a search API key.                                                                   |
-| **Integration OAuth & tool proxy** | Token storage and rate-limited request brokering for [118+ integrations](integrations.md).                                                                                 |
-| **TTS streaming**                  | Hosted [text-to-speech](native-tools/voice.md) audio streams. Audio is generated and discarded — not retained.                                                                          |
+| **Integration OAuth & tool proxy** | Token storage and rate-limited request brokering for [118+ integrations](integrations/README.md).                                                                                 |
+| **TTS streaming**                  | Hosted [text-to-speech](native-tools/voice.md) audio streams. Audio is generated and discarded - not retained.                                                                          |
 
 ***
 

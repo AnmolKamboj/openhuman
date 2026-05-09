@@ -28,7 +28,7 @@ If you just want to use the app, head to [Getting Started](../overview/getting-s
 
 If it's your first time pulling the repo:
 
-1. [**Getting Set Up**](getting-set-up.md). Toolchain, dependencies, the vendored Tauri CLI, sidecar staging — everything `pnpm dev` needs to actually start.
+1. [**Getting Set Up**](getting-set-up.md). Toolchain, dependencies, the vendored Tauri CLI, sidecar staging - everything `pnpm dev` needs to actually start.
 2. [**Architecture**](architecture.md). How the desktop app, the Rust core sidecar, the JSON-RPC bridge, and the dual sockets fit together. Read this before you make non-trivial changes.
 3. [**Frontend**](architecture/frontend.md) and [**Tauri Shell**](architecture/tauri-shell.md). The React app and the desktop host that wraps it.
 
@@ -69,4 +69,4 @@ For features still being built, the [Subconscious Loop](../features/subconscious
 * Follow [`CONTRIBUTING.md`](../../CONTRIBUTING.md) and the issue/PR templates.
 * Keep changes focused. A bug fix doesn't need surrounding cleanup; a one-shot operation doesn't need a helper.
 
-Help building toward AGI doesn't have to mean shipping a kernel — bugfixes, docs, integrations, and tests all move the bar.
+Help building toward AGI doesn't have to mean shipping a kernel - bugfixes, docs, integrations, and tests all move the bar.

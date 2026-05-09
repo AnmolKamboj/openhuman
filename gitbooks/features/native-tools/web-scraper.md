@@ -5,7 +5,7 @@ icon: globe
 
 # Web Scraper
 
-A purpose-built fetch tool, separate from generic `http_request` / `curl`. It exists because the agent doesn't want raw HTML — it wants the *article*.
+A purpose-built fetch tool, separate from generic `http_request` / `curl`. It exists because the agent doesn't want raw HTML - it wants the *article*.
 
 ## What it does
 
@@ -15,8 +15,8 @@ A purpose-built fetch tool, separate from generic `http_request` / `curl`. It ex
 
 ## Guardrails
 
-* Caps response at 1 MB — large pages get truncated, not silently dropped.
-* 20-second timeout — slow servers don't stall the conversation.
+* Caps response at 1 MB - large pages get truncated, not silently dropped.
+* 20-second timeout - slow servers don't stall the conversation.
 * Subject to the same proxy and URL-guard rules as other network tools.
 
 ## What it's good for
@@ -27,5 +27,5 @@ A purpose-built fetch tool, separate from generic `http_request` / `curl`. It ex
 
 ## See also
 
-* [Web Search](web-search.md) — find URLs to feed into the scraper.
-* [Smart Token Compression](../token-compression.md) — what trims long pages before they hit the model.
+* [Web Search](web-search.md) - find URLs to feed into the scraper.
+* [Smart Token Compression](../token-compression.md) - what trims long pages before they hit the model.
