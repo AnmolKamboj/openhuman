@@ -3,12 +3,11 @@
 ## Overview
 
 * [Welcome to OpenHuman](README.md)
-* [How It Works](overview/how-it-works.md)
 * [Getting Started](overview/getting-started.md)
 
 ## Features
 
-* [Realtime Live Mascot](features/mascot.md)
+* [Realtime Mascot](features/mascot.md)
 * [Obsidian-Style Memory](features/obsidian-wiki/README.md)
   * [Memory Tree](features/obsidian-wiki/memory-tree.md)
   * [Auto-fetch from Integrations](features/obsidian-wiki/auto-fetch.md)
