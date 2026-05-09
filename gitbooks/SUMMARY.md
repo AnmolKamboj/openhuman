@@ -29,6 +29,7 @@
 * [Subconscious Loop](features/subconscious.md)
 * [Privacy & Security](features/privacy-and-security.md)
 * [Platform & Availability](features/platform.md)
+* [Cloud Deploy](features/cloud-deploy.md)
 
 ## Developing
 
@@ -37,14 +38,12 @@
 * [Testing Strategy](developing/testing-strategy.md)
 * [E2E Testing](developing/e2e-testing.md)
 * [Release Policy](developing/release-policy.md)
-* [Cloud Deploy](developing/cloud-deploy.md)
 * [Chromium Embedded Framework](developing/cef.md)
-* [Coding Harness](developing/coding-harness.md)
 * [Agent Observability](developing/agent-observability.md)
 * [Architecture](developing/architecture/README.md)
+  * [Agent Harness](developing/architecture/agent-harness.md)
   * [Frontend (app/src/)](developing/architecture/frontend.md)
   * [Tauri Shell (app/src-tauri/)](developing/architecture/tauri-shell.md)
-  * [Agent Harness](developing/architecture/agent-harness.md)
 
 ## Legal
 

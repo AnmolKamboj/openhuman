@@ -49,13 +49,13 @@ PRs must clear the **≥ 80% coverage on changed lines** gate. Add tests for new
 ## Shipping
 
 * [**Release Policy**](release-policy.md). Version policy, release cadence, OAuth + installer rules.
-* [**Cloud Deploy**](cloud-deploy.md). Backend/cloud-side deployment when a change crosses the desktop boundary.
+* [**Cloud Deploy**](../features/cloud-deploy.md). Backend/cloud-side deployment when a change crosses the desktop boundary.
 
 ***
 
 ## Going deeper
 
-* [**Coding Harness**](coding-harness.md). The agent's code-focused tool surface and how to extend it.
+* [**Coding Harness**](/broken/pages/RRYmjibvEbtqRSPntgPX). The agent's code-focused tool surface and how to extend it.
 * [**Chromium Embedded Framework**](cef.md). How embedded provider webviews work, why they don't run injected JS, and what the per-provider scanners do instead.
 
 For features still being built, the [Subconscious Loop](../features/subconscious.md) page covers the background task evaluation system end-to-end.
