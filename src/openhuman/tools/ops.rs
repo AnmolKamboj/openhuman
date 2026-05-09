@@ -134,12 +134,7 @@ pub fn all_tools_with_runtime(
         Box::new(MemoryStoreTool::new(memory.clone(), security.clone())),
         Box::new(MemoryRecallTool::new(memory.clone())),
         Box::new(MemoryForgetTool::new(memory.clone(), security.clone())),
-        Box::new(MemoryTreeSearchEntitiesTool),
-        Box::new(MemoryTreeQueryTopicTool),
-        Box::new(MemoryTreeQuerySourceTool),
-        Box::new(MemoryTreeQueryGlobalTool),
-        Box::new(MemoryTreeDrillDownTool),
-        Box::new(MemoryTreeFetchLeavesTool),
+        Box::new(MemoryTreeTool),
         // WhatsApp data store — read-only agent surface (issue #1341).
         // The matching `whatsapp_data_ingest` write-path stays internal-only
         // (registered in `src/core/all.rs::build_internal_only_controllers`)
