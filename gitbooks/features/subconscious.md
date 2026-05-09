@@ -1,5 +1,7 @@
 ---
-description: Background loop that evaluates user / system tasks against the workspace and decides what to do.
+description: >-
+  Background loop that evaluates user / system tasks against the workspace and
+  decides what to do.
 icon: loader
 ---
 
@@ -9,7 +11,7 @@ A background task evaluation and execution system. On a periodic tick, it loads 
 
 Think of it as the agent's idle thread: the part that keeps thinking after you've stopped typing.
 
----
+***
 
 ## How a tick works
 
@@ -39,7 +41,7 @@ Think of it as the agent's idle thread: the part that keeps thinking after you'v
 
 Each tick is independent. If a tick is still running when the next one starts (slow model call, network blip), the new tick takes over and the old one's in-progress entries are marked cancelled. Ticks never stack.
 
----
+***
 
 ## Task types
 
@@ -47,9 +49,9 @@ Each tick is independent. If a tick is still running when the next one starts (s
 
 Seeded automatically when the engine starts. Cannot be deleted, only disabled. The defaults cover things you'd want any assistant watching for:
 
-- Check connected skills for errors or disconnections
-- Review new memory updates for actionable items
-- Monitor system health (local model, memory, connections)
+* Check connected skills for errors or disconnections
+* Review new memory updates for actionable items
+* Monitor system health (local model, memory, connections)
 
 You can extend the system task set by listing additional ones in a `HEARTBEAT.md` file in your workspace, one task per line.
 
@@ -57,21 +59,21 @@ You can extend the system task set by listing additional ones in a `HEARTBEAT.md
 
 Anything you add manually from the UI. Toggle on/off, edit, delete. Examples:
 
-- "Check urgent emails" (read-only)
-- "Send daily summary to Slack" (write intent)
-- "Summarize Notion updates" (read-only)
+* "Check urgent emails" (read-only)
+* "Send daily summary to Slack" (write intent)
+* "Summarize Notion updates" (read-only)
 
----
+***
 
 ## Decisions
 
 For every due task, the local model returns one of three decisions:
 
-| Decision    | Meaning                                              |
-| ----------- | ---------------------------------------------------- |
-| Skip        | Nothing relevant right now                           |
-| Act         | Something relevant found, execute the task          |
-| Escalate    | Needs deeper reasoning, hand off to the cloud agent |
+| Decision | Meaning                                             |
+| -------- | --------------------------------------------------- |
+| Skip     | Nothing relevant right now                          |
+| Act      | Something relevant found, execute the task          |
+| Escalate | Needs deeper reasoning, hand off to the cloud agent |
 
 How that decision gets executed depends on whether the task has **write intent** (it asks the agent to take an action) or is **read-only** (it asks the agent to look and report):
 
@@ -97,52 +99,52 @@ Decision: Escalate
 
 Every task evaluation lands in the activity log with a colored dot and a short status:
 
-| State            | Color           | Text                   |
-| ---------------- | --------------- | ---------------------- |
-| In progress      | Blue (pulsing)  | "Evaluating…"          |
-| Acted            | Green           | Result text            |
-| Skipped          | Gray            | "Nothing new"          |
+| State             | Color          | Text                   |
+| ----------------- | -------------- | ---------------------- |
+| In progress       | Blue (pulsing) | "Evaluating…"          |
+| Acted             | Green          | Result text            |
+| Skipped           | Gray           | "Nothing new"          |
 | Awaiting approval | Amber          | "Waiting for approval" |
-| Failed           | Coral           | Error message          |
-| Cancelled        | Gray            | "Cancelled"            |
-| Dismissed        | Gray            | "Skipped"              |
+| Failed            | Coral          | Error message          |
+| Cancelled         | Gray           | "Cancelled"            |
+| Dismissed         | Gray           | "Skipped"              |
 
----
+***
 
 ## Two models, one loop
 
-| Stage                                 | Where it runs                  | Why                                                   |
-| ------------------------------------- | ------------------------------ | ----------------------------------------------------- |
-| Per-task evaluation (every tick)      | Local model (Ollama)           | Free, no rate limit, fine on-device                   |
-| Text-only execution (summarize, check)| Local model                    | Same                                                  |
-| Tool-using execution (send, post, …)  | Cloud agent                    | Tools, larger context, retries on rate-limit          |
-| Analysis mode for escalated reads     | Cloud agent (read-only)        | Deeper reasoning when the local model defers          |
+| Stage                                  | Where it runs           | Why                                          |
+| -------------------------------------- | ----------------------- | -------------------------------------------- |
+| Per-task evaluation (every tick)       | Local model (Ollama)    | Free, no rate limit, fine on-device          |
+| Text-only execution (summarize, check) | Local model             | Same                                         |
+| Tool-using execution (send, post, …)   | Cloud agent             | Tools, larger context, retries on rate-limit |
+| Analysis mode for escalated reads      | Cloud agent (read-only) | Deeper reasoning when the local model defers |
 
 The split keeps the loop cheap: you only pay for cloud calls when a task actually needs them.
 
----
+***
 
 ## Approval gate
 
 Approval is only required when the agent wants to take a **write action that you didn't explicitly ask for**.
 
-| Task intent                      | Agent wants to write     | Approval needed?           |
-| -------------------------------- | ------------------------ | -------------------------- |
-| "Send digest to Slack" (write)   | Yes                      | No, you asked for it      |
-| "Check urgent emails" (read)     | No                       | No, read-only result      |
-| "Check urgent emails" (read)     | Yes (forward them)       | **Yes**, unsolicited write |
+| Task intent                    | Agent wants to write | Approval needed?           |
+| ------------------------------ | -------------------- | -------------------------- |
+| "Send digest to Slack" (write) | Yes                  | No, you asked for it       |
+| "Check urgent emails" (read)   | No                   | No, read-only result       |
+| "Check urgent emails" (read)   | Yes (forward them)   | **Yes**, unsolicited write |
 
 The approval flow:
 
 1. The cloud agent runs in analysis-only mode.
-2. It surfaces a recommendation, e.g. *"forward 3 urgent emails to #team-alerts."*
+2. It surfaces a recommendation, e.g. _"forward 3 urgent emails to #team-alerts."_
 3. An escalation card appears in the UI under **Approval Needed**.
 4. **Go ahead** re-runs with full permissions.
 5. **Skip** does nothing.
 
 Skill-related escalations (broken integration, expired OAuth, missing scope) show a **Fix in Skills** button that takes you straight to the Skills page instead.
 
----
+***
 
 ## Failure handling
 
@@ -152,33 +154,33 @@ Per-task failures don't trip this counter, the tick itself is still considered s
 
 If a tick fails or is cancelled, the engine doesn't advance its "last seen" timestamp, so the next successful tick covers the same window. Nothing in your workspace gets skipped.
 
----
+***
 
 ## Configuration
 
 The loop is configurable in the desktop app:
 
-- **Enable / disable.** Turn the entire background loop on or off.
-- **Tick interval.** How often a tick fires. Defaults to 5 minutes; that's also the minimum.
-- **Inference.** Whether the local model evaluates tasks each tick. Disable this if you'd rather only run things via the manual **Run Now** button.
-- **Context budget.** How much of the workspace situation report can be passed in at once. The default is sane; raise it for richer context, lower it for tighter cost.
+* **Enable / disable.** Turn the entire background loop on or off.
+* **Tick interval.** How often a tick fires. Defaults to 5 minutes; that's also the minimum.
+* **Inference.** Whether the local model evaluates tasks each tick. Disable this if you'd rather only run things via the manual **Run Now** button.
+* **Context budget.** How much of the workspace situation report can be passed in at once. The default is sane; raise it for richer context, lower it for tighter cost.
 
----
+***
 
 ## In the UI
 
 Lives under **Intelligence → Subconscious**.
 
-- **Status bar.** Task count, total ticks, last tick time, failure counter (if any).
-- **Active Tasks.** System tasks (read-only, with a "default" badge) and your own tasks (toggle + delete).
-- **Approval Needed.** Amber cards for pending escalations. Each has a title, description, and priority. Buttons: **Go ahead**, **Fix in Skills** (when relevant), or **Skip**.
-- **Activity Log.** Chronological feed of every task evaluation, colored dot + result. Auto-refreshes while anything is in progress.
-- **Run Now.** Manually trigger a tick. Returns immediately; the UI polls for the result.
+* **Status bar.** Task count, total ticks, last tick time, failure counter (if any).
+* **Active Tasks.** System tasks (read-only, with a "default" badge) and your own tasks (toggle + delete).
+* **Approval Needed.** Amber cards for pending escalations. Each has a title, description, and priority. Buttons: **Go ahead**, **Fix in Skills** (when relevant), or **Skip**.
+* **Activity Log.** Chronological feed of every task evaluation, colored dot + result. Auto-refreshes while anything is in progress.
+* **Run Now.** Manually trigger a tick. Returns immediately; the UI polls for the result.
 
----
+***
 
 ## See also
 
-- [Memory Tree](obsidian-wiki/memory-tree.md), what the situation report reads from.
-- [Auto-fetch from Integrations](integrations/auto-fetch.md), how the workspace stays fresh between ticks.
-- [Local AI (optional)](model-routing/local-ai.md), the on-device model that powers evaluation.
+* [Memory Tree](obsidian-wiki/memory-tree.md), what the situation report reads from.
+* [Auto-fetch from Integrations](obsidian-wiki/auto-fetch.md), how the workspace stays fresh between ticks.
+* [Local AI (optional)](model-routing/local-ai.md), the on-device model that powers evaluation.

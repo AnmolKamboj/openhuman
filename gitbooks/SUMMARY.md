@@ -11,8 +11,8 @@
 * [Obsidian-Style Memory](features/obsidian-wiki/README.md)
   * [Memory Tree](features/obsidian-wiki/memory-tree.md)
   * [Memory Tree Pipeline](features/obsidian-wiki/memory-tree-pipeline.md)
-* [Third-party Integrations (118+)](features/integrations/README.md)
-  * [Auto-fetch from Integrations](features/integrations/auto-fetch.md)
+  * [Auto-fetch from Integrations](features/obsidian-wiki/auto-fetch.md)
+* [Third-party Integrations (118+)](features/integrations.md)
 * [Smart Token Compression](features/token-compression.md)
 * [Automatic Model Routing](features/model-routing/README.md)
   * [Local AI (optional)](features/model-routing/local-ai.md)
@@ -21,7 +21,6 @@
 * [Subconscious Loop](features/subconscious.md)
 * [Privacy & Security](features/privacy-and-security.md)
 * [Platform & Availability](features/platform.md)
-* [Architecture](features/architecture.md)
 
 ## Developing
 
@@ -34,8 +33,9 @@
 * [Chromium Embedded Framework](developing/cef.md)
 * [Coding Harness](developing/coding-harness.md)
 * [Agent Observability](developing/agent-observability.md)
-* [Frontend (app/src/)](developing/frontend.md)
-* [Tauri Shell (app/src-tauri/)](developing/tauri-shell.md)
+* [Architecture](developing/architecture/README.md)
+  * [Frontend (app/src/)](developing/architecture/frontend.md)
+  * [Tauri Shell (app/src-tauri/)](developing/architecture/tauri-shell.md)
 
 ## Legal
 

@@ -13,8 +13,6 @@ The Memory Tree is OpenHuman's knowledge base. It is not a vector database with 
 
 Every source you connect feeds the same pipeline:
 
-
-
 ```
 source adapters (chat / email / document)
         │
@@ -75,7 +73,7 @@ Trees give you compression _and_ navigation. Embeddings still live inside (in `s
 
 ## Triggering ingest
 
-* **Automatic**. every active integration is auto-fetched every twenty minutes; see [Auto-fetch](../integrations/auto-fetch.md).
+* **Automatic**. every active integration is auto-fetched every twenty minutes; see [Auto-fetch](auto-fetch.md).
 * **Manual**. the Memory tab in the desktop app exposes a "Run ingest" trigger per source.
 * **RPC**. `openhuman.memory_tree_ingest` for advanced workflows.
 
@@ -87,13 +85,13 @@ Open it from the bottom navigation bar.
 
 **Memory metrics:**
 
-| Metric | What it shows |
-| --- | --- |
-| **Storage** | Total size of `<workspace>/memory_tree/chunks.db` and the Obsidian vault. |
-| **Sources** | How many distinct sources have been ingested (one per Gmail label, Slack channel, document, etc.). |
-| **Chunks** | Total ≤3k-token chunks in the store. |
-| **Topics** | Number of topic trees materialized so far (per-entity summaries built from "hot" entities). |
-| **First / latest memory** | Timestamps of the oldest and newest chunks. |
+| Metric                    | What it shows                                                                                      |
+| ------------------------- | -------------------------------------------------------------------------------------------------- |
+| **Storage**               | Total size of `<workspace>/memory_tree/chunks.db` and the Obsidian vault.                          |
+| **Sources**               | How many distinct sources have been ingested (one per Gmail label, Slack channel, document, etc.). |
+| **Chunks**                | Total ≤3k-token chunks in the store.                                                               |
+| **Topics**                | Number of topic trees materialized so far (per-entity summaries built from "hot" entities).        |
+| **First / latest memory** | Timestamps of the oldest and newest chunks.                                                        |
 
 **Memory graph.** A force-directed visualization of entities and their relationships, drawn from the entity index. The graph grows as auto-fetch pulls more data, sparse early on, denser within a few days.
 
@@ -103,12 +101,12 @@ Open it from the bottom navigation bar.
 
 **Search & retrieval.** A search bar over the Memory Tree. Source-scoped, topic-scoped or global queries are all supported, and any result links back to the underlying chunk file in your Obsidian vault for full provenance.
 
-**Routing.** The Intelligence tab also surfaces which model the agent is using per task, see [Automatic Model Routing](../model-routing/README.md).
+**Routing.** The Intelligence tab also surfaces which model the agent is using per task, see [Automatic Model Routing](../model-routing/).
 
 ## See also
 
 * [Obsidian Wiki](./). open the vault in Obsidian and edit it directly.
-* [Auto-fetch from Integrations](../integrations/auto-fetch.md). how the tree stays fresh.
+* [Auto-fetch from Integrations](auto-fetch.md). how the tree stays fresh.
 * [Smart Token Compression](../token-compression.md). what makes ingesting "everything" cheap.
 * [Local AI (optional)](../model-routing/local-ai.md). opt in to keep embeddings and summary-tree building on-device.
 * [Memory Tree Pipeline](memory-tree-pipeline.md). contributor-facing deep dive on the async queue, workers and tree-state machine.
