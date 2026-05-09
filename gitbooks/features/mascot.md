@@ -1,8 +1,8 @@
 ---
 description: >-
-  The on-screen face of OpenHuman — a desktop mascot that speaks, reacts,
-  joins your meetings, and thinks in the background even when you aren't
-  looking at it.
+  The on-screen face of OpenHuman — a desktop mascot that speaks, reacts, joins
+  your meetings, and thinks in the background even when you aren't looking at
+  it.
 icon: face-smile
 ---
 
@@ -11,8 +11,6 @@ icon: face-smile
 OpenHuman has a face. The mascot is an animated character that lives on your desktop and acts as the visible surface of the agent — what it's saying, what it's thinking about, when it's idle, when it's busy, when it has something to tell you.
 
 It is not a chrome ornament. The mascot is wired into the same pieces as the rest of the agent: voice, memory, the [subconscious loop](subconscious.md), and the [Google Meet integration](native-tools/voice.md). When the agent talks, the mascot is the one talking; when the agent is thinking, the mascot is the one thinking.
-
-## What it does
 
 ### It speaks, and lip-syncs to its own voice
 
@@ -58,7 +56,7 @@ When you're away long enough, the mascot enters a dreaming state. Dreaming is th
 
 When you come back, the dreams have already been folded into the Memory Tree. The mascot wakes up smarter than it went to sleep.
 
-## Why a mascot at all
+### Why have a mascot at all?
 
 Most assistants are a blinking text input. That's fine for a tool. It's not fine for something that's meant to be alongside you all day, with persistent memory of your life, taking actions on your behalf.
 
@@ -67,10 +65,3 @@ The mascot exists because:
 * **Presence beats panels.** A face you can glance at tells you, in one frame, whether the agent is busy, idle, dreaming, or trying to get your attention.
 * **It makes voice calls feel like a conversation.** A camera feed of an animated character lip-syncing to its own speech is a different experience than a robotic voice with a black tile.
 * **Personality is a UX surface.** A consistent character on screen is easier to trust, talk to, and forgive when it makes a mistake than a faceless API.
-
-## See also
-
-* [Native Voice](native-tools/voice.md) — the STT / TTS / Meet plumbing the mascot rides on.
-* [Memory Tree](obsidian-wiki/memory-tree.md) — what the mascot remembers, and how.
-* [Subconscious Loop](subconscious.md) — what it thinks about while you're away.
-* [Chromium Embedded Framework](../developing/cef.md) — the camera-into-Meet pipeline (developer reference).

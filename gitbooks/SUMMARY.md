@@ -8,6 +8,7 @@
 
 ## Features
 
+* [The Mascot](features/mascot.md)
 * [Obsidian-Style Memory](features/obsidian-wiki/README.md)
   * [Memory Tree](features/obsidian-wiki/memory-tree.md)
   * [Auto-fetch from Integrations](features/obsidian-wiki/auto-fetch.md)
@@ -15,7 +16,7 @@
 * [Smart Token Compression](features/token-compression.md)
 * [Automatic Model Routing](features/model-routing/README.md)
   * [Local AI (optional)](features/model-routing/local-ai.md)
-* [Native Tools](features/native-tools/README.md)
+* [Available Tools](features/native-tools/README.md)
   * [Web Search](features/native-tools/web-search.md)
   * [Web Scraper](features/native-tools/web-scraper.md)
   * [Coder](features/native-tools/coder.md)
@@ -26,7 +27,6 @@
   * [Third-party Integrations](features/native-tools/integrations.md)
   * [Agent Coordination](features/native-tools/agent-coordination.md)
   * [System & Utilities](features/native-tools/system-and-utilities.md)
-* [The Mascot](features/mascot.md)
 * [Subconscious Loop](features/subconscious.md)
 * [Privacy & Security](features/privacy-and-security.md)
 * [Platform & Availability](features/platform.md)
