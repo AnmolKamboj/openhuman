@@ -73,7 +73,7 @@
 * [Memory Context Window](developing/memory-context-window.md)
 * [Memory Tree Pipeline](developing/memory-tree-pipeline.md)
 
-### Frontend (app/src/)
+## Frontend (app/src/)
 
 * [Overview](developing/frontend/README.md)
 * [Architecture](developing/frontend/architecture.md)
@@ -85,7 +85,7 @@
 * [Providers](developing/frontend/providers.md)
 * [Hooks & Utilities](developing/frontend/hooks-utils.md)
 
-### Tauri shell (app/src-tauri/)
+## Tauri shell (app/src-tauri/)
 
 * [Overview](developing/tauri-shell/README.md)
 * [Architecture](developing/tauri-shell/architecture.md)

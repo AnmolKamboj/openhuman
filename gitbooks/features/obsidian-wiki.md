@@ -1,11 +1,13 @@
 ---
 description: >-
- Every memory chunk also lives as a Markdown file in an Obsidian-compatible
- vault you can open and edit. Inspired by Karpathy's obsidian-wiki workflow.
+  Every memory chunk also lives as a Markdown file in an Obsidian-compatible
+  vault you can open and edit. Inspired by Karpathy's obsidian-wiki workflow.
 icon: book-open
 ---
 
 # Obsidian Wiki
+
+<figure><img src="../.gitbook/assets/image.png" alt=""><figcaption><p>A preview of the OpenHuman memory in Obsidian. Data from various sources (GMail, Slack, Whatsapp etc..) is organized as a memory tree.</p></figcaption></figure>
 
 OpenHuman's memory is not a black box. The same chunks the agent reasons over are written as plain `.md` files into a vault inside your workspace. You can open it in [Obsidian](https://obsidian.md), browse it, edit it, and link notes by hand — and the agent will see your edits.
 
@@ -35,9 +37,9 @@ Anything you put in `wiki/notes/` is fair game for ingest. The same pipeline tha
 
 This means you can:
 
-- Drop a meeting note in `wiki/notes/2026-05-08-board-call.md` and the agent will know the context tomorrow.
-- Maintain a file per project, per person, per ticker — the topic tree treats your manual notes as just another source.
-- Bulk-import an existing Obsidian vault: drop the `.md` files in and trigger ingest.
+* Drop a meeting note in `wiki/notes/2026-05-08-board-call.md` and the agent will know the context tomorrow.
+* Maintain a file per project, per person, per ticker — the topic tree treats your manual notes as just another source.
+* Bulk-import an existing Obsidian vault: drop the `.md` files in and trigger ingest.
 
 ## Why this matters
 
@@ -47,5 +49,5 @@ It's also the cleanest possible export: stop using OpenHuman tomorrow and you ke
 
 ## See also
 
-- [Memory Tree](memory-tree.md) — the pipeline that produces the vault.
-- [Auto-fetch from Integrations](auto-fetch.md) — how the vault grows on its own.
+* [Memory Tree](memory-tree.md) — the pipeline that produces the vault.
+* [Auto-fetch from Integrations](auto-fetch.md) — how the vault grows on its own.

@@ -1,27 +1,29 @@
 ---
 description: >-
- OpenHuman is a personal AI assistant that runs on your desktop, connects to
- 118+ services, and builds a local-first memory of your life from them.
+  OpenHuman is a personal AI assistant that runs on your desktop, connects to
+  118+ services, and builds a local-first memory of your life from them.
 icon: diamond
 ---
 
 # Welcome to OpenHuman
 
-OpenHuman is an open-source AI assistant designed to be the **memory** and **doer** for everything you do across your tools. Built on Rust + Tauri and licensed under GNU GPL3, it closes the gap between what AI models can do and what they actually know about *you*.
+<figure><img src=".gitbook/assets/Screenshot 2026-05-08 at 9.39.39 PM.png" alt=""><figcaption></figcaption></figure>
+
+OpenHuman is an open-source AI assistant designed to be the **memory** and **doer** for everything you do across your tools. Built on Rust + Tauri and licensed under GNU GPL3, it closes the gap between what AI models can do and what they actually know about _you_.
 
 Every model in the world — all 200+ of them — shares the same fundamental limitation: they are stateless. You type a prompt, get a response, and the context evaporates. Even the ones with "memory" store a few bullet points. A few bullet points is a sticky note, not intelligence.
 
 OpenHuman solves this with a stack that's calmly, deliberately different:
 
-**A local-first [Memory Tree](features/memory-tree.md).** Every source you connect — Gmail, Slack, GitHub, Notion, your own notes — flows through a deterministic pipeline: canonical Markdown, ≤3k-token chunks, scored, folded into per-source / per-topic / per-day summary trees. Stored in SQLite on your machine. No vector-soup black box.
+**A local-first** [**Memory Tree**](features/memory-tree.md)**.** Every source you connect — Gmail, Slack, GitHub, Notion, your own notes — flows through a deterministic pipeline: canonical Markdown, ≤3k-token chunks, scored, folded into per-source / per-topic / per-day summary trees. Stored in SQLite on your machine. No vector-soup black box.
 
-**An [Obsidian-style wiki](features/obsidian-wiki.md) on top of it.** The same chunks the agent reasons over land as `.md` files in a vault you can open in [Obsidian](https://obsidian.md), browse, edit, and link by hand. Inspired by [Karpathy's obsidian-wiki workflow](https://x.com/karpathy/status/2039805659525644595). You can't trust a memory you can't read.
+**An** [**Obsidian-style wiki**](features/obsidian-wiki.md) **on top of it.** The same chunks the agent reasons over land as `.md` files in a vault you can open in [Obsidian](https://obsidian.md), browse, edit, and link by hand. Inspired by [Karpathy's obsidian-wiki workflow](https://x.com/karpathy/status/2039805659525644595). You can't trust a memory you can't read.
 
-**[118+ third-party integrations](features/integrations.md), with [auto-fetch](features/auto-fetch.md).** One-click OAuth into Gmail, GitHub, Slack, Notion, Stripe, Calendar, Drive, Linear, Jira and more. Every five minutes, OpenHuman pulls fresh data from every active connection and folds it into the Memory Tree without you asking.
+[**118+ third-party integrations**](features/integrations.md)**, with** [**auto-fetch**](features/auto-fetch.md)**.** One-click OAuth into Gmail, GitHub, Slack, Notion, Stripe, Calendar, Drive, Linear, Jira and more. Every five minutes, OpenHuman pulls fresh data from every active connection and folds it into the Memory Tree without you asking.
 
 **An agent built for big data.** [Smart token compression (TokenJuice)](features/token-compression.md) compacts verbose tool output before it ever enters the model's context, so sweeping through your last six months of email costs single-digit dollars. [Automatic model routing](features/model-routing.md) sends each task to the right model — `hint:reasoning` to a frontier model, `hint:fast` to a cheap one, vision to vision — all under one subscription. Built-in [native tools](features/native-tools.md) cover web search, scraping, and a full filesystem/git/lint/test/grep coder loop.
 
-**[Native voice (ElevenLabs)](features/voice.md).** STT in, ElevenLabs TTS out, mascot lip-sync, and a live Google Meet agent that joins meetings, transcribes them into your Memory Tree, and can speak back into the call.
+[**Native voice (ElevenLabs)**](features/voice.md)**.** STT in, ElevenLabs TTS out, mascot lip-sync, and a live Google Meet agent that joins meetings, transcribes them into your Memory Tree, and can speak back into the call.
 
 Together, these turn OpenHuman into something fundamentally different from a chatbot. It is an AI agent that consumes large amounts of personal data at low cost, maintains a persistent and evolving understanding of your world, and takes proactive actions on your behalf.
 
@@ -33,17 +35,12 @@ OpenHuman is not AGI. But it is a meaningful architectural step closer, with bet
 
 OpenHuman connects to your tools, pulls from them continuously, and turns the firehose into something structured any AI can act on.
 
-It **fetches automatically** from every active integration every five minutes, so the agent already has tomorrow's context this morning.
-
-It **compresses** millions of tokens of organizational noise into a deterministic Memory Tree of chunks, scores, entities, and summaries.
-
-It **surfaces signals** that matter: decisions, action items, risks, sentiment shifts, and buried context you would otherwise miss.
-
-It **routes intelligently**, picking the right model for each task and compacting tool output through TokenJuice so cost stays minimal even at scale.
-
-It **speaks**, listens, and joins meetings — voice is a first-class surface, not an afterthought.
-
-It **preserves privacy** by design. The Memory Tree's SQLite database and your Obsidian vault stay on your machine. Integration tokens are held by the OpenHuman backend, not on disk in plaintext on your laptop.
+* It **fetches automatically** from every active integration every five minutes, so the agent already has tomorrow's context this morning.
+* It **compresses** millions of tokens of organizational noise into a deterministic Memory Tree of chunks, scores, entities, and summaries.
+* It **surfaces signals** that matter: decisions, action items, risks, sentiment shifts, and buried context you would otherwise miss.
+* It **routes intelligently**, picking the right model for each task and compacting tool output through TokenJuice so cost stays minimal even at scale.
+* It **speaks**, listens, and joins meetings — voice is a first-class surface, not an afterthought.
+* It **preserves privacy** by design. The Memory Tree's SQLite database and your Obsidian vault stay on your machine. Integration tokens are held by the OpenHuman backend, not on disk in plaintext on your laptop.
 
 ## Who it's for
 
