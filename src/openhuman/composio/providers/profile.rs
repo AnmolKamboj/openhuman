@@ -18,7 +18,10 @@
 //! RPC ops.
 
 use super::ProviderUserProfile;
-use crate::openhuman::memory::store::profile::{self, FacetType};
+use crate::openhuman::learning::candidate::{
+    self as learning_candidate, CueFamily, EvidenceRef, FacetClass, LearningCandidate,
+};
+use crate::openhuman::memory::store::profile::{self, FacetState, FacetType, UserState};
 use rusqlite::params;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -170,6 +173,28 @@ pub fn persist_provider_profile(profile: &ProviderUserProfile) -> usize {
             );
             continue;
         }
+
+        // Phase 3 (#566): also emit a LearningCandidate so the stability detector
+        // can score provider data alongside other evidence on the next rebuild.
+        // We use the `identity/` key prefix for provider identity fields.
+        if kind.is_matchable() {
+            let identity_key = format!("{}:{}", normalize_token(&toolkit), kind.as_str());
+            let candidate = LearningCandidate {
+                class: FacetClass::Identity,
+                key: identity_key,
+                value: value.clone(),
+                cue_family: CueFamily::Structural,
+                evidence: EvidenceRef::Provider {
+                    toolkit: toolkit.clone(),
+                    connection_id: identifier.clone(),
+                    field: kind.as_str().to_string(),
+                },
+                initial_confidence: kind.confidence(),
+                observed_at: now,
+            };
+            learning_candidate::global().push(candidate);
+        }
+
         written += 1;
     }
 
@@ -178,7 +203,7 @@ pub fn persist_provider_profile(profile: &ProviderUserProfile) -> usize {
             toolkit = %toolkit,
             identifier = %identifier,
             rows_written = written,
-            "[composio:profile] persisted identity rows"
+            "[composio:profile] persisted identity rows (+ emitted Identity candidates)"
         );
     }
     written

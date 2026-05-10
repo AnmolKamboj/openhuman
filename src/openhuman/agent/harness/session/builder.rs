@@ -762,6 +762,8 @@ impl Agent {
                 .add_section(Box::new(
                     crate::openhuman::learning::UserProfileSection::new(memory.clone()),
                 ));
+            // NOTE: MemoryAccessSection is added after tool-filtering so we can
+            // gate it on retrieval-tool visibility — see below.
             log::info!(
                 "[learning] prompt sections registered (user_reflections, learned_context, user_profile)"
             );
@@ -928,6 +930,35 @@ impl Agent {
                 .map(|t| t.name().to_string())
                 .collect(),
         };
+
+        // Phase 4 (#566): add the MemoryAccessSection bias instruction only
+        // when at least one retrieval tool is actually loaded AND survives
+        // filtering. We require both because:
+        //   - the tool may be filtered out by the agent's scope config
+        //   - the tool may not be registered at all on this agent (tool
+        //     listing is build-time configurable)
+        // An empty `visible` set means "no filter" (wildcard / orchestrator
+        // path); in that case any registered retrieval tool is reachable.
+        if config.learning.enabled {
+            let recall_tools = ["memory_recall", "memory_search"];
+            let has_retrieval = recall_tools.iter().any(|name| {
+                let registered = tools.iter().any(|t| t.name() == *name)
+                    || delegation_tools.iter().any(|t| t.name() == *name);
+                let allowed_by_filter = visible.is_empty() || visible.contains(*name);
+                registered && allowed_by_filter
+            });
+            if has_retrieval {
+                prompt_builder = prompt_builder
+                    .add_section(Box::new(crate::openhuman::learning::MemoryAccessSection));
+                log::debug!("[learning] memory_access prompt section registered");
+            } else {
+                log::debug!(
+                    "[learning] skipping MemoryAccessSection — neither memory_recall nor \
+                     memory_search is registered+visible for agent={agent_id}"
+                );
+            }
+        }
+
         // De-duplicate: some synthesised tool names may collide with
         // already-registered tools (unlikely for `delegate_*` names but
         // cheap to guard against).

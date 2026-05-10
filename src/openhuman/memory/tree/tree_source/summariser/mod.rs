@@ -142,7 +142,10 @@ pub fn build_summariser(config: &Config) -> Arc<dyn Summariser> {
         model
     );
     Arc::new(llm::LlmSummariser::new(
-        llm::LlmSummariserConfig { model },
+        llm::LlmSummariserConfig {
+            model,
+            structured_facet_extraction: true,
+        },
         provider,
     ))
 }

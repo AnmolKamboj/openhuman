@@ -9,6 +9,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
+use crate::core::event_bus::{publish_global, DomainEvent};
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::tree::canonicalize::{
     chat::{self, ChatBatch},
@@ -23,6 +24,7 @@ use crate::openhuman::memory::tree::score::{self, ScoreResult, ScoringConfig};
 use crate::openhuman::memory::tree::store;
 use crate::openhuman::memory::tree::types::SourceKind;
 use crate::openhuman::memory::tree::util::redact::redact;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Outcome of one ingest call.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -154,6 +156,25 @@ async fn persist(
     canonical: CanonicalisedSource,
 ) -> Result<IngestResult> {
     let source_kind_for_store = canonical.metadata.source_kind;
+
+    // Capture body_preview before the canonical markdown is moved into the chunker.
+    // For email and document sources: last ≤ 2 048 chars of the canonical markdown
+    // are enough for signature parsing and similar lightweight subscribers. Chat
+    // sources are conversational and have no trailing structure worth scanning, so
+    // they get body_preview = None.
+    let body_preview: Option<String> = match source_kind_for_store {
+        SourceKind::Email | SourceKind::Document => {
+            let md = &canonical.markdown;
+            let len = md.len();
+            Some(if len <= 2048 {
+                md.clone()
+            } else {
+                md[len - 2048..].to_string()
+            })
+        }
+        _ => None,
+    };
+
     let input = ChunkerInput {
         source_kind: canonical.metadata.source_kind,
         source_id: source_id.to_string(),
@@ -308,11 +329,34 @@ async fn persist(
 
     jobs::wake_workers();
 
+    let chunk_ids: Vec<String> = staged.iter().map(|s| s.chunk.id.clone()).collect();
+
+    // Emit DocumentCanonicalized so Phase 2 producers (e.g. email-signature parser)
+    // can react to new canonicalised content. Non-fatal: ingest has already succeeded.
+    // `source_kind_for_store` is Copy so it is still accessible here after the closure.
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64();
+    publish_global(DomainEvent::DocumentCanonicalized {
+        source_id: source_id.to_string(),
+        source_kind: source_kind_for_store.as_str().to_string(),
+        chunks_written: written,
+        chunk_ids: chunk_ids.clone(),
+        canonicalized_at: now_secs,
+        body_preview,
+    });
+    tracing::debug!(
+        "[memory::tree::ingest] published DocumentCanonicalized source_id={} chunks={}",
+        source_id,
+        written
+    );
+
     Ok(IngestResult {
         source_id: source_id.to_string(),
         chunks_written: written,
         chunks_dropped: dropped,
-        chunk_ids: staged.iter().map(|s| s.chunk.id.clone()).collect(),
+        chunk_ids,
         already_ingested: false,
     })
 }

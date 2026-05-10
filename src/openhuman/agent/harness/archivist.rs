@@ -6,14 +6,19 @@
 //! 2. Manages conversation segments (boundary detection + lifecycle).
 //! 3. On segment close: extracts events (heuristic) and updates user profile.
 //! 4. Extracts simple lessons from tool failures.
+//! 5. (Phase 1 / #566) Pipes the turn into the memory tree as `conversations:agent`
+//!    when `config.learning.chat_to_tree_enabled` is true.
 
 use crate::openhuman::agent::hooks::{PostTurnHook, TurnContext};
+use crate::openhuman::config::Config;
 use crate::openhuman::memory::store::events::{self, EventRecord, EventType};
 use crate::openhuman::memory::store::fts5::{self, EpisodicEntry};
 use crate::openhuman::memory::store::profile::{self, FacetType};
 use crate::openhuman::memory::store::segments::{
     self, BoundaryConfig, BoundaryDecision, ConversationSegment,
 };
+use crate::openhuman::memory::tree::canonicalize::chat::{ChatBatch, ChatMessage};
+use crate::openhuman::memory::tree::ingest;
 use async_trait::async_trait;
 use parking_lot::Mutex;
 use rusqlite::Connection;
@@ -31,16 +36,34 @@ pub struct ArchivistHook {
     enabled: bool,
     /// Boundary detection configuration.
     boundary_config: BoundaryConfig,
+    /// Optional runtime config — used to gate the tree-ingest path.
+    ///
+    /// When `None`, the tree-ingest path is skipped. Set via
+    /// [`ArchivistHook::with_config`] on the production path.
+    config: Option<Config>,
 }
 
 impl ArchivistHook {
     /// Create an Archivist hook with a shared SQLite connection.
+    ///
+    /// Tree-ingest is disabled by default; call [`Self::with_config`] to
+    /// enable it on the production path.
     pub fn new(conn: Arc<Mutex<Connection>>, enabled: bool) -> Self {
         Self {
             conn: Some(conn),
             enabled,
             boundary_config: BoundaryConfig::default(),
+            config: None,
         }
+    }
+
+    /// Attach runtime config so the archivist can gate the tree-ingest path.
+    ///
+    /// When `config.learning.chat_to_tree_enabled` is `true`, each completed
+    /// turn is also piped into the memory tree as `source="conversations:agent"`.
+    pub fn with_config(mut self, config: Config) -> Self {
+        self.config = Some(config);
+        self
     }
 
     /// Create a disabled/no-op Archivist (when FTS5 is not enabled).
@@ -49,6 +72,7 @@ impl ArchivistHook {
             conn: None,
             enabled: false,
             boundary_config: BoundaryConfig::default(),
+            config: None,
         }
     }
 
@@ -365,9 +389,171 @@ impl PostTurnHook for ArchivistHook {
             current_episodic_id,
         );
 
+        // ── Phase 1 / #566: pipe turn into the memory tree ───────────────────
+        // Gate: only when config is attached and chat_to_tree_enabled is true.
+        // Non-fatal: if tree-ingest fails, the episodic write already succeeded
+        // and the turn result is not affected.
+        if let Some(ref cfg) = self.config {
+            if cfg.learning.chat_to_tree_enabled {
+                tracing::debug!(
+                    "[archivist] piping turn into tree as conversations:agent session={}",
+                    session_id
+                );
+                self.pipe_turn_to_tree(cfg, ctx, session_id, timestamp)
+                    .await;
+            }
+        }
+
         tracing::debug!("[archivist] turn indexed successfully");
         Ok(())
     }
+}
+
+impl ArchivistHook {
+    /// Pipe the completed turn into the memory tree as `source="conversations:agent"`.
+    ///
+    /// Tool-call JSON is stripped from the assistant text before ingest — only
+    /// the assistant's prose response flows into the tree (memory ingestion
+    /// policy: tool outputs must not reach memory).
+    ///
+    /// Failures are logged and swallowed; the episodic write is the source of
+    /// truth.
+    async fn pipe_turn_to_tree(
+        &self,
+        config: &Config,
+        ctx: &TurnContext,
+        session_id: &str,
+        timestamp: f64,
+    ) {
+        use chrono::{TimeZone, Utc};
+
+        // Build turn timestamps. The assistant message is offset by 1ms as in
+        // the episodic write so ordering is stable.
+        let user_ts = Utc
+            .timestamp_opt(
+                timestamp as i64,
+                ((timestamp.fract() * 1e9) as u32).min(999_999_999),
+            )
+            .single()
+            .unwrap_or_else(Utc::now);
+        let asst_ts = Utc
+            .timestamp_opt(
+                (timestamp + 0.001) as i64,
+                (((timestamp + 0.001).fract() * 1e9) as u32).min(999_999_999),
+            )
+            .single()
+            .unwrap_or(user_ts);
+
+        // Strip tool-call JSON from the assistant response.
+        // Per memory ingestion policy, structured tool-call payloads must not
+        // flow into the tree — only the prose response is ingested.
+        let assistant_prose = strip_tool_calls_from_response(&ctx.assistant_response);
+
+        let batch = ChatBatch {
+            platform: "agent".into(),
+            channel_label: session_id.to_string(),
+            messages: vec![
+                ChatMessage {
+                    author: "user".into(),
+                    timestamp: user_ts,
+                    text: ctx.user_message.clone(),
+                    source_ref: Some(format!("agent://session/{session_id}")),
+                },
+                ChatMessage {
+                    author: "assistant".into(),
+                    timestamp: asst_ts,
+                    text: assistant_prose,
+                    source_ref: Some(format!("agent://session/{session_id}")),
+                },
+            ],
+        };
+
+        // Use the session_id as the owner / identity tag.
+        let source_id = "conversations:agent";
+        let owner = session_id;
+        let tags = vec!["agent_chat".to_string()];
+
+        match ingest::ingest_chat(config, source_id, owner, tags, batch).await {
+            Ok(result) => {
+                tracing::debug!(
+                    "[archivist] tree ingest ok: source_id={} chunks_written={} session={}",
+                    source_id,
+                    result.chunks_written,
+                    session_id
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "[archivist] tree ingest failed (non-fatal): source_id={} session={} error={e}",
+                    source_id,
+                    session_id
+                );
+            }
+        }
+    }
+}
+
+/// Strip tool-call JSON blocks from an assistant response, leaving only the
+/// prose text.
+///
+/// The archivist stores the full response (including `tool_calls_json`) in
+/// the episodic log for diagnostic purposes. However, per the memory
+/// ingestion policy, structured tool-call payloads must not reach the memory
+/// tree — only the assistant's natural-language prose is ingested.
+///
+/// This function applies a lightweight heuristic: it removes any contiguous
+/// spans of text that look like `<tool_call>…</tool_call>` XML/JSON blocks or
+/// raw JSON objects that begin with `{"tool_calls":`. The output may be empty
+/// if the entire response was tool-call markup — callers should handle that
+/// case (empty text → no-op ingest).
+fn strip_tool_calls_from_response(response: &str) -> String {
+    // Fast path: if the response contains no obvious tool-call markers, return
+    // it unchanged to avoid unnecessary allocation.
+    if !response.contains("<tool_call>")
+        && !response.contains("{\"tool_calls\"")
+        && !response.contains("\"tool_use\"")
+    {
+        return response.to_string();
+    }
+
+    // Remove XML-style tool-call blocks.
+    let mut cleaned = response.to_string();
+
+    // Strip <tool_call>…</tool_call> spans (may span multiple lines).
+    while let Some(start) = cleaned.find("<tool_call>") {
+        if let Some(end) = cleaned[start..].find("</tool_call>") {
+            cleaned.drain(start..start + end + "</tool_call>".len());
+        } else {
+            // Unclosed tag — remove from the tag to end of string.
+            cleaned.truncate(start);
+            break;
+        }
+    }
+
+    // Trim and collapse runs of blank lines left by block removal.
+    let trimmed = cleaned
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Collapse more than two consecutive newlines to two.
+    let mut result = String::with_capacity(trimmed.len());
+    let mut blank_run = 0usize;
+    for line in trimmed.lines() {
+        if line.is_empty() {
+            blank_run += 1;
+            if blank_run <= 2 {
+                result.push('\n');
+            }
+        } else {
+            blank_run = 0;
+            result.push_str(line);
+            result.push('\n');
+        }
+    }
+
+    result.trim().to_string()
 }
 
 /// Extract simple lessons from tool call outcomes (no LLM needed).

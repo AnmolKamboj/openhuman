@@ -6,12 +6,14 @@
 
 use crate::openhuman::agent::hooks::{PostTurnHook, TurnContext};
 use crate::openhuman::config::{Config, LearningConfig, ReflectionSource};
+use crate::openhuman::learning::candidate::{self, CueFamily, EvidenceRef, FacetClass};
 use crate::openhuman::memory::{Memory, MemoryCategory};
 use async_trait::async_trait;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Memory namespace + custom-category tag for explicit user reflections.
 ///
@@ -285,6 +287,105 @@ impl ReflectionHook {
         Ok(())
     }
 
+    /// Emit [`LearningCandidate`]s into the global buffer from a completed
+    /// reflection output. This runs after the existing KV memory writes so
+    /// backward compatibility is preserved.
+    ///
+    /// - Heuristic cues → `Goal` candidates (Explicit, confidence 0.85)
+    /// - LLM `user_preferences` entries → `Style` candidates (Behavioral, 0.7)
+    /// - LLM `user_reflections` entries → `Goal` candidates (Behavioral, 0.7)
+    fn emit_candidates_from_reflection(output: &ReflectionOutput, episodic_id: i64) {
+        let now = now_secs();
+        let buf = candidate::global();
+        let mut count = 0usize;
+
+        // user_preferences — coarse style candidates.
+        for (n, pref) in output.user_preferences.iter().enumerate() {
+            let pref = pref.trim();
+            if pref.is_empty() {
+                continue;
+            }
+            // Attempt cheap key=value parse first ("verbosity=terse").
+            let (key, value) = if let Some(eq_pos) = pref.find('=') {
+                let k = pref[..eq_pos].trim().to_string();
+                let v = pref[eq_pos + 1..].trim().to_string();
+                if !k.is_empty() && !v.is_empty() {
+                    (k, v)
+                } else {
+                    (format!("raw_pref_{n}"), pref.to_string())
+                }
+            } else {
+                (format!("raw_pref_{n}"), pref.to_string())
+            };
+
+            buf.push(crate::openhuman::learning::candidate::LearningCandidate {
+                class: FacetClass::Style,
+                key,
+                value,
+                cue_family: CueFamily::Behavioral,
+                evidence: EvidenceRef::Episodic { episodic_id },
+                initial_confidence: 0.70,
+                observed_at: now,
+            });
+            count += 1;
+        }
+
+        // user_reflections — explicit user self-statements, map to Goal.
+        for reflection in &output.user_reflections {
+            let trimmed = reflection.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let key = slugify_candidate(trimmed);
+            buf.push(crate::openhuman::learning::candidate::LearningCandidate {
+                class: FacetClass::Goal,
+                key,
+                value: trimmed.to_string(),
+                cue_family: CueFamily::Behavioral,
+                evidence: EvidenceRef::Episodic { episodic_id },
+                initial_confidence: 0.70,
+                observed_at: now,
+            });
+            count += 1;
+        }
+
+        if count > 0 {
+            log::debug!(
+                "[learning::reflection] emitted {} candidate(s) to buffer from reflection output",
+                count
+            );
+        }
+    }
+
+    /// Emit Goal candidates into the global buffer from heuristic cue sentences.
+    fn emit_candidates_from_cues(cues: &[String], episodic_id: i64) {
+        if cues.is_empty() {
+            return;
+        }
+        let now = now_secs();
+        let buf = candidate::global();
+        for cue in cues {
+            let trimmed = cue.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let key = slugify_candidate(trimmed);
+            buf.push(crate::openhuman::learning::candidate::LearningCandidate {
+                class: FacetClass::Goal,
+                key,
+                value: trimmed.to_string(),
+                cue_family: CueFamily::Explicit,
+                evidence: EvidenceRef::Episodic { episodic_id },
+                initial_confidence: 0.85,
+                observed_at: now,
+            });
+        }
+        log::debug!(
+            "[learning::reflection] emitted {} heuristic cue candidate(s) to buffer",
+            cues.len()
+        );
+    }
+
     /// Persist a single reflection sentence into the dedicated namespace.
     /// Public to the crate so the heuristic fast-path can reuse the same
     /// storage shape without going through the LLM round-trip.
@@ -423,9 +524,16 @@ impl PostTurnHook for ReflectionHook {
         // reflections like "remember that I prefer terse answers" are
         // promoted to the privileged reflection namespace without paying
         // for a reflection-LLM round-trip.
+        //
+        // Also emits Goal candidates to the learning buffer (Phase 2).
         if self.config.enabled {
-            for cue in extract_reflection_cues(&ctx.user_message) {
-                if let Err(e) = self.persist_reflection_deduped(&cue, &mut seen).await {
+            let cues = extract_reflection_cues(&ctx.user_message);
+            // Emit candidates before the KV persist so even a failed persist
+            // doesn't prevent the buffer from seeing the signal.
+            let episodic_id = crate::openhuman::learning::candidate::global().len() as i64;
+            Self::emit_candidates_from_cues(&cues, episodic_id);
+            for cue in &cues {
+                if let Err(e) = self.persist_reflection_deduped(cue, &mut seen).await {
                     log::warn!("[learning] failed to persist heuristic reflection: {e}");
                 }
             }
@@ -480,6 +588,12 @@ impl PostTurnHook for ReflectionHook {
             return Err(e);
         }
 
+        // Emit learning candidates from LLM output into the global buffer (Phase 2).
+        // Use the current buffer length as a synthetic episodic_id proxy — Phase 3
+        // will replace this with a real episodic_log row id.
+        let episodic_id = crate::openhuman::learning::candidate::global().len() as i64;
+        Self::emit_candidates_from_reflection(&output, episodic_id);
+
         // Persist LLM-extracted reflections through the shared dedupe
         // set so any sentence the heuristic already captured above is
         // not written twice. Failures here are logged but never roll
@@ -518,6 +632,19 @@ fn slugify(s: &str) -> String {
         })
         .take(40)
         .collect()
+}
+
+/// Slugify for candidate keys — same logic as `slugify` but named distinctly to
+/// clarify the caller's intent.
+fn slugify_candidate(s: &str) -> String {
+    slugify(s)
+}
+
+fn now_secs() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64()
 }
 
 #[cfg(test)]
