@@ -10,7 +10,7 @@
 * [Realtime Mascot](features/mascot/README.md)
   * [Meeting Agents](features/mascot/meeting-agents.md)
 * [Obsidian-Style Memory](features/obsidian-wiki/README.md)
-  * [Memory Tree](features/obsidian-wiki/memory-tree.md)
+  * [Memory Trees](features/obsidian-wiki/memory-tree.md)
   * [Auto-fetch from Integrations](features/obsidian-wiki/auto-fetch.md)
 * [Third-party Integrations (118+)](features/integrations/README.md)
   * [Triggers](features/integrations/triggers.md)

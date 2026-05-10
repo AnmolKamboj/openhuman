@@ -5,7 +5,9 @@ description: >-
 icon: tree
 ---
 
-# Memory Tree
+# Memory Trees
+
+<figure><img src="../../.gitbook/assets/image.png" alt=""><figcaption><p>The Memory Tree. A highly compressed view of all your documents.</p></figcaption></figure>
 
 The Memory Tree is OpenHuman's knowledge base. It is not a vector database with a thin "memory" wrapper. It is a deterministic, bucket-sealed pipeline that turns the messy stream of your day - chats, emails, documents, integration sync results - into structured, queryable, summary-backed Markdown that lives on your machine.
 
@@ -54,10 +56,10 @@ Retrieval can target any scope: search a single source, drill down a topic, or p
 
 Inside your workspace (default `~/.openhuman`, or whatever `OPENHUMAN_WORKSPACE` points at):
 
-| Path                    | What's there                                                    |
-| ----------------------- | --------------------------------------------------------------- |
-| `memory_tree/chunks.db` | Chunks, scores, summaries, entity index, jobs, hotness          |
-| `wiki/`                 | The Markdown vault - see [Obsidian Wiki](./)                    |
+| Path                    | What's there                                           |
+| ----------------------- | ------------------------------------------------------ |
+| `memory_tree/chunks.db` | Chunks, scores, summaries, entity index, jobs, hotness |
+| `wiki/`                 | The Markdown vault - see [Obsidian Wiki](./)           |
 
 Everything is local. Nothing about your raw data leaves your machine unless you explicitly send a chat message that includes it.
 
@@ -71,15 +73,9 @@ Vector stores answer "what is similar to this query?" Memory needs to answer mor
 
 Trees give you compression _and_ navigation. Embeddings still live inside so semantic search keeps working, but the structure on top is what makes the memory feel like a brain instead of a bag of fragments.
 
-## How the pipeline works
+## How the pipeline works?
 
-The user-facing pitch is simple: connect a source, the agent gets persistent memory of it. The pipeline that delivers on that pitch spans an HTTP-triggered ingest path, a durable job queue, a pool of background workers, three independent summary trees, and a daily UTC scheduler.
-
-The diagram below is the source of truth.
-
-{% file src="../../.gitbook/assets/memory-tree-pipeline (1).excalidraw" %}
-Memory Tree Async Pipeline - leaf ingestion → jobs queue → workers → source / topic / global tree building.
-{% endfile %}
+The user-facing pitch is simple: connect a source, the agent gets persistent memory of it. The pipeline that delivers on that pitch spans an HTTP-triggered ingest path, a durable job queue, a pool of background workers, three independent summary trees, and a daily UTC scheduler
 
 ### 1. Ingest
 
@@ -95,14 +91,14 @@ Three properties matter here:
 
 Follow-up work lands in a durable job queue (in the same on-disk store as the chunks). Each job carries a kind, a payload, a dedupe key, retry bookkeeping, and a scheduling window. The kinds:
 
-| Kind             | What it does                                                                                  |
-| ---------------- | --------------------------------------------------------------------------------------------- |
-| `extract_chunk`  | Deep score + entity extraction. Decides `admitted` vs `dropped`.                              |
-| `append_buffer`  | Adds an admitted leaf to the source (or topic) tree's L0 buffer. May trigger a seal.          |
-| `seal`           | Compresses an L0 buffer into an L1 summary; cascades up if the parent buffer is now full.     |
-| `topic_route`    | Routes a leaf into per-entity topic trees, gated by a hotness check.                          |
-| `digest_daily`   | Builds the global daily digest node.                                                          |
-| `flush_stale`    | Force-seals buffers that have been sitting too long.                                          |
+| Kind            | What it does                                                                              |
+| --------------- | ----------------------------------------------------------------------------------------- |
+| `extract_chunk` | Deep score + entity extraction. Decides `admitted` vs `dropped`.                          |
+| `append_buffer` | Adds an admitted leaf to the source (or topic) tree's L0 buffer. May trigger a seal.      |
+| `seal`          | Compresses an L0 buffer into an L1 summary; cascades up if the parent buffer is now full. |
+| `topic_route`   | Routes a leaf into per-entity topic trees, gated by a hotness check.                      |
+| `digest_daily`  | Builds the global daily digest node.                                                      |
+| `flush_stale`   | Force-seals buffers that have been sitting too long.                                      |
 
 ### 3. Workers
 
@@ -139,12 +135,6 @@ pending_extraction --> admitted --> buffered --> sealed
 
 This is why retrieval can show provenance without re-running the pipeline: the chunk row plus its terminal lifecycle status is enough.
 
-### Why a queue instead of in-process futures
-
-* **Crash safety.** A worker panic, a process kill, a power loss - none of them lose admitted-but-not-yet-sealed work. The next start picks up where the last one left off.
-* **Retries with backoff.** Per-job retries with attempt counts and scheduled re-runs, no ad-hoc retry loops in business logic.
-* **One throttle for LLM cost.** All summarization paths share a single semaphore.
-
 ## Triggering ingest
 
 * **Automatic** - every active integration is auto-fetched every twenty minutes; see [Auto-fetch](auto-fetch.md).
@@ -176,10 +166,3 @@ Open it from the bottom navigation bar.
 **Search & retrieval.** A search bar over the Memory Tree. Source-scoped, topic-scoped or global queries are all supported, and any result links back to the underlying chunk file in your Obsidian vault for full provenance.
 
 **Routing.** The Intelligence tab also surfaces which model the agent is using per task - see [Automatic Model Routing](../model-routing/).
-
-## See also
-
-* [Obsidian Wiki](./) - open the vault in Obsidian and edit it directly.
-* [Auto-fetch from Integrations](auto-fetch.md) - how the tree stays fresh.
-* [Smart Token Compression](../token-compression.md) - what makes ingesting "everything" cheap.
-* [Local AI (optional)](../model-routing/local-ai.md) - opt in to keep embeddings and summary-tree building on-device.

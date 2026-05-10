@@ -7,7 +7,7 @@ icon: book-open
 
 # Obsidian-Style Memory
 
-<figure><img src="../../.gitbook/assets/image.png" alt=""><figcaption><p>A preview of the OpenHuman memory in Obsidian. Data from various sources (GMail, Slack, Whatsapp etc..) is organized as a memory tree.</p></figcaption></figure>
+<figure><img src="../../.gitbook/assets/image (1).png" alt=""><figcaption><p>A preview of the OpenHuman memory in Obsidian. Data from various sources (GMail, Slack, Whatsapp etc..) is organized as a memory tree.</p></figcaption></figure>
 
 OpenHuman's memory is not a black box. The same chunks the agent reasons over are written as plain `.md` files into a vault inside your workspace. You can open it in [Obsidian](https://obsidian.md), browse it, edit it, and link notes by hand, and the agent will see your edits.
 
