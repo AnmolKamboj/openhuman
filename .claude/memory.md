@@ -143,6 +143,16 @@ Quick reference for anyone starting with Claude on this project. Updated by the 
 - **PR #745 (command palette) merged without its deps** — `@radix-ui/react-dialog`, `cmdk`, and `@testing-library/user-event` are missing from `package.json`. Install them if tsc fails after syncing main.
 - **Pre-push hooks fail on upstream lint warnings** — ESLint warns on `setState` in effects and unused `eslint-disable` directives inherited from upstream. Use `--no-verify` only when the lint errors are pre-existing upstream issues, not new code.
 
+## Mascot Native Window (macOS)
+
+- **Not a Tauri window** — The floating mascot is a native `NSPanel` + `WKWebView` in `app/src-tauri/src/mascot_native_window.rs`. It uses `ignoresMouseEvents=true` (click-through); interaction is detected by polling `NSEvent` via a Foundation timer. macOS-only, uses objc2 bindings.
+- **`MainThreadOnly` import must stay** — Required by `WKWebView::alloc()` and other AppKit allocators even if not explicitly referenced in user code. Removing it causes compile errors.
+- **`NSEvent::pressedMouseButtons` not in typed objc2-appkit bindings** — Must be called via `msg_send!(objc2::class!(NSEvent), pressedMouseButtons)` instead of the typed API.
+
+## PR Checklist CI
+
+- **N/A items need a checked checkbox** — `scripts/check-pr-checklist.mjs` requires `- [x] N/A: <reason>`. Using `- [ ] N/A:` (unchecked) fails the check even though the text starts with "N/A:".
+
 ## Environment
 
 - **Core sidecar port** — `7788` (default). Check with `lsof -i :7788`.
