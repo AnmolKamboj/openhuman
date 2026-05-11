@@ -898,6 +898,14 @@ impl Config {
                 _ => {}
             }
         }
+        if let Some(flag) = env.get("OPENHUMAN_LEARNING_TOOL_MEMORY_CAPTURE_ENABLED") {
+            if let Some(enabled) = parse_env_bool(
+                "OPENHUMAN_LEARNING_TOOL_MEMORY_CAPTURE_ENABLED",
+                flag.as_str(),
+            ) {
+                self.learning.tool_memory_capture_enabled = enabled;
+            }
+        }
         if let Some(source) = env.get("OPENHUMAN_LEARNING_REFLECTION_SOURCE") {
             let normalized = source.trim().to_ascii_lowercase();
             match normalized.as_str() {

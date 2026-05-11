@@ -207,6 +207,20 @@ const CAPABILITIES: &[Capability] = &[
         privacy: None,
     },
     Capability {
+        id: "intelligence.tool_scoped_memory",
+        name: "Tool-Scoped Memory Rules",
+        domain: "intelligence",
+        category: CapabilityCategory::Intelligence,
+        description: "Store durable, tool-specific rules and corrections that survive context \
+            compression. Critical-priority rules (e.g. 'never email Sarah') are pinned into the \
+            system prompt at session start. Captured automatically from user edicts and repeated \
+            tool failures; also writable programmatically via the memory.tool_rule_* RPC surface.",
+        how_to: "Automatic — user edicts are captured after every turn. Manage via \
+            memory.tool_rule_put / memory.tool_rule_list / memory.tool_rule_delete (RPC).",
+        status: CapabilityStatus::Beta,
+        privacy: LOCAL_RAW,
+    },
+    Capability {
         id: "intelligence.memory_tree_retrieval",
         name: "Memory Tree Retrieval (chat)",
         domain: "intelligence",

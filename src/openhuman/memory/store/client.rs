@@ -58,6 +58,15 @@ impl MemoryClient {
         std::sync::Arc::clone(&self.inner.conn)
     }
 
+    /// Returns an `Arc<dyn Memory>` handle backed by the same
+    /// [`UnifiedMemory`] this client wraps. Used by sub-systems that
+    /// want to build on top of the `Memory` trait (e.g. the
+    /// tool-scoped memory layer) without depending on the concrete
+    /// `MemoryClient` type or holding a reference to it.
+    pub fn memory_handle(&self) -> Arc<dyn crate::openhuman::memory::Memory> {
+        Arc::clone(&self.inner) as Arc<dyn crate::openhuman::memory::Memory>
+    }
+
     /// Create a new local memory client using the default `.openhuman` directory.
     ///
     /// # Errors

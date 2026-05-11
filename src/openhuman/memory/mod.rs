@@ -15,6 +15,7 @@ pub mod safety;
 pub mod schemas;
 pub mod store;
 pub mod sync_status;
+pub mod tool_memory;
 pub mod traits;
 pub mod tree;
 
@@ -39,6 +40,11 @@ pub use store::{
 pub use sync_status::{
     all_memory_sync_status_controller_schemas, all_memory_sync_status_registered_controllers,
     FreshnessLabel, MemorySyncStatus,
+};
+pub use tool_memory::{
+    render_tool_memory_rules, tool_memory_namespace, ToolMemoryCaptureHook, ToolMemoryPriority,
+    ToolMemoryRule, ToolMemoryRulesSection, ToolMemorySource, ToolMemoryStore, TOOL_MEMORY_HEADING,
+    TOOL_MEMORY_PROMPT_CAP,
 };
 pub use traits::{Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts};
 pub use tree::{
