@@ -1,6 +1,7 @@
 # Workflow docs (local only)
 workflow
 create_issue
+review_pr
 
 # Diagnostic harness output (scripts/diagnose-cef-runtime.mjs)
 diagnosis-*.json
