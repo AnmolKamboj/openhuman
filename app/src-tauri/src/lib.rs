@@ -888,7 +888,7 @@ fn setup_tray(app: &AppHandle<AppRuntime>) -> tauri::Result<()> {
             "tray_show_window" => {
                 log::info!("[tray] action=show_window source=menu");
                 if let Err(err) = show_main_window(app) {
-                    log::error!("[tray] failed to show main window from menu: {err}");
+                    log::warn!("[tray] failed to show main window from menu: {err}");
                 }
             }
             "tray_toggle_mascot" => {
@@ -916,7 +916,7 @@ fn setup_tray(app: &AppHandle<AppRuntime>) -> tauri::Result<()> {
             {
                 log::info!("[tray] action=show_window source=left_click");
                 if let Err(err) = show_main_window(tray.app_handle()) {
-                    log::error!("[tray] failed to show main window from tray click: {err}");
+                    log::warn!("[tray] failed to show main window from tray click: {err}");
                 }
             }
         })

@@ -196,7 +196,7 @@ async function getCoreRpcToken(): Promise<string | null> {
 }
 
 /**
- * Probe an arbitrary core RPC URL with `openhuman.ping`. Used by the
+ * Probe an arbitrary core RPC URL with `core.ping`. Used by the
  * Welcome page's "Test Connection" affordance to validate a user-entered
  * RPC URL without going through the cached `getCoreRpcUrl` resolution.
  *
@@ -221,7 +221,7 @@ export async function testCoreRpcConnection(
   return fetch(url, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'openhuman.ping', params: {} }),
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'core.ping', params: {} }),
   });
 }
 

@@ -423,7 +423,7 @@ describe('coreRpcClient', () => {
   });
 
   describe('testCoreRpcConnection', () => {
-    test('POSTs an openhuman.ping JSON-RPC envelope to the supplied URL', async () => {
+    test('POSTs a core.ping JSON-RPC envelope to the supplied URL', async () => {
       vi.resetModules();
       vi.mocked(isTauri).mockReturnValue(false);
       const { testCoreRpcConnection } = await import('../coreRpcClient');
@@ -440,7 +440,7 @@ describe('coreRpcClient', () => {
       expect(JSON.parse(requestInit.body as string)).toMatchObject({
         jsonrpc: '2.0',
         id: 1,
-        method: 'openhuman.ping',
+        method: 'core.ping',
         params: {},
       });
     });
