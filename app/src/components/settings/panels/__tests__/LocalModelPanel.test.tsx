@@ -217,7 +217,9 @@ describe('LocalModelPanel — usage flags', () => {
     const embeddingsLabel = await screen.findByText('Embeddings');
     const checkbox = embeddingsLabel.closest('label')?.querySelector('input[type="checkbox"]');
     expect(checkbox).toBeTruthy();
-    expect(checkbox as HTMLInputElement).not.toBeDisabled();
+    await waitFor(() => {
+      expect(checkbox as HTMLInputElement).not.toBeDisabled();
+    });
     fireEvent.click(checkbox as HTMLInputElement);
 
     await waitFor(() => {
