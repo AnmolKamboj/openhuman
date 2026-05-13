@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { triggerLocalAiAssetBootstrap } from '../../../utils/localAiBootstrap';
 import {
   formatBytes,
   formatEta,
@@ -11,6 +12,7 @@ import {
   type LocalAiDownloadsProgress,
   type LocalAiStatus,
   openhumanGetConfig,
+  openhumanLocalAiApplyPreset,
   openhumanLocalAiDownload,
   openhumanLocalAiDownloadAllAssets,
   openhumanLocalAiDownloadsProgress,
@@ -179,6 +181,52 @@ const LocalModelPanel = () => {
     }
   };
 
+  /**
+   * Install-Ollama entry point used by the locked tier picker and the
+   * runtime-status install CTA.
+   *
+   * Three preconditions need to be flipped before `download_all_models`
+   * will actually run on the core side:
+   *   - `runtime_enabled = true`   (cloud-fallback override off)
+   *   - `selected_tier`            (anything other than "disabled")
+   *   - `opt_in_confirmed = true`  (so bootstrap doesn't hard-override
+   *                                 to disabled in `config_with_recommended_tier_if_unselected`)
+   *
+   * `apply_preset(<real tier>)` sets all three in one save. We call it
+   * **unconditionally** here rather than going through
+   * `ensureRecommendedLocalAiPresetIfNeeded`, because that helper
+   * short-circuits when `selected_tier` is already set — which is exactly
+   * the case for users who previously picked "Disabled (cloud fallback)"
+   * and now want to switch on local AI. Without the explicit apply,
+   * runtime_enabled stays false, `download_all_models` returns
+   * `local ai is disabled`, the task marks the service degraded, and the
+   * UI silently bounces back to idle.
+   */
+  const triggerInstallWithRecommendedTier = async () => {
+    setIsTriggeringDownload(true);
+    setStatusError('');
+    setBootstrapMessage('');
+    try {
+      const presetsResult = presetsData ?? (await openhumanLocalAiPresets());
+      const tier = presetsResult.recommended_tier || 'ram_2_4gb';
+      if (tier === 'disabled') {
+        throw new Error('Cannot install Ollama for the "disabled" tier — pick a local tier first.');
+      }
+      await openhumanLocalAiApplyPreset(tier);
+      await triggerLocalAiAssetBootstrap(true);
+      await loadPresets();
+      const freshStatus = await openhumanLocalAiStatus();
+      setStatus(freshStatus.result);
+      setBootstrapMessage('Install started — Ollama and models are downloading');
+      setTimeout(() => setBootstrapMessage(''), 4000);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to start Ollama install';
+      setStatusError(message);
+    } finally {
+      setIsTriggeringDownload(false);
+    }
+  };
+
   return (
     <div>
       <SettingsHeader
@@ -195,6 +243,12 @@ const LocalModelPanel = () => {
           presetError={presetError}
           presetSuccess={presetSuccess}
           formatRamGb={formatRamGb}
+          ollamaAvailable={downloads?.ollama_available ?? true}
+          onTriggerOllamaInstall={() => void triggerInstallWithRecommendedTier()}
+          isTriggeringInstall={isTriggeringDownload}
+          installState={status?.state}
+          installWarning={status?.warning}
+          installError={status?.error_detail}
           onPresetApplied={result => {
             setPresetSuccess(result);
             void loadPresets();
@@ -202,76 +256,89 @@ const LocalModelPanel = () => {
           }}
         />
 
-        {/* Simplified download status */}
-        <section className="bg-stone-50 rounded-lg border border-stone-200 p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-stone-900">Model Status</h3>
+        {/*
+          Simplified Model Status — only meaningful AFTER Ollama is on disk.
+          Before that, every readout here ("idle"/"missing", Re-bootstrap
+          button, refresh) is noise: there's no runtime to inspect and the
+          right call-to-action is "Install Ollama" up top in the tier-picker
+          banner. Hide the whole section to keep the UI progressive:
+          1) Ollama missing            → only the install CTA (above)
+          2) Ollama installing         → CTA flips to blue progress (above)
+          3) Ollama installed onward   → this section appears with model state
+        */}
+        {(downloads?.ollama_available ?? true) && (
+          <section className="bg-stone-50 rounded-lg border border-stone-200 p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-stone-900">Model Status</h3>
 
-          <div className="text-sm text-stone-600">
-            State:{' '}
-            <span
-              className={`font-medium ${
-                currentState === 'ready'
-                  ? 'text-green-600'
-                  : currentState === 'downloading' || currentState === 'installing'
-                    ? 'text-primary-600'
-                    : currentState === 'degraded'
-                      ? 'text-amber-700'
-                      : 'text-stone-700'
-              }`}>
-              {currentState ?? 'unknown'}
-            </span>
-          </div>
-
-          {(currentState === 'downloading' || isInstalling) && (
-            <div className="space-y-2">
-              <div className="w-full h-2 rounded-full bg-stone-200 overflow-hidden">
-                {isIndeterminateDownload ? (
-                  <div className="h-full bg-primary-500 animate-pulse rounded-full w-1/2" />
-                ) : (
-                  <div
-                    className="h-full bg-primary-500 rounded-full transition-all"
-                    style={{ width: `${String(Math.min(progress ?? 0, 100))}%` }}
-                  />
-                )}
-              </div>
-              <div className="flex justify-between text-xs text-stone-500">
-                <span>
-                  {typeof downloadedBytes === 'number'
-                    ? `${formatBytes(downloadedBytes)}${typeof totalBytes === 'number' ? ` / ${formatBytes(totalBytes)}` : ''}`
-                    : ''}
-                </span>
-                <span>
-                  {typeof speedBps === 'number' && speedBps > 0 ? `${formatBytes(speedBps)}/s` : ''}
-                  {etaSeconds ? ` · ${formatEta(etaSeconds)}` : ''}
-                </span>
-              </div>
+            <div className="text-sm text-stone-600">
+              State:{' '}
+              <span
+                className={`font-medium ${
+                  currentState === 'ready'
+                    ? 'text-green-600'
+                    : currentState === 'downloading' || currentState === 'installing'
+                      ? 'text-primary-600'
+                      : currentState === 'degraded'
+                        ? 'text-amber-700'
+                        : 'text-stone-700'
+                }`}>
+                {currentState ?? 'unknown'}
+              </span>
             </div>
-          )}
 
-          {bootstrapMessage && <div className="text-xs text-green-700">{bootstrapMessage}</div>}
+            {(currentState === 'downloading' || isInstalling) && (
+              <div className="space-y-2">
+                <div className="w-full h-2 rounded-full bg-stone-200 overflow-hidden">
+                  {isIndeterminateDownload ? (
+                    <div className="h-full bg-primary-500 animate-pulse rounded-full w-1/2" />
+                  ) : (
+                    <div
+                      className="h-full bg-primary-500 rounded-full transition-all"
+                      style={{ width: `${String(Math.min(progress ?? 0, 100))}%` }}
+                    />
+                  )}
+                </div>
+                <div className="flex justify-between text-xs text-stone-500">
+                  <span>
+                    {typeof downloadedBytes === 'number'
+                      ? `${formatBytes(downloadedBytes)}${typeof totalBytes === 'number' ? ` / ${formatBytes(totalBytes)}` : ''}`
+                      : ''}
+                  </span>
+                  <span>
+                    {typeof speedBps === 'number' && speedBps > 0
+                      ? `${formatBytes(speedBps)}/s`
+                      : ''}
+                    {etaSeconds ? ` · ${formatEta(etaSeconds)}` : ''}
+                  </span>
+                </div>
+              </div>
+            )}
 
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => void triggerDownload(false)}
-              disabled={!runtimeEnabled || isTriggeringDownload}
-              className="rounded-lg border border-primary-400 bg-primary-50 px-3 py-2 text-sm text-primary-700 disabled:opacity-50">
-              {isTriggeringDownload ? 'Downloading…' : 'Download Models'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void loadStatus()}
-              className="rounded-lg border border-stone-300 bg-stone-100 px-3 py-2 text-sm text-stone-700">
-              Refresh
-            </button>
-          </div>
+            {bootstrapMessage && <div className="text-xs text-green-700">{bootstrapMessage}</div>}
 
-          {statusError && (
-            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-600">
-              {statusError}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void triggerDownload(false)}
+                disabled={!runtimeEnabled || isTriggeringDownload}
+                className="rounded-lg border border-primary-400 bg-primary-50 px-3 py-2 text-sm text-primary-700 disabled:opacity-50">
+                {isTriggeringDownload ? 'Downloading…' : 'Download Models'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void loadStatus()}
+                className="rounded-lg border border-stone-300 bg-stone-100 px-3 py-2 text-sm text-stone-700">
+                Refresh
+              </button>
             </div>
-          )}
-        </section>
+
+            {statusError && (
+              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-600">
+                {statusError}
+              </div>
+            )}
+          </section>
+        )}
 
         <section className="bg-stone-50 rounded-lg border border-stone-200 p-4 space-y-3">
           <div>
