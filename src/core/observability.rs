@@ -41,6 +41,7 @@ pub enum ExpectedErrorKind {
     ApiKeyMissing,
     NetworkUnreachable,
     TransientUpstreamHttp,
+    LocalAiBinaryMissing,
 }
 
 pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
@@ -56,6 +57,9 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     }
     if is_transient_upstream_http_message(&lower) {
         return Some(ExpectedErrorKind::TransientUpstreamHttp);
+    }
+    if lower.contains("binary not found") {
+        return Some(ExpectedErrorKind::LocalAiBinaryMissing);
     }
     None
 }
@@ -185,6 +189,21 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
                 operation = operation,
                 error = %message,
                 "[observability] {domain}.{operation} skipped transient upstream HTTP error: {message}"
+            );
+        }
+        ExpectedErrorKind::LocalAiBinaryMissing => {
+            // User-state condition: piper / whisper.cpp / Ollama binary
+            // isn't installed on this host. The error message itself is
+            // the user-facing instruction ("Set PIPER_BIN or install
+            // piper.") — Sentry has nothing to act on, since we can't
+            // install the binary for them. OPENHUMAN-TAURI-9N is the
+            // canonical instance: `local_ai_tts` fails immediately
+            // (elapsed_ms=1) on a Windows host without piper installed.
+            tracing::info!(
+                domain = domain,
+                operation = operation,
+                error = %message,
+                "[observability] {domain}.{operation} skipped expected local-ai binary-missing error: {message}"
             );
         }
     }
@@ -427,6 +446,61 @@ mod tests {
         // the canonical shape from `ops::api_error`.
         assert_eq!(
             expected_error_kind("see runbook for 504 handling at https://example.com/504"),
+            None
+        );
+    }
+
+    #[test]
+    fn classifies_local_ai_binary_missing_errors() {
+        // OPENHUMAN-TAURI-9N: `local_ai_tts` returns this exact string
+        // from `service::speech::tts` when piper isn't on PATH or
+        // `PIPER_BIN` isn't set.
+        assert_eq!(
+            expected_error_kind("piper binary not found. Set PIPER_BIN or install piper."),
+            Some(ExpectedErrorKind::LocalAiBinaryMissing)
+        );
+        // Sibling shapes from the same service area share the anchor and
+        // must classify the same way — the user-facing remediation is
+        // identical (install / configure the binary).
+        assert_eq!(
+            expected_error_kind(
+                "whisper.cpp binary not found. Set WHISPER_BIN or install whisper-cli."
+            ),
+            Some(ExpectedErrorKind::LocalAiBinaryMissing)
+        );
+        assert_eq!(
+            expected_error_kind(
+                "Ollama binary not found at '/usr/local/bin/ollama'. Provide a valid path to the ollama executable."
+            ),
+            Some(ExpectedErrorKind::LocalAiBinaryMissing)
+        );
+        assert_eq!(
+            expected_error_kind("Ollama installed but binary not found on system"),
+            Some(ExpectedErrorKind::LocalAiBinaryMissing)
+        );
+        // Wrapped by the RPC dispatcher in production:
+        //   `"rpc.invoke_method failed: piper binary not found. …"`.
+        // The classifier is substring-based, so caller context must not
+        // defeat it.
+        assert_eq!(
+            expected_error_kind(
+                "rpc.invoke_method failed: piper binary not found. Set PIPER_BIN or install piper."
+            ),
+            Some(ExpectedErrorKind::LocalAiBinaryMissing)
+        );
+    }
+
+    #[test]
+    fn does_not_classify_unrelated_messages_as_binary_missing() {
+        // Pin the anchor: messages that talk about binaries in a
+        // different context (download failures, version mismatches)
+        // must not be silenced.
+        assert_eq!(
+            expected_error_kind("piper binary failed to spawn: permission denied"),
+            None
+        );
+        assert_eq!(
+            expected_error_kind("whisper.cpp returned empty transcript"),
             None
         );
     }
