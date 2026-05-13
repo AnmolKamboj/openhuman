@@ -78,9 +78,42 @@ async fn wait_until_port_released(port: u16) {
     }
 }
 
+/// Regression test for issue #920 — the embedded server's `axum::serve`
+/// accept loop must stop within the cancellation timeout when its
+/// `CancellationToken` is fired.
+///
+/// **Ignored by default.** This test calls `run_server_embedded`,
+/// which triggers the full production bootstrap (`bootstrap_skill_runtime`
+/// → `register_domain_subscribers` → `scheduler_gate::init_global` +
+/// `memory::tree::jobs::start` + `composio::start_periodic_sync` +
+/// cron scheduler). Those code paths spawn detached `tokio::spawn`
+/// background tasks and write to several process-global statics
+/// (`STATE: OnceLock`, `SIGNED_OUT: AtomicBool`, `LLM_PERMITS`
+/// semaphore, `GLOBAL_REGISTRY` agent.run_turn handler, `STARTED`
+/// `std::sync::Once`s, …) — *none of which have teardown semantics*.
+/// In a unit-test binary the leaked tasks then race with every other
+/// test, multiplying CI wall time by 10–20× (PR #1552 thread). The
+/// right shape for this regression is an integration test in a
+/// dedicated `tests/` binary where global pollution doesn't affect
+/// siblings — tracked as a follow-up.
+///
+/// To run manually: `cargo test --lib -p openhuman -- --ignored
+/// shutdown_token`.
 #[tokio::test]
+#[ignore = "calls full server bootstrap; leaks process-global state into sibling tests (#1552). Re-cover via integration test."]
 async fn shutdown_token_stops_axum_listener_within_timeout() {
+    let _signed_out_restore = crate::openhuman::scheduler_gate::SignedOutTestGuard::set(false);
+
     let workspace = tempfile::tempdir().expect("workspace tempdir");
+
+    // Pin scheduler-gate policy to Aggressive while this test runs so
+    // the bootstrap's `init_global` snapshot can't capture transient
+    // CPU pressure and freeze the cached policy at Paused.
+    std::fs::write(
+        workspace.path().join("config.toml"),
+        "[scheduler_gate]\nmode = \"always_on\"\n",
+    )
+    .expect("seed scheduler_gate=always_on config.toml");
     let _env = EnvVarGuard::set_many(vec![
         (
             "OPENHUMAN_WORKSPACE",
