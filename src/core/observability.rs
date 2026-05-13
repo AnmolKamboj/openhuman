@@ -42,6 +42,7 @@ pub enum ExpectedErrorKind {
     NetworkUnreachable,
     TransientUpstreamHttp,
     LocalAiBinaryMissing,
+    LocalAiCapabilityUnavailable,
 }
 
 pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
@@ -60,6 +61,9 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     }
     if lower.contains("binary not found") {
         return Some(ExpectedErrorKind::LocalAiBinaryMissing);
+    }
+    if is_local_ai_capability_unavailable_message(&lower) {
+        return Some(ExpectedErrorKind::LocalAiCapabilityUnavailable);
     }
     None
 }
@@ -109,6 +113,27 @@ fn is_transient_upstream_http_message(lower: &str) -> bool {
     TRANSIENT_PROVIDER_HTTP_STATUSES
         .iter()
         .any(|code| lower.contains(&format!("api error ({code}")))
+}
+
+/// Detect "<capability> is disabled / unavailable for this RAM tier" errors
+/// emitted by the local-AI service when the user's hardware tier doesn't
+/// support a capability (OPENHUMAN-TAURI-3B: vision asset download invoked
+/// on a 0–4 GB tier). These are pure user-state conditions — the local-AI
+/// service surfaces them so the UI can prompt the user to switch tiers —
+/// and carry no remediable signal for Sentry.
+///
+/// The two canonical wire shapes today both contain `"for this ram tier"`:
+///
+/// - `"Vision is disabled for this RAM tier. Switch to the 4-8 GB tier or
+///   above to enable it."` — from `local_ai/service/assets.rs::ensure_capability_ready`
+/// - `"vision summaries are unavailable for this RAM tier. Use OCR-only
+///   summarization or switch to a higher local AI tier."` —
+///   from `local_ai/service/vision_embed.rs::summarize`
+///
+/// Anchor the classifier to that exact substring so an unrelated message
+/// that merely mentions "RAM tier" out of context is not silenced.
+fn is_local_ai_capability_unavailable_message(lower: &str) -> bool {
+    lower.contains("for this ram tier")
 }
 
 /// Capture an error to Sentry with structured tags.
@@ -204,6 +229,22 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
                 operation = operation,
                 error = %message,
                 "[observability] {domain}.{operation} skipped expected local-ai binary-missing error: {message}"
+            );
+        }
+        ExpectedErrorKind::LocalAiCapabilityUnavailable => {
+            // User-state condition: the local-AI service refused a
+            // capability (vision summarization, vision asset download)
+            // because the user's RAM tier doesn't support it. The
+            // error message itself is the user-facing remediation
+            // ("Switch to the 4-8 GB tier or above to enable it.") —
+            // Sentry has nothing to act on. OPENHUMAN-TAURI-3B: 28
+            // hits in 4 days from `local_ai_download_asset` on a
+            // 0–4 GB tier requesting vision.
+            tracing::info!(
+                domain = domain,
+                operation = operation,
+                error = %message,
+                "[observability] {domain}.{operation} skipped expected local-ai capability-unavailable error: {message}"
             );
         }
     }
@@ -335,6 +376,45 @@ mod tests {
         );
         assert_eq!(
             expected_error_kind("ollama embed failed with status 500"),
+            None
+        );
+    }
+
+    #[test]
+    fn classifies_local_ai_capability_unavailable_errors() {
+        // OPENHUMAN-TAURI-3B: surfaced by `local_ai_download_asset` when a
+        // user on a 0–4 GB RAM tier requests a vision asset. Both canonical
+        // wire shapes — emitted from `assets.rs` and `vision_embed.rs` —
+        // must classify as expected so they stop reaching Sentry.
+        for raw in [
+            "Vision is disabled for this RAM tier. Switch to the 4-8 GB tier or above to enable it.",
+            "vision summaries are unavailable for this RAM tier. Use OCR-only summarization or switch to a higher local AI tier.",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::LocalAiCapabilityUnavailable),
+                "should classify as local-ai capability unavailable: {raw}"
+            );
+        }
+
+        // Wrapped by the RPC dispatch layer as it reaches `report_error_or_expected`
+        // — the classifier is substring-based, so caller context must not defeat it.
+        assert_eq!(
+            expected_error_kind(
+                "rpc.invoke_method failed: Vision is disabled for this RAM tier. Switch to the 4-8 GB tier or above to enable it."
+            ),
+            Some(ExpectedErrorKind::LocalAiCapabilityUnavailable)
+        );
+    }
+
+    #[test]
+    fn does_not_classify_unrelated_messages_as_capability_unavailable() {
+        // The classifier anchors on the exact "for this RAM tier" substring.
+        // Messages that talk about RAM in a different context (sizing the
+        // tier list, doc references) must not be silenced.
+        assert_eq!(expected_error_kind("ollama embed failed: out of RAM"), None);
+        assert_eq!(
+            expected_error_kind("local_ai_set_ram_tier failed: invalid tier value"),
             None
         );
     }
