@@ -330,6 +330,15 @@ struct AppUpdateInfo {
     body: Option<String>,
 }
 
+fn no_app_update_available(current_version: String) -> AppUpdateInfo {
+    AppUpdateInfo {
+        current_version,
+        available: false,
+        available_version: None,
+        body: None,
+    }
+}
+
 /// Probe the updater endpoint and report whether a newer shell build is available.
 /// Does NOT download or install. Pair with `apply_app_update` to actually upgrade.
 #[tauri::command]
@@ -359,16 +368,13 @@ async fn check_app_update(app: tauri::AppHandle<AppRuntime>) -> Result<AppUpdate
         }
         Ok(None) => {
             log::info!("[app-update] no update available");
-            Ok(AppUpdateInfo {
-                current_version,
-                available: false,
-                available_version: None,
-                body: None,
-            })
+            Ok(no_app_update_available(current_version))
         }
         Err(e) => {
-            log::warn!("[app-update] check failed: {e}");
-            Err(format!("update check failed: {e}"))
+            log::warn!(
+                "[app-update] check failed; treating as no update available for this probe: {e}"
+            );
+            Ok(no_app_update_available(current_version))
         }
     }
 }
@@ -2517,6 +2523,16 @@ mod tests {
         // The type alias exists at module scope and is used throughout.
         fn _check_runtime<R: tauri::Runtime>() {}
         // _check_runtime::<AppRuntime>(); // Would require importing
+    }
+
+    #[test]
+    fn no_app_update_available_result_is_quiet_unavailable() {
+        let info = no_app_update_available("0.53.43".to_string());
+
+        assert_eq!(info.current_version, "0.53.43");
+        assert!(!info.available);
+        assert!(info.available_version.is_none());
+        assert!(info.body.is_none());
     }
 
     /// Verify tray logging patterns exist (grep-friendly)
