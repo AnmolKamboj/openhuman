@@ -3,6 +3,7 @@
 //! This module coordinates the routing of incoming requests to either the
 //! core subsystem or the OpenHuman domain-specific handlers.
 
+use crate::core::legacy_aliases::resolve_legacy;
 use crate::core::rpc_log;
 use crate::core::types::{AppState, InvocationResult};
 use serde_json::{json, Map, Value};
@@ -46,6 +47,25 @@ pub async fn dispatch(
         method,
         rpc_log::redact_params_for_log(&params)
     );
+
+    // Tier 0: Rewrite legacy method names to their canonical form before
+    // any subsystem lookup. Symmetric with the frontend's
+    // `normalizeRpcMethod` (`app/src/services/rpcMethods.ts`): the
+    // frontend rewrites outgoing names for clients that just updated, the
+    // core rewrites incoming names for clients that haven't yet. See
+    // `crate::core::legacy_aliases` for the shared table.
+    let resolved = resolve_legacy(method);
+    if resolved != method {
+        // Per-rewrite log at debug to keep the dispatcher hot path quiet
+        // at scale (per graycyrus review on PR #1544). Aggregate
+        // visibility belongs in the observability layer, not here.
+        log::debug!(
+            "[rpc-legacy-alias] rewrite method={} -> canonical={}",
+            method,
+            resolved
+        );
+    }
+    let method = resolved;
 
     // Tier 1: Internal core methods.
     // These are handled directly within the core module and don't require
@@ -206,6 +226,18 @@ mod tests {
         let out = dispatch(test_state(), "core.ping", json!({ "extra": 1 }))
             .await
             .expect("core.ping should ignore extra params");
+        assert_eq!(out, json!({ "ok": true }));
+    }
+
+    #[tokio::test]
+    async fn dispatch_rewrites_legacy_alias_before_lookup() {
+        // `openhuman.ping` is a legacy alias for `core.ping` in the shared
+        // alias table. Going through the dispatcher must rewrite it and
+        // route successfully to Tier 1 instead of falling through to the
+        // unknown-method error path.
+        let out = dispatch(test_state(), "openhuman.ping", json!({}))
+            .await
+            .expect("legacy alias openhuman.ping must resolve to core.ping");
         assert_eq!(out, json!({ "ok": true }));
     }
 
