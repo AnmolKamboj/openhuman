@@ -33,7 +33,24 @@ pub type Tag<'a> = (&'a str, &'a str);
 /// (`openhuman::providers::ops::should_report_provider_http_failure`) and the
 /// `before_send` filter (`is_transient_provider_http_failure`). Update here
 /// and both sites pick it up — keeps the two layers from drifting.
-pub const TRANSIENT_PROVIDER_HTTP_STATUSES: &[u16] = &[408, 429, 502, 503, 504];
+pub const TRANSIENT_PROVIDER_HTTP_STATUSES: &[u16] = &[408, 429, 502, 503, 504, 520];
+
+/// HTTP status codes that represent transient backend / integration transport
+/// failures rather than application bugs. Keep this as strings because Sentry
+/// tags are strings, and the before_send classifiers match tag values exactly.
+pub const TRANSIENT_HTTP_STATUSES: &[&str] = &["408", "429", "502", "503", "504", "520"];
+
+/// Transport-layer phrases observed from reqwest / hyper for temporary
+/// upstream interruptions. Keep these specific so rare configuration failures
+/// still reach Sentry.
+pub const TRANSIENT_TRANSPORT_PHRASES: &[&str] = &[
+    "timeout",
+    "operation timed out",
+    "connection forcibly closed",
+    "connection reset",
+    "tls handshake eof",
+    "error sending request",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExpectedErrorKind {
@@ -335,6 +352,102 @@ pub fn is_transient_provider_http_failure(event: &sentry::protocol::Event<'_>) -
     TRANSIENT_PROVIDER_HTTP_STATUSES.contains(&status_u16)
 }
 
+pub fn is_transient_http_status(status: &str) -> bool {
+    TRANSIENT_HTTP_STATUSES.contains(&status)
+}
+
+pub fn is_transient_http_status_code(status: u16) -> bool {
+    let status = status.to_string();
+    is_transient_http_status(status.as_str())
+}
+
+pub fn contains_transient_transport_phrase(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    TRANSIENT_TRANSPORT_PHRASES
+        .iter()
+        .any(|phrase| lower.contains(phrase))
+}
+
+fn event_has_transient_transport_phrase(event: &sentry::protocol::Event<'_>) -> bool {
+    event
+        .message
+        .as_deref()
+        .is_some_and(contains_transient_transport_phrase)
+        || event
+            .logentry
+            .as_ref()
+            .is_some_and(|log| contains_transient_transport_phrase(&log.message))
+        || event.exception.values.iter().any(|exception| {
+            exception
+                .value
+                .as_deref()
+                .is_some_and(contains_transient_transport_phrase)
+        })
+}
+
+fn is_transient_domain_failure(event: &sentry::protocol::Event<'_>, domain: &str) -> bool {
+    let tags = &event.tags;
+    if tags.get("domain").map(String::as_str) != Some(domain) {
+        return false;
+    }
+
+    match tags.get("failure").map(String::as_str) {
+        Some("non_2xx") => tags
+            .get("status")
+            .is_some_and(|status| is_transient_http_status(status)),
+        Some("transport") => event_has_transient_transport_phrase(event),
+        _ => false,
+    }
+}
+
+/// Transient backend API failures (gateway hiccups, scheduled downtime).
+/// Match by event tags written by report_error at the authed_json call site.
+pub fn is_transient_backend_api_failure(event: &sentry::protocol::Event<'_>) -> bool {
+    is_transient_domain_failure(event, "backend_api")
+}
+
+/// Transient integrations / Composio failures (timeout, connection reset,
+/// gateway hiccups).
+pub fn is_transient_integrations_failure(event: &sentry::protocol::Event<'_>) -> bool {
+    is_transient_domain_failure(event, "integrations")
+}
+
+/// String tokens that mark a formatted error message as a transient HTTP
+/// failure. Used at upstream emit sites (`rpc.invoke_method`,
+/// `web_channel.run_chat_task`) where the error has already been stringified
+/// and the original `status` / `failure` tag context is gone.
+///
+/// Each token combines a status code with a non-numeric anchor (parenthesis
+/// or canonical reason phrase) so bare numeric coincidences ("process 502
+/// exited") do not match.
+const TRANSIENT_STATUS_MESSAGE_TOKENS: &[&str] = &[
+    "(408 ",
+    "(429 ",
+    "(502 ",
+    "(503 ",
+    "(504 ",
+    "(520 ",
+    "408 request timeout",
+    "429 too many requests",
+    "502 bad gateway",
+    "503 service unavailable",
+    "504 gateway timeout",
+    "520 <unknown status code>",
+];
+
+/// Returns true when a formatted error message describes a transient HTTP
+/// or transport-layer failure that has already been demoted further down the
+/// stack. Use at upstream re-emit sites (`rpc.invoke_method`,
+/// `web_channel.run_chat_task`) where `report_error` is called with the
+/// stringified downstream error and no `failure` / `status` tag context.
+pub fn is_transient_message_failure(msg: &str) -> bool {
+    let lower = msg.to_ascii_lowercase();
+    TRANSIENT_STATUS_MESSAGE_TOKENS
+        .iter()
+        .any(|token| lower.contains(token))
+        || contains_transient_transport_phrase(&lower)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -607,6 +720,15 @@ mod tests {
         event
     }
 
+    fn event_with_tags_and_message(
+        pairs: &[(&str, &str)],
+        message: &str,
+    ) -> sentry::protocol::Event<'static> {
+        let mut event = event_with_tags(pairs);
+        event.message = Some(message.to_string());
+        event
+    }
+
     #[test]
     fn transient_filter_drops_429_408_502_503_504() {
         for status in ["429", "408", "502", "503", "504"] {
@@ -686,6 +808,181 @@ mod tests {
             !is_transient_provider_http_failure(&event),
             "non-provider domain must surface even if failure/status tags collide"
         );
+    }
+
+    #[test]
+    fn backend_api_filter_drops_transient_statuses() {
+        for status in TRANSIENT_HTTP_STATUSES {
+            let event = event_with_tags(&[
+                ("domain", "backend_api"),
+                ("failure", "non_2xx"),
+                ("status", status),
+            ]);
+            assert!(
+                is_transient_backend_api_failure(&event),
+                "backend status {status} must be classified as transient"
+            );
+        }
+    }
+
+    #[test]
+    fn backend_api_filter_drops_transient_transport_phrases() {
+        for phrase in TRANSIENT_TRANSPORT_PHRASES {
+            let event = event_with_tags_and_message(
+                &[("domain", "backend_api"), ("failure", "transport")],
+                &format!("GET /teams failed: {phrase}"),
+            );
+            assert!(
+                is_transient_backend_api_failure(&event),
+                "backend transport phrase {phrase} must be classified as transient"
+            );
+        }
+    }
+
+    #[test]
+    fn backend_api_filter_keeps_non_transient_failures() {
+        for status in ["404", "500"] {
+            let event = event_with_tags(&[
+                ("domain", "backend_api"),
+                ("failure", "non_2xx"),
+                ("status", status),
+            ]);
+            assert!(
+                !is_transient_backend_api_failure(&event),
+                "backend status {status} must stay visible"
+            );
+        }
+
+        let wrong_domain = event_with_tags(&[
+            ("domain", "scheduler"),
+            ("failure", "non_2xx"),
+            ("status", "503"),
+        ]);
+        assert!(
+            !is_transient_backend_api_failure(&wrong_domain),
+            "domain scoping must keep unrelated transient-shaped events visible"
+        );
+
+        let non_matching_transport = event_with_tags_and_message(
+            &[("domain", "backend_api"), ("failure", "transport")],
+            "GET /teams failed: certificate verify failed",
+        );
+        assert!(
+            !is_transient_backend_api_failure(&non_matching_transport),
+            "transport failures without an allowlisted phrase must stay visible"
+        );
+    }
+
+    #[test]
+    fn integrations_filter_drops_transient_statuses() {
+        for status in TRANSIENT_HTTP_STATUSES {
+            let event = event_with_tags(&[
+                ("domain", "integrations"),
+                ("failure", "non_2xx"),
+                ("status", status),
+            ]);
+            assert!(
+                is_transient_integrations_failure(&event),
+                "integrations status {status} must be classified as transient"
+            );
+        }
+    }
+
+    #[test]
+    fn integrations_filter_drops_transient_transport_phrases() {
+        for phrase in TRANSIENT_TRANSPORT_PHRASES {
+            let event = event_with_tags_and_message(
+                &[("domain", "integrations"), ("failure", "transport")],
+                &format!("GET /agent-integrations/tools failed: {phrase}"),
+            );
+            assert!(
+                is_transient_integrations_failure(&event),
+                "integrations transport phrase {phrase} must be classified as transient"
+            );
+        }
+    }
+
+    #[test]
+    fn integrations_filter_keeps_non_transient_failures() {
+        for status in ["404", "500"] {
+            let event = event_with_tags(&[
+                ("domain", "integrations"),
+                ("failure", "non_2xx"),
+                ("status", status),
+            ]);
+            assert!(
+                !is_transient_integrations_failure(&event),
+                "integrations status {status} must stay visible"
+            );
+        }
+
+        let wrong_domain = event_with_tags(&[
+            ("domain", "composio"),
+            ("failure", "non_2xx"),
+            ("status", "503"),
+        ]);
+        assert!(
+            !is_transient_integrations_failure(&wrong_domain),
+            "domain scoping must keep composio-tagged events visible"
+        );
+
+        let non_matching_transport = event_with_tags_and_message(
+            &[("domain", "integrations"), ("failure", "transport")],
+            "GET /agent-integrations/tools failed: invalid certificate",
+        );
+        assert!(
+            !is_transient_integrations_failure(&non_matching_transport),
+            "transport failures without an allowlisted phrase must stay visible"
+        );
+    }
+
+    #[test]
+    fn message_failure_classifier_matches_canonical_status_phrases() {
+        for msg in [
+            "rpc.invoke_method failed: GET /teams failed (502 Bad Gateway)",
+            "GET /teams/me/usage failed (503 Service Unavailable)",
+            "downstream returned (504 Gateway Timeout): retry budget exhausted",
+            "OpenHuman API error (520 <unknown status code>): cf",
+            "POST /channels/telegram/typing failed (429 Too Many Requests)",
+            "auth connect failed: 503 Service Unavailable",
+        ] {
+            assert!(
+                is_transient_message_failure(msg),
+                "{msg:?} must be classified as transient"
+            );
+        }
+    }
+
+    #[test]
+    fn message_failure_classifier_matches_transport_phrases() {
+        for msg in [
+            "integrations.get failed: composio/tools → operation timed out",
+            "GET https://api.example.com → connection forcibly closed (os 10054)",
+            "POST /v1/foo → tls handshake eof",
+            "error sending request for url (https://api.example.com)",
+        ] {
+            assert!(
+                is_transient_message_failure(msg),
+                "{msg:?} must be classified as transient"
+            );
+        }
+    }
+
+    #[test]
+    fn message_failure_classifier_keeps_unrelated_messages() {
+        for msg in [
+            "rpc.invoke_method failed: schema validation error",
+            "process 502 exited unexpectedly",
+            "GET /teams failed (404 Not Found)",
+            "GET /teams failed (500 Internal Server Error)",
+            "unrelated error with port 5023",
+            "",
+        ] {
+            assert!(
+                !is_transient_message_failure(msg),
+                "{msg:?} must not be classified as transient"
+            );
+        }
     }
 
     #[test]
