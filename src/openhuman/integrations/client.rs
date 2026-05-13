@@ -101,7 +101,13 @@ impl IntegrationClient {
                     chain.push_str(&s.to_string());
                     src = s.source();
                 }
-                crate::core::observability::report_error(
+                // Use `report_error_or_expected` so transport-level shapes
+                // ("error sending request for url", "tls handshake eof",
+                // "connection refused/reset", …) are classified as
+                // `NetworkUnreachable` and skip Sentry — user-environment
+                // problems (VPN drop, captive portal, ISP block, TLS MITM)
+                // that no retry on our side can resolve (OPENHUMAN-TAURI-2G).
+                crate::core::observability::report_error_or_expected(
                     chain.as_str(),
                     "integrations",
                     "post",
@@ -165,7 +171,11 @@ impl IntegrationClient {
                     chain.push_str(&s.to_string());
                     src = s.source();
                 }
-                crate::core::observability::report_error(
+                // Mirrors the post() transport site — classify reqwest
+                // transport-level failures as NetworkUnreachable so they
+                // skip Sentry. OPENHUMAN-TAURI-2G: TLS handshake EOF
+                // against api.tinyhumans.ai from a SG user.
+                crate::core::observability::report_error_or_expected(
                     chain.as_str(),
                     "integrations",
                     "get",
