@@ -28,6 +28,13 @@ pub struct Config {
     pub workspace_dir: PathBuf,
     #[serde(skip)]
     pub config_path: PathBuf,
+    /// Workspace data-schema version. Bumped each time a one-shot data
+    /// migration under [`crate::openhuman::migrations`] runs successfully.
+    /// `#[serde(default)]` so existing `config.toml` files (which predate
+    /// the field) load as version `0` and pick up pending migrations on
+    /// the first launch of the new build.
+    #[serde(default)]
+    pub schema_version: u32,
     pub api_url: Option<String>,
     pub api_key: Option<String>,
     /// Custom LLM inference endpoint (OpenAI-compatible). When set together
@@ -272,6 +279,7 @@ impl Default for Config {
         Self {
             workspace_dir: openhuman_dir.join("workspace"),
             config_path: openhuman_dir.join("config.toml"),
+            schema_version: 0,
             api_url: None,
             api_key: None,
             inference_url: None,
