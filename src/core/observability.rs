@@ -59,6 +59,7 @@ pub enum ExpectedErrorKind {
     NetworkUnreachable,
     TransientUpstreamHttp,
     LocalAiBinaryMissing,
+    BackendUserError,
     LocalAiCapabilityUnavailable,
 }
 
@@ -78,6 +79,9 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     }
     if lower.contains("binary not found") {
         return Some(ExpectedErrorKind::LocalAiBinaryMissing);
+    }
+    if is_backend_user_error_message(&lower) {
+        return Some(ExpectedErrorKind::BackendUserError);
     }
     if is_local_ai_capability_unavailable_message(&lower) {
         return Some(ExpectedErrorKind::LocalAiCapabilityUnavailable);
@@ -130,6 +134,46 @@ fn is_transient_upstream_http_message(lower: &str) -> bool {
     TRANSIENT_PROVIDER_HTTP_STATUSES
         .iter()
         .any(|code| lower.contains(&format!("api error ({code}")))
+}
+
+/// Detect non-2xx HTTP failures returned from the backend integrations / composio
+/// clients that are by definition user-input or user-auth-state problems — not
+/// bugs Sentry can act on.
+///
+/// The canonical wire format from
+/// [`crate::openhuman::integrations::client::IntegrationClient::post`] / `get`
+/// and [`crate::openhuman::composio::client::ComposioClient`] is:
+/// `"Backend returned <status> <reason> for <METHOD> <url>: <detail>"` — e.g.
+/// `"Backend returned 400 Bad Request for POST https://api.tinyhumans.ai/agent-integrations/composio/authorize: Composio authorization failed: 400 …"`
+/// (OPENHUMAN-TAURI-BC: user submitted SharePoint authorize without filling in
+/// the required Tenant Name field). The backend correctly returned a 4xx; the
+/// UI already surfaces the structured error to the user via toast — Sentry has
+/// no remediation path because the request was malformed *by the user's
+/// input*, not by our code.
+///
+/// We pin the match to the `"backend returned "` prefix so an unrelated
+/// message merely mentioning "400" (a log line, doc URL) is not silenced.
+///
+/// We classify only 4xx codes, with **two exclusions**:
+/// - `408 Request Timeout` and `429 Too Many Requests` are *transient* — they
+///   are surfaced via [`is_transient_upstream_http_message`] for the provider
+///   path and stay actionable for the backend path so a sustained 429 (rate
+///   limit cliff) still pages.
+///
+/// 5xx is intentionally **not** classified here — server-side failures from
+/// our backend are real bugs that should reach Sentry. The transient
+/// 502/503/504 deduplication is handled by the threshold logic in callers
+/// (see e.g. `openhuman::socket::ws_loop::FAIL_ESCALATE_THRESHOLD`).
+fn is_backend_user_error_message(lower: &str) -> bool {
+    let Some(rest) = lower.split_once("backend returned ").map(|(_, r)| r) else {
+        return false;
+    };
+    let status_digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    let Ok(status) = status_digits.parse::<u16>() else {
+        return false;
+    };
+    // 4xx (except transient 408 / 429 which are handled separately).
+    matches!(status, 400..=499) && status != 408 && status != 429
 }
 
 /// Detect "<capability> is disabled / unavailable for this RAM tier" errors
@@ -246,6 +290,19 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
                 operation = operation,
                 error = %message,
                 "[observability] {domain}.{operation} skipped expected local-ai binary-missing error: {message}"
+            );
+        }
+        ExpectedErrorKind::BackendUserError => {
+            // 4xx from the integrations / composio backend client —
+            // user-input or auth-state failure that the backend already
+            // surfaced to the user via the structured error toast.
+            // OPENHUMAN-TAURI-BC: SharePoint authorize 400 because the
+            // user didn't fill in the required Tenant Name field.
+            tracing::warn!(
+                domain = domain,
+                operation = operation,
+                error = %message,
+                "[observability] {domain}.{operation} skipped expected backend user-error response: {message}"
             );
         }
         ExpectedErrorKind::LocalAiCapabilityUnavailable => {
@@ -668,6 +725,89 @@ mod tests {
         assert_eq!(
             expected_error_kind("see runbook for 504 handling at https://example.com/504"),
             None
+        );
+    }
+
+    #[test]
+    fn classifies_backend_user_error_responses() {
+        // OPENHUMAN-TAURI-BC: SharePoint authorize 400 because the user
+        // didn't fill in the required Tenant Name field. The exact wire
+        // shape `IntegrationClient::post` builds — must classify as
+        // expected so the Sentry event is suppressed.
+        let bc = "Backend returned 400 Bad Request for POST \
+                  https://api.tinyhumans.ai/agent-integrations/composio/authorize: \
+                  Composio authorization failed: 400 \
+                  {\"error\":{\"message\":\"Missing required fields: Tenant Name\",\
+                  \"slug\":\"ConnectedAccount_MissingRequiredFields\",\"status\":400}}";
+        assert_eq!(
+            expected_error_kind(bc),
+            Some(ExpectedErrorKind::BackendUserError),
+            "OPENHUMAN-TAURI-BC wire shape must classify"
+        );
+
+        // Cover the rest of the 4xx surface produced by integrations /
+        // composio clients — all user-input / auth-state failures that
+        // Sentry can't action.
+        for raw in [
+            "Backend returned 400 Bad Request for POST https://api.example.com/x: bad input",
+            "Backend returned 401 Unauthorized for GET https://api.example.com/x: token expired",
+            "Backend returned 403 Forbidden for GET https://api.example.com/x: permission denied",
+            "Backend returned 404 Not Found for GET https://api.example.com/x: missing",
+            "Backend returned 422 Unprocessable Entity for POST https://api.example.com/x: validation failed",
+            "Backend returned 451 Unavailable for Legal Reasons for GET https://api.example.com/x: blocked",
+            // Lowercased context wrapping is irrelevant — substring match is case-insensitive.
+            "[observability] integrations.post failed: Backend returned 400 Bad Request for POST https://api.tinyhumans.ai/x: detail",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::BackendUserError),
+                "must classify as backend user-error: {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn does_not_classify_transient_or_server_backend_errors_as_user_error() {
+        // 408 / 429 are transient — they belong to the
+        // upstream-transient bucket (or are retried at the caller), not
+        // the user-error bucket. A sustained 429 (rate limit cliff) MUST
+        // still surface so we can react.
+        for raw in [
+            "Backend returned 408 Request Timeout for POST https://api.example.com/x: timeout",
+            "Backend returned 429 Too Many Requests for POST https://api.example.com/x: slow down",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                None,
+                "transient 4xx must NOT be classified as user-error: {raw}"
+            );
+        }
+
+        // 5xx is always actionable — server bugs need to reach Sentry.
+        for raw in [
+            "Backend returned 500 Internal Server Error for POST https://api.example.com/x: oops",
+            "Backend returned 502 Bad Gateway for POST https://api.example.com/x: upstream down",
+            "Backend returned 503 Service Unavailable for POST https://api.example.com/x: maintenance",
+            "Backend returned 504 Gateway Timeout for POST https://api.example.com/x: slow upstream",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                None,
+                "5xx must NOT be classified as user-error: {raw}"
+            );
+        }
+
+        // A free-form message that mentions "400" but doesn't follow the
+        // `Backend returned <status>` prefix from the integrations /
+        // composio clients must not be silenced.
+        assert_eq!(
+            expected_error_kind("see HTTP 400 specification at https://example.com/400"),
+            None
+        );
+        assert_eq!(
+            expected_error_kind("OpenAI API error (400): bad request"),
+            None,
+            "provider-formatted 4xx must keep going through the provider classifier path"
         );
     }
 

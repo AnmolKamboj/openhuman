@@ -121,27 +121,23 @@ impl IntegrationClient {
             let body_text = resp.text().await.unwrap_or_default();
             let detail = extract_error_detail(&body_text, MAX_ERROR_BODY_LEN);
             let status_str = status.as_u16().to_string();
-            if crate::core::observability::is_transient_http_status_code(status.as_u16()) {
-                tracing::warn!(
-                    domain = "integrations",
-                    operation = "post",
-                    path = path,
-                    status = status_str.as_str(),
-                    failure = "non_2xx",
-                    "[integrations] transient {status} for POST {url}: {detail}",
-                );
-            } else {
-                crate::core::observability::report_error(
-                    format!("Backend returned {status} for POST {url}: {detail}").as_str(),
-                    "integrations",
-                    "post",
-                    &[
-                        ("path", path),
-                        ("status", status_str.as_str()),
-                        ("failure", "non_2xx"),
-                    ],
-                );
-            }
+            // Route through `report_error_or_expected` so 4xx user-input /
+            // auth-state failures (e.g. OPENHUMAN-TAURI-BC: SharePoint
+            // authorize 400 because the user didn't fill in the required
+            // Tenant Name field) demote to a warn breadcrumb instead of
+            // firing a Sentry event. 5xx and non-transient 4xx still
+            // surface — see `is_backend_user_error_message` for the exact
+            // status set classified as expected.
+            crate::core::observability::report_error_or_expected(
+                format!("Backend returned {status} for POST {url}: {detail}").as_str(),
+                "integrations",
+                "post",
+                &[
+                    ("path", path),
+                    ("status", status_str.as_str()),
+                    ("failure", "non_2xx"),
+                ],
+            );
             anyhow::bail!("Backend returned {status} for POST {url}: {detail}");
         }
 
@@ -200,27 +196,20 @@ impl IntegrationClient {
             let body_text = resp.text().await.unwrap_or_default();
             let detail = extract_error_detail(&body_text, MAX_ERROR_BODY_LEN);
             let status_str = status.as_u16().to_string();
-            if crate::core::observability::is_transient_http_status_code(status.as_u16()) {
-                tracing::warn!(
-                    domain = "integrations",
-                    operation = "get",
-                    path = path,
-                    status = status_str.as_str(),
-                    failure = "non_2xx",
-                    "[integrations] transient {status} for GET {url}: {detail}",
-                );
-            } else {
-                crate::core::observability::report_error(
-                    format!("Backend returned {status} for GET {url}: {detail}").as_str(),
-                    "integrations",
-                    "get",
-                    &[
-                        ("path", path),
-                        ("status", status_str.as_str()),
-                        ("failure", "non_2xx"),
-                    ],
-                );
-            }
+            // Mirrors the post() site — see OPENHUMAN-TAURI-BC. 4xx
+            // user-input / auth-state shapes demote to a warn breadcrumb
+            // via the observability classifier; 5xx and non-transient 4xx
+            // still surface.
+            crate::core::observability::report_error_or_expected(
+                format!("Backend returned {status} for GET {url}: {detail}").as_str(),
+                "integrations",
+                "get",
+                &[
+                    ("path", path),
+                    ("status", status_str.as_str()),
+                    ("failure", "non_2xx"),
+                ],
+            );
             anyhow::bail!("Backend returned {status} for GET {url}: {detail}");
         }
 

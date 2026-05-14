@@ -359,7 +359,11 @@ impl ComposioClient {
                 logged_body
             );
             let status_str = status.as_u16().to_string();
-            crate::core::observability::report_error(
+            // Mirrors the integrations post()/get() sites — see
+            // OPENHUMAN-TAURI-BC. 4xx user-input / auth-state shapes
+            // demote via the observability classifier; 5xx and
+            // non-transient 4xx still surface as actionable events.
+            crate::core::observability::report_error_or_expected(
                 format!("Backend returned {status} for DELETE {url}: {detail}").as_str(),
                 "composio",
                 "delete",
