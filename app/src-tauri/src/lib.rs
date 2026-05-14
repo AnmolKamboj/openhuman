@@ -1314,6 +1314,19 @@ pub fn run() {
                 );
                 return None;
             }
+            // Defense-in-depth: drop max-tool-iterations cap events that
+            // slipped past the call-site filters in the core (see
+            // `openhuman_core::core::observability::is_max_iterations_event`
+            // for the rationale). The shell links the core in-process so
+            // any captured event for this deterministic agent-state
+            // outcome is filtered here too (OPENHUMAN-TAURI-99 / -98).
+            if openhuman_core::core::observability::is_max_iterations_event(&event) {
+                log::debug!(
+                    "[sentry-max-iter-filter] dropping max-iteration cap noise event: {:?}",
+                    event.message.as_deref().unwrap_or("<no message>")
+                );
+                return None;
+            }
             if openhuman_core::core::observability::is_transient_backend_api_failure(&event)
                 || openhuman_core::core::observability::is_transient_integrations_failure(&event)
             {
