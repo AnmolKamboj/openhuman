@@ -1314,6 +1314,19 @@ pub fn run() {
                 );
                 return None;
             }
+            if openhuman_core::core::observability::is_budget_event(&event) {
+                // Log only structured tag metadata — `event.message` can carry
+                // upstream provider error text including tokens / pasted-through
+                // secrets, and per `CLAUDE.md` "never log secrets or full PII".
+                // The (domain, status) pair is sufficient diagnostic since
+                // those are the tags `is_budget_event` gates on.
+                log::debug!(
+                    "[sentry-budget-filter] dropping budget-exhausted event (domain={:?}, status={:?})",
+                    event.tags.get("domain"),
+                    event.tags.get("status")
+                );
+                return None;
+            }
             // Defense-in-depth: drop max-tool-iterations cap events that
             // slipped past the call-site filters in the core (see
             // `openhuman_core::core::observability::is_max_iterations_event`
