@@ -1214,6 +1214,64 @@ fn shutdown_app_sync(app_handle: &AppHandle<AppRuntime>, exit_code: i32) {
     app_handle.exit(exit_code);
 }
 
+#[cfg(target_os = "linux")]
+const WSL_X11_DESKTOP_WARNING: &str = "[startup] likely unsupported desktop environment: WSL with classic X11 forwarding detected (DISPLAY is set, but WAYLAND_DISPLAY/WSLg markers are absent). OpenHuman's Tauri/CEF desktop flow is fragile in this setup; use native Windows development or Windows 11 WSLg for desktop GUI work.";
+
+#[cfg(any(target_os = "linux", test))]
+fn should_warn_for_wsl_x11_desktop(
+    is_wsl: bool,
+    display_set: bool,
+    wayland_display_set: bool,
+    wslg_marker_set: bool,
+) -> bool {
+    is_wsl && display_set && !wayland_display_set && !wslg_marker_set
+}
+
+#[cfg(target_os = "linux")]
+fn is_wsl_environment() -> bool {
+    if std::env::var("WSL_DISTRO_NAME")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .is_some()
+    {
+        return true;
+    }
+
+    std::fs::read_to_string("/proc/sys/kernel/osrelease")
+        .ok()
+        .map(|release| release.to_ascii_lowercase().contains("microsoft"))
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "linux")]
+fn has_non_empty_env(key: &str) -> bool {
+    std::env::var(key)
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .is_some()
+}
+
+#[cfg(target_os = "linux")]
+fn has_wslg_marker() -> bool {
+    has_non_empty_env("WSLG_RUNTIME_DIR") || std::path::Path::new("/mnt/wslg").exists()
+}
+
+#[cfg(target_os = "linux")]
+fn warn_if_wsl_x11_desktop_launch() {
+    if should_warn_for_wsl_x11_desktop(
+        is_wsl_environment(),
+        has_non_empty_env("DISPLAY"),
+        has_non_empty_env("WAYLAND_DISPLAY"),
+        has_wslg_marker(),
+    ) {
+        log::warn!("{WSL_X11_DESKTOP_WARNING}");
+        eprintln!("{WSL_X11_DESKTOP_WARNING}");
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn warn_if_wsl_x11_desktop_launch() {}
+
 pub fn run() {
     // Initialize Sentry for the Tauri shell (desktop host) process before any
     // other startup work. Reads `OPENHUMAN_TAURI_SENTRY_DSN` at runtime first,
@@ -1322,6 +1380,8 @@ pub fn run() {
         let os_ver = "n/a".to_string();
         log::info!("[startup] platform: arch={arch} os={os} os_version={os_ver}");
     }
+
+    warn_if_wsl_x11_desktop_launch();
 
     // The vendored tauri-cef dev-server proxy builds a reqwest 0.13 client
     // (see vendor/tauri-cef/crates/tauri/src/protocol/tauri.rs) which calls
@@ -2597,6 +2657,27 @@ mod tests {
             !ver.split('.').next().unwrap_or("").is_empty(),
             "version must have at least one numeric component"
         );
+    }
+
+    // -------------------------------------------------------------------------
+    // WSL + X11 desktop startup warning (issue #1653)
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn wsl_x11_warning_detects_classic_x11_forwarding() {
+        assert!(should_warn_for_wsl_x11_desktop(true, true, false, false));
+    }
+
+    #[test]
+    fn wsl_x11_warning_skips_non_wsl_or_headless_runs() {
+        assert!(!should_warn_for_wsl_x11_desktop(false, true, false, false));
+        assert!(!should_warn_for_wsl_x11_desktop(true, false, false, false));
+    }
+
+    #[test]
+    fn wsl_x11_warning_skips_wslg_or_wayland_runs() {
+        assert!(!should_warn_for_wsl_x11_desktop(true, true, true, false));
+        assert!(!should_warn_for_wsl_x11_desktop(true, true, false, true));
     }
 
     // -------------------------------------------------------------------------
