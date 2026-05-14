@@ -12,7 +12,9 @@ mod compatible_stream;
 mod compatible_types;
 
 #[cfg(test)]
-pub(crate) use compatible_parse::{parse_sse_line, strip_think_tags};
+pub(crate) use compatible_parse::{
+    parse_provider_tool_call_from_value, parse_sse_line, strip_think_tags,
+};
 #[cfg(test)]
 pub(crate) use compatible_types::ResponsesResponse;
 
@@ -993,10 +995,12 @@ impl OpenAiCompatibleProvider {
                         None
                     } else {
                         // Try to parse as JSON first so downstream
-                        // `normalize_function_arguments` can handle the
-                        // usual Value path; fall back to a JSON-string
-                        // value if the accumulated text isn't valid
-                        // JSON yet.
+                        // `normalize_function_arguments` can take the
+                        // usual Value (object) path; fall back to a
+                        // JSON-string value for partially-assembled or
+                        // permanently malformed fragments.
+                        // `normalize_function_arguments` validates and
+                        // discards malformed strings (OPENHUMAN-TAURI-6F).
                         Some(
                             serde_json::from_str(&c.arguments)
                                 .unwrap_or(serde_json::Value::String(c.arguments)),
