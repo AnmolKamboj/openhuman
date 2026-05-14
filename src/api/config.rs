@@ -171,13 +171,34 @@ pub fn effective_integrations_api_url(api_url: &Option<String>) -> String {
             warn_integrations_url_fallback_once(u);
             // Fall through to env / default — do NOT use the user override.
         } else {
-            return normalize_api_base_url(u);
+            return normalize_integrations_api_base_url(u);
         }
     }
     if let Some(env_url) = api_base_from_env() {
         return env_url;
     }
     default_api_base_url_for_env(app_env_from_env().as_deref()).to_string()
+}
+
+/// Normalize a configured integrations backend override to its host root.
+///
+/// Users may have `config.api_url` populated with an inference endpoint such
+/// as `https://api.tinyhumans.ai/openai/v1/chat/completions`. Integrations
+/// callers append `/agent-integrations/*`, so the LLM-specific path must not
+/// survive into the backend base.
+fn normalize_integrations_api_base_url(url: &str) -> String {
+    let normalized = normalize_api_base_url(url);
+    let Ok(mut parsed) = url::Url::parse(&normalized) else {
+        return normalized;
+    };
+
+    if parsed.path() != "/" {
+        parsed.set_path("");
+    }
+    parsed.set_query(None);
+    parsed.set_fragment(None);
+
+    parsed.to_string().trim_end_matches('/').to_string()
 }
 
 /// Emit a single `warn!` **once per process lifetime** the first time
@@ -324,6 +345,38 @@ mod tests {
     // Serialise all env-mutating tests to prevent flaky failures under
     // parallel test execution (std::env is process-global).
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    struct EnvSnapshot {
+        vars: [(&'static str, Option<String>); 4],
+    }
+
+    impl EnvSnapshot {
+        fn clear_backend_env() -> Self {
+            let vars = [
+                ("BACKEND_URL", std::env::var("BACKEND_URL").ok()),
+                ("VITE_BACKEND_URL", std::env::var("VITE_BACKEND_URL").ok()),
+                (APP_ENV_VAR, std::env::var(APP_ENV_VAR).ok()),
+                (VITE_APP_ENV_VAR, std::env::var(VITE_APP_ENV_VAR).ok()),
+            ];
+
+            for (key, _) in vars.iter() {
+                std::env::remove_var(*key);
+            }
+
+            Self { vars }
+        }
+    }
+
+    impl Drop for EnvSnapshot {
+        fn drop(&mut self) {
+            for (key, value) in self.vars.iter() {
+                match value {
+                    Some(v) => std::env::set_var(*key, v),
+                    None => std::env::remove_var(*key),
+                }
+            }
+        }
+    }
 
     #[test]
     fn api_url_empty_path_returns_normalized_base() {
@@ -685,6 +738,49 @@ mod tests {
     }
 
     // ── effective_integrations_api_url ─────────────────────────────────
+
+    #[test]
+    fn integrations_url_handles_llm_endpoint_overrides() {
+        let _guard = ENV_LOCK.get_or_init(Mutex::default).lock().unwrap();
+        let _env = EnvSnapshot::clear_backend_env();
+
+        struct Case {
+            api_url: &'static str,
+            expected: &'static str,
+        }
+
+        let cases = [
+            Case {
+                api_url: "https://api.tinyhumans.ai/openai/v1/chat/completions",
+                expected: "https://api.tinyhumans.ai",
+            },
+            Case {
+                api_url: "http://localhost:11434/v1/chat/completions",
+                expected: DEFAULT_API_BASE_URL,
+            },
+            Case {
+                api_url: "https://api.tinyhumans.ai",
+                expected: "https://api.tinyhumans.ai",
+            },
+            Case {
+                api_url: "https://api.tinyhumans.ai/openai/v1/",
+                expected: "https://api.tinyhumans.ai",
+            },
+            Case {
+                api_url: "https://openrouter.ai/api/v1/chat/completions",
+                expected: DEFAULT_API_BASE_URL,
+            },
+        ];
+
+        for case in cases {
+            assert_eq!(
+                effective_integrations_api_url(&Some(case.api_url.to_string())),
+                case.expected,
+                "api_url={}",
+                case.api_url
+            );
+        }
+    }
 
     #[test]
     fn integrations_url_falls_back_to_default_when_override_is_local_ai() {
