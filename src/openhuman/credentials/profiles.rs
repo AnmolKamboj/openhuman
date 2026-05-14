@@ -469,11 +469,20 @@ impl AuthProfilesStore {
         let mut waited = 0_u64;
         let mut cleared_stale = false;
         loop {
-            match OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&self.lock_path)
-            {
+            let open_result = crate::openhuman::util::retry_with_backoff(
+                "create auth profile lock",
+                6,
+                100,
+                || {
+                    OpenOptions::new()
+                        .create_new(true)
+                        .write(true)
+                        .open(&self.lock_path)
+                        .context("open lock file")
+                },
+            );
+
+            match open_result {
                 Ok(mut file) => {
                     // Issue #1612 — writing the pid line is what later lets
                     // a future acquirer recognise a crashed owner; if the
@@ -491,33 +500,38 @@ impl AuthProfilesStore {
                         lock_path: self.lock_path.clone(),
                     });
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                    // Issue #1612 — a previous openhuman crash can leave a
-                    // stale auth-profiles.lock behind, after which every RPC
-                    // path that touches the auth profile store fails for the
-                    // 10s LOCK_TIMEOUT_MS window and the user gets stuck in a
-                    // retry storm. Before falling back to the busy-wait, try
-                    // once to peek at the writer's recorded PID and remove
-                    // the lock if that process is no longer alive. Flag is
-                    // flipped on the first probe (not only on success) so a
-                    // live-pid / malformed / unreadable lock doesn't trigger
-                    // a fresh sysinfo probe + log line on every busy-wait
-                    // iteration.
-                    if !cleared_stale {
-                        cleared_stale = true;
-                        if self.clear_lock_if_stale() {
-                            continue;
-                        }
-                    }
-                    if waited >= LOCK_TIMEOUT_MS {
-                        anyhow::bail!("Timed out waiting for auth profile lock");
-                    }
-                    thread::sleep(Duration::from_millis(LOCK_WAIT_MS));
-                    waited = waited.saturating_add(LOCK_WAIT_MS);
-                }
                 Err(e) => {
-                    return Err(e)
-                        .with_context(|| "Failed to create auth profile lock".to_string());
+                    let is_already_exists = e
+                        .chain()
+                        .find_map(|e| e.downcast_ref::<std::io::Error>())
+                        .map_or(false, |ioe| ioe.kind() == std::io::ErrorKind::AlreadyExists);
+
+                    if is_already_exists {
+                        // Issue #1612 — a previous openhuman crash can leave a
+                        // stale auth-profiles.lock behind, after which every RPC
+                        // path that touches the auth profile store fails for the
+                        // 10s LOCK_TIMEOUT_MS window and the user gets stuck in a
+                        // retry storm. Before falling back to the busy-wait, try
+                        // once to peek at the writer's recorded PID and remove
+                        // the lock if that process is no longer alive. Flag is
+                        // flipped on the first probe (not only on success) so a
+                        // live-pid / malformed / unreadable lock doesn't trigger
+                        // a fresh sysinfo probe + log line on every busy-wait
+                        // iteration.
+                        if !cleared_stale {
+                            cleared_stale = true;
+                            if self.clear_lock_if_stale() {
+                                continue;
+                            }
+                        }
+                        if waited >= LOCK_TIMEOUT_MS {
+                            anyhow::bail!("Timed out waiting for auth profile lock");
+                        }
+                        thread::sleep(Duration::from_millis(LOCK_WAIT_MS));
+                        waited = waited.saturating_add(LOCK_WAIT_MS);
+                    } else {
+                        return Err(e).context("Failed to create auth profile lock");
+                    }
                 }
             }
         }
