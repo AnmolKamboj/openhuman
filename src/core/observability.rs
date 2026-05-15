@@ -62,6 +62,7 @@ pub enum ExpectedErrorKind {
     BackendUserError,
     LocalAiCapabilityUnavailable,
     BudgetExhausted,
+    SessionExpired,
 }
 
 pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
@@ -90,7 +91,52 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     if crate::openhuman::providers::is_budget_exhausted_message(message) {
         return Some(ExpectedErrorKind::BudgetExhausted);
     }
+    if is_session_expired_message(message) {
+        return Some(ExpectedErrorKind::SessionExpired);
+    }
     None
+}
+
+/// Detect **app-session-expired** boundary errors that bubble up from any
+/// backend-touching call site (agent, web channel, cron, integrations).
+///
+/// Deliberately stricter than the dispatch-site classifier in
+/// [`crate::core::jsonrpc`]: the dispatch-site predicate matches a generic
+/// "401 + unauthorized" pair to trigger token cleanup on *any* 401 (even an
+/// OpenAI / Anthropic BYO-key 401 that means a misconfigured key — see
+/// `providers::ops::api_error`). Replicating that loose match here would
+/// silence BYO-key configuration errors at the agent layer, where they
+/// *are* actionable and should reach Sentry as errors.
+///
+/// The canonical OpenHuman session-expired wire shapes:
+///
+/// - `"OpenHuman API error (401 Unauthorized): {…\"Session expired. Please
+///   log in again.\"…}"` — emitted by `providers::ops::api_error` from the
+///   OpenHuman backend and re-raised through `agent::run_single` /
+///   `channels::providers::web::run_chat_task` (OPENHUMAN-TAURI-26). The
+///   `"session expired"` substring anchors the match to the OpenHuman
+///   backend's session-renewal body, not the bare numeric status.
+/// - `"SESSION_EXPIRED: backend session not active — sign in to resume LLM work"`
+///   — the `scheduler_gate::is_signed_out` sentinel from
+///   `providers::openhuman_backend::resolve_bearer`.
+/// - `"no backend session token; run auth_store_session first"` and
+///   `"session JWT required"` — local pre-flight guards that fire when the
+///   stored profile is empty (`#1465`-ish onboarding spam) or has been
+///   cleared by a previous 401 cycle. Both shapes are OpenHuman-specific.
+///
+/// At the JSON-RPC dispatch boundary the looser classifier in
+/// `crate::core::jsonrpc::is_session_expired_error` keeps its existing
+/// generic "401 + unauthorized" match so token cleanup + `DomainEvent::SessionExpired`
+/// publish still fires for every 401. Adding the demote here therefore does
+/// **not** silence the auto-cleanup teardown — it only stops the duplicate
+/// per-attempt error event that escaped via `report_error_or_expected` from
+/// the agent / web-channel layers (OPENHUMAN-TAURI-26).
+pub fn is_session_expired_message(msg: &str) -> bool {
+    let lower = msg.to_ascii_lowercase();
+    lower.contains("session expired")
+        || lower.contains("no backend session token")
+        || lower.contains("session jwt required")
+        || msg.contains("SESSION_EXPIRED")
 }
 
 /// Detect transport-level connection failures that fire before any HTTP status
@@ -339,6 +385,27 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
                 kind = "budget",
                 error = %message,
                 "[observability] {domain}.{operation} skipped expected budget-exhausted error: {message}"
+            );
+        }
+        ExpectedErrorKind::SessionExpired => {
+            // Auth-boundary condition: the user's JWT expired (or was never
+            // present). The JSON-RPC dispatch layer already handles the
+            // teardown — `Err` propagation publishes `DomainEvent::SessionExpired`
+            // which clears the stored token and flips the scheduler-gate
+            // signed-out override so background workers stand down — and the
+            // UI re-auths the user. The per-attempt error event from the
+            // upstream call site (agent.run_single, web_channel.run_chat_task)
+            // adds noise without signal: every mid-conversation 401 would
+            // emit one event before the cascade dampener kicks in
+            // (OPENHUMAN-TAURI-26, and the same upstream gap that
+            // OPENHUMAN-TAURI-1T's #1516 cascade fix dampened but did not
+            // close). Demote to info so the breadcrumb survives for trace
+            // correlation but Sentry sees no error event.
+            tracing::info!(
+                domain = domain,
+                operation = operation,
+                error = %message,
+                "[observability] {domain}.{operation} skipped expected session-expired error: {message}"
             );
         }
     }
@@ -925,6 +992,107 @@ mod tests {
             expected_error_kind("whisper.cpp returned empty transcript"),
             None
         );
+    }
+
+    #[test]
+    fn classifies_session_expired_messages() {
+        // OPENHUMAN-TAURI-26: the canonical wire shape that `agent.run_single`
+        // and `web_channel.run_chat_task` re-emit via `report_error_or_expected`
+        // when the user's JWT expires mid-conversation. The classifier
+        // anchors on the literal `"session expired"` substring from the
+        // OpenHuman backend's 401 body — NOT on the bare `(401 Unauthorized)`
+        // status, which would also silence BYO-key OpenAI/Anthropic 401s
+        // that are actionable.
+        assert_eq!(
+            expected_error_kind(
+                r#"OpenHuman API error (401 Unauthorized): {"success":false,"error":"Session expired. Please log in again."}"#
+            ),
+            Some(ExpectedErrorKind::SessionExpired)
+        );
+
+        // Wrapped by the agent / web-channel report sites in production —
+        // the classifier is substring-based so caller context must not
+        // defeat it.
+        assert_eq!(
+            expected_error_kind(
+                r#"run_chat_task failed client_id=abc thread_id=t1 request_id=r1 error=OpenHuman API error (401 Unauthorized): {"success":false,"error":"Session expired. Please log in again."}"#
+            ),
+            Some(ExpectedErrorKind::SessionExpired)
+        );
+
+        // Sentinel raised by `providers::openhuman_backend::resolve_bearer`
+        // when the scheduler-gate signed-out override is set
+        // (OPENHUMAN-TAURI-1T's cascade dampener returns this so callers
+        // get the same teardown path as a real backend 401).
+        assert_eq!(
+            expected_error_kind(
+                "SESSION_EXPIRED: backend session not active — sign in to resume LLM work"
+            ),
+            Some(ExpectedErrorKind::SessionExpired)
+        );
+
+        // Local pre-flight guards — OpenHuman-specific phrasing, safe to
+        // match regardless of caller wrapping.
+        for raw in [
+            "no backend session token; run auth_store_session first",
+            "session JWT required",
+            "composio unavailable: no backend session token. Sign in first (auth_store_session).",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::SessionExpired),
+                "should classify as session-expired: {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn does_not_classify_byo_key_provider_401_as_session_expired() {
+        // Critical: a BYO-key 401 from OpenAI / Anthropic etc. is an
+        // actionable misconfiguration (wrong API key) that the user needs
+        // to fix in settings. It must reach Sentry as an error and must
+        // NOT be classified as session-expired at the agent layer — the
+        // strict classifier requires the OpenHuman backend's
+        // "session expired" body to anchor the match. The dispatch-site
+        // classifier (`crate::core::jsonrpc::is_session_expired_error`)
+        // still matches these for the `DomainEvent::SessionExpired`
+        // auto-cleanup path, which clears stale local state defensively.
+        for raw in [
+            "OpenAI API error (401 Unauthorized): invalid_api_key",
+            "Anthropic API error (401 Unauthorized): authentication_error",
+            "OpenAI API error (401): unauthorized",
+            r#"OpenAI API error (401 Unauthorized): {"error":{"code":"invalid_api_key","message":"Incorrect API key provided"}}"#,
+            // Generic "invalid token" without OpenHuman session phrasing —
+            // could mean a third-party provider rejected its own token.
+            "Invalid token",
+            "got an invalid token here",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                None,
+                "BYO-key / generic 401 must reach Sentry as actionable error: {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn does_not_classify_unrelated_messages_as_session_expired() {
+        // Bare numeric 401 (port number, runbook reference) must not be
+        // silenced.
+        assert_eq!(expected_error_kind("server returned 401"), None);
+        assert_eq!(
+            expected_error_kind("see runbook for 401 handling at https://example.com/401"),
+            None
+        );
+        // Provider 5xx — must reach Sentry.
+        assert_eq!(
+            expected_error_kind("OpenAI API error (500): internal server error"),
+            None
+        );
+        // Lowercase sentinel must NOT match — the SESSION_EXPIRED sentinel
+        // is case-sensitive by design (matches the sentinel emitted by
+        // `providers::openhuman_backend::resolve_bearer` exactly).
+        assert_eq!(expected_error_kind("session_expired lowercase"), None);
     }
 
     #[test]

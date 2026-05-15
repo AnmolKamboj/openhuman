@@ -200,6 +200,19 @@ pub async fn invoke_method(state: AppState, method: &str, params: Value) -> Resu
 
 /// Helper to determine if an error message indicates an expired or invalid session.
 ///
+/// Deliberately **looser** than
+/// [`crate::core::observability::is_session_expired_message`]: this
+/// dispatch-site predicate also matches the generic `"401 + unauthorized"` /
+/// `"invalid token"` pair so token cleanup +
+/// `DomainEvent::SessionExpired` publish fire on *any* 401, including
+/// BYO-key provider failures (which clear the stale local token even if
+/// the user mis-configured an OpenAI / Anthropic key). The strict
+/// classifier in `observability` is for the agent / web-channel
+/// `report_error_or_expected` call sites, where matching too loosely would
+/// silence actionable BYO-key configuration errors (OPENHUMAN-TAURI-26
+/// rationale: the agent-layer demote must NOT also swallow generic
+/// provider 401s).
+///
 /// "No backend session token" is also treated as a session-expired signal: the
 /// auth profile is missing entirely (the user was never signed in, or their
 /// stored profile was wiped between login and the next RPC). The frontend may
