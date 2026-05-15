@@ -11,6 +11,7 @@ import {
 import { dismissBanner, shouldShowBanner } from '../components/upsell/upsellDismissState';
 import { useUsageState } from '../hooks/useUsageState';
 import { useUser } from '../hooks/useUser';
+import { useT } from '../lib/i18n/I18nContext';
 import { restartCoreProcess } from '../services/coreProcessControl';
 import { selectBlockingState } from '../store/connectivitySelectors';
 import { useAppSelector } from '../store/hooks';
@@ -40,6 +41,7 @@ export function resolveHomeUserName(user: unknown): string {
 }
 
 const Home = () => {
+  const { t } = useT();
   const { user } = useUser();
   const navigate = useNavigate();
   const { isRateLimited, shouldShowBudgetCompletedMessage } = useUsageState();
@@ -87,12 +89,10 @@ const Home = () => {
   };
 
   const statusCopy = {
-    ok: 'Your device is connected. Keep the app running to keep the connection alive. Message your agent with the button below.',
-    'backend-only': 'Reconnecting to backend… your agent will be available again shortly.',
-    'core-unreachable':
-      "Local core sidecar isn't responding. The OpenHuman background process may have crashed or failed to start.",
-    'internet-offline':
-      'Your device is offline right now. Check your network or restart the app to reconnect.',
+    ok: t('home.statusOk'),
+    'backend-only': t('home.statusBackendOnly'),
+    'core-unreachable': t('home.statusCoreUnreachable'),
+    'internet-offline': t('home.statusInternetOffline'),
   }[blocking];
 
   // Open in-app chat.
@@ -197,7 +197,7 @@ const Home = () => {
                 onClick={handleRestartCore}
                 disabled={isRestartingCore}
                 className="w-full py-3 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-medium rounded-xl transition-colors duration-200">
-                {isRestartingCore ? 'Restarting core…' : 'Restart Core'}
+                {isRestartingCore ? t('home.restartingCore') : t('home.restartCore')}
               </button>
               {restartError && (
                 <p className="mt-2 text-xs text-coral-500 text-center">{restartError}</p>
@@ -211,7 +211,7 @@ const Home = () => {
             onClick={handleStartCooking}
             disabled={blocking === 'core-unreachable' || blocking === 'internet-offline'}
             className="w-full py-3 bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-colors duration-200">
-            Message OpenHuman
+            {t('home.askAssistant')}
           </button>
         </div>
 

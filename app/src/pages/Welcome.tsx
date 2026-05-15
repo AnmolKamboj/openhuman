@@ -4,6 +4,7 @@ import { useState } from 'react';
 import OAuthProviderButton from '../components/oauth/OAuthProviderButton';
 import { oauthProviderConfigs } from '../components/oauth/providerConfigs';
 import RotatingTetrahedronCanvas from '../components/RotatingTetrahedronCanvas';
+import { useT } from '../lib/i18n/I18nContext';
 import { clearBackendUrlCache } from '../services/backendUrl';
 import { clearCoreRpcUrlCache, testCoreRpcConnection } from '../services/coreRpcClient';
 import { useDeepLinkAuthState } from '../store/deepLinkAuthState';
@@ -20,6 +21,7 @@ import {
 const log = createDebug('app:welcome');
 
 const Welcome = () => {
+  const { t } = useT();
   const { isProcessing, errorMessage, requiresAppDataReset } = useDeepLinkAuthState();
 
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -55,7 +57,7 @@ const Welcome = () => {
     const normalized = normalizeRpcUrl(rpcUrl);
 
     if (!isValidRpcUrl(normalized)) {
-      setRpcUrlError('Please enter a valid HTTP or HTTPS URL');
+      setRpcUrlError(t('welcome.invalidUrl'));
       return;
     }
 
@@ -81,7 +83,7 @@ const Welcome = () => {
     const normalized = normalizeRpcUrl(rpcUrl);
 
     if (!isValidRpcUrl(normalized)) {
-      setRpcUrlError('Please enter a valid HTTP or HTTPS URL');
+      setRpcUrlError(t('welcome.invalidUrl'));
       return;
     }
 
@@ -97,11 +99,15 @@ const Welcome = () => {
         clearCoreRpcUrlCache();
         clearBackendUrlCache();
       } else {
-        setRpcUrlError(`Connection failed: ${response.status} ${response.statusText}`);
+        setRpcUrlError(
+          t('welcome.connectionFailed')
+            .replace('{status}', String(response.status))
+            .replace('{statusText}', response.statusText)
+        );
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to reach the RPC endpoint';
-      setRpcUrlError(`Connection failed: ${message}`);
+      const message = err instanceof Error ? err.message : t('misc.serviceUnavailable');
+      setRpcUrlError(t('welcome.connectionFailedMsg').replace('{message}', message));
     } finally {
       setIsTestingConnection(false);
     }
@@ -118,25 +124,24 @@ const Welcome = () => {
           </div>
 
           <h1 className="text-2xl font-bold text-stone-900 text-center mb-2">
-            Sign in! Let's Cook
+            {t('welcome.title')}
           </h1>
 
           <p className="text-sm text-stone-500 text-center mb-6 leading-relaxed">
-            Welcome to <span className="font-medium text-stone-900">OpenHuman</span>! Your Personal
-            AI Super Intelligence. Private, Simple and extremely powerful.
+            {t('welcome.subtitle')}
           </p>
 
           {showAdvanced ? (
             <div className="mb-5 p-4 bg-stone-50 rounded-xl border border-stone-200">
               <div className="flex items-center justify-between mb-3">
                 <label htmlFor="rpc-url-input" className="text-xs font-medium text-stone-700">
-                  Core RPC URL
+                  {t('welcome.urlPlaceholder')}
                 </label>
                 <button
                   type="button"
                   onClick={() => setShowAdvanced(false)}
                   className="text-xs text-stone-500 hover:text-stone-700">
-                  Close
+                  {t('common.close')}
                 </button>
               </div>
               <div className="flex gap-2">
@@ -156,10 +161,10 @@ const Welcome = () => {
                   {isTestingConnection ? (
                     <span className="flex items-center gap-1">
                       <span className="h-3 w-3 animate-spin rounded-full border border-stone-400 border-t-transparent" />
-                      Testing
+                      {t('welcome.connecting')}
                     </span>
                   ) : (
-                    'Test'
+                    t('welcome.connect')
                   )}
                 </button>
               </div>
@@ -173,7 +178,7 @@ const Welcome = () => {
                   type="button"
                   onClick={handleSaveRpcUrl}
                   className="px-3 py-1.5 bg-primary-500 hover:bg-primary-600 text-white text-xs font-medium rounded-lg transition-colors">
-                  Save
+                  {t('common.save')}
                 </button>
                 <button
                   type="button"
@@ -188,7 +193,7 @@ const Welcome = () => {
               type="button"
               onClick={() => setShowAdvanced(true)}
               className="mb-5 text-xs text-stone-500 hover:text-stone-700 underline">
-              Configure RPC URL (Advanced)
+              {t('welcome.connectPrompt')}
             </button>
           )}
 
