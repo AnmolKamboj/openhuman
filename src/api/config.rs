@@ -66,7 +66,7 @@ pub fn effective_api_url(api_url: &Option<String>) -> String {
 /// (Ollama, vLLM, LM Studio, OpenAI-compatible proxy on loopback) rather than
 /// our hosted backend?
 ///
-/// Used by [`effective_integrations_api_url`] to avoid concatenating
+/// Used by [`effective_backend_api_url`] to avoid concatenating
 /// backend-integration paths (e.g. `/agent-integrations/composio/toolkits`)
 /// onto a user-set local-AI URL — see the Sentry cluster
 /// `OPENHUMAN-TAURI-51 / -80 / -7Z` where Ollama users had every integration
@@ -145,33 +145,27 @@ pub fn looks_like_local_ai_endpoint(url: &str) -> bool {
     port_signals_llm || path_signals_llm
 }
 
-/// Resolves the API base URL to use for **backend-proxied integrations**
-/// (composio, channels, teams, etc.).
+/// Resolves the API base URL for **all hosted-backend calls** (billing,
+/// team, referral, webhooks, credentials, channels, voice, socket,
+/// app_state, integrations, core/jsonrpc, etc.).
 ///
 /// Same resolution chain as [`effective_api_url`] EXCEPT the user override
 /// is skipped when it [`looks_like_local_ai_endpoint`]. In that case we
-/// fall through to env / default backend so integration requests still
-/// hit the hosted API instead of being concatenated onto the user's
-/// local Ollama/vLLM endpoint (which only knows about chat completions
-/// and 404s every other path — see the Sentry cluster
+/// fall through to env / default backend so backend requests still hit
+/// the hosted API instead of being concatenated onto the user's local
+/// Ollama/vLLM endpoint (which only knows about chat completions and
+/// 404s every other path — see the Sentry cluster
 /// `OPENHUMAN-TAURI-51 / -80 / -7Z`).
 ///
 /// Logs a one-shot `warn!` the first time the fallback fires so users
 /// can see the diagnostic in their core sidecar logs.
-///
-// TODO(#1663): rename to `effective_backend_api_url` and migrate the
-// remaining `effective_api_url` callers across non-integrations domains
-// (billing, team, referral, webhooks, credentials, channels, voice,
-// socket, app_state, core/jsonrpc) per graycyrus review of PR #1630.
-// Today they silently leak the user's local-AI endpoint as the base for
-// every hosted-backend call — same bug shape, different surface.
-pub fn effective_integrations_api_url(api_url: &Option<String>) -> String {
+pub fn effective_backend_api_url(api_url: &Option<String>) -> String {
     if let Some(u) = api_url.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         if looks_like_local_ai_endpoint(u) {
-            warn_integrations_url_fallback_once(u);
+            warn_backend_url_fallback_once(u);
             // Fall through to env / default — do NOT use the user override.
         } else {
-            return normalize_integrations_api_base_url(u);
+            return normalize_backend_api_base_url(u);
         }
     }
     if let Some(env_url) = api_base_from_env() {
@@ -180,13 +174,13 @@ pub fn effective_integrations_api_url(api_url: &Option<String>) -> String {
     default_api_base_url_for_env(app_env_from_env().as_deref()).to_string()
 }
 
-/// Normalize a configured integrations backend override to its host root.
+/// Normalize a configured backend override to its host root.
 ///
 /// Users may have `config.api_url` populated with an inference endpoint such
-/// as `https://api.tinyhumans.ai/openai/v1/chat/completions`. Integrations
-/// callers append `/agent-integrations/*`, so the LLM-specific path must not
+/// as `https://api.tinyhumans.ai/openai/v1/chat/completions`. Backend
+/// callers append domain-specific paths, so the LLM-specific path must not
 /// survive into the backend base.
-fn normalize_integrations_api_base_url(url: &str) -> String {
+fn normalize_backend_api_base_url(url: &str) -> String {
     let normalized = normalize_api_base_url(url);
     let Ok(mut parsed) = url::Url::parse(&normalized) else {
         return normalized;
@@ -202,11 +196,11 @@ fn normalize_integrations_api_base_url(url: &str) -> String {
 }
 
 /// Emit a single `warn!` **once per process lifetime** the first time
-/// [`effective_integrations_api_url`] falls back away from a user-set
+/// [`effective_backend_api_url`] falls back away from a user-set
 /// local-AI URL. Subsequent calls — including calls with a *different*
 /// local-AI URL — are silently suppressed via `std::sync::Once` so we
-/// don't spam logs on every integration request.
-fn warn_integrations_url_fallback_once(local_url: &str) {
+/// don't spam logs on every backend request.
+fn warn_backend_url_fallback_once(local_url: &str) {
     use std::sync::Once;
     static WARNED: Once = Once::new();
     WARNED.call_once(|| {
@@ -732,7 +726,7 @@ mod tests {
     #[test]
     fn api_url_with_lm_studio_base_joins_correctly() {
         // Verify that an LM Studio URL used as the api_url base (which
-        // should not reach here in practice — effective_integrations_api_url
+        // should not reach here in practice — effective_backend_api_url
         // redirects it away) still joins without panicking and produces
         // something parseable.
         let result = api_url("http://localhost:1234/v1", "/agent-integrations/foo");
@@ -761,7 +755,7 @@ mod tests {
         );
     }
 
-    // ── effective_integrations_api_url ─────────────────────────────────
+    // ── effective_backend_api_url ─────────────────────────────────
 
     #[test]
     fn integrations_url_handles_llm_endpoint_overrides() {
@@ -798,7 +792,7 @@ mod tests {
 
         for case in cases {
             assert_eq!(
-                effective_integrations_api_url(&Some(case.api_url.to_string())),
+                effective_backend_api_url(&Some(case.api_url.to_string())),
                 case.expected,
                 "api_url={}",
                 case.api_url
@@ -819,7 +813,7 @@ mod tests {
         std::env::remove_var(APP_ENV_VAR);
         std::env::remove_var(VITE_APP_ENV_VAR);
 
-        let result = effective_integrations_api_url(&Some("http://127.0.0.1:11434/v1".to_string()));
+        let result = effective_backend_api_url(&Some("http://127.0.0.1:11434/v1".to_string()));
 
         // Restore env before asserting so a failing assert doesn't leak.
         match prev_backend {
@@ -848,7 +842,7 @@ mod tests {
         let prev_backend = std::env::var("BACKEND_URL").ok();
         std::env::set_var("BACKEND_URL", "https://staging-api.tinyhumans.ai/");
 
-        let result = effective_integrations_api_url(&Some(
+        let result = effective_backend_api_url(&Some(
             "http://127.0.0.1:8080/v1/chat/completions".to_string(),
         ));
 
@@ -864,7 +858,7 @@ mod tests {
     fn integrations_url_keeps_real_backend_override() {
         // User explicitly set a real backend host — must be respected.
         let result =
-            effective_integrations_api_url(&Some("https://staging-api.tinyhumans.ai/".to_string()));
+            effective_backend_api_url(&Some("https://staging-api.tinyhumans.ai/".to_string()));
         assert_eq!(result, "https://staging-api.tinyhumans.ai");
     }
 
@@ -881,7 +875,7 @@ mod tests {
         std::env::remove_var(APP_ENV_VAR);
         std::env::remove_var(VITE_APP_ENV_VAR);
 
-        let integrations = effective_integrations_api_url(&None);
+        let integrations = effective_backend_api_url(&None);
         let api = effective_api_url(&None);
 
         match prev_backend {
