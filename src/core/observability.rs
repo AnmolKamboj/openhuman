@@ -215,10 +215,33 @@ fn is_network_unreachable_message(lower: &str) -> bool {
 /// `"OpenHuman API error (504 Gateway Timeout): error code: 504"`. Pin the
 /// match to that exact `"api error (<status>"` prefix so an unrelated message
 /// that merely mentions "504" (a log line, a doc URL) is not silenced.
+///
+/// Also matches the second canonical wire shape: tungstenite's
+/// `WsError::Http(response)` Display, which renders as `"HTTP error: <status>"`
+/// (and which `socket::ws_loop::run_connection` wraps as
+/// `"WebSocket connect: HTTP error: 502 Bad Gateway"`). Per
+/// OPENHUMAN-TAURI-5P (~110 events) and -EZ (~51 events), backend
+/// staging/production load balancers emit HTTP 502/504 during the WebSocket
+/// upgrade handshake; tungstenite surfaces those as `WsError::Http` and the
+/// socket reconnect loop already handles them via exponential backoff. Each
+/// `FAIL_ESCALATE_THRESHOLD` escalation fires `report_error_or_expected` with
+/// the formatted reason, which would land in Sentry as `domain=socket`
+/// noise without this matcher (the existing `domain=integrations`
+/// before_send filter scopes too narrowly).
+///
+/// Three separator variants cover every observed shape: trailing space
+/// (`"HTTP error: 502 Bad Gateway"`), trailing newline (`"HTTP error: 502\n…"`
+/// from chained errors), and trailing colon (`"HTTP error: 502: …"`). Bare
+/// `"HTTP error: 502"` at end-of-string is not matched on purpose — the
+/// status integer alone could collide with unrelated log lines containing
+/// `"HTTP error: 5023"` (port number, runbook ID).
 fn is_transient_upstream_http_message(lower: &str) -> bool {
-    TRANSIENT_PROVIDER_HTTP_STATUSES
-        .iter()
-        .any(|code| lower.contains(&format!("api error ({code}")))
+    TRANSIENT_PROVIDER_HTTP_STATUSES.iter().any(|code| {
+        lower.contains(&format!("api error ({code}"))
+            || lower.contains(&format!("http error: {code} "))
+            || lower.contains(&format!("http error: {code}\n"))
+            || lower.contains(&format!("http error: {code}:"))
+    })
 }
 
 /// Detect non-2xx HTTP failures returned from the backend integrations / composio
@@ -789,8 +812,20 @@ pub fn is_transient_backend_api_failure(event: &sentry::protocol::Event<'_>) -> 
 
 /// Transient integrations / Composio failures (timeout, connection reset,
 /// gateway hiccups).
+///
+/// Accepts both `domain="integrations"` (the shared
+/// [`crate::openhuman::integrations::IntegrationClient`] HTTP wrapper that
+/// fronts every backend-proxied integration) and `domain="composio"` (errors
+/// reported from the Composio op layer in
+/// [`crate::openhuman::composio::ops`]). Composio routes through the same
+/// `IntegrationClient`, so the failure shape is identical — but op-level
+/// reporters that wrap and re-emit those errors with their own domain tag
+/// would otherwise escape the integrations-scoped filter (OPENHUMAN-TAURI-35
+/// ~139ev, -2H ~26ev: `[composio] list_connections failed: Backend returned
+/// 502 …` events that landed in Sentry under `domain=composio`).
 pub fn is_transient_integrations_failure(event: &sentry::protocol::Event<'_>) -> bool {
     is_transient_domain_failure(event, "integrations")
+        || is_transient_domain_failure(event, "composio")
 }
 
 /// Transient updater failures from GitHub release probes/downloads.
@@ -1063,6 +1098,144 @@ mod tests {
             ),
             Some(ExpectedErrorKind::TransientUpstreamHttp)
         );
+    }
+
+    #[test]
+    fn integrations_post_composio_timeout_dropped() {
+        // OPENHUMAN-TAURI-18 / -G regression guard. The integrations
+        // client at `crate::openhuman::integrations::client::IntegrationClient::post`
+        // builds the reqwest error chain and routes it through
+        // `report_error_or_expected(.., "integrations", "post", &[("failure",
+        // "transport")])`. The chain text contains the
+        // `"error sending request for url"` anchor so
+        // `is_network_unreachable_message` matches first and demotes to
+        // `NetworkUnreachable` (functionally equivalent to
+        // `TransientUpstreamHttp` for Sentry suppression — both routes
+        // skip the report path via `report_expected_message`).
+        //
+        // Pinning this exact wire shape catches a future refactor that
+        // drops the URL anchor (e.g. a chain-flatten helper that strips
+        // it for "PII safety"), which would silently re-open the leak.
+        let chain = "error sending request for url \
+                     (https://api.tinyhumans.ai/agent-integrations/composio/execute) → \
+                     client error (SendRequest) → connection error → \
+                     Operation timed out (os error 60)";
+        assert_eq!(
+            expected_error_kind(chain),
+            Some(ExpectedErrorKind::NetworkUnreachable),
+            "TAURI-18 chain shape must classify as NetworkUnreachable"
+        );
+
+        // If the URL anchor is ever dropped, the transport-phrase
+        // fallback (`operation timed out` from
+        // `TRANSIENT_TRANSPORT_PHRASES`) catches it via the message
+        // classifier helper used at upstream re-emit sites — confirm
+        // both paths so the regression surface is fully pinned.
+        assert!(
+            is_transient_message_failure(chain),
+            "TAURI-18 chain must also satisfy upstream message classifier \
+             (defense-in-depth for sites that lose the URL anchor)"
+        );
+    }
+
+    #[test]
+    fn channels_dispatch_re_emit_of_provider_502_classifies_as_transient() {
+        // OPENHUMAN-TAURI-4F (~157 events) / -1C (~87 events) / -8F
+        // (~39 events): the reliable provider layer retried 5xx, the
+        // agent re-raised the error, and `channels::runtime::dispatch`
+        // re-emitted it under `domain="channels", operation="dispatch_llm_error"`
+        // via raw `report_error` (which skips classification). Switching
+        // that site to `report_error_or_expected` routes the chain
+        // through this classifier — but only works if the canonical
+        // `"OpenHuman API error (NNN ...)"` substring still anchors the
+        // match through the channels-layer wrapping.
+        //
+        // The wrapping shape at the dispatch site is the agent error
+        // chain rendered via `format!("{e:#}")`. For a backend 502 from
+        // `providers::ops::api_error`, that resolves to:
+        //   "OpenHuman API error (502 Bad Gateway): error code: 502"
+        // possibly prepended with a runner / iteration prefix. Both
+        // shapes must classify as transient so the dispatch re-emit
+        // gets demoted.
+        for raw in [
+            "OpenHuman API error (502 Bad Gateway): error code: 502",
+            "agent.provider_chat failed: OpenHuman API error (503 Service Unavailable): retry budget exhausted",
+            "all providers exhausted: OpenHuman API error (504 Gateway Timeout): error code: 504",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::TransientUpstreamHttp),
+                "channels.dispatch re-emit of {raw:?} must classify as transient"
+            );
+        }
+    }
+
+    #[test]
+    fn classifies_socket_transient_http_errors() {
+        // OPENHUMAN-TAURI-5P / -EZ: tungstenite's `WsError::Http(response)`
+        // surfaces during the WebSocket upgrade handshake when the backend
+        // load balancer returns 502 / 504. The socket reconnect loop wraps
+        // it as `format!("WebSocket connect: {e}")`, producing
+        // `"WebSocket connect: HTTP error: <status> <reason>"`. Each
+        // sustained-outage threshold escalation routes the formatted reason
+        // through `report_error_or_expected`, which must classify as
+        // transient so the per-client noise stops reaching Sentry.
+        for raw in [
+            "WebSocket connect: HTTP error: 502 Bad Gateway",
+            "WebSocket connect: HTTP error: 503 Service Unavailable",
+            "WebSocket connect: HTTP error: 504 Gateway Timeout",
+            "[socket] Connection failed (sustained outage after 5 attempts): \
+             WebSocket connect: HTTP error: 502 Bad Gateway",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::TransientUpstreamHttp),
+                "should classify as transient upstream HTTP (socket shape): {raw}"
+            );
+        }
+
+        // Trailing-colon separator (chained error formatting).
+        // Note: avoid words like "connection refused" or "timeout" in the
+        // suffix — those would also match `is_network_unreachable_message` /
+        // `TRANSIENT_TRANSPORT_PHRASES` and the order in `expected_error_kind`
+        // would route through `NetworkUnreachable` first, defeating the
+        // assertion. Both classifications silence the event so production
+        // behavior is identical, but the test is anchored on the canonical
+        // socket shape so a future regression in `is_transient_upstream_http_message`
+        // surfaces here, not behind another classifier.
+        assert_eq!(
+            expected_error_kind(
+                "WebSocket connect: HTTP error: 502: upstream returned bad gateway"
+            ),
+            Some(ExpectedErrorKind::TransientUpstreamHttp)
+        );
+
+        // Trailing-newline separator (multi-line error chain).
+        assert_eq!(
+            expected_error_kind("WebSocket connect: HTTP error: 504\nupstream gateway"),
+            Some(ExpectedErrorKind::TransientUpstreamHttp)
+        );
+    }
+
+    #[test]
+    fn does_not_classify_unrelated_http_error_text_as_transient_socket() {
+        // Bare numeric "HTTP error: 5023" (port number, runbook ID) without
+        // a separator must NOT silence — pin the matcher to space/newline/colon.
+        assert_eq!(expected_error_kind("HTTP error: 5023"), None);
+        // Non-transient HTTP statuses must not match — `WsError::Http` for
+        // a 401 / 403 / 404 is genuinely actionable (auth / routing bug).
+        for raw in [
+            "WebSocket connect: HTTP error: 401 Unauthorized",
+            "WebSocket connect: HTTP error: 403 Forbidden",
+            "WebSocket connect: HTTP error: 404 Not Found",
+            "WebSocket connect: HTTP error: 500 Internal Server Error",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                None,
+                "must NOT silence actionable socket HTTP error: {raw}"
+            );
+        }
     }
 
     #[test]
@@ -1737,14 +1910,19 @@ mod tests {
             );
         }
 
-        let wrong_domain = event_with_tags(&[
-            ("domain", "composio"),
+        // Sibling-domain check: composio op-layer events MUST be silenced
+        // by the integrations filter — composio routes through the same
+        // `IntegrationClient` so the failure shape is identical, but
+        // op-level reporters that wrap and re-emit with their own domain
+        // tag would otherwise escape (OPENHUMAN-TAURI-35 / -2H).
+        let scheduler_domain = event_with_tags(&[
+            ("domain", "scheduler"),
             ("failure", "non_2xx"),
             ("status", "503"),
         ]);
         assert!(
-            !is_transient_integrations_failure(&wrong_domain),
-            "domain scoping must keep composio-tagged events visible"
+            !is_transient_integrations_failure(&scheduler_domain),
+            "domain scoping must keep unrelated transient-shaped events visible"
         );
 
         let non_matching_transport = event_with_tags_and_message(
@@ -1755,6 +1933,57 @@ mod tests {
             !is_transient_integrations_failure(&non_matching_transport),
             "transport failures without an allowlisted phrase must stay visible"
         );
+    }
+
+    #[test]
+    fn composio_domain_routes_through_integrations_filter() {
+        // OPENHUMAN-TAURI-35 (~139 events) / -2H (~26 events):
+        // `[composio] list_connections failed: Backend returned 502 …` —
+        // composio op-layer wrappers (e.g. `composio_list_connections`) emit
+        // errors under `domain="composio"` so the original
+        // `domain="integrations"` filter let them through. Routing the
+        // composio domain through the same transient classifier closes
+        // that gap; the underlying transport / non_2xx semantics are
+        // identical because both layers share the same `IntegrationClient`.
+        for status in TRANSIENT_HTTP_STATUSES {
+            let event = event_with_tags(&[
+                ("domain", "composio"),
+                ("failure", "non_2xx"),
+                ("status", status),
+            ]);
+            assert!(
+                is_transient_integrations_failure(&event),
+                "composio status {status} must be classified as transient"
+            );
+        }
+
+        // Transport-phrase variant — composio also surfaces reqwest
+        // transport failures (timeouts, connection resets) once the op
+        // wrapper has tagged the event with `failure=transport`.
+        for phrase in TRANSIENT_TRANSPORT_PHRASES {
+            let event = event_with_tags_and_message(
+                &[("domain", "composio"), ("failure", "transport")],
+                &format!("[composio] execute failed: {phrase}"),
+            );
+            assert!(
+                is_transient_integrations_failure(&event),
+                "composio transport phrase {phrase} must be classified as transient"
+            );
+        }
+
+        // Non-transient composio statuses (404 / 500) must still surface —
+        // actionable bugs even when reported under the composio domain.
+        for status in ["404", "500"] {
+            let event = event_with_tags(&[
+                ("domain", "composio"),
+                ("failure", "non_2xx"),
+                ("status", status),
+            ]);
+            assert!(
+                !is_transient_integrations_failure(&event),
+                "composio status {status} must stay visible"
+            );
+        }
     }
 
     #[test]
