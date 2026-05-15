@@ -137,9 +137,9 @@ const SettingsHome = () => {
           onClick: () => navigateToSettings('features'),
         },
         {
-          id: 'ai-models',
-          title: 'AI & Models',
-          description: 'Local AI model setup, downloads, and LLM provider',
+          id: 'ai',
+          title: 'AI',
+          description: 'Cloud providers, local Ollama models, and per-workload routing',
           icon: (
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -150,7 +150,7 @@ const SettingsHome = () => {
               />
             </svg>
           ),
-          onClick: () => navigateToSettings('ai-models'),
+          onClick: () => navigateToSettings('ai'),
         },
       ],
     },
