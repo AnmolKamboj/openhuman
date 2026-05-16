@@ -36,6 +36,7 @@ pub mod embeddings;
 pub mod encryption;
 pub mod health;
 pub mod heartbeat;
+pub mod http_host;
 pub mod integrations;
 pub mod learning;
 pub mod local_ai;
