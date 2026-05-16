@@ -13,8 +13,10 @@ import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { agentProfilesApi } from '../../services/api/agentProfilesApi';
 import { threadApi } from '../../services/api/threadApi';
 import { chatSend } from '../../services/chatService';
+import agentProfileReducer from '../../store/agentProfileSlice';
 import chatRuntimeReducer from '../../store/chatRuntimeSlice';
 import socketReducer from '../../store/socketSlice';
 import threadReducer, { setSelectedThread } from '../../store/threadSlice';
@@ -64,6 +66,13 @@ vi.mock('../../services/api/threadApi', () => ({
     createNewThread: vi.fn().mockResolvedValue({ id: 'new-thread', labels: [] }),
     getThreads: mockGetThreads,
     getThreadMessages: mockGetThreadMessages,
+    getTurnState: vi.fn().mockResolvedValue(null),
+    getTaskBoard: vi
+      .fn()
+      .mockResolvedValue({ threadId: 't-1', cards: [], updatedAt: '2026-05-04T10:00:00Z' }),
+    putTaskBoard: vi
+      .fn()
+      .mockResolvedValue({ threadId: 't-1', cards: [], updatedAt: '2026-05-04T10:00:00Z' }),
     appendMessage: vi.fn().mockResolvedValue({}),
     deleteThread: vi.fn().mockResolvedValue({ deleted: true }),
     generateTitleIfNeeded: vi.fn().mockResolvedValue({}),
@@ -71,6 +80,41 @@ vi.mock('../../services/api/threadApi', () => ({
     purge: vi.fn().mockResolvedValue({}),
     updateLabels: vi.fn().mockResolvedValue({}),
     persistReaction: vi.fn().mockResolvedValue({}),
+  },
+}));
+
+vi.mock('../../services/api/agentProfilesApi', () => ({
+  agentProfilesApi: {
+    list: vi
+      .fn()
+      .mockResolvedValue({
+        activeProfileId: 'default',
+        profiles: [
+          {
+            id: 'default',
+            name: 'Default',
+            description: 'Default',
+            agentId: 'orchestrator',
+            builtIn: true,
+          },
+        ],
+      }),
+    select: vi
+      .fn()
+      .mockResolvedValue({
+        activeProfileId: 'default',
+        profiles: [
+          {
+            id: 'default',
+            name: 'Default',
+            description: 'Default',
+            agentId: 'orchestrator',
+            builtIn: true,
+          },
+        ],
+      }),
+    upsert: vi.fn().mockResolvedValue({ activeProfileId: 'default', profiles: [] }),
+    delete: vi.fn().mockResolvedValue({ activeProfileId: 'default', profiles: [] }),
   },
 }));
 
@@ -122,6 +166,7 @@ function buildStore(preload: Record<string, unknown> = {}) {
       thread: threadReducer,
       socket: socketReducer,
       chatRuntime: chatRuntimeReducer,
+      agentProfiles: agentProfileReducer,
     }),
     preloadedState: preload as never,
   });
@@ -668,7 +713,117 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
       threadId: thread.id,
       message: 'hello cloud',
       model: 'reasoning-v1',
+      profileId: 'default',
     });
+  });
+
+  it('creates a custom agent profile from the header draft form', async () => {
+    const thread = makeThread({ id: 'profile-thread', title: 'Profile Thread' });
+    mockGetThreads.mockResolvedValue({ threads: [thread], count: 1 });
+    mockGetThreadMessages.mockResolvedValue({ messages: [], count: 0 });
+    vi.mocked(agentProfilesApi.upsert).mockResolvedValueOnce({
+      activeProfileId: 'custom',
+      profiles: [
+        {
+          id: 'custom',
+          name: 'Custom',
+          description: 'Custom agent profile',
+          agentId: 'orchestrator',
+          builtIn: false,
+        },
+      ],
+    });
+    vi.mocked(agentProfilesApi.select).mockResolvedValueOnce({
+      activeProfileId: 'custom',
+      profiles: [
+        {
+          id: 'custom',
+          name: 'Custom',
+          description: 'Custom agent profile',
+          agentId: 'orchestrator',
+          builtIn: false,
+        },
+      ],
+    });
+
+    await act(async () => {
+      await renderConversations({
+        thread: selectedThreadState(thread),
+        socket: socketState('connected'),
+      });
+    });
+
+    fireEvent.click(await screen.findByLabelText('Create agent profile'));
+    fireEvent.change(screen.getByPlaceholderText('Profile name'), { target: { value: 'Custom' } });
+    fireEvent.change(screen.getByPlaceholderText('Prompt style'), {
+      target: { value: 'Be concise' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Allowed tools'), {
+      target: { value: 'todowrite, spawn_parallel_agents' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(agentProfilesApi.upsert).toHaveBeenCalledTimes(1));
+    expect(agentProfilesApi.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Custom',
+        systemPromptSuffix: 'Be concise',
+        allowedTools: ['todowrite', 'spawn_parallel_agents'],
+      })
+    );
+    expect(agentProfilesApi.select).toHaveBeenCalled();
+  });
+
+  it('shows validation when creating a duplicate profile name', async () => {
+    await act(async () => {
+      await renderConversations({ thread: emptyThreadState, socket: socketState('connected') });
+    });
+
+    fireEvent.click(await screen.findByLabelText('Create agent profile'));
+    fireEvent.change(screen.getByPlaceholderText('Profile name'), { target: { value: 'Default' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Agent profile "Default" already exists.')).toBeInTheDocument();
+    expect(agentProfilesApi.upsert).not.toHaveBeenCalled();
+  });
+
+  it('rolls back and shows feedback when task board move persistence fails', async () => {
+    const thread = makeThread({ id: 'board-thread', title: 'Board Thread' });
+    const board = {
+      threadId: 'board-thread',
+      updatedAt: '2026-05-04T10:00:00Z',
+      cards: [
+        {
+          id: 'task-1',
+          title: 'Plan rollout',
+          status: 'todo' as const,
+          order: 0,
+          updatedAt: '2026-05-04T10:00:00Z',
+        },
+      ],
+    };
+    mockGetThreads.mockResolvedValue({ threads: [thread], count: 1 });
+    mockGetThreadMessages.mockResolvedValue({ messages: [], count: 0 });
+    vi.mocked(threadApi.getTaskBoard).mockResolvedValueOnce(board);
+    vi.mocked(threadApi.putTaskBoard).mockRejectedValueOnce(new Error('write failed'));
+
+    await act(async () => {
+      await renderConversations({
+        thread: selectedThreadState(thread),
+        socket: socketState('connected'),
+      });
+    });
+
+    expect(await screen.findByText('Plan rollout')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Move right'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Could not move task; changes were not saved.')).toBeInTheDocument();
+    });
+    expect(threadApi.putTaskBoard).toHaveBeenCalledWith(
+      'board-thread',
+      expect.arrayContaining([expect.objectContaining({ id: 'task-1', status: 'in_progress' })])
+    );
   });
 
   it('sends with Enter when the composer is not composing text', async () => {
@@ -691,6 +846,7 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
         threadId: thread.id,
         message: 'enter send',
         model: 'reasoning-v1',
+        profileId: 'default',
       });
     });
   });
@@ -764,6 +920,7 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
         threadId: thread.id,
         message: '안녕',
         model: 'reasoning-v1',
+        profileId: 'default',
       });
     });
   });
