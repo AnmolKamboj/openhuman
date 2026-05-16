@@ -166,7 +166,8 @@ impl ComposioClient {
         if tool.is_empty() {
             anyhow::bail!("composio.execute_tool_once: tool slug must not be empty");
         }
-        let arguments = arguments.unwrap_or(serde_json::Value::Object(Default::default()));
+        let arguments = super::execute_prepare::prepare_execute_arguments(tool, arguments)
+            .map_err(anyhow::Error::msg)?;
         tracing::debug!(tool = %tool, "[composio] execute_tool_once (no built-in retry)");
         let body = json!({ "tool": tool, "arguments": arguments });
         let result = self.post_execute_tool(&body).await;
@@ -183,7 +184,12 @@ impl ComposioClient {
                 "[composio] execute_tool_once failed"
             ),
         }
-        result
+        result.map_err(|e| {
+            anyhow::Error::msg(super::error_mapping::remap_transport_error(
+                tool,
+                &e.to_string(),
+            ))
+        })
     }
 
     /// `POST /agent-integrations/composio/execute` — run a Composio
@@ -197,12 +203,26 @@ impl ComposioClient {
         if tool.is_empty() {
             anyhow::bail!("composio.execute_tool: tool slug must not be empty");
         }
-        let mut arguments = arguments.unwrap_or(serde_json::Value::Object(Default::default()));
-        normalize_calendar_query_args(tool, &mut arguments);
+        // PR #1827 routes all execute-side argument normalization
+        // (including the bare-date → RFC 3339 fix #1802 brought to
+        // `normalize_calendar_query_args` on `main`) through the
+        // centralized `prepare_execute_arguments` helper. The helper
+        // covers the same calendar query case and is the shared entry
+        // point for `composio_execute`, per-action tools, and direct-
+        // mode dispatch.
+        let arguments = super::execute_prepare::prepare_execute_arguments(tool, arguments)
+            .map_err(anyhow::Error::msg)?;
         tracing::debug!(tool = %tool, "[composio] execute_tool");
         let body = json!({ "tool": tool, "arguments": arguments });
-        self.execute_tool_with_post_oauth_retry(tool, &body, POST_OAUTH_ACTION_RETRY_DELAY)
-            .await
+        let mut resp = self
+            .execute_tool_with_post_oauth_retry(tool, &body, POST_OAUTH_ACTION_RETRY_DELAY)
+            .await?;
+        if !resp.successful {
+            if let Some(ref err) = resp.error {
+                resp.error = Some(super::error_mapping::format_provider_error(tool, err));
+            }
+        }
+        Ok(resp)
     }
 
     pub(super) async fn execute_tool_with_post_oauth_retry(
@@ -504,58 +524,6 @@ impl ComposioClient {
             anyhow::anyhow!("Backend returned success but no data for DELETE {}", url)
         })
     }
-}
-
-/// Calendar query slugs whose `timeMin`/`timeMax` values should be
-/// normalized to RFC 3339 timestamps. LLM-generated arguments sometimes
-/// emit bare dates like `"2026-05-14"` instead of
-/// `"2026-05-14T00:00:00Z"`, which Google Calendar rejects.
-const CALENDAR_QUERY_SLUGS: &[&str] = &["GOOGLECALENDAR_EVENTS_LIST", "GOOGLECALENDAR_FIND_EVENT"];
-
-/// Normalize `timeMin`/`timeMax` from bare dates to RFC 3339 for
-/// Google Calendar query slugs. The LLM prompt instructs the model to
-/// use RFC 3339 format, but some model invocations still produce bare
-/// `YYYY-MM-DD` strings.
-fn normalize_calendar_query_args(tool: &str, arguments: &mut serde_json::Value) {
-    if !CALENDAR_QUERY_SLUGS.contains(&tool) {
-        return;
-    }
-    let Some(map) = arguments.as_object_mut() else {
-        return;
-    };
-    for key in &["timeMin", "timeMax"] {
-        if let Some(serde_json::Value::String(val)) = map.get(*key).cloned() {
-            if is_bare_date(&val) {
-                let normalized = format!("{}T00:00:00Z", val);
-                tracing::debug!(
-                    tool = %tool,
-                    key = %key,
-                    normalized = %normalized,
-                    "[composio] normalized bare date to RFC 3339 for calendar query"
-                );
-                map.insert((*key).to_string(), serde_json::Value::String(normalized));
-            }
-        }
-    }
-}
-
-/// Returns `true` when `s` is a bare date string like `"2026-05-14"`
-/// with no time component.
-fn is_bare_date(s: &str) -> bool {
-    if s.len() != 10 {
-        return false;
-    }
-    let bytes = s.as_bytes();
-    bytes[0].is_ascii_digit()
-        && bytes[1].is_ascii_digit()
-        && bytes[2].is_ascii_digit()
-        && bytes[3].is_ascii_digit()
-        && bytes[4] == b'-'
-        && bytes[5].is_ascii_digit()
-        && bytes[6].is_ascii_digit()
-        && bytes[7] == b'-'
-        && bytes[8].is_ascii_digit()
-        && bytes[9].is_ascii_digit()
 }
 
 fn is_post_oauth_auth_readiness_error(resp: &ComposioExecuteResponse) -> bool {
