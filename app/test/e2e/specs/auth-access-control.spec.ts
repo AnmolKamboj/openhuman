@@ -33,6 +33,7 @@ import {
   waitForWebView,
   waitForWindowVisible,
 } from '../helpers/element-helpers';
+import { resetApp } from '../helpers/reset-app';
 import {
   navigateToBilling,
   navigateToHome,
@@ -128,6 +129,10 @@ describe('Auth & Access Control', () => {
   before(async () => {
     await startMockServer();
     await waitForApp();
+    // Wipe prior-spec state but stop before auth — this spec drives the
+    // login flow itself via `performFullLogin`, so it has to start from
+    // a logged-out Welcome screen.
+    await resetApp('e2e-auth-access-reset', { skipAuth: true });
     clearRequestLog();
   });
 
