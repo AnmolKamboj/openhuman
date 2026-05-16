@@ -6,7 +6,7 @@ const en: TranslationMap = {
   'nav.human': 'Human',
   'nav.chat': 'Chat',
   'nav.connections': 'Connections',
-  'nav.memory': 'Memory',
+  'nav.memory': 'Intelligence',
   'nav.alerts': 'Alerts',
   'nav.rewards': 'Rewards',
   'nav.settings': 'Settings',
@@ -68,7 +68,7 @@ const en: TranslationMap = {
   'settings.featuresDesc': 'Screen awareness, messaging, and tools',
   'settings.aiModels': 'AI & Models',
   'settings.aiModelsDesc': 'Local AI model setup, downloads, and LLM provider',
-  'settings.ai': 'AI',
+  'settings.ai': 'AI Configuration',
   'settings.aiDesc': 'Cloud providers, local Ollama models, and per-workload routing',
   'settings.billingUsage': 'Billing & Usage',
   'settings.billingUsageDesc': 'Subscription plan, credits, and payment methods',
@@ -78,14 +78,17 @@ const en: TranslationMap = {
   'settings.restartTourDesc': 'Replay the product walkthrough from the beginning',
   'settings.about': 'About',
   'settings.aboutDesc': 'App version and software updates',
-  'settings.developerOptions': 'Developer Options',
-  'settings.developerOptionsDesc': 'Diagnostics, debug panels, webhooks, and memory inspection',
+  'settings.developerOptions': 'Advanced',
+  'settings.developerOptionsDesc':
+    'AI configuration, messaging channels, tools, diagnostics, and debug panels',
   'settings.clearAppData': 'Clear App Data',
   'settings.clearAppDataDesc': 'Sign out and permanently clear all local app data',
   'settings.logOut': 'Log out',
   'settings.logOutDesc': 'Sign out of your account',
   'settings.language': 'Language',
   'settings.languageDesc': 'Display language for the app interface',
+  'settings.alerts': 'Alerts',
+  'settings.alertsDesc': 'View recent alerts and activity in your inbox',
 
   // Settings: Account
   'settings.account.recoveryPhrase': 'Recovery Phrase',
@@ -133,8 +136,10 @@ const en: TranslationMap = {
 
   // Welcome page
   'welcome.title': 'Welcome to OpenHuman',
-  'welcome.subtitle': 'Your AI assistant for communities',
+  'welcome.subtitle':
+    'Your personal AI super intelligence. Private, simple and extremely powerful.',
   'welcome.connectPrompt': 'Configure RPC URL (Advanced)',
+  'welcome.selectRuntime': 'Select a Runtime',
   'welcome.urlPlaceholder': 'http://localhost:8089',
   'welcome.invalidUrl': 'Please enter a valid HTTP or HTTPS URL',
   'welcome.connecting': 'Testing',
@@ -227,6 +232,105 @@ const en: TranslationMap = {
   'onboarding.skip': 'Skip',
   'onboarding.getStarted': 'Get Started',
 
+  // Onboarding: runtime-choice step (Cloud vs Custom)
+  'onboarding.runtimeChoice.title': 'How would you like to run OpenHuman?',
+  'onboarding.runtimeChoice.subtitle':
+    'Pick the setup that fits you best. You can change this later in Settings.',
+  'onboarding.runtimeChoice.cloud.title': 'Simple',
+  'onboarding.runtimeChoice.cloud.tagline': 'Let OpenHuman manage everything for you.',
+  'onboarding.runtimeChoice.cloud.f1': 'Built-in security',
+  'onboarding.runtimeChoice.cloud.f2': 'Token compression to stretch your usage further',
+  'onboarding.runtimeChoice.cloud.f3': 'One subscription, every model included',
+  'onboarding.runtimeChoice.cloud.f4': 'No API keys to manage',
+  'onboarding.runtimeChoice.cloud.f5': 'Simple to set up',
+  'onboarding.runtimeChoice.custom.title': 'Run Custom',
+  'onboarding.runtimeChoice.custom.tagline':
+    "Bring your own keys. Full control of what you're using.",
+  'onboarding.runtimeChoice.custom.f1': "You'll need API keys for almost everything",
+  'onboarding.runtimeChoice.custom.f2': 'Reuses services you already pay for',
+  'onboarding.runtimeChoice.custom.f3': 'Can be free if you run everything locally',
+  'onboarding.runtimeChoice.custom.f4': 'More setup, more knobs',
+  'onboarding.runtimeChoice.custom.f5': 'Best for power users and developers',
+  'onboarding.runtimeChoice.cloud.creditHighlight': '$1 free credit to try it out',
+  'onboarding.runtimeChoice.continueCloud': 'Continue with Simple',
+  'onboarding.runtimeChoice.continueCustom': 'Continue with Custom',
+  'onboarding.runtimeChoice.recommended': 'Recommended',
+
+  // Onboarding: API keys step (only when Custom is picked)
+  'onboarding.apiKeys.title': "Let's Add Your API Keys",
+  'onboarding.apiKeys.subtitle':
+    'You can paste them now or skip and add them later in Settings › AI. Keys are stored on this device, encrypted at rest.',
+  'onboarding.apiKeys.openaiLabel': 'OpenAI API key',
+  'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
+  'onboarding.apiKeys.anthropicLabel': 'Anthropic API key',
+  'onboarding.apiKeys.anthropicPlaceholder': 'sk-ant-...',
+  'onboarding.apiKeys.saveError': "Couldn't save that key. Please double-check it and try again.",
+  'onboarding.apiKeys.skipForNow': 'Skip for now',
+  'onboarding.apiKeys.continue': 'Save and continue',
+  'onboarding.apiKeys.saving': 'Saving…',
+
+  // Onboarding: Custom wizard (Inference / Voice / OAuth / Search / Memory)
+  'onboarding.custom.stepperInference': 'Inference',
+  'onboarding.custom.stepperVoice': 'Voice',
+  'onboarding.custom.stepperOAuth': 'OAuth',
+  'onboarding.custom.stepperSearch': 'Search',
+  'onboarding.custom.stepperMemory': 'Memory',
+  'onboarding.custom.stepCounter': 'Step {n} of {total}',
+  'onboarding.custom.defaultTitle': 'Default',
+  'onboarding.custom.defaultSubtitle': 'Let OpenHuman manage it for you.',
+  'onboarding.custom.configureTitle': 'Configure',
+  'onboarding.custom.configureSubtitle': "I'll pick what to use.",
+  'onboarding.custom.progressAriaLabel': 'Onboarding progress',
+  'onboarding.custom.continue': 'Continue',
+  'onboarding.custom.back': 'Back',
+  'onboarding.custom.finish': 'Finish Setup',
+  'onboarding.custom.configureLater':
+    "You can finish wiring this up after onboarding. We'll drop you on the matching Settings page once you're done.",
+  'onboarding.custom.openSettings': 'Open in Settings',
+
+  // Onboarding: Custom > Inference (text)
+  'onboarding.custom.inference.title': 'Inference (Text)',
+  'onboarding.custom.inference.subtitle':
+    'Which language model should answer your questions and run your agents?',
+  'onboarding.custom.inference.defaultDesc':
+    'OpenHuman routes every workload to a sensible default model. No keys, no setup.',
+  'onboarding.custom.inference.configureDesc':
+    'Bring your own OpenAI or Anthropic key. We use it for every text-based workload.',
+
+  // Onboarding: Custom > Voice
+  'onboarding.custom.voice.title': 'Voice',
+  'onboarding.custom.voice.subtitle': 'Speech-to-text and text-to-speech for voice mode.',
+  'onboarding.custom.voice.defaultDesc':
+    'OpenHuman ships with managed STT/TTS that just works. Nothing to wire up.',
+  'onboarding.custom.voice.configureDesc':
+    'Use your own ElevenLabs / OpenAI Whisper / etc. Configure in Settings › Voice.',
+
+  // Onboarding: Custom > OAuth (Composio)
+  'onboarding.custom.oauth.title': 'Connections (OAuth)',
+  'onboarding.custom.oauth.subtitle':
+    'Gmail, Slack, Notion, and other connected services that need OAuth.',
+  'onboarding.custom.oauth.defaultDesc':
+    'OpenHuman runs a managed Composio workspace. One click to connect each service later.',
+  'onboarding.custom.oauth.configureDesc':
+    'Bring your own Composio account / API key. Configure in Settings › Connections.',
+
+  // Onboarding: Custom > Search
+  'onboarding.custom.search.title': 'Web Search',
+  'onboarding.custom.search.subtitle': 'How OpenHuman searches the web on your behalf.',
+  'onboarding.custom.search.defaultDesc':
+    'OpenHuman uses a managed search backend. No keys needed.',
+  'onboarding.custom.search.configureDesc':
+    'Bring your own search provider key (Tavily, Brave, etc.). Configure in Settings › Tools.',
+
+  // Onboarding: Custom > Memory
+  'onboarding.custom.memory.title': 'Memory',
+  'onboarding.custom.memory.subtitle':
+    'How OpenHuman remembers your context, preferences, and prior conversations.',
+  'onboarding.custom.memory.defaultDesc':
+    'OpenHuman manages memory storage and retrieval automatically. Nothing to set up.',
+  'onboarding.custom.memory.configureDesc':
+    'Inspect, export, or wipe memory yourself. Configure in Settings › Memory.',
+
   // Accounts
   'accounts.addAccount': 'Add Account',
   'accounts.manageAccounts': 'Manage Accounts',
@@ -268,7 +372,7 @@ const en: TranslationMap = {
   'invites.copyLink': 'Copy Link',
 
   // Developer Options
-  'devOptions.title': 'Developer Options',
+  'devOptions.title': 'Advanced',
   'devOptions.diagnostics': 'Diagnostics',
   'devOptions.diagnosticsDesc': 'System health, logs, and performance metrics',
   'devOptions.debugPanels': 'Debug Panels',
@@ -296,7 +400,9 @@ const en: TranslationMap = {
   'misc.updateLater': 'Later',
   'misc.downloading': 'Downloading...',
   'misc.installing': 'Installing...',
-  'misc.beta': 'Beta',
+  'misc.beta':
+    'OpenHuman is in early beta. Feel free to share feedback or report any bugs you run into — every report helps us ship faster.',
+  'misc.betaFeedback': 'Send feedback',
 
   // Mnemonic / Recovery
   'mnemonic.title': 'Recovery Phrase',
@@ -917,62 +1023,61 @@ const en: TranslationMap = {
   'stats.tokens': 'tokens',
 
   // Boot Check Gate
-  'bootCheck.invalidUrl': 'Please enter a core URL.',
-  'bootCheck.urlMustStartWith': 'URL must start with http:// or https://',
-  'bootCheck.validUrlRequired': 'Please enter a valid URL (e.g. https://core.example.com/rpc)',
-  'bootCheck.tokenRequired': 'Please enter the core auth token.',
-  'bootCheck.chooseCoreMode': 'Choose core mode',
-  'bootCheck.connectToCore': 'Connect to your core',
-  'bootCheck.desktopDescription':
-    'OpenHuman needs a running core to operate. Choose how you want to connect.',
+  'bootCheck.invalidUrl': 'Please enter a runtime URL.',
+  'bootCheck.urlMustStartWith': 'The URL needs to start with http:// or https://',
+  'bootCheck.validUrlRequired':
+    "That doesn't look like a valid URL (try https://core.example.com/rpc)",
+  'bootCheck.tokenRequired': "We'll need an auth token to connect.",
+  'bootCheck.chooseCoreMode': 'Select a Runtime',
+  'bootCheck.connectToCore': 'Connect to Your Runtime',
+  'bootCheck.desktopDescription': 'OpenHuman needs a runtime to think. Pick where it should live.',
   'bootCheck.webDescription':
-    'OpenHuman on the web connects to a remote core you control. Enter its URL and auth token, or install the desktop app to run one locally.',
-  'bootCheck.preferDesktop': 'Prefer to run everything on your own device?',
-  'bootCheck.downloadDesktop': 'Download the desktop app',
-  'bootCheck.localRecommended': 'Local (recommended)',
+    'On the web, OpenHuman connects to a runtime you control. Drop in its URL and auth token below, or grab the desktop app to run one right on your machine.',
+  'bootCheck.preferDesktop': 'Rather keep everything on your own device?',
+  'bootCheck.downloadDesktop': 'Get the Desktop App',
+  'bootCheck.localRecommended': 'Run Locally (Recommended)',
   'bootCheck.localDescription':
-    'Embedded core runs on this device — fastest, no configuration required.',
-  'bootCheck.cloudMode': 'Cloud',
-  'bootCheck.cloudDescription': 'Connect to a remote core at a custom URL.',
-  'bootCheck.coreRpcUrl': 'Core RPC URL',
+    'Runs right here on your computer. Fastest, fully private, nothing to set up.',
+  'bootCheck.cloudMode': 'Run on the Cloud (Complex)',
+  'bootCheck.cloudDescription':
+    "Connect to a runtime you're hosting elsewhere. Stays online 24×7 so you don't need to keep this device running.",
+  'bootCheck.coreRpcUrl': 'Runtime URL',
   'bootCheck.rpcUrlPlaceholder': 'https://core.example.com/rpc',
-  'bootCheck.authToken': 'Auth token',
-  'bootCheck.bearerTokenPlaceholder': 'Bearer token configured on the remote core',
-  'bootCheck.storedLocally':
-    'Stored on this device only. Required for remote cores — the desktop sends it as ',
+  'bootCheck.authToken': 'Auth Token',
+  'bootCheck.bearerTokenPlaceholder': 'The bearer token from your remote runtime',
+  'bootCheck.storedLocally': 'Kept on this device only. Sent as ',
   'bootCheck.testing': 'Testing…',
-  'bootCheck.testConnection': 'Test connection',
-  'bootCheck.connectedOk': 'Connected ✓',
-  'bootCheck.authFailed': 'Auth failed — check the token (got 401/403).',
-  'bootCheck.unreachablePrefix': 'Unreachable:',
-  'bootCheck.checkingCore': 'Checking core…',
-  'bootCheck.cannotReach': 'Could not reach core',
-  'bootCheck.cannotReachDesc':
-    'The core process is unreachable. Try switching to a different mode.',
-  'bootCheck.switchMode': 'Switch mode',
+  'bootCheck.testConnection': 'Test Connection',
+  'bootCheck.connectedOk': "Connected. You're good to go.",
+  'bootCheck.authFailed': "That token didn't work. Double-check it and try again.",
+  'bootCheck.unreachablePrefix': "Couldn't reach it:",
+  'bootCheck.checkingCore': 'Waking up your runtime…',
+  'bootCheck.cannotReach': "Can't Reach the Runtime",
+  'bootCheck.cannotReachDesc': "We couldn't connect to your runtime. Want to try a different one?",
+  'bootCheck.switchMode': 'Pick a Different Runtime',
   'bootCheck.quit': 'Quit',
-  'bootCheck.legacyDetected': 'Legacy background core detected',
+  'bootCheck.legacyDetected': 'Legacy Background Runtime Detected',
   'bootCheck.legacyDescription':
-    'A separately-installed OpenHuman daemon is running on this device. It must be removed before the embedded core can take over.',
+    'A separately-installed OpenHuman daemon is already running on this device. We need to clear it out before the built-in runtime can take over.',
   'bootCheck.removing': 'Removing…',
-  'bootCheck.removeContinue': 'Remove and continue',
-  'bootCheck.localNeedsRestart': 'Local core needs a restart',
+  'bootCheck.removeContinue': 'Remove and Continue',
+  'bootCheck.localNeedsRestart': 'Local Runtime Needs a Restart',
   'bootCheck.localNeedsRestartDesc':
-    'The local core version does not match this app build. Restarting it will load the correct version.',
+    'Your local runtime is on a different version than this app. A quick restart will get them back in sync.',
   'bootCheck.restarting': 'Restarting…',
-  'bootCheck.restartCore': 'Restart core',
-  'bootCheck.cloudNeedsUpdate': 'Cloud core needs an update',
+  'bootCheck.restartCore': 'Restart Runtime',
+  'bootCheck.cloudNeedsUpdate': 'Cloud Runtime Needs an Update',
   'bootCheck.cloudNeedsUpdateDesc':
-    'The cloud core version does not match this app build. Run the core updater to resolve the mismatch.',
+    'Your cloud runtime is on a different version than this app. Run the updater to bring them back in sync.',
   'bootCheck.updating': 'Updating…',
-  'bootCheck.updateCloudCore': 'Update cloud core',
-  'bootCheck.versionCheckFailed': 'Core version check failed',
+  'bootCheck.updateCloudCore': 'Update Cloud Runtime',
+  'bootCheck.versionCheckFailed': 'Runtime Version Check Failed',
   'bootCheck.versionCheckFailedDesc':
-    'The core is running but does not expose a version endpoint. It may be outdated. Restart or update the core to continue.',
+    "Your runtime is up but isn't reporting its version. It may be outdated. Restart or update it to continue.",
   'bootCheck.working': 'Working…',
-  'bootCheck.restartUpdateCore': 'Restart / update core',
-  'bootCheck.unexpectedError': 'Unexpected boot-check error',
-  'bootCheck.actionFailed': 'Action failed — please try again.',
+  'bootCheck.restartUpdateCore': 'Restart / Update Runtime',
+  'bootCheck.unexpectedError': 'Unexpected Boot-Check Error',
+  'bootCheck.actionFailed': 'Something went wrong. Please try again.',
 
   // Notifications: category labels & timestamps
   'notifications.justNow': 'just now',

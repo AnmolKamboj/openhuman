@@ -1,20 +1,26 @@
 import { invoke } from '@tauri-apps/api/core';
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import { triggerSentryTestEvent } from '../../../services/analytics';
 import { useAppSelector } from '../../../store/hooks';
 import { APP_ENVIRONMENT } from '../../../utils/config';
 import { isTauri } from '../../../utils/tauriCommands/common';
+import { resetWalkthrough } from '../../walkthrough/AppWalkthrough';
 import SettingsHeader from '../components/SettingsHeader';
 import SettingsMenuItem from '../components/SettingsMenuItem';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
 
 const developerItems = [
+  // Items pulled in from the (now-removed) Features tile and the AI tile
+  // in SettingsHome: AI Configuration, Screen Awareness, Messaging
+  // Channels, and Tools. They're power-user destinations and don't merit
+  // top-level menu space.
   {
     id: 'ai',
     title: 'AI Configuration',
-    description: 'Configure SOUL persona and AI behavior',
+    description: 'Cloud providers, local Ollama models, and per-workload routing',
     route: 'ai',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -22,7 +28,61 @@ const developerItems = [
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeWidth={2}
-          d="M12 3l1.9 3.85 4.25.62-3.08 3 .73 4.23L12 12.77 8.2 14.7l.73-4.23-3.08-3 4.25-.62L12 3z"
+          d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+        />
+      </svg>
+    ),
+  },
+  {
+    id: 'screen-intelligence',
+    title: 'Screen Awareness',
+    description: 'Screen capture permissions, monitoring policy, and session controls',
+    route: 'screen-intelligence',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M3 5h18v12H3zM8 21h8m-4-4v4"
+        />
+      </svg>
+    ),
+  },
+  {
+    id: 'messaging',
+    title: 'Messaging Channels',
+    description: 'Configure Telegram/Discord auth modes and default channel routing',
+    route: 'messaging',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M8 10h.01M12 10h.01M16 10h.01M21 11c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 19l1.395-3.72C3.512 14.042 3 12.574 3 11c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+        />
+      </svg>
+    ),
+  },
+  {
+    id: 'tools',
+    title: 'Tools',
+    description: 'Enable or disable capabilities OpenHuman can use on your behalf',
+    route: 'tools',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+        />
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
         />
       </svg>
     ),
@@ -185,7 +245,7 @@ const CoreModeBadge = () => {
 
   if (mode.kind === 'unset') {
     return (
-      <div className="px-4 py-3 mb-3 rounded-lg border border-coral-300 bg-coral-50">
+      <div className="px-4 py-3 rounded-lg border border-coral-300 bg-coral-50">
         <div className="text-sm font-semibold text-coral-900">{t('devOptions.coreModeNotSet')}</div>
         <div className="text-xs text-coral-800 mt-0.5">{t('devOptions.coreModeNotSetDesc')}</div>
       </div>
@@ -194,22 +254,22 @@ const CoreModeBadge = () => {
 
   if (mode.kind === 'local') {
     return (
-      <div className="px-4 py-3 mb-3 rounded-lg border border-ocean-300 bg-ocean-50">
+      <div className="px-4 py-3 rounded-lg border border-primary-300 bg-primary-50">
         <div className="flex items-center gap-2">
-          <span className="px-2 py-0.5 rounded-full bg-ocean-600 text-white text-[11px] font-medium">
+          <span className="px-2 py-0.5 rounded-full bg-primary-600 text-white text-[11px] font-medium">
             {t('devOptions.local')}
           </span>
-          <span className="text-sm font-semibold text-ocean-900">
+          <span className="text-sm font-semibold text-primary-900">
             {t('devOptions.embeddedCoreSidecar')}
           </span>
         </div>
-        <div className="text-xs text-ocean-800 mt-1">{t('devOptions.sidecarSpawned')}</div>
+        <div className="text-xs text-primary-800 mt-1">{t('devOptions.sidecarSpawned')}</div>
       </div>
     );
   }
 
   return (
-    <div className="px-4 py-3 mb-3 rounded-lg border border-sage-300 bg-sage-50">
+    <div className="px-4 py-3 rounded-lg border border-sage-300 bg-sage-50">
       <div className="flex items-center gap-2">
         <span className="px-2 py-0.5 rounded-full bg-sage-600 text-white text-[11px] font-medium">
           {t('devOptions.cloud')}
@@ -255,7 +315,7 @@ const SentryTestRow = () => {
   };
 
   return (
-    <div className="px-4 py-3 mb-3 rounded-lg border border-amber-300 bg-amber-50">
+    <div className="px-4 py-3 rounded-lg border border-amber-300 bg-amber-50">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-amber-900">
@@ -319,7 +379,7 @@ const LogsFolderRow = () => {
   if (!isTauri()) return null;
 
   return (
-    <div className="px-4 py-3 mb-3 rounded-lg border border-slate-200 bg-slate-50">
+    <div className="px-4 py-3 rounded-lg border border-slate-200 bg-slate-50">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-slate-900">{t('devOptions.appLogs')}</div>
@@ -343,8 +403,50 @@ const LogsFolderRow = () => {
 
 const DeveloperOptionsPanel = () => {
   const { t } = useT();
+  const navigate = useNavigate();
   const { navigateToSettings, navigateBack, breadcrumbs } = useSettingsNavigation();
   const showSentryTest = APP_ENVIRONMENT === 'staging';
+
+  // Trailing items moved here from SettingsHome: About + Restart Tour. They
+  // don't fit cleanly in the trimmed-down top-level menu but still need a
+  // home, so they live here under Advanced.
+  const trailingItems = [
+    {
+      id: 'restart-tour',
+      title: t('settings.restartTour'),
+      description: t('settings.restartTourDesc'),
+      onClick: () => {
+        resetWalkthrough();
+        navigate('/home');
+      },
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+          />
+        </svg>
+      ),
+    },
+    {
+      id: 'about',
+      title: t('settings.about'),
+      description: t('settings.aboutDesc'),
+      onClick: () => navigateToSettings('about'),
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+      ),
+    },
+  ];
 
   return (
     <div className="z-10 relative">
@@ -356,9 +458,6 @@ const DeveloperOptionsPanel = () => {
       />
 
       <div>
-        <CoreModeBadge />
-        <LogsFolderRow />
-        {showSentryTest && <SentryTestRow />}
         {developerItems.map((item, index) => (
           <SettingsMenuItem
             key={item.id}
@@ -367,9 +466,27 @@ const DeveloperOptionsPanel = () => {
             description={item.description}
             onClick={() => navigateToSettings(item.route)}
             isFirst={index === 0}
-            isLast={index === developerItems.length - 1}
+            isLast={false}
           />
         ))}
+        {trailingItems.map((item, index) => (
+          <SettingsMenuItem
+            key={item.id}
+            icon={item.icon}
+            title={item.title}
+            description={item.description}
+            onClick={item.onClick}
+            isFirst={false}
+            isLast={index === trailingItems.length - 1}
+          />
+        ))}
+      </div>
+      {/* Diagnostics callouts live outside the menu card so the spacing
+            and alignment don't clash with the SettingsMenuItem rows. */}
+      <div className="px-4 pt-6 flex flex-col gap-3">
+        <CoreModeBadge />
+        <LogsFolderRow />
+        {showSentryTest && <SentryTestRow />}
       </div>
     </div>
   );

@@ -2,14 +2,11 @@ import { ReactNode, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useT } from '../../lib/i18n/I18nContext';
-import type { Locale } from '../../lib/i18n/types';
 import { useCoreState } from '../../providers/CoreStateProvider';
-import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { setLocale } from '../../store/localeSlice';
 import { clearAllAppData } from '../../utils/clearAllAppData';
 import { BILLING_DASHBOARD_URL } from '../../utils/links';
 import { openUrl } from '../../utils/openUrl';
-import { resetWalkthrough } from '../walkthrough/AppWalkthrough';
+import LanguageSelect from '../LanguageSelect';
 import SettingsHeader from './components/SettingsHeader';
 import SettingsMenuItem from './components/SettingsMenuItem';
 import { useSettingsNavigation } from './hooks/useSettingsNavigation';
@@ -29,22 +26,11 @@ interface SettingsItem {
   rightElement?: ReactNode;
 }
 
-// Subtle uppercase section header label separating settings groups
-const SectionHeader = ({ label }: { label: string }) => (
-  <div className="px-4 pt-5 pb-1">
-    <span className="text-[10px] font-semibold tracking-widest uppercase text-stone-400">
-      {label}
-    </span>
-  </div>
-);
-
 const SettingsHome = () => {
   const navigate = useNavigate();
   const { navigateToSettings } = useSettingsNavigation();
   const { clearSession, snapshot } = useCoreState();
   const { t } = useT();
-  const dispatch = useAppDispatch();
-  const currentLocale = useAppSelector(state => state.locale.current);
   const [showLogoutAndClearModal, setShowLogoutAndClearModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +78,22 @@ const SettingsHome = () => {
           onClick: () => navigateToSettings('account'),
         },
         {
+          id: 'alerts',
+          title: t('nav.alerts'),
+          description: t('settings.alertsDesc'),
+          icon: (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+              />
+            </svg>
+          ),
+          onClick: () => navigate('/notifications'),
+        },
+        {
           id: 'notifications',
           title: t('settings.notifications'),
           description: t('settings.notificationsDesc'),
@@ -121,16 +123,7 @@ const SettingsHome = () => {
               />
             </svg>
           ),
-          rightElement: (
-            <select
-              value={currentLocale}
-              onChange={e => dispatch(setLocale(e.target.value as Locale))}
-              aria-label={t('settings.language')}
-              className="text-sm border border-stone-300 rounded-lg px-3 py-1.5 bg-white text-stone-700 focus:outline-none focus:ring-2 focus:ring-ocean-500/30 cursor-pointer">
-              <option value="en">English</option>
-              <option value="zh-CN">简体中文</option>
-            </select>
-          ),
+          rightElement: <LanguageSelect ariaLabel={t('settings.language')} />,
         },
         {
           id: 'mascot',
@@ -150,43 +143,9 @@ const SettingsHome = () => {
         },
       ],
     },
-    {
-      label: t('settings.featuresAndAI'),
-      items: [
-        {
-          id: 'features',
-          title: t('settings.features'),
-          description: t('settings.featuresDesc'),
-          icon: (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M13 10V3L4 14h7v7l9-11h-7z"
-              />
-            </svg>
-          ),
-          onClick: () => navigateToSettings('features'),
-        },
-        {
-          id: 'ai',
-          title: t('settings.ai'),
-          description: t('settings.aiDesc'),
-          icon: (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
-              />
-            </svg>
-          ),
-          onClick: () => navigateToSettings('ai'),
-        },
-      ],
-    },
+    // Features tile (Screen Awareness / Messaging Channels / Notifications /
+    // Tools) used to live here. Everything under it moved into Advanced
+    // (DeveloperOptionsPanel), so the section is gone from the home menu.
     {
       label: t('settings.billingAndRewards'),
       items: [
@@ -207,62 +166,6 @@ const SettingsHome = () => {
           onClick: () => {
             openUrl(BILLING_DASHBOARD_URL).catch(() => {});
           },
-        },
-        {
-          id: 'rewards',
-          title: t('settings.rewards'),
-          description: t('settings.rewardsDesc'),
-          icon: (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"
-              />
-            </svg>
-          ),
-          onClick: () => navigate('/rewards'),
-        },
-      ],
-    },
-    {
-      label: t('settings.support'),
-      items: [
-        {
-          id: 'restart-tour',
-          title: t('settings.restartTour'),
-          description: t('settings.restartTourDesc'),
-          icon: (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-          ),
-          onClick: () => {
-            resetWalkthrough();
-            navigate('/home');
-          },
-        },
-        {
-          id: 'about',
-          title: t('settings.about'),
-          description: t('settings.aboutDesc'),
-          icon: (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-          ),
-          onClick: () => navigateToSettings('about'),
         },
       ],
     },
@@ -334,40 +237,24 @@ const SettingsHome = () => {
       </div>
 
       <div>
-        {/* Grouped sections with section headers */}
-        {settingsSections.map(section => (
-          <div key={section.label}>
-            <SectionHeader label={section.label} />
-            {section.items.map((item, index) => (
-              <SettingsMenuItem
-                key={item.id}
-                icon={item.icon}
-                title={item.title}
-                description={item.description}
-                onClick={item.onClick}
-                dangerous={item.dangerous}
-                isFirst={index === 0}
-                isLast={index === section.items.length - 1}
-                rightElement={item.rightElement}
-              />
-            ))}
-          </div>
-        ))}
-
-        {/* Danger Zone */}
-        <SectionHeader label={t('settings.dangerZone')} />
-        {destructiveItems.map((item, index) => (
-          <SettingsMenuItem
-            key={item.id}
-            icon={item.icon}
-            title={item.title}
-            description={item.description}
-            onClick={item.onClick}
-            dangerous={item.dangerous}
-            isFirst={index === 0}
-            isLast={index === destructiveItems.length - 1}
-          />
-        ))}
+        {/* Flat list — group titles removed for clarity. Regular items first,
+            destructive items appended at the end. */}
+        {(() => {
+          const flatItems = settingsSections.flatMap(s => s.items).concat(destructiveItems);
+          return flatItems.map((item, index) => (
+            <SettingsMenuItem
+              key={item.id}
+              icon={item.icon}
+              title={item.title}
+              description={item.description}
+              onClick={item.onClick}
+              dangerous={item.dangerous}
+              isFirst={index === 0}
+              isLast={index === flatItems.length - 1}
+              rightElement={item.rightElement}
+            />
+          ));
+        })()}
       </div>
 
       {/* Log Out & Clear Data Confirmation Modal */}
