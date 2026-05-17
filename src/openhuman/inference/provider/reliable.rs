@@ -278,6 +278,15 @@ fn push_failure(
     ));
 }
 
+fn rotated_key_log_detail(after_rotate_index: usize, total: usize) -> String {
+    let slot = if total == 0 {
+        0
+    } else {
+        after_rotate_index.saturating_sub(1) % total + 1
+    };
+    format!("slot={slot}/{total}")
+}
+
 /// Format the final bail message produced when every provider+model in the
 /// chain has failed.
 ///
@@ -447,12 +456,15 @@ impl Provider for ReliableProvider {
 
                             // On rate-limit, try rotating API key
                             if rate_limited && !non_retryable_rate_limit {
-                                if let Some(new_key) = self.rotate_key() {
+                                if self.rotate_key().is_some() {
                                     tracing::info!(
                                         provider = provider_name,
                                         error = %error_detail,
-                                        "Rate limited, rotated API key (key ending ...{})",
-                                        &new_key[new_key.len().saturating_sub(4)..]
+                                        key_slot = %rotated_key_log_detail(
+                                            self.key_index.load(Ordering::Relaxed),
+                                            self.api_keys.len()
+                                        ),
+                                        "Rate limited, rotated API key"
                                     );
                                 }
                             }
@@ -579,12 +591,15 @@ impl Provider for ReliableProvider {
                             );
 
                             if rate_limited && !non_retryable_rate_limit {
-                                if let Some(new_key) = self.rotate_key() {
+                                if self.rotate_key().is_some() {
                                     tracing::info!(
                                         provider = provider_name,
                                         error = %error_detail,
-                                        "Rate limited, rotated API key (key ending ...{})",
-                                        &new_key[new_key.len().saturating_sub(4)..]
+                                        key_slot = %rotated_key_log_detail(
+                                            self.key_index.load(Ordering::Relaxed),
+                                            self.api_keys.len()
+                                        ),
+                                        "Rate limited, rotated API key"
                                     );
                                 }
                             }
@@ -739,12 +754,15 @@ impl Provider for ReliableProvider {
                             );
 
                             if rate_limited && !non_retryable_rate_limit {
-                                if let Some(new_key) = self.rotate_key() {
+                                if self.rotate_key().is_some() {
                                     tracing::info!(
                                         provider = provider_name,
                                         error = %error_detail,
-                                        "Rate limited, rotated API key (key ending ...{})",
-                                        &new_key[new_key.len().saturating_sub(4)..]
+                                        key_slot = %rotated_key_log_detail(
+                                            self.key_index.load(Ordering::Relaxed),
+                                            self.api_keys.len()
+                                        ),
+                                        "Rate limited, rotated API key"
                                     );
                                 }
                             }
@@ -864,12 +882,15 @@ impl Provider for ReliableProvider {
                             );
 
                             if rate_limited && !non_retryable_rate_limit {
-                                if let Some(new_key) = self.rotate_key() {
+                                if self.rotate_key().is_some() {
                                     tracing::info!(
                                         provider = provider_name,
                                         error = %error_detail,
-                                        "Rate limited, rotated API key (key ending ...{})",
-                                        &new_key[new_key.len().saturating_sub(4)..]
+                                        key_slot = %rotated_key_log_detail(
+                                            self.key_index.load(Ordering::Relaxed),
+                                            self.api_keys.len()
+                                        ),
+                                        "Rate limited, rotated API key"
                                     );
                                 }
                             }
