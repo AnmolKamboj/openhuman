@@ -566,6 +566,16 @@ const CAPABILITIES: &[Capability] = &[
         privacy: None,
     },
     Capability {
+        id: "local_ai.model_context_check",
+        name: "Model Context Requirement Check",
+        domain: "local_ai",
+        category: CapabilityCategory::LocalAI,
+        description: "Diagnostics report each installed Ollama model's native context window and reject any model below the minimum the memory layer requires (so short-context models can't silently truncate and corrupt recall).",
+        how_to: "Settings > Local AI Model > Run Diagnostics",
+        status: CapabilityStatus::Beta,
+        privacy: None,
+    },
+    Capability {
         id: "local_ai.embed_text",
         name: "Generate Text Embeddings",
         domain: "local_ai",
