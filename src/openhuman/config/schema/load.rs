@@ -1308,6 +1308,28 @@ impl Config {
                 self.learning.min_turn_complexity = min;
             }
         }
+        if let Some(flag) = env.get("OPENHUMAN_LEARNING_EPISODIC_CAPTURE_ENABLED") {
+            if let Some(enabled) =
+                parse_env_bool("OPENHUMAN_LEARNING_EPISODIC_CAPTURE_ENABLED", flag.as_str())
+            {
+                self.learning.episodic_capture_enabled = enabled;
+            }
+        }
+        if let Some(flag) = env.get("OPENHUMAN_LEARNING_STM_RECALL_ENABLED") {
+            if let Some(enabled) =
+                parse_env_bool("OPENHUMAN_LEARNING_STM_RECALL_ENABLED", flag.as_str())
+            {
+                self.learning.stm_recall_enabled = enabled;
+            }
+        }
+        if let Some(flag) = env.get("OPENHUMAN_LEARNING_UNIFIED_COMPACTION_ENABLED") {
+            if let Some(enabled) = parse_env_bool(
+                "OPENHUMAN_LEARNING_UNIFIED_COMPACTION_ENABLED",
+                flag.as_str(),
+            ) {
+                self.learning.unified_compaction_enabled = enabled;
+            }
+        }
 
         // Phase 4 memory-tree embedding overrides (#710). Setting the env
         // var to an empty string explicitly clears the default — useful
