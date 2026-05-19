@@ -136,6 +136,15 @@ pub fn all_tools_with_runtime(
         Box::new(MemoryRecallTool::new(memory.clone())),
         Box::new(MemoryForgetTool::new(memory.clone(), security.clone())),
         Box::new(MemoryTreeTool),
+        // Explicit user-preference pinning — always registered so the model
+        // can save user-stated preferences regardless of whether the full
+        // inference-based learning subsystem is enabled.  The preference
+        // injection into the system prompt is controlled independently by
+        // `config.learning.explicit_preferences_enabled`.
+        Box::new(RememberPreferenceTool::new(
+            memory.clone(),
+            security.clone(),
+        )),
         // WhatsApp data store — read-only agent surface (issue #1341).
         // The matching `whatsapp_data_ingest` write-path stays internal-only
         // (registered in `src/core/all.rs::build_internal_only_controllers`)

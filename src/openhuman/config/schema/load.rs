@@ -1279,6 +1279,14 @@ impl Config {
                 self.learning.tool_memory_capture_enabled = enabled;
             }
         }
+        if let Some(flag) = env.get("OPENHUMAN_LEARNING_EXPLICIT_PREFERENCES_ENABLED") {
+            let normalized = flag.trim().to_ascii_lowercase();
+            match normalized.as_str() {
+                "1" | "true" | "yes" | "on" => self.learning.explicit_preferences_enabled = true,
+                "0" | "false" | "no" | "off" => self.learning.explicit_preferences_enabled = false,
+                _ => {}
+            }
+        }
         if let Some(source) = env.get("OPENHUMAN_LEARNING_REFLECTION_SOURCE") {
             let normalized = source.trim().to_ascii_lowercase();
             match normalized.as_str() {
