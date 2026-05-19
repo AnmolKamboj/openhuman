@@ -627,7 +627,12 @@ pub fn create_intelligent_routing_provider(
         ))
     };
 
-    let provider = crate::openhuman::routing::new_provider(remote, &config.local_ai, default_model);
+    let provider = crate::openhuman::routing::new_provider(
+        remote,
+        &config.local_ai,
+        default_model,
+        &config.temperature_unsupported_models,
+    );
     Ok(Box::new(provider))
 }
 
