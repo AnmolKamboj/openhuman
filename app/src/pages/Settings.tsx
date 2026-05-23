@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
+import LogoutAndClearActions from '../components/settings/LogoutAndClearActions';
 import AboutPanel from '../components/settings/panels/AboutPanel';
 import AgentChatPanel from '../components/settings/panels/AgentChatPanel';
 import AIPanel from '../components/settings/panels/AIPanel';
@@ -12,7 +13,6 @@ import BillingPanel from '../components/settings/panels/BillingPanel';
 import CompanionPanel from '../components/settings/panels/CompanionPanel';
 import ComposioPanel from '../components/settings/panels/ComposioPanel';
 import ComposioTriagePanel from '../components/settings/panels/ComposioTriagePanel';
-import ConnectionsPanel from '../components/settings/panels/ConnectionsPanel';
 import CronJobsPanel from '../components/settings/panels/CronJobsPanel';
 import DeveloperOptionsPanel from '../components/settings/panels/DeveloperOptionsPanel';
 import DevicesPanel from '../components/settings/panels/DevicesPanel';
@@ -23,8 +23,7 @@ import MemoryDataPanel from '../components/settings/panels/MemoryDataPanel';
 import MemoryDebugPanel from '../components/settings/panels/MemoryDebugPanel';
 import MessagingPanel from '../components/settings/panels/MessagingPanel';
 import MigrationPanel from '../components/settings/panels/MigrationPanel';
-import NotificationRoutingPanel from '../components/settings/panels/NotificationRoutingPanel';
-import NotificationsPanel from '../components/settings/panels/NotificationsPanel';
+import NotificationsTabbedPanel from '../components/settings/panels/NotificationsTabbedPanel';
 import PrivacyPanel from '../components/settings/panels/PrivacyPanel';
 import RecoveryPhrasePanel from '../components/settings/panels/RecoveryPhrasePanel';
 import ScreenAwarenessDebugPanel from '../components/settings/panels/ScreenAwarenessDebugPanel';
@@ -62,16 +61,6 @@ const TeamIcon = (
       strokeLinejoin="round"
       strokeWidth={2}
       d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-    />
-  </svg>
-);
-const ConnectionsIcon = (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M13.828 10.172a4 4 0 010 5.656l-2 2a4 4 0 01-5.656-5.656l1-1m5-5a4 4 0 015.656 5.656l-1 1m-5 5l5-5"
     />
   </svg>
 );
@@ -212,13 +201,6 @@ const Settings = () => {
       icon: TeamIcon,
     },
     {
-      id: 'connections',
-      title: t('pages.settings.account.connections'),
-      description: t('pages.settings.account.connectionsDesc'),
-      route: 'connections',
-      icon: ConnectionsIcon,
-    },
-    {
       id: 'privacy',
       title: t('pages.settings.account.privacy'),
       description: t('pages.settings.account.privacyDesc'),
@@ -301,6 +283,7 @@ const Settings = () => {
               title={t('pages.settings.accountSection.title')}
               description={t('pages.settings.accountSection.description')}
               items={accountSettingsItems}
+              footer={<LogoutAndClearActions />}
             />
           )}
         />
@@ -338,7 +321,6 @@ const Settings = () => {
         />
         <Route path="team/members" element={wrapSettingsPage(<TeamMembersPanel />)} />
         <Route path="team/invites" element={wrapSettingsPage(<TeamInvitesPanel />)} />
-        <Route path="connections" element={wrapSettingsPage(<ConnectionsPanel />)} />
         {/* BillingPanel intentionally uses its own wider layout. */}
         <Route path="billing" element={<BillingPanel />} />
         <Route path="privacy" element={wrapSettingsPage(<PrivacyPanel />)} />
@@ -348,7 +330,7 @@ const Settings = () => {
         <Route path="autocomplete" element={wrapSettingsPage(<AutocompletePanel />)} />
         <Route path="voice" element={wrapSettingsPage(<VoicePanel />)} />
         <Route path="messaging" element={wrapSettingsPage(<MessagingPanel />)} />
-        <Route path="notifications" element={wrapSettingsPage(<NotificationsPanel />)} />
+        <Route path="notifications" element={wrapSettingsPage(<NotificationsTabbedPanel />)} />
         <Route path="mascot" element={wrapSettingsPage(<MascotPanel />)} />
         <Route path="appearance" element={wrapSettingsPage(<AppearancePanel />)} />
         <Route path="tools" element={wrapSettingsPage(<ToolsPanel />)} />
@@ -357,9 +339,12 @@ const Settings = () => {
         <Route path="developer-options" element={wrapSettingsPage(<DeveloperOptionsPanel />)} />
         <Route path="autonomy" element={wrapSettingsPage(<AutonomyPanel />)} />
         <Route path="mcp-server" element={wrapSettingsPage(<McpServerPanel />)} />
+        {/* Legacy direct path for the routing tab — kept so existing links
+            (Developer Options entries, walkthroughs) keep working. The
+            tabbed panel reads the URL hash to land on the right tab. */}
         <Route
           path="notification-routing"
-          element={wrapSettingsPage(<NotificationRoutingPanel />)}
+          element={<Navigate to="/settings/notifications#routing" replace />}
         />
         <Route path="llm" element={wrapSettingsPage(<AIPanel />)} />
         <Route path="agent-chat" element={wrapSettingsPage(<AgentChatPanel />)} />
