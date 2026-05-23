@@ -210,6 +210,11 @@ const it5: TranslationMap = {
   'settings.mascot.active': 'Attivo',
   'settings.mascot.characterDesc': 'Descrizione personaggio',
   'settings.mascot.characterHeading': 'Intestazione personaggio',
+  // TODO: translate custom GIF mascot strings.
+  'settings.mascot.customGifError':
+    'Enter an HTTPS .gif URL, loopback HTTP .gif URL, file:// .gif URL, or local .gif path.',
+  'settings.mascot.customGifHeading': 'Custom GIF avatar',
+  'settings.mascot.customGifLabel': 'Custom GIF avatar URL',
   'settings.mascot.colorDesc': 'Descrizione colore',
   'settings.mascot.colorHeading': 'Intestazione colore',
   'settings.mascot.loadingLibrary': 'Caricamento libreria OpenHuman…',
