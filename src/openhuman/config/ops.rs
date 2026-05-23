@@ -375,6 +375,11 @@ pub struct MeetSettingsPatch {
 }
 
 #[derive(Debug, Clone, Default)]
+pub struct AutonomySettingsPatch {
+    pub max_actions_per_hour: Option<u32>,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct LocalAiSettingsPatch {
     pub runtime_enabled: Option<bool>,
     /// MVP opt-in marker. Bootstrap hard-overrides status to "disabled"
@@ -811,6 +816,39 @@ pub async fn load_and_apply_meet_settings(
 ) -> Result<RpcOutcome<serde_json::Value>, String> {
     let mut config = load_config_with_timeout().await?;
     apply_meet_settings(&mut config, update).await
+}
+
+/// Updates the autonomy policy settings in the configuration.
+/// Validation: 1 <= max_actions_per_hour <= 10_000.
+pub async fn apply_autonomy_settings(
+    config: &mut Config,
+    update: AutonomySettingsPatch,
+) -> Result<RpcOutcome<serde_json::Value>, String> {
+    if let Some(v) = update.max_actions_per_hour {
+        if v == 0 || v > 10_000 {
+            return Err(format!(
+                "max_actions_per_hour must be between 1 and 10000 (got {v})"
+            ));
+        }
+        config.autonomy.max_actions_per_hour = v;
+    }
+    config.save().await.map_err(|e| e.to_string())?;
+    let snapshot = snapshot_config_json(config)?;
+    Ok(RpcOutcome::new(
+        snapshot,
+        vec![format!(
+            "autonomy settings saved to {}",
+            config.config_path.display()
+        )],
+    ))
+}
+
+/// Loads the configuration, applies autonomy settings updates, and saves it.
+pub async fn load_and_apply_autonomy_settings(
+    update: AutonomySettingsPatch,
+) -> Result<RpcOutcome<serde_json::Value>, String> {
+    let mut config = load_config_with_timeout().await?;
+    apply_autonomy_settings(&mut config, update).await
 }
 
 /// Loads the configuration, applies browser settings updates, and saves it.
