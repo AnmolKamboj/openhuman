@@ -26,7 +26,8 @@ use super::client::{
     direct_list_tools, ComposioClient, ComposioClientKind,
 };
 use super::providers::{
-    capability_matrix, get_provider, ProviderContext, ProviderUserProfile, SyncOutcome, SyncReason,
+    agent_ready_toolkits, capability_matrix, get_provider, ProviderContext, ProviderUserProfile,
+    SyncOutcome, SyncReason,
 };
 use super::types::{
     ComposioActiveTriggersResponse, ComposioAuthorizeResponse, ComposioAvailableTriggersResponse,
@@ -208,6 +209,28 @@ pub async fn composio_list_capabilities(
     Ok(RpcOutcome::new(
         resp,
         vec![format!("composio: {count} capability row(s) listed")],
+    ))
+}
+
+/// List every toolkit slug that ships an agent-ready curated catalog.
+///
+/// Connected toolkits that are NOT in this list can still be
+/// authorized via OAuth, but the agent has no curated action surface
+/// for them — the UI should label such connections as
+/// "preview / agent integration coming soon" so users aren't led into
+/// a broken `composio_list_tools` → max-iterations loop. See #2283.
+pub async fn composio_list_agent_ready_toolkits(
+) -> OpResult<RpcOutcome<super::types::ComposioAgentReadyToolkitsResponse>> {
+    tracing::debug!("[composio] rpc list_agent_ready_toolkits");
+    let toolkits: Vec<String> = agent_ready_toolkits()
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect();
+    let count = toolkits.len();
+    let resp = super::types::ComposioAgentReadyToolkitsResponse { toolkits };
+    Ok(RpcOutcome::new(
+        resp,
+        vec![format!("composio: {count} agent-ready toolkit(s) listed")],
     ))
 }
 

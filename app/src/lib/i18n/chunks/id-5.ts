@@ -441,6 +441,9 @@ const id5: TranslationMap = {
   'webhooks.tunnels.toggleFailed': 'Gagal mengalihkan echo',
   'composio.authExpired': 'Autentikasi kedaluwarsa',
   'composio.reconnect': 'Hubungkan ulang',
+  'composio.previewBadge': 'Preview',
+  'composio.previewTooltip':
+    'Agent integration coming soon — you can connect, but the agent can’t use this toolkit yet.',
   'composio.directModeRequiresKey':
     'Gagal menyimpan. Mode Direct memerlukan API key yang tidak kosong.',
   'composio.notYetRouted': 'belum dirutekan',
