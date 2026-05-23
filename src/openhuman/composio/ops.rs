@@ -87,7 +87,7 @@ fn resolve_client(config: &Config) -> OpResult<ComposioClient> {
 /// handshake eof`, …), we tag `failure="transport"` instead so the
 /// `before_send` filter's transport-phrase branch fires — and keep the
 /// status tag absent (transport failures don't carry a status).
-fn report_composio_op_error<E: std::fmt::Display + ?Sized>(operation: &str, err: &E) {
+pub(super) fn report_composio_op_error<E: std::fmt::Display + ?Sized>(operation: &str, err: &E) {
     // `{err:#}` renders the full anyhow chain when applicable; for plain
     // `String` / `&str` errors it falls back to the Display impl.
     let rendered = format!("{err:#}");
@@ -243,9 +243,22 @@ pub async fn composio_list_connections(
                 "[composio-direct] list_connections: fetching v3 \
                  /connected_accounts for the user's personal Composio tenant"
             );
-            let resp = direct_list_connections(&direct)
-                .await
-                .map_err(|e| format!("[composio-direct] list_connections failed: {e:#}"))?;
+            let resp = direct_list_connections(&direct).await.map_err(|e| {
+                // [#1166 / Sentry TAURI-RUST-X9] Restore symmetric error
+                // routing for the direct-mode branch. Without this hook the
+                // direct-mode 401 ("Invalid API key …") wire shape bypassed
+                // `report_error_or_expected` and leaked ~15.7k events in ~22h
+                // — same UI 5 s poll + `periodic.rs` tick that the
+                // backend branch (line ~266) was already classifying.
+                //
+                // Render WITH the `[composio-direct]` anchor BEFORE
+                // reporting so the classifier arm in
+                // `is_provider_user_state_message` (which gates on that
+                // prefix) actually fires.
+                let rendered = format!("[composio-direct] list_connections failed: {e:#}");
+                report_composio_op_error("list_connections", &rendered);
+                rendered
+            })?;
             let active = resp.connections.iter().filter(|c| c.is_active()).count();
             let total = resp.connections.len();
             // Reconcile the integrations cache against this fresh live
@@ -338,7 +351,16 @@ pub async fn composio_authorize(
             .await
             .map_err(|e| {
                 let wrapped = super::oauth_handoff::wrap_authorize_rate_limit_error(toolkit, e);
-                format!("[composio-direct] authorize failed: {wrapped:#}")
+                // [#1166 / Sentry TAURI-RUST-X9] Symmetric with the
+                // backend branch's `report_composio_op_error` on the
+                // same handler — direct-mode 401s from
+                // `connected_accounts/link` were leaking otherwise.
+                // Render WITH the `[composio-direct]` anchor so the
+                // classifier arm fires; wrapped error preserves any
+                // rate-limit classifications fed up the ladder.
+                let rendered = format!("[composio-direct] authorize failed: {wrapped:#}");
+                report_composio_op_error("authorize", &rendered);
+                rendered
             })?
         }
     };
@@ -480,7 +502,17 @@ pub async fn composio_list_tools(
                 Some(list) if !list.is_empty() => list,
                 _ => {
                     let conns = direct_list_connections(&direct).await.map_err(|e| {
-                        format!("[composio-direct] list_tools: prefetch connections failed: {e:#}")
+                        // [#1166 / Sentry TAURI-RUST-X9] Symmetric error
+                        // routing — the prefetch call goes to the same v3
+                        // `/connected_accounts` endpoint as `list_connections`
+                        // and would emit the same 401 wire shape. Render
+                        // WITH the `[composio-direct]` anchor so the
+                        // classifier arm fires on the prefetch path too.
+                        let rendered = format!(
+                            "[composio-direct] list_tools: prefetch connections failed: {e:#}"
+                        );
+                        report_composio_op_error("list_connections", &rendered);
+                        rendered
                     })?;
                     let mut v: Vec<String> = conns
                         .connections
@@ -510,9 +542,16 @@ pub async fn composio_list_tools(
                 toolkits = scope.len(),
                 "[composio-direct] list_tools: fetching v3 tool schemas"
             );
-            let mut resp = direct_list_tools(&direct, &scope)
-                .await
-                .map_err(|e| format!("[composio-direct] list_tools failed: {e:#}"))?;
+            let mut resp = direct_list_tools(&direct, &scope).await.map_err(|e| {
+                // [#1166 / Sentry TAURI-RUST-X9] Symmetric with the backend
+                // branch's hook (line ~451). Direct-mode `list_tools`
+                // failures are user-state when the API key is bad. Render
+                // WITH the `[composio-direct]` anchor so the classifier
+                // arm fires.
+                let rendered = format!("[composio-direct] list_tools failed: {e:#}");
+                report_composio_op_error("list_tools", &rendered);
+                rendered
+            })?;
             // Apply the same curated-whitelist + user-scope filter the
             // backend path runs — schemas may be tenant-agnostic but
             // OpenHuman's curation policy isn't, and direct-mode users
