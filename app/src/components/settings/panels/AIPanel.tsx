@@ -76,7 +76,6 @@ type WorkloadId =
   | 'agentic'
   | 'coding'
   | 'memory'
-  | 'embeddings'
   | 'heartbeat'
   | 'learning'
   | 'subconscious';
@@ -207,8 +206,6 @@ const WORKLOAD_MODEL_HINTS: Record<WorkloadId, string> = {
     'Recommended: a cheaper summarization model. It should be consistent and compact, but it does not need premium frontier-level reasoning.',
   heartbeat:
     'Recommended: a cheap, efficient background model. This runs often between turns, so low cost matters more than maximum intelligence.',
-  embeddings:
-    'Recommended: a dedicated embedding model. Prefer low cost, stable dimensions, and strong retrieval quality over general chat ability.',
   learning:
     'Recommended: a stronger reflective model. This can be mid-cost or premium because it benefits from better synthesis over recent history.',
   subconscious:
@@ -233,7 +230,6 @@ const EMPTY_ROUTING: RoutingMap = {
   agentic: { kind: 'default' },
   coding: { kind: 'default' },
   memory: { kind: 'default' },
-  embeddings: { kind: 'default' },
   heartbeat: { kind: 'default' },
   learning: { kind: 'default' },
   subconscious: { kind: 'default' },
@@ -286,7 +282,6 @@ function toPanelRoutingFromApi(api: ApiAISettings): { panel: AISettings } {
     agentic: liftRef(api.routing.agentic),
     coding: liftRef(api.routing.coding),
     memory: liftRef(api.routing.memory),
-    embeddings: liftRef(api.routing.embeddings),
     heartbeat: liftRef(api.routing.heartbeat),
     learning: liftRef(api.routing.learning),
     subconscious: liftRef(api.routing.subconscious),
@@ -310,7 +305,6 @@ function toApiSettings(panel: AISettings): ApiAISettings {
       agentic: panel.routing.agentic,
       coding: panel.routing.coding,
       memory: panel.routing.memory,
-      embeddings: panel.routing.embeddings,
       heartbeat: panel.routing.heartbeat,
       learning: panel.routing.learning,
       subconscious: panel.routing.subconscious,
@@ -1782,7 +1776,6 @@ function routingWithAllWorkloads(next: ProviderRef): RoutingMap {
     agentic: next,
     coding: next,
     memory: next,
-    embeddings: EMPTY_ROUTING.embeddings,
     heartbeat: next,
     learning: next,
     subconscious: next,
