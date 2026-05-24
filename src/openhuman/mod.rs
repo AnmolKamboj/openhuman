@@ -32,6 +32,7 @@ pub mod context;
 pub mod cost;
 pub mod credentials;
 pub mod cron;
+pub mod cwd_jail;
 pub mod desktop_companion;
 pub mod dev_paths;
 pub mod devices;
