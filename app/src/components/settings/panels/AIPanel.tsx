@@ -30,6 +30,7 @@ import {
   saveAISettings,
   setCloudProviderKey,
   setOpenAICompatEndpointKey,
+  testProviderModel,
 } from '../../../services/api/aiSettingsApi';
 import {
   creditsApi,
@@ -207,6 +208,14 @@ const EMPTY_SETTINGS: AISettings = { cloudProviders: [], routing: EMPTY_ROUTING 
 
 function maskKeyLabel(hasKey: boolean): string {
   return hasKey ? '•••• configured' : 'Not configured';
+}
+
+function slugifyCustomProviderName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 /**
@@ -1671,6 +1680,12 @@ function humanizeModelId(id: string): string {
   return id.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+function appendTemperatureToProviderString(provider: string, temperature: number | null): string {
+  if (temperature == null || !Number.isFinite(temperature)) return provider;
+  const rounded = Math.round(temperature * 100) / 100;
+  return `${provider}@${String(rounded)}`;
+}
+
 const CustomRoutingDialog = ({
   workload,
   initial,
@@ -1710,6 +1725,11 @@ const CustomRoutingDialog = ({
   const [cloudModelsLoading, setCloudModelsLoading] = useState(false);
   const [cloudModelsError, setCloudModelsError] = useState<string | null>(null);
   const [modelsKey, setModelsKey] = useState(0);
+  const [testBusy, setTestBusy] = useState(false);
+  const [testReply, setTestReply] = useState<string | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
+  const [testStartedAt, setTestStartedAt] = useState<string | null>(null);
+  const testRequestIdRef = useRef(0);
   // Optional temperature override for this workload. `null` = use provider/global default;
   // a finite number means "send `temperature: X` upstream for this workload only".
   const [temperature, setTemperature] = useState<number | null>(
@@ -1762,6 +1782,28 @@ const CustomRoutingDialog = ({
   }, [selectedSlug, modelsKey]);
 
   const canSave = source !== null && model.trim().length > 0;
+  const canTest = canSave && !cloudModelsLoading;
+
+  const resetTestState = () => {
+    testRequestIdRef.current += 1;
+    setTestReply(null);
+    setTestError(null);
+    setTestStartedAt(null);
+    setTestBusy(false);
+  };
+
+  const currentProviderString =
+    source == null
+      ? null
+      : source.kind === 'cloud'
+        ? appendTemperatureToProviderString(
+            `${source.providerSlug}:${model.trim()}`,
+            temperature == null || !Number.isFinite(temperature) ? null : temperature
+          )
+        : appendTemperatureToProviderString(
+            `ollama:${model.trim()}`,
+            temperature == null || !Number.isFinite(temperature) ? null : temperature
+          );
 
   const handleSave = () => {
     if (!source || !canSave) return;
@@ -1775,6 +1817,28 @@ const CustomRoutingDialog = ({
       });
     } else {
       onSubmit({ kind: 'local', model: model.trim(), temperature: temp });
+    }
+  };
+
+  const handleTest = async () => {
+    if (!currentProviderString || !canTest) return;
+    const requestId = testRequestIdRef.current + 1;
+    testRequestIdRef.current = requestId;
+    setTestBusy(true);
+    setTestReply(null);
+    setTestError(null);
+    setTestStartedAt(new Date().toLocaleTimeString());
+    try {
+      const result = await testProviderModel(workload.id, currentProviderString, 'Hello world');
+      if (testRequestIdRef.current !== requestId) return;
+      setTestReply(result.reply);
+    } catch (err) {
+      if (testRequestIdRef.current !== requestId) return;
+      setTestError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (testRequestIdRef.current === requestId) {
+        setTestBusy(false);
+      }
     }
   };
 
@@ -1830,6 +1894,7 @@ const CustomRoutingDialog = ({
                   const colonIdx = e.target.value.indexOf(':');
                   const kind = e.target.value.slice(0, colonIdx);
                   const slug = e.target.value.slice(colonIdx + 1);
+                  resetTestState();
                   if (kind === 'local') {
                     setSource({ kind: 'local' });
                     setModel(localModels[0]?.id ?? '');
@@ -1855,7 +1920,10 @@ const CustomRoutingDialog = ({
               {source?.kind === 'local' ? (
                 <select
                   value={model}
-                  onChange={e => setModel(e.target.value)}
+                  onChange={e => {
+                    resetTestState();
+                    setModel(e.target.value);
+                  }}
                   className="rounded-lg border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
                   {localModels.map(m => (
                     <option key={m.id} value={m.id}>
@@ -1888,7 +1956,10 @@ const CustomRoutingDialog = ({
                   <input
                     type="text"
                     value={model}
-                    onChange={e => setModel(e.target.value)}
+                    onChange={e => {
+                      resetTestState();
+                      setModel(e.target.value);
+                    }}
                     placeholder={selectedCloud ? `${selectedCloud.slug} model id` : 'model-id'}
                     className="w-full rounded-lg border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm font-mono text-stone-900 dark:text-neutral-100 placeholder-stone-400 dark:placeholder-neutral-500 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                   />
@@ -1896,7 +1967,10 @@ const CustomRoutingDialog = ({
               ) : cloudModels.length > 0 ? (
                 <select
                   value={model}
-                  onChange={e => setModel(e.target.value)}
+                  onChange={e => {
+                    resetTestState();
+                    setModel(e.target.value);
+                  }}
                   className="rounded-lg border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
                   {!model && <option value="">Select a model…</option>}
                   {/* Keep existing value selectable even if the provider no longer lists it */}
@@ -1913,7 +1987,10 @@ const CustomRoutingDialog = ({
                 <input
                   type="text"
                   value={model}
-                  onChange={e => setModel(e.target.value)}
+                  onChange={e => {
+                    resetTestState();
+                    setModel(e.target.value);
+                  }}
                   placeholder={selectedCloud ? `${selectedCloud.slug} model id` : 'model-id'}
                   className="rounded-lg border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm font-mono text-stone-900 dark:text-neutral-100 placeholder-stone-400 dark:placeholder-neutral-500 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                 />
@@ -1928,7 +2005,10 @@ const CustomRoutingDialog = ({
                   <input
                     type="checkbox"
                     checked={temperature != null}
-                    onChange={e => setTemperature(e.target.checked ? 0.7 : null)}
+                    onChange={e => {
+                      resetTestState();
+                      setTemperature(e.target.checked ? 0.7 : null);
+                    }}
                     className="h-3.5 w-3.5 rounded border-stone-300 dark:border-neutral-700 text-primary-500 focus:ring-primary-500"
                   />
                   Temperature override
@@ -1948,7 +2028,10 @@ const CustomRoutingDialog = ({
                     max={2}
                     step={0.05}
                     value={temperature}
-                    onChange={e => setTemperature(Number(e.target.value))}
+                    onChange={e => {
+                      resetTestState();
+                      setTemperature(Number(e.target.value));
+                    }}
                     className="flex-1 accent-primary-500"
                   />
                   <input
@@ -1960,7 +2043,10 @@ const CustomRoutingDialog = ({
                     value={temperature}
                     onChange={e => {
                       const v = Number(e.target.value);
-                      if (Number.isFinite(v)) setTemperature(Math.max(0, Math.min(2, v)));
+                      if (Number.isFinite(v)) {
+                        resetTestState();
+                        setTemperature(Math.max(0, Math.min(2, v)));
+                      }
                     }}
                     className="w-16 rounded-lg border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs font-mono text-stone-900 dark:text-neutral-100 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                   />
@@ -1970,6 +2056,51 @@ const CustomRoutingDialog = ({
                 Lower = more deterministic. Leave unchecked to use the provider default.
               </p>
             </div>
+
+            {(testBusy || testReply || testError || testStartedAt) && (
+              <div
+                role={testError ? 'alert' : 'status'}
+                className={`rounded-lg border px-3 py-2 text-xs ${
+                  testError
+                    ? 'border-coral-200 dark:border-coral-500/30 bg-coral-50 dark:bg-coral-500/10 text-coral-700 dark:text-coral-300'
+                    : testBusy
+                      ? 'border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-200'
+                      : 'border-sage-200 dark:border-sage-500/30 bg-sage-50 dark:bg-sage-500/10 text-sage-800 dark:text-sage-200'
+                }`}>
+                <div className="font-semibold">
+                  {testError ? 'Test failed' : testBusy ? 'Testing model…' : 'Model response'}
+                </div>
+                <div className="mt-1 space-y-1">
+                  <div className="font-mono text-[11px] text-current/80">
+                    Provider: {currentProviderString ?? '—'}
+                  </div>
+                  <div className="font-mono text-[11px] text-current/80">Prompt: Hello world</div>
+                  {testStartedAt && (
+                    <div className="font-mono text-[11px] text-current/80">
+                      Started: {testStartedAt}
+                    </div>
+                  )}
+                </div>
+                {testBusy ? (
+                  <div className="mt-2 rounded-md border border-current/15 bg-white/50 px-3 py-2 text-[12px] dark:bg-black/10">
+                    Waiting for response from the selected model…
+                  </div>
+                ) : testError ? (
+                  <div className="mt-2 rounded-md border border-current/15 bg-white/50 px-3 py-2 font-mono text-[11px] whitespace-pre-wrap break-words dark:bg-black/10">
+                    {testError}
+                  </div>
+                ) : (
+                  <div className="mt-3 space-y-1.5">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-current/80">
+                      Response
+                    </div>
+                    <div className="rounded-md border border-current/15 bg-white/70 px-3 py-3 text-[13px] leading-relaxed text-stone-900 whitespace-pre-wrap break-words dark:bg-black/10 dark:text-neutral-100">
+                      {testReply}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -1979,6 +2110,13 @@ const CustomRoutingDialog = ({
             onClick={onClose}
             className="rounded-lg border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 py-2 text-sm font-medium text-stone-700 dark:text-neutral-200 hover:bg-stone-50 dark:hover:bg-neutral-800/60 dark:bg-neutral-800/60 dark:hover:bg-neutral-800/60">
             {t('common.cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleTest()}
+            disabled={!canTest || testBusy}
+            className="rounded-lg border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 py-2 text-sm font-medium text-stone-700 dark:text-neutral-200 hover:bg-stone-50 dark:hover:bg-neutral-800/60 disabled:cursor-not-allowed disabled:opacity-50">
+            {testBusy ? 'Testing…' : 'Test'}
           </button>
           <button
             type="button"
@@ -2138,6 +2276,13 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
           await openhumanUpdateLocalAiSettings({
             base_url: baseUrl,
             provider: 'ollama',
+            runtime_enabled: true,
+            opt_in_confirmed: true,
+          });
+        } else if (isLocalRuntime && slug === 'lmstudio') {
+          await openhumanUpdateLocalAiSettings({
+            base_url: endpoint,
+            provider: 'lm_studio',
             runtime_enabled: true,
             opt_in_confirmed: true,
           });
@@ -2728,21 +2873,33 @@ const CloudProviderEditor = ({
   onClearKey: (slug: string) => Promise<void> | void;
 }) => {
   const { t } = useT();
-  const defaultSlug: string =
-    initial?.slug ??
-    (['openai', 'anthropic', 'openrouter', 'orcarouter', 'custom'] as const).find(
-      s => !existingSlugs.includes(s)
-    ) ??
-    'custom';
-  const [slug, setSlug] = useState<string>(defaultSlug);
-  const [label, setLabel] = useState<string>(
-    initial?.label ?? BUILTIN_PROVIDER_META[defaultSlug]?.label ?? defaultSlug
-  );
-  const [endpoint, setEndpoint] = useState(initial?.endpoint ?? defaultEndpointFor(defaultSlug));
+  const [label, setLabel] = useState<string>(initial?.label ?? '');
+  const [endpoint, setEndpoint] = useState(initial?.endpoint ?? '');
   const [apiKey, setApiKey] = useState('');
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const isOpenHuman = slug === 'openhuman';
+  const slug = initial?.slug ?? slugifyCustomProviderName(label);
+  const hasReservedSlugCollision =
+    !initial &&
+    [
+      'cloud',
+      'openhuman',
+      'pid',
+      'openai',
+      'anthropic',
+      'openrouter',
+      'orcarouter',
+      'custom',
+      'ollama',
+      'lmstudio',
+    ].includes(slug);
+  const slugError = !slug
+    ? 'Enter a provider name to generate a slug.'
+    : existingSlugs.includes(slug)
+      ? 'That provider name is already in use.'
+      : hasReservedSlugCollision
+        ? 'Choose a different provider name.'
+        : null;
   const hasExistingKey = (initial?.maskedKey ?? '').startsWith('••••');
 
   return (
@@ -2761,74 +2918,60 @@ const CloudProviderEditor = ({
         </div>
         <div className="space-y-3 px-4 py-3">
           <div>
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-stone-500 dark:text-neutral-400">
-              Provider slug
-            </label>
-            <select
-              value={slug}
-              onChange={e => {
-                const next = e.target.value;
-                setSlug(next);
-                setLabel(BUILTIN_PROVIDER_META[next]?.label ?? next);
-                if (!initial) {
-                  setEndpoint(defaultEndpointFor(next));
-                }
-              }}
-              disabled={!!initial}
-              className="mt-1 w-full rounded-lg border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 disabled:opacity-60 focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-200">
-              {(['openai', 'anthropic', 'openrouter', 'orcarouter', 'custom'] as const)
-                .filter(s => s === slug || !existingSlugs.includes(s))
-                .map(s => (
-                  <option key={s} value={s}>
-                    {BUILTIN_PROVIDER_META[s]?.label ?? s}
-                  </option>
-                ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-stone-500 dark:text-neutral-400">
-              Display label
+            <label
+              htmlFor="cloud-provider-name"
+              className="text-[10px] font-semibold uppercase tracking-wide text-stone-500 dark:text-neutral-400">
+              Name
             </label>
             <input
+              id="cloud-provider-name"
               value={label}
               onChange={e => setLabel(e.target.value)}
               className="mt-1 w-full rounded-lg border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 placeholder:text-stone-400 dark:placeholder:text-neutral-500 dark:text-neutral-500 dark:placeholder:text-neutral-500 focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-200"
               placeholder="My Provider"
             />
+            <div className="mt-1 text-[11px] text-stone-500 dark:text-neutral-400">
+              Slug:{' '}
+              <span className="font-mono text-stone-700 dark:text-neutral-200">{slug || '—'}</span>
+            </div>
+            {slugError ? (
+              <div className="mt-1 text-[11px] text-coral-600 dark:text-coral-300">{slugError}</div>
+            ) : null}
           </div>
           <div>
-            <label className="text-[10px] font-semibold uppercase tracking-wide text-stone-500 dark:text-neutral-400">
-              Endpoint
+            <label
+              htmlFor="cloud-provider-openai-url"
+              className="text-[10px] font-semibold uppercase tracking-wide text-stone-500 dark:text-neutral-400">
+              OpenAI URL
             </label>
             <input
+              id="cloud-provider-openai-url"
               value={endpoint}
               onChange={e => setEndpoint(e.target.value)}
-              disabled={isOpenHuman}
               className="mt-1 w-full rounded-lg border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 font-mono text-xs text-stone-900 dark:text-neutral-100 placeholder:text-stone-400 dark:placeholder:text-neutral-500 dark:text-neutral-500 dark:placeholder:text-neutral-500 disabled:opacity-60 focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-200"
-              placeholder="https://api.example.com/v1"
+              placeholder="https://api.openai.com/v1"
             />
           </div>
-          {!isOpenHuman && (
-            <div>
-              <label className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-stone-500 dark:text-neutral-400">
-                <span>API key</span>
-                {hasExistingKey && (
-                  <button
-                    onClick={() => void onClearKey(slug)}
-                    className="text-[10px] font-medium normal-case text-coral-600 dark:text-coral-300 hover:text-coral-700 dark:text-coral-300">
-                    {t('settings.ai.clearStoredKey')}
-                  </button>
-                )}
-              </label>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={e => setApiKey(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 font-mono text-xs text-stone-900 dark:text-neutral-100 placeholder:text-stone-400 dark:placeholder:text-neutral-500 dark:text-neutral-500 dark:placeholder:text-neutral-500 focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-200"
-                placeholder={hasExistingKey ? 'Leave blank to keep existing key' : 'sk-...'}
-              />
-            </div>
-          )}
+          <div>
+            <label className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-stone-500 dark:text-neutral-400">
+              <span>API key</span>
+              {hasExistingKey && (
+                <button
+                  onClick={() => void onClearKey(slug)}
+                  className="text-[10px] font-medium normal-case text-coral-600 dark:text-coral-300 hover:text-coral-700 dark:text-coral-300">
+                  {t('settings.ai.clearStoredKey')}
+                </button>
+              )}
+            </label>
+            <input
+              aria-label="API key"
+              type="password"
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 font-mono text-xs text-stone-900 dark:text-neutral-100 placeholder:text-stone-400 dark:placeholder:text-neutral-500 dark:text-neutral-500 dark:placeholder:text-neutral-500 focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-200"
+              placeholder={hasExistingKey ? 'Leave blank to keep existing key' : 'sk-...'}
+            />
+          </div>
           {submitError ? <ProviderSetupErrorNotice error={submitError} /> : null}
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-stone-200 dark:border-neutral-800 px-4 py-3">
@@ -2843,13 +2986,16 @@ const CloudProviderEditor = ({
               setSaving(true);
               setSubmitError(null);
               try {
+                if (slugError) {
+                  throw new Error(slugError);
+                }
                 await onSubmit(
                   {
                     id: initial?.id ?? '',
                     slug,
                     label: label.trim() || slug,
                     endpoint: endpoint.trim(),
-                    authStyle: initial?.authStyle ?? authStyleForSlug(slug),
+                    authStyle: initial?.authStyle ?? 'bearer',
                     maskedKey: maskKeyLabel(hasExistingKey || apiKey.length > 0),
                   },
                   apiKey.trim()
@@ -2868,7 +3014,7 @@ const CloudProviderEditor = ({
                 setSaving(false);
               }
             }}
-            disabled={saving || !endpoint.trim()}
+            disabled={saving || !endpoint.trim() || Boolean(slugError)}
             className="rounded-lg bg-primary-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-600 disabled:opacity-50">
             {saving
               ? t('settings.ai.saving')

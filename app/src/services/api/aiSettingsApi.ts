@@ -113,6 +113,12 @@ export interface ModelInfo {
   context_window?: number | null;
 }
 
+export interface ProviderModelTestResult {
+  reply: string;
+}
+
+const PROVIDER_MODEL_TEST_TIMEOUT_MS = 120_000;
+
 /** Single in-memory snapshot the AI panel renders against. */
 export interface AISettings {
   cloudProviders: CloudProviderView[];
@@ -369,6 +375,27 @@ export async function listProviderModels(providerId: string): Promise<ModelInfo[
     params: { provider_id: providerId },
   });
   return res?.result?.models ?? [];
+}
+
+export async function testProviderModel(
+  workload: WorkloadId,
+  provider: string,
+  prompt = 'Hello world'
+): Promise<ProviderModelTestResult> {
+  if (!isTauri()) {
+    throw new Error('Model testing is only available in the desktop app.');
+  }
+  const res = await callCoreRpc<{ result: ProviderModelTestResult }>({
+    method: 'openhuman.inference_test_provider_model',
+    params: { workload, provider, prompt },
+    timeoutMs: PROVIDER_MODEL_TEST_TIMEOUT_MS,
+  });
+  if (!res?.result) {
+    throw new Error(
+      `Model test RPC returned no result for ${workload} via ${provider} (openhuman.inference_test_provider_model).`
+    );
+  }
+  return res.result;
 }
 
 // ─── Local provider façade (Ollama install / detect / model manage) ───────
