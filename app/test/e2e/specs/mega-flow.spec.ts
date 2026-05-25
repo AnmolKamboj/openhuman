@@ -237,6 +237,9 @@ describe('Mega flow — login + Gmail OAuth + Composio in one session', () => {
     // Re-login since reset wipes the session.
     await triggerDeepLink('openhuman://auth?token=mega-composio-token');
     await waitForMockRequest('POST', '/telegram/login-tokens/', 15_000);
+    // Wait for the core to finish storing the session token before calling
+    // composio RPCs — without this the session may not be persisted yet.
+    await waitForMockRequest('GET', '/auth/me', 10_000);
 
     // Seed connections + available triggers; start with an empty active list.
     setMockBehaviors({
@@ -248,6 +251,7 @@ describe('Mega flow — login + Gmail OAuth + Composio in one session', () => {
     });
 
     const before = await callOpenhumanRpc('openhuman.composio_list_triggers', {});
+    if (!before.ok) console.log(`${LOG} composio_list_triggers FAILED:`, JSON.stringify(before));
     expect(before.ok).toBe(true);
     // list_triggers always emits a log line → RpcOutcome wraps in {result, logs}.
     // JSON-RPC result shape: { result: { triggers: [...] }, logs: [...] }
@@ -561,6 +565,8 @@ describe('Mega flow — login + Gmail OAuth + Composio in one session', () => {
 
     await triggerDeepLink('openhuman://auth?token=mega-composio-webhook-token');
     await waitForMockRequest('POST', '/telegram/login-tokens/', 15_000);
+    // Wait for the core to finish storing the session token before proceeding.
+    await waitForMockRequest('GET', '/auth/me', 10_000);
     clearRequestLog();
 
     // Seed composio state.
@@ -577,6 +583,7 @@ describe('Mega flow — login + Gmail OAuth + Composio in one session', () => {
       connection_id: 'c2',
       slug: 'GITHUB_PULL_REQUEST_EVENT',
     });
+    if (!enable.ok) console.log(`${LOG} composio_enable_trigger FAILED:`, JSON.stringify(enable));
     expect(enable.ok).toBe(true);
     console.log(`${LOG} composio+webhook: trigger enabled`);
 
