@@ -217,25 +217,6 @@ const de5: TranslationMap = {
   'settings.developerMenu.integrationTriggers.title': 'Integrationsauslöser',
   'settings.developerMenu.integrationTriggers.desc':
     'Konfiguriere KI-Triage-Einstellungen für Composio-Integrationsauslöser',
-  'settings.mcpServer.title': 'MCP-Server',
-  'settings.mcpServer.toolsSectionTitle': 'Verfügbare Werkzeuge',
-  'settings.mcpServer.toolsSectionDesc':
-    'Werkzeuge, die über den MCP-Stdio-Server beim Ausführen von openhuman-core mcp bereitgestellt werden',
-  'settings.mcpServer.configSectionTitle': 'Client-Konfiguration',
-  'settings.mcpServer.configSectionDesc':
-    'Wähle deinen MCP-Client aus, um das richtige Konfigurations-Snippet zu generieren',
-  'settings.mcpServer.copySnippet': 'In die Zwischenablage kopieren',
-  'settings.mcpServer.copied': 'Kopiert!',
-  'settings.mcpServer.openConfigFile': 'Konfigurationsdatei öffnen',
-  'settings.mcpServer.binaryPathNotFound':
-    'OpenHuman-Binärdatei nicht gefunden. Wenn du aus dem Quellcode arbeitest, baue sie mit: cargo build --bin openhuman-core',
-  'settings.mcpServer.openConfigError': 'Konfigurationsdatei konnte nicht geöffnet werden',
-  'settings.mcpServer.clientClaudeDesktop': 'Claude Desktop',
-  'settings.mcpServer.clientCursor': 'Cursor',
-  'settings.mcpServer.clientCodex': 'Codex',
-  'settings.mcpServer.clientZed': 'Zed',
-  'settings.mcpServer.configFilePath': 'Konfigurationsdatei',
-  'settings.mcpServer.clientSelectorAriaLabel': 'MCP-Client-Auswahl',
   'settings.appearance.menuDesc': 'Wähle hell, dunkel oder passend zu deinem Systemthema',
   'settings.mascot.active': 'Aktiv',
   'settings.mascot.characterDesc': 'Charakterbeschreibung',
@@ -564,6 +545,26 @@ const de5: TranslationMap = {
   'settings.appearance.tabBarAlwaysShowLabels': 'Beschriftungen immer anzeigen',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':
     'Wenn diese Option deaktiviert ist, werden Beschriftungen nur beim Hover oder für die aktive Registerkarte angezeigt.',
+  'settings.mcpServer.title': 'MCP Server',
+  'settings.mcpServer.toolsSectionTitle': 'Verfügbare Werkzeuge',
+  'settings.mcpServer.toolsSectionDesc':
+    'Werkzeuge, die über den MCP-stdio-Server bereitgestellt werden, wenn openhuman-core mcp ausgeführt wird',
+  'settings.mcpServer.configSectionTitle': 'Client-Konfiguration',
+  'settings.mcpServer.configSectionDesc':
+    'Wähle deinen MCP-Client aus, um den passenden Konfigurationsausschnitt zu erzeugen',
+  'settings.mcpServer.copySnippet': 'In die Zwischenablage kopieren',
+  'settings.mcpServer.copied': 'Kopiert!',
+  'settings.mcpServer.openConfigFile': 'Konfigurationsdatei öffnen',
+  'settings.mcpServer.binaryPathNotFound':
+    'OpenHuman-Binärdatei nicht gefunden. Wenn du aus dem Quellcode arbeitest, baue sie mit: cargo build --bin openhuman-core',
+  'settings.mcpServer.openConfigError': 'Konfigurationsdatei konnte nicht geöffnet werden',
+  'settings.mcpServer.clientClaudeDesktop': 'Claude Desktop',
+  'settings.mcpServer.clientCursor': 'Cursor',
+  'settings.mcpServer.clientCodex': 'Codex',
+  'settings.mcpServer.clientZed': 'Zed',
+  'settings.mcpServer.configFilePath': 'Konfigurationsdatei',
+  'settings.mcpServer.clientSelectorAriaLabel': 'MCP-Client-Auswahl',
+
   'common.breadcrumb': 'Breadcrumb',
   'settings.betaBuild': 'Beta-Build – v{version}',
   'migration.vendor.openclaw': 'OpenClaw',
