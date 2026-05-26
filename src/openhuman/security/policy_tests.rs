@@ -79,6 +79,22 @@ fn enforce_tool_operation_act_uses_rate_budget() {
     assert!(err.contains("Rate limit exceeded"));
 }
 
+#[test]
+fn action_budget_error_mentions_limit_and_settings() {
+    let p = SecurityPolicy {
+        max_actions_per_hour: 0,
+        ..default_policy()
+    };
+
+    let err = p
+        .enforce_tool_operation(ToolOperation::Act, "write_file")
+        .unwrap_err();
+
+    assert!(err.contains("Rate limit exceeded: action budget exhausted"));
+    assert!(err.contains("0 actions/hour"));
+    assert!(err.contains("Settings -> Advanced -> Agent autonomy"));
+}
+
 // -- is_command_allowed -------------------------------------------
 
 #[test]
