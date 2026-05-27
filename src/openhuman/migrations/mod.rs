@@ -26,11 +26,12 @@ use crate::openhuman::config::Config;
 mod expand_autonomy_defaults;
 mod phase_out_profile_md;
 mod remove_write_auto_approve;
+mod repair_http_request_limits;
 mod retire_chat_v1_model;
 mod unify_ai_provider_settings;
 
 /// Current target schema version. Bumped alongside every new migration.
-pub const CURRENT_SCHEMA_VERSION: u32 = 5;
+pub const CURRENT_SCHEMA_VERSION: u32 = 6;
 
 /// Run any migrations whose `schema_version` gate hasn't yet been
 /// crossed for this workspace.
@@ -245,6 +246,50 @@ pub async fn run_pending(config: &mut Config) {
             Err(err) => {
                 log::warn!(
                     "[migrations] remove_write_auto_approve failed: {err:#} — \
+                     will retry on next launch"
+                );
+            }
+        }
+    }
+
+    // 5 -> 6: repair stale-zero `[http_request]` limits. Older builds could
+    // persist `timeout_secs = 0` / `max_response_size = 0`, which the network
+    // tools apply literally — `Duration::from_secs(0)` is an instant timeout
+    // that fails every web_fetch/http_request, and a 0-byte cap truncates
+    // every body. serde defaults only fill *missing* keys, so a persisted 0
+    // survives an update. Coerce to schema defaults (30s / 1 MB). Guard on
+    // `== 5` so an earlier failed step doesn't get skipped.
+    //
+    // NOTE: another in-flight migration (`reconcile_orphaned_providers`) also
+    // targets the 5 -> 6 transition. When that lands, both modules run inside
+    // this single `== 5` branch before the version is bumped to 6 — keep them
+    // as separate modules, one shared version bump. The tool constructors
+    // also clamp 0 at the point of use, so a user who crosses this gate via
+    // the other migration without running this one still gets working fetches.
+    if config.schema_version == 5 {
+        match repair_http_request_limits::run(config) {
+            Ok(stats) => {
+                let previous_version = config.schema_version;
+                config.schema_version = 6;
+                if let Err(err) = config.save().await {
+                    config.schema_version = previous_version;
+                    log::warn!(
+                        "[migrations] repair_http_request_limits ran but config.save failed: \
+                         {err:#} — rolled in-memory schema_version back to {previous_version}, \
+                         will retry on next launch"
+                    );
+                    return;
+                }
+                log::info!(
+                    "[migrations] schema_version bumped to 6 (repair_http_request_limits \
+                     timeout_repaired={} max_response_size_repaired={})",
+                    stats.timeout_repaired,
+                    stats.max_response_size_repaired,
+                );
+            }
+            Err(err) => {
+                log::warn!(
+                    "[migrations] repair_http_request_limits failed: {err:#} — \
                      will retry on next launch"
                 );
             }
