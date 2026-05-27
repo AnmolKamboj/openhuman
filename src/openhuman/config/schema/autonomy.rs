@@ -25,10 +25,12 @@ pub struct AutonomyConfig {
     pub require_approval_for_medium_risk: bool,
     #[serde(default = "default_true")]
     pub block_high_risk_commands: bool,
+    /// Tool names the user has pre-approved ("Always allow"). The `ApprovalGate`
+    /// skips the interactive prompt for any tool listed here. Populated by the
+    /// "Always allow" approval decision or hand-edited, and surfaced in
+    /// Settings → Agent access. Read live by the gate via `SecurityPolicy`.
     #[serde(default = "default_auto_approve")]
     pub auto_approve: Vec<String>,
-    #[serde(default = "default_always_ask")]
-    pub always_ask: Vec<String>,
     /// Directories outside the workspace the agent may access. Each entry grants
     /// read (or read+write) to its subtree, taking precedence over `workspace_only`
     /// and `forbidden_paths` — except credential stores (~/.ssh, ~/.gnupg, ~/.aws),
@@ -112,10 +114,6 @@ fn default_auto_approve() -> Vec<String> {
     ]
 }
 
-fn default_always_ask() -> Vec<String> {
-    vec![]
-}
-
 impl Default for AutonomyConfig {
     fn default() -> Self {
         Self {
@@ -128,7 +126,6 @@ impl Default for AutonomyConfig {
             require_approval_for_medium_risk: default_true(),
             block_high_risk_commands: default_true(),
             auto_approve: default_auto_approve(),
-            always_ask: default_always_ask(),
             trusted_roots: Vec::new(),
             allow_tool_install: false,
         }

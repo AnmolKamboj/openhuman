@@ -182,6 +182,11 @@ pub struct SecurityPolicy {
     pub trusted_roots: Vec<TrustedRoot>,
     /// Whether the agent may install OS packages via the `install_tool` tool.
     pub allow_tool_install: bool,
+    /// Tool names the user has pre-approved ("Always allow"). The `ApprovalGate`
+    /// skips the interactive prompt for any tool in this set. Sourced from
+    /// `autonomy.auto_approve`; populated/cleared via `config.update_autonomy_settings`
+    /// (or an "Always allow" decision) and observed live via `live_policy`.
+    pub auto_approve: Vec<String>,
     pub tracker: ActionTracker,
 }
 
@@ -241,6 +246,7 @@ impl Default for SecurityPolicy {
             block_high_risk_commands: true,
             trusted_roots: Vec::new(),
             allow_tool_install: false,
+            auto_approve: Vec::new(),
             tracker: ActionTracker::new(),
         }
     }
@@ -1942,11 +1948,12 @@ impl SecurityPolicy {
             autonomy_config.max_actions_per_hour
         );
 
-        // NOTE: `autonomy_config.auto_approve` / `always_ask` are loaded from
-        // config (with non-empty defaults) but are NOT consumed here — the
-        // ApprovalGate has no always-allow / always-ask allowlist wired to them
-        // yet, so approval is driven purely by tier + `CommandClass`. These
-        // fields pre-date this PR; wiring them into the gate is a follow-up.
+        // `auto_approve` is the user's "Always allow" allowlist: the
+        // `ApprovalGate` reads it via `live_policy::current()` and skips the
+        // interactive prompt for any tool named in it. Tier + `CommandClass`
+        // (and the unconditional read-only / forbidden-path / high-risk denials)
+        // still run *before* the gate, so the allowlist can only suppress the
+        // human prompt — it can never override a hard policy denial.
 
         // The default projects home (`~/OpenHuman/projects`) is always a
         // read-write trusted root so the coding agent can create/edit projects
@@ -1978,6 +1985,7 @@ impl SecurityPolicy {
             block_high_risk_commands: autonomy_config.block_high_risk_commands,
             trusted_roots,
             allow_tool_install: autonomy_config.allow_tool_install,
+            auto_approve: autonomy_config.auto_approve.clone(),
             tracker: ActionTracker::new(),
         }
     }

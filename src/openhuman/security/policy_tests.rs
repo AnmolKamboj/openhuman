@@ -898,6 +898,7 @@ fn from_config_maps_all_fields() {
         max_cost_per_day_cents: 1000,
         require_approval_for_medium_risk: false,
         block_high_risk_commands: false,
+        auto_approve: vec!["shell".into(), "file_write".into()],
         ..crate::openhuman::config::AutonomyConfig::default()
     };
     let workspace = PathBuf::from("/tmp/test-workspace");
@@ -912,6 +913,9 @@ fn from_config_maps_all_fields() {
     assert!(!policy.require_approval_for_medium_risk);
     assert!(!policy.block_high_risk_commands);
     assert_eq!(policy.workspace_dir, PathBuf::from("/tmp/test-workspace"));
+    // The "Always allow" allowlist is carried onto the policy so the gate can
+    // skip prompting for these tools.
+    assert_eq!(policy.auto_approve, vec!["shell", "file_write"]);
 }
 
 // -- Default policy -----------------------------------------------
