@@ -1590,6 +1590,25 @@ impl Agent {
             other_messages.drain(0..drop_count);
         }
 
+        // A cut that lands *between* an `AssistantToolCalls` and its
+        // `ToolResults` leaves the window opening on an orphaned `ToolResults`.
+        // Serialized, that is a `tool` message with no preceding `tool_calls`,
+        // which the provider rejects with a 400 (the response streams back
+        // empty and surfaces to the user as "Something went wrong"). Snap the
+        // boundary forward past any leading orphaned results so the window
+        // always starts on a clean turn (a `Chat` or an `AssistantToolCalls`).
+        let orphan_lead = other_messages
+            .iter()
+            .take_while(|m| matches!(m, ConversationMessage::ToolResults(_)))
+            .count();
+        if orphan_lead > 0 {
+            log::debug!(
+                "[agent] trim_history snapped window past {orphan_lead} orphaned ToolResults \
+                 (tool-cycle bisected by the {max}-message cap)"
+            );
+            other_messages.drain(0..orphan_lead);
+        }
+
         self.history = system_messages;
         self.history.extend(other_messages);
     }
@@ -1610,19 +1629,34 @@ impl Agent {
             return messages;
         }
 
-        if matches!(messages.first(), Some(msg) if msg.role == "system") {
-            let keep_tail = max.saturating_sub(1);
-            let start = messages.len().saturating_sub(keep_tail);
-            let mut bounded = Vec::with_capacity(max);
-            bounded.push(messages[0].clone());
-            if keep_tail > 0 {
-                bounded.extend(messages[start..].iter().cloned());
-            }
-            bounded
+        let has_system = matches!(messages.first(), Some(msg) if msg.role == "system");
+        let keep_tail = if has_system {
+            max.saturating_sub(1)
         } else {
-            let start = messages.len().saturating_sub(max);
-            messages[start..].to_vec()
+            max
+        };
+        let start = messages.len().saturating_sub(keep_tail);
+
+        // Same hazard as `trim_history`: the tail slice can open on a `tool`
+        // message whose `tool_calls` opener fell outside the window, which the
+        // provider rejects. Advance past any leading orphaned `tool` results so
+        // the window starts on a clean turn.
+        let tail = &messages[start..];
+        let orphan_lead = tail.iter().take_while(|m| m.role == "tool").count();
+        if orphan_lead > 0 {
+            log::debug!(
+                "[agent] bound_cached_transcript_messages snapped window past {orphan_lead} \
+                 orphaned tool result(s) (tool-cycle bisected by the {max}-message cap)"
+            );
         }
+        let tail = &tail[orphan_lead..];
+
+        let mut bounded = Vec::with_capacity(tail.len() + usize::from(has_system));
+        if has_system {
+            bounded.push(messages[0].clone());
+        }
+        bounded.extend(tail.iter().cloned());
+        bounded
     }
 
     /// Pre-fetches learned context data from memory (observations, patterns, user profile).
