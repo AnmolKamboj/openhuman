@@ -2570,7 +2570,7 @@ const en: TranslationMap = {
   'settings.ai.clearStoredKey': 'Clear stored key',
   'settings.ai.connectProvider': 'Connect',
   'settings.ai.customRouting': 'Custom routing',
-  'settings.ai.defaultResolvesTo': 'OpenHuman',
+  'settings.ai.defaultResolvesTo': 'Default resolves to',
   'settings.ai.discard': 'Discard',
   'settings.ai.editProvider': 'Edit {label}',
   'settings.ai.llmProviders': 'LLM Providers',
