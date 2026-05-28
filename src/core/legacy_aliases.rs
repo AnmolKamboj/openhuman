@@ -21,6 +21,13 @@
 /// Order doesn't matter for correctness, but is kept alphabetical by legacy
 /// key for easier diffing against the frontend table.
 const LEGACY_ALIASES: &[(&str, &str)] = &[
+    // MCP clients — old method names that appeared in Sentry (CORE-RUST-DR/DS/DT/DV/DW).
+    // Callers used dotted namespace, bare `mcp_list`, `mcp_servers_list`, and
+    // `mcp_clients_list` before the canonical `mcp_clients_installed_list` was
+    // introduced in PR #2409. `tool_registry_call` was an early mis-spelling of
+    // `mcp_clients_tool_call` that shipped in at least one older bundle.
+    // `mcp_clients.list` sorts before all `openhuman.*` entries (m < o).
+    ("mcp_clients.list", "openhuman.mcp_clients_installed_list"),
     (
         "openhuman.get_analytics_settings",
         "openhuman.config_get_analytics_settings",
@@ -34,10 +41,23 @@ const LEGACY_ALIASES: &[(&str, &str)] = &[
         "openhuman.get_runtime_flags",
         "openhuman.config_get_runtime_flags",
     ),
+    (
+        "openhuman.mcp_clients_list",
+        "openhuman.mcp_clients_installed_list",
+    ),
+    ("openhuman.mcp_list", "openhuman.mcp_clients_installed_list"),
+    (
+        "openhuman.mcp_servers_list",
+        "openhuman.mcp_clients_installed_list",
+    ),
     ("openhuman.ping", "core.ping"),
     (
         "openhuman.set_browser_allow_all",
         "openhuman.config_set_browser_allow_all",
+    ),
+    (
+        "openhuman.tool_registry_call",
+        "openhuman.mcp_clients_tool_call",
     ),
     (
         "openhuman.update_analytics_settings",
