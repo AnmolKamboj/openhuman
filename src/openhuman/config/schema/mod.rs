@@ -11,6 +11,7 @@ mod accessibility;
 mod agent;
 mod autocomplete;
 mod autonomy;
+mod capability_providers;
 mod channels;
 mod context;
 mod defaults;
@@ -45,6 +46,7 @@ pub use agent::{
 };
 pub use autocomplete::AutocompleteConfig;
 pub use autonomy::AutonomyConfig;
+pub use capability_providers::{CapabilityProviderConfig, CapabilityProviderTrustState};
 pub use channels::{
     AuditConfig, ChannelsConfig, DingTalkConfig, DiscordConfig, IMessageConfig, IrcConfig,
     LarkConfig, LarkReceiveMode, MatrixConfig, MattermostConfig, QQConfig, ResourceLimitsConfig,

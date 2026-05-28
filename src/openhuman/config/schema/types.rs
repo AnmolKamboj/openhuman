@@ -186,6 +186,11 @@ pub struct Config {
     #[serde(default)]
     pub mcp_client: McpClientConfig,
 
+    /// Trust metadata for external capability providers. Empty by default so
+    /// existing installations keep the same tool-discovery behavior.
+    #[serde(default)]
+    pub capability_providers: Vec<CapabilityProviderConfig>,
+
     #[serde(default)]
     pub multimodal: MultimodalConfig,
 
@@ -639,6 +644,7 @@ impl Default for Config {
             curl: CurlConfig::default(),
             gitbooks: GitbooksConfig::default(),
             mcp_client: McpClientConfig::default(),
+            capability_providers: Vec::new(),
             multimodal: MultimodalConfig::default(),
             seltz: SeltzConfig::default(),
             searxng: SearxngConfig::default(),
@@ -747,6 +753,30 @@ mod model_pin_tests {
             config.configured_agent_model("code_executor", false),
             Some("qwen/qwen3")
         );
+    }
+
+    #[test]
+    fn config_parses_capability_provider_entries() {
+        let config: Config = toml::from_str(
+            r#"
+                [[capability_providers]]
+                id = "Acme Tools"
+                display_name = "Acme Tools"
+                source_uri = "https://example.com/openhuman/acme-tools"
+                source_digest = "sha256:abc123"
+                trust_state = "trusted"
+                enabled = true
+            "#,
+        )
+        .expect("config should parse capability providers");
+
+        assert_eq!(config.capability_providers.len(), 1);
+        assert_eq!(config.capability_providers[0].id, "Acme Tools");
+        assert_eq!(
+            config.capability_providers[0].trust_state,
+            CapabilityProviderTrustState::Trusted
+        );
+        assert!(config.capability_providers[0].enabled);
     }
 
     #[test]
