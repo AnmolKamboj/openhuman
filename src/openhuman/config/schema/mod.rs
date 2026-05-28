@@ -90,5 +90,7 @@ pub use voice_providers::{
     generate_voice_provider_id, is_voice_slug_reserved, BuiltinVoiceProvider, SttApiStyle,
     TtsApiStyle, VoiceCapability, VoiceProviderCreds, BUILTIN_VOICE_PROVIDERS,
 };
+mod dashboard;
+pub use dashboard::{DashboardConfig, EventStreamConfig, ModelHealthConfig};
 mod types;
 pub use types::*;
