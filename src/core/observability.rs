@@ -403,6 +403,31 @@ fn is_memory_store_breaker_open(lower: &str) -> bool {
 ///   `channels::providers::web::run_chat_task` (OPENHUMAN-TAURI-26). The
 ///   `"session expired"` substring anchors the match to the OpenHuman
 ///   backend's session-renewal body, not the bare numeric status.
+/// - `"OpenHuman API error (401 Unauthorized): {…\"error\":\"Invalid token\"…}"`
+///   — same emit site, same wire shape as the `Session expired` body, but the
+///   OpenHuman backend swaps in `"Invalid token"` for the JWT-validity
+///   rejection branch (vs. the explicit session-renewal branch).
+///   OPENHUMAN-TAURI-4P0. The conjunctive anchor — `"OpenHuman API error
+///   (401"` **and** the envelope-shaped `"\"error\":\"Invalid token\""` —
+///   keeps the #2286 contract intact: bare `"Invalid token"`, OpenAI /
+///   Anthropic BYO-key 401s, Discord upstream-bot-token rejections, and
+///   provider scope errors still route to Sentry as actionable.
+/// - `"Embedding API error (401 Unauthorized): {…\"error\":\"Invalid token\"…}"`
+///   — TAURI-RUST-4K5 (~118 events, escalating on 0.56.0). Same OpenHuman
+///   backend session-expired envelope as 4P0, but the embedding client at
+///   `src/openhuman/embeddings/openai.rs:139` wraps it with the
+///   `"Embedding API error"` prefix instead of `"OpenHuman API error"`.
+///   Uses the same conjunctive-anchor pattern so BYO-key embedding 401s
+///   from third-party providers (OpenAI / Voyage / Cohere) still escalate
+///   — guarded by `does_not_classify_embedding_byo_key_401_as_session_expired`.
+/// - `"OpenHuman streaming API error (401 Unauthorized): {…\"error\":\"Invalid token\"…}"`
+///   — TAURI-RUST-1EE (~110 events, ongoing on 0.56.0). Same envelope as
+///   4P0, wrapped by the streaming-chat path at
+///   `inference/provider/compatible.rs:949` with the
+///   `"OpenHuman streaming API error"` prefix. The `streaming` token means
+///   the 4P0 anchor doesn't match, so it needs its own prefix arm; BYO-key
+///   streaming 401s still escalate — guarded by
+///   `does_not_classify_streaming_byo_key_401_as_session_expired`.
 /// - `"SESSION_EXPIRED: backend session not active — sign in to resume LLM work"`
 ///   — the `scheduler_gate::is_signed_out` sentinel from
 ///   `providers::openhuman_backend::resolve_bearer`.
@@ -420,6 +445,39 @@ pub fn is_session_expired_message(msg: &str) -> bool {
         || lower.contains("no backend session token")
         || lower.contains("session jwt required")
         || msg.contains("SESSION_EXPIRED")
+        // OPENHUMAN-TAURI-4P0 — OpenHuman backend's "Invalid token" 401
+        // envelope. Both anchors must be present: the OpenHuman-scoped
+        // `"OpenHuman API error (401"` prefix (so a third-party provider's
+        // `"OpenAI API error (401 Unauthorized): invalid_api_key"` cannot
+        // match), AND the envelope-shaped `"\"error\":\"Invalid token\""`
+        // (so bare prose mentions of "invalid token" — Discord OAuth
+        // failures, generic upstream errors covered by #2286 — stay
+        // actionable in Sentry).
+        || (msg.contains("OpenHuman API error (401")
+            && msg.contains("\"error\":\"Invalid token\""))
+        // TAURI-RUST-4K5 — same OpenHuman backend "Invalid token" envelope
+        // wrapped by `src/openhuman/embeddings/openai.rs:139` with the
+        // `"Embedding API error"` prefix instead of `"OpenHuman API error"`.
+        // Same conjunctive-anchor pattern as 4P0: the embedding-scoped
+        // prefix gates the match so a third-party BYO-key embedding 401
+        // (e.g. OpenAI/Voyage/Cohere rejecting the user's own API key)
+        // stays actionable — guarded by
+        // `does_not_classify_embedding_byo_key_401_as_session_expired`.
+        || (msg.contains("Embedding API error (401")
+            && msg.contains("\"error\":\"Invalid token\""))
+        // TAURI-RUST-1EE — same OpenHuman backend "Invalid token" envelope
+        // wrapped by the streaming-chat path at
+        // `inference/provider/compatible.rs:949` with the
+        // `"OpenHuman streaming API error"` prefix. The `streaming` token
+        // between `OpenHuman` and `API error` means the 4P0 anchor
+        // (`"OpenHuman API error (401"`) does not match it, so the
+        // streaming path needs its own prefix arm. Same conjunctive-anchor
+        // pattern keeps third-party BYO-key streaming 401s
+        // (`"OpenAI streaming API error (401): invalid_api_key"`)
+        // escalating — guarded by
+        // `does_not_classify_streaming_byo_key_401_as_session_expired`.
+        || (msg.contains("OpenHuman streaming API error (401")
+            && msg.contains("\"error\":\"Invalid token\""))
 }
 
 /// Detect the in-process-core boot-window shape: a sibling component
@@ -3332,6 +3390,157 @@ mod tests {
                 expected_error_kind(raw),
                 Some(ExpectedErrorKind::SessionExpired),
                 "factory.rs sibling sentinel must classify as SessionExpired: {raw}"
+            );
+        }
+    }
+
+    /// OPENHUMAN-TAURI-4P0: the OpenHuman backend rejects an expired/
+    /// revoked JWT with the envelope `{"success":false,"error":"Invalid
+    /// token"}` (vs. the explicit `"Session expired. Please log in again."`
+    /// body covered by `classifies_session_expired_messages`). Same emit
+    /// site, same wrapping by `web_channel.run_chat_task`, but the body
+    /// substring is different.
+    ///
+    /// The matcher uses a conjunctive `"OpenHuman API error (401"` +
+    /// envelope-shaped `"\"error\":\"Invalid token\""` anchor pair so the
+    /// #2286 contract for bare `"Invalid token"` / BYO-key 401s is
+    /// preserved — `does_not_classify_byo_key_provider_401_as_session_expired`
+    /// pins that and must stay green.
+    #[test]
+    fn classifies_openhuman_invalid_token_401_as_session_expired() {
+        // Verbatim wire shape from the OPENHUMAN-TAURI-4P0 event payload.
+        let msg = r#"run_chat_task failed client_id=lssXhQidBfzGXG9k thread_id=thread-743193ba-f0c1-4008-b665-64d3030d1453 request_id=00696b71-fa05-4574-bcdb-5744a5dac6ea error=OpenHuman API error (401 Unauthorized): {"success":false,"error":"Invalid token"}"#;
+        assert_eq!(
+            expected_error_kind(msg),
+            Some(ExpectedErrorKind::SessionExpired),
+            "OPENHUMAN-TAURI-4P0 verbatim wire shape must classify as SessionExpired"
+        );
+
+        // Unwrapped emit shape (without the run_chat_task prefix) — also
+        // appears at provider/agent layers; the substring matcher must
+        // catch it regardless of caller wrapping.
+        assert_eq!(
+            expected_error_kind(
+                r#"OpenHuman API error (401 Unauthorized): {"success":false,"error":"Invalid token"}"#
+            ),
+            Some(ExpectedErrorKind::SessionExpired),
+            "unwrapped OpenHuman invalid-token envelope must classify as SessionExpired"
+        );
+    }
+
+    /// TAURI-RUST-4K5 (118 events, escalating on 0.56.0): the embedding
+    /// client at `src/openhuman/embeddings/openai.rs:139` wraps the same
+    /// OpenHuman backend `{"success":false,"error":"Invalid token"}` 401
+    /// envelope as 4P0, but with the `"Embedding API error"` prefix
+    /// instead of `"OpenHuman API error"` (different emit-site format
+    /// string, same underlying session-expired cause — see breadcrumb
+    /// `[scheduler_gate] signed_out false -> true` immediately preceding
+    /// the 401 in the event payload).
+    ///
+    /// Uses the same conjunctive `"<prefix> (401"` + envelope-shaped
+    /// `"\"error\":\"Invalid token\""` anchor pattern as 4P0 so the
+    /// #2286 / BYO-key contract is preserved — covered by
+    /// `does_not_classify_byo_key_provider_401_as_session_expired` and
+    /// `does_not_classify_embedding_byo_key_401_as_session_expired`
+    /// (below).
+    #[test]
+    fn classifies_embedding_api_invalid_token_401_as_session_expired() {
+        // Verbatim wire shape from the TAURI-RUST-4K5 event payload (Sentry
+        // issue 5230, latest event 2026-05-27 20:49 on openhuman@0.56.0,
+        // domain=embeddings operation=openai_embed status=401).
+        let msg =
+            r#"Embedding API error (401 Unauthorized): {"success":false,"error":"Invalid token"}"#;
+        assert_eq!(
+            expected_error_kind(msg),
+            Some(ExpectedErrorKind::SessionExpired),
+            "TAURI-RUST-4K5 verbatim wire shape must classify as SessionExpired"
+        );
+
+        // The substring matcher must survive caller wrapping the same way
+        // the 4P0 web-channel `run_chat_task` test wraps the body — callers
+        // that re-emit through a tracing field or another layer prepend
+        // arbitrary context.
+        let wrapped = r#"openai_embed failed error=Embedding API error (401 Unauthorized): {"success":false,"error":"Invalid token"}"#;
+        assert_eq!(
+            expected_error_kind(wrapped),
+            Some(ExpectedErrorKind::SessionExpired),
+            "wrapped 4K5 envelope must still classify as SessionExpired"
+        );
+    }
+
+    /// TAURI-RUST-1EE (Sentry issue 1807, 110 events, 109 on
+    /// openhuman@0.56.0): the streaming-chat path wraps the same OpenHuman
+    /// backend `{"success":false,"error":"Invalid token"}` 401 envelope
+    /// with the `"OpenHuman streaming API error"` prefix (emitted at
+    /// `inference/provider/compatible.rs:949`) — distinct from the
+    /// non-streaming `"OpenHuman API error"` prefix (4P0) and the
+    /// `"Embedding API error"` prefix (4K5). The `streaming` token between
+    /// `OpenHuman` and `API error` means the 4P0 anchor
+    /// (`"OpenHuman API error (401"`) does not match it, so it needs its
+    /// own prefix arm.
+    #[test]
+    fn classifies_openhuman_streaming_invalid_token_401_as_session_expired() {
+        // Verbatim wire shape from the TAURI-RUST-1EE event payload
+        // (domain=llm_provider operation=streaming_chat status=401
+        // provider=OpenHuman model=reasoning-v1).
+        let msg = r#"OpenHuman streaming API error (401 Unauthorized): {"success":false,"error":"Invalid token"}"#;
+        assert_eq!(
+            expected_error_kind(msg),
+            Some(ExpectedErrorKind::SessionExpired),
+            "TAURI-RUST-1EE verbatim streaming wire shape must classify as SessionExpired"
+        );
+
+        // Caller-wrapped (agent.run_single / web_channel.run_chat_task
+        // re-emit prepends context) must still classify.
+        let wrapped = r#"run_chat_task failed error=OpenHuman streaming API error (401 Unauthorized): {"success":false,"error":"Invalid token"}"#;
+        assert_eq!(
+            expected_error_kind(wrapped),
+            Some(ExpectedErrorKind::SessionExpired),
+            "wrapped 1EE streaming envelope must still classify as SessionExpired"
+        );
+    }
+
+    /// Polarity guard for the 1EE streaming arm — a third-party BYO-key
+    /// provider's streaming 401 (`"OpenAI streaming API error (401 …):
+    /// invalid_api_key"`) must STILL reach Sentry as actionable
+    /// misconfiguration. The `"OpenHuman streaming API error (401"` prefix
+    /// gate keeps the match OpenHuman-scoped.
+    #[test]
+    fn does_not_classify_streaming_byo_key_401_as_session_expired() {
+        for raw in [
+            "OpenAI streaming API error (401 Unauthorized): invalid_api_key",
+            r#"OpenAI streaming API error (401 Unauthorized): {"error":{"code":"invalid_api_key","message":"Incorrect API key provided"}}"#,
+            "Anthropic streaming API error (401): authentication_error",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                None,
+                "BYO-key streaming 401 must reach Sentry as actionable error: {raw}"
+            );
+        }
+    }
+
+    /// Polarity guard for the 4K5 arm. The classifier must NOT swallow
+    /// `"Embedding API error (401 …)"` shapes from third-party BYO-key
+    /// embedding providers (OpenAI / Voyage / Cohere upstream rejecting
+    /// the user's own API key). Those are actionable user-config errors
+    /// that need to reach Sentry — same contract as
+    /// `does_not_classify_byo_key_provider_401_as_session_expired` for
+    /// the OpenAI chat API.
+    #[test]
+    fn does_not_classify_embedding_byo_key_401_as_session_expired() {
+        for raw in [
+            "Embedding API error (401 Unauthorized): invalid_api_key",
+            r#"Embedding API error (401 Unauthorized): {"error":{"code":"invalid_api_key","message":"Incorrect API key provided"}}"#,
+            // Wire shape without the OpenHuman envelope — bare provider
+            // rejection prose. Must reach Sentry as actionable BYO-key
+            // misconfiguration.
+            "Embedding API error (401): authentication_error",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                None,
+                "BYO-key embedding 401 must reach Sentry as actionable error: {raw}"
             );
         }
     }
