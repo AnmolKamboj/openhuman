@@ -603,7 +603,7 @@ const fr5: TranslationMap = {
   'common.breadcrumb': "Fil d'Ariane",
   'settings.betaBuild': 'Version bêta - v{version}',
   'migration.vendor.openclaw': 'OpenClaw',
-  'migration.vendor.hermes': 'Hermes Agent (coming soon)',
+  'migration.vendor.hermes': 'Hermes Agent',
   'onboarding.apiKeys.openaiOauthHint':
     'Utilisez ChatGPT Plus/Pro (abonnement) ou une clé OpenAI API — les deux ne sont pas requis.',
   'onboarding.apiKeys.openaiOauthOpening': 'Ouverture de la connexion…',

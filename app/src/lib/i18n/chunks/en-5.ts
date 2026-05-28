@@ -629,7 +629,7 @@ const en5: TranslationMap = {
   'common.breadcrumb': 'Breadcrumb',
   'settings.betaBuild': 'Beta build - v{version}',
   'migration.vendor.openclaw': 'OpenClaw',
-  'migration.vendor.hermes': 'Hermes Agent (coming soon)',
+  'migration.vendor.hermes': 'Hermes Agent',
   'onboarding.apiKeys.openaiOauthHint':
     'Use ChatGPT Plus/Pro (subscription) or an OpenAI API key — not both required.',
   'onboarding.apiKeys.openaiOauthOpening': 'Opening sign-in…',

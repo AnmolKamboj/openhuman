@@ -582,7 +582,7 @@ const ar5: TranslationMap = {
   'common.breadcrumb': 'مسار التنقل',
   'settings.betaBuild': 'الإصدار التجريبي - v{version}',
   'migration.vendor.openclaw': 'OpenClaw',
-  'migration.vendor.hermes': 'Hermes Agent (coming soon)',
+  'migration.vendor.hermes': 'Hermes Agent',
   'onboarding.apiKeys.openaiOauthHint':
     'استخدم ChatGPT Plus/Pro (اشتراك) أو مفتاح OpenAI API - ليس كلاهما مطلوبًا.',
   'onboarding.apiKeys.openaiOauthOpening': 'فتح تسجيل الدخول...',

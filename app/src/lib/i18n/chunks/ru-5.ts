@@ -596,7 +596,7 @@ const ru5: TranslationMap = {
   'common.breadcrumb': 'Breadcrumb',
   'settings.betaBuild': 'Бета-сборка — v{version}',
   'migration.vendor.openclaw': 'OpenClaw',
-  'migration.vendor.hermes': 'Hermes Agent (coming soon)',
+  'migration.vendor.hermes': 'Hermes Agent',
   'onboarding.apiKeys.openaiOauthHint':
     'Используйте ChatGPT Plus/Pro (подписка) или ключ OpenAI API — не оба обязательны.',
   'onboarding.apiKeys.openaiOauthOpening': 'Открытие входа…',

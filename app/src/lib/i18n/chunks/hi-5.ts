@@ -592,7 +592,7 @@ const hi5: TranslationMap = {
   'common.breadcrumb': 'ब्रेडक्रंब',
   'settings.betaBuild': 'बीटा बिल्ड - v{version}',
   'migration.vendor.openclaw': 'OpenClaw',
-  'migration.vendor.hermes': 'Hermes Agent (coming soon)',
+  'migration.vendor.hermes': 'Hermes Agent',
   'onboarding.apiKeys.openaiOauthHint':
     'चैटजीपीटी प्लस/प्रो (सदस्यता) या OpenAI API कुंजी का उपयोग करें - दोनों की आवश्यकता नहीं है।',
   'onboarding.apiKeys.openaiOauthOpening': 'साइन-इन खुल रहा है...',

@@ -585,7 +585,7 @@ const ko5: TranslationMap = {
   'common.breadcrumb': '탐색경로',
   'settings.betaBuild': '베타 빌드 - v{version}',
   'migration.vendor.openclaw': 'OpenClaw',
-  'migration.vendor.hermes': 'Hermes Agent (coming soon)',
+  'migration.vendor.hermes': 'Hermes Agent',
   'onboarding.apiKeys.openaiOauthHint':
     'ChatGPT Plus/Pro(구독) 또는 OpenAI API 키를 사용하세요. 둘 다 필수는 아닙니다.',
   'onboarding.apiKeys.openaiOauthOpening': '로그인 중…',

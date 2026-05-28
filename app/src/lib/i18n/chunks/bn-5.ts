@@ -589,7 +589,7 @@ const bn5: TranslationMap = {
   'common.breadcrumb': 'ব্রেডক্রাম্ব',
   'settings.betaBuild': 'বিটা বিল্ড - v{version}',
   'migration.vendor.openclaw': 'OpenClaw',
-  'migration.vendor.hermes': 'Hermes Agent (coming soon)',
+  'migration.vendor.hermes': 'Hermes Agent',
   'onboarding.apiKeys.openaiOauthHint':
     'ChatGPT Plus/Pro (সাবস্ক্রিপশন) বা একটি OpenAI API কী ব্যবহার করুন — উভয়ের প্রয়োজন নেই।',
   'onboarding.apiKeys.openaiOauthOpening': 'সাইন-ইন খোলা হচ্ছে...',

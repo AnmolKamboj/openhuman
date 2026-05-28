@@ -560,7 +560,7 @@ const zhCN5: TranslationMap = {
   'common.breadcrumb': '面包屑',
   'settings.betaBuild': '测试版本 - v{version}',
   'migration.vendor.openclaw': 'OpenClaw',
-  'migration.vendor.hermes': 'Hermes Agent (coming soon)',
+  'migration.vendor.hermes': 'Hermes Agent',
   'onboarding.apiKeys.openaiOauthHint':
     '使用 ChatGPT Plus/Pro（订阅）或 OpenAI API 密钥 — 并非两者都需要。',
   'onboarding.apiKeys.openaiOauthOpening': '正在打开登录...',
