@@ -142,6 +142,24 @@ pub enum ExpectedErrorKind {
     /// ~56 events/hour, all from `openhuman.agent_chat` via
     /// `local_ai.ops.agent_chat`).
     PromptInjectionBlocked,
+    /// The memory-store chunk DB's per-path circuit breaker is currently open
+    /// because too many consecutive SQLite init attempts failed. This is the
+    /// breaker doing its job — it opened *after* the underlying transient
+    /// SQLite I/O errors (typically Windows `xShmMap` / `unable to open
+    /// database file` against `chunks.db`, see `is_sqlite_io_transient` /
+    /// `is_io_open_error`) hit a threshold, and it self-resolves once the
+    /// reset window elapses and a subsequent init succeeds.
+    ///
+    MemoryStoreBreakerOpen,
+    /// Host disk is full — the filesystem returned `ENOSPC` to a write,
+    /// `mkdir`, or `open` syscall. The user cannot recover from this without
+    /// freeing space on their machine, and Sentry has no remediation path
+    /// because the failing path is bound to the user's local FS. Surfaces
+    /// from many call sites once the disk fills up (auth profile lock
+    /// creation, SQLite WAL grows, log rotation, `tokio::fs::write` for
+    /// state snapshots) — every one of them emits the same canonical errno
+    /// rendering.
+    DiskFull,
 }
 
 pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
@@ -149,7 +167,10 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     if lower.contains("local ai is disabled") {
         return Some(ExpectedErrorKind::LocalAiDisabled);
     }
-    if lower.contains("api key not set") || lower.contains("missing api key") {
+    if lower.contains("api key not set")
+        || lower.contains("missing api key")
+        || lower.contains("_api_key is not configured")
+    {
         return Some(ExpectedErrorKind::ApiKeyMissing);
     }
     // Check `is_loopback_unavailable` BEFORE `is_network_unreachable_message`:
@@ -190,6 +211,9 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     if is_backend_user_error_message(&lower) {
         return Some(ExpectedErrorKind::BackendUserError);
     }
+    if is_embedding_backend_auth_failure(&lower) {
+        return Some(ExpectedErrorKind::BackendUserError);
+    }
     // Provider config-rejection (unknown model / abstract tier leaked to a
     // custom provider / model-specific temperature). Body-shape based and
     // intrinsically scoped to third-party providers — the OpenHuman
@@ -211,7 +235,54 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     if is_prompt_injection_blocked_message(&lower) {
         return Some(ExpectedErrorKind::PromptInjectionBlocked);
     }
+    if is_memory_store_breaker_open(&lower) {
+        return Some(ExpectedErrorKind::MemoryStoreBreakerOpen);
+    }
+    if is_disk_full_message(&lower) {
+        return Some(ExpectedErrorKind::DiskFull);
+    }
     None
+}
+
+/// Detect filesystem-out-of-space errors that bubble up from any syscall
+/// (`open`, `write`, `mkdir`, `rename`). Three platform-stable renderings:
+///
+/// - **POSIX `ENOSPC`** (Linux / macOS / BSD): `std::io::Error` renders as
+///   `"No space left on device (os error 28)"`. The errno-name substring is
+///   what we anchor on — case-folded to `"no space left on device"`.
+/// - **Windows `ERROR_DISK_FULL` (112)**: `std::io::Error` renders as
+///   `"There is not enough space on the disk. (os error 112)"`. Anchor on
+///   `"not enough space on the disk"`.
+/// - **Windows `ERROR_HANDLE_DISK_FULL` (39)**: same wire text but errno 39.
+///   The text anchor already covers it.
+fn is_disk_full_message(lower: &str) -> bool {
+    lower.contains("no space left on device") || lower.contains("not enough space on the disk")
+}
+
+fn is_embedding_backend_auth_failure(lower: &str) -> bool {
+    lower.contains("embedding api error")
+        && lower.contains("401")
+        && lower.contains("invalid token")
+}
+
+/// Detect the memory-store chunk DB's circuit-breaker-open message that
+/// `memory_store::chunks::store::get_or_init_connection` emits via
+/// `anyhow::bail!` when the per-path breaker rejects new init attempts.
+///
+/// Canonical wire shape (after the `chunk aggregates: …` context wrap added by
+/// `memory_tree::tree::rpc::pipeline_status_rpc`):
+///
+/// ```text
+/// chunk aggregates: [memory_tree] circuit breaker open for <path>: too many consecutive init failures
+/// ```
+///
+/// The `[memory_tree]` tag is the anchor — it's specific to the chunk-store
+/// emit site and won't collide with unrelated "circuit breaker" mentions in
+/// other domains (provider reliability layer logs, doc strings, …). The
+/// `circuit breaker open` substring is required so a log line that merely
+/// mentions the `[memory_tree]` prefix doesn't get swallowed.
+fn is_memory_store_breaker_open(lower: &str) -> bool {
+    lower.contains("[memory_tree]") && lower.contains("circuit breaker open")
 }
 
 /// Detect **app-session-expired** boundary errors that bubble up from any
@@ -307,10 +378,13 @@ fn is_loopback_unavailable(lower: &str) -> bool {
 ///   embedder at a chat / vision model id with a temperature suffix (e.g.
 ///   `qwen3-vl:4b@0.7`) which Ollama parses as malformed. Wire shape:
 ///   `ollama embed failed with status 400 Bad Request: {"error":"invalid model name"}`.
-/// - **OPENHUMAN-TAURI-MA / -KM** (deferred follow-up from PR #2216): user
-///   configured a model id that the local Ollama daemon hasn't pulled yet.
-///   Wire shape:
+/// - **OPENHUMAN-TAURI-MA / -KM** (deferred follow-up from PR #2216), and
+///   **TAURI-RUST-K** (~1990 events) / **TAURI-RUST-8K** (~411 events) on
+///   self-hosted Sentry: user configured a model id that the local Ollama
+///   daemon hasn't pulled yet. Wire shape:
 ///   `ollama embed failed with status 404 Not Found: {"error":"model \"<id>\" not found, try pulling it first"}`.
+///   (Self-hosted Sentry events still flow from older client releases that
+///   predate this matcher; they drop off naturally as users upgrade.)
 /// - **OPENHUMAN-TAURI-GX**: user opted into Ollama embeddings but the
 ///   daemon isn't running on `localhost:11434`, so the embed service falls
 ///   back to cloud embeddings for the session. Wire shape:
@@ -350,6 +424,23 @@ fn is_ollama_user_config_rejection(lower: &str) -> bool {
         && lower.contains("model \\\"")
         && lower.contains("\\\" not found")
     {
+        return true;
+    }
+
+    if lower.contains("ollama embed failed")
+        && lower.contains("this model does not support embeddings")
+    {
+        return true;
+    }
+
+    // TAURI-RUST-3E (~249 events) — 401-status auth failure from Ollama
+    // (user pointed the embedder at an authenticated Ollama endpoint
+    // without configuring credentials, e.g. self-hosted Ollama behind an
+    // auth proxy or Ollama Cloud without API key). Body shape:
+    // `{"error": "unauthorized"}`. Anchor on `ollama embed failed`
+    // + `status 401` so unrelated 401s from other call sites (provider
+    // chat, backend API) aren't silenced.
+    if lower.contains("ollama embed failed") && lower.contains("status 401") {
         return true;
     }
 
@@ -454,6 +545,7 @@ fn is_network_unreachable_message(lower: &str) -> bool {
 fn is_transient_upstream_http_message(lower: &str) -> bool {
     TRANSIENT_PROVIDER_HTTP_STATUSES.iter().any(|code| {
         lower.contains(&format!("api error ({code}"))
+            || lower.contains(&format!("api error {code} "))
             || lower.contains(&format!("http error: {code} "))
             || lower.contains(&format!("http error: {code}\n"))
             || lower.contains(&format!("http error: {code}:"))
@@ -915,6 +1007,27 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
                 operation = operation,
                 kind = "prompt_injection_blocked",
                 "[observability] {domain}.{operation} skipped expected prompt-injection-blocked error"
+            );
+        }
+        ExpectedErrorKind::DiskFull => {
+            // Host filesystem out of space. The user must free space on
+            // their machine — Sentry can't help. Demote at `warn!` so a
+            // sustained spike still shows up in operator dashboards
+            // without turning every affected user-session into a Sentry
+            // error event. Drops TAURI-RUST-H4.
+            tracing::warn!(
+                domain = domain,
+                operation = operation,
+                kind = "disk_full",
+                "[observability] {domain}.{operation} skipped expected disk-full error"
+            );
+        }
+        ExpectedErrorKind::MemoryStoreBreakerOpen => {
+            tracing::warn!(
+                domain = domain,
+                operation = operation,
+                kind = "memory_store_breaker_open",
+                "[observability] {domain}.{operation} skipped expected memory-store circuit-breaker-open error"
             );
         }
     }
@@ -1382,6 +1495,37 @@ mod tests {
     }
 
     #[test]
+    fn classifies_backend_env_api_key_not_configured() {
+        for raw in [
+            r#"Embedding API error (400 Bad Request): {"success":false,"error":"VOYAGE_API_KEY is not configured"}"#,
+            r#"Embedding API error 400 Bad Request: {"success":false,"error":"VOYAGE_API_KEY is not configured"}"#,
+            // Future-proof: same shape for any other backend-managed embedder.
+            r#"Embedding API error (400 Bad Request): {"success":false,"error":"COHERE_API_KEY is not configured"}"#,
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::ApiKeyMissing),
+                "should classify backend env api-key missing: {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn does_not_classify_unrelated_is_not_configured_messages() {
+        // The `_api_key` anchor must keep prose that merely says "is not
+        // configured" from being silenced — only env-var-style key names
+        // should match.
+        assert_eq!(
+            expected_error_kind("workspace path is not configured for this user"),
+            None
+        );
+        assert_eq!(
+            expected_error_kind("provider 'voyage' is not configured in settings"),
+            None
+        );
+    }
+
+    #[test]
     fn classifies_ollama_user_config_rejections() {
         // TAURI-RUST-XS (~376 events): user pointed embedder at a chat /
         // vision model id, sometimes with a temperature suffix like `@0.7`
@@ -1399,6 +1543,10 @@ mod tests {
             r#"ollama embed failed with status 404 Not Found: {"error":"model \"nomic-embed-text:latest\" not found, try pulling it first"}"#,
             // OPENHUMAN-TAURI-GX — daemon-unreachable opt-in state.
             "ollama embeddings opted-in but daemon unreachable at http://localhost:11434; falling back to cloud embeddings for this session",
+            // TAURI-RUST-3X — 501-status model-does-not-support-embeddings.
+            r#"ollama embed failed with status 501 Not Implemented: {"error":"this model does not support embeddings"}"#,
+            // TAURI-RUST-3E — 401 unauthorized embed (auth required at ollama endpoint).
+            r#"ollama embed failed with status 401 Unauthorized: {"error": "unauthorized"}"#,
         ] {
             assert_eq!(
                 expected_error_kind(raw),
@@ -1406,6 +1554,41 @@ mod tests {
                 "should classify Ollama user-config rejection: {raw}"
             );
         }
+    }
+
+    #[test]
+    fn classifies_embedding_backend_auth_failure() {
+        // TAURI-RUST-T (~4k events): OpenHuman backend rejected the
+        // embeddings worker's bearer token. Both the bare-status and
+        // parenthesised wire shapes must classify.
+        for raw in [
+            r#"Embedding API error 401 Unauthorized: {"success":false,"error":"Invalid token"}"#,
+            r#"Embedding API error (401 Unauthorized): {"success":false,"error":"Invalid token"}"#,
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::BackendUserError),
+                "should classify embedding backend auth failure: {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn does_not_classify_unrelated_invalid_token_messages() {
+        // Provider 401s with "invalid token" in the body but no
+        // `Embedding API error` prefix must keep reaching Sentry — they're
+        // not the same wire shape and may indicate real provider bugs.
+        assert_eq!(
+            expected_error_kind(r#"openai chat failed 401: {"error":"invalid token"}"#),
+            None
+        );
+        // Embedding error without 401 must not be silenced.
+        assert_eq!(
+            expected_error_kind(
+                r#"Embedding API error 500 Internal Server Error: {"error":"invalid token signature service down"}"#
+            ),
+            None
+        );
     }
 
     #[test]
@@ -1508,6 +1691,82 @@ mod tests {
         );
         assert_eq!(
             expected_error_kind("security review required for deploy"),
+            None
+        );
+    }
+
+    #[test]
+    fn classifies_memory_store_breaker_open() {
+        // TAURI-RUST-52X (~455 events on self-hosted Sentry): the chunk-store
+        // per-path circuit breaker tripped after consecutive SQLite init
+        // failures. The Windows wire shape is wrapped by
+        // `memory_tree::tree::rpc::pipeline_status_rpc`'s `chunk aggregates: …`
+        // context so the substring matcher must survive that prefix.
+        for raw in [
+            // Canonical wire shape from `get_or_init_connection`.
+            "[memory_tree] circuit breaker open for /home/u/.openhuman/workspace/memory_tree/chunks.db: too many consecutive init failures",
+            // Canonical wire shape wrapped by the RPC handler's
+            // `format!("chunk aggregates: {e:#}")` context.
+            r"chunk aggregates: [memory_tree] circuit breaker open for C:\Users\u\.openhuman\users\6a09\workspace\memory_tree\chunks.db: too many consecutive init failures",
+            // Wrapped further by the JSON-RPC dispatch layer before reaching
+            // `report_error_or_expected`.
+            r"rpc.invoke_method failed: chunk aggregates: [memory_tree] circuit breaker open for /home/u/.openhuman/workspace/memory_tree/chunks.db: too many consecutive init failures",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::MemoryStoreBreakerOpen),
+                "should classify memory-store breaker-open: {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn classifies_disk_full_errors() {
+        for raw in [
+            // Canonical POSIX errno 28 rendering from `std::io::Error`.
+            "Failed to create auth profile lock: open lock file: No space left on device (os error 28)",
+            // Same shape from a different call site — `tokio::fs::write`
+            // for a state snapshot.
+            "state snapshot write failed: No space left on device (os error 28)",
+            // Windows ERROR_DISK_FULL (112) rendering.
+            "log rotation failed: There is not enough space on the disk. (os error 112)",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::DiskFull),
+                "should classify disk-full: {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn does_not_classify_unrelated_space_messages() {
+        // Generic "space" prose without the errno-text anchor must not be
+        // silenced — the matcher pins to the platform-stable errno
+        // renderings only.
+        assert_eq!(
+            expected_error_kind("workspace path is invalid: contains a space character"),
+            None
+        );
+        assert_eq!(
+            expected_error_kind("not enough memory to allocate buffer"),
+            None
+        );
+    }
+
+    #[test]
+    fn does_not_classify_unrelated_breaker_messages() {
+        // Generic "circuit breaker open" without the `[memory_tree]` anchor
+        // must not be silenced — other domains may use the same phrase for
+        // real bugs that need to reach Sentry.
+        assert_eq!(
+            expected_error_kind("provider reliability: circuit breaker open for openai"),
+            None
+        );
+        // The `[memory_tree]` tag alone is not enough — must co-occur with
+        // the `circuit breaker open` substring.
+        assert_eq!(
+            expected_error_kind("[memory_tree] failed to run schema DDL: disk full"),
             None
         );
     }
@@ -1649,6 +1908,38 @@ mod tests {
                  error code: 504"
             ),
             Some(ExpectedErrorKind::TransientUpstreamHttp)
+        );
+
+        // TAURI-RUST-H (~1360 events, 504) / TAURI-RUST-2T (~310 events, 502):
+        // legacy no-paren wire shape from older `embeddings::openai` /
+        // `embeddings::cohere` emit-site formats that predate the
+        // parenthesised `({status})` rendering. Anchored on the trailing
+        // space after the status code so unrelated digit runs don't match.
+        for raw in [
+            "Embedding API error 504 Gateway Timeout: error code: 504",
+            "Embedding API error 502 Bad Gateway: error code: 502",
+            "Cohere embed API error 503 Service Unavailable: error code: 503",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::TransientUpstreamHttp),
+                "should classify legacy no-paren transient shape: {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn does_not_classify_unrelated_digit_runs_as_transient() {
+        // The legacy no-paren matcher anchors `api error <code> ` with a
+        // trailing space so adjacent digit runs (`api error 5042…`) and
+        // non-transient codes (400/401/403/404) don't get silenced.
+        assert_eq!(
+            expected_error_kind("OpenHuman API error 400 Bad Request: malformed body"),
+            None
+        );
+        assert_eq!(
+            expected_error_kind("provider returned api error 5042 (custom internal sentinel)"),
+            None
         );
     }
 
