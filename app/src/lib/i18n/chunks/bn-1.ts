@@ -180,6 +180,7 @@ const bn1: TranslationMap = {
   'memory.tab.subconscious': 'সাবকনশাস',
   'memory.tab.dreams': 'স্বপ্ন',
   'memory.tab.calls': 'কল',
+  'memory.tab.diagram': 'Diagram',
   'memory.tab.settings': 'সেটিংস',
   'memory.analyzeNow': 'এখনই বিশ্লেষণ করুন',
   'memoryTree.status.title': 'Memory Tree',
