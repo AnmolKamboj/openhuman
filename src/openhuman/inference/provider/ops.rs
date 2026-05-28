@@ -122,10 +122,28 @@ async fn list_configured_models_from_config(
         ));
     }
 
-    let body: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| format!("[providers][list_models] failed to parse JSON: {}", e))?;
+    // TAURI-RUST-12: `response.json()` discards the body when decoding fails,
+    // so Sentry just sees `error decoding response body` with no clue what the
+    // server actually sent. In practice the offending body is HTML from a
+    // captive portal / corporate proxy login page, an upstream load-balancer
+    // 502 served as HTML with a `200 OK`, or a JSON parser tripping on a
+    // wrong-path endpoint. Read the body as text first, then parse, and
+    // surface a sanitized + truncated snippet so the failure is diagnosable
+    // from the error string alone.
+    let raw_body = response.text().await.map_err(|e| {
+        format!(
+            "[providers][list_models] failed to read response body: {}",
+            e
+        )
+    })?;
+    let body: serde_json::Value = serde_json::from_str(&raw_body).map_err(|e| {
+        let sanitized = sanitize_api_error(&raw_body);
+        let snippet = crate::openhuman::util::truncate_with_ellipsis(&sanitized, 300);
+        format!(
+            "[providers][list_models] failed to parse JSON: {} (body: {})",
+            e, snippet
+        )
+    })?;
 
     // OpenAI-compatible servers occasionally return HTTP 200 with an error
     // payload instead of a 4xx (LM Studio does this for unknown paths like
@@ -1753,6 +1771,115 @@ mod tests {
         // Should truncate at MAX_API_ERROR_CHARS crabs
         let crabs_count = sanitized.chars().filter(|c| *c == '🦀').count();
         assert_eq!(crabs_count, MAX_API_ERROR_CHARS);
+    }
+
+    // ── TAURI-RUST-12: list_models JSON parse error must surface body ──────
+    //
+    // `response.json()` previously dropped the body when decoding failed, so
+    // Sentry saw `[providers][list_models] failed to parse JSON: error decoding
+    // response body` with no clue what the server actually returned. The fix
+    // reads the body as text first, parses with `serde_json::from_str`, and
+    // appends a sanitized + truncated snippet to the error string so the
+    // failure is diagnosable from the log line alone.
+
+    #[derive(Clone)]
+    struct StaticResponse {
+        status: StatusCode,
+        body: &'static str,
+    }
+
+    async fn static_models_handler(State(s): State<StaticResponse>) -> Response {
+        (s.status, s.body).into_response()
+    }
+
+    async fn spawn_static_models_server(status: StatusCode, body: &'static str) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("local_addr");
+        let app = Router::new()
+            .route("/models", get(static_models_handler))
+            .with_state(StaticResponse { status, body });
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve");
+        });
+        format!("http://{addr}")
+    }
+
+    async fn configure_generic_workspace(tmp: &TempDir, endpoint: String) -> Config {
+        // Non-`openrouter` slug so the OpenRouter pre-validation path is
+        // skipped and the test hits `/models` directly.
+        let mut config = Config {
+            config_path: tmp.path().join("config.toml"),
+            workspace_dir: tmp.path().join("workspace"),
+            ..Config::default()
+        };
+        config.secrets.encrypt = false;
+        config.cloud_providers.push(CloudProviderCreds {
+            id: "p_generic_test".to_string(),
+            slug: "generic-test".to_string(),
+            label: "Generic".to_string(),
+            endpoint,
+            auth_style: AuthStyle::None,
+            legacy_type: None,
+            default_model: None,
+        });
+        config.save().await.expect("save config");
+        config
+    }
+
+    #[tokio::test]
+    async fn list_models_html_body_returns_diagnostic_snippet() {
+        // Captive-portal / proxy-login wire shape: 200 OK with HTML.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let html = "<html><head><title>Sign in</title></head><body>captive portal</body></html>";
+        let endpoint = spawn_static_models_server(StatusCode::OK, html).await;
+        let config = configure_generic_workspace(&tmp, endpoint).await;
+
+        let err = list_configured_models_from_config("generic-test", &config)
+            .await
+            .expect_err("HTML body must not parse as JSON");
+
+        assert!(
+            err.contains("failed to parse JSON"),
+            "error must keep canonical prefix: {err}"
+        );
+        assert!(
+            err.contains("captive portal") || err.contains("Sign in") || err.contains("html"),
+            "error must include a body snippet for diagnosis: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_models_empty_body_returns_diagnostic_error() {
+        // Some misconfigured load balancers return 200 with an empty body.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let endpoint = spawn_static_models_server(StatusCode::OK, "").await;
+        let config = configure_generic_workspace(&tmp, endpoint).await;
+
+        let err = list_configured_models_from_config("generic-test", &config)
+            .await
+            .expect_err("empty body must not parse as JSON");
+
+        assert!(
+            err.contains("failed to parse JSON"),
+            "error must keep canonical prefix: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_models_valid_json_still_succeeds() {
+        // Regression guard: the new text-then-parse path must still accept
+        // a valid `/models` JSON response.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let body = r#"{"data":[{"id":"some-model","owned_by":"vendor","context_length":4096}]}"#;
+        let endpoint = spawn_static_models_server(StatusCode::OK, body).await;
+        let config = configure_generic_workspace(&tmp, endpoint).await;
+
+        let outcome = list_configured_models_from_config("generic-test", &config)
+            .await
+            .expect("valid JSON must list models");
+        assert_eq!(outcome.value["models"][0]["id"], "some-model");
     }
 
     // ── parse_models_response (TAURI-RUST-4Y) ──────────────────────────────
