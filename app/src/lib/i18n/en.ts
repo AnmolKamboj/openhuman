@@ -1650,6 +1650,7 @@ const en: TranslationMap = {
   'mic.stopRecording': 'Stop recording and send',
   'mic.startRecording': 'Start recording',
   'mic.deviceSelector': 'Microphone device',
+  'mic.tapToSendCountdown': 'Tap to send ({seconds}s)',
 
   // Token
   'token.usageLimitReached': 'Usage limit reached',
@@ -2019,6 +2020,7 @@ const en: TranslationMap = {
   // Mic: error messages
   'mic.noAudioCaptured': 'No audio captured',
   'mic.noSpeechDetected': 'No speech detected',
+  'mic.lowConfidenceResult': 'Could not understand the audio clearly — please try again',
   'mic.failedToStopRecording': 'Failed to stop recording: {message}',
   'mic.transcriptionFailed': 'Transcription failed: {message}',
 
