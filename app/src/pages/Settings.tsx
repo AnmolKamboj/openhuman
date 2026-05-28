@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
+import CostDashboardPanel from '../components/dashboard/CostDashboardPanel';
 import LogoutAndClearActions from '../components/settings/LogoutAndClearActions';
 import AboutPanel from '../components/settings/panels/AboutPanel';
 import AgentAccessPanel from '../components/settings/panels/AgentAccessPanel';
@@ -323,6 +324,13 @@ const Settings = () => {
       route: 'ledger-usage',
       icon: LlmIcon,
     },
+    {
+      id: 'cost-dashboard',
+      title: t('settings.costDashboard.title'),
+      description: t('settings.costDashboard.desc'),
+      route: 'cost-dashboard',
+      icon: LlmIcon,
+    },
   ];
 
   const composioSettingsItems = [
@@ -436,6 +444,10 @@ const Settings = () => {
         <Route
           path="ledger-usage"
           element={wrapSettingsPage(<LedgerUsagePanel />, { maxWidthClass: 'max-w-4xl' })}
+        />
+        <Route
+          path="cost-dashboard"
+          element={wrapSettingsPage(<CostDashboardPanel />, { maxWidthClass: 'max-w-4xl' })}
         />
         <Route path="search" element={wrapSettingsPage(<SearchPanel />)} />
         <Route path="agent-chat" element={wrapSettingsPage(<AgentChatPanel />)} />
