@@ -314,12 +314,16 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     if is_backend_user_error_message(&lower) {
         return Some(ExpectedErrorKind::BackendUserError);
     }
-    // Session-expired BEFORE embedding-backend-auth: the OpenHuman backend's
-    // `"Invalid token"` 401 envelope can arrive via the embedding path
-    // (TAURI-RUST-4K5) and must classify as SessionExpired, not
-    // BackendUserError. The conjunctive anchor in `is_session_expired_message`
-    // is strict enough that third-party BYO-key 401s still fall through to
-    // the `is_embedding_backend_auth_failure` catch-all below.
+    // Check `is_session_expired_message` BEFORE `is_embedding_backend_auth_failure`:
+    // the OpenHuman-backend embedding 401 "Invalid token" envelope
+    // (`Embedding API error (401 …): {"error":"Invalid token"}`) is a
+    // recoverable session expiry (TAURI-RUST-4K5, #2786), not a generic
+    // backend error. The broader `is_embedding_backend_auth_failure` matcher
+    // below would otherwise demote that exact wire shape to `BackendUserError`
+    // first and swallow the re-auth signal. `is_session_expired_message` is
+    // narrowly anchored (parenthesised `(401` + the `"error":"Invalid token"`
+    // envelope), so the bare-status `Embedding API error 401 …` shape and
+    // BYO-key 401s still fall through to the matchers below.
     if is_session_expired_message(message) {
         return Some(ExpectedErrorKind::SessionExpired);
     }
@@ -696,6 +700,15 @@ fn is_ollama_user_config_rejection(lower: &str) -> bool {
 ///   `"during handshake"`). Same user-environment shape as the other
 ///   handshake-stage entries — the socket supervisor already retries with
 ///   exponential backoff and Sentry has no actionable signal.
+/// - `"http version must be 1.1 or higher"` — tungstenite's
+///   `ProtocolError::WrongHttpVersion` render. Fires when a server (or
+///   intermediary proxy / HTTP/2-only edge) responds to the WebSocket
+///   upgrade with HTTP/2+, which the WS spec forbids — the handshake
+///   requires HTTP/1.1 (`CORE-RUST-DP`, ~2 events / 24h, first seen on
+///   `openhuman@0.56.0`). Same shape as the existing handshake-stage
+///   entries: a user-environment / infra misconfiguration that the
+///   client cannot fix; Sentry has no actionable signal beyond what the
+///   socket supervisor's exponential backoff already provides.
 fn is_network_unreachable_message(lower: &str) -> bool {
     lower.contains("error sending request for url")
         || lower.contains("dns error")
@@ -725,6 +738,7 @@ fn is_network_unreachable_message(lower: &str) -> bool {
         || lower.contains("unexpected eof during handshake")
         || lower.contains("certificate verify failed")
         || lower.contains("http error: 200 ok")
+        || lower.contains("http version must be 1.1 or higher")
 }
 
 /// Detect transient upstream HTTP failures that have bubbled up out of the
@@ -2571,6 +2585,43 @@ mod tests {
     }
 
     #[test]
+    fn classifies_ws_protocol_wrong_http_version_as_network_unreachable() {
+        // CORE-RUST-DP (~2 events / 24h on `openhuman@0.56.0+e8968077aeb5`,
+        // self-hosted `core-rust`): tungstenite renders
+        // `ProtocolError::WrongHttpVersion` as
+        // `"WebSocket protocol error: HTTP version must be 1.1 or higher"`,
+        // wrapped by `socket::ws_loop::run_connection` as
+        // `"WebSocket connect: <inner>"` and then by the supervisor's
+        // sustained-outage escalation as
+        // `"[socket] Connection failed (sustained outage after N attempts):
+        // WebSocket connect: WebSocket protocol error: HTTP version must be
+        // 1.1 or higher"`.
+        //
+        // The handshake requires HTTP/1.1; a server or intermediary proxy
+        // that responds with HTTP/2+ to the upgrade is misconfigured
+        // upstream — same shape as the existing `"tls handshake"` /
+        // `"certificate verify failed"` user-environment entries. The
+        // supervisor already retries with exponential backoff; Sentry has
+        // no actionable signal to add.
+        assert_eq!(
+            expected_error_kind(
+                "[socket] Connection failed (sustained outage after 5 attempts): \
+                 WebSocket connect: WebSocket protocol error: HTTP version must be 1.1 or higher"
+            ),
+            Some(ExpectedErrorKind::NetworkUnreachable)
+        );
+
+        // Bare tungstenite render (no socket-supervisor wrap) — fires when
+        // the same protocol error escapes through a non-supervisor call
+        // site. The classifier runs on the full anyhow chain, so the
+        // shorter form must also match.
+        assert_eq!(
+            expected_error_kind("WebSocket protocol error: HTTP version must be 1.1 or higher"),
+            Some(ExpectedErrorKind::NetworkUnreachable)
+        );
+    }
+
+    #[test]
     fn tls_handshake_eof_anchor_does_not_silence_unrelated_log_lines() {
         // The anchor is the literal `"unexpected eof during handshake"`
         // phrase. A bare data-phase `"unexpected EOF"` (server closed
@@ -2588,6 +2639,30 @@ mod tests {
                 expected_error_kind(raw),
                 None,
                 "non-handshake unexpected-EOF log line must NOT classify: {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn wrong_http_version_anchor_does_not_silence_unrelated_log_lines() {
+        // The anchor is the literal tungstenite Display string. Adjacent
+        // log lines that mention HTTP version in any other context
+        // (`"upgrading from HTTP/1.0 to HTTP/2"`, `"HTTP/1.1 only"`,
+        // `"server requires HTTP version 2.0"`) MUST NOT classify — those
+        // are unrelated transport / negotiation traces and may carry
+        // actionable signal. Pin the rejection contract so a future
+        // refactor doesn't loosen the substring into a generic
+        // `"http version"` matcher.
+        for raw in [
+            "[transport] upgrading from HTTP/1.0 to HTTP/2",
+            "server advertises HTTP version 2.0 (h2 alpn)",
+            "client supports HTTP/1.1 only",
+            "version mismatch: requires HTTP/1.2 or higher",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                None,
+                "unrelated HTTP-version log line must NOT classify: {raw}"
             );
         }
     }
