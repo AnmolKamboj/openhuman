@@ -148,6 +148,16 @@ pub fn is_provider_config_rejection_message(body: &str) -> bool {
         // this is the `type` field used by litellm/Anthropic-style
         // envelopes for the same class of user-state error.
         "not_found_error",
+        // TAURI-RUST-4NM — nvidia-nim (and compatible providers) return
+        // `{"error":{"message":"model field is required","code":"missing_required_field"}}`
+        // when the request body contains an empty `"model":""` field.
+        // This is deterministic user-configuration state: the user's
+        // provider string had no model id and the config entry has no
+        // default_model. Factory now bails early, but guard the Sentry
+        // signal for in-flight requests from older configs.
+        // Note: match on the message phrase only — "missing_required_field"
+        // is too generic and would incorrectly suppress unrelated errors.
+        "model field is required",
         // TAURI-RUST-2G (~2684 events) / TAURI-RUST-2F (~950 events) —
         // thinking-mode model (DeepSeek-R1 / Moonshot K2-thinking on
         // `provider=cloud` custom_openai) rejects a follow-up turn that
@@ -273,6 +283,14 @@ mod tests {
             (
                 "J4",
                 r#"custom_openai streaming API error (404 Not Found): {"error":{"message":"model 'llama3.3' not found","type":"not_found_error","param":null,"code":null}}"#,
+            ),
+            // TAURI-RUST-4NM — nvidia-nim (and compatible providers) return
+            // this body when the request body has an empty `"model":""`.
+            // This is user-configuration state: the provider string had no
+            // model id and the config entry has no default_model set.
+            (
+                "4NM",
+                r#"nvidia-nim API error (400 Bad Request): {"error":{"message":"model field is required","type":"invalid_request_error","param":null,"code":"missing_required_field"}}"#,
             ),
             (
                 "TAURI-RUST-4XK",
