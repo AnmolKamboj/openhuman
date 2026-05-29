@@ -3613,7 +3613,7 @@ const en: TranslationMap = {
     'OpenHuman joins calls silently and handles notes and follow-ups automatically.',
   'skills.meetingBots.bannerTitle': 'Send OpenHuman to your next meeting',
   'skills.meetingBots.busyTitle': 'OpenHuman is busy',
-  'skills.meetingBots.comingSoon': '{label} coming soon',
+  'skills.meetingBots.comingSoon': 'coming soon',
   'skills.meetingBots.couldNotStartTitle': 'Could not start OpenHuman',
   'skills.meetingBots.displayName': 'Display name',
   'skills.meetingBots.failedToStart': 'Failed to start OpenHuman.',

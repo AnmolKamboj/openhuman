@@ -433,7 +433,7 @@ const en5: TranslationMap = {
     'OpenHuman joins as an anonymous guest, streams its video into the call, and replies via the agent.',
   'skills.meetingBots.modalTitle': 'Send OpenHuman to a meeting',
   'skills.meetingBots.newBadge': 'New',
-  'skills.meetingBots.sendTo': 'Send to',
+  'skills.meetingBots.sendTo': 'Send to {label}',
   'skills.meetingBots.starting': 'Starting…',
   'skills.resource.preview.closeAriaLabel': 'Close preview',
   'skills.resource.preview.failed': 'Preview failed',
