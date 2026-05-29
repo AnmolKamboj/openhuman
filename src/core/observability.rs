@@ -62,18 +62,6 @@ const UPDATER_TRANSIENT_HTTP_STATUSES: &[u16] = &[403, 500, 502, 503, 504];
 /// Keep these updater-specific so unrelated GitHub or generic transport
 /// failures still reach Sentry.
 ///
-/// The last entry is `tauri-plugin-updater`'s own non-success log line
-/// (`updater.rs`: `log::error!("update endpoint did not respond with a
-/// successful status code")`). The plugin emits it on *any* non-2xx
-/// response and **discards the status code**, so the Sentry event carries
-/// no `domain`/`status` tag and no actionable detail — it can only be
-/// matched by this message string. It is distinctive to the updater
-/// (literally names "update endpoint"), so matching it domain-agnostically
-/// is safe. A genuinely-broken update manifest still surfaces with full
-/// structured context (status + url) through the core's `domain=update`
-/// `check_releases` path, which keeps non-transient statuses visible — see
-/// `UPDATER_TRANSIENT_HTTP_STATUSES` (404 deliberately omitted there).
-/// Drops TAURI-RUST-CD (~151 events / 9 days, Windows background checks).
 const UPDATER_TRANSIENT_MESSAGE_PHRASES: &[&str] = &[
     "failed to check for updates: error sending request",
     "github api error: 403",
@@ -140,39 +128,8 @@ pub enum ExpectedErrorKind {
     ///   demoted breadcrumb can stay sparse (debug level, metadata-only
     ///   fields) instead of warn-level with the full body included.
     ///
-    /// Drops OPENHUMAN-TAURI-R5 (~2.5k events) and OPENHUMAN-TAURI-R6
-    /// (~2.5k events) — both are the same `127.0.0.1:18474` connect-refused
-    /// shape, one at the `integrations.get` emit site and one re-wrapped by
-    /// `rpc.invoke_method`. See [`is_loopback_unavailable`] for the exact
-    /// body shapes matched.
     LoopbackUnavailable,
-    /// A user prompt was rejected by the in-process prompt-injection guard
-    /// before it reached the model. Both enforcement actions that produce a
-    /// user-visible error — `Blocked` (score ≥ 0.70) and `ReviewBlocked`
-    /// (score ≥ 0.55) — are expected, user-input conditions: the detector
-    /// fired on the user's own message and the UI already surfaces an
-    /// actionable "please rephrase" message. Sentry has no remediation path
-    /// and the volume is high (OPENHUMAN-TAURI-140: ~1 480 events in 2 days,
-    /// ~56 events/hour, all from `openhuman.agent_chat` via
-    /// `local_ai.ops.agent_chat`).
     PromptInjectionBlocked,
-    /// The request exceeded the model's context window — the
-    /// conversation/prompt is too long for the configured model. A
-    /// deterministic user-state / usage condition; the remediation is
-    /// "start a new chat, trim the conversation, or pick a larger-context
-    /// model", which the UI surfaces. Sentry has no signal to act on.
-    ///
-    /// The provider HTTP layer (`providers::ops::api_error`) suppresses its
-    /// own per-attempt event for this condition, and
-    /// `providers::reliable` marks it non-retryable. This arm catches the
-    /// **re-report** when the same error is raised again by
-    /// `agent.run_single` / `web_channel.run_chat_task` under a different
-    /// `domain` tag (same two-emit-site shape as the empty-response and
-    /// session-expired fixes). Delegates to the single-source matcher
-    /// [`crate::openhuman::inference::provider::is_context_window_exceeded_message`]
-    /// so the retry classifier, the api_error cascade, and this arm can't
-    /// drift. Drops Sentry TAURI-RUST-501
-    /// (`Context size has been exceeded`, custom-provider 500).
     ContextWindowExceeded,
     /// The memory-store chunk DB's per-path circuit breaker is currently open
     /// because too many consecutive SQLite init attempts failed. This is the
@@ -288,6 +245,7 @@ pub enum ExpectedErrorKind {
     /// (~815 events Chinese-Windows variant) where the English-only
     /// `is_network_unreachable_message` anchors miss the inner OS message.
     ChannelSupervisorRestart,
+    ConfigLoadTimedOut,
 }
 
 pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
@@ -409,6 +367,9 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     if is_disk_full_message(&lower) {
         return Some(ExpectedErrorKind::DiskFull);
     }
+    if is_config_load_timed_out_message(&lower) {
+        return Some(ExpectedErrorKind::ConfigLoadTimedOut);
+    }
     if is_memory_store_pii_rejection(&lower) {
         return Some(ExpectedErrorKind::MemoryStorePiiRejection);
     }
@@ -523,6 +484,15 @@ fn is_disk_full_message(lower: &str) -> bool {
     lower.contains("no space left on device") || lower.contains("not enough space on the disk")
 }
 
+/// Detect the literal `"Config loading timed out"` string produced by
+/// [`crate::openhuman::config::ops::load_config_with_timeout`] /
+/// [`crate::openhuman::config::ops::reload_config_snapshot_with_timeout`]
+/// when `tokio::time::timeout` elapses around `Config::load_or_init` /
+/// `Config::load_from_config_path`.
+fn is_config_load_timed_out_message(lower: &str) -> bool {
+    lower.contains("config loading timed out")
+}
+
 /// Match whatsapp structured-ingest failures caused by transient SQLite lock
 /// contention. Keep this matcher scoped to the whatsapp ingest envelope so we
 /// don't demote unrelated database failures in other domains.
@@ -635,6 +605,8 @@ pub fn is_session_expired_message(msg: &str) -> bool {
         || lower.contains("no backend session token")
         || lower.contains("session jwt required")
         || msg.contains("SESSION_EXPIRED")
+        || (msg.contains("OpenHuman API error (401") && msg.contains("\"error\":\"Invalid token\""))
+        || (msg.contains("Embedding API error (401") && msg.contains("\"error\":\"Invalid token\""))
         // TAURI-RUST-E — billing endpoint 401s via `BackendApiError::Unauthorized`
         // stringified by `billing::ops::get_authed_value(..).map_err(|e| e.to_string())`.
         // The display form is `"backend rejected session token on {METHOD} {path}"`;
@@ -1700,6 +1672,15 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
                 "[observability] {domain}.{operation} skipped expected channel-supervisor restart: {message}"
             );
         }
+        ExpectedErrorKind::ConfigLoadTimedOut => {
+            tracing::warn!(
+                domain = domain,
+                operation = operation,
+                kind = "config_load_timed_out",
+                error = %message,
+                "[observability] {domain}.{operation} skipped expected config-load timeout: {message}"
+            );
+        }
     }
 }
 
@@ -2743,6 +2724,43 @@ mod tests {
     }
 
     #[test]
+    fn classifies_config_load_timed_out() {
+        // Canonical wire string emitted by `load_config_with_timeout` and
+        // `reload_config_snapshot_with_timeout` in
+        // `src/openhuman/config/ops.rs`. Drops TAURI-RUST-5X.
+        assert_eq!(
+            expected_error_kind("Config loading timed out"),
+            Some(ExpectedErrorKind::ConfigLoadTimedOut),
+        );
+        // Same shape after the RPC dispatch wraps it for display — the
+        // matcher is substring-anchored, so a context prefix does not
+        // break it.
+        assert_eq!(
+            expected_error_kind("rpc.invoke_method failed: Config loading timed out"),
+            Some(ExpectedErrorKind::ConfigLoadTimedOut),
+        );
+    }
+
+    #[test]
+    fn does_not_classify_unrelated_timeouts_as_config_load_timed_out() {
+        // Network / HTTP timeouts go to `NetworkUnreachable` /
+        // `TransientUpstreamHttp`, not the config-load bucket. The
+        // anchor is the full literal phrase, so a bare "timed out" or
+        // "operation timed out" body cannot trip this matcher.
+        assert_ne!(
+            expected_error_kind(
+                "Channel discord error: IO error: Operation timed out (os error 60); restarting"
+            ),
+            Some(ExpectedErrorKind::ConfigLoadTimedOut),
+        );
+        assert_ne!(
+            expected_error_kind("OpenHuman API error (504 Gateway Timeout): error code: 504"),
+            Some(ExpectedErrorKind::ConfigLoadTimedOut),
+        );
+        // Bare "timed out" without the config-load phrase must not match.
+        assert_eq!(expected_error_kind("cron job timed out after 30s"), None,);
+    }
+
     fn classifies_whatsapp_data_sqlite_busy_errors() {
         for raw in [
             r#"[whatsapp_data] ingest failed: upsert wa_message chat=120363402402350155@g.us msg=false_120363402402350155@g.us_3A357F28AE74548B1507_207897942335683@lid: database is locked: Error code 5: The database file is locked"#,
