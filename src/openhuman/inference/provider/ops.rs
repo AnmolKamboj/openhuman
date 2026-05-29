@@ -116,6 +116,22 @@ async fn list_configured_models_from_config(
 
     let status = response.status();
     if !status.is_success() {
+        // A 404 from the /models endpoint means the provider does not support model
+        // listing — this is expected for many OpenAI-compatible providers (e.g. DeepSeek,
+        // Moonshot, Kimi, custom proxies). Return an empty model list so the caller can
+        // proceed normally instead of surfacing a spurious error / Sentry event.
+        // (Sentry issue TAURI-RUST-1Z — 819 events from this path alone.)
+        if status == reqwest::StatusCode::NOT_FOUND {
+            log::debug!(
+                "[providers][list_models] slug={} returned 404 — provider does not support /models listing; returning empty list",
+                entry.slug
+            );
+            return Ok(crate::rpc::RpcOutcome::new(
+                serde_json::json!({ "models": serde_json::Value::Array(vec![]), "unsupported": true }),
+                vec!["provider does not support model listing (404)".to_string()],
+            ));
+        }
+
         let body = response.text().await.unwrap_or_default();
         let sanitized = sanitize_api_error(&body);
         let truncated = crate::openhuman::util::truncate_with_ellipsis(&sanitized, 300);
@@ -1495,6 +1511,68 @@ mod tests {
         assert_eq!(
             model_authorization,
             vec![Some("Bearer valid-openrouter-key".to_string())]
+        );
+    }
+
+    /// Spawn a minimal axum server that always returns 404 for the /models endpoint.
+    /// Used to verify that providers without model listing return an empty list,
+    /// not an error (Sentry issue TAURI-RUST-1Z).
+    async fn spawn_models_404_server() -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("local_addr");
+        let app = axum::Router::new().route(
+            "/models",
+            axum::routing::get(|| async {
+                (axum::http::StatusCode::NOT_FOUND, "Not Found").into_response()
+            }),
+        );
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve");
+        });
+        format!("http://{addr}")
+    }
+
+    #[tokio::test]
+    async fn models_404_returns_empty_list_not_error() {
+        // Providers that return 404 on /models (e.g. DeepSeek, Kimi, custom proxies)
+        // must yield an empty model list, not an Err. Returning an Err was firing a
+        // Sentry error for every `inference_list_models` call (TAURI-RUST-1Z, 819 events).
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let endpoint = spawn_models_404_server().await;
+
+        let mut config = Config {
+            config_path: tmp.path().join("config.toml"),
+            workspace_dir: tmp.path().join("workspace"),
+            ..Config::default()
+        };
+        config.secrets.encrypt = false;
+        config.cloud_providers.push(CloudProviderCreds {
+            id: "p_custom_test".to_string(),
+            slug: "custom-no-models".to_string(),
+            label: "Custom (no /models)".to_string(),
+            endpoint,
+            auth_style: AuthStyle::Bearer,
+            legacy_type: None,
+            default_model: None,
+        });
+
+        let outcome = list_configured_models_from_config("custom-no-models", &config)
+            .await
+            .expect("404 from /models must succeed with an empty list");
+
+        let models = outcome.value["models"]
+            .as_array()
+            .expect("response must have a `models` array");
+        assert!(
+            models.is_empty(),
+            "expected empty model list for a 404 /models endpoint, got: {models:?}"
+        );
+        assert_eq!(
+            outcome.value["unsupported"],
+            serde_json::Value::Bool(true),
+            "unsupported flag must be set to true for 404 providers"
         );
     }
 
