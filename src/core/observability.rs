@@ -2020,25 +2020,45 @@ pub fn is_transient_message_failure(msg: &str) -> bool {
 /// Returns true when a Sentry event is a budget-exhausted 400 that should be
 /// dropped from `before_send`.
 ///
-/// Match criteria (all required):
-/// - tag `failure == "non_2xx"`
-/// - tag `status == "400"`
-/// - the event message or any exception value contains one of the tight
-///   budget-exhaustion phrases
+/// **Two-tier match — either tier fires a drop:**
 ///
-/// Note: `domain` is intentionally not gated here as defense-in-depth over
-/// the emit-site classifier — any non_2xx/400 event that carries the
-/// budget-exhausted phrasing is dropped regardless of which domain produced
-/// it, so a future re-emitter under a different tag still gets filtered.
+/// 1. **Tag-gated path** (primary suppression, added in PR #1633):
+///    - tag `failure == "non_2xx"`
+///    - tag `status == "400"`
+///    - event message or any exception value contains one of the tight
+///      budget-exhaustion phrases from
+///      [`crate::openhuman::inference::provider::is_budget_exhausted_message`]
+///
+/// 2. **Text-only path** (defense-in-depth, covers OPENHUMAN-CORE-N /
+///    TAURI-RUST-1P — GitHub issue #2935):
+///    - event message or any exception value contains the exact phrase
+///      `"Insufficient budget"` (the literal wire body the OpenHuman API
+///      returns in `{"success":false,"error":"Insufficient budget"}`),
+///      regardless of which tags are set.
+///
+///    The text-only tier is intentionally tighter than tier 1 — it only
+///    matches the exact phrase the backend uses, never the looser
+///    `"add credits"` / `"budget exceeded"` phrases that might appear in
+///    unrelated product copy.  This prevents future call sites that call
+///    `report_error` without setting `failure` / `status` tags (or that
+///    invoke `sentry::capture_message` directly) from leaking budget
+///    exhaustion events to Sentry.
+///
+/// Note: `domain` is intentionally not gated here so a future re-emitter
+/// under a different domain tag still gets filtered.
 pub fn is_budget_event(event: &sentry::protocol::Event<'_>) -> bool {
+    // Tier 1 — tag-gated primary path.
     let tags = &event.tags;
-    if tags.get("failure").map(String::as_str) != Some("non_2xx") {
-        return false;
+    if tags.get("failure").map(String::as_str) == Some("non_2xx")
+        && tags.get("status").map(String::as_str) == Some("400")
+        && event_contains_budget_exhausted_message(event)
+    {
+        return true;
     }
-    if tags.get("status").map(String::as_str) != Some("400") {
-        return false;
-    }
-    event_contains_budget_exhausted_message(event)
+    // Tier 2 — text-only defense-in-depth: drop any event whose message or
+    // exception value contains the exact wire phrase the OpenHuman backend
+    // emits for budget exhaustion, regardless of tags.
+    event_contains_budget_insufficient_phrase(event)
 }
 
 /// Defense-in-depth `before_send` filter for Sentry event CORE-RUST-EK
@@ -2136,6 +2156,30 @@ fn event_contains_budget_exhausted_message(event: &sentry::protocol::Event<'_>) 
             .as_deref()
             .is_some_and(crate::openhuman::inference::provider::is_budget_exhausted_message)
     })
+}
+
+/// Tier-2 (text-only) budget check for [`is_budget_event`].
+///
+/// Matches the exact literal phrase `"Insufficient budget"` (case-insensitive)
+/// in the event message or any exception value. This is the wire body the
+/// OpenHuman backend returns: `{"success":false,"error":"Insufficient budget"}`.
+///
+/// Deliberately narrower than [`event_contains_budget_exhausted_message`]:
+/// only the precise backend phrase is matched, never the looser
+/// `"add credits"` / `"budget exceeded"` / `"insufficient balance"` phrases
+/// which might appear in unrelated product copy that would otherwise produce
+/// false positives.
+fn event_contains_budget_insufficient_phrase(event: &sentry::protocol::Event<'_>) -> bool {
+    const PHRASE: &str = "insufficient budget";
+    let has_phrase = |s: &str| s.to_ascii_lowercase().contains(PHRASE);
+    if event.message.as_deref().is_some_and(has_phrase) {
+        return true;
+    }
+    event
+        .exception
+        .values
+        .iter()
+        .any(|exc| exc.value.as_deref().is_some_and(has_phrase))
 }
 
 #[cfg(test)]
@@ -5066,7 +5110,11 @@ mod tests {
     }
 
     #[test]
-    fn budget_filter_requires_non_2xx_failure_and_400_status() {
+    fn budget_filter_requires_non_2xx_failure_and_400_status_for_loose_phrases() {
+        // Tier 1 requires both tags for the loose budget phrases ("budget exceeded",
+        // "add credits", …) that might coincidentally appear in unrelated product
+        // copy. Tier 2 (text-only) only fires for the exact backend phrase
+        // "insufficient budget" — so the loose phrases still need both tags.
         let message = "Budget exceeded — add credits to continue";
         for tags in [
             vec![("failure", "transport"), ("status", "400")],
@@ -5075,6 +5123,97 @@ mod tests {
         ] {
             let event = event_with_tags_and_message(&tags, message);
             assert!(!is_budget_event(&event));
+        }
+    }
+
+    /// Tier-2 defense-in-depth: drop the exact "Insufficient budget" phrase
+    /// the OpenHuman backend returns regardless of which tags are set.
+    /// Regression guard for OPENHUMAN-CORE-N / TAURI-RUST-1P (GitHub #2935).
+    #[test]
+    fn budget_filter_drops_insufficient_budget_without_tags() {
+        // The exact JSON wire body from the OpenHuman backend.
+        let message = r#"OpenHuman API error (400 Bad Request): {"success":false,"error":"Insufficient budget"}"#;
+
+        // No tags at all.
+        let event = event_with_message(message);
+        assert!(
+            is_budget_event(&event),
+            "tier-2 must drop 'Insufficient budget' even without failure/status tags"
+        );
+
+        // Wrong status tag only.
+        let event = event_with_tags_and_message(&[("status", "400")], message);
+        assert!(
+            is_budget_event(&event),
+            "tier-2 must drop 'Insufficient budget' when only status tag is set"
+        );
+
+        // Wrong failure tag only.
+        let event = event_with_tags_and_message(&[("failure", "transport")], message);
+        assert!(
+            is_budget_event(&event),
+            "tier-2 must drop 'Insufficient budget' when failure tag doesn't match"
+        );
+    }
+
+    /// Regression guard: tier-2 must also catch the exception/tracing path
+    /// (`sentry-tracing` with `attach_stacktrace=true` may populate the
+    /// exception list rather than `event.message`).
+    #[test]
+    fn budget_filter_drops_insufficient_budget_exception_without_tags() {
+        // Exact wire body from OpenHuman backend wrapped in an exception value.
+        let event = event_with_exception_value(
+            r#"OpenHuman API error (400 Bad Request): {"success":false,"error":"INSUFFICIENT BUDGET"}"#,
+        );
+        assert!(
+            is_budget_event(&event),
+            "tier-2 must drop exception-path 'Insufficient budget' case-insensitively"
+        );
+
+        // Mixed case variant.
+        let event = event_with_exception_value(
+            r#"OpenHuman API error (400 Bad Request): {"success":false,"error":"Insufficient Budget"}"#,
+        );
+        assert!(
+            is_budget_event(&event),
+            "tier-2 must drop exception-path 'Insufficient Budget' case-insensitively"
+        );
+
+        // Wrong failure/status tags should not prevent tier-2 from matching.
+        let mut event = event_with_exception_value(
+            r#"OpenHuman API error (400 Bad Request): {"success":false,"error":"Insufficient budget"}"#,
+        );
+        event
+            .tags
+            .insert("failure".to_string(), "transport".to_string());
+        assert!(
+            is_budget_event(&event),
+            "tier-2 must drop exception-path even when failure tag does not match"
+        );
+
+        // Unrelated exception values must not match.
+        let event = event_with_exception_value("retry budget exhausted after 3 attempts");
+        assert!(
+            !is_budget_event(&event),
+            "tier-2 must not match unrelated exception value"
+        );
+    }
+
+    /// Tier-2 only matches the tight phrase — unrelated 400 errors with "budget"
+    /// in an unrelated context should not be silently dropped.
+    #[test]
+    fn budget_filter_tier2_does_not_match_unrelated_messages() {
+        for msg in [
+            "retry budget exhausted after 3 attempts",
+            "bad request: missing field",
+            "budget_id=42 not found",
+            "",
+        ] {
+            let event = event_with_message(msg);
+            assert!(
+                !is_budget_event(&event),
+                "tier-2 must not match unrelated message: {msg:?}"
+            );
         }
     }
 
