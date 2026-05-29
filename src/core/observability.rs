@@ -421,7 +421,84 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     if is_filesystem_user_path_invalid_message(&lower) {
         return Some(ExpectedErrorKind::FilesystemUserPathInvalid);
     }
+    // Upstream rate-limit responses — provider throttles the account (429) or
+    // wraps the 429 inside an HTTP 500 (`"429 rate limit exceeded"` in the
+    // body). In both cases the reliable-provider layer already retries with
+    // backoff, and the embeddings path has a proactive token-bucket limiter
+    // (`embeddings::rate_limit`). The upstream quota is an account-capacity
+    // signal, not a code bug — Sentry has no remediation path and the
+    // per-attempt events generate pure noise (OPENHUMAN-TAURI-S: ~6 984
+    // events from HTTP 500 wrapping a "429 rate limit exceeded" body;
+    // OPENHUMAN-TAURI-6Y: ~19 849 events from direct 429s; OPENHUMAN-TAURI-2E:
+    // ~1 482 events carrying a `"rate_limit_error"` type in the JSON body;
+    // OPENHUMAN-TAURI-RQ: ~741 events from the embeddings path).
+    //
+    // Checked LAST inside `expected_error_kind` — transient HTTP status matches
+    // (`is_transient_upstream_http_message`) are already caught by the earlier
+    // arm, so this arm only adds coverage for the 500-wrapping-429 body shape
+    // and provider JSON envelopes that name the error type explicitly.
+    if is_upstream_rate_limit_message(&lower) {
+        return Some(ExpectedErrorKind::TransientUpstreamHttp);
+    }
     None
+}
+
+/// Detect upstream rate-limit error bodies that bubble up from any provider
+/// or embedding API call site.
+///
+/// Covers three observed wire shapes:
+///
+/// 1. **OpenAI / Anthropic JSON body** — `"rate_limit_error"` is the `"type"`
+///    field in the structured error object:
+///    `{"error":{"message":"Rate limit exceeded.","type":"rate_limit_error"}}`
+///    (OPENHUMAN-TAURI-2E / -RQ).
+///
+/// 2. **OpenHuman backend wrapping upstream** — `"Upstream rate limit exceeded
+///    for model 'summarization-v1'. Please retry shortly."` embedded in a 500
+///    response body (OPENHUMAN-TAURI-6Y / -7H).
+///
+/// 3. **Plain phrase** — `"429 rate limit exceeded, please try again later"` /
+///    `"rate limit exceeded"` from any other upstream (OPENHUMAN-TAURI-S).
+///
+/// The match is against the full lowercased error string (including any
+/// caller wrapping prefix), so it survives `agent.run_single` / `rpc.invoke_method`
+/// re-reports as well as the original call-site emit.
+///
+/// **Polarity contract**: this predicate is *inclusive* — it returns `true`
+/// only for messages that are unambiguously rate-limit throttle signals. It
+/// must NOT match unrelated errors that incidentally mention "limit" or "rate"
+/// (e.g. action-budget `"Rate limit exceeded: action budget exhausted"`
+/// from `security::policy` — distinguished by the `"action budget"` anchor).
+pub fn is_upstream_rate_limit_message(lower: &str) -> bool {
+    // `"rate_limit_error"` is the structured error type from OpenAI / Anthropic
+    // compatible APIs. Tight anchor — colons and underscores don't appear in
+    // ordinary log text.
+    if lower.contains("rate_limit_error") {
+        return true;
+    }
+    // `"upstream rate limit exceeded"` is the OpenHuman backend's own phrase
+    // when it wraps an upstream provider 429 as an HTTP 500.
+    if lower.contains("upstream rate limit exceeded") {
+        return true;
+    }
+    // `"429 rate limit exceeded"` is the numeric-prefix form emitted by some
+    // backends (e.g. OPENHUMAN-TAURI-S: `"error":"429 rate limit exceeded"`).
+    // Anchored on the `"429 rate limit"` substring so a plain `"rate limit
+    // exceeded"` mention (which could appear in the `security::policy` action-
+    // budget message) is NOT matched here — the next arm handles clean phrase
+    // matches only when scoped by a provider API error prefix.
+    if lower.contains("429 rate limit") {
+        return true;
+    }
+    // `"rate limit exceeded"` on its own is matched ONLY when it appears inside
+    // a canonical provider API error envelope (`"api error ("` prefix from
+    // `ops::api_error` / `embeddings::openai`). This keeps the security::policy
+    // `"Rate limit exceeded: action budget exhausted"` message from being
+    // silently swallowed — that phrase does not carry an API error prefix.
+    if lower.contains("api error (") && lower.contains("rate limit exceeded") {
+        return true;
+    }
+    false
 }
 
 /// Detect filesystem-out-of-space errors that bubble up from any syscall
@@ -2589,6 +2666,132 @@ mod tests {
             expected_error_kind("[memory_tree] failed to run schema DDL: disk full"),
             None
         );
+    }
+
+    // ── Upstream rate-limit suppression (OPENHUMAN-TAURI-S / -6Y / -2E / -RQ) ─
+
+    /// Canonical Anthropic / OpenAI body with a structured `"rate_limit_error"`
+    /// type — OPENHUMAN-TAURI-2E (~1 482 events) and -RQ (~741 events).
+    #[test]
+    fn classifies_rate_limit_error_type_as_transient() {
+        for raw in [
+            // Direct 429 from the embeddings path (OPENHUMAN-TAURI-RQ):
+            r#"Embedding API error (429 Too Many Requests): {"error":{"message":"Rate limit exceeded. Please retry after a brief wait.","type":"rate_limit_error"}}"#,
+            // Via llm_provider.api_error (OPENHUMAN-TAURI-2E):
+            r#"[observability] llm_provider.api_error failed: OpenHuman API error (429 Too Many Requests): {"error":{"message":"Rate limit exceeded. Please retry after a brief wait.","type":"rate_limit_error"}}"#,
+            // Re-reported by agent.run_single:
+            r#"run_chat_task failed client_id=abc thread_id=t1 request_id=r1 error=OpenHuman API error (429 Too Many Requests): {"error":{"message":"Rate limit exceeded.","type":"rate_limit_error"}}"#,
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::TransientUpstreamHttp),
+                "should classify rate_limit_error body as transient: {raw}"
+            );
+        }
+    }
+
+    /// OpenHuman backend wrapping an upstream 429 as HTTP 500 with a
+    /// `"upstream rate limit exceeded"` body — OPENHUMAN-TAURI-6Y (~19 849
+    /// events).
+    #[test]
+    fn classifies_upstream_rate_limit_in_500_body_as_transient() {
+        for raw in [
+            r#"OpenHuman API error (500 Internal Server Error): {"success":false,"error":"Upstream rate limit exceeded for model 'summarization-v1'. Please retry shortly."}"#,
+            r#"[observability] llm_provider.api_error failed: OpenHuman API error (500 Internal Server Error): {"success":false,"error":"Upstream rate limit exceeded for model 'summarization-v1'. Please retry shortly.","details":{"provider":"gmi","upstreamModel":"deepseek-ai/DeepSeek-V3-0324"}}"#,
+            // Re-wrapped by rpc.invoke_method:
+            r#"rpc.invoke_method failed: LLM summarisation failed: OpenHuman API error (500 Internal Server Error): {"success":false,"error":"Upstream rate limit exceeded for model 'summarization-v1'."}"#,
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::TransientUpstreamHttp),
+                "should classify upstream-rate-limit-in-500 as transient: {raw}"
+            );
+        }
+    }
+
+    /// Backend returning HTTP 500 with a numeric `"429 rate limit exceeded"`
+    /// body — OPENHUMAN-TAURI-S (~6 984 events).
+    #[test]
+    fn classifies_429_rate_limit_in_500_body_as_transient() {
+        for raw in [
+            r#"OpenHuman API error (500 Internal Server Error): {"success":false,"error":"429 rate limit exceeded, please try again later"}"#,
+            r#"[observability] llm_provider.api_error failed: OpenHuman API error (500 Internal Server Error): {"success":false,"error":"429 rate limit exceeded, please try again later"}"#,
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::TransientUpstreamHttp),
+                "should classify 429-in-500-body as transient: {raw}"
+            );
+        }
+    }
+
+    /// The security::policy `"Rate limit exceeded: action budget exhausted"`
+    /// must NOT be silenced — it's a user-facing hard stop, not a transient
+    /// upstream quota hit.
+    #[test]
+    fn does_not_classify_security_policy_rate_limit_as_transient() {
+        let msg = "Rate limit exceeded: action budget exhausted (0 actions/hour). \
+                   Increase the limit in Settings -> Advanced -> Agent autonomy";
+        assert_eq!(
+            expected_error_kind(msg),
+            None,
+            "security policy action-budget error must reach Sentry: {msg}"
+        );
+        // Wrapped by rpc.invoke_method — the prefix must not accidentally
+        // trigger the `api error (` anchor.
+        assert_eq!(
+            expected_error_kind(&format!("rpc.invoke_method failed: {msg}")),
+            None,
+            "wrapped security policy action-budget error must reach Sentry"
+        );
+    }
+
+    /// Standalone `"rate limit exceeded"` without the `"api error ("` anchor
+    /// must NOT be silenced — keeps loose phrases from accidentally demoting
+    /// unrelated errors.
+    #[test]
+    fn does_not_classify_bare_rate_limit_exceeded_as_transient() {
+        assert_eq!(
+            expected_error_kind("rate limit exceeded"),
+            None,
+            "bare 'rate limit exceeded' without API error anchor must reach Sentry"
+        );
+    }
+
+    /// `is_upstream_rate_limit_message` predicate unit tests — verifies the
+    /// polarity contract independently of `expected_error_kind`.
+    #[test]
+    fn upstream_rate_limit_predicate_matches_expected_shapes() {
+        for lower in [
+            r#"{"error":{"message":"rate limit exceeded.","type":"rate_limit_error"}}"#,
+            "upstream rate limit exceeded for model 'summarization-v1'",
+            "429 rate limit exceeded, please try again later",
+            r#"openai api error (429 too many requests): {"error":{"message":"rate limit exceeded.","type":"rate_limit_error"}}"#,
+        ] {
+            assert!(
+                is_upstream_rate_limit_message(lower),
+                "should match: {lower}"
+            );
+        }
+    }
+
+    #[test]
+    fn upstream_rate_limit_predicate_does_not_match_unrelated() {
+        for lower in [
+            // security::policy budget message — must not be swallowed
+            "rate limit exceeded: action budget exhausted (0 actions/hour)",
+            // bare phrase without anchor
+            "rate limit exceeded",
+            // unrelated 500 body
+            r#"{"success":false,"error":"internal server error"}"#,
+            // budget exhausted — different concept
+            "budget exhausted, add credits to continue",
+        ] {
+            assert!(
+                !is_upstream_rate_limit_message(lower),
+                "should not match: {lower}"
+            );
+        }
     }
 
     #[test]

@@ -83,6 +83,43 @@ fn main() {
             {
                 return None;
             }
+            // Defense-in-depth: upstream rate-limit events that slipped past
+            // the call-site suppressors in `ops::api_error` (primary guard)
+            // and `report_error_or_expected` (secondary guard via
+            // `expected_error_kind`). Catches the three major shapes:
+            //   · `rate_limit_error` type in the JSON body (OPENHUMAN-TAURI-2E,
+            //     OPENHUMAN-TAURI-RQ — ~2 223 events combined)
+            //   · `"upstream rate limit exceeded"` in a 500 body (TAURI-6Y —
+            //     ~19 849 events)
+            //   · `"429 rate limit exceeded"` in a 500 body (TAURI-S — ~6 984
+            //     events)
+            // The primary per-attempt suppression lives in
+            // `openhuman::inference::provider::ops::api_error` (skips
+            // `report_error` entirely for rate-limit bodies) and in
+            // `embeddings::openai::embed` (uses `report_error_or_expected` with
+            // the canonical `"Embedding API error ({status}): …"` format so
+            // `is_transient_upstream_http_message` catches it). This filter is
+            // the last line of defense for any future call site that adds a new
+            // report path without routing through one of those two guards.
+            {
+                let direct = event.message.as_deref();
+                let from_logentry = event.logentry.as_ref().map(|l| l.message.as_str());
+                let from_exception = event.exception.last().and_then(|e| e.value.as_deref());
+                let is_rate_limited = [direct, from_logentry, from_exception]
+                    .into_iter()
+                    .flatten()
+                    .map(str::to_ascii_lowercase)
+                    .any(|lower| {
+                        openhuman_core::core::observability::is_upstream_rate_limit_message(&lower)
+                    });
+                if is_rate_limited {
+                    log::debug!(
+                        "[sentry-rate-limit-filter] dropping upstream rate-limit event_id={:?}",
+                        event.event_id
+                    );
+                    return None;
+                }
+            }
             // Defense-in-depth: 404 on PATCH/DELETE to a channel-message path
             // is an expected state (provider-side delete or backend GC). Primary
             // suppression lives in `authed_json`; this catches any future call
