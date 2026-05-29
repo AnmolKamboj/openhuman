@@ -183,6 +183,17 @@ pub enum ExpectedErrorKind {
     /// reset window elapses and a subsequent init succeeds.
     ///
     MemoryStoreBreakerOpen,
+    /// WhatsApp structured-ingest write hit a transient SQLite file lock
+    /// (`SQLITE_BUSY` / `SQLITE_LOCKED`) after exhausting the local retry
+    /// budget. This is an expected local-contention condition (typically on
+    /// Windows when another process briefly holds a file lock) and the
+    /// scanner retries on the next tick, so Sentry has no immediate
+    /// remediation path.
+    ///
+    /// Anchored narrowly to the whatsapp ingest failure envelope plus the
+    /// SQLite lock text, so unrelated DB lock errors in other domains still
+    /// reach Sentry.
+    WhatsAppDataSqliteBusy,
     /// Host disk is full — the filesystem returned `ENOSPC` to a write,
     /// `mkdir`, or `open` syscall. The user cannot recover from this without
     /// freeing space on their machine, and Sentry has no remediation path
@@ -385,6 +396,9 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     if is_memory_store_breaker_open(&lower) {
         return Some(ExpectedErrorKind::MemoryStoreBreakerOpen);
     }
+    if is_whatsapp_data_sqlite_busy_message(&lower) {
+        return Some(ExpectedErrorKind::WhatsAppDataSqliteBusy);
+    }
     if is_disk_full_message(&lower) {
         return Some(ExpectedErrorKind::DiskFull);
     }
@@ -423,6 +437,22 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
 ///   The text anchor already covers it.
 fn is_disk_full_message(lower: &str) -> bool {
     lower.contains("no space left on device") || lower.contains("not enough space on the disk")
+}
+
+/// Match whatsapp structured-ingest failures caused by transient SQLite lock
+/// contention. Keep this matcher scoped to the whatsapp ingest envelope so we
+/// don't demote unrelated database failures in other domains.
+fn is_whatsapp_data_sqlite_busy_message(lower: &str) -> bool {
+    if !lower.contains("[whatsapp_data] ingest failed:") {
+        return false;
+    }
+    if !lower.contains("upsert wa_message") {
+        return false;
+    }
+    lower.contains("database is locked")
+        || lower.contains("database table is locked")
+        || lower.contains("database file is locked")
+        || lower.contains("error code 5")
 }
 
 fn is_embedding_backend_auth_failure(lower: &str) -> bool {
@@ -1451,6 +1481,14 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
                 operation = operation,
                 kind = "memory_store_breaker_open",
                 "[observability] {domain}.{operation} skipped expected memory-store circuit-breaker-open error"
+            );
+        }
+        ExpectedErrorKind::WhatsAppDataSqliteBusy => {
+            tracing::warn!(
+                domain = domain,
+                operation = operation,
+                kind = "whatsapp_data_sqlite_busy",
+                "[observability] {domain}.{operation} skipped expected whatsapp_data sqlite busy/locked error"
             );
         }
         ExpectedErrorKind::FilesystemUserPathInvalid => {
@@ -2487,6 +2525,35 @@ mod tests {
             expected_error_kind("not enough memory to allocate buffer"),
             None
         );
+    }
+
+    #[test]
+    fn classifies_whatsapp_data_sqlite_busy_errors() {
+        for raw in [
+            r#"[whatsapp_data] ingest failed: upsert wa_message chat=120363402402350155@g.us msg=false_120363402402350155@g.us_3A357F28AE74548B1507_207897942335683@lid: database is locked: Error code 5: The database file is locked"#,
+            r#"rpc.invoke_method failed: [whatsapp_data] ingest failed: upsert wa_message [email] msg=false_120363402402350155@g.us_3A357F28AE74548B1507_207897942335683@lid: database is locked: Error code 5: The database file is locked"#,
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::WhatsAppDataSqliteBusy),
+                "should classify whatsapp_data sqlite busy/locked: {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn does_not_classify_unrelated_sqlite_lock_messages_as_whatsapp_busy() {
+        for raw in [
+            "failed to run subconscious schema DDL: database is locked",
+            "memory queue write failed: database table is locked",
+            "[whatsapp_data] list_messages failed: database is locked",
+        ] {
+            assert_ne!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::WhatsAppDataSqliteBusy),
+                "must not classify as whatsapp_data sqlite busy: {raw}"
+            );
+        }
     }
 
     #[test]
