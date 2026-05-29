@@ -2060,6 +2060,44 @@ pub fn is_budget_event(event: &sentry::protocol::Event<'_>) -> bool {
     event_contains_budget_exhausted_message(event)
 }
 
+/// Defense-in-depth `before_send` filter for Sentry event CORE-RUST-EK
+/// (~827 events): every call to the cloud embedding API (OpenAI
+/// `text-embedding-3-large` or Voyage) that returns HTTP 401 fires a Sentry
+/// error event via `report_error_or_expected` in
+/// `src/openhuman/embeddings/openai.rs`.
+///
+/// 401 on the embedding call path means the configured API key is stale or
+/// invalid. This is the same class of condition as the VOYAGE_API_KEY-missing
+/// error (PR #2915) and the billing-expired 401 (PR #2924): the user's LLM
+/// session was interrupted by an auth failure that the core will retry on the
+/// next turn, but the Sentry volume-per-key ratio yields zero actionable signal.
+///
+/// Match criteria (all required):
+/// - tag `domain == "embeddings"` — pins the filter to the embeddings call
+///   path and avoids silencing unrelated 401s from provider chat, billing, or
+///   the backend RPC layer
+/// - tag `failure == "non_2xx"` — the marker set by `embeddings::openai::embed`
+///   at the non-2xx path
+/// - tag `status == "401"` — narrows to auth-rejection failures (429 / 500
+///   are handled by the existing rate-limit filter)
+///
+/// The primary suppression for the OpenHuman-backend "Invalid token" shape
+/// already lives in `expected_error_kind` / `is_session_expired_message`. This
+/// filter is defense-in-depth: it catches any third-party provider 401 that
+/// doesn't carry the OpenHuman-backend body (e.g. OpenAI's
+/// `{"error":{"code":"invalid_api_key",...}}`), ensuring CORE-RUST-EK stays
+/// off Sentry regardless of which embedding provider is configured.
+pub fn is_embeddings_api_key_401_event(event: &sentry::protocol::Event<'_>) -> bool {
+    let tags = &event.tags;
+    if tags.get("domain").map(String::as_str) != Some("embeddings") {
+        return false;
+    }
+    if tags.get("failure").map(String::as_str) != Some("non_2xx") {
+        return false;
+    }
+    tags.get("status").map(String::as_str) == Some("401")
+}
+
 /// 404 on PATCH/DELETE to a channel-message path is an expected backend state
 /// (user deleted the message provider-side, backend GC'd the relay row). The
 /// primary suppression lives in `authed_json` via `parse_message_path` +
@@ -4976,6 +5014,101 @@ mod tests {
             let event = event_with_tags_and_message(&tags, message);
             assert!(!is_budget_event(&event));
         }
+    }
+
+    /// CORE-RUST-EK (~827 events): every 401 from the embeddings call path
+    /// (`domain=embeddings`, `failure=non_2xx`, `status=401`) must be filtered
+    /// before it reaches Sentry. Covers both the OpenHuman-backend "Invalid
+    /// token" shape (already handled by the primary `is_session_expired_message`
+    /// classifier) and third-party provider body shapes (OpenAI
+    /// `invalid_api_key`, plain `Unauthorized`) that fall through the string
+    /// classifier.
+    #[test]
+    fn embeddings_401_filter_drops_domain_embeddings_status_401() {
+        // Canonical CORE-RUST-EK wire shape: OpenAI `text-embedding-3-large`
+        // key is stale. `report_error_or_expected` sets
+        // domain=embeddings / operation=openai_embed / failure=non_2xx /
+        // status=401 / model=text-embedding-3-large.
+        let event = event_with_tags_and_message(
+            &[
+                ("domain", "embeddings"),
+                ("operation", "openai_embed"),
+                ("failure", "non_2xx"),
+                ("status", "401"),
+                ("model", "text-embedding-3-large"),
+            ],
+            r#"Embedding API error (401 Unauthorized): {"error":{"message":"Incorrect API key provided. You can find your API key at https://platform.openai.com/account/api-keys.","type":"invalid_request_error","param":null,"code":"invalid_api_key"}}"#,
+        );
+        assert!(
+            is_embeddings_api_key_401_event(&event),
+            "CORE-RUST-EK: domain=embeddings status=401 must be filtered"
+        );
+    }
+
+    /// Any other embedding status (e.g. 429 rate-limit, 500 server error)
+    /// must not be filtered by the embeddings-401 guard — those have their
+    /// own handlers (rate-limit filter, general error reporting).
+    #[test]
+    fn embeddings_401_filter_passes_other_statuses() {
+        for status in ["429", "500", "400"] {
+            let event = event_with_tags_and_message(
+                &[
+                    ("domain", "embeddings"),
+                    ("failure", "non_2xx"),
+                    ("status", status),
+                ],
+                "Embedding API error",
+            );
+            assert!(
+                !is_embeddings_api_key_401_event(&event),
+                "domain=embeddings status={status} must NOT be filtered by the 401 guard"
+            );
+        }
+    }
+
+    /// Non-embeddings domains must not be filtered even if status=401 — the
+    /// guard is scoped specifically to `domain=embeddings` so that provider-chat
+    /// and backend-API 401s remain subject to their own classifiers.
+    #[test]
+    fn embeddings_401_filter_passes_non_embeddings_domains() {
+        for domain in ["llm_provider", "backend_api", "rpc", "composio"] {
+            let event = event_with_tags_and_message(
+                &[
+                    ("domain", domain),
+                    ("failure", "non_2xx"),
+                    ("status", "401"),
+                ],
+                "API error (401 Unauthorized): some body",
+            );
+            assert!(
+                !is_embeddings_api_key_401_event(&event),
+                "domain={domain} status=401 must NOT be swallowed by the embeddings-401 guard"
+            );
+        }
+    }
+
+    /// The guard requires both `failure=non_2xx` and `status=401` to be
+    /// present; missing either tag must cause the filter to pass the event
+    /// through.
+    #[test]
+    fn embeddings_401_filter_requires_failure_and_status_tags() {
+        let no_failure_tag = event_with_tags_and_message(
+            &[("domain", "embeddings"), ("status", "401")],
+            "Embedding API error (401 Unauthorized): unauthorized",
+        );
+        assert!(
+            !is_embeddings_api_key_401_event(&no_failure_tag),
+            "missing failure tag must not trigger the guard"
+        );
+
+        let no_status_tag = event_with_tags_and_message(
+            &[("domain", "embeddings"), ("failure", "non_2xx")],
+            "Embedding API error (401 Unauthorized): unauthorized",
+        );
+        assert!(
+            !is_embeddings_api_key_401_event(&no_status_tag),
+            "missing status tag must not trigger the guard"
+        );
     }
 
     #[test]
