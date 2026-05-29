@@ -606,6 +606,18 @@ fn is_memory_store_breaker_open(lower: &str) -> bool {
 ///   `"session JWT required"` — local pre-flight guards that fire when the
 ///   stored profile is empty (`#1465`-ish onboarding spam) or has been
 ///   cleared by a previous 401 cycle. Both shapes are OpenHuman-specific.
+/// - `"backend rejected session token on GET /payments/stripe/currentPlan"` and
+///   all analogous `"{METHOD} {path}"` variants — the `BackendApiError::Unauthorized`
+///   typed error surfaced by `api::rest::BackendOAuthClient::authed_json` when any
+///   OpenHuman REST endpoint returns HTTP 401. The `get_authed_value` wrapper in
+///   `billing::ops` stringifies this via `.to_string()`, producing the
+///   `"backend rejected session token on …"` prefix. This is uniquely scoped to
+///   the `BackendApiError::Unauthorized` variant (the phrase does not appear in
+///   any third-party provider error path) so it is safe to classify as session
+///   expiry without the conjunctive-anchor guard pattern needed for `"Invalid
+///   token"`. Targets TAURI-RUST-E (~1 437 events from
+///   `openhuman.billing_get_current_plan` polling on every background billing
+///   refresh cycle after the user's JWT lapses).
 ///
 /// At the JSON-RPC dispatch boundary the same strict match controls
 /// `DomainEvent::SessionExpired` publication, so downstream/provider 401s stay
@@ -616,6 +628,14 @@ pub fn is_session_expired_message(msg: &str) -> bool {
         || lower.contains("no backend session token")
         || lower.contains("session jwt required")
         || msg.contains("SESSION_EXPIRED")
+        // TAURI-RUST-E — billing endpoint 401s via `BackendApiError::Unauthorized`
+        // stringified by `billing::ops::get_authed_value(..).map_err(|e| e.to_string())`.
+        // The display form is `"backend rejected session token on {METHOD} {path}"`;
+        // the phrase is uniquely scoped to `BackendApiError::Unauthorized` so no
+        // conjunctive guard is needed. Covers all billing RPC methods
+        // (billing_get_current_plan, billing_get_balance, etc.) and any other
+        // `authed_json` caller that stringifies via `.to_string()`.
+        || lower.contains("backend rejected session token")
         // OPENHUMAN-TAURI-4P0 — OpenHuman backend's "Invalid token" 401
         // envelope. Both anchors must be present: the OpenHuman-scoped
         // `"OpenHuman API error (401"` prefix (so a third-party provider's
@@ -4291,6 +4311,83 @@ mod tests {
         // is case-sensitive by design (matches the sentinel emitted by
         // `providers::openhuman_backend::resolve_bearer` exactly).
         assert_eq!(expected_error_kind("session_expired lowercase"), None);
+    }
+
+    /// TAURI-RUST-E (~1 437 events): billing poll fires `report_error_or_expected`
+    /// on every refresh cycle once the user's JWT lapses because the
+    /// `BackendApiError::Unauthorized` typed error was stringified to
+    /// `"backend rejected session token on GET /payments/stripe/currentPlan"` by
+    /// `billing::ops::get_authed_value(..).map_err(|e| e.to_string())` before the
+    /// phrase was added to `is_session_expired_message`.
+    ///
+    /// The phrase `"backend rejected session token"` is uniquely produced by
+    /// `BackendApiError::Unauthorized`'s `Display` impl in `api::rest` — no
+    /// third-party provider path emits it — so no conjunctive guard is needed.
+    #[test]
+    fn classifies_billing_401_as_session_expired() {
+        // Exact wire shape from `billing_get_current_plan` — the most common
+        // event in TAURI-RUST-E.
+        assert_eq!(
+            expected_error_kind(
+                "backend rejected session token on GET /payments/stripe/currentPlan"
+            ),
+            Some(ExpectedErrorKind::SessionExpired),
+            "TAURI-RUST-E: billing_get_current_plan 401 must classify as SessionExpired"
+        );
+
+        // Other billing methods share the same `BackendApiError::Unauthorized`
+        // display shape — pin them so a wording change in `rest.rs` would catch
+        // every billing call site.
+        for path in [
+            "/payments/credits/balance",
+            "/payments/credits/transactions?limit=20&offset=0",
+            "/payments/credits/auto-recharge",
+            "/payments/credits/auto-recharge/cards",
+            "/payments/stripe/purchasePlan",
+            "/payments/stripe/portal",
+            "/coupons/me",
+        ] {
+            let msg = format!("backend rejected session token on GET {path}");
+            assert_eq!(
+                expected_error_kind(&msg),
+                Some(ExpectedErrorKind::SessionExpired),
+                "billing 401 must classify as SessionExpired: {msg}"
+            );
+        }
+
+        // POST / PATCH / DELETE variants are also produced by `authed_json`.
+        for raw in [
+            "backend rejected session token on POST /payments/credits/top-up",
+            "backend rejected session token on PATCH /payments/credits/auto-recharge",
+            "backend rejected session token on DELETE /payments/credits/auto-recharge/cards/pm_123",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::SessionExpired),
+                "TAURI-RUST-E variant must classify as SessionExpired: {raw}"
+            );
+        }
+    }
+
+    /// `"backend rejected session token"` is scoped to `BackendApiError::Unauthorized`
+    /// in `api::rest`. Ensure unrelated messages containing the individual
+    /// words don't accidentally match.
+    #[test]
+    fn does_not_classify_unrelated_rejected_messages_as_session_expired() {
+        // Third-party provider errors that mention a token being rejected but
+        // do not contain the exact OpenHuman `BackendApiError::Unauthorized`
+        // display phrase.
+        for raw in [
+            "Discord API error: token rejected by upstream",
+            "Stripe webhook signature rejected — bad secret",
+            "API token rejected: please regenerate",
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                None,
+                "unrelated token-rejected message must NOT suppress Sentry: {raw}"
+            );
+        }
     }
 
     #[test]
