@@ -1843,6 +1843,9 @@ fn register_domain_subscribers(
         }
         crate::openhuman::composio::register_composio_trigger_subscriber();
         crate::openhuman::composio::start_periodic_sync();
+        // Task-sources proactive ingestion: connection-created hook + poll.
+        crate::openhuman::task_sources::bus::register_task_sources_subscriber();
+        crate::openhuman::task_sources::start_periodic_poll();
         // Seed memory_sources with active Composio connections so the
         // user sees their connected integrations as memory sources by
         // default. Best-effort: failure is logged but does not block startup.
