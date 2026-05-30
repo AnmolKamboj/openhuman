@@ -4199,6 +4199,35 @@ const messages: TranslationMap = {
   'walletBalances.rawBalance': 'Исходный: {raw}',
   'walletBalances.errorGeneric':
     'Не удалось загрузить балансы кошелька. Настройте кошелёк в разделе «Фраза восстановления» и повторите попытку.',
+  'walletBalances.setupHint':
+    'Ваша фраза восстановления ещё не настроена. Настройте её, чтобы включить кошелёк и видеть актуальные балансы.',
+  'walletBalances.setupCta': 'Настроить фразу восстановления',
+  'walletBalances.notSetUp': 'Не настроено',
+  'walletBalances.send': 'Отправить',
+  'walletBalances.receive': 'Получить',
+  'walletReceive.scanHint':
+    'Отсканируйте этот код или скопируйте адрес ниже, чтобы получить средства.',
+  'walletReceive.addressLabel': 'Адрес {network}',
+  'walletReceive.onlyChainWarning':
+    'Отправляйте на этот адрес только активы сети {network}. Отправка активов из другой сети может привести к безвозвратной потере.',
+  'walletSend.available': 'Доступно',
+  'walletSend.recipient': 'Адрес получателя',
+  'walletSend.recipientPlaceholder': 'Вставьте адрес назначения',
+  'walletSend.recipientRequired': 'Введите адрес получателя',
+  'walletSend.amount': 'Сумма',
+  'walletSend.invalidAmount': 'Введите корректную сумму',
+  'walletSend.review': 'Проверить',
+  'walletSend.preparing': 'Подготовка…',
+  'walletSend.confirmHint':
+    'Проверьте детали ниже. Подпись выполняется локально — ничего не отправляется, пока вы не подтвердите.',
+  'walletSend.estimatedFee': 'Ориентировочная комиссия сети',
+  'walletSend.confirmSend': 'Подтвердить и отправить',
+  'walletSend.sending': 'Отправка…',
+  'walletSend.sent': 'Транзакция отправлена',
+  'walletSend.txHash': 'Хеш транзакции',
+  'walletSend.viewExplorer': 'Открыть в обозревателе',
+  'walletSend.done': 'Готово',
+  'walletSend.genericError': 'Не удалось выполнить перевод. Повторите попытку.',
   'settings.taskSources.title': 'Источники задач',
   'settings.taskSources.subtitle': 'Переносите задачи из своих инструментов на доску задач агента.',
   'settings.taskSources.description':
@@ -4344,6 +4373,16 @@ const messages: TranslationMap = {
   'settings.agentsSection.description':
     'Управляйте агентами, их автономностью и доступом к ресурсам компьютера.',
   'settings.agentsSection.menuDesc': 'Реестр, автономность и доступ к ОС',
+  'settings.cryptoSection.title': 'Крипто',
+  'settings.cryptoSection.description':
+    'Управляйте секретной фразой восстановления и просматривайте балансы своих кошельковых счетов.',
+  'settings.cryptoSection.menuDesc': 'Фраза восстановления и балансы кошелька',
+  'settings.notificationsHub.title': 'Уведомления',
+  'settings.notificationsHub.description':
+    'Просматривайте папку оповещений и управляйте настройками уведомлений и маршрутизацией.',
+  'settings.notificationsHub.menuDesc': 'Папка оповещений и настройки уведомлений',
+  'settings.notificationsHub.settingsItem': 'Настройки уведомлений',
+  'settings.notificationsHub.settingsItemDesc': 'Настройки и маршрутизация',
   'settings.agents.editor.notFound': 'Агент не найден.',
   'settings.agents.editor.modelInherit': 'Унаследовать (системное по умолчанию)',
   'settings.agents.editor.modelHints': 'Подсказки маршрутизации',

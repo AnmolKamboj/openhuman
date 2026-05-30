@@ -4165,6 +4165,35 @@ const messages: TranslationMap = {
   'walletBalances.rawBalance': 'रॉ: {raw}',
   'walletBalances.errorGeneric':
     'वॉलेट बैलेंस लोड नहीं हो सका। Recovery Phrase में अपना वॉलेट सेटअप करें और पुनः प्रयास करें।',
+  'walletBalances.setupHint':
+    'आपका रिकवरी फ्रेज़ अभी सेटअप नहीं है। अपना वॉलेट सक्रिय करने और लाइव बैलेंस देखने के लिए इसे सेटअप करें।',
+  'walletBalances.setupCta': 'रिकवरी फ्रेज़ सेटअप करें',
+  'walletBalances.notSetUp': 'सेटअप नहीं है',
+  'walletBalances.send': 'भेजें',
+  'walletBalances.receive': 'प्राप्त करें',
+  'walletReceive.scanHint':
+    'फंड प्राप्त करने के लिए इस कोड को स्कैन करें या नीचे दिया पता कॉपी करें।',
+  'walletReceive.addressLabel': '{network} पता',
+  'walletReceive.onlyChainWarning':
+    'इस पते पर केवल {network} एसेट भेजें। किसी अन्य नेटवर्क के एसेट भेजने से स्थायी हानि हो सकती है।',
+  'walletSend.available': 'उपलब्ध',
+  'walletSend.recipient': 'प्राप्तकर्ता का पता',
+  'walletSend.recipientPlaceholder': 'गंतव्य पता पेस्ट करें',
+  'walletSend.recipientRequired': 'प्राप्तकर्ता का पता दर्ज करें',
+  'walletSend.amount': 'राशि',
+  'walletSend.invalidAmount': 'एक मान्य राशि दर्ज करें',
+  'walletSend.review': 'समीक्षा करें',
+  'walletSend.preparing': 'तैयार किया जा रहा है…',
+  'walletSend.confirmHint':
+    'नीचे दिए विवरण की समीक्षा करें। हस्ताक्षर स्थानीय रूप से होता है — जब तक आप पुष्टि नहीं करते, कुछ भी प्रसारित नहीं होता।',
+  'walletSend.estimatedFee': 'अनुमानित नेटवर्क शुल्क',
+  'walletSend.confirmSend': 'पुष्टि करें और भेजें',
+  'walletSend.sending': 'भेजा जा रहा है…',
+  'walletSend.sent': 'लेनदेन भेजा गया',
+  'walletSend.txHash': 'लेनदेन हैश',
+  'walletSend.viewExplorer': 'एक्सप्लोरर में देखें',
+  'walletSend.done': 'हो गया',
+  'walletSend.genericError': 'स्थानांतरण पूरा नहीं हो सका। कृपया पुनः प्रयास करें।',
   'settings.taskSources.title': 'कार्य स्रोत',
   'settings.taskSources.subtitle': 'एजेंट टोडो बोर्ड पर अपने उपकरणों से कार्य खींचें',
   'settings.taskSources.description':
@@ -4309,6 +4338,16 @@ const messages: TranslationMap = {
   'settings.agentsSection.description':
     'अपने एजेंट, उनकी स्वायत्तता और इस कंप्यूटर पर वे क्या एक्सेस कर सकते हैं, यह प्रबंधित करें।',
   'settings.agentsSection.menuDesc': 'रजिस्ट्री, स्वायत्तता और OS एक्सेस',
+  'settings.cryptoSection.title': 'क्रिप्टো',
+  'settings.cryptoSection.description':
+    'अपना रिकवरी फ्रेज़ प्रबंधित करें और अपने वॉलेट खातों के बैलेंस देखें।',
+  'settings.cryptoSection.menuDesc': 'रिकवरी फ्रेज़ और वॉलेट बैलेंस',
+  'settings.notificationsHub.title': 'सूचनाएं',
+  'settings.notificationsHub.description':
+    'अपना अलर्ट इनबॉक्स देखें और सूचना प्राथमिकताएं व रूटिंग प्रबंधित करें।',
+  'settings.notificationsHub.menuDesc': 'अलर्ट इनबॉक्स और सूचना प्राथमिकताएं',
+  'settings.notificationsHub.settingsItem': 'सूचना सेटिंग्स',
+  'settings.notificationsHub.settingsItemDesc': 'प्राथमिकताएं और रूटिंग',
   'settings.agents.editor.notFound': 'एजेंट नहीं मिला।',
   'settings.agents.editor.modelInherit': 'इनहेरिट करें (प्लेटफ़ॉर्म डिफ़ॉल्ट)',
   'settings.agents.editor.modelHints': 'रूट संकेत',

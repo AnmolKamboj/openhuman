@@ -4158,6 +4158,34 @@ const messages: TranslationMap = {
   'walletBalances.rawBalance': 'কাঁচা: {raw}',
   'walletBalances.errorGeneric':
     'ওয়ালেট ব্যালেন্স লোড করতে অক্ষম। Recovery Phrase-এ আপনার ওয়ালেট সেটআপ করুন এবং আবার চেষ্টা করুন।',
+  'walletBalances.setupHint':
+    'আপনার রিকভারি ফ্রেজ এখনও সেট আপ করা হয়নি। আপনার ওয়ালেট সক্রিয় করতে এবং লাইভ ব্যালেন্স দেখতে এটি সেট আপ করুন।',
+  'walletBalances.setupCta': 'রিকভারি ফ্রেজ সেট আপ করুন',
+  'walletBalances.notSetUp': 'সেট আপ করা হয়নি',
+  'walletBalances.send': 'পাঠান',
+  'walletBalances.receive': 'গ্রহণ করুন',
+  'walletReceive.scanHint': 'তহবিল গ্রহণ করতে এই কোডটি স্ক্যান করুন বা নিচের ঠিকানাটি কপি করুন।',
+  'walletReceive.addressLabel': '{network} ঠিকানা',
+  'walletReceive.onlyChainWarning':
+    'এই ঠিকানায় শুধুমাত্র {network} সম্পদ পাঠান। অন্য নেটওয়ার্কের সম্পদ পাঠালে স্থায়ীভাবে ক্ষতি হতে পারে।',
+  'walletSend.available': 'উপলব্ধ',
+  'walletSend.recipient': 'প্রাপকের ঠিকানা',
+  'walletSend.recipientPlaceholder': 'গন্তব্য ঠিকানা পেস্ট করুন',
+  'walletSend.recipientRequired': 'একটি প্রাপকের ঠিকানা লিখুন',
+  'walletSend.amount': 'পরিমাণ',
+  'walletSend.invalidAmount': 'একটি বৈধ পরিমাণ লিখুন',
+  'walletSend.review': 'পর্যালোচনা',
+  'walletSend.preparing': 'প্রস্তুত করা হচ্ছে…',
+  'walletSend.confirmHint':
+    'নিচের বিবরণ পর্যালোচনা করুন। স্বাক্ষর স্থানীয়ভাবে হয় — আপনি নিশ্চিত না করা পর্যন্ত কিছুই সম্প্রচার হয় না।',
+  'walletSend.estimatedFee': 'আনুমানিক নেটওয়ার্ক ফি',
+  'walletSend.confirmSend': 'নিশ্চিত করে পাঠান',
+  'walletSend.sending': 'পাঠানো হচ্ছে…',
+  'walletSend.sent': 'লেনদেন পাঠানো হয়েছে',
+  'walletSend.txHash': 'লেনদেন হ্যাশ',
+  'walletSend.viewExplorer': 'এক্সপ্লোরারে দেখুন',
+  'walletSend.done': 'সম্পন্ন',
+  'walletSend.genericError': 'স্থানান্তর সম্পূর্ণ করা যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।',
   'settings.taskSources.title': 'কাজের উৎস',
   'settings.taskSources.subtitle': 'আপনার টুল থেকে Tworet পরিচালনা করুন',
   'settings.taskSources.description':
@@ -4302,6 +4330,16 @@ const messages: TranslationMap = {
   'settings.agentsSection.description':
     'আপনার এজেন্ট, তাদের স্বায়ত্তশাসন এবং এই কম্পিউটারে তারা কী অ্যাক্সেস করতে পারে তা পরিচালনা করুন।',
   'settings.agentsSection.menuDesc': 'রেজিস্ট্রি, স্বায়ত্তশাসন ও ওএস অ্যাক্সেস',
+  'settings.cryptoSection.title': 'ক্রিপ্টো',
+  'settings.cryptoSection.description':
+    'আপনার রিকভারি ফ্রেজ পরিচালনা করুন এবং আপনার ওয়ালেট অ্যাকাউন্টগুলির ব্যালেন্স দেখুন।',
+  'settings.cryptoSection.menuDesc': 'রিকভারি ফ্রেজ ও ওয়ালেট ব্যালেন্স',
+  'settings.notificationsHub.title': 'বিজ্ঞপ্তি',
+  'settings.notificationsHub.description':
+    'আপনার অ্যালার্ট ইনবক্স দেখুন এবং বিজ্ঞপ্তির পছন্দ ও রাউটিং পরিচালনা করুন।',
+  'settings.notificationsHub.menuDesc': 'অ্যালার্ট ইনবক্স ও বিজ্ঞপ্তির পছন্দ',
+  'settings.notificationsHub.settingsItem': 'বিজ্ঞপ্তি সেটিংস',
+  'settings.notificationsHub.settingsItemDesc': 'পছন্দ ও রাউটিং',
   'settings.agents.editor.notFound': 'এজেন্ট পাওয়া যায়নি।',
   'settings.agents.editor.modelInherit': 'উত্তরাধিকার (প্ল্যাটফর্ম ডিফল্ট)',
   'settings.agents.editor.modelHints': 'রুট হিন্টস',

@@ -4232,6 +4232,34 @@ const messages: TranslationMap = {
   'walletBalances.rawBalance': 'Nieprzetworzone: {raw}',
   'walletBalances.errorGeneric':
     'Nie można załadować sald portfela. Skonfiguruj portfel w sekcji Fraza odzyskiwania i spróbuj ponownie.',
+  'walletBalances.setupHint':
+    'Twoja fraza odzyskiwania nie jest jeszcze skonfigurowana. Skonfiguruj ją, aby włączyć portfel i widzieć salda na żywo.',
+  'walletBalances.setupCta': 'Skonfiguruj frazę odzyskiwania',
+  'walletBalances.notSetUp': 'Nie skonfigurowano',
+  'walletBalances.send': 'Wyślij',
+  'walletBalances.receive': 'Odbierz',
+  'walletReceive.scanHint': 'Zeskanuj ten kod lub skopiuj adres poniżej, aby otrzymać środki.',
+  'walletReceive.addressLabel': 'Adres {network}',
+  'walletReceive.onlyChainWarning':
+    'Wysyłaj na ten adres wyłącznie aktywa {network}. Wysłanie aktywów z innej sieci może spowodować trwałą utratę.',
+  'walletSend.available': 'Dostępne',
+  'walletSend.recipient': 'Adres odbiorcy',
+  'walletSend.recipientPlaceholder': 'Wklej adres docelowy',
+  'walletSend.recipientRequired': 'Wprowadź adres odbiorcy',
+  'walletSend.amount': 'Kwota',
+  'walletSend.invalidAmount': 'Wprowadź prawidłową kwotę',
+  'walletSend.review': 'Przejrzyj',
+  'walletSend.preparing': 'Przygotowywanie…',
+  'walletSend.confirmHint':
+    'Sprawdź poniższe szczegóły. Podpisywanie odbywa się lokalnie — nic nie zostanie wysłane, dopóki nie potwierdzisz.',
+  'walletSend.estimatedFee': 'Szacowana opłata sieciowa',
+  'walletSend.confirmSend': 'Potwierdź i wyślij',
+  'walletSend.sending': 'Wysyłanie…',
+  'walletSend.sent': 'Transakcja wysłana',
+  'walletSend.txHash': 'Hash transakcji',
+  'walletSend.viewExplorer': 'Zobacz w eksploratorze',
+  'walletSend.done': 'Gotowe',
+  'walletSend.genericError': 'Nie udało się zrealizować transferu. Spróbuj ponownie.',
   'settings.taskSources.title': 'Źródła zadań',
   'settings.taskSources.subtitle': 'Pobieraj zadania z narzędzi na tablicę zadań agenta',
   'settings.taskSources.description':
@@ -4376,6 +4404,16 @@ const messages: TranslationMap = {
   'settings.agentsSection.description':
     'Zarządzaj agentami, ich autonomią i tym, do czego mogą uzyskać dostęp na tym komputerze.',
   'settings.agentsSection.menuDesc': 'Rejestr, autonomia i dostęp do systemu',
+  'settings.cryptoSection.title': 'Krypto',
+  'settings.cryptoSection.description':
+    'Zarządzaj frazą odzyskiwania i sprawdzaj salda na kontach portfela.',
+  'settings.cryptoSection.menuDesc': 'Fraza odzyskiwania i salda portfela',
+  'settings.notificationsHub.title': 'Powiadomienia',
+  'settings.notificationsHub.description':
+    'Przeglądaj skrzynkę alertów oraz zarządzaj preferencjami powiadomień i routingiem.',
+  'settings.notificationsHub.menuDesc': 'Skrzynka alertów i preferencje powiadomień',
+  'settings.notificationsHub.settingsItem': 'Ustawienia powiadomień',
+  'settings.notificationsHub.settingsItemDesc': 'Preferencje i routing',
   'settings.agents.editor.notFound': 'Nie znaleziono agenta.',
   'settings.agents.editor.modelInherit': 'Dziedzicz (domyślne platformy)',
   'settings.agents.editor.modelHints': 'Wskazówki trasowania',

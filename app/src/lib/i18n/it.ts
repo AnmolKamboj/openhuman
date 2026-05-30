@@ -4232,6 +4232,35 @@ const messages: TranslationMap = {
   'walletBalances.rawBalance': 'Grezzo: {raw}',
   'walletBalances.errorGeneric':
     'Impossibile caricare i saldi del portafoglio. Configura il tuo portafoglio in Frase di recupero e riprova.',
+  'walletBalances.setupHint':
+    'La tua frase di recupero non è ancora configurata. Configurala per attivare il tuo wallet e vedere i saldi in tempo reale.',
+  'walletBalances.setupCta': 'Configura la frase di recupero',
+  'walletBalances.notSetUp': 'Non configurato',
+  'walletBalances.send': 'Invia',
+  'walletBalances.receive': 'Ricevi',
+  'walletReceive.scanHint':
+    'Scansiona questo codice o copia l’indirizzo qui sotto per ricevere fondi.',
+  'walletReceive.addressLabel': 'Indirizzo {network}',
+  'walletReceive.onlyChainWarning':
+    'Invia solo asset {network} a questo indirizzo. Inviare asset da un’altra rete può causare una perdita permanente.',
+  'walletSend.available': 'Disponibile',
+  'walletSend.recipient': 'Indirizzo del destinatario',
+  'walletSend.recipientPlaceholder': 'Incolla l’indirizzo di destinazione',
+  'walletSend.recipientRequired': 'Inserisci un indirizzo del destinatario',
+  'walletSend.amount': 'Importo',
+  'walletSend.invalidAmount': 'Inserisci un importo valido',
+  'walletSend.review': 'Rivedi',
+  'walletSend.preparing': 'Preparazione…',
+  'walletSend.confirmHint':
+    'Rivedi i dettagli qui sotto. La firma avviene localmente: nulla viene trasmesso finché non confermi.',
+  'walletSend.estimatedFee': 'Commissione di rete stimata',
+  'walletSend.confirmSend': 'Conferma e invia',
+  'walletSend.sending': 'Invio…',
+  'walletSend.sent': 'Transazione inviata',
+  'walletSend.txHash': 'Hash della transazione',
+  'walletSend.viewExplorer': 'Vedi nell’explorer',
+  'walletSend.done': 'Fatto',
+  'walletSend.genericError': 'Impossibile completare il trasferimento. Riprova.',
   'settings.taskSources.title': 'Fonti del compito',
   'settings.taskSources.subtitle':
     "Estrai le attività dai tuoi strumenti sulla lavagna delle cose da fare dell'agente",
@@ -4378,6 +4407,16 @@ const messages: TranslationMap = {
   'settings.agentsSection.description':
     'Gestisci i tuoi agenti, la loro autonomia e a cosa possono accedere su questo computer.',
   'settings.agentsSection.menuDesc': 'Registro, autonomia e accesso al sistema operativo',
+  'settings.cryptoSection.title': 'Cripto',
+  'settings.cryptoSection.description':
+    'Gestisci la tua frase di recupero e visualizza i saldi dei tuoi account wallet.',
+  'settings.cryptoSection.menuDesc': 'Frase di recupero e saldi del wallet',
+  'settings.notificationsHub.title': 'Notifiche',
+  'settings.notificationsHub.description':
+    'Visualizza la tua casella degli avvisi e gestisci le preferenze di notifica e l’instradamento.',
+  'settings.notificationsHub.menuDesc': 'Casella degli avvisi e preferenze di notifica',
+  'settings.notificationsHub.settingsItem': 'Impostazioni di notifica',
+  'settings.notificationsHub.settingsItemDesc': 'Preferenze e instradamento',
   'settings.agents.editor.notFound': 'Agente non trovato.',
   'settings.agents.editor.modelInherit': 'Eredita (predefinito della piattaforma)',
   'settings.agents.editor.modelHints': 'Suggerimenti di instradamento',

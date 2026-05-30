@@ -4175,6 +4175,34 @@ const messages: TranslationMap = {
   'walletBalances.rawBalance': 'Mentah: {raw}',
   'walletBalances.errorGeneric':
     'Tidak dapat memuat saldo dompet. Atur dompet Anda di Frasa Pemulihan dan coba lagi.',
+  'walletBalances.setupHint':
+    'Frasa pemulihan Anda belum disiapkan. Siapkan untuk mengaktifkan dompet Anda dan melihat saldo langsung.',
+  'walletBalances.setupCta': 'Siapkan frasa pemulihan',
+  'walletBalances.notSetUp': 'Belum disiapkan',
+  'walletBalances.send': 'Kirim',
+  'walletBalances.receive': 'Terima',
+  'walletReceive.scanHint': 'Pindai kode ini atau salin alamat di bawah untuk menerima dana.',
+  'walletReceive.addressLabel': 'Alamat {network}',
+  'walletReceive.onlyChainWarning':
+    'Hanya kirim aset {network} ke alamat ini. Mengirim aset dari jaringan lain dapat mengakibatkan kehilangan permanen.',
+  'walletSend.available': 'Tersedia',
+  'walletSend.recipient': 'Alamat penerima',
+  'walletSend.recipientPlaceholder': 'Tempel alamat tujuan',
+  'walletSend.recipientRequired': 'Masukkan alamat penerima',
+  'walletSend.amount': 'Jumlah',
+  'walletSend.invalidAmount': 'Masukkan jumlah yang valid',
+  'walletSend.review': 'Tinjau',
+  'walletSend.preparing': 'Menyiapkan…',
+  'walletSend.confirmHint':
+    'Tinjau detail di bawah. Penandatanganan dilakukan secara lokal — tidak ada yang disiarkan sampai Anda mengonfirmasi.',
+  'walletSend.estimatedFee': 'Estimasi biaya jaringan',
+  'walletSend.confirmSend': 'Konfirmasi & kirim',
+  'walletSend.sending': 'Mengirim…',
+  'walletSend.sent': 'Transaksi terkirim',
+  'walletSend.txHash': 'Hash transaksi',
+  'walletSend.viewExplorer': 'Lihat di explorer',
+  'walletSend.done': 'Selesai',
+  'walletSend.genericError': 'Tidak dapat menyelesaikan transfer. Silakan coba lagi.',
   'settings.taskSources.title': 'Sumber Tugas',
   'settings.taskSources.subtitle': 'Tarik tugas dari alat Anda ke papan todo agen',
   'settings.taskSources.description':
@@ -4318,6 +4346,16 @@ const messages: TranslationMap = {
   'settings.agentsSection.description':
     'Kelola agen Anda, otonomi mereka, dan apa yang dapat mereka akses di komputer ini.',
   'settings.agentsSection.menuDesc': 'Registri, otonomi & akses OS',
+  'settings.cryptoSection.title': 'Kripto',
+  'settings.cryptoSection.description':
+    'Kelola frasa pemulihan Anda dan lihat saldo di seluruh akun dompet Anda.',
+  'settings.cryptoSection.menuDesc': 'Frasa pemulihan & saldo dompet',
+  'settings.notificationsHub.title': 'Notifikasi',
+  'settings.notificationsHub.description':
+    'Lihat kotak masuk lansiran Anda dan kelola preferensi notifikasi serta perutean.',
+  'settings.notificationsHub.menuDesc': 'Kotak masuk lansiran & preferensi notifikasi',
+  'settings.notificationsHub.settingsItem': 'Pengaturan notifikasi',
+  'settings.notificationsHub.settingsItemDesc': 'Preferensi & perutean',
   'settings.agents.editor.notFound': 'Agen tidak ditemukan.',
   'settings.agents.editor.modelInherit': 'Warisi (default platform)',
   'settings.agents.editor.modelHints': 'Petunjuk rute',

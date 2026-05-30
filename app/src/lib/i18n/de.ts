@@ -4272,6 +4272,36 @@ const messages: TranslationMap = {
   'walletBalances.rawBalance': 'Roh: {raw}',
   'walletBalances.errorGeneric':
     "Wallet-Guthaben konnten nicht geladen werden. Richte deine Wallet unter 'Wiederherstellungsphrase' ein und versuche es erneut.",
+  'walletBalances.setupHint':
+    'Deine Wiederherstellungsphrase ist noch nicht eingerichtet. Richte sie ein, um deine Wallet zu aktivieren und Live-Guthaben zu sehen.',
+  'walletBalances.setupCta': 'Wiederherstellungsphrase einrichten',
+  'walletBalances.notSetUp': 'Nicht eingerichtet',
+  'walletBalances.send': 'Senden',
+  'walletBalances.receive': 'Empfangen',
+  'walletReceive.scanHint':
+    'Scanne diesen Code oder kopiere die Adresse unten, um Gelder zu empfangen.',
+  'walletReceive.addressLabel': '{network}-Adresse',
+  'walletReceive.onlyChainWarning':
+    'Sende nur {network}-Assets an diese Adresse. Das Senden von Assets aus einem anderen Netzwerk kann zu einem dauerhaften Verlust führen.',
+  'walletSend.available': 'Verfügbar',
+  'walletSend.recipient': 'Empfängeradresse',
+  'walletSend.recipientPlaceholder': 'Zieladresse einfügen',
+  'walletSend.recipientRequired': 'Gib eine Empfängeradresse ein',
+  'walletSend.amount': 'Betrag',
+  'walletSend.invalidAmount': 'Gib einen gültigen Betrag ein',
+  'walletSend.review': 'Überprüfen',
+  'walletSend.preparing': 'Wird vorbereitet…',
+  'walletSend.confirmHint':
+    'Überprüfe die Details unten. Die Signierung erfolgt lokal — nichts wird gesendet, bis du bestätigst.',
+  'walletSend.estimatedFee': 'Geschätzte Netzwerkgebühr',
+  'walletSend.confirmSend': 'Bestätigen und senden',
+  'walletSend.sending': 'Wird gesendet…',
+  'walletSend.sent': 'Transaktion gesendet',
+  'walletSend.txHash': 'Transaktions-Hash',
+  'walletSend.viewExplorer': 'Im Explorer ansehen',
+  'walletSend.done': 'Fertig',
+  'walletSend.genericError':
+    'Überweisung konnte nicht abgeschlossen werden. Bitte versuche es erneut.',
   'settings.taskSources.title': 'Aufgabenquellen',
   'settings.taskSources.subtitle': 'Ziehen Sie Aufgaben aus Ihren Tools auf das Agenten-ToDo-Board',
   'settings.taskSources.description':
@@ -4416,6 +4446,16 @@ const messages: TranslationMap = {
   'settings.agentsSection.description':
     'Verwalten Sie Ihre Agenten, deren Autonomie und worauf sie auf diesem Computer zugreifen dürfen.',
   'settings.agentsSection.menuDesc': 'Registrierung, Autonomie & BS-Zugriff',
+  'settings.cryptoSection.title': 'Krypto',
+  'settings.cryptoSection.description':
+    'Verwalte deine Wiederherstellungsphrase und sieh dir die Guthaben deiner Wallet-Konten an.',
+  'settings.cryptoSection.menuDesc': 'Wiederherstellungsphrase & Wallet-Guthaben',
+  'settings.notificationsHub.title': 'Benachrichtigungen',
+  'settings.notificationsHub.description':
+    'Sieh dir deinen Hinweise-Posteingang an und verwalte Benachrichtigungseinstellungen und Routing.',
+  'settings.notificationsHub.menuDesc': 'Hinweise-Posteingang & Benachrichtigungseinstellungen',
+  'settings.notificationsHub.settingsItem': 'Benachrichtigungseinstellungen',
+  'settings.notificationsHub.settingsItemDesc': 'Einstellungen & Routing',
   'settings.agents.editor.notFound': 'Agent nicht gefunden.',
   'settings.agents.editor.modelInherit': 'Übernehmen (Plattformstandard)',
   'settings.agents.editor.modelHints': 'Routing-Hinweise',

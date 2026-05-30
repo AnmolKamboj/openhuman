@@ -4239,6 +4239,35 @@ const messages: TranslationMap = {
   'walletBalances.rawBalance': 'Bruto: {raw}',
   'walletBalances.errorGeneric':
     'No se pueden cargar los saldos de la billetera. Configura tu billetera en Frase de recuperación e inténtalo de nuevo.',
+  'walletBalances.setupHint':
+    'Tu frase de recuperación aún no está configurada. Configúrala para activar tu monedero y ver los saldos en vivo.',
+  'walletBalances.setupCta': 'Configurar frase de recuperación',
+  'walletBalances.notSetUp': 'Sin configurar',
+  'walletBalances.send': 'Enviar',
+  'walletBalances.receive': 'Recibir',
+  'walletReceive.scanHint':
+    'Escanea este código o copia la dirección de abajo para recibir fondos.',
+  'walletReceive.addressLabel': 'Dirección de {network}',
+  'walletReceive.onlyChainWarning':
+    'Envía solo activos de {network} a esta dirección. Enviar activos de otra red puede provocar una pérdida permanente.',
+  'walletSend.available': 'Disponible',
+  'walletSend.recipient': 'Dirección del destinatario',
+  'walletSend.recipientPlaceholder': 'Pega la dirección de destino',
+  'walletSend.recipientRequired': 'Introduce una dirección de destinatario',
+  'walletSend.amount': 'Importe',
+  'walletSend.invalidAmount': 'Introduce un importe válido',
+  'walletSend.review': 'Revisar',
+  'walletSend.preparing': 'Preparando…',
+  'walletSend.confirmHint':
+    'Revisa los detalles a continuación. La firma se realiza localmente; no se transmite nada hasta que confirmes.',
+  'walletSend.estimatedFee': 'Comisión de red estimada',
+  'walletSend.confirmSend': 'Confirmar y enviar',
+  'walletSend.sending': 'Enviando…',
+  'walletSend.sent': 'Transacción enviada',
+  'walletSend.txHash': 'Hash de la transacción',
+  'walletSend.viewExplorer': 'Ver en el explorador',
+  'walletSend.done': 'Hecho',
+  'walletSend.genericError': 'No se pudo completar la transferencia. Inténtalo de nuevo.',
   'settings.taskSources.title': 'Fuentes de tareas',
   'settings.taskSources.subtitle':
     'Extrae tareas de tus herramientas al tablero de tareas del agente',
@@ -4385,6 +4414,16 @@ const messages: TranslationMap = {
   'settings.agentsSection.description':
     'Administra tus agentes, su autonomía y a qué pueden acceder en este equipo.',
   'settings.agentsSection.menuDesc': 'Registro, autonomía y acceso al SO',
+  'settings.cryptoSection.title': 'Cripto',
+  'settings.cryptoSection.description':
+    'Gestiona tu frase de recuperación y consulta los saldos de tus cuentas de monedero.',
+  'settings.cryptoSection.menuDesc': 'Frase de recuperación y saldos del monedero',
+  'settings.notificationsHub.title': 'Notificaciones',
+  'settings.notificationsHub.description':
+    'Consulta tu bandeja de alertas y gestiona las preferencias de notificación y el enrutamiento.',
+  'settings.notificationsHub.menuDesc': 'Bandeja de alertas y preferencias de notificación',
+  'settings.notificationsHub.settingsItem': 'Ajustes de notificaciones',
+  'settings.notificationsHub.settingsItemDesc': 'Preferencias y enrutamiento',
   'settings.agents.editor.notFound': 'Agente no encontrado.',
   'settings.agents.editor.modelInherit': 'Heredar (predeterminado de la plataforma)',
   'settings.agents.editor.modelHints': 'Sugerencias de enrutamiento',

@@ -4378,6 +4378,36 @@ const en: TranslationMap = {
   'walletBalances.rawBalance': 'Raw: {raw}',
   'walletBalances.errorGeneric':
     'Unable to load wallet balances. Set up your wallet in Recovery Phrase and try again.',
+  'walletBalances.setupHint':
+    'Your recovery phrase isn’t set up yet. Set it up to enable your wallet and see live balances.',
+  'walletBalances.setupCta': 'Set up recovery phrase',
+  'walletBalances.notSetUp': 'Not set up',
+  'walletBalances.send': 'Send',
+  'walletBalances.receive': 'Receive',
+  // Receive modal
+  'walletReceive.scanHint': 'Scan this code or copy the address below to receive funds.',
+  'walletReceive.addressLabel': '{network} address',
+  'walletReceive.onlyChainWarning':
+    'Only send {network} assets to this address. Sending assets from another network may result in permanent loss.',
+  // Send modal
+  'walletSend.available': 'Available',
+  'walletSend.recipient': 'Recipient address',
+  'walletSend.recipientPlaceholder': 'Paste the destination address',
+  'walletSend.recipientRequired': 'Enter a recipient address',
+  'walletSend.amount': 'Amount',
+  'walletSend.invalidAmount': 'Enter a valid amount',
+  'walletSend.review': 'Review',
+  'walletSend.preparing': 'Preparing…',
+  'walletSend.confirmHint':
+    'Review the details below. Signing happens locally — nothing is broadcast until you confirm.',
+  'walletSend.estimatedFee': 'Estimated network fee',
+  'walletSend.confirmSend': 'Confirm & send',
+  'walletSend.sending': 'Sending…',
+  'walletSend.sent': 'Transaction sent',
+  'walletSend.txHash': 'Transaction hash',
+  'walletSend.viewExplorer': 'View on explorer',
+  'walletSend.done': 'Done',
+  'walletSend.genericError': 'Could not complete the transfer. Please try again.',
   // Task sources (#task-sources)
   'settings.taskSources.title': 'Task Sources',
   'settings.taskSources.subtitle': 'Pull tasks from your tools onto the agent todo board',
@@ -4530,6 +4560,16 @@ const en: TranslationMap = {
   'settings.agentsSection.description':
     'Manage your agents, their autonomy, and what they can access on this computer.',
   'settings.agentsSection.menuDesc': 'Registry, autonomy & OS access',
+  'settings.cryptoSection.title': 'Crypto',
+  'settings.cryptoSection.description':
+    'Manage your recovery phrase and view balances across your wallet accounts.',
+  'settings.cryptoSection.menuDesc': 'Recovery phrase & wallet balances',
+  'settings.notificationsHub.title': 'Notifications',
+  'settings.notificationsHub.description':
+    'View your alerts inbox and manage notification preferences and routing.',
+  'settings.notificationsHub.menuDesc': 'Alerts inbox & notification preferences',
+  'settings.notificationsHub.settingsItem': 'Notification settings',
+  'settings.notificationsHub.settingsItemDesc': 'Preferences & routing',
   'settings.agents.editor.notFound': 'Agent not found.',
   'settings.agents.editor.modelInherit': 'Inherit (platform default)',
   'settings.agents.editor.modelHints': 'Route hints',
