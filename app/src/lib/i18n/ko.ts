@@ -4291,6 +4291,9 @@ const messages: TranslationMap = {
   'settings.agents.editor.toolsDone': 'Done',
   'settings.agents.editor.builtInReadonly':
     '기본 제공 에이전트는 편집할 수 없습니다. 에이전트 목록에서 활성화, 비활성화 또는 초기화할 수 있습니다.',
+  'autocomplete.debounceMs': '디바운스 (ms)',
+  'autocomplete.maxChars': '최대 컨텍스트 문자 수',
+  'autocomplete.overlayTtlMs': '오버레이 시간 초과 (ms)',
 };
 
 export default messages;

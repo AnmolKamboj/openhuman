@@ -4398,6 +4398,9 @@ const messages: TranslationMap = {
   'settings.agents.editor.toolsDone': 'Done',
   'settings.agents.editor.builtInReadonly':
     'Wbudowanych agentów nie można edytować. Możesz je włączyć, wyłączyć lub zresetować z poziomu listy agentów.',
+  'autocomplete.debounceMs': 'Opóźnienie (ms)',
+  'autocomplete.maxChars': 'Maksymalna liczba znaków kontekstu',
+  'autocomplete.overlayTtlMs': 'Limit czasu nakładki (ms)',
 };
 
 export default messages;

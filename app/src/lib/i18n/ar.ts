@@ -4251,6 +4251,9 @@ const messages: TranslationMap = {
   'settings.agents.editor.toolsDone': 'Done',
   'settings.agents.editor.builtInReadonly':
     'لا يمكن تعديل العوامل المدمجة. يمكنك تفعيلها أو تعطيلها أو إعادة ضبطها من قائمة العوامل.',
+  'autocomplete.debounceMs': 'مهلة الإدخال (مللي ثانية)',
+  'autocomplete.maxChars': 'أقصى عدد لأحرف السياق',
+  'autocomplete.overlayTtlMs': 'مهلة الطبقة (مللي ثانية)',
 };
 
 export default messages;

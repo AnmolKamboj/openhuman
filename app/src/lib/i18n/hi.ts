@@ -4330,6 +4330,9 @@ const messages: TranslationMap = {
   'settings.agents.editor.toolsDone': 'Done',
   'settings.agents.editor.builtInReadonly':
     'बिल्ट-इन एजेंट संपादित नहीं किए जा सकते। आप एजेंट सूची से उन्हें सक्षम, अक्षम या रीसेट कर सकते हैं।',
+  'autocomplete.debounceMs': 'डिबाउंस (ms)',
+  'autocomplete.maxChars': 'अधिकतम संदर्भ वर्ण',
+  'autocomplete.overlayTtlMs': 'ओवरले समय-समाप्ति (ms)',
 };
 
 export default messages;

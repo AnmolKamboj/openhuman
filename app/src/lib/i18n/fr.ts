@@ -4423,6 +4423,9 @@ const messages: TranslationMap = {
   'settings.agents.editor.toolsDone': 'Done',
   'settings.agents.editor.builtInReadonly':
     'Les agents intégrés ne peuvent pas être modifiés. Vous pouvez les activer, les désactiver ou les réinitialiser depuis la liste des agents.',
+  'autocomplete.debounceMs': 'Anti-rebond (ms)',
+  'autocomplete.maxChars': 'Caractères de contexte maximum',
+  'autocomplete.overlayTtlMs': "Délai d'affichage (ms)",
 };
 
 export default messages;

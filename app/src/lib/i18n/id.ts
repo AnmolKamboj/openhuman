@@ -4340,6 +4340,9 @@ const messages: TranslationMap = {
   'settings.agents.editor.toolsDone': 'Done',
   'settings.agents.editor.builtInReadonly':
     'Agen bawaan tidak dapat diedit. Anda dapat mengaktifkan, menonaktifkan, atau meresetnya dari daftar agen.',
+  'autocomplete.debounceMs': 'Debounce (md)',
+  'autocomplete.maxChars': 'Karakter konteks maks',
+  'autocomplete.overlayTtlMs': 'Batas waktu overlay (md)',
 };
 
 export default messages;

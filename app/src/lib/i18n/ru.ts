@@ -4366,6 +4366,9 @@ const messages: TranslationMap = {
   'settings.agents.editor.toolsDone': 'Done',
   'settings.agents.editor.builtInReadonly':
     'Встроенные агенты нельзя редактировать. Вы можете включить, отключить или сбросить их в списке агентов.',
+  'autocomplete.debounceMs': 'Задержка (мс)',
+  'autocomplete.maxChars': 'Макс. символов контекста',
+  'autocomplete.overlayTtlMs': 'Тайм-аут наложения (мс)',
 };
 
 export default messages;

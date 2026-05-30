@@ -4120,6 +4120,9 @@ const messages: TranslationMap = {
   'settings.agents.editor.toolsDone': 'Done',
   'settings.agents.editor.builtInReadonly':
     '内置智能体不可编辑。您可以在智能体列表中启用、禁用或重置它们。',
+  'autocomplete.debounceMs': '防抖 (毫秒)',
+  'autocomplete.maxChars': '最大上下文字符数',
+  'autocomplete.overlayTtlMs': '覆盖层超时 (ms)',
 };
 
 export default messages;

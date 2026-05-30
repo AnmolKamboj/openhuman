@@ -4323,6 +4323,9 @@ const messages: TranslationMap = {
   'settings.agents.editor.toolsDone': 'Done',
   'settings.agents.editor.builtInReadonly':
     'বিল্ট-ইন এজেন্ট সম্পাদনা করা যাবে না। আপনি এজেন্ট তালিকা থেকে সেগুলো সক্রিয়, নিষ্ক্রিয় বা পুনরায় সেট করতে পারেন।',
+  'autocomplete.debounceMs': 'ডিবাউন্স (মিলিসেকেন্ড)',
+  'autocomplete.maxChars': 'সর্বোচ্চ প্রসঙ্গ অক্ষর',
+  'autocomplete.overlayTtlMs': 'ওভারলে টাইমআউট (মিলিসেকেন্ড)',
 };
 
 export default messages;
