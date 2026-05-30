@@ -4159,6 +4159,20 @@ const en: TranslationMap = {
   'settings.appearanceDesc': 'Pick light, dark, or match your system theme',
   'settings.mascot': 'Mascot',
   'settings.mascotDesc': 'Pick the mascot color used across the app',
+  // Settings > Account > Wallet Balances
+  'pages.settings.account.walletBalances': 'Wallet Balances',
+  'pages.settings.account.walletBalancesDesc': 'View multi-chain balances for your local wallet',
+  // WalletBalancesPanel strings
+  'walletBalances.title': 'Wallet Balances',
+  'walletBalances.refresh': 'Refresh',
+  'walletBalances.loading': 'Loading balances…',
+  'walletBalances.retry': 'Retry',
+  'walletBalances.emptyState': 'No wallet accounts yet — set up a wallet in Recovery Phrase.',
+  'walletBalances.copyAddress': 'Copy address',
+  'walletBalances.providerMissing': 'provider unavailable',
+  'walletBalances.rawBalance': 'Raw: {raw}',
+  'walletBalances.errorGeneric':
+    'Unable to load wallet balances. Set up your wallet in Recovery Phrase and try again.',
   // Task sources (#task-sources)
   'settings.taskSources.title': 'Task Sources',
   'settings.taskSources.subtitle': 'Pull tasks from your tools onto the agent todo board',
