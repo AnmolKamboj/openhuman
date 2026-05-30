@@ -1805,6 +1805,10 @@ const messages: TranslationMap = {
   'mic.unavailable': "Le microphone n'est pas disponible",
   'mic.permissionDenied': 'Permission microphone refusée',
   'mic.failedToStartRecorder': "Échec du démarrage de l'enregistreur",
+  'mic.deviceUnavailable':
+    "Le microphone sélectionné n'est pas disponible — essayez un autre appareil.",
+  'mic.deviceInUse': 'Le microphone est utilisé par une autre application.',
+  'mic.error': 'Erreur de microphone',
   'mic.transcribing': 'Transcription…',
   'mic.retryingTranscription': 'Retrying... ({attempt} of {max})',
   'mic.tapToSend': 'Appuie pour envoyer',
