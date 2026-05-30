@@ -1700,6 +1700,7 @@ const messages: TranslationMap = {
   'mic.permissionDenied': 'Permissão de microfone negada',
   'mic.failedToStartRecorder': 'Falha ao iniciar o gravador',
   'mic.transcribing': 'Transcrevendo...',
+  'mic.retryingTranscription': 'Retrying... ({attempt} of {max})',
   'mic.tapToSend': 'Toque para enviar',
   'mic.waitingForAgent': 'Aguardando agente...',
   'mic.tapAndSpeak': 'Toque e fale',

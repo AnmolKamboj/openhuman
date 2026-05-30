@@ -1576,6 +1576,7 @@ const messages: TranslationMap = {
   'mic.permissionDenied': '麦克风权限被拒绝',
   'mic.failedToStartRecorder': '启动录音失败',
   'mic.transcribing': '转录中...',
+  'mic.retryingTranscription': 'Retrying... ({attempt} of {max})',
   'mic.tapToSend': '点击发送',
   'mic.waitingForAgent': '等待助手...',
   'mic.tapAndSpeak': '点击说话',

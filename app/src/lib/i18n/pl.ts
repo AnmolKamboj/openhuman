@@ -1683,6 +1683,7 @@ const messages: TranslationMap = {
   'mic.permissionDenied': 'Odmowa dostępu do mikrofonu',
   'mic.failedToStartRecorder': 'Nie udało się uruchomić rejestratora',
   'mic.transcribing': 'Transkrypcja...',
+  'mic.retryingTranscription': 'Retrying... ({attempt} of {max})',
   'mic.tapToSend': 'Dotknij, aby wysłać',
   'mic.waitingForAgent': 'Czekam na agenta...',
   'mic.tapAndSpeak': 'Dotknij i mów',

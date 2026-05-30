@@ -1631,6 +1631,7 @@ const messages: TranslationMap = {
   'mic.permissionDenied': 'تم رفض إذن الميكروفون',
   'mic.failedToStartRecorder': 'فشل تشغيل المسجّل',
   'mic.transcribing': 'جارٍ النسخ...',
+  'mic.retryingTranscription': 'Retrying... ({attempt} of {max})',
   'mic.tapToSend': 'انقر للإرسال',
   'mic.waitingForAgent': 'في انتظار الوكيل...',
   'mic.tapAndSpeak': 'انقر وتحدث',

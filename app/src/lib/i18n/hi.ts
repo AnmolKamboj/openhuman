@@ -1664,6 +1664,7 @@ const messages: TranslationMap = {
   'mic.permissionDenied': 'माइक्रोफोन की अनुमति नहीं मिली',
   'mic.failedToStartRecorder': 'रिकॉर्डर शुरू नहीं हो पाया',
   'mic.transcribing': 'ट्रांसक्राइब हो रहा है...',
+  'mic.retryingTranscription': 'Retrying... ({attempt} of {max})',
   'mic.tapToSend': 'भेजने के लिए टैप करें',
   'mic.waitingForAgent': 'एजेंट का इंतज़ार है...',
   'mic.tapAndSpeak': 'टैप करें और बोलें',
