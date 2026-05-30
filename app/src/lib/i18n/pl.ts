@@ -2387,6 +2387,17 @@ const messages: TranslationMap = {
     'Nie udało się zaktualizować zadania; zmian nie zapisano.',
   'conversations.toolTimeline.turn': 'tura',
   'conversations.toolTimeline.workerThread': 'wątek workera',
+  'conversations.subagent.viewProcessing': 'Zobacz pełne przetwarzanie',
+  'conversations.subagent.parent': 'Nadrzędny',
+  'conversations.subagent.thinking': 'Myślenie',
+  'conversations.subagent.response': 'Odpowiedź',
+  'conversations.subagent.toolCalls': 'Wywołania narzędzi',
+  'conversations.subagent.working': 'Pracuje…',
+  'conversations.subagent.noOutputYet': 'Brak wyników',
+  'conversations.subagent.close': 'Zamknij',
+  'conversations.subagent.statusRunning': 'w toku',
+  'conversations.subagent.statusCompleted': 'zakończono',
+  'conversations.subagent.statusFailed': 'niepowodzenie',
   'daemon.serviceBlockingGate.body':
     'Rdzeń OpenHuman nie odpowiada. Spróbuj ponownie lub pobierz najnowszą wersję aplikacji.',
   'daemon.serviceBlockingGate.downloadHint':
