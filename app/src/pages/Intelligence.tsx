@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { ConfirmationModal } from '../components/intelligence/ConfirmationModal';
+import ConnectionPathTab from '../components/intelligence/ConnectionPathTab';
 import DiagramViewerTab from '../components/intelligence/DiagramViewerTab';
 import EntityAssociationsTab from '../components/intelligence/EntityAssociationsTab';
 import GraphCentralityTab from '../components/intelligence/GraphCentralityTab';
@@ -32,7 +33,8 @@ type IntelligenceTab =
   | 'centrality'
   | 'associations'
   | 'freshness'
-  | 'timeline';
+  | 'timeline'
+  | 'path';
 
 export default function Intelligence() {
   const { t } = useT();
@@ -115,6 +117,7 @@ export default function Intelligence() {
       { id: 'associations', label: t('memory.tab.associations') },
       { id: 'freshness', label: t('memory.tab.freshness') },
       { id: 'timeline', label: t('memory.tab.timeline') },
+      { id: 'path', label: t('memory.tab.path') },
     ];
   const activeTabDef = tabs.find(tab => tab.id === activeTab);
 
@@ -211,6 +214,8 @@ export default function Intelligence() {
             {activeTab === 'freshness' && <MemoryFreshnessTab />}
 
             {activeTab === 'timeline' && <MemoryTimelineTab />}
+
+            {activeTab === 'path' && <ConnectionPathTab />}
           </div>
         </div>
       </div>
