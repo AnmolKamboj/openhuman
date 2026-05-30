@@ -4146,6 +4146,17 @@ const messages: TranslationMap = {
   'vault.fileCount': '{count} файлов',
   'vault.syncedRelative': 'синхронизировано {time}',
   'vault.neverSynced': 'никогда не синхронизировано',
+  'vault.writeState.writable': 'Доступно для записи',
+  'vault.writeState.read_only': 'Только чтение',
+  'vault.writeState.unavailable': 'Недоступно',
+  'vault.writeState.unknownReason': 'Статус записи неизвестен.',
+  'vault.writeState.reasons.writable':
+    'Одобренные записи Markdown/wiki можно сохранить в этом хранилище.',
+  'vault.writeState.reasons.read_only':
+    'Папка хранилища доступна только для чтения на этом устройстве.',
+  'vault.writeState.reasons.unavailable': 'Папка хранилища недоступна на этом устройстве.',
+  'vault.writeState.reasons.not_directory': 'Путь хранилища не является папкой.',
+  'vault.writeState.reasons.empty_path': 'Путь к папке хранилища пуст.',
   'vault.syncingProgress': 'Синхронизация… {ingested}/{total}',
   'vault.removing': 'Удаление…',
   'vault.relative.sec': '{count}s назад',
