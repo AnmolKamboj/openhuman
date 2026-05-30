@@ -10,6 +10,7 @@ import IntelligenceTasksTab from '../components/intelligence/IntelligenceTasksTa
 import MemoryFreshnessTab from '../components/intelligence/MemoryFreshnessTab';
 import MemoryTimelineTab from '../components/intelligence/MemoryTimelineTab';
 import { MemoryWorkspace } from '../components/intelligence/MemoryWorkspace';
+import NamespaceOverviewTab from '../components/intelligence/NamespaceOverviewTab';
 import { ToastContainer } from '../components/intelligence/Toast';
 import PillTabBar from '../components/PillTabBar';
 import {
@@ -34,7 +35,8 @@ type IntelligenceTab =
   | 'associations'
   | 'freshness'
   | 'timeline'
-  | 'path';
+  | 'path'
+  | 'namespaces';
 
 export default function Intelligence() {
   const { t } = useT();
@@ -118,6 +120,7 @@ export default function Intelligence() {
       { id: 'freshness', label: t('memory.tab.freshness') },
       { id: 'timeline', label: t('memory.tab.timeline') },
       { id: 'path', label: t('memory.tab.path') },
+      { id: 'namespaces', label: t('memory.tab.namespaces') },
     ];
   const activeTabDef = tabs.find(tab => tab.id === activeTab);
 
@@ -216,6 +219,8 @@ export default function Intelligence() {
             {activeTab === 'timeline' && <MemoryTimelineTab />}
 
             {activeTab === 'path' && <ConnectionPathTab />}
+
+            {activeTab === 'namespaces' && <NamespaceOverviewTab />}
           </div>
         </div>
       </div>
