@@ -47,6 +47,7 @@ pub mod encryption;
 pub mod health;
 pub mod heartbeat;
 pub mod http_host;
+pub mod image;
 pub mod inference;
 pub mod integrations;
 pub mod javascript;
