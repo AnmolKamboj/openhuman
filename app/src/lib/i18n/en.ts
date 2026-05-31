@@ -1267,6 +1267,13 @@ const en: TranslationMap = {
   'mcp.detail.confirmUninstallAction': 'Yes, uninstall',
   'mcp.detail.uninstall': 'Uninstall',
   'mcp.detail.envVars': 'Environment variables',
+  'mcp.detail.reconfigure': 'Reconfigure',
+  'mcp.detail.reconfigureHint':
+    'Enter new values for every variable, then reconnect. This replaces the stored values.',
+  'mcp.detail.saveReconnect': 'Save & reconnect',
+  'mcp.detail.reconfigureSaving': 'Saving…',
+  'mcp.detail.reconfigureSuccess': 'Environment updated and reconnected.',
+  'mcp.detail.reconfigureReconnectFailed': 'Saved, but reconnecting with the new values failed.',
   'mcp.detail.tools': 'Tools',
   'onboarding.skipForNow': 'Skip for Now',
   'onboarding.localAI.continueWithCloud': 'Continue with Cloud',

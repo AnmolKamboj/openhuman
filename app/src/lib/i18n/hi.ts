@@ -1139,6 +1139,14 @@ const messages: TranslationMap = {
   'mcp.detail.confirmUninstallAction': 'हाँ, अनइंस्टॉल करें',
   'mcp.detail.uninstall': 'अनइंस्टॉल करें',
   'mcp.detail.envVars': 'पर्यावरण चर',
+  'mcp.detail.reconfigure': 'पुन: कॉन्फ़िगर करें',
+  'mcp.detail.reconfigureHint':
+    'हर वेरिएबल के लिए नए मान दर्ज करें, फिर पुन: कनेक्ट करें। यह संग्रहीत मानों को बदल देता है।',
+  'mcp.detail.saveReconnect': 'सहेजें और पुन: कनेक्ट करें',
+  'mcp.detail.reconfigureSaving': 'सहेजा जा रहा है…',
+  'mcp.detail.reconfigureSuccess': 'एनवायरनमेंट अपडेट हो गया और पुन: कनेक्ट हो गया।',
+  'mcp.detail.reconfigureReconnectFailed':
+    'सहेजा गया, लेकिन नए मानों के साथ पुन: कनेक्ट करना विफल रहा।',
   'mcp.detail.tools': 'उपकरण',
   'onboarding.skipForNow': 'अभी के लिए छोड़ें',
   'onboarding.localAI.continueWithCloud': 'बादल के साथ जारी रखें',

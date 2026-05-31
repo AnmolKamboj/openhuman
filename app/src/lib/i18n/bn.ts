@@ -1138,6 +1138,14 @@ const messages: TranslationMap = {
   'mcp.detail.confirmUninstallAction': 'হ্যাঁ, আনইনস্টল করুন',
   'mcp.detail.uninstall': 'আনইনস্টল',
   'mcp.detail.envVars': 'এনভায়রনমেন্ট ভেরিয়েবল',
+  'mcp.detail.reconfigure': 'পুনঃকনফিগার করুন',
+  'mcp.detail.reconfigureHint':
+    'প্রতিটি ভেরিয়েবলের জন্য নতুন মান লিখুন, তারপর পুনরায় সংযোগ করুন। এটি সংরক্ষিত মান প্রতিস্থাপন করে।',
+  'mcp.detail.saveReconnect': 'সংরক্ষণ ও পুনঃসংযোগ',
+  'mcp.detail.reconfigureSaving': 'সংরক্ষণ করা হচ্ছে…',
+  'mcp.detail.reconfigureSuccess': 'এনভায়রনমেন্ট আপডেট ও পুনঃসংযোগ করা হয়েছে।',
+  'mcp.detail.reconfigureReconnectFailed':
+    'সংরক্ষিত হয়েছে, তবে নতুন মান দিয়ে পুনঃসংযোগ ব্যর্থ হয়েছে।',
   'mcp.detail.tools': 'টুলস',
   'onboarding.skipForNow': 'এখনই এড়িয়ে যান',
   'onboarding.localAI.continueWithCloud': 'ক্লাউডের সাথে চালিয়ে যান',

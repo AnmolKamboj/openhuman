@@ -1146,6 +1146,14 @@ const messages: TranslationMap = {
   'mcp.detail.confirmUninstallAction': 'Ya, hapus instalan',
   'mcp.detail.uninstall': 'Hapus instalan',
   'mcp.detail.envVars': 'Variabel lingkungan',
+  'mcp.detail.reconfigure': 'Konfigurasi ulang',
+  'mcp.detail.reconfigureHint':
+    'Masukkan nilai baru untuk setiap variabel, lalu hubungkan kembali. Ini menggantikan nilai yang tersimpan.',
+  'mcp.detail.saveReconnect': 'Simpan dan hubungkan kembali',
+  'mcp.detail.reconfigureSaving': 'Menyimpan…',
+  'mcp.detail.reconfigureSuccess': 'Lingkungan diperbarui dan terhubung kembali.',
+  'mcp.detail.reconfigureReconnectFailed':
+    'Tersimpan, tetapi gagal menghubungkan kembali dengan nilai baru.',
   'mcp.detail.tools': 'Alat',
   'onboarding.skipForNow': 'Lewati Sekarang',
   'onboarding.localAI.continueWithCloud': 'Lanjutkan dengan Cloud',

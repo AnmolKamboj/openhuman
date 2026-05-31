@@ -1136,6 +1136,13 @@ const messages: TranslationMap = {
   'mcp.detail.confirmUninstallAction': '예, 제거합니다.',
   'mcp.detail.uninstall': '제거',
   'mcp.detail.envVars': '환경 변수',
+  'mcp.detail.reconfigure': '재구성',
+  'mcp.detail.reconfigureHint':
+    '모든 변수에 새 값을 입력한 다음 다시 연결하세요. 저장된 값이 대체됩니다.',
+  'mcp.detail.saveReconnect': '저장 후 다시 연결',
+  'mcp.detail.reconfigureSaving': '저장 중…',
+  'mcp.detail.reconfigureSuccess': '환경이 업데이트되고 다시 연결되었습니다.',
+  'mcp.detail.reconfigureReconnectFailed': '저장했지만 새 값으로 다시 연결하지 못했습니다.',
   'mcp.detail.tools': '도구',
   'onboarding.skipForNow': '지금 건너뛰기',
   'onboarding.localAI.continueWithCloud': '클라우드 계속하기',

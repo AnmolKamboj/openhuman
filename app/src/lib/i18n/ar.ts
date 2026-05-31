@@ -1122,6 +1122,13 @@ const messages: TranslationMap = {
   'mcp.detail.confirmUninstallAction': 'نعم، قم بإلغاء التثبيت',
   'mcp.detail.uninstall': 'قم بإلغاء التثبيت',
   'mcp.detail.envVars': 'متغيرات البيئة',
+  'mcp.detail.reconfigure': 'إعادة التهيئة',
+  'mcp.detail.reconfigureHint':
+    'أدخل قيمًا جديدة لكل متغير، ثم أعد الاتصال. سيؤدي ذلك إلى استبدال القيم المخزَّنة.',
+  'mcp.detail.saveReconnect': 'حفظ وإعادة الاتصال',
+  'mcp.detail.reconfigureSaving': 'جارٍ الحفظ…',
+  'mcp.detail.reconfigureSuccess': 'تم تحديث البيئة وإعادة الاتصال.',
+  'mcp.detail.reconfigureReconnectFailed': 'تم الحفظ، لكن فشلت إعادة الاتصال بالقيم الجديدة.',
   'mcp.detail.tools': 'الأدوات',
   'onboarding.skipForNow': 'التخطي الآن',
   'onboarding.localAI.continueWithCloud': 'متابعة مع السحابة',

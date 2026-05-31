@@ -1153,6 +1153,14 @@ const messages: TranslationMap = {
   'mcp.detail.confirmUninstallAction': 'Да, удалить',
   'mcp.detail.uninstall': 'Удалить',
   'mcp.detail.envVars': 'Переменные среды',
+  'mcp.detail.reconfigure': 'Перенастроить',
+  'mcp.detail.reconfigureHint':
+    'Введите новые значения для каждой переменной, затем переподключитесь. Это заменит сохранённые значения.',
+  'mcp.detail.saveReconnect': 'Сохранить и переподключиться',
+  'mcp.detail.reconfigureSaving': 'Сохранение…',
+  'mcp.detail.reconfigureSuccess': 'Окружение обновлено, выполнено переподключение.',
+  'mcp.detail.reconfigureReconnectFailed':
+    'Сохранено, но переподключиться с новыми значениями не удалось.',
   'mcp.detail.tools': 'Инструменты',
   'onboarding.skipForNow': 'Пропустить сейчас',
   'onboarding.localAI.continueWithCloud': 'Продолжить с Облако',
