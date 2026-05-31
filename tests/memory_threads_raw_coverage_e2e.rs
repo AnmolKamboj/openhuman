@@ -217,6 +217,9 @@ fn source(kind: SourceKind, id: &str) -> MemorySourceEntry {
         query: None,
         since_days: None,
         max_items: None,
+        max_commits: None,
+        max_issues: None,
+        max_prs: None,
         selector: None,
     }
 }
@@ -3832,6 +3835,9 @@ async fn memory_sources_registry_rpc_and_schema_handlers_cover_crud_edges() {
         query: None,
         since_days: None,
         max_items: None,
+        max_commits: None,
+        max_issues: None,
+        max_prs: None,
         selector: None,
     })
     .await
@@ -3852,6 +3858,9 @@ async fn memory_sources_registry_rpc_and_schema_handlers_cover_crud_edges() {
         query: None,
         since_days: None,
         max_items: Some(4),
+        max_commits: None,
+        max_issues: None,
+        max_prs: None,
         selector: None,
     })
     .await
@@ -3873,6 +3882,9 @@ async fn memory_sources_registry_rpc_and_schema_handlers_cover_crud_edges() {
         query: None,
         since_days: None,
         max_items: None,
+        max_commits: None,
+        max_issues: None,
+        max_prs: None,
         selector: None,
     })
     .await
