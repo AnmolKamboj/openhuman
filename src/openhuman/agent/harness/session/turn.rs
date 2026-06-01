@@ -522,7 +522,22 @@ impl Agent {
             let provider_name = self.event_channel().to_string();
             let temperature = self.temperature;
             let max_iterations = self.config.max_tool_iterations;
-            let multimodal = crate::openhuman::config::MultimodalConfig::default();
+            // Source multimodal limits from the session's runtime config when
+            // present so [IMAGE:…] / [FILE:…] markers in user messages are
+            // resolved with the operator-configured caps (max files, max size,
+            // max extracted text). Without this, agents fall back to the
+            // crate-default caps and `MultimodalFileConfig::default()`
+            // disables file expansion entirely.
+            let multimodal = self
+                .integration_runtime_config
+                .as_ref()
+                .map(|c| c.multimodal.clone())
+                .unwrap_or_default();
+            let multimodal_files = self
+                .integration_runtime_config
+                .as_ref()
+                .map(|c| c.multimodal_files.clone())
+                .unwrap_or_default();
             let mut tool_source = AgentToolSource {
                 tools: self.tools.clone(),
                 visible_tool_names: self.visible_tool_names.clone(),
@@ -579,6 +594,7 @@ impl Agent {
                 temperature,
                 true, // silent — the channel/UI renders via progress + the return value
                 &multimodal,
+                &multimodal_files,
                 max_iterations,
                 None, // the web bridge streams via on_progress deltas, not on_delta
                 &[],
