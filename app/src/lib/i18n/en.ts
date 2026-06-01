@@ -3859,6 +3859,14 @@ const en: TranslationMap = {
   'settings.agentAccess.requireTaskPlanApproval.label': 'Require task plan approval',
   'settings.agentAccess.requireTaskPlanApproval.desc':
     'Pause before an assigned agent executes an agent-authored task brief.',
+  'settings.agentAccess.timeout.label': 'Action timeout',
+  'settings.agentAccess.timeout.desc':
+    'How long a single tool or action may run before it is cancelled. Increase this if a large local model is interrupted before it finishes responding.',
+  'settings.agentAccess.timeout.unit': 'seconds',
+  'settings.agentAccess.timeout.invalid':
+    'Enter a whole number of seconds within the allowed range',
+  'settings.agentAccess.timeout.envOverride':
+    'The OPENHUMAN_TOOL_TIMEOUT_SECS environment variable is overriding this setting, so changes here have no effect until it is unset.',
   'settings.agentAccess.grantedFolders': 'Granted folders',
   'settings.agentAccess.alwaysAllow': 'Always-allowed tools',
   'settings.agentAccess.alwaysAllowDesc':

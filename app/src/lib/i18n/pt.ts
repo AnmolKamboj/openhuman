@@ -3657,6 +3657,14 @@ const messages: TranslationMap = {
   'settings.agentAccess.requireTaskPlanApproval.label': 'Exigir aprovação do plano de tarefas',
   'settings.agentAccess.requireTaskPlanApproval.desc':
     'Pausa antes que um agente designado execute um briefing de tarefa elaborado pelo agente.',
+  'settings.agentAccess.timeout.label': 'Tempo limite da ação',
+  'settings.agentAccess.timeout.desc':
+    'Por quanto tempo uma única ferramenta ou ação pode ser executada antes de ser cancelada. Aumente este valor se um modelo local grande for interrompido antes de terminar a resposta.',
+  'settings.agentAccess.timeout.unit': 'segundos',
+  'settings.agentAccess.timeout.invalid':
+    'Insira um número inteiro de segundos dentro do intervalo permitido',
+  'settings.agentAccess.timeout.envOverride':
+    'A variável de ambiente OPENHUMAN_TOOL_TIMEOUT_SECS está substituindo esta configuração, portanto as alterações aqui não terão efeito até que ela seja removida.',
   'settings.agentAccess.grantedFolders': 'Pastas concedidas',
   'settings.agentAccess.alwaysAllow': 'Ferramentas sempre permitidas',
   'settings.agentAccess.alwaysAllowDesc':

@@ -3427,6 +3427,13 @@ const messages: TranslationMap = {
   'settings.agentAccess.requireTaskPlanApproval.label': '要求批准任务计划',
   'settings.agentAccess.requireTaskPlanApproval.desc':
     '在指定智能体执行由智能体编写的任务简报前暂停。',
+  'settings.agentAccess.timeout.label': '操作超时',
+  'settings.agentAccess.timeout.desc':
+    '单个工具或操作在被取消前可运行的时长。如果大型本地模型在完成响应前被中断，请增大此值。',
+  'settings.agentAccess.timeout.unit': '秒',
+  'settings.agentAccess.timeout.invalid': '请输入允许范围内的整数秒数',
+  'settings.agentAccess.timeout.envOverride':
+    '环境变量 OPENHUMAN_TOOL_TIMEOUT_SECS 正在覆盖此设置，因此在取消该变量之前，此处的更改不会生效。',
   'settings.agentAccess.grantedFolders': '已授权文件夹',
   'settings.agentAccess.alwaysAllow': '始终允许的工具',
   'settings.agentAccess.alwaysAllowDesc':

@@ -3660,6 +3660,13 @@ const messages: TranslationMap = {
   'settings.agentAccess.requireTaskPlanApproval.label': 'Wymagaj zatwierdzenia planu zadania',
   'settings.agentAccess.requireTaskPlanApproval.desc':
     'Wstrzymaj, zanim przypisany agent wykona opis zadania utworzony przez agenta.',
+  'settings.agentAccess.timeout.label': 'Limit czasu akcji',
+  'settings.agentAccess.timeout.desc':
+    'Jak długo pojedyncze narzędzie lub akcja może działać przed anulowaniem. Zwiększ tę wartość, jeśli duży lokalny model jest przerywany, zanim zakończy odpowiedź.',
+  'settings.agentAccess.timeout.unit': 'sekundy',
+  'settings.agentAccess.timeout.invalid': 'Wprowadź całkowitą liczbę sekund w dozwolonym zakresie',
+  'settings.agentAccess.timeout.envOverride':
+    'Zmienna środowiskowa OPENHUMAN_TOOL_TIMEOUT_SECS zastępuje to ustawienie, więc zmiany tutaj nie odniosą skutku, dopóki nie zostanie ona usunięta.',
   'settings.agentAccess.grantedFolders': 'Przyznane foldery',
   'settings.agentAccess.alwaysAllow': 'Zawsze dozwolone narzędzia',
   'settings.agentAccess.alwaysAllowDesc':
