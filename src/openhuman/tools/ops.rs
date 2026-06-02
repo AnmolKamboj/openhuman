@@ -447,6 +447,14 @@ pub fn all_tools_with_runtime(
         Box::new(WorkspaceInitTool),
     ];
 
+    // Presentation generation (#2778). Native-Rust engine (ppt-rs
+    // backed) as of the #2780-follow-up rust-engine refactor — no
+    // managed Python venv, no first-call install latency. Always
+    // registered.
+    tools.push(Box::new(PresentationTool::new(
+        root_config.workspace_dir.clone(),
+    )));
+
     if browser_config.enabled {
         // Unified web-access allowlist (merge fetch + browser firewalls): the
         // browser tool shares the single `http_request.allowed_domains` host
