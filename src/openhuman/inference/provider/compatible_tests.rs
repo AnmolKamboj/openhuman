@@ -1303,6 +1303,69 @@ fn capabilities_reports_native_tool_calling() {
     assert!(caps.native_tool_calling);
 }
 
+// Sub-issue 3 of #3098: Ollama's OpenAI-compat endpoint silently rejects the
+// `tools` parameter for many models, so we must let the factory opt the
+// Ollama provider out of native tool calling. The agent harness then falls
+// back to prompt-guided tool specs (embedded in the system prompt) which
+// any chat model can follow. The builder defaults to enabled so cloud
+// providers (OpenAI, BYOK slugs, OpenHuman backend) are unaffected.
+
+#[test]
+fn with_native_tool_calling_false_disables_capability() {
+    let p = make_provider("test", "https://example.com", None).with_native_tool_calling(false);
+    let caps = <OpenAiCompatibleProvider as Provider>::capabilities(&p);
+    assert!(
+        !caps.native_tool_calling,
+        "capabilities() must mirror the builder override; this is the gate the agent harness uses to decide between native vs prompt-guided tool specs"
+    );
+}
+
+#[test]
+fn with_native_tool_calling_true_preserves_default() {
+    let p = make_provider("test", "https://example.com", None).with_native_tool_calling(true);
+    let caps = <OpenAiCompatibleProvider as Provider>::capabilities(&p);
+    assert!(caps.native_tool_calling);
+}
+
+#[test]
+fn with_native_tool_calling_is_idempotent() {
+    let p = make_provider("test", "https://example.com", None)
+        .with_native_tool_calling(false)
+        .with_native_tool_calling(false);
+    let caps = <OpenAiCompatibleProvider as Provider>::capabilities(&p);
+    assert!(!caps.native_tool_calling);
+}
+
+/// `supports_native_tools()` is the gate the agent harness reads
+/// (`traits.rs:415`) when deciding whether to send tools natively or
+/// inject them into the prompt. It MUST agree with
+/// `capabilities().native_tool_calling`; otherwise
+/// `with_native_tool_calling(false)` silently fails to switch to
+/// prompt-guided and Ollama still receives a `tools` array (the exact
+/// regression sub-issue 3 of #3098 was meant to fix).
+#[test]
+fn supports_native_tools_mirrors_capabilities_flag() {
+    let default = make_provider("test", "https://example.com", None);
+    assert_eq!(
+        default.supports_native_tools(),
+        <OpenAiCompatibleProvider as Provider>::capabilities(&default).native_tool_calling,
+        "default provider: the two capability signals must match"
+    );
+    assert!(default.supports_native_tools(), "default must remain true");
+
+    let opted_out =
+        make_provider("test", "https://example.com", None).with_native_tool_calling(false);
+    assert_eq!(
+        opted_out.supports_native_tools(),
+        <OpenAiCompatibleProvider as Provider>::capabilities(&opted_out).native_tool_calling,
+        "after with_native_tool_calling(false): the two capability signals must match"
+    );
+    assert!(
+        !opted_out.supports_native_tools(),
+        "after with_native_tool_calling(false), supports_native_tools must report false so the harness picks the prompt-guided fallback"
+    );
+}
+
 #[test]
 fn tool_specs_convert_to_openai_format() {
     let specs = vec![crate::openhuman::tools::ToolSpec {
