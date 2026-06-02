@@ -155,8 +155,7 @@ pub fn capability_matrix() -> Vec<ComposioCapability> {
 /// Lookup key is the lowercased prefix returned by
 /// [`toolkit_from_slug`] applied to the action slug — e.g.
 /// `GOOGLECALENDAR_CREATE_EVENT` → `"googlecalendar"`. Multi-segment
-/// prefixes like `MICROSOFT_TEAMS_*` are matched via their first
-/// segment with an extra arm.
+/// prefixes like `MICROSOFT_TEAMS_*` return their known toolkit slug.
 /// Synchronous visibility check for a Composio action slug given a
 /// pre-loaded user scope preference.
 ///
@@ -200,7 +199,8 @@ pub fn catalog_for_toolkit(toolkit: &str) -> Option<&'static [CuratedTool]> {
         "googledocs" | "google_docs" => Some(catalogs::GOOGLEDOCS_CURATED),
         "googlesheets" | "google_sheets" => Some(catalogs::GOOGLESHEETS_CURATED),
         "outlook" => Some(catalogs::OUTLOOK_CURATED),
-        // MICROSOFT_TEAMS_* slugs extract to "microsoft" via toolkit_from_slug.
+        // Keep the legacy "microsoft" alias while toolkit_from_slug now
+        // returns the precise "microsoft_teams" slug for Teams actions.
         "microsoft" | "microsoft_teams" => Some(catalogs::MICROSOFT_TEAMS_CURATED),
         "jira" => Some(catalogs::JIRA_CURATED),
         "trello" => Some(catalogs::TRELLO_CURATED),
