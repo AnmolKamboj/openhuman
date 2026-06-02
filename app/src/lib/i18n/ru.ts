@@ -218,6 +218,7 @@ const messages: TranslationMap = {
   'routines.notRunYet': 'Еще не запущен',
   'routines.runNow': 'Беги сейчас',
   'routines.running': 'Бег…',
+  'routines.runNowTimedOut': 'Время выполнения истекло — обновите страницу и попробуйте снова.',
   'routines.viewHistory': 'Посмотреть историю',
   'routines.loadingHistory': 'Загрузка…',
   'routines.noHistory': 'Истории запусков пока нет.',

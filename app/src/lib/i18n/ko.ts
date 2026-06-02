@@ -216,6 +216,7 @@ const messages: TranslationMap = {
   'routines.notRunYet': '아직 실행되지 않음',
   'routines.runNow': '지금 실행',
   'routines.running': '실행 중…',
+  'routines.runNowTimedOut': '실행 시간 초과 — 새로고침 후 다시 시도하세요.',
   'routines.viewHistory': '기록 보기',
   'routines.loadingHistory': '로딩 중…',
   'routines.noHistory': '아직 실행 기록이 없습니다.',

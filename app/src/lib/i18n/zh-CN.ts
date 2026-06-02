@@ -206,6 +206,7 @@ const messages: TranslationMap = {
   'routines.notRunYet': '尚未运行',
   'routines.runNow': '立即运行',
   'routines.running': '运行中…',
+  'routines.runNowTimedOut': '运行超时，请刷新后重试。',
   'routines.viewHistory': '查看历史',
   'routines.loadingHistory': '加载中…',
   'routines.noHistory': '暂无运行历史。',

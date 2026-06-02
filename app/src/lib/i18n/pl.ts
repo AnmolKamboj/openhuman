@@ -220,6 +220,7 @@ const messages: TranslationMap = {
   'routines.notRunYet': 'Jeszcze nie uruchomiono',
   'routines.runNow': 'Uruchom teraz',
   'routines.running': 'Uruchamianie…',
+  'routines.runNowTimedOut': 'Przekroczono limit czasu — odśwież stronę i spróbuj ponownie.',
   'routines.viewHistory': 'Wyświetl historię',
   'routines.loadingHistory': 'Ładowanie…',
   'routines.noHistory': 'Brak historii uruchomień.',

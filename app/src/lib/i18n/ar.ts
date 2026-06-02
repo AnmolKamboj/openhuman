@@ -214,6 +214,7 @@ const messages: TranslationMap = {
   'routines.notRunYet': 'لم يهرب بعد',
   'routines.runNow': 'اركض الآن',
   'routines.running': 'تشغيل...',
+  'routines.runNowTimedOut': 'انتهت مهلة التشغيل — يرجى التحديث والمحاولة مرة أخرى.',
   'routines.viewHistory': 'تاريخ الرؤية',
   'routines.loadingHistory': 'التعبئة...',
   'routines.noHistory': 'لا يوجد تاريخ بعد',

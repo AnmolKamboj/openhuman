@@ -225,6 +225,7 @@ const messages: TranslationMap = {
   'routines.notRunYet': 'Noch nicht ausgeführt',
   'routines.runNow': 'Ausführung starten',
   'routines.running': 'Läuft…',
+  'routines.runNowTimedOut': 'Ausführung abgebrochen – bitte Seite neu laden und erneut versuchen.',
   'routines.viewHistory': 'Verlauf ansehen',
   'routines.loadingHistory': 'Laden…',
   'routines.noHistory': 'Noch kein Verlauf',

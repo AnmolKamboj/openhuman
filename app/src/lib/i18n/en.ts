@@ -237,6 +237,7 @@ const en: TranslationMap = {
   'routines.notRunYet': 'Not run yet',
   'routines.runNow': 'Run Now',
   'routines.running': 'Running…',
+  'routines.runNowTimedOut': 'Run timed out — please refresh and try again.',
   'routines.viewHistory': 'View history',
   'routines.loadingHistory': 'Loading…',
   'routines.noHistory': 'No run history yet.',

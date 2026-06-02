@@ -216,6 +216,7 @@ const messages: TranslationMap = {
   'routines.notRunYet': 'এখনো চালাও নি',
   'routines.runNow': 'এখন সঞ্চালন করুন',
   'routines.running': 'চলমান...',
+  'routines.runNowTimedOut': 'রান টাইমআউট হয়েছে — অনুগ্রহ করে রিফ্রেশ করুন এবং আবার চেষ্টা করুন।',
   'routines.viewHistory': 'পূর্ববর্তী তথ্য প্রদর্শন',
   'routines.loadingHistory': 'লোড করা হচ্ছে...',
   'routines.noHistory': 'এখনো কোন ইতিহাস নেই।',

@@ -216,6 +216,7 @@ const messages: TranslationMap = {
   'routines.notRunYet': 'अभी तक नहीं चला',
   'routines.runNow': 'अब चलायें',
   'routines.running': 'दौड़ना...',
+  'routines.runNowTimedOut': 'चलाने में समय समाप्त — कृपया रिफ्रेश करें और पुनः प्रयास करें।',
   'routines.viewHistory': 'इतिहास देखें',
   'routines.loadingHistory': 'लोड...',
   'routines.noHistory': 'अभी तक कोई रन इतिहास नहीं है।',

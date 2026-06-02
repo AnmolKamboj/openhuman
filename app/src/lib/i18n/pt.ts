@@ -224,6 +224,7 @@ const messages: TranslationMap = {
   'routines.notRunYet': 'Ainda não executado',
   'routines.runNow': 'Corra Agora',
   'routines.running': 'Executando…',
+  'routines.runNowTimedOut': 'Execução expirou — atualize e tente novamente.',
   'routines.viewHistory': 'Ver histórico',
   'routines.loadingHistory': 'Carregando…',
   'routines.noHistory': 'Ainda não há histórico de execuções.',

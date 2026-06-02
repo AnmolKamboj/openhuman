@@ -218,6 +218,7 @@ const messages: TranslationMap = {
   'routines.notRunYet': 'Belum pernah dijalankan',
   'routines.runNow': 'Jalankan Sekarang',
   'routines.running': 'Berjalan...',
+  'routines.runNowTimedOut': 'Waktu habis — silakan muat ulang dan coba lagi.',
   'routines.viewHistory': 'Lihat riwayat',
   'routines.loadingHistory': 'Memuat…',
   'routines.noHistory': 'Belum ada riwayat eksekusi.',
