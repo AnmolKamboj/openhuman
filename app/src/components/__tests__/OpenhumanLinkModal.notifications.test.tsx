@@ -46,7 +46,7 @@ describe('OpenhumanLinkModal notifications test flow', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Test notification sent\. If you didn't receive it/i)
+        screen.getByText(/Test notification sent\. If you didn['’]t receive it/i)
       ).toBeInTheDocument();
     });
     expect(showNativeNotification).toHaveBeenCalledWith(
@@ -116,7 +116,7 @@ describe('OpenhumanLinkModal notifications test flow', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Test notification sent\. If you didn't receive it/i)
+        screen.getByText(/Test notification sent\. If you didn['’]t receive it/i)
       ).toBeInTheDocument();
     });
     expect(showNativeNotification).toHaveBeenCalledTimes(1);

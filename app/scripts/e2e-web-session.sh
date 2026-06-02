@@ -99,6 +99,9 @@ reasoning_provider = "e2e:e2e-mock-model"
 agentic_provider = "e2e:e2e-mock-model"
 coding_provider = "e2e:e2e-mock-model"
 
+[update]
+enabled = false
+
 [[cloud_providers]]
 id = "p_e2e_mock"
 slug = "e2e"
@@ -120,6 +123,8 @@ fi
 
 export OPENHUMAN_CORE_TOKEN="$PW_CORE_RPC_TOKEN"
 export OPENHUMAN_TELEGRAM_BOT_API_BASE="http://127.0.0.1:${E2E_MOCK_PORT}"
+# Keep the standalone core aligned with the Rust mock runner: sub-agent
+# orchestration builds large async futures and can overflow the default stack.
 export RUST_MIN_STACK="${RUST_MIN_STACK:-16777216}"
 
 "$OPENHUMAN_CORE_BIN" run --host 127.0.0.1 --port "$OPENHUMAN_CORE_PORT" \

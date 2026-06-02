@@ -211,6 +211,13 @@ mod tests {
         let a = ToolMemoryRule::generate_id();
         let b = ToolMemoryRule::generate_id();
         assert_ne!(a, b);
+        assert!(a.starts_with('r'));
+        assert!(a[1..].chars().all(|c| matches!(c, 'a'..='p')));
+        assert!(
+            !crate::openhuman::memory_store::safety::pii::has_likely_pii(
+                &ToolMemoryRule::storage_key(&a)
+            )
+        );
     }
 
     #[test]

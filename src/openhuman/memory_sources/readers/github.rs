@@ -869,10 +869,15 @@ async fn read_issue(
     let labels: Vec<&str> = issue.labels.iter().map(|l| l.name.as_str()).collect();
     let issue_body = issue.body.as_deref().unwrap_or("");
 
+    let comments = fetch_issue_comments(owner, repo, number, use_gh).await;
+    let participants =
+        unique_handles(std::iter::once(author).chain(comments.iter().map(|c| c.user.as_str())));
+
     let mut body = format!(
         "# Issue #{number}: {title}\n\n\
          **State:** {state}\n\
          **Author:** @{author}\n\
+         **Participants:** {participants}\n\
          **Labels:** {label_str}\n\
          **Created:** {created}\n\
          **Updated:** {updated}\n\n\
@@ -888,15 +893,13 @@ async fn read_issue(
         created = issue.created_at.as_deref().unwrap_or("unknown"),
         updated = issue.updated_at.as_deref().unwrap_or("unknown"),
     );
-    let comments = fetch_issue_comments(owner, repo, number, use_gh).await;
+
     if !comments.is_empty() {
         body.push_str("\n\n## Comments\n");
-        for comment in comments {
+        for comment in &comments {
             body.push_str(&format!(
-                "\n### @{user} at {created_at}\n\n{body}\n",
-                user = comment.user,
-                created_at = comment.created_at,
-                body = comment.body,
+                "\n### @{} ({})\n\n{}\n",
+                comment.user, comment.created_at, comment.body
             ));
         }
     }
@@ -949,10 +952,15 @@ async fn read_pr(
         None => "not merged".to_string(),
     };
 
-    let body = format!(
+    let comments = fetch_issue_comments(owner, repo, number, use_gh).await;
+    let participants =
+        unique_handles(std::iter::once(author).chain(comments.iter().map(|c| c.user.as_str())));
+
+    let mut body = format!(
         "# PR #{number}: {title}\n\n\
          **State:** {state} ({merged})\n\
          **Author:** @{author}\n\
+         **Participants:** {participants}\n\
          **Labels:** {label_str}\n\
          **Created:** {created}\n\
          **Updated:** {updated}\n\n\
@@ -969,6 +977,16 @@ async fn read_pr(
         created = pr.created_at.as_deref().unwrap_or("unknown"),
         updated = pr.updated_at.as_deref().unwrap_or("unknown"),
     );
+
+    if !comments.is_empty() {
+        body.push_str("\n\n## Comments\n");
+        for comment in &comments {
+            body.push_str(&format!(
+                "\n### @{} ({})\n\n{}\n",
+                comment.user, comment.created_at, comment.body
+            ));
+        }
+    }
 
     Ok(SourceContent {
         id: format!("pr:{number}"),
