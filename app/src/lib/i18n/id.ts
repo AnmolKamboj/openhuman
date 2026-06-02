@@ -4467,6 +4467,67 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': 'Tolak penyimpanan lokal',
   'pages.settings.account.security': 'Keamanan',
   'pages.settings.account.securityDesc': 'Mode penyimpanan rahasia dan status keychain',
+
+  // Agent activity level
+  'activityLevel.title': 'Tingkat aktivitas agen',
+  'activityLevel.description':
+    'Kendalikan seberapa proaktif agen Anda. Tingkat lebih tinggi menggunakan lebih banyak token.',
+  'activityLevel.off': 'Mati',
+  'activityLevel.offDesc':
+    'Tidak ada pemrosesan latar belakang. Hanya sinkronisasi saat tombol ditekan.',
+  'activityLevel.minimal': 'Minimal',
+  'activityLevel.minimalDesc': 'Sinkronisasi sumber sekali sehari. Tidak ada pesan proaktif.',
+  'activityLevel.moderate': 'Sedang',
+  'activityLevel.moderateDesc': 'Sinkronisasi setiap jam. Ringkasan harian. Menyarankan tindakan.',
+  'activityLevel.active': 'Aktif',
+  'activityLevel.activeDesc':
+    'Sinkronisasi setiap 10 menit. Memantau saluran, mengurutkan, dan menyusun balasan.',
+  'activityLevel.alwaysOn': 'Selalu aktif',
+  'activityLevel.alwaysOnDesc':
+    'Sinkronisasi real-time. Otonomi penuh dalam batas yang ditentukan.',
+  'activityLevel.currentMonth': 'Bulan ini: ${amount}',
+  'activityLevel.saved': 'Tingkat aktivitas diperbarui.',
+  'activityLevel.default': 'bawaan',
+  'activityLevel.costFree': '$0',
+  'activityLevel.costRange': '~${min}–${max}/bln',
+
+  // Sync budget dialog
+  'syncBudget.title': 'Anggaran sinkronisasi',
+  'syncBudget.maxTokens': 'Token maksimum per sinkronisasi',
+  'syncBudget.maxTokensHelp': 'Hentikan sinkronisasi setelah sejumlah token ini dikonsumsi.',
+  'syncBudget.maxCost': 'Biaya maksimum per sinkronisasi (USD)',
+  'syncBudget.maxCostHelp': 'Batas dolar mutlak per jalannya sinkronisasi.',
+  'syncBudget.syncDepth': 'Kedalaman sinkronisasi',
+  'syncBudget.syncDepthHelp': 'Hanya ambil item dari jendela waktu ini.',
+  'syncBudget.days7': '7 hari terakhir',
+  'syncBudget.days30': '30 hari terakhir',
+  'syncBudget.days90': '90 hari terakhir',
+  'syncBudget.allTime': 'Sepanjang waktu',
+  'syncBudget.unlimited': 'Tidak terbatas',
+  'syncBudget.saved': 'Anggaran disimpan.',
+
+  // Sync confirm dialog
+  'syncConfirm.title': 'Konfirmasi sinkronisasi',
+  'syncConfirm.message':
+    'Sinkronisasi ini akan memproses ~{items} item (~{tokens} token, est. ${cost}).',
+  'syncConfirm.budgetNote': 'Batas anggaran: ${max}',
+  'syncConfirm.proceed': 'Lanjutkan',
+  'syncConfirm.cancel': 'Batal',
+  'syncConfirm.estimating': 'Memperkirakan biaya...',
+
+  // Monthly cost badge
+  'monthlyCost.badge': '${amount} bulan ini',
+  'monthlyCost.noData': 'Tidak ada sinkronisasi bulan ini',
+
+  // Onboarding: Custom > Activity
+  'onboarding.custom.stepperActivity': 'Aktivitas',
+  'onboarding.custom.activity.title': 'Aktivitas agen',
+  'onboarding.custom.activity.subtitle':
+    'Seberapa proaktif agen Anda memantau dan bertindak di latar belakang.',
+  'onboarding.custom.activity.defaultDesc':
+    'Aktivitas sedang — sinkronisasi per jam, ringkasan harian.',
+  'onboarding.custom.activity.configureDesc':
+    'Pilih tingkat aktivitas Anda sendiri. Konfigurasi di Pengaturan › Tingkat aktivitas agen.',
 };
 
 export default messages;

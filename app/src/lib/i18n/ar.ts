@@ -4372,6 +4372,61 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': 'رفض التخزين المحلي',
   'pages.settings.account.security': 'الأمان',
   'pages.settings.account.securityDesc': 'وضع تخزين الأسرار وحالة سلسلة المفاتيح',
+
+  // Agent activity level
+  'activityLevel.title': 'مستوى نشاط الوكيل',
+  'activityLevel.description':
+    'تحكم في مدى استباقية وكيلك. المستويات الأعلى تستخدم المزيد من الرموز.',
+  'activityLevel.off': 'إيقاف',
+  'activityLevel.offDesc': 'لا معالجة في الخلفية. يزامن فقط عند الضغط على الزر.',
+  'activityLevel.minimal': 'أدنى حد',
+  'activityLevel.minimalDesc': 'مزامنة المصادر مرة يوميًا. لا رسائل استباقية.',
+  'activityLevel.moderate': 'متوسط',
+  'activityLevel.moderateDesc': 'مزامنة كل ساعة. ملخص يومي. يقترح إجراءات.',
+  'activityLevel.active': 'نشط',
+  'activityLevel.activeDesc': 'مزامنة كل 10 دقائق. يراقب القنوات ويصنف ويصيغ الردود.',
+  'activityLevel.alwaysOn': 'دائم التشغيل',
+  'activityLevel.alwaysOnDesc': 'مزامنة فورية. استقلالية كاملة ضمن الحدود المحددة.',
+  'activityLevel.currentMonth': 'هذا الشهر: ${amount}',
+  'activityLevel.saved': 'تم تحديث مستوى النشاط.',
+  'activityLevel.default': 'افتراضي',
+  'activityLevel.costFree': '0$',
+  'activityLevel.costRange': '~${min}–${max}/شهر',
+
+  // Sync budget dialog
+  'syncBudget.title': 'ميزانية المزامنة',
+  'syncBudget.maxTokens': 'الحد الأقصى للرموز لكل مزامنة',
+  'syncBudget.maxTokensHelp': 'توقف المزامنة عند استهلاك هذا العدد من الرموز.',
+  'syncBudget.maxCost': 'الحد الأقصى للتكلفة لكل مزامنة (USD)',
+  'syncBudget.maxCostHelp': 'حد التكلفة المطلق بالدولار لكل تشغيل مزامنة.',
+  'syncBudget.syncDepth': 'عمق المزامنة',
+  'syncBudget.syncDepthHelp': 'جلب العناصر من هذه الفترة الزمنية فقط.',
+  'syncBudget.days7': 'آخر 7 أيام',
+  'syncBudget.days30': 'آخر 30 يومًا',
+  'syncBudget.days90': 'آخر 90 يومًا',
+  'syncBudget.allTime': 'كل الأوقات',
+  'syncBudget.unlimited': 'غير محدود',
+  'syncBudget.saved': 'تم حفظ الميزانية.',
+
+  // Sync confirm dialog
+  'syncConfirm.title': 'تأكيد المزامنة',
+  'syncConfirm.message': 'ستعالج هذه المزامنة ~{items} عناصر (~{tokens} رمز، تقديري ${cost}).',
+  'syncConfirm.budgetNote': 'حد الميزانية: ${max}',
+  'syncConfirm.proceed': 'المتابعة',
+  'syncConfirm.cancel': 'إلغاء',
+  'syncConfirm.estimating': 'جارٍ تقدير التكلفة...',
+
+  // Monthly cost badge
+  'monthlyCost.badge': '${amount} هذا الشهر',
+  'monthlyCost.noData': 'لا مزامنات هذا الشهر',
+
+  // Onboarding: Custom > Activity
+  'onboarding.custom.stepperActivity': 'النشاط',
+  'onboarding.custom.activity.title': 'نشاط الوكيل',
+  'onboarding.custom.activity.subtitle': 'مدى استباقية وكيلك في المراقبة والتصرف في الخلفية.',
+  'onboarding.custom.activity.defaultDesc': 'نشاط متوسط — مزامنة كل ساعة، ملخص يومي.',
+  'onboarding.custom.activity.configureDesc':
+    'اختر مستوى نشاطك الخاص. الإعداد في الإعدادات › مستوى نشاط الوكيل.',
 };
 
 export default messages;

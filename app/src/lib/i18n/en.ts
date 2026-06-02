@@ -608,12 +608,13 @@ const en: TranslationMap = {
   'onboarding.apiKeys.continue': 'Save and continue',
   'onboarding.apiKeys.saving': 'Saving…',
 
-  // Onboarding: Custom wizard (Inference / Voice / OAuth / Search / Memory)
+  // Onboarding: Custom wizard (Inference / Voice / OAuth / Search / Activity / Memory)
   'onboarding.custom.stepperInference': 'Inference',
   'onboarding.custom.stepperVoice': 'Voice',
   'onboarding.custom.stepperOAuth': 'OAuth',
   'onboarding.custom.stepperSearch': 'Search',
   'onboarding.custom.stepperEmbeddings': 'Embeddings',
+  'onboarding.custom.stepperActivity': 'Activity',
   'onboarding.custom.stepperMemory': 'Memory',
   'onboarding.custom.stepCounter': 'Step {n} of {total}',
   'onboarding.custom.defaultTitle': 'Default',
@@ -671,6 +672,15 @@ const en: TranslationMap = {
   'onboarding.custom.embeddings.configureDesc':
     'Bring your own embedding provider (OpenAI, Voyage, Ollama, etc.).',
 
+  // Onboarding: Custom > Activity
+  'onboarding.custom.activity.title': 'Agent Activity',
+  'onboarding.custom.activity.subtitle':
+    'How proactively your agent monitors and acts in the background.',
+  'onboarding.custom.activity.defaultDesc':
+    'Moderate activity — syncs every hour, sends a daily digest. Balanced cost and responsiveness.',
+  'onboarding.custom.activity.configureDesc':
+    'Pick your own activity level. Configure in Settings › Agent activity level.',
+
   // Onboarding: Custom > Memory
   'onboarding.custom.memory.title': 'Memory',
   'onboarding.custom.memory.subtitle':
@@ -679,6 +689,26 @@ const en: TranslationMap = {
     'OpenHuman manages memory storage and retrieval automatically. Nothing to set up.',
   'onboarding.custom.memory.configureDesc':
     'Inspect, export, or wipe memory yourself. Configure in Settings › Memory.',
+
+  // Agent activity level
+  'activityLevel.title': 'Agent activity level',
+  'activityLevel.description':
+    'Control how proactive your agent is. Higher levels use more tokens.',
+  'activityLevel.off': 'Off',
+  'activityLevel.offDesc': 'No background processing. Syncs only when you press the button.',
+  'activityLevel.minimal': 'Minimal',
+  'activityLevel.minimalDesc': 'Sync sources once per day. No proactive messages.',
+  'activityLevel.moderate': 'Moderate',
+  'activityLevel.moderateDesc': 'Sync every hour. Daily digest. Suggests actions.',
+  'activityLevel.active': 'Active',
+  'activityLevel.activeDesc': 'Sync every 10 min. Monitors channels, triages, drafts replies.',
+  'activityLevel.alwaysOn': 'Always-on',
+  'activityLevel.alwaysOnDesc': 'Real-time sync. Full autonomy within guardrails.',
+  'activityLevel.currentMonth': 'This month: ${amount}',
+  'activityLevel.saved': 'Activity level updated.',
+  'activityLevel.default': 'default',
+  'activityLevel.costFree': '$0',
+  'activityLevel.costRange': '~${min}–${max}/mo',
 
   // Accounts
   'accounts.addAccount': 'Add Account',
@@ -4679,6 +4709,33 @@ const en: TranslationMap = {
   'keyring.settings.revokeConsent': 'Decline local storage',
   'pages.settings.account.security': 'Security',
   'pages.settings.account.securityDesc': 'Secret storage mode and keychain status',
+
+  // Sync budget dialog
+  'syncBudget.title': 'Sync budget',
+  'syncBudget.maxTokens': 'Max tokens per sync',
+  'syncBudget.maxTokensHelp': 'Stop syncing once this many tokens are consumed.',
+  'syncBudget.maxCost': 'Max cost per sync (USD)',
+  'syncBudget.maxCostHelp': 'Hard dollar cap per sync run.',
+  'syncBudget.syncDepth': 'Sync depth',
+  'syncBudget.syncDepthHelp': 'Only fetch items from this time window.',
+  'syncBudget.days7': 'Last 7 days',
+  'syncBudget.days30': 'Last 30 days',
+  'syncBudget.days90': 'Last 90 days',
+  'syncBudget.allTime': 'All time',
+  'syncBudget.unlimited': 'Unlimited',
+  'syncBudget.saved': 'Budget saved.',
+
+  // Sync confirm dialog
+  'syncConfirm.title': 'Confirm sync',
+  'syncConfirm.message': 'This sync will process ~{items} items (~{tokens} tokens, est. ${cost}).',
+  'syncConfirm.budgetNote': 'Budget cap: ${max}',
+  'syncConfirm.proceed': 'Proceed',
+  'syncConfirm.cancel': 'Cancel',
+  'syncConfirm.estimating': 'Estimating cost...',
+
+  // Monthly cost badge
+  'monthlyCost.badge': '${amount} this month',
+  'monthlyCost.noData': 'No syncs this month',
 };
 
 export default en;

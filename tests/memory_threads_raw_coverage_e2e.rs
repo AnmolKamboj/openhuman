@@ -229,6 +229,9 @@ fn source(kind: SourceKind, id: &str) -> MemorySourceEntry {
         max_issues: None,
         max_prs: None,
         selector: None,
+        max_tokens_per_sync: None,
+        max_cost_per_sync_usd: None,
+        sync_depth_days: None,
     }
 }
 
@@ -3818,6 +3821,9 @@ async fn memory_sources_registry_rpc_and_schema_handlers_cover_crud_edges() {
         max_issues: None,
         max_prs: None,
         selector: None,
+        max_tokens_per_sync: None,
+        max_cost_per_sync_usd: None,
+        sync_depth_days: None,
     })
     .await
     .unwrap_err();
@@ -3841,6 +3847,9 @@ async fn memory_sources_registry_rpc_and_schema_handlers_cover_crud_edges() {
         max_issues: None,
         max_prs: None,
         selector: None,
+        max_tokens_per_sync: None,
+        max_cost_per_sync_usd: None,
+        sync_depth_days: None,
     })
     .await
     .expect("add folder")
@@ -3865,6 +3874,9 @@ async fn memory_sources_registry_rpc_and_schema_handlers_cover_crud_edges() {
         max_issues: None,
         max_prs: None,
         selector: None,
+        max_tokens_per_sync: None,
+        max_cost_per_sync_usd: None,
+        sync_depth_days: None,
     })
     .await
     .is_ok());

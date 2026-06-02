@@ -4236,6 +4236,60 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': '拒绝本地存储',
   'pages.settings.account.security': '安全',
   'pages.settings.account.securityDesc': '密钥存储模式和密钥链状态',
+
+  // Agent activity level
+  'activityLevel.title': '智能体活动级别',
+  'activityLevel.description': '控制您的智能体的主动程度。级别越高，消耗的令牌越多。',
+  'activityLevel.off': '关闭',
+  'activityLevel.offDesc': '无后台处理。仅在按下按钮时同步。',
+  'activityLevel.minimal': '最低',
+  'activityLevel.minimalDesc': '每天同步一次来源。无主动消息。',
+  'activityLevel.moderate': '适中',
+  'activityLevel.moderateDesc': '每小时同步。每日摘要。建议操作。',
+  'activityLevel.active': '活跃',
+  'activityLevel.activeDesc': '每10分钟同步。监控频道、分类并起草回复。',
+  'activityLevel.alwaysOn': '始终开启',
+  'activityLevel.alwaysOnDesc': '实时同步。在规定范围内完全自主。',
+  'activityLevel.currentMonth': '本月：${amount}',
+  'activityLevel.saved': '活动级别已更新。',
+  'activityLevel.default': '默认',
+  'activityLevel.costFree': '$0',
+  'activityLevel.costRange': '~${min}–${max}/月',
+
+  // Sync budget dialog
+  'syncBudget.title': '同步预算',
+  'syncBudget.maxTokens': '每次同步最大令牌数',
+  'syncBudget.maxTokensHelp': '消耗此数量的令牌后停止同步。',
+  'syncBudget.maxCost': '每次同步最大费用（USD）',
+  'syncBudget.maxCostHelp': '每次同步运行的绝对美元上限。',
+  'syncBudget.syncDepth': '同步深度',
+  'syncBudget.syncDepthHelp': '仅获取此时间窗口内的项目。',
+  'syncBudget.days7': '最近7天',
+  'syncBudget.days30': '最近30天',
+  'syncBudget.days90': '最近90天',
+  'syncBudget.allTime': '所有时间',
+  'syncBudget.unlimited': '无限制',
+  'syncBudget.saved': '预算已保存。',
+
+  // Sync confirm dialog
+  'syncConfirm.title': '确认同步',
+  'syncConfirm.message': '此同步将处理约{items}个项目（约{tokens}个令牌，预计${cost}）。',
+  'syncConfirm.budgetNote': '预算上限：${max}',
+  'syncConfirm.proceed': '继续',
+  'syncConfirm.cancel': '取消',
+  'syncConfirm.estimating': '正在估算费用...',
+
+  // Monthly cost badge
+  'monthlyCost.badge': '本月${amount}',
+  'monthlyCost.noData': '本月无同步',
+
+  // Onboarding: Custom > Activity
+  'onboarding.custom.stepperActivity': '活动',
+  'onboarding.custom.activity.title': '智能体活动',
+  'onboarding.custom.activity.subtitle': '您的智能体在后台监控和行动的主动程度。',
+  'onboarding.custom.activity.defaultDesc': '适中活动——每小时同步，每日摘要。',
+  'onboarding.custom.activity.configureDesc':
+    '选择您自己的活动级别。在设置 › 智能体活动级别中配置。',
 };
 
 export default messages;

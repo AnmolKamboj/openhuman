@@ -228,6 +228,12 @@ struct AgentSettingsUpdate {
     agent_timeout_secs: Option<u64>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ActivityLevelSettingsUpdate {
+    /// "off" | "minimal" | "moderate" | "active" | "always_on" (or "0"-"4").
+    level: Option<String>,
+}
+
 pub fn all_controller_schemas() -> Vec<ControllerSchema> {
     vec![
         schemas("get_config"),
@@ -265,6 +271,8 @@ pub fn all_controller_schemas() -> Vec<ControllerSchema> {
         schemas("update_agent_settings"),
         schemas("update_search_settings"),
         schemas("get_search_settings"),
+        schemas("get_activity_level_settings"),
+        schemas("update_activity_level_settings"),
     ]
 }
 
@@ -409,6 +417,14 @@ pub fn all_registered_controllers() -> Vec<RegisteredController> {
         RegisteredController {
             schema: schemas("get_search_settings"),
             handler: handle_get_search_settings,
+        },
+        RegisteredController {
+            schema: schemas("get_activity_level_settings"),
+            handler: handle_get_activity_level_settings,
+        },
+        RegisteredController {
+            schema: schemas("update_activity_level_settings"),
+            handler: handle_update_activity_level_settings,
         },
     ]
 }
@@ -911,6 +927,20 @@ pub fn schemas(function: &str) -> ControllerSchema {
                 "settings",
                 "Engine, effective engine, limits, and per-provider configuration flags.",
             )],
+        },
+        "get_activity_level_settings" => ControllerSchema {
+            namespace: "config",
+            function: "get_activity_level_settings",
+            description: "Get the agent activity level (0–4) and its derived settings: sync cadence, heartbeat/subconscious toggles, token budget, estimated monthly cost.",
+            inputs: vec![],
+            outputs: vec![json_output("settings", "Activity level settings with cost estimates.")],
+        },
+        "update_activity_level_settings" => ControllerSchema {
+            namespace: "config",
+            function: "update_activity_level_settings",
+            description: "Set the agent activity level. Immediately updates the scheduler gate mode and persists the change.",
+            inputs: vec![optional_string("level", "Activity level: off | minimal | moderate | active | always_on (or 0–4).")],
+            outputs: vec![json_output("settings", "Updated activity level settings with cost estimates.")],
         },
         "agent_server_status" => ControllerSchema {
             namespace: "config",
@@ -1654,6 +1684,20 @@ fn handle_get_search_settings(_params: Map<String, Value>) -> ControllerFuture {
                 Err(err)
             }
         }
+    })
+}
+
+fn handle_get_activity_level_settings(_params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move { to_json(config_rpc::get_activity_level_settings().await?) })
+}
+
+fn handle_update_activity_level_settings(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let update = deserialize_params::<ActivityLevelSettingsUpdate>(params)?;
+        let patch = config_rpc::ActivityLevelSettingsPatch {
+            level: update.level,
+        };
+        to_json(config_rpc::load_and_apply_activity_level_settings(patch).await?)
     })
 }
 

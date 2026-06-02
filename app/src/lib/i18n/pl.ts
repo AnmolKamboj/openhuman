@@ -4524,6 +4524,66 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': 'Odmów lokalnego przechowywania',
   'pages.settings.account.security': 'Bezpieczeństwo',
   'pages.settings.account.securityDesc': 'Tryb przechowywania sekretów i stan pęku kluczy',
+
+  // Agent activity level
+  'activityLevel.title': 'Poziom aktywności agenta',
+  'activityLevel.description':
+    'Kontroluj, jak proaktywny jest Twój agent. Wyższe poziomy zużywają więcej tokenów.',
+  'activityLevel.off': 'Wyłączony',
+  'activityLevel.offDesc':
+    'Brak przetwarzania w tle. Synchronizuje tylko po naciśnięciu przycisku.',
+  'activityLevel.minimal': 'Minimalny',
+  'activityLevel.minimalDesc': 'Synchronizuje źródła raz dziennie. Brak proaktywnych wiadomości.',
+  'activityLevel.moderate': 'Umiarkowany',
+  'activityLevel.moderateDesc': 'Synchronizuje co godzinę. Codzienny skrót. Sugeruje działania.',
+  'activityLevel.active': 'Aktywny',
+  'activityLevel.activeDesc':
+    'Synchronizuje co 10 min. Monitoruje kanały, porządkuje i redaguje odpowiedzi.',
+  'activityLevel.alwaysOn': 'Zawsze włączony',
+  'activityLevel.alwaysOnDesc':
+    'Synchronizacja w czasie rzeczywistym. Pełna autonomia w granicach.',
+  'activityLevel.currentMonth': 'W tym miesiącu: ${amount}',
+  'activityLevel.saved': 'Poziom aktywności zaktualizowany.',
+  'activityLevel.default': 'domyślny',
+  'activityLevel.costFree': '0 $',
+  'activityLevel.costRange': '~${min}–${max}/mies.',
+
+  // Sync budget dialog
+  'syncBudget.title': 'Budżet synchronizacji',
+  'syncBudget.maxTokens': 'Maks. tokenów na synchronizację',
+  'syncBudget.maxTokensHelp': 'Zatrzymaj synchronizację po zużyciu tej liczby tokenów.',
+  'syncBudget.maxCost': 'Maks. koszt na synchronizację (USD)',
+  'syncBudget.maxCostHelp': 'Bezwzględny limit w dolarach na jedno uruchomienie synchronizacji.',
+  'syncBudget.syncDepth': 'Głębokość synchronizacji',
+  'syncBudget.syncDepthHelp': 'Pobieraj tylko elementy z tego okna czasowego.',
+  'syncBudget.days7': 'Ostatnie 7 dni',
+  'syncBudget.days30': 'Ostatnie 30 dni',
+  'syncBudget.days90': 'Ostatnie 90 dni',
+  'syncBudget.allTime': 'Cały czas',
+  'syncBudget.unlimited': 'Bez limitu',
+  'syncBudget.saved': 'Budżet zapisany.',
+
+  // Sync confirm dialog
+  'syncConfirm.title': 'Potwierdź synchronizację',
+  'syncConfirm.message':
+    'Ta synchronizacja przetworzy ~{items} elementów (~{tokens} tokenów, szacunkowo ${cost}).',
+  'syncConfirm.budgetNote': 'Limit budżetu: ${max}',
+  'syncConfirm.proceed': 'Kontynuuj',
+  'syncConfirm.cancel': 'Anuluj',
+  'syncConfirm.estimating': 'Szacowanie kosztów...',
+
+  // Monthly cost badge
+  'monthlyCost.badge': '${amount} w tym miesiącu',
+  'monthlyCost.noData': 'Brak synchronizacji w tym miesiącu',
+
+  // Onboarding: Custom > Activity
+  'onboarding.custom.stepperActivity': 'Aktywność',
+  'onboarding.custom.activity.title': 'Aktywność agenta',
+  'onboarding.custom.activity.subtitle': 'Jak proaktywnie Twój agent monitoruje i działa w tle.',
+  'onboarding.custom.activity.defaultDesc':
+    'Umiarkowana aktywność — synchronizacja co godzinę, codzienny skrót.',
+  'onboarding.custom.activity.configureDesc':
+    'Wybierz własny poziom aktywności. Skonfiguruj w Ustawieniach › Poziom aktywności agenta.',
 };
 
 export default messages;

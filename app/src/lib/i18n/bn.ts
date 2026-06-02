@@ -4450,6 +4450,66 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': 'স্থানীয় সঞ্চয়স্থান প্রত্যাখ্যান করুন',
   'pages.settings.account.security': 'নিরাপত্তা',
   'pages.settings.account.securityDesc': 'গোপনীয়তা সঞ্চয়স্থান মোড এবং কিচেন অবস্থা',
+
+  // Agent activity level
+  'activityLevel.title': 'এজেন্ট কার্যকলাপের স্তর',
+  'activityLevel.description':
+    'আপনার এজেন্ট কতটা সক্রিয় তা নিয়ন্ত্রণ করুন। উচ্চ স্তরে বেশি টোকেন ব্যবহার হয়।',
+  'activityLevel.off': 'বন্ধ',
+  'activityLevel.offDesc': 'পটভূমিতে কোনো প্রক্রিয়াকরণ নেই। শুধুমাত্র বোতাম চাপলে সিঙ্ক করে।',
+  'activityLevel.minimal': 'ন্যূনতম',
+  'activityLevel.minimalDesc': 'প্রতিদিন একবার উৎস সিঙ্ক করে। কোনো সক্রিয় বার্তা নেই।',
+  'activityLevel.moderate': 'মাঝারি',
+  'activityLevel.moderateDesc':
+    'প্রতি ঘণ্টায় সিঙ্ক করে। দৈনিক সারসংক্ষেপ। কর্মপন্থা প্রস্তাব করে।',
+  'activityLevel.active': 'সক্রিয়',
+  'activityLevel.activeDesc':
+    'প্রতি ১০ মিনিটে সিঙ্ক করে। চ্যানেল পর্যবেক্ষণ, বাছাই ও উত্তর খসড়া করে।',
+  'activityLevel.alwaysOn': 'সর্বদা চালু',
+  'activityLevel.alwaysOnDesc': 'রিয়েল-টাইম সিঙ্ক। নির্ধারিত সীমার মধ্যে পূর্ণ স্বায়ত্তশাসন।',
+  'activityLevel.currentMonth': 'এই মাস: ${amount}',
+  'activityLevel.saved': 'কার্যকলাপের স্তর আপডেট হয়েছে।',
+  'activityLevel.default': 'ডিফল্ট',
+  'activityLevel.costFree': '$০',
+  'activityLevel.costRange': '~${min}–${max}/মাস',
+
+  // Sync budget dialog
+  'syncBudget.title': 'সিঙ্ক বাজেট',
+  'syncBudget.maxTokens': 'প্রতি সিঙ্কে সর্বোচ্চ টোকেন',
+  'syncBudget.maxTokensHelp': 'এতটা টোকেন ব্যবহার হলে সিঙ্ক বন্ধ করুন।',
+  'syncBudget.maxCost': 'প্রতি সিঙ্কে সর্বোচ্চ খরচ (USD)',
+  'syncBudget.maxCostHelp': 'প্রতিটি সিঙ্ক রানের জন্য নির্দিষ্ট ডলার সীমা।',
+  'syncBudget.syncDepth': 'সিঙ্ক গভীরতা',
+  'syncBudget.syncDepthHelp': 'কেবল এই সময়সীমার আইটেম আনুন।',
+  'syncBudget.days7': 'গত ৭ দিন',
+  'syncBudget.days30': 'গত ৩০ দিন',
+  'syncBudget.days90': 'গত ৯০ দিন',
+  'syncBudget.allTime': 'সব সময়',
+  'syncBudget.unlimited': 'সীমাহীন',
+  'syncBudget.saved': 'বাজেট সংরক্ষিত হয়েছে।',
+
+  // Sync confirm dialog
+  'syncConfirm.title': 'সিঙ্ক নিশ্চিত করুন',
+  'syncConfirm.message':
+    'এই সিঙ্ক ~{items}টি আইটেম (~{tokens} টোকেন, আনুমানিক ${cost}) প্রক্রিয়া করবে।',
+  'syncConfirm.budgetNote': 'বাজেট সীমা: ${max}',
+  'syncConfirm.proceed': 'চালিয়ে যান',
+  'syncConfirm.cancel': 'বাতিল',
+  'syncConfirm.estimating': 'খরচ অনুমান করা হচ্ছে...',
+
+  // Monthly cost badge
+  'monthlyCost.badge': 'এই মাসে ${amount}',
+  'monthlyCost.noData': 'এই মাসে কোনো সিঙ্ক নেই',
+
+  // Onboarding: Custom > Activity
+  'onboarding.custom.stepperActivity': 'কার্যকলাপ',
+  'onboarding.custom.activity.title': 'এজেন্টের কার্যকলাপ',
+  'onboarding.custom.activity.subtitle':
+    'আপনার এজেন্ট পটভূমিতে কতটা সক্রিয়ভাবে পর্যবেক্ষণ ও কাজ করে।',
+  'onboarding.custom.activity.defaultDesc':
+    'মাঝারি কার্যকলাপ — প্রতি ঘণ্টায় সিঙ্ক, দৈনিক সারসংক্ষেপ।',
+  'onboarding.custom.activity.configureDesc':
+    'নিজের কার্যকলাপের স্তর বেছে নিন। সেটিংস › এজেন্ট কার্যকলাপ স্তরে কনফিগার করুন।',
 };
 
 export default messages;

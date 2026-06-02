@@ -4493,6 +4493,67 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': 'Отклонить локальное хранилище',
   'pages.settings.account.security': 'Безопасность',
   'pages.settings.account.securityDesc': 'Режим хранения секретов и статус связки ключей',
+
+  // Agent activity level
+  'activityLevel.title': 'Уровень активности агента',
+  'activityLevel.description':
+    'Управляйте проактивностью вашего агента. Более высокие уровни потребляют больше токенов.',
+  'activityLevel.off': 'Выкл.',
+  'activityLevel.offDesc': 'Нет фоновой обработки. Синхронизация только по нажатию кнопки.',
+  'activityLevel.minimal': 'Минимальный',
+  'activityLevel.minimalDesc': 'Синхронизация источников раз в день. Нет проактивных сообщений.',
+  'activityLevel.moderate': 'Умеренный',
+  'activityLevel.moderateDesc': 'Синхронизация каждый час. Ежедневная сводка. Предлагает действия.',
+  'activityLevel.active': 'Активный',
+  'activityLevel.activeDesc':
+    'Синхронизация каждые 10 мин. Мониторинг каналов, сортировка и составление ответов.',
+  'activityLevel.alwaysOn': 'Всегда включён',
+  'activityLevel.alwaysOnDesc':
+    'Синхронизация в реальном времени. Полная автономия в рамках ограничений.',
+  'activityLevel.currentMonth': 'В этом месяце: ${amount}',
+  'activityLevel.saved': 'Уровень активности обновлён.',
+  'activityLevel.default': 'по умолчанию',
+  'activityLevel.costFree': '0 $',
+  'activityLevel.costRange': '~${min}–${max}/мес.',
+
+  // Sync budget dialog
+  'syncBudget.title': 'Бюджет синхронизации',
+  'syncBudget.maxTokens': 'Макс. токенов на синхронизацию',
+  'syncBudget.maxTokensHelp':
+    'Остановить синхронизацию после потребления указанного количества токенов.',
+  'syncBudget.maxCost': 'Макс. стоимость на синхронизацию (USD)',
+  'syncBudget.maxCostHelp': 'Жёсткий лимит в долларах за один запуск синхронизации.',
+  'syncBudget.syncDepth': 'Глубина синхронизации',
+  'syncBudget.syncDepthHelp': 'Загружать только элементы из этого временного окна.',
+  'syncBudget.days7': 'Последние 7 дней',
+  'syncBudget.days30': 'Последние 30 дней',
+  'syncBudget.days90': 'Последние 90 дней',
+  'syncBudget.allTime': 'За всё время',
+  'syncBudget.unlimited': 'Без ограничений',
+  'syncBudget.saved': 'Бюджет сохранён.',
+
+  // Sync confirm dialog
+  'syncConfirm.title': 'Подтвердить синхронизацию',
+  'syncConfirm.message':
+    'Эта синхронизация обработает ~{items} элементов (~{tokens} токенов, ест. ${cost}).',
+  'syncConfirm.budgetNote': 'Лимит бюджета: ${max}',
+  'syncConfirm.proceed': 'Продолжить',
+  'syncConfirm.cancel': 'Отмена',
+  'syncConfirm.estimating': 'Оценка стоимости...',
+
+  // Monthly cost badge
+  'monthlyCost.badge': '${amount} в этом месяце',
+  'monthlyCost.noData': 'Синхронизаций в этом месяце нет',
+
+  // Onboarding: Custom > Activity
+  'onboarding.custom.stepperActivity': 'Активность',
+  'onboarding.custom.activity.title': 'Активность агента',
+  'onboarding.custom.activity.subtitle':
+    'Насколько проактивно агент отслеживает события и действует в фоне.',
+  'onboarding.custom.activity.defaultDesc':
+    'Умеренная активность — синхронизация каждый час, ежедневная сводка.',
+  'onboarding.custom.activity.configureDesc':
+    'Выберите свой уровень активности. Настройка в Параметры › Уровень активности агента.',
 };
 
 export default messages;

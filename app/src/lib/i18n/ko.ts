@@ -4415,6 +4415,62 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': '로컬 저장소 거부',
   'pages.settings.account.security': '보안',
   'pages.settings.account.securityDesc': '비밀 저장 모드 및 키체인 상태',
+
+  // Agent activity level
+  'activityLevel.title': '에이전트 활동 수준',
+  'activityLevel.description':
+    '에이전트의 능동성을 조절하세요. 높은 수준은 더 많은 토큰을 사용합니다.',
+  'activityLevel.off': '끄기',
+  'activityLevel.offDesc': '백그라운드 처리 없음. 버튼을 눌러야만 동기화됩니다.',
+  'activityLevel.minimal': '최소',
+  'activityLevel.minimalDesc': '소스를 하루에 한 번 동기화합니다. 능동적 메시지 없음.',
+  'activityLevel.moderate': '보통',
+  'activityLevel.moderateDesc': '매 시간 동기화. 일일 요약. 작업을 제안합니다.',
+  'activityLevel.active': '활성',
+  'activityLevel.activeDesc': '10분마다 동기화. 채널 모니터링, 분류, 답변 초안 작성.',
+  'activityLevel.alwaysOn': '항상 켜짐',
+  'activityLevel.alwaysOnDesc': '실시간 동기화. 가이드라인 내 완전한 자율성.',
+  'activityLevel.currentMonth': '이번 달: ${amount}',
+  'activityLevel.saved': '활동 수준이 업데이트되었습니다.',
+  'activityLevel.default': '기본값',
+  'activityLevel.costFree': '$0',
+  'activityLevel.costRange': '~${min}–${max}/월',
+
+  // Sync budget dialog
+  'syncBudget.title': '동기화 예산',
+  'syncBudget.maxTokens': '동기화당 최대 토큰',
+  'syncBudget.maxTokensHelp': '이 토큰 수를 소비하면 동기화를 중지합니다.',
+  'syncBudget.maxCost': '동기화당 최대 비용 (USD)',
+  'syncBudget.maxCostHelp': '각 동기화 실행당 달러 한도.',
+  'syncBudget.syncDepth': '동기화 깊이',
+  'syncBudget.syncDepthHelp': '이 기간의 항목만 가져옵니다.',
+  'syncBudget.days7': '최근 7일',
+  'syncBudget.days30': '최근 30일',
+  'syncBudget.days90': '최근 90일',
+  'syncBudget.allTime': '전체 기간',
+  'syncBudget.unlimited': '무제한',
+  'syncBudget.saved': '예산이 저장되었습니다.',
+
+  // Sync confirm dialog
+  'syncConfirm.title': '동기화 확인',
+  'syncConfirm.message': '이 동기화는 ~{items}개 항목 (~{tokens} 토큰, 예상 ${cost})을 처리합니다.',
+  'syncConfirm.budgetNote': '예산 한도: ${max}',
+  'syncConfirm.proceed': '진행',
+  'syncConfirm.cancel': '취소',
+  'syncConfirm.estimating': '비용 계산 중...',
+
+  // Monthly cost badge
+  'monthlyCost.badge': '이번 달 ${amount}',
+  'monthlyCost.noData': '이번 달 동기화 없음',
+
+  // Onboarding: Custom > Activity
+  'onboarding.custom.stepperActivity': '활동',
+  'onboarding.custom.activity.title': '에이전트 활동',
+  'onboarding.custom.activity.subtitle':
+    '에이전트가 백그라운드에서 얼마나 능동적으로 모니터링하고 행동하는지.',
+  'onboarding.custom.activity.defaultDesc': '보통 활동 — 매시간 동기화, 일일 요약.',
+  'onboarding.custom.activity.configureDesc':
+    '자신만의 활동 수준을 선택하세요. 설정 › 에이전트 활동 수준에서 구성하세요.',
 };
 
 export default messages;

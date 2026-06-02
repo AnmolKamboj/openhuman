@@ -4457,6 +4457,63 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': 'स्थानीय भंडारण अस्वीकार करें',
   'pages.settings.account.security': 'सुरक्षा',
   'pages.settings.account.securityDesc': 'रहस्य भंडारण मोड और कीचेन स्थिति',
+
+  // Agent activity level
+  'activityLevel.title': 'एजेंट गतिविधि स्तर',
+  'activityLevel.description':
+    'नियंत्रित करें कि आपका एजेंट कितना सक्रिय है। उच्च स्तर पर अधिक टोकन का उपयोग होता है।',
+  'activityLevel.off': 'बंद',
+  'activityLevel.offDesc': 'पृष्ठभूमि में कोई प्रसंस्करण नहीं। केवल बटन दबाने पर सिंक होता है।',
+  'activityLevel.minimal': 'न्यूनतम',
+  'activityLevel.minimalDesc': 'दिन में एक बार स्रोत सिंक करता है। कोई सक्रिय संदेश नहीं।',
+  'activityLevel.moderate': 'मध्यम',
+  'activityLevel.moderateDesc': 'हर घंटे सिंक करता है। दैनिक सारांश। क्रियाएं सुझाता है।',
+  'activityLevel.active': 'सक्रिय',
+  'activityLevel.activeDesc':
+    'हर 10 मिनट में सिंक करता है। चैनलों की निगरानी करता है, प्राथमिकता देता है और उत्तर तैयार करता है।',
+  'activityLevel.alwaysOn': 'हमेशा चालू',
+  'activityLevel.alwaysOnDesc': 'रीयल-टाइम सिंक। निर्धारित सीमाओं के भीतर पूर्ण स्वायत्तता।',
+  'activityLevel.currentMonth': 'इस महीने: ${amount}',
+  'activityLevel.saved': 'गतिविधि स्तर अपडेट किया गया।',
+  'activityLevel.default': 'डिफ़ॉल्ट',
+  'activityLevel.costFree': '$0',
+  'activityLevel.costRange': '~${min}–${max}/माह',
+
+  // Sync budget dialog
+  'syncBudget.title': 'सिंक बजट',
+  'syncBudget.maxTokens': 'प्रति सिंक अधिकतम टोकन',
+  'syncBudget.maxTokensHelp': 'इतने टोकन उपयोग होने पर सिंक बंद करें।',
+  'syncBudget.maxCost': 'प्रति सिंक अधिकतम लागत (USD)',
+  'syncBudget.maxCostHelp': 'प्रति सिंक रन के लिए डॉलर की सीमा।',
+  'syncBudget.syncDepth': 'सिंक गहराई',
+  'syncBudget.syncDepthHelp': 'केवल इस समय सीमा के आइटम लाएं।',
+  'syncBudget.days7': 'पिछले 7 दिन',
+  'syncBudget.days30': 'पिछले 30 दिन',
+  'syncBudget.days90': 'पिछले 90 दिन',
+  'syncBudget.allTime': 'सब समय',
+  'syncBudget.unlimited': 'असीमित',
+  'syncBudget.saved': 'बजट सहेजा गया।',
+
+  // Sync confirm dialog
+  'syncConfirm.title': 'सिंक की पुष्टि करें',
+  'syncConfirm.message': 'यह सिंक ~{items} आइटम (~{tokens} टोकन, अनुमानित ${cost}) प्रोसेस करेगा।',
+  'syncConfirm.budgetNote': 'बजट सीमा: ${max}',
+  'syncConfirm.proceed': 'आगे बढ़ें',
+  'syncConfirm.cancel': 'रद्द करें',
+  'syncConfirm.estimating': 'लागत का अनुमान लगाया जा रहा है...',
+
+  // Monthly cost badge
+  'monthlyCost.badge': 'इस महीने ${amount}',
+  'monthlyCost.noData': 'इस महीने कोई सिंक नहीं',
+
+  // Onboarding: Custom > Activity
+  'onboarding.custom.stepperActivity': 'गतिविधि',
+  'onboarding.custom.activity.title': 'एजेंट गतिविधि',
+  'onboarding.custom.activity.subtitle':
+    'आपका एजेंट पृष्ठभूमि में कितनी सक्रियता से निगरानी और कार्य करता है।',
+  'onboarding.custom.activity.defaultDesc': 'मध्यम गतिविधि — प्रति घंटे सिंक, दैनिक सारांश।',
+  'onboarding.custom.activity.configureDesc':
+    'अपना गतिविधि स्तर चुनें। सेटिंग्स › एजेंट गतिविधि स्तर में कॉन्फ़िगर करें।',
 };
 
 export default messages;
