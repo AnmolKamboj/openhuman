@@ -38,6 +38,8 @@ import {
   type StreamingAssistantState,
   type ToolTimelineEntry,
   type ToolTimelineEntryStatus,
+  upsertArtifactFailedForThread,
+  upsertArtifactReadyForThread,
 } from '../store/chatRuntimeSlice';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { selectSocketStatus } from '../store/socketSelectors';
@@ -791,6 +793,44 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
             });
           }
         });
+      },
+      onArtifactReady: event => {
+        rtLog('artifact_ready', {
+          thread: event.thread_id,
+          artifact_id: event.artifact_id,
+          kind: event.kind,
+          size_bytes: event.size_bytes,
+        });
+        dispatch(
+          upsertArtifactReadyForThread({
+            threadId: event.thread_id,
+            artifactId: event.artifact_id,
+            kind: event.kind,
+            title: event.title,
+            path: event.path,
+            sizeBytes: event.size_bytes,
+          })
+        );
+      },
+      onArtifactFailed: event => {
+        // Defence-in-depth: producer is expected to pre-truncate the
+        // reason, but cap again here so a leaky producer cannot dump
+        // unbounded provider stderr into client telemetry.
+        rtLog('artifact_failed', {
+          thread: event.thread_id,
+          artifact_id: event.artifact_id,
+          kind: event.kind,
+          error: event.error.slice(0, 80),
+        });
+        dispatch(
+          upsertArtifactFailedForThread({
+            threadId: event.thread_id,
+            artifactId: event.artifact_id,
+            kind: event.kind,
+            title: event.title,
+            error: event.error,
+          })
+        );
       },
       onApprovalRequest: (event: ChatApprovalRequestEvent) => {
         rtLog('approval_request', {

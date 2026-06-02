@@ -4536,6 +4536,19 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': 'Recusar armazenamento local',
   'pages.settings.account.security': 'Segurança',
   'pages.settings.account.securityDesc': 'Modo de armazenamento de segredos e status do chaveiro',
+  // Chat — agent-generated artifacts (#2779)
+  'chat.artifact.aria': 'Artefato: {title}',
+  'chat.artifact.generating': 'Gerando {kind}…',
+  'chat.artifact.ready': 'Pronto',
+  'chat.artifact.failed': 'Falha ao gerar',
+  'chat.artifact.download': 'Baixar',
+  'chat.artifact.downloading': 'Baixando…',
+  'chat.artifact.downloaded': 'Salvo em {path}',
+  'chat.artifact.download_failed': 'Falha no download: {reason}',
+  'chat.artifact.retry': 'Tentar novamente',
+  'chat.artifact.reveal': 'Mostrar na pasta',
+  'chat.artifact.show_more': 'Mostrar mais',
+  'chat.artifact.show_less': 'Mostrar menos',
 
   // Chat composer toolbar
   'composer.attachFile': 'Anexar arquivo',

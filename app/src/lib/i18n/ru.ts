@@ -4506,6 +4506,19 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': 'Отклонить локальное хранилище',
   'pages.settings.account.security': 'Безопасность',
   'pages.settings.account.securityDesc': 'Режим хранения секретов и статус связки ключей',
+  // Chat — agent-generated artifacts (#2779)
+  'chat.artifact.aria': 'Артефакт: {title}',
+  'chat.artifact.generating': 'Создание {kind}…',
+  'chat.artifact.ready': 'Готово',
+  'chat.artifact.failed': 'Сбой генерации',
+  'chat.artifact.download': 'Скачать',
+  'chat.artifact.downloading': 'Скачивание…',
+  'chat.artifact.downloaded': 'Сохранено в {path}',
+  'chat.artifact.download_failed': 'Сбой скачивания: {reason}',
+  'chat.artifact.retry': 'Повторить',
+  'chat.artifact.reveal': 'Показать в папке',
+  'chat.artifact.show_more': 'Показать больше',
+  'chat.artifact.show_less': 'Свернуть',
 
   // Chat composer toolbar
   'composer.attachFile': 'Прикрепить файл',

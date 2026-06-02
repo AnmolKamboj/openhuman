@@ -4248,6 +4248,19 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': '拒绝本地存储',
   'pages.settings.account.security': '安全',
   'pages.settings.account.securityDesc': '密钥存储模式和密钥链状态',
+  // Chat — agent-generated artifacts (#2779)
+  'chat.artifact.aria': '工件：{title}',
+  'chat.artifact.generating': '正在生成{kind}…',
+  'chat.artifact.ready': '已就绪',
+  'chat.artifact.failed': '生成失败',
+  'chat.artifact.download': '下载',
+  'chat.artifact.downloading': '下载中…',
+  'chat.artifact.downloaded': '已保存到 {path}',
+  'chat.artifact.download_failed': '下载失败：{reason}',
+  'chat.artifact.retry': '重试',
+  'chat.artifact.reveal': '在文件夹中显示',
+  'chat.artifact.show_more': '显示更多',
+  'chat.artifact.show_less': '收起',
 
   // Chat composer toolbar
   'composer.attachFile': '附加文件',

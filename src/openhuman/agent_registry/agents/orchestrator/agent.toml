@@ -160,7 +160,6 @@ named = [
     # Both are routed through the same security/approval gate as `shell`.
     "workflow_load",
     "workflow_phase",
-    # Presentation generation (#2778). Synthesises a .pptx from a
     # structured slide spec via a native Rust engine (`ppt-rs`) running
     # in-process — no Python subprocess, no managed venv. Output lands
     # in the workspace artifacts directory and the tool returns the
