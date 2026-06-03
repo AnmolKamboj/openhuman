@@ -215,11 +215,11 @@ fn request_serializes_correctly() {
         messages: vec![
             Message {
                 role: "system".to_string(),
-                content: "You are OpenHuman".to_string(),
+                content: "You are OpenHuman".into(),
             },
             Message {
                 role: "user".to_string(),
-                content: "hello".to_string(),
+                content: "hello".into(),
             },
         ],
         temperature: Some(0.4),
@@ -578,7 +578,7 @@ async fn streaming_chat_config_rejection_propagates_error_without_sentry_report(
         model: "kimi-k2".to_string(),
         messages: vec![NativeMessage {
             role: "user".to_string(),
-            content: Some("hello".to_string()),
+            content: Some("hello".into()),
             tool_call_id: None,
             tool_calls: None,
             reasoning_content: None,
@@ -884,7 +884,10 @@ fn convert_messages_for_native_maps_tool_result_payload() {
     assert_eq!(converted.len(), 2);
     assert_eq!(converted[1].role, "tool");
     assert_eq!(converted[1].tool_call_id.as_deref(), Some("call_abc"));
-    assert_eq!(converted[1].content.as_deref(), Some("done"));
+    assert_eq!(
+        serde_json::to_value(&converted[1].content).unwrap(),
+        serde_json::json!("done")
+    );
 }
 
 /// Helper: roles in serialized order.
@@ -989,7 +992,10 @@ fn tool_invariants_collapse_fully_unanswered_assistant_call() {
         converted[0].tool_calls.is_none(),
         "fully-unanswered tool_calls must be dropped"
     );
-    assert_eq!(converted[0].content.as_deref(), Some("on it"));
+    assert_eq!(
+        serde_json::to_value(&converted[0].content).unwrap(),
+        serde_json::json!("on it")
+    );
 }
 
 /// Regression guard: a well-formed tool cycle is passed through untouched —
@@ -1191,7 +1197,7 @@ fn enforce_invariants_clears_reasoning_when_assistant_collapses_to_text() {
     let messages = vec![
         NativeMessage {
             role: "assistant".to_string(),
-            content: Some("partial thought".to_string()),
+            content: Some("partial thought".into()),
             tool_call_id: None,
             tool_calls: Some(vec![ToolCall {
                 id: Some("orphan_call".to_string()),
@@ -1206,7 +1212,7 @@ fn enforce_invariants_clears_reasoning_when_assistant_collapses_to_text() {
         // No tool result follows — the tool_calls are orphaned.
         NativeMessage {
             role: "user".to_string(),
-            content: Some("next question".to_string()),
+            content: Some("next question".into()),
             tool_call_id: None,
             tool_calls: None,
             reasoning_content: None,
@@ -1454,7 +1460,7 @@ fn request_serializes_with_tools() {
         model: "test-model".to_string(),
         messages: vec![Message {
             role: "user".to_string(),
-            content: "What is the weather?".to_string(),
+            content: "What is the weather?".into(),
         }],
         temperature: Some(0.7),
         stream: Some(false),
@@ -2120,7 +2126,7 @@ fn convert_messages_for_native_no_reasoning_content_stays_none() {
 fn native_message_reasoning_content_omitted_when_none() {
     let msg = NativeMessage {
         role: "assistant".to_string(),
-        content: Some("hello".to_string()),
+        content: Some("hello".into()),
         tool_call_id: None,
         tool_calls: None,
         reasoning_content: None,
@@ -2138,7 +2144,7 @@ fn native_message_reasoning_content_omitted_when_none() {
 fn native_message_reasoning_content_present_when_some() {
     let msg = NativeMessage {
         role: "assistant".to_string(),
-        content: Some("hello".to_string()),
+        content: Some("hello".into()),
         tool_call_id: None,
         tool_calls: None,
         reasoning_content: Some("I thought carefully.".to_string()),
@@ -2347,5 +2353,138 @@ async fn completion_only_404_fails_fast_without_responses_fallback() {
     assert!(
         !msg.contains("responses fallback failed"),
         "guard must pre-empt the responses fallback, got: {msg}"
+    );
+}
+
+// ── #3205: multimodal [IMAGE:] markers → OpenAI image_url content parts ─────────
+
+const TEST_PNG_DATA_URI: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+/// Text with no markers stays the plain-string `content` arm — byte-identical
+/// to the legacy wire shape so every non-attachment turn is unaffected.
+#[test]
+fn message_content_text_only_serializes_as_string() {
+    let content = MessageContent::from_chat_text("just a normal message");
+    let json = serde_json::to_value(&content).unwrap();
+    assert_eq!(json, serde_json::json!("just a normal message"));
+}
+
+/// A user message carrying one `[IMAGE:data-uri]` marker is promoted to the
+/// OpenAI `content` array: a `text` part followed by an `image_url` part.
+#[test]
+fn message_content_text_plus_image_serializes_as_parts() {
+    let raw = format!("what is in this picture? [IMAGE:{TEST_PNG_DATA_URI}]");
+    let json = serde_json::to_value(MessageContent::from_chat_text(&raw)).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!([
+            { "type": "text", "text": "what is in this picture?" },
+            { "type": "image_url", "image_url": { "url": TEST_PNG_DATA_URI } },
+        ])
+    );
+}
+
+/// An image with no accompanying text emits only the `image_url` part.
+#[test]
+fn message_content_image_only_omits_empty_text_part() {
+    let raw = format!("[IMAGE:{TEST_PNG_DATA_URI}]");
+    let json = serde_json::to_value(MessageContent::from_chat_text(&raw)).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!([
+            { "type": "image_url", "image_url": { "url": TEST_PNG_DATA_URI } },
+        ])
+    );
+}
+
+/// Multiple markers become multiple `image_url` parts, with the text between
+/// them preserved in authored order (not collapsed before the images).
+#[test]
+fn message_content_multiple_images_serialize_in_order() {
+    let raw = format!("compare [IMAGE:{TEST_PNG_DATA_URI}] and [IMAGE:https://example.com/b.jpg]");
+    let json = serde_json::to_value(MessageContent::from_chat_text(&raw)).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!([
+            { "type": "text", "text": "compare" },
+            { "type": "image_url", "image_url": { "url": TEST_PNG_DATA_URI } },
+            { "type": "text", "text": "and" },
+            { "type": "image_url", "image_url": { "url": "https://example.com/b.jpg" } },
+        ])
+    );
+}
+
+/// Interleaved order is preserved exactly — an image-first prompt keeps the
+/// image before the trailing text (CodeRabbit #3268).
+#[test]
+fn message_content_preserves_image_first_then_text_order() {
+    let raw = format!("[IMAGE:{TEST_PNG_DATA_URI}] then explain");
+    let json = serde_json::to_value(MessageContent::from_chat_text(&raw)).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!([
+            { "type": "image_url", "image_url": { "url": TEST_PNG_DATA_URI } },
+            { "type": "text", "text": "then explain" },
+        ])
+    );
+}
+
+/// Request-level: a chat history with an image-bearing user turn serialises the
+/// full body with a string `system` content and an array `user` content.
+#[test]
+fn api_chat_request_mixes_string_and_array_content() {
+    let req = ApiChatRequest {
+        model: "gpt-4o".to_string(),
+        messages: vec![
+            Message {
+                role: "system".to_string(),
+                content: "You are helpful.".into(),
+            },
+            Message {
+                role: "user".to_string(),
+                content: MessageContent::from_chat_text(&format!(
+                    "describe this [IMAGE:{TEST_PNG_DATA_URI}]"
+                )),
+            },
+        ],
+        temperature: None,
+        stream: None,
+        tools: None,
+        tool_choice: None,
+    };
+    let json = serde_json::to_value(&req).unwrap();
+    assert_eq!(
+        json["messages"][0]["content"],
+        serde_json::json!("You are helpful.")
+    );
+    assert_eq!(
+        json["messages"][1]["content"],
+        serde_json::json!([
+            { "type": "text", "text": "describe this" },
+            { "type": "image_url", "image_url": { "url": TEST_PNG_DATA_URI } },
+        ])
+    );
+}
+
+/// The agent streaming path runs history through `convert_messages_for_native`;
+/// an image marker must survive into the `NativeMessage` array content while
+/// plain turns stay strings.
+#[test]
+fn convert_messages_for_native_promotes_image_marker() {
+    let history = vec![
+        ChatMessage::system("be brief"),
+        ChatMessage::user(&format!("look [IMAGE:{TEST_PNG_DATA_URI}]")),
+    ];
+    let native = OpenAiCompatibleProvider::convert_messages_for_native(&history);
+    assert_eq!(
+        serde_json::to_value(&native[0]).unwrap()["content"],
+        serde_json::json!("be brief")
+    );
+    assert_eq!(
+        serde_json::to_value(&native[1]).unwrap()["content"],
+        serde_json::json!([
+            { "type": "text", "text": "look" },
+            { "type": "image_url", "image_url": { "url": TEST_PNG_DATA_URI } },
+        ])
     );
 }

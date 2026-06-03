@@ -21,9 +21,61 @@ pub struct TokenBudgetOutcome {
     pub trimmed: bool,
 }
 
+/// `[IMAGE:<data-uri>]` marker prefix. Mirrors
+/// [`crate::openhuman::agent::multimodal`]: the harness embeds image
+/// attachments as these markers inside the message text until the provider
+/// layer promotes them into structured `image_url` parts. Kept local to avoid
+/// a dependency on the (private) multimodal constant.
+const IMAGE_MARKER_PREFIX: &str = "[IMAGE:";
+
+/// Token allowance charged per `[IMAGE:…]` marker instead of counting its
+/// base64 `data:` URI as text.
+///
+/// **Why this exists (#3205):** an attachment rides as a `[IMAGE:<base64>]`
+/// marker in the message string, so an 8 MiB image is ~11 M characters. At the
+/// `len/4` heuristic that reads as ~2.7 M "tokens" — orders of magnitude past
+/// any context window — so the pre-dispatch budget trimmer evicted the whole
+/// message *before* the image was ever extracted into `image_url` parts, and
+/// the model received a text-only turn (empty/garbage response). Vision models
+/// bill an image at a small fixed cost (OpenAI ≈ 85–1100 tokens by detail); we
+/// charge a conservative upper bound so the budget stays realistic without the
+/// base64 payload ever inflating it.
+const IMAGE_MARKER_TOKEN_COST: usize = 1_200;
+
 /// Rough token estimate: ~4 characters per token (matches tree summarizer).
+///
+/// Image markers are charged at a flat [`IMAGE_MARKER_TOKEN_COST`] rather than
+/// counting their base64 payload as text — see that constant for the rationale.
+/// Markerless text takes the fast path and is unchanged.
 pub fn estimate_tokens(text: &str) -> usize {
-    text.len().saturating_add(3) / 4
+    if !text.contains(IMAGE_MARKER_PREFIX) {
+        return text.len().saturating_add(3) / 4;
+    }
+
+    let mut text_bytes = 0usize;
+    let mut images = 0usize;
+    let mut cursor = 0usize;
+    while let Some(rel) = text[cursor..].find(IMAGE_MARKER_PREFIX) {
+        let start = cursor + rel;
+        text_bytes += start - cursor; // text preceding the marker
+        let after = start + IMAGE_MARKER_PREFIX.len();
+        match text[after..].find(']') {
+            Some(rel_end) => {
+                images += 1;
+                cursor = after + rel_end + 1; // skip the whole marker payload
+            }
+            None => {
+                // Unterminated marker — count the remainder as text and stop.
+                text_bytes += text.len() - start;
+                cursor = text.len();
+                break;
+            }
+        }
+    }
+    text_bytes += text.len() - cursor; // trailing text after the last marker
+
+    (text_bytes.saturating_add(3) / 4)
+        .saturating_add(images.saturating_mul(IMAGE_MARKER_TOKEN_COST))
 }
 
 pub fn estimate_chat_message_tokens(msg: &ChatMessage) -> usize {
@@ -182,6 +234,54 @@ mod tests {
 
     fn user_msg(content: &str) -> ChatMessage {
         ChatMessage::user(content.to_string())
+    }
+
+    #[test]
+    fn estimate_tokens_charges_flat_cost_per_image_marker_not_base64_length() {
+        // A ~120k-char base64 data URI inside an `[IMAGE:]` marker must NOT be
+        // counted as text (that read as ~30k tokens and got the image trimmed,
+        // #3205). It should cost a flat IMAGE_MARKER_TOKEN_COST plus the small
+        // surrounding text, regardless of payload size.
+        let surrounding = "describe this picture";
+        let big_uri = format!("data:image/png;base64,{}", "Q".repeat(120_000));
+        let with_image = format!("{surrounding} [IMAGE:{big_uri}]");
+
+        let est = estimate_tokens(&with_image);
+        let text_only = estimate_tokens(surrounding);
+        assert_eq!(est, text_only.saturating_add(IMAGE_MARKER_TOKEN_COST));
+        assert!(
+            est < 2_000,
+            "image marker must not be counted by base64 length (got {est})"
+        );
+    }
+
+    #[test]
+    fn estimate_tokens_counts_each_image_marker_once() {
+        let two = "[IMAGE:data:image/png;base64,AAA] and [IMAGE:https://x/y.jpg]";
+        let est = estimate_tokens(two);
+        assert!(est >= 2 * IMAGE_MARKER_TOKEN_COST);
+        assert!(est < 2 * IMAGE_MARKER_TOKEN_COST + 50);
+    }
+
+    #[test]
+    fn estimate_tokens_markerless_text_uses_char_heuristic() {
+        let text = "x".repeat(400);
+        assert_eq!(estimate_tokens(&text), 100);
+    }
+
+    #[test]
+    fn image_marker_message_is_not_trimmed_within_budget() {
+        // End-to-end: a huge base64 image in the newest user turn must survive
+        // the budget trim (it used to be evicted as ~30k tokens).
+        let big = format!("look [IMAGE:data:image/png;base64,{}]", "Q".repeat(150_000));
+        let mut messages = vec![ChatMessage::system("sys"), user_msg(&big)];
+        let outcome = trim_chat_messages_to_budget(&mut messages, 200_000);
+        assert!(
+            !outcome.trimmed,
+            "image message must fit the budget, not be trimmed"
+        );
+        assert_eq!(messages.len(), 2);
+        assert!(messages[1].content.contains("[IMAGE:"));
     }
 
     #[test]

@@ -35,9 +35,9 @@ use compatible_parse::{
 };
 use compatible_stream::sse_bytes_to_chunks;
 use compatible_types::{
-    ApiChatRequest, ApiChatResponse, ApiUsage, Choice, Function, Message, NativeChatRequest,
-    NativeMessage, OpenAiStreamOptions, OpenHumanMeta, ResponseMessage, ResponsesRequest,
-    StreamChunkResponse, StreamingToolCall, ToolCall,
+    ApiChatRequest, ApiChatResponse, ApiUsage, Choice, Function, Message, MessageContent,
+    NativeChatRequest, NativeMessage, OpenAiStreamOptions, OpenHumanMeta, ResponseMessage,
+    ResponsesRequest, StreamChunkResponse, StreamingToolCall, ToolCall,
 };
 
 /// A provider that speaks the OpenAI-compatible chat completions API.
@@ -506,13 +506,13 @@ impl OpenAiCompatibleProvider {
                                     // emits `"content":""` rather than omitting
                                     // the key — some providers reject a missing
                                     // content alongside reasoning_content.
-                                    let content = Some(
+                                    let content = Some(MessageContent::Text(
                                         value
                                             .get("content")
                                             .and_then(serde_json::Value::as_str)
                                             .unwrap_or("")
                                             .to_string(),
-                                    );
+                                    ));
 
                                     // Replay the assistant's reasoning so
                                     // DeepSeek thinking mode accepts the
@@ -554,7 +554,8 @@ impl OpenAiCompatibleProvider {
                                 .get("content")
                                 .and_then(serde_json::Value::as_str)
                                 .map(ToString::to_string)
-                                .or_else(|| Some(message.content.clone()));
+                                .or_else(|| Some(message.content.clone()))
+                                .map(MessageContent::Text);
 
                             return NativeMessage {
                                 role: "tool".to_string(),
@@ -568,7 +569,12 @@ impl OpenAiCompatibleProvider {
 
                     NativeMessage {
                         role: message.role.clone(),
-                        content: Some(message.content.clone()),
+                        // User-authored content may carry `[IMAGE:<data-uri>]`
+                        // markers from chat attachments — promote them to
+                        // structured `image_url` parts here. Markerless text
+                        // (every system/assistant/tool turn) is returned as the
+                        // plain-string arm, unchanged on the wire.
+                        content: Some(MessageContent::from_chat_text(&message.content)),
                         tool_call_id: None,
                         tool_calls: None,
                         reasoning_content,
@@ -1350,6 +1356,13 @@ impl Provider for OpenAiCompatibleProvider {
     fn capabilities(&self) -> crate::openhuman::inference::provider::traits::ProviderCapabilities {
         crate::openhuman::inference::provider::traits::ProviderCapabilities {
             native_tool_calling: self.native_tool_calling,
+            // Kept `false` for now. The provider already serializes images as
+            // `image_url` content parts on the chat-completions path (#3205), but
+            // vision is a per-*model* property the provider can't know here — and
+            // the Responses-API path (`chat_via_responses`) is still text-only.
+            // Claiming vision provider-wide would let image turns through the
+            // gate to a possibly-non-vision model. The capability stays off until
+            // it can be driven per-model (e.g. from `model_registry.vision`).
             vision: false,
         }
     }
@@ -1372,18 +1385,18 @@ impl Provider for OpenAiCompatibleProvider {
             };
             messages.push(Message {
                 role: "user".to_string(),
-                content,
+                content: MessageContent::from_chat_text(&content),
             });
         } else {
             if let Some(sys) = system_prompt {
                 messages.push(Message {
                     role: "system".to_string(),
-                    content: sys.to_string(),
+                    content: sys.into(),
                 });
             }
             messages.push(Message {
                 role: "user".to_string(),
-                content: message.to_string(),
+                content: MessageContent::from_chat_text(message),
             });
         }
 
@@ -1570,7 +1583,7 @@ impl Provider for OpenAiCompatibleProvider {
             .iter()
             .map(|m| Message {
                 role: m.role.clone(),
-                content: m.content.clone(),
+                content: MessageContent::from_chat_text(&m.content),
             })
             .collect();
 
@@ -1698,7 +1711,7 @@ impl Provider for OpenAiCompatibleProvider {
             .iter()
             .map(|m| Message {
                 role: m.role.clone(),
-                content: m.content.clone(),
+                content: MessageContent::from_chat_text(&m.content),
             })
             .collect();
 
@@ -2107,12 +2120,12 @@ impl Provider for OpenAiCompatibleProvider {
         if let Some(sys) = system_prompt {
             messages.push(Message {
                 role: "system".to_string(),
-                content: sys.to_string(),
+                content: sys.into(),
             });
         }
         messages.push(Message {
             role: "user".to_string(),
-            content: message.to_string(),
+            content: MessageContent::from_chat_text(message),
         });
 
         let request = ApiChatRequest {
@@ -2284,7 +2297,7 @@ impl Provider for OpenAiCompatibleProvider {
             .into_iter()
             .map(|message| Message {
                 role: message.role,
-                content: message.content,
+                content: MessageContent::from_chat_text(&message.content),
             })
             .collect();
 
