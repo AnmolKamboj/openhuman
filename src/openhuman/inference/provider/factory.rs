@@ -274,6 +274,47 @@ pub fn create_chat_provider_from_string(
         verify_session_active(config)?;
     }
 
+    if let Some(model_with_temp) =
+        p.strip_prefix(crate::openhuman::inference::provider::claude_code::PROVIDER_PREFIX)
+    {
+        let (model, temperature_override) = split_model_and_temperature(model_with_temp);
+        if temperature_override.is_some() {
+            log::warn!(
+                "[providers][chat-factory] claude-code provider: per-model temperature override \
+                 is accepted but not yet wired through to the CLI — the @<temp> suffix is ignored"
+            );
+        }
+        if model.is_empty() {
+            anyhow::bail!(
+                "[chat-factory] provider string '{}' for role '{}' has an empty model — \
+                 use 'claude-code:<model-id>'",
+                p,
+                role
+            );
+        }
+        let workspace = config
+            .config_path
+            .parent()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                directories::UserDirs::new()
+                    .map(|d| d.home_dir().join(".openhuman"))
+                    .unwrap_or_else(|| std::path::PathBuf::from(".openhuman"))
+            });
+        log::debug!(
+            "[providers][chat-factory] building claude-code CLI provider model={} workspace={}",
+            model,
+            workspace.display()
+        );
+        let provider =
+            crate::openhuman::inference::provider::claude_code::ClaudeCodeProvider::from_env(
+                model.clone(),
+                workspace,
+            )?;
+        let p_box: Box<dyn Provider> = Box::new(provider);
+        return Ok((p_box, model));
+    }
+
     if let Some(model_with_temp) = p.strip_prefix(OLLAMA_PROVIDER_PREFIX) {
         let (model, temperature_override) = split_model_and_temperature(model_with_temp);
         if model.is_empty() {

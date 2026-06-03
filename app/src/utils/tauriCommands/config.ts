@@ -1,6 +1,7 @@
 /**
  * Config and settings commands.
  */
+import { invoke } from '@tauri-apps/api/core';
 import debug from 'debug';
 
 import { callCoreRpc } from '../../services/coreRpcClient';
@@ -235,6 +236,79 @@ export async function openhumanGetClientConfig(): Promise<CommandResponse<Client
   return await callCoreRpc<CommandResponse<ClientConfig>>({
     method: 'openhuman.inference_get_client_config',
   });
+}
+
+/**
+ * Status payload for the Claude Code CLI provider — mirrors Rust
+ * `claude_code::types::CliStatus`. The `status` discriminator is the
+ * snake_case Serde rename; `path` and `version` may be absent depending
+ * on which variant fired.
+ */
+export type ClaudeCodeStatus =
+  | { status: 'ok'; version: string; path: string }
+  | { status: 'not_installed' }
+  | { status: 'outdated'; version: string; min_required: string; path: string }
+  | { status: 'unusable'; path: string; reason: string };
+
+/**
+ * Probe the local `claude` CLI binary (Claude Code CLI provider). Returns
+ * install + version status; never throws on a missing binary — the
+ * `not_installed` variant signals that case explicitly.
+ */
+export async function openhumanClaudeCodeStatus(): Promise<CommandResponse<ClaudeCodeStatus>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await callCoreRpc<CommandResponse<ClaudeCodeStatus>>({
+    method: 'openhuman.inference_claude_code_status',
+  });
+}
+
+/**
+ * Auth state for the Claude Code CLI provider — mirrors Rust
+ * `claude_code::auth_status::AuthSource`. The `source` discriminator is
+ * the snake_case Serde rename. `account_email` / `expires_at` are
+ * best-effort: absent when the CLI's credentials schema drifts.
+ */
+export type ClaudeCodeAuthStatus =
+  | {
+      source: 'subscription';
+      account_email: string | null;
+      expires_at: string | null;
+      last_checked: number;
+    }
+  | { source: 'api_key_env'; last_checked: number }
+  | { source: 'none'; last_checked: number };
+
+/**
+ * Detect Claude Code CLI auth state (Pro/Max subscription via
+ * `~/.claude/.credentials.json`, `ANTHROPIC_API_KEY` env, or none).
+ * Pure FS — no CLI spawn, safe to call on a tight refresh loop.
+ */
+export async function openhumanClaudeCodeAuthStatus(): Promise<
+  CommandResponse<ClaudeCodeAuthStatus>
+> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await callCoreRpc<CommandResponse<ClaudeCodeAuthStatus>>({
+    method: 'openhuman.inference_claude_code_auth_status',
+  });
+}
+
+/**
+ * Open the user's native terminal and run `claude login` inside it. The
+ * CLI's OAuth flow is interactive, so we can't host it in-app — we
+ * detach into a terminal window and let the user complete the flow
+ * there, then click Recheck back in the settings card.
+ *
+ * Returns the name of the terminal emulator that was launched.
+ */
+export async function openhumanClaudeCodeLoginLaunch(): Promise<string> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await invoke<string>('claude_code_login_launch');
 }
 
 export async function openhumanUpdateModelSettings(
