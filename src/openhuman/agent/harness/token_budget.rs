@@ -77,6 +77,7 @@ pub fn trim_chat_messages_to_budget(
         context_window,
         estimate_chat_message_tokens,
         |msg| msg.role == "system",
+        |msg| msg.role == "tool",
     )
 }
 
@@ -90,18 +91,21 @@ pub fn trim_conversation_history_to_budget(
         context_window,
         estimate_conversation_message_tokens,
         |msg| matches!(msg, ConversationMessage::Chat(c) if c.role == "system"),
+        |msg| matches!(msg, ConversationMessage::ToolResults(_)),
     )
 }
 
-fn trim_messages_to_budget<T, F, P>(
+fn trim_messages_to_budget<T, F, P, R>(
     messages: &mut Vec<T>,
     context_window: u64,
     estimate: F,
     is_system: P,
+    is_tool_result: R,
 ) -> TokenBudgetOutcome
 where
     F: Fn(&T) -> usize,
     P: Fn(&T) -> bool,
+    R: Fn(&T) -> bool,
 {
     let max_tokens = max_input_tokens(context_window) as usize;
     let original_tokens: usize = messages.iter().map(&estimate).sum();
@@ -137,6 +141,28 @@ where
         let remove_at = absolute_idx - removed;
         messages.remove(remove_at);
         removed += 1;
+    }
+
+    // Snap the window forward past any leading orphaned tool results.
+    //
+    // Oldest-first eviction removes whole messages from the front, so it can
+    // drop an `assistant(tool_calls)` while keeping the `tool` result(s) that
+    // answered it — leaving the window opening on a tool message with no
+    // preceding `tool_calls`. The provider rejects that with a 400 (`messages
+    // with role 'tool' must be a response to a preceding message with
+    // 'tool_calls'`), which streams back empty and surfaces as a generic
+    // "Something went wrong". Drop leading tool-result messages (covering both
+    // single and parallel tool cycles) until the first non-system message is a
+    // clean turn boundary. Mirrors `session::turn::trim_history`'s orphan-snap
+    // and the summarizer's `snap_split_forward`; the wire-boundary
+    // `enforce_tool_message_invariants` remains the final repair.
+    while let Some(first_non_system) = messages.iter().position(|m| !is_system(m)) {
+        if is_tool_result(&messages[first_non_system]) {
+            messages.remove(first_non_system);
+            removed += 1;
+        } else {
+            break;
+        }
     }
 
     let final_tokens: usize = messages.iter().map(&estimate).sum();
@@ -250,5 +276,111 @@ mod tests {
             reasoning_content: None,
         };
         assert!(estimate_conversation_message_tokens(&msg) > 0);
+    }
+
+    fn tool_results(ids: &[&str]) -> ConversationMessage {
+        ConversationMessage::ToolResults(
+            ids.iter()
+                .map(
+                    |id| crate::openhuman::inference::provider::ToolResultMessage {
+                        tool_call_id: (*id).into(),
+                        content: format!("result-{id}"),
+                    },
+                )
+                .collect(),
+        )
+    }
+
+    fn tool_call(id: &str) -> ToolCall {
+        ToolCall {
+            id: id.into(),
+            name: "f".into(),
+            arguments: "{}".into(),
+        }
+    }
+
+    #[test]
+    fn chat_budget_trim_snaps_past_orphaned_tool_result() {
+        // Oldest-first eviction drops the assistant turn and would leave the
+        // `tool` result as a leading orphan (provider 400). The snap must drop
+        // it so the window opens on a clean turn boundary.
+        let mut messages = vec![
+            ChatMessage::system("sys"),
+            ChatMessage::assistant(&"a".repeat(400_000)), // oldest non-system → evicted
+            ChatMessage::tool("result for the evicted tool call"),
+            user_msg("keep-me"),
+        ];
+        let outcome = trim_chat_messages_to_budget(&mut messages, 1_000);
+        assert!(outcome.trimmed);
+        let first_non_system = messages
+            .iter()
+            .find(|m| m.role != "system")
+            .expect("a non-system message survives");
+        assert_ne!(
+            first_non_system.role, "tool",
+            "leading orphan tool result must be snapped away, not sent to the provider"
+        );
+        assert!(messages.iter().any(|m| m.content == "keep-me"));
+    }
+
+    #[test]
+    fn conversation_budget_trim_snaps_past_orphaned_parallel_tool_results() {
+        // A parallel cycle: one AssistantToolCalls answered by two ToolResults.
+        // Evicting the call must not leave either result orphaned at the head.
+        let mut history = vec![
+            ConversationMessage::Chat(ChatMessage::system("sys")),
+            ConversationMessage::AssistantToolCalls {
+                text: Some("x".repeat(400_000)), // oldest non-system → evicted
+                tool_calls: vec![tool_call("X"), tool_call("Y")],
+                reasoning_content: None,
+            },
+            tool_results(&["X"]),
+            tool_results(&["Y"]),
+            ConversationMessage::Chat(user_msg("keep-me")),
+        ];
+        let outcome = trim_conversation_history_to_budget(&mut history, 1_000);
+        assert!(outcome.trimmed);
+        let first_non_system = history
+            .iter()
+            .find(|m| !matches!(m, ConversationMessage::Chat(c) if c.role == "system"))
+            .expect("a non-system message survives");
+        assert!(
+            !matches!(first_non_system, ConversationMessage::ToolResults(_)),
+            "leading orphan tool results must be snapped away"
+        );
+        assert!(history
+            .iter()
+            .any(|m| matches!(m, ConversationMessage::Chat(c) if c.content == "keep-me")));
+    }
+
+    #[test]
+    fn conversation_budget_trim_keeps_paired_call_and_result_at_window_head() {
+        // When the post-trim window opens on an assistant(tool_calls) followed
+        // by its result, the snap must NOT remove the (validly paired) result.
+        let mut history = vec![
+            ConversationMessage::Chat(user_msg(&"x".repeat(400_000))), // evicted
+            ConversationMessage::AssistantToolCalls {
+                text: None,
+                tool_calls: vec![tool_call("A")],
+                reasoning_content: None,
+            },
+            tool_results(&["A"]),
+            ConversationMessage::Chat(user_msg("keep")),
+        ];
+        let outcome = trim_conversation_history_to_budget(&mut history, 1_000);
+        assert!(outcome.trimmed);
+        assert!(
+            matches!(
+                history.first(),
+                Some(ConversationMessage::AssistantToolCalls { .. })
+            ),
+            "window should open on the surviving tool call"
+        );
+        assert!(
+            history
+                .iter()
+                .any(|m| matches!(m, ConversationMessage::ToolResults(_))),
+            "a validly-paired tool result must be retained, not over-snapped"
+        );
     }
 }
