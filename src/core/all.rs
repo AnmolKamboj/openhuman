@@ -264,6 +264,9 @@ fn build_registered_controllers() -> Vec<RegisteredController> {
     controllers.extend(crate::openhuman::notifications::all_notifications_registered_controllers());
     // Google Meet call-join request validation (shell handles the webview)
     controllers.extend(crate::openhuman::meet::all_meet_registered_controllers());
+    // Agent meetings — backend-delegated Meet bot via Socket.IO
+    controllers
+        .extend(crate::openhuman::agent_meetings::all_agent_meetings_registered_controllers());
     // Live meet-agent loop: STT/LLM/TTS over the open call's audio.
     controllers.extend(crate::openhuman::meet_agent::all_meet_agent_registered_controllers());
     // Desktop companion — Clicky-style interaction loop.
@@ -383,6 +386,8 @@ fn build_declared_controller_schemas() -> Vec<ControllerSchema> {
     schemas.extend(crate::openhuman::notifications::all_notifications_controller_schemas());
     // Google Meet call-join request validation
     schemas.extend(crate::openhuman::meet::all_meet_controller_schemas());
+    // Agent meetings — backend-delegated Meet bot via Socket.IO
+    schemas.extend(crate::openhuman::agent_meetings::all_agent_meetings_controller_schemas());
     // Live meet-agent listening + speaking loop
     schemas.extend(crate::openhuman::meet_agent::all_meet_agent_controller_schemas());
     // Desktop companion — Clicky-style interaction loop.
@@ -513,6 +518,9 @@ pub fn namespace_description(namespace: &str) -> Option<&'static str> {
         "meet_agent" => Some(
             "Live agent loop for an open Google Meet call: shell streams inbound PCM, \
              core runs VAD-segmented STT → LLM → TTS, shell pulls synthesized PCM back.",
+        ),
+        "agent_meetings" => Some(
+            "Backend-delegated meeting bot (Google Meet, Zoom, Teams, Webex) via Socket.IO — join, leave, and harness response.",
         ),
         "devices" => Some(
             "Paired mobile device management — pairing channel creation, listing, and revocation.",
