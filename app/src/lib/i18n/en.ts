@@ -613,6 +613,7 @@ const en: TranslationMap = {
   'onboarding.runtimeChoice.continueCloud': 'Continue with Simple',
   'onboarding.runtimeChoice.continueCustom': 'Continue with Custom',
   'onboarding.runtimeChoice.recommended': 'Recommended',
+  'onboarding.runtimeChoice.exitError': 'Could not finish onboarding. Please try again.',
 
   // Onboarding: API keys step (only when Custom is picked)
   'onboarding.apiKeys.title': "Let's Add Your API Keys",

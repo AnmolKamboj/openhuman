@@ -501,6 +501,7 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.continueCloud': 'Kontynuuj w trybie Prosto',
   'onboarding.runtimeChoice.continueCustom': 'Kontynuuj w trybie Niestandardowo',
   'onboarding.runtimeChoice.recommended': 'Polecane',
+  'onboarding.runtimeChoice.exitError': 'Nie udało się zakończyć wdrożenia. Spróbuj ponownie.',
   'onboarding.apiKeys.title': 'Dodajmy Twoje klucze API',
   'onboarding.apiKeys.subtitle':
     'Możesz wkleić je teraz lub pominąć i dodać później w Ustawieniach › AI. Klucze są przechowywane na tym urządzeniu, zaszyfrowane w spoczynku.',

@@ -497,6 +497,7 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.continueCloud': 'Lanjutkan dengan Sederhana',
   'onboarding.runtimeChoice.continueCustom': 'Lanjutkan dengan Kustom',
   'onboarding.runtimeChoice.recommended': 'Direkomendasikan',
+  'onboarding.runtimeChoice.exitError': 'Tidak dapat menyelesaikan orientasi. Silakan coba lagi.',
   'onboarding.apiKeys.title': 'Mari Tambahkan API Key Anda',
   'onboarding.apiKeys.subtitle':
     'Anda dapat menempelkannya sekarang atau lewati dan tambahkan nanti di Pengaturan › AI. Key disimpan di perangkat ini, dienkripsi saat penyimpanan.',

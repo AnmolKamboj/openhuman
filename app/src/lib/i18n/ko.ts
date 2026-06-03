@@ -493,6 +493,7 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.continueCloud': '간단 모드로 계속',
   'onboarding.runtimeChoice.continueCustom': '사용자 지정으로 계속',
   'onboarding.runtimeChoice.recommended': '추천',
+  'onboarding.runtimeChoice.exitError': '온보딩을 완료할 수 없습니다. 다시 시도해 주세요.',
   'onboarding.apiKeys.title': 'API 키를 추가해 봅시다',
   'onboarding.apiKeys.subtitle':
     '지금 붙여넣거나 건너뛰고 나중에 설정 › AI에서 추가할 수 있습니다. 키는 이 기기에 저장되며 저장 시 암호화됩니다.',

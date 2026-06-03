@@ -503,6 +503,7 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.continueCloud': 'Continua con Semplice',
   'onboarding.runtimeChoice.continueCustom': 'Continua con Personalizzato',
   'onboarding.runtimeChoice.recommended': 'Consigliato',
+  'onboarding.runtimeChoice.exitError': "Impossibile completare l'onboarding. Riprova.",
   'onboarding.apiKeys.title': 'Aggiungiamo le tue chiavi API',
   'onboarding.apiKeys.subtitle':
     'Puoi incollarle ora o saltare e aggiungerle dopo in Impostazioni › AI. Le chiavi sono memorizzate su questo dispositivo, crittografate a riposo.',

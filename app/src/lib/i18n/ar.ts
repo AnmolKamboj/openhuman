@@ -486,6 +486,7 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.continueCloud': 'المتابعة بالخيار البسيط',
   'onboarding.runtimeChoice.continueCustom': 'المتابعة بالخيار المخصص',
   'onboarding.runtimeChoice.recommended': 'موصى به',
+  'onboarding.runtimeChoice.exitError': 'تعذّر إتمام الإعداد. يُرجى المحاولة مجددًا.',
   'onboarding.apiKeys.title': 'لنضف مفاتيح API الخاصة بك',
   'onboarding.apiKeys.subtitle':
     'يمكنك لصقها الآن أو تخطيها وإضافتها لاحقًا من الإعدادات › الذكاء الاصطناعي. تُحفظ المفاتيح على هذا الجهاز مشفرةً.',

@@ -477,6 +477,7 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.continueCloud': '继续使用简单模式',
   'onboarding.runtimeChoice.continueCustom': '继续使用自定义模式',
   'onboarding.runtimeChoice.recommended': '推荐',
+  'onboarding.runtimeChoice.exitError': '无法完成引导流程，请重试。',
   'onboarding.apiKeys.title': '添加你的 API 密钥',
   'onboarding.apiKeys.subtitle':
     '你可以现在粘贴，也可以跳过并稍后在设置 › AI 中添加。密钥会加密存储在此设备上。',

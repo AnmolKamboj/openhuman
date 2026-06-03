@@ -493,6 +493,7 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.continueCloud': 'सिंपल के साथ जारी रखें',
   'onboarding.runtimeChoice.continueCustom': 'कस्टम के साथ जारी रखें',
   'onboarding.runtimeChoice.recommended': 'सुझावित',
+  'onboarding.runtimeChoice.exitError': 'ऑनबोर्डिंग पूरी नहीं हो सकी। कृपया पुनः प्रयास करें।',
   'onboarding.apiKeys.title': 'अपनी API Keys जोड़ें',
   'onboarding.apiKeys.subtitle':
     'अभी पेस्ट करें या बाद में Settings › AI में जोड़ें। Keys इस डिवाइस पर एन्क्रिप्टेड रहती हैं।',

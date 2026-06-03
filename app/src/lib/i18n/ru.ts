@@ -498,6 +498,8 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.continueCloud': 'Продолжить с простым режимом',
   'onboarding.runtimeChoice.continueCustom': 'Продолжить со своими настройками',
   'onboarding.runtimeChoice.recommended': 'Рекомендуется',
+  'onboarding.runtimeChoice.exitError':
+    'Не удалось завершить настройку. Пожалуйста, попробуйте ещё раз.',
   'onboarding.apiKeys.title': 'Добавь свои API-ключи',
   'onboarding.apiKeys.subtitle':
     'Вставь их сейчас или пропусти и добавь позже в Настройки › AI. Ключи хранятся на этом устройстве в зашифрованном виде.',

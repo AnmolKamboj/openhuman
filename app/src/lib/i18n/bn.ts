@@ -494,6 +494,7 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.continueCloud': 'সহজ দিয়ে চালিয়ে যান',
   'onboarding.runtimeChoice.continueCustom': 'কাস্টম দিয়ে চালিয়ে যান',
   'onboarding.runtimeChoice.recommended': 'প্রস্তাবিত',
+  'onboarding.runtimeChoice.exitError': 'অনবোর্ডিং শেষ করা যায়নি। আবার চেষ্টা করুন।',
   'onboarding.apiKeys.title': 'আপনার API কী যোগ করুন',
   'onboarding.apiKeys.subtitle':
     'এখনই পেস্ট করুন বা এড়িয়ে গিয়ে পরে Settings › AI-এ যোগ করুন। কীগুলো এই ডিভাইসে এনক্রিপ্ট করে সংরক্ষিত থাকে।',

@@ -506,6 +506,8 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.continueCloud': 'Continuar con Simple',
   'onboarding.runtimeChoice.continueCustom': 'Continuar con Personalizado',
   'onboarding.runtimeChoice.recommended': 'Recomendado',
+  'onboarding.runtimeChoice.exitError':
+    'No se pudo completar el proceso de incorporación. Por favor, inténtalo de nuevo.',
   'onboarding.apiKeys.title': 'Agreguemos tus claves API',
   'onboarding.apiKeys.subtitle':
     'Puedes pegarlas ahora u omitir y agregarlas luego en Configuración › IA. Las claves se guardan en este dispositivo, cifradas en reposo.',

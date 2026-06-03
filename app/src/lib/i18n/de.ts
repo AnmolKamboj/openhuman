@@ -508,6 +508,8 @@ const messages: TranslationMap = {
   'onboarding.runtimeChoice.continueCloud': 'Fahre mit „Einfach“ fort',
   'onboarding.runtimeChoice.continueCustom': 'Fahre mit Benutzerdefiniert fort',
   'onboarding.runtimeChoice.recommended': 'Empfohlen',
+  'onboarding.runtimeChoice.exitError':
+    'Onboarding konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.',
   'onboarding.apiKeys.title': 'Fügen wir deine API-Schlüssel hinzu',
   'onboarding.apiKeys.subtitle':
     'Du kannst sie jetzt einfügen oder überspringen und später unter „Einstellungen“ > „KI“ hinzufügen. Schlüssel werden auf diesem Gerät gespeichert und im Ruhezustand verschlüsselt.',
