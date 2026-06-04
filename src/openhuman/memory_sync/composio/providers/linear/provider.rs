@@ -26,8 +26,9 @@ use super::{ingest::ingest_issue_into_memory_tree, sync};
 use crate::openhuman::config::Config;
 use crate::openhuman::memory_sync::composio::providers::sync_state::{extract_item_id, SyncState};
 use crate::openhuman::memory_sync::composio::providers::{
-    merge_extra, pick_str, ComposioProvider, CuratedTool, NormalizedTask, ProviderContext,
-    ProviderUserProfile, SyncOutcome, SyncReason, TaskFetchFilter, TaskKind,
+    merge_extra, pick_str, resolve_sync_interval_secs, ComposioProvider, CuratedTool,
+    NormalizedTask, ProviderContext, ProviderUserProfile, SyncOutcome, SyncReason, TaskFetchFilter,
+    TaskKind,
 };
 
 const ACTION_LIST_USERS: &str = "LINEAR_LIST_LINEAR_USERS";
@@ -78,7 +79,7 @@ impl ComposioProvider for LinearProvider {
     fn sync_interval_secs(&self) -> Option<u64> {
         // 30 minutes — same cadence as ClickUp/Notion. Linear issues change
         // more slowly than chat but faster than email.
-        Some(30 * 60)
+        Some(resolve_sync_interval_secs("linear", 30 * 60))
     }
 
     async fn fetch_user_profile(
