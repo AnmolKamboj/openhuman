@@ -1205,6 +1205,10 @@ impl DomainEvent {
             | Self::ChannelDisconnected { channel, .. } => Some(channel.as_str()),
             Self::ToolExecutionStarted { tool_name, .. }
             | Self::ToolExecutionCompleted { tool_name, .. } => Some(tool_name.as_str()),
+            Self::RunQueueMessageQueued { thread_id, .. }
+            | Self::RunQueueMessageDelivered { thread_id, .. }
+            | Self::RunQueueFollowupDispatched { thread_id, .. }
+            | Self::RunQueueInterrupted { thread_id, .. } => Some(thread_id.as_str()),
             _ => None,
         }
     }
