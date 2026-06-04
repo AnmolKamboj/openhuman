@@ -2700,6 +2700,10 @@ const messages: TranslationMap = {
   'intelligence.tasks.composer.create': 'Crear tarea',
   'intelligence.tasks.composer.creating': 'Creando…',
   'intelligence.tasks.composer.createFailed': 'No se pudo crear la tarea',
+  'intelligence.tasks.composer.assignAgentLabel':
+    'Deja que un agente se encargue de esto automáticamente',
+  'intelligence.tasks.composer.assignAgentHint':
+    'El tablero de tareas la toma y la ejecuta por ti. Déjalo desactivado para una tarea personal simple.',
   'intelligence.tasks.sourceList.subtitle':
     'Tareas de fuentes esperando convertirse en trabajo del agente.',
   'intelligence.tasks.sourceList.empty': 'No hay tareas de fuentes en espera.',

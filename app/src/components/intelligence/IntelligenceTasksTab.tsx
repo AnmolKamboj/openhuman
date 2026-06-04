@@ -214,6 +214,26 @@ export default function IntelligenceTasksTab() {
     };
   }, [loadAll]);
 
+  // Background board mutations — the dispatcher poller claiming a card,
+  // `update_task` from an autonomous run, `write_back`, triage, stale-reclaim —
+  // update the persisted board but emit no live socket event to this tab (the
+  // progress→socket bridge only fires inside an interactive, client-connected
+  // turn). So the user-tasks + task-sources boards would otherwise look frozen
+  // while work happens in the background. Re-read just those two on a light
+  // interval while the tab is visible; they're local in-process RPC, so it's
+  // cheap. (A push-based fix would need a core DomainEvent + socket broadcast;
+  // this keeps the fix isolated to the tab and catches every mutation source.)
+  useEffect(() => {
+    const POLL_MS = 4000;
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      void fetchPersonalBoard();
+      void fetchTaskSourcesBoard();
+    };
+    const handle = window.setInterval(tick, POLL_MS);
+    return () => window.clearInterval(handle);
+  }, [fetchPersonalBoard, fetchTaskSourcesBoard]);
+
   // A task created from the composer lands either on the personal board or
   // on a chosen conversation thread. `add` returns the updated board, so we
   // merge it directly — re-fetching listTurnStates would return a stale
@@ -397,7 +417,7 @@ export default function IntelligenceTasksTab() {
               status: 'todo',
               objective: draft.objective,
               notes: draft.notes,
-              assignedAgent: 'agent_coder',
+              assignedAgent: 'orchestrator',
               approvalMode: 'not_required',
               plan: draft.plan,
               allowedTools: draft.allowedTools,

@@ -2650,6 +2650,9 @@ const messages: TranslationMap = {
   'intelligence.tasks.composer.create': 'কাজ তৈরি করুন ( T)',
   'intelligence.tasks.composer.creating': 'তৈরি করা হচ্ছে...',
   'intelligence.tasks.composer.createFailed': 'কাজ তৈরি করতে ব্যর্থ',
+  'intelligence.tasks.composer.assignAgentLabel': 'একজন এজেন্টকে স্বয়ংক্রিয়ভাবে এটি করতে দিন',
+  'intelligence.tasks.composer.assignAgentHint':
+    'টাস্ক বোর্ড এটি তুলে নিয়ে আপনার হয়ে চালাবে। সাধারণ ব্যক্তিগত কাজের জন্য বন্ধ রাখুন।',
   'intelligence.tasks.sourceList.subtitle': 'এজেন্টের কাজে রূপান্তরের অপেক্ষায় থাকা উৎস কাজ।',
   'intelligence.tasks.sourceList.empty': 'অপেক্ষায় কোনো উৎস কাজ নেই।',
   'intelligence.tasks.sourceList.queued': 'সারিবদ্ধ',

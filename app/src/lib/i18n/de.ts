@@ -2716,6 +2716,9 @@ const messages: TranslationMap = {
   'intelligence.tasks.composer.create': 'Aufgabe erstellen',
   'intelligence.tasks.composer.creating': 'Erstellen…',
   'intelligence.tasks.composer.createFailed': 'Die Aufgabe konnte nicht erstellt werden',
+  'intelligence.tasks.composer.assignAgentLabel': 'Einen Agenten automatisch daran arbeiten lassen',
+  'intelligence.tasks.composer.assignAgentHint':
+    'Das Aufgabenboard übernimmt sie und erledigt sie für dich. Für eine einfache persönliche Aufgabe ausgeschaltet lassen.',
   'intelligence.tasks.sourceList.subtitle':
     'Quellaufgaben, die in Agentenarbeit umgewandelt werden sollen.',
   'intelligence.tasks.sourceList.empty': 'Keine Quellaufgaben in der Warteschlange.',

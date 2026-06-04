@@ -49,6 +49,8 @@ export interface AddTodoInput {
   status?: TaskBoardCardStatus;
   objective?: string | null;
   notes?: string | null;
+  assignedAgent?: string | null;
+  approvalMode?: TaskApprovalMode | null;
 }
 
 /** Fields accepted when editing a card. Omitted fields are left unchanged. */
@@ -120,6 +122,8 @@ export const todosApi = {
         status: input.status,
         objective: input.objective,
         notes: input.notes,
+        assignedAgent: input.assignedAgent,
+        approvalMode: input.approvalMode,
       }),
     });
     return snapshotToBoard(snap, input.threadId);

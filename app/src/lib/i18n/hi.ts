@@ -2655,6 +2655,9 @@ const messages: TranslationMap = {
   'intelligence.tasks.composer.create': 'कार्य',
   'intelligence.tasks.composer.creating': 'बनाना',
   'intelligence.tasks.composer.createFailed': 'काम नहीं कर सका',
+  'intelligence.tasks.composer.assignAgentLabel': 'किसी एजेंट को इसे स्वचालित रूप से करने दें',
+  'intelligence.tasks.composer.assignAgentHint':
+    'टास्क बोर्ड इसे उठाकर आपके लिए चला देगा। सामान्य निजी कार्य के लिए इसे बंद रखें।',
   'intelligence.tasks.sourceList.subtitle': 'एजेंट कार्य बनने की प्रतीक्षा कर रहे स्रोत कार्य।',
   'intelligence.tasks.sourceList.empty': 'कोई स्रोत कार्य प्रतीक्षा में नहीं है।',
   'intelligence.tasks.sourceList.queued': 'कतार में',

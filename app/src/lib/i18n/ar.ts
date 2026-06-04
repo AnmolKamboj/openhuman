@@ -2601,6 +2601,9 @@ const messages: TranslationMap = {
   'intelligence.tasks.composer.create': 'إنشاء مهمة',
   'intelligence.tasks.composer.creating': 'خلق...',
   'intelligence.tasks.composer.createFailed': 'لا يمكن خلق المهمة',
+  'intelligence.tasks.composer.assignAgentLabel': 'دع وكيلًا يعمل على هذه المهمة تلقائيًا',
+  'intelligence.tasks.composer.assignAgentHint':
+    'تلتقطها لوحة المهام وتنفّذها نيابةً عنك. اتركها مغلقة للحصول على مهمة شخصية عادية.',
   'intelligence.tasks.sourceList.subtitle': 'مهام المصادر التي تنتظر التحول إلى عمل للوكيل.',
   'intelligence.tasks.sourceList.empty': 'لا توجد مهام مصادر في الانتظار.',
   'intelligence.tasks.sourceList.queued': 'في قائمة الانتظار',

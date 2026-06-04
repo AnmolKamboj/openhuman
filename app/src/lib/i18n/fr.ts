@@ -2709,6 +2709,9 @@ const messages: TranslationMap = {
   'intelligence.tasks.composer.create': 'Créer une tâche',
   'intelligence.tasks.composer.creating': 'Création…',
   'intelligence.tasks.composer.createFailed': 'Impossible de créer la tâche',
+  'intelligence.tasks.composer.assignAgentLabel': "Laisser un agent s'en charger automatiquement",
+  'intelligence.tasks.composer.assignAgentHint':
+    "Le tableau des tâches la prend en charge et l'exécute pour vous. Laissez désactivé pour une simple tâche personnelle.",
   'intelligence.tasks.sourceList.subtitle':
     "Tâches de sources en attente de devenir du travail d'agent.",
   'intelligence.tasks.sourceList.empty': 'Aucune tâche de source en attente.',

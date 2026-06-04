@@ -2690,6 +2690,10 @@ const messages: TranslationMap = {
   'intelligence.tasks.composer.create': 'Crea attività',
   'intelligence.tasks.composer.creating': 'Creando…',
   'intelligence.tasks.composer.createFailed': 'Impossibile creare il task',
+  'intelligence.tasks.composer.assignAgentLabel':
+    'Lascia che un agente se ne occupi automaticamente',
+  'intelligence.tasks.composer.assignAgentHint':
+    'La bacheca delle attività la prende in carico e la esegue per te. Lascia disattivato per una semplice attività personale.',
   'intelligence.tasks.sourceList.subtitle':
     "Attività dalle fonti in attesa di diventare lavoro dell'agente.",
   'intelligence.tasks.sourceList.empty': 'Nessuna attività da fonti in attesa.',

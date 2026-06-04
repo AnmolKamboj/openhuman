@@ -3036,6 +3036,9 @@ const en: TranslationMap = {
   'intelligence.tasks.composer.create': 'Create task',
   'intelligence.tasks.composer.creating': 'Creating…',
   'intelligence.tasks.composer.createFailed': "Couldn't create the task",
+  'intelligence.tasks.composer.assignAgentLabel': 'Let an agent work on this automatically',
+  'intelligence.tasks.composer.assignAgentHint':
+    'The task board picks it up and runs it for you. Leave off for a plain personal to-do.',
   'intelligence.tasks.sourceList.subtitle': 'Source tasks waiting to become agent work.',
   'intelligence.tasks.sourceList.empty': 'No source tasks waiting.',
   'intelligence.tasks.sourceList.queued': 'Queued',

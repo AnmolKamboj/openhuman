@@ -2657,6 +2657,9 @@ const messages: TranslationMap = {
   'intelligence.tasks.composer.create': 'Buat tugas',
   'intelligence.tasks.composer.creating': 'Membuat…',
   'intelligence.tasks.composer.createFailed': 'Gagal membuat tugas',
+  'intelligence.tasks.composer.assignAgentLabel': 'Biarkan agen mengerjakan ini secara otomatis',
+  'intelligence.tasks.composer.assignAgentHint':
+    'Papan tugas akan mengambil dan menjalankannya untuk Anda. Biarkan nonaktif untuk tugas pribadi biasa.',
   'intelligence.tasks.sourceList.subtitle': 'Tugas sumber yang menunggu menjadi pekerjaan agen.',
   'intelligence.tasks.sourceList.empty': 'Tidak ada tugas sumber yang menunggu.',
   'intelligence.tasks.sourceList.queued': 'Dalam antrean',

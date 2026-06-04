@@ -2523,6 +2523,9 @@ const messages: TranslationMap = {
   'intelligence.tasks.composer.create': '创建任务',
   'intelligence.tasks.composer.creating': '正在创建…',
   'intelligence.tasks.composer.createFailed': '无法创建任务',
+  'intelligence.tasks.composer.assignAgentLabel': '让智能体自动处理此任务',
+  'intelligence.tasks.composer.assignAgentHint':
+    '任务看板会接手并替你执行。普通的个人待办请保持关闭。',
   'intelligence.tasks.sourceList.subtitle': '等待转为智能体工作的来源任务。',
   'intelligence.tasks.sourceList.empty': '没有等待处理的来源任务。',
   'intelligence.tasks.sourceList.queued': '已入队',

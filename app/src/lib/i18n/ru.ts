@@ -2670,6 +2670,9 @@ const messages: TranslationMap = {
   'intelligence.tasks.composer.create': 'Создать задачу',
   'intelligence.tasks.composer.creating': 'Создание…',
   'intelligence.tasks.composer.createFailed': 'Не удалось создать задачу',
+  'intelligence.tasks.composer.assignAgentLabel': 'Поручить агенту выполнить это автоматически',
+  'intelligence.tasks.composer.assignAgentHint':
+    'Доска задач возьмёт её и выполнит за вас. Оставьте выключенным для обычной личной задачи.',
   'intelligence.tasks.sourceList.subtitle':
     'Задачи из источников, ожидающие превращения в работу агента.',
   'intelligence.tasks.sourceList.empty': 'Нет ожидающих задач из источников.',

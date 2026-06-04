@@ -2630,6 +2630,9 @@ const messages: TranslationMap = {
   'intelligence.tasks.composer.create': '작업 만들기',
   'intelligence.tasks.composer.creating': '만드는 중…',
   'intelligence.tasks.composer.createFailed': '작업을 만들 수 없습니다',
+  'intelligence.tasks.composer.assignAgentLabel': '에이전트가 이 작업을 자동으로 처리하도록 하기',
+  'intelligence.tasks.composer.assignAgentHint':
+    '작업 보드가 이를 가져와 대신 실행합니다. 일반 개인 할 일은 꺼 두세요.',
   'intelligence.tasks.sourceList.subtitle': '에이전트 작업으로 전환될 소스 작업입니다.',
   'intelligence.tasks.sourceList.empty': '대기 중인 소스 작업이 없습니다.',
   'intelligence.tasks.sourceList.queued': '대기열에 추가됨',
