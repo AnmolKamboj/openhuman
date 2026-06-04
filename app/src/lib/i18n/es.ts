@@ -1191,6 +1191,9 @@ const messages: TranslationMap = {
   'mcp.detail.reconfigureSuccess': 'Entorno actualizado y reconectado.',
   'mcp.detail.reconfigureReconnectFailed':
     'Guardado, pero no se pudo reconectar con los nuevos valores.',
+  'mcp.detail.enable': 'Habilitar',
+  'mcp.detail.disable': 'Deshabilitar',
+  'mcp.status.disabled': 'Deshabilitado',
   'mcp.detail.tools': 'Herramientas',
   'onboarding.skipForNow': 'Saltar por ahora',
   'onboarding.localAI.continueWithCloud': 'Continuar con la nube',
