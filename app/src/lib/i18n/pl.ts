@@ -2584,6 +2584,7 @@ const messages: TranslationMap = {
   'conversations.taskKanban.saveChanges': 'Zapisz zmiany',
   'conversations.taskKanban.deleteCard': 'Usuń',
   'conversations.taskKanban.workTask': 'Pracuj nad zadaniem',
+  'conversations.taskKanban.viewWork': 'Zobacz pracę',
   'conversations.taskKanban.startingTask': 'Uruchamianie…',
   'conversations.taskKanban.updateFailed':
     'Nie udało się zaktualizować zadania; zmian nie zapisano.',

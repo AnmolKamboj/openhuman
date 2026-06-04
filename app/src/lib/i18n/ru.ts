@@ -2572,6 +2572,7 @@ const messages: TranslationMap = {
   'conversations.taskKanban.saveChanges': 'Сохранить изменения',
   'conversations.taskKanban.deleteCard': 'Удалить',
   'conversations.taskKanban.workTask': 'Работать над задачей',
+  'conversations.taskKanban.viewWork': 'Показать работу',
   'conversations.taskKanban.startingTask': 'Запуск…',
   'conversations.taskKanban.updateFailed': 'Не удалось обновить задачу; изменения не сохранились.',
   'conversations.taskKanban.sourcesButton': 'Источники',

@@ -2529,6 +2529,7 @@ const messages: TranslationMap = {
   'conversations.taskKanban.saveChanges': '변경 사항 저장',
   'conversations.taskKanban.deleteCard': '삭제',
   'conversations.taskKanban.workTask': '작업 시작',
+  'conversations.taskKanban.viewWork': '작업 보기',
   'conversations.taskKanban.startingTask': '시작 중…',
   'conversations.taskKanban.updateFailed':
     '작업을 업데이트할 수 없어 변경 사항이 저장되지 않았습니다.',

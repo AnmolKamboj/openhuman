@@ -2557,6 +2557,7 @@ const messages: TranslationMap = {
   'conversations.taskKanban.saveChanges': 'Simpan perubahan',
   'conversations.taskKanban.deleteCard': 'Hapus',
   'conversations.taskKanban.workTask': 'Kerjakan tugas',
+  'conversations.taskKanban.viewWork': 'Lihat pekerjaan',
   'conversations.taskKanban.startingTask': 'Memulai…',
   'conversations.taskKanban.updateFailed': 'Tak bisa memutakhirkan tugas; perubahan tak disimpan.',
   'conversations.taskKanban.sourcesButton': 'Sumber',

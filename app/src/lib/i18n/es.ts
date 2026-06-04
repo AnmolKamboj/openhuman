@@ -2599,6 +2599,7 @@ const messages: TranslationMap = {
   'conversations.taskKanban.saveChanges': 'Guardar cambios',
   'conversations.taskKanban.deleteCard': 'Borrar',
   'conversations.taskKanban.workTask': 'Trabajar tarea',
+  'conversations.taskKanban.viewWork': 'Ver trabajo',
   'conversations.taskKanban.startingTask': 'Iniciando…',
   'conversations.taskKanban.updateFailed':
     'No se pudo actualizar la tarea; los cambios no se guardaron.',

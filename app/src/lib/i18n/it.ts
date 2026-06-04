@@ -2589,6 +2589,7 @@ const messages: TranslationMap = {
   'conversations.taskKanban.saveChanges': 'Salva modifiche',
   'conversations.taskKanban.deleteCard': 'Elimina',
   'conversations.taskKanban.workTask': "Lavora sull'attività",
+  'conversations.taskKanban.viewWork': 'Visualizza lavoro',
   'conversations.taskKanban.startingTask': 'Avvio…',
   'conversations.taskKanban.updateFailed':
     "Impossibile aggiornare l'attività; le modifiche non sono state salvate.",

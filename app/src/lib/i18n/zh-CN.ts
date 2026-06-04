@@ -2428,6 +2428,7 @@ const messages: TranslationMap = {
   'conversations.taskKanban.saveChanges': '保存更改',
   'conversations.taskKanban.deleteCard': '删除',
   'conversations.taskKanban.workTask': '处理任务',
+  'conversations.taskKanban.viewWork': '查看工作',
   'conversations.taskKanban.startingTask': '正在启动…',
   'conversations.taskKanban.updateFailed': '无法更新任务；更改未保存。',
   'conversations.taskKanban.sourcesButton': '来源',

@@ -2551,6 +2551,7 @@ const messages: TranslationMap = {
   'conversations.taskKanban.saveChanges': 'পরিবর্তন সংরক্ষণ করা হবে',
   'conversations.taskKanban.deleteCard': 'Delete',
   'conversations.taskKanban.workTask': 'কাজ শুরু করুন',
+  'conversations.taskKanban.viewWork': 'কাজ দেখুন',
   'conversations.taskKanban.startingTask': 'শুরু হচ্ছে...',
   'conversations.taskKanban.updateFailed': 'কাজটি সংরক্ষণ করা যায়নি।',
   'conversations.taskKanban.sourcesButton': 'উৎস',

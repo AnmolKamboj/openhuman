@@ -2607,6 +2607,7 @@ const messages: TranslationMap = {
   'conversations.taskKanban.saveChanges': 'Enregistrer les modifications',
   'conversations.taskKanban.deleteCard': 'Supprimer',
   'conversations.taskKanban.workTask': 'Travailler la tâche',
+  'conversations.taskKanban.viewWork': 'Voir le travail',
   'conversations.taskKanban.startingTask': 'Démarrage…',
   'conversations.taskKanban.updateFailed':
     "Impossible de mettre à jour la tâche; les modifications n'ont pas été enregistrées.",

@@ -2503,6 +2503,7 @@ const messages: TranslationMap = {
   'conversations.taskKanban.saveChanges': 'التغييرات',
   'conversations.taskKanban.deleteCard': 'Delete',
   'conversations.taskKanban.workTask': 'العمل على المهمة',
+  'conversations.taskKanban.viewWork': 'عرض العمل',
   'conversations.taskKanban.startingTask': 'جارٍ البدء…',
   'conversations.taskKanban.updateFailed': 'ولم يتمكن من استكمال المهمة؛ ولم يتم توفير التغييرات.',
   'conversations.taskKanban.sourcesButton': 'المصادر',
