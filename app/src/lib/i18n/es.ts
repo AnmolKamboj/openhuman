@@ -2011,6 +2011,7 @@ const messages: TranslationMap = {
   'memorySources.loadingConnections': 'Cargando conexiones…',
   'memorySources.noConnections':
     'No se encontraron conexiones activas de Composio. Conecta una integración primero.',
+  'memorySources.connectionAccount': 'Cuenta',
   'memorySources.pickConnection': 'Elige una conexión',
   'memorySources.selectConnection': '— Seleccionar una conexión —',
   'memorySources.composioListFailed': 'Error al cargar las conexiones Composio.',

@@ -1972,6 +1972,7 @@ const messages: TranslationMap = {
   'memorySources.loadingConnections': 'Memuat koneksi...',
   'memorySources.noConnections':
     'Tak ditemukan koneksi Composio yang aktif. Hubungkan integrasi dulu.',
+  'memorySources.connectionAccount': 'Akun',
   'memorySources.pickConnection': 'Pilih koneksi',
   'memorySources.selectConnection': '- Pilih koneksi -',
   'memorySources.composioListFailed': 'Gagal memuat koneksi Composio.',

@@ -1929,6 +1929,7 @@ const messages: TranslationMap = {
     'لا توجد مصادر عرفية بعد أضف ملفاً، ×1xx repo، ×x0x مكعب، أو صفحة على الشبكة للبدء.',
   'memorySources.loadingConnections': 'علاقات الحب...',
   'memorySources.noConnections': 'لم يتم العثور على أي وصلات اكسكساكسية نشطة. إجمع التكامل أولاً',
+  'memorySources.connectionAccount': 'الحساب',
   'memorySources.pickConnection': 'اختر اتصال',
   'memorySources.selectConnection': '- اختيار اتصال -',
   'memorySources.composioListFailed': 'فشل في تحميل الأتصالات Xqx0x.',

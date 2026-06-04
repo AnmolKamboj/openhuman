@@ -1969,6 +1969,7 @@ const messages: TranslationMap = {
     'अभी तक कोई कस्टम स्रोत नहीं है। एक फ़ोल्डर जोड़ें, GitHub रेपो, RSS फीड, या वेब पेज शुरू करने के लिए।',
   'memorySources.loadingConnections': 'कनेक्शन लोड हो रहा है...',
   'memorySources.noConnections': 'कोई सक्रिय Composio कनेक्शन नहीं मिला। पहले एकीकरण कनेक्ट करें।',
+  'memorySources.connectionAccount': 'खाता',
   'memorySources.pickConnection': 'कनेक्शन चुनें',
   'memorySources.selectConnection': '- एक कनेक्शन चुनें -',
   'memorySources.composioListFailed': 'Composio कनेक्शन लोड करने में विफल रहा।',

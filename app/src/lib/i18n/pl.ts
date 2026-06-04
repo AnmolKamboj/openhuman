@@ -1990,6 +1990,7 @@ const messages: TranslationMap = {
   'memorySources.loadingConnections': 'Wczytywanie połączeń…',
   'memorySources.noConnections':
     'Nie znaleziono aktywnych połączeń Composio. Najpierw połącz integrację.',
+  'memorySources.connectionAccount': 'Konto',
   'memorySources.pickConnection': 'Wybierz połączenie',
   'memorySources.selectConnection': '— Wybierz połączenie —',
   'memorySources.composioListFailed': 'Nie udało się wczytać połączeń Composio.',
