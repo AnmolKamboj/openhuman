@@ -1756,7 +1756,7 @@ impl super::super::engine::TurnObserver for SubagentObserver {
         self.usage.charged_amount_usd += usage.charged_amount_usd;
     }
 
-    fn on_assistant(
+    async fn on_assistant(
         &mut self,
         _display_text: &str,
         response_text: &str,

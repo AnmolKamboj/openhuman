@@ -54,6 +54,7 @@ pub struct Agent {
     pub(super) model_name: String,
     pub(super) temperature: f64,
     pub(super) workspace_dir: std::path::PathBuf,
+    pub(super) action_dir: std::path::PathBuf,
     pub(super) skills: Vec<crate::openhuman::skills::Skill>,
     /// Agent workflows discovered at session start.
     pub(super) workflows: Vec<crate::openhuman::agent_workflows::Workflow>,
@@ -269,6 +270,7 @@ pub struct AgentBuilder {
     pub(super) model_name: Option<String>,
     pub(super) temperature: Option<f64>,
     pub(super) workspace_dir: Option<std::path::PathBuf>,
+    pub(super) action_dir: Option<std::path::PathBuf>,
     pub(super) skills: Option<Vec<crate::openhuman::skills::Skill>>,
     /// Agent workflows to surface in the prompt. Populated from `load_workflows`
     /// at session start; defaults to empty when not explicitly set.

@@ -465,15 +465,17 @@ pub(crate) async fn run_turn_engine(
                 }
             }
             history.push(ChatMessage::assistant(response_text.clone()));
-            observer.on_assistant(
-                &final_out,
-                &response_text,
-                reasoning_content.as_deref(),
-                &[],
-                &[],
-                iteration,
-                true,
-            );
+            observer
+                .on_assistant(
+                    &final_out,
+                    &response_text,
+                    reasoning_content.as_deref(),
+                    &[],
+                    &[],
+                    iteration,
+                    true,
+                )
+                .await;
             observer.after_iteration(history, iteration);
             log::info!(
                 "[agent_loop] turn complete: iters={} provider_calls={} tokens_in={} tokens_out={} cached_in={} usd={:.4}",
@@ -579,15 +581,17 @@ pub(crate) async fn run_turn_engine(
         // reconstruct OpenAI-format tool_calls + tool result messages. Prompt
         // mode: XML-based text format.
         history.push(ChatMessage::assistant(assistant_history_content));
-        observer.on_assistant(
-            &display_text,
-            &response_text,
-            reasoning_content.as_deref(),
-            &native_tool_calls,
-            &tool_calls,
-            iteration,
-            false,
-        );
+        observer
+            .on_assistant(
+                &display_text,
+                &response_text,
+                reasoning_content.as_deref(),
+                &native_tool_calls,
+                &tool_calls,
+                iteration,
+                false,
+            )
+            .await;
         if native_tool_calls.is_empty() {
             let content = format!("[Tool results]\n{tool_results}");
             observer.on_results_batch(&content, iteration);
