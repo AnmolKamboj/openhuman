@@ -270,7 +270,6 @@ const messages: TranslationMap = {
   'skills.tabs.composio': 'Composio',
   'skills.tabs.channels': 'Kanały',
   'skills.tabs.mcp': 'Serwery MCP',
-  'skills.tabs.runners': 'Runnery',
   'memory.title': 'Pamięć',
   'memory.search': 'Szukaj w pamięci...',
   'memory.noResults': 'Nie znaleziono wspomnień',
@@ -3597,7 +3596,7 @@ const messages: TranslationMap = {
   'settings.skillsRunner.error.preflightGate': 'Brama preflight nie powiodła się',
   'settings.skillsRunner.schedule.heading': 'Harmonogram (cykliczny)',
   'settings.skillsRunner.schedule.help':
-    'Zapisz tę umiejętność i dane wejściowe jako cykliczne zadanie cron. Agent wywoła run_skill przy każdym tyknięciu.',
+    'Zapisz tę umiejętność i dane wejściowe jako cykliczne zadanie cron. Agent wywoła run_workflow przy każdym tyknięciu.',
   'settings.skillsRunner.schedule.frequency': 'Częstotliwość',
   'settings.skillsRunner.schedule.every30min': 'Co 30 minut',
   'settings.skillsRunner.schedule.everyHour': 'Co godzinę',
@@ -3612,6 +3611,8 @@ const messages: TranslationMap = {
   'settings.skillsRunner.schedule.noJobs':
     'Nie zapisano jeszcze harmonogramów dla tej umiejętności.',
   'settings.skillsRunner.schedule.existing': 'Zaplanowane zadania dla tej umiejętności:',
+  'settings.skillsRunner.schedule.inputsLabel': 'Dane wejściowe',
+  'settings.skillsRunner.schedule.inputsNone': 'Brak danych wejściowych',
   'settings.skillsRunner.schedule.runNow': 'Uruchom',
   'settings.skillsRunner.schedule.remove': 'Usuń',
   'settings.skillsRunner.scheduleEnabled': 'Włączone',
@@ -4476,22 +4477,12 @@ const messages: TranslationMap = {
   'settings.taskSources.providers.notion': 'Notion',
   'settings.taskSources.providers.linear': 'Linear',
   'settings.taskSources.providers.clickup': 'ClickUp',
-  'skills.dashboard.title': 'Skills',
-  'skills.dashboard.scheduledHeading': 'Zaplanowane umiejętności',
-  'skills.dashboard.emptyTitle': 'Brak zaplanowanych umiejętności',
-  'skills.dashboard.emptyBody':
-    'Uruchom wbudowaną umiejętność jednorazowo lub zapisz harmonogram cykliczny, aby zobaczyć ją tutaj.',
-  'skills.dashboard.create': 'Utwórz umiejętność',
-  'skills.dashboard.run': 'Uruchom umiejętność',
-  'skills.dashboard.enable': 'Włącz zaplanowaną umiejętność',
-  'skills.dashboard.disable': 'Wyłącz zaplanowaną umiejętność',
+  'skills.dashboard.enable': 'Włącz zaplanowany przepływ pracy',
+  'skills.dashboard.disable': 'Wyłącz zaplanowany przepływ pracy',
   'skills.dashboard.lastRun': 'Ostatnie uruchomienie',
   'skills.dashboard.nextRun': 'Następne uruchomienie',
   'skills.dashboard.cardOpenRunner': 'Otwórz w runnerze',
-  'skills.dashboard.loadError': 'Nie udało się załadować zaplanowanych umiejętności',
-  'skills.new.title': 'Utwórz umiejętność',
-  'skills.new.placeholderBody':
-    'Formularz tworzenia pojawi się wkrótce. Na razie użyj przycisku „Nowa umiejętność” na stronie runnera.',
+  'skills.new.title': 'Utwórz przepływ pracy',
   'settings.agents.title': 'Agenci',
   'settings.agents.subtitle':
     'Zarządzaj agentami dostępnymi do delegowania — wbudowanymi domyślnymi i własnymi niestandardowymi agentami.',
@@ -4908,6 +4899,16 @@ const messages: TranslationMap = {
   'memoryData.windowError': 'Okno pamięci',
   'memoryData.windowUpdated': 'Okno pamięci zaktualizowane',
   'memoryData.windowUpdatedMsg': 'Ustawiono na {window}.',
+  'skills.create.whenToUse': 'Kiedy używać',
+  'skills.create.whenToUsePlaceholder':
+    'np. gdy użytkownik prosi o uporządkowanie skrzynki odbiorczej',
+  'skills.create.whenToUseHelp':
+    'Wyzwalacz, na podstawie którego agent decyduje o uruchomieniu tego przepływu pracy. Pozostaw puste, aby użyć opisu.',
+  'skills.create.inputs.row.descriptionError': 'Każde pole wejściowe wymaga opisu.',
+  'skills.detail.run': 'Uruchom',
+  'skills.detail.runAriaLabel': 'Uruchom ten przepływ pracy',
+  'skills.run.title': 'Przepływ pracy',
+  'workflows.installFromUrl': 'Zainstaluj z adresu URL',
   // Security banner (approval-gate host-aware boot state)
   'security.approvalGateDisabled.title': 'Bramka zatwierdzania wyłączona',
   'security.approvalGateDisabled.body':

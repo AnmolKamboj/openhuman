@@ -291,11 +291,95 @@ pub(crate) fn resolve_byok_fallback_provider_string(config: &Config) -> Option<S
     None
 }
 
+/// Test-only seam: inject a mock chat `Provider` so e2e tests can drive the
+/// autonomous run paths (`spawn_workflow_run_background`, the task dispatcher)
+/// with a scripted LLM and no network. Process-global because those runs are
+/// detached `tokio::spawn`s — a thread/task-local would not reach them.
+///
+/// Because it is global, tests that install an override MUST run serially
+/// (hold the shared lock in [`crate::openhuman::workflows::e2e_run_tests`])
+/// and clear it via the returned guard. Inert in production: the check below
+/// is `#[cfg(test)]`, so the override is never consulted in release builds.
+#[cfg(test)]
+pub(crate) mod test_provider_override {
+    use super::Provider;
+    use crate::openhuman::inference::provider::traits::{
+        ChatRequest, ChatResponse, ProviderCapabilities,
+    };
+    use async_trait::async_trait;
+    use std::sync::{Arc, Mutex, OnceLock};
+
+    static OVERRIDE: OnceLock<Mutex<Option<Arc<dyn Provider>>>> = OnceLock::new();
+    fn cell() -> &'static Mutex<Option<Arc<dyn Provider>>> {
+        OVERRIDE.get_or_init(|| Mutex::new(None))
+    }
+
+    pub(crate) fn current() -> Option<Arc<dyn Provider>> {
+        cell().lock().unwrap().clone()
+    }
+
+    /// Install a mock provider; the returned guard clears it on drop.
+    #[must_use]
+    pub(crate) fn install(provider: Arc<dyn Provider>) -> InstallGuard {
+        *cell().lock().unwrap() = Some(provider);
+        InstallGuard
+    }
+    pub(crate) struct InstallGuard;
+    impl Drop for InstallGuard {
+        fn drop(&mut self) {
+            *cell().lock().unwrap() = None;
+        }
+    }
+
+    /// Thin delegating wrapper so the factory can hand out a fresh
+    /// `Box<dyn Provider>` backed by the shared mock `Arc` — one mock instance
+    /// serves the orchestrator AND the inner workflow run, routing by prompt
+    /// content. Forwards the methods the turn engine actually calls; the rest
+    /// use the trait defaults (which read back through `capabilities`).
+    pub(crate) struct ProviderHandle(pub Arc<dyn Provider>);
+
+    #[async_trait]
+    impl Provider for ProviderHandle {
+        fn capabilities(&self) -> ProviderCapabilities {
+            self.0.capabilities()
+        }
+        async fn chat_with_system(
+            &self,
+            system_prompt: Option<&str>,
+            message: &str,
+            model: &str,
+            temperature: f64,
+        ) -> anyhow::Result<String> {
+            self.0
+                .chat_with_system(system_prompt, message, model, temperature)
+                .await
+        }
+        async fn chat(
+            &self,
+            request: ChatRequest<'_>,
+            model: &str,
+            temperature: f64,
+        ) -> anyhow::Result<ChatResponse> {
+            self.0.chat(request, model, temperature).await
+        }
+    }
+}
+
 /// Build a `(Provider, model)` for the given workload role.
 pub fn create_chat_provider(
     role: &str,
     config: &Config,
 ) -> anyhow::Result<(Box<dyn Provider>, String)> {
+    // Test-only: a scripted mock provider injected by an e2e test wins over
+    // anything config-derived. Never compiled into release builds.
+    #[cfg(test)]
+    if let Some(p) = test_provider_override::current() {
+        return Ok((
+            Box::new(test_provider_override::ProviderHandle(p)),
+            "mock-model".to_string(),
+        ));
+    }
+
     let s = provider_for_role(role, config);
     log::debug!(
         "[providers][chat-factory] create_chat_provider role={} resolved_string={}",
