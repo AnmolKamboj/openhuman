@@ -1996,6 +1996,14 @@ const messages: TranslationMap = {
   'sync.failedToLoad': 'Impossibile caricare lo stato di sincronizzazione',
   'sync.noContent':
     "Nessun contenuto è stato sincronizzato nella memoria. Connetti un'integrazione per iniziare.",
+  'memorySyncInterval.title': 'Pianificazione sincronizzazione',
+  'memorySyncInterval.lastSynced': 'Ultima sincronizzazione',
+  'memorySyncInterval.never': 'mai',
+  'memorySyncInterval.everyHours': 'Ogni {h} h',
+  'memorySyncInterval.everyMinutes': 'Ogni {m} min',
+  'memorySyncInterval.manual': 'Solo manuale',
+  'memorySyncInterval.saveFailed':
+    'Impossibile aggiornare la pianificazione della sincronizzazione',
   'memorySources.title': 'Fonti di memoria',
   'memorySources.empty':
     'Ancora nessuna fonte di memoria. Aggiungine una per iniziare a alimentare la memoria.',

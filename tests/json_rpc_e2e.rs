@@ -10570,3 +10570,187 @@ async fn json_rpc_voice_server_settings_roundtrip_always_on_and_wake_word() {
 
     rpc_join.abort();
 }
+
+/// Memory-sync schedule (#3302): get defaults → set a 4h cadence → confirm it
+/// persists → switch to Manual only → confirm the flag flips.
+#[tokio::test]
+async fn json_rpc_memory_sync_settings_roundtrip_interval_and_manual() {
+    let _env_lock = json_rpc_e2e_env_lock();
+    let tmp = tempdir().expect("tempdir");
+    let home = tmp.path();
+    let openhuman_home = home.join(".openhuman");
+
+    let _home_guard = EnvVarGuard::set_to_path("HOME", home);
+    let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
+    let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
+    let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
+    // The global override would mask the persisted value; keep it unset here.
+    let _interval_guard = EnvVarGuard::unset("OPENHUMAN_MEMORY_SYNC_INTERVAL_SECS");
+
+    write_min_config(&openhuman_home, "http://127.0.0.1:9");
+
+    let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
+    let rpc_base = format!("http://{}", rpc_addr);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // GET defaults — unset stored value, but a resolved 24h selected cadence.
+    let initial = post_json_rpc(
+        &rpc_base,
+        7501,
+        "openhuman.config_get_memory_sync_settings",
+        json!({}),
+    )
+    .await;
+    let initial_outer = assert_no_jsonrpc_error(&initial, "get_memory_sync_settings initial");
+    let initial_result = initial_outer.get("result").unwrap_or(&initial_outer);
+    assert!(
+        initial_result.get("sync_interval_secs").map(Value::is_null) == Some(true),
+        "default stored value should be null, envelope: {initial_outer}"
+    );
+    assert_eq!(
+        initial_result.get("is_default").and_then(Value::as_bool),
+        Some(true),
+        "fresh config should report is_default=true, envelope: {initial_outer}"
+    );
+    assert_eq!(
+        initial_result.get("selected_secs").and_then(Value::as_u64),
+        Some(86_400),
+        "selected cadence should resolve to the 24h default, envelope: {initial_outer}"
+    );
+
+    // UPDATE — pick the 4h preset.
+    let update = post_json_rpc(
+        &rpc_base,
+        7502,
+        "openhuman.config_update_memory_sync_settings",
+        json!({ "sync_interval_secs": 14400 }),
+    )
+    .await;
+    let update_outer = assert_no_jsonrpc_error(&update, "update_memory_sync_settings 4h");
+    let update_result = update_outer.get("result").unwrap_or(&update_outer);
+    assert_eq!(
+        update_result
+            .get("sync_interval_secs")
+            .and_then(Value::as_u64),
+        Some(14_400),
+        "4h cadence should be stored, envelope: {update_outer}"
+    );
+    assert_eq!(
+        update_result.get("is_manual").and_then(Value::as_bool),
+        Some(false)
+    );
+
+    // GET again — the 4h cadence persists across the round-trip.
+    let after = post_json_rpc(
+        &rpc_base,
+        7503,
+        "openhuman.config_get_memory_sync_settings",
+        json!({}),
+    )
+    .await;
+    let after_outer = assert_no_jsonrpc_error(&after, "get_memory_sync_settings after 4h");
+    let after_result = after_outer.get("result").unwrap_or(&after_outer);
+    assert_eq!(
+        after_result
+            .get("sync_interval_secs")
+            .and_then(Value::as_u64),
+        Some(14_400),
+        "4h cadence should persist, envelope: {after_outer}"
+    );
+
+    // UPDATE — switch to Manual only (0).
+    let manual = post_json_rpc(
+        &rpc_base,
+        7504,
+        "openhuman.config_update_memory_sync_settings",
+        json!({ "sync_interval_secs": 0 }),
+    )
+    .await;
+    let manual_outer = assert_no_jsonrpc_error(&manual, "update_memory_sync_settings manual");
+    let manual_result = manual_outer.get("result").unwrap_or(&manual_outer);
+    assert_eq!(
+        manual_result.get("is_manual").and_then(Value::as_bool),
+        Some(true),
+        "0 should flip is_manual, envelope: {manual_outer}"
+    );
+
+    // GET once more — manual mode persisted (stored value 0, is_manual true).
+    let manual_get = post_json_rpc(
+        &rpc_base,
+        7505,
+        "openhuman.config_get_memory_sync_settings",
+        json!({}),
+    )
+    .await;
+    let manual_get_outer = assert_no_jsonrpc_error(&manual_get, "get_memory_sync_settings manual");
+    let manual_get_result = manual_get_outer.get("result").unwrap_or(&manual_get_outer);
+    assert_eq!(
+        manual_get_result.get("is_manual").and_then(Value::as_bool),
+        Some(true),
+        "manual mode should persist across a GET, envelope: {manual_get_outer}"
+    );
+    assert_eq!(
+        manual_get_result
+            .get("sync_interval_secs")
+            .and_then(Value::as_u64),
+        Some(0),
+        "manual stored value should be 0, envelope: {manual_get_outer}"
+    );
+
+    rpc_join.abort();
+}
+
+/// Ops / headless path (#3302): a fleet operator sets
+/// `OPENHUMAN_MEMORY_SYNC_INTERVAL_SECS` in the environment, and the running
+/// core surfaces that cadence through `config_get_memory_sync_settings` with no
+/// UI interaction. Verifies the env override flows all the way through the RPC.
+/// (The `0` = "Manual only" sentinel on the env path is covered at the parse
+/// layer by `env_overlay_memory_sync_interval_parses_and_honours_zero`.)
+#[tokio::test]
+async fn json_rpc_memory_sync_settings_env_override_is_reflected() {
+    let _env_lock = json_rpc_e2e_env_lock();
+    let tmp = tempdir().expect("tempdir");
+    let home = tmp.path();
+    let openhuman_home = home.join(".openhuman");
+
+    let _home_guard = EnvVarGuard::set_to_path("HOME", home);
+    let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
+    let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
+    let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
+    // Operator sets an 8h cadence via the environment (not a UI write).
+    let _interval_guard = EnvVarGuard::set("OPENHUMAN_MEMORY_SYNC_INTERVAL_SECS", "28800");
+
+    write_min_config(&openhuman_home, "http://127.0.0.1:9");
+
+    let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
+    let rpc_base = format!("http://{}", rpc_addr);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // GET reflects the env-provided cadence even though config.toml never set it.
+    let resp = post_json_rpc(
+        &rpc_base,
+        7601,
+        "openhuman.config_get_memory_sync_settings",
+        json!({}),
+    )
+    .await;
+    let outer = assert_no_jsonrpc_error(&resp, "get_memory_sync_settings env-override");
+    let result = outer.get("result").unwrap_or(&outer);
+    assert_eq!(
+        result.get("sync_interval_secs").and_then(Value::as_u64),
+        Some(28_800),
+        "env override should surface via RPC, envelope: {outer}"
+    );
+    assert_eq!(
+        result.get("selected_secs").and_then(Value::as_u64),
+        Some(28_800),
+        "selected cadence should match the env override, envelope: {outer}"
+    );
+    assert_eq!(
+        result.get("is_default").and_then(Value::as_bool),
+        Some(false),
+        "an env-provided value is not the default, envelope: {outer}"
+    );
+
+    rpc_join.abort();
+}

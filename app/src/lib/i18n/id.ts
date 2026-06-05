@@ -1968,6 +1968,13 @@ const messages: TranslationMap = {
   'sync.failedToLoad': 'Gagal memuat status sinkronisasi',
   'sync.noContent':
     'Belum ada konten yang disinkronkan ke memori. Hubungkan integrasi untuk memulai.',
+  'memorySyncInterval.title': 'Jadwal sinkronisasi',
+  'memorySyncInterval.lastSynced': 'Terakhir disinkronkan',
+  'memorySyncInterval.never': 'tidak pernah',
+  'memorySyncInterval.everyHours': 'Setiap {h} jam',
+  'memorySyncInterval.everyMinutes': 'Setiap {m} menit',
+  'memorySyncInterval.manual': 'Hanya manual',
+  'memorySyncInterval.saveFailed': 'Gagal memperbarui jadwal sinkronisasi',
   'memorySources.title': 'Sumber Memori',
   'memorySources.empty': 'Belum ada sumber ingatan. Tambahkan satu untuk mulai makan memori.',
   'memorySources.customSources': 'Sumber Kustom',

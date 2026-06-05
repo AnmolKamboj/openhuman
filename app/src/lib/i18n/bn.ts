@@ -1965,6 +1965,13 @@ const messages: TranslationMap = {
   'sync.failedToLoad': 'সিঙ্ক স্ট্যাটাস লোড করতে ব্যর্থ',
   'sync.noContent':
     'এখনো কোনো কন্টেন্ট মেমোরিতে সিঙ্ক হয়নি। শুরু করতে একটি ইন্টিগ্রেশন সংযুক্ত করুন।',
+  'memorySyncInterval.title': 'সিঙ্ক সময়সূচি',
+  'memorySyncInterval.lastSynced': 'সর্বশেষ সিঙ্ক',
+  'memorySyncInterval.never': 'কখনও না',
+  'memorySyncInterval.everyHours': 'প্রতি {h} ঘণ্টা',
+  'memorySyncInterval.everyMinutes': 'প্রতি {m} মিনিট',
+  'memorySyncInterval.manual': 'শুধু ম্যানুয়াল',
+  'memorySyncInterval.saveFailed': 'সিঙ্ক সময়সূচি আপডেট করা যায়নি',
   'memorySources.title': 'মেমরি উৎস',
   'memorySources.empty': 'কোনো মেমরি পাওয়া যায়নি। স্মৃতি খাওয়া শুরু করতে একটা যোগ করো।',
   'memorySources.customSources': 'স্বনির্ধারিত উৎস',

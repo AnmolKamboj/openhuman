@@ -2014,6 +2014,13 @@ const messages: TranslationMap = {
   'sync.failedToLoad': 'Der Synchronisierungsstatus konnte nicht geladen werden',
   'sync.noContent':
     'Es wurden noch keine Inhalte in den Speicher synchronisiert. Verbinde eine Integration, um zu beginnen.',
+  'memorySyncInterval.title': 'Synchronisierungsplan',
+  'memorySyncInterval.lastSynced': 'Zuletzt synchronisiert',
+  'memorySyncInterval.never': 'nie',
+  'memorySyncInterval.everyHours': 'Alle {h} Std.',
+  'memorySyncInterval.everyMinutes': 'Alle {m} Min.',
+  'memorySyncInterval.manual': 'Nur manuell',
+  'memorySyncInterval.saveFailed': 'Synchronisierungsplan konnte nicht aktualisiert werden',
   'memorySources.title': 'Speicherquellen',
   'memorySources.empty':
     'Noch keine Speicherquellen. Fügen Sie einen hinzu, um den Fütterungsspeicher zu starten',

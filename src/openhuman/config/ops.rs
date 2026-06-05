@@ -1180,6 +1180,81 @@ pub async fn load_and_apply_activity_level_settings(
     apply_activity_level_settings(&mut config, update).await
 }
 
+/// Patch for the global memory-sync cadence (#3302).
+///
+/// `sync_interval_secs` carries the new value to store in
+/// [`Config::memory_sync_interval_secs`]:
+/// - omitted / `null` → reset to "use the default cadence" (`None`)
+/// - `0` → "Manual only" (periodic auto-sync disabled)
+/// - `n > 0` → sync every `n` seconds (applied per source as a floor over the
+///   provider default by the scheduler)
+#[derive(Debug, Default)]
+pub struct MemorySyncSettingsPatch {
+    pub sync_interval_secs: Option<u64>,
+}
+
+/// Build the JSON view of the memory-sync settings shared by get + apply.
+fn memory_sync_settings_value(stored: Option<u64>) -> serde_json::Value {
+    let is_manual = stored == Some(0);
+    let is_default = stored.is_none();
+    // The cadence the UI should highlight: the stored value when set, else the
+    // resolved 24h default. `0` (manual) is surfaced verbatim so the UI can
+    // select the "Manual only" option.
+    let selected_secs =
+        stored.unwrap_or(crate::openhuman::config::DEFAULT_MEMORY_SYNC_INTERVAL_SECS);
+    json!({
+        "sync_interval_secs": stored,
+        "selected_secs": selected_secs,
+        "is_manual": is_manual,
+        "is_default": is_default,
+        "default_secs": crate::openhuman::config::DEFAULT_MEMORY_SYNC_INTERVAL_SECS,
+        "presets": crate::openhuman::config::MEMORY_SYNC_INTERVAL_PRESETS_SECS,
+    })
+}
+
+/// Returns the current global memory-sync cadence and its derived view.
+pub async fn get_memory_sync_settings() -> Result<RpcOutcome<serde_json::Value>, String> {
+    let config = load_config_with_timeout().await?;
+    let value = memory_sync_settings_value(config.memory_sync_interval_secs);
+    Ok(RpcOutcome::single_log(value, "memory sync settings read"))
+}
+
+/// Updates the global memory-sync cadence and persists it. The running
+/// scheduler reads `config.memory_sync_interval_secs` fresh on each tick, so
+/// the new cadence takes effect from the next tick without a restart.
+pub async fn apply_memory_sync_settings(
+    config: &mut Config,
+    update: MemorySyncSettingsPatch,
+) -> Result<RpcOutcome<serde_json::Value>, String> {
+    config.memory_sync_interval_secs = update.sync_interval_secs;
+    config.save().await.map_err(|e| e.to_string())?;
+
+    tracing::info!(
+        sync_interval_secs = ?config.memory_sync_interval_secs,
+        "[config:memory_sync] memory sync interval updated"
+    );
+
+    let stored = config.memory_sync_interval_secs;
+    let value = memory_sync_settings_value(stored);
+    let msg = match stored {
+        Some(0) => "memory sync set to Manual only".to_string(),
+        Some(n) => format!("memory sync interval set to {n}s"),
+        None => "memory sync interval reset to default".to_string(),
+    };
+    Ok(RpcOutcome::new(
+        value,
+        vec![format!("{msg} — saved to {}", config.config_path.display())],
+    ))
+}
+
+/// Loads the configuration, applies memory-sync settings, and saves it.
+pub async fn load_and_apply_memory_sync_settings(
+    update: MemorySyncSettingsPatch,
+) -> Result<RpcOutcome<serde_json::Value>, String> {
+    let mut config = load_config_with_timeout().await?;
+    apply_memory_sync_settings(&mut config, update).await
+}
+
 /// Serializes the load-modify-save in [`add_auto_approve_tool`] so two
 /// concurrent "Always allow" appends (different tools) can't read the same
 /// `auto_approve`, each push their own, and clobber the other on save

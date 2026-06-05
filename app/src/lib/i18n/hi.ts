@@ -1965,6 +1965,13 @@ const messages: TranslationMap = {
   'sync.failedToLoad': 'सिंक स्टेटस लोड नहीं हो पाई',
   'sync.noContent':
     'अभी कोई कॉन्टेंट मेमोरी में सिंक नहीं हुआ। शुरू करने के लिए कोई इंटीग्रेशन कनेक्ट करें।',
+  'memorySyncInterval.title': 'सिंक शेड्यूल',
+  'memorySyncInterval.lastSynced': 'अंतिम सिंक',
+  'memorySyncInterval.never': 'कभी नहीं',
+  'memorySyncInterval.everyHours': 'हर {h} घंटे',
+  'memorySyncInterval.everyMinutes': 'हर {m} मिनट',
+  'memorySyncInterval.manual': 'केवल मैन्युअल',
+  'memorySyncInterval.saveFailed': 'सिंक शेड्यूल अपडेट करने में विफल',
   'memorySources.title': 'मेमोरी स्रोत',
   'memorySources.empty':
     'अभी तक कोई स्मृति स्रोत नहीं है। एक को खिला मेमोरी शुरू करने के लिए जोड़ें।',

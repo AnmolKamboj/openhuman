@@ -2012,6 +2012,13 @@ const messages: TranslationMap = {
   'sync.failedToLoad': "Échec du chargement de l'état de synchronisation",
   'sync.noContent':
     "Aucun contenu n'a encore été synchronisé dans la mémoire. Connecte une intégration pour commencer.",
+  'memorySyncInterval.title': 'Calendrier de synchronisation',
+  'memorySyncInterval.lastSynced': 'Dernière synchronisation',
+  'memorySyncInterval.never': 'jamais',
+  'memorySyncInterval.everyHours': 'Toutes les {h} h',
+  'memorySyncInterval.everyMinutes': 'Toutes les {m} min',
+  'memorySyncInterval.manual': 'Manuel uniquement',
+  'memorySyncInterval.saveFailed': 'Échec de la mise à jour du calendrier de synchronisation',
   'memorySources.title': 'Sources de mémoire',
   'memorySources.empty':
     'Aucune source de mémoire pour le moment. Ajoutez-en une pour commencer à alimenter la mémoire.',

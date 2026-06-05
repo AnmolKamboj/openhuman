@@ -2419,6 +2419,15 @@ const en: TranslationMap = {
   'sync.failedToLoad': 'Failed to load sync status',
   'sync.noContent': 'No content has been synced into memory yet. Connect an integration to start.',
 
+  // Memory Sync Schedule (global cadence)
+  'memorySyncInterval.title': 'Sync schedule',
+  'memorySyncInterval.lastSynced': 'Last synced',
+  'memorySyncInterval.never': 'never',
+  'memorySyncInterval.everyHours': 'Every {h}h',
+  'memorySyncInterval.everyMinutes': 'Every {m}m',
+  'memorySyncInterval.manual': 'Manual only',
+  'memorySyncInterval.saveFailed': 'Failed to update sync schedule',
+
   // Memory Sources Registry
   'memorySources.title': 'Memory Sources',
   'memorySources.empty': 'No memory sources yet. Add one to start feeding memory.',

@@ -332,6 +332,64 @@ fn tmp_config(tmp: &tempfile::TempDir) -> Config {
 }
 
 #[tokio::test]
+async fn apply_memory_sync_settings_stores_interval_and_view() {
+    let tmp = tempdir().unwrap();
+    let mut cfg = tmp_config(&tmp);
+
+    // Pick the 4h preset.
+    let patch = MemorySyncSettingsPatch {
+        sync_interval_secs: Some(14_400),
+    };
+    let outcome = apply_memory_sync_settings(&mut cfg, patch)
+        .await
+        .expect("apply");
+    assert_eq!(cfg.memory_sync_interval_secs, Some(14_400));
+    assert_eq!(outcome.value["sync_interval_secs"], 14_400);
+    assert_eq!(outcome.value["selected_secs"], 14_400);
+    assert_eq!(outcome.value["is_manual"], false);
+    assert_eq!(outcome.value["is_default"], false);
+}
+
+#[tokio::test]
+async fn apply_memory_sync_settings_manual_only() {
+    let tmp = tempdir().unwrap();
+    let mut cfg = tmp_config(&tmp);
+
+    let patch = MemorySyncSettingsPatch {
+        sync_interval_secs: Some(0),
+    };
+    let outcome = apply_memory_sync_settings(&mut cfg, patch)
+        .await
+        .expect("apply");
+    assert_eq!(cfg.memory_sync_interval_secs, Some(0));
+    assert_eq!(outcome.value["is_manual"], true);
+    assert_eq!(outcome.value["sync_interval_secs"], 0);
+}
+
+#[tokio::test]
+async fn apply_memory_sync_settings_reset_to_default() {
+    let tmp = tempdir().unwrap();
+    let mut cfg = tmp_config(&tmp);
+    cfg.memory_sync_interval_secs = Some(43_200);
+
+    // Omitted field → None → reset to default.
+    let patch = MemorySyncSettingsPatch {
+        sync_interval_secs: None,
+    };
+    let outcome = apply_memory_sync_settings(&mut cfg, patch)
+        .await
+        .expect("apply");
+    assert_eq!(cfg.memory_sync_interval_secs, None);
+    assert_eq!(outcome.value["is_default"], true);
+    assert!(outcome.value["sync_interval_secs"].is_null());
+    // The UI still gets a concrete cadence to highlight (the 24h default).
+    assert_eq!(
+        outcome.value["selected_secs"],
+        crate::openhuman::config::DEFAULT_MEMORY_SYNC_INTERVAL_SECS
+    );
+}
+
+#[tokio::test]
 async fn apply_model_settings_updates_fields_and_persists_snapshot() {
     let tmp = tempdir().unwrap();
     let mut cfg = tmp_config(&tmp);
