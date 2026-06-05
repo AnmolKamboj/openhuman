@@ -200,12 +200,24 @@ pub enum DomainEvent {
     ///
     /// Emitted by the `memory` domain so the frontend can surface progress
     /// across request → fetch → store → queue → ingest → complete.
+    ///
+    /// `source_id` is the originating memory-source id (from
+    /// `memory_sources`) when the event can be attributed to a specific
+    /// source row. The frontend prefers this over `connection_id` for
+    /// per-row indicator matching (see RC#2, issue #3295). Set to `None`
+    /// when the event originates from a non-memory-source sync path (e.g. a
+    /// channel-provider ingest) — `connection_id` remains unchanged for
+    /// those callers.
     MemorySyncStageChanged {
         trigger: String,
         stage: String,
         provider: Option<String>,
         connection_id: Option<String>,
         detail: Option<String>,
+        /// Originating memory-source id for frontend per-row indicator
+        /// matching. `None` when the event is not attributable to a
+        /// specific `MemorySourceEntry`.
+        source_id: Option<String>,
     },
     /// A memory ingestion job started running on the local extraction LLM.
     /// Ingestion is singleton — this fires once, then a matching
