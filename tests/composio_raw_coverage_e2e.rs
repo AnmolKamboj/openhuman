@@ -1303,6 +1303,9 @@ fn composio_types_roundtrip_connection_tool_trigger_and_history_shapes() {
         toolkit: "notion".into(),
         status: "FAILED".into(),
         created_at: None,
+        account_email: None,
+        workspace: None,
+        username: None,
     };
     assert!(serde_json::to_value(default_connection)
         .unwrap()
