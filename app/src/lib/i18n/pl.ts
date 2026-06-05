@@ -3907,6 +3907,18 @@ const messages: TranslationMap = {
     'Postępuj zgodnie z ustawieniem wyglądu Twojego systemu operacyjnego.',
   'settings.appearance.helperText':
     'Tryb ciemny przełącza całą aplikację — czat, ustawienia, panele — na przyciemnioną paletę. „Dopasuj do systemu” podąża za wyglądem systemu i aktualizuje się na żywo.',
+  'settings.appearance.fontSizeHeading': 'Rozmiar czcionki',
+  'settings.appearance.fontSizeAria': 'Rozmiar czcionki',
+  'settings.appearance.fontSizeSmall': 'Mały',
+  'settings.appearance.fontSizeSmallDesc': 'Zwarty tekst — więcej na ekranie.',
+  'settings.appearance.fontSizeMedium': 'Średni',
+  'settings.appearance.fontSizeMediumDesc': 'Domyślny, zrównoważony rozmiar.',
+  'settings.appearance.fontSizeLarge': 'Duży',
+  'settings.appearance.fontSizeLargeDesc': 'Większy tekst dla łatwiejszego czytania.',
+  'settings.appearance.fontSizeXLarge': 'Bardzo duży',
+  'settings.appearance.fontSizeXLargeDesc': 'Największy tekst dla maksymalnej czytelności.',
+  'settings.appearance.fontSizeHelperText':
+    'Skaluje tekst w całej aplikacji — czat, ustawienia i panele — niezależnie od ustawienia czcionki w systemie.',
   'settings.appearance.tabBarHeading': 'Dolny pasek zakładek',
   'settings.appearance.tabBarAlwaysShowLabels': 'Zawsze pokazuj etykiety',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':

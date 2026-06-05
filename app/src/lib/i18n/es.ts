@@ -3916,6 +3916,18 @@ const messages: TranslationMap = {
     'Siga la configuración de apariencia de su sistema operativo.',
   'settings.appearance.helperText':
     'El modo oscuro cambia toda la aplicación (chat, configuración, paneles) a una paleta tenue. El "sistema de coincidencias" sigue la apariencia de su sistema operativo y se actualiza en vivo.',
+  'settings.appearance.fontSizeHeading': 'Tamaño de fuente',
+  'settings.appearance.fontSizeAria': 'Tamaño de fuente',
+  'settings.appearance.fontSizeSmall': 'Pequeño',
+  'settings.appearance.fontSizeSmallDesc': 'Texto compacto: más contenido en pantalla.',
+  'settings.appearance.fontSizeMedium': 'Mediano',
+  'settings.appearance.fontSizeMediumDesc': 'El tamaño predeterminado y equilibrado.',
+  'settings.appearance.fontSizeLarge': 'Grande',
+  'settings.appearance.fontSizeLargeDesc': 'Texto más grande para leer con más facilidad.',
+  'settings.appearance.fontSizeXLarge': 'Extra grande',
+  'settings.appearance.fontSizeXLargeDesc': 'El texto más grande, para la máxima legibilidad.',
+  'settings.appearance.fontSizeHelperText':
+    'Escala el texto en toda la app —chat, ajustes y paneles— independientemente de la configuración de fuente de tu sistema.',
   'settings.appearance.tabBarHeading': 'Barra de pestañas inferior',
   'settings.appearance.tabBarAlwaysShowLabels': 'Mostrar siempre etiquetas',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':

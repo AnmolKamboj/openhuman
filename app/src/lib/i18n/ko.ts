@@ -3799,6 +3799,18 @@ const messages: TranslationMap = {
   'settings.appearance.modeSystemDesc': 'OS 외관 설정을 따릅니다.',
   'settings.appearance.helperText':
     '다크 모드는 전체 앱 — 채팅, 설정, 패널 — 을 어두운 팔레트로 전환합니다. "시스템과 일치"는 OS 외관을 따르며 실시간으로 업데이트됩니다.',
+  'settings.appearance.fontSizeHeading': '글꼴 크기',
+  'settings.appearance.fontSizeAria': '글꼴 크기',
+  'settings.appearance.fontSizeSmall': '작게',
+  'settings.appearance.fontSizeSmallDesc': '간결한 텍스트 — 화면에 더 많이 표시.',
+  'settings.appearance.fontSizeMedium': '보통',
+  'settings.appearance.fontSizeMediumDesc': '기본의 균형 잡힌 크기.',
+  'settings.appearance.fontSizeLarge': '크게',
+  'settings.appearance.fontSizeLargeDesc': '읽기 쉬운 더 큰 텍스트.',
+  'settings.appearance.fontSizeXLarge': '아주 크게',
+  'settings.appearance.fontSizeXLargeDesc': '최대 가독성을 위한 가장 큰 텍스트.',
+  'settings.appearance.fontSizeHelperText':
+    '시스템 글꼴 설정과 관계없이 앱 전체 — 채팅, 설정, 패널 — 의 텍스트 크기를 조정합니다.',
   'settings.appearance.tabBarHeading': '하단 탭 표시줄',
   'settings.appearance.tabBarAlwaysShowLabels': '항상 레이블 표시',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':

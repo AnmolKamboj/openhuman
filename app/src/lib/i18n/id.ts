@@ -3854,6 +3854,18 @@ const messages: TranslationMap = {
   'settings.appearance.modeSystemDesc': 'Ikuti pengaturan tampilan OS Anda.',
   'settings.appearance.helperText':
     'Mode gelap mengubah seluruh aplikasi - obrolan, pengaturan, dan panel - ke palet redup. "Ikuti sistem" mengikuti tampilan OS Anda dan diperbarui otomatis.',
+  'settings.appearance.fontSizeHeading': 'Ukuran font',
+  'settings.appearance.fontSizeAria': 'Ukuran font',
+  'settings.appearance.fontSizeSmall': 'Kecil',
+  'settings.appearance.fontSizeSmallDesc': 'Teks ringkas — tampilkan lebih banyak di layar.',
+  'settings.appearance.fontSizeMedium': 'Sedang',
+  'settings.appearance.fontSizeMediumDesc': 'Ukuran default yang seimbang.',
+  'settings.appearance.fontSizeLarge': 'Besar',
+  'settings.appearance.fontSizeLargeDesc': 'Teks lebih besar agar lebih mudah dibaca.',
+  'settings.appearance.fontSizeXLarge': 'Sangat besar',
+  'settings.appearance.fontSizeXLargeDesc': 'Teks terbesar untuk keterbacaan maksimal.',
+  'settings.appearance.fontSizeHelperText':
+    'Menskalakan teks di seluruh aplikasi — obrolan, pengaturan, dan panel — terlepas dari pengaturan font sistem Anda.',
   'settings.appearance.tabBarHeading': 'Bilah tab bawah',
   'settings.appearance.tabBarAlwaysShowLabels': 'Selalu tampilkan label',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':

@@ -3873,6 +3873,18 @@ const messages: TranslationMap = {
   'settings.appearance.modeSystemDesc': 'Следуйте настройкам внешнего вида вашей ОС.',
   'settings.appearance.helperText':
     'Темный режим переключает все приложение — чат, настройки, панели — на тусклую палитру. «Система сопоставления» следит за внешним видом вашей ОС и обновляет ее в реальном времени.',
+  'settings.appearance.fontSizeHeading': 'Размер шрифта',
+  'settings.appearance.fontSizeAria': 'Размер шрифта',
+  'settings.appearance.fontSizeSmall': 'Маленький',
+  'settings.appearance.fontSizeSmallDesc': 'Компактный текст — больше на экране.',
+  'settings.appearance.fontSizeMedium': 'Средний',
+  'settings.appearance.fontSizeMediumDesc': 'Стандартный сбалансированный размер.',
+  'settings.appearance.fontSizeLarge': 'Большой',
+  'settings.appearance.fontSizeLargeDesc': 'Более крупный текст для удобного чтения.',
+  'settings.appearance.fontSizeXLarge': 'Очень большой',
+  'settings.appearance.fontSizeXLargeDesc': 'Самый крупный текст для максимальной читаемости.',
+  'settings.appearance.fontSizeHelperText':
+    'Масштабирует текст во всём приложении — чат, настройки и панели — независимо от системных настроек шрифта.',
   'settings.appearance.tabBarHeading': 'Нижняя панель вкладок',
   'settings.appearance.tabBarAlwaysShowLabels': 'Всегда показывать метки',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':

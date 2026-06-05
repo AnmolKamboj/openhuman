@@ -3928,6 +3928,18 @@ const messages: TranslationMap = {
     "Suivez les paramètres d'apparence de votre système d'exploitation.",
   'settings.appearance.helperText':
     "Le mode sombre fait basculer l'ensemble de l'application (chat, paramètres, panneaux) vers une palette sombre. \"Match system\" suit l'apparence de votre système d'exploitation et se met à jour en direct.",
+  'settings.appearance.fontSizeHeading': 'Taille de police',
+  'settings.appearance.fontSizeAria': 'Taille de police',
+  'settings.appearance.fontSizeSmall': 'Petite',
+  'settings.appearance.fontSizeSmallDesc': 'Texte compact — plus de contenu à l’écran.',
+  'settings.appearance.fontSizeMedium': 'Moyenne',
+  'settings.appearance.fontSizeMediumDesc': 'La taille par défaut, équilibrée.',
+  'settings.appearance.fontSizeLarge': 'Grande',
+  'settings.appearance.fontSizeLargeDesc': 'Texte plus grand pour une lecture plus facile.',
+  'settings.appearance.fontSizeXLarge': 'Très grande',
+  'settings.appearance.fontSizeXLargeDesc': 'Le texte le plus grand, pour une lisibilité maximale.',
+  'settings.appearance.fontSizeHelperText':
+    'Ajuste la taille du texte dans toute l’application — chat, paramètres et panneaux — indépendamment du réglage de police de votre système.',
   'settings.appearance.tabBarHeading': "Barre d'onglets inférieure",
   'settings.appearance.tabBarAlwaysShowLabels': 'Toujours afficher les étiquettes',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':

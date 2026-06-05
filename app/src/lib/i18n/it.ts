@@ -3905,6 +3905,18 @@ const messages: TranslationMap = {
     "Segui l'impostazione dell'aspetto del tuo sistema operativo.",
   'settings.appearance.helperText':
     'La modalità oscura trasforma l\'intera app (chat, impostazioni, pannelli) in una tavolozza scura. Il "sistema di corrispondenza" segue l\'aspetto del tuo sistema operativo e si aggiorna in tempo reale.',
+  'settings.appearance.fontSizeHeading': 'Dimensione del carattere',
+  'settings.appearance.fontSizeAria': 'Dimensione del carattere',
+  'settings.appearance.fontSizeSmall': 'Piccolo',
+  'settings.appearance.fontSizeSmallDesc': 'Testo compatto — più contenuti sullo schermo.',
+  'settings.appearance.fontSizeMedium': 'Medio',
+  'settings.appearance.fontSizeMediumDesc': 'La dimensione predefinita ed equilibrata.',
+  'settings.appearance.fontSizeLarge': 'Grande',
+  'settings.appearance.fontSizeLargeDesc': 'Testo più grande per una lettura più facile.',
+  'settings.appearance.fontSizeXLarge': 'Molto grande',
+  'settings.appearance.fontSizeXLargeDesc': 'Il testo più grande, per la massima leggibilità.',
+  'settings.appearance.fontSizeHelperText':
+    'Ridimensiona il testo in tutta l’app — chat, impostazioni e pannelli — indipendentemente dall’impostazione del carattere del sistema.',
   'settings.appearance.tabBarHeading': 'Barra delle schede inferiore',
   'settings.appearance.tabBarAlwaysShowLabels': 'Mostra sempre le etichette',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':

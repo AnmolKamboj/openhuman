@@ -3940,6 +3940,18 @@ const messages: TranslationMap = {
     'Folgt den Einstellungen für das Erscheinungsbild deines Betriebssystems.',
   'settings.appearance.helperText':
     'Der Dunkelmodus schaltet die gesamte App – Chat, Einstellungen, Bedienfelder – auf eine dunkle Palette um. „Match System“ verfolgt das Erscheinungsbild deines Betriebssystems und aktualisiert es live.',
+  'settings.appearance.fontSizeHeading': 'Schriftgröße',
+  'settings.appearance.fontSizeAria': 'Schriftgröße',
+  'settings.appearance.fontSizeSmall': 'Klein',
+  'settings.appearance.fontSizeSmallDesc': 'Kompakter Text — mehr auf dem Bildschirm.',
+  'settings.appearance.fontSizeMedium': 'Mittel',
+  'settings.appearance.fontSizeMediumDesc': 'Die ausgewogene Standardgröße.',
+  'settings.appearance.fontSizeLarge': 'Groß',
+  'settings.appearance.fontSizeLargeDesc': 'Größerer Text für leichteres Lesen.',
+  'settings.appearance.fontSizeXLarge': 'Sehr groß',
+  'settings.appearance.fontSizeXLargeDesc': 'Der größte Text für maximale Lesbarkeit.',
+  'settings.appearance.fontSizeHelperText':
+    'Skaliert den Text in der gesamten App — Chat, Einstellungen und Bereiche — unabhängig von der Schrifteinstellung deines Systems.',
   'settings.appearance.tabBarHeading': 'Untere Tab-Leiste',
   'settings.appearance.tabBarAlwaysShowLabels': 'Beschriftungen immer anzeigen',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':

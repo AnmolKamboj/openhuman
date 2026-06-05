@@ -3838,6 +3838,18 @@ const messages: TranslationMap = {
   'settings.appearance.modeSystemDesc': 'আপনার OS চেহারা সেটিং অনুসরণ করুন.',
   'settings.appearance.helperText':
     'ডার্ক মোড পুরো অ্যাপকে স্যুইচ করে — চ্যাট, সেটিংস, প্যানেল — একটি আবছা প্যালেটে। "ম্যাচ সিস্টেম" আপনার OS চেহারা অনুসরণ করে এবং লাইভ আপডেট করে।',
+  'settings.appearance.fontSizeHeading': 'ফন্টের আকার',
+  'settings.appearance.fontSizeAria': 'ফন্টের আকার',
+  'settings.appearance.fontSizeSmall': 'ছোট',
+  'settings.appearance.fontSizeSmallDesc': 'কমপ্যাক্ট লেখা — স্ক্রিনে আরও বেশি দেখান।',
+  'settings.appearance.fontSizeMedium': 'মাঝারি',
+  'settings.appearance.fontSizeMediumDesc': 'ডিফল্ট, সুষম আকার।',
+  'settings.appearance.fontSizeLarge': 'বড়',
+  'settings.appearance.fontSizeLargeDesc': 'সহজে পড়ার জন্য বড় লেখা।',
+  'settings.appearance.fontSizeXLarge': 'অতিরিক্ত বড়',
+  'settings.appearance.fontSizeXLargeDesc': 'সর্বাধিক পঠনযোগ্যতার জন্য সবচেয়ে বড় লেখা।',
+  'settings.appearance.fontSizeHelperText':
+    'সিস্টেম ফন্ট সেটিং নির্বিশেষে পুরো অ্যাপ জুড়ে — চ্যাট, সেটিংস ও প্যানেল — লেখার আকার পরিবর্তন করে।',
   'settings.appearance.tabBarHeading': 'নীচের ট্যাব বার',
   'settings.appearance.tabBarAlwaysShowLabels': 'সর্বদা লেবেলগুলি দেখান',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':

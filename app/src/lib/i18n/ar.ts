@@ -3765,6 +3765,18 @@ const messages: TranslationMap = {
   'settings.appearance.modeSystemDesc': 'اتبع إعداد مظهر نظام التشغيل لديك.',
   'settings.appearance.helperText':
     'يعمل الوضع الداكن على تحويل التطبيق بأكمله - الدردشة والإعدادات واللوحات - إلى لوحة معتمة. "نظام المطابقة" يتتبع مظهر نظام التشغيل الخاص بك وتحديثاته مباشرة.',
+  'settings.appearance.fontSizeHeading': 'حجم الخط',
+  'settings.appearance.fontSizeAria': 'حجم الخط',
+  'settings.appearance.fontSizeSmall': 'صغير',
+  'settings.appearance.fontSizeSmallDesc': 'نص مضغوط — لعرض المزيد على الشاشة.',
+  'settings.appearance.fontSizeMedium': 'متوسط',
+  'settings.appearance.fontSizeMediumDesc': 'الحجم الافتراضي المتوازن.',
+  'settings.appearance.fontSizeLarge': 'كبير',
+  'settings.appearance.fontSizeLargeDesc': 'نص أكبر لقراءة أسهل.',
+  'settings.appearance.fontSizeXLarge': 'كبير جدًا',
+  'settings.appearance.fontSizeXLargeDesc': 'أكبر حجم للنص لأقصى قدر من الوضوح.',
+  'settings.appearance.fontSizeHelperText':
+    'يضبط حجم النص في التطبيق بأكمله — المحادثة والإعدادات واللوحات — بشكل مستقل عن إعداد خط نظامك.',
   'settings.appearance.tabBarHeading': 'شريط علامات التبويب السفلي',
   'settings.appearance.tabBarAlwaysShowLabels': 'إظهار التسميات دائمًا',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':

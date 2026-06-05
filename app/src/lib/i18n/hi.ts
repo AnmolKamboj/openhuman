@@ -3847,6 +3847,18 @@ const messages: TranslationMap = {
   'settings.appearance.modeSystemDesc': 'अपने OS उपस्थिति सेटिंग का पालन करें.',
   'settings.appearance.helperText':
     'डार्क मोड पूरे ऐप - चैट, सेटिंग्स, पैनल - को एक मंद पैलेट में बदल देता है। "मैच सिस्टम" आपके ओएस की उपस्थिति और अपडेट का लाइव अनुसरण करता है।',
+  'settings.appearance.fontSizeHeading': 'फ़ॉन्ट आकार',
+  'settings.appearance.fontSizeAria': 'फ़ॉन्ट आकार',
+  'settings.appearance.fontSizeSmall': 'छोटा',
+  'settings.appearance.fontSizeSmallDesc': 'संक्षिप्त टेक्स्ट — स्क्रीन पर अधिक दिखाएँ।',
+  'settings.appearance.fontSizeMedium': 'मध्यम',
+  'settings.appearance.fontSizeMediumDesc': 'डिफ़ॉल्ट, संतुलित आकार।',
+  'settings.appearance.fontSizeLarge': 'बड़ा',
+  'settings.appearance.fontSizeLargeDesc': 'आसान पढ़ने के लिए बड़ा टेक्स्ट।',
+  'settings.appearance.fontSizeXLarge': 'बहुत बड़ा',
+  'settings.appearance.fontSizeXLargeDesc': 'अधिकतम पठनीयता के लिए सबसे बड़ा टेक्स्ट।',
+  'settings.appearance.fontSizeHelperText':
+    'आपके सिस्टम फ़ॉन्ट सेटिंग से स्वतंत्र रूप से पूरे ऐप — चैट, सेटिंग्स और पैनल — में टेक्स्ट का आकार बदलता है।',
   'settings.appearance.tabBarHeading': 'निचला टैब बार',
   'settings.appearance.tabBarAlwaysShowLabels': 'हमेशा लेबल दिखाएं',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':

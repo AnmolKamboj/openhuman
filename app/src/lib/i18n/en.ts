@@ -4256,6 +4256,18 @@ const en: TranslationMap = {
   'settings.appearance.modeSystemDesc': 'Follow your OS appearance setting.',
   'settings.appearance.helperText':
     'Dark mode switches the entire app — chat, settings, panels — to a dim palette. "Match system" follows your OS appearance and updates live.',
+  'settings.appearance.fontSizeHeading': 'Font size',
+  'settings.appearance.fontSizeAria': 'Font size',
+  'settings.appearance.fontSizeSmall': 'Small',
+  'settings.appearance.fontSizeSmallDesc': 'Compact text — fit more on screen.',
+  'settings.appearance.fontSizeMedium': 'Medium',
+  'settings.appearance.fontSizeMediumDesc': 'The default, balanced size.',
+  'settings.appearance.fontSizeLarge': 'Large',
+  'settings.appearance.fontSizeLargeDesc': 'Bigger text for easier reading.',
+  'settings.appearance.fontSizeXLarge': 'Extra large',
+  'settings.appearance.fontSizeXLargeDesc': 'The largest text, for maximum readability.',
+  'settings.appearance.fontSizeHelperText':
+    'Scales text across the whole app — chat, settings and panels — independently of your system font setting.',
   'settings.appearance.tabBarHeading': 'Bottom tab bar',
   'settings.appearance.tabBarAlwaysShowLabels': 'Always show labels',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':

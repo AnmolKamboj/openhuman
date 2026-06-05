@@ -3656,6 +3656,18 @@ const messages: TranslationMap = {
   'settings.appearance.modeSystemDesc': '跟随操作系统外观设置。',
   'settings.appearance.helperText':
     '深色模式会将整个应用——聊天、设置、面板——切换为暗色调。"跟随系统"会同步你的操作系统外观并实时更新。',
+  'settings.appearance.fontSizeHeading': '字体大小',
+  'settings.appearance.fontSizeAria': '字体大小',
+  'settings.appearance.fontSizeSmall': '小',
+  'settings.appearance.fontSizeSmallDesc': '紧凑文字——屏幕显示更多内容。',
+  'settings.appearance.fontSizeMedium': '中',
+  'settings.appearance.fontSizeMediumDesc': '默认的均衡大小。',
+  'settings.appearance.fontSizeLarge': '大',
+  'settings.appearance.fontSizeLargeDesc': '更大的文字，阅读更轻松。',
+  'settings.appearance.fontSizeXLarge': '超大',
+  'settings.appearance.fontSizeXLargeDesc': '最大的文字，可读性最佳。',
+  'settings.appearance.fontSizeHelperText':
+    '在整个应用中缩放文字——聊天、设置和面板——与系统字体设置无关。',
   'settings.appearance.tabBarHeading': '底部标签栏',
   'settings.appearance.tabBarAlwaysShowLabels': '始终显示标签',
   'settings.appearance.tabBarAlwaysShowLabelsDesc': '关闭时，标签仅出现在悬停时或活动选项卡上。',
