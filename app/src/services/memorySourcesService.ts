@@ -166,6 +166,21 @@ export async function syncMemorySource(sourceId: string): Promise<void> {
   });
 }
 
+/**
+ * Toolkit slugs that ship a native memory-sync provider (backend registry —
+ * `all_providers()`). The Add Source connection picker uses this to disable
+ * connections whose toolkit can never sync. Maps to
+ * `openhuman.memory_sources_supported_toolkits`. See issue #3352.
+ */
+export async function getSupportedToolkits(): Promise<string[]> {
+  log('supported_toolkits');
+  const resp = await callCoreRpc<{ toolkits: string[] }>({
+    method: 'openhuman.memory_sources_supported_toolkits',
+  });
+  const data = unwrap<{ toolkits: string[] }>(resp);
+  return data.toolkits ?? [];
+}
+
 export interface ApplyAllInResult {
   sources: MemorySourceEntry[];
   sync_triggered: number;

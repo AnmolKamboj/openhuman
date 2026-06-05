@@ -2019,6 +2019,7 @@ const messages: TranslationMap = {
   'memorySources.connectionAccount': 'Cuenta',
   'memorySources.pickConnection': 'Elige una conexión',
   'memorySources.selectConnection': '— Seleccionar una conexión —',
+  'memorySources.comingSoon': 'Próximamente',
   'memorySources.composioListFailed': 'Error al cargar las conexiones Composio.',
   'memorySources.browse': 'Examinar…',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',

@@ -1954,6 +1954,7 @@ const messages: TranslationMap = {
   'memorySources.connectionAccount': '계정',
   'memorySources.pickConnection': '연결 선택',
   'memorySources.selectConnection': '— 연결 선택 —',
+  'memorySources.comingSoon': '출시 예정',
   'memorySources.composioListFailed': 'Composio 연결을 불러오지 못했습니다.',
   'memorySources.browse': '찾아보기…',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',

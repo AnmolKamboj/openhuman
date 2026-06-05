@@ -7,6 +7,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { listConnections } from '../../lib/composio/composioApi';
+import { getSupportedToolkits } from '../../services/memorySourcesService';
 import { renderWithProviders } from '../../test/test-utils';
 import { AddMemorySourceDialog, deduplicateConnections } from './AddMemorySourceDialog';
 
@@ -18,6 +19,7 @@ vi.mock('../../lib/composio/composioApi', () => ({ listConnections: vi.fn() }));
 
 vi.mock('../../services/memorySourcesService', () => ({
   addMemorySource: vi.fn(),
+  getSupportedToolkits: vi.fn(),
   SOURCE_KIND_ICONS: {
     folder: '📁',
     composio: '🔗',
@@ -37,6 +39,12 @@ vi.mock('../../services/memorySourcesService', () => ({
 }));
 
 const mockListConnections = listConnections as ReturnType<typeof vi.fn>;
+const mockGetSupportedToolkits = getSupportedToolkits as ReturnType<typeof vi.fn>;
+
+/** Every toolkit used across the picker component tests is syncable by default,
+ *  so existing assertions keep passing. Tests that exercise the disabled /
+ *  "Coming soon" path override this with a narrower set. */
+const DEFAULT_SUPPORTED = ['gmail', 'slack', 'notion', 'github', 'linear', 'clickup'];
 
 // ---------------------------------------------------------------------------
 // Helper
@@ -56,6 +64,13 @@ async function openComposioStep() {
   fireEvent.click(integrationBtn);
   // Wait for async connection fetch
   await waitFor(() => expect(mockListConnections).toHaveBeenCalledTimes(1));
+}
+
+/** Open the custom connection dropdown so its option rows render. */
+async function openListbox() {
+  const trigger = await screen.findByTestId('composio-connection-picker');
+  fireEvent.click(trigger);
+  await screen.findByTestId('composio-connection-listbox');
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +210,8 @@ describe('deduplicateConnections', () => {
 describe('AddMemorySourceDialog — Composio picker', () => {
   beforeEach(() => {
     mockListConnections.mockReset();
+    mockGetSupportedToolkits.mockReset();
+    mockGetSupportedToolkits.mockResolvedValue(DEFAULT_SUPPORTED);
   });
 
   it('shows loading state while fetching connections', async () => {
@@ -222,6 +239,7 @@ describe('AddMemorySourceDialog — Composio picker', () => {
       ],
     });
     await openComposioStep();
+    await openListbox();
     await waitFor(() => expect(screen.queryByText('Gmail · user@gmail.com')).toBeTruthy());
     expect(screen.queryByText('raw-id-xyz')).toBeNull();
   });
@@ -234,6 +252,7 @@ describe('AddMemorySourceDialog — Composio picker', () => {
       ],
     });
     await openComposioStep();
+    await openListbox();
     await waitFor(() => {
       const options = screen.getAllByRole('option');
       const gmailOptions = options.filter(o => o.textContent?.includes('Gmail · x@example.com'));
@@ -249,6 +268,7 @@ describe('AddMemorySourceDialog — Composio picker', () => {
       ],
     });
     await openComposioStep();
+    await openListbox();
     await waitFor(() => {
       expect(screen.queryByText('Notion · Account 1')).toBeTruthy();
       expect(screen.queryByText('Notion · Account 2')).toBeTruthy();
@@ -265,15 +285,139 @@ describe('AddMemorySourceDialog — Composio picker', () => {
       ],
     });
     await openComposioStep();
-    await waitFor(() => expect(screen.queryByText('Slack · my-workspace')).toBeTruthy());
+    await openListbox();
+    const option = await screen.findByTestId('composio-option-conn-1');
+    fireEvent.click(option);
 
-    const select = screen.getByRole('combobox');
-    fireEvent.change(select, { target: { value: 'conn-1' } });
-
-    // The label field should be auto-filled
+    // The label field should be auto-filled, and the dropdown collapses to
+    // show the chosen connection on the trigger.
     await waitFor(() => {
       const labelInput = screen.getByPlaceholderText('My research notes');
       expect((labelInput as HTMLInputElement).value).toBe('Slack · my-workspace');
     });
+  });
+
+  it('disables unsupported toolkits with a "Coming soon" tag and keeps them unselectable', async () => {
+    // Slack is syncable; Google Calendar is not in the supported set.
+    mockGetSupportedToolkits.mockResolvedValue(['slack']);
+    mockListConnections.mockResolvedValue({
+      connections: [
+        { id: 'conn-slack', toolkit: 'slack', status: 'ACTIVE', workspace: 'acme' },
+        { id: 'conn-gcal', toolkit: 'googlecalendar', status: 'ACTIVE', accountEmail: 'a@x.com' },
+      ],
+    });
+    await openComposioStep();
+    await openListbox();
+
+    const supported = await screen.findByTestId('composio-option-conn-slack');
+    const unsupported = await screen.findByTestId('composio-option-conn-gcal');
+
+    expect(supported.getAttribute('aria-disabled')).toBe('false');
+    expect(unsupported.getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByTestId('composio-option-coming-soon-conn-gcal')).toBeInTheDocument();
+    // No "Coming soon" chip on the supported row.
+    expect(screen.queryByTestId('composio-option-coming-soon-conn-slack')).toBeNull();
+
+    // Clicking the unsupported row must NOT select it (label stays empty).
+    fireEvent.click(unsupported);
+    const labelInput = screen.getByPlaceholderText('My research notes');
+    expect((labelInput as HTMLInputElement).value).toBe('');
+
+    // Clicking the supported row selects it.
+    fireEvent.click(supported);
+    await waitFor(() => expect((labelInput as HTMLInputElement).value).toBe('slack · acme'));
+  });
+
+  it('treats every connection as supported when the supported-toolkit RPC fails', async () => {
+    // Fallback path: getSupportedToolkits rejects → null set → nothing disabled.
+    mockGetSupportedToolkits.mockRejectedValue(new Error('rpc down'));
+    mockListConnections.mockResolvedValue({
+      connections: [{ id: 'conn-x', toolkit: 'sentry', status: 'ACTIVE', accountEmail: 'a@x.com' }],
+    });
+    await openComposioStep();
+    await openListbox();
+    const option = await screen.findByTestId('composio-option-conn-x');
+    expect(option.getAttribute('aria-disabled')).toBe('false');
+    expect(screen.queryByTestId('composio-option-coming-soon-conn-x')).toBeNull();
+  });
+
+  it('closes the dropdown when Escape is pressed', async () => {
+    mockListConnections.mockResolvedValue({
+      connections: [{ id: 'conn-1', toolkit: 'Slack', status: 'ACTIVE', workspace: 'acme' }],
+    });
+    await openComposioStep();
+    await openListbox();
+    expect(screen.queryByTestId('composio-connection-listbox')).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByTestId('composio-connection-listbox')).toBeNull());
+  });
+
+  it('closes the dropdown on an outside click', async () => {
+    mockListConnections.mockResolvedValue({
+      connections: [{ id: 'conn-1', toolkit: 'Slack', status: 'ACTIVE', workspace: 'acme' }],
+    });
+    await openComposioStep();
+    await openListbox();
+    expect(screen.queryByTestId('composio-connection-listbox')).toBeInTheDocument();
+
+    // A mousedown outside the picker container collapses the listbox.
+    fireEvent.mouseDown(document.body);
+    await waitFor(() => expect(screen.queryByTestId('composio-connection-listbox')).toBeNull());
+  });
+
+  it('opens the listbox with ArrowDown on the trigger button', async () => {
+    mockListConnections.mockResolvedValue({
+      connections: [{ id: 'conn-1', toolkit: 'Slack', status: 'ACTIVE', workspace: 'acme' }],
+    });
+    await openComposioStep();
+    const trigger = await screen.findByTestId('composio-connection-picker');
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    await screen.findByTestId('composio-connection-listbox');
+  });
+
+  it('navigates options with the arrow keys and selects with Enter', async () => {
+    mockListConnections.mockResolvedValue({
+      connections: [
+        { id: 'conn-gmail', toolkit: 'Gmail', status: 'ACTIVE', accountEmail: 'a@x.com' },
+        { id: 'conn-slack', toolkit: 'Slack', status: 'ACTIVE', workspace: 'acme' },
+      ],
+    });
+    await openComposioStep();
+    await openListbox();
+    const listbox = screen.getByTestId('composio-connection-listbox');
+
+    // Opens highlighting the first selectable option; ArrowDown moves to the next.
+    expect(listbox).toHaveAttribute('aria-activedescendant', 'composio-opt-conn-gmail');
+    fireEvent.keyDown(listbox, { key: 'ArrowDown' });
+    expect(listbox).toHaveAttribute('aria-activedescendant', 'composio-opt-conn-slack');
+
+    // Enter selects the highlighted option and closes the dropdown.
+    fireEvent.keyDown(listbox, { key: 'Enter' });
+    await waitFor(() => {
+      const labelInput = screen.getByPlaceholderText('My research notes');
+      expect((labelInput as HTMLInputElement).value).toBe('Slack · acme');
+    });
+    expect(screen.queryByTestId('composio-connection-listbox')).toBeNull();
+  });
+
+  it('skips unsupported options during keyboard navigation', async () => {
+    mockGetSupportedToolkits.mockResolvedValue(['slack']);
+    mockListConnections.mockResolvedValue({
+      connections: [
+        { id: 'conn-slack', toolkit: 'slack', status: 'ACTIVE', workspace: 'acme' },
+        { id: 'conn-gcal', toolkit: 'googlecalendar', status: 'ACTIVE', accountEmail: 'a@x.com' },
+      ],
+    });
+    await openComposioStep();
+    await openListbox();
+    const listbox = screen.getByTestId('composio-connection-listbox');
+
+    // Only the supported option is reachable; wrapping keeps it on slack.
+    expect(listbox).toHaveAttribute('aria-activedescendant', 'composio-opt-conn-slack');
+    fireEvent.keyDown(listbox, { key: 'ArrowDown' });
+    expect(listbox).toHaveAttribute('aria-activedescendant', 'composio-opt-conn-slack');
+    fireEvent.keyDown(listbox, { key: 'ArrowUp' });
+    expect(listbox).toHaveAttribute('aria-activedescendant', 'composio-opt-conn-slack');
   });
 });

@@ -1980,6 +1980,7 @@ const messages: TranslationMap = {
   'memorySources.connectionAccount': 'Akun',
   'memorySources.pickConnection': 'Pilih koneksi',
   'memorySources.selectConnection': '- Pilih koneksi -',
+  'memorySources.comingSoon': 'Segera hadir',
   'memorySources.composioListFailed': 'Gagal memuat koneksi Composio.',
   'memorySources.browse': 'Jelajahi...',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',

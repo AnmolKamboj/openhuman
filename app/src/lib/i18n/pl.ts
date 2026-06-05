@@ -1998,6 +1998,7 @@ const messages: TranslationMap = {
   'memorySources.connectionAccount': 'Konto',
   'memorySources.pickConnection': 'Wybierz połączenie',
   'memorySources.selectConnection': '— Wybierz połączenie —',
+  'memorySources.comingSoon': 'Wkrótce',
   'memorySources.composioListFailed': 'Nie udało się wczytać połączeń Composio.',
   'memorySources.browse': 'Przeglądaj…',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',

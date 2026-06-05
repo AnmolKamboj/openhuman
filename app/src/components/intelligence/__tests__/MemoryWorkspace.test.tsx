@@ -25,6 +25,7 @@ vi.mock('../../../services/memorySourcesService', () => ({
   removeMemorySource: vi.fn(),
   updateMemorySource: vi.fn(),
   addMemorySource: vi.fn(),
+  getSupportedToolkits: vi.fn().mockResolvedValue([]),
   SOURCE_KIND_ICONS: {
     folder: '📁',
     composio: '🔗',

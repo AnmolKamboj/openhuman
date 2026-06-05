@@ -1976,6 +1976,7 @@ const messages: TranslationMap = {
   'memorySources.connectionAccount': 'অ্যাকাউন্ট',
   'memorySources.pickConnection': 'একটি সংযোগ নির্বাচন করুন',
   'memorySources.selectConnection': '- একটি সংযোগ নির্বাচন করুন -',
+  'memorySources.comingSoon': 'শীঘ্রই আসছে',
   'memorySources.composioListFailed': 'Xqxqx সংযোগ লোড করতে ব্যর্থ।',
   'memorySources.browse': 'ব্রাউজ করুন...',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',

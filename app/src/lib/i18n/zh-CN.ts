@@ -1876,6 +1876,7 @@ const messages: TranslationMap = {
   'memorySources.connectionAccount': '账户',
   'memorySources.pickConnection': '选择连接',
   'memorySources.selectConnection': '— 选择连接 —',
+  'memorySources.comingSoon': '即将推出',
   'memorySources.composioListFailed': '加载 Composio 连接失败。',
   'memorySources.browse': '浏览…',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',

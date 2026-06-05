@@ -2333,6 +2333,7 @@ const en: TranslationMap = {
   'memorySources.connectionAccount': 'Account',
   'memorySources.pickConnection': 'Pick a connection',
   'memorySources.selectConnection': '— Select a connection —',
+  'memorySources.comingSoon': 'Coming soon',
   'memorySources.composioListFailed': 'Failed to load Composio connections.',
   'memorySources.browse': 'Browse…',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',

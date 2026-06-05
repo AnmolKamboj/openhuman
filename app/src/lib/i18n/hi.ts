@@ -1977,6 +1977,7 @@ const messages: TranslationMap = {
   'memorySources.connectionAccount': 'खाता',
   'memorySources.pickConnection': 'कनेक्शन चुनें',
   'memorySources.selectConnection': '- एक कनेक्शन चुनें -',
+  'memorySources.comingSoon': 'जल्द आ रहा है',
   'memorySources.composioListFailed': 'Composio कनेक्शन लोड करने में विफल रहा।',
   'memorySources.browse': 'ब्राउज़ करें',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',

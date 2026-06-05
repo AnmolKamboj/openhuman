@@ -2027,6 +2027,7 @@ const messages: TranslationMap = {
   'memorySources.connectionAccount': 'Konto',
   'memorySources.pickConnection': 'Wählen Sie eine Verbindung',
   'memorySources.selectConnection': 'Wählen Sie eine Verbindung aus.',
+  'memorySources.comingSoon': 'Demnächst',
   'memorySources.composioListFailed': 'Fehler beim Laden der Composio-Verbindungen.',
   'memorySources.browse': 'Durchsuchen…',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',

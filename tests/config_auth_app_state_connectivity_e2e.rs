@@ -2865,6 +2865,7 @@ async fn worker_a_controller_schemas_are_fully_exposed() {
                 "openhuman.memory_sources_read_item",
                 "openhuman.memory_sources_remove",
                 "openhuman.memory_sources_status_list",
+                "openhuman.memory_sources_supported_toolkits",
                 "openhuman.memory_sources_sync",
                 "openhuman.memory_sources_sync_audit_log",
                 "openhuman.memory_sources_update",

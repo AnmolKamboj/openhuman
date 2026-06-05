@@ -1937,6 +1937,7 @@ const messages: TranslationMap = {
   'memorySources.connectionAccount': 'الحساب',
   'memorySources.pickConnection': 'اختر اتصال',
   'memorySources.selectConnection': '- اختيار اتصال -',
+  'memorySources.comingSoon': 'قريباً',
   'memorySources.composioListFailed': 'فشل في تحميل الأتصالات Xqx0x.',
   'memorySources.browse': '(بروز)...',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',

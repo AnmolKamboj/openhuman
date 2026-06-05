@@ -1990,6 +1990,7 @@ const messages: TranslationMap = {
   'memorySources.connectionAccount': 'Аккаунт',
   'memorySources.pickConnection': 'Выберите соединение',
   'memorySources.selectConnection': '— Выберите соединение —',
+  'memorySources.comingSoon': 'Скоро',
   'memorySources.composioListFailed': 'Не удалось загрузить соединения Composio.',
   'memorySources.browse': 'Просматривать…',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',
