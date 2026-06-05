@@ -1973,7 +1973,6 @@ const messages: TranslationMap = {
     'কোনো স্বনির্ধারিত উৎস পাওয়া যায়নি। একটি ফোল্ডার যোগ করুন, xqx1x rex, xqxqx pxkx ফিড, অথবা ওয়েব পেজ আরম্ভ করুন।',
   'memorySources.loadingConnections': 'সংযোগ লোড করা হচ্ছে...',
   'memorySources.noConnections': 'কোনো সক্রিয় xqxqx সংযোগ পাওয়া যায়নি। একটা সম্পর্ক প্রথমে।',
-  'memorySources.connectionAccount': 'অ্যাকাউন্ট',
   'memorySources.pickConnection': 'একটি সংযোগ নির্বাচন করুন',
   'memorySources.selectConnection': '- একটি সংযোগ নির্বাচন করুন -',
   'memorySources.comingSoon': 'শীঘ্রই আসছে',

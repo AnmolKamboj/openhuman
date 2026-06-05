@@ -2024,7 +2024,6 @@ const messages: TranslationMap = {
   'memorySources.loadingConnections': 'Verbindungen werden geladen...',
   'memorySources.noConnections':
     'Keine aktiven Composio-Verbindungen gefunden. Verbinden Sie zuerst eine Integration.',
-  'memorySources.connectionAccount': 'Konto',
   'memorySources.pickConnection': 'Wählen Sie eine Verbindung',
   'memorySources.selectConnection': 'Wählen Sie eine Verbindung aus.',
   'memorySources.comingSoon': 'Demnächst',

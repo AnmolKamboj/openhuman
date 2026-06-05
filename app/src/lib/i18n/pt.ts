@@ -2014,7 +2014,6 @@ const messages: TranslationMap = {
   'memorySources.loadingConnections': 'Carregando conexões…',
   'memorySources.noConnections':
     'Nenhuma conexão Composio ativa encontrada. Conecte uma integração primeiro.',
-  'memorySources.connectionAccount': 'Conta',
   'memorySources.pickConnection': 'Escolha uma conexão',
   'memorySources.selectConnection': '— Selecionar uma conexão —',
   'memorySources.comingSoon': 'Em breve',

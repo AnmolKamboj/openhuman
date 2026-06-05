@@ -1873,7 +1873,6 @@ const messages: TranslationMap = {
     '暂无自定义来源。添加文件夹、GitHub 仓库、RSS 订阅或网页即可开始。',
   'memorySources.loadingConnections': '正在加载连接…',
   'memorySources.noConnections': '未找到活跃的 Composio 连接。请先连接一个集成。',
-  'memorySources.connectionAccount': '账户',
   'memorySources.pickConnection': '选择连接',
   'memorySources.selectConnection': '— 选择连接 —',
   'memorySources.comingSoon': '即将推出',
