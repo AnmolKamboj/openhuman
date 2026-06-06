@@ -70,6 +70,7 @@ pub mod memory_conversations;
 pub mod memory_entities;
 pub mod memory_graph;
 pub mod memory_queue;
+pub mod memory_search;
 pub mod memory_sources;
 pub mod memory_store;
 pub mod memory_sync;
