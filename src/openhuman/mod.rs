@@ -67,6 +67,7 @@ pub mod meet_agent;
 pub mod memory;
 pub mod memory_archivist;
 pub mod memory_conversations;
+pub mod memory_diff;
 pub mod memory_entities;
 pub mod memory_graph;
 pub mod memory_queue;

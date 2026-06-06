@@ -171,6 +171,19 @@ pub async fn sync_source(source: MemorySourceEntry, config: Config) -> Result<()
                     // Auto-rebuild: if raw files exist but the tree has
                     // no summaries, build the tree now.
                     check_and_rebuild_tree(&source, &config).await;
+
+                    // Auto-snapshot: capture post-sync state for diff tracking.
+                    if let Err(e) = crate::openhuman::memory_diff::ops::auto_snapshot_after_sync(
+                        &source, &config,
+                    )
+                    .await
+                    {
+                        tracing::warn!(
+                            source_id = %source.id,
+                            error = %e,
+                            "[memory_sources:sync] auto-snapshot failed (non-fatal)"
+                        );
+                    }
                 }
                 Err(error) => {
                     // Audit failed syncs too.
