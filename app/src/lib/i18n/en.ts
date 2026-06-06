@@ -2489,6 +2489,7 @@ const en: TranslationMap = {
   'memorySources.cssSelectorPlaceholder': 'article',
   'memorySources.searchQueryPlaceholder': 'from:user AI safety',
   'memorySources.kind.composio': 'Integration',
+  'memorySources.kind.conversation': 'Conversation',
   'memorySources.kind.folder': 'Local Folder',
   'memorySources.kind.github_repo': 'GitHub Repo',
   'memorySources.kind.twitter_query': 'Twitter Search',

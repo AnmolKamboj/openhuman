@@ -2051,6 +2051,7 @@ const messages: TranslationMap = {
   'memorySources.cssSelectorPlaceholder': 'article',
   'memorySources.searchQueryPlaceholder': 'from:user AI safety',
   'memorySources.kind.composio': 'Integracja',
+  'memorySources.kind.conversation': 'Rozmowa',
   'memorySources.kind.folder': 'Folder lokalny',
   'memorySources.kind.github_repo': 'Repozytorium GitHub',
   'memorySources.kind.twitter_query': 'Wyszukiwanie Twittera',

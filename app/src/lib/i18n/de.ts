@@ -2082,6 +2082,7 @@ const messages: TranslationMap = {
   'memorySources.cssSelectorPlaceholder': 'article',
   'memorySources.searchQueryPlaceholder': 'von:Benutzer AI Safety',
   'memorySources.kind.composio': 'Integration',
+  'memorySources.kind.conversation': 'Unterhaltung',
   'memorySources.kind.folder': 'Lokaler Ordner',
   'memorySources.kind.github_repo': 'GitHub-Repo',
   'memorySources.kind.twitter_query': 'Twitter-Suche',

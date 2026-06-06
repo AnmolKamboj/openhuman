@@ -2034,6 +2034,7 @@ const messages: TranslationMap = {
   'memorySources.cssSelectorPlaceholder': 'article',
   'memorySources.searchQueryPlaceholder': 'dari: keselamatan AI pengguna',
   'memorySources.kind.composio': 'Integrasi',
+  'memorySources.kind.conversation': 'Percakapan',
   'memorySources.kind.folder': 'Folder Lokal',
   'memorySources.kind.github_repo': 'Repo GitHub',
   'memorySources.kind.twitter_query': 'Pencarian Twitter',

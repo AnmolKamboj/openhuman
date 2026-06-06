@@ -1924,6 +1924,7 @@ const messages: TranslationMap = {
   'memorySources.cssSelectorPlaceholder': 'article',
   'memorySources.searchQueryPlaceholder': 'from:user AI safety',
   'memorySources.kind.composio': '集成',
+  'memorySources.kind.conversation': '对话',
   'memorySources.kind.folder': '本地文件夹',
   'memorySources.kind.github_repo': 'GitHub 仓库',
   'memorySources.kind.twitter_query': 'Twitter 搜索',

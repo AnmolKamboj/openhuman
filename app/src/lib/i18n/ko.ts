@@ -2006,6 +2006,7 @@ const messages: TranslationMap = {
   'memorySources.cssSelectorPlaceholder': 'article',
   'memorySources.searchQueryPlaceholder': 'from:user AI 안전',
   'memorySources.kind.composio': '통합',
+  'memorySources.kind.conversation': '대화',
   'memorySources.kind.folder': '로컬 폴더',
   'memorySources.kind.github_repo': 'GitHub 리포지토리',
   'memorySources.kind.twitter_query': 'Twitter 검색',

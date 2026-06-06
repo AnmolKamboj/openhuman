@@ -97,6 +97,7 @@ pub async fn sync_source(source: MemorySourceEntry, config: Config) -> Result<()
                 SourceKind::Composio => {
                     sync_composio(&source, config.clone(), &mut composio_usage).await
                 }
+                SourceKind::Conversation => sync_items_individually(&source, &config).await,
                 SourceKind::GithubRepo => {
                     // GitHub path writes its own detailed audit entry
                     // with token breakdowns; skip the dispatcher-level

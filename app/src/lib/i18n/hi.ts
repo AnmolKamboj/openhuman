@@ -2030,6 +2030,7 @@ const messages: TranslationMap = {
   'memorySources.cssSelectorPlaceholder': 'article',
   'memorySources.searchQueryPlaceholder': 'से:उपयोगकर्ता AI सुरक्षा',
   'memorySources.kind.composio': 'एकीकरण',
+  'memorySources.kind.conversation': 'वार्तालाप',
   'memorySources.kind.folder': 'स्थानीय फ़ोल्डर',
   'memorySources.kind.github_repo': 'GitHub रेपो',
   'memorySources.kind.twitter_query': 'Twitter खोज',
