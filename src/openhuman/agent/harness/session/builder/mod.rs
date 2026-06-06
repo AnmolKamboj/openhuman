@@ -13,6 +13,7 @@ mod setters;
 #[cfg(test)]
 mod builder_tests;
 
+use crate::openhuman::agent::harness::definition::{AgentDefinition, ToolScope};
 use crate::openhuman::agent_tool_policy::ToolPolicySession;
 use crate::openhuman::tools::ToolSpec;
 
@@ -63,4 +64,19 @@ pub(super) fn visible_tool_specs_for_policy(
         })
         .cloned()
         .collect()
+}
+
+pub(super) fn should_synthesize_delegation_tools(def: &AgentDefinition) -> bool {
+    match &def.tools {
+        ToolScope::Wildcard => !def.subagents.is_empty(),
+        ToolScope::Named(names) => names.iter().any(|name| {
+            matches!(
+                name.as_str(),
+                "spawn_subagent"
+                    | "spawn_async_subagent"
+                    | "spawn_parallel_agents"
+                    | "spawn_worker_thread"
+            )
+        }),
+    }
 }

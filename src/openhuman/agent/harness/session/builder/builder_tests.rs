@@ -1,6 +1,6 @@
 //! Tests for the builder module — dedup_visible_tool_specs and related logic.
 
-use super::dedup_visible_tool_specs;
+use super::{dedup_visible_tool_specs, should_synthesize_delegation_tools};
 use crate::openhuman::tools::ToolSpec;
 use serde_json::json;
 
@@ -69,5 +69,27 @@ fn preserves_full_spec_content_for_kept_entries() {
     assert_eq!(
         deduped[0].parameters,
         json!({"type": "object", "required": ["x"]})
+    );
+}
+
+#[test]
+fn memory_only_subagent_policy_does_not_synthesize_delegate_tools() {
+    let defs = crate::openhuman::agent_registry::agents::load_builtins().unwrap();
+    let help = defs
+        .iter()
+        .find(|def| def.id == "help")
+        .expect("help agent is built in");
+    let orchestrator = defs
+        .iter()
+        .find(|def| def.id == "orchestrator")
+        .expect("orchestrator is built in");
+
+    assert!(
+        !should_synthesize_delegation_tools(help),
+        "memory-only subagent policy should gate call_memory_agent without adding delegate tools"
+    );
+    assert!(
+        should_synthesize_delegation_tools(orchestrator),
+        "orchestrator still needs synthesized delegate tools"
     );
 }

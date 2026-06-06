@@ -129,34 +129,12 @@ pub(super) fn build_session_agent(
 }
 
 fn load_reflection_chunks_for_thread(
-    workspace_dir: &std::path::Path,
-    thread_id: &str,
+    _workspace_dir: &std::path::Path,
+    _thread_id: &str,
 ) -> Option<Vec<crate::openhuman::subconscious::SourceChunk>> {
-    let messages = crate::openhuman::memory_conversations::get_messages(
-        workspace_dir.to_path_buf(),
-        thread_id,
-    )
-    .ok()?;
-    let first = messages.first()?;
-    let origin = first
-        .extra_metadata
-        .get("origin")
-        .and_then(|v| v.as_str())?;
-    if origin != "subconscious_reflection" {
-        return None;
-    }
-    let reflection_id = first
-        .extra_metadata
-        .get("reflection_id")
-        .and_then(|v| v.as_str())?
-        .to_string();
-    let reflection =
-        crate::openhuman::subconscious::store::with_connection(workspace_dir, |conn| {
-            crate::openhuman::subconscious::reflection_store::get_reflection(conn, &reflection_id)
-        })
-        .ok()
-        .flatten()?;
-    Some(reflection.source_chunks)
+    // Reflection store has been removed. Existing threads spawned from
+    // reflections no longer receive memory-context injection.
+    None
 }
 
 pub(crate) fn locale_reply_directive(locale: &str) -> Option<String> {

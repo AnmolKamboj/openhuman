@@ -193,6 +193,11 @@ pub const BUILTINS: &[BuiltinAgent] = &[
         toml: include_str!("../../agent_memory/agent/agent.toml"),
         prompt_fn: crate::openhuman::agent_memory::agent::prompt::build,
     },
+    BuiltinAgent {
+        id: "subconscious",
+        toml: include_str!("../../subconscious/agent/agent.toml"),
+        prompt_fn: crate::openhuman::subconscious::agent::prompt::build,
+    },
 ];
 
 /// Parse every entry in [`BUILTINS`] into an [`AgentDefinition`].
@@ -245,12 +250,16 @@ pub fn validate_tier_hierarchy(defs: &[AgentDefinition]) -> Result<()> {
                 SubagentEntry::Skills(_) => continue,
             };
 
-            // Worker leaves: no spawn surface at all.
-            if def.agent_tier == AgentTier::Worker {
+            // Worker leaves: no open-ended spawn surface. A worker may still
+            // name `agent_memory` so the hidden `call_memory_agent` tool can
+            // be policy-gated by the same parent-context allowlist without
+            // synthesising visible delegate tools.
+            if def.agent_tier == AgentTier::Worker && child_id != "agent_memory" {
                 anyhow::bail!(
-                    "agent `{parent}` is a `worker` tier and must not list `{child}` (or any \
-                     agent) in its subagents — workers are leaf executors. Either remove the \
-                     entry or re-tier `{parent}` as `chat` / `reasoning`.",
+                    "agent `{parent}` is a `worker` tier and must not list `{child}` in its \
+                     subagents — workers are leaf executors except for the hidden `agent_memory` \
+                     retrieval policy. Either remove the entry or re-tier `{parent}` as `chat` / \
+                     `reasoning`.",
                     parent = def.id,
                     child = child_id,
                 );
@@ -317,12 +326,35 @@ fn parse_builtin(b: &BuiltinAgent) -> Result<AgentDefinition> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openhuman::agent::harness::definition::{ModelSpec, SandboxMode, ToolScope};
+    use crate::openhuman::agent::harness::definition::{
+        ModelSpec, SandboxMode, SubagentEntry, ToolScope,
+    };
 
     #[test]
     fn all_builtins_parse() {
         let defs = load_builtins().expect("built-in TOML must parse");
         assert_eq!(defs.len(), BUILTINS.len());
+    }
+
+    #[test]
+    fn call_memory_agent_users_allow_agent_memory_subagent() {
+        for def in load_builtins().expect("built-in TOML must parse") {
+            let uses_call_memory_agent = match &def.tools {
+                ToolScope::Named(tools) => tools.iter().any(|tool| tool == "call_memory_agent"),
+                ToolScope::Wildcard => false,
+            };
+            if !uses_call_memory_agent {
+                continue;
+            }
+
+            assert!(
+                def.subagents.iter().any(|entry| {
+                    matches!(entry, SubagentEntry::AgentId(id) if id == "agent_memory")
+                }),
+                "{} exposes call_memory_agent but does not allow agent_memory in subagents",
+                def.id
+            );
+        }
     }
 
     #[test]
@@ -1056,6 +1088,8 @@ mod tests {
 
     #[test]
     fn control_specialists_have_named_tools_and_are_worker_leaves() {
+        use crate::openhuman::agent::harness::definition::SubagentEntry;
+
         for expected in [
             "task_manager_agent",
             "settings_agent",
@@ -1065,7 +1099,18 @@ mod tests {
         ] {
             let def = find(expected);
             assert_eq!(def.agent_tier, AgentTier::Worker);
-            assert!(def.subagents.is_empty(), "{expected} must be a worker leaf");
+            let visible_subagents: Vec<&str> = def
+                .subagents
+                .iter()
+                .filter_map(|entry| match entry {
+                    SubagentEntry::AgentId(id) if id != "agent_memory" => Some(id.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert!(
+                visible_subagents.is_empty(),
+                "{expected} must be a worker leaf except for hidden agent_memory lookup"
+            );
             match def.tools {
                 ToolScope::Named(tools) => {
                     assert!(
@@ -1103,13 +1148,13 @@ mod tests {
     #[test]
     fn other_builtins_default_to_worker_tier() {
         for def in load_builtins().unwrap() {
-            if def.id == "orchestrator" || def.id == "planner" {
+            if def.id == "orchestrator" || def.id == "planner" || def.id == "subconscious" {
                 continue;
             }
             assert_eq!(
                 def.agent_tier,
                 AgentTier::Worker,
-                "{} should default to worker tier (only orchestrator/planner are non-worker today)",
+                "{} should default to worker tier (only orchestrator/planner/subconscious are non-worker today)",
                 def.id
             );
         }

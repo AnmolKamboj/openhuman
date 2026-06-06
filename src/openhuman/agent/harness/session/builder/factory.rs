@@ -2,6 +2,7 @@
 //! `build_session_agent_inner` constructor.
 
 use super::helpers::prefetch_tool_memory_rules_blocking;
+use super::should_synthesize_delegation_tools;
 use crate::openhuman::agent::dispatcher::{
     NativeToolDispatcher, PFormatToolDispatcher, XmlToolDispatcher,
 };
@@ -740,11 +741,15 @@ impl Agent {
             crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::global(),
         ) {
             (Some(def), Some(reg)) => {
-                let synthed = tools::orchestrator_tools::collect_orchestrator_tools(
-                    def,
-                    reg,
-                    prewarmed_integrations_slice,
-                );
+                let synthed = if should_synthesize_delegation_tools(def) {
+                    tools::orchestrator_tools::collect_orchestrator_tools(
+                        def,
+                        reg,
+                        prewarmed_integrations_slice,
+                    )
+                } else {
+                    Vec::new()
+                };
                 let filter: Option<std::collections::HashSet<String>> = match &def.tools {
                     ToolScope::Named(names) => {
                         let mut set: std::collections::HashSet<String> =
