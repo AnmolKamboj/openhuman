@@ -2588,6 +2588,10 @@ const messages: TranslationMap = {
   'composio.connect.atlassianSubdomainHint': 'acme',
   'composio.connect.atlassianSubdomainLabel': 'Atlassian-Subdomain-Label',
   'composio.connect.connect': 'Verbinden',
+  'composio.connect.connectedAccounts': 'Verbundene Konten',
+  'composio.connect.defaultLabel': 'Standard',
+  'composio.connect.disconnectAccount': 'Entfernen',
+  'composio.connect.addAnotherAccount': 'Weiteres Konto hinzufügen',
   'composio.connect.dynamicsOrgNameHint':
     'Beispiel: „myorg“ für myorg.crm.dynamics.com. Gib nur den kurzen Organisationsnamen ein, nicht den vollständigen URL.',
   'composio.connect.dynamicsOrgNameLabel': 'Name der Dynamics 365-Organisation',

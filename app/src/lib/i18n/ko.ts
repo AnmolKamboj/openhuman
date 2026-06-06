@@ -2500,6 +2500,10 @@ const messages: TranslationMap = {
   'composio.connect.atlassianSubdomainHint': 'acme',
   'composio.connect.atlassianSubdomainLabel': 'Atlassian 하위 도메인 라벨',
   'composio.connect.connect': '연결',
+  'composio.connect.connectedAccounts': '연결된 계정',
+  'composio.connect.defaultLabel': '기본',
+  'composio.connect.disconnectAccount': '제거',
+  'composio.connect.addAnotherAccount': '다른 계정 추가',
   'composio.connect.dynamicsOrgNameHint':
     '예를 들어 myorg.crm.dynamics.com의 경우 "myorg"입니다. 전체 URL이 아닌 짧은 조직 이름만 입력하세요.',
   'composio.connect.dynamicsOrgNameLabel': 'Dynamics 365 조직 이름',
