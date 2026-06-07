@@ -735,7 +735,7 @@ fn extract_inline_prompt(def: &AgentDefinition) -> Option<String> {
                 model_name: "",
                 agent_id: &def.id,
                 tools: &empty_tools,
-                skills: &[],
+                workflows: &[],
                 dispatcher_instructions: "",
                 learned: LearnedContextData::default(),
                 visible_tool_names: &empty_visible,

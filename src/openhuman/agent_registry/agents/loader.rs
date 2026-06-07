@@ -467,7 +467,7 @@ mod tests {
                         model_name: "test",
                         agent_id: &def.id,
                         tools: &empty_tools,
-                        skills: &[],
+                        workflows: &[],
                         dispatcher_instructions: "",
                         learned: LearnedContextData::default(),
                         visible_tool_names: &empty_visible,

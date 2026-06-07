@@ -281,7 +281,7 @@ fn parent_context(workspace: &Path, provider: Arc<ScriptedProvider>) -> ParentEx
         workspace_dir: workspace.to_path_buf(),
         memory: Arc::new(StubMemory),
         agent_config: AgentConfig::default(),
-        skills: Arc::new(Vec::new()),
+        workflows: Arc::new(Vec::new()),
         memory_context: Arc::new(Some("parent memory".to_string())),
         session_id: "round21-parent-session".to_string(),
         channel: "round21-channel".to_string(),

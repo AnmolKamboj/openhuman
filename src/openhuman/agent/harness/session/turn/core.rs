@@ -273,11 +273,11 @@ impl Agent {
         // heuristic and size cap rationale.
         let enriched = {
             use crate::openhuman::workflows::inject;
-            let matches = inject::match_workflows(&self.skills, user_message);
+            let matches = inject::match_workflows(&self.workflows, user_message);
             if matches.is_empty() {
                 log::debug!(
-                    "[skills:inject] no skill matches for user message (skill_catalog_len={})",
-                    self.skills.len()
+                    "[workflows:inject] no skill matches for user message (skill_catalog_len={})",
+                    self.workflows.len()
                 );
                 enriched
             } else {
@@ -288,7 +288,7 @@ impl Agent {
                 );
                 let matched_count = injection.decisions.iter().filter(|d| d.matched).count();
                 log::info!(
-                    "[skills:inject] summary candidates={} matched={} injected_bytes={} truncated_any={}",
+                    "[workflows:inject] summary candidates={} matched={} injected_bytes={} truncated_any={}",
                     injection.decisions.len(),
                     matched_count,
                     injection.injected_bytes,

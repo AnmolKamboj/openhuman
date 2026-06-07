@@ -322,7 +322,7 @@ fn parent(workspace_dir: PathBuf, provider: Arc<ScriptedProvider>) -> ParentExec
         workspace_dir,
         memory: Arc::new(StubMemory),
         agent_config: AgentConfig::default(),
-        skills: Arc::new(Vec::new()),
+        workflows: Arc::new(Vec::new()),
         memory_context: Arc::new(Some("round25 inherited parent context".to_string())),
         session_id: "round25-session".to_string(),
         channel: "round25".to_string(),

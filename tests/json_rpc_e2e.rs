@@ -10480,7 +10480,9 @@ async fn json_rpc_workflows_lifecycle_round_trip() {
     )
     .await;
     let create_result = assert_no_jsonrpc_error(&create, "workflows_create");
-    let wf = create_result.get("skill").expect("skill in create result");
+    let wf = create_result
+        .get("workflow")
+        .expect("workflow in create result");
     // `id` is the on-disk slug (WorkflowSummary maps dir_name → id). The
     // persisted frontmatter `name` is the slug too (create slugifies it).
     assert_eq!(wf.get("id").and_then(Value::as_str), Some("bug-triage"));
@@ -10490,9 +10492,9 @@ async fn json_rpc_workflows_lifecycle_round_trip() {
     let list = post_json_rpc(&rpc_base, 9202, "openhuman.workflows_list", json!({})).await;
     let list_result = assert_no_jsonrpc_error(&list, "workflows_list");
     let workflows = list_result
-        .get("skills")
+        .get("workflows")
         .and_then(Value::as_array)
-        .expect("skills array in list result");
+        .expect("workflows array in list result");
     assert_eq!(workflows.len(), 1, "exactly one workflow after create");
     assert_eq!(
         workflows[0].get("id").and_then(Value::as_str),
@@ -10547,7 +10549,7 @@ async fn json_rpc_workflows_lifecycle_round_trip() {
     let after_result = assert_no_jsonrpc_error(&after, "workflows_list");
     assert!(
         after_result
-            .get("skills")
+            .get("workflows")
             .and_then(Value::as_array)
             .expect("workflows array")
             .is_empty(),

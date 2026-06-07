@@ -447,7 +447,7 @@ fn trim_history_snaps_past_orphaned_tool_results() {
 fn build_parent_context_and_sanitize_helpers_cover_snapshot_paths() {
     let mut agent = make_agent(None);
     agent.last_memory_context = Some("remember this".into());
-    agent.skills = vec![crate::openhuman::workflows::Workflow {
+    agent.workflows = vec![crate::openhuman::workflows::Workflow {
         name: "demo".into(),
         ..Default::default()
     }];
@@ -458,7 +458,7 @@ fn build_parent_context_and_sanitize_helpers_cover_snapshot_paths() {
     assert_eq!(parent.memory_context.as_deref(), Some("remember this"));
     assert_eq!(parent.session_id, "turn-test-session");
     assert_eq!(parent.channel, "turn-test-channel");
-    assert_eq!(parent.skills.len(), 1);
+    assert_eq!(parent.workflows.len(), 1);
 
     assert_eq!(sanitize_learned_entry("   "), "");
     assert_eq!(

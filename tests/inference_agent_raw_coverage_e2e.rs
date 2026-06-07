@@ -1301,7 +1301,7 @@ fn agent_builder_public_paths_cover_required_fields_defaults_and_filters() {
     );
     assert_eq!(agent.temperature(), 0.7);
     assert_eq!(agent.workspace_dir(), std::path::Path::new("."));
-    assert!(agent.skills().is_empty());
+    assert!(agent.workflows().is_empty());
     assert!(agent.history().is_empty());
     assert_eq!(agent.agent_config().max_tool_iterations, 10);
     assert_eq!(agent.tools_arc().len(), 2);
@@ -3308,7 +3308,7 @@ fn agent_pformat_and_prompt_renderers_cover_public_paths() {
         model_name: "agentic-v1",
         agent_id: "planner",
         tools: &prompt_tools,
-        skills: &skills,
+        workflows: &skills,
         dispatcher_instructions: "Use tool calls when useful.",
         learned,
         visible_tool_names: &visible_tool_names,
@@ -3417,7 +3417,7 @@ fn agent_builtin_prompt_builders_cover_all_registered_archetypes() {
             model_name: "agentic-v1",
             agent_id: builtin.id,
             tools: &prompt_tools,
-            skills: &skills,
+            workflows: &skills,
             dispatcher_instructions: "Use available tools when needed.",
             learned: LearnedContextData::default(),
             visible_tool_names: &visible_tool_names,
