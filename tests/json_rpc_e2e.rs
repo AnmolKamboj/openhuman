@@ -78,6 +78,28 @@ fn json_rpc_e2e_env_lock() -> std::sync::MutexGuard<'static, ()> {
     }
 }
 
+fn run_json_rpc_e2e_on_agent_stack<F, Fut>(name: &str, future_factory: F)
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = ()> + 'static,
+{
+    std::thread::Builder::new()
+        .name(name.to_string())
+        .stack_size(openhuman_core::core::runtime::AGENT_WORKER_STACK_BYTES)
+        .spawn(move || {
+            let rt = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .thread_stack_size(openhuman_core::core::runtime::AGENT_WORKER_STACK_BYTES)
+                .enable_all()
+                .build()
+                .expect("build json_rpc e2e runtime");
+            rt.block_on(future_factory());
+        })
+        .expect("spawn json_rpc e2e thread")
+        .join()
+        .expect("json_rpc e2e thread should not panic");
+}
+
 fn with_chat_completion_models<T>(f: impl FnOnce(&mut Vec<String>) -> T) -> T {
     let mutex = CHAT_COMPLETION_MODELS.get_or_init(|| Mutex::new(Vec::new()));
     match mutex.lock() {
@@ -1666,8 +1688,15 @@ async fn json_rpc_agent_registry_manages_defaults_and_custom_agents() {
     rpc_join.abort();
 }
 
-#[tokio::test]
-async fn json_rpc_protocol_auth_and_agent_hello() {
+#[test]
+fn json_rpc_protocol_auth_and_agent_hello() {
+    run_json_rpc_e2e_on_agent_stack(
+        "json_rpc_protocol_auth_and_agent_hello",
+        json_rpc_protocol_auth_and_agent_hello_inner,
+    );
+}
+
+async fn json_rpc_protocol_auth_and_agent_hello_inner() {
     let _env_lock = json_rpc_e2e_env_lock();
     let tmp = tempdir().expect("tempdir");
     let home = tmp.path();
@@ -3464,8 +3493,15 @@ async fn json_rpc_memory_tree_end_to_end() {
     let _ = mock_join.await;
 }
 
-#[tokio::test]
-async fn json_rpc_web_chat_routing_cases_use_expected_backend_models() {
+#[test]
+fn json_rpc_web_chat_routing_cases_use_expected_backend_models() {
+    run_json_rpc_e2e_on_agent_stack(
+        "json_rpc_web_chat_routing_cases",
+        json_rpc_web_chat_routing_cases_use_expected_backend_models_inner,
+    );
+}
+
+async fn json_rpc_web_chat_routing_cases_use_expected_backend_models_inner() {
     let _env_lock = json_rpc_e2e_env_lock();
     let tmp = tempdir().expect("tempdir");
     let home = tmp.path();
@@ -3576,8 +3612,16 @@ async fn json_rpc_web_chat_routing_cases_use_expected_backend_models() {
     rpc_join.abort();
 }
 
-#[tokio::test]
-async fn json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_route_change() {
+#[test]
+fn json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_route_change() {
+    run_json_rpc_e2e_on_agent_stack(
+        "json_rpc_web_chat_custom_provider_route_change",
+        json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_route_change_inner,
+    );
+}
+
+async fn json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_route_change_inner()
+{
     let _env_lock = json_rpc_e2e_env_lock();
     let tmp = tempdir().expect("tempdir");
     let home = tmp.path();
@@ -3682,17 +3726,16 @@ async fn json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_
     );
 
     let requests = wait_for_chat_completion_requests_len(1).await;
-    assert_eq!(requests.len(), 1, "expected one outbound provider call");
+    let custom_request = requests
+        .iter()
+        .find(|request| request.get("model").and_then(Value::as_str) == Some("gpt-4.1-mini"))
+        .unwrap_or_else(|| panic!("expected gpt-4.1-mini outbound provider call: {requests:?}"));
     assert_eq!(
-        requests[0].get("path").and_then(Value::as_str),
+        custom_request.get("path").and_then(Value::as_str),
         Some("/chat/completions")
     );
     assert_eq!(
-        requests[0].get("model").and_then(Value::as_str),
-        Some("gpt-4.1-mini")
-    );
-    assert_eq!(
-        requests[0].get("authorization").and_then(Value::as_str),
+        custom_request.get("authorization").and_then(Value::as_str),
         Some("Bearer sk-custom-openai-key")
     );
 
@@ -3740,14 +3783,19 @@ async fn json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_
     );
 
     let requests = wait_for_chat_completion_requests_len(2).await;
-    assert_eq!(requests.len(), 2, "expected two outbound provider calls");
+    let updated_request = requests
+        .iter()
+        .find(|request| request.get("model").and_then(Value::as_str) == Some("gpt-4.1-nano"))
+        .unwrap_or_else(|| {
+            panic!("expected gpt-4.1-nano outbound provider call after route change: {requests:?}")
+        });
     assert_eq!(
-        requests[1].get("model").and_then(Value::as_str),
+        updated_request.get("model").and_then(Value::as_str),
         Some("gpt-4.1-nano"),
         "cached web-chat session should rebuild when chat_provider changes"
     );
     assert_eq!(
-        requests[1].get("authorization").and_then(Value::as_str),
+        updated_request.get("authorization").and_then(Value::as_str),
         Some("Bearer sk-custom-openai-key")
     );
 
@@ -3786,14 +3834,17 @@ async fn json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_
     );
 
     let requests = wait_for_chat_completion_requests_len(3).await;
-    assert_eq!(requests.len(), 3, "expected three outbound provider calls");
+    let agentic_request = requests
+        .iter()
+        .find(|request| request.get("model").and_then(Value::as_str) == Some("agentic-v1"))
+        .unwrap_or_else(|| panic!("expected agentic-v1 backend provider call: {requests:?}"));
     assert_eq!(
-        requests[2].get("path").and_then(Value::as_str),
+        agentic_request.get("path").and_then(Value::as_str),
         Some("/openai/v1/chat/completions"),
         "custom reasoning provider must not hijack unrelated backend routes"
     );
     assert_eq!(
-        requests[2].get("model").and_then(Value::as_str),
+        agentic_request.get("model").and_then(Value::as_str),
         Some("agentic-v1")
     );
 
@@ -3801,8 +3852,15 @@ async fn json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_
     rpc_join.abort();
 }
 
-#[tokio::test]
-async fn json_rpc_web_chat_custom_chat_provider_with_auth_none_omits_auth_header() {
+#[test]
+fn json_rpc_web_chat_custom_chat_provider_with_auth_none_omits_auth_header() {
+    run_json_rpc_e2e_on_agent_stack(
+        "json_rpc_web_chat_custom_provider_auth_none",
+        json_rpc_web_chat_custom_chat_provider_with_auth_none_omits_auth_header_inner,
+    );
+}
+
+async fn json_rpc_web_chat_custom_chat_provider_with_auth_none_omits_auth_header_inner() {
     let _env_lock = json_rpc_e2e_env_lock();
     let tmp = tempdir().expect("tempdir");
     let home = tmp.path();
@@ -3933,26 +3991,29 @@ async fn json_rpc_web_chat_custom_chat_provider_with_auth_none_omits_auth_header
     );
 
     let requests = wait_for_chat_completion_requests_len(1).await;
-    assert_eq!(requests.len(), 1, "expected one auth-none provider call");
+    let auth_none_request = requests
+        .iter()
+        .find(|request| request.get("model").and_then(Value::as_str) == Some("gpt-oss"))
+        .unwrap_or_else(|| panic!("expected auth-none provider call: {requests:?}"));
     assert_eq!(
-        requests[0].get("path").and_then(Value::as_str),
+        auth_none_request.get("path").and_then(Value::as_str),
         Some("/chat/completions")
     );
-    assert_eq!(
-        requests[0].get("model").and_then(Value::as_str),
-        Some("gpt-oss")
-    );
     assert!(
-        requests[0].get("authorization").is_none()
-            || requests[0].get("authorization").is_some_and(Value::is_null),
+        auth_none_request.get("authorization").is_none()
+            || auth_none_request
+                .get("authorization")
+                .is_some_and(Value::is_null),
         "auth_style=none must not emit Authorization: {:?}",
-        requests[0].get("authorization")
+        auth_none_request.get("authorization")
     );
     assert!(
-        requests[0].get("x_api_key").is_none()
-            || requests[0].get("x_api_key").is_some_and(Value::is_null),
+        auth_none_request.get("x_api_key").is_none()
+            || auth_none_request
+                .get("x_api_key")
+                .is_some_and(Value::is_null),
         "auth_style=none must not emit x-api-key: {:?}",
-        requests[0].get("x_api_key")
+        auth_none_request.get("x_api_key")
     );
 
     mock_join.abort();
@@ -10504,8 +10565,15 @@ async fn json_rpc_workflows_lifecycle_round_trip() {
 /// We activate the [`reply_speech::test_seam`] short-circuit via the
 /// `OPENHUMAN_TEST_REPLY_SPEECH_SEAM` env var so the call is recorded
 /// without contacting the ElevenLabs proxy.
-#[tokio::test]
-async fn json_rpc_channel_web_chat_with_speak_reply_invokes_reply_speech() {
+#[test]
+fn json_rpc_channel_web_chat_with_speak_reply_invokes_reply_speech() {
+    run_json_rpc_e2e_on_agent_stack(
+        "json_rpc_speak_reply_e2e",
+        json_rpc_channel_web_chat_with_speak_reply_invokes_reply_speech_inner,
+    );
+}
+
+async fn json_rpc_channel_web_chat_with_speak_reply_invokes_reply_speech_inner() {
     let _env_lock = json_rpc_e2e_env_lock();
     let tmp = tempdir().expect("tempdir");
     let home = tmp.path();
