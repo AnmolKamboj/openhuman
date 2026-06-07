@@ -11,8 +11,9 @@ const USER_ID = 'pw-chat-subagent';
 const PROMPT = 'Research the answer to life and tell me a marker phrase.';
 const CANARY_FINAL = 'subagent-canary-final-7afe2';
 const RESEARCHER_REPLY = 'The researcher answer is 42.';
-const FORCED_RESPONSES = [
+const KEYWORD_RESPONSES = [
   {
+    keyword: PROMPT,
     content: '',
     toolCalls: [
       {
@@ -22,8 +23,8 @@ const FORCED_RESPONSES = [
       },
     ],
   },
-  { content: RESEARCHER_REPLY },
-  { content: `Done. The result is: ${CANARY_FINAL}` },
+  { keyword: 'Tell me a marker phrase', content: RESEARCHER_REPLY },
+  { keyword: RESEARCHER_REPLY, content: `Done. The result is: ${CANARY_FINAL}` },
 ];
 
 interface MockRequest {
@@ -51,6 +52,13 @@ async function requests(): Promise<MockRequest[]> {
   const response = await fetch(`${MOCK_ADMIN_BASE}/__admin/requests`);
   const payload = (await response.json()) as { data?: MockRequest[] };
   return Array.isArray(payload.data) ? payload.data : [];
+}
+
+async function completionRequestCount(): Promise<number> {
+  const log = await requests();
+  return log.filter(
+    entry => entry.method === 'POST' && entry.url.includes('/openai/v1/chat/completions')
+  ).length;
 }
 
 async function openChat(page: Page): Promise<void> {
@@ -134,15 +142,19 @@ async function sendMessage(page: Page, prompt: string): Promise<void> {
 
 test.describe('Chat Harness - Subagent', () => {
   test('delegates to a subagent and persists the final orchestrator text', async ({ page }) => {
+    test.setTimeout(150_000);
+
     await resetMock();
-    await setMockBehavior('llmForcedResponses', JSON.stringify(FORCED_RESPONSES));
+    await setMockBehavior('llmForcedResponses', '');
+    await setMockBehavior('llmKeywordRules', JSON.stringify(KEYWORD_RESPONSES));
     await setMockBehavior('llmStreamChunkDelayMs', '10');
 
     await openChat(page);
     const threadId = await createNewThread(page);
     await sendMessage(page, PROMPT);
 
-    await expect(page.getByText(CANARY_FINAL)).toBeVisible({ timeout: 75_000 });
+    await expect.poll(completionRequestCount, { timeout: 90_000 }).toBeGreaterThanOrEqual(3);
+    await expect(page.getByText(CANARY_FINAL)).toBeVisible({ timeout: 30_000 });
 
     const runtime = await page.evaluate(currentThreadId => {
       const store = (
@@ -172,15 +184,6 @@ test.describe('Chat Harness - Subagent', () => {
         runtime.ids.some(id => id.includes(':subagent:'))
     ).toBe(true);
 
-    await expect
-      .poll(async () => {
-        const log = await requests();
-        return log.filter(
-          entry => entry.method === 'POST' && entry.url.includes('/openai/v1/chat/completions')
-        ).length;
-      })
-      .toBeGreaterThanOrEqual(2);
-
-    await expect(page.getByText(CANARY_FINAL)).toBeVisible();
+    await expect(page.getByText(CANARY_FINAL)).toBeVisible({ timeout: 15_000 });
   });
 });
