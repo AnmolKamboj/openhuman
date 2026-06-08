@@ -533,6 +533,44 @@ mod provider_config_rejection_suppression {
         ));
     }
 
+    /// TAURI-RUST-4XK — Ollama Cloud returns HTTP 403 with body
+    /// `{"error":"this model requires a subscription, upgrade for access: …"}`.
+    /// Before this fix, `is_provider_config_rejection_http` rejected 403
+    /// before reaching the phrase matcher, so the subscription-gate body
+    /// fell through to Sentry. Adding 403 to the allowed status set closes
+    /// that gap; the existing phrase in `config_rejection.rs` already
+    /// handles the body content.
+    #[test]
+    fn ollama_cloud_403_subscription_gate_is_suppressed() {
+        // Verbatim wire body from TAURI-RUST-4XK Sentry issue 5338.
+        let body = r#"ollama API error (403 Forbidden): {"error":"this model requires a subscription, upgrade for access: https://ollama.com/upgrade (ref: bc48f3c8-fba1-40b6-93a9-786a167d16f9)"}"#;
+        assert!(
+            is_provider_config_rejection_http(
+                reqwest::StatusCode::FORBIDDEN,
+                "ollama",
+                body,
+            ),
+            "TAURI-RUST-4XK: ollama 403 subscription-gate must be classified as provider config-rejection"
+        );
+    }
+
+    #[test]
+    fn openhuman_backend_403_subscription_phrase_is_not_suppressed() {
+        // Polarity guard: if our own backend somehow returned a 403 with
+        // the subscription phrase, that would be an unexpected regression
+        // and must still reach Sentry. The phrase does not appear in any
+        // expected backend body, so this is purely defensive.
+        let body = r#"{"error":"this model requires a subscription, upgrade for access: https://ollama.com/upgrade (ref: test)"}"#;
+        assert!(
+            !is_provider_config_rejection_http(
+                reqwest::StatusCode::FORBIDDEN,
+                openhuman_backend::PROVIDER_LABEL,
+                body,
+            ),
+            "backend 403 subscription phrase must NOT be suppressed (polarity guard)"
+        );
+    }
+
     #[test]
     fn log_helper_runs_without_panicking() {
         // Covers the demotion log path taken by `api_error` when a

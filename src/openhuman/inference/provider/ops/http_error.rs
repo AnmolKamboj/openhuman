@@ -137,7 +137,16 @@ pub fn is_provider_config_rejection_http(
     provider: &str,
     body: &str,
 ) -> bool {
-    if !matches!(status.as_u16(), 400 | 404 | 422) {
+    // 403 is included for the Ollama Cloud subscription gate:
+    // `{"error":"this model requires a subscription, upgrade for access: …"}`.
+    // That is deterministic user-state (paid-tier model, free account) — the
+    // same class as the 400/404/422 config-rejection shapes above. See
+    // TAURI-RUST-4XK. The general `is_backend_auth_failure` polarity guard
+    // still fires first (backend 401/403 → SessionExpired), so this branch
+    // is only reachable for non-backend providers. The phrase-level polarity
+    // guard below (`provider != openhuman_backend::PROVIDER_LABEL`) provides
+    // a second layer of defence for the non-OpenAI-compat shapes.
+    if !matches!(status.as_u16(), 400 | 403 | 404 | 422) {
         return false;
     }
     if !crate::openhuman::inference::provider::is_provider_config_rejection_message(body) {
