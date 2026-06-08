@@ -2181,6 +2181,31 @@ pub fn run() {
             {
                 return None;
             }
+            // Defense-in-depth: drop managed-backend `errorCode` events (#870)
+            // the backend owns (F2/F4). The shell links the core in-process,
+            // so a managed inference error captured here must be filtered
+            // identically to the core binary's main.rs chain. The malformed
+            // `BAD_REQUEST` carve-out (F8) is excluded by the underlying
+            // decision, so a client-built bad payload still pages.
+            if openhuman_core::core::observability::is_backend_error_code_event(&event) {
+                log::debug!(
+                    "[sentry-error-code-filter] dropping backend-owned errorCode event_id={:?}",
+                    event.event_id
+                );
+                return None;
+            }
+            // Defense-in-depth: drop transient streaming transport blips
+            // (domain=llm_provider, failure=transport) — flaky-network
+            // timeouts/resets recovered by retry/fallback (F7). Mirrors the
+            // core binary's main.rs filter.
+            if openhuman_core::core::observability::is_transient_provider_transport_failure(&event)
+            {
+                log::debug!(
+                    "[sentry-transport-filter] dropping transient provider transport event_id={:?}",
+                    event.event_id
+                );
+                return None;
+            }
             // Drop 401 "Session expired. Please log in again." bodies and
             // pre-flight "no session token stored" guards — mirrors the
             // core binary's before_send chain. Since #1061 the Tauri shell
