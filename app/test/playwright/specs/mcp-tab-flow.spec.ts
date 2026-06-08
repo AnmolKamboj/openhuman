@@ -164,13 +164,16 @@ async function setupMockRpc(page: Page, state: MockState) {
       // ---- MCP registry ----
       case 'openhuman.mcp_clients_registry_search': {
         const query = (params.query ?? '').toLowerCase();
-        const filtered = query
+        const installedNames = new Set(state.installed.map(s => s.qualified_name));
+        const queryFiltered = query
           ? REGISTRY_SERVERS.filter(
               s =>
                 s.display_name.toLowerCase().includes(query) ||
                 s.qualified_name.toLowerCase().includes(query)
             )
           : REGISTRY_SERVERS;
+        // Exclude servers that are already installed — mirrors real backend behaviour
+        const filtered = queryFiltered.filter(s => !installedNames.has(s.qualified_name));
         return route.fulfill(rpcOk(id, { servers: filtered, page: 1, total_pages: 1 }));
       }
 
@@ -243,6 +246,7 @@ async function navigateToMcpTab(page: Page) {
   await page.goto('/#/skills?tab=mcp');
   await page.waitForSelector('#root', { state: 'visible', timeout: 20_000 });
   await page.locator('input[type="search"]').waitFor({ state: 'visible', timeout: 10_000 });
+  await page.locator('table').waitFor({ state: 'visible', timeout: 10_000 });
 }
 
 // ==========================================================================
@@ -313,7 +317,10 @@ test.describe('MCP Tab — Table View & Filtering', () => {
   test('search filters both installed and registry servers', async ({ page }) => {
     const search = page.locator('input[type="search"]');
     await search.fill('notion');
-    await page.waitForTimeout(500);
+    // Wait for the table to reflect the filtered results rather than using a fixed delay
+    await expect(
+      page.locator('table tbody tr', { has: page.locator('td:has-text("Notion")') })
+    ).toBeVisible({ timeout: 5_000 });
     const rows = page.locator('table tbody tr');
     const count = await rows.count();
     expect(count).toBeGreaterThanOrEqual(1);
@@ -324,7 +331,8 @@ test.describe('MCP Tab — Table View & Filtering', () => {
   });
 
   test('no Smithery branding visible anywhere', async ({ page }) => {
-    await page.waitForTimeout(1000);
+    // Wait for the table to be fully rendered before scanning body text
+    await page.locator('table tbody tr').first().waitFor({ state: 'visible', timeout: 10_000 });
     const bodyText = await page.locator('body').innerText();
     expect(bodyText.toLowerCase()).not.toContain('smithery');
   });
@@ -368,10 +376,10 @@ test.describe('MCP Tab — Install Lifecycle', () => {
     await submitBtn.click();
 
     // 6. Should navigate to detail view (the installed server detail)
-    await expect(page.locator('button:has-text("Back")')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('button:has-text("Go back")')).toBeVisible({ timeout: 10_000 });
 
     // 7. Go back and verify the server appears in the installed list
-    await page.locator('button:has-text("Back")').click();
+    await page.locator('button:has-text("Go back")').click();
     await expect(page.locator('table')).toBeVisible({ timeout: 5_000 });
     const installedGithub = page.locator('table tbody tr', {
       has: page.locator('td:has-text("GitHub Tools")'),
@@ -409,7 +417,7 @@ test.describe('MCP Tab — Manage & Uninstall Lifecycle', () => {
     });
     await row.click();
 
-    await expect(page.locator('button:has-text("Back")')).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('button:has-text("Go back")')).toBeVisible({ timeout: 5_000 });
     await expect(page.locator('text=Memory Server')).toBeVisible();
   });
 
@@ -418,7 +426,7 @@ test.describe('MCP Tab — Manage & Uninstall Lifecycle', () => {
       has: page.locator('td:first-child:has-text("Memory Server")'),
     });
     await row.click();
-    await expect(page.locator('button:has-text("Back")')).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('button:has-text("Go back")')).toBeVisible({ timeout: 5_000 });
     await expect(page.locator('text=io.github.test/memory-server')).toBeVisible();
   });
 
@@ -427,7 +435,7 @@ test.describe('MCP Tab — Manage & Uninstall Lifecycle', () => {
       has: page.locator('td:first-child:has-text("Memory Server")'),
     });
     await row.click();
-    await expect(page.locator('button:has-text("Back")')).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('button:has-text("Go back")')).toBeVisible({ timeout: 5_000 });
 
     const uninstallBtn = page.locator('button:has-text("Uninstall")');
     await expect(uninstallBtn.first()).toBeVisible({ timeout: 5_000 });
@@ -451,8 +459,8 @@ test.describe('MCP Tab — Manage & Uninstall Lifecycle', () => {
       has: page.locator('td:first-child:has-text("Memory Server")'),
     });
     await row.click();
-    await expect(page.locator('button:has-text("Back")')).toBeVisible({ timeout: 5_000 });
-    await page.locator('button:has-text("Back")').click();
+    await expect(page.locator('button:has-text("Go back")')).toBeVisible({ timeout: 5_000 });
+    await page.locator('button:has-text("Go back")').click();
     await expect(page.locator('table')).toBeVisible({ timeout: 5_000 });
   });
 });
@@ -474,6 +482,9 @@ test.describe('MCP Tab — Empty & Edge States', () => {
     await seedLocalStorage(page);
     await setupMockRpc(page, state);
 
+    // Registered after setupMockRpc — Playwright routes use LIFO ordering, so
+    // this handler runs first and falls through to the base mock for all other
+    // methods.
     await page.route('**/rpc', async (route, request) => {
       const body = JSON.parse(request.postData() || '{}');
       if (
@@ -487,8 +498,8 @@ test.describe('MCP Tab — Empty & Edge States', () => {
 
     await navigateToMcpTab(page);
     await page.locator('input[type="search"]').fill('xyznonexistent999');
-    await page.waitForTimeout(500);
 
+    // Wait for the no-results state to appear rather than using a fixed delay
     const noResults = page.locator('text=/no.*results|no.*found|no.*servers/i');
     await expect(noResults).toBeVisible({ timeout: 5_000 });
   });
