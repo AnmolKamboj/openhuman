@@ -1822,7 +1822,10 @@ const messages: TranslationMap = {
   'chat.attachment.tooMany': 'الحد الأقصى {max} صور لكل رسالة',
   'chat.attachment.tooManyFiles': 'الحد الأقصى {max} ملفات لكل رسالة',
   'chat.attachment.tooLarge': 'حجم الصورة يتجاوز الحد المسموح {max}',
-  'chat.attachment.unsupportedType': 'نوع ملف غير مدعوم. استخدم PNG أو JPEG أو WebP أو GIF أو BMP.',
+  'chat.attachment.unsupportedType':
+    'نوع ملف غير مدعوم. استخدم صورة (PNG أو JPEG أو WebP أو GIF أو BMP) أو ملف PDF أو TXT أو Markdown.',
+  'chat.attachment.imageNotSupported':
+    'لا يمكن لهذا النموذج قراءة الصور. أرفق ملف PDF أو TXT أو Markdown بدلاً من ذلك.',
   'chat.attachment.readFailed': 'تعذر قراءة الملف',
   'memory.searchAria': 'البحث في الذاكرة',
   'memory.searchPlaceholder': 'البحث في إدخالات الذاكرة...',
@@ -3046,6 +3049,9 @@ const messages: TranslationMap = {
   'settings.ai.temperatureOverrideValue': 'تجاوز درجة الحرارة (القيمة)',
   'settings.ai.temperatureOverrideDesc':
     'أقل = أكثر تحديدا. إتركْ غير مُمْكَنَّلَ لإسْتِعْمال قَبْل المُقدّمِ.',
+  'settings.ai.modelVision': 'يدعم الرؤية (إدخال الصور)',
+  'settings.ai.modelVisionDesc':
+    'فعّل هذا إذا كان النموذج يقبل الصور. يتيح لمربع الدردشة إرفاق الصور عند اختيار هذا النموذج.',
   'settings.ai.testFailed': 'فشل الاختبار',
   'settings.ai.testingModel': 'نموذج الاختبار...',
   'settings.ai.modelResponse': 'استجابة النموذج',

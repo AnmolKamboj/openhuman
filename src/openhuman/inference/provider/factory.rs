@@ -172,6 +172,34 @@ pub(crate) fn is_known_openhuman_tier(model: &str) -> bool {
     )
 }
 
+/// Per-tier vision (image-input) capability for the managed OpenHuman backend.
+///
+/// The remote managed backend (`api.tinyhumans.ai`) does not advertise per-tier
+/// capabilities, so the core maintains this map itself. Accepts both the tier
+/// constants and their `hint:*` forms (callers may pass either pre- or
+/// post-resolution).
+///
+/// Every managed tier currently returns `false` — flip an individual arm to
+/// `true` once that tier is confirmed multimodal on the backend. This is the
+/// **only** place to change managed-model vision; BYOK/custom models are handled
+/// separately by the user-set `model_registry.vision` flag
+/// ([`crate::openhuman::inference::model_context::model_vision_enabled`]).
+pub(crate) fn oh_tier_supports_vision(model: &str) -> bool {
+    use crate::openhuman::config::{
+        MODEL_AGENTIC_V1, MODEL_CHAT_V1, MODEL_CODING_V1, MODEL_REASONING_QUICK_V1,
+        MODEL_REASONING_V1, MODEL_SUMMARIZATION_V1,
+    };
+    match model {
+        MODEL_CHAT_V1 | "hint:chat" => false,
+        MODEL_REASONING_V1 | "hint:reasoning" => false,
+        MODEL_REASONING_QUICK_V1 => false,
+        MODEL_AGENTIC_V1 | "hint:agentic" => false,
+        MODEL_CODING_V1 | "hint:coding" => false,
+        MODEL_SUMMARIZATION_V1 | "hint:summarization" => false,
+        _ => false,
+    }
+}
+
 /// Return the configured provider string for a named workload role.
 ///
 /// Empty / `"cloud"` resolves through BYOK fallback first for the three

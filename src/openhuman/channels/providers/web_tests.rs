@@ -1208,6 +1208,7 @@ fn fp(
         target_agent_id: target.to_string(),
         provider_binding: provider_binding.to_string(),
         autonomy_signature: "sig-default".to_string(),
+        model_registry_signature: "registry-default".to_string(),
     }
 }
 
@@ -1222,6 +1223,20 @@ fn fingerprint_autonomy_change_is_cache_miss() {
     assert_ne!(
         base, changed,
         "a different autonomy signature must produce a cache miss"
+    );
+}
+
+#[test]
+fn fingerprint_model_registry_change_is_cache_miss() {
+    // Toggling a model's "Supports vision" flag keeps the same model id, so it
+    // changes neither model_override nor provider_binding. Without the registry
+    // signature the stale Agent (old build-time model_vision) would be reused.
+    let base = fp(None, None, "orchestrator", "openai:my-llava");
+    let mut changed = fp(None, None, "orchestrator", "openai:my-llava");
+    changed.model_registry_signature = "registry-after-vision-toggle".to_string();
+    assert_ne!(
+        base, changed,
+        "a model_registry change (vision toggle) must produce a cache miss → rebuild"
     );
 }
 

@@ -1844,7 +1844,9 @@ const messages: TranslationMap = {
   'chat.attachment.tooManyFiles': '메시지당 최대 {max}개 파일',
   'chat.attachment.tooLarge': '이미지가 {max} 크기 제한을 초과합니다',
   'chat.attachment.unsupportedType':
-    '지원되지 않는 파일 형식입니다. PNG, JPEG, WebP, GIF 또는 BMP를 사용하세요.',
+    '지원되지 않는 파일 형식입니다. 이미지(PNG, JPEG, WebP, GIF, BMP) 또는 PDF, TXT, Markdown 파일을 사용하세요.',
+  'chat.attachment.imageNotSupported':
+    '이 모델은 이미지를 읽을 수 없습니다. 대신 PDF, TXT 또는 Markdown 파일을 첨부하세요.',
   'chat.attachment.readFailed': '파일을 읽을 수 없습니다',
   'memory.searchAria': '메모리 검색',
   'memory.searchPlaceholder': '메모리 항목 검색...',
@@ -3086,6 +3088,9 @@ const messages: TranslationMap = {
   'settings.ai.temperatureOverrideValue': '온도 재정의(값)',
   'settings.ai.temperatureOverrideDesc':
     '낮을수록 더 결정적입니다. 제공업체 기본값을 사용하려면 선택하지 않은 상태로 두세요.',
+  'settings.ai.modelVision': '비전 지원 (이미지 입력)',
+  'settings.ai.modelVisionDesc':
+    '이 모델이 이미지를 지원하면 활성화하세요. 이 모델을 선택하면 채팅 작성기에서 이미지를 첨부할 수 있습니다.',
   'settings.ai.testFailed': '테스트 실패',
   'settings.ai.testingModel': '모델 테스트 중...',
   'settings.ai.modelResponse': '모델 응답',

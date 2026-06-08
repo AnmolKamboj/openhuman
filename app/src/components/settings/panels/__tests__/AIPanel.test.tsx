@@ -15,6 +15,7 @@ import {
   setCloudProviderKey,
   startOpenAiCodexOAuth,
   testProviderModel,
+  upsertModelRegistryVision,
 } from '../../../../services/api/aiSettingsApi';
 import { creditsApi } from '../../../../services/api/creditsApi';
 import { renderWithProviders } from '../../../../test/test-utils';
@@ -45,6 +46,8 @@ vi.mock('../../../../services/api/aiSettingsApi', () => ({
   saveAISettings: vi.fn(),
   loadLocalProviderSnapshot: vi.fn(),
   testProviderModel: vi.fn(),
+  modelRegistryVision: vi.fn(() => false),
+  upsertModelRegistryVision: vi.fn((registry: unknown[]) => registry),
   setCloudProviderKey: vi.fn().mockResolvedValue(undefined),
   clearCloudProviderKey: vi.fn().mockResolvedValue(undefined),
   serializeProviderRef: vi.fn((r: { kind: string; providerSlug?: string; model?: string }) =>
@@ -123,6 +126,7 @@ const baseSettings = {
     learning: { kind: 'openhuman' as const },
     subconscious: { kind: 'openhuman' as const },
   },
+  modelRegistry: [],
 };
 
 const baseLocalSnapshot = { status: null, diagnostics: null, presets: null, installedModels: [] };
@@ -304,6 +308,52 @@ describe('AIPanel', () => {
     }
   });
 
+  // ─── per-model vision flag (BYOK) ───────────────────────────────────────────
+
+  it('flags a custom BYOK model as vision-capable via the Own-model selector', async () => {
+    vi.mocked(loadAISettings).mockResolvedValue({
+      ...baseSettings,
+      cloudProviders: [
+        ...baseSettings.cloudProviders,
+        {
+          id: 'p_custom_openai',
+          slug: 'openai',
+          label: 'OpenAI',
+          endpoint: 'https://api.openai.com/v1',
+          auth_style: 'bearer' as const,
+          has_api_key: true,
+        },
+      ],
+    });
+    renderWithProviders(<AIPanel />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Use Your Own Models/i })).toBeInTheDocument()
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Use Your Own Models/i }));
+
+    // Enter a model id → the per-model "Supports vision" checkbox appears.
+    const modelInput = await screen.findByPlaceholderText('Enter model id');
+    fireEvent.change(modelInput, { target: { value: 'gpt-4o' } });
+
+    const visionCheckbox = await screen.findByRole('checkbox', { name: /Supports vision/i });
+    expect(visionCheckbox).not.toBeChecked();
+    fireEvent.click(visionCheckbox);
+    expect(visionCheckbox).toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
+
+    // The vision flag is threaded through to the registry upsert + persisted.
+    await waitFor(() =>
+      expect(vi.mocked(upsertModelRegistryVision)).toHaveBeenCalledWith(
+        expect.anything(),
+        'openai',
+        'gpt-4o',
+        true
+      )
+    );
+    expect(saveAISettings).toHaveBeenCalled();
+  });
+
   // ─── auth_style preservation ────────────────────────────────────────────────
 
   it('preserves auth_style: "anthropic" through save when Anthropic provider is configured', async () => {
@@ -333,6 +383,7 @@ describe('AIPanel', () => {
         learning: { kind: 'openhuman' as const },
         subconscious: { kind: 'openhuman' as const },
       },
+      modelRegistry: [],
     };
 
     vi.mocked(loadAISettings).mockResolvedValue(settingsWithAnthropic);
@@ -557,6 +608,7 @@ describe('AIPanel', () => {
         learning: { kind: 'openhuman' as const },
         subconscious: { kind: 'openhuman' as const },
       },
+      modelRegistry: [],
     };
     vi.mocked(loadAISettings).mockResolvedValue(settingsWithOpenAI);
     vi.mocked(saveAISettings).mockResolvedValue(undefined);
@@ -612,6 +664,7 @@ describe('AIPanel', () => {
         learning: { kind: 'openhuman' as const },
         subconscious: { kind: 'openhuman' as const },
       },
+      modelRegistry: [],
     };
     vi.mocked(loadAISettings).mockResolvedValue(settingsWithOllama);
     vi.mocked(saveAISettings).mockResolvedValue(undefined);
@@ -986,6 +1039,7 @@ describe('AIPanel', () => {
           has_api_key: false,
         },
       ],
+      modelRegistry: [],
     };
     vi.mocked(loadAISettings).mockResolvedValue(settingsWithOllama);
     renderWithProviders(<AIPanel />);
@@ -1008,6 +1062,7 @@ describe('AIPanel', () => {
           has_api_key: false,
         },
       ],
+      modelRegistry: [],
     };
     vi.mocked(loadAISettings).mockResolvedValue(settingsWithOllama);
     renderWithProviders(<AIPanel />);
@@ -1047,6 +1102,7 @@ describe('AIPanel', () => {
         ...baseSettings.routing,
         reasoning: { kind: 'cloud' as const, providerSlug: 'openai', model: 'gpt-4o' },
       },
+      modelRegistry: [],
     };
     vi.mocked(loadAISettings).mockResolvedValue(settingsWithOpenAI);
     vi.mocked(saveAISettings).mockResolvedValue(undefined);
@@ -1103,6 +1159,7 @@ describe('AIPanel', () => {
         ...baseSettings.routing,
         reasoning: { kind: 'cloud' as const, providerSlug: 'openai', model: 'gpt-4o' },
       },
+      modelRegistry: [],
     };
     vi.mocked(loadAISettings).mockResolvedValue(settingsWithOpenAI);
     vi.mocked(listProviderModels).mockResolvedValue([{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }]);
@@ -1146,6 +1203,7 @@ describe('AIPanel', () => {
         ...baseSettings.routing,
         reasoning: { kind: 'cloud' as const, providerSlug: 'openai', model: 'gpt-4o' },
       },
+      modelRegistry: [],
     };
     vi.mocked(loadAISettings).mockResolvedValue(settingsWithOpenAI);
     vi.mocked(listProviderModels).mockResolvedValue([{ id: 'gpt-4o' }]);
@@ -1190,6 +1248,7 @@ describe('AIPanel', () => {
         ...baseSettings.routing,
         reasoning: { kind: 'cloud' as const, providerSlug: 'openai', model: 'gpt-4o' },
       },
+      modelRegistry: [],
     };
     vi.mocked(loadAISettings).mockResolvedValue(settingsWithOpenAI);
     vi.mocked(listProviderModels).mockResolvedValue([{ id: 'gpt-4o' }]);

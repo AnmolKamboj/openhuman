@@ -2238,7 +2238,10 @@ const en: TranslationMap = {
   'chat.attachment.tooMany': 'Maximum {max} images per message',
   'chat.attachment.tooManyFiles': 'Maximum {max} files per message',
   'chat.attachment.tooLarge': 'Image exceeds {max} size limit',
-  'chat.attachment.unsupportedType': 'Unsupported file type. Use PNG, JPEG, WebP, GIF, or BMP.',
+  'chat.attachment.unsupportedType':
+    'Unsupported file type. Use an image (PNG, JPEG, WebP, GIF, BMP) or a PDF, TXT, or Markdown file.',
+  'chat.attachment.imageNotSupported':
+    'This model can’t read images. You can attach a pdf, txt, or md file.',
   'chat.attachment.readFailed': 'Could not read file',
 
   // Memory (additional)
@@ -3633,6 +3636,9 @@ const en: TranslationMap = {
   'settings.ai.temperatureOverrideValue': 'Temperature override (value)',
   'settings.ai.temperatureOverrideDesc':
     'Lower = more deterministic. Leave unchecked to use the provider default.',
+  'settings.ai.modelVision': 'Supports vision (image input)',
+  'settings.ai.modelVisionDesc':
+    'Enable if this model accepts images. Lets the chat composer attach images when this model is selected.',
   'settings.ai.testFailed': 'Test failed',
   'settings.ai.testingModel': 'Testing model...',
   'settings.ai.modelResponse': 'Model response',

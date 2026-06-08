@@ -140,6 +140,18 @@ vi.mock('../../features/autocomplete/useAutocompleteSkillStatus', () => ({
 
 vi.mock('../../utils/openUrl', () => ({ openUrl: vi.fn() }));
 
+// The composer gates image attachments on the resolved model's vision capability
+// (inference_resolve_model). These tests exercise image attachments, so resolve
+// the active model as vision-capable.
+vi.mock('../../services/coreRpcClient', () => ({
+  callCoreRpc: vi.fn(async ({ method }: { method: string }) =>
+    method === 'openhuman.inference_resolve_model'
+      ? { model: 'test-vision-model', vision: true }
+      : {}
+  ),
+  CoreRpcError: class CoreRpcError extends Error {},
+}));
+
 vi.mock('../../lib/coreState/store', () => ({
   getCoreStateSnapshot: vi.fn(() => ({
     isBootstrapping: false,
@@ -504,6 +516,55 @@ describe('Conversations — attachment feature', () => {
     await waitFor(() => {
       const img = document.querySelector(`img[src="${dataUri}"]`);
       expect(img).not.toBeNull();
+    });
+  });
+
+  it('renders a document filename chip in the user bubble from attachmentKinds/Names', async () => {
+    const thread = makeThread({ id: 'file-thread', title: 'File Thread' });
+    const message = {
+      id: 'msg-file-1',
+      content: 'whats in this file',
+      type: 'text' as const,
+      sender: 'user' as const,
+      createdAt: new Date().toISOString(),
+      extraMetadata: {
+        attachmentCount: 1,
+        attachmentKinds: ['file'],
+        attachmentNames: ['report.pdf'],
+      },
+    };
+
+    mockGetThreads.mockResolvedValue({ threads: [thread], count: 1 });
+    mockGetThreadMessages.mockResolvedValue({ messages: [message], count: 1 });
+
+    const store = buildStore({
+      thread: {
+        threads: [thread],
+        selectedThreadId: thread.id,
+        activeThreadId: null,
+        welcomeThreadId: null,
+        messagesByThreadId: { [thread.id]: [message] },
+        messages: [message],
+        isLoadingThreads: false,
+        isLoadingMessages: false,
+        messagesError: null,
+      },
+      socket: socketState('connected'),
+    });
+
+    const { default: Conversations } = await import('../Conversations');
+
+    render(
+      <Provider store={store}>
+        <MemoryRouter>
+          <Conversations />
+        </MemoryRouter>
+      </Provider>
+    );
+
+    // The document attachment surfaces as a filename chip (not an <img>).
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('report.pdf');
     });
   });
 });

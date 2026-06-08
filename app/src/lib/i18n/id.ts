@@ -1867,7 +1867,9 @@ const messages: TranslationMap = {
   'chat.attachment.tooManyFiles': 'Maksimal {max} file per pesan',
   'chat.attachment.tooLarge': 'Gambar melebihi batas ukuran {max}',
   'chat.attachment.unsupportedType':
-    'Jenis file tidak didukung. Gunakan PNG, JPEG, WebP, GIF, atau BMP.',
+    'Jenis file tidak didukung. Gunakan gambar (PNG, JPEG, WebP, GIF, BMP) atau file PDF, TXT, atau Markdown.',
+  'chat.attachment.imageNotSupported':
+    'Model ini tidak dapat membaca gambar. Lampirkan file PDF, TXT, atau Markdown sebagai gantinya.',
   'chat.attachment.readFailed': 'Tidak dapat membaca file',
   'memory.searchAria': 'Cari memori',
   'memory.searchPlaceholder': 'Cari entri memori...',
@@ -3124,6 +3126,9 @@ const messages: TranslationMap = {
   'settings.ai.temperatureOverrideValue': 'Penggantian suhu (nilai)',
   'settings.ai.temperatureOverrideDesc':
     'Turunkan = lebih deterministik. Biarkan tak diperiksa untuk memakai penyedia bawaan.',
+  'settings.ai.modelVision': 'Mendukung visi (input gambar)',
+  'settings.ai.modelVisionDesc':
+    'Aktifkan jika model ini menerima gambar. Memungkinkan penyusun obrolan melampirkan gambar saat model ini dipilih.',
   'settings.ai.testFailed': 'Pengujian gagal',
   'settings.ai.testingModel': 'Pengujian model...',
   'settings.ai.modelResponse': 'Respons model',
