@@ -307,6 +307,8 @@ const en: TranslationMap = {
   'skills.explorer.registryEmptyTitle': 'No registry entries',
   'skills.explorer.registryEmptyDescription':
     'Could not load the skill registry. Check your connection and try refreshing.',
+  'skills.explorer.showingOf':
+    'Showing {shown} of {total} results. Refine your search to see more.',
   'skills.explorer.installed': 'Installed',
   'skills.explorer.install': 'Install',
   'skills.explorer.installing': 'Installing…',
@@ -4150,6 +4152,8 @@ const en: TranslationMap = {
   'settings.skillsRunner.error.missingRequired': 'Missing required input(s):',
   'settings.skillsRunner.error.run': 'Run failed to start:',
   'settings.skillsRunner.error.preflightGate': 'Preflight gate failed',
+  'settings.skillsRunner.error.runtimeUnavailable': 'Runtime unavailable',
+  'settings.skillsRunner.error.runtimeUnavailableDefault': 'unavailable',
   'settings.skillsRunner.schedule.heading': 'Schedule (recurring)',
   'settings.skillsRunner.schedule.help':
     'Save this workflow + inputs as a recurring cron job. The agent will call run_workflow at each tick.',
@@ -4666,6 +4670,8 @@ const en: TranslationMap = {
   'skills.create.title': 'New skill',
   'skills.detail.allowedTools': 'Allowed tools',
   'skills.detail.author': 'Author',
+  'skills.detail.license': 'License',
+  'skills.detail.description': 'Description',
   'skills.detail.bundledResources': 'Bundled resources',
   'skills.detail.run': 'Run',
   'skills.detail.runAriaLabel': 'Run this workflow',
@@ -4675,8 +4681,11 @@ const en: TranslationMap = {
   'skills.detail.noBundledResources': 'No bundled resources.',
   'skills.detail.platforms': 'Platforms',
   'skills.detail.relatedSkills': 'Related skills',
+  'skills.detail.source': 'Source URL',
   'skills.detail.sourceFormat': 'Format',
+  'skills.detail.stars': 'Stars',
   'skills.detail.tags': 'Tags',
+  'skills.detail.version': 'Version',
   'skills.detail.warnings': 'Warnings',
   'skills.install.errors.alreadyInstalledHint':
     'A skill with this slug already exists in the workspace. Remove it first or change the frontmatter `metadata.id` / `name`.',

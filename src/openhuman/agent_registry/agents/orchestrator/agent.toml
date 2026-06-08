@@ -14,7 +14,7 @@ agent_tier = "chat"
 omit_identity = true
 omit_memory_context = true
 omit_safety_preamble = true
-omit_skills_catalog = true
+omit_skills_catalog = false
 # The orchestrator is the user-facing front-line agent — it routes,
 # synthesises, and speaks to the user in their voice. PROFILE.md
 # (onboarding enrichment output) anchors that voice.
@@ -106,6 +106,12 @@ allowlist = [
     # this entry the agent-native install path (issue #3039 gap B5) is unreachable
     # from chat.
     "mcp_setup",
+    # Skill registry specialists. `skill_setup` discovers, installs, and
+    # manages agent skills from community registries (OpenHuman, HermesHub,
+    # ClawHub). `skill_executor` runs an installed skill by loading its
+    # SKILL.md instructions and executing the procedure.
+    "skill_setup",
+    "skill_executor",
     # NOTE: `summarizer` used to be listed here for the runtime-only
     # oversized-tool-result hook. That path is currently disabled
     # (`context.summarizer_payload_threshold_tokens = 0`) after recursive
@@ -177,6 +183,13 @@ named = [
     "read_workflow_run_log",
     "run_workflow",
     "await_workflow",
+    # Skill registry tools — browse/search/install from community registries.
+    # These complement list_workflows (which shows already-installed skills)
+    # by exposing the remote catalog for discovery and installation.
+    "skill_registry_browse",
+    "skill_registry_search",
+    "skill_registry_install",
+    "skill_registry_sources",
     # Self-update — lets the orchestrator answer "am I up to date" /
     # "update OpenHuman" without sending the user to Settings →
     # Developer Options. `update_check` is read-only; `update_apply`
