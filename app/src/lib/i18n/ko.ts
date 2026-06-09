@@ -1849,7 +1849,7 @@ const messages: TranslationMap = {
   'chat.attachment.unsupportedType':
     '지원되지 않는 파일 형식입니다. 이미지(PNG, JPEG, WebP, GIF, BMP) 또는 PDF, TXT, Markdown 파일을 사용하세요.',
   'chat.attachment.imageNotSupported':
-    '이 모델은 이미지를 읽을 수 없습니다. 이미지를 첨부하려면 프로 추론으로 전환하세요.',
+    '이 모델은 이미지를 읽을 수 없습니다. 이미지를 첨부하려면 OpenHuman 추론 등급을 사용할 수 있습니다.',
   'chat.attachment.readFailed': '파일을 읽을 수 없습니다',
   'memory.searchAria': '메모리 검색',
   'memory.searchPlaceholder': '메모리 항목 검색...',
@@ -4407,7 +4407,6 @@ const messages: TranslationMap = {
   'chat.agentProfile.label': '에이전트 프로필',
   'chat.agentProfile.quick': '빠름',
   'chat.agentProfile.reasoning': '추론',
-  'chat.agentProfile.proReasoning': '프로 추론',
   'chat.agentProfile.namePlaceholder': '프로필 이름',
   'chat.agentProfile.promptStylePlaceholder': '프롬프트 스타일',
   'chat.agentProfile.allowedToolsPlaceholder': '허용된 도구',

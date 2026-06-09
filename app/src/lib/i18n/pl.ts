@@ -1890,7 +1890,7 @@ const messages: TranslationMap = {
   'chat.attachment.unsupportedType':
     'Nieobsługiwany typ pliku. Użyj obrazu (PNG, JPEG, WebP, GIF, BMP) lub pliku PDF, TXT albo Markdown.',
   'chat.attachment.imageNotSupported':
-    'Ten model nie może odczytywać obrazów. Przełącz na Pro-rozumowanie, aby dołączyć obraz.',
+    'Ten model nie może odczytywać obrazów. Możesz użyć poziomu Rozumowanie OpenHuman, aby dołączyć obraz.',
   'chat.attachment.readFailed': 'Nie można odczytać pliku',
   'memory.searchAria': 'Szukaj w pamięci',
   'memory.searchPlaceholder': 'Szukaj wpisów pamięci...',
@@ -4523,7 +4523,6 @@ const messages: TranslationMap = {
   'chat.agentProfile.label': 'Profil agenta',
   'chat.agentProfile.quick': 'Szybki',
   'chat.agentProfile.reasoning': 'Rozumowanie',
-  'chat.agentProfile.proReasoning': 'Pro-rozumowanie',
   'chat.agentProfile.namePlaceholder': 'Nazwa profilu',
   'chat.agentProfile.promptStylePlaceholder': 'Styl promptu',
   'chat.agentProfile.allowedToolsPlaceholder': 'Dozwolone narzędzia',

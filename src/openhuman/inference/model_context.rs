@@ -6,8 +6,7 @@
 //! metadata is not yet available.
 
 use crate::openhuman::config::{
-    MODEL_AGENTIC_V1, MODEL_CHAT_V1, MODEL_CODING_V1, MODEL_PRO_REASONING_V1,
-    MODEL_REASONING_QUICK_V1, MODEL_REASONING_V1,
+    MODEL_AGENTIC_V1, MODEL_CHAT_V1, MODEL_CODING_V1, MODEL_REASONING_QUICK_V1, MODEL_REASONING_V1,
 };
 
 /// Conservative default for OpenHuman abstract tier models (tokens).
@@ -98,9 +97,7 @@ pub fn context_window_for_model(model: &str) -> Option<u64> {
 
 fn tier_context_window(model: &str) -> Option<u64> {
     match model {
-        MODEL_REASONING_V1 | MODEL_PRO_REASONING_V1 | MODEL_AGENTIC_V1 | MODEL_CODING_V1 => {
-            Some(TIER_LARGE_CONTEXT)
-        }
+        MODEL_REASONING_V1 | MODEL_AGENTIC_V1 | MODEL_CODING_V1 => Some(TIER_LARGE_CONTEXT),
         "summarization-v1" => Some(TIER_SUMMARIZATION_CONTEXT),
         MODEL_CHAT_V1 | MODEL_REASONING_QUICK_V1 | "chat" => Some(TIER_STANDARD_CONTEXT),
         m if m.starts_with("gemma") || m.contains(":1b") || m.contains("270m") => {
@@ -172,7 +169,7 @@ pub fn model_vision_enabled(model: &str, config: &crate::openhuman::config::Conf
 /// - **Managed OpenHuman tiers** consult the hardcoded per-tier map
 ///   ([`crate::openhuman::inference::provider::factory::oh_tier_supports_vision`]) —
 ///   the remote backend does not advertise per-tier capability, so the core owns
-///   it. Currently every managed tier is `false`.
+///   it. Currently only `reasoning-v1` is vision-capable.
 /// - **Custom/BYOK models** consult the user-set `model_registry.vision` flag
 ///   ([`model_vision_enabled`]).
 pub fn model_supports_vision(model: &str, config: &crate::openhuman::config::Config) -> bool {
@@ -221,7 +218,6 @@ mod tests {
     #[test]
     fn tier_aliases_resolve() {
         assert_eq!(context_window_for_model("reasoning-v1"), Some(200_000));
-        assert_eq!(context_window_for_model("pro-reasoning-v1"), Some(200_000));
         assert_eq!(context_window_for_model("agentic-v1"), Some(200_000));
         assert_eq!(context_window_for_model("chat-v1"), Some(128_000));
         assert_eq!(
@@ -288,9 +284,10 @@ mod tests {
             cost_per_1m_output: 0.0,
             vision: true,
         }];
-        // Managed tiers are non-vision (the per-tier map is all `false` today).
+        // `reasoning-v1` is the one vision-capable managed tier; the rest are not.
+        assert!(model_supports_vision("reasoning-v1", &config));
+        assert!(model_supports_vision("hint:reasoning", &config));
         assert!(!model_supports_vision("chat-v1", &config));
-        assert!(!model_supports_vision("reasoning-v1", &config));
         assert!(!model_supports_vision("hint:chat", &config));
         // BYOK model flagged in the registry is vision-capable.
         assert!(model_supports_vision("my-llava", &config));

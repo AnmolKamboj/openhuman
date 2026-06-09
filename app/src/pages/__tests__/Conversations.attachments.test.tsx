@@ -417,20 +417,20 @@ describe('Conversations — attachment feature', () => {
     expect(mockSelectAgentProfile).not.toHaveBeenCalled();
   });
 
-  it('selects the Pro-reasoning tier from the chat-header toggle', async () => {
+  it('selects the Reasoning tier from the chat-header toggle', async () => {
     await renderWithSelectedThread();
 
-    const proButton = await screen.findByRole('radio', { name: 'Pro-reasoning' });
-    expect(proButton).toHaveAttribute('aria-checked', 'false');
+    const reasoningButton = await screen.findByRole('radio', { name: 'Reasoning' });
+    expect(reasoningButton).toHaveAttribute('aria-checked', 'false');
 
     await act(async () => {
-      fireEvent.click(proButton);
+      fireEvent.click(reasoningButton);
     });
 
     await waitFor(() => {
-      expect(mockSelectAgentProfile).toHaveBeenCalledWith('pro-reasoning');
+      expect(mockSelectAgentProfile).toHaveBeenCalledWith('reasoning');
       // Store updates to the new active profile → toggle reflects the selection.
-      expect(screen.getByRole('radio', { name: 'Pro-reasoning' })).toHaveAttribute(
+      expect(screen.getByRole('radio', { name: 'Reasoning' })).toHaveAttribute(
         'aria-checked',
         'true'
       );
@@ -450,7 +450,7 @@ describe('Conversations — attachment feature', () => {
 
     // Advisory points users at the vision-capable managed tier.
     await waitFor(() => {
-      expect(screen.getByText(/Switch to Pro-reasoning/i)).toBeInTheDocument();
+      expect(screen.getByText(/OpenHuman Reasoning tier/i)).toBeInTheDocument();
     });
     // The image is not attached, and the profile is left untouched.
     expect(screen.queryByText('no-vision.png')).not.toBeInTheDocument();

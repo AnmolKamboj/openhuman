@@ -2244,7 +2244,7 @@ const en: TranslationMap = {
   'chat.attachment.unsupportedType':
     'Unsupported file type. Use an image (PNG, JPEG, WebP, GIF, BMP) or a PDF, TXT, or Markdown file.',
   'chat.attachment.imageNotSupported':
-    'This model can’t read images. Switch to Pro-reasoning to attach your image.',
+    'This model can’t read images. You can use the OpenHuman Reasoning tier to attach your image.',
   'chat.attachment.readFailed': 'Could not read file',
 
   // Memory (additional)
@@ -4980,7 +4980,6 @@ const en: TranslationMap = {
   'chat.agentProfile.label': 'Agent profile',
   'chat.agentProfile.quick': 'Quick',
   'chat.agentProfile.reasoning': 'Reasoning',
-  'chat.agentProfile.proReasoning': 'Pro-reasoning',
   'chat.agentProfile.namePlaceholder': 'Profile name',
   'chat.agentProfile.promptStylePlaceholder': 'Prompt style',
   'chat.agentProfile.allowedToolsPlaceholder': 'Allowed tools',

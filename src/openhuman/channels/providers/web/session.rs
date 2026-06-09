@@ -39,9 +39,6 @@ pub(crate) fn provider_role_for_model_override(model_override: Option<&str>) -> 
         Some("hint:coding") | Some("coding-v1") => "coding",
         Some("hint:summarization") | Some("summarization-v1") => "summarization",
         Some("hint:reasoning") => "reasoning",
-        // pro-reasoning routes to its own always-managed role (never the BYOK
-        // chat provider) — keep in sync with `factory::provider_for_role`.
-        Some("hint:pro-reasoning") | Some("pro-reasoning-v1") => "pro-reasoning",
         _ => "chat",
     }
 }

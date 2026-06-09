@@ -1574,19 +1574,6 @@ const Conversations = ({
                   }`}>
                   {t('chat.agentProfile.reasoning')}
                 </button>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={selectedAgentProfileId === 'pro-reasoning'}
-                  data-analytics-id="chat-header-mode-pro-reasoning"
-                  onClick={() => void handleSelectAgentProfile('pro-reasoning')}
-                  className={`px-2.5 py-0.5 rounded-full text-xs font-medium transition-all ${
-                    selectedAgentProfileId === 'pro-reasoning'
-                      ? 'bg-white dark:bg-neutral-600 text-stone-800 dark:text-neutral-100 shadow-sm'
-                      : 'text-stone-500 dark:text-neutral-400 hover:text-stone-700 dark:hover:text-neutral-200'
-                  }`}>
-                  {t('chat.agentProfile.proReasoning')}
-                </button>
               </div>
               {(selectedThreadId ?? activeThreadId) && (
                 <ChatFilesChip threadId={(selectedThreadId ?? activeThreadId) as string} />
