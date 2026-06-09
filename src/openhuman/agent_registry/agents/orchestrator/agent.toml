@@ -23,7 +23,15 @@ omit_profile = false
 # prior conversations and distilled user preferences. Frozen per
 # session (KV-cache contract on `AgentDefinition::omit_memory_md`).
 omit_memory_md = false
-trigger_memory_agent = "always"
+# Memory retrieval is ON-DEMAND, not pre-emptive. The orchestrator used to
+# run `agent_memory` eagerly before every turn (`trigger_memory_agent =
+# "always"`), spawning a full ≤15-iteration memory subagent on every
+# message — including trivial ones — before it had even read the user's
+# intent. That cost a blocking agentic round-trip per turn for a guarantee
+# the model rarely needed. Instead, `agent_memory` is listed in the
+# `[subagents]` allowlist below, which synthesises a `delegate_retrieve_memory`
+# tool the orchestrator calls only when a message actually needs the deep
+# memory-tree walk. (The frozen MEMORY.md digest still anchors every turn.)
 
 # Delegation surface. The `collect_orchestrator_tools` helper reads this
 # at agent-build time and synthesises one `delegate_*` tool per entry:
@@ -61,6 +69,11 @@ allowlist = [
     # "forget", profile/persona edits, learned facets, and people alias
     # management here.
     "profile_memory_agent",
+    # On-demand memory retrieval. Synthesised into a `delegate_retrieve_memory`
+    # tool (from agent_memory's `delegate_name`). Replaces the old eager
+    # `trigger_memory_agent = "always"` pre-fetch — the orchestrator now walks
+    # the memory tree only when a message needs it, not before every turn.
+    "agent_memory",
     # Account/admin specialist. Route billing, team membership/invites/roles,
     # OAuth/credential/session, and referral requests here.
     "account_admin_agent",
