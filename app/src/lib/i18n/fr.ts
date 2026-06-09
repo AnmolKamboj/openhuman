@@ -1914,7 +1914,7 @@ const messages: TranslationMap = {
   'chat.attachment.unsupportedType':
     'Type de fichier non pris en charge. Utilise une image (PNG, JPEG, WebP, GIF, BMP) ou un fichier PDF, TXT ou Markdown.',
   'chat.attachment.imageNotSupported':
-    'Ce modèle ne peut pas lire les images. Joins plutôt un fichier PDF, TXT ou Markdown.',
+    'Ce modèle ne peut pas lire les images. Passe en Pro-raisonnement pour joindre ton image.',
   'chat.attachment.readFailed': 'Impossible de lire le fichier',
   'memory.searchAria': 'Rechercher dans la mémoire',
   'memory.searchPlaceholder': 'Rechercher des entrées de mémoire…',
@@ -4516,6 +4516,7 @@ const messages: TranslationMap = {
   'chat.agentProfile.label': "Profil d'agent",
   'chat.agentProfile.quick': 'Rapide',
   'chat.agentProfile.reasoning': 'Raisonnement',
+  'chat.agentProfile.proReasoning': 'Pro-raisonnement',
   'chat.agentProfile.namePlaceholder': 'Nom du profil',
   'chat.agentProfile.promptStylePlaceholder': 'Style de prompt',
   'chat.agentProfile.allowedToolsPlaceholder': 'Outils autorisés',

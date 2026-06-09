@@ -1869,7 +1869,7 @@ const messages: TranslationMap = {
   'chat.attachment.unsupportedType':
     'Jenis file tidak didukung. Gunakan gambar (PNG, JPEG, WebP, GIF, BMP) atau file PDF, TXT, atau Markdown.',
   'chat.attachment.imageNotSupported':
-    'Model ini tidak dapat membaca gambar. Lampirkan file PDF, TXT, atau Markdown sebagai gantinya.',
+    'Model ini tidak dapat membaca gambar. Beralih ke Penalaran Pro untuk melampirkan gambar Anda.',
   'chat.attachment.readFailed': 'Tidak dapat membaca file',
   'memory.searchAria': 'Cari memori',
   'memory.searchPlaceholder': 'Cari entri memori...',
@@ -4433,6 +4433,7 @@ const messages: TranslationMap = {
   'chat.agentProfile.label': 'Profil agen',
   'chat.agentProfile.quick': 'Cepat',
   'chat.agentProfile.reasoning': 'Penalaran',
+  'chat.agentProfile.proReasoning': 'Penalaran Pro',
   'chat.agentProfile.namePlaceholder': 'Nama profil',
   'chat.agentProfile.promptStylePlaceholder': 'Gaya perintah',
   'chat.agentProfile.allowedToolsPlaceholder': 'Alat yang diizinkan',

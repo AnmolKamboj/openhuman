@@ -1867,7 +1867,7 @@ const messages: TranslationMap = {
   'chat.attachment.unsupportedType':
     'অসমর্থিত ফাইল প্রকার। একটি ছবি (PNG, JPEG, WebP, GIF, BMP) অথবা একটি PDF, TXT, বা Markdown ফাইল ব্যবহার করুন।',
   'chat.attachment.imageNotSupported':
-    'এই মডেলটি ছবি পড়তে পারে না। পরিবর্তে একটি PDF, TXT, বা Markdown ফাইল সংযুক্ত করুন।',
+    'এই মডেলটি ছবি পড়তে পারে না। আপনার ছবি সংযুক্ত করতে প্রো যুক্তিতে স্যুইচ করুন।',
   'chat.attachment.readFailed': 'ফাইল পড়া যায়নি',
   'memory.searchAria': 'মেমোরি খুঁজুন',
   'memory.searchPlaceholder': 'মেমোরি এন্ট্রি খুঁজুন...',
@@ -4413,6 +4413,7 @@ const messages: TranslationMap = {
   'chat.agentProfile.label': 'এজেন্ট প্রোফাইল',
   'chat.agentProfile.quick': 'দ্রুত',
   'chat.agentProfile.reasoning': 'যুক্তি',
+  'chat.agentProfile.proReasoning': 'প্রো যুক্তি',
   'chat.agentProfile.namePlaceholder': 'প্রোফাইল নাম',
   'chat.agentProfile.promptStylePlaceholder': 'প্রম্পট স্টাইল',
   'chat.agentProfile.allowedToolsPlaceholder': 'অনুমোদিত টুল',

@@ -138,7 +138,13 @@ test.describe('Chat management functional coverage', () => {
           typeof request.body === 'string' &&
           request.body.includes('Summarize this file')
       )?.body ?? '';
-    expect(completionBody).toContain('reasoning');
+    // Attaching a document no longer auto-switches the chat profile to
+    // Reasoning — it is text-extracted and sent through the selected profile's
+    // model (the default profile resolves to the chat tier). Assert on the
+    // request's `model` field only, so the word "reasoning" appearing elsewhere
+    // in the payload (e.g. the system prompt) can't mask a regression.
+    const completionModel = String(JSON.parse(completionBody).model ?? '');
+    expect(completionModel).not.toContain('reasoning');
     expect(completionBody).toContain('[FILE-EXTRACTED:');
     expect(completionBody).toContain('renderer uploaded text document');
   });

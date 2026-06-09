@@ -413,6 +413,9 @@ impl Agent {
             Some("hint:coding") => "coding",
             Some("hint:summarization") => "summarization",
             Some("hint:reasoning") => "reasoning",
+            // Always-managed chat tier — keep in sync with
+            // `factory::provider_for_role` and `web::session::provider_role_for_model_override`.
+            Some("hint:pro-reasoning") => "pro-reasoning",
             _ => "chat",
         };
         let (provider, mut model_name): (Box<dyn Provider>, String) =

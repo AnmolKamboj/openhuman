@@ -1866,7 +1866,7 @@ const messages: TranslationMap = {
   'chat.attachment.unsupportedType':
     'असमर्थित फ़ाइल प्रकार। कोई छवि (PNG, JPEG, WebP, GIF, BMP) या PDF, TXT, या Markdown फ़ाइल का उपयोग करें।',
   'chat.attachment.imageNotSupported':
-    'यह मॉडल छवियाँ नहीं पढ़ सकता। इसके बजाय कोई PDF, TXT या Markdown फ़ाइल संलग्न करें।',
+    'यह मॉडल छवियाँ नहीं पढ़ सकता। अपनी छवि संलग्न करने के लिए प्रो तर्क पर स्विच करें।',
   'chat.attachment.readFailed': 'फ़ाइल पढ़ नहीं सकी',
   'memory.searchAria': 'मेमोरी सर्च करें',
   'memory.searchPlaceholder': 'मेमोरी एंट्रीज़ सर्च करें...',
@@ -4423,6 +4423,7 @@ const messages: TranslationMap = {
   'chat.agentProfile.label': 'एजेंट प्रोफ़ाइल',
   'chat.agentProfile.quick': 'त्वरित',
   'chat.agentProfile.reasoning': 'तर्क',
+  'chat.agentProfile.proReasoning': 'प्रो तर्क',
   'chat.agentProfile.namePlaceholder': 'प्रोफ़ाइल नाम',
   'chat.agentProfile.promptStylePlaceholder': 'शीघ्र शैली',
   'chat.agentProfile.allowedToolsPlaceholder': 'अनुमत उपकरण',

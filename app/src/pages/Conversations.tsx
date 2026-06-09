@@ -107,7 +107,6 @@ import {
 } from './conversations/utils/threadFilter';
 
 const CHAT_MODEL_HINT = 'hint:chat';
-const MULTIMODAL_MODEL_HINT = 'hint:reasoning';
 /** Maximum trailing characters rendered in the live-streaming assistant
  *  preview bubble. The full response is revealed via `addInferenceResponse`
  *  on `chat_done` — this is purely a ticker-tape affordance to signal
@@ -280,10 +279,12 @@ const Conversations = ({
     (async () => {
       try {
         const profile = agentProfiles.find(p => p.id === selectedAgentProfileId);
-        const hint =
-          attachments.length > 0
-            ? MULTIMODAL_MODEL_HINT
-            : (profile?.modelOverride ?? CHAT_MODEL_HINT);
+        // Resolve the actually-selected profile's model so `modelSupportsVision`
+        // reflects the real tier. Attachments never override the model: images
+        // are rejected up-front on non-vision profiles (validateAndReadFile →
+        // image_not_supported), and documents are text-extracted so any model
+        // handles them.
+        const hint = profile?.modelOverride ?? CHAT_MODEL_HINT;
         const res = await callCoreRpc<{ model: string; vision?: boolean }>({
           method: 'openhuman.inference_resolve_model',
           params: { hint },
@@ -302,7 +303,7 @@ const Conversations = ({
     return () => {
       cancelled = true;
     };
-  }, [agentProfiles, attachments.length, selectedAgentProfileId]);
+  }, [agentProfiles, selectedAgentProfileId]);
 
   const textInputRef = useRef<HTMLTextAreaElement>(null);
   const isComposingTextRef = useRef(false);
@@ -728,10 +729,6 @@ const Conversations = ({
       } else {
         acceptedFileCount++;
       }
-      if (selectedAgentProfileId !== 'reasoning') {
-        debug('attachment accepted; switching chat profile to reasoning for multimodal send');
-        void handleSelectAgentProfile('reasoning');
-      }
       setAttachments(prev => [...prev, result.attachment]);
     }
   };
@@ -785,10 +782,7 @@ const Conversations = ({
     setPendingSendingThreadId(sendingThreadId);
     const pendingAttachments = attachments.slice();
     const modelOverride =
-      pendingAttachments.length > 0
-        ? MULTIMODAL_MODEL_HINT
-        : (agentProfiles.find(p => p.id === selectedAgentProfileId)?.modelOverride ??
-          CHAT_MODEL_HINT);
+      agentProfiles.find(p => p.id === selectedAgentProfileId)?.modelOverride ?? CHAT_MODEL_HINT;
     const messageText = buildMessageWithAttachments(trimmed, pendingAttachments);
     const userMessage: ThreadMessage = {
       id: `msg_${globalThis.crypto.randomUUID()}`,
@@ -1579,6 +1573,19 @@ const Conversations = ({
                       : 'text-stone-500 dark:text-neutral-400 hover:text-stone-700 dark:hover:text-neutral-200'
                   }`}>
                   {t('chat.agentProfile.reasoning')}
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedAgentProfileId === 'pro-reasoning'}
+                  data-analytics-id="chat-header-mode-pro-reasoning"
+                  onClick={() => void handleSelectAgentProfile('pro-reasoning')}
+                  className={`px-2.5 py-0.5 rounded-full text-xs font-medium transition-all ${
+                    selectedAgentProfileId === 'pro-reasoning'
+                      ? 'bg-white dark:bg-neutral-600 text-stone-800 dark:text-neutral-100 shadow-sm'
+                      : 'text-stone-500 dark:text-neutral-400 hover:text-stone-700 dark:hover:text-neutral-200'
+                  }`}>
+                  {t('chat.agentProfile.proReasoning')}
                 </button>
               </div>
               {(selectedThreadId ?? activeThreadId) && (
