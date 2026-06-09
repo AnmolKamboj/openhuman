@@ -1899,6 +1899,8 @@ fn register_domain_subscribers(
             log::warn!("[composio][history] failed to initialize trigger archive: {error}");
         }
         crate::openhuman::composio::register_composio_trigger_subscriber();
+        crate::openhuman::agent_meetings::calendar::register_meet_calendar_subscriber();
+        crate::openhuman::agent_meetings::bus::register_meeting_event_subscriber();
         crate::openhuman::composio::start_periodic_sync();
         // Task-sources proactive ingestion: connection-created hook + poll.
         crate::openhuman::task_sources::bus::register_task_sources_subscriber();

@@ -68,6 +68,9 @@ describe('MeetingBotsCard', () => {
     fireEvent.change(screen.getByLabelText(/meeting link/i), {
       target: { value: 'https://meet.google.com/abc-defg-hij' },
     });
+    fireEvent.change(screen.getByLabelText(/your name in this meeting/i), {
+      target: { value: 'Alice' },
+    });
     const form = screen.getByRole('dialog').querySelector('form')!;
     fireEvent.submit(form);
 
@@ -78,6 +81,7 @@ describe('MeetingBotsCard', () => {
           displayName: 'OpenHuman',
           platform: 'gmeet',
           agentName: 'OpenHuman',
+          respondToParticipant: 'Alice',
         })
       );
     });
@@ -118,6 +122,9 @@ describe('MeetingBotsCard', () => {
     fireEvent.change(screen.getByLabelText(/meeting link/i), {
       target: { value: 'https://meet.google.com/abc-defg-hij' },
     });
+    fireEvent.change(screen.getByLabelText(/your name in this meeting/i), {
+      target: { value: 'Alice' },
+    });
     fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
 
     await vi.waitFor(() => {
@@ -143,6 +150,9 @@ describe('MeetingBotsCard', () => {
     fireEvent.change(screen.getByLabelText(/meeting link/i), {
       target: { value: 'https://meet.google.com/x' },
     });
+    fireEvent.change(screen.getByLabelText(/your name in this meeting/i), {
+      target: { value: 'Alice' },
+    });
     fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
 
     await vi.waitFor(() => {
@@ -165,9 +175,12 @@ describe('MeetingBotsCard', () => {
     renderWithProviders(<MeetingBotsCard />);
     fireEvent.click(screen.getByTestId('meeting-bots-banner'));
     expect(screen.getByLabelText(/meeting link/i)).toBeInTheDocument();
+    // respondTo field is present (participant name the bot should respond to)
+    expect(screen.getByLabelText(/your name in this meeting/i)).toBeInTheDocument();
+    // Old bot-tuning fields should be absent
     expect(screen.queryByLabelText(/^display name$/i)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/your name in the call/i)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/wake phrase/i)).not.toBeInTheDocument();
+    // No standalone "Wake Phrase" label — the phrase appears only in the respondTo hint text
+    expect(screen.queryByText(/^wake phrase$/i)).not.toBeInTheDocument();
   });
 });
 

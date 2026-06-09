@@ -29,7 +29,7 @@ test.describe('Google Meet Connections tab', () => {
     await expect(dialog).toBeVisible();
     await expect(dialog.getByLabel('Meeting link')).toBeVisible();
     await expect(dialog.locator('input[type="url"]')).toHaveCount(1);
-    await expect(dialog.locator('input[type="text"]')).toHaveCount(0);
+    await expect(dialog.locator('input[type="text"]')).toHaveCount(1);
     await expect(dialog.getByText('Wake Phrase')).toHaveCount(0);
     await expect(dialog.getByText('Display name')).toHaveCount(0);
     await expect(dialog.getByText('Zoom')).toHaveCount(0);

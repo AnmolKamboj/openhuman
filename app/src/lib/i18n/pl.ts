@@ -1843,6 +1843,7 @@ const messages: TranslationMap = {
     'Brak odpowiedzi agenta po 2 minutach. Spróbuj ponownie lub sprawdź połączenie.',
   'chat.filter.general': 'Ogólne',
   'chat.filter.subconscious': 'Podświadomość',
+  'chat.filter.meetings': 'Spotkania',
   'chat.filter.tasks': 'Zadania',
   'chat.selectThread': 'Wybierz wątek',
   'chat.threads': 'Wątki',
@@ -4367,6 +4368,7 @@ const messages: TranslationMap = {
   'skills.meetingBots.liveTitle': 'Na spotkaniu',
   'skills.meetingBots.liveStatusJoining': 'Dołączanie\u2026',
   'skills.meetingBots.liveStatusActive': 'Na żywo na spotkaniu',
+  'skills.meetingBots.liveStatusListening': 'Słuchanie (wyciszony)',
   'skills.meetingBots.liveStatusEnded': 'Spotkanie zakończone',
   'skills.meetingBots.liveStatusError': 'Nie można dołączyć',
   'skills.meetingBots.leaveButton': 'Wyjdź',
@@ -4374,7 +4376,7 @@ const messages: TranslationMap = {
   'skills.meetingBots.respondToParticipantHint':
     'np. Anna (Twoja nazwa wyświetlana podczas rozmowy)',
   'skills.meetingBots.respondToParticipantDesc':
-    'Bot będzie odpowiadał tylko Tobie. Pozostaw puste, aby każdy mógł go aktywować.',
+    'Wprowadź swój dokładny wyświetlany nick ze spotkania. Bot reaguje tylko wtedy, gdy wypowiesz jego nazwę (fraza aktywacji).',
   'skills.meetingBots.wakePhrase': 'Fraza aktywacji',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'Uczestnik musi to powiedzieć, zanim bot odpowie.',
