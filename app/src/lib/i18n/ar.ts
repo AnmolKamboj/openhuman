@@ -21,11 +21,18 @@ const messages: TranslationMap = {
   'nav.defaultAgentProfile': 'الوكيل الافتراضي',
   'nav.noAgentProfiles': 'لم يتم العثور على ملفات وكلاء',
   'nav.activity': 'النشاط',
+  'nav.brain': 'الدماغ',
   'nav.avatarMenu.account': 'الحساب',
   'nav.avatarMenu.billing': 'الفواتير',
   'nav.avatarMenu.rewards': 'المكافآت',
   'nav.avatarMenu.invites': 'دعوة صديق',
   'nav.avatarMenu.wallet': 'المحفظة',
+
+  // Brain — full-page memory knowledge-graph surface
+  'brain.subtitle': 'خريطة معرفتك ومصادر الذاكرة وعناصر التحكم.',
+  'brain.loading': 'يتم جمع ذكرياتك…',
+  'brain.empty': 'دماغك فارغ في الوقت الحالي — قم بربط مصدر لبدء بناء الذاكرة.',
+  'brain.error': 'تعذّر تحميل دماغك. يرجى المحاولة مرة أخرى.',
   'common.cancel': 'إلغاء',
   'common.save': 'حفظ',
   'common.confirm': 'تأكيد',

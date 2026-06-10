@@ -156,12 +156,37 @@ describe('BottomTabBar', () => {
     agentProfilesApiMock.select.mockResolvedValue(testProfiles);
   });
 
-  it('renders exactly 5 tab buttons (Phase 6: Human merged into Assistant)', async () => {
+  it('renders exactly 5 regular tab buttons (Brain is rendered separately)', async () => {
     await renderBottomTabBar('/home');
-    // Query only buttons inside <nav> to exclude the avatar button
+    // Query only the regular pill tabs inside <nav>: exclude the avatar button
+    // (aria-haspopup) and the special raised Brain button (tab-brain).
     const nav = document.querySelector('nav');
-    const navButtons = nav?.querySelectorAll('button:not([aria-haspopup])');
+    const navButtons = nav?.querySelectorAll(
+      'button:not([aria-haspopup]):not([data-walkthrough="tab-brain"])'
+    );
     expect(navButtons).toHaveLength(5);
+  });
+
+  it('renders the raised Brain button with data-walkthrough="tab-brain"', async () => {
+    await renderBottomTabBar('/home');
+    const brainBtn = screen.getByRole('button', { name: 'Brain' });
+    expect(brainBtn).toBeInTheDocument();
+    expect(brainBtn).toHaveAttribute('data-walkthrough', 'tab-brain');
+    expect(brainBtn).toHaveClass('brain-fab');
+  });
+
+  it('navigates to /brain and tracks the change when the Brain button is clicked', async () => {
+    const { trackEvent } = await import('../../services/analytics');
+    await renderBottomTabBar('/home');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Brain' }));
+
+    expect(trackEvent).toHaveBeenCalledWith('tab_bar_change', {
+      from_tab: 'home',
+      to_tab: 'brain',
+      from_path: '/home',
+      to_path: '/brain',
+    });
   });
 
   it('does NOT render a Rewards tab', async () => {

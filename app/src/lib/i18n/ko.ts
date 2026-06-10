@@ -21,11 +21,18 @@ const messages: TranslationMap = {
   'nav.defaultAgentProfile': '기본 에이전트',
   'nav.noAgentProfiles': '에이전트 프로필을 찾을 수 없습니다',
   'nav.activity': '활동',
+  'nav.brain': '브레인',
   'nav.avatarMenu.account': '계정',
   'nav.avatarMenu.billing': '결제',
   'nav.avatarMenu.rewards': '보상',
   'nav.avatarMenu.invites': '친구 초대',
   'nav.avatarMenu.wallet': '지갑',
+
+  // Brain — full-page memory knowledge-graph surface
+  'brain.subtitle': '지식 그래프, 메모리 소스 및 컨트롤.',
+  'brain.loading': '기억을 모으는 중…',
+  'brain.empty': '아직 브레인이 비어 있습니다 — 소스를 연결하여 메모리를 만들어 보세요.',
+  'brain.error': '브레인을 불러올 수 없습니다. 다시 시도해 주세요.',
   'common.cancel': '취소',
   'common.save': '저장',
   'common.confirm': '확인',

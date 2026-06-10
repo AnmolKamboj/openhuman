@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { AVATAR_MENU_ITEMS, NAV_TABS } from '../navConfig';
+import { AVATAR_MENU_ITEMS, BRAIN_TAB, NAV_TABS } from '../navConfig';
 
 describe('NAV_TABS', () => {
   it('has exactly 5 entries (Phase 6: Human merged into Assistant)', () => {
@@ -68,12 +68,27 @@ describe('NAV_TABS', () => {
     expect(NAV_TABS.find(t => t.id === 'skills')).toBeUndefined();
   });
 
+  it('does not contain the Brain tab (rendered specially, not in the regular row)', () => {
+    expect(NAV_TABS.find(t => t.id === 'brain')).toBeUndefined();
+  });
+
   it('Assistant tab uses nav.assistant label key and tab-chat walkthrough attr', () => {
     const assistantTab = NAV_TABS.find(t => t.id === 'chat');
     expect(assistantTab).toBeDefined();
     expect(assistantTab?.labelKey).toBe('nav.assistant');
     expect(assistantTab?.walkthroughAttr).toBe('tab-chat');
     expect(assistantTab?.path).toBe('/chat');
+  });
+});
+
+describe('BRAIN_TAB', () => {
+  it('has the expected shape (id, path, labelKey, walkthroughAttr)', () => {
+    expect(BRAIN_TAB).toEqual({
+      id: 'brain',
+      labelKey: 'nav.brain',
+      path: '/brain',
+      walkthroughAttr: 'tab-brain',
+    });
   });
 });
 

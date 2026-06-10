@@ -21,11 +21,18 @@ const messages: TranslationMap = {
   'nav.defaultAgentProfile': 'डिफॉल्ट एजेंट',
   'nav.noAgentProfiles': 'कोई एजेंट प्रोफाइल नहीं मिला',
   'nav.activity': 'गतिविधि',
+  'nav.brain': 'ब्रेन',
   'nav.avatarMenu.account': 'खाता',
   'nav.avatarMenu.billing': 'बिलिंग',
   'nav.avatarMenu.rewards': 'रिवॉर्ड',
   'nav.avatarMenu.invites': 'दोस्त को आमंत्रित करें',
   'nav.avatarMenu.wallet': 'वॉलेट',
+
+  // Brain — full-page memory knowledge-graph surface
+  'brain.subtitle': 'आपका नॉलेज ग्राफ, मेमोरी स्रोत और नियंत्रण।',
+  'brain.loading': 'आपकी यादें इकट्ठा की जा रही हैं…',
+  'brain.empty': 'आपका ब्रेन अभी खाली है — मेमोरी बनाना शुरू करने के लिए कोई स्रोत कनेक्ट करें।',
+  'brain.error': 'आपका ब्रेन लोड नहीं हो सका। कृपया फिर से प्रयास करें।',
   'common.cancel': 'रद्द करें',
   'common.save': 'सेव करें',
   'common.confirm': 'कन्फर्म करें',

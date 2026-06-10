@@ -21,11 +21,18 @@ const messages: TranslationMap = {
   'nav.defaultAgentProfile': 'Agen default',
   'nav.noAgentProfiles': 'Profil agen tidak ditemukan',
   'nav.activity': 'Aktivitas',
+  'nav.brain': 'Otak',
   'nav.avatarMenu.account': 'Akun',
   'nav.avatarMenu.billing': 'Tagihan',
   'nav.avatarMenu.rewards': 'Hadiah',
   'nav.avatarMenu.invites': 'Undang teman',
   'nav.avatarMenu.wallet': 'Dompet',
+
+  // Brain — full-page memory knowledge-graph surface
+  'brain.subtitle': 'Grafik pengetahuan, sumber memori, dan kontrol Anda.',
+  'brain.loading': 'Mengumpulkan memori Anda…',
+  'brain.empty': 'Otak Anda masih kosong — hubungkan sumber untuk mulai membangun memori.',
+  'brain.error': 'Tidak dapat memuat otak Anda. Silakan coba lagi.',
   'common.cancel': 'Batal',
   'common.save': 'Simpan',
   'common.confirm': 'Konfirmasi',

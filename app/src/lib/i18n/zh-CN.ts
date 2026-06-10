@@ -21,11 +21,18 @@ const messages: TranslationMap = {
   'nav.defaultAgentProfile': '默认代理',
   'nav.noAgentProfiles': '未找到代理档案',
   'nav.activity': '动态',
+  'nav.brain': '大脑',
   'nav.avatarMenu.account': '账户',
   'nav.avatarMenu.billing': '账单',
   'nav.avatarMenu.rewards': '奖励',
   'nav.avatarMenu.invites': '邀请好友',
   'nav.avatarMenu.wallet': '钱包',
+
+  // Brain — full-page memory knowledge-graph surface
+  'brain.subtitle': '你的知识图谱、记忆来源与控制项。',
+  'brain.loading': '正在收集你的记忆…',
+  'brain.empty': '你的大脑暂时是空的——连接一个来源即可开始构建记忆。',
+  'brain.error': '无法加载你的大脑，请重试。',
   'common.cancel': '取消',
   'common.save': '保存',
   'common.confirm': '确认',

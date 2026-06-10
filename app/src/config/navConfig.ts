@@ -41,6 +41,20 @@ export const NAV_TABS: NavTab[] = [
   { id: 'settings', labelKey: 'nav.settings', path: '/settings', walkthroughAttr: 'tab-settings' },
 ];
 
+/**
+ * The "Brain" — the app's centerpiece memory-graph surface. Rendered
+ * specially by BottomTabBar.tsx as a raised circular button in the dead
+ * center of the bar (a notch the button rises out of), NOT as part of the
+ * regular `NAV_TABS` row. Kept separate so its special, elevated nature is
+ * explicit and the 5-tab invariants for the regular row stay intact.
+ */
+export const BRAIN_TAB: NavTab = {
+  id: 'brain',
+  labelKey: 'nav.brain',
+  path: '/brain',
+  walkthroughAttr: 'tab-brain',
+};
+
 // ── Avatar / account menu ─────────────────────────────────────────────────────
 
 /**

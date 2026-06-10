@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { AVATAR_MENU_ITEMS, NAV_TABS } from '../config/navConfig';
+import { AVATAR_MENU_ITEMS, BRAIN_TAB, NAV_TABS } from '../config/navConfig';
 import { useT } from '../lib/i18n/I18nContext';
 import { useCoreState } from '../providers/CoreStateProvider';
 import { trackEvent } from '../services/analytics';
@@ -88,6 +88,25 @@ function TabIcon({ id }: { id: string }) {
             strokeLinejoin="round"
             strokeWidth={1.8}
             d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+          />
+        </svg>
+      );
+    case 'brain':
+      // Two symmetric lobes — reads clearly as a brain. Rendered larger and
+      // white inside the raised center circle.
+      return (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.8}
+            d="M9.5 2A2.5 2.5 0 0112 4.5v15a2.5 2.5 0 01-4.96.44 2.5 2.5 0 01-2.96-3.08 3 3 0 01-.34-5.58 2.5 2.5 0 011.32-4.24 2.5 2.5 0 011.98-3A2.5 2.5 0 019.5 2z"
+          />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.8}
+            d="M14.5 2A2.5 2.5 0 0012 4.5v15a2.5 2.5 0 004.96.44 2.5 2.5 0 002.96-3.08 3 3 0 00.34-5.58 2.5 2.5 0 00-1.32-4.24 2.5 2.5 0 00-1.98-3A2.5 2.5 0 0014.5 2z"
           />
         </svg>
       );
@@ -209,6 +228,96 @@ const BottomTabBar = () => {
     trackEvent('avatar_menu_item_click', { item_id: itemId });
   };
 
+  // One regular pill tab. `iconOnly` renders just the glyph (no label) — used
+  // for the pinned Home button so it reads as a fixed icon, like the avatar.
+  //
+  // When labels are always visible (theme setting), every labelled tab is given
+  // the SAME fixed width so the row stays symmetric. In the default hover mode
+  // the label still expands on hover (no fixed width) — unchanged behaviour.
+  const renderTab = (tab: (typeof tabs)[number], iconOnly = false) => {
+    const active = isActive(tab.path);
+    const showBadge = tab.id === 'notifications' && unreadCount > 0;
+    const showCompanionDot = tab.id === 'settings' && companionActive;
+    const fixedWidth = !iconOnly && labelsAlwaysVisible;
+    return (
+      <button
+        key={tab.id}
+        data-walkthrough={tab.walkthroughAttr}
+        onClick={() => handleTabClick(tab, active)}
+        title={tab.label}
+        className={`group relative flex items-center rounded-sm text-sm transition-colors duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
+          iconOnly
+            ? 'h-9 w-9 justify-center'
+            : fixedWidth
+              ? 'w-32 justify-center px-2 py-2'
+              : 'px-2 py-2'
+        } ${
+          active
+            ? 'bg-white dark:bg-neutral-800 text-stone-900 dark:text-neutral-100 font-semibold shadow-sm'
+            : 'bg-transparent text-stone-500 dark:text-neutral-400 hover:bg-stone-300/50 dark:hover:bg-neutral-800/60 hover:text-stone-700 dark:hover:text-neutral-200'
+        }`}
+        aria-label={
+          tab.id === 'notifications' && unreadCount > 0
+            ? `${tab.label} (${unreadCount} ${t('alerts.unread')})`
+            : tab.label
+        }>
+        <span className="relative inline-flex flex-shrink-0">
+          <TabIcon id={tab.id} />
+          {showBadge && (
+            <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 rounded-full bg-coral-500 text-[9px] font-bold text-white flex items-center justify-center leading-none">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
+          {showCompanionDot && (
+            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+          )}
+        </span>
+        {!iconOnly && (
+          <span
+            className={`min-w-0 overflow-hidden whitespace-nowrap transition-[max-width,margin-left,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+              active || labelsAlwaysVisible
+                ? `${fixedWidth ? 'truncate ' : ''}max-w-[160px] ml-2 opacity-100`
+                : 'max-w-0 ml-0 opacity-0 group-hover:max-w-[160px] group-hover:ml-2 group-hover:opacity-100 group-focus-visible:max-w-[160px] group-focus-visible:ml-2 group-focus-visible:opacity-100'
+            }`}>
+            {tab.label}
+          </span>
+        )}
+      </button>
+    );
+  };
+
+  // The Brain — a raised circular button rising out of the center of the bar.
+  // The bg-colored ring fakes a notch cut into the pill's top edge. `brain-fab`
+  // is targeted by the reduced-motion gate in index.css to silence the glow.
+  const renderBrainButton = () => {
+    const active = isActive(BRAIN_TAB.path);
+    const brainTab = { ...BRAIN_TAB, label: t(BRAIN_TAB.labelKey) };
+    return (
+      <button
+        key="brain"
+        type="button"
+        data-walkthrough={BRAIN_TAB.walkthroughAttr}
+        onClick={() => handleTabClick(brainTab, active)}
+        aria-label={brainTab.label}
+        title={brainTab.label}
+        className={`brain-fab group relative mx-1 flex h-12 w-12 -translate-y-5 items-center justify-center rounded-full text-white shadow-soft ring-4 ring-stone-200 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer dark:ring-neutral-900 ${
+          active
+            ? 'bg-primary-600 animate-glow-pulse shadow-[0_0_16px_rgba(74,131,221,0.55)] scale-105'
+            : 'bg-primary-500 hover:bg-primary-600 hover:scale-105'
+        }`}>
+        <TabIcon id="brain" />
+      </button>
+    );
+  };
+
+  // Home is pinned to the far-left of the pill behind a divider — mirroring the
+  // avatar pinned to the far-right behind its own divider. The rest of the row
+  // splits evenly around the centered Brain button:
+  //   [ home ] | assistant · connections  ( 🧠 )  activity · settings | [ avatar ]
+  const homeTab = tabs[0];
+  const leftTabs = tabs.slice(1, 3);
+  const rightTabs = tabs.slice(3);
+
   return (
     // pointer-events-none on the full-width shell so transparent areas (e.g.
     // beside the centered nav pill) do not steal clicks from sticky footers
@@ -233,47 +342,12 @@ const BottomTabBar = () => {
           if (!e.currentTarget.contains(e.relatedTarget as Node)) setRevealed(false);
         }}>
         <nav className="pointer-events-auto inline-flex items-center gap-1 rounded-sm border border-stone-300 dark:border-neutral-700 bg-stone-200 dark:bg-neutral-900 shadow-soft px-1 py-1">
-          {tabs.map(tab => {
-            const active = isActive(tab.path);
-            const showBadge = tab.id === 'notifications' && unreadCount > 0;
-            const showCompanionDot = tab.id === 'settings' && companionActive;
-            return (
-              <button
-                key={tab.id}
-                data-walkthrough={tab.walkthroughAttr}
-                onClick={() => handleTabClick(tab, active)}
-                className={`group relative flex items-center px-2 py-2 rounded-sm text-sm transition-colors duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
-                  active
-                    ? 'bg-white dark:bg-neutral-800 text-stone-900 dark:text-neutral-100 font-semibold shadow-sm'
-                    : 'bg-transparent text-stone-500 dark:text-neutral-400 hover:bg-stone-300/50 dark:hover:bg-neutral-800/60 hover:text-stone-700 dark:hover:text-neutral-200'
-                }`}
-                aria-label={
-                  tab.id === 'notifications' && unreadCount > 0
-                    ? `${tab.label} (${unreadCount} ${t('alerts.unread')})`
-                    : tab.label
-                }>
-                <span className="relative inline-flex flex-shrink-0">
-                  <TabIcon id={tab.id} />
-                  {showBadge && (
-                    <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 rounded-full bg-coral-500 text-[9px] font-bold text-white flex items-center justify-center leading-none">
-                      {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  )}
-                  {showCompanionDot && (
-                    <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-                  )}
-                </span>
-                <span
-                  className={`overflow-hidden whitespace-nowrap transition-[max-width,margin-left,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                    active || labelsAlwaysVisible
-                      ? 'max-w-[160px] ml-2 opacity-100'
-                      : 'max-w-0 ml-0 opacity-0 group-hover:max-w-[160px] group-hover:ml-2 group-hover:opacity-100 group-focus-visible:max-w-[160px] group-focus-visible:ml-2 group-focus-visible:opacity-100'
-                  }`}>
-                  {tab.label}
-                </span>
-              </button>
-            );
-          })}
+          <div className="relative mr-1 border-r border-stone-300 pr-1 dark:border-neutral-700">
+            {renderTab(homeTab, true)}
+          </div>
+          {leftTabs.map(tab => renderTab(tab))}
+          {renderBrainButton()}
+          {rightTabs.map(tab => renderTab(tab))}
           <div
             className="relative ml-1 border-l border-stone-300 pl-1 dark:border-neutral-700"
             ref={profileMenuRef}>

@@ -22,11 +22,18 @@ const en: TranslationMap = {
   'nav.defaultAgentProfile': 'Default agent',
   'nav.noAgentProfiles': 'No agent profiles found',
   'nav.activity': 'Activity',
+  'nav.brain': 'Brain',
   'nav.avatarMenu.account': 'Account',
   'nav.avatarMenu.billing': 'Billing',
   'nav.avatarMenu.rewards': 'Rewards',
   'nav.avatarMenu.invites': 'Invite a friend',
   'nav.avatarMenu.wallet': 'Wallet',
+
+  // Brain — full-page memory knowledge-graph surface
+  'brain.subtitle': 'Your knowledge graph, memory sources, and controls.',
+  'brain.loading': 'Gathering your memories…',
+  'brain.empty': 'Your brain is empty for now — connect a source to start building memory.',
+  'brain.error': "Couldn't load your brain. Please try again.",
 
   // Common
   'common.cancel': 'Cancel',

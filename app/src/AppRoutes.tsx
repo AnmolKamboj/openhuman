@@ -7,6 +7,7 @@ import PublicRoute from './components/PublicRoute';
 import { getIsMobile } from './lib/platform';
 import Accounts from './pages/Accounts';
 import Activity from './pages/Activity';
+import Brain from './pages/Brain';
 import Home from './pages/Home';
 import Invites from './pages/Invites';
 import Notifications from './pages/Notifications';
@@ -66,6 +67,17 @@ const AppRoutes = () => {
           Preserve the route for back-compat (deep links, iOS share sheets, etc.).
           iOS AppRoutesIOS still serves /human natively — only desktop redirects. */}
       <Route path="/human" element={<Navigate to="/chat" replace />} />
+
+      {/* Brain — the centerpiece memory knowledge-graph surface, reached from
+          the raised center button in the bottom bar. Full-page, graph-only. */}
+      <Route
+        path="/brain"
+        element={
+          <ProtectedRoute requireAuth={true}>
+            <Brain />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Primary Activity surface — replaces /intelligence (Phase 3). */}
       <Route

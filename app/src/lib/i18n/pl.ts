@@ -21,11 +21,18 @@ const messages: TranslationMap = {
   'nav.defaultAgentProfile': 'Domyślny agent',
   'nav.noAgentProfiles': 'Nie znaleziono profili agentów',
   'nav.activity': 'Aktywność',
+  'nav.brain': 'Mózg',
   'nav.avatarMenu.account': 'Konto',
   'nav.avatarMenu.billing': 'Rozliczenia',
   'nav.avatarMenu.rewards': 'Nagrody',
   'nav.avatarMenu.invites': 'Zaproś znajomego',
   'nav.avatarMenu.wallet': 'Portfel',
+
+  // Brain — full-page memory knowledge-graph surface
+  'brain.subtitle': 'Twój graf wiedzy, źródła pamięci i ustawienia.',
+  'brain.loading': 'Zbieranie Twoich wspomnień…',
+  'brain.empty': 'Twój mózg jest na razie pusty — połącz źródło, aby zacząć budować pamięć.',
+  'brain.error': 'Nie udało się załadować Twojego mózgu. Spróbuj ponownie.',
   'common.cancel': 'Anuluj',
   'common.save': 'Zapisz',
   'common.confirm': 'Potwierdź',
