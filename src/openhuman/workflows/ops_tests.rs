@@ -1664,3 +1664,118 @@ fn symlinked_manifest_file_is_rejected() {
         "a symlinked manifest must not be loaded; got {skills:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// discover_automations: the Automations UI list shows only `workflows/`-root
+// task templates, never capability skills under `skills/` roots. The full
+// surface (`discover_workflows`) still includes both for the agent harness.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn discover_automations_excludes_user_skill_root_but_keeps_workflows() {
+    let home = tempfile::tempdir().unwrap();
+    // A capability skill installed under ~/.openhuman/skills/.
+    write(
+        &home
+            .path()
+            .join(".openhuman")
+            .join("skills")
+            .join("ascii-art")
+            .join(SKILL_MD),
+        "---\nname: ascii-art\ndescription: ASCII art\n---\n",
+    );
+    // A real automation authored under ~/.openhuman/workflows/.
+    write(
+        &home
+            .path()
+            .join(".openhuman")
+            .join("workflows")
+            .join("deploy")
+            .join(WORKFLOW_MD),
+        "---\nname: deploy\ndescription: Ship a release\n---\n",
+    );
+
+    let automations = discover_automations(Some(home.path()), None, false);
+    let names: Vec<&str> = automations.iter().map(|w| w.name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["deploy"],
+        "automations must exclude the skills/ root; got {names:?}"
+    );
+
+    // The full surface still sees both (agent harness / run paths rely on this).
+    let all = discover_workflows(Some(home.path()), None, false);
+    let all_names: Vec<&str> = all.iter().map(|w| w.name.as_str()).collect();
+    assert!(all_names.contains(&"ascii-art"), "got {all_names:?}");
+    assert!(all_names.contains(&"deploy"), "got {all_names:?}");
+}
+
+#[test]
+fn discover_automations_excludes_agents_skills_root() {
+    let home = tempfile::tempdir().unwrap();
+    write(
+        &home
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("polymarket")
+            .join(SKILL_MD),
+        "---\nname: polymarket\ndescription: Query Polymarket\n---\n",
+    );
+
+    let automations = discover_automations(Some(home.path()), None, false);
+    assert!(
+        automations.is_empty(),
+        ".agents/skills bundles are skills, not automations; got {automations:?}"
+    );
+    let all = discover_workflows(Some(home.path()), None, false);
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].name, "polymarket");
+}
+
+#[test]
+fn discover_automations_excludes_legacy_workspace_skills_root() {
+    let ws = tempfile::tempdir().unwrap();
+    write(
+        &ws.path().join("skills").join("sketch").join(SKILL_MD),
+        "---\nname: sketch\ndescription: HTML mockups\n---\n",
+    );
+
+    let automations = discover_automations(None, Some(ws.path()), false);
+    assert!(
+        automations.is_empty(),
+        "legacy <workspace>/skills is a skill root; got {automations:?}"
+    );
+    // Full surface still scans legacy for back-compat.
+    let all = discover_workflows(None, Some(ws.path()), false);
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].name, "sketch");
+    assert_eq!(all[0].scope, WorkflowScope::Legacy);
+}
+
+#[test]
+fn discover_automations_includes_project_workflows_when_trusted() {
+    let ws = tempfile::tempdir().unwrap();
+    write(&ws.path().join(".openhuman").join(TRUST_MARKER), "");
+    write(
+        &ws.path()
+            .join(".openhuman")
+            .join("workflows")
+            .join("proj-flow")
+            .join(WORKFLOW_MD),
+        "---\nname: proj-flow\ndescription: Project automation\n---\n",
+    );
+    // A sibling project skill must NOT leak into the automations list.
+    write(
+        &ws.path()
+            .join(".openhuman")
+            .join("skills")
+            .join("proj-skill")
+            .join(SKILL_MD),
+        "---\nname: proj-skill\ndescription: Project skill\n---\n",
+    );
+
+    let automations = discover_automations(None, Some(ws.path()), true);
+    let names: Vec<&str> = automations.iter().map(|w| w.name.as_str()).collect();
+    assert_eq!(names, vec!["proj-flow"], "got {names:?}");
+}
