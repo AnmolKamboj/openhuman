@@ -257,7 +257,7 @@ const agentsAutonomyGroup: DevGroup = {
       ),
     },
     {
-      // Background activity (activity level), moved out of the Assistant group.
+      // Subconscious (activity level), moved out of the Assistant group.
       id: 'activity-level',
       titleKey: 'settings.assistant.backgroundActivity',
       descriptionKey: 'settings.assistant.backgroundActivityDesc',

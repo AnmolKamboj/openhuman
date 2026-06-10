@@ -82,7 +82,7 @@ const messages: TranslationMap = {
   'settings.assistant.voiceDesc': 'स्पीच-टू-टेक्स्ट और टेक्स्ट-टू-स्पीच सेटिंग्स',
   'settings.assistant.faceMascot': 'चेहरा / शुभंकर',
   'settings.assistant.faceMascotDesc': 'ऐप में उपयोग किया जाने वाला शुभंकर रंग चुनें',
-  'settings.assistant.backgroundActivity': 'पृष्ठभूमि गतिविधि',
+  'settings.assistant.backgroundActivity': 'सबकॉन्शस',
   'settings.assistant.backgroundActivityDesc':
     'नियंत्रित करें कि आपका सहायक पृष्ठभूमि में कितना सक्रिय काम करे',
   'settings.assistant.screenAwareness': 'स्क्रीन जागरूकता',
@@ -1897,7 +1897,7 @@ const messages: TranslationMap = {
   'chat.safetyTimeout':
     '2 मिनट बाद भी एजेंट से कोई जवाब नहीं मिला। दोबारा कोशिश करें या अपना कनेक्शन चेक करें।',
   'chat.filter.general': 'सामान्य',
-  'chat.filter.subconscious': 'पृष्ठभूमि गतिविधि',
+  'chat.filter.subconscious': 'सबकॉन्शस',
   'chat.filter.meetings': 'मीटिंग',
   'chat.filter.tasks': 'टास्क',
   'chat.selectThread': 'एक थ्रेड चुनें',
@@ -4889,7 +4889,7 @@ const messages: TranslationMap = {
   'activity.tabs.automations': 'स्वचालन',
   'activity.tabs.automationsDescription':
     'पुन: उपयोग योग्य, चलाने योग्य प्रक्रियाएँ — एक लक्ष्य और उसे प्राप्त करने के चरण।',
-  'activity.tabs.backgroundActivity': 'पृष्ठभूमि गतिविधि',
+  'activity.tabs.backgroundActivity': 'सबकॉन्शस',
   'activity.tabs.alerts': 'अलर्ट',
 
   'intelligence.agents.title': 'एजेंट लाइब्रेरी',

@@ -82,7 +82,7 @@ const messages: TranslationMap = {
   'settings.assistant.voiceDesc': 'Ustawienia mowy na tekst i tekstu na mowę',
   'settings.assistant.faceMascot': 'Twarz / Maskotka',
   'settings.assistant.faceMascotDesc': 'Wybierz kolor maskotki używany w aplikacji',
-  'settings.assistant.backgroundActivity': 'Aktywność w tle',
+  'settings.assistant.backgroundActivity': 'Podświadomość',
   'settings.assistant.backgroundActivityDesc': 'Kontroluj, jak aktywnie asystent pracuje w tle',
   'settings.assistant.screenAwareness': 'Świadomość ekranu',
   'settings.assistant.screenAwarenessDesc': 'Pozwól asystentowi widzieć aktywne okno',
@@ -1920,7 +1920,7 @@ const messages: TranslationMap = {
   'chat.safetyTimeout':
     'Brak odpowiedzi agenta po 2 minutach. Spróbuj ponownie lub sprawdź połączenie.',
   'chat.filter.general': 'Ogólne',
-  'chat.filter.subconscious': 'Aktywność w tle',
+  'chat.filter.subconscious': 'Podświadomość',
   'chat.filter.meetings': 'Spotkania',
   'chat.filter.tasks': 'Zadania',
   'chat.selectThread': 'Wybierz wątek',
@@ -4933,7 +4933,7 @@ const messages: TranslationMap = {
   'activity.tabs.automations': 'Automatyzacje',
   'activity.tabs.automationsDescription':
     'Wielokrotnego użytku, uruchamialne procedury — cel i kroki do jego osiągnięcia.',
-  'activity.tabs.backgroundActivity': 'Aktywność w tle',
+  'activity.tabs.backgroundActivity': 'Podświadomość',
   'activity.tabs.alerts': 'Alerty',
 
   'intelligence.agents.title': 'Biblioteka agentów',

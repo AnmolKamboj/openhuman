@@ -82,7 +82,7 @@ const messages: TranslationMap = {
   'settings.assistant.voiceDesc': 'স্পিচ-টু-টেক্সট ও টেক্সট-টু-স্পিচ সেটিংস',
   'settings.assistant.faceMascot': 'মুখ / মাসকট',
   'settings.assistant.faceMascotDesc': 'অ্যাপ জুড়ে ব্যবহৃত মাসকট রঙ বাছুন',
-  'settings.assistant.backgroundActivity': 'ব্যাকগ্রাউন্ড কার্যকলাপ',
+  'settings.assistant.backgroundActivity': 'সাবকনশাস',
   'settings.assistant.backgroundActivityDesc':
     'আপনার সহকারী পটভূমিতে কতটা সক্রিয় তা নিয়ন্ত্রণ করুন',
   'settings.assistant.screenAwareness': 'স্ক্রিন সচেতনতা',
@@ -1898,7 +1898,7 @@ const messages: TranslationMap = {
   'chat.safetyTimeout':
     '২ মিনিট পরেও এজেন্টের কোনো সাড়া নেই। আবার চেষ্টা করুন বা সংযোগ পরীক্ষা করুন।',
   'chat.filter.general': 'সাধারণ',
-  'chat.filter.subconscious': 'ব্যাকগ্রাউন্ড কার্যকলাপ',
+  'chat.filter.subconscious': 'সাবকনশাস',
   'chat.filter.meetings': 'মিটিং',
   'chat.filter.tasks': 'টাস্ক',
   'chat.selectThread': 'একটি থ্রেড বেছে নিন',
@@ -4882,7 +4882,7 @@ const messages: TranslationMap = {
   'activity.tabs.automations': 'অটোমেশন',
   'activity.tabs.automationsDescription':
     'পুনর্ব্যবহারযোগ্য, রানযোগ্য পদ্ধতি — একটি লক্ষ্য এবং সেখানে পৌঁছানোর ধাপগুলি।',
-  'activity.tabs.backgroundActivity': 'ব্যাকগ্রাউন্ড কার্যকলাপ',
+  'activity.tabs.backgroundActivity': 'সাবকনশাস',
   'activity.tabs.alerts': 'সতর্কতা',
 
   'intelligence.agents.title': 'এজেন্ট লাইব্রেরি',

@@ -82,7 +82,7 @@ const messages: TranslationMap = {
   'settings.assistant.voiceDesc': 'إعدادات التحويل من كلام إلى نص ومن نص إلى كلام',
   'settings.assistant.faceMascot': 'الوجه / الشخصية',
   'settings.assistant.faceMascotDesc': 'اختر لون الشخصية المستخدم في التطبيق',
-  'settings.assistant.backgroundActivity': 'النشاط في الخلفية',
+  'settings.assistant.backgroundActivity': 'اللاوعي',
   'settings.assistant.backgroundActivityDesc': 'تحكم في مدى نشاط مساعدك في الخلفية',
   'settings.assistant.screenAwareness': 'الوعي بالشاشة',
   'settings.assistant.screenAwarenessDesc': 'اسمح للمساعد برؤية النافذة النشطة',
@@ -1855,7 +1855,7 @@ const messages: TranslationMap = {
   'common.enable': 'تفعيل',
   'chat.safetyTimeout': 'لا استجابة من الوكيل بعد دقيقتين. حاول مرة أخرى أو تحقق من اتصالك.',
   'chat.filter.general': 'عام',
-  'chat.filter.subconscious': 'نشاط الخلفية',
+  'chat.filter.subconscious': 'اللاوعي',
   'chat.filter.meetings': 'الاجتماعات',
   'chat.filter.tasks': 'المهام',
   'chat.selectThread': 'اختر محادثة',
@@ -4788,7 +4788,7 @@ const messages: TranslationMap = {
   'activity.tabs.automations': 'أتمتة',
   'activity.tabs.automationsDescription':
     'إجراءات قابلة لإعادة الاستخدام والتشغيل — هدف مع الخطوات للوصول إليه.',
-  'activity.tabs.backgroundActivity': 'نشاط الخلفية',
+  'activity.tabs.backgroundActivity': 'اللاوعي',
   'activity.tabs.alerts': 'التنبيهات',
 
   'intelligence.agents.title': 'مكتبة الوكلاء',

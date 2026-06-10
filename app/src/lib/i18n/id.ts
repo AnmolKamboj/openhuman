@@ -82,7 +82,7 @@ const messages: TranslationMap = {
   'settings.assistant.voiceDesc': 'Pengaturan ucapan-ke-teks dan teks-ke-ucapan',
   'settings.assistant.faceMascot': 'Wajah / Maskot',
   'settings.assistant.faceMascotDesc': 'Pilih warna maskot yang digunakan di seluruh aplikasi',
-  'settings.assistant.backgroundActivity': 'Aktivitas latar belakang',
+  'settings.assistant.backgroundActivity': 'Bawah sadar',
   'settings.assistant.backgroundActivityDesc':
     'Kontrol seberapa aktif asisten Anda bekerja di latar belakang',
   'settings.assistant.screenAwareness': 'Kesadaran layar',
@@ -1902,7 +1902,7 @@ const messages: TranslationMap = {
   'common.enable': 'Aktifkan',
   'chat.safetyTimeout': 'Tidak ada respons dari agen setelah 2 menit. Coba lagi atau cek koneksi.',
   'chat.filter.general': 'Umum',
-  'chat.filter.subconscious': 'Aktivitas latar belakang',
+  'chat.filter.subconscious': 'Bawah sadar',
   'chat.filter.meetings': 'Rapat',
   'chat.filter.tasks': 'Tugas',
   'chat.selectThread': 'Pilih thread',
@@ -4903,7 +4903,7 @@ const messages: TranslationMap = {
   'activity.tabs.automations': 'Otomatisasi',
   'activity.tabs.automationsDescription':
     'Prosedur yang dapat digunakan kembali dan dijalankan — tujuan beserta langkah-langkah untuk mencapainya.',
-  'activity.tabs.backgroundActivity': 'Aktivitas latar belakang',
+  'activity.tabs.backgroundActivity': 'Bawah sadar',
   'activity.tabs.alerts': 'Peringatan',
 
   'intelligence.agents.title': 'Pustaka Agen',

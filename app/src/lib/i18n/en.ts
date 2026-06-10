@@ -97,7 +97,7 @@ const en: TranslationMap = {
   'settings.assistant.voiceDesc': 'Speech-to-text and text-to-speech settings',
   'settings.assistant.faceMascot': 'Face / Mascot',
   'settings.assistant.faceMascotDesc': 'Pick the mascot color used across the app',
-  'settings.assistant.backgroundActivity': 'Background activity',
+  'settings.assistant.backgroundActivity': 'Subconscious',
   'settings.assistant.backgroundActivityDesc':
     'Control how actively your assistant works in the background',
   'settings.assistant.screenAwareness': 'Screen awareness',
@@ -449,7 +449,7 @@ const en: TranslationMap = {
   'activity.tabs.automations': 'Automations',
   'activity.tabs.automationsDescription':
     'Reusable, runnable procedures — a goal plus the steps to reach it. Create one, install from a URL, or open a workflow to run it.',
-  'activity.tabs.backgroundActivity': 'Background activity',
+  'activity.tabs.backgroundActivity': 'Subconscious',
   'activity.tabs.alerts': 'Alerts',
 
   'intelligence.agents.title': 'Agents Library',
@@ -2296,7 +2296,7 @@ const en: TranslationMap = {
   'chat.safetyTimeout':
     'No response from the agent after 2 minutes. Try again or check your connection.',
   'chat.filter.general': 'General',
-  'chat.filter.subconscious': 'Background activity',
+  'chat.filter.subconscious': 'Subconscious',
   'chat.filter.meetings': 'Meetings',
   'chat.filter.tasks': 'Tasks',
   'chat.selectThread': 'Select a thread',

@@ -82,7 +82,7 @@ const messages: TranslationMap = {
   'settings.assistant.voiceDesc': 'Настройки распознавания и синтеза речи',
   'settings.assistant.faceMascot': 'Лицо / Маскот',
   'settings.assistant.faceMascotDesc': 'Выберите цвет маскота в приложении',
-  'settings.assistant.backgroundActivity': 'Фоновая активность',
+  'settings.assistant.backgroundActivity': 'Подсознание',
   'settings.assistant.backgroundActivityDesc':
     'Управление тем, насколько активно ассистент работает в фоне',
   'settings.assistant.screenAwareness': 'Осведомлённость об экране',
@@ -1915,7 +1915,7 @@ const messages: TranslationMap = {
   'chat.safetyTimeout':
     'Агент не ответил в течение 2 минут. Попробуй снова или проверь соединение.',
   'chat.filter.general': 'Общее',
-  'chat.filter.subconscious': 'Фоновая активность',
+  'chat.filter.subconscious': 'Подсознание',
   'chat.filter.meetings': 'Встречи',
   'chat.filter.tasks': 'Задачи',
   'chat.selectThread': 'Выбери чат',
@@ -4936,7 +4936,7 @@ const messages: TranslationMap = {
   'activity.tabs.automations': 'Автоматизации',
   'activity.tabs.automationsDescription':
     'Многократно используемые, запускаемые процедуры — цель и шаги для её достижения.',
-  'activity.tabs.backgroundActivity': 'Фоновая активность',
+  'activity.tabs.backgroundActivity': 'Подсознание',
   'activity.tabs.alerts': 'Уведомления',
 
   'intelligence.agents.title': 'Библиотека агентов',

@@ -82,7 +82,7 @@ const messages: TranslationMap = {
   'settings.assistant.voiceDesc': 'Impostazioni di sintesi vocale e riconoscimento vocale',
   'settings.assistant.faceMascot': 'Faccia / Mascotte',
   'settings.assistant.faceMascotDesc': "Scegli il colore della mascotte usato nell'app",
-  'settings.assistant.backgroundActivity': 'Attività in background',
+  'settings.assistant.backgroundActivity': 'Subconscio',
   'settings.assistant.backgroundActivityDesc':
     'Controlla quanto attivamente il tuo assistente lavora in background',
   'settings.assistant.screenAwareness': 'Consapevolezza dello schermo',
@@ -1930,7 +1930,7 @@ const messages: TranslationMap = {
   'chat.safetyTimeout':
     "Nessuna risposta dall'agente dopo 2 minuti. Riprova o controlla la connessione.",
   'chat.filter.general': 'Generale',
-  'chat.filter.subconscious': 'Attività in background',
+  'chat.filter.subconscious': 'Subconscio',
   'chat.filter.meetings': 'Riunioni',
   'chat.filter.tasks': 'Attività',
   'chat.selectThread': 'Seleziona un thread',
@@ -4976,7 +4976,7 @@ const messages: TranslationMap = {
   'activity.tabs.automations': 'Automazioni',
   'activity.tabs.automationsDescription':
     'Procedure riutilizzabili ed eseguibili — un obiettivo e i passi per raggiungerlo.',
-  'activity.tabs.backgroundActivity': 'Attività in background',
+  'activity.tabs.backgroundActivity': 'Subconscio',
   'activity.tabs.alerts': 'Avvisi',
 
   'intelligence.agents.title': 'Libreria agenti',
