@@ -1006,6 +1006,12 @@ const messages: TranslationMap = {
   'settings.search.accessBlockAll': '모두 차단',
   'settings.search.accessBlockAllHint':
     '모든 웹 접근이 차단됩니다. 어시스턴트는 어떤 웹사이트도 열거나 읽을 수 없습니다.',
+  // ─── Settings global search bar ────────────────────────────
+  'settings.settingsSearch.placeholder': '설정 검색…',
+  'settings.settingsSearch.ariaLabel': '설정 검색',
+  'settings.settingsSearch.clear': '검색 지우기',
+  'settings.settingsSearch.resultsLabel': '검색 결과',
+  'settings.settingsSearch.noResults': '“{query}”에 대한 설정을 찾을 수 없습니다',
   'settings.embeddings.title': '임베딩',
   'settings.embeddings.description':
     '시맨틱 검색을 위해 메모리를 벡터로 변환할 임베딩 제공자를 선택하세요. 제공자, 모델 또는 차원을 변경하면 저장된 벡터가 무효화되며 전체 메모리 초기화가 필요합니다.',

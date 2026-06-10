@@ -1007,6 +1007,12 @@ const messages: TranslationMap = {
   'settings.search.accessBlockAll': 'सभी को ब्लॉक करें',
   'settings.search.accessBlockAllHint':
     'सभी वेब एक्सेस अवरुद्ध है - सहायक किसी भी वेबसाइट को खोल या पढ़ नहीं सकता है।',
+  // ─── Settings global search bar ────────────────────────────
+  'settings.settingsSearch.placeholder': 'सेटिंग खोजें…',
+  'settings.settingsSearch.ariaLabel': 'सेटिंग खोजें',
+  'settings.settingsSearch.clear': 'खोज साफ़ करें',
+  'settings.settingsSearch.resultsLabel': 'खोज परिणाम',
+  'settings.settingsSearch.noResults': '“{query}” के लिए कोई सेटिंग नहीं मिली',
   'settings.embeddings.title': 'एम्बेडिंग्स',
   'settings.embeddings.description':
     'चुनें कि कौन सा एम्बेडिंग प्रदाता मेमोरी को सिमेंटिक सर्च के लिए वेक्टर में बदलता है। प्रदाता, मॉडल या आयाम बदलने से संग्रहीत वेक्टर अमान्य हो जाते हैं और पूर्ण मेमरी रीसेट की आवश्यकता होती है।',

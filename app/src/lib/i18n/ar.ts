@@ -992,6 +992,12 @@ const messages: TranslationMap = {
   'settings.search.accessBlockAll': 'كل شيء',
   'settings.search.accessBlockAllHint':
     'وكل الوصول إلى شبكة الإنترنت مغلق - لا يمكن للمساعد فتح أو قراءة أي موقع على شبكة الإنترنت.',
+  // ─── Settings global search bar ────────────────────────────
+  'settings.settingsSearch.placeholder': 'بحث في الإعدادات…',
+  'settings.settingsSearch.ariaLabel': 'بحث في الإعدادات',
+  'settings.settingsSearch.clear': 'مسح البحث',
+  'settings.settingsSearch.resultsLabel': 'نتائج البحث',
+  'settings.settingsSearch.noResults': 'لا توجد إعدادات مطابقة لـ ”{query}“',
   'settings.embeddings.title': 'التضمينات',
   'settings.embeddings.description':
     'اختر مزود التضمينات الذي يحول الذاكرة إلى متجهات للبحث الدلالي. تغيير المزود أو النموذج أو الأبعاد يبطل المتجهات المخزنة ويتطلب إعادة تعيين كاملة للذاكرة.',

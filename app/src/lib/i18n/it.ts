@@ -1031,6 +1031,12 @@ const messages: TranslationMap = {
   'settings.search.accessBlockAll': 'Blocca tutto',
   'settings.search.accessBlockAllHint':
     "Tutti gli accessi web sono bloccati — l'assistente non può aprire o leggere alcun sito web.",
+  // ─── Settings global search bar ────────────────────────────
+  'settings.settingsSearch.placeholder': 'Cerca nelle impostazioni…',
+  'settings.settingsSearch.ariaLabel': 'Cerca nelle impostazioni',
+  'settings.settingsSearch.clear': 'Cancella ricerca',
+  'settings.settingsSearch.resultsLabel': 'Risultati della ricerca',
+  'settings.settingsSearch.noResults': 'Nessuna impostazione trovata per «{query}»',
   'settings.embeddings.title': 'Incorporamenti',
   'settings.embeddings.description':
     'Scegli il fornitore di embeddings che converte la memoria in vettori per la ricerca semantica. Cambiare fornitore, modello o dimensioni invalida i vettori memorizzati e richiede un reset completo della memoria.',

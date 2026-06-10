@@ -1023,6 +1023,12 @@ const messages: TranslationMap = {
   'settings.search.accessBlockAll': 'Блокировать все',
   'settings.search.accessBlockAllHint':
     'Весь веб-доступ заблокирован — помощник не может открыть или прочитать какой-либо веб-сайт.',
+  // ─── Settings global search bar ────────────────────────────
+  'settings.settingsSearch.placeholder': 'Поиск в настройках…',
+  'settings.settingsSearch.ariaLabel': 'Поиск в настройках',
+  'settings.settingsSearch.clear': 'Очистить поиск',
+  'settings.settingsSearch.resultsLabel': 'Результаты поиска',
+  'settings.settingsSearch.noResults': 'Настройки по запросу «{query}» не найдены',
   'settings.embeddings.title': 'Эмбеддинги',
   'settings.embeddings.description':
     'Выберите провайдера эмбеддингов, который преобразует память в векторы для семантического поиска. Изменение провайдера, модели или размерности делает сохранённые векторы недействительными и требует полного сброса памяти.',

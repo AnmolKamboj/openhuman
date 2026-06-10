@@ -956,6 +956,12 @@ const messages: TranslationMap = {
   'settings.search.accessCustom': '自定义',
   'settings.search.accessBlockAll': '全部阻止',
   'settings.search.accessBlockAllHint': '所有网页访问都已阻止，助手无法打开或阅读任何网站。',
+  // ─── Settings global search bar ────────────────────────────
+  'settings.settingsSearch.placeholder': '搜索设置…',
+  'settings.settingsSearch.ariaLabel': '搜索设置',
+  'settings.settingsSearch.clear': '清除搜索',
+  'settings.settingsSearch.resultsLabel': '搜索结果',
+  'settings.settingsSearch.noResults': '未找到与“{query}”匹配的设置',
   'settings.embeddings.title': '向量嵌入',
   'settings.embeddings.description':
     '选择将记忆转换为语义搜索向量的嵌入提供商。更改提供商、模型或维度会使已存储的向量无效，需要完全重置记忆。',

@@ -1016,6 +1016,12 @@ const messages: TranslationMap = {
   'settings.search.accessBlockAll': 'Blokir semua',
   'settings.search.accessBlockAllHint':
     'Semua akses web diblokir - asisten tidak dapat membuka atau membaca website apapun.',
+  // ─── Settings global search bar ────────────────────────────
+  'settings.settingsSearch.placeholder': 'Cari pengaturan…',
+  'settings.settingsSearch.ariaLabel': 'Cari pengaturan',
+  'settings.settingsSearch.clear': 'Hapus pencarian',
+  'settings.settingsSearch.resultsLabel': 'Hasil pencarian',
+  'settings.settingsSearch.noResults': 'Tidak ada pengaturan yang cocok untuk “{query}”',
   'settings.embeddings.title': 'Sematan',
   'settings.embeddings.description':
     'Pilih penyedia embedding yang mengubah memori menjadi vektor untuk pencarian semantik. Mengubah penyedia, model, atau dimensi membatalkan vektor yang tersimpan dan memerlukan reset memori penuh.',

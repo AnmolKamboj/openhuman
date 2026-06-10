@@ -1007,6 +1007,12 @@ const messages: TranslationMap = {
   'settings.search.accessBlockAll': 'প্রতিরোধ করো',
   'settings.search.accessBlockAllHint':
     'সকল ওয়েব প্রবেশাধিকার ব্লক করা হয়েছে- সহকারী কোন ওয়েবসাইট খুলতে বা পড়তে পারে না।',
+  // ─── Settings global search bar ────────────────────────────
+  'settings.settingsSearch.placeholder': 'সেটিংস খুঁজুন…',
+  'settings.settingsSearch.ariaLabel': 'সেটিংস খুঁজুন',
+  'settings.settingsSearch.clear': 'অনুসন্ধান সাফ করুন',
+  'settings.settingsSearch.resultsLabel': 'অনুসন্ধানের ফলাফল',
+  'settings.settingsSearch.noResults': '“{query}” এর জন্য কোনো সেটিং পাওয়া যায়নি',
   'settings.embeddings.title': 'এমবেডিংস',
   'settings.embeddings.description':
     'কোন এমবেডিং প্রদানকারী মেমরিকে সিমান্টিক সার্চের জন্য ভেক্টরে রূপান্তর করে তা চয়ন করুন। প্রদানকারী, মডেল বা মাত্রা পরিবর্তন করলে সংরক্ষিত ভেক্টর অবৈধ হয়ে যায় এবং সম্পূর্ণ মেমরি রিসেট প্রয়োজন।',

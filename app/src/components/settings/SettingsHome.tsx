@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 
 import { useDeveloperMode } from '../../hooks/useDeveloperMode';
 import { useT } from '../../lib/i18n/I18nContext';
@@ -6,6 +6,7 @@ import LanguageSelect from '../LanguageSelect';
 import SettingsHeader from './components/SettingsHeader';
 import SettingsMenuItem from './components/SettingsMenuItem';
 import { useSettingsNavigation } from './hooks/useSettingsNavigation';
+import SettingsSearchBar from './search/SettingsSearchBar';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -180,6 +181,11 @@ const SettingsHome = () => {
   const { t } = useT();
   const developerMode = useDeveloperMode();
 
+  // Global settings search. While a query is active the normal menu is hidden
+  // and the search bar renders its own ranked result list instead.
+  const [searchQuery, setSearchQuery] = useState('');
+  const isSearching = searchQuery.trim().length > 0;
+
   // --- 👤 Account group ---
   const accountGroup: SettingsGroup = {
     id: 'account',
@@ -335,49 +341,55 @@ const SettingsHome = () => {
         <SettingsHeader />
       </div>
 
-      <div className="px-4 pb-5">
-        {/* Merged layman card — no Account/Assistant/… subheadings. */}
-        <div
-          data-testid="settings-group-main"
-          className="rounded-3xl overflow-hidden border border-stone-200 dark:border-neutral-800">
-          {laymanItems.map((item, index) => (
-            <SettingsMenuItem
-              key={item.id}
-              icon={item.icon}
-              title={item.title}
-              description={item.description}
-              onClick={item.onClick}
-              testId={`settings-nav-${item.id}`}
-              dangerous={item.dangerous}
-              isFirst={index === 0}
-              isLast={index === laymanItems.length - 1}
-              rightElement={item.rightElement}
-            />
+      <SettingsSearchBar value={searchQuery} onValueChange={setSearchQuery} />
+
+      {/* While searching, the search bar renders its own results and the normal
+          settings menu is hidden to avoid a confusing double list. */}
+      {isSearching ? null : (
+        <div className="px-4 pt-3 pb-5">
+          {/* Merged layman card — no Account/Assistant/… subheadings. */}
+          <div
+            data-testid="settings-group-main"
+            className="rounded-3xl overflow-hidden border border-stone-200 dark:border-neutral-800">
+            {laymanItems.map((item, index) => (
+              <SettingsMenuItem
+                key={item.id}
+                icon={item.icon}
+                title={item.title}
+                description={item.description}
+                onClick={item.onClick}
+                testId={`settings-nav-${item.id}`}
+                dangerous={item.dangerous}
+                isFirst={index === 0}
+                isLast={index === laymanItems.length - 1}
+                rightElement={item.rightElement}
+              />
+            ))}
+          </div>
+
+          {trailingGroups.map(group => (
+            <div key={group.id} data-testid={`settings-group-${group.id}`}>
+              <GroupHeader label={group.label} />
+              <div className="rounded-3xl overflow-hidden border border-stone-200 dark:border-neutral-800">
+                {group.items.map((item, index) => (
+                  <SettingsMenuItem
+                    key={item.id}
+                    icon={item.icon}
+                    title={item.title}
+                    description={item.description}
+                    onClick={item.onClick}
+                    testId={`settings-nav-${item.id}`}
+                    dangerous={item.dangerous}
+                    isFirst={index === 0}
+                    isLast={index === group.items.length - 1}
+                    rightElement={item.rightElement}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
-
-        {trailingGroups.map(group => (
-          <div key={group.id} data-testid={`settings-group-${group.id}`}>
-            <GroupHeader label={group.label} />
-            <div className="rounded-3xl overflow-hidden border border-stone-200 dark:border-neutral-800">
-              {group.items.map((item, index) => (
-                <SettingsMenuItem
-                  key={item.id}
-                  icon={item.icon}
-                  title={item.title}
-                  description={item.description}
-                  onClick={item.onClick}
-                  testId={`settings-nav-${item.id}`}
-                  dangerous={item.dangerous}
-                  isFirst={index === 0}
-                  isLast={index === group.items.length - 1}
-                  rightElement={item.rightElement}
-                />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+      )}
     </div>
   );
 };
