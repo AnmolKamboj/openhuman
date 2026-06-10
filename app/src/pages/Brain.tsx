@@ -200,21 +200,46 @@ export default function Brain() {
         ) : null}
       </div>
 
-      {/* Loading overlay — the "brain collecting information" flourish. Opaque
-          and viewport-filling so the whole page (header, toolbar, graph, and the
-          panels below) stays hidden until the graph is ready. `fixed` keeps it
-          centered in the viewport regardless of page height; z-40 sits below the
-          bottom nav bar (z-50) so navigation stays available. */}
+      {/* Loading overlay — the "brain collecting information" flourish, dressed
+          as an ambient ocean-glow scene: a radial gradient wash, a soft pulsing
+          halo, and the brain floating above it. Opaque and viewport-filling so
+          the whole page (header, toolbar, graph, and the panels below) stays
+          hidden until the graph is ready. `fixed` keeps it centered regardless
+          of page height; z-40 sits below the bottom nav bar (z-50) so navigation
+          stays available. All motion layers are dropped under reduced motion —
+          which falls back to a static knowledge-node glyph instead of the
+          looping Lottie. */}
       {!overlayDone && (
         <div
-          className="fixed inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-stone-50 animate-fade-in dark:bg-neutral-950"
+          className="fixed inset-0 z-40 flex flex-col items-center justify-center gap-7 overflow-hidden bg-stone-50 animate-fade-in dark:bg-neutral-950"
           data-testid="brain-loading"
           role="status"
           aria-live="polite">
-          {!reduceMotion.current && (
-            <LottieAnimation src={BRAIN_LOTTIE_SRC} height={220} width={220} />
-          )}
-          <p className="text-sm font-medium text-stone-500 dark:text-neutral-400">
+          {/* Ambient ocean-glow wash filling the viewport behind everything. */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-gradient-radial from-primary-500/15 via-transparent to-transparent dark:from-primary-500/20"
+          />
+
+          {/* Brain over a soft pulsing halo. The halo breathes (glow-pulse) and
+              the brain floats; both are stilled under reduced motion. */}
+          <div className="relative flex h-60 w-60 items-center justify-center">
+            <div
+              aria-hidden
+              className={`absolute h-48 w-48 rounded-full bg-primary-400/30 blur-3xl dark:bg-primary-500/25 ${
+                reduceMotion.current ? '' : 'animate-glow-pulse'
+              }`}
+            />
+            {reduceMotion.current ? (
+              <BrainGlyph />
+            ) : (
+              <div className="relative animate-float">
+                <LottieAnimation src={BRAIN_LOTTIE_SRC} height={220} width={220} />
+              </div>
+            )}
+          </div>
+
+          <p className="relative text-sm font-medium tracking-wide text-stone-500 dark:text-neutral-400">
             {t('brain.loading')}
           </p>
         </div>
@@ -222,5 +247,37 @@ export default function Brain() {
 
       <ToastContainer notifications={toasts} onRemove={removeToast} />
     </div>
+  );
+}
+
+/**
+ * Static knowledge-node glyph shown in the loading overlay under reduced
+ * motion — a central hub linked to satellite nodes, echoing the graph the
+ * page is about to reveal, with no animation.
+ */
+function BrainGlyph() {
+  return (
+    <svg
+      width={120}
+      height={120}
+      viewBox="0 0 120 120"
+      fill="none"
+      className="relative text-primary-500 dark:text-primary-400"
+      data-testid="brain-glyph"
+      aria-hidden>
+      <g stroke="currentColor" strokeWidth={2} opacity={0.45}>
+        <line x1="60" y1="60" x2="26" y2="34" />
+        <line x1="60" y1="60" x2="96" y2="40" />
+        <line x1="60" y1="60" x2="34" y2="92" />
+        <line x1="60" y1="60" x2="92" y2="88" />
+      </g>
+      <g fill="currentColor">
+        <circle cx="60" cy="60" r="11" />
+        <circle cx="26" cy="34" r="6" opacity={0.85} />
+        <circle cx="96" cy="40" r="6" opacity={0.85} />
+        <circle cx="34" cy="92" r="6" opacity={0.85} />
+        <circle cx="92" cy="88" r="6" opacity={0.85} />
+      </g>
+    </svg>
   );
 }

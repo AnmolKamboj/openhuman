@@ -102,6 +102,23 @@ describe('Brain page', () => {
     expect(screen.getByTestId('memory-graph')).toHaveTextContent('nodes:0');
   });
 
+  it('uses the static knowledge-node glyph (no Lottie) under reduced motion', async () => {
+    // Reduced motion → the floating Lottie is replaced by the still glyph.
+    window.matchMedia = vi
+      .fn()
+      .mockReturnValue({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }) as unknown as typeof window.matchMedia;
+    graphExportMock.mockResolvedValue(makeGraph(2));
+    render(<Brain />);
+
+    expect(screen.getByTestId('brain-loading')).toBeInTheDocument();
+    expect(screen.getByTestId('brain-glyph')).toBeInTheDocument();
+    expect(screen.queryByTestId('brain-lottie')).toBeNull();
+  });
+
   it('surfaces an error and dismisses the overlay when the fetch fails', async () => {
     graphExportMock.mockRejectedValue(new Error('boom'));
     render(<Brain />);
