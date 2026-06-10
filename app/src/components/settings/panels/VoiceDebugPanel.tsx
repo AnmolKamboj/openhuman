@@ -115,7 +115,7 @@ const VoiceDebugPanel = () => {
   };
 
   return (
-    <div>
+    <div className="z-10 relative">
       <SettingsHeader
         title={t('voice.debugTitle')}
         showBackButton={true}

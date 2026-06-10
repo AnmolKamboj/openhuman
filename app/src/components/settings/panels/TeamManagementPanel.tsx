@@ -90,7 +90,7 @@ const TeamManagementPanel = () => {
 
   if (!teamEntry) {
     return (
-      <div className="">
+      <div className="z-10 relative">
         <SettingsHeader
           title={t('team.management')}
           showBackButton={true}
@@ -106,7 +106,7 @@ const TeamManagementPanel = () => {
 
   if (!isAdmin) {
     return (
-      <div className="">
+      <div className="z-10 relative">
         <SettingsHeader
           title={t('team.management')}
           showBackButton={true}
@@ -123,7 +123,7 @@ const TeamManagementPanel = () => {
   const { team } = teamEntry;
 
   return (
-    <div className="">
+    <div className="z-10 relative">
       <SettingsHeader
         title={t('team.manageTitle').replace('{name}', team.name)}
         showBackButton={true}

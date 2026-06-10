@@ -82,7 +82,7 @@ const ApprovalHistoryPanel = () => {
   };
 
   return (
-    <div>
+    <div className="z-10 relative">
       <SettingsHeader
         title={t('settings.approvalHistory.title')}
         showBackButton

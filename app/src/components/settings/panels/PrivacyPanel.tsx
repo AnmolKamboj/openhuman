@@ -97,7 +97,7 @@ const PrivacyPanel = () => {
   };
 
   return (
-    <div data-testid="settings-privacy-panel">
+    <div data-testid="settings-privacy-panel" className="z-10 relative">
       <SettingsHeader
         title={t('privacy.title')}
         showBackButton={true}

@@ -75,7 +75,7 @@ const ComposioTriagePanel = () => {
 
   if (loading) {
     return (
-      <div>
+      <div className="z-10 relative">
         <SettingsHeader
           title={t('composio.triageTitle')}
           showBackButton
@@ -92,7 +92,7 @@ const ComposioTriagePanel = () => {
   }
 
   return (
-    <div>
+    <div className="z-10 relative">
       <SettingsHeader
         title={t('composio.triageTitle')}
         showBackButton

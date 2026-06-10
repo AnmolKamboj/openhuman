@@ -145,10 +145,11 @@ describe('SettingsHome', () => {
       expect(screen.queryByTestId('settings-nav-companion')).not.toBeInTheDocument();
     });
 
-    it('renders the Privacy group items', () => {
+    it('does not surface Privacy/Security/Approvals on the home list', () => {
       renderSettingsHome();
-      // Privacy stays; Security + Approvals moved to Developer & Diagnostics.
-      expect(screen.getByTestId('settings-nav-privacy')).toBeInTheDocument();
+      // Privacy is reached via the Account hub; Security + Approvals live under
+      // Developer & Diagnostics. None of them are top-level home rows.
+      expect(screen.queryByTestId('settings-nav-privacy')).not.toBeInTheDocument();
       expect(screen.queryByTestId('settings-nav-security')).not.toBeInTheDocument();
       expect(screen.queryByTestId('settings-nav-approval-history')).not.toBeInTheDocument();
     });
@@ -234,14 +235,6 @@ describe('SettingsHome', () => {
 
       await user.click(screen.getByTestId('settings-nav-mascot'));
       expect(mockNavigateToSettings).toHaveBeenCalledWith('mascot');
-    });
-
-    it('navigates to privacy when Privacy is clicked', async () => {
-      const user = userEvent.setup();
-      renderSettingsHome();
-
-      await user.click(screen.getByTestId('settings-nav-privacy'));
-      expect(mockNavigateToSettings).toHaveBeenCalledWith('privacy');
     });
 
     it('navigates to notifications-hub when Notifications is clicked', async () => {

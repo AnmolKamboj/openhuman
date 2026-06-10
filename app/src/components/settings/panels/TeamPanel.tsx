@@ -253,7 +253,7 @@ const TeamPanel = () => {
   };
 
   return (
-    <div>
+    <div className="z-10 relative">
       <SettingsHeader
         title={t('settings.account.team')}
         showBackButton={true}

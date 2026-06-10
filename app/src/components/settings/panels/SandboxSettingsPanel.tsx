@@ -126,7 +126,7 @@ const SandboxSettingsPanel = () => {
 
   if (!isTauri()) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
+      <div className="z-10 relative mx-auto max-w-2xl px-4 py-8">
         <SettingsHeader
           title={t('settings.sandbox.title')}
           onBack={navigateBack}
@@ -141,7 +141,7 @@ const SandboxSettingsPanel = () => {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
+      <div className="z-10 relative mx-auto max-w-2xl px-4 py-8">
         <SettingsHeader
           title={t('settings.sandbox.title')}
           onBack={navigateBack}
@@ -155,7 +155,7 @@ const SandboxSettingsPanel = () => {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
+    <div className="z-10 relative mx-auto max-w-2xl px-4 py-8">
       <SettingsHeader
         title={t('settings.sandbox.title')}
         onBack={navigateBack}

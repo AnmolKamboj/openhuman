@@ -201,7 +201,7 @@ const RecoveryPhrasePanel = () => {
   const canSave = mode === 'generate' ? confirmed : isImportComplete;
 
   return (
-    <div>
+    <div className="z-10 relative">
       <SettingsHeader
         title={t('mnemonic.title')}
         showBackButton

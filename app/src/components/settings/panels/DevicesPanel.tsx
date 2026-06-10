@@ -277,19 +277,19 @@ const DevicesPanel = () => {
 
   return (
     <div className="z-10 relative">
-      <div className="flex items-center justify-between px-5 pt-5 pb-3">
-        <SettingsHeader
-          title={t('devices.title')}
-          showBackButton={breadcrumbs.length > 0}
-          onBack={navigateBack}
-          breadcrumbs={breadcrumbs}
-        />
-        <button
-          onClick={handleOpenPairModal}
-          className="text-xs font-medium text-white bg-primary-500 hover:bg-primary-600 transition-colors px-3 py-1.5 rounded-lg flex-shrink-0">
-          {t('devices.pairIphone')}
-        </button>
-      </div>
+      <SettingsHeader
+        title={t('devices.title')}
+        showBackButton={breadcrumbs.length > 0}
+        onBack={navigateBack}
+        breadcrumbs={breadcrumbs}
+        action={
+          <button
+            onClick={handleOpenPairModal}
+            className="text-xs font-medium text-white bg-primary-500 hover:bg-primary-600 transition-colors px-3 py-1.5 rounded-lg flex-shrink-0">
+            {t('devices.pairIphone')}
+          </button>
+        }
+      />
 
       <div className="px-5 pb-3 flex items-center gap-2">
         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 border border-amber-200 dark:border-amber-800/60">

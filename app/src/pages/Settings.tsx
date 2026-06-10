@@ -578,8 +578,7 @@ const Settings = () => {
         />
         <Route path="team/members" element={wrapSettingsPage(<TeamMembersPanel />)} />
         <Route path="team/invites" element={wrapSettingsPage(<TeamInvitesPanel />)} />
-        {/* BillingPanel intentionally uses its own wider layout. */}
-        <Route path="billing" element={<BillingPanel />} />
+        <Route path="billing" element={wrapSettingsPage(<BillingPanel />)} />
         <Route path="privacy" element={wrapSettingsPage(<PrivacyPanel />)} />
         <Route path="security" element={wrapSettingsPage(<SecurityPanel />)} />
         <Route path="migration" element={wrapSettingsPage(<MigrationPanel />)} />
@@ -660,8 +659,14 @@ const Settings = () => {
           path="analysis-views"
           element={wrapSettingsPage(<AnalysisViewsPanel />, { maxWidthClass: 'max-w-4xl' })}
         />
-        <Route path="intelligence" element={<Intelligence />} />
-        <Route path="webhooks-triggers" element={<Webhooks />} />
+        <Route
+          path="intelligence"
+          element={wrapSettingsPage(<Intelligence />, { maxWidthClass: 'max-w-4xl' })}
+        />
+        <Route
+          path="webhooks-triggers"
+          element={wrapSettingsPage(<Webhooks />, { maxWidthClass: 'max-w-4xl' })}
+        />
         <Route path="composio-triggers" element={wrapSettingsPage(<ComposioTriagePanel />)} />
         <Route path="composio-routing" element={wrapSettingsPage(<ComposioPanel />)} />
         {/* Mobile devices */}

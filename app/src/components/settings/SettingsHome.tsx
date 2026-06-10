@@ -100,17 +100,6 @@ const MascotIcon = (
   </svg>
 );
 
-const PrivacyIcon = (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-    />
-  </svg>
-);
-
 const NotificationsIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path
@@ -253,20 +242,8 @@ const SettingsHome = () => {
     ],
   };
 
-  // --- 🔒 Privacy group (Security + Approvals moved to Developer & Diagnostics) ---
-  const privacySecurityGroup: SettingsGroup = {
-    id: 'privacy-security',
-    label: t('settings.privacySecurity.privacy'),
-    items: [
-      {
-        id: 'privacy',
-        title: t('settings.privacySecurity.privacy'),
-        description: t('settings.privacySecurity.privacyDesc'),
-        icon: PrivacyIcon,
-        onClick: () => navigateToSettings('privacy'),
-      },
-    ],
-  };
+  // Privacy is reached from the Account hub (Settings → Account → Privacy);
+  // it is intentionally not duplicated as a top-level row here.
 
   // --- 🔔 Notifications group ---
   const notificationsGroup: SettingsGroup = {
@@ -299,12 +276,7 @@ const SettingsHome = () => {
   };
 
   // --- Always-visible groups ---
-  const visibleGroups: SettingsGroup[] = [
-    accountGroup,
-    assistantGroup,
-    privacySecurityGroup,
-    notificationsGroup,
-  ];
+  const visibleGroups: SettingsGroup[] = [accountGroup, assistantGroup, notificationsGroup];
 
   // Billing / Rewards / Wallet are NOT in Settings — per the design doc they
   // live in the avatar menu (monetisation out of the settings tree).

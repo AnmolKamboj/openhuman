@@ -64,7 +64,7 @@ const SecurityPanel = () => {
   };
 
   return (
-    <div>
+    <div className="z-10 relative">
       <SettingsHeader
         title={t('keyring.settings.title')}
         onBack={navigateBack}
