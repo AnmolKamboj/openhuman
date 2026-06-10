@@ -369,9 +369,9 @@ const messages: TranslationMap = {
   'skills.explorer.installed': 'Instalada',
   'skills.explorer.install': 'Instalar',
   'skills.explorer.installing': 'Instalando…',
-  'skills.integrations': 'Aplicativos',
+  'skills.integrations': 'Integrações do Composio',
   'skills.integrationsSubtitle':
-    'Conexões OAuth baseadas em nuvem — faça login com sua conta e os tokens são gerenciados com segurança para que os agentes possam ler e agir em seu nome. Sem chaves de API para gerenciar.',
+    'Conexões OAuth baseadas em nuvem — faça login com sua conta e o Composio gerencia os tokens para que os agentes possam ler e agir em seu nome. Sem chaves de API para gerenciar.',
   'skills.composio.noApiKeyTitle': 'Nenhuma chave de API do Composio configurada',
   'skills.composio.noApiKeyDescription':
     'O modo local usa sua própria chave de API do Composio. Abra Configurações → Avançado → Composio para adicionar uma antes de conectar integrações aqui.',
@@ -4331,7 +4331,7 @@ const messages: TranslationMap = {
   'skills.channelIcon.telegram': 'Telegram',
   'skills.channelIcon.web': 'Web',
   'skills.channelIcon.yuanbao': 'Yuanbao',
-  'skills.composio.poweredBy': 'OAuth',
+  'skills.composio.poweredBy': 'Desenvolvido por Composio',
   'skills.composio.staleStatusTitle': 'As conexões estão mostrando status obsoleto',
   'skills.create.allowedTools': 'Ferramentas permitidas',
   'skills.create.allowedToolsHelp': 'Renderizado no frontmatter SKILL.md como',

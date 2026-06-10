@@ -70,10 +70,10 @@ async function bootSkillsPage(page: Page, userId: string) {
   });
   await waitForAppReady(page);
   await dismissWalkthroughIfPresent(page);
-  // Phase 2: "Composio" tab renamed to "Apps"; heading is now "Apps" (skills.integrations)
+  // Tab is "Apps"; the h2 heading reads "Composio Integrations" (skills.integrations)
   await page.getByRole('tab', { name: 'Apps' }).click();
-  // Wait for the Apps tab grid to be visible — the h2 heading text is now "Apps"
-  const heading = page.getByRole('heading', { name: 'Apps', exact: true });
+  // Wait for the Apps tab grid to be visible — the h2 heading text is "Composio Integrations"
+  const heading = page.getByRole('heading', { name: 'Composio Integrations', exact: true });
   await expect(heading).toBeVisible({ timeout: 20_000 });
 }
 
@@ -141,9 +141,11 @@ test.describe('Gmail Integration Flows', () => {
 
   test('execute and disconnect routes do not blank the skills page', async ({ page }) => {
     await callCoreRpc('openhuman.composio_execute', { tool: ACTION, arguments: {} });
-    // Phase 2: "Composio" tab renamed to "Apps"; heading is now "Apps" (skills.integrations)
+    // Tab is "Apps"; the h2 heading reads "Composio Integrations" (skills.integrations)
     await page.getByRole('tab', { name: 'Apps' }).click();
-    await expect(page.getByRole('heading', { name: 'Apps', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Composio Integrations', exact: true })
+    ).toBeVisible();
 
     await callCoreRpc('openhuman.composio_delete_connection', { connection_id: CONNECTION_ID });
     const requests = await getRequestLog();

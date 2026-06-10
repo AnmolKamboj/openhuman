@@ -84,10 +84,10 @@ async function bootSkillsPage(page: Page, userId: string) {
   await dismissWalkthroughIfPresent(page);
   // Phase 2: "Composio" tab renamed to "Apps"
   await page.getByRole('tab', { name: 'Apps' }).click();
-  // Phase 2: heading is now "Apps" (skills.integrations), "Composio Integrations" removed
-  await expect(page.getByRole('heading', { name: 'Apps', exact: true })).toBeVisible({
-    timeout: 20_000,
-  });
+  // Heading reads "Composio Integrations" (skills.integrations); the tab is "Apps"
+  await expect(
+    page.getByRole('heading', { name: 'Composio Integrations', exact: true })
+  ).toBeVisible({ timeout: 20_000 });
 }
 
 async function openGmailManageModal(page: Page) {
@@ -186,11 +186,11 @@ test.describe('Composio triggers flow', () => {
     await page.reload();
     await waitForAppReady(page);
     await dismissWalkthroughIfPresent(page);
-    // Phase 2: "Composio" tab renamed to "Apps"; heading is now "Apps"
+    // Tab is "Apps"; heading reads "Composio Integrations"
     await page.getByRole('tab', { name: 'Apps' }).click();
-    await expect(page.getByRole('heading', { name: 'Apps', exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    await expect(
+      page.getByRole('heading', { name: 'Composio Integrations', exact: true })
+    ).toBeVisible({ timeout: 20_000 });
 
     const dialog = await openGmailManageModal(page);
     await expect(dialog.getByTestId('trigger-toggles')).toBeVisible();

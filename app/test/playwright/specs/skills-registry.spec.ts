@@ -40,8 +40,10 @@ test.describe('Skills registry flow', () => {
     await expect(page.getByRole('tab', { name: 'Messaging', exact: true })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Tools', exact: true })).toBeVisible();
     await page.getByRole('tab', { name: 'Apps', exact: true }).click();
-    // Phase 2: heading is now "Apps" (skills.integrations), "Composio Integrations" removed
-    await expect(page.getByRole('heading', { name: 'Apps', exact: true })).toBeVisible();
+    // Heading reads "Composio Integrations" (skills.integrations); the tab is "Apps"
+    await expect(
+      page.getByRole('heading', { name: 'Composio Integrations', exact: true })
+    ).toBeVisible();
     await expect(
       page.getByText(/Gmail|Notion|Telegram|GitHub|Google Drive/, { exact: false }).first()
     ).toBeVisible();

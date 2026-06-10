@@ -369,9 +369,9 @@ const messages: TranslationMap = {
   'skills.explorer.installed': 'Installiert',
   'skills.explorer.install': 'Installieren',
   'skills.explorer.installing': 'Wird installiert…',
-  'skills.integrations': 'Apps',
+  'skills.integrations': 'Composio-Integrationen',
   'skills.integrationsSubtitle':
-    'Cloud-basierte OAuth-Verbindungen – mit deinem Konto anmelden und Tokens werden sicher verwaltet, damit Agenten in deinem Namen lesen und handeln können. Keine API-Schlüssel notwendig.',
+    'Cloud-basierte OAuth-Verbindungen – mit deinem Konto anmelden und Composio verwaltet die Tokens, damit Agenten in deinem Namen lesen und handeln können. Keine API-Schlüssel notwendig.',
   'skills.composio.noApiKeyTitle': 'Kein Composio-API-Schlüssel konfiguriert',
   'skills.composio.noApiKeyDescription':
     'Im lokalen Modus wird dein eigener Composio-API-Schlüssel verwendet. Öffne Einstellungen → Erweitert → Composio, um einen Schlüssel hinzuzufügen, bevor du hier Integrationen verbindest.',
@@ -4364,7 +4364,7 @@ const messages: TranslationMap = {
   'skills.channelIcon.telegram': 'Telegram',
   'skills.channelIcon.web': 'Web',
   'skills.channelIcon.yuanbao': 'Yuanbao',
-  'skills.composio.poweredBy': 'OAuth',
+  'skills.composio.poweredBy': 'Unterstützt von Composio',
   'skills.composio.staleStatusTitle': 'Verbindungen zeigen den veralteten Status an',
   'skills.create.allowedTools': 'Erlaubte Werkzeuge',
   'skills.create.allowedToolsHelp': 'Im SKILL.md-Frontmatter gerendert als',

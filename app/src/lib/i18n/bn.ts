@@ -358,9 +358,9 @@ const messages: TranslationMap = {
   'skills.explorer.installed': 'ইনস্টল করা হয়েছে',
   'skills.explorer.install': 'ইনস্টল করুন',
   'skills.explorer.installing': 'ইনস্টল হচ্ছে…',
-  'skills.integrations': 'অ্যাপস',
+  'skills.integrations': 'Composio ইন্টিগ্রেশন',
   'skills.integrationsSubtitle':
-    'ক্লাউড-ভিত্তিক OAuth সংযোগ — আপনার অ্যাকাউন্ট দিয়ে সাইন ইন করুন এবং টোকেন নিরাপদে পরিচালিত হয় যাতে এজেন্টরা আপনার পক্ষে পড়তে এবং কাজ করতে পারে। কোনো API কী পরিচালনা করতে হবে না।',
+    'ক্লাউড-ভিত্তিক OAuth সংযোগ — আপনার অ্যাকাউন্ট দিয়ে সাইন ইন করুন এবং Composio টোকেন পরিচালনা করে যাতে এজেন্টরা আপনার পক্ষে পড়তে এবং কাজ করতে পারে। কোনো API কী পরিচালনা করতে হবে না।',
   'skills.composio.noApiKeyTitle': 'কোনো Composio API Key কনফিগার করা নেই',
   'skills.composio.noApiKeyDescription':
     'লোকাল মোডে আপনার নিজের Composio API key ব্যবহার হয়। এখানে ইন্টিগ্রেশন যুক্ত করার আগে Settings → Advanced → Composio খুলে একটি key যোগ করুন।',
@@ -4251,7 +4251,7 @@ const messages: TranslationMap = {
   'skills.channelIcon.telegram': 'Telegram',
   'skills.channelIcon.web': 'ওয়েব',
   'skills.channelIcon.yuanbao': 'Yuanbao',
-  'skills.composio.poweredBy': 'OAuth',
+  'skills.composio.poweredBy': 'Composio দ্বারা চালিত',
   'skills.composio.staleStatusTitle': 'সংযোগগুলি পুরানো অবস্থা দেখাচ্ছে',
   'skills.create.allowedTools': 'অনুমোদিত টুল',
   'skills.create.allowedToolsHelp': 'হিসাবে SKILL.md ফ্রন্টম্যাটারে রেন্ডার করা হয়েছে',

@@ -86,7 +86,7 @@ describe('Skills page — Composio catalog fallback', () => {
     renderWithProviders(<Skills />, { initialEntries: ['/connections'] });
     openAppsTab();
 
-    expect(screen.getByRole('heading', { name: 'Apps' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Composio Integrations' })).toBeInTheDocument();
     expect(screen.getByText('Discord')).toBeInTheDocument();
     expect(screen.getByText('Google Calendar')).toBeInTheDocument();
     expect(screen.getByText('Google Drive')).toBeInTheDocument();
@@ -103,7 +103,7 @@ describe('Skills page — Composio catalog fallback', () => {
     // missing Composio Zoom tile even though the Meeting bots card also
     // renders a "Zoom" entry on the same page.
     const integrationsSection = screen
-      .getByRole('heading', { name: 'Apps' })
+      .getByRole('heading', { name: 'Composio Integrations' })
       .closest('.rounded-2xl');
     expect(integrationsSection).not.toBeNull();
     expect(within(integrationsSection as HTMLElement).getByText('Zoom')).toBeInTheDocument();
@@ -120,7 +120,7 @@ describe('Skills page — Composio catalog fallback', () => {
     expect(screen.getByText('Backend unavailable')).toBeInTheDocument();
 
     const integrationsSection = screen
-      .getByRole('heading', { name: 'Apps' })
+      .getByRole('heading', { name: 'Composio Integrations' })
       .closest('.rounded-2xl');
     expect(integrationsSection).not.toBeNull();
     const gmailTile = within(integrationsSection as HTMLElement).getByRole('button', {
@@ -143,7 +143,7 @@ describe('Skills page — Composio catalog fallback', () => {
     openAppsTab();
 
     const integrationsSection = screen
-      .getByRole('heading', { name: 'Apps' })
+      .getByRole('heading', { name: 'Composio Integrations' })
       .closest('.rounded-2xl');
     expect(integrationsSection).not.toBeNull();
     const gmailTile = within(integrationsSection as HTMLElement).getByRole('button', {
@@ -178,7 +178,7 @@ describe('Skills page — Composio catalog fallback', () => {
     openAppsTab();
 
     const integrationsSection = screen
-      .getByRole('heading', { name: 'Apps' })
+      .getByRole('heading', { name: 'Composio Integrations' })
       .closest('.rounded-2xl');
     expect(integrationsSection).not.toBeNull();
     expect(within(integrationsSection as HTMLElement).getByText('2')).toBeInTheDocument();
@@ -198,7 +198,7 @@ describe('Skills page — Composio catalog fallback', () => {
     openAppsTab();
 
     const integrationsSection = screen
-      .getByRole('heading', { name: 'Apps' })
+      .getByRole('heading', { name: 'Composio Integrations' })
       .closest('.rounded-2xl');
     expect(integrationsSection).not.toBeNull();
     // No Preview badges anywhere in the integrations grid. The
@@ -222,7 +222,7 @@ describe('Skills page — Composio catalog fallback', () => {
     openAppsTab();
 
     const integrationsSection = screen
-      .getByRole('heading', { name: 'Apps' })
+      .getByRole('heading', { name: 'Composio Integrations' })
       .closest('.rounded-2xl');
     expect(integrationsSection).not.toBeNull();
     const zohoTile = within(integrationsSection as HTMLElement).getByRole('button', {

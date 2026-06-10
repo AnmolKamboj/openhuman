@@ -361,9 +361,9 @@ const messages: TranslationMap = {
   'skills.explorer.installed': 'Terpasang',
   'skills.explorer.install': 'Pasang',
   'skills.explorer.installing': 'Memasang…',
-  'skills.integrations': 'Aplikasi',
+  'skills.integrations': 'Integrasi Composio',
   'skills.integrationsSubtitle':
-    'Koneksi OAuth berbasis cloud — masuk dengan akun Anda dan token dikelola dengan aman agar agen dapat membaca dan bertindak atas nama Anda. Tidak perlu mengelola API key.',
+    'Koneksi OAuth berbasis cloud — masuk dengan akun Anda dan Composio mengelola token agar agen dapat membaca dan bertindak atas nama Anda. Tidak perlu mengelola API key.',
   'skills.composio.noApiKeyTitle': 'Belum ada API key Composio yang dikonfigurasi',
   'skills.composio.noApiKeyDescription':
     'Mode lokal menggunakan API key Composio milik Anda sendiri. Buka Pengaturan → Lanjutan → Composio untuk menambahkannya sebelum menghubungkan integrasi di sini.',
@@ -4270,7 +4270,7 @@ const messages: TranslationMap = {
   'skills.channelIcon.telegram': 'Telegram',
   'skills.channelIcon.web': 'Web',
   'skills.channelIcon.yuanbao': 'Yuanbao',
-  'skills.composio.poweredBy': 'OAuth',
+  'skills.composio.poweredBy': 'Didukung oleh Composio',
   'skills.composio.staleStatusTitle': 'Koneksi menunjukkan status basi',
   'skills.create.allowedTools': 'Tool yang diizinkan',
   'skills.create.allowedToolsHelp': 'Dirender ke frontmatter SKILL.md sebagai',

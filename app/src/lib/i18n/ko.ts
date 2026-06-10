@@ -358,9 +358,9 @@ const messages: TranslationMap = {
   'skills.explorer.installed': '설치됨',
   'skills.explorer.install': '설치',
   'skills.explorer.installing': '설치 중…',
-  'skills.integrations': '앱',
+  'skills.integrations': 'Composio 통합',
   'skills.integrationsSubtitle':
-    '클라우드 기반 OAuth 연결 — 계정으로 로그인하면 토큰이 안전하게 관리되어 에이전트가 사용자를 대신해 읽고 작동할 수 있습니다. API 키 관리가 필요 없습니다.',
+    '클라우드 기반 OAuth 연결 — 계정으로 로그인하면 Composio가 토큰을 관리하여 에이전트가 사용자를 대신해 읽고 작동할 수 있습니다. API 키 관리가 필요 없습니다.',
   'skills.composio.noApiKeyTitle': '아니요 Composio API 키가 구성됨',
   'skills.composio.noApiKeyDescription':
     '로컬 모드에서는 자체 Composio API 키를 사용합니다. 설정 → 고급 → Composio에서 키를 추가한 후 여기서 통합을 연결하세요.',
@@ -4210,7 +4210,7 @@ const messages: TranslationMap = {
   'skills.channelIcon.telegram': 'Telegram',
   'skills.channelIcon.web': '웹',
   'skills.channelIcon.yuanbao': 'Yuanbao',
-  'skills.composio.poweredBy': 'OAuth',
+  'skills.composio.poweredBy': 'Composio 제공',
   'skills.composio.staleStatusTitle': '연결이 오래된 상태를 표시합니다.',
   'skills.create.allowedTools': '허용된 도구',
   'skills.create.allowedToolsHelp': 'SKILL.md 앞부분에 다음과 같이 렌더링됩니다.',

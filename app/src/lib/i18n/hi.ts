@@ -357,9 +357,9 @@ const messages: TranslationMap = {
   'skills.explorer.installed': 'इंस्टॉल किया गया',
   'skills.explorer.install': 'इंस्टॉल करें',
   'skills.explorer.installing': 'इंस्टॉल हो रहा है…',
-  'skills.integrations': 'ऐप्स',
+  'skills.integrations': 'Composio इंटीग्रेशन',
   'skills.integrationsSubtitle':
-    'क्लाउड-आधारित OAuth कनेक्शन — अपने अकाउंट से साइन इन करें और टोकन सुरक्षित रूप से प्रबंधित होते हैं ताकि एजेंट आपकी ओर से पढ़ और कार्य कर सकें। कोई API कुंजी प्रबंधित नहीं करनी।',
+    'क्लाउड-आधारित OAuth कनेक्शन — अपने अकाउंट से साइन इन करें और Composio टोकन ब्रोकर करता है ताकि एजेंट आपकी ओर से पढ़ और कार्य कर सकें। कोई API कुंजी प्रबंधित नहीं करनी।',
   'skills.composio.noApiKeyTitle': 'कोई Composio API key कॉन्फ़िगर नहीं है',
   'skills.composio.noApiKeyDescription':
     'लोकल मोड आपकी अपनी Composio API key का उपयोग करता है। यहाँ integrations जोड़ने से पहले Settings → Advanced → Composio खोलकर key जोड़ें।',
@@ -4256,7 +4256,7 @@ const messages: TranslationMap = {
   'skills.channelIcon.telegram': 'Telegram',
   'skills.channelIcon.web': 'वेब',
   'skills.channelIcon.yuanbao': 'Yuanbao',
-  'skills.composio.poweredBy': 'OAuth',
+  'skills.composio.poweredBy': 'Composio द्वारा संचालित',
   'skills.composio.staleStatusTitle': 'कनेक्शन पुरानी स्थिति दिखा रहे हैं',
   'skills.create.allowedTools': 'अनुमत टूल्स',
   'skills.create.allowedToolsHelp': 'SKILL.md फ्रंटमैटर में प्रस्तुत किया गया',

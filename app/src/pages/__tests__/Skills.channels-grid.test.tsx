@@ -152,7 +152,7 @@ describe('Skills page — Channels grid', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Apps' }));
 
     // The Apps tab owns the Integrations category filter.
-    const integrationsHeading = screen.getByRole('heading', { name: 'Apps' });
+    const integrationsHeading = screen.getByRole('heading', { name: 'Composio Integrations' });
     const integrationsCard = integrationsHeading.closest('.rounded-2xl');
     expect(integrationsCard).not.toBeNull();
     const filterTabs = within(integrationsCard as HTMLElement)

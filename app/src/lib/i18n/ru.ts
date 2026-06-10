@@ -363,9 +363,9 @@ const messages: TranslationMap = {
   'skills.explorer.installed': 'Установлено',
   'skills.explorer.install': 'Установить',
   'skills.explorer.installing': 'Установка…',
-  'skills.integrations': 'Приложения',
+  'skills.integrations': 'Интеграции Composio',
   'skills.integrationsSubtitle':
-    'Облачные OAuth-подключения — войдите в свой аккаунт, и токены управляются безопасно, чтобы агенты могли читать и действовать от вашего имени. Никаких API-ключей для управления.',
+    'Облачные OAuth-подключения — войдите в свой аккаунт, и Composio управляет токенами, чтобы агенты могли читать и действовать от вашего имени. Никаких API-ключей для управления.',
   'skills.composio.noApiKeyTitle': 'Ключ API Composio не настроен',
   'skills.composio.noApiKeyDescription':
     'Локальный режим использует ваш собственный ключ API Composio. Откройте Настройки → Дополнительно → Composio, чтобы добавить ключ перед подключением интеграций здесь.',
@@ -4295,7 +4295,7 @@ const messages: TranslationMap = {
   'skills.channelIcon.telegram': 'Telegram',
   'skills.channelIcon.web': 'Интернет',
   'skills.channelIcon.yuanbao': 'Yuanbao',
-  'skills.composio.poweredBy': 'OAuth',
+  'skills.composio.poweredBy': 'Работает на Composio',
   'skills.composio.staleStatusTitle': 'Соединения показывают устаревший статус',
   'skills.create.allowedTools': 'Разрешённые инструменты',
   'skills.create.allowedToolsHelp': 'Отображается в SKILL.md как',

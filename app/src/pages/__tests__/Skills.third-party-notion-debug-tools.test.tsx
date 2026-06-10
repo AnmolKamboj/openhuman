@@ -39,7 +39,7 @@ describe('Skills page — Notion composio integration', () => {
     renderWithProviders(<Skills />, { initialEntries: ['/connections'] });
     fireEvent.click(screen.getByRole('tab', { name: 'Apps' }));
 
-    expect(screen.getByRole('heading', { name: 'Apps' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Composio Integrations' })).toBeInTheDocument();
     const notionTile = screen.getByRole('button', { name: /Notion.*Connect/i });
     expect(notionTile).toBeInTheDocument();
 

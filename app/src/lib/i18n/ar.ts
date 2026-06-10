@@ -353,9 +353,9 @@ const messages: TranslationMap = {
   'skills.explorer.installed': 'مثبت',
   'skills.explorer.install': 'تثبيت',
   'skills.explorer.installing': 'جارٍ التثبيت…',
-  'skills.integrations': 'التطبيقات',
+  'skills.integrations': 'تكاملات Composio',
   'skills.integrationsSubtitle':
-    'اتصالات OAuth السحابية — سجّل الدخول بحسابك وتُدار الرموز بأمان حتى يتمكن الوكلاء من القراءة والتصرف نيابةً عنك. لا حاجة لإدارة مفاتيح API.',
+    'اتصالات OAuth السحابية — سجّل الدخول بحسابك ويتولى Composio إدارة الرموز حتى يتمكن الوكلاء من القراءة والتصرف نيابةً عنك. لا حاجة لإدارة مفاتيح API.',
   'skills.composio.noApiKeyTitle': 'لم يتم إعداد مفتاح Composio API',
   'skills.composio.noApiKeyDescription':
     'يستخدم الوضع المحلي مفتاح Composio API الخاص بك. افتح الإعدادات ← الخيارات المتقدمة ← Composio لإضافته قبل توصيل التكاملات هنا.',
@@ -4167,7 +4167,7 @@ const messages: TranslationMap = {
   'skills.channelIcon.telegram': 'Telegram',
   'skills.channelIcon.web': 'الويب',
   'skills.channelIcon.yuanbao': 'Yuanbao',
-  'skills.composio.poweredBy': 'OAuth',
+  'skills.composio.poweredBy': 'مدعوم من Composio',
   'skills.composio.staleStatusTitle': 'تظهر الاتصالات حالة قديمة',
   'skills.create.allowedTools': 'الأدوات المسموح بها',
   'skills.create.allowedToolsHelp': 'تم عرضها في المادة الأمامية SKILL.md كـ',

@@ -342,9 +342,9 @@ const messages: TranslationMap = {
   'skills.explorer.installed': '已安装',
   'skills.explorer.install': '安装',
   'skills.explorer.installing': '安装中…',
-  'skills.integrations': '应用',
+  'skills.integrations': 'Composio 集成',
   'skills.integrationsSubtitle':
-    '基于云端的 OAuth 连接——使用您的账户登录，令牌将被安全管理，让智能体能以您的名义读取数据并执行操作，无需管理 API 密钥。',
+    '基于云端的 OAuth 连接——使用您的账户登录，Composio 代管令牌，让智能体能以您的名义读取数据并执行操作，无需管理 API 密钥。',
   'skills.composio.noApiKeyTitle': '尚未配置 Composio API 密钥',
   'skills.composio.noApiKeyDescription':
     '本地模式使用你自己的 Composio API 密钥。在此连接集成之前，请打开 设置 → 高级 → Composio 添加一个密钥。',
@@ -4043,7 +4043,7 @@ const messages: TranslationMap = {
   'skills.channelIcon.telegram': 'Telegram',
   'skills.channelIcon.web': '网络',
   'skills.channelIcon.yuanbao': '元宝',
-  'skills.composio.poweredBy': 'OAuth',
+  'skills.composio.poweredBy': '由 Composio 提供支持',
   'skills.composio.staleStatusTitle': '连接显示陈旧状态',
   'skills.create.allowedTools': '允许的工具',
   'skills.create.allowedToolsHelp': '渲染到 SKILL.md frontmatter 中为',

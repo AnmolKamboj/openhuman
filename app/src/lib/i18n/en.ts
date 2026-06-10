@@ -397,9 +397,9 @@ const en: TranslationMap = {
   'skills.explorer.installed': 'Installed',
   'skills.explorer.install': 'Install',
   'skills.explorer.installing': 'Installing…',
-  'skills.integrations': 'Apps',
+  'skills.integrations': 'Composio Integrations',
   'skills.integrationsSubtitle':
-    'Cloud-based OAuth connections — sign in with your account and tokens are brokered securely so agents can read and act on your behalf. No API keys to manage.',
+    'Cloud-based OAuth connections — sign in with your account and Composio brokers the tokens so agents can read and act on your behalf. No API keys to manage.',
   'skills.composio.noApiKeyTitle': 'No Composio API Key Configured',
   'skills.composio.noApiKeyDescription':
     'Local mode uses your own Composio API key. Open Settings → Advanced → Composio to add one before connecting integrations here.',
@@ -4796,7 +4796,7 @@ const en: TranslationMap = {
   'skills.channelIcon.telegram': 'Telegram',
   'skills.channelIcon.web': 'Web',
   'skills.channelIcon.yuanbao': 'Yuanbao',
-  'skills.composio.poweredBy': 'OAuth',
+  'skills.composio.poweredBy': 'Powered by Composio',
   'skills.composio.staleStatusTitle': 'Connections are showing stale status',
   'skills.create.allowedTools': 'Allowed tools',
   'skills.create.allowedToolsHelp': 'Rendered into the SKILL.md frontmatter as',
