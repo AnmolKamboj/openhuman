@@ -66,28 +66,30 @@ async function bootSkillsPage(page: Page, userId: string) {
       localStorage.removeItem('openhuman:walkthrough_pending');
     } catch {}
   });
+  // Phase 2: /skills → /connections
   await page.evaluate(() => {
-    window.location.hash = '/skills';
+    window.location.hash = '/connections';
   });
   await expect
     .poll(async () => page.evaluate(() => window.location.hash), { timeout: 10_000 })
-    .toContain('/skills');
+    .toContain('/connections');
   await waitForAppReady(page);
   await dismissWalkthroughIfPresent(page);
-  await page.getByRole('tab', { name: 'Composio' }).click();
-  const heading = page.getByRole('heading', { name: 'Composio Integrations' });
+  // Phase 2: "Composio" tab renamed to "Apps"
+  await page.getByRole('tab', { name: 'Apps' }).click();
+  const heading = page.getByRole('heading', { name: 'Apps', exact: true });
   if (!(await heading.isVisible().catch(() => false))) {
     const connectionsButton = page.getByRole('button', { name: 'Connections' });
     if (await connectionsButton.isVisible().catch(() => false)) {
       await connectionsButton.click({ force: true });
       await expect
         .poll(async () => page.evaluate(() => window.location.hash), { timeout: 10_000 })
-        .toContain('/skills');
+        .toContain('/connections');
       await waitForAppReady(page);
       await dismissWalkthroughIfPresent(page);
     }
   }
-  await expect(page.getByRole('heading', { name: 'Composio Integrations' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'Apps', exact: true })).toBeVisible({
     timeout: 20_000,
   });
 }
@@ -97,17 +99,18 @@ async function reloadSkills(page: Page) {
 }
 
 async function ensureComposioSurface(page: Page) {
-  const heading = page.getByRole('heading', { name: 'Composio Integrations' });
+  // Phase 2: /skills → /connections, "Composio" tab renamed to "Apps"
+  const heading = page.getByRole('heading', { name: 'Apps', exact: true });
   for (let attempt = 0; attempt < 3; attempt++) {
     await page.evaluate(() => {
-      window.location.hash = '/skills';
+      window.location.hash = '/connections';
     });
     await expect
       .poll(async () => page.evaluate(() => window.location.hash), { timeout: 10_000 })
-      .toContain('/skills');
+      .toContain('/connections');
     await waitForAppReady(page);
     await dismissWalkthroughIfPresent(page);
-    await page.getByRole('tab', { name: 'Composio' }).click();
+    await page.getByRole('tab', { name: 'Apps' }).click();
     if (await heading.isVisible().catch(() => false)) {
       return;
     }
@@ -116,7 +119,7 @@ async function ensureComposioSurface(page: Page) {
       await connectionsButton.click({ force: true });
       await waitForAppReady(page);
       await dismissWalkthroughIfPresent(page);
-      await page.getByRole('tab', { name: 'Composio' }).click();
+      await page.getByRole('tab', { name: 'Apps' }).click();
       if (await heading.isVisible().catch(() => false)) {
         return;
       }
@@ -126,6 +129,7 @@ async function ensureComposioSurface(page: Page) {
 }
 
 async function assertSessionNotNuked(page: Page) {
+  // Phase 2: /skills → /connections
   await expect
     .poll(async () =>
       page.evaluate(() => {
@@ -145,7 +149,7 @@ async function assertSessionNotNuked(page: Page) {
         };
       })
     )
-    .toEqual({ hash: '#/skills', hasToken: true, hasUser: true });
+    .toEqual({ hash: '#/connections', hasToken: true, hasUser: true });
 }
 
 async function openModal(page: Page) {

@@ -8,30 +8,37 @@ import {
 
 test.describe('Google Meet Connections tab', () => {
   test.beforeEach(async ({ page }) => {
-    await bootAuthenticatedPage(page, 'pw-gmeet-connections-tab-user', '/skills?tab=meetings');
+    // Phase 2: /skills → /connections; Phase 2b: MeetingBotsCard moved from
+    // Tools tab to the new Talents tab (?tab=talents). Back-compat: ?tab=meetings
+    // alias still works and resolves to talents.
+    await bootAuthenticatedPage(page, 'pw-gmeet-connections-tab-user', '/connections?tab=talents');
     await waitForAppReady(page);
     await dismissWalkthroughIfPresent(page);
   });
 
-  test('opens the dedicated tab and shows a one-field meeting link modal', async ({ page }) => {
+  test('opens the Talents tab and shows the meeting link modal', async ({ page }) => {
     await expect
       .poll(async () => page.evaluate(() => window.location.hash), { timeout: 10_000 })
-      .toContain('/skills?tab=meetings');
+      .toContain('/connections');
 
-    await expect(page.getByRole('tab', { name: 'Google Meet', exact: true })).toHaveAttribute(
+    // Phase 2b: MeetingBotsCard moved to the Talents tab; there is no longer a
+    // "Google Meet" sub-tab.  The PillTabBar "Talents" pill carries the
+    // aria-selected=true attribute when the Talents surface is active.
+    await expect(page.getByRole('tab', { name: 'Talents', exact: true })).toHaveAttribute(
       'aria-selected',
       'true'
     );
 
     await page.getByTestId('meeting-bots-banner').click();
 
+    // The modal has a Meeting link (url) field plus the "Your Name in This
+    // Meeting" (respondTo) text field added in #3555. It stays Google-Meet only
+    // — no other platforms.
     const dialog = page.getByRole('dialog', { name: 'Send OpenHuman to a meeting' });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByLabel('Meeting link')).toBeVisible();
     await expect(dialog.locator('input[type="url"]')).toHaveCount(1);
     await expect(dialog.locator('input[type="text"]')).toHaveCount(1);
-    await expect(dialog.getByText('Wake Phrase')).toHaveCount(0);
-    await expect(dialog.getByText('Display name')).toHaveCount(0);
     await expect(dialog.getByText('Zoom')).toHaveCount(0);
     await expect(dialog.getByText('Microsoft Teams')).toHaveCount(0);
   });

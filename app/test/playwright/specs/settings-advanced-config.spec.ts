@@ -59,10 +59,10 @@ test.describe('Settings - Advanced Config', () => {
   test('renders the developer options route and its advanced entries', async ({ page }) => {
     await gotoSettingsRoute(page, '/settings/developer-options');
 
-    await expect(page.getByRole('heading', { name: 'Advanced' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Developer & Diagnostics' })).toBeVisible();
     await expect(page.getByTestId('settings-nav-ai')).toBeVisible();
     await expect(page.getByTestId('settings-nav-composio')).toBeVisible();
-    await expect(page.getByTestId('settings-nav-about')).toBeVisible();
+    await expect(page.getByTestId('settings-nav-build-info')).toBeVisible();
   });
 
   test('persists notification routing settings through core RPC', async ({ page }) => {

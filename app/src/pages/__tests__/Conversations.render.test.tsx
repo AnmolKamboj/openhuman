@@ -1405,7 +1405,7 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
 
     // Bucket tabs must be present regardless of thread count.
     expect(screen.getByRole('tab', { name: 'General' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Subconscious' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Background activity' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Tasks' })).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'All' })).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Briefing' })).not.toBeInTheDocument();
@@ -1423,7 +1423,7 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
     await openSidebar();
 
     expect(screen.getByRole('tab', { name: 'General' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tab', { name: 'Subconscious' })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: 'Background activity' })).toHaveAttribute(
       'aria-selected',
       'false'
     );

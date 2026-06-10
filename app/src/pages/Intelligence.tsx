@@ -11,6 +11,7 @@ import ModelCouncilTab from '../components/intelligence/ModelCouncilTab';
 import { ToastContainer } from '../components/intelligence/Toast';
 import WorkflowsTab from '../components/intelligence/WorkflowsTab';
 import PillTabBar from '../components/PillTabBar';
+import { useDeveloperMode } from '../hooks/useDeveloperMode';
 import {
   useIntelligenceSocket,
   useIntelligenceSocketManager,
@@ -21,7 +22,6 @@ import type {
   ConfirmationModal as ConfirmationModalType,
   ToastNotification,
 } from '../types/intelligence';
-import { IS_DEV } from '../utils/config';
 
 type IntelligenceTab =
   | 'memory'
@@ -42,17 +42,21 @@ const INTELLIGENCE_TABS: IntelligenceTab[] = [
   'council',
 ];
 
-// Tabs gated to dev builds (mirrors the `devOnly` flags on `allTabs` below).
-// A `?tab=` deep link must be validated against the *visible* set, not the raw
-// enum, so `?tab=council` can't force-open a hidden dev-only tab in prod.
+// Tabs gated to dev builds or runtime developer mode (mirrors the `devOnly`
+// flags on `allTabs` below). A `?tab=` deep link must be validated against the
+// *visible* set, not the raw enum, so a user cannot force-open a hidden tab.
 const DEV_ONLY_TABS: IntelligenceTab[] = ['council'];
 
-const isVisibleTab = (tab: string | null | undefined): tab is IntelligenceTab =>
-  (INTELLIGENCE_TABS as string[]).includes(tab ?? '') &&
-  (IS_DEV || !(DEV_ONLY_TABS as string[]).includes(tab ?? ''));
+const makeIsVisibleTab =
+  (developerModeEnabled: boolean) =>
+  (tab: string | null | undefined): tab is IntelligenceTab =>
+    (INTELLIGENCE_TABS as string[]).includes(tab ?? '') &&
+    (developerModeEnabled || !(DEV_ONLY_TABS as string[]).includes(tab ?? ''));
 
 export default function Intelligence() {
   const { t } = useT();
+  const developerMode = useDeveloperMode();
+  const isVisibleTab = makeIsVisibleTab(developerMode);
 
   // Tab is URL-backed (`/intelligence?tab=…`) so navigating away — e.g. to
   // Settings → Task Sources from the Agent Tasks tab — and coming back via
@@ -152,7 +156,7 @@ export default function Intelligence() {
     { id: 'council', label: t('memory.tab.council'), devOnly: true },
     { id: 'agents', label: t('memory.tab.agents'), description: t('memory.tab.agentsDescription') },
   ];
-  const tabs = allTabs.filter(tab => !tab.devOnly || IS_DEV);
+  const tabs = allTabs.filter(tab => !tab.devOnly || developerMode);
   const activeTabDef = tabs.find(tab => tab.id === activeTab);
 
   return (

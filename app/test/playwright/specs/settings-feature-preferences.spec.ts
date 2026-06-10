@@ -92,17 +92,19 @@ test.describe('Settings - Feature Preferences', () => {
 
     await expect(page.getByText('Features', { exact: true })).toBeVisible();
     await expect(page.getByTestId('settings-nav-screen-intelligence')).toBeVisible();
-    await expect(page.getByTestId('settings-nav-messaging')).toBeVisible();
+    // Phase 2: default messaging channel moved to /connections (Messaging tab);
+    // the settings/features nav no longer has a dedicated "messaging" entry.
     await expect(page.getByTestId('settings-nav-notifications')).toBeVisible();
     await expect(page.getByTestId('settings-nav-tools')).toBeVisible();
   });
 
   test('persists the default messaging channel through redux state', async ({ page }) => {
-    await openAuthenticatedRoute(page, 'pw-settings-default-channel', '/skills');
+    // Phase 2: default messaging channel moved to /connections (Messaging tab)
+    await openAuthenticatedRoute(page, 'pw-settings-default-channel', '/connections?tab=messaging');
 
-    const channelsTab = page.getByRole('tab', { name: 'Channels', exact: true });
-    if (await channelsTab.isVisible().catch(() => false)) {
-      await channelsTab.click();
+    const messagingTab = page.getByRole('tab', { name: 'Messaging', exact: true });
+    if (await messagingTab.isVisible().catch(() => false)) {
+      await messagingTab.click();
     }
 
     await expect(page.getByText('Default Messaging Channel').last()).toBeVisible();

@@ -10,8 +10,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { useEffect, useState } from 'react';
 
 import { useAppUpdate } from '../../../hooks/useAppUpdate';
+import { useDeveloperMode } from '../../../hooks/useDeveloperMode';
 import { useT } from '../../../lib/i18n/I18nContext';
-import { useAppSelector } from '../../../store/hooks';
+import { useAppDispatch, useAppSelector } from '../../../store/hooks';
+import { selectDeveloperMode, setDeveloperMode } from '../../../store/themeSlice';
 import { APP_VERSION, LATEST_APP_DOWNLOAD_URL } from '../../../utils/config';
 import { isTauriEnvironment } from '../../../utils/configPersistence';
 import { openUrl } from '../../../utils/openUrl';
@@ -20,6 +22,7 @@ import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
 
 const AboutPanel = () => {
   const { t } = useT();
+  const dispatch = useAppDispatch();
   const { navigateBack, breadcrumbs } = useSettingsNavigation();
   // The auto-cadence is already running via the global <AppUpdatePrompt />;
   // disable it here so opening the panel doesn't double-trigger probes.
@@ -27,6 +30,12 @@ const AboutPanel = () => {
   const [lastCheckedAt, setLastCheckedAt] = useState<Date | null>(null);
   const coreMode = useAppSelector(state => state.coreMode.mode);
   const [rpcUrl, setRpcUrl] = useState<string | null>(null);
+  // Persisted developer mode preference (not the combined IS_DEV || developerMode).
+  // We read the raw preference here so the toggle reflects only the user's choice,
+  // not whether the build is a dev build.
+  const developerModePref = useAppSelector(selectDeveloperMode);
+  // Combined gate — true when IS_DEV or the pref is on. Used for the helper text.
+  const developerModeActive = useDeveloperMode();
 
   // Local mode picks a dynamic port at app launch, so the authoritative
   // value lives in the Tauri shell (`core_rpc_url` command) rather than the
@@ -146,6 +155,43 @@ const AboutPanel = () => {
               ? t('settings.about.connectionHelperCloud')
               : t('settings.about.connectionHelperLocal')}
           </p>
+        </div>
+
+        {/* Developer Mode toggle — always visible so users can enable it
+            without needing it to be on first (chicken-and-egg avoidance). */}
+        <div
+          className="rounded-xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4"
+          data-testid="developer-mode-section">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-stone-900 dark:text-neutral-100">
+                {t('settings.developerMode.title')}
+              </div>
+              <div className="mt-1 text-xs text-stone-500 dark:text-neutral-400 leading-relaxed">
+                {developerModeActive && !developerModePref
+                  ? t('settings.developerMode.enabledByBuild')
+                  : t('settings.developerMode.description')}
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={developerModePref}
+              aria-label={t('settings.developerMode.title')}
+              onClick={() => {
+                console.debug('[developer-mode] toggled to', !developerModePref);
+                dispatch(setDeveloperMode(!developerModePref));
+              }}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
+                developerModePref ? 'bg-primary-600' : 'bg-stone-300 dark:bg-neutral-600'
+              }`}>
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ${
+                  developerModePref ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
         </div>
 
         <div className="rounded-xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">

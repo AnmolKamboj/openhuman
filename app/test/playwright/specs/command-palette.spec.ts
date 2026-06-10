@@ -31,8 +31,8 @@ test.describe('Command Palette', () => {
 
     await expect(page.getByText('Go Home')).toBeVisible();
     await expect(page.getByText('Go to Chat')).toBeVisible();
-    await expect(page.getByText('Go to Intelligence')).toBeVisible();
-    await expect(page.getByText('Go to Skills')).toBeVisible();
+    await expect(page.getByText('Go to Knowledge & Memory')).toBeVisible();
+    await expect(page.getByText('Go to Connections')).toBeVisible();
     await expect(page.getByText('Open Settings')).toBeVisible();
 
     await page.keyboard.press('Escape');

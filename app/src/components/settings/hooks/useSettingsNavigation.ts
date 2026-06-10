@@ -24,6 +24,7 @@ export type SettingsRoute =
   | 'voice'
   | 'tools'
   | 'memory-data'
+  | 'memory-sync'
   | 'memory-debug'
   | 'crypto'
   | 'recovery-phrase'
@@ -49,7 +50,9 @@ export type SettingsRoute =
   | 'mcp-server'
   | 'dev-workflow'
   | 'sandbox-settings'
-  | 'devices';
+  | 'permissions'
+  | 'devices'
+  | 'heartbeat';
 
 export interface BreadcrumbItem {
   label: string;
@@ -110,6 +113,7 @@ export const useSettingsNavigation = (): SettingsNavigationHook => {
     if (path.includes('/settings/voice-debug')) return 'voice-debug';
     if (path.includes('/settings/voice')) return 'voice';
     if (path.includes('/settings/tools')) return 'tools';
+    if (path.includes('/settings/memory-sync')) return 'memory-sync';
     if (path.includes('/settings/memory-data')) return 'memory-data';
     if (path.includes('/settings/memory-debug')) return 'memory-debug';
     if (path.includes('/settings/webhooks-debug')) return 'webhooks-debug';
@@ -141,10 +145,12 @@ export const useSettingsNavigation = (): SettingsNavigationHook => {
     // shorter `agents` (the manage-agents registry panel) so it isn't swallowed.
     if (path.includes('/settings/agents-settings')) return 'agents-settings';
     if (path.includes('/settings/sandbox-settings')) return 'sandbox-settings';
+    if (path.includes('/settings/permissions')) return 'permissions';
     if (path.includes('/settings/agent-access')) return 'agent-access';
     if (path.includes('/settings/agents')) return 'agents';
     if (path.includes('/settings/mcp-server')) return 'mcp-server';
     if (path.includes('/settings/dev-workflow')) return 'dev-workflow';
+    if (path.includes('/settings/heartbeat')) return 'heartbeat';
     return 'home';
   };
 
@@ -286,6 +292,7 @@ export const useSettingsNavigation = (): SettingsNavigationHook => {
       case 'notification-routing':
       case 'mcp-server':
       case 'dev-workflow':
+      case 'heartbeat':
       case 'notifications-hub': // Notifications hub section page lives under Advanced.
         return [settingsCrumb, developerCrumb];
 
@@ -299,6 +306,14 @@ export const useSettingsNavigation = (): SettingsNavigationHook => {
         return [settingsCrumb, developerCrumb, notificationsHubCrumb];
 
       case 'devices':
+        return [settingsCrumb];
+
+      // Data Sync is a top-level leaf in the Account group (#3301).
+      case 'memory-sync':
+        return [settingsCrumb];
+
+      // Permissions panel lives at the top level of Settings (Assistant group).
+      case 'permissions':
         return [settingsCrumb];
 
       // Mascot appearance panel sits at the top level of Settings.

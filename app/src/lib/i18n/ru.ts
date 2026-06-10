@@ -6,6 +6,11 @@ const messages: TranslationMap = {
   'nav.home': 'Главная',
   'nav.human': 'Человек',
   'nav.chat': 'Чат',
+  'nav.assistant': 'Ассистент',
+  'assistant.faceMode.on': 'Говорит с Tiny',
+  'assistant.faceMode.off': 'Поговорить с Tiny',
+  'assistant.faceMode.turnOn': 'Показать маскота',
+  'assistant.faceMode.turnOff': 'Скрыть маскота',
   'nav.connections': 'Подключения',
   'nav.memory': 'Интеллект',
   'nav.alerts': 'Оповещения',
@@ -15,6 +20,12 @@ const messages: TranslationMap = {
   'nav.switchAgentProfile': 'Сменить профиль агента',
   'nav.defaultAgentProfile': 'Агент по умолчанию',
   'nav.noAgentProfiles': 'Профили агентов не найдены',
+  'nav.activity': 'Активность',
+  'nav.avatarMenu.account': 'Аккаунт',
+  'nav.avatarMenu.billing': 'Оплата',
+  'nav.avatarMenu.rewards': 'Награды',
+  'nav.avatarMenu.invites': 'Пригласить друга',
+  'nav.avatarMenu.wallet': 'Кошелёк',
   'common.cancel': 'Отмена',
   'common.save': 'Сохранить',
   'common.confirm': 'Подтвердить',
@@ -59,6 +70,54 @@ const messages: TranslationMap = {
   'common.comingSoon': 'Скоро',
   'common.breadcrumb': 'Breadcrumb',
   'settings.general': 'Общие',
+  // Settings layman groups (Phase 4 IA revamp)
+  'settings.groups.account': 'Аккаунт',
+  'settings.groups.assistant': 'Ассистент',
+  'settings.groups.privacySecurity': 'Конфиденциальность и безопасность',
+  'settings.groups.notifications': 'Уведомления',
+  'settings.groups.about': 'О приложении',
+  'settings.assistant.personality': 'Личность',
+  'settings.assistant.personalityDesc': 'Имя, описание и персона SOUL.md',
+  'settings.assistant.voice': 'Голос',
+  'settings.assistant.voiceDesc': 'Настройки распознавания и синтеза речи',
+  'settings.assistant.faceMascot': 'Лицо / Маскот',
+  'settings.assistant.faceMascotDesc': 'Выберите цвет маскота в приложении',
+  'settings.assistant.backgroundActivity': 'Фоновая активность',
+  'settings.assistant.backgroundActivityDesc':
+    'Управление тем, насколько активно ассистент работает в фоне',
+  'settings.assistant.screenAwareness': 'Осведомлённость об экране',
+  'settings.assistant.screenAwarenessDesc': 'Разрешить ассистенту видеть активное окно',
+  'settings.assistant.desktopCompanion': 'Компаньон рабочего стола',
+  'settings.assistant.desktopCompanionDesc':
+    'Режим постоянного компаньона с ярлыком в системном лотке',
+  'settings.assistant.permissions': 'Разрешения',
+  'settings.assistant.permissionsDesc':
+    'Выберите, что может делать помощник и где он может работать',
+  'settings.privacySecurity.privacy': 'Конфиденциальность',
+  'settings.privacySecurity.privacyDesc': 'Контроль данных, покидающих ваш компьютер',
+  'settings.privacySecurity.security': 'Безопасность',
+  'settings.privacySecurity.securityDesc': 'Сеансы и параметры входа',
+  'settings.privacySecurity.approvalsHistory': 'Подтверждения и история',
+  'settings.privacySecurity.approvalsHistoryDesc':
+    'Просмотр недавних решений об одобрении инструментов',
+  'settings.notifications.menuTitle': 'Уведомления',
+  'settings.notifications.menuDesc': 'Входящие оповещения и настройки уведомлений',
+  'settings.devGroups.knowledgeMemory': 'Знания и память',
+  'settings.devGroups.agentsAutonomy': 'Агенты и автономия',
+  'settings.devGroups.modelsInference': 'Модели и вывод',
+  'settings.devGroups.automationIntegrations': 'Автоматизация и интеграции',
+  'settings.devGroups.toolsCapabilities': 'Инструменты и возможности',
+  'settings.devGroups.council': 'Совет',
+  'settings.analysisViews.title': 'Аналитические виды',
+  'settings.analysisViews.menuDesc':
+    'Анализ графа памяти — диаграмма, центральность, связность, ассоциации, свежесть, временная шкала, пути и пространства имён',
+  'settings.buildInfo.title': 'Сведения о сборке/версии',
+  'settings.buildInfo.menuDesc': 'Сборка приложения, версия и сведения о подключении ядра',
+  'settings.dataSync.title': 'Синхронизация данных',
+  'settings.dataSync.menuDesc': 'Что синхронизирует ваш ассистент — источники, свежесть и статус',
+  'settings.dataSync.description':
+    'Управляйте тем, что синхронизируется в память ассистента: каждый подключённый источник с временем последней синхронизации, объёмом синхронизированных данных и тем, идёт ли синхронизация сейчас.',
+  'settings.devGroups.diagnosticsLogs': 'Диагностика и логи',
   'settings.featuresAndAI': 'Функции и AI',
   'settings.billingAndRewards': 'Оплата и награды',
   'settings.support': 'Поддержка',
@@ -88,6 +147,13 @@ const messages: TranslationMap = {
   'settings.developerOptions': 'Дополнительно',
   'settings.developerOptionsDesc':
     'Настройки AI, каналы связи, инструменты, диагностика и панели отладки',
+  'settings.developerDiagnostics': 'Разработчик и Диагностика',
+  'settings.developerDiagnosticsDesc':
+    'Расширенные инструменты разработчика, диагностика, память, агенты и панели отладки',
+  'settings.developerMode.title': 'Режим разработчика',
+  'settings.developerMode.description':
+    'Показывать расширенные инструменты разработчика и диагностики',
+  'settings.developerMode.enabledByBuild': 'Всегда включён в сборках разработки',
   'settings.clearAppData': 'Очистить данные приложения',
   'settings.clearAppDataDesc': 'Выйти из аккаунта и удалить все локальные данные приложения',
   'settings.logOut': 'Выйти',
@@ -99,6 +165,14 @@ const messages: TranslationMap = {
   'settings.languageDesc': 'Язык отображения интерфейса',
   'settings.alerts': 'Оповещения',
   'settings.alertsDesc': 'Смотри последние оповещения и активность во входящих',
+  'settings.account.profile': 'Профиль',
+  'settings.account.profileDesc': 'Имя, email и аватар',
+  'settings.account.devices': 'Устройства',
+  'settings.account.devicesDesc': 'Сопрягайте мобильные устройства и управляйте ими',
+  'settings.account.teamMembers': 'Команда и участники',
+  'settings.account.teamMembersDesc': 'Управляйте доступом команды и ролями участников',
+  'settings.account.dataMigration': 'Данные и миграция',
+  'settings.account.dataMigrationDesc': 'Импорт памяти из другого ассистента',
   'settings.account.recoveryPhrase': 'Фраза восстановления',
   'settings.account.recoveryPhraseDesc': 'Просмотр и резервное копирование фразы восстановления',
   'settings.account.team': 'Команда',
@@ -261,7 +335,7 @@ const messages: TranslationMap = {
   'skills.connected': 'Подключено',
   'skills.available': 'Доступно',
   'skills.addAccount': 'Добавить аккаунт',
-  'skills.channels': 'Каналы',
+  'skills.channels': 'Сообщения',
   'skills.explorer.emptyCta': 'Установить по URL',
   'skills.explorer.emptyDescription':
     'Установите пакет SKILL.md или поместите папки в стиле Hermes в ~/.openhuman/skills.',
@@ -289,9 +363,9 @@ const messages: TranslationMap = {
   'skills.explorer.installed': 'Установлено',
   'skills.explorer.install': 'Установить',
   'skills.explorer.installing': 'Установка…',
-  'skills.integrations': 'Интеграции',
+  'skills.integrations': 'Приложения',
   'skills.integrationsSubtitle':
-    'Облачные OAuth-подключения — войдите в свой аккаунт, и Composio управляет токенами, чтобы агенты могли читать и действовать от вашего имени. Никаких API-ключей для управления.',
+    'Облачные OAuth-подключения — войдите в свой аккаунт, и токены управляются безопасно, чтобы агенты могли читать и действовать от вашего имени. Никаких API-ключей для управления.',
   'skills.composio.noApiKeyTitle': 'Ключ API Composio не настроен',
   'skills.composio.noApiKeyDescription':
     'Локальный режим использует ваш собственный ключ API Composio. Откройте Настройки → Дополнительно → Composio, чтобы добавить ключ перед подключением интеграций здесь.',
@@ -301,6 +375,11 @@ const messages: TranslationMap = {
   'skills.tabs.explorer': 'Навыки',
   'skills.tabs.meetings': 'Встречи Google Meet',
   'skills.tabs.mcp': 'MCP Серверы',
+  'connections.tabs.apps': 'Приложения',
+  'connections.tabs.messaging': 'Сообщения',
+  'connections.tabs.tools': 'Инструменты',
+  'connections.tabs.explorer': 'Обозреватель',
+  'connections.tabs.talents': 'Таланты',
   'memory.title': 'Память',
   'memory.search': 'Поиск воспоминаний...',
   'memory.noResults': 'Воспоминания не найдены',
@@ -705,6 +784,7 @@ const messages: TranslationMap = {
   'team.failedChangeRole': 'Не удалось изменить роль.',
   'team.failedRemoveMember': 'Не удалось удалить участника.',
   'devOptions.title': 'Дополнительно',
+  'devOptions.titleDiagnostics': 'Разработчик и Диагностика',
   'devOptions.diagnostics': 'Диагностика',
   'devOptions.diagnosticsDesc': 'Состояние системы, логи и метрики производительности',
   'devOptions.toolPolicyDiagnosticsDesc':
@@ -1835,7 +1915,7 @@ const messages: TranslationMap = {
   'chat.safetyTimeout':
     'Агент не ответил в течение 2 минут. Попробуй снова или проверь соединение.',
   'chat.filter.general': 'Общее',
-  'chat.filter.subconscious': 'Подсознание',
+  'chat.filter.subconscious': 'Фоновая активность',
   'chat.filter.meetings': 'Встречи',
   'chat.filter.tasks': 'Задачи',
   'chat.selectThread': 'Выбери чат',
@@ -3868,6 +3948,12 @@ const messages: TranslationMap = {
   'settings.developerMenu.autonomy.title': 'Автономия агента',
   'settings.developerMenu.autonomy.desc':
     'Ограничения частоты действий инструментов и пороги безопасности',
+  'settings.developerMenu.autocomplete.title': 'Автодополнение',
+  'settings.developerMenu.autocomplete.desc':
+    'Настройки встроенного автодополнения ИИ и панель отладки',
+  'settings.developerMenu.voiceDebug.title': 'Голос (отладка)',
+  'settings.developerMenu.voiceDebug.desc':
+    'Состояние среды выполнения голосового диктовки и настройки отладки',
   'settings.mcpServer.title': 'MCP',
   'settings.mcpServer.toolsSectionTitle': 'Доступные инструменты',
   'settings.mcpServer.toolsSectionDesc':
@@ -3969,6 +4055,27 @@ const messages: TranslationMap = {
   'settings.agentAccess.approvalHistoryDesc':
     'Просмотр прошлых решений Одобрить / Отклонить, запрошенных агентом.',
   'settings.agentAccess.viewApprovalHistory': 'Просмотреть историю утверждений',
+
+  // ── Панель разрешений ─────────────────────────────────────────────
+  'settings.permissions.title': 'Разрешения',
+  'settings.permissions.menuDesc':
+    'Выберите, что может делать ваш помощник и где он может работать.',
+  'settings.permissions.accessMode': 'Что может делать помощник?',
+  'settings.permissions.accessModeDesc':
+    'Выберите, насколько свободен помощник при выполнении действий на вашем компьютере.',
+  'settings.permissions.preset.readonly.title': 'Смотреть, не трогать',
+  'settings.permissions.preset.readonly.desc':
+    'Помощник может читать файлы и исследовать систему — но никогда не пишет, не редактирует и не запускает ничего, что изменяет состояние.',
+  'settings.permissions.preset.supervised.title': 'Сначала спросить',
+  'settings.permissions.preset.supervised.desc':
+    'Может свободно создавать новые файлы, но всегда запрашивает ваше одобрение перед редактированием, выполнением команд или доступом к сети.',
+  'settings.permissions.preset.full.title': 'Полный контроль',
+  'settings.permissions.preset.full.desc':
+    'Работает с полным доступом к вашей учётной записи. Деструктивные команды, доступ к сети и установка всё равно требуют одобрения.',
+  'settings.permissions.folders': 'Где он может работать?',
+  'settings.permissions.foldersDesc':
+    'Папка по умолчанию, которую помощник читает и в которую пишет. В расширенных настройках можно добавить другие папки.',
+
   'settings.sandbox.title': 'Выполнение в песочнице',
   'settings.sandbox.menuDesc': 'Настройте бэкенды песочницы для изоляции инструментов агента.',
   'settings.sandbox.loading': 'Загрузка…',
@@ -4188,7 +4295,7 @@ const messages: TranslationMap = {
   'skills.channelIcon.telegram': 'Telegram',
   'skills.channelIcon.web': 'Интернет',
   'skills.channelIcon.yuanbao': 'Yuanbao',
-  'skills.composio.poweredBy': 'Работает на Composio',
+  'skills.composio.poweredBy': 'OAuth',
   'skills.composio.staleStatusTitle': 'Соединения показывают устаревший статус',
   'skills.create.allowedTools': 'Разрешённые инструменты',
   'skills.create.allowedToolsHelp': 'Отображается в SKILL.md как',
@@ -4826,6 +4933,12 @@ const messages: TranslationMap = {
   'autocomplete.maxChars': 'Макс. символов контекста',
   'autocomplete.overlayTtlMs': 'Тайм-аут наложения (мс)',
   'memory.tab.council': 'Council',
+  'activity.tabs.automations': 'Автоматизации',
+  'activity.tabs.automationsDescription':
+    'Многократно используемые, запускаемые процедуры — цель и шаги для её достижения.',
+  'activity.tabs.backgroundActivity': 'Фоновая активность',
+  'activity.tabs.alerts': 'Уведомления',
+
   'intelligence.agents.title': 'Библиотека агентов',
   'intelligence.agents.subtitle':
     'Просматривайте доступных специалистов и отправляйте задачу выбранному агенту.',

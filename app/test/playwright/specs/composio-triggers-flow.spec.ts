@@ -74,24 +74,20 @@ async function bootSkillsPage(page: Page, userId: string) {
       localStorage.setItem('openhuman:walkthrough_completed', 'true');
       localStorage.removeItem('openhuman:walkthrough_pending');
     } catch {}
-    window.location.hash = '/skills';
+    // Phase 2: /skills → /connections
+    window.location.hash = '/connections';
   });
   await expect
     .poll(async () => page.evaluate(() => window.location.hash), { timeout: 10_000 })
-    .toContain('/skills');
+    .toContain('/connections');
   await waitForAppReady(page);
   await dismissWalkthroughIfPresent(page);
-  await page.getByRole('tab', { name: 'Composio' }).click();
-  const heading = page.getByRole('heading', { name: 'Composio Integrations' });
-  if (!(await heading.isVisible().catch(() => false))) {
-    const connectionsButton = page.getByRole('button', { name: 'Connections' });
-    if (await connectionsButton.isVisible().catch(() => false)) {
-      await connectionsButton.click({ force: true });
-      await waitForAppReady(page);
-      await dismissWalkthroughIfPresent(page);
-    }
-  }
-  await expect(heading).toBeVisible({ timeout: 20_000 });
+  // Phase 2: "Composio" tab renamed to "Apps"
+  await page.getByRole('tab', { name: 'Apps' }).click();
+  // Phase 2: heading is now "Apps" (skills.integrations), "Composio Integrations" removed
+  await expect(page.getByRole('heading', { name: 'Apps', exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
 }
 
 async function openGmailManageModal(page: Page) {
@@ -190,8 +186,9 @@ test.describe('Composio triggers flow', () => {
     await page.reload();
     await waitForAppReady(page);
     await dismissWalkthroughIfPresent(page);
-    await page.getByRole('tab', { name: 'Composio' }).click();
-    await expect(page.getByRole('heading', { name: 'Composio Integrations' })).toBeVisible({
+    // Phase 2: "Composio" tab renamed to "Apps"; heading is now "Apps"
+    await page.getByRole('tab', { name: 'Apps' }).click();
+    await expect(page.getByRole('heading', { name: 'Apps', exact: true })).toBeVisible({
       timeout: 20_000,
     });
 

@@ -124,7 +124,9 @@ describe('DeveloperOptionsPanel — CoreModeBadge', () => {
     );
 
     expect(screen.getByText('AI 配置')).toBeInTheDocument();
-    expect(screen.getByText('屏幕感知')).toBeInTheDocument();
+    // Two screen-awareness rows now exist (the moved settings row + the debug
+    // panel), which collapse to the same zh-CN label — assert at least one.
+    expect(screen.getAllByText('屏幕感知').length).toBeGreaterThan(0);
     // The messaging tile was removed; composio replaced it as a single destination.
     expect(screen.getByText('Composio')).toBeInTheDocument();
   });

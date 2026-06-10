@@ -16,11 +16,12 @@ async function openSkillsPage(page: Parameters<typeof test>[0]['page'], userId: 
       localStorage.setItem('openhuman:walkthrough_completed', 'true');
       localStorage.removeItem('openhuman:walkthrough_pending');
     } catch {}
-    window.location.hash = '/skills';
+    // /skills redirects to /connections (Phase 2 rename)
+    window.location.hash = '/connections';
   });
   await expect
     .poll(async () => page.evaluate(() => window.location.hash), { timeout: 10_000 })
-    .toContain('/skills');
+    .toContain('/connections');
   await waitForAppReady(page);
   await dismissWalkthroughIfPresent(page);
 }
@@ -31,12 +32,16 @@ test.describe('Skills registry flow', () => {
     await openSkillsPage(page, 'pw-skills-registry-' + testSlug);
   });
 
-  test('navigates to /skills and renders the current tabs', async ({ page }) => {
-    await expect(page.getByRole('tab', { name: 'Composio' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'Channels' })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'MCP Servers' })).toBeVisible();
-    await page.getByRole('tab', { name: 'Composio' }).click();
-    await expect(page.getByRole('heading', { name: 'Composio Integrations' })).toBeVisible();
+  test('navigates to /connections and renders the current tabs', async ({ page }) => {
+    // Phase 2: tabs renamed — Apps (was Composio), Messaging (was Channels), Tools (was MCP).
+    // `exact: true` on Tools avoids colliding with the "Tools & Automation" skill
+    // category pill (also role="tab").
+    await expect(page.getByRole('tab', { name: 'Apps', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Messaging', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Tools', exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: 'Apps', exact: true }).click();
+    // Phase 2: heading is now "Apps" (skills.integrations), "Composio Integrations" removed
+    await expect(page.getByRole('heading', { name: 'Apps', exact: true })).toBeVisible();
     await expect(
       page.getByText(/Gmail|Notion|Telegram|GitHub|Google Drive/, { exact: false }).first()
     ).toBeVisible();
@@ -48,14 +53,17 @@ test.describe('Skills registry flow', () => {
     ).toBeVisible();
   });
 
-  test('channels tab renders messaging connectors', async ({ page }) => {
-    await page.getByRole('tab', { name: 'Channels' }).click();
-    await expect(page.getByRole('heading', { name: 'Channels' })).toBeVisible();
+  test('messaging tab renders messaging connectors', async ({ page }) => {
+    // Phase 2: "Channels" tab renamed to "Messaging". The standalone "Channels"
+    // heading is gone; the connector cards are the meaningful content.
+    await page.getByRole('tab', { name: 'Messaging', exact: true }).click();
     await expect(page.getByText(/Telegram|Discord|Slack/).first()).toBeVisible();
   });
 
-  test('mcp tab renders the server table', async ({ page }) => {
-    await page.getByRole('tab', { name: 'MCP Servers' }).click();
+  test('tools tab renders the server table', async ({ page }) => {
+    // Phase 2: "MCP Servers" tab renamed to "Tools" (exact to avoid the
+    // "Tools & Automation" category pill).
+    await page.getByRole('tab', { name: 'Tools', exact: true }).click();
     await expect(
       page
         .getByRole('searchbox')

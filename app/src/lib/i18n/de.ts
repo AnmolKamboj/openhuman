@@ -6,6 +6,11 @@ const messages: TranslationMap = {
   'nav.home': 'Start',
   'nav.human': 'Mensch',
   'nav.chat': 'Chat',
+  'nav.assistant': 'Assistent',
+  'assistant.faceMode.on': 'Spricht mit Tiny',
+  'assistant.faceMode.off': 'Mit Tiny sprechen',
+  'assistant.faceMode.turnOn': 'Maskottchen anzeigen',
+  'assistant.faceMode.turnOff': 'Maskottchen ausblenden',
   'nav.connections': 'Verbindungen',
   'nav.memory': 'Intelligenz',
   'nav.alerts': 'Benachrichtigungen',
@@ -15,6 +20,12 @@ const messages: TranslationMap = {
   'nav.switchAgentProfile': 'Agentenprofil wechseln',
   'nav.defaultAgentProfile': 'Standardagent',
   'nav.noAgentProfiles': 'Keine Agentenprofile gefunden',
+  'nav.activity': 'Aktivität',
+  'nav.avatarMenu.account': 'Konto',
+  'nav.avatarMenu.billing': 'Abrechnung',
+  'nav.avatarMenu.rewards': 'Prämien',
+  'nav.avatarMenu.invites': 'Freund einladen',
+  'nav.avatarMenu.wallet': 'Wallet',
   'common.cancel': 'Abbrechen',
   'common.save': 'Speichern',
   'common.confirm': 'Bestätigen',
@@ -59,6 +70,54 @@ const messages: TranslationMap = {
   'common.comingSoon': 'Demnächst verfügbar',
   'common.breadcrumb': 'Breadcrumb',
   'settings.general': 'Allgemein',
+  // Settings layman groups (Phase 4 IA revamp)
+  'settings.groups.account': 'Konto',
+  'settings.groups.assistant': 'Assistent',
+  'settings.groups.privacySecurity': 'Datenschutz & Sicherheit',
+  'settings.groups.notifications': 'Benachrichtigungen',
+  'settings.groups.about': 'Über',
+  'settings.assistant.personality': 'Persönlichkeit',
+  'settings.assistant.personalityDesc': 'Name, Beschreibung und SOUL.md-Persona',
+  'settings.assistant.voice': 'Stimme',
+  'settings.assistant.voiceDesc': 'Sprache-zu-Text und Text-zu-Sprache Einstellungen',
+  'settings.assistant.faceMascot': 'Gesicht / Maskottchen',
+  'settings.assistant.faceMascotDesc': 'Maskottchen-Farbe in der App auswählen',
+  'settings.assistant.backgroundActivity': 'Hintergrundaktivität',
+  'settings.assistant.backgroundActivityDesc':
+    'Steuern, wie aktiv Ihr Assistent im Hintergrund arbeitet',
+  'settings.assistant.screenAwareness': 'Bildschirmbewusstsein',
+  'settings.assistant.screenAwarenessDesc': 'Dem Assistenten das aktive Fenster zeigen',
+  'settings.assistant.desktopCompanion': 'Desktop-Begleiter',
+  'settings.assistant.desktopCompanionDesc':
+    'Immer aktiver Begleiter-Modus mit System-Tray-Shortcut',
+  'settings.assistant.permissions': 'Berechtigungen',
+  'settings.assistant.permissionsDesc': 'Wähle, was der Assistent tun darf und wo er arbeiten kann',
+  'settings.privacySecurity.privacy': 'Datenschutz',
+  'settings.privacySecurity.privacyDesc': 'Kontrollieren, welche Daten Ihren Computer verlassen',
+  'settings.privacySecurity.security': 'Sicherheit',
+  'settings.privacySecurity.securityDesc': 'Sitzungen und Anmeldeoptionen',
+  'settings.privacySecurity.approvalsHistory': 'Genehmigungen & Verlauf',
+  'settings.privacySecurity.approvalsHistoryDesc':
+    'Aktuelle Tool-Genehmigungsentscheidungen überprüfen',
+  'settings.notifications.menuTitle': 'Benachrichtigungen',
+  'settings.notifications.menuDesc': 'Benachrichtigungs-Posteingang und -Einstellungen',
+  'settings.devGroups.knowledgeMemory': 'Wissen & Gedächtnis',
+  'settings.devGroups.agentsAutonomy': 'Agenten & Autonomie',
+  'settings.devGroups.modelsInference': 'Modelle & Inferenz',
+  'settings.devGroups.automationIntegrations': 'Automatisierung & Integrationen',
+  'settings.devGroups.toolsCapabilities': 'Tools & Fähigkeiten',
+  'settings.devGroups.council': 'Rat',
+  'settings.analysisViews.title': 'Analyseansichten',
+  'settings.analysisViews.menuDesc':
+    'Speichergraph-Analyse — Diagramm, Zentralität, Kohäsion, Verknüpfungen, Aktualität, Zeitachse, Pfade und Namensräume',
+  'settings.buildInfo.title': 'Build-/Versionsinfo',
+  'settings.buildInfo.menuDesc': 'App-Build, Version und Details zur Core-Verbindung',
+  'settings.dataSync.title': 'Datensynchronisierung',
+  'settings.dataSync.menuDesc':
+    'Was dein Assistent synchronisiert — Quellen, Aktualität und Status',
+  'settings.dataSync.description':
+    'Verwalte, was in den Speicher deines Assistenten synchronisiert wird: jede verbundene Quelle mit ihrer letzten Synchronisierungszeit, wie viel synchronisiert ist und ob gerade synchronisiert wird.',
+  'settings.devGroups.diagnosticsLogs': 'Diagnose & Protokolle',
   'settings.featuresAndAI': 'Funktionen und KI',
   'settings.billingAndRewards': 'Abrechnung und Prämien',
   'settings.support': 'Unterstützung',
@@ -87,6 +146,12 @@ const messages: TranslationMap = {
   'settings.developerOptions': 'Fortgeschritten',
   'settings.developerOptionsDesc':
     'KI-Konfiguration, Nachrichtenkanäle, Tools, Diagnose und Debug-Panels',
+  'settings.developerDiagnostics': 'Entwickler & Diagnose',
+  'settings.developerDiagnosticsDesc':
+    'Erweiterte Entwickler-Tools, Diagnose, Speicher, Agents und Debug-Panels',
+  'settings.developerMode.title': 'Entwicklermodus',
+  'settings.developerMode.description': 'Erweiterte Entwickler- und Diagnose-Tools anzeigen',
+  'settings.developerMode.enabledByBuild': 'In Entwicklungs-Builds immer aktiviert',
   'settings.clearAppData': 'App-Daten löschen',
   'settings.clearAppDataDesc': 'Melde dich ab und lösche alle lokalen App-Daten dauerhaft',
   'settings.logOut': 'Abmelden',
@@ -99,6 +164,14 @@ const messages: TranslationMap = {
   'settings.alerts': 'Warnungen',
   'settings.alertsDesc':
     'Sieh dir aktuelle Benachrichtigungen und Aktivitäten in deinem Posteingang an',
+  'settings.account.profile': 'Profil',
+  'settings.account.profileDesc': 'Name, E-Mail und Avatar',
+  'settings.account.devices': 'Geräte',
+  'settings.account.devicesDesc': 'Mobile Geräte koppeln und verwalten',
+  'settings.account.teamMembers': 'Team & Mitglieder',
+  'settings.account.teamMembersDesc': 'Teamzugang und Mitgliederrollen verwalten',
+  'settings.account.dataMigration': 'Daten & Migration',
+  'settings.account.dataMigrationDesc': 'Erinnerungen aus einem anderen Assistenten importieren',
   'settings.account.recoveryPhrase': 'Wiederherstellungssatz',
   'settings.account.recoveryPhraseDesc':
     'Sieh dir deinen Kontowiederherstellungssatz an und sichere ihn',
@@ -268,7 +341,7 @@ const messages: TranslationMap = {
   'skills.connected': 'Verbunden',
   'skills.available': 'Verfügbar',
   'skills.addAccount': 'Konto hinzufügen',
-  'skills.channels': 'Kanäle',
+  'skills.channels': 'Messaging',
   'skills.explorer.emptyCta': 'Von URL installieren',
   'skills.explorer.emptyDescription':
     'Installiere ein SKILL.md-Paket oder lege Hermes-artige Ordner unter ~/.openhuman/skills ab.',
@@ -296,9 +369,9 @@ const messages: TranslationMap = {
   'skills.explorer.installed': 'Installiert',
   'skills.explorer.install': 'Installieren',
   'skills.explorer.installing': 'Wird installiert…',
-  'skills.integrations': 'Integrationen',
+  'skills.integrations': 'Apps',
   'skills.integrationsSubtitle':
-    'Cloud-basierte OAuth-Verbindungen – mit deinem Konto anmelden und Composio verwaltet die Tokens, damit Agenten in deinem Namen lesen und handeln können. Keine API-Schlüssel notwendig.',
+    'Cloud-basierte OAuth-Verbindungen – mit deinem Konto anmelden und Tokens werden sicher verwaltet, damit Agenten in deinem Namen lesen und handeln können. Keine API-Schlüssel notwendig.',
   'skills.composio.noApiKeyTitle': 'Kein Composio-API-Schlüssel konfiguriert',
   'skills.composio.noApiKeyDescription':
     'Im lokalen Modus wird dein eigener Composio-API-Schlüssel verwendet. Öffne Einstellungen → Erweitert → Composio, um einen Schlüssel hinzuzufügen, bevor du hier Integrationen verbindest.',
@@ -308,6 +381,11 @@ const messages: TranslationMap = {
   'skills.tabs.explorer': 'Skills',
   'skills.tabs.meetings': 'Google Meet-Besprechungen',
   'skills.tabs.mcp': 'MCP Server',
+  'connections.tabs.apps': 'Apps',
+  'connections.tabs.messaging': 'Nachrichten',
+  'connections.tabs.tools': 'Werkzeuge',
+  'connections.tabs.explorer': 'Erkunden',
+  'connections.tabs.talents': 'Talente',
   'memory.title': 'Erinnerung',
   'memory.search': 'Erinnerungen suchen...',
   'memory.noResults': 'Keine Erinnerungen gefunden',
@@ -719,6 +797,7 @@ const messages: TranslationMap = {
   'team.failedChangeRole': 'Rolle konnte nicht geändert werden.',
   'team.failedRemoveMember': 'Mitglied konnte nicht entfernt werden.',
   'devOptions.title': 'Fortgeschritten',
+  'devOptions.titleDiagnostics': 'Entwickler & Diagnose',
   'devOptions.diagnostics': 'Diagnose',
   'devOptions.diagnosticsDesc': 'Systemzustand, Protokolle und Leistungsmetriken',
   'devOptions.toolPolicyDiagnosticsDesc':
@@ -1868,7 +1947,7 @@ const messages: TranslationMap = {
   'chat.safetyTimeout':
     'Keine Antwort vom Agenten nach 2 Minuten. Versuche es erneut oder prüfe deine Verbindung.',
   'chat.filter.general': 'Allgemein',
-  'chat.filter.subconscious': 'Unterbewusstsein',
+  'chat.filter.subconscious': 'Hintergrundaktivität',
   'chat.filter.meetings': 'Meetings',
   'chat.filter.tasks': 'Aufgaben',
   'chat.selectThread': 'Wähle einen Thread aus',
@@ -3932,6 +4011,12 @@ const messages: TranslationMap = {
   'settings.developerMenu.autonomy.title': 'Agent-Autonomie',
   'settings.developerMenu.autonomy.desc':
     'Aktionsraten-Limits und Sicherheitsschwellen für Werkzeuge',
+  'settings.developerMenu.autocomplete.title': 'Autovervollständigung',
+  'settings.developerMenu.autocomplete.desc':
+    'KI-Inline-Autovervollständigung Einstellungen und Debug-Panel',
+  'settings.developerMenu.voiceDebug.title': 'Sprache (Debug)',
+  'settings.developerMenu.voiceDebug.desc':
+    'Laufzeitstatus und Debug-Einstellungen für die Sprachdiktierung',
   'settings.mcpServer.title': 'MCP-Server',
   'settings.mcpServer.toolsSectionTitle': 'Verfügbare Werkzeuge',
   'settings.mcpServer.toolsSectionDesc':
@@ -4035,6 +4120,26 @@ const messages: TranslationMap = {
   'settings.agentAccess.approvalHistoryDesc':
     'Vergangene Genehmigen-/Ablehnen-Entscheidungen des Agenten überprüfen.',
   'settings.agentAccess.viewApprovalHistory': 'Genehmigungsverlauf anzeigen',
+
+  // ── Berechtigungen-Panel ──────────────────────────────────────────
+  'settings.permissions.title': 'Berechtigungen',
+  'settings.permissions.menuDesc': 'Wähle, was dein Assistent tun darf und wo er arbeiten kann.',
+  'settings.permissions.accessMode': 'Was darf der Assistent tun?',
+  'settings.permissions.accessModeDesc':
+    'Wähle, wie viel Freiheit der Assistent hat, wenn er Aktionen auf deinem Computer ausführt.',
+  'settings.permissions.preset.readonly.title': 'Schauen, nicht anfassen',
+  'settings.permissions.preset.readonly.desc':
+    'Der Assistent kann Dateien lesen und erkunden – aber niemals schreiben, bearbeiten oder etwas ausführen, das den Zustand ändert.',
+  'settings.permissions.preset.supervised.title': 'Erst fragen',
+  'settings.permissions.preset.supervised.desc':
+    'Kann neue Dateien frei erstellen, fragt aber immer um Erlaubnis, bevor er bearbeitet, Befehle ausführt oder auf das Netzwerk zugreift.',
+  'settings.permissions.preset.full.title': 'Volle Kontrolle',
+  'settings.permissions.preset.full.desc':
+    'Läuft mit deinem vollen Kontozugriff. Destruktive Befehle, Netzwerkzugriff und Installationen erfordern weiterhin eine Genehmigung.',
+  'settings.permissions.folders': 'Wo darf er arbeiten?',
+  'settings.permissions.foldersDesc':
+    'Der Standardordner, den der Assistent liest und beschreibt. In den erweiterten Einstellungen kannst du weitere Ordner hinzufügen.',
+
   'settings.sandbox.title': 'Sandbox-Ausführung',
   'settings.sandbox.menuDesc':
     'Sandbox-Backends für die Isolation von Agentenwerkzeugen konfigurieren.',
@@ -4259,7 +4364,7 @@ const messages: TranslationMap = {
   'skills.channelIcon.telegram': 'Telegram',
   'skills.channelIcon.web': 'Web',
   'skills.channelIcon.yuanbao': 'Yuanbao',
-  'skills.composio.poweredBy': 'Unterstützt von Composio',
+  'skills.composio.poweredBy': 'OAuth',
   'skills.composio.staleStatusTitle': 'Verbindungen zeigen den veralteten Status an',
   'skills.create.allowedTools': 'Erlaubte Werkzeuge',
   'skills.create.allowedToolsHelp': 'Im SKILL.md-Frontmatter gerendert als',
@@ -4904,6 +5009,12 @@ const messages: TranslationMap = {
   'autocomplete.maxChars': 'Maximale Kontextzeichen',
   'autocomplete.overlayTtlMs': 'Overlay-Timeout (ms)',
   'memory.tab.council': 'Council',
+  'activity.tabs.automations': 'Automatisierungen',
+  'activity.tabs.automationsDescription':
+    'Wiederverwendbare, ausführbare Abläufe — ein Ziel und die Schritte dorthin.',
+  'activity.tabs.backgroundActivity': 'Hintergrundaktivität',
+  'activity.tabs.alerts': 'Benachrichtigungen',
+
   'intelligence.agents.title': 'Agentenbibliothek',
   'intelligence.agents.subtitle':
     'Prüfe ausführbare Spezialisten und sende eine Aufgabe an einen benannten Agenten.',

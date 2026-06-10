@@ -10,6 +10,7 @@ import AgentChatPanel from '../components/settings/panels/AgentChatPanel';
 import AgentEditorPage from '../components/settings/panels/AgentEditorPage';
 import AgentsPanel from '../components/settings/panels/AgentsPanel';
 import AIPanel from '../components/settings/panels/AIPanel';
+import AnalysisViewsPanel from '../components/settings/panels/AnalysisViewsPanel';
 import AppearancePanel from '../components/settings/panels/AppearancePanel';
 import ApprovalHistoryPanel from '../components/settings/panels/ApprovalHistoryPanel';
 import AutocompleteDebugPanel from '../components/settings/panels/AutocompleteDebugPanel';
@@ -32,9 +33,11 @@ import MascotPanel from '../components/settings/panels/MascotPanel';
 import McpServerPanel from '../components/settings/panels/McpServerPanel';
 import MemoryDataPanel from '../components/settings/panels/MemoryDataPanel';
 import MemoryDebugPanel from '../components/settings/panels/MemoryDebugPanel';
+import MemorySyncPanel from '../components/settings/panels/MemorySyncPanel';
 import MigrationPanel from '../components/settings/panels/MigrationPanel';
 import ModelHealthPanel from '../components/settings/panels/ModelHealthPanel';
 import NotificationsTabbedPanel from '../components/settings/panels/NotificationsTabbedPanel';
+import PermissionsPanel from '../components/settings/panels/PermissionsPanel';
 import PersonaPanel from '../components/settings/panels/PersonaPanel';
 import PrivacyPanel from '../components/settings/panels/PrivacyPanel';
 import RecoveryPhrasePanel from '../components/settings/panels/RecoveryPhrasePanel';
@@ -120,16 +123,6 @@ const ScreenIcon = (
       strokeLinejoin="round"
       strokeWidth={2}
       d="M3 5h18v12H3zM8 21h8m-4-4v4"
-    />
-  </svg>
-);
-const MessagingIcon = (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M8 10h.01M12 10h.01M16 10h.01M21 11c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 19l1.395-3.72C3.512 14.042 3 12.574 3 11c0-4.418 4.03-8 9-8s9 3.582 9 8z"
     />
   </svg>
 );
@@ -235,7 +228,9 @@ const WalletIcon = (
 
 const WrappedSettingsPage = ({
   children,
-  maxWidthClass = 'max-w-lg',
+  // Default widened ~30% (max-w-lg 512px → max-w-2xl 672px) for a roomier
+  // settings list per design feedback.
+  maxWidthClass = 'max-w-2xl',
 }: {
   children: ReactNode;
   maxWidthClass?: string;
@@ -341,13 +336,8 @@ const Settings = () => {
       icon: ScreenIcon,
     },
     // Autocomplete + Voice Dictation hidden per #717 (routes retained for re-enable).
-    {
-      id: 'messaging',
-      title: t('pages.settings.features.messagingChannels'),
-      description: t('pages.settings.features.messagingChannelsDesc'),
-      route: 'messaging',
-      icon: MessagingIcon,
-    },
+    // Dead "messaging" menu item removed (Phase 2): the route `messaging` never
+    // existed in Settings — messaging channels live at /connections (Messaging tab).
     {
       id: 'notifications',
       title: t('pages.settings.features.notifications'),
@@ -603,6 +593,7 @@ const Settings = () => {
         <Route path="persona" element={wrapSettingsPage(<PersonaPanel />)} />
         <Route path="appearance" element={wrapSettingsPage(<AppearancePanel />)} />
         <Route path="agent-access" element={wrapSettingsPage(<AgentAccessPanel />)} />
+        <Route path="permissions" element={wrapSettingsPage(<PermissionsPanel />)} />
         <Route path="activity-level" element={wrapSettingsPage(<AgentActivityPanel />)} />
         <Route path="sandbox-settings" element={wrapSettingsPage(<SandboxSettingsPanel />)} />
         <Route path="approval-history" element={wrapSettingsPage(<ApprovalHistoryPanel />)} />
@@ -659,8 +650,16 @@ const Settings = () => {
           path="model-health"
           element={wrapSettingsPage(<ModelHealthPanel />, { maxWidthClass: 'max-w-4xl' })}
         />
+        <Route
+          path="memory-sync"
+          element={wrapSettingsPage(<MemorySyncPanel />, { maxWidthClass: 'max-w-4xl' })}
+        />
         <Route path="memory-data" element={wrapSettingsPage(<MemoryDataPanel />)} />
         <Route path="memory-debug" element={wrapSettingsPage(<MemoryDebugPanel />)} />
+        <Route
+          path="analysis-views"
+          element={wrapSettingsPage(<AnalysisViewsPanel />, { maxWidthClass: 'max-w-4xl' })}
+        />
         <Route path="intelligence" element={<Intelligence />} />
         <Route path="webhooks-triggers" element={<Webhooks />} />
         <Route path="composio-triggers" element={wrapSettingsPage(<ComposioTriagePanel />)} />

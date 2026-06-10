@@ -5,6 +5,13 @@ const en: TranslationMap = {
   'nav.home': 'Home',
   'nav.human': 'Human',
   'nav.chat': 'Chat',
+  'nav.assistant': 'Assistant',
+
+  // Assistant surface — face mode toggle (Phase 6)
+  'assistant.faceMode.on': 'Talking to Tiny',
+  'assistant.faceMode.off': 'Talk to Tiny',
+  'assistant.faceMode.turnOn': 'Show mascot face',
+  'assistant.faceMode.turnOff': 'Hide mascot face',
   'nav.connections': 'Connections',
   'nav.memory': 'Intelligence',
   'nav.alerts': 'Alerts',
@@ -14,6 +21,12 @@ const en: TranslationMap = {
   'nav.switchAgentProfile': 'Switch agent profile',
   'nav.defaultAgentProfile': 'Default agent',
   'nav.noAgentProfiles': 'No agent profiles found',
+  'nav.activity': 'Activity',
+  'nav.avatarMenu.account': 'Account',
+  'nav.avatarMenu.billing': 'Billing',
+  'nav.avatarMenu.rewards': 'Rewards',
+  'nav.avatarMenu.invites': 'Invite a friend',
+  'nav.avatarMenu.wallet': 'Wallet',
 
   // Common
   'common.cancel': 'Cancel',
@@ -69,6 +82,60 @@ const en: TranslationMap = {
   'settings.dangerZone': 'Danger Zone',
   'settings.account': 'Account',
   'settings.accountDesc': 'Recovery phrase, team, connections, and privacy',
+
+  // Settings layman groups (Phase 4 IA revamp)
+  'settings.groups.account': 'Account',
+  'settings.groups.assistant': 'Assistant',
+  'settings.groups.privacySecurity': 'Privacy & Security',
+  'settings.groups.notifications': 'Notifications',
+  'settings.groups.about': 'About',
+
+  // Settings — assistant group items
+  'settings.assistant.personality': 'Personality',
+  'settings.assistant.personalityDesc': 'Name, description, and SOUL.md persona',
+  'settings.assistant.voice': 'Voice',
+  'settings.assistant.voiceDesc': 'Speech-to-text and text-to-speech settings',
+  'settings.assistant.faceMascot': 'Face / Mascot',
+  'settings.assistant.faceMascotDesc': 'Pick the mascot color used across the app',
+  'settings.assistant.backgroundActivity': 'Background activity',
+  'settings.assistant.backgroundActivityDesc':
+    'Control how actively your assistant works in the background',
+  'settings.assistant.screenAwareness': 'Screen awareness',
+  'settings.assistant.screenAwarenessDesc': 'Let the assistant see your active window',
+  'settings.assistant.desktopCompanion': 'Desktop companion',
+  'settings.assistant.desktopCompanionDesc': 'Always-on companion mode with a system-tray shortcut',
+  'settings.assistant.permissions': 'Permissions',
+  'settings.assistant.permissionsDesc': 'Choose what the assistant can do and where it can work',
+
+  // Settings — privacy & security group items
+  'settings.privacySecurity.privacy': 'Privacy',
+  'settings.privacySecurity.privacyDesc': 'Control what data leaves your computer',
+  'settings.privacySecurity.security': 'Security',
+  'settings.privacySecurity.securityDesc': 'Sessions and sign-in options',
+  'settings.privacySecurity.approvalsHistory': 'Approvals & history',
+  'settings.privacySecurity.approvalsHistoryDesc': 'Review recent tool-approval decisions',
+
+  // Settings — notifications group items
+  'settings.notifications.menuTitle': 'Notifications',
+  'settings.notifications.menuDesc': 'Alerts inbox and notification preferences',
+
+  // Developer & Diagnostics — 7 sub-section group labels
+  'settings.devGroups.knowledgeMemory': 'Knowledge & Memory',
+  'settings.devGroups.agentsAutonomy': 'Agents & Autonomy',
+  'settings.devGroups.modelsInference': 'Models & Inference',
+  'settings.devGroups.automationIntegrations': 'Automation & Integrations',
+  'settings.devGroups.toolsCapabilities': 'Tools & Capabilities',
+  'settings.devGroups.council': 'Council',
+  'settings.analysisViews.title': 'Analysis views',
+  'settings.analysisViews.menuDesc':
+    'Memory graph analysis — diagram, centrality, cohesion, associations, freshness, timeline, paths, and namespaces',
+  'settings.buildInfo.title': 'Build / version info',
+  'settings.buildInfo.menuDesc': 'App build, version, and core connection details',
+  'settings.dataSync.title': 'Data Sync',
+  'settings.dataSync.menuDesc': 'What your assistant syncs — sources, freshness, and status',
+  'settings.dataSync.description':
+    "Manage what gets synced into your assistant's memory: every connected source with its last-synced time, how much is synced, and whether it's syncing right now.",
+  'settings.devGroups.diagnosticsLogs': 'Diagnostics & Logs',
   'settings.notifications': 'Notifications',
   'settings.notificationsDesc': 'Do Not Disturb and per-account notification controls',
   'settings.notifications.tabs.preferences': 'Preferences',
@@ -90,6 +157,14 @@ const en: TranslationMap = {
   'settings.developerOptions': 'Advanced',
   'settings.developerOptionsDesc':
     'AI configuration, messaging channels, tools, diagnostics, and debug panels',
+  // Developer & Diagnostics (renamed from "Developer Options")
+  'settings.developerDiagnostics': 'Developer & Diagnostics',
+  'settings.developerDiagnosticsDesc':
+    'Advanced developer tools, diagnostics, memory, agents, and debug panels',
+  // Runtime Developer Mode toggle (in About panel)
+  'settings.developerMode.title': 'Developer mode',
+  'settings.developerMode.description': 'Show advanced developer & diagnostic tools',
+  'settings.developerMode.enabledByBuild': 'Always on in development builds',
   'settings.clearAppData': 'Clear App Data',
   'settings.clearAppDataDesc': 'Sign out and permanently clear all local app data',
   'settings.logOut': 'Log out',
@@ -101,6 +176,16 @@ const en: TranslationMap = {
   'settings.languageDesc': 'Display language for the app interface',
   'settings.alerts': 'Alerts',
   'settings.alertsDesc': 'View recent alerts and activity in your inbox',
+
+  // Settings: Account — IA revamp group items (SettingsHome.tsx)
+  'settings.account.profile': 'Profile',
+  'settings.account.profileDesc': 'Name, email, and avatar',
+  'settings.account.devices': 'Devices',
+  'settings.account.devicesDesc': 'Pair and manage mobile devices',
+  'settings.account.teamMembers': 'Team & members',
+  'settings.account.teamMembersDesc': 'Manage team access and member roles',
+  'settings.account.dataMigration': 'Data & migration',
+  'settings.account.dataMigrationDesc': 'Import memory from another assistant',
 
   // Settings: Account
   'settings.account.recoveryPhrase': 'Recovery Phrase',
@@ -284,7 +369,7 @@ const en: TranslationMap = {
   'skills.connected': 'Connected',
   'skills.available': 'Available',
   'skills.addAccount': 'Add Account',
-  'skills.channels': 'Channels',
+  'skills.channels': 'Messaging',
   'skills.explorer.emptyCta': 'Install from URL',
   'skills.explorer.emptyDescription':
     'Install a SKILL.md package or place Hermes-style folders under ~/.openhuman/skills.',
@@ -312,9 +397,9 @@ const en: TranslationMap = {
   'skills.explorer.installed': 'Installed',
   'skills.explorer.install': 'Install',
   'skills.explorer.installing': 'Installing…',
-  'skills.integrations': 'Composio Integrations',
+  'skills.integrations': 'Apps',
   'skills.integrationsSubtitle':
-    'Cloud-based OAuth connections — sign in with your account and Composio brokers the tokens so agents can read and act on your behalf. No API keys to manage.',
+    'Cloud-based OAuth connections — sign in with your account and tokens are brokered securely so agents can read and act on your behalf. No API keys to manage.',
   'skills.composio.noApiKeyTitle': 'No Composio API Key Configured',
   'skills.composio.noApiKeyDescription':
     'Local mode uses your own Composio API key. Open Settings → Advanced → Composio to add one before connecting integrations here.',
@@ -324,6 +409,12 @@ const en: TranslationMap = {
   'skills.tabs.explorer': 'Skills',
   'skills.tabs.meetings': 'Google Meet',
   'skills.tabs.mcp': 'MCP Servers',
+  // Connections page tabs (Phase 2 rename)
+  'connections.tabs.apps': 'Apps',
+  'connections.tabs.messaging': 'Messaging',
+  'connections.tabs.tools': 'Tools',
+  'connections.tabs.explorer': 'Explorer',
+  'connections.tabs.talents': 'Talents',
   // Intelligence / Memory
   'memory.title': 'Memory',
   'memory.search': 'Search memories...',
@@ -353,6 +444,14 @@ const en: TranslationMap = {
   'memory.tab.cohesion': 'Cohesion',
   'memory.tab.settings': 'Settings',
   'memory.tab.council': 'Council',
+
+  // Activity surface — Phase 3 renamed tabs
+  'activity.tabs.automations': 'Automations',
+  'activity.tabs.automationsDescription':
+    'Reusable, runnable procedures — a goal plus the steps to reach it. Create one, install from a URL, or open a workflow to run it.',
+  'activity.tabs.backgroundActivity': 'Background activity',
+  'activity.tabs.alerts': 'Alerts',
+
   'intelligence.agents.title': 'Agents Library',
   'intelligence.agents.subtitle':
     'Inspect runnable specialists and send one task to a named agent.',
@@ -1014,8 +1113,9 @@ const en: TranslationMap = {
   'team.failedChangeRole': 'Failed to change role',
   'team.failedRemoveMember': 'Failed to remove member',
 
-  // Developer Options
+  // Developer Options / Developer & Diagnostics
   'devOptions.title': 'Advanced',
+  'devOptions.titleDiagnostics': 'Developer & Diagnostics',
   'devOptions.diagnostics': 'Diagnostics',
   'devOptions.diagnosticsDesc': 'System health, logs, and performance metrics',
   'devOptions.toolPolicyDiagnosticsDesc':
@@ -2196,7 +2296,7 @@ const en: TranslationMap = {
   'chat.safetyTimeout':
     'No response from the agent after 2 minutes. Try again or check your connection.',
   'chat.filter.general': 'General',
-  'chat.filter.subconscious': 'Subconscious',
+  'chat.filter.subconscious': 'Background activity',
   'chat.filter.meetings': 'Meetings',
   'chat.filter.tasks': 'Tasks',
   'chat.selectThread': 'Select a thread',
@@ -4351,6 +4451,11 @@ const en: TranslationMap = {
   'settings.developerMenu.mcpServer.desc': 'Configure external MCP clients to connect to OpenHuman',
   'settings.developerMenu.autonomy.title': 'Agent autonomy',
   'settings.developerMenu.autonomy.desc': 'Tool action rate limits and safety thresholds',
+  // Tools & Capabilities group — autocomplete and voice debug (doc § Tools & Capabilities)
+  'settings.developerMenu.autocomplete.title': 'Autocomplete',
+  'settings.developerMenu.autocomplete.desc': 'AI inline autocomplete settings and debug panel',
+  'settings.developerMenu.voiceDebug.title': 'Voice (debug)',
+  'settings.developerMenu.voiceDebug.desc': 'Voice dictation runtime status and debug settings',
   'settings.mcpServer.title': 'MCP Server',
   'settings.mcpServer.toolsSectionTitle': 'Available Tools',
   'settings.mcpServer.toolsSectionDesc':
@@ -4452,6 +4557,25 @@ const en: TranslationMap = {
   'settings.agentAccess.approvalHistoryDesc':
     'Review past Approve / Deny decisions the agent requested.',
   'settings.agentAccess.viewApprovalHistory': 'View approval history',
+
+  // ── Permissions panel (layman split from Agent Access, Deferred-3) ────────
+  'settings.permissions.title': 'Permissions',
+  'settings.permissions.menuDesc': 'Choose what your assistant can do and where it can work.',
+  'settings.permissions.accessMode': 'What can the assistant do?',
+  'settings.permissions.accessModeDesc':
+    'Choose how much freedom the assistant has when it takes actions on your computer.',
+  'settings.permissions.preset.readonly.title': "Look, don't touch",
+  'settings.permissions.preset.readonly.desc':
+    'The assistant can read files and explore — but never write, edit, or run anything that changes state.',
+  'settings.permissions.preset.supervised.title': 'Ask me first',
+  'settings.permissions.preset.supervised.desc':
+    'Can create new files freely, but always asks your approval before editing, running commands, or accessing the network.',
+  'settings.permissions.preset.full.title': 'Full control',
+  'settings.permissions.preset.full.desc':
+    'Runs with your full account access. Destructive commands, network access, and installs still ask for approval.',
+  'settings.permissions.folders': 'Where can it work?',
+  'settings.permissions.foldersDesc':
+    'The default folder the assistant reads and writes. You can add more folders in Advanced settings.',
 
   // ── Sandbox execution backend ─────────────────────────────────────
   'settings.sandbox.title': 'Sandbox execution',
@@ -4672,7 +4796,7 @@ const en: TranslationMap = {
   'skills.channelIcon.telegram': 'Telegram',
   'skills.channelIcon.web': 'Web',
   'skills.channelIcon.yuanbao': 'Yuanbao',
-  'skills.composio.poweredBy': 'Powered by Composio',
+  'skills.composio.poweredBy': 'OAuth',
   'skills.composio.staleStatusTitle': 'Connections are showing stale status',
   'skills.create.allowedTools': 'Allowed tools',
   'skills.create.allowedToolsHelp': 'Rendered into the SKILL.md frontmatter as',

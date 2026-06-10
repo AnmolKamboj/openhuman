@@ -49,13 +49,13 @@ vi.mock('../../services/api/mcpClientsApi', () => ({
   },
 }));
 
-describe('Skills page — MCP tab', () => {
-  it('renders the live MCP servers tab with unified table view (not a coming-soon placeholder)', async () => {
-    renderWithProviders(<Skills />, { initialEntries: ['/skills'] });
+describe('Skills page — Tools tab (MCP + Meeting bots, Phase 2)', () => {
+  it('renders the MCP servers table in the Tools tab', async () => {
+    renderWithProviders(<Skills />, { initialEntries: ['/connections'] });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'MCP Servers' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Tools' }));
 
-    // The new tab shows filter chips (All / Installed / Registry) and a search input
+    // The Tools tab shows filter chips (All / Installed / Registry) and a search input
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'All' })).toBeInTheDocument();
     });
@@ -63,10 +63,10 @@ describe('Skills page — MCP tab', () => {
     expect(screen.getByRole('button', { name: 'Registry' })).toBeInTheDocument();
   });
 
-  it('shows the table header columns on the MCP tab', async () => {
-    renderWithProviders(<Skills />, { initialEntries: ['/skills'] });
+  it('shows the table header columns on the Tools tab', async () => {
+    renderWithProviders(<Skills />, { initialEntries: ['/connections'] });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'MCP Servers' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Tools' }));
 
     // Wait for initial load to complete
     await waitFor(() => {
@@ -79,9 +79,9 @@ describe('Skills page — MCP tab', () => {
   });
 
   it('shows empty-installed state when Installed chip is clicked', async () => {
-    renderWithProviders(<Skills />, { initialEntries: ['/skills'] });
+    renderWithProviders(<Skills />, { initialEntries: ['/connections'] });
 
-    fireEvent.click(screen.getByRole('tab', { name: 'MCP Servers' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Tools' }));
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Installed/i })).toBeInTheDocument();
@@ -90,6 +90,15 @@ describe('Skills page — MCP tab', () => {
 
     await waitFor(() => {
       expect(screen.getByText('No MCP servers installed yet.')).toBeInTheDocument();
+    });
+  });
+
+  it('supports direct links via legacy ?tab=mcp (normalised to tools)', async () => {
+    renderWithProviders(<Skills />, { initialEntries: ['/connections?tab=mcp'] });
+
+    expect(screen.getByRole('tab', { name: 'Tools' })).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'All' })).toBeInTheDocument();
     });
   });
 });
