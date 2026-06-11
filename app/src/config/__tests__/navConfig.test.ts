@@ -3,23 +3,24 @@
  * and AVATAR_MENU_ITEMS so regressions are caught early.
  *
  * Human tab restored as a first-class entry (after the IA Phase 6 merge into
- * Assistant). Chat tab keeps its "Assistant" label (id stays 'chat', labelKey
- * 'nav.assistant', walkthroughAttr 'tab-chat'). Nav is back to 6 tabs.
+ * Assistant), so the regular row is back to 6 tabs. The Assistant (id 'chat',
+ * labelKey 'nav.assistant', walkthroughAttr 'tab-chat') is no longer in the
+ * row — it's the raised center FAB (`CENTER_TAB`); the Brain sits in the row.
  */
 import { describe, expect, it } from 'vitest';
 
-import { AVATAR_MENU_ITEMS, BRAIN_TAB, NAV_TABS } from '../navConfig';
+import { AVATAR_MENU_ITEMS, CENTER_TAB, NAV_TABS } from '../navConfig';
 
 describe('NAV_TABS', () => {
   it('has exactly 6 entries (Human restored as a first-class tab)', () => {
     expect(NAV_TABS).toHaveLength(6);
   });
 
-  it('has the correct ids in order', () => {
+  it('has the correct ids in order (Brain in the row, Assistant is the center FAB)', () => {
     expect(NAV_TABS.map(t => t.id)).toEqual([
       'home',
       'human',
-      'chat',
+      'brain',
       'connections',
       'activity',
       'settings',
@@ -30,7 +31,7 @@ describe('NAV_TABS', () => {
     expect(NAV_TABS.map(t => t.path)).toEqual([
       '/home',
       '/human',
-      '/chat',
+      '/brain',
       '/connections',
       '/activity',
       '/settings',
@@ -41,7 +42,7 @@ describe('NAV_TABS', () => {
     expect(NAV_TABS.map(t => t.labelKey)).toEqual([
       'nav.home',
       'nav.human',
-      'nav.assistant',
+      'nav.brain',
       'nav.connections',
       'nav.activity',
       'nav.settings',
@@ -52,7 +53,7 @@ describe('NAV_TABS', () => {
     expect(NAV_TABS.map(t => t.walkthroughAttr)).toEqual([
       'tab-home',
       'tab-human',
-      'tab-chat',
+      'tab-brain',
       'tab-connections',
       'tab-activity',
       'tab-settings',
@@ -76,26 +77,26 @@ describe('NAV_TABS', () => {
     expect(NAV_TABS.find(t => t.id === 'skills')).toBeUndefined();
   });
 
-  it('does not contain the Brain tab (rendered specially, not in the regular row)', () => {
-    expect(NAV_TABS.find(t => t.id === 'brain')).toBeUndefined();
+  it('does not contain the Assistant/chat tab (rendered specially as the center FAB)', () => {
+    expect(NAV_TABS.find(t => t.id === 'chat')).toBeUndefined();
   });
 
-  it('Assistant tab uses nav.assistant label key and tab-chat walkthrough attr', () => {
-    const assistantTab = NAV_TABS.find(t => t.id === 'chat');
-    expect(assistantTab).toBeDefined();
-    expect(assistantTab?.labelKey).toBe('nav.assistant');
-    expect(assistantTab?.walkthroughAttr).toBe('tab-chat');
-    expect(assistantTab?.path).toBe('/chat');
+  it('Brain tab sits in the regular row with nav.brain label and tab-brain walkthrough attr', () => {
+    const brainTab = NAV_TABS.find(t => t.id === 'brain');
+    expect(brainTab).toBeDefined();
+    expect(brainTab?.labelKey).toBe('nav.brain');
+    expect(brainTab?.walkthroughAttr).toBe('tab-brain');
+    expect(brainTab?.path).toBe('/brain');
   });
 });
 
-describe('BRAIN_TAB', () => {
-  it('has the expected shape (id, path, labelKey, walkthroughAttr)', () => {
-    expect(BRAIN_TAB).toEqual({
-      id: 'brain',
-      labelKey: 'nav.brain',
-      path: '/brain',
-      walkthroughAttr: 'tab-brain',
+describe('CENTER_TAB', () => {
+  it('is the Assistant — expected shape (id, path, labelKey, walkthroughAttr)', () => {
+    expect(CENTER_TAB).toEqual({
+      id: 'chat',
+      labelKey: 'nav.assistant',
+      path: '/chat',
+      walkthroughAttr: 'tab-chat',
     });
   });
 });

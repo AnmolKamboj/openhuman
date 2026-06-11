@@ -549,10 +549,4 @@
     animation: none !important;
     transition: none !important;
   }
-
-  /* Brain center button — silence the active glow-pulse. The Brain page's
-     loading Lottie is already skipped in JS via prefers-reduced-motion. */
-  .brain-fab {
-    animation: none !important;
-  }
 }

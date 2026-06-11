@@ -167,13 +167,13 @@ describe('BottomTabBar', () => {
     agentProfilesApiMock.select.mockResolvedValue(testProfiles);
   });
 
-  it('renders exactly 6 regular tab buttons (Brain is rendered separately)', async () => {
+  it('renders exactly 6 regular tab buttons (Assistant is rendered separately)', async () => {
     await renderBottomTabBar('/home');
     // Query only the regular pill tabs inside <nav>: exclude the avatar button
-    // (aria-haspopup) and the special raised Brain button (tab-brain).
+    // (aria-haspopup) and the special raised Assistant center button (tab-chat).
     const nav = document.querySelector('nav');
     const navButtons = nav?.querySelectorAll(
-      'button:not([aria-haspopup]):not([data-walkthrough="tab-brain"])'
+      'button:not([aria-haspopup]):not([data-walkthrough="tab-chat"])'
     );
     expect(navButtons).toHaveLength(6);
   });
@@ -188,25 +188,25 @@ describe('BottomTabBar', () => {
     expect(humanBtn.querySelector('.truncate')).not.toBeNull();
   });
 
-  it('renders the raised Brain button with data-walkthrough="tab-brain"', async () => {
+  it('renders the raised Assistant center button with data-walkthrough="tab-chat"', async () => {
     await renderBottomTabBar('/home');
-    const brainBtn = screen.getByRole('button', { name: 'Brain' });
-    expect(brainBtn).toBeInTheDocument();
-    expect(brainBtn).toHaveAttribute('data-walkthrough', 'tab-brain');
-    expect(brainBtn).toHaveClass('brain-fab');
+    const assistantBtn = screen.getByRole('button', { name: 'Assistant' });
+    expect(assistantBtn).toBeInTheDocument();
+    expect(assistantBtn).toHaveAttribute('data-walkthrough', 'tab-chat');
+    expect(assistantBtn).toHaveClass('center-fab');
   });
 
-  it('navigates to /brain and tracks the change when the Brain button is clicked', async () => {
+  it('navigates to /chat and tracks the change when the Assistant center button is clicked', async () => {
     const { trackEvent } = await import('../../services/analytics');
     await renderBottomTabBar('/home');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Brain' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Assistant' }));
 
     expect(trackEvent).toHaveBeenCalledWith('tab_bar_change', {
       from_tab: 'home',
-      to_tab: 'brain',
+      to_tab: 'chat',
       from_path: '/home',
-      to_path: '/brain',
+      to_path: '/chat',
     });
   });
 
@@ -241,11 +241,13 @@ describe('BottomTabBar', () => {
     expect(screen.getByRole('button', { name: 'Activity' })).toBeInTheDocument();
   });
 
-  it('renders the Assistant tab (was Chat, Phase 6 rename)', async () => {
+  it('renders the Brain tab in the regular row with data-walkthrough="tab-brain"', async () => {
     await renderBottomTabBar('/home');
-    const assistantBtn = screen.getByRole('button', { name: 'Assistant' });
-    expect(assistantBtn).toBeInTheDocument();
-    expect(assistantBtn).toHaveAttribute('data-walkthrough', 'tab-chat');
+    const brainBtn = screen.getByRole('button', { name: 'Brain' });
+    expect(brainBtn).toBeInTheDocument();
+    expect(brainBtn).toHaveAttribute('data-walkthrough', 'tab-brain');
+    // It's a regular pill tab now, not the raised center FAB.
+    expect(brainBtn).not.toHaveClass('center-fab');
   });
 
   it('renders the Connections tab with data-walkthrough="tab-connections"', async () => {
@@ -295,18 +297,17 @@ describe('BottomTabBar', () => {
     expect(shell?.querySelector('nav')).toHaveClass('pointer-events-auto');
   });
 
-  it('tracks tab changes when a different tab is clicked', async () => {
+  it('tracks tab changes when a different (regular row) tab is clicked', async () => {
     const { trackEvent } = await import('../../services/analytics');
     await renderBottomTabBar('/home');
 
-    // Tab id is still 'chat' (back-compat) even though label is now 'Assistant'.
-    fireEvent.click(screen.getByRole('button', { name: 'Assistant' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Brain' }));
 
     expect(trackEvent).toHaveBeenCalledWith('tab_bar_change', {
       from_tab: 'home',
-      to_tab: 'chat',
+      to_tab: 'brain',
       from_path: '/home',
-      to_path: '/chat',
+      to_path: '/brain',
     });
   });
 
