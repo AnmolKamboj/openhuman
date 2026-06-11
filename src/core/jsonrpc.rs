@@ -1056,35 +1056,50 @@ pub(super) fn with_cors_headers(mut response: Response, origin: Option<&str>) ->
 }
 
 /// Handler for the health check endpoint.
+///
+/// Liveness is granular (#3312): a single degraded *background* component
+/// (scheduler, channels, update_checker, …) no longer 503s the whole container.
+/// `/health` returns 503 only when a *critical* component is unhealthy (see
+/// `health::CRITICAL_COMPONENTS`); otherwise it returns 200 — with a `degraded`
+/// flag and per-component buckets in the body so readiness probes and operators
+/// can still see partial failures.
 async fn health_handler() -> impl IntoResponse {
     let snapshot = crate::openhuman::health::snapshot();
-    let unhealthy: Vec<&str> = snapshot
-        .components
-        .iter()
-        .filter_map(|(name, c)| {
-            if c.status == "ok" || c.status == "starting" {
-                None
-            } else {
-                Some(name.as_str())
-            }
-        })
-        .collect();
-    let is_ok = unhealthy.is_empty();
+    let verdict = crate::openhuman::health::verdict(&snapshot);
 
-    let status = if is_ok {
+    let status = if verdict.healthy {
         StatusCode::OK
     } else {
         StatusCode::SERVICE_UNAVAILABLE
     };
 
+    // Augment the snapshot body with the verdict so the components map stays
+    // backward-compatible while exposing overall liveness/readiness.
+    let mut body = serde_json::to_value(&snapshot).unwrap_or_else(|_| serde_json::json!({}));
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert("healthy".to_string(), serde_json::json!(verdict.healthy));
+        obj.insert("degraded".to_string(), serde_json::json!(verdict.degraded));
+        obj.insert(
+            "critical_unhealthy".to_string(),
+            serde_json::json!(verdict.critical_unhealthy),
+        );
+        obj.insert(
+            "degraded_components".to_string(),
+            serde_json::json!(verdict.degraded_components),
+        );
+    }
+
     tracing::debug!(
-        "[health] status={} components={} unhealthy={:?}",
+        "[health] status={} components={} healthy={} degraded={} critical_unhealthy={:?} degraded_components={:?}",
         status.as_u16(),
         snapshot.components.len(),
-        unhealthy
+        verdict.healthy,
+        verdict.degraded,
+        verdict.critical_unhealthy,
+        verdict.degraded_components,
     );
 
-    (status, Json(snapshot))
+    (status, Json(body))
 }
 
 /// Handler for the schema discovery endpoint.
