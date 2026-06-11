@@ -296,6 +296,14 @@ jobs:
       image: ghcr.io/tinyhumansai/openhuman_ci:rust-1.93.0
     env:
       CARGO_INCREMENTAL: "0"
+      # Coverage-instrumented test binaries are dominated by DWARF debug info,
+      # which exhausts the runner disk and SIGBUSes the linker. Drop debug info
+      # entirely for this job — llvm-cov line/region coverage is read from the
+      # embedded __llvm_covmap/__llvm_covfun sections (filenames + line numbers
+      # included), NOT from DWARF, so coverage numbers are unaffected. This is
+      # the maximum-shrink setting; line-tables-only was still too large for the
+      # instrumented build.
+      CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
       - name: Free disk space
         run: |
@@ -410,7 +418,18 @@ jobs:
     timeout-minutes: 30
     env:
       CARGO_INCREMENTAL: "0"
+      # Trim DWARF debug info so test-binary linking doesn't exhaust runner disk
+      # (SIGBUS). Tests don't need full debug info; backtraces keep file/line.
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
+      - name: Free disk space
+        run: |
+          # Reclaim space on the build partition before compiling/linking the
+          # Rust test binaries (host toolcache is bind-mounted at /__t inside the
+          # container). Mirrors the rust-core-coverage cleanup.
+          rm -rf /__t/* || true
+          df -h /__w || true
+
       - name: Checkout code
         uses: actions/checkout@v5
         with:

@@ -205,17 +205,6 @@ const AgentAccessIcon = (
   </svg>
 );
 
-const PersonaIcon = (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-    />
-  </svg>
-);
-
 const WalletIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path
@@ -337,15 +326,7 @@ const Settings = () => {
       icon: ScreenIcon,
     },
     // Autocomplete + Voice Dictation hidden per #717 (routes retained for re-enable).
-    // Dead "messaging" menu item removed (Phase 2): the route `messaging` never
-    // existed in Settings — messaging channels live at /connections (Messaging tab).
-    {
-      id: 'notifications',
-      title: t('pages.settings.features.notifications'),
-      description: t('pages.settings.features.notificationsDesc'),
-      route: 'notifications',
-      icon: NotificationsIcon,
-    },
+    // notifications moved to notifications-hub section (no longer duplicated here).
     {
       id: 'tools',
       title: t('pages.settings.features.tools'),
@@ -362,6 +343,8 @@ const Settings = () => {
     },
   ];
 
+  // agent-chat and local-model-debug are debug tools — they live only in
+  // Developer & Diagnostics, not in the AI section page.
   const aiSettingsItems = [
     {
       id: 'llm',
@@ -383,20 +366,6 @@ const Settings = () => {
       description: t('pages.settings.ai.voiceDesc'),
       route: 'voice',
       icon: VoiceIcon,
-    },
-    {
-      id: 'agent-chat',
-      title: t('settings.developerMenu.agentChat.title'),
-      description: t('settings.developerMenu.agentChat.desc'),
-      route: 'agent-chat',
-      icon: LlmIcon,
-    },
-    {
-      id: 'local-model-debug',
-      title: t('settings.developerMenu.localModelDebug.title'),
-      description: t('settings.developerMenu.localModelDebug.desc'),
-      route: 'local-model-debug',
-      icon: LlmIcon,
     },
     {
       id: 'heartbeat',
@@ -421,6 +390,7 @@ const Settings = () => {
     },
   ];
 
+  // persona has its own canonical home entry (Assistant group) — not duplicated here.
   const agentsSettingsItems = [
     {
       id: 'agents',
@@ -428,13 +398,6 @@ const Settings = () => {
       description: t('settings.agents.subtitle'),
       route: 'agents',
       icon: ToolsIcon,
-    },
-    {
-      id: 'persona',
-      title: t('settings.persona.menuTitle'),
-      description: t('settings.persona.menuDesc'),
-      route: 'persona',
-      icon: PersonaIcon,
     },
     {
       id: 'autonomy',
