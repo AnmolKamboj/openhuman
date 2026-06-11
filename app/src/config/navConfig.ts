@@ -20,16 +20,17 @@ export interface NavTab {
 }
 
 /**
- * Ordered list of bottom-bar tabs.  Exactly 5 entries (Phase 6: Human merged
- * into Assistant):
- *   home → chat (Assistant) → connections → activity → settings
+ * Ordered list of bottom-bar tabs.  Six entries:
+ *   home → human → chat (Assistant) → connections → activity → settings
  *
- * The tab id stays `chat` and walkthroughAttr stays `tab-chat` for
- * back-compat with analytics and the walkthrough tour. The Human tab has been
- * retired; `/human` redirects to `/chat`.
+ * The Human tab is a first-class destination again (it was briefly merged into
+ * Assistant in IA Phase 6, then restored): `/human` renders the Human page on
+ * desktop. The tab id stays `chat` and walkthroughAttr stays `tab-chat` for
+ * back-compat with analytics and the walkthrough tour.
  */
 export const NAV_TABS: NavTab[] = [
   { id: 'home', labelKey: 'nav.home', path: '/home', walkthroughAttr: 'tab-home' },
+  { id: 'human', labelKey: 'nav.human', path: '/human', walkthroughAttr: 'tab-human' },
   { id: 'chat', labelKey: 'nav.assistant', path: '/chat', walkthroughAttr: 'tab-chat' },
   {
     id: 'connections',
@@ -46,7 +47,7 @@ export const NAV_TABS: NavTab[] = [
  * specially by BottomTabBar.tsx as a raised circular button in the dead
  * center of the bar (a notch the button rises out of), NOT as part of the
  * regular `NAV_TABS` row. Kept separate so its special, elevated nature is
- * explicit and the 5-tab invariants for the regular row stay intact.
+ * explicit and the 6-tab invariants for the regular row stay intact.
  */
 export const BRAIN_TAB: NavTab = {
   id: 'brain',

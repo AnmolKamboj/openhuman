@@ -4,6 +4,7 @@ import AppRoutesIOS from './AppRoutesIOS';
 import DefaultRedirect from './components/DefaultRedirect';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicRoute from './components/PublicRoute';
+import HumanPage from './features/human/HumanPage';
 import { getIsMobile } from './lib/platform';
 import Accounts from './pages/Accounts';
 import Activity from './pages/Activity';
@@ -64,10 +65,17 @@ const AppRoutes = () => {
         }
       />
 
-      {/* Phase 6 — /human merged into /chat (Assistant surface).
-          Preserve the route for back-compat (deep links, iOS share sheets, etc.).
-          iOS AppRoutesIOS still serves /human natively — only desktop redirects. */}
-      <Route path="/human" element={<Navigate to="/chat" replace />} />
+      {/* Human — first-class destination again (restored after the IA Phase 6
+          merge into Assistant). Renders the Human/mascot surface. iOS serves
+          /human via AppRoutesIOS. */}
+      <Route
+        path="/human"
+        element={
+          <ProtectedRoute requireAuth={true}>
+            <HumanPage />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Brain — the centerpiece memory knowledge-graph surface, reached from
           the raised center button in the bottom bar. Full-page, graph-only. */}
