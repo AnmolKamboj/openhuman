@@ -127,5 +127,7 @@ export const selectBackendMeetMeetingId = (state: {
 }): string | null => state.backendMeet.meetingId;
 export const selectBackendMeetListenOnly = (state: { backendMeet: BackendMeetState }): boolean =>
   state.backendMeet.listenOnly;
+export const selectBackendMeetError = (state: { backendMeet: BackendMeetState }): string | null =>
+  state.backendMeet.error;
 
 export default backendMeetSlice.reducer;

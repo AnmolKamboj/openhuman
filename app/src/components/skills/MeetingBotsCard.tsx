@@ -4,7 +4,7 @@
 // backend to send a Recall.ai-hosted mascot bot into the meeting. The
 // backend streams replies, harness requests, and the final transcript
 // back through the core Socket.IO bridge.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { type MascotFace, RiveMascot } from '../../features/human/Mascot';
 import { useT } from '../../lib/i18n/I18nContext';
@@ -19,6 +19,7 @@ import {
   type BackendMeetReplyEvent,
   type BackendMeetStatus,
   resetBackendMeet,
+  selectBackendMeetError,
   selectBackendMeetLastHarness,
   selectBackendMeetLastReply,
   selectBackendMeetListenOnly,
@@ -45,7 +46,11 @@ export default function MeetingBotsCard({ onToast }: Props) {
   const [open, setOpen] = useState(false);
   const status = useAppSelector(selectBackendMeetStatus);
 
-  const showActive = status === 'active' || status === 'joining';
+  // Only switch to ActiveMeetingView once the backend has actually admitted
+  // the bot. The 'joining' state still leaves the user on the modal so a
+  // synchronous backend rejection (e.g. paid-plan gate) surfaces in the
+  // modal's error alert instead of flashing through ActiveMeetingView.
+  const showActive = status === 'active';
 
   return (
     <>
@@ -248,7 +253,11 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
   const { t } = useT();
   const dispatch = useAppDispatch();
   const [meetUrl, setMeetUrl] = useState('');
-  const [respondTo, setRespondTo] = useState('');
+  // PASSIVE MODE: the respondTo state is retained for the
+  // joinMeetViaBackendBot payload (always passed undefined now since the
+  // backend ignores it) but the setter is unused while the input field
+  // is hidden. Restore `[respondTo, setRespondTo]` if the field returns.
+  const [respondTo] = useState('');
   const personaDisplayName = useAppSelector(selectPersonaDisplayName);
   const personaDescription = useAppSelector(selectPersonaDescription);
   const selectedMascotId = useAppSelector(selectSelectedMascotId);
@@ -257,6 +266,13 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
   const customSecondaryColor = useAppSelector(selectCustomSecondaryColor);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const meetStatus = useAppSelector(selectBackendMeetStatus);
+  const meetError = useAppSelector(selectBackendMeetError);
+  // True once the user has clicked Join in this modal session — guards the
+  // status-watching effect against stale redux state from a prior attempt.
+  // Held as a ref (not state) so toggling it inside the effect doesn't
+  // trigger a re-render cascade — see react-hooks/set-state-in-effect.
+  const hasSubmittedRef = useRef(false);
   // Recent-calls history loaded from core when the modal opens.
   // `null` means "not yet fetched"; `[]` means "fetched, no rows".
   // Separating the two lets the UI render a "Loading…" hint on
@@ -292,25 +308,62 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
       ? { primaryColor: customPrimaryColor, secondaryColor: customSecondaryColor }
       : undefined;
 
+  // The modal blocks dismissal while a join request is in flight so the
+  // backend's admit/reject verdict (success toast + close, or inline
+  // error) isn't skipped by an early Escape / backdrop click / X / Cancel.
+  const canDismiss = !submitting;
+
   // Esc closes the modal — matches the OpenhumanLinkModal pattern.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && canDismiss) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [canDismiss, onClose]);
+
+  // After Join is clicked, watch the backend meet status. The RPC returns
+  // as soon as the join request reaches the core, but the actual admit /
+  // reject from the bot service arrives asynchronously over the socket.
+  //  - 'active' → bot was admitted; surface success toast and close.
+  //  - 'error'  → bot was rejected (paid-plan gate, capacity, etc); leave
+  //               the modal open with the backend's message in the alert
+  //               so the user is blocked from joining and sees why.
+  useEffect(() => {
+    if (!hasSubmittedRef.current) return;
+    if (meetStatus === 'active') {
+      hasSubmittedRef.current = false;
+      onToast?.({
+        type: 'success',
+        title: t('skills.meetingBots.joiningTitle'),
+        message: t('skills.meetingBots.joiningMessage'),
+      });
+      setMeetUrl('');
+      onClose();
+      return;
+    }
+    if (meetStatus === 'error') {
+      hasSubmittedRef.current = false;
+      const message = meetError?.trim() || t('skills.meetingBots.failedToStart');
+      setError(message);
+      setSubmitting(false);
+      onToast?.({ type: 'error', title: t('skills.meetingBots.couldNotStartTitle'), message });
+    }
+  }, [meetStatus, meetError, onClose, onToast, t]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
     setSubmitting(true);
+    hasSubmittedRef.current = true;
     try {
       // Generate a correlation ID so every backend event for this session
       // can be tied back to this meeting.
       const meetingId = crypto.randomUUID();
-      // Optimistically update Redux state so the banner transitions to
-      // the ActiveMeetingView immediately, before the backend responds.
+      // Mark the meet slice as "joining" so the rest of the app reflects
+      // the in-flight state. The modal stays open until the backend either
+      // admits the bot (status → 'active', useEffect closes the modal) or
+      // rejects it (status → 'error', useEffect surfaces the message).
       dispatch(setBackendMeetJoining({ meetUrl: meetUrl.trim(), meetingId }));
       // Backend Recall.ai bot: sends the mascot into the meeting via
       // the backend's Recall.ai integration. The backend joins as a
@@ -327,19 +380,14 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
         correlationId: meetingId,
         respondToParticipant: respondTo.trim() || undefined,
       });
-      onToast?.({
-        type: 'success',
-        title: t('skills.meetingBots.joiningTitle'),
-        message: t('skills.meetingBots.joiningMessage'),
-      });
-      setMeetUrl('');
-      onClose();
+      // Don't close the modal here — wait for status === 'active' or 'error'
+      // via the watcher useEffect above.
     } catch (err) {
       const message = err instanceof Error ? err.message : t('skills.meetingBots.failedToStart');
       setError(message);
-      onToast?.({ type: 'error', title: t('skills.meetingBots.couldNotStartTitle'), message });
-    } finally {
       setSubmitting(false);
+      hasSubmittedRef.current = false;
+      onToast?.({ type: 'error', title: t('skills.meetingBots.couldNotStartTitle'), message });
     }
   };
 
@@ -349,7 +397,9 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
       aria-modal="true"
       aria-label={t('skills.meetingBots.modalAriaLabel')}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}>
+      onClick={() => {
+        if (canDismiss) onClose();
+      }}>
       <div
         className="w-full max-w-md overflow-hidden rounded-2xl bg-white dark:bg-neutral-900 shadow-xl"
         onClick={e => e.stopPropagation()}>
@@ -360,7 +410,8 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
             type="button"
             onClick={onClose}
             aria-label={t('common.close')}
-            className="absolute right-3 top-3 rounded-full p-1 text-stone-500 dark:text-neutral-400 hover:bg-white/80 dark:hover:bg-neutral-800/60 hover:text-stone-800 dark:hover:text-neutral-100">
+            disabled={!canDismiss}
+            className="absolute right-3 top-3 rounded-full p-1 text-stone-500 dark:text-neutral-400 hover:bg-white/80 dark:hover:bg-neutral-800/60 hover:text-stone-800 dark:hover:text-neutral-100 disabled:cursor-not-allowed disabled:opacity-40">
             ✕
           </button>
           <h2 className="text-base font-semibold text-stone-900 dark:text-neutral-100">
@@ -392,7 +443,12 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
               />
             </label>
 
-            <label className="block">
+            {/* PASSIVE MODE: the bot doesn't listen for a wake phrase or
+                respond to a single participant — it just transcribes. The
+                "Your Name in This Meeting" field is hidden so users aren't
+                prompted for input that no longer affects behavior. Restore
+                this block if the responsive bot is ever re-enabled. */}
+            {/* <label className="block">
               <span className="text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-neutral-400">
                 {t('skills.meetingBots.respondToParticipant')}
               </span>
@@ -410,7 +466,7 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
               <p className="mt-1 text-[10px] text-stone-400 dark:text-neutral-500">
                 {t('skills.meetingBots.respondToParticipantDesc')}
               </p>
-            </label>
+            </label> */}
 
             {error && (
               <div
@@ -424,12 +480,13 @@ export function MeetingBotsModal({ onClose, onToast }: ModalProps) {
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-xl px-3 py-2 text-sm font-medium text-stone-600 dark:text-neutral-300 hover:bg-stone-100 dark:hover:bg-neutral-800">
+                disabled={!canDismiss}
+                className="rounded-xl px-3 py-2 text-sm font-medium text-stone-600 dark:text-neutral-300 hover:bg-stone-100 dark:hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40">
                 {t('common.cancel')}
               </button>
               <button
                 type="submit"
-                disabled={submitting || !meetUrl.trim() || !respondTo.trim()}
+                disabled={submitting || !meetUrl.trim()}
                 className="rounded-xl bg-primary-500 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:bg-stone-200 dark:disabled:bg-neutral-700 disabled:text-stone-400 dark:disabled:text-neutral-500">
                 {submitting
                   ? t('skills.meetingBots.starting')

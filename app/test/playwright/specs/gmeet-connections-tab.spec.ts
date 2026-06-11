@@ -31,14 +31,15 @@ test.describe('Google Meet Connections tab', () => {
 
     await page.getByTestId('meeting-bots-banner').click();
 
-    // The modal has a Meeting link (url) field plus the "Your Name in This
-    // Meeting" (respondTo) text field added in #3555. It stays Google-Meet only
-    // — no other platforms.
+    // PASSIVE MODE: the modal asks for the Meeting link only. The
+    // "Your Name in This Meeting" (respondTo) text field added in #3555
+    // is hidden because the backend bot no longer listens for a wake
+    // phrase. It stays Google-Meet only — no other platforms.
     const dialog = page.getByRole('dialog', { name: 'Send OpenHuman to a meeting' });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByLabel('Meeting link')).toBeVisible();
     await expect(dialog.locator('input[type="url"]')).toHaveCount(1);
-    await expect(dialog.locator('input[type="text"]')).toHaveCount(1);
+    await expect(dialog.locator('input[type="text"]')).toHaveCount(0);
     await expect(dialog.getByText('Zoom')).toHaveCount(0);
     await expect(dialog.getByText('Microsoft Teams')).toHaveCount(0);
   });

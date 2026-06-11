@@ -2,6 +2,10 @@ import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { MeetCallRecord } from '../../../services/meetCallService';
+import {
+  setBackendMeetError,
+  setBackendMeetJoined,
+} from '../../../store/backendMeetSlice';
 import { renderWithProviders } from '../../../test/test-utils';
 import MeetingBotsCard, { MeetingBotsModal } from '../MeetingBotsCard';
 
@@ -62,14 +66,11 @@ describe('MeetingBotsCard', () => {
       platform: 'gmeet',
     });
     const onToast = vi.fn();
-    renderWithProviders(<MeetingBotsCard onToast={onToast} />);
+    const { store } = renderWithProviders(<MeetingBotsCard onToast={onToast} />);
 
     fireEvent.click(screen.getByTestId('meeting-bots-banner'));
     fireEvent.change(screen.getByLabelText(/meeting link/i), {
       target: { value: 'https://meet.google.com/abc-defg-hij' },
-    });
-    fireEvent.change(screen.getByLabelText(/your name in this meeting/i), {
-      target: { value: 'Alice' },
     });
     const form = screen.getByRole('dialog').querySelector('form')!;
     fireEvent.submit(form);
@@ -81,16 +82,21 @@ describe('MeetingBotsCard', () => {
           displayName: 'OpenHuman',
           platform: 'gmeet',
           agentName: 'OpenHuman',
-          respondToParticipant: 'Alice',
         })
       );
     });
+    // The modal now waits for the backend's admit signal — simulate it by
+    // dispatching the same slice action the socket layer fires on
+    // bot:joined / agent_meetings:joined.
+    store.dispatch(
+      setBackendMeetJoined({ meetUrl: 'https://meet.google.com/abc-defg-hij' })
+    );
     await vi.waitFor(() => {
       expect(onToast).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'success', title: expect.stringMatching(/joining/i) })
       );
     });
-    // Modal closes on success
+    // Modal closes after the backend admits the bot.
     await vi.waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
@@ -122,9 +128,6 @@ describe('MeetingBotsCard', () => {
     fireEvent.change(screen.getByLabelText(/meeting link/i), {
       target: { value: 'https://meet.google.com/abc-defg-hij' },
     });
-    fireEvent.change(screen.getByLabelText(/your name in this meeting/i), {
-      target: { value: 'Alice' },
-    });
     fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
 
     await vi.waitFor(() => {
@@ -150,9 +153,6 @@ describe('MeetingBotsCard', () => {
     fireEvent.change(screen.getByLabelText(/meeting link/i), {
       target: { value: 'https://meet.google.com/x' },
     });
-    fireEvent.change(screen.getByLabelText(/your name in this meeting/i), {
-      target: { value: 'Alice' },
-    });
     fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
 
     await vi.waitFor(() => {
@@ -163,6 +163,42 @@ describe('MeetingBotsCard', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Bad URL');
   });
 
+  it('keeps the modal open with the backend message when the bot is rejected', async () => {
+    joinMock.mockResolvedValueOnce({
+      meetUrl: 'https://meet.google.com/abc-defg-hij',
+      platform: 'gmeet',
+    });
+    const onToast = vi.fn();
+    const { store } = renderWithProviders(<MeetingBotsCard onToast={onToast} />);
+
+    fireEvent.click(screen.getByTestId('meeting-bots-banner'));
+    fireEvent.change(screen.getByLabelText(/meeting link/i), {
+      target: { value: 'https://meet.google.com/abc-defg-hij' },
+    });
+    fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
+
+    await vi.waitFor(() => expect(joinMock).toHaveBeenCalled());
+    // Simulate the backend rejecting the bot (paid-plan gate, capacity, etc).
+    store.dispatch(
+      setBackendMeetError({ error: 'Meeting bot is a paid-plan feature.' })
+    );
+
+    await vi.waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Meeting bot is a paid-plan feature.'
+      );
+    });
+    // Modal stays open so the user is blocked rather than being dropped into
+    // an ActiveMeetingView that immediately collapses.
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(onToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'error',
+        title: expect.stringMatching(/not start/i),
+      })
+    );
+  });
+
   it('does not show meeting platform choices in the Google Meet CTA', () => {
     renderWithProviders(<MeetingBotsCard />);
     fireEvent.click(screen.getByTestId('meeting-bots-banner'));
@@ -171,15 +207,42 @@ describe('MeetingBotsCard', () => {
     expect(screen.getByRole('button', { name: /send to google meet/i })).toBeInTheDocument();
   });
 
-  it('only asks for the meeting link, not old bot tuning fields', () => {
+  it('blocks Escape / Cancel / X / backdrop dismissals while a join is in flight', async () => {
+    // Make the join RPC hang so we stay in the in-flight state.
+    let resolveJoin: ((v: unknown) => void) | undefined;
+    joinMock.mockImplementationOnce(() => new Promise(r => (resolveJoin = r)));
+    renderWithProviders(<MeetingBotsCard />);
+
+    fireEvent.click(screen.getByTestId('meeting-bots-banner'));
+    fireEvent.change(screen.getByLabelText(/meeting link/i), {
+      target: { value: 'https://meet.google.com/abc-defg-hij' },
+    });
+    fireEvent.submit(screen.getByRole('dialog').querySelector('form')!);
+    await waitFor(() => expect(joinMock).toHaveBeenCalled());
+
+    // Cancel + X are visually disabled while in flight.
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /close/i })).toBeDisabled();
+
+    // Escape, backdrop click, Cancel click — modal stays open.
+    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.click(screen.getByRole('dialog'));
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // Release the RPC so other tests' state doesn't leak.
+    resolveJoin?.({ meetUrl: 'https://meet.google.com/abc-defg-hij', platform: 'gmeet' });
+  });
+
+  it('only asks for the meeting link in passive mode', () => {
     renderWithProviders(<MeetingBotsCard />);
     fireEvent.click(screen.getByTestId('meeting-bots-banner'));
     expect(screen.getByLabelText(/meeting link/i)).toBeInTheDocument();
-    // respondTo field is present (participant name the bot should respond to)
-    expect(screen.getByLabelText(/your name in this meeting/i)).toBeInTheDocument();
-    // Old bot-tuning fields should be absent
+    // PASSIVE MODE: the "Your Name in This Meeting" (respondTo) field is
+    // hidden because the bot no longer listens for a wake phrase or
+    // targets a specific speaker — it just transcribes.
+    expect(screen.queryByLabelText(/your name in this meeting/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/^display name$/i)).not.toBeInTheDocument();
-    // No standalone "Wake Phrase" label — the phrase appears only in the respondTo hint text
     expect(screen.queryByText(/^wake phrase$/i)).not.toBeInTheDocument();
   });
 });
@@ -245,13 +308,18 @@ describe('MeetingBotsCard — ActiveMeetingView', () => {
     expect(screen.getByText(/hi there/i)).toBeInTheDocument();
   });
 
-  it('shows joining status text when status is joining', () => {
+  it('keeps the banner (not ActiveMeetingView) while status is joining', () => {
+    // The 'joining' status no longer flips to ActiveMeetingView — the
+    // modal stays open over the banner until the backend either admits
+    // (status → 'active') or rejects (status → 'error'). When the modal
+    // is closed and status is 'joining', the banner remains.
     renderWithProviders(<MeetingBotsCard />, {
       preloadedState: {
         backendMeet: { ...activeMeetState.backendMeet, status: 'joining' as const },
       },
     });
-    expect(screen.getByText(/joining/i)).toBeInTheDocument();
+    expect(screen.getByTestId('meeting-bots-banner')).toBeInTheDocument();
+    expect(screen.queryByText(/live in meeting/i)).not.toBeInTheDocument();
   });
 
   it('shows banner (not ActiveMeetingView) when status is ended', () => {
