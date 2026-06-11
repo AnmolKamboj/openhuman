@@ -91,13 +91,11 @@ export const CONSUMER_FIRST_SESSION_ENABLED =
   import.meta.env.VITE_CONSUMER_FIRST_SESSION === 'true';
 
 /**
- * Chat multimodal attachments (image + supported file markers). Disabled by
- * default — the attach affordance is hidden and the file-picker path is gated
- * off (a bare `<textarea>` already ignores pasted/dropped files). Opt back in
- * for a build by setting `VITE_CHAT_ATTACHMENTS=true` (e.g. the e2e web build
- * in `app/scripts/e2e-web-build.sh`, which exercises the attachment specs).
+ * Chat multimodal attachments (image + supported file markers). Enabled by
+ * default — the attach affordance and file-picker path are on. Opt out for a
+ * build by setting `VITE_CHAT_ATTACHMENTS=false`.
  */
-export const CHAT_ATTACHMENTS_ENABLED = import.meta.env.VITE_CHAT_ATTACHMENTS === 'true';
+export const CHAT_ATTACHMENTS_ENABLED = import.meta.env.VITE_CHAT_ATTACHMENTS !== 'false';
 
 export const SKILLS_GITHUB_REPO =
   import.meta.env.VITE_SKILLS_GITHUB_REPO || 'tinyhumansai/openhuman-skills';
