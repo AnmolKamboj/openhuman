@@ -558,6 +558,36 @@ mod tests {
         );
     }
 
+    /// Regression guard for the `resolve_time` wiring. Agents that emit
+    /// timestamp arguments to downstream tools must keep the deterministic
+    /// time resolver in their allowlist — otherwise the model falls back to
+    /// hand-computing epoch seconds, which once produced a ~10-month-wrong
+    /// `oldest` and silently fetched the wrong Slack window. If any of these
+    /// drops `resolve_time`, this test fails loudly.
+    #[test]
+    fn time_sensitive_agents_expose_resolve_time() {
+        for id in [
+            "orchestrator",
+            "integrations_agent",
+            "scheduler_agent",
+            "task_manager_agent",
+            "crypto_agent",
+            "markets_agent",
+        ] {
+            let def = find(id);
+            match def.tools {
+                ToolScope::Named(tools) => assert!(
+                    tools.iter().any(|t| t == "resolve_time"),
+                    "{id} must keep `resolve_time` in its named tool allowlist"
+                ),
+                ToolScope::Wildcard => {
+                    // Wildcard agents inherit the full built-in surface, which
+                    // already includes resolve_time — nothing to assert here.
+                }
+            }
+        }
+    }
+
     #[test]
     fn code_executor_is_sandboxed_and_keeps_safety_preamble() {
         let def = find("code_executor");

@@ -183,6 +183,13 @@ pub fn all_tools_with_runtime(
         Box::new(RunWorkflowTool::new()),
         Box::new(AwaitWorkflowTool::new()),
         Box::new(CurrentTimeTool::new()),
+        // Deterministic time-expression → timestamp resolver. `current_time`
+        // only returns *now*, leaving the model to do epoch arithmetic by hand
+        // (a real incident had an agent compute "24h ago" ~10 months off, then
+        // fetch Slack history ascending from that wrong floor and miss the
+        // latest messages). `resolve_time` does the conversion and returns the
+        // value ready to paste into a tool argument.
+        Box::new(ResolveTimeTool::new()),
         Box::new(LaunchAppTool::new()),
         Box::new(AxInteractTool::new(
             root_config.computer_control.ax_interact_mutations,

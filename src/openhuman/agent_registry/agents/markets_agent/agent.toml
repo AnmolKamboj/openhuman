@@ -40,6 +40,9 @@ named = [
     # user and blocks until they reply.
     "ask_user_clarification",
     # Time grounding for "as of <when>" framing and freshness checks on
-    # quotes / orderbook snapshots before execute.
+    # quotes / orderbook snapshots before execute. `resolve_time` converts
+    # relative/absolute time expressions into exact timestamps for any
+    # time-bounded data query.
     "current_time",
+    "resolve_time",
 ]

@@ -71,8 +71,10 @@ named = [
     # routes the prompt to the user and blocks until they reply.
     "ask_user_clarification",
     # Time grounding for "as of <when>" framing and freshness checks on
-    # quotes before execute.
+    # quotes before execute. `resolve_time` converts relative/absolute time
+    # expressions into exact timestamps for any time-bounded data query.
     "current_time",
+    "resolve_time",
     # x402 HTTP 402 payment protocol — makes paid API requests by signing
     # an on-chain payment (EVM EIP-3009 on Base/Ethereum or Solana SPL)
     # and retrying with a PAYMENT-SIGNATURE header.

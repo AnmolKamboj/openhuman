@@ -549,7 +549,7 @@ impl PromptSection for DateTimeSection {
         "datetime"
     }
 
-    fn build(&self, _ctx: &PromptContext<'_>) -> Result<String> {
+    fn build(&self, ctx: &PromptContext<'_>) -> Result<String> {
         // IANA zone first because it's the unambiguous machine-readable
         // form (`America/Los_Angeles`) — agents that need to reason about
         // timezone rules should grep this, not the locale-dependent
@@ -557,13 +557,32 @@ impl PromptSection for DateTimeSection {
         // resolve a zone (CI, stripped containers).
         let iana = iana_time_zone::get_timezone().unwrap_or_else(|_| "UTC".to_string());
         let now = chrono::Local::now();
-        Ok(format!(
+        let mut out = format!(
             "## Current Date & Time\n\n{} {} ({}, UTC{})",
             now.format("%Y-%m-%d %H:%M:%S"),
             iana,
             now.format("%Z"),
             now.format("%:z"),
-        ))
+        );
+        // Time-discipline rule, gated on the agent actually having the
+        // `resolve_time` tool. LLMs are unreliable at epoch arithmetic — a
+        // real incident had an agent compute "24h ago" ~10 months off, then
+        // fetch Slack history ascending from that wrong floor and never reach
+        // the latest messages. Telling agents to lean on the tool (rather
+        // than hand-computing) is the fix; rendered right under the volatile
+        // time block so the two are read together. Auto-scopes: agents
+        // without the tool never see the rule.
+        if ctx.tools.iter().any(|t| t.name == "resolve_time") {
+            out.push_str(
+                "\n\n> For any date/time you pass as a tool argument \
+                 (`oldest`/`latest`/`since`/`after`, cron times, etc.), call \
+                 `resolve_time` and use its exact value — never hand-compute \
+                 epoch/Unix seconds. For \"recent / last N\" lookups, prefer \
+                 newest-first (omit `oldest`) so a wrong floor can't bury the \
+                 latest data.",
+            );
+        }
+        Ok(out)
     }
 }
 

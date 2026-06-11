@@ -169,6 +169,54 @@ fn datetime_section_includes_timestamp_and_timezone() {
     assert!(payload.contains("UTC"), "missing UTC offset: {payload}");
 }
 
+#[test]
+fn datetime_section_appends_resolve_time_rule_only_when_tool_present() {
+    // With `resolve_time` in the agent's tool set, the time-discipline rule
+    // is rendered under the date block (prevents the LLM hand-computing epoch
+    // timestamps — the bug this tool exists to fix).
+    let with_tools: Vec<Box<dyn Tool>> =
+        vec![Box::new(crate::openhuman::tools::ResolveTimeTool::new())];
+    let with_prompt_tools = PromptTool::from_tools(&with_tools);
+    let ctx_with = PromptContext {
+        workspace_dir: Path::new("/tmp"),
+        model_name: "test-model",
+        agent_id: "",
+        tools: &with_prompt_tools,
+        workflows: &[],
+        dispatcher_instructions: "instr",
+        learned: LearnedContextData::default(),
+        visible_tool_names: &NO_FILTER,
+        tool_call_format: ToolCallFormat::PFormat,
+        connected_integrations: &[],
+        connected_identities_md: String::new(),
+        include_profile: false,
+        include_memory_md: false,
+        curated_snapshot: None,
+        user_identity: None,
+        personality_soul_md: None,
+        personality_memory_md: None,
+        personality_roster: vec![],
+    };
+    let rendered_with = DateTimeSection.build(&ctx_with).unwrap();
+    assert!(
+        rendered_with.contains("resolve_time") && rendered_with.contains("never hand-compute"),
+        "expected the resolve_time discipline rule when the tool is present; got:\n{rendered_with}"
+    );
+
+    // Without the tool, the rule must NOT appear (auto-scoping gate).
+    let no_tools: Vec<Box<dyn Tool>> = vec![];
+    let no_prompt_tools = PromptTool::from_tools(&no_tools);
+    let ctx_without = PromptContext {
+        tools: &no_prompt_tools,
+        ..ctx_with
+    };
+    let rendered_without = DateTimeSection.build(&ctx_without).unwrap();
+    assert!(
+        !rendered_without.contains("never hand-compute"),
+        "rule must be gated off when resolve_time is absent; got:\n{rendered_without}"
+    );
+}
+
 fn ctx_with_identity(identity: Option<UserIdentity>) -> PromptContext<'static> {
     use std::sync::OnceLock;
     static EMPTY_VISIBLE: OnceLock<HashSet<String>> = OnceLock::new();

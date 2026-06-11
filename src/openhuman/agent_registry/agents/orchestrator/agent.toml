@@ -164,6 +164,13 @@ named = [
     "spawn_async_subagent",
     "spawn_parallel_agents",
     "composio_list_connections",
+    # Deterministic time resolver. As the chat-facing agent, the orchestrator
+    # is what reads a user's relative phrase ("last 24h", "since Monday")
+    # first. It must resolve the window here via `resolve_time` and hand the
+    # delegated agent an exact timestamp / ISO bound rather than leaving epoch
+    # arithmetic to the leaf (which once computed "24h ago" ~10 months off and
+    # missed the latest data). Never hand-compute Unix seconds.
+    "resolve_time",
     # Coding-harness coordination primitives from #1208. `todowrite`
     # gives the orchestrator a shared todo store to track multi-step
     # work across delegations; `plan_exit` is the stable marker that
