@@ -62,6 +62,7 @@ vi.mock('../../features/human/Mascot', () => ({
   CustomGifMascot: ({ src }: { src: string }) => (
     <img data-testid="custom-gif-mascot-stub" src={src} alt="" />
   ),
+  MascotChipAvatar: () => <span data-testid="mascot-chip-avatar-stub" />,
   getMascotPalette: vi.fn(() => ({ bodyFill: '#4A83DD', neckShadowColor: '#2A63BD' })),
   hexToArgbInt: vi.fn((_hex: string) => 0xff4a83dd),
 }));

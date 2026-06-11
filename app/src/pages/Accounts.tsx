@@ -7,6 +7,7 @@ import {
   CustomGifMascot,
   getMascotPalette,
   hexToArgbInt,
+  MascotChipAvatar,
   RiveMascot,
 } from '../features/human/Mascot';
 import { useHumanMascot } from '../features/human/useHumanMascot';
@@ -199,6 +200,12 @@ const Accounts = () => {
   const order = useAppSelector(state => state.accounts.order);
   const activeAccountId = useAppSelector(state => state.accounts.activeAccountId);
   const unreadByAccount = useAppSelector(state => state.accounts.unread);
+  // Mascot identity — drives the avatar on the "Talk to Tiny" chip so the
+  // button advertises the user's actual character (colour / custom GIF) rather
+  // than a generic emoji.
+  const mascotColor = useAppSelector(selectMascotColor);
+  const customPrimary = useAppSelector(selectCustomPrimaryColor);
+  const customMascotGifUrl = useAppSelector(selectCustomMascotGifUrl);
   const [addOpen, setAddOpen] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState | null>(null);
 
@@ -407,13 +414,21 @@ const Accounts = () => {
           onClick={toggleFaceMode}
           data-testid="face-toggle-button"
           aria-pressed={faceMode}
-          className={`absolute right-4 top-4 z-40 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium shadow-soft backdrop-blur-sm transition-colors ${
+          className={`group absolute right-4 top-4 z-40 inline-flex items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-3 text-xs font-medium shadow-soft backdrop-blur-sm transition-colors ${
             faceMode
               ? 'border-primary-300 bg-primary-50/90 text-primary-700 dark:bg-primary-900/40 dark:text-primary-200'
               : 'border-stone-300/80 bg-white/90 text-stone-600 hover:border-primary-300 hover:text-primary-600 dark:border-neutral-700/80 dark:bg-neutral-900/90 dark:text-neutral-300 dark:hover:text-primary-300'
           }`}
           aria-label={faceMode ? t('assistant.faceMode.turnOff') : t('assistant.faceMode.turnOn')}>
-          <span aria-hidden="true">🙂</span>
+          {/* The mascot wakes up (wiggles) on hover/focus; static at rest. */}
+          <span className="origin-bottom transition-transform group-hover:animate-wiggle group-focus-visible:animate-wiggle">
+            <MascotChipAvatar
+              color={mascotColor}
+              customPrimary={customPrimary}
+              gifUrl={customMascotGifUrl}
+              size={22}
+            />
+          </span>
           {faceMode ? t('assistant.faceMode.on') : t('assistant.faceMode.off')}
         </button>
       )}
