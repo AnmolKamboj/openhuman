@@ -302,6 +302,21 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     if crate::openhuman::inference::provider::managed_error_skips_sentry(message) {
         return Some(ExpectedErrorKind::BackendErrorCodeOwned);
     }
+    // A managed-backend client-guard-leak code (`PAYLOAD_TOO_LARGE` /
+    // `CONTEXT_LENGTH_EXCEEDED`) must PAGE — the client enforces these limits
+    // before sending, so a backend rejection is our guard leaking. Force
+    // capture (return `None`) here, BEFORE the substring matchers below: a real
+    // managed `CONTEXT_LENGTH_EXCEEDED` body carries "context length
+    // exceeded"-style text that `is_context_window_exceeded_message` (further
+    // down) would otherwise re-demote into the suppressed
+    // `ContextWindowExceeded` bucket (CodeRabbit). Gated on the managed envelope
+    // so a BYO provider's own context-overflow — genuine user-state, not our
+    // guard — still flows to that matcher and stays demoted.
+    if crate::openhuman::inference::provider::is_managed_backend_envelope(message)
+        && crate::openhuman::inference::provider::is_backend_client_guard_leak(message)
+    {
+        return None;
+    }
     // Check the Codex-CLI import envelope first: it is highly specific
     // (literal `codex cli auth` / `.codex/auth.json`) and carries no overlap
     // with the generic matchers below, so ordering is for clarity, not
@@ -5330,8 +5345,6 @@ mod tests {
             ("402", "USER_INSUFFICIENT_CREDITS"),
             ("503", "UPSTREAM_UNAVAILABLE"),
             ("404", "MODEL_UNAVAILABLE"),
-            ("413", "PAYLOAD_TOO_LARGE"),
-            ("400", "CONTEXT_LENGTH_EXCEEDED"),
             ("400", "BAD_REQUEST"),
             ("500", "INTERNAL_ERROR"),
         ] {
@@ -5342,6 +5355,37 @@ mod tests {
                 "errorCode={code} must be backend-owned (no FE Sentry)"
             );
         }
+
+        // Client-guard-leak codes page (None = capture), even with realistic
+        // explanatory text that a later substring matcher would otherwise
+        // re-demote into a suppressed bucket.
+        let payload = "OpenHuman API error (413 Payload Too Large): \
+             {\"error\":{\"errorCode\":\"PAYLOAD_TOO_LARGE\",\"message\":\"request entity too large\"}}";
+        assert_eq!(
+            expected_error_kind(payload),
+            None,
+            "PAYLOAD_TOO_LARGE is a client guard leak and must page"
+        );
+
+        // This body's message matches `is_context_window_exceeded_message`, so
+        // without the early guard-leak bypass it would re-demote to the
+        // suppressed `ContextWindowExceeded` bucket (CodeRabbit).
+        let context = "OpenHuman API error (400 Bad Request): \
+             {\"error\":{\"errorCode\":\"CONTEXT_LENGTH_EXCEEDED\",\"message\":\"This model's maximum context length is 128000 tokens, however you requested more\"}}";
+        assert_eq!(
+            expected_error_kind(context),
+            None,
+            "CONTEXT_LENGTH_EXCEEDED must page even with context-window wording"
+        );
+
+        // Proof the bypass is load-bearing, not a no-op: this body's text DOES
+        // match the context-window matcher, so without the early guard-leak
+        // bypass `expected_error_kind` would have re-demoted it to the
+        // suppressed `ContextWindowExceeded` bucket.
+        assert!(
+            crate::openhuman::inference::provider::is_context_window_exceeded_message(context),
+            "test body must actually trigger the matcher the bypass guards against"
+        );
     }
 
     #[test]
@@ -5390,7 +5434,6 @@ mod tests {
             "RATE_LIMITED",
             "UPSTREAM_UNAVAILABLE",
             "MODEL_UNAVAILABLE",
-            "PAYLOAD_TOO_LARGE",
             "INTERNAL_ERROR",
             "BAD_REQUEST",
         ] {
@@ -5398,6 +5441,22 @@ mod tests {
             assert!(
                 is_backend_error_code_event(&event),
                 "errorCode={code} event must be dropped by before_send"
+            );
+        }
+
+        // Client-guard-leak codes survive before_send and page (the client
+        // should have caught the limit before sending) — including a realistic
+        // CONTEXT_LENGTH_EXCEEDED body whose wording matches the context-window
+        // substring matcher (the filter keys on the errorCode, not the text).
+        let payload = "OpenHuman API error (413 Payload Too Large): \
+             {\"error\":{\"errorCode\":\"PAYLOAD_TOO_LARGE\",\"message\":\"request entity too large\"}}";
+        let context = "OpenHuman API error (400 Bad Request): \
+             {\"error\":{\"errorCode\":\"CONTEXT_LENGTH_EXCEEDED\",\"message\":\"This model's maximum context length is 128000 tokens\"}}";
+        for body in [payload, context] {
+            let event = event_with_message(body);
+            assert!(
+                !is_backend_error_code_event(&event),
+                "client guard leak must survive before_send: {body}"
             );
         }
     }

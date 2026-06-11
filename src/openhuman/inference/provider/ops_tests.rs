@@ -338,15 +338,13 @@ fn skips_sentry_report_for_transient_upstream_statuses() {
 fn backend_error_code_owned_gates_managed_errors_except_malformed_bad_request() {
     use crate::openhuman::inference::provider::openhuman_backend::PROVIDER_LABEL;
 
-    // F2/F4: any managed-backend body carrying an errorCode is backend-owned
-    // and must NOT page the provider HTTP layer.
+    // F2/F4: backend-owned / expected-user-state errorCodes must NOT page the
+    // provider HTTP layer.
     for code in [
         "RATE_LIMITED",
         "USER_INSUFFICIENT_CREDITS",
         "UPSTREAM_UNAVAILABLE",
         "MODEL_UNAVAILABLE",
-        "PAYLOAD_TOO_LARGE",
-        "CONTEXT_LENGTH_EXCEEDED",
         "INTERNAL_ERROR",
     ] {
         let body = format!("{{\"error\":{{\"errorCode\":\"{code}\",\"message\":\"x\"}}}}");
@@ -363,7 +361,18 @@ fn backend_error_code_owned_gates_managed_errors_except_malformed_bad_request() 
         "{\"error\":{\"errorCode\":\"BAD_REQUEST\",\"message\":\"bad param\"}}"
     ));
 
-    // F8: a backend-flagged malformed BAD_REQUEST is the one case the FE still
+    // Client-guard-leak codes page: the client enforces these limits before
+    // sending (attachment size gates; context-window management), so a backend
+    // rejection means our guard leaked — the gate must NOT claim them.
+    for code in ["PAYLOAD_TOO_LARGE", "CONTEXT_LENGTH_EXCEEDED"] {
+        let body = format!("{{\"error\":{{\"errorCode\":\"{code}\",\"message\":\"x\"}}}}");
+        assert!(
+            !is_backend_error_code_owned(PROVIDER_LABEL, &body),
+            "errorCode={code} is a client guard leak and must page (not owned)"
+        );
+    }
+
+    // F8: a backend-flagged malformed BAD_REQUEST is also a case the FE still
     // pages — the gate must NOT claim it.
     assert!(!is_backend_error_code_owned(
         PROVIDER_LABEL,

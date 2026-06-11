@@ -171,6 +171,24 @@ impl OpenAiCompatibleProvider {
             while let Some(sep_idx) = buffer.find("\n\n") {
                 let event = buffer[..sep_idx].to_string();
                 buffer.drain(..sep_idx + 2);
+
+                // In-band SSE error frame. The response status flushed 200
+                // before the upstream call, so the managed backend delivers
+                // post-flush errors — including instant 4xx/429/413 whose typed
+                // `errorCode` (#870) is now stamped on the frame, see
+                // backend `routes/inference.ts` — as `event: error\ndata: {…}`.
+                // Surface it as a streaming-envelope error string so the
+                // `errorCode` classifier + Sentry golden rule run downstream,
+                // instead of skipping it as an unparseable chunk (which would
+                // aggregate to empty and surface as "empty response").
+                if let Some(message) = sse_error_frame_bail_message(
+                    self.name.as_str(),
+                    Some(native_request.model.as_str()),
+                    &event,
+                ) {
+                    anyhow::bail!(message);
+                }
+
                 for line in event.lines() {
                     let line = line.trim();
                     if line.is_empty() || line.starts_with(':') {
@@ -460,5 +478,126 @@ impl OpenAiCompatibleProvider {
         }
 
         Self::parse_native_response(api_resp, &self.name)
+    }
+}
+
+/// Extract the `data:` payload of an SSE `event: error` frame, or `None` when
+/// the event block is not an error frame.
+///
+/// The managed backend delivers post-flush stream errors as a two-line SSE
+/// block — `event: error` followed by `data: {"error":{…,"errorCode":…}}`
+/// (backend `routes/inference.ts`). The normal chunk loop can't parse that
+/// `data:` line as a `StreamChunkResponse`, so without this detection the frame
+/// is silently skipped and the turn aggregates to an empty response. We key on
+/// the `event: error` field rather than sniffing the data so a normal chunk
+/// that merely mentions "error" is never misclassified.
+fn sse_error_frame_payload(event: &str) -> Option<String> {
+    let mut is_error_frame = false;
+    let mut data: Option<String> = None;
+    for line in event.lines() {
+        let line = line.trim();
+        if let Some(event_type) = line.strip_prefix("event:") {
+            if event_type.trim() == "error" {
+                is_error_frame = true;
+            }
+        } else if let Some(payload) = line.strip_prefix("data:") {
+            data = Some(payload.trim().to_string());
+        }
+    }
+    is_error_frame.then(|| data.unwrap_or_default())
+}
+
+/// Build the bail message for an in-band SSE `event: error` frame, or `None`
+/// when the event block is a normal chunk / metadata event (the caller then
+/// continues parsing it as a chunk).
+///
+/// Mirrors the non-2xx HTTP path: produces a `<provider> streaming API error:
+/// <sanitized body>` envelope so the downstream `errorCode` classifier and the
+/// Sentry golden rule run on it. When the frame carries a backend-owned
+/// `errorCode`, it is logged (not re-reported) here, matching the HTTP path's
+/// [`is_backend_error_code_owned`] branch; a malformed `BAD_REQUEST` is excluded
+/// by that helper and still pages downstream. There is no HTTP status for an
+/// in-band frame, so the log records the `200` that was actually sent.
+fn sse_error_frame_bail_message(
+    provider: &str,
+    model: Option<&str>,
+    event: &str,
+) -> Option<String> {
+    let payload = sse_error_frame_payload(event)?;
+    let sanitized = super::super::sanitize_api_error(&payload);
+    let message = format!("{provider} streaming API error: {sanitized}");
+    if super::super::is_backend_error_code_owned(provider, &payload) {
+        super::super::log_backend_error_code_owned(
+            "streaming_chat",
+            provider,
+            model,
+            reqwest::StatusCode::OK,
+            &payload,
+        );
+    }
+    Some(message)
+}
+
+#[cfg(test)]
+mod sse_error_frame_tests {
+    use super::{sse_error_frame_bail_message, sse_error_frame_payload};
+    use crate::openhuman::inference::provider::openhuman_backend::PROVIDER_LABEL;
+
+    #[test]
+    fn extracts_payload_from_error_frame() {
+        let event = "event: error\ndata: {\"error\":{\"message\":\"boom\",\"type\":\"stream_error\",\"errorCode\":\"BAD_REQUEST\"}}";
+        let payload = sse_error_frame_payload(event).expect("error frame detected");
+        assert!(payload.contains("\"errorCode\":\"BAD_REQUEST\""));
+        assert!(payload.contains("\"type\":\"stream_error\""));
+    }
+
+    #[test]
+    fn ignores_normal_data_chunk() {
+        let event =
+            "data: {\"choices\":[{\"delta\":{\"content\":\"an error occurred in the story\"}}]}";
+        assert!(sse_error_frame_payload(event).is_none());
+    }
+
+    #[test]
+    fn ignores_metadata_event() {
+        let event = "event: openhuman-metadata\ndata: {\"openhuman\":{}}";
+        assert!(sse_error_frame_payload(event).is_none());
+    }
+
+    #[test]
+    fn bail_message_wraps_error_frame_in_streaming_envelope() {
+        // A managed-backend error frame yields a streaming-envelope string the
+        // downstream classifier recognises, preserving the `errorCode`.
+        let event = "event: error\ndata: {\"error\":{\"message\":\"slow down\",\"type\":\"stream_error\",\"errorCode\":\"RATE_LIMITED\"}}";
+        let message = sse_error_frame_bail_message(PROVIDER_LABEL, Some("reasoning-v1"), event)
+            .expect("bail message built");
+        assert!(message.contains("streaming API error"));
+        assert!(message.contains("\"errorCode\":\"RATE_LIMITED\""));
+    }
+
+    #[test]
+    fn bail_message_handles_frame_without_error_code() {
+        // An untyped mid-stream drop (no `errorCode`) still produces an
+        // envelope; it is simply not backend-owned, so downstream Sentry gating
+        // applies as before.
+        let event =
+            "event: error\ndata: {\"error\":{\"message\":\"socket hang up\",\"type\":\"stream_error\"}}";
+        let message =
+            sse_error_frame_bail_message(PROVIDER_LABEL, None, event).expect("bail message built");
+        assert!(message.contains("socket hang up"));
+    }
+
+    #[test]
+    fn bail_message_is_none_for_normal_chunk() {
+        let event = "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}";
+        assert!(sse_error_frame_bail_message(PROVIDER_LABEL, None, event).is_none());
+    }
+
+    #[test]
+    fn error_frame_without_data_yields_empty_payload() {
+        // Defensive: an `event: error` with no `data:` line still resolves to a
+        // (empty) payload so the caller bails rather than skipping it.
+        let event = "event: error";
+        assert_eq!(sse_error_frame_payload(event).as_deref(), Some(""));
     }
 }

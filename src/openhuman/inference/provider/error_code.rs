@@ -175,16 +175,44 @@ pub fn is_backend_malformed_bad_request(err: &str) -> bool {
     ) && body_flags_malformed(err)
 }
 
+/// Whether the `errorCode` names a limit the **client enforces before sending**,
+/// so a backend rejection means our pre-send guard leaked — a client-side bug
+/// worth paging, not expected user-state.
+///
+/// - `PAYLOAD_TOO_LARGE`: the client gates attachment size up front
+///   (`app/src/lib/attachments.ts` — per-image / per-file byte caps + a
+///   `too_large` reject), so an over-limit request reaching the backend means
+///   the aggregate slipped past those gates.
+/// - `CONTEXT_LENGTH_EXCEEDED`: the client manages context before send (the
+///   context pipeline's `context_window`, `src/openhuman/context/pipeline.rs`),
+///   so a backend rejection means that fitting / trimming failed.
+///
+/// The backend does not ops-alert either (they are 4xx, not 500), so if the FE
+/// also suppressed them the guard leak would be invisible to everyone. Display
+/// classification is unchanged — the user still sees the actionable copy.
+pub fn is_backend_client_guard_leak(err: &str) -> bool {
+    matches!(
+        extract_backend_error_code(err),
+        Some(BackendErrorCode::PayloadTooLarge | BackendErrorCode::ContextLengthExceeded)
+    )
+}
+
 /// Sentry-ownership decision (F2 golden rule): a response carrying any backend
 /// `errorCode` must **not** page the FE — the backend owns it (it already
-/// paged) or it is expected user-state — *except* a backend-flagged malformed
-/// `BAD_REQUEST`, which the client caused and so still pages.
+/// paged) or it is expected user-state — *except* errors the **client** caused
+/// and so still page:
+/// - a backend-flagged malformed `BAD_REQUEST` (unparseable client payload), and
+/// - a client-guard-leak code (`PAYLOAD_TOO_LARGE` / `CONTEXT_LENGTH_EXCEEDED`)
+///   the client should have caught before sending — see
+///   [`is_backend_client_guard_leak`].
 ///
 /// Shared by the provider HTTP layer (`api_error`), the higher-layer re-report
 /// classifier (`observability::expected_error_kind`), and the Sentry
 /// `before_send` defense-in-depth filter so the three layers can't drift.
 pub fn backend_error_code_skips_sentry(err: &str) -> bool {
-    extract_backend_error_code_token(err).is_some() && !is_backend_malformed_bad_request(err)
+    extract_backend_error_code_token(err).is_some()
+        && !is_backend_malformed_bad_request(err)
+        && !is_backend_client_guard_leak(err)
 }
 
 #[cfg(test)]
@@ -247,6 +275,29 @@ mod tests {
         let user_param = r#"OpenHuman API error (400 Bad Request): {"error":{"errorCode":"BAD_REQUEST","message":"unsupported parameter"}}"#;
         assert!(!is_backend_malformed_bad_request(user_param));
         assert!(backend_error_code_skips_sentry(user_param));
+    }
+
+    #[test]
+    fn client_guard_leak_codes_page_but_other_state_codes_do_not() {
+        // PAYLOAD_TOO_LARGE / CONTEXT_LENGTH_EXCEEDED are limits the client
+        // enforces before sending, so a backend rejection is a guard leak that
+        // must page the FE — unlike genuinely backend-owned / user-state codes.
+        let payload = r#"OpenHuman API error (413 Payload Too Large): {"error":{"errorCode":"PAYLOAD_TOO_LARGE","message":"too big"}}"#;
+        assert!(is_backend_client_guard_leak(payload));
+        assert!(!backend_error_code_skips_sentry(payload));
+        assert!(!managed_error_skips_sentry(payload));
+
+        let context = r#"OpenHuman API error (400 Bad Request): {"error":{"errorCode":"CONTEXT_LENGTH_EXCEEDED","message":"start a new chat"}}"#;
+        assert!(is_backend_client_guard_leak(context));
+        assert!(!backend_error_code_skips_sentry(context));
+
+        // Contrast: these remain backend-owned / expected user-state -> suppress.
+        let rate = r#"OpenHuman API error (429): {"error":{"errorCode":"RATE_LIMITED"}}"#;
+        let credits =
+            r#"OpenHuman API error (402): {"error":{"errorCode":"USER_INSUFFICIENT_CREDITS"}}"#;
+        assert!(!is_backend_client_guard_leak(rate));
+        assert!(backend_error_code_skips_sentry(rate));
+        assert!(backend_error_code_skips_sentry(credits));
     }
 
     #[test]

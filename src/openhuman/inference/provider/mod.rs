@@ -37,8 +37,9 @@ pub use config_rejection::{
 };
 pub use error_code::{
     backend_error_code_skips_sentry, body_flags_malformed, extract_backend_error_code,
-    extract_backend_error_code_token, is_backend_malformed_bad_request,
-    is_managed_backend_envelope, managed_error_skips_sentry, BackendErrorCode,
+    extract_backend_error_code_token, is_backend_client_guard_leak,
+    is_backend_malformed_bad_request, is_managed_backend_envelope, managed_error_skips_sentry,
+    BackendErrorCode,
 };
 pub use factory::{create_chat_provider, provider_for_role, BYOK_INCOMPLETE_SENTINEL};
 pub use ops::*;
