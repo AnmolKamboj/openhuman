@@ -3731,6 +3731,9 @@ const messages: TranslationMap = {
   'settings.devWorkflow.schedule.every2hours': '每 2 小时',
   'settings.devWorkflow.schedule.every6hours': '每 6 小时',
   'settings.devWorkflow.schedule.onceDaily': '每天一次（上午 9 点）',
+  'settings.developerMenu.tasks.title': '任务',
+  'settings.developerMenu.tasks.desc':
+    '浏览和管理任务看板——你的待办事项以及智能体在对话中创建的看板。',
   'settings.developerMenu.cronJobs.title': '定时任务',
   'settings.developerMenu.cronJobs.desc': '查看并配置运行时技能的计划任务',
   'settings.developerMenu.localModelDebug.title': '本地模型调试',

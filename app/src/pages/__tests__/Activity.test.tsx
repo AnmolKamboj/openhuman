@@ -11,9 +11,6 @@ vi.mock('../../lib/i18n/I18nContext', () => ({ useT: () => ({ t: (key: string) =
 vi.mock('../../components/intelligence/IntelligenceSubconsciousTab', () => ({
   default: () => <div data-testid="tab-backgroundActivity" />,
 }));
-vi.mock('../../components/intelligence/IntelligenceTasksTab', () => ({
-  default: () => <div data-testid="tab-tasks" />,
-}));
 vi.mock('../../components/intelligence/WorkflowsTab', () => ({
   default: () => <div data-testid="tab-automations" />,
 }));
@@ -63,14 +60,9 @@ describe('Activity URL-backed tab', () => {
     vi.clearAllMocks();
   });
 
-  it('defaults to the tasks tab when no ?tab is present', async () => {
+  it('defaults to the automations tab when no ?tab is present', async () => {
     renderAt('/activity');
-    await waitFor(() => expect(screen.getByTestId('tab-tasks')).toBeInTheDocument());
-  });
-
-  it('honours ?tab=tasks from the URL', async () => {
-    renderAt('/activity?tab=tasks');
-    await waitFor(() => expect(screen.getByTestId('tab-tasks')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('tab-automations')).toBeInTheDocument());
   });
 
   it('honours ?tab=automations from the URL', async () => {
@@ -88,28 +80,34 @@ describe('Activity URL-backed tab', () => {
     await waitFor(() => expect(screen.getByTestId('tab-alerts')).toBeInTheDocument());
   });
 
-  it('falls back to tasks for an unknown ?tab value', async () => {
+  it('falls back to automations for an unknown ?tab value', async () => {
     renderAt('/activity?tab=bogus');
-    await waitFor(() => expect(screen.getByTestId('tab-tasks')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('tab-automations')).toBeInTheDocument());
   });
 
-  // Back-compat: old deep links (?tab=memory|agents|council) are no longer
-  // visible Activity tabs — they should fall back to tasks rather than error.
-  it('falls back to tasks for ?tab=memory (relocated to Settings)', async () => {
+  // Back-compat: old deep links (?tab=tasks|memory|agents|council) are no longer
+  // visible Activity tabs — they should fall back to automations rather than error.
+  it('falls back to automations for ?tab=tasks (relocated to Settings → Developer Options)', async () => {
+    renderAt('/activity?tab=tasks');
+    await waitFor(() => expect(screen.getByTestId('tab-automations')).toBeInTheDocument());
+    expect(screen.queryByTestId('tab-tasks')).not.toBeInTheDocument();
+  });
+
+  it('falls back to automations for ?tab=memory (relocated to Settings)', async () => {
     renderAt('/activity?tab=memory');
-    await waitFor(() => expect(screen.getByTestId('tab-tasks')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('tab-automations')).toBeInTheDocument());
     expect(screen.queryByTestId('tab-memory')).not.toBeInTheDocument();
   });
 
-  it('falls back to tasks for ?tab=agents (relocated to Settings)', async () => {
+  it('falls back to automations for ?tab=agents (relocated to Settings)', async () => {
     renderAt('/activity?tab=agents');
-    await waitFor(() => expect(screen.getByTestId('tab-tasks')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('tab-automations')).toBeInTheDocument());
     expect(screen.queryByTestId('tab-agents')).not.toBeInTheDocument();
   });
 
-  it('falls back to tasks for ?tab=council (relocated to Settings)', async () => {
+  it('falls back to automations for ?tab=council (relocated to Settings)', async () => {
     renderAt('/activity?tab=council');
-    await waitFor(() => expect(screen.getByTestId('tab-tasks')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('tab-automations')).toBeInTheDocument());
     expect(screen.queryByTestId('tab-council')).not.toBeInTheDocument();
   });
 
@@ -126,29 +124,22 @@ describe('Activity tab — tab set', () => {
     vi.clearAllMocks();
   });
 
-  it('renders exactly four tab pills: tasks, automations, backgroundActivity, alerts', async () => {
+  it('renders exactly three tab pills: automations, backgroundActivity, alerts', async () => {
     renderAt('/activity');
-    await waitFor(() => screen.getByTestId('tab-tasks'));
+    await waitFor(() => screen.getByTestId('tab-automations'));
     // Each label key is returned as-is by the stub t() function.
-    expect(screen.getAllByText('memory.tab.tasks').length).toBeGreaterThan(0);
     expect(screen.getAllByText('activity.tabs.automations').length).toBeGreaterThan(0);
     expect(screen.getAllByText('activity.tabs.backgroundActivity').length).toBeGreaterThan(0);
     expect(screen.getAllByText('activity.tabs.alerts').length).toBeGreaterThan(0);
   });
 
-  it('does not render memory, agents, or council pills', async () => {
+  it('does not render tasks, memory, agents, or council pills', async () => {
     renderAt('/activity');
-    await waitFor(() => screen.getByTestId('tab-tasks'));
+    await waitFor(() => screen.getByTestId('tab-automations'));
+    expect(screen.queryByText('memory.tab.tasks')).not.toBeInTheDocument();
     expect(screen.queryByText('memory.tab.memory')).not.toBeInTheDocument();
     expect(screen.queryByText('memory.tab.agents')).not.toBeInTheDocument();
     expect(screen.queryByText('memory.tab.council')).not.toBeInTheDocument();
-  });
-
-  it('clicking the automations pill switches to the automations tab', async () => {
-    renderAt('/activity');
-    await waitFor(() => screen.getAllByText('activity.tabs.automations'));
-    fireEvent.click(screen.getAllByText('activity.tabs.automations')[0]);
-    await waitFor(() => expect(screen.getByTestId('tab-automations')).toBeInTheDocument());
   });
 
   it('clicking the backgroundActivity pill switches to the backgroundActivity tab', async () => {
@@ -169,6 +160,6 @@ describe('Activity tab — tab set', () => {
     renderAt('/activity?tab=alerts');
     await waitFor(() => expect(screen.getByTestId('tab-alerts')).toBeInTheDocument());
     // The card wrapper is NOT rendered in the alerts tab.
-    expect(screen.queryByTestId('tab-tasks')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tab-automations')).not.toBeInTheDocument();
   });
 });

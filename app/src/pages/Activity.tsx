@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom';
 
 import { ConfirmationModal } from '../components/intelligence/ConfirmationModal';
 import IntelligenceSubconsciousTab from '../components/intelligence/IntelligenceSubconsciousTab';
-import IntelligenceTasksTab from '../components/intelligence/IntelligenceTasksTab';
 import { ToastContainer } from '../components/intelligence/Toast';
 import WorkflowsTab from '../components/intelligence/WorkflowsTab';
 import PillTabBar from '../components/PillTabBar';
@@ -20,18 +19,18 @@ import type {
 import Notifications from './Notifications';
 
 // Visible tab IDs for the Activity surface.
-// memory, agents, and council have moved to Settings → Developer & Diagnostics
-// (routes: /settings/intelligence, /settings/agents).
-// Back-compat: ?tab=memory / ?tab=agents / ?tab=council are unknown to the
-// visible set and therefore fall back to 'tasks' (see makeIsVisibleTab below).
-type ActivityTab = 'tasks' | 'automations' | 'backgroundActivity' | 'alerts';
+// memory, agents, council and tasks have moved to Settings → Developer & Diagnostics
+// (routes: /settings/intelligence, /settings/agents, /settings/tasks).
+// Back-compat: ?tab=memory / ?tab=agents / ?tab=council / ?tab=tasks are unknown
+// to the visible set and therefore fall back to 'automations' (see isVisibleTab).
+type ActivityTab = 'automations' | 'backgroundActivity' | 'alerts';
 
-const ACTIVITY_TABS: ActivityTab[] = ['tasks', 'automations', 'backgroundActivity', 'alerts'];
+const ACTIVITY_TABS: ActivityTab[] = ['automations', 'backgroundActivity', 'alerts'];
 
 /**
  * Returns a type-guard predicate for the currently visible tabs.
- * Unknown values (including old deep-link tabs like ?tab=memory) fall back to
- * the default tab rather than erroring.
+ * Unknown values (including old deep-link tabs like ?tab=memory or ?tab=tasks)
+ * fall back to the default tab rather than erroring.
  */
 const isVisibleTab = (tab: string | null | undefined): tab is ActivityTab =>
   (ACTIVITY_TABS as string[]).includes(tab ?? '');
@@ -43,7 +42,7 @@ export default function Activity() {
   // restores the same tab.  `replace` so switching tabs doesn't stack history.
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
-  const activeTab: ActivityTab = isVisibleTab(tabParam) ? tabParam : 'tasks';
+  const activeTab: ActivityTab = isVisibleTab(tabParam) ? tabParam : 'automations';
   const setActiveTab = useCallback(
     (tab: ActivityTab) => {
       setSearchParams(
@@ -95,7 +94,6 @@ export default function Activity() {
   }, [socketConnected, socketManager]);
 
   const tabs: { id: ActivityTab; label: string; description?: string; comingSoon?: boolean }[] = [
-    { id: 'tasks', label: t('memory.tab.tasks'), description: t('memory.tab.tasksDescription') },
     {
       id: 'automations',
       label: t('activity.tabs.automations'),
@@ -159,8 +157,6 @@ export default function Activity() {
               </div>
 
               {/* Tab content */}
-              {activeTab === 'tasks' && <IntelligenceTasksTab />}
-
               {activeTab === 'automations' && <WorkflowsTab />}
 
               {activeTab === 'backgroundActivity' && (

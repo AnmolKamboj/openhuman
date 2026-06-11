@@ -3921,6 +3921,9 @@ const messages: TranslationMap = {
   'settings.devWorkflow.schedule.every2hours': 'हर 2 घंटे',
   'settings.devWorkflow.schedule.every6hours': '6 घंटे',
   'settings.devWorkflow.schedule.onceDaily': 'एक बार दैनिक (9 AM)',
+  'settings.developerMenu.tasks.title': 'कार्य',
+  'settings.developerMenu.tasks.desc':
+    'टास्क बोर्ड ब्राउज़ करें और प्रबंधित करें — आपके अपने काम और बातचीत के दौरान एजेंट द्वारा बनाए गए बोर्ड।',
   'settings.developerMenu.cronJobs.title': 'Cron जॉब्स',
   'settings.developerMenu.cronJobs.desc':
     'रनटाइम स्किल्स के लिए शेड्यूल किए गए जॉब देखें और कॉन्फ़िगर करें',

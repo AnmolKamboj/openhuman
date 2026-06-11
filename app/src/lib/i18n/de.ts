@@ -4014,6 +4014,9 @@ const messages: TranslationMap = {
   'settings.devWorkflow.schedule.every2hours': 'Alle 2 Stunden',
   'settings.devWorkflow.schedule.every6hours': 'Alle 6 Stunden',
   'settings.devWorkflow.schedule.onceDaily': 'Einmal täglich (09:00 Uhr)',
+  'settings.developerMenu.tasks.title': 'Aufgaben',
+  'settings.developerMenu.tasks.desc':
+    'Aufgaben-Boards durchsuchen und verwalten — deine eigenen To-dos sowie die Boards, die Agenten über Unterhaltungen hinweg erstellen.',
   'settings.developerMenu.cronJobs.title': 'Cron-Jobs',
   'settings.developerMenu.cronJobs.desc':
     'Zeige geplante Jobs für Laufzeitfähigkeiten an und konfiguriere sie',

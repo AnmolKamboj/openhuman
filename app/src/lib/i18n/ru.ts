@@ -3952,6 +3952,9 @@ const messages: TranslationMap = {
   'settings.devWorkflow.schedule.every2hours': 'Каждые 2 часа',
   'settings.devWorkflow.schedule.every6hours': 'Каждые 6 часов',
   'settings.devWorkflow.schedule.onceDaily': 'Один раз в день (9 утра)',
+  'settings.developerMenu.tasks.title': 'Задачи',
+  'settings.developerMenu.tasks.desc':
+    'Просматривайте доски задач и управляйте ими — ваши собственные дела и доски, которые агенты создают в разговорах.',
   'settings.developerMenu.cronJobs.title': 'Задачи cron',
   'settings.developerMenu.cronJobs.desc':
     'Просмотр и настройка запланированных задач для runtime-навыков',

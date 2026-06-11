@@ -3881,6 +3881,9 @@ const messages: TranslationMap = {
   'settings.devWorkflow.schedule.every2hours': '2시간마다',
   'settings.devWorkflow.schedule.every6hours': '6시간마다',
   'settings.devWorkflow.schedule.onceDaily': '하루 한 번(오전 9시)',
+  'settings.developerMenu.tasks.title': '작업',
+  'settings.developerMenu.tasks.desc':
+    '작업 보드를 둘러보고 관리하세요 — 내 할 일과 대화 전반에서 에이전트가 만든 보드를 함께 확인합니다.',
   'settings.developerMenu.cronJobs.title': '크론 작업',
   'settings.developerMenu.cronJobs.desc': '예약 보기 및 구성 런타임 기술용 작업',
   'settings.developerMenu.localModelDebug.title': '로컬 모델 디버그',

@@ -3982,6 +3982,9 @@ const messages: TranslationMap = {
   'settings.devWorkflow.schedule.every2hours': 'Ogni 2 ore',
   'settings.devWorkflow.schedule.every6hours': 'Ogni 6 ore',
   'settings.devWorkflow.schedule.onceDaily': 'Una volta al giorno (ore 9)',
+  'settings.developerMenu.tasks.title': 'Attività',
+  'settings.developerMenu.tasks.desc':
+    'Esplora e gestisci le bacheche delle attività — i tuoi to-do e le bacheche create dagli agenti nelle conversazioni.',
   'settings.developerMenu.cronJobs.title': 'Processi cron',
   'settings.developerMenu.cronJobs.desc':
     'Visualizza e configura processi pianificati per le skill di runtime',

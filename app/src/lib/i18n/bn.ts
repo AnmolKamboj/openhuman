@@ -3914,6 +3914,9 @@ const messages: TranslationMap = {
   'settings.devWorkflow.schedule.every2hours': 'প্রতি ২ ঘন্টা',
   'settings.devWorkflow.schedule.every6hours': 'প্রতি ৬ ঘন্টা',
   'settings.devWorkflow.schedule.onceDaily': 'প্রতিদিন (৯.',
+  'settings.developerMenu.tasks.title': 'কাজ',
+  'settings.developerMenu.tasks.desc':
+    'টাস্ক বোর্ড ব্রাউজ ও পরিচালনা করুন — আপনার নিজের কাজ এবং কথোপকথন জুড়ে এজেন্টদের তৈরি করা বোর্ড।',
   'settings.developerMenu.cronJobs.title': 'Cron জব',
   'settings.developerMenu.cronJobs.desc':
     'রানটাইম স্কিলের জন্য নির্ধারিত জব দেখুন এবং কনফিগার করুন',

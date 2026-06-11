@@ -30,6 +30,11 @@ describe('useSettingsNavigation breadcrumbs', () => {
     );
   });
 
+  test('tasks returns Settings > Developer Options', () => {
+    renderWithProviders(<BreadcrumbProbe />, { initialEntries: ['/settings/tasks'] });
+    expect(screen.getByTestId('breadcrumbs')).toHaveTextContent('Settings > Developer Options');
+  });
+
   test('developer-options returns Settings (section page)', () => {
     renderWithProviders(<BreadcrumbProbe />, { initialEntries: ['/settings/developer-options'] });
     expect(screen.getByTestId('breadcrumbs')).toHaveTextContent('Settings');

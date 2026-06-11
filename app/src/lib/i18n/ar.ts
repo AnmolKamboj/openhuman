@@ -3838,6 +3838,9 @@ const messages: TranslationMap = {
   'settings.devWorkflow.schedule.every2hours': 'كل ساعتين',
   'settings.devWorkflow.schedule.every6hours': 'كل 6 ساعات',
   'settings.devWorkflow.schedule.onceDaily': 'يوم واحد (9 صباحا)',
+  'settings.developerMenu.tasks.title': 'المهام',
+  'settings.developerMenu.tasks.desc':
+    'تصفّح لوحات المهام وإدارتها — مهامك الخاصة إضافةً إلى اللوحات التي تنشئها الوكلاء عبر المحادثات.',
   'settings.developerMenu.cronJobs.title': 'مهام Cron',
   'settings.developerMenu.cronJobs.desc': 'عرض وتكوين المهام المجدولة لمهارات وقت التشغيل',
   'settings.developerMenu.localModelDebug.title': 'تصحيح النموذج المحلي',

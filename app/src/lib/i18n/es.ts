@@ -3988,6 +3988,9 @@ const messages: TranslationMap = {
   'settings.devWorkflow.schedule.every2hours': 'Cada 2 horas',
   'settings.devWorkflow.schedule.every6hours': 'Cada 6 horas',
   'settings.devWorkflow.schedule.onceDaily': 'Una vez al día (9 AM)',
+  'settings.developerMenu.tasks.title': 'Tareas',
+  'settings.developerMenu.tasks.desc':
+    'Explora y gestiona los tableros de tareas: tus pendientes y los tableros que los agentes crean en las conversaciones.',
   'settings.developerMenu.cronJobs.title': 'Tareas cron',
   'settings.developerMenu.cronJobs.desc':
     'Ver y configurar tareas programadas para habilidades en tiempo de ejecución',

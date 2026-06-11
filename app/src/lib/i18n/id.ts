@@ -3932,6 +3932,9 @@ const messages: TranslationMap = {
   'settings.devWorkflow.schedule.every2hours': 'Setiap 2 jam',
   'settings.devWorkflow.schedule.every6hours': 'Setiap 6 jam',
   'settings.devWorkflow.schedule.onceDaily': 'Setiap hari (jam 9 pagi)',
+  'settings.developerMenu.tasks.title': 'Tugas',
+  'settings.developerMenu.tasks.desc':
+    'Jelajahi dan kelola papan tugas — daftar tugas Anda sendiri serta papan yang dibuat agen di seluruh percakapan.',
   'settings.developerMenu.cronJobs.title': 'Pekerjaan Cron',
   'settings.developerMenu.cronJobs.desc': 'Lihat dan atur pekerjaan terjadwal untuk skill runtime',
   'settings.developerMenu.localModelDebug.title': 'Debug Model Lokal',

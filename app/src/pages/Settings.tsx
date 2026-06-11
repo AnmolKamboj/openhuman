@@ -47,6 +47,7 @@ import ScreenIntelligencePanel from '../components/settings/panels/ScreenIntelli
 import SearchPanel from '../components/settings/panels/SearchPanel';
 import SecurityPanel from '../components/settings/panels/SecurityPanel';
 import TaskSourcesPanel from '../components/settings/panels/TaskSourcesPanel';
+import TasksPanel from '../components/settings/panels/TasksPanel';
 import TeamInvitesPanel from '../components/settings/panels/TeamInvitesPanel';
 import TeamManagementPanel from '../components/settings/panels/TeamManagementPanel';
 import TeamMembersPanel from '../components/settings/panels/TeamMembersPanel';
@@ -634,6 +635,7 @@ const Settings = () => {
         <Route path="agent-chat" element={wrapSettingsPage(<AgentChatPanel />)} />
         <Route path="cron-jobs" element={wrapSettingsPage(<CronJobsPanel />)} />
         <Route path="task-sources" element={wrapSettingsPage(<TaskSourcesPanel />)} />
+        <Route path="tasks" element={wrapSettingsPage(<TasksPanel />)} />
         <Route path="dev-workflow" element={wrapSettingsPage(<DevWorkflowPanel />)} />
         <Route path="skills-runner" element={wrapSettingsPage(<WorkflowRunnerPanel />)} />
         <Route

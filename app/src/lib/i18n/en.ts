@@ -4457,6 +4457,9 @@ const en: TranslationMap = {
   'settings.devWorkflow.schedule.every2hours': 'Every 2 hours',
   'settings.devWorkflow.schedule.every6hours': 'Every 6 hours',
   'settings.devWorkflow.schedule.onceDaily': 'Once daily (9 AM)',
+  'settings.developerMenu.tasks.title': 'Tasks',
+  'settings.developerMenu.tasks.desc':
+    'Browse and manage task boards — your own to-dos plus the boards agents build across conversations.',
   'settings.developerMenu.cronJobs.title': 'Cron Jobs',
   'settings.developerMenu.cronJobs.desc': 'View and configure scheduled jobs for runtime skills',
   'settings.developerMenu.localModelDebug.title': 'Local Model Debug',

@@ -3980,6 +3980,9 @@ const messages: TranslationMap = {
   'settings.devWorkflow.schedule.every2hours': 'Co 2 godziny',
   'settings.devWorkflow.schedule.every6hours': 'Co 6 godzin',
   'settings.devWorkflow.schedule.onceDaily': 'Raz dziennie (9:00)',
+  'settings.developerMenu.tasks.title': 'Zadania',
+  'settings.developerMenu.tasks.desc':
+    'Przeglądaj tablice zadań i zarządzaj nimi — Twoje własne zadania oraz tablice tworzone przez agentów w rozmowach.',
   'settings.developerMenu.cronJobs.title': 'Zadania cron',
   'settings.developerMenu.cronJobs.desc':
     'Przeglądaj i konfiguruj zaplanowane zadania dla umiejętności runtime',
