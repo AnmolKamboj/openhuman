@@ -3245,6 +3245,53 @@ const messages: TranslationMap = {
   'skills.mcpComingSoon.description':
     'MCP সার্ভার ম্যানেজমেন্ট শীঘ্রই আসছে। এই ট্যাবটি আপনার MCP সার্ভার ইন্টিগ্রেশন আবিষ্কার, সংযোগ এবং পর্যবেক্ষণের জায়গা হবে।',
   'settings.ai.routing': 'রুটিং',
+  'settings.ai.claudeCode.button': 'Claude Code',
+  'settings.ai.claudeCode.inlineNotConnected':
+    'সংযুক্ত নয় — আপনার স্থানীয় Claude Code CLI-এর মাধ্যমে চ্যাট রুট করে।',
+  'settings.ai.claudeCode.checkingSignIn': 'সাইন-ইন যাচাই করা হচ্ছে…',
+  'settings.ai.claudeCode.inlineConnected': 'সংযুক্ত।',
+  'settings.ai.claudeCode.signedInAs': 'সাইন-ইন করেছেন',
+  'settings.ai.claudeCode.subscriptionFallback': 'Claude সাবস্ক্রিপশন',
+  'settings.ai.claudeCode.usingApiKeyEnv': 'ANTHROPIC_API_KEY ব্যবহার করছে',
+  'settings.ai.claudeCode.cliNotInstalled': 'CLI ইনস্টল করা নেই',
+  'settings.ai.claudeCode.signInUnknown': 'সাইন-ইন অবস্থা অজানা',
+  'settings.ai.claudeCode.connectedNotSignedIn': 'সংযুক্ত · সাইন-ইন করা হয়নি',
+  'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modalDescription':
+    'চ্যাট, এজেন্টিক ও যুক্তিনির্ভর কাজগুলো আপনার স্থানীয়ভাবে ইনস্টল করা Claude Code CLI-এর মাধ্যমে রুট করে। কোনো API কী লাগে না — এটি CLI-এর নিজস্ব লগইন ব্যবহার করে।',
+  'settings.ai.claudeCode.close': 'বন্ধ করুন',
+  'settings.ai.claudeCode.connection': 'সংযোগ',
+  'settings.ai.claudeCode.enabled': 'সক্রিয়',
+  'settings.ai.claudeCode.notEnabled': 'সক্রিয় নয়',
+  'settings.ai.claudeCode.disconnect': 'সংযোগ বিচ্ছিন্ন করুন',
+  'settings.ai.claudeCode.disconnecting': 'সংযোগ বিচ্ছিন্ন করা হচ্ছে…',
+  'settings.ai.claudeCode.enable': 'Claude Code সক্রিয় করুন',
+  'settings.ai.claudeCode.enabling': 'সক্রিয় করা হচ্ছে…',
+  'settings.ai.claudeCode.authentication': 'প্রমাণীকরণ',
+  'settings.ai.claudeCode.recheck': 'পুনরায় যাচাই',
+  'settings.ai.claudeCode.checking': 'যাচাই করা হচ্ছে…',
+  'settings.ai.claudeCode.openingTerminal': 'টার্মিনাল খোলা হচ্ছে…',
+  'settings.ai.claudeCode.signIn': 'Claude দিয়ে সাইন ইন করুন',
+  'settings.ai.claudeCode.reconnect': 'পুনরায় সংযুক্ত করুন',
+  'settings.ai.claudeCode.loginHint':
+    'claude login চালানো একটি টার্মিনাল খোলে। সম্পন্ন হলে, পুনরায় যাচাই-এ ক্লিক করুন।',
+  'settings.ai.claudeCode.loginError': 'লগইন টার্মিনাল খোলা যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।',
+  'settings.ai.claudeCode.fullAccess': 'সম্পূর্ণ অ্যাক্সেস',
+  'settings.ai.claudeCode.fullAccessOn':
+    'Claude Code কমান্ড চালাতে, নেটওয়ার্ক ব্যবহার করতে ও সাব-এজেন্ট তৈরি করতে পারে।',
+  'settings.ai.claudeCode.fullAccessOff':
+    'শুধু সম্পাদনা গ্রহণ করুন — ফাইল সম্পাদনা স্বয়ংক্রিয়ভাবে প্রয়োগ করে, কমান্ড ও নেটওয়ার্ক নিয়ন্ত্রণ করে।',
+  'settings.ai.claudeCode.sandboxNoteMac':
+    'macOS-এ, উভয় মোডেই ~/.openhuman স্যান্ডবক্স দ্বারা সুরক্ষিত থাকে।',
+  'settings.ai.claudeCode.sandboxNoteOther':
+    'এই প্ল্যাটফর্মে সম্পূর্ণ অ্যাক্সেস সীমাবদ্ধ নয় — ওয়ার্কস্পেসে আস্থা থাকলেই কেবল সক্রিয় করুন।',
+  'settings.ai.claudeCode.enableToCheck': 'সাইন-ইন যাচাই করতে Claude Code সক্রিয় করুন।',
+  'settings.ai.claudeCode.usingApiKeyEnvDetail': 'পরিবেশ থেকে ANTHROPIC_API_KEY ব্যবহার করছে।',
+  'settings.ai.claudeCode.notFoundInstall':
+    'Claude Code CLI পাওয়া যায়নি — ইনস্টল করুন: npm install -g @anthropic-ai/claude-code',
+  'settings.ai.claudeCode.unknownDetail':
+    'সাইন-ইন অবস্থা নির্ধারণ করা যায়নি। আপনার claude CLI auth status সমর্থনের চেয়ে পুরোনো হতে পারে — পুনরায় সংযুক্ত করুন, তারপর পুনরায় যাচাই করুন।',
+  'settings.ai.claudeCode.notSignedIn': 'সাইন-ইন করা হয়নি।',
   'settings.ai.routingCustom': 'কাস্টম রুটিং',
   'settings.ai.routingDefault': 'ডিফল্ট',
   'settings.ai.routingDesc': 'রুটিং বিবরণ',

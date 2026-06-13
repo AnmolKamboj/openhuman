@@ -3304,6 +3304,54 @@ const messages: TranslationMap = {
   'skills.mcpComingSoon.description':
     'La gestión de servidores MCP llegará pronto. Esta pestaña será el lugar para descubrir, conectar y monitorear tus integraciones de servidor MCP.',
   'settings.ai.routing': 'Enrutamiento',
+  'settings.ai.claudeCode.button': 'Claude Code',
+  'settings.ai.claudeCode.inlineNotConnected':
+    'Sin conexión — enruta el chat a través de tu Claude Code CLI local.',
+  'settings.ai.claudeCode.checkingSignIn': 'Comprobando inicio de sesión…',
+  'settings.ai.claudeCode.inlineConnected': 'Conectado.',
+  'settings.ai.claudeCode.signedInAs': 'Sesión iniciada como',
+  'settings.ai.claudeCode.subscriptionFallback': 'Suscripción de Claude',
+  'settings.ai.claudeCode.usingApiKeyEnv': 'Usando ANTHROPIC_API_KEY',
+  'settings.ai.claudeCode.cliNotInstalled': 'CLI no instalado',
+  'settings.ai.claudeCode.signInUnknown': 'Estado de inicio de sesión desconocido',
+  'settings.ai.claudeCode.connectedNotSignedIn': 'Conectado · sin iniciar sesión',
+  'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modalDescription':
+    'Enruta las cargas de chat, agénticas y de razonamiento a través de tu Claude Code CLI instalado localmente. Sin clave de API — usa el propio inicio de sesión del CLI.',
+  'settings.ai.claudeCode.close': 'Cerrar',
+  'settings.ai.claudeCode.connection': 'Conexión',
+  'settings.ai.claudeCode.enabled': 'Activado',
+  'settings.ai.claudeCode.notEnabled': 'No activado',
+  'settings.ai.claudeCode.disconnect': 'Desconectar',
+  'settings.ai.claudeCode.disconnecting': 'Desconectando…',
+  'settings.ai.claudeCode.enable': 'Activar Claude Code',
+  'settings.ai.claudeCode.enabling': 'Activando…',
+  'settings.ai.claudeCode.authentication': 'Autenticación',
+  'settings.ai.claudeCode.recheck': 'Volver a comprobar',
+  'settings.ai.claudeCode.checking': 'Comprobando…',
+  'settings.ai.claudeCode.openingTerminal': 'Abriendo terminal…',
+  'settings.ai.claudeCode.signIn': 'Iniciar sesión con Claude',
+  'settings.ai.claudeCode.reconnect': 'Reconectar',
+  'settings.ai.claudeCode.loginHint':
+    'Abre un terminal que ejecuta claude login. Cuando termine, haz clic en Volver a comprobar.',
+  'settings.ai.claudeCode.loginError':
+    'No se pudo abrir el terminal de inicio de sesión. Inténtalo de nuevo.',
+  'settings.ai.claudeCode.fullAccess': 'Acceso completo',
+  'settings.ai.claudeCode.fullAccessOn':
+    'Claude Code puede ejecutar comandos, usar la red y generar subagentes.',
+  'settings.ai.claudeCode.fullAccessOff':
+    'Aceptar solo ediciones — aplica los cambios de archivos automáticamente y restringe comandos y red.',
+  'settings.ai.claudeCode.sandboxNoteMac':
+    'En macOS, ~/.openhuman permanece protegido por el sandbox en ambos modos.',
+  'settings.ai.claudeCode.sandboxNoteOther':
+    'El acceso completo no tiene restricciones en esta plataforma — actívalo solo si confías en el espacio de trabajo.',
+  'settings.ai.claudeCode.enableToCheck': 'Activa Claude Code para comprobar el inicio de sesión.',
+  'settings.ai.claudeCode.usingApiKeyEnvDetail': 'Usando ANTHROPIC_API_KEY del entorno.',
+  'settings.ai.claudeCode.notFoundInstall':
+    'Claude Code CLI no encontrado — instálalo con: npm install -g @anthropic-ai/claude-code',
+  'settings.ai.claudeCode.unknownDetail':
+    'No se pudo determinar el estado de inicio de sesión. Tu claude CLI puede ser anterior al estado de autenticación — prueba Reconectar y luego Volver a comprobar.',
+  'settings.ai.claudeCode.notSignedIn': 'Sesión no iniciada.',
   'settings.ai.routingCustom': 'Enrutamiento personalizado',
   'settings.ai.routingDefault': 'Predeterminado',
   'settings.ai.routingDesc': 'Descripción de enrutamiento',

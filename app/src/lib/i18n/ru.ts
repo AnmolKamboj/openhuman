@@ -3270,6 +3270,54 @@ const messages: TranslationMap = {
   'skills.mcpComingSoon.description':
     'Управление MCP-серверами скоро появится. Этот раздел станет центром для обнаружения, подключения и мониторинга интеграций с MCP-серверами.',
   'settings.ai.routing': 'Маршрутизация',
+  'settings.ai.claudeCode.button': 'Claude Code',
+  'settings.ai.claudeCode.inlineNotConnected':
+    'Не подключено — направляет чат через ваш локальный Claude Code CLI.',
+  'settings.ai.claudeCode.checkingSignIn': 'Проверка входа…',
+  'settings.ai.claudeCode.inlineConnected': 'Подключено.',
+  'settings.ai.claudeCode.signedInAs': 'Выполнен вход как',
+  'settings.ai.claudeCode.subscriptionFallback': 'Подписка Claude',
+  'settings.ai.claudeCode.usingApiKeyEnv': 'Используется ANTHROPIC_API_KEY',
+  'settings.ai.claudeCode.cliNotInstalled': 'CLI не установлен',
+  'settings.ai.claudeCode.signInUnknown': 'Состояние входа неизвестно',
+  'settings.ai.claudeCode.connectedNotSignedIn': 'Подключено · вход не выполнен',
+  'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modalDescription':
+    'Направляет задачи чата, агентные и рассуждающие нагрузки через локально установленный Claude Code CLI. Без ключа API — используется собственный вход CLI.',
+  'settings.ai.claudeCode.close': 'Закрыть',
+  'settings.ai.claudeCode.connection': 'Подключение',
+  'settings.ai.claudeCode.enabled': 'Включено',
+  'settings.ai.claudeCode.notEnabled': 'Не включено',
+  'settings.ai.claudeCode.disconnect': 'Отключить',
+  'settings.ai.claudeCode.disconnecting': 'Отключение…',
+  'settings.ai.claudeCode.enable': 'Включить Claude Code',
+  'settings.ai.claudeCode.enabling': 'Включение…',
+  'settings.ai.claudeCode.authentication': 'Аутентификация',
+  'settings.ai.claudeCode.recheck': 'Проверить снова',
+  'settings.ai.claudeCode.checking': 'Проверка…',
+  'settings.ai.claudeCode.openingTerminal': 'Открытие терминала…',
+  'settings.ai.claudeCode.signIn': 'Войти через Claude',
+  'settings.ai.claudeCode.reconnect': 'Переподключить',
+  'settings.ai.claudeCode.loginHint':
+    'Открывает терминал с командой claude login. После завершения нажмите «Проверить снова».',
+  'settings.ai.claudeCode.loginError':
+    'Не удалось открыть терминал входа. Пожалуйста, попробуйте снова.',
+  'settings.ai.claudeCode.fullAccess': 'Полный доступ',
+  'settings.ai.claudeCode.fullAccessOn':
+    'Claude Code может выполнять команды, использовать сеть и запускать субагентов.',
+  'settings.ai.claudeCode.fullAccessOff':
+    'Принимать только правки — автоматически применяет правки файлов, ограничивает команды и сеть.',
+  'settings.ai.claudeCode.sandboxNoteMac':
+    'В macOS каталог ~/.openhuman остаётся защищённым песочницей в обоих режимах.',
+  'settings.ai.claudeCode.sandboxNoteOther':
+    'Полный доступ не ограничен на этой платформе — включайте его только если доверяете рабочему пространству.',
+  'settings.ai.claudeCode.enableToCheck': 'Включите Claude Code, чтобы проверить вход.',
+  'settings.ai.claudeCode.usingApiKeyEnvDetail': 'Используется ANTHROPIC_API_KEY из окружения.',
+  'settings.ai.claudeCode.notFoundInstall':
+    'Claude Code CLI не найден — установите командой: npm install -g @anthropic-ai/claude-code',
+  'settings.ai.claudeCode.unknownDetail':
+    'Не удалось определить состояние входа. Ваш claude CLI может быть старше поддержки статуса аутентификации — попробуйте «Переподключить», затем «Проверить снова».',
+  'settings.ai.claudeCode.notSignedIn': 'Вход не выполнен.',
   'settings.ai.routingCustom': 'Пользовательская маршрутизация',
   'settings.ai.routingDefault': 'По умолчанию',
   'settings.ai.routingDesc': 'Описание маршрутизации',
