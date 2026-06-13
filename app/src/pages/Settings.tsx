@@ -19,6 +19,7 @@ import BillingPanel from '../components/settings/panels/BillingPanel';
 import CompanionPanel from '../components/settings/panels/CompanionPanel';
 import ComposioTriagePanel from '../components/settings/panels/ComposioTriagePanel';
 import CronJobsPanel from '../components/settings/panels/CronJobsPanel';
+import DesktopAgentPanel from '../components/settings/panels/DesktopAgentPanel';
 import DeveloperOptionsPanel from '../components/settings/panels/DeveloperOptionsPanel';
 import DevicesPanel from '../components/settings/panels/DevicesPanel';
 import DevWorkflowPanel from '../components/settings/panels/DevWorkflowPanel';
@@ -139,6 +140,7 @@ const Settings = () => {
             path="screen-intelligence"
             element={wrapSettingsPage(<ScreenIntelligencePanel />)}
           />
+          <Route path="desktop-agent" element={wrapSettingsPage(<DesktopAgentPanel />)} />
           <Route path="tools" element={wrapSettingsPage(<ToolsPanel />)} />
           <Route path="companion" element={wrapSettingsPage(<CompanionPanel />)} />
           <Route path="autocomplete" element={wrapSettingsPage(<AutocompletePanel />)} />

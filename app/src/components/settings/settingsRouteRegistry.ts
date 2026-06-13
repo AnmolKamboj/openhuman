@@ -438,13 +438,31 @@ export const SETTINGS_ROUTE_REGISTRY: SettingsRegistryEntry[] = [
     navOrder: 1,
   },
   {
+    id: 'desktop-agent',
+    titleKey: 'settings.desktopAgent.title',
+    descriptionKey: 'settings.desktopAgent.description',
+    section: 'features',
+    searchKeywords: [
+      'desktop',
+      'agent',
+      'automation',
+      'permissions',
+      'microphone',
+      'accessibility',
+      'screen recording',
+      'input monitoring',
+    ],
+    navGroup: 'connections',
+    navOrder: 2,
+  },
+  {
     id: 'tools',
     titleKey: 'pages.settings.features.tools',
     descriptionKey: 'pages.settings.features.toolsDesc',
     section: 'features',
     searchKeywords: ['tools', 'capabilities', 'functions'],
     navGroup: 'connections',
-    navOrder: 2,
+    navOrder: 3,
   },
   {
     id: 'companion',
@@ -453,7 +471,7 @@ export const SETTINGS_ROUTE_REGISTRY: SettingsRegistryEntry[] = [
     section: 'features',
     searchKeywords: ['desktop', 'overlay', 'companion'],
     navGroup: 'connections',
-    navOrder: 3,
+    navOrder: 4,
   },
 
   // =========================================================================
