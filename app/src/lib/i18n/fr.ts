@@ -1386,6 +1386,31 @@ const messages: TranslationMap = {
   'mcp.detail.disable': 'Désactiver',
   'mcp.status.disabled': 'Désactivé',
   'mcp.detail.tools': 'Outils',
+  'mcp.connectAuth.title': 'Connecter {name}',
+  'mcp.connectAuth.hint':
+    "Ajoutez l'authentification dont ce serveur a besoin, puis connectez-vous. Les jetons sont stockés chiffrés. Laissez vide pour les serveurs ne nécessitant aucune authentification.",
+  'mcp.connectAuth.requiredLabel': 'Obligatoire',
+  'mcp.connectAuth.customHeadersLabel': 'En-têtes personnalisés',
+  'mcp.connectAuth.customHeadersEmpty':
+    "Aucun en-tête personnalisé. Ajoutez-en un si ce serveur a besoin d'un en-tête d'authentification que le registre n'a pas déclaré.",
+  'mcp.connectAuth.addHeader': '+ Ajouter un en-tête',
+  'mcp.connectAuth.headerName': "Nom de l'en-tête",
+  'mcp.connectAuth.headerValue': 'Valeur',
+  'mcp.connectAuth.removeHeader': "Supprimer l'en-tête",
+  'mcp.connectAuth.howToGetToken': 'Aide et configuration',
+  'mcp.connectAuth.hideHelp': "Masquer l'aide",
+  'mcp.connectAuth.schemeLabel': 'Comment envoyer la valeur',
+  'mcp.connectAuth.schemeBearer': 'Bearer',
+  'mcp.connectAuth.schemeRaw': 'Aucun',
+  'mcp.connectAuth.reconnectFailed': 'Identifiants enregistrés, mais la connexion a échoué.',
+  'mcp.connectAuth.oauthHint':
+    'Ce serveur utilise OAuth. Connectez-vous via votre navigateur pour autoriser OpenHuman.',
+  'mcp.connectAuth.signIn': 'Se connecter avec le navigateur',
+  'mcp.connectAuth.oauthWaiting': 'En attente de la connexion…',
+  'mcp.connectAuth.oauthOrToken':
+    "Vous avez déjà un jeton d'accès ? Collez-le plutôt ci-dessous comme en-tête Authorization.",
+  'mcp.connectAuth.oauthTimeout':
+    'Délai dépassé en attendant la connexion via le navigateur. Réessayez.',
   'onboarding.skipForNow': "Passer pour l'instant",
   'onboarding.localAI.continueWithCloud': 'Continuer avec Cloud',
   'onboarding.localAI.useLocalAnyway':

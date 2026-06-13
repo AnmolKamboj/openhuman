@@ -1384,6 +1384,32 @@ const messages: TranslationMap = {
   'mcp.detail.disable': 'Deaktivieren',
   'mcp.status.disabled': 'Deaktiviert',
   'mcp.detail.tools': 'Werkzeuge',
+  'mcp.connectAuth.title': '{name} verbinden',
+  'mcp.connectAuth.hint':
+    'Fügen Sie die für diesen Server erforderliche Authentifizierung hinzu und verbinden Sie sich dann. Tokens werden verschlüsselt gespeichert. Bei Servern ohne Authentifizierung leer lassen.',
+  'mcp.connectAuth.requiredLabel': 'Erforderlich',
+  'mcp.connectAuth.customHeadersLabel': 'Benutzerdefinierte Header',
+  'mcp.connectAuth.customHeadersEmpty':
+    'Keine benutzerdefinierten Header. Fügen Sie einen hinzu, wenn dieser Server einen Authentifizierungs-Header benötigt, den die Registry nicht angegeben hat.',
+  'mcp.connectAuth.addHeader': '+ Header hinzufügen',
+  'mcp.connectAuth.headerName': 'Header-Name',
+  'mcp.connectAuth.headerValue': 'Wert',
+  'mcp.connectAuth.removeHeader': 'Header entfernen',
+  'mcp.connectAuth.howToGetToken': 'Hilfe & Einrichtung',
+  'mcp.connectAuth.hideHelp': 'Hilfe ausblenden',
+  'mcp.connectAuth.schemeLabel': 'Wie der Wert gesendet wird',
+  'mcp.connectAuth.schemeBearer': 'Bearer',
+  'mcp.connectAuth.schemeRaw': 'Keine',
+  'mcp.connectAuth.reconnectFailed':
+    'Anmeldedaten gespeichert, aber die Verbindung ist fehlgeschlagen.',
+  'mcp.connectAuth.oauthHint':
+    'Dieser Server verwendet OAuth. Melden Sie sich über Ihren Browser an, um OpenHuman zu autorisieren.',
+  'mcp.connectAuth.signIn': 'Im Browser anmelden',
+  'mcp.connectAuth.oauthWaiting': 'Warten auf Anmeldung…',
+  'mcp.connectAuth.oauthOrToken':
+    'Sie haben bereits ein Zugriffstoken? Fügen Sie es stattdessen unten als Authorization-Header ein.',
+  'mcp.connectAuth.oauthTimeout':
+    'Zeitüberschreitung beim Warten auf die Browser-Anmeldung. Versuchen Sie es erneut.',
   'onboarding.skipForNow': 'Vorerst überspringen',
   'onboarding.localAI.continueWithCloud': 'Fahren Sie mit der Cloud fort.',
   'onboarding.localAI.useLocalAnyway':

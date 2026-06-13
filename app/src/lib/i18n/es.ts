@@ -1380,6 +1380,31 @@ const messages: TranslationMap = {
   'mcp.detail.disable': 'Deshabilitar',
   'mcp.status.disabled': 'Deshabilitado',
   'mcp.detail.tools': 'Herramientas',
+  'mcp.connectAuth.title': 'Conectar {name}',
+  'mcp.connectAuth.hint':
+    'Agrega la autenticación que necesite este servidor y luego conéctate. Los tokens se almacenan cifrados. Déjalo en blanco para servidores que no requieran autenticación.',
+  'mcp.connectAuth.requiredLabel': 'Obligatorio',
+  'mcp.connectAuth.customHeadersLabel': 'Encabezados personalizados',
+  'mcp.connectAuth.customHeadersEmpty':
+    'No hay encabezados personalizados. Agrega uno si este servidor necesita un encabezado de autenticación que el registro no declaró.',
+  'mcp.connectAuth.addHeader': '+ Agregar encabezado',
+  'mcp.connectAuth.headerName': 'Nombre del encabezado',
+  'mcp.connectAuth.headerValue': 'Valor',
+  'mcp.connectAuth.removeHeader': 'Quitar encabezado',
+  'mcp.connectAuth.howToGetToken': 'Ayuda y configuración',
+  'mcp.connectAuth.hideHelp': 'Ocultar ayuda',
+  'mcp.connectAuth.schemeLabel': 'Cómo enviar el valor',
+  'mcp.connectAuth.schemeBearer': 'Bearer',
+  'mcp.connectAuth.schemeRaw': 'Ninguno',
+  'mcp.connectAuth.reconnectFailed': 'Se guardaron las credenciales, pero la conexión falló.',
+  'mcp.connectAuth.oauthHint':
+    'Este servidor usa OAuth. Inicia sesión en tu navegador para autorizar a OpenHuman.',
+  'mcp.connectAuth.signIn': 'Iniciar sesión con el navegador',
+  'mcp.connectAuth.oauthWaiting': 'Esperando el inicio de sesión…',
+  'mcp.connectAuth.oauthOrToken':
+    '¿Ya tienes un token de acceso? Pégalo abajo como encabezado Authorization en su lugar.',
+  'mcp.connectAuth.oauthTimeout':
+    'Se agotó el tiempo de espera del inicio de sesión en el navegador. Inténtalo de nuevo.',
   'onboarding.skipForNow': 'Saltar por ahora',
   'onboarding.localAI.continueWithCloud': 'Continuar con la nube',
   'onboarding.localAI.useLocalAnyway':

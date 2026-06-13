@@ -1363,6 +1363,30 @@ const messages: TranslationMap = {
   'mcp.detail.disable': 'Отключить',
   'mcp.status.disabled': 'Отключён',
   'mcp.detail.tools': 'Инструменты',
+  'mcp.connectAuth.title': 'Подключить {name}',
+  'mcp.connectAuth.hint':
+    'Добавьте аутентификацию, необходимую этому серверу, затем подключитесь. Токены хранятся в зашифрованном виде. Оставьте поле пустым для серверов, не требующих аутентификации.',
+  'mcp.connectAuth.requiredLabel': 'Обязательно',
+  'mcp.connectAuth.customHeadersLabel': 'Пользовательские заголовки',
+  'mcp.connectAuth.customHeadersEmpty':
+    'Нет пользовательских заголовков. Добавьте, если этому серверу нужен заголовок аутентификации, не объявленный в реестре.',
+  'mcp.connectAuth.addHeader': '+ Добавить заголовок',
+  'mcp.connectAuth.headerName': 'Имя заголовка',
+  'mcp.connectAuth.headerValue': 'Значение',
+  'mcp.connectAuth.removeHeader': 'Удалить заголовок',
+  'mcp.connectAuth.howToGetToken': 'Справка и настройка',
+  'mcp.connectAuth.hideHelp': 'Скрыть справку',
+  'mcp.connectAuth.schemeLabel': 'Как отправить значение',
+  'mcp.connectAuth.schemeBearer': 'Bearer',
+  'mcp.connectAuth.schemeRaw': 'Нет',
+  'mcp.connectAuth.reconnectFailed': 'Учётные данные сохранены, но подключиться не удалось.',
+  'mcp.connectAuth.oauthHint':
+    'Этот сервер использует OAuth. Войдите через браузер, чтобы авторизовать OpenHuman.',
+  'mcp.connectAuth.signIn': 'Войти через браузер',
+  'mcp.connectAuth.oauthWaiting': 'Ожидание входа…',
+  'mcp.connectAuth.oauthOrToken':
+    'Уже есть токен доступа? Вставьте его ниже как заголовок Authorization.',
+  'mcp.connectAuth.oauthTimeout': 'Истекло время ожидания входа через браузер. Попробуйте снова.',
   'onboarding.skipForNow': 'Пропустить сейчас',
   'onboarding.localAI.continueWithCloud': 'Продолжить с Облако',
   'onboarding.localAI.useLocalAnyway':

@@ -1376,6 +1376,30 @@ const messages: TranslationMap = {
   'mcp.detail.disable': 'Disabilita',
   'mcp.status.disabled': 'Disabilitato',
   'mcp.detail.tools': 'Strumenti',
+  'mcp.connectAuth.title': 'Connetti {name}',
+  'mcp.connectAuth.hint':
+    "Aggiungi l'autenticazione richiesta da questo server, poi connettiti. I token vengono memorizzati in forma cifrata. Lascia vuoto per i server che non richiedono autenticazione.",
+  'mcp.connectAuth.requiredLabel': 'Obbligatorio',
+  'mcp.connectAuth.customHeadersLabel': 'Intestazioni personalizzate',
+  'mcp.connectAuth.customHeadersEmpty':
+    "Nessuna intestazione personalizzata. Aggiungine una se questo server richiede un'intestazione di autenticazione non dichiarata dal registro.",
+  'mcp.connectAuth.addHeader': '+ Aggiungi intestazione',
+  'mcp.connectAuth.headerName': "Nome dell'intestazione",
+  'mcp.connectAuth.headerValue': 'Valore',
+  'mcp.connectAuth.removeHeader': 'Rimuovi intestazione',
+  'mcp.connectAuth.howToGetToken': 'Aiuto e configurazione',
+  'mcp.connectAuth.hideHelp': 'Nascondi aiuto',
+  'mcp.connectAuth.schemeLabel': 'Come inviare il valore',
+  'mcp.connectAuth.schemeBearer': 'Bearer',
+  'mcp.connectAuth.schemeRaw': 'Nessuno',
+  'mcp.connectAuth.reconnectFailed': 'Credenziali salvate, ma la connessione non è riuscita.',
+  'mcp.connectAuth.oauthHint':
+    'Questo server usa OAuth. Accedi tramite il tuo browser per autorizzare OpenHuman.',
+  'mcp.connectAuth.signIn': 'Accedi con il browser',
+  'mcp.connectAuth.oauthWaiting': 'In attesa dell’accesso…',
+  'mcp.connectAuth.oauthOrToken':
+    'Hai già un token di accesso? Incollalo invece come intestazione Authorization qui sotto.',
+  'mcp.connectAuth.oauthTimeout': "Tempo scaduto in attesa dell'accesso dal browser. Riprova.",
   'onboarding.skipForNow': 'Salta per ora',
   'onboarding.localAI.continueWithCloud': 'Continua con Cloud',
   'onboarding.localAI.useLocalAnyway':

@@ -1320,6 +1320,30 @@ const messages: TranslationMap = {
   'mcp.detail.disable': 'تعطيل',
   'mcp.status.disabled': 'معطّل',
   'mcp.detail.tools': 'الأدوات',
+  'mcp.connectAuth.title': 'الاتصال بـ {name}',
+  'mcp.connectAuth.hint':
+    'أضف أي مصادقة يحتاجها هذا الخادم، ثم اتصل. يتم تخزين الرموز مشفّرة. اتركها فارغة للخوادم التي لا تحتاج إلى مصادقة.',
+  'mcp.connectAuth.requiredLabel': 'مطلوب',
+  'mcp.connectAuth.customHeadersLabel': 'رؤوس مخصصة',
+  'mcp.connectAuth.customHeadersEmpty':
+    'لا توجد رؤوس مخصصة. أضف واحدة إذا كان هذا الخادم يحتاج إلى رأس مصادقة لم يُعلن عنه السجل.',
+  'mcp.connectAuth.addHeader': '+ إضافة رأس',
+  'mcp.connectAuth.headerName': 'اسم الرأس',
+  'mcp.connectAuth.headerValue': 'القيمة',
+  'mcp.connectAuth.removeHeader': 'إزالة الرأس',
+  'mcp.connectAuth.howToGetToken': 'المساعدة والإعداد',
+  'mcp.connectAuth.hideHelp': 'إخفاء المساعدة',
+  'mcp.connectAuth.schemeLabel': 'كيفية إرسال القيمة',
+  'mcp.connectAuth.schemeBearer': 'Bearer',
+  'mcp.connectAuth.schemeRaw': 'بدون',
+  'mcp.connectAuth.reconnectFailed': 'تم حفظ بيانات الاعتماد، لكن فشل الاتصال.',
+  'mcp.connectAuth.oauthHint':
+    'يستخدم هذا الخادم OAuth. سجّل الدخول عبر متصفحك للسماح لـ OpenHuman.',
+  'mcp.connectAuth.signIn': 'تسجيل الدخول عبر المتصفح',
+  'mcp.connectAuth.oauthWaiting': 'في انتظار تسجيل الدخول…',
+  'mcp.connectAuth.oauthOrToken':
+    'هل لديك بالفعل رمز وصول؟ الصقه بدلاً من ذلك كرأس Authorization أدناه.',
+  'mcp.connectAuth.oauthTimeout': 'انتهت مهلة انتظار تسجيل الدخول عبر المتصفح. حاول مرة أخرى.',
   'onboarding.skipForNow': 'التخطي الآن',
   'onboarding.localAI.continueWithCloud': 'متابعة مع السحابة',
   'onboarding.localAI.useLocalAnyway':

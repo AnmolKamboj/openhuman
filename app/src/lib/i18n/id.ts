@@ -1354,6 +1354,30 @@ const messages: TranslationMap = {
   'mcp.detail.disable': 'Nonaktifkan',
   'mcp.status.disabled': 'Dinonaktifkan',
   'mcp.detail.tools': 'Alat',
+  'mcp.connectAuth.title': 'Hubungkan {name}',
+  'mcp.connectAuth.hint':
+    'Tambahkan autentikasi yang dibutuhkan server ini, lalu hubungkan. Token disimpan terenkripsi. Biarkan kosong untuk server yang tidak memerlukan autentikasi.',
+  'mcp.connectAuth.requiredLabel': 'Wajib',
+  'mcp.connectAuth.customHeadersLabel': 'Header kustom',
+  'mcp.connectAuth.customHeadersEmpty':
+    'Tidak ada header kustom. Tambahkan satu jika server ini memerlukan header autentikasi yang tidak dideklarasikan oleh registri.',
+  'mcp.connectAuth.addHeader': '+ Tambah header',
+  'mcp.connectAuth.headerName': 'Nama header',
+  'mcp.connectAuth.headerValue': 'Nilai',
+  'mcp.connectAuth.removeHeader': 'Hapus header',
+  'mcp.connectAuth.howToGetToken': 'Bantuan & konfigurasi',
+  'mcp.connectAuth.hideHelp': 'Sembunyikan bantuan',
+  'mcp.connectAuth.schemeLabel': 'Cara mengirim nilai',
+  'mcp.connectAuth.schemeBearer': 'Bearer',
+  'mcp.connectAuth.schemeRaw': 'Tidak ada',
+  'mcp.connectAuth.reconnectFailed': 'Kredensial tersimpan, tetapi koneksi gagal.',
+  'mcp.connectAuth.oauthHint':
+    'Server ini menggunakan OAuth. Masuk melalui browser Anda untuk mengizinkan OpenHuman.',
+  'mcp.connectAuth.signIn': 'Masuk dengan browser',
+  'mcp.connectAuth.oauthWaiting': 'Menunggu proses masuk…',
+  'mcp.connectAuth.oauthOrToken':
+    'Sudah punya token akses? Tempelkan sebagai header Authorization di bawah ini saja.',
+  'mcp.connectAuth.oauthTimeout': 'Waktu menunggu proses masuk lewat browser habis. Coba lagi.',
   'onboarding.skipForNow': 'Lewati Sekarang',
   'onboarding.localAI.continueWithCloud': 'Lanjutkan dengan Cloud',
   'onboarding.localAI.useLocalAnyway':

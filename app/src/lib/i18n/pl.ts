@@ -1366,6 +1366,31 @@ const messages: TranslationMap = {
   'mcp.detail.disable': 'Wyłącz',
   'mcp.status.disabled': 'Wyłączony',
   'mcp.detail.tools': 'Narzędzia',
+  'mcp.connectAuth.title': 'Połącz {name}',
+  'mcp.connectAuth.hint':
+    'Dodaj uwierzytelnianie wymagane przez ten serwer, a następnie połącz się. Tokeny są przechowywane w postaci zaszyfrowanej. Pozostaw puste dla serwerów, które nie wymagają uwierzytelniania.',
+  'mcp.connectAuth.requiredLabel': 'Wymagane',
+  'mcp.connectAuth.customHeadersLabel': 'Niestandardowe nagłówki',
+  'mcp.connectAuth.customHeadersEmpty':
+    'Brak niestandardowych nagłówków. Dodaj jeden, jeśli ten serwer wymaga nagłówka uwierzytelniania, którego rejestr nie zadeklarował.',
+  'mcp.connectAuth.addHeader': '+ Dodaj nagłówek',
+  'mcp.connectAuth.headerName': 'Nazwa nagłówka',
+  'mcp.connectAuth.headerValue': 'Wartość',
+  'mcp.connectAuth.removeHeader': 'Usuń nagłówek',
+  'mcp.connectAuth.howToGetToken': 'Pomoc i konfiguracja',
+  'mcp.connectAuth.hideHelp': 'Ukryj pomoc',
+  'mcp.connectAuth.schemeLabel': 'Jak wysłać wartość',
+  'mcp.connectAuth.schemeBearer': 'Bearer',
+  'mcp.connectAuth.schemeRaw': 'Brak',
+  'mcp.connectAuth.reconnectFailed': 'Zapisano poświadczenia, ale połączenie nie powiodło się.',
+  'mcp.connectAuth.oauthHint':
+    'Ten serwer używa OAuth. Zaloguj się przez przeglądarkę, aby autoryzować OpenHuman.',
+  'mcp.connectAuth.signIn': 'Zaloguj się przez przeglądarkę',
+  'mcp.connectAuth.oauthWaiting': 'Oczekiwanie na logowanie…',
+  'mcp.connectAuth.oauthOrToken':
+    'Masz już token dostępu? Wklej go zamiast tego poniżej jako nagłówek Authorization.',
+  'mcp.connectAuth.oauthTimeout':
+    'Upłynął limit czasu oczekiwania na logowanie w przeglądarce. Spróbuj ponownie.',
   'onboarding.skipForNow': 'Pomiń na razie',
   'onboarding.localAI.continueWithCloud': 'Kontynuuj z chmurą',
   'onboarding.localAI.useLocalAnyway':

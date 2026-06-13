@@ -1346,6 +1346,31 @@ const messages: TranslationMap = {
   'mcp.detail.disable': 'নিষ্ক্রিয় করুন',
   'mcp.status.disabled': 'নিষ্ক্রিয়',
   'mcp.detail.tools': 'টুলস',
+  'mcp.connectAuth.title': '{name} সংযুক্ত করুন',
+  'mcp.connectAuth.hint':
+    'এই সার্ভারের প্রয়োজনীয় যেকোনো প্রমাণীকরণ যোগ করুন, তারপর সংযুক্ত করুন। টোকেনগুলি এনক্রিপ্ট করে সংরক্ষণ করা হয়। যেসব সার্ভারে প্রমাণীকরণ লাগে না সেগুলির জন্য খালি রাখুন।',
+  'mcp.connectAuth.requiredLabel': 'আবশ্যক',
+  'mcp.connectAuth.customHeadersLabel': 'কাস্টম হেডার',
+  'mcp.connectAuth.customHeadersEmpty':
+    'কোনো কাস্টম হেডার নেই। রেজিস্ট্রি ঘোষণা করেনি এমন কোনো প্রমাণীকরণ হেডার এই সার্ভারের প্রয়োজন হলে একটি যোগ করুন।',
+  'mcp.connectAuth.addHeader': '+ হেডার যোগ করুন',
+  'mcp.connectAuth.headerName': 'হেডারের নাম',
+  'mcp.connectAuth.headerValue': 'মান',
+  'mcp.connectAuth.removeHeader': 'হেডার সরান',
+  'mcp.connectAuth.howToGetToken': 'সহায়তা ও কনফিগার করুন',
+  'mcp.connectAuth.hideHelp': 'সহায়তা লুকান',
+  'mcp.connectAuth.schemeLabel': 'মানটি কীভাবে পাঠানো হবে',
+  'mcp.connectAuth.schemeBearer': 'Bearer',
+  'mcp.connectAuth.schemeRaw': 'কোনোটি নয়',
+  'mcp.connectAuth.reconnectFailed': 'শংসাপত্র সংরক্ষণ করা হয়েছে, কিন্তু সংযোগ ব্যর্থ হয়েছে।',
+  'mcp.connectAuth.oauthHint':
+    'এই সার্ভারটি OAuth ব্যবহার করে। OpenHuman-কে অনুমোদন দিতে আপনার ব্রাউজারের মাধ্যমে সাইন ইন করুন।',
+  'mcp.connectAuth.signIn': 'ব্রাউজার দিয়ে সাইন ইন করুন',
+  'mcp.connectAuth.oauthWaiting': 'সাইন-ইনের জন্য অপেক্ষা করা হচ্ছে…',
+  'mcp.connectAuth.oauthOrToken':
+    'ইতিমধ্যে একটি অ্যাক্সেস টোকেন আছে? এর পরিবর্তে নিচে Authorization হেডার হিসেবে পেস্ট করুন।',
+  'mcp.connectAuth.oauthTimeout':
+    'ব্রাউজার সাইন-ইনের জন্য অপেক্ষার সময় শেষ হয়েছে। আবার চেষ্টা করুন।',
   'onboarding.skipForNow': 'এখনই এড়িয়ে যান',
   'onboarding.localAI.continueWithCloud': 'ক্লাউডের সাথে চালিয়ে যান',
   'onboarding.localAI.useLocalAnyway':

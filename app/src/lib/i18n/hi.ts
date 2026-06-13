@@ -1344,6 +1344,31 @@ const messages: TranslationMap = {
   'mcp.detail.disable': 'अक्षम करें',
   'mcp.status.disabled': 'अक्षम',
   'mcp.detail.tools': 'उपकरण',
+  'mcp.connectAuth.title': '{name} कनेक्ट करें',
+  'mcp.connectAuth.hint':
+    'इस सर्वर के लिए आवश्यक कोई भी प्रमाणीकरण जोड़ें, फिर कनेक्ट करें। टोकन एन्क्रिप्टेड रूप में संग्रहीत किए जाते हैं। जिन सर्वरों को प्रमाणीकरण की आवश्यकता नहीं है, उनके लिए इसे खाली छोड़ें।',
+  'mcp.connectAuth.requiredLabel': 'आवश्यक',
+  'mcp.connectAuth.customHeadersLabel': 'कस्टम हेडर',
+  'mcp.connectAuth.customHeadersEmpty':
+    'कोई कस्टम हेडर नहीं। यदि इस सर्वर को कोई प्रमाणीकरण हेडर चाहिए जिसे रजिस्ट्री ने घोषित नहीं किया, तो एक जोड़ें।',
+  'mcp.connectAuth.addHeader': '+ हेडर जोड़ें',
+  'mcp.connectAuth.headerName': 'हेडर का नाम',
+  'mcp.connectAuth.headerValue': 'मान',
+  'mcp.connectAuth.removeHeader': 'हेडर हटाएं',
+  'mcp.connectAuth.howToGetToken': 'सहायता और कॉन्फ़िगर करें',
+  'mcp.connectAuth.hideHelp': 'सहायता छिपाएं',
+  'mcp.connectAuth.schemeLabel': 'मान को कैसे भेजें',
+  'mcp.connectAuth.schemeBearer': 'Bearer',
+  'mcp.connectAuth.schemeRaw': 'कोई नहीं',
+  'mcp.connectAuth.reconnectFailed': 'क्रेडेंशियल सहेजे गए, लेकिन कनेक्ट होने में विफल रहे।',
+  'mcp.connectAuth.oauthHint':
+    'यह सर्वर OAuth का उपयोग करता है। OpenHuman को अधिकृत करने के लिए अपने ब्राउज़र से साइन इन करें।',
+  'mcp.connectAuth.signIn': 'ब्राउज़र से साइन इन करें',
+  'mcp.connectAuth.oauthWaiting': 'साइन-इन की प्रतीक्षा हो रही है…',
+  'mcp.connectAuth.oauthOrToken':
+    'क्या आपके पास पहले से एक एक्सेस टोकन है? इसके बजाय इसे नीचे Authorization हेडर के रूप में पेस्ट करें।',
+  'mcp.connectAuth.oauthTimeout':
+    'ब्राउज़र साइन-इन की प्रतीक्षा का समय समाप्त हो गया। पुनः प्रयास करें।',
   'onboarding.skipForNow': 'अभी के लिए छोड़ें',
   'onboarding.localAI.continueWithCloud': 'बादल के साथ जारी रखें',
   'onboarding.localAI.useLocalAnyway':
