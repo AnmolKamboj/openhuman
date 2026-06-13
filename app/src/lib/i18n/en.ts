@@ -33,6 +33,9 @@ const en: TranslationMap = {
   'brain.subtitle': 'Your knowledge graph, memory sources, and controls.',
   'brain.tabs.memory': 'Memory',
   'brain.tabs.subconscious': 'Subconscious',
+  'brain.tabs.graph': 'Graph',
+  'brain.tabs.sources': 'Sources',
+  'brain.tabs.sync': 'Sync',
   'brain.empty': 'Your brain is empty for now — connect a source to start building memory.',
   'brain.error': "Couldn't load your brain. Please try again.",
 
@@ -103,11 +106,11 @@ const en: TranslationMap = {
 
   // Settings — assistant group items
   'settings.assistant.personality': 'Personality',
-  'settings.assistant.personalityDesc': 'Name, description, and SOUL.md persona',
+  'settings.personalityFace.title': 'Personality & Face',
+  'settings.personalityFace.menuDesc': "Tune your assistant's character and pick its face",
   'settings.assistant.voice': 'Voice',
   'settings.assistant.voiceDesc': 'Speech-to-text and text-to-speech settings',
   'settings.assistant.faceMascot': 'Face / Mascot',
-  'settings.assistant.faceMascotDesc': 'Pick the mascot color used across the app',
   'settings.assistant.backgroundActivity': 'Subconscious',
   'settings.assistant.backgroundActivityDesc':
     'Control how actively your assistant works in the background',
@@ -183,6 +186,11 @@ const en: TranslationMap = {
   'settings.exitLocalSession': 'Exit local session',
   'settings.exitLocalSessionDesc': 'Return to the sign-in screen',
   'settings.language': 'Language',
+  'settings.navGroups.general': 'General',
+  'settings.navGroups.assistant': 'Assistant',
+  'settings.navGroups.data': 'Data',
+  'settings.navGroups.connections': 'Connections',
+  'settings.navGroups.system': 'System',
   'settings.betaBuild': 'Beta build - v{version}',
   'settings.languageDesc': 'Display language for the app interface',
   'settings.alerts': 'Alerts',
@@ -428,6 +436,8 @@ const en: TranslationMap = {
   'connections.tabs.mcp': 'MCP Servers',
   'connections.tabs.skills': 'Skills',
   'connections.tabs.meetings': 'Meetings',
+  'connections.groups.integrations': 'Integrations',
+  'connections.groups.intelligence': 'Intelligence',
   // Intelligence / Memory
   'memory.title': 'Memory',
   'memory.search': 'Search memories...',
@@ -1245,12 +1255,9 @@ const en: TranslationMap = {
   'settings.about.connectionHelperCloud':
     'Connected to a remote core. Change this in BootCheck or the cloud mode picker.',
   'settings.heartbeat.title': 'Heartbeat & loops',
-  'settings.heartbeat.desc': 'Control background scheduling cadences and inspect the loop map.',
-  'settings.ledgerUsage.title': 'Usage ledger',
-  'settings.ledgerUsage.desc': 'Recent credit spend, budget math, and background API read budget.',
+  'settings.usage.title': 'Usage & Limits',
+  'settings.usage.menuDesc': 'Costs, token usage, budgets, and background activity',
   'settings.costDashboard.title': 'Cost dashboard',
-  'settings.costDashboard.desc':
-    '7-day spend and token burn across the swarm, with budget pace and per-model breakdown.',
   'settings.costDashboard.sevenDayCost': '7-day daily cost',
   'settings.costDashboard.sevenDayTokens': '7-day token usage',
   'settings.costDashboard.totalSpend': '7-day total',
@@ -2331,6 +2338,9 @@ const en: TranslationMap = {
   'chat.editThreadTitle': 'Edit thread title',
   'chat.hideSidebar': 'Hide sidebar',
   'chat.showSidebar': 'Show sidebar',
+  'chat.searchThreads': 'Search conversations',
+  'layout.resizeSidebar': 'Resize sidebar',
+  'layout.showSidebar': 'Show sidebar',
   'chat.newThreadShortcut': 'New thread (/new)',
   'chat.new': 'New',
   'chat.failedToLoadMessages': 'Failed to load messages',
@@ -3618,9 +3628,6 @@ const en: TranslationMap = {
   'pages.settings.aiSection.description':
     'Language model providers, local Ollama, and voice (STT / TTS).',
   'pages.settings.aiSection.title': 'AI',
-  'pages.settings.composioSection.title': 'Composio',
-  'pages.settings.composioSection.description':
-    'Routing, triggers, and history for integrations powered by Composio.',
   'settings.developerMenu.composio.title': 'Composio',
   'settings.developerMenu.composio.desc':
     'Routing mode, integration triggers, and trigger history archive.',
@@ -5306,6 +5313,8 @@ const en: TranslationMap = {
   'walletSend.genericError': 'Could not complete the transfer. Please try again.',
   // Task sources (#task-sources)
   'settings.taskSources.title': 'Task Sources',
+  'settings.integrations.title': 'Integrations',
+  'settings.integrations.menuDesc': 'Task sources, Composio routing, and webhook triggers',
   'settings.taskSources.subtitle': 'Pull tasks from your tools onto the agent todo board',
   'settings.taskSources.description':
     'Collect work items from GitHub, Notion, Linear, and ClickUp, enrich them, and route them onto the agent todo board.',

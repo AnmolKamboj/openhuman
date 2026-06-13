@@ -32,6 +32,9 @@ const messages: TranslationMap = {
   'brain.subtitle': 'Il tuo grafo della conoscenza, le fonti di memoria e i controlli.',
   'brain.tabs.memory': 'Memoria',
   'brain.tabs.subconscious': 'Subconscio',
+  'brain.tabs.graph': 'Grafico',
+  'brain.tabs.sources': 'Fonti',
+  'brain.tabs.sync': 'Sincronizzazione',
   'brain.empty':
     'Il tuo cervello è ancora vuoto: collega una fonte per iniziare a costruire la memoria.',
   'brain.error': 'Impossibile caricare il tuo cervello. Riprova.',
@@ -89,11 +92,12 @@ const messages: TranslationMap = {
   'settings.groups.notifications': 'Notifiche',
   'settings.groups.about': 'Informazioni',
   'settings.assistant.personality': 'Personalità',
-  'settings.assistant.personalityDesc': 'Nome, descrizione e persona SOUL.md',
+  'settings.personalityFace.title': 'Personalità e volto',
+  'settings.personalityFace.menuDesc':
+    'Regola il carattere del tuo assistente e scegli il suo volto',
   'settings.assistant.voice': 'Voce',
   'settings.assistant.voiceDesc': 'Impostazioni di sintesi vocale e riconoscimento vocale',
   'settings.assistant.faceMascot': 'Faccia / Mascotte',
-  'settings.assistant.faceMascotDesc': "Scegli il colore della mascotte usato nell'app",
   'settings.assistant.backgroundActivity': 'Subconscio',
   'settings.assistant.backgroundActivityDesc':
     'Controlla quanto attivamente il tuo assistente lavora in background',
@@ -171,6 +175,11 @@ const messages: TranslationMap = {
   'settings.exitLocalSession': 'Esci dalla sessione locale',
   'settings.exitLocalSessionDesc': 'Ritorna alla schermata di accesso',
   'settings.language': 'Lingua',
+  'settings.navGroups.general': 'Generale',
+  'settings.navGroups.assistant': 'Assistente',
+  'settings.navGroups.data': 'Dati',
+  'settings.navGroups.connections': 'Connessioni',
+  'settings.navGroups.system': 'Sistema',
   'settings.betaBuild': 'Build beta - v{version}',
   'settings.languageDesc': "Lingua di visualizzazione dell'interfaccia dell'app",
   'settings.alerts': 'Avvisi',
@@ -396,6 +405,8 @@ const messages: TranslationMap = {
   'connections.tabs.mcp': 'Server MCP',
   'connections.tabs.skills': 'Competenze',
   'connections.tabs.meetings': 'Riunioni',
+  'connections.groups.integrations': 'Integrazioni',
+  'connections.groups.intelligence': 'Intelligenza',
   'memory.title': 'Memoria',
   'memory.search': 'Cerca memorie...',
   'memory.noResults': 'Nessuna memoria trovata',
@@ -914,14 +925,9 @@ const messages: TranslationMap = {
   'settings.about.connectionHelperCloud':
     'Connesso a un core remoto. Cambia questo in BootCheck o nel selettore della modalità cloud.',
   'settings.heartbeat.title': 'Heartbeat e loop',
-  'settings.heartbeat.desc':
-    'Controlla le cadenze di pianificazione di background e ispeziona la mappa del ciclo.',
-  'settings.ledgerUsage.title': 'Registro di utilizzo',
-  'settings.ledgerUsage.desc':
-    'Spesa recente di credito, matematica del budget e lettura del budget di background API.',
+  'settings.usage.title': 'Utilizzo e limiti',
+  'settings.usage.menuDesc': 'Costi, utilizzo dei token, budget e attività in background',
   'settings.costDashboard.title': 'Cruscotto dei costi',
-  'settings.costDashboard.desc':
-    "Spesa e bruciatura di token nell'arco di 7 giorni attraverso lo sciame, con ritmo di budget e suddivisione per modello.",
   'settings.costDashboard.sevenDayCost': 'Costo giornaliero di 7 giorni',
   'settings.costDashboard.sevenDayTokens': 'Utilizzo del token di 7 giorni',
   'settings.costDashboard.totalSpend': 'Totale di 7 giorni',
@@ -1966,6 +1972,9 @@ const messages: TranslationMap = {
   'chat.editThreadTitle': 'Modifica titolo del thread',
   'chat.hideSidebar': 'Nascondi barra laterale',
   'chat.showSidebar': 'Mostra barra laterale',
+  'chat.searchThreads': 'Cerca conversazioni',
+  'layout.resizeSidebar': 'Ridimensiona barra laterale',
+  'layout.showSidebar': 'Mostra barra laterale',
   'chat.newThreadShortcut': 'Nuovo thread (/new)',
   'chat.new': 'Nuovo',
   'chat.failedToLoadMessages': 'Impossibile caricare i messaggi',
@@ -3131,9 +3140,6 @@ const messages: TranslationMap = {
   'pages.settings.aiSection.description':
     'Provider di modelli linguistici, Ollama locale e voce (STT / TTS).',
   'pages.settings.aiSection.title': 'AI',
-  'pages.settings.composioSection.title': 'Composio',
-  'pages.settings.composioSection.description':
-    'Routing, trigger e cronologia per le integrazioni fornite da Composio.',
   'settings.developerMenu.composio.title': 'Composio',
   'settings.developerMenu.composio.desc':
     'Modalità di routing, trigger di integrazione e archivio cronologico dei trigger.',
@@ -4835,6 +4841,8 @@ const messages: TranslationMap = {
   'walletSend.done': 'Fatto',
   'walletSend.genericError': 'Impossibile completare il trasferimento. Riprova.',
   'settings.taskSources.title': 'Fonti del compito',
+  'settings.integrations.title': 'Integrazioni',
+  'settings.integrations.menuDesc': 'Sorgenti di attività, routing Composio e trigger webhook',
   'settings.taskSources.subtitle':
     "Estrai le attività dai tuoi strumenti sulla lavagna delle cose da fare dell'agente",
   'settings.taskSources.description':
