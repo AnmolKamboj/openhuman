@@ -4492,6 +4492,9 @@ const messages: TranslationMap = {
   'skills.meetingBots.wakePhrase': 'عبارة التنشيط',
   'skills.meetingBots.wakePhraseHint': 'مرحباً OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'يجب أن يقول المشارك هذا قبل أن يرد البوت.',
+  'skills.meetingBots.activeMode': 'الرد عندما أناديه',
+  'skills.meetingBots.activeModeDesc':
+    'عند التفعيل، يرد البوت بصوت مسموع بعد أن تقول عبارة التنبيه. عند الإيقاف، يكتفي بالاستماع وتدوين النص.',
   'skills.resource.preview.closeAriaLabel': 'إغلاق المعاينة',
   'skills.resource.preview.failed': 'فشلت المعاينة',
   'skills.resource.preview.loading': 'جارٍ تحميل المعاينة…',

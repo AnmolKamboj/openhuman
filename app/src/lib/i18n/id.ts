@@ -4601,6 +4601,9 @@ const messages: TranslationMap = {
   'skills.meetingBots.wakePhrase': 'Frasa Bangun',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'Peserta harus mengucapkan ini sebelum bot merespons.',
+  'skills.meetingBots.activeMode': 'Tanggapi saat saya menyapa',
+  'skills.meetingBots.activeModeDesc':
+    'Saat aktif, bot menjawab dengan suara setelah Anda mengucapkan frasa pemicunya. Saat nonaktif, bot hanya mendengarkan dan mentranskripsikan.',
   'skills.resource.preview.closeAriaLabel': 'Tutup pratinjau',
   'skills.resource.preview.failed': 'Pratinjau gagal',
   'skills.resource.preview.loading': 'Memuat pratinjau...',

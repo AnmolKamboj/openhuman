@@ -4540,6 +4540,9 @@ const messages: TranslationMap = {
   'skills.meetingBots.wakePhrase': '웨이크 구문',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': '참가자가 봇이 응답하기 전에 이것을 말해야 합니다.',
+  'skills.meetingBots.activeMode': '부르면 응답하기',
+  'skills.meetingBots.activeModeDesc':
+    '켜면 호출 문구를 말한 뒤 봇이 소리 내어 답합니다. 끄면 듣고 기록만 합니다.',
   'skills.resource.preview.closeAriaLabel': '미리보기 닫기',
   'skills.resource.preview.failed': '미리보기 실패',
   'skills.resource.preview.loading': '미리보기 불러오는 중…',

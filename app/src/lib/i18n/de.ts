@@ -4701,6 +4701,9 @@ const messages: TranslationMap = {
   'skills.meetingBots.wakePhrase': 'Wake-Phrase',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'Der Teilnehmer muss dies sagen, bevor der Bot antwortet.',
+  'skills.meetingBots.activeMode': 'Antworten, wenn ich es anspreche',
+  'skills.meetingBots.activeModeDesc':
+    'Wenn aktiviert, antwortet der Bot hörbar, nachdem du seinen Weckruf gesagt hast. Wenn deaktiviert, hört er nur zu und transkribiert.',
   'skills.resource.preview.closeAriaLabel': 'Vorschau schließen',
   'skills.resource.preview.failed': 'Vorschau fehlgeschlagen',
   'skills.resource.preview.loading': 'Vorschau wird geladen…',

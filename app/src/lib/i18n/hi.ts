@@ -4588,6 +4588,9 @@ const messages: TranslationMap = {
   'skills.meetingBots.wakePhrase': 'वेक फ्रेज़',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'बोट के जवाब देने से पहले प्रतिभागी को यह कहना होगा।',
+  'skills.meetingBots.activeMode': 'जब मैं बुलाऊँ तब जवाब दे',
+  'skills.meetingBots.activeModeDesc':
+    'चालू होने पर, वेक फ़्रेज़ कहने के बाद बॉट बोलकर जवाब देता है। बंद होने पर, यह सिर्फ़ सुनता और ट्रांसक्राइब करता है।',
   'skills.resource.preview.closeAriaLabel': 'प्रीव्यू बंद करें',
   'skills.resource.preview.failed': 'पूर्वावलोकन विफल',
   'skills.resource.preview.loading': 'प्रीव्यू लोड हो रहा है…',

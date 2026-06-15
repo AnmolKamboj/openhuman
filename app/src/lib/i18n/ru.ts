@@ -4627,6 +4627,9 @@ const messages: TranslationMap = {
   'skills.meetingBots.wakePhrase': 'Фраза активации',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'Участник должен произнести это, прежде чем бот ответит.',
+  'skills.meetingBots.activeMode': 'Отвечать, когда я обращаюсь',
+  'skills.meetingBots.activeModeDesc':
+    'Когда включено, бот отвечает вслух после того, как вы произнесёте фразу-обращение. Когда выключено, он только слушает и расшифровывает.',
   'skills.resource.preview.closeAriaLabel': 'Закрыть предпросмотр',
   'skills.resource.preview.failed': 'Не удалось показать превью',
   'skills.resource.preview.loading': 'Загрузка предпросмотра…',

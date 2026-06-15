@@ -4664,6 +4664,9 @@ const messages: TranslationMap = {
   'skills.meetingBots.wakePhrase': 'Frase de ativação',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'O participante deve dizer isso antes de o bot responder.',
+  'skills.meetingBots.activeMode': 'Responder quando eu falar com ele',
+  'skills.meetingBots.activeModeDesc':
+    'Quando ativado, o bot responde em voz alta depois que você diz a frase de ativação. Quando desativado, ele apenas ouve e transcreve.',
   'skills.resource.preview.closeAriaLabel': 'Fechar visualização',
   'skills.resource.preview.failed': 'Falha na pré-visualização',
   'skills.resource.preview.loading': 'Carregando visualização…',

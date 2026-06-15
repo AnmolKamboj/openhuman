@@ -4357,6 +4357,9 @@ const messages: TranslationMap = {
   'skills.meetingBots.wakePhrase': '唤醒词',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': '参与者必须先说出此词，机器人才会回复。',
+  'skills.meetingBots.activeMode': '当我呼叫时回应',
+  'skills.meetingBots.activeModeDesc':
+    '开启后，说出唤醒词后机器人会出声回答。关闭后，它只聆听并转写。',
   'skills.resource.preview.closeAriaLabel': '关闭预览',
   'skills.resource.preview.failed': '预览失败',
   'skills.resource.preview.loading': '加载预览中…',

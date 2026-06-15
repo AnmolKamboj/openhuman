@@ -5136,6 +5136,9 @@ const en: TranslationMap = {
   'skills.meetingBots.wakePhrase': 'Wake Phrase',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'Participant must say this before the bot responds.',
+  'skills.meetingBots.activeMode': 'Respond when I address it',
+  'skills.meetingBots.activeModeDesc':
+    'When on, the bot speaks a reply after you say its wake phrase. When off, it only listens and transcribes.',
   'skills.resource.preview.closeAriaLabel': 'Close preview',
   'skills.resource.preview.failed': 'Preview failed',
   'skills.resource.preview.loading': 'Loading preview…',

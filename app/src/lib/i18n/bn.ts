@@ -4584,6 +4584,9 @@ const messages: TranslationMap = {
   'skills.meetingBots.wakePhrase': 'ওয়েক ফ্রেজ',
   'skills.meetingBots.wakePhraseHint': 'Hey OpenHuman',
   'skills.meetingBots.wakePhraseDesc': 'বট সাড়া দেওয়ার আগে অংশগ্রহণকারীকে এটি বলতে হবে।',
+  'skills.meetingBots.activeMode': 'আমি ডাকলে উত্তর দেবে',
+  'skills.meetingBots.activeModeDesc':
+    'চালু থাকলে, আপনি ওয়েক ফ্রেজ বললে বটটি সশব্দে উত্তর দেয়। বন্ধ থাকলে, এটি শুধু শোনে ও প্রতিলিপি তৈরি করে।',
   'skills.resource.preview.closeAriaLabel': 'প্রিভিউ বন্ধ করুন',
   'skills.resource.preview.failed': 'প্রিভিউ ব্যর্থ',
   'skills.resource.preview.loading': 'প্রিভিউ লোড হচ্ছে…',
