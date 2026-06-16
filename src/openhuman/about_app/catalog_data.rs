@@ -14,6 +14,14 @@ const DERIVED_TO_BACKEND: Option<CapabilityPrivacy> = Some(CapabilityPrivacy {
     destinations: &["OpenHuman backend", "TinyHumans Neocortex"],
 });
 
+// Vision sub-agent ships the attached image (raw pixels) to the managed
+// multimodal model for analysis.
+const IMAGE_TO_BACKEND: Option<CapabilityPrivacy> = Some(CapabilityPrivacy {
+    leaves_device: true,
+    data_kind: PrivacyDataKind::Raw,
+    destinations: &["OpenHuman backend", "TinyHumans Neocortex"],
+});
+
 const LOCAL_CREDENTIALS: Option<CapabilityPrivacy> = Some(CapabilityPrivacy {
     leaves_device: false,
     data_kind: PrivacyDataKind::Credentials,
@@ -232,6 +240,16 @@ pub(super) const CAPABILITIES: &[Capability] = &[
         how_to: "Human > ask the assistant to delegate work to sub-agents",
         status: CapabilityStatus::Beta,
         privacy: None,
+    },
+    Capability {
+        id: "intelligence.vision_subagent",
+        name: "Vision Sub-agent",
+        domain: "agent",
+        category: CapabilityCategory::Intelligence,
+        description: "Delegate image / screenshot understanding to a dedicated vision sub-agent — describe, OCR, read charts/diagrams, compare images, or locate UI elements. Rides the multimodal `vision-v1` tier so attached images are always analyzed.",
+        how_to: "Attach an image in chat, or ask the assistant to look at a screenshot / image file",
+        status: CapabilityStatus::Beta,
+        privacy: IMAGE_TO_BACKEND,
     },
     Capability {
         id: "conversation.label_filter",

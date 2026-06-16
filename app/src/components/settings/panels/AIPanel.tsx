@@ -94,6 +94,7 @@ type WorkloadId =
   | 'reasoning'
   | 'agentic'
   | 'coding'
+  | 'vision'
   | 'memory'
   | 'heartbeat'
   | 'learning'
@@ -117,6 +118,7 @@ const ROUTING_WORKLOAD_IDS: WorkloadId[] = [
   'reasoning',
   'agentic',
   'coding',
+  'vision',
   'memory',
   'heartbeat',
   'learning',
@@ -181,6 +183,12 @@ const WORKLOADS: Workload[] = [
     description: 'Code generation and refactor passes',
   },
   {
+    id: 'vision',
+    group: 'chat',
+    label: 'Vision',
+    description: 'Image understanding for the vision sub-agent — always multimodal',
+  },
+  {
     id: 'memory',
     group: 'background',
     label: 'Memory summarization',
@@ -214,6 +222,8 @@ const WORKLOAD_MODEL_HINTS: Record<WorkloadId, string> = {
     'Recommended: a reliable instruction-following model with strong tool use. Mid-cost frontier models are usually safest; capable open-source models can work if tool calling is stable.',
   coding:
     'Recommended: a coding-tuned model with strong instruction following, edit quality, and long-context performance. This is usually worth spending more on.',
+  vision:
+    'Recommended: a multimodal model that accepts image input. The managed default (vision-v1) is image-capable; any provider you route here is always treated as vision-enabled.',
   memory:
     'Recommended: a cheaper summarization model. It should be consistent and compact, but it does not need premium frontier-level reasoning.',
   heartbeat:
@@ -245,6 +255,7 @@ const EMPTY_ROUTING: RoutingMap = {
   reasoning: { kind: 'default' },
   agentic: { kind: 'default' },
   coding: { kind: 'default' },
+  vision: { kind: 'default' },
   memory: { kind: 'default' },
   heartbeat: { kind: 'default' },
   learning: { kind: 'default' },
@@ -302,6 +313,7 @@ function toPanelRoutingFromApi(api: ApiAISettings): { panel: AISettings } {
     reasoning: liftRef(api.routing.reasoning),
     agentic: liftRef(api.routing.agentic),
     coding: liftRef(api.routing.coding),
+    vision: liftRef(api.routing.vision),
     memory: liftRef(api.routing.memory),
     heartbeat: liftRef(api.routing.heartbeat),
     learning: liftRef(api.routing.learning),
@@ -325,6 +337,7 @@ function toApiSettings(panel: AISettings): ApiAISettings {
       reasoning: panel.routing.reasoning,
       agentic: panel.routing.agentic,
       coding: panel.routing.coding,
+      vision: panel.routing.vision,
       memory: panel.routing.memory,
       heartbeat: panel.routing.heartbeat,
       learning: panel.routing.learning,
@@ -1834,6 +1847,7 @@ function routingWithAllWorkloads(next: ProviderRef): RoutingMap {
     reasoning: next,
     agentic: next,
     coding: next,
+    vision: next,
     memory: next,
     heartbeat: next,
     learning: next,
@@ -1928,23 +1942,33 @@ const CustomRoutingDialog = ({
           ? 'claude-code'
           : null;
 
+  // The Vision workload always feeds the multimodal `vision-v1` path, so any
+  // model routed here is treated as image-capable regardless of the per-model
+  // registry flag. Force the flag on and lock the checkbox for this workload.
+  const visionLocked = workload.id === 'vision';
+
   // User-set vision flag for this (provider, model). Prefilled from the registry,
-  // re-prefilled whenever the selected provider/model changes.
+  // re-prefilled whenever the selected provider/model changes. Always on (and
+  // not user-editable) for the Vision workload.
   const [vision, setVision] = useState<boolean>(() =>
-    registrySlug && model.trim()
-      ? modelRegistryVision(modelRegistry, registrySlug, model.trim())
-      : false
+    visionLocked
+      ? true
+      : registrySlug && model.trim()
+        ? modelRegistryVision(modelRegistry, registrySlug, model.trim())
+        : false
   );
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setVision(
-      registrySlug && model.trim()
-        ? modelRegistryVision(modelRegistry, registrySlug, model.trim())
-        : false
+      visionLocked
+        ? true
+        : registrySlug && model.trim()
+          ? modelRegistryVision(modelRegistry, registrySlug, model.trim())
+          : false
     );
     // modelRegistry is stable for the dialog's lifetime (prop doesn't change mid-open).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [registrySlug, model]);
+  }, [registrySlug, model, visionLocked]);
 
   const selectedCloud =
     source?.kind === 'cloud' ? customCloud.find(c => c.slug === source.providerSlug) : undefined;
@@ -2323,9 +2347,10 @@ const CustomRoutingDialog = ({
                 <label className="inline-flex items-center gap-2 text-xs font-medium text-neutral-700 dark:text-neutral-200">
                   <input
                     type="checkbox"
-                    checked={vision}
+                    checked={visionLocked ? true : vision}
                     onChange={e => setVision(e.target.checked)}
-                    className="h-3.5 w-3.5 rounded border-neutral-300 dark:border-neutral-700 text-primary-500 focus:ring-primary-500"
+                    disabled={visionLocked}
+                    className="h-3.5 w-3.5 rounded border-neutral-300 dark:border-neutral-700 text-primary-500 focus:ring-primary-500 disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                   {t('settings.ai.modelVision')}
                 </label>

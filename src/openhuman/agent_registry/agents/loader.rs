@@ -154,6 +154,11 @@ pub const BUILTINS: &[BuiltinAgent] = &[
         prompt_fn: super::critic::prompt::build,
     },
     BuiltinAgent {
+        id: "vision_agent",
+        toml: include_str!("vision_agent/agent.toml"),
+        prompt_fn: super::vision_agent::prompt::build,
+    },
+    BuiltinAgent {
         id: "archivist",
         toml: include_str!("archivist/agent.toml"),
         prompt_fn: super::archivist::prompt::build,
@@ -521,6 +526,24 @@ mod tests {
             .into_iter()
             .find(|d| d.id == id)
             .unwrap_or_else(|| panic!("missing built-in {id}"))
+    }
+
+    #[test]
+    fn vision_agent_loads_on_vision_hint() {
+        // The vision sub-agent rides the multimodal `vision-v1` tier (via the
+        // `vision` hint) so its model is image-capable, and it must be reachable
+        // from the orchestrator's subagent allowlist.
+        let def = find("vision_agent");
+        assert!(matches!(def.model, ModelSpec::Hint(ref h) if h == "vision"));
+
+        let orchestrator = find("orchestrator");
+        assert!(
+            orchestrator
+                .subagents
+                .iter()
+                .any(|s| matches!(s, SubagentEntry::AgentId(id) if id == "vision_agent")),
+            "orchestrator must list vision_agent in its subagents allowlist"
+        );
     }
 
     #[test]

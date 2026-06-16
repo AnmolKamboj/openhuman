@@ -1735,6 +1735,17 @@ async fn run_server_inner(
                     ),
                     Err(e) => log::warn!("[boot] memory::global init failed: {e}"),
                 }
+                // Install the on-disk image-attachment sidecar dir so inbound
+                // image markers persist under <workspace>/attachments/ instead
+                // of an in-memory FIFO (survives restarts + delegation hops).
+                // Also fires a best-effort stale-file sweep.
+                crate::openhuman::agent::multimodal::init_attachments_dir(
+                    cfg.workspace_dir.join("attachments"),
+                );
+                log::info!(
+                    "[boot] image attachments sidecar dir = {}",
+                    cfg.workspace_dir.join("attachments").display()
+                );
                 // Initialize the WhatsApp data store so scanner ingest calls
                 // can write data without requiring a lazy-init fallback.
                 match crate::openhuman::whatsapp_data::global::init(cfg.workspace_dir.clone()) {
