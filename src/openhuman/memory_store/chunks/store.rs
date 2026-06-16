@@ -643,6 +643,11 @@ pub struct ListChunksQuery {
     /// prefix can't starve permitted rows. Non-source chunks always pass. `None`
     /// = unrestricted (the default for every non-agent caller).
     pub source_scope: Option<std::collections::HashSet<String>>,
+    /// When `true`, rows the admission gate rejected (`lifecycle_status =
+    /// 'dropped'`) are excluded. Default `false` preserves the all-rows
+    /// behaviour every existing caller relies on; retrieval paths that must not
+    /// surface filtered-out junk (e.g. `cover_window`) opt in.
+    pub exclude_dropped: bool,
 }
 
 /// List chunks matching the provided filters, ordered by `timestamp` DESC.
@@ -675,6 +680,10 @@ pub fn list_chunks(config: &Config, query: &ListChunksQuery) -> Result<Vec<Chunk
         if let Some(until_ms) = query.until_ms {
             sql.push_str(" AND timestamp_ms <= ?");
             bound.push(Box::new(until_ms));
+        }
+        if query.exclude_dropped {
+            sql.push_str(" AND lifecycle_status != ?");
+            bound.push(Box::new(CHUNK_STATUS_DROPPED.to_string()));
         }
         let requested_limit = normalized_limit(query.limit);
         // When a profile source-scope is active, fetch a wider candidate set and

@@ -811,7 +811,9 @@ mod tests {
         let def = find("morning_briefing");
         assert_eq!(def.sandbox_mode, SandboxMode::ReadOnly);
         assert!(matches!(def.tools, ToolScope::Wildcard));
-        assert!(!def.omit_memory_context);
+        // The brief pulls its own last-24h memory via the `memory_tree`
+        // `cover_window` tool, so the stale all-time memory blob is suppressed.
+        assert!(def.omit_memory_context);
         assert!(def.omit_identity);
         assert!(def.omit_safety_preamble);
         assert_eq!(def.max_iterations, 8);

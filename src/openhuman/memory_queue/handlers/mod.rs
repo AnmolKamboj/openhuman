@@ -20,7 +20,9 @@ use crate::openhuman::memory_queue::types::{
     JobOutcome, NewJob, NodeRef, ReembedBackfillPayload, SealDocumentPayload, SealPayload,
 };
 use crate::openhuman::memory_store::chunks::store as chunk_store;
-use crate::openhuman::memory_store::chunks::types::{truncate_to_conservative_tokens, Chunk};
+use crate::openhuman::memory_store::chunks::types::{
+    truncate_to_conservative_tokens, Chunk, Metadata,
+};
 use crate::openhuman::memory_store::content::{
     self as content_store, read as content_read, tags as content_tags,
 };
@@ -67,6 +69,19 @@ fn derive_tree_scope(source_id: &str) -> String {
         }
     }
     source_id.to_string()
+}
+
+/// The source-tree scope a chunk's content is appended under: its
+/// `path_scope` when set (shared-directory sources like Notion), otherwise the
+/// GitHub-aware [`derive_tree_scope`] of its `source_id`. This is the SAME
+/// mapping the append-buffer path uses (see `handle_extract`'s `AppendTarget`),
+/// so read paths such as `memory_tree::retrieval::cover` look up the tree the
+/// seal worker actually wrote to rather than the raw `source_id`.
+pub(crate) fn chunk_tree_scope(metadata: &Metadata) -> String {
+    metadata
+        .path_scope
+        .clone()
+        .unwrap_or_else(|| derive_tree_scope(&metadata.source_id))
 }
 
 /// Whether a chunk's source uses the per-document rollup + versioning path
@@ -307,11 +322,7 @@ fn finalize_extract(config: &Config, item: PreparedExtract) -> Result<JobOutcome
                 chunk_id: chunk.id.clone(),
             },
             target: AppendTarget::Source {
-                source_id: chunk
-                    .metadata
-                    .path_scope
-                    .clone()
-                    .unwrap_or_else(|| derive_tree_scope(&chunk.metadata.source_id)),
+                source_id: chunk_tree_scope(&chunk.metadata),
             },
         })?)
     } else {

@@ -4030,6 +4030,126 @@ async fn json_rpc_memory_tree_end_to_end() {
     let _ = mock_join.await;
 }
 
+/// `openhuman.memory_tree_cover_window` over RPC: ingest a chunk, then assert
+/// the windowed minimum-cover returns it raw inside the window and nothing
+/// outside it. One ingested chunk doesn't reach the seal fanout, so this also
+/// exercises the not-yet-sealed (no Tree row) raw-leaf fallback end to end.
+#[tokio::test]
+async fn json_rpc_memory_tree_cover_window_end_to_end() {
+    let _env_lock = json_rpc_e2e_env_lock();
+    let tmp = tempdir().expect("tempdir");
+    let home = tmp.path();
+    let openhuman_home = home.join(".openhuman");
+
+    let _home_guard = EnvVarGuard::set_to_path("HOME", home);
+    let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
+    let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
+    let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
+    // Fall back to the Inert (zero-vector) embedder — no Ollama in CI.
+    let _embed_strict_guard = EnvVarGuard::set("OPENHUMAN_MEMORY_EMBED_STRICT", "false");
+    let _embed_endpoint_guard = EnvVarGuard::set("OPENHUMAN_MEMORY_EMBED_ENDPOINT", "");
+    let _embed_model_guard = EnvVarGuard::set("OPENHUMAN_MEMORY_EMBED_MODEL", "");
+
+    let (mock_addr, mock_join) = serve_on_ephemeral(mock_upstream_router()).await;
+    let mock_origin = format!("http://{}", mock_addr);
+    write_min_config(&openhuman_home, &mock_origin);
+
+    let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
+    let rpc_base = format!("http://{}", rpc_addr);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Ingest a single document chunk.
+    let ingest = post_json_rpc(
+        &rpc_base,
+        300,
+        "openhuman.memory_tree_ingest",
+        json!({
+            "source_kind": "document",
+            "source_id": "notion:daily-note",
+            "owner": "alice@example.com",
+            "payload": {
+                "provider": "notion",
+                "title": "Daily Note",
+                "body": "Stand-up at 9, shipped the cover_window tool, reviewed the migration plan.",
+                "modified_at": 1_700_000_000_000_i64
+            }
+        }),
+    )
+    .await;
+    let ingest_outer = assert_no_jsonrpc_error(&ingest, "memory_tree_ingest");
+    let ingest_result = ingest_outer.get("result").unwrap_or(ingest_outer);
+    let chunk_ids = ingest_result
+        .get("chunk_ids")
+        .and_then(Value::as_array)
+        .expect("chunk_ids array");
+    assert_eq!(chunk_ids.len(), 1, "expected one ingested chunk");
+    let chunk_id = chunk_ids[0].as_str().expect("chunk id string").to_string();
+
+    // Covering window → the chunk comes back as a raw leaf.
+    let inside = post_json_rpc(
+        &rpc_base,
+        301,
+        "openhuman.memory_tree_cover_window",
+        json!({ "since_ms": 0_i64, "until_ms": 4_000_000_000_000_i64 }),
+    )
+    .await;
+    let inside_outer = assert_no_jsonrpc_error(&inside, "cover_window inside");
+    let inside_result = inside_outer.get("result").unwrap_or(inside_outer);
+    let hits = inside_result
+        .get("hits")
+        .and_then(Value::as_array)
+        .expect("hits array");
+    assert!(
+        hits.iter().any(|h| {
+            h.get("node_id").and_then(Value::as_str) == Some(chunk_id.as_str())
+                && h.get("node_kind").and_then(Value::as_str) == Some("leaf")
+        }),
+        "covering window must return the ingested chunk as a raw leaf: {inside_result}"
+    );
+
+    // Far-future window (after the chunk) → empty cover.
+    let outside = post_json_rpc(
+        &rpc_base,
+        302,
+        "openhuman.memory_tree_cover_window",
+        json!({ "since_ms": 3_500_000_000_000_i64, "until_ms": 4_000_000_000_000_i64 }),
+    )
+    .await;
+    let outside_outer = assert_no_jsonrpc_error(&outside, "cover_window outside");
+    let outside_result = outside_outer.get("result").unwrap_or(outside_outer);
+    assert_eq!(
+        outside_result
+            .get("hits")
+            .and_then(Value::as_array)
+            .map(|h| h.len()),
+        Some(0),
+        "a window after the chunk must be empty: {outside_result}"
+    );
+
+    // Inverted window is rejected as a JSON-RPC error.
+    let inverted = post_json_rpc(
+        &rpc_base,
+        303,
+        "openhuman.memory_tree_cover_window",
+        json!({ "since_ms": 100_i64, "until_ms": 50_i64 }),
+    )
+    .await;
+    let inverted_err = assert_jsonrpc_error(&inverted, "cover_window inverted");
+    let inverted_msg = inverted_err
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        inverted_msg.contains("until_ms") && inverted_msg.contains("since_ms"),
+        "expected the inverted-window guard to fire (until_ms < since_ms), got: {inverted_err}"
+    );
+
+    rpc_join.abort();
+    let _ = rpc_join.await;
+    mock_join.abort();
+    let _ = mock_join.await;
+}
+
 #[test]
 fn json_rpc_web_chat_routing_cases_use_expected_backend_models() {
     run_json_rpc_e2e_on_agent_stack(
