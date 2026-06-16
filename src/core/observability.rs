@@ -3343,6 +3343,7 @@ mod tests {
             "OpenHuman API error (408): request timeout",
             "OpenAI API error (429 Too Many Requests): rate limit",
             "Anthropic API error (502 Bad Gateway): upstream unhealthy",
+            "custom_openai API error (502 Bad Gateway): upstream gateway blip",
             "OpenHuman API error (503): service unavailable",
             "Provider API error (504): upstream timed out",
         ] {
@@ -4695,6 +4696,23 @@ mod tests {
                 "status {status} must be classified as transient and filtered"
             );
         }
+    }
+
+    #[test]
+    fn custom_openai_502_event_shape_is_transient_provider_http() {
+        let event = event_with_tags_and_message(
+            &[
+                ("domain", "llm_provider"),
+                ("provider", "custom_openai"),
+                ("failure", "non_2xx"),
+                ("status", "502"),
+            ],
+            "custom_openai API error (502 Bad Gateway): upstream gateway blip",
+        );
+        assert!(
+            is_transient_provider_http_failure(&event),
+            "custom_openai 502 attempts should be treated as transient provider HTTP noise"
+        );
     }
 
     #[test]
