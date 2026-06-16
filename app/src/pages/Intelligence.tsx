@@ -9,6 +9,7 @@ import IntelligenceOrchestrationTab from '../components/intelligence/Intelligenc
 import IntelligenceSubconsciousTab from '../components/intelligence/IntelligenceSubconsciousTab';
 import IntelligenceTasksTab from '../components/intelligence/IntelligenceTasksTab';
 import IntelligenceTeamsTab from '../components/intelligence/IntelligenceTeamsTab';
+import IntelligenceWorktreesTab from '../components/intelligence/IntelligenceWorktreesTab';
 import MemorySection from '../components/intelligence/MemorySection';
 import ModelCouncilTab from '../components/intelligence/ModelCouncilTab';
 import { ToastContainer } from '../components/intelligence/Toast';
@@ -35,6 +36,7 @@ type IntelligenceTab =
   | 'subconscious'
   | 'tasks'
   | 'agent-work'
+  | 'worktrees'
   | 'teams'
   | 'agents'
   | 'workflows'
@@ -46,6 +48,7 @@ const INTELLIGENCE_TABS: IntelligenceTab[] = [
   'subconscious',
   'tasks',
   'agent-work',
+  'worktrees',
   'teams',
   'agents',
   'workflows',
@@ -173,6 +176,11 @@ export default function Intelligence({ tabParamKey = 'tab' }: IntelligenceProps 
       label: t('memory.tab.agentWork'),
       description: t('memory.tab.agentWorkDescription'),
     },
+    {
+      id: 'worktrees',
+      label: t('memory.tab.worktrees'),
+      description: t('memory.tab.worktreesDescription'),
+    },
     { id: 'teams', label: t('memory.tab.teams'), description: t('memory.tab.teamsDescription') },
     { id: 'memory', label: t('memory.tab.memory') },
     { id: 'subconscious', label: t('memory.tab.subconscious') },
@@ -274,6 +282,8 @@ export default function Intelligence({ tabParamKey = 'tab' }: IntelligenceProps 
             {activeTab === 'tasks' && <IntelligenceTasksTab />}
 
             {activeTab === 'agent-work' && <IntelligenceAgentWorkTab />}
+
+            {activeTab === 'worktrees' && <IntelligenceWorktreesTab />}
 
             {activeTab === 'teams' && <IntelligenceTeamsTab />}
 
