@@ -299,8 +299,7 @@ const messages: TranslationMap = {
   'home.greetingAfternoon': 'Selamat siang',
   'home.greetingEvening': 'Selamat malam',
   'home.askAssistant': 'Tanyakan apa saja ke asisten Anda...',
-  'home.statusOk':
-    'Perangkat Anda terhubung. Biarkan aplikasi tetap berjalan agar koneksi tetap aktif. Kirim pesan ke agen Anda dengan tombol di bawah.',
+  'home.statusOk': 'Asistenmu siap kapan pun kamu siap. Ketik sesuatu di bawah untuk memulai.',
   'home.statusBackendOnly':
     'Menghubungkan ulang ke backend... agen Anda akan segera tersedia lagi.',
   'home.statusCoreUnreachable':
@@ -347,6 +346,10 @@ const messages: TranslationMap = {
   'routines.typeCommand': 'Perintah',
   'nav.routines': 'Routines',
   'chat.newThread': 'Thread baru',
+  'chat.newConversation': 'Percakapan baru',
+  'chat.newWindowWelcome1': 'Selamat datang, {name} 👋',
+  'chat.newWindowWelcome2': 'Ayo mulai, {name} 🧑‍🍳.',
+  'chat.newWindowWelcome3': 'Waktunya fokus 🧘🏻',
   'chat.typeMessage': 'Apa yang bisa saya bantu hari ini?',
   'chat.send': 'Kirim pesan',
   'chat.parallelBranchHint': 'Ketik cabang paralel — ⌘/Ctrl+Enter untuk mengirim',
@@ -2904,8 +2907,7 @@ const messages: TranslationMap = {
   'home.banners.earlyBirdTitle': '1.000 pengguna pertama dapat diskon 60%.',
   'home.banners.earlyBirdUseCode': 'Gunakan kode early bird',
   'home.banners.getSubscription': 'dapatkan langganan',
-  'home.banners.promoCreditsBody': 'Isi kredit promo',
-  'home.banners.promoCreditsTitle': '{amount}',
+  'home.banners.promoCreditsBody': 'Kamu punya {amount} kredit promo. Kamu bisa',
   'home.banners.promoCreditsUsage': 'Penggunaan kredit promo',
   'intelligence.memoryChunk.detail.chunk': 'Potongan',
   'intelligence.memoryChunk.detail.copyChunkId': 'Salin ID chunk',

@@ -301,8 +301,7 @@ const messages: TranslationMap = {
   'home.greetingAfternoon': 'Dobre popołudnie',
   'home.greetingEvening': 'Dobry wieczór',
   'home.askAssistant': 'Zapytaj asystenta o cokolwiek...',
-  'home.statusOk':
-    'Twoje urządzenie jest połączone. Utrzymuj aplikację uruchomioną, aby zachować połączenie. Wyślij wiadomość do agenta przyciskiem poniżej.',
+  'home.statusOk': 'Twój asystent jest gotowy, gdy tylko zechcesz. Napisz coś poniżej, aby zacząć.',
   'home.statusBackendOnly':
     'Ponowne łączenie z backendem… Twój agent będzie dostępny ponownie za chwilę.',
   'home.statusCoreUnreachable':
@@ -349,6 +348,10 @@ const messages: TranslationMap = {
   'routines.typeCommand': 'Polecenie',
   'nav.routines': 'Routines',
   'chat.newThread': 'Nowy wątek',
+  'chat.newConversation': 'Nowa rozmowa',
+  'chat.newWindowWelcome1': 'Witaj, {name} 👋',
+  'chat.newWindowWelcome2': 'Do dzieła, {name} 🧑‍🍳.',
+  'chat.newWindowWelcome3': 'Czas się skupić 🧘🏻',
   'chat.typeMessage': 'Jak mogę ci dziś pomóc?',
   'chat.send': 'Wyślij wiadomość',
   'chat.parallelBranchHint': 'Wpisz równoległą gałąź — ⌘/Ctrl+Enter, aby wysłać',
@@ -2934,8 +2937,7 @@ const messages: TranslationMap = {
   'home.banners.earlyBirdTitle': 'Pierwszych 1000 użytkowników otrzymuje 60% zniżki.',
   'home.banners.earlyBirdUseCode': 'Użyj kodu early bird',
   'home.banners.getSubscription': 'wykup subskrypcję',
-  'home.banners.promoCreditsBody': 'Przetestuj OpenHuman, a gdy będziesz gotowy(a) na więcej,',
-  'home.banners.promoCreditsTitle': 'Masz {amount} kredytów promocyjnych.',
+  'home.banners.promoCreditsBody': 'Masz {amount} w kredytach promo. Możesz',
   'home.banners.promoCreditsUsage': 'i uzyskaj 10x więcej użycia.',
   'intelligence.memoryChunk.detail.chunk': 'Fragment',
   'intelligence.memoryChunk.detail.copyChunkId': 'Skopiuj ID fragmentu',

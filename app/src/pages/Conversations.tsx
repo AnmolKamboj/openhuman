@@ -9,9 +9,10 @@ import ApprovalRequestCard from '../components/chat/ApprovalRequestCard';
 import ArtifactCard from '../components/chat/ArtifactCard';
 import ChatComposer from '../components/chat/ChatComposer';
 import ChatFilesChip from '../components/chat/ChatFilesChip';
+import ChatNewWindowHero from '../components/chat/ChatNewWindowHero';
 import ComposerTokenStats from '../components/chat/ComposerTokenStats';
 import { ConfirmationModal } from '../components/intelligence/ConfirmationModal';
-import TwoPanelLayout, { useTwoPanelLayout } from '../components/layout/TwoPanelLayout';
+import { SidebarContent } from '../components/layout/shell/SidebarSlot';
 import PillTabBar from '../components/PillTabBar';
 import UpsellBanner from '../components/upsell/UpsellBanner';
 import { dismissBanner, shouldShowBanner } from '../components/upsell/upsellDismissState';
@@ -32,7 +33,6 @@ import { applyOpenRouterFreeModels } from '../services/api/openrouterFreeModels'
 import { threadApi } from '../services/api/threadApi';
 import { chatCancel, chatSend, useRustChat } from '../services/chatService';
 import { callCoreRpc } from '../services/coreRpcClient';
-import { store } from '../store';
 import {
   loadAgentProfiles,
   selectActiveAgentProfileId,
@@ -60,7 +60,6 @@ import {
   persistReaction,
   setSelectedThread,
   THREAD_NOT_FOUND_MESSAGE,
-  updateThreadTitle,
 } from '../store/threadSlice';
 import type { ConfirmationModal as ConfirmationModalType } from '../types/intelligence';
 import type { ThreadMessage } from '../types/thread';
@@ -141,6 +140,15 @@ interface ConversationsProps {
    * Used by the mascot tab so the only interaction is voice.
    */
   composer?: 'text' | 'mic-cloud';
+  /**
+   * Project the thread list into the root sidebar's dynamic region even in the
+   * `sidebar` variant. Page variant always projects it; this lets an embedded
+   * instance (e.g. the Human page's right-rail chat) surface the user's threads
+   * in the left sidebar while keeping the chat itself on the right. The list
+   * and the chat share the same selection state, so clicking a thread switches
+   * the embedded conversation.
+   */
+  projectThreadList?: boolean;
 }
 
 // Stable empty reference so the `activeThreadIds` selector returns the same
@@ -195,6 +203,7 @@ export function formatThreadLoadError(err: unknown): string {
 const Conversations = ({
   variant = 'page',
   composer: composerProp = 'text',
+  projectThreadList = false,
 }: ConversationsProps = {}) => {
   const [composerOverride, setComposerOverride] = useState<'mic-cloud' | 'text' | null>(null);
   const composer = composerOverride ?? composerProp;
@@ -296,10 +305,6 @@ const Conversations = ({
   );
   const rustChat = useRustChat();
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [editTitleValue, setEditTitleValue] = useState('');
-  const editTitleInputRef = useRef<HTMLInputElement>(null);
-  const ignoreNextTitleBlurRef = useRef(false);
 
   const {
     teamUsage,
@@ -427,28 +432,6 @@ const Conversations = ({
     }
   };
 
-  const handleStartEditTitle = () => {
-    if (!selectedThreadId) return;
-    const thr = threads.find(t => t.id === selectedThreadId);
-    setEditTitleValue(thr?.title ?? '');
-    ignoreNextTitleBlurRef.current = true;
-    setEditingTitle(true);
-    const scheduleSelect = window.requestAnimationFrame ?? window.setTimeout;
-    scheduleSelect(() => {
-      editTitleInputRef.current?.select();
-      ignoreNextTitleBlurRef.current = false;
-    });
-  };
-
-  const handleCommitTitle = () => {
-    const trimmed = editTitleValue.trim();
-    setEditingTitle(false);
-    if (!selectedThreadId || !trimmed) return;
-    const currentTitle = threads.find(t => t.id === selectedThreadId)?.title?.trim();
-    if (trimmed === currentTitle) return;
-    void dispatch(updateThreadTitle({ threadId: selectedThreadId, title: trimmed }));
-  };
-
   const handleSelectAgentProfile = async (profileId: string) => {
     try {
       await dispatch(selectAgentProfile(profileId)).unwrap();
@@ -464,7 +447,6 @@ const Conversations = ({
       .unwrap()
       .then(data => {
         if (cancelled) return;
-        const threadStateForSelect = store.getState().thread;
         // Match the sidebar's default General filter here so initial/resume
         // selection can't auto-pick a thread hidden by the selected tab.
         const visibleThreads = data.threads.filter(t => isThreadVisibleInTab(t, GENERAL_TAB_VALUE));
@@ -489,19 +471,15 @@ const Conversations = ({
           void dispatch(loadThreadMessages(openThread.id));
           return;
         }
-        if (visibleThreads.length > 0) {
-          // Prefer the thread the user was last viewing (persisted across
-          // reloads via redux-persist on the `thread` slice). Only fall
-          // through to "most recent" if that thread no longer exists
-          // server-side (deleted, purged, or different user) — or is now
-          // hidden because it's a worker thread.
-          const persistedId = threadStateForSelect.selectedThreadId;
-          const resumeId =
-            persistedId && visibleThreads.some(t => t.id === persistedId)
-              ? persistedId
-              : visibleThreads[0].id;
-          dispatch(setSelectedThread(resumeId));
-          void dispatch(loadThreadMessages(resumeId));
+        // Default landing is a fresh "new window" (the merged Home surface) —
+        // we no longer resume the last conversation on open. Reuse an existing
+        // empty thread if one is lying around so repeated opens don't pile up
+        // blank threads; otherwise create a new one. Past conversations stay
+        // reachable from the thread list (clicking one selects it directly).
+        const emptyThread = visibleThreads.find(t => (t.messageCount ?? 0) === 0);
+        if (emptyThread) {
+          dispatch(setSelectedThread(emptyThread.id));
+          void dispatch(loadThreadMessages(emptyThread.id));
         } else {
           void handleCreateNewThread();
         }
@@ -1454,11 +1432,12 @@ const Conversations = ({
     labelTabs.find(tab => tab.value === selectedLabel)?.label ?? selectedLabel;
 
   const isSidebar = variant === 'sidebar';
-  // Chat thread sidebar visibility/width are owned by the reusable
-  // TwoPanelLayout (persisted per-user in the `layout` slice under id `chat`).
-  // The hook lets this header's hamburger toggle the same persisted state.
-  const { sidebarVisible: chatSidebarVisible, toggleSidebar: toggleChatSidebar } =
-    useTwoPanelLayout('chat', { sidebarVisible: false });
+  // "New window" = the merged Home surface: a page-variant chat whose selected
+  // thread has no messages yet. We show the greeting + banners hero above a
+  // centered composer; the moment the first message lands, hasVisibleMessages
+  // flips true and this collapses back to the normal conversation layout.
+  const isNewWindow =
+    !isSidebar && !isLoadingMessages && !messagesError && !hasVisibleMessages && !hasTaskBoard;
 
   // Stable title resolver used by both the sidebar thread list and the header.
   const resolveThreadDisplayTitle = (threadId: string | null): string => {
@@ -1541,10 +1520,32 @@ const Conversations = ({
           items={labelTabs}
           selected={selectedLabel}
           onChange={setSelectedLabel}
-          containerClassName="flex flex-wrap gap-1 py-1"
-          itemClassName="px-2"
+          containerClassName="scrollbar-hide flex flex-nowrap gap-1 overflow-x-auto py-1"
+          itemClassName="flex-none whitespace-nowrap px-2"
         />
       </div>
+      {/* New conversation — a subtle, centered thread-style row (not a loud
+          button), below the pills and above the thread list. */}
+      <button
+        type="button"
+        data-testid="new-thread-button"
+        data-analytics-id="chat-sidebar-new-thread"
+        onClick={() => void handleCreateNewThread()}
+        title={t('chat.newThreadShortcut')}
+        className="group w-full cursor-pointer border-b border-stone-100/60 opacity-50 px-3 py-2 transition-colors hover:bg-stone-50 dark:border-neutral-800/60 dark:hover:bg-neutral-800/60">
+        <div className="flex items-center justify-center gap-1.5">
+          <svg
+            className="h-3.5 w-3.5 flex-shrink-0 text-stone-500 dark:text-neutral-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          <span className="truncate text-xs text-stone-700 dark:text-neutral-200">
+            {t('chat.newConversation')}
+          </span>
+        </div>
+      </button>
       <div className="flex-1 overflow-y-auto">
         {visibleThreads.length === 0 ? (
           <p className="px-4 py-6 text-xs text-stone-400 dark:text-neutral-500 text-center">
@@ -1641,196 +1642,17 @@ const Conversations = ({
         isSidebar
           ? // Embedded variant keeps its own flush styling (no TwoPanelLayout).
             'flex-1 flex flex-col min-w-0 bg-white dark:bg-neutral-900 border-l border-stone-200 dark:border-neutral-800 overflow-hidden'
-          : // Page variant: card background / rounded corners come from the
-            // TwoPanelLayout pane wrapper.
-            'flex-1 flex flex-col min-w-0'
+          : // Page variant: flush over the shell background. `relative` anchors
+            // the absolutely-positioned floating composer.
+            'relative flex-1 flex flex-col min-w-0'
       }>
-      {/* Chat header — only shown in page mode; the sidebar embed uses the
-            parent page's chrome instead. Hidden entirely during welcome
-            lockdown (#883) so the onboarding chat is just the conversation
-            with no chrome around it. */}
-      {!isSidebar && (
-        <div
-          className="flex items-center gap-2 px-4 py-2.5 border-b border-stone-100 dark:border-neutral-800"
-          data-walkthrough="chat-agent-panel">
-          <button
-            type="button"
-            data-analytics-id="chat-header-toggle-sidebar"
-            onClick={toggleChatSidebar}
-            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-stone-100 dark:hover:bg-neutral-800 dark:bg-neutral-800 dark:hover:bg-neutral-800/60 text-stone-500 dark:text-neutral-400 hover:text-stone-700 dark:hover:text-neutral-200 dark:text-neutral-200 dark:hover:text-neutral-200 transition-colors"
-            title={chatSidebarVisible ? t('chat.hideSidebar') : t('chat.showSidebar')}>
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 6h16M4 12h16M4 18h16"
-              />
-            </svg>
-          </button>
-          <div className="flex flex-col min-w-0 flex-1">
-            {selectedThreadParent ? (
-              <button
-                type="button"
-                data-analytics-id="chat-header-back-to-parent-thread"
-                onClick={() => {
-                  dispatch(setSelectedThread(selectedThreadParent.id));
-                  void dispatch(loadThreadMessages(selectedThreadParent.id));
-                }}
-                className="self-start flex items-center gap-1 text-[11px] font-medium text-primary-600 hover:text-primary-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 rounded -mx-1 px-1"
-                data-testid="worker-thread-back-to-parent">
-                <span aria-hidden="true">←</span>
-                <span className="truncate max-w-[16rem]">
-                  {t('chat.backToThread').replace('{title}', selectedThreadParent.title)}
-                </span>
-              </button>
-            ) : null}
-            {editingTitle ? (
-              <input
-                ref={editTitleInputRef}
-                value={editTitleValue}
-                onChange={e => setEditTitleValue(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleCommitTitle();
-                  } else if (e.key === 'Escape') {
-                    setEditingTitle(false);
-                  }
-                }}
-                onBlur={() => {
-                  if (ignoreNextTitleBlurRef.current) {
-                    ignoreNextTitleBlurRef.current = false;
-                    return;
-                  }
-                  handleCommitTitle();
-                }}
-                aria-label={t('chat.editThreadTitle')}
-                className="h-5 text-sm font-medium text-stone-700 dark:text-neutral-200 bg-transparent border-b border-primary-400 outline-none w-full min-w-0 leading-none py-0"
-                autoFocus
-              />
-            ) : (
-              <div className="flex items-center gap-1 group/title min-w-0">
-                <h3 className="text-sm font-medium text-stone-700 dark:text-neutral-200 truncate">
-                  {resolveThreadDisplayTitle(selectedThreadId)}
-                </h3>
-                {selectedThreadId && (
-                  <button
-                    type="button"
-                    data-analytics-id="chat-header-edit-thread-title"
-                    onMouseDown={e => {
-                      e.preventDefault();
-                      handleStartEditTitle();
-                    }}
-                    onClick={handleStartEditTitle}
-                    aria-label={t('chat.editThreadTitle')}
-                    title={t('chat.editThreadTitle')}
-                    className="opacity-0 group-hover/title:opacity-100 flex-shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-stone-100 dark:hover:bg-neutral-800 text-stone-400 dark:text-neutral-500 hover:text-stone-600 dark:hover:text-neutral-300 transition-all">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                      />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            )}
-            {resolvedModel && (
-              <span className="text-[10px] text-stone-400 dark:text-neutral-500 leading-none">
-                {resolvedModel}
-              </span>
-            )}
-          </div>
-          <>
-            <div
-              className="flex items-center h-7 rounded-full border border-stone-200 dark:border-neutral-700 bg-stone-100 dark:bg-neutral-800 p-0.5"
-              role="radiogroup"
-              aria-label={t('chat.agentProfile.label')}>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={selectedAgentProfileId === 'default'}
-                data-analytics-id="chat-header-mode-quick"
-                onClick={() => void handleSelectAgentProfile('default')}
-                className={`px-2.5 py-0.5 rounded-full text-xs font-medium transition-all ${
-                  selectedAgentProfileId === 'default'
-                    ? 'bg-white dark:bg-neutral-600 text-stone-800 dark:text-neutral-100 shadow-sm'
-                    : 'text-stone-500 dark:text-neutral-400 hover:text-stone-700 dark:hover:text-neutral-200'
-                }`}>
-                {t('chat.agentProfile.quick')}
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={selectedAgentProfileId === 'reasoning'}
-                data-analytics-id="chat-header-mode-reasoning"
-                onClick={() => void handleSelectAgentProfile('reasoning')}
-                className={`px-2.5 py-0.5 rounded-full text-xs font-medium transition-all ${
-                  selectedAgentProfileId === 'reasoning'
-                    ? 'bg-white dark:bg-neutral-600 text-stone-800 dark:text-neutral-100 shadow-sm'
-                    : 'text-stone-500 dark:text-neutral-400 hover:text-stone-700 dark:hover:text-neutral-200'
-                }`}>
-                {t('chat.agentProfile.reasoning')}
-              </button>
-            </div>
-            {(selectedThreadId ?? firstActiveThreadId) && (
-              <ChatFilesChip threadId={(selectedThreadId ?? firstActiveThreadId) as string} />
-            )}
-            {/* Gated on selectedThreadId alone (not the firstActiveThreadId
-                fallback): the panel/badge derive from selectedThreadToolTimeline,
-                which is [] unless a thread is actually selected, so showing the
-                icon for the fallback would render an always-empty panel. */}
-            {selectedThreadId && (
-              <button
-                type="button"
-                data-testid="background-processes-toggle"
-                data-analytics-id="chat-header-background-processes"
-                onClick={() => setShowBackgroundProcesses(true)}
-                aria-label={t('conversations.backgroundTasks.title')}
-                title={
-                  backgroundProcesses.length > 0
-                    ? t('conversations.backgroundTasks.titleWithCount').replace(
-                        '{count}',
-                        String(backgroundProcesses.length)
-                      )
-                    : t('conversations.backgroundTasks.title')
-                }
-                className="relative flex h-7 w-7 items-center justify-center rounded-lg text-stone-500 hover:bg-stone-100 hover:text-stone-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200 transition-colors">
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"
-                  />
-                </svg>
-                {runningBackgroundCount > 0 && (
-                  <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[9px] font-semibold leading-none text-white">
-                    {runningBackgroundCount}
-                  </span>
-                )}
-              </button>
-            )}
-            <button
-              type="button"
-              data-testid="new-thread-button"
-              data-analytics-id="chat-header-new-thread"
-              onClick={() => void handleCreateNewThread()}
-              className="px-2.5 py-1 rounded-lg text-xs font-medium text-white bg-primary-500 hover:bg-primary-600 shadow-sm transition-colors"
-              title={t('chat.newThreadShortcut')}>
-              {t('chat.new')}
-            </button>
-          </>
-        </div>
-      )}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto px-5 py-4 bg-[#f6f6f6] dark:bg-neutral-950">
+        // Full-width scroll (scrollbar hugs the window edge); inner content is
+        // centered and width-capped per branch below.
+        className="flex-1 overflow-y-auto">
         {isLoadingMessages ? (
-          <div className="space-y-4">
+          <div className="mx-auto w-full max-w-[48.75rem] space-y-4 px-5 py-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className={`flex ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}>
                 <div
@@ -1870,7 +1692,10 @@ const Conversations = ({
             </button>
           </div>
         ) : hasVisibleMessages || hasTaskBoard ? (
-          <div className="space-y-3">
+          <div
+            className={`mx-auto w-full max-w-[48.75rem] space-y-3 px-5 pt-4 ${
+              isSidebar ? 'pb-4' : 'pb-32'
+            }`}>
             {selectedTaskBoard && hasTaskBoard && (
               <TaskKanbanBoard
                 board={selectedTaskBoard}
@@ -2327,6 +2152,8 @@ const Conversations = ({
             )}
             <div ref={messagesEndRef} />
           </div>
+        ) : isNewWindow ? (
+          <ChatNewWindowHero />
         ) : (
           <div className="flex-1 flex items-center justify-center h-full">
             <p className="text-sm text-stone-600 dark:text-neutral-300">{t('chat.noMessages')}</p>
@@ -2334,7 +2161,26 @@ const Conversations = ({
         )}
       </div>
 
-      <div className="flex-shrink-0 border-t border-stone-200 dark:border-neutral-800 px-4 py-3">
+      {/* Full-width fade so messages dissolve into the background (black/white
+          per theme) behind the floating composer. Page variant only. */}
+      {!isSidebar && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-white via-white/90 to-transparent dark:from-black dark:via-black/90"
+        />
+      )}
+
+      <div
+        data-walkthrough="home-cta"
+        // Page variant: float at the bottom (absolute) over the fade; centered +
+        // width-capped to match the messages. `z-20` keeps it above messages
+        // that would otherwise paint over it while scrolling. Sidebar embed
+        // keeps the in-flow composer.
+        className={
+          isSidebar
+            ? 'mx-auto w-full max-w-[48.75rem] flex-shrink-0 px-4 py-3'
+            : 'absolute inset-x-0 bottom-0 z-20 mx-auto w-full max-w-[48.75rem] px-4 pb-4 pt-6'
+        }>
         <>
           {isNearLimit &&
             !isAtLimit &&
@@ -2602,7 +2448,100 @@ const Conversations = ({
             </p>
           </div>
         )}
-        <ComposerTokenStats />
+        {/* Worker-thread back-to-parent breadcrumb (page variant) — its own line. */}
+        {!isSidebar && selectedThreadParent && (
+          <button
+            type="button"
+            data-analytics-id="chat-header-back-to-parent-thread"
+            onClick={() => {
+              dispatch(setSelectedThread(selectedThreadParent.id));
+              void dispatch(loadThreadMessages(selectedThreadParent.id));
+            }}
+            className="mt-2 flex items-center gap-1 rounded px-1 text-[11px] font-medium text-primary-600 hover:text-primary-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+            data-testid="worker-thread-back-to-parent">
+            <span aria-hidden="true">←</span>
+            <span className="max-w-[16rem] truncate">
+              {t('chat.backToThread').replace('{title}', selectedThreadParent.title)}
+            </span>
+          </button>
+        )}
+
+        {/* Model + token stats (left) and the quick/reasoning toggle + files
+            chip (right) share one line. */}
+        <div
+          className="mt-2 flex items-center justify-between gap-2"
+          data-walkthrough="chat-agent-panel">
+          <ComposerTokenStats model={resolvedModel} />
+          {!isSidebar && (
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <div
+                className="flex h-7 items-center rounded-full border border-stone-200 bg-stone-100 p-0.5 dark:border-neutral-700 dark:bg-neutral-800"
+                role="radiogroup"
+                aria-label={t('chat.agentProfile.label')}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedAgentProfileId === 'default'}
+                  data-analytics-id="chat-header-mode-quick"
+                  onClick={() => void handleSelectAgentProfile('default')}
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
+                    selectedAgentProfileId === 'default'
+                      ? 'bg-white text-stone-800 shadow-sm dark:bg-neutral-600 dark:text-neutral-100'
+                      : 'text-stone-500 hover:text-stone-700 dark:text-neutral-400 dark:hover:text-neutral-200'
+                  }`}>
+                  {t('chat.agentProfile.quick')}
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedAgentProfileId === 'reasoning'}
+                  data-analytics-id="chat-header-mode-reasoning"
+                  onClick={() => void handleSelectAgentProfile('reasoning')}
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-all ${
+                    selectedAgentProfileId === 'reasoning'
+                      ? 'bg-white text-stone-800 shadow-sm dark:bg-neutral-600 dark:text-neutral-100'
+                      : 'text-stone-500 hover:text-stone-700 dark:text-neutral-400 dark:hover:text-neutral-200'
+                  }`}>
+                  {t('chat.agentProfile.reasoning')}
+                </button>
+              </div>
+              {selectedThreadId && (
+                <button
+                  type="button"
+                  data-testid="background-processes-toggle"
+                  data-analytics-id="chat-header-background-processes"
+                  onClick={() => setShowBackgroundProcesses(true)}
+                  aria-label={t('conversations.backgroundTasks.title')}
+                  title={
+                    backgroundProcesses.length > 0
+                      ? t('conversations.backgroundTasks.titleWithCount').replace(
+                          '{count}',
+                          String(backgroundProcesses.length)
+                        )
+                      : t('conversations.backgroundTasks.title')
+                  }
+                  className="relative flex h-7 w-7 items-center justify-center rounded-lg text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200">
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"
+                    />
+                  </svg>
+                  {runningBackgroundCount > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[9px] font-semibold leading-none text-white">
+                      {runningBackgroundCount}
+                    </span>
+                  )}
+                </button>
+              )}
+              {(selectedThreadId ?? firstActiveThreadId) && (
+                <ChatFilesChip threadId={(selectedThreadId ?? firstActiveThreadId) as string} />
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -2612,23 +2551,31 @@ const Conversations = ({
       className={
         isSidebar
           ? 'h-full relative z-10 flex overflow-hidden'
-          : 'h-full relative z-10 flex justify-center overflow-hidden p-4 pt-6'
+          : 'h-full relative z-10 flex justify-center overflow-hidden bg-white/70 dark:bg-black/40'
       }>
       {isSidebar ? (
-        mainPanel
-      ) : (
-        // Max-width is applied to the whole two-pane layout (sidebar + chat
-        // together) and centered, rather than capping the chat pane alone. The
-        // cap widens when the threads pane is shown so the chat keeps a
-        // comfortable reading width in both states.
-        <TwoPanelLayout
-          id="chat"
-          className={`h-full w-full ${chatSidebarVisible ? 'max-w-5xl' : 'max-w-2xl'}`}
-          sidebar={threadSidebar}
-          contentClassName="flex"
-          defaultSidebarVisible={false}>
+        <>
+          {projectThreadList && (
+            <SidebarContent>
+              <div className="order-1 flex h-full min-h-0 flex-col overflow-hidden">
+                {threadSidebar}
+              </div>
+            </SidebarContent>
+          )}
           {mainPanel}
-        </TwoPanelLayout>
+        </>
+      ) : (
+        // The thread list always lives in the root app sidebar's dynamic region
+        // (order-1 so any app rail projected by the parent sits above it). The
+        // chat pane keeps a comfortable, centered reading width.
+        <>
+          <SidebarContent>
+            <div className="order-1 flex h-full min-h-0 flex-col overflow-hidden">
+              {threadSidebar}
+            </div>
+          </SidebarContent>
+          <div className="flex h-full w-full">{mainPanel}</div>
+        </>
       )}
       <ConfirmationModal
         modal={deleteModal}

@@ -309,8 +309,7 @@ const messages: TranslationMap = {
   'home.greetingAfternoon': 'Buenas tardes',
   'home.greetingEvening': 'Buenas noches',
   'home.askAssistant': 'Pregúntale lo que quieras a tu asistente...',
-  'home.statusOk':
-    'Tu dispositivo está conectado. Mantén la app abierta para conservar la conexión. Envíale un mensaje a tu agente con el botón de abajo.',
+  'home.statusOk': 'Tu asistente está listo cuando tú lo estés. Escribe algo abajo para empezar.',
   'home.statusBackendOnly':
     'Reconectando al backend… tu agente estará disponible nuevamente en breve.',
   'home.statusCoreUnreachable':
@@ -357,6 +356,10 @@ const messages: TranslationMap = {
   'routines.typeCommand': 'Comando',
   'nav.routines': 'Routines',
   'chat.newThread': 'Nuevo hilo',
+  'chat.newConversation': 'Nueva conversación',
+  'chat.newWindowWelcome1': 'Hola, {name} 👋',
+  'chat.newWindowWelcome2': 'Manos a la obra, {name} 🧑‍🍳.',
+  'chat.newWindowWelcome3': 'Hora de concentrarse 🧘🏻',
   'chat.typeMessage': '¿En qué puedo ayudarte hoy?',
   'chat.send': 'Enviar mensaje',
   'chat.parallelBranchHint': 'Escribe una rama paralela — ⌘/Ctrl+Enter para enviar',
@@ -2950,8 +2953,7 @@ const messages: TranslationMap = {
   'home.banners.earlyBirdTitle': 'Los primeros 1.000 usuarios obtienen un 60% de descuento.',
   'home.banners.earlyBirdUseCode': 'Usar código early bird',
   'home.banners.getSubscription': 'obtener una suscripción',
-  'home.banners.promoCreditsBody': 'Cuerpo de créditos promocionales',
-  'home.banners.promoCreditsTitle': '{amount}',
+  'home.banners.promoCreditsBody': 'Tienes {amount} en créditos promocionales. Puedes',
   'home.banners.promoCreditsUsage': 'Uso de créditos promocionales',
   'intelligence.memoryChunk.detail.chunk': 'Fragmento',
   'intelligence.memoryChunk.detail.copyChunkId': 'Copiar ID de fragmento',

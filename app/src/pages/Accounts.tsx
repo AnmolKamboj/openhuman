@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import AddAccountModal from '../components/accounts/AddAccountModal';
 import { AgentIcon, ProviderIcon } from '../components/accounts/providerIcons';
 import WebviewHost from '../components/accounts/WebviewHost';
+import { SidebarContent } from '../components/layout/shell/SidebarSlot';
 import {
   CustomGifMascot,
   getMascotPalette,
@@ -74,6 +75,7 @@ const RailButton = ({
     type="button"
     onClick={onClick}
     onContextMenu={onContextMenu}
+    title={tooltip}
     data-analytics-id={analyticsId}
     // Issue #1284 — `hover:z-50` lifts the entire button (and its tooltip
     // child) above sibling rail buttons during hover. Without it, the
@@ -83,7 +85,7 @@ const RailButton = ({
     // tooltip rectangle. Belt-and-suspenders for the active-button case
     // too, where ring-2 + bg-primary-50 don't transform but the lifted
     // z still helps tooltips render cleanly above neighbours.
-    className={`group relative flex h-11 w-11 items-center justify-center rounded-xl transition-all hover:z-50 ${
+    className={`group relative flex h-9 w-9 flex-none items-center justify-center rounded-lg transition-all hover:z-50 ${
       active
         ? 'bg-primary-50 ring-2 ring-primary-500'
         : 'hover:bg-stone-100 dark:hover:bg-neutral-800/60 hover:scale-105'
@@ -95,17 +97,9 @@ const RailButton = ({
         {badge > 99 ? '99+' : badge}
       </span>
     ) : null}
-    {/* Issue #1284 — tooltip sits BELOW the icon (`top-full`) so it stays
-        inside the HTML-only rail region. The native CEF webview is
-        composited above the HTML layer to the right of the rail, so a
-        right-anchored tooltip is hidden behind the webview the moment a
-        provider is open and DOM z-index can't lift it. Below-icon keeps
-        the tooltip near the cursor and never blocks the icon being
-        hovered (it briefly overlays the next icon down, which clears as
-        soon as the user moves the cursor). */}
-    <span className="pointer-events-none absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-stone-900 px-2 py-1 text-xs text-white opacity-0 shadow-md transition-opacity group-hover:opacity-100 z-50">
-      {tooltip}
-    </span>
+    {/* Tooltip is the native `title` (set above): a custom absolute tooltip got
+        clipped by the rail's horizontal-scroll overflow, and the native title
+        isn't subject to overflow clipping or CEF webview compositing. */}
   </button>
 );
 
@@ -336,102 +330,108 @@ const Accounts = () => {
 
   return (
     <div
-      // `h-full` makes this page fill the shell's content box, which bypasses
-      className="relative flex h-full gap-3 overflow-hidden"
+      // `h-full` makes this page fill the shell's content box edge-to-edge.
+      className="relative flex h-full overflow-hidden"
       data-testid="accounts-page"
       data-analytics-id="chat-right-sidebar">
-      {/* Narrow icon rail — always rendered. */}
-      <aside className="z-30 flex w-16 flex-none flex-col items-center gap-2 bg-white/60 dark:bg-neutral-900/60 py-3 backdrop-blur-md my-3 ml-3 rounded-2xl border border-stone-200/70 dark:border-neutral-800/70 shadow-soft">
-        <RailButton
-          active={isAgentSelected}
-          onClick={selectAgent}
-          tooltip={t('accounts.agent')}
-          analyticsId="chat-right-sidebar-agent">
-          <AgentIcon className="h-9 w-9 rounded-lg bg-white dark:bg-neutral-200" />
-        </RailButton>
-
-        {accounts.map(acct => (
+      {/* App rail — projected into the root sidebar's dynamic region as a compact
+          horizontal row above the thread search (order-0 sits above the thread
+          list, which Conversations projects as order-1). */}
+      <SidebarContent>
+        <div
+          data-testid="accounts-app-rail"
+          data-analytics-id="chat-app-rail"
+          className="scrollbar-hide order-0 flex flex-none items-center gap-1.5 overflow-x-auto overflow-y-hidden border-b border-stone-100 px-2 py-2 dark:border-neutral-800">
           <RailButton
-            key={acct.id}
-            active={acct.id === selectedId}
-            onClick={() => selectAccount(acct.id)}
-            onContextMenu={e => openContextMenu(acct.id, e)}
-            tooltip={acct.label}
-            analyticsId={`chat-right-sidebar-account-${acct.provider}`}
-            badge={unreadByAccount[acct.id]}>
-            <ProviderIcon provider={acct.provider} className="h-8 w-8 rounded-md" />
+            active={isAgentSelected}
+            onClick={selectAgent}
+            tooltip={t('accounts.agent')}
+            analyticsId="chat-app-rail-agent">
+            <AgentIcon className="h-5 w-5 rounded-md bg-white dark:bg-neutral-200" />
           </RailButton>
-        ))}
 
-        <button
-          type="button"
-          onClick={() => {
-            trackEvent('tauri_browser_click', {
-              surface: 'chat_right_sidebar',
-              action: 'open_add_account',
-              provider: 'none',
-            });
-            setAddOpen(true);
-          }}
-          data-analytics-id="chat-right-sidebar-add-account"
-          data-testid="accounts-add-button"
-          className="group relative mt-2 flex h-11 w-11 items-center justify-center rounded-xl border border-dashed border-stone-300 dark:border-neutral-700 text-stone-400 dark:text-neutral-500 hover:z-50 hover:bg-stone-50 dark:hover:bg-neutral-800/60 hover:text-stone-600 dark:hover:text-neutral-300"
-          aria-label={t('accounts.addAccount')}>
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          {/* Issue #1284 — see RailButton for why the tooltip sits below
-              the icon instead of to the right. */}
-          <span className="pointer-events-none absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-stone-900 px-2 py-1 text-xs text-white opacity-0 shadow-md transition-opacity group-hover:opacity-100 z-50">
-            {t('accounts.addAccount')}
-          </span>
-        </button>
-      </aside>
+          {accounts.map(acct => (
+            <RailButton
+              key={acct.id}
+              active={acct.id === selectedId}
+              onClick={() => selectAccount(acct.id)}
+              onContextMenu={e => openContextMenu(acct.id, e)}
+              tooltip={acct.label}
+              analyticsId={`chat-app-rail-account-${acct.provider}`}
+              badge={unreadByAccount[acct.id]}>
+              <ProviderIcon provider={acct.provider} className="h-5 w-5 rounded" />
+            </RailButton>
+          ))}
+
+          <button
+            type="button"
+            onClick={() => {
+              trackEvent('tauri_browser_click', {
+                surface: 'chat_app_rail',
+                action: 'open_add_account',
+                provider: 'none',
+              });
+              setAddOpen(true);
+            }}
+            data-analytics-id="chat-app-rail-add-account"
+            data-testid="accounts-add-button"
+            className="group relative flex h-9 w-9 flex-none items-center justify-center rounded-xl border border-dashed border-stone-300 text-stone-400 hover:bg-stone-50 hover:text-stone-600 dark:border-neutral-700 dark:text-neutral-500 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-300"
+            aria-label={t('accounts.addAccount')}
+            title={t('accounts.addAccount')}>
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+          </button>
+        </div>
+      </SidebarContent>
 
       {/* "Talk to Tiny" face-mode toggle — hidden (kept for potential re-enable). */}
 
-      {/* Main pane
-          In face mode (agent selected), the layout is a horizontal split:
-          the chat panel on the left and the mascot panel on the right.
-          Face mode is ignored when an external webview account is active. */}
-      <main
-        className={`flex min-w-0 flex-1 gap-3 ${isAgentSelected && faceMode ? 'flex-row' : 'flex-col'}`}>
-        {isAgentSelected ? (
-          <>
-            {/* Agent chat — face mode uses sidebar variant to avoid a second
-                thread list; normal mode uses the full-page variant (AgentChatPanel). */}
-            <div
-              className={`flex min-h-0 min-w-0 flex-col ${faceMode ? 'w-[360px] flex-none' : 'flex-1'}`}>
-              {faceMode ? (
-                // Face mode: mascot sidebar chat. The toggle floats on the page
-                // root (see below) so it never steals height from the composer.
-                // `min-h-0` lets the inner message list scroll instead of growing
-                // and pushing the composer off-screen.
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/70 dark:border-neutral-800/70 my-3 mr-0">
-                  <Conversations variant="sidebar" />
-                </div>
-              ) : (
-                // `min-h-0` is required so the chat's internal message list owns
-                // the overflow (scrolls) rather than expanding and shoving the
-                // composer below the viewport on long threads.
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  <AgentChatPanel />
-                </div>
-              )}
+      {/* Main pane. In face mode (agent selected) it's a horizontal split with
+          the mascot panel. Otherwise the agent chat is ALWAYS mounted — so the
+          thread sidebar it projects stays consistent regardless of which app is
+          selected — and a selected app's webview fills the pane edge-to-edge on
+          top of it. */}
+      {isAgentSelected && faceMode ? (
+        <main className="flex min-w-0 flex-1 flex-row gap-3">
+          <div className="flex min-h-0 w-[360px] flex-none flex-col">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200/70 dark:border-neutral-800/70 my-3 mr-0">
+              <Conversations variant="sidebar" />
             </div>
-            {/* Mascot + TTS panel — only visible in face mode */}
-            {faceMode && <FaceModePanel />}
-          </>
-        ) : active ? (
-          <div className="flex-1 py-3 pr-3">
-            <WebviewHost accountId={active.id} provider={active.provider} />
           </div>
-        ) : (
-          <div className="flex flex-1 items-center justify-center text-sm text-stone-400 dark:text-neutral-500">
-            {t('accounts.noAccounts')}
+          <FaceModePanel />
+        </main>
+      ) : (
+        <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+          {/* Agent chat — kept mounted even while a webview app is shown so its
+              thread sidebar projection persists. `min-h-0` lets the message list
+              own the scroll instead of pushing the composer off-screen. */}
+          <div
+            className={`min-h-0 flex-1 overflow-hidden ${isAgentSelected ? '' : 'invisible'}`}
+            aria-hidden={!isAgentSelected}>
+            <AgentChatPanel />
           </div>
-        )}
-      </main>
+
+          {/* Selected connected app — fills the main content fully (no padding
+              or margins) on top of the hidden agent chat. */}
+          {!isAgentSelected && active && (
+            <div className="absolute inset-0">
+              <WebviewHost accountId={active.id} provider={active.provider} />
+            </div>
+          )}
+
+          {!isAgentSelected && !active && (
+            <div className="absolute inset-0 flex items-center justify-center text-sm text-stone-400 dark:text-neutral-500">
+              {t('accounts.noAccounts')}
+            </div>
+          )}
+        </main>
+      )}
 
       <AddAccountModal
         open={addOpen}

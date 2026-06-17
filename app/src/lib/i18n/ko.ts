@@ -296,8 +296,7 @@ const messages: TranslationMap = {
   'home.greetingAfternoon': '좋은 오후입니다',
   'home.greetingEvening': '좋은 저녁입니다',
   'home.askAssistant': '어시스턴트에게 무엇이든 물어보세요...',
-  'home.statusOk':
-    '기기가 연결되었습니다. 연결을 유지하려면 앱을 계속 실행해 주세요. 아래 버튼으로 에이전트에게 메시지를 보내세요.',
+  'home.statusOk': '어시스턴트가 준비되어 있어요. 아래에 무언가 입력해 시작하세요.',
   'home.statusBackendOnly':
     '백엔드에 다시 연결하는 중입니다… 곧 에이전트를 다시 사용할 수 있습니다.',
   'home.statusCoreUnreachable':
@@ -344,6 +343,10 @@ const messages: TranslationMap = {
   'routines.typeCommand': '명령',
   'nav.routines': 'Routines',
   'chat.newThread': '새 스레드',
+  'chat.newConversation': '새 대화',
+  'chat.newWindowWelcome1': '환영해요, {name} 👋',
+  'chat.newWindowWelcome2': '시작해 볼까요, {name} 🧑‍🍳.',
+  'chat.newWindowWelcome3': '집중할 시간이에요 🧘🏻',
   'chat.typeMessage': '오늘 무엇을 도와드릴까요?',
   'chat.send': '메시지 보내기',
   'chat.parallelBranchHint': '병렬 분기 입력 — 보내려면 ⌘/Ctrl+Enter',
@@ -2875,8 +2878,7 @@ const messages: TranslationMap = {
   'home.banners.earlyBirdTitle': '첫 1,000명의 사용자는 60% 할인을 받습니다.',
   'home.banners.earlyBirdUseCode': '얼리버드 코드 사용',
   'home.banners.getSubscription': '구독하기',
-  'home.banners.promoCreditsBody': 'OpenHuman을 사용해 보고, 더 필요할 때',
-  'home.banners.promoCreditsTitle': '{amount}의 프로모션 크레딧이 있습니다.',
+  'home.banners.promoCreditsBody': '프로모션 크레딧 {amount}이(가) 있어요. 다음을 할 수 있어요:',
   'home.banners.promoCreditsUsage': '10배 더 많은 사용량을 받으세요.',
   'intelligence.memoryChunk.detail.chunk': '청크',
   'intelligence.memoryChunk.detail.copyChunkId': '청크 ID 복사',

@@ -309,7 +309,7 @@ const messages: TranslationMap = {
   'home.greetingEvening': 'Guten Abend',
   'home.askAssistant': 'Frag deinen Assistenten etwas ...',
   'home.statusOk':
-    'Dein Gerät ist verbunden. Lass die App laufen, um die Verbindung aufrechtzuerhalten. Sende deinem Agenten über die Schaltfläche unten eine Nachricht.',
+    'Dein Assistent ist bereit, wenn du es bist. Schreib unten etwas, um loszulegen.',
   'home.statusBackendOnly':
     'Verbindung zum Backend wird wiederhergestellt. Dein Agent wird in Kürze wieder verfügbar sein.',
   'home.statusCoreUnreachable':
@@ -356,6 +356,10 @@ const messages: TranslationMap = {
   'routines.typeCommand': 'Kommandant',
   'nav.routines': 'Routines',
   'chat.newThread': 'Neuer Thread',
+  'chat.newConversation': 'Neue Unterhaltung',
+  'chat.newWindowWelcome1': 'Willkommen, {name} 👋',
+  'chat.newWindowWelcome2': 'Legen wir los, {name} 🧑‍🍳.',
+  'chat.newWindowWelcome3': 'Zeit zum Fokussieren 🧘🏻',
   'chat.typeMessage': 'Wie kann ich dir heute helfen?',
   'chat.send': 'Nachricht senden',
   'chat.parallelBranchHint': 'Parallelen Zweig eingeben — ⌘/Strg+Enter zum Senden',
@@ -2969,8 +2973,7 @@ const messages: TranslationMap = {
   'home.banners.earlyBirdTitle': 'Die ersten 1.000 Nutzer erhalten 60 % Rabatt.',
   'home.banners.earlyBirdUseCode': 'Frühbucher-Nutzungscode',
   'home.banners.getSubscription': 'Hol dir ein Abonnement',
-  'home.banners.promoCreditsBody': 'Probiere OpenHuman aus und wenn du Lust auf mehr hast,',
-  'home.banners.promoCreditsTitle': 'Du hast {amount} Werbeguthaben.',
+  'home.banners.promoCreditsBody': 'Du hast {amount} an Promo-Guthaben. Du kannst',
   'home.banners.promoCreditsUsage': 'und erhalte 10x mehr Nutzung.',
   'intelligence.memoryChunk.detail.chunk': 'Brocken',
   'intelligence.memoryChunk.detail.copyChunkId': 'Chunk-ID kopieren',
