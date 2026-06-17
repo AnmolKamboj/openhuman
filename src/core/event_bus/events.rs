@@ -388,6 +388,11 @@ pub enum DomainEvent {
         success: bool,
         elapsed_ms: u64,
     },
+    /// The set of installed skills/workflows changed (install / uninstall /
+    /// create). Lets a live agent session refresh its `## Installed Skills`
+    /// catalogue mid-conversation instead of waiting for a restart. `reason`
+    /// is a short tag for logs (e.g. `"install"`, `"uninstall"`, `"create"`).
+    WorkflowsChanged { reason: String },
 
     // ── Tools ───────────────────────────────────────────────────────────
     /// A tool execution started.
@@ -1110,7 +1115,8 @@ impl DomainEvent {
             Self::WorkflowLoaded { .. }
             | Self::WorkflowStopped { .. }
             | Self::WorkflowStartFailed { .. }
-            | Self::WorkflowExecuted { .. } => "workflow",
+            | Self::WorkflowExecuted { .. }
+            | Self::WorkflowsChanged { .. } => "workflow",
 
             Self::ToolExecutionStarted { .. } | Self::ToolExecutionCompleted { .. } => "tool",
 
@@ -1245,6 +1251,7 @@ impl DomainEvent {
             Self::WorkflowStopped { .. } => "WorkflowStopped",
             Self::WorkflowStartFailed { .. } => "WorkflowStartFailed",
             Self::WorkflowExecuted { .. } => "WorkflowExecuted",
+            Self::WorkflowsChanged { .. } => "WorkflowsChanged",
             Self::ToolExecutionStarted { .. } => "ToolExecutionStarted",
             Self::ToolExecutionCompleted { .. } => "ToolExecutionCompleted",
             Self::WebhookIncomingRequest { .. } => "WebhookIncomingRequest",

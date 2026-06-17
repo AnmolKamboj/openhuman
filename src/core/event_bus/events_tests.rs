@@ -532,3 +532,12 @@ fn approval_requested_does_not_surface_session_id() {
         "ApprovalRequested Debug must not surface session_id: {dbg}"
     );
 }
+
+#[test]
+fn workflows_changed_domain_and_name() {
+    let event = DomainEvent::WorkflowsChanged {
+        reason: "install".into(),
+    };
+    assert_eq!(event.domain(), "workflow");
+    assert_eq!(event.variant_name(), "WorkflowsChanged");
+}
