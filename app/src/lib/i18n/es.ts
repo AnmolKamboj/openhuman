@@ -3193,6 +3193,11 @@ const messages: TranslationMap = {
   'notifications.center.filterAll': 'Filtrar todo',
   'notifications.center.markAllRead': 'Marcar todo como leído',
   'notifications.center.title': 'Notificaciones',
+  'notifications.meeting.joinListen': 'Unirse (solo escuchar)',
+  'notifications.meeting.joinActive': 'Unirse y responder',
+  'notifications.meeting.skip': 'Esta no',
+  'notifications.meeting.alwaysJoin': 'Unirse siempre',
+  'notifications.meeting.actionError': 'No se pudo completar esa acción. Inténtalo de nuevo.',
   'oauth.button.connecting': 'Conectando...',
   'oauth.button.loopbackTimeout':
     'El inicio de sesión expiró — el navegador no completó la redirección OAuth. Por favor, inténtalo de nuevo.',
@@ -4338,6 +4343,32 @@ const messages: TranslationMap = {
   'settings.permissions.foldersDesc':
     'La carpeta predeterminada que el asistente lee y escribe. Puedes añadir más carpetas en los ajustes avanzados.',
 
+  'settings.meetings.title': 'Reuniones',
+  'settings.meetings.menuDesc':
+    'Auto-unión, resúmenes y transcripciones del Asistente de reuniones',
+  'settings.meetings.desktopOnly':
+    'Los ajustes de reuniones solo están disponibles en el escritorio.',
+  'settings.meetings.loading': 'Cargando…',
+  'settings.meetings.loadError': 'No se pudieron cargar los ajustes de reuniones.',
+  'settings.meetings.saveError': 'No se pudieron guardar los ajustes de reuniones.',
+  'settings.meetings.saved': 'Guardado',
+  'settings.meetings.saving': 'Guardando…',
+  'settings.meetings.autoJoin.title': 'Política de auto-unión',
+  'settings.meetings.autoJoin.desc':
+    'Cuando un evento del calendario tiene un enlace de Google Meet',
+  'settings.meetings.autoJoin.askEachTime': 'Preguntar cada vez',
+  'settings.meetings.autoJoin.always': 'Unirse siempre',
+  'settings.meetings.autoJoin.never': 'No unirse nunca',
+  'settings.meetings.autoSummarize.title': 'Resumen tras la llamada',
+  'settings.meetings.autoSummarize.desc': 'Generar un resumen al terminar la llamada',
+  'settings.meetings.autoSummarize.ask': 'Preguntar tras la llamada',
+  'settings.meetings.autoSummarize.always': 'Resumir siempre',
+  'settings.meetings.autoSummarize.never': 'No resumir nunca',
+  'settings.meetings.listenOnly': 'Modo solo escucha',
+  'settings.meetings.listenOnlyDesc': 'Unirse con el micrófono silenciado',
+  'settings.meetings.ingestTranscripts': 'Ingerir transcripciones del backend',
+  'settings.meetings.ingestTranscriptsDesc':
+    'Guardar las transcripciones de reuniones en la memoria',
   'settings.sandbox.title': 'Ejecución en sandbox',
   'settings.sandbox.menuDesc':
     'Configurar backends de sandbox para el aislamiento de herramientas del agente.',

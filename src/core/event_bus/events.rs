@@ -1049,6 +1049,23 @@ pub enum DomainEvent {
         meet_url: String,
         event_title: String,
     },
+    /// A new meeting session was created (Pending) after a calendar Meet
+    /// link was detected and the auto-join prompt was surfaced (issue #3507).
+    MeetingSessionCreated {
+        meeting_id: String,
+        meet_url: String,
+        title: String,
+        /// Origin of the session: "calendar" | "manual" | "api".
+        source: String,
+    },
+    /// Auto-join was triggered for a meeting — either policy == Always or the
+    /// user clicked a join action on the auto-join prompt (issue #3507).
+    MeetingAutoJoinTriggered {
+        meeting_id: String,
+        meet_url: String,
+        listen_only: bool,
+        correlation_id: String,
+    },
     /// Reserved for PR-4: a post-meeting summary was generated from the
     /// transcript (action items, key decisions, etc.).
     MeetingSummaryGenerated {
@@ -1202,6 +1219,8 @@ impl DomainEvent {
             | Self::BackendMeetSpeak { .. }
             | Self::InCallApprovalRequested { .. }
             | Self::MeetAutoJoinPrompt { .. }
+            | Self::MeetingSessionCreated { .. }
+            | Self::MeetingAutoJoinTriggered { .. }
             | Self::MeetingSummaryGenerated { .. } => "agent_meetings",
         }
     }
@@ -1323,6 +1342,8 @@ impl DomainEvent {
             Self::BackendMeetSpeak { .. } => "BackendMeetSpeak",
             Self::InCallApprovalRequested { .. } => "InCallApprovalRequested",
             Self::MeetAutoJoinPrompt { .. } => "MeetAutoJoinPrompt",
+            Self::MeetingSessionCreated { .. } => "MeetingSessionCreated",
+            Self::MeetingAutoJoinTriggered { .. } => "MeetingAutoJoinTriggered",
             Self::MeetingSummaryGenerated { .. } => "MeetingSummaryGenerated",
             Self::Voice(_) => "Voice",
         }

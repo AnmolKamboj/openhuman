@@ -3210,6 +3210,12 @@ const messages: TranslationMap = {
   'notifications.center.filterAll': 'Alles filtern',
   'notifications.center.markAllRead': 'Alles als gelesen markieren',
   'notifications.center.title': 'Benachrichtigungen',
+  'notifications.meeting.joinListen': 'Beitreten (nur zuhören)',
+  'notifications.meeting.joinActive': 'Beitreten und antworten',
+  'notifications.meeting.skip': 'Nicht dieses',
+  'notifications.meeting.alwaysJoin': 'Immer beitreten',
+  'notifications.meeting.actionError':
+    'Diese Aktion konnte nicht abgeschlossen werden. Bitte versuche es erneut.',
   'oauth.button.connecting': 'Verbinden...',
   'oauth.button.loopbackTimeout':
     'Anmeldung abgelaufen — der Browser hat die OAuth-Weiterleitung nicht abgeschlossen. Bitte versuche es erneut.',
@@ -4367,6 +4373,29 @@ const messages: TranslationMap = {
   'settings.permissions.foldersDesc':
     'Der Standardordner, den der Assistent liest und beschreibt. In den erweiterten Einstellungen kannst du weitere Ordner hinzufügen.',
 
+  'settings.meetings.title': 'Besprechungen',
+  'settings.meetings.menuDesc':
+    'Auto-Beitritt, Zusammenfassungen und Transkripte des Besprechungsassistenten',
+  'settings.meetings.desktopOnly': 'Besprechungseinstellungen sind nur auf dem Desktop verfügbar.',
+  'settings.meetings.loading': 'Wird geladen…',
+  'settings.meetings.loadError': 'Besprechungseinstellungen konnten nicht geladen werden.',
+  'settings.meetings.saveError': 'Besprechungseinstellungen konnten nicht gespeichert werden.',
+  'settings.meetings.saved': 'Gespeichert',
+  'settings.meetings.saving': 'Wird gespeichert…',
+  'settings.meetings.autoJoin.title': 'Auto-Beitritt-Richtlinie',
+  'settings.meetings.autoJoin.desc': 'Wenn ein Kalendereintrag einen Google-Meet-Link hat',
+  'settings.meetings.autoJoin.askEachTime': 'Jedes Mal fragen',
+  'settings.meetings.autoJoin.always': 'Immer beitreten',
+  'settings.meetings.autoJoin.never': 'Nie beitreten',
+  'settings.meetings.autoSummarize.title': 'Zusammenfassung nach dem Anruf',
+  'settings.meetings.autoSummarize.desc': 'Nach Anrufende eine Zusammenfassung erstellen',
+  'settings.meetings.autoSummarize.ask': 'Nach dem Anruf fragen',
+  'settings.meetings.autoSummarize.always': 'Immer zusammenfassen',
+  'settings.meetings.autoSummarize.never': 'Nie zusammenfassen',
+  'settings.meetings.listenOnly': 'Nur-Zuhören-Modus',
+  'settings.meetings.listenOnlyDesc': 'Mit stummgeschaltetem Mikrofon beitreten',
+  'settings.meetings.ingestTranscripts': 'Backend-Transkripte aufnehmen',
+  'settings.meetings.ingestTranscriptsDesc': 'Besprechungstranskripte im Speicher ablegen',
   'settings.sandbox.title': 'Sandbox-Ausführung',
   'settings.sandbox.menuDesc':
     'Sandbox-Backends für die Isolation von Agentenwerkzeugen konfigurieren.',

@@ -283,6 +283,70 @@ fn build_join_payload(
     payload
 }
 
+/// Pure: extract the reply anchor (`respondToParticipant`) carried by a
+/// notification action payload. Returns `None` when absent or blank.
+fn anchor_from_action_payload(payload: &Value) -> Option<String> {
+    payload
+        .get("respondToParticipant")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+}
+
+/// Pure: build the `agent_meetings_join` param map for an AskEachTime
+/// notification action.
+///
+/// Encapsulates the listen-only decision (reply mode without a known anchor is
+/// downgraded to listen-only via [`super::calendar::effective_listen_only`]),
+/// the wake phrase, and the `respond_to_participant` anchor wiring so they are
+/// unit-testable without a live socket/config.
+fn build_notification_join_map(
+    action_id: &str,
+    meet_url: &str,
+    correlation_id: &str,
+    display_name: Option<&str>,
+    respond_to_participant: Option<&str>,
+    config_listen_only_default: bool,
+) -> Map<String, Value> {
+    let requested_listen_only = match action_id {
+        "join_listen" => true,
+        "join_active" => false,
+        _ => config_listen_only_default,
+    };
+    // Reply mode needs a known anchor. Without one, downgrade to listen-only
+    // (still transcribes + summarizes) instead of replying to every speaker.
+    let listen_only = super::calendar::effective_listen_only(
+        requested_listen_only,
+        respond_to_participant.is_some(),
+    );
+    if listen_only && !requested_listen_only {
+        tracing::warn!(
+            action_id = %action_id,
+            "[agent_meetings] no reply anchor resolved — forcing listen-only join"
+        );
+    }
+
+    let mut join = Map::new();
+    join.insert("meet_url".to_string(), json!(meet_url));
+    join.insert("correlation_id".to_string(), json!(correlation_id));
+    join.insert("listen_only".to_string(), json!(listen_only));
+    if let Some(name) = display_name {
+        join.insert("display_name".to_string(), json!(name));
+    }
+    if !listen_only {
+        // Reply mode: the participant addresses the bot as "Hey Tiny"; the
+        // wake phrase is always required (no implicit address).
+        join.insert("wake_phrase".to_string(), json!("Hey Tiny"));
+        // Anchor replies to the meeting owner so the bot knows who it is
+        // answering (empty/absent = respond to everyone).
+        if let Some(owner) = respond_to_participant {
+            join.insert("respond_to_participant".to_string(), json!(owner));
+        }
+    }
+    join
+}
+
 /// Handle `openhuman.agent_meetings_join`.
 pub async fn handle_join(params: Map<String, Value>) -> Result<Value, String> {
     let req: BackendMeetJoinRequest = serde_json::from_value(Value::Object(params))
@@ -493,6 +557,15 @@ pub async fn handle_notification_action(params: Map<String, Value>) -> Result<Va
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(String::from);
+    // Reply anchor carried from the calendar notification (issue: gmeet
+    // auto-join anchor). Falls back to the signed-in account identity so a
+    // notification raised before the anchor wiring still knows who to reply to.
+    let respond_to_participant = anchor_from_action_payload(&payload).or_else(|| {
+        crate::openhuman::app_state::peek_cached_current_user_identity()
+            .and_then(|i| i.name)
+            .map(|n| n.trim().to_string())
+            .filter(|s| !s.is_empty())
+    });
 
     tracing::info!(
         action_id = %action_id,
@@ -540,29 +613,17 @@ pub async fn handle_notification_action(params: Map<String, Value>) -> Result<Va
                 }
             }
 
-            let listen_only = match action_id.as_str() {
-                "join_listen" => true,
-                "join_active" => false,
-                _ => config.meet.listen_only_default,
-            };
-
-            let mut join = Map::new();
-            join.insert("meet_url".to_string(), json!(meet_url));
-            join.insert(
-                "correlation_id".to_string(),
-                json!(meeting_id
-                    .clone()
-                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())),
+            let correlation_id = meeting_id
+                .clone()
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+            let join = build_notification_join_map(
+                &action_id,
+                &meet_url,
+                &correlation_id,
+                display_name.as_deref(),
+                respond_to_participant.as_deref(),
+                config.meet.listen_only_default,
             );
-            join.insert("listen_only".to_string(), json!(listen_only));
-            if let Some(name) = display_name {
-                join.insert("display_name".to_string(), json!(name));
-            }
-            if !listen_only {
-                // Reply mode: the participant addresses the bot as "Hey Tiny";
-                // the wake phrase is always required (no implicit address).
-                join.insert("wake_phrase".to_string(), json!("Hey Tiny"));
-            }
 
             handle_join(join).await
         }
@@ -613,6 +674,101 @@ mod tests {
         params.insert("action_id".to_string(), json!("explode"));
         let err = handle_notification_action(params).await.unwrap_err();
         assert!(err.contains("unknown action_id"));
+    }
+
+    // ── anchor_from_action_payload ──────────────────────────────
+
+    #[test]
+    fn anchor_extracted_from_payload() {
+        let payload = json!({ "respondToParticipant": "Shanu Goyanka" });
+        assert_eq!(
+            anchor_from_action_payload(&payload).as_deref(),
+            Some("Shanu Goyanka")
+        );
+    }
+
+    #[test]
+    fn anchor_none_when_absent_or_blank() {
+        assert!(anchor_from_action_payload(&json!({})).is_none());
+        assert!(anchor_from_action_payload(&json!({ "respondToParticipant": "  " })).is_none());
+    }
+
+    // ── build_notification_join_map ─────────────────────────────
+
+    #[test]
+    fn join_map_listen_only_action_has_no_anchor_or_wake() {
+        let join = build_notification_join_map(
+            "join_listen",
+            "https://meet.google.com/abc",
+            "corr-1",
+            Some("Tiny"),
+            Some("Shanu"),
+            false,
+        );
+        assert_eq!(join["listen_only"], json!(true));
+        assert_eq!(join["display_name"], json!("Tiny"));
+        // listen-only never carries wake/anchor
+        assert!(!join.contains_key("wake_phrase"));
+        assert!(!join.contains_key("respond_to_participant"));
+    }
+
+    #[test]
+    fn join_map_active_with_anchor_carries_wake_and_anchor() {
+        let join = build_notification_join_map(
+            "join_active",
+            "https://meet.google.com/abc",
+            "corr-1",
+            None,
+            Some("Shanu"),
+            false,
+        );
+        assert_eq!(join["listen_only"], json!(false));
+        assert_eq!(join["wake_phrase"], json!("Hey Tiny"));
+        assert_eq!(join["respond_to_participant"], json!("Shanu"));
+        assert!(!join.contains_key("display_name"));
+    }
+
+    #[test]
+    fn join_map_active_without_anchor_downgrades_to_listen_only() {
+        let join = build_notification_join_map(
+            "join_active",
+            "https://meet.google.com/abc",
+            "corr-1",
+            None,
+            None,
+            false,
+        );
+        // No anchor → forced listen-only, no wake/anchor emitted.
+        assert_eq!(join["listen_only"], json!(true));
+        assert!(!join.contains_key("wake_phrase"));
+        assert!(!join.contains_key("respond_to_participant"));
+    }
+
+    #[test]
+    fn join_map_always_join_uses_config_default() {
+        // always_join + config default reply (false) + anchor → reply mode.
+        let reply = build_notification_join_map(
+            "always_join",
+            "https://meet.google.com/abc",
+            "corr-1",
+            None,
+            Some("Shanu"),
+            false,
+        );
+        assert_eq!(reply["listen_only"], json!(false));
+        assert_eq!(reply["respond_to_participant"], json!("Shanu"));
+
+        // always_join + config default listen-only (true) → listen-only.
+        let passive = build_notification_join_map(
+            "always_join",
+            "https://meet.google.com/abc",
+            "corr-1",
+            None,
+            Some("Shanu"),
+            true,
+        );
+        assert_eq!(passive["listen_only"], json!(true));
+        assert!(!passive.contains_key("respond_to_participant"));
     }
 
     #[tokio::test]
