@@ -4542,6 +4542,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.recentCallsHeading': 'المكالمات الأخيرة',
   'skills.meetingBots.recentCallsEmpty': 'لا توجد مكالمات سابقة بعد — سيظهر سجل اجتماعاتك هنا.',
   'skills.meetingBots.recentCallsLoading': 'جارٍ التحميل\u2026',
+  'skills.meetingBots.recentCallAddedBy': 'أضافه {name}',
+  'skills.meetingBots.recentCallParticipants': 'مع {names}',
   'skills.meetingBots.liveBadge': 'مباشر',
   'skills.meetingBots.liveTitle': 'في اجتماع',
   'skills.meetingBots.liveStatusJoining': 'جارٍ الانضمام\u2026',

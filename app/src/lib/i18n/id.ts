@@ -4651,6 +4651,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.recentCallsEmpty':
     'Belum ada panggilan sebelumnya — riwayat rapat Anda akan muncul di sini.',
   'skills.meetingBots.recentCallsLoading': 'Memuat\u2026',
+  'skills.meetingBots.recentCallAddedBy': 'Ditambahkan oleh {name}',
+  'skills.meetingBots.recentCallParticipants': 'Dengan {names}',
   'skills.meetingBots.liveBadge': 'Langsung',
   'skills.meetingBots.liveTitle': 'Dalam Rapat',
   'skills.meetingBots.liveStatusJoining': 'Bergabung\u2026',

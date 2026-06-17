@@ -4679,6 +4679,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.recentCallsHeading': 'Недавние звонки',
   'skills.meetingBots.recentCallsEmpty': 'Предыдущих звонков нет — история встреч появится здесь.',
   'skills.meetingBots.recentCallsLoading': 'Загрузка\u2026',
+  'skills.meetingBots.recentCallAddedBy': 'Добавил {name}',
+  'skills.meetingBots.recentCallParticipants': 'С {names}',
   'skills.meetingBots.liveBadge': 'Эфир',
   'skills.meetingBots.liveTitle': 'На встрече',
   'skills.meetingBots.liveStatusJoining': 'Подключение\u2026',

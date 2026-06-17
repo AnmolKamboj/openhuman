@@ -4752,6 +4752,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.recentCallsEmpty':
     'Noch keine früheren Anrufe — Ihr Meeting-Verlauf erscheint hier.',
   'skills.meetingBots.recentCallsLoading': 'Laden\u2026',
+  'skills.meetingBots.recentCallAddedBy': 'Hinzugefügt von {name}',
+  'skills.meetingBots.recentCallParticipants': 'Mit {names}',
   'skills.meetingBots.liveBadge': 'Live',
   'skills.meetingBots.liveTitle': 'Im Meeting',
   'skills.meetingBots.liveStatusJoining': 'Beitritt\u2026',

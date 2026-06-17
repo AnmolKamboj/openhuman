@@ -4723,6 +4723,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.recentCallsEmpty':
     'Aún no hay llamadas anteriores — tu historial de reuniones aparecerá aquí.',
   'skills.meetingBots.recentCallsLoading': 'Cargando\u2026',
+  'skills.meetingBots.recentCallAddedBy': 'Añadido por {name}',
+  'skills.meetingBots.recentCallParticipants': 'Con {names}',
   'skills.meetingBots.liveBadge': 'En vivo',
   'skills.meetingBots.liveTitle': 'En reunión',
   'skills.meetingBots.liveStatusJoining': 'Uniéndose\u2026',

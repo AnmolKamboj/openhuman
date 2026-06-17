@@ -4403,6 +4403,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.recentCallsHeading': '最近通话',
   'skills.meetingBots.recentCallsEmpty': '暂无历史通话记录 — 您的会议记录将显示在此处。',
   'skills.meetingBots.recentCallsLoading': '加载中\u2026',
+  'skills.meetingBots.recentCallAddedBy': '由 {name} 添加',
+  'skills.meetingBots.recentCallParticipants': '与 {names}',
   'skills.meetingBots.liveBadge': '直播',
   'skills.meetingBots.liveTitle': '会议中',
   'skills.meetingBots.liveStatusJoining': '正在加入\u2026',

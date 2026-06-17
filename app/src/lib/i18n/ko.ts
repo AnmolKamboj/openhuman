@@ -4591,6 +4591,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.recentCallsHeading': '최근 통화',
   'skills.meetingBots.recentCallsEmpty': '이전 통화가 없습니다 — 회의 기록이 여기에 표시됩니다.',
   'skills.meetingBots.recentCallsLoading': '로딩 중\u2026',
+  'skills.meetingBots.recentCallAddedBy': '{name}님이 추가함',
+  'skills.meetingBots.recentCallParticipants': '{names}님과 함께',
   'skills.meetingBots.liveBadge': '라이브',
   'skills.meetingBots.liveTitle': '회의 중',
   'skills.meetingBots.liveStatusJoining': '참가 중\u2026',

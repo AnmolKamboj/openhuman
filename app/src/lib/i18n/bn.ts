@@ -4634,6 +4634,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.recentCallsHeading': 'সাম্প্রতিক কল',
   'skills.meetingBots.recentCallsEmpty': 'এখনও কোনো আগের কল নেই — আপনার মিটিং ইতিহাস এখানে দেখাবে।',
   'skills.meetingBots.recentCallsLoading': 'লোড হচ্ছে\u2026',
+  'skills.meetingBots.recentCallAddedBy': '{name} যোগ করেছেন',
+  'skills.meetingBots.recentCallParticipants': '{names} এর সাথে',
   'skills.meetingBots.liveBadge': 'লাইভ',
   'skills.meetingBots.liveTitle': 'মিটিংয়ে',
   'skills.meetingBots.liveStatusJoining': 'যোগ দিচ্ছে\u2026',

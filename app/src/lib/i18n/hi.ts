@@ -4638,6 +4638,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.recentCallsEmpty':
     'अभी तक कोई पिछली कॉल नहीं — आपका मीटिंग इतिहास यहाँ दिखेगा।',
   'skills.meetingBots.recentCallsLoading': 'लोड हो रहा है\u2026',
+  'skills.meetingBots.recentCallAddedBy': '{name} द्वारा जोड़ा गया',
+  'skills.meetingBots.recentCallParticipants': '{names} के साथ',
   'skills.meetingBots.liveBadge': 'लाइव',
   'skills.meetingBots.liveTitle': 'मीटिंग में',
   'skills.meetingBots.liveStatusJoining': 'शामिल हो रहा है\u2026',

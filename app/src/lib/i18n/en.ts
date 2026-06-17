@@ -5239,6 +5239,8 @@ const en: TranslationMap = {
   'skills.meetingBots.recentCallsEmpty':
     'No previous calls yet — your meeting history will appear here.',
   'skills.meetingBots.recentCallsLoading': 'Loading\u2026',
+  'skills.meetingBots.recentCallAddedBy': 'Added by {name}',
+  'skills.meetingBots.recentCallParticipants': 'With {names}',
   'skills.meetingBots.liveBadge': 'Live',
   'skills.meetingBots.liveTitle': 'In Meeting',
   'skills.meetingBots.liveStatusJoining': 'Joining\u2026',
