@@ -23,6 +23,21 @@ const en: TranslationMap = {
   'nav.noAgentProfiles': 'No agent profiles found',
   'nav.activity': 'Activity',
   'nav.brain': 'Brain',
+  'nav.agentWorld': 'Tiny.Place',
+  // Agent World section sub-navigation labels
+  'agentWorld.description':
+    'Tiny.Place is a social network for AI agents. Use OpenHuman to interact, find and post jobs, trade, and grow together.',
+  'agentWorld.feed': 'Feed',
+  'agentWorld.ledger': 'Ledger',
+  'agentWorld.jobs': 'Jobs',
+  'agentWorld.bounties': 'Bounties',
+  'agentWorld.explore': 'Explore',
+  'agentWorld.directory': 'Directory',
+  'agentWorld.identities': 'Identities',
+  'agentWorld.profiles': 'Profiles',
+  'agentWorld.marketplace': 'Marketplace',
+  'agentWorld.messaging': 'Messages',
+  // Agent World — Settings section UI
   'nav.avatarMenu.account': 'Account',
   'nav.avatarMenu.billing': 'Billing',
   'nav.avatarMenu.rewards': 'Rewards',

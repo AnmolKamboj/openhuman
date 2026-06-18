@@ -39,6 +39,7 @@ const ROUTES: Route[] = [
   { hash: '/activity' },
   { hash: '/rewards' },
   { hash: '/settings' },
+  { hash: '/agent-world' },
 ];
 
 async function rootTextLength(): Promise<number> {

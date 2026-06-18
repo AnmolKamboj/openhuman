@@ -84,6 +84,19 @@ export function NavIcon({ id, className = 'w-5 h-5' }: NavIconProps) {
           />
         </svg>
       );
+    case 'agent-world':
+      // Globe/network glyph — represents the A2A agent social network.
+      return (
+        <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" strokeWidth={1.8} />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.8}
+            d="M12 3c-2.4 2.4-4 5.5-4 9s1.6 6.6 4 9M12 3c2.4 2.4 4 5.5 4 9s-1.6 6.6-4 9M3 12h18"
+          />
+        </svg>
+      );
     case 'brain':
       return (
         <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
