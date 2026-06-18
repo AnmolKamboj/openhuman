@@ -30,6 +30,7 @@ import {
 import { useT } from '../lib/i18n/I18nContext';
 import { trackEvent } from '../services/analytics';
 import { applyOpenRouterFreeModels } from '../services/api/openrouterFreeModels';
+import { subagentApi } from '../services/api/subagentApi';
 import { threadApi } from '../services/api/threadApi';
 import { chatCancel, chatSend, useRustChat } from '../services/chatService';
 import { callCoreRpc } from '../services/coreRpcClient';
@@ -43,6 +44,7 @@ import {
   beginInferenceTurn,
   clearRuntimeForThread,
   fetchAndHydrateTurnState,
+  markSubagentCancelled,
   registerParallelRequest,
   setTaskBoardForThread,
   setToolTimelineForThread,
@@ -2591,8 +2593,28 @@ const Conversations = ({
         }}
       />
       <SubagentDrawer
+        key={openSubagentTaskId ?? 'none'}
         subagent={openSubagentEntry?.subagent ?? null}
         status={openSubagentEntry?.status}
+        onCancel={
+          openSubagentEntry?.subagent && selectedThreadId
+            ? async () => {
+                const taskId = openSubagentEntry.subagent!.taskId;
+                const result = await subagentApi.cancel(taskId);
+                // Only flip the row when something was actually aborted — a
+                // cancelled=false result means the run already finished/unknown,
+                // and overwriting its real terminal state would hide it. No
+                // terminal socket event arrives for an aborted run, so the
+                // optimistic mark is what surfaces the cancellation (the notice
+                // itself reaches chat via the idle-gated delivery path).
+                if (result.cancelled) {
+                  dispatch(
+                    markSubagentCancelled({ threadId: selectedThreadId, taskId: result.taskId })
+                  );
+                }
+              }
+            : undefined
+        }
         onClose={() => setOpenSubagentTaskId(null)}
       />
       <AgentProcessSourcePanel

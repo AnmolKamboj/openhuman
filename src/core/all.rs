@@ -309,6 +309,10 @@ fn build_registered_controllers() -> Vec<RegisteredController> {
     // Git-worktree isolation manager — list / status / diff / remove worker worktrees (#3376)
     controllers
         .extend(crate::openhuman::agent_orchestration::all_worktree_registered_controllers());
+    // User-driven cancel of detached background sub-agents (#3711)
+    controllers.extend(
+        crate::openhuman::agent_orchestration::all_subagent_control_registered_controllers(),
+    );
     controllers
 }
 
@@ -445,6 +449,9 @@ fn build_declared_controller_schemas() -> Vec<ControllerSchema> {
     schemas.extend(crate::openhuman::agent_orchestration::all_agent_team_controller_schemas());
     // Git-worktree isolation manager (#3376)
     schemas.extend(crate::openhuman::agent_orchestration::all_worktree_controller_schemas());
+    // User-driven cancel of detached background sub-agents (#3711)
+    schemas
+        .extend(crate::openhuman::agent_orchestration::all_subagent_control_controller_schemas());
     schemas
 }
 
