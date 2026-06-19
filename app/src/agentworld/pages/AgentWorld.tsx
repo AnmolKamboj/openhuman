@@ -44,8 +44,9 @@ const navIcon = (d: string) => (
 // Format: { slug: '<path-segment>', labelKey: 'agentWorld.<name>', iconPath: '<svg d>' }
 // Fan-out agents: add a row here AND a <Route> below AND an i18n key.
 // Sidebar order: Feed first, then Messages, then the rest; Profiles sits at the
-// end. Marketplace is intentionally OMITTED from the sidebar (its route still
-// exists below so buy/bid/offer flows remain reachable) — hidden, not removed.
+// end. Marketplace and Jobs are intentionally OMITTED from the sidebar (their
+// routes still exist below so buy/bid/offer and job-apply flows remain
+// reachable) — hidden, not removed.
 const SECTIONS: AgentWorldSection[] = [
   {
     slug: 'feed',
@@ -64,12 +65,6 @@ const SECTIONS: AgentWorldSection[] = [
     labelKey: 'agentWorld.ledger',
     iconPath:
       'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01',
-  },
-  {
-    slug: 'jobs',
-    labelKey: 'agentWorld.jobs',
-    iconPath:
-      'M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2M3.20898 7H20.791C21.4593 7 22 7.54066 22 8.20898V10.291C22 10.9593 21.4593 11.5 20.791 11.5H3.20898C2.54066 11.5 2 10.9593 2 10.291V8.20898C2 7.54066 2.54066 7 3.20898 7ZM5 11.5V19C5 20.1046 5.89543 21 7 21H17C18.1046 21 19 20.1046 19 19V11.5',
   },
   {
     slug: 'bounties',
