@@ -1619,6 +1619,18 @@ const messages: TranslationMap = {
   'mnemonic.invalidPhrase':
     'Frase de recuperación inválida. Revisa las palabras e inténtalo de nuevo.',
   'mnemonic.somethingWentWrong': 'Algo salió mal. Inténtalo de nuevo.',
+  'mnemonic.walletAlreadyConfigured': 'Tu billetera ya está configurada.',
+  'mnemonic.walletSource': 'Origen',
+  'mnemonic.walletWordCount': 'Longitud de la frase de recuperación',
+  'mnemonic.walletLastUpdated': 'Última actualización',
+  'mnemonic.replaceWallet': 'Reemplazar billetera',
+  'mnemonic.replaceWalletWarning':
+    'Esto reemplazará permanentemente tu billetera actual. Asegúrate de haber guardado tu frase de recuperación antes de continuar.',
+  'mnemonic.replaceWalletConfirm': 'Entiendo, reemplazar mi billetera',
+  'mnemonic.loadingWalletStatus': 'Verificando estado de la billetera...',
+  'mnemonic.viewAccounts': 'Cuentas de la billetera',
+  'mnemonic.revealRecoveryPhrase': 'Revelar frase de recuperación',
+  'mnemonic.hidePhrase': 'Ocultar frase',
   'team.failedToCreate': 'No se pudo crear el equipo',
   'team.invalidInviteCode': 'Código de invitación inválido o expirado',
   'team.failedToSwitch': 'No se pudo cambiar de equipo',

@@ -1628,6 +1628,18 @@ const messages: TranslationMap = {
   'mnemonic.invalidPhrase':
     'Ungültige Wiederherstellungsphrase. Bitte prüfe deine Wörter und versuche es erneut.',
   'mnemonic.somethingWentWrong': 'Etwas ist schief gelaufen. Bitte versuche es erneut.',
+  'mnemonic.walletAlreadyConfigured': 'Deine Wallet ist bereits eingerichtet.',
+  'mnemonic.walletSource': 'Quelle',
+  'mnemonic.walletWordCount': 'Länge der Recovery-Phrase',
+  'mnemonic.walletLastUpdated': 'Zuletzt aktualisiert',
+  'mnemonic.replaceWallet': 'Wallet ersetzen',
+  'mnemonic.replaceWalletWarning':
+    'Dies wird deine aktuelle Wallet dauerhaft ersetzen. Stelle sicher, dass du deine Recovery-Phrase gesichert hast, bevor du fortfährst.',
+  'mnemonic.replaceWalletConfirm': 'Ich verstehe, meine Wallet ersetzen',
+  'mnemonic.loadingWalletStatus': 'Wallet-Status wird geprüft...',
+  'mnemonic.viewAccounts': 'Wallet-Konten',
+  'mnemonic.revealRecoveryPhrase': 'Wiederherstellungsphrase anzeigen',
+  'mnemonic.hidePhrase': 'Phrase ausblenden',
   'team.failedToCreate': 'Team konnte nicht erstellt werden',
   'team.invalidInviteCode': 'Ungültiger oder abgelaufener Einladungscode',
   'team.failedToSwitch': 'Teamwechsel fehlgeschlagen',

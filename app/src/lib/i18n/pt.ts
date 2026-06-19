@@ -1622,6 +1622,18 @@ const messages: TranslationMap = {
   'mnemonic.invalidPhrase':
     'Frase de recuperação inválida. Verifique as palavras e tente novamente.',
   'mnemonic.somethingWentWrong': 'Algo deu errado. Por favor, tente novamente.',
+  'mnemonic.walletAlreadyConfigured': 'Sua carteira já está configurada.',
+  'mnemonic.walletSource': 'Fonte',
+  'mnemonic.walletWordCount': 'Comprimento da frase de recuperação',
+  'mnemonic.walletLastUpdated': 'Última atualização',
+  'mnemonic.replaceWallet': 'Substituir carteira',
+  'mnemonic.replaceWalletWarning':
+    'Isso substituirá permanentemente sua carteira atual. Certifique-se de ter feito backup da sua frase de recuperação antes de prosseguir.',
+  'mnemonic.replaceWalletConfirm': 'Entendo, substituir minha carteira',
+  'mnemonic.loadingWalletStatus': 'Verificando status da carteira...',
+  'mnemonic.viewAccounts': 'Contas da carteira',
+  'mnemonic.revealRecoveryPhrase': 'Revelar frase de recuperação',
+  'mnemonic.hidePhrase': 'Ocultar frase',
   'team.failedToCreate': 'Falha ao criar equipe',
   'team.invalidInviteCode': 'Código de convite inválido ou expirado',
   'team.failedToSwitch': 'Falha ao trocar de equipe',

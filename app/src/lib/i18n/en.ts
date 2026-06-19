@@ -1942,6 +1942,18 @@ const en: TranslationMap = {
   'mnemonic.userNotLoaded': 'User not loaded. Please sign in again or refresh the page.',
   'mnemonic.invalidPhrase': 'Invalid recovery phrase. Please check your words and try again.',
   'mnemonic.somethingWentWrong': 'Something went wrong. Please try again.',
+  'mnemonic.walletAlreadyConfigured': 'Your wallet is already set up.',
+  'mnemonic.walletSource': 'Source',
+  'mnemonic.walletWordCount': 'Recovery phrase length',
+  'mnemonic.walletLastUpdated': 'Last updated',
+  'mnemonic.replaceWallet': 'Replace wallet',
+  'mnemonic.replaceWalletWarning':
+    'This will permanently replace your current wallet. Make sure you have backed up your recovery phrase before proceeding.',
+  'mnemonic.replaceWalletConfirm': 'I understand, replace my wallet',
+  'mnemonic.loadingWalletStatus': 'Checking wallet status...',
+  'mnemonic.viewAccounts': 'Wallet accounts',
+  'mnemonic.revealRecoveryPhrase': 'Reveal recovery phrase',
+  'mnemonic.hidePhrase': 'Hide phrase',
 
   // Team
   'team.failedToCreate': 'Failed to create team',
