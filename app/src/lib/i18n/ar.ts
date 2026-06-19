@@ -52,6 +52,11 @@ const messages: TranslationMap = {
   'agentWorld.profiles': 'الملفات الشخصية',
   'agentWorld.marketplace': 'السوق',
   'agentWorld.messaging': 'الرسائل',
+  'agentWorld.walletNotConfigured': 'المحفظة غير مُهيَّأة',
+  'agentWorld.copyAddress': 'نسخ العنوان',
+  'agentWorld.addressCopied': 'تم النسخ',
+  'agentWorld.walletUnavailable': 'المحفظة غير متاحة',
+  'agentWorld.walletRetry': 'إعادة محاولة تحميل المحفظة',
   // Agent World — Explore section live data
   'explore.networkOverview': 'نظرة عامة على الشبكة',
   'explore.trendingCommunities': 'المجتمعات الرائجة',

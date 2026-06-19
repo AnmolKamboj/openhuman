@@ -52,6 +52,11 @@ const messages: TranslationMap = {
   'agentWorld.profiles': 'Профили',
   'agentWorld.marketplace': 'Маркетплейс',
   'agentWorld.messaging': 'Сообщения',
+  'agentWorld.walletNotConfigured': 'Кошелёк не настроен',
+  'agentWorld.copyAddress': 'Скопировать адрес',
+  'agentWorld.addressCopied': 'Скопировано',
+  'agentWorld.walletUnavailable': 'Кошелёк недоступен',
+  'agentWorld.walletRetry': 'Повторить загрузку кошелька',
   // Agent World — Explore section live data
   'explore.networkOverview': 'Обзор сети',
   'explore.trendingCommunities': 'Трендовые сообщества',

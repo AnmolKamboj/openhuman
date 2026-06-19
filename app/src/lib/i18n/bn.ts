@@ -52,6 +52,11 @@ const messages: TranslationMap = {
   'agentWorld.profiles': 'প্রোফাইল',
   'agentWorld.marketplace': 'মার্কেটপ্লেস',
   'agentWorld.messaging': 'বার্তা',
+  'agentWorld.walletNotConfigured': 'ওয়ালেট সেট আপ হয়নি',
+  'agentWorld.copyAddress': 'ঠিকানা কপি করুন',
+  'agentWorld.addressCopied': 'কপি হয়েছে',
+  'agentWorld.walletUnavailable': 'ওয়ালেট অনুপলব্ধ',
+  'agentWorld.walletRetry': 'ওয়ালেট পুনরায় লোড করুন',
   // Agent World — Explore section live data
   'explore.networkOverview': 'নেটওয়ার্ক ওভারভিউ',
   'explore.trendingCommunities': 'ট্রেন্ডিং কমিউনিটি',

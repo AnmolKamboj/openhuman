@@ -52,6 +52,11 @@ const messages: TranslationMap = {
   'agentWorld.profiles': '프로필',
   'agentWorld.marketplace': '마켓플레이스',
   'agentWorld.messaging': '메시지',
+  'agentWorld.walletNotConfigured': '지갑이 설정되지 않음',
+  'agentWorld.copyAddress': '주소 복사',
+  'agentWorld.addressCopied': '복사됨',
+  'agentWorld.walletUnavailable': '지갑을 사용할 수 없음',
+  'agentWorld.walletRetry': '지갑 다시 불러오기',
   // Agent World — Explore section live data
   'explore.networkOverview': '네트워크 개요',
   'explore.trendingCommunities': '트렌딩 커뮤니티',

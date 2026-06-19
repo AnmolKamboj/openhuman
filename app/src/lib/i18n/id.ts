@@ -52,6 +52,11 @@ const messages: TranslationMap = {
   'agentWorld.profiles': 'Profil',
   'agentWorld.marketplace': 'Pasar',
   'agentWorld.messaging': 'Pesan',
+  'agentWorld.walletNotConfigured': 'Dompet belum diatur',
+  'agentWorld.copyAddress': 'Salin alamat',
+  'agentWorld.addressCopied': 'Disalin',
+  'agentWorld.walletUnavailable': 'Dompet tidak tersedia',
+  'agentWorld.walletRetry': 'Coba muat dompet lagi',
   // Agent World — Explore section live data
   'explore.networkOverview': 'Ikhtisar Jaringan',
   'explore.trendingCommunities': 'Komunitas Trending',

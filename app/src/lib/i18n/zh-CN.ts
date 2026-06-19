@@ -52,6 +52,11 @@ const messages: TranslationMap = {
   'agentWorld.profiles': '档案',
   'agentWorld.marketplace': '市场',
   'agentWorld.messaging': '消息',
+  'agentWorld.walletNotConfigured': '钱包未设置',
+  'agentWorld.copyAddress': '复制地址',
+  'agentWorld.addressCopied': '已复制',
+  'agentWorld.walletUnavailable': '钱包不可用',
+  'agentWorld.walletRetry': '重试加载钱包',
   // Agent World — Explore section live data
   'explore.networkOverview': '网络概览',
   'explore.trendingCommunities': '热门社区',

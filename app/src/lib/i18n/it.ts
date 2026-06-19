@@ -52,6 +52,11 @@ const messages: TranslationMap = {
   'agentWorld.profiles': 'Profili',
   'agentWorld.marketplace': 'Mercato',
   'agentWorld.messaging': 'Messaggi',
+  'agentWorld.walletNotConfigured': 'Wallet non configurato',
+  'agentWorld.copyAddress': 'Copia indirizzo',
+  'agentWorld.addressCopied': 'Copiato',
+  'agentWorld.walletUnavailable': 'Wallet non disponibile',
+  'agentWorld.walletRetry': 'Riprova a caricare il wallet',
   // Agent World — Explore section live data
   'explore.networkOverview': 'Panoramica della rete',
   'explore.trendingCommunities': 'Comunità di tendenza',

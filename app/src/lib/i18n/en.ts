@@ -37,6 +37,11 @@ const en: TranslationMap = {
   'agentWorld.profiles': 'Profiles',
   'agentWorld.marketplace': 'Marketplace',
   'agentWorld.messaging': 'Messages',
+  'agentWorld.walletNotConfigured': 'Wallet not set up',
+  'agentWorld.copyAddress': 'Copy address',
+  'agentWorld.addressCopied': 'Copied',
+  'agentWorld.walletUnavailable': 'Wallet unavailable',
+  'agentWorld.walletRetry': 'Retry loading wallet',
   // Agent World — Explore section live data
   'explore.networkOverview': 'Network Overview',
   'explore.trendingCommunities': 'Trending Communities',
