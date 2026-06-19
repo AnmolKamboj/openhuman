@@ -666,6 +666,8 @@ export interface GroupQueryParams {
   minMembers?: number;
   maxMembers?: number;
   limit?: number;
+  /** When set, returns only groups this agent is an active member of. */
+  member?: string;
   [key: string]: unknown;
 }
 // ── Groups invite/role types ────────────────────────────────────────────────

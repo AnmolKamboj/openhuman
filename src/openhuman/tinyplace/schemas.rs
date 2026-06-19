@@ -1108,7 +1108,7 @@ fn schema_groups_list() -> ControllerSchema {
             "List tiny.place groups, optionally filtered by query params (read-only).",
         inputs: vec![optional_object(
             "params",
-            "Optional GroupQueryParams (q, tag, tags, membershipPolicy, minMembers, maxMembers, limit).",
+            "Optional GroupQueryParams (q, tag, tags, membershipPolicy, minMembers, maxMembers, member, limit).",
         )],
         outputs: vec![json_output(
             "result",

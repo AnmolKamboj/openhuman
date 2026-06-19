@@ -1564,6 +1564,32 @@ pub(crate) fn handle_tinyplace_groups_leave(params: Map<String, Value>) -> Contr
             .signer()
             .map(|s| s.agent_id())
             .ok_or_else(|| "tinyplace signer unavailable; cannot leave group".to_string())?;
+
+        // Pre-check membership before calling remove_member so we return a
+        // clear error instead of leaking a raw HTTP 400 from the backend when
+        // the user is not a member.
+        match client.groups.members(&group_id).await {
+            Ok(resp) => {
+                if !resp.members.iter().any(|m| m.agent_id == me) {
+                    log::warn!(
+                        "{LOG_PREFIX} groups_leave: agent {me} is not a member of {group_id}"
+                    );
+                    return Err(format!(
+                        "you are not a member of group {group_id}; cannot leave"
+                    ));
+                }
+            }
+            Err(e) => {
+                // If the membership list itself is unavailable (network, 404, etc.)
+                // we log a warning and fall through — the backend will reject if
+                // the agent truly is not a member.
+                log::warn!(
+                    "{LOG_PREFIX} groups_leave: membership check failed for {group_id}: {e}; \
+                     proceeding with remove_member"
+                );
+            }
+        }
+
         client
             .groups
             .remove_member(&group_id, &me, None)

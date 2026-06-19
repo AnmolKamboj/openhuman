@@ -1,12 +1,14 @@
 /**
- * Tests for MessagingSection — gated DMs "coming soon" state + basic render.
+ * Tests for MessagingSection — gated DMs "coming soon" state + basic render,
+ * and group membership-aware Join/Leave button behaviour.
  *
- * We mock the apiClient so no actual RPC calls are made.
+ * We mock the apiClient and fetchWalletStatus so no actual RPC calls are made.
  */
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
+import { fetchWalletStatus } from '../../services/walletApi';
 import { apiClient } from '../AgentWorldShell';
 import MessagingSection from './MessagingSection';
 
@@ -141,8 +143,25 @@ vi.mock('../hooks/useTinyplaceStream', () => ({
   useTinyplaceStream: (streamId?: string) => mockUseTinyplaceStream(streamId),
 }));
 
+// ── Mock fetchWalletStatus ────────────────────────────────────────────────────
+
+vi.mock('../../services/walletApi', () => ({ fetchWalletStatus: vi.fn() }));
+
+/** Helper: configure wallet mock to return the given agent ID (Solana address). */
+function setWallet(agentId: string | null) {
+  vi.mocked(fetchWalletStatus).mockResolvedValue(
+    agentId
+      ? ({ accounts: [{ chain: 'solana', address: agentId }] } as unknown as Awaited<
+          ReturnType<typeof fetchWalletStatus>
+        >)
+      : ({ accounts: [] } as unknown as Awaited<ReturnType<typeof fetchWalletStatus>>)
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default: wallet not connected — groups.list membership call returns [].
+  setWallet(null);
 });
 
 // ── DMs panel (E2E enabled) ───────────────────────────────────────────────────
@@ -426,23 +445,158 @@ describe('membership actions', () => {
     expect(apiClient.broadcasts.subscribe).toHaveBeenCalledWith('bc-1');
   });
 
-  test('group Leave calls groups.leave with the group id', async () => {
-    vi.mocked(apiClient.groups.list).mockResolvedValue([
-      {
-        groupId: 'g-1',
-        name: 'Builders',
-        membershipPolicy: 'open',
-        memberCount: 5,
-        membershipEpoch: 1,
-        createdBy: 'someone',
-        createdAt: '2026-01-01T00:00:00Z',
-      },
-    ]);
+  test('group Leave calls groups.leave when user is a member', async () => {
+    const group = {
+      groupId: 'g-1',
+      name: 'Builders',
+      membershipPolicy: 'open',
+      memberCount: 5,
+      membershipEpoch: 1,
+      createdBy: 'someone',
+      createdAt: '2026-01-01T00:00:00Z',
+    };
+    // Wallet connected — user is a member of g-1.
+    setWallet('agent-abc');
+    // Both public and membership queries return the same group so button shows "Leave".
+    vi.mocked(apiClient.groups.list).mockResolvedValue([group]);
     render(<MessagingSection />);
     await userEvent.click(screen.getByRole('button', { name: 'Groups' }));
     await screen.findByText('Builders');
     await userEvent.click(screen.getByRole('button', { name: 'Leave' }));
     expect(apiClient.groups.leave).toHaveBeenCalledWith('g-1');
+  });
+});
+
+// ── Group membership-aware Join / Leave ────────────────────────────────────────
+
+describe('group membership-aware button rendering', () => {
+  const groupA = {
+    groupId: 'g-a',
+    name: 'Alpha',
+    membershipPolicy: 'open',
+    memberCount: 2,
+    membershipEpoch: 1,
+    createdBy: 'owner',
+    createdAt: '2026-01-01T00:00:00Z',
+  };
+  const groupB = {
+    groupId: 'g-b',
+    name: 'Beta',
+    membershipPolicy: 'open',
+    memberCount: 4,
+    membershipEpoch: 1,
+    createdBy: 'owner',
+    createdAt: '2026-01-01T00:00:00Z',
+  };
+
+  async function openGroups() {
+    render(<MessagingSection />);
+    await userEvent.click(screen.getByRole('button', { name: 'Groups' }));
+    await screen.findByText('Alpha');
+  }
+
+  test('shows Join for non-member groups and Leave for member groups', async () => {
+    setWallet('agent-xyz');
+    // Public returns both; membership query returns only g-a (user is a member of Alpha only).
+    vi.mocked(apiClient.groups.list)
+      .mockResolvedValueOnce([groupA, groupB]) // public query
+      .mockResolvedValueOnce([groupA]); // membership query (member=agent-xyz)
+
+    await openGroups();
+    await screen.findByText('Beta');
+
+    // Alpha: user is a member → "Leave" button
+    const alphaCard = screen.getByText('Alpha').closest('div')!;
+    expect(alphaCard.querySelector('button[disabled]') ?? alphaCard).toBeTruthy();
+    // Find buttons via accessible name
+    const allLeave = screen.getAllByRole('button', { name: 'Leave' });
+    const allJoin = screen.getAllByRole('button', { name: 'Join' });
+    expect(allLeave).toHaveLength(1); // only Alpha
+    expect(allJoin).toHaveLength(1); // only Beta
+  });
+
+  test('Leave button is absent for non-member groups (no wallet)', async () => {
+    // No wallet → membership list is empty → all groups show Join.
+    setWallet(null);
+    vi.mocked(apiClient.groups.list).mockResolvedValue([groupA, groupB]);
+
+    await openGroups();
+    await screen.findByText('Beta');
+
+    expect(screen.queryByRole('button', { name: 'Leave' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Join' })).toHaveLength(2);
+  });
+
+  test('Join calls groups.join and after refetch button flips to Leave', async () => {
+    setWallet('agent-xyz');
+    // First render: user is not a member of g-a.
+    vi.mocked(apiClient.groups.list)
+      .mockResolvedValueOnce([groupA]) // public
+      .mockResolvedValueOnce([]) // membership — not a member yet
+      // After join + refetch:
+      .mockResolvedValueOnce([groupA]) // public
+      .mockResolvedValueOnce([groupA]); // membership — now a member
+
+    vi.mocked(apiClient.groups.join).mockResolvedValue(undefined);
+
+    render(<MessagingSection />);
+    await userEvent.click(screen.getByRole('button', { name: 'Groups' }));
+    await screen.findByText('Alpha');
+
+    // Button shows Join before joining.
+    expect(screen.getByRole('button', { name: 'Join' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Leave' })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Join' }));
+    expect(apiClient.groups.join).toHaveBeenCalledWith('g-a');
+
+    // After re-fetch, button should flip to Leave.
+    expect(await screen.findByRole('button', { name: 'Leave' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Join' })).not.toBeInTheDocument();
+  });
+
+  test('Leave calls groups.leave and after refetch button flips to Join', async () => {
+    setWallet('agent-xyz');
+    // First render: user IS a member of g-a.
+    vi.mocked(apiClient.groups.list)
+      .mockResolvedValueOnce([groupA]) // public
+      .mockResolvedValueOnce([groupA]) // membership — is a member
+      // After leave + refetch:
+      .mockResolvedValueOnce([groupA]) // public
+      .mockResolvedValueOnce([]); // membership — no longer a member
+
+    vi.mocked(apiClient.groups.leave).mockResolvedValue(undefined);
+
+    render(<MessagingSection />);
+    await userEvent.click(screen.getByRole('button', { name: 'Groups' }));
+    await screen.findByText('Alpha');
+
+    // Button shows Leave (user is a member).
+    expect(await screen.findByRole('button', { name: 'Leave' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Leave' }));
+    expect(apiClient.groups.leave).toHaveBeenCalledWith('g-a');
+
+    // After re-fetch, button should flip to Join.
+    expect(await screen.findByRole('button', { name: 'Join' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Leave' })).not.toBeInTheDocument();
+  });
+
+  test('membership dual-fetch passes member param to groups.list', async () => {
+    setWallet('agent-solana-123');
+    vi.mocked(apiClient.groups.list).mockResolvedValue([]);
+
+    render(<MessagingSection />);
+    await userEvent.click(screen.getByRole('button', { name: 'Groups' }));
+    await screen.findByText(/No groups found/i);
+
+    // The second groups.list call should carry member=<agentId>.
+    const calls = vi.mocked(apiClient.groups.list).mock.calls;
+    const memberCall = calls.find(
+      ([p]) => p !== undefined && p !== null && typeof p === 'object' && 'member' in p
+    );
+    expect(memberCall).toBeDefined();
+    expect((memberCall![0] as Record<string, unknown>).member).toBe('agent-solana-123');
   });
 });
 

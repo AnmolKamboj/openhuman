@@ -27,6 +27,7 @@ import {
   PaymentRequiredError,
   type SignalKeyStatus,
 } from '../../lib/agentworld/invokeApiClient';
+import { fetchWalletStatus } from '../../services/walletApi';
 import { apiClient } from '../AgentWorldShell';
 import { useTinyplaceStream } from '../hooks/useTinyplaceStream';
 
@@ -90,6 +91,27 @@ function useAsyncCall<T>(fetcher: () => Promise<T>, deps: unknown[]): AsyncState
   }, deps);
 
   return state;
+}
+
+// ── My agent ID (wallet address) ─────────────────────────────────────────────
+
+/**
+ * Returns the Solana agent ID of the connected wallet, or null when the wallet
+ * is not connected / still loading.  Mirrors the pattern in DirectorySection.
+ */
+function useMyAgentId(): string | null {
+  const [agentId, setAgentId] = useState<string | null>(null);
+  useEffect(() => {
+    void fetchWalletStatus()
+      .then(status => {
+        const solana = (status.accounts ?? []).find(
+          (a: { chain: string; address?: string }) => a.chain === 'solana'
+        );
+        if (solana?.address) setAgentId(solana.address);
+      })
+      .catch(() => {});
+  }, []);
+  return agentId;
 }
 
 // ── Sub-panels ────────────────────────────────────────────────────────────────
@@ -323,18 +345,43 @@ function ChannelsPanel() {
 // ── Groups panel ──────────────────────────────────────────────────────────────
 
 function GroupsPanel() {
+  const myAgentId = useMyAgentId();
   const params: GroupQueryParams = { limit: 20 };
   const { version, busyKey, error: actionError, run } = useRowActions();
-  const state = useAsyncCall(() => apiClient.groups.list(params), [version]);
   const [invitesGroupId, setInvitesGroupId] = useState<string | null>(null);
   const [invitesGroupName, setInvitesGroupName] = useState<string>('');
   const [showRedeem, setShowRedeem] = useState(false);
 
-  if (state.status === 'loading') return <LoadingPane />;
-  if (state.status === 'payment_required') return <PaymentRequiredPane />;
-  if (state.status === 'error') return <ErrorPane message={state.message} />;
+  // Fetch all public groups.
+  const publicState = useAsyncCall(() => apiClient.groups.list(params), [version]);
 
-  const groups: GroupMetadata[] = state.status === 'ok' ? state.data : [];
+  // Fetch groups the user belongs to (uses the `member` query param).
+  // Falls back to empty list when wallet is not yet connected.
+  const myGroupsState = useAsyncCall(
+    () =>
+      myAgentId
+        ? apiClient.groups.list({ member: myAgentId })
+        : Promise.resolve([] as GroupMetadata[]),
+    [version, myAgentId]
+  );
+
+  if (publicState.status === 'loading') return <LoadingPane />;
+  if (publicState.status === 'payment_required') return <PaymentRequiredPane />;
+  if (publicState.status === 'error') return <ErrorPane message={publicState.message} />;
+
+  const groups: GroupMetadata[] = publicState.status === 'ok' ? publicState.data : [];
+
+  // Build a Set of group IDs the user is a member of so we can flip Join↔Leave.
+  const myGroupIds = new Set<string>(
+    (myGroupsState.status === 'ok'
+      ? Array.isArray(myGroupsState.data)
+        ? myGroupsState.data
+        : []
+      : []
+    ).map((g: GroupMetadata) => g.groupId)
+  );
+
+  log('[groups] public=%d my=%d agent=%s', groups.length, myGroupIds.size, myAgentId ?? 'none');
 
   // Show the invites sub-panel for a specific group.
   if (invitesGroupId) {
@@ -384,6 +431,7 @@ function GroupsPanel() {
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {groups.map(group => {
           const busy = busyKey === group.groupId;
+          const isMember = myGroupIds.has(group.groupId);
           return (
             <div
               key={group.groupId}
@@ -406,16 +454,25 @@ function GroupsPanel() {
                 <span>{group.membershipPolicy}</span>
               </div>
               <div className="mt-2 flex gap-1">
-                <RowAction
-                  label="Join"
-                  disabled={busy}
-                  onClick={() => run(group.groupId, () => apiClient.groups.join(group.groupId))}
-                />
-                <RowAction
-                  label="Leave"
-                  disabled={busy}
-                  onClick={() => run(group.groupId, () => apiClient.groups.leave(group.groupId))}
-                />
+                {isMember ? (
+                  <RowAction
+                    label="Leave"
+                    disabled={busy}
+                    onClick={() => {
+                      log('[groups] leaving group %s', group.groupId);
+                      run(group.groupId, () => apiClient.groups.leave(group.groupId));
+                    }}
+                  />
+                ) : (
+                  <RowAction
+                    label="Join"
+                    disabled={busy}
+                    onClick={() => {
+                      log('[groups] joining group %s', group.groupId);
+                      run(group.groupId, () => apiClient.groups.join(group.groupId));
+                    }}
+                  />
+                )}
                 <RowAction
                   label="Invites"
                   disabled={busy}
