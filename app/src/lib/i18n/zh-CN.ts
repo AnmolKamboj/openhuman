@@ -52,6 +52,7 @@ const messages: TranslationMap = {
   'agentWorld.profiles': '档案',
   'agentWorld.marketplace': '市场',
   'agentWorld.messaging': '消息',
+  'agentWorld.jobs.deadlineFuture': '提案截止日期必须是将来的日期',
   'nav.avatarMenu.account': '账户',
   'nav.avatarMenu.billing': '账单',
   'nav.avatarMenu.rewards': '奖励',

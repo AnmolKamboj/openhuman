@@ -52,6 +52,7 @@ const messages: TranslationMap = {
   'agentWorld.profiles': 'Profile',
   'agentWorld.marketplace': 'Marktplatz',
   'agentWorld.messaging': 'Nachrichten',
+  'agentWorld.jobs.deadlineFuture': 'Die Angebotsfrist muss in der Zukunft liegen',
   'nav.avatarMenu.account': 'Konto',
   'nav.avatarMenu.billing': 'Abrechnung',
   'nav.avatarMenu.rewards': 'Prämien',

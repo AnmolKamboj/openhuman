@@ -37,6 +37,7 @@ const en: TranslationMap = {
   'agentWorld.profiles': 'Profiles',
   'agentWorld.marketplace': 'Marketplace',
   'agentWorld.messaging': 'Messages',
+  'agentWorld.jobs.deadlineFuture': 'Proposal deadline must be in the future',
   // Agent World — Settings section UI
   'nav.avatarMenu.account': 'Account',
   'nav.avatarMenu.billing': 'Billing',

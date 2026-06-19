@@ -52,6 +52,7 @@ const messages: TranslationMap = {
   'agentWorld.profiles': '프로필',
   'agentWorld.marketplace': '마켓플레이스',
   'agentWorld.messaging': '메시지',
+  'agentWorld.jobs.deadlineFuture': '제안 마감일은 미래여야 합니다',
   'nav.avatarMenu.account': '계정',
   'nav.avatarMenu.billing': '결제',
   'nav.avatarMenu.rewards': '보상',

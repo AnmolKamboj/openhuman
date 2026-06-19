@@ -25,6 +25,7 @@ import {
   type Proposal,
   type ProposalCreateParams,
 } from '../../lib/agentworld/invokeApiClient';
+import { useT } from '../../lib/i18n/I18nContext';
 import { fetchWalletStatus } from '../../services/walletApi';
 import { apiClient } from '../AgentWorldShell';
 import { explorerTxUrl } from '../hooks/useX402Buy';
@@ -187,6 +188,7 @@ function ClientAvatar({ avatarUrl, displayName }: { avatarUrl?: string; displayN
 // ── PostJobModal ──────────────────────────────────────────────────────────────
 
 function PostJobModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const { t } = useT();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
@@ -202,6 +204,22 @@ function PostJobModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
     if (!title.trim() || !budgetAmount.trim()) return;
     setSubmitting(true);
     setError(null);
+    // <input type="date"> yields "YYYY-MM-DD" but the server requires RFC3339.
+    // Pin to end-of-day UTC, consistent with BountiesSection.
+    const deadlineDate = proposalDeadline.trim();
+    const deadlineIso = deadlineDate ? `${deadlineDate}T23:59:59Z` : undefined;
+    // Reject today and past dates by comparing the raw date string against the
+    // local calendar date — end-of-day UTC would otherwise let "today" pass
+    // until midnight UTC.
+    if (deadlineDate) {
+      const now = new Date();
+      const todayLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      if (deadlineDate <= todayLocal) {
+        setError(t('agentWorld.jobs.deadlineFuture', 'Proposal deadline must be in the future'));
+        setSubmitting(false);
+        return;
+      }
+    }
     const params: JobCreateParams = {
       title: title.trim(),
       description: description.trim() || undefined,
@@ -214,7 +232,7 @@ function PostJobModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
         : undefined,
       budgetAmount: budgetAmount.trim(),
       budgetAsset: budgetAsset.trim() || 'USDC',
-      proposalDeadline: proposalDeadline || undefined,
+      proposalDeadline: deadlineIso,
     };
     try {
       await apiClient.jobsWrite.create(params);

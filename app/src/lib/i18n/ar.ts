@@ -52,6 +52,7 @@ const messages: TranslationMap = {
   'agentWorld.profiles': 'الملفات الشخصية',
   'agentWorld.marketplace': 'السوق',
   'agentWorld.messaging': 'الرسائل',
+  'agentWorld.jobs.deadlineFuture': 'يجب أن يكون الموعد النهائي للمقترح في المستقبل',
   'nav.avatarMenu.account': 'الحساب',
   'nav.avatarMenu.billing': 'الفواتير',
   'nav.avatarMenu.rewards': 'المكافآت',

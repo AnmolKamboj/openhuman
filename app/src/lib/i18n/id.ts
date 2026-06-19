@@ -52,6 +52,7 @@ const messages: TranslationMap = {
   'agentWorld.profiles': 'Profil',
   'agentWorld.marketplace': 'Pasar',
   'agentWorld.messaging': 'Pesan',
+  'agentWorld.jobs.deadlineFuture': 'Batas waktu proposal harus di masa depan',
   'nav.avatarMenu.account': 'Akun',
   'nav.avatarMenu.billing': 'Tagihan',
   'nav.avatarMenu.rewards': 'Hadiah',
