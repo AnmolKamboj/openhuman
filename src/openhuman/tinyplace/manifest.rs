@@ -498,6 +498,8 @@ pub(crate) fn handle_tinyplace_registry_register(params: Map<String, Value>) -> 
         let challenge = match client.registry.register(base_req.clone()).await {
             Ok(identity) => {
                 log::debug!("{LOG_PREFIX} registry_register free-tier ok username={username}");
+                let _ =
+                    publish_directory_card_for_identity(&client, signer.as_ref(), &identity).await;
                 return to_value(serde_json::json!({ "identity": identity }));
             }
             Err(e) => match e.payment_required() {
@@ -553,6 +555,9 @@ pub(crate) fn handle_tinyplace_registry_register(params: Map<String, Value>) -> 
                     log::debug!(
                         "{LOG_PREFIX} registry_register settled username={username} attempt={attempt}"
                     );
+                    let _ =
+                        publish_directory_card_for_identity(&client, signer.as_ref(), &identity)
+                            .await;
                     return to_value(serde_json::json!({
                         "identity": identity,
                         "payment": { "onChainTx": on_chain_tx },
@@ -588,6 +593,9 @@ pub(crate) fn handle_tinyplace_registry_register(params: Map<String, Value>) -> 
                     log::debug!(
                         "{LOG_PREFIX} registry_register recovered owned identity username={username}"
                     );
+                    let _ =
+                        publish_directory_card_for_identity(&client, signer.as_ref(), &identity)
+                            .await;
                     return to_value(serde_json::json!({
                         "identity": identity,
                         "payment": { "onChainTx": on_chain_tx },
@@ -3175,6 +3183,67 @@ pub(crate) fn handle_tinyplace_signal_register_encryption_key(
             "updatedAt": updated.updated_at,
         }))
     })
+}
+
+/// Publish a directory card for a newly registered identity.
+///
+/// Called after every successful `registry_register` path (free-tier, paid
+/// settlement, recovery). The directory card makes the identity discoverable in
+/// `GET /directory/agents` and `GET /directory/identities` listings.
+///
+/// **Best-effort**: any failure is logged and swallowed so that a directory
+/// publish hiccup never rolls back the already-completed registry write.
+///
+/// **Anti-spoof**: `agent_id` is sourced from `signer.agent_id()` (the wallet's
+/// crypto identity), not from user-supplied params.
+async fn publish_directory_card_for_identity(
+    client: &tinyplace::TinyPlaceClient,
+    signer: &dyn tinyplace::Signer,
+    identity: &tinyplace::types::Identity,
+) {
+    let agent_id = signer.agent_id();
+    let public_key_b64 = signer.public_key_base64();
+    log::debug!("[tinyplace] post-register: publishing directory card for {agent_id}");
+
+    // Fetch existing card to preserve custom fields; on 404 build a fresh one;
+    // on any other error bail out early (best-effort).
+    let mut card = match client.directory.get_agent(&agent_id).await {
+        Ok(existing) => {
+            log::debug!(
+                "[tinyplace] post-register: updating existing directory card for {agent_id}"
+            );
+            let mut c = existing;
+            // Refresh name/username from the newly registered identity.
+            c.username = Some(identity.username.clone());
+            c.name = identity.username.clone();
+            c
+        }
+        Err(e) if e.status() == Some(404) => {
+            log::debug!(
+                "[tinyplace] post-register: no existing card for {agent_id} — creating one"
+            );
+            build_default_agent_card(&agent_id, &public_key_b64, Some(identity))
+        }
+        Err(e) => {
+            log::warn!(
+                "[tinyplace] post-register: directory card fetch failed for {agent_id}: {e}"
+            );
+            return;
+        }
+    };
+
+    // Anti-spoof: ensure the card's agent_id/crypto_id matches the signer.
+    card.agent_id = agent_id.clone();
+    card.crypto_id = agent_id.clone();
+
+    match client.directory.upsert_agent(&agent_id, &card).await {
+        Ok(_) => {
+            log::info!("[tinyplace] post-register: directory card published for {agent_id}");
+        }
+        Err(e) => {
+            log::warn!("[tinyplace] post-register: directory upsert failed for {agent_id}: {e}");
+        }
+    }
 }
 
 /// Build a minimal `AgentCard` for a wallet that has no directory presence yet,

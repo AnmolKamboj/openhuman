@@ -13,7 +13,7 @@
  * Money only moves after the user confirms. The read-only data views (Registry
  * listing, floor prices, recent sales) are fully functional.
  */
-import { useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 
 import PanelScaffold from '../../components/layout/PanelScaffold';
 import {
@@ -308,7 +308,7 @@ function useRegistration() {
   return { state, reset, begin, confirmPay };
 }
 
-function RegisterTab() {
+function RegisterTab({ onRegistered }: { onRegistered?: () => void }) {
   const [input, setInput] = useState('');
   // sanitize: lowercase a-z, digits, _ only (mirrors tiny.place sanitizeHandle)
   function sanitize(value: string): string {
@@ -317,6 +317,14 @@ function RegisterTab() {
 
   const { check, ...availState } = useHandleAvailability(input);
   const reg = useRegistration();
+
+  // Notify the parent once when registration transitions to success so it can
+  // trigger a directory refetch (makes the new card immediately discoverable).
+  useEffect(() => {
+    if (reg.state.phase === 'success') {
+      onRegistered?.();
+    }
+  }, [reg.state.phase, onRegistered]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -935,6 +943,11 @@ function tabReducer(state: TabState, action: TabAction): TabState {
 
 export default function IdentitiesSection() {
   const [{ tab, key }, dispatch] = useReducer(tabReducer, { tab: 'register', key: 0 });
+  // Incremented on successful registration. RegistryTab uses this as its React
+  // `key` so it fully remounts and re-fetches the directory — making the newly
+  // published agent card visible without a manual reload.
+  const [registryKey, setRegistryKey] = useState(0);
+  const bumpRegistryKey = useCallback(() => setRegistryKey(k => k + 1), []);
 
   return (
     <PanelScaffold description="Claim handles, manage your registry, and trade identities">
@@ -959,8 +972,8 @@ export default function IdentitiesSection() {
       </div>
 
       <div key={key}>
-        {tab === 'register' && <RegisterTab />}
-        {tab === 'registry' && <RegistryTab />}
+        {tab === 'register' && <RegisterTab onRegistered={bumpRegistryKey} />}
+        {tab === 'registry' && <RegistryTab key={registryKey} />}
         {tab === 'trading' && <TradingTab />}
       </div>
     </PanelScaffold>
