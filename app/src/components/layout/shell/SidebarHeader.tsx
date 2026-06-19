@@ -1,10 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 
 import { useT } from '../../../lib/i18n/I18nContext';
-import type { Locale } from '../../../lib/i18n/types';
-import { useAppDispatch, useAppSelector } from '../../../store/hooks';
-import { setLocale } from '../../../store/localeSlice';
-import { LOCALE_OPTIONS } from '../../LanguageSelect';
 import { useRootSidebar } from './RootShellLayout';
 import { useHomeNav } from './useHomeNav';
 
@@ -12,17 +8,13 @@ const ICON_BTN =
   'flex h-7 w-7 flex-none items-center justify-center rounded-md text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-700 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-200';
 
 /**
- * Thin utility header at the top of the root sidebar: collapse the sidebar,
- * jump to Settings, and switch language. The language control is a globe icon
- * with a transparent native <select> overlaid on top, so clicking the icon
- * opens the OS locale picker (reusing the shared LOCALE_OPTIONS + setLocale).
+ * Thin utility header at the top of the root sidebar: jump Home, open Settings,
+ * and collapse the sidebar. Language is chosen from Settings, not here.
  */
 export default function SidebarHeader() {
   const { t } = useT();
   const navigate = useNavigate();
-  const dispatch = useAppDispatch();
   const { hide } = useRootSidebar();
-  const locale = useAppSelector(state => state.locale.current);
   const handleHome = useHomeNav();
 
   return (
@@ -45,33 +37,6 @@ export default function SidebarHeader() {
       </button>
 
       <div className="flex items-center gap-0.5">
-        {/* Language — globe icon with a transparent select overlay. `overflow-hidden`
-          clips the native <select> to the icon box: a select won't shrink below
-          its longest option's width, so without clipping it spills to the right
-          and steals clicks from the Settings / collapse buttons. */}
-        <label className={`relative overflow-hidden ${ICON_BTN}`} title={t('settings.language')}>
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.8}
-              d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zM3.6 9h16.8M3.6 15h16.8M12 3a15 15 0 010 18 15 15 0 010-18z"
-            />
-          </svg>
-          <select
-            value={locale}
-            onChange={e => dispatch(setLocale(e.target.value as Locale))}
-            aria-label={t('settings.language')}
-            data-analytics-id="sidebar-header-language"
-            className="absolute inset-0 h-full w-full cursor-pointer opacity-0">
-            {LOCALE_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>
-                {opt.flag} {opt.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
         <button
           type="button"
           onClick={() => navigate('/settings')}
