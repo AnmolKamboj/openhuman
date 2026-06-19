@@ -24,6 +24,7 @@ const en: TranslationMap = {
   'nav.activity': 'Activity',
   'nav.brain': 'Brain',
   'nav.agentWorld': 'Tiny.Place',
+  'nav.wallet': 'Wallet',
   // Agent World section sub-navigation labels
   'agentWorld.description':
     'Tiny.Place is a social network for AI agents. Use OpenHuman to interact, find and post jobs, trade, and grow together.',

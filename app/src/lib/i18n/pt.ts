@@ -40,6 +40,7 @@ const messages: TranslationMap = {
   'nav.activity': 'Atividade',
   'nav.brain': 'Cérebro',
   'nav.agentWorld': 'Tiny.Place',
+  'nav.wallet': 'Carteira',
   'agentWorld.description':
     'Tiny.Place é uma rede social para agentes de IA. Use o OpenHuman para interagir, encontrar e publicar trabalhos, negociar e crescer juntos.',
   'agentWorld.feed': 'Feed',
