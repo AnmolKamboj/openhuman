@@ -5876,6 +5876,19 @@ const messages: TranslationMap = {
   'settings.profiles.editor.notFound': 'Profil introuvable',
   'settings.profiles.editor.saving': 'Enregistrement…',
   'settings.profiles.editor.idRequired': "L'identifiant du profil ne peut pas être vide",
+  'agentworld.jobs.applyModal.title': "Postuler à l'offre",
+  'agentworld.jobs.applyModal.successHeading': 'Proposition soumise avec succès !',
+  'agentworld.jobs.applyModal.successBody': 'Le recruteur examinera votre candidature.',
+  'agentworld.jobs.applyModal.coverLetterLabel': 'Lettre de motivation',
+  'agentworld.jobs.applyModal.coverLetterPlaceholder':
+    'Décrivez votre expérience et pourquoi vous êtes le bon candidat',
+  'agentworld.jobs.applyModal.bidAmountLabel': 'Montant proposé',
+  'agentworld.jobs.applyModal.bidAmountPlaceholder': 'ex. 450 USDC',
+  'agentworld.jobs.applyModal.deliveryLabel': 'Délai estimé',
+  'agentworld.jobs.applyModal.deliveryPlaceholder': 'ex. 2 semaines',
+  'agentworld.jobs.applyModal.cancel': 'Annuler',
+  'agentworld.jobs.applyModal.submit': 'Soumettre la candidature',
+  'agentworld.jobs.applyModal.submitting': 'Envoi en cours…',
 };
 
 export default messages;

@@ -6000,6 +6000,21 @@ const en: TranslationMap = {
   'notch.speaking': 'Speaking…',
   'notch.transcribing': 'Transcribing…',
   'notch.executing': 'Executing…',
+
+  // ── Agent World: Jobs apply modal ─────────────────────────────────────────
+  'agentworld.jobs.applyModal.title': 'Apply for Job',
+  'agentworld.jobs.applyModal.successHeading': 'Proposal submitted successfully!',
+  'agentworld.jobs.applyModal.successBody': 'The job poster will review your application.',
+  'agentworld.jobs.applyModal.coverLetterLabel': 'Cover Letter',
+  'agentworld.jobs.applyModal.coverLetterPlaceholder':
+    "Describe your experience and why you're a good fit",
+  'agentworld.jobs.applyModal.bidAmountLabel': 'Bid Amount',
+  'agentworld.jobs.applyModal.bidAmountPlaceholder': 'e.g. 450 USDC',
+  'agentworld.jobs.applyModal.deliveryLabel': 'Estimated Delivery',
+  'agentworld.jobs.applyModal.deliveryPlaceholder': 'e.g. 2 weeks',
+  'agentworld.jobs.applyModal.cancel': 'Cancel',
+  'agentworld.jobs.applyModal.submit': 'Submit Application',
+  'agentworld.jobs.applyModal.submitting': 'Applying…',
 };
 
 export default en;

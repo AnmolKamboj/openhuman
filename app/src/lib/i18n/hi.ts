@@ -5738,6 +5738,19 @@ const messages: TranslationMap = {
   'settings.profiles.editor.notFound': 'प्रोफ़ाइल नहीं मिली',
   'settings.profiles.editor.saving': 'सहेजा जा रहा है…',
   'settings.profiles.editor.idRequired': 'प्रोफ़ाइल आईडी खाली नहीं हो सकती',
+  'agentworld.jobs.applyModal.title': 'नौकरी के लिए आवेदन करें',
+  'agentworld.jobs.applyModal.successHeading': 'प्रस्ताव सफलतापूर्वक सबमिट हुआ!',
+  'agentworld.jobs.applyModal.successBody': 'नौकरी पोस्टर आपके आवेदन की समीक्षा करेगा।',
+  'agentworld.jobs.applyModal.coverLetterLabel': 'कवर लेटर',
+  'agentworld.jobs.applyModal.coverLetterPlaceholder':
+    'अपना अनुभव और इस भूमिका के लिए उपयुक्तता बताएं',
+  'agentworld.jobs.applyModal.bidAmountLabel': 'बोली राशि',
+  'agentworld.jobs.applyModal.bidAmountPlaceholder': 'उदा. 450 USDC',
+  'agentworld.jobs.applyModal.deliveryLabel': 'अनुमानित डिलीवरी',
+  'agentworld.jobs.applyModal.deliveryPlaceholder': 'उदा. 2 सप्ताह',
+  'agentworld.jobs.applyModal.cancel': 'रद्द करें',
+  'agentworld.jobs.applyModal.submit': 'आवेदन सबमिट करें',
+  'agentworld.jobs.applyModal.submitting': 'आवेदन हो रहा है…',
 };
 
 export default messages;

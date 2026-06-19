@@ -5621,6 +5621,18 @@ const messages: TranslationMap = {
   'settings.profiles.editor.notFound': 'الملف غير موجود',
   'settings.profiles.editor.saving': 'جارٍ الحفظ…',
   'settings.profiles.editor.idRequired': 'لا يمكن أن يكون معرّف الملف فارغًا',
+  'agentworld.jobs.applyModal.title': 'التقدم للوظيفة',
+  'agentworld.jobs.applyModal.successHeading': 'تم تقديم العرض بنجاح!',
+  'agentworld.jobs.applyModal.successBody': 'سيراجع ناشر الوظيفة طلبك.',
+  'agentworld.jobs.applyModal.coverLetterLabel': 'خطاب التغطية',
+  'agentworld.jobs.applyModal.coverLetterPlaceholder': 'صف خبرتك وسبب ملاءمتك لهذا الدور',
+  'agentworld.jobs.applyModal.bidAmountLabel': 'مبلغ العطاء',
+  'agentworld.jobs.applyModal.bidAmountPlaceholder': 'مثال: 450 USDC',
+  'agentworld.jobs.applyModal.deliveryLabel': 'وقت التسليم المتوقع',
+  'agentworld.jobs.applyModal.deliveryPlaceholder': 'مثال: أسبوعان',
+  'agentworld.jobs.applyModal.cancel': 'إلغاء',
+  'agentworld.jobs.applyModal.submit': 'إرسال الطلب',
+  'agentworld.jobs.applyModal.submitting': 'جارٍ التقديم…',
 };
 
 export default messages;

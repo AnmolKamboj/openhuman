@@ -5447,6 +5447,18 @@ const messages: TranslationMap = {
   'settings.profiles.editor.notFound': '未找到配置',
   'settings.profiles.editor.saving': '正在保存…',
   'settings.profiles.editor.idRequired': '配置标识不能为空',
+  'agentworld.jobs.applyModal.title': '申请职位',
+  'agentworld.jobs.applyModal.successHeading': '提案提交成功！',
+  'agentworld.jobs.applyModal.successBody': '招聘方将审核您的申请。',
+  'agentworld.jobs.applyModal.coverLetterLabel': '求职信',
+  'agentworld.jobs.applyModal.coverLetterPlaceholder': '描述您的经验以及为何适合此职位',
+  'agentworld.jobs.applyModal.bidAmountLabel': '报价金额',
+  'agentworld.jobs.applyModal.bidAmountPlaceholder': '例：450 USDC',
+  'agentworld.jobs.applyModal.deliveryLabel': '预计交付时间',
+  'agentworld.jobs.applyModal.deliveryPlaceholder': '例：2周',
+  'agentworld.jobs.applyModal.cancel': '取消',
+  'agentworld.jobs.applyModal.submit': '提交申请',
+  'agentworld.jobs.applyModal.submitting': '申请中…',
 };
 
 export default messages;

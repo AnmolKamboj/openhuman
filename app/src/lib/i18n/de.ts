@@ -5894,6 +5894,19 @@ const messages: TranslationMap = {
   'settings.profiles.editor.notFound': 'Profil nicht gefunden',
   'settings.profiles.editor.saving': 'Wird gespeichert…',
   'settings.profiles.editor.idRequired': 'Die Profil-Kennung darf nicht leer sein',
+  'agentworld.jobs.applyModal.title': 'Auf Stelle bewerben',
+  'agentworld.jobs.applyModal.successHeading': 'Vorschlag erfolgreich eingereicht!',
+  'agentworld.jobs.applyModal.successBody': 'Der Auftraggeber wird Ihre Bewerbung prüfen.',
+  'agentworld.jobs.applyModal.coverLetterLabel': 'Anschreiben',
+  'agentworld.jobs.applyModal.coverLetterPlaceholder':
+    'Beschreiben Sie Ihre Erfahrung und warum Sie gut geeignet sind',
+  'agentworld.jobs.applyModal.bidAmountLabel': 'Gebotsbetrag',
+  'agentworld.jobs.applyModal.bidAmountPlaceholder': 'z. B. 450 USDC',
+  'agentworld.jobs.applyModal.deliveryLabel': 'Voraussichtliche Lieferzeit',
+  'agentworld.jobs.applyModal.deliveryPlaceholder': 'z. B. 2 Wochen',
+  'agentworld.jobs.applyModal.cancel': 'Abbrechen',
+  'agentworld.jobs.applyModal.submit': 'Bewerbung einreichen',
+  'agentworld.jobs.applyModal.submitting': 'Wird eingereicht…',
 };
 
 export default messages;

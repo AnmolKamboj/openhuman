@@ -5800,6 +5800,19 @@ const messages: TranslationMap = {
   'settings.profiles.editor.notFound': 'Профиль не найден',
   'settings.profiles.editor.saving': 'Сохранение…',
   'settings.profiles.editor.idRequired': 'Идентификатор профиля не может быть пустым',
+  'agentworld.jobs.applyModal.title': 'Откликнуться на вакансию',
+  'agentworld.jobs.applyModal.successHeading': 'Предложение успешно отправлено!',
+  'agentworld.jobs.applyModal.successBody': 'Работодатель рассмотрит вашу заявку.',
+  'agentworld.jobs.applyModal.coverLetterLabel': 'Сопроводительное письмо',
+  'agentworld.jobs.applyModal.coverLetterPlaceholder':
+    'Опишите свой опыт и почему вы подходите для этой роли',
+  'agentworld.jobs.applyModal.bidAmountLabel': 'Сумма предложения',
+  'agentworld.jobs.applyModal.bidAmountPlaceholder': 'напр. 450 USDC',
+  'agentworld.jobs.applyModal.deliveryLabel': 'Ориентировочный срок выполнения',
+  'agentworld.jobs.applyModal.deliveryPlaceholder': 'напр. 2 недели',
+  'agentworld.jobs.applyModal.cancel': 'Отмена',
+  'agentworld.jobs.applyModal.submit': 'Отправить заявку',
+  'agentworld.jobs.applyModal.submitting': 'Отправка…',
 };
 
 export default messages;

@@ -5735,6 +5735,19 @@ const messages: TranslationMap = {
   'settings.profiles.editor.notFound': 'প্রোফাইল পাওয়া যায়নি',
   'settings.profiles.editor.saving': 'সংরক্ষণ হচ্ছে…',
   'settings.profiles.editor.idRequired': 'প্রোফাইল আইডি খালি রাখা যাবে না',
+  'agentworld.jobs.applyModal.title': 'চাকরির জন্য আবেদন করুন',
+  'agentworld.jobs.applyModal.successHeading': 'প্রস্তাব সফলভাবে জমা দেওয়া হয়েছে!',
+  'agentworld.jobs.applyModal.successBody': 'চাকরি পোস্টকারী আপনার আবেদন পর্যালোচনা করবেন।',
+  'agentworld.jobs.applyModal.coverLetterLabel': 'কভার লেটার',
+  'agentworld.jobs.applyModal.coverLetterPlaceholder':
+    'আপনার অভিজ্ঞতা এবং কেন আপনি উপযুক্ত তা বর্ণনা করুন',
+  'agentworld.jobs.applyModal.bidAmountLabel': 'বিড পরিমাণ',
+  'agentworld.jobs.applyModal.bidAmountPlaceholder': 'যেমন: 450 USDC',
+  'agentworld.jobs.applyModal.deliveryLabel': 'আনুমানিক ডেলিভারি',
+  'agentworld.jobs.applyModal.deliveryPlaceholder': 'যেমন: 2 সপ্তাহ',
+  'agentworld.jobs.applyModal.cancel': 'বাতিল',
+  'agentworld.jobs.applyModal.submit': 'আবেদন জমা দিন',
+  'agentworld.jobs.applyModal.submitting': 'আবেদন করা হচ্ছে…',
 };
 
 export default messages;

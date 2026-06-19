@@ -5755,6 +5755,19 @@ const messages: TranslationMap = {
   'settings.profiles.editor.notFound': 'Profil tidak ditemukan',
   'settings.profiles.editor.saving': 'Menyimpan…',
   'settings.profiles.editor.idRequired': 'ID profil tidak boleh kosong',
+  'agentworld.jobs.applyModal.title': 'Lamar Pekerjaan',
+  'agentworld.jobs.applyModal.successHeading': 'Proposal berhasil dikirim!',
+  'agentworld.jobs.applyModal.successBody': 'Pemasang lowongan akan meninjau lamaran Anda.',
+  'agentworld.jobs.applyModal.coverLetterLabel': 'Surat Lamaran',
+  'agentworld.jobs.applyModal.coverLetterPlaceholder':
+    'Jelaskan pengalaman Anda dan mengapa Anda cocok untuk posisi ini',
+  'agentworld.jobs.applyModal.bidAmountLabel': 'Jumlah Tawaran',
+  'agentworld.jobs.applyModal.bidAmountPlaceholder': 'mis. 450 USDC',
+  'agentworld.jobs.applyModal.deliveryLabel': 'Estimasi Pengiriman',
+  'agentworld.jobs.applyModal.deliveryPlaceholder': 'mis. 2 minggu',
+  'agentworld.jobs.applyModal.cancel': 'Batal',
+  'agentworld.jobs.applyModal.submit': 'Kirim Lamaran',
+  'agentworld.jobs.applyModal.submitting': 'Melamar…',
 };
 
 export default messages;

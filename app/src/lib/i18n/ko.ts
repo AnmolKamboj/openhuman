@@ -5682,6 +5682,19 @@ const messages: TranslationMap = {
   'settings.profiles.editor.notFound': '프로필을 찾을 수 없습니다',
   'settings.profiles.editor.saving': '저장 중…',
   'settings.profiles.editor.idRequired': '프로필 식별자는 비워 둘 수 없습니다',
+  'agentworld.jobs.applyModal.title': '채용 지원',
+  'agentworld.jobs.applyModal.successHeading': '제안이 성공적으로 제출되었습니다!',
+  'agentworld.jobs.applyModal.successBody': '채용 공고 게시자가 지원서를 검토할 것입니다.',
+  'agentworld.jobs.applyModal.coverLetterLabel': '자기소개서',
+  'agentworld.jobs.applyModal.coverLetterPlaceholder':
+    '귀하의 경험과 이 직무에 적합한 이유를 설명하세요',
+  'agentworld.jobs.applyModal.bidAmountLabel': '제안 금액',
+  'agentworld.jobs.applyModal.bidAmountPlaceholder': '예: 450 USDC',
+  'agentworld.jobs.applyModal.deliveryLabel': '예상 납기',
+  'agentworld.jobs.applyModal.deliveryPlaceholder': '예: 2주',
+  'agentworld.jobs.applyModal.cancel': '취소',
+  'agentworld.jobs.applyModal.submit': '지원서 제출',
+  'agentworld.jobs.applyModal.submitting': '지원 중…',
 };
 
 export default messages;
