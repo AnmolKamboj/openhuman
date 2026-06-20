@@ -30,8 +30,8 @@ import {
 import { fetchWalletStatus } from '../../services/walletApi';
 import type { ToastNotification } from '../../types/intelligence';
 import { apiClient } from '../AgentWorldShell';
+import { decimalsForAsset, resolveAssetSymbol } from '../assets';
 import X402ConfirmDialog, { formatUnits } from '../components/X402ConfirmDialog';
-import { useX402Buy } from '../hooks/useX402Buy';
 
 // ── State types ───────────────────────────────────────────────────────────────
 
@@ -72,19 +72,12 @@ function abbrev(addr: string): string {
   return addr;
 }
 
-/** Decimals for a given asset symbol. USDC = 6, SOL = 9, others = 0. */
-function decimalsForAsset(asset: string): number {
-  const up = asset.toUpperCase();
-  if (up === 'USDC' || up === 'CASH') return 6;
-  if (up === 'SOL' || up === 'WSOL') return 9;
-  return 0;
-}
-
-/** Format a base-unit reward amount to a human-readable string. */
+/** Format a base-unit reward amount to a human-readable string. `asset` may be
+ * a symbol or a mint address — {@link resolveAssetSymbol} normalises it. */
 function formatReward(amount: string, asset: string): string {
   const decimals = decimalsForAsset(asset);
   const display = decimals > 0 ? formatUnits(amount, decimals) : amount;
-  return `${formatAmount(display)} ${asset}`;
+  return `${formatAmount(display)} ${resolveAssetSymbol(asset)}`;
 }
 
 /** Centered status message for loading / error / info states. */
@@ -142,7 +135,6 @@ interface BountyRowProps {
   expanded: boolean;
   onToggle: () => void;
   myAgentId: string | null;
-  onFund: (bountyId: string) => void;
   onSubmit: (bountyId: string) => void;
   onComment: (bountyId: string) => void;
   onCancel: (bountyId: string) => void;
@@ -155,7 +147,6 @@ function BountyRow({
   expanded,
   onToggle,
   myAgentId,
-  onFund,
   onSubmit,
   onComment,
   onCancel,
@@ -183,8 +174,13 @@ function BountyRow({
   }, [expanded, bounty.bountyId]);
 
   return (
-    <div className="border-b border-stone-200 last:border-b-0 dark:border-neutral-800">
-      {/* Summary row */}
+    <div
+      className={`overflow-hidden rounded-lg border bg-white transition-colors dark:bg-neutral-900 ${
+        expanded
+          ? 'border-primary-300 dark:border-primary-700 sm:col-span-2'
+          : 'border-stone-200 hover:border-stone-300 dark:border-neutral-800 dark:hover:border-neutral-700'
+      }`}>
+      {/* Summary (card header) */}
       <button
         type="button"
         onClick={onToggle}
@@ -416,12 +412,6 @@ function BountyRow({
           {/* Action buttons (wallet-gated) */}
           {myAgentId ? (
             <div className="flex flex-wrap gap-2">
-              {/* Fund: creator + draft status */}
-              {isCreator && bounty.status === 'draft' && (
-                <Button type="button" onClick={() => onFund(bounty.bountyId)} disabled={mutating}>
-                  Fund Bounty
-                </Button>
-              )}
               {/* Submit Work: non-creator + open status */}
               {!isCreator && bounty.status === 'open' && (
                 <Button type="button" onClick={() => onSubmit(bounty.bountyId)} disabled={mutating}>
@@ -880,10 +870,6 @@ export default function BountiesSection() {
   const [submitWorkBountyId, setSubmitWorkBountyId] = useState<string | null>(null);
   const [commentBountyId, setCommentBountyId] = useState<string | null>(null);
 
-  // X402 fund flow — reuses the proven confirm-before-spend hook
-  const fundX402 = useX402Buy((bountyId, opts) => apiClient.bounties.fund(bountyId, opts));
-  const [fundingBountyId, setFundingBountyId] = useState<string | null>(null);
-
   const fetchBounties = useCallback(() => {
     setState({ status: 'loading' });
     void apiClient.bounties
@@ -899,13 +885,6 @@ export default function BountiesSection() {
   useEffect(() => {
     fetchBounties();
   }, [fetchBounties]);
-
-  // ── Fund flow ──────────────────────────────────────────────────────────────
-
-  function handleFund(bountyId: string) {
-    setFundingBountyId(bountyId);
-    fundX402.begin(bountyId);
-  }
 
   // ── Cancel ─────────────────────────────────────────────────────────────────
 
@@ -962,7 +941,7 @@ export default function BountiesSection() {
     );
   } else {
     body = (
-      <div className="rounded-lg border border-stone-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {state.bounties.map(bounty => (
           <BountyRow
             key={bounty.bountyId}
@@ -972,7 +951,6 @@ export default function BountiesSection() {
               setExpandedBountyId(prev => (prev === bounty.bountyId ? null : bounty.bountyId))
             }
             myAgentId={myAgentId}
-            onFund={handleFund}
             onSubmit={id => setSubmitWorkBountyId(id)}
             onComment={id => setCommentBountyId(id)}
             onCancel={id => {
@@ -1020,10 +998,8 @@ export default function BountiesSection() {
               },
             });
             fetchBounties();
-            // If the new bounty is a draft, offer to fund it
-            if ((bounty as Bounty).status === 'draft') {
-              handleFund((bounty as Bounty).bountyId);
-            }
+            // In SDK 0.10 create-and-fund is atomic, so a new bounty is already
+            // funded (`open`) — no separate fund step.
           }}
         />
       )}
@@ -1048,109 +1024,6 @@ export default function BountiesSection() {
             fetchBounties();
           }}
         />
-      )}
-
-      {/* X402 Fund dialog */}
-      {fundingBountyId && fundX402.state.phase === 'confirm' && (
-        <X402ConfirmDialog
-          title="Fund Bounty"
-          subtitle={`Funding bounty ${abbrev(fundingBountyId)}`}
-          amount={fundX402.state.challenge.amount ?? '0'}
-          asset={fundX402.state.challenge.asset ?? 'USDC'}
-          network={fundX402.state.challenge.network}
-          balance={fundX402.state.balance}
-          walletAddress={fundX402.state.walletAddress}
-          onConfirm={() => {
-            if (fundX402.state.phase === 'confirm') {
-              fundX402.confirmPay(
-                fundingBountyId,
-                fundX402.state.challenge,
-                fundX402.state.balance,
-                fundX402.state.walletAddress
-              );
-            }
-          }}
-          onCancel={() => {
-            fundX402.reset();
-            setFundingBountyId(null);
-          }}
-        />
-      )}
-
-      {fundingBountyId && fundX402.state.phase === 'paying' && (
-        <X402ConfirmDialog
-          title="Fund Bounty"
-          subtitle={`Funding bounty ${abbrev(fundingBountyId)}`}
-          amount={fundX402.state.challenge.amount ?? '0'}
-          asset={fundX402.state.challenge.asset ?? 'USDC'}
-          network={fundX402.state.challenge.network}
-          balance={fundX402.state.balance}
-          walletAddress={fundX402.state.walletAddress}
-          busy
-          busyLabel="Broadcasting…"
-          onConfirm={() => {}}
-          onCancel={() => {}}
-        />
-      )}
-
-      {fundingBountyId && fundX402.state.phase === 'success' && (
-        <ModalShell
-          title="Bounty Funded"
-          titleId="bounty-funded-modal-title"
-          onClose={() => {
-            fundX402.reset();
-            setFundingBountyId(null);
-            fetchBounties();
-          }}>
-          <div className="space-y-3 text-sm">
-            <p className="text-green-700 dark:text-green-400">Bounty funded successfully!</p>
-            {fundX402.state.onChainTx && (
-              <p className="text-xs text-stone-500 dark:text-neutral-400">
-                Transaction:{' '}
-                <a
-                  href={`https://explorer.solana.com/tx/${fundX402.state.onChainTx}${(fundX402.state.network ?? '').includes('devnet') ? '?cluster=devnet' : ''}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-mono text-primary-600 hover:underline dark:text-primary-400">
-                  {abbrev(fundX402.state.onChainTx)}
-                </a>
-              </p>
-            )}
-            <div className="flex justify-end">
-              <Button
-                onClick={() => {
-                  fundX402.reset();
-                  setFundingBountyId(null);
-                  fetchBounties();
-                }}>
-                Close
-              </Button>
-            </div>
-          </div>
-        </ModalShell>
-      )}
-
-      {fundingBountyId && fundX402.state.phase === 'error' && (
-        <ModalShell
-          title="Fund Failed"
-          titleId="bounty-fund-failed-modal-title"
-          onClose={() => {
-            fundX402.reset();
-            setFundingBountyId(null);
-          }}>
-          <div className="space-y-3 text-sm">
-            <p className="text-red-600 dark:text-red-400">{fundX402.state.message}</p>
-            <div className="flex justify-end">
-              <Button
-                onClick={() => {
-                  fundX402.reset();
-                  setFundingBountyId(null);
-                }}>
-                Close
-              </Button>
-            </div>
-          </div>
-        </ModalShell>
       )}
 
       <ToastContainer notifications={toasts} onRemove={removeToast} />

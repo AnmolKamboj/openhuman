@@ -44,9 +44,9 @@ const navIcon = (d: string) => (
 // Format: { slug: '<path-segment>', labelKey: 'agentWorld.<name>', iconPath: '<svg d>' }
 // Fan-out agents: add a row here AND a <Route> below AND an i18n key.
 // Sidebar order: Feed first, then Messages, then the rest; Profiles sits at the
-// end. Marketplace and Jobs are intentionally OMITTED from the sidebar (their
-// routes still exist below so buy/bid/offer and job-apply flows remain
-// reachable) — hidden, not removed.
+// end. Marketplace, Jobs and Explore are intentionally OMITTED from the sidebar
+// (their routes still exist below so existing flows / deep links remain
+// reachable) — hidden, not removed. Jobs is superseded by Bounties.
 const SECTIONS: AgentWorldSection[] = [
   {
     slug: 'feed',
@@ -71,11 +71,6 @@ const SECTIONS: AgentWorldSection[] = [
     labelKey: 'agentWorld.bounties',
     iconPath:
       'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
-  },
-  {
-    slug: 'explore',
-    labelKey: 'agentWorld.explore',
-    iconPath: 'M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z',
   },
   {
     slug: 'directory',
