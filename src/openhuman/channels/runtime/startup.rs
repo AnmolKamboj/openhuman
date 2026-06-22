@@ -299,14 +299,41 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
     let local_embedding = config.workload_local_model("embeddings");
     let embedding_api_key =
         crate::openhuman::embeddings::resolve_api_key(&config, &config.memory.embedding_provider);
-    let mem: Arc<dyn Memory> = Arc::from(memory_store::create_memory_with_local_ai(
+    // Build the memory store. A misconfigured/removed embedding provider (e.g. a
+    // stale `embedding_provider = "fastembed"` that the factory no longer knows)
+    // makes the embedder build fail — but that must NOT take every messaging
+    // channel offline (issue #3712). Fall back to keyword-only memory
+    // (`embedding_provider = "none"` → NoopEmbedding) so the channel listeners
+    // still start; semantic memory degrades gracefully instead of the whole
+    // runtime aborting.
+    let mem: Arc<dyn Memory> = match memory_store::create_memory_with_local_ai(
         &config.memory,
         local_embedding.as_deref(),
         &embedding_api_key,
         &[],
         Some(&config.storage.provider.config),
         &config.workspace_dir,
-    )?);
+    ) {
+        Ok(mem) => Arc::from(mem),
+        Err(e) => {
+            tracing::error!(
+                error = %format!("{e:#}"),
+                provider = %config.memory.embedding_provider,
+                "[channels] memory embedder build failed — falling back to keyword-only \
+                 memory so channels still start"
+            );
+            let mut fallback_memory = config.memory.clone();
+            fallback_memory.embedding_provider = "none".to_string();
+            Arc::from(memory_store::create_memory_with_local_ai(
+                &fallback_memory,
+                local_embedding.as_deref(),
+                &embedding_api_key,
+                &[],
+                Some(&config.storage.provider.config),
+                &config.workspace_dir,
+            )?)
+        }
+    };
     // Build system prompt from workspace identity files + skills
     let workspace = config.workspace_dir.clone();
     let tools_registry = Arc::new(tools::all_tools_with_runtime(
@@ -451,7 +478,8 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
                 tg.stream_mode,
                 tg.draft_update_interval_ms,
                 tg.silent_streaming,
-            ),
+            )
+            .with_chat_id(tg.chat_id.clone()),
         ));
     } else {
         tracing::info!(
@@ -692,12 +720,16 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
     // Register the proactive message subscriber so morning briefings,
     // welcome messages, and other proactive agent output gets routed to
     // the user's active channel (+ always to web).
-    let _proactive_handle = bus.subscribe(Arc::new(
-        crate::openhuman::channels::proactive::ProactiveMessageSubscriber::new(
-            Arc::clone(&channels_by_name),
-            config.channels_config.active_channel.clone(),
-        ),
-    ));
+    let proactive_sub = crate::openhuman::channels::proactive::ProactiveMessageSubscriber::new(
+        Arc::clone(&channels_by_name),
+        config.channels_config.active_channel.clone(),
+    );
+    // Expose its active-channel handle so the `channels_set_default` RPC can
+    // switch the default channel at runtime without a restart (issue #3712).
+    crate::openhuman::channels::proactive::register_active_channel_handle(
+        proactive_sub.active_channel_handle(),
+    );
+    let _proactive_handle = bus.subscribe(Arc::new(proactive_sub));
     let _telegram_remote_handle = if channels_by_name.contains_key("telegram") {
         let handle = bus.subscribe(Arc::new(
             crate::openhuman::channels::providers::telegram::TelegramRemoteSubscriber::new(

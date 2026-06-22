@@ -1818,6 +1818,7 @@ allowed_users = ["@admin"]
     };
     cfg.channels_config.telegram = Some(TelegramConfig {
         bot_token: known_secret.to_string(),
+        chat_id: None,
         allowed_users: vec!["@admin".to_string()],
         stream_mode: StreamMode::Off,
         draft_update_interval_ms: 1000,
