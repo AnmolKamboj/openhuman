@@ -3375,7 +3375,7 @@ const en: TranslationMap = {
   'composio.connect.dynamicsOrgNameHint':
     'For example, "myorg" for myorg.crm.dynamics.com. Enter the short org name only, not the full URL.',
   'composio.connect.dynamicsOrgNameLabel': 'Dynamics 365 Organization Name',
-  'composio.connect.connectionFailed': 'Connection failed (status: ${hit.status}).',
+  'composio.connect.connectionFailed': 'Connection failed (status: {status}).',
   'composio.connect.disconnectFailed': 'Disconnect failed: {msg}',
   'composio.connect.disconnecting': 'Disconnecting…',
   'composio.connect.idleDescription': 'Connect your',
@@ -3594,7 +3594,7 @@ const en: TranslationMap = {
   'intelligence.tasks.failedToLoad': 'Failed to load',
   'intelligence.tasks.live': 'live',
   'intelligence.tasks.loadingBoards': 'Loading task boards…',
-  'intelligence.tasks.threadPrefix': 'Thread {id}',
+  'intelligence.tasks.threadPrefix': 'Thread {thread}',
   'intelligence.tasks.subtitle': 'Your tasks and agent task boards across the workspace.',
   'intelligence.tasks.newTask': 'New task',
   'intelligence.tasks.personalBoardTitle': 'Agent Tasks',

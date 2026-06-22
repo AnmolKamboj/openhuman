@@ -2709,7 +2709,7 @@ const messages: TranslationMap = {
   'composio.connect.dynamicsOrgNameHint':
     '例如，myorg.crm.dynamics.com 的组织名称为 "myorg"。仅输入简短的组织名称，而不是完整 URL。',
   'composio.connect.dynamicsOrgNameLabel': 'Dynamics 365 组织名称',
-  'composio.connect.connectionFailed': '连接失败。',
+  'composio.connect.connectionFailed': '连接失败（状态：{status}）。',
   'composio.connect.disconnectFailed': '断开连接失败：{msg}',
   'composio.connect.disconnecting': '断开中…',
   'composio.connect.idleDescription': '连接你的',
@@ -2899,7 +2899,7 @@ const messages: TranslationMap = {
   'intelligence.tasks.failedToLoad': '加载失败',
   'intelligence.tasks.live': '实时',
   'intelligence.tasks.loadingBoards': '正在加载任务看板…',
-  'intelligence.tasks.threadPrefix': '对话',
+  'intelligence.tasks.threadPrefix': '对话 {thread}',
   'intelligence.tasks.subtitle': '整个工作区中的你的任务和智能体任务看板。',
   'intelligence.tasks.newTask': '新建任务',
   'intelligence.tasks.personalBoardTitle': '智能体任务',
