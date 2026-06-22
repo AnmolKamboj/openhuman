@@ -1,7 +1,7 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
 import debugFactory from 'debug';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { type ChatSendError, chatSendError } from '../chat/chatSendError';
 import { checkPromptInjection, promptGuardMessage } from '../chat/promptInjectionGuard';
@@ -67,6 +67,7 @@ import type { ConfirmationModal as ConfirmationModalType } from '../types/intell
 import type { ThreadMessage } from '../types/thread';
 import type { TaskBoardCard, TaskBoardCardStatus } from '../types/turnState';
 import { splitAgentMessageIntoBubbles } from '../utils/agentMessageBubbles';
+import { chatThreadPath } from '../utils/chatRoutes';
 import { CHAT_ATTACHMENTS_ENABLED } from '../utils/config';
 import { BILLING_DASHBOARD_URL } from '../utils/links';
 import { openUrl } from '../utils/openUrl';
@@ -208,6 +209,8 @@ const Conversations = ({
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const location = useLocation();
+  const { threadId: routeThreadId } = useParams<{ threadId?: string }>();
+  const shouldSyncChatRoute = variant === 'page' && location.pathname.startsWith('/chat');
   const { threads, selectedThreadId, messages, isLoadingMessages, messagesError } = useAppSelector(
     state => state.thread
   );
@@ -428,6 +431,12 @@ const Conversations = ({
     const thread = await dispatch(createNewThread()).unwrap();
     dispatch(setSelectedThread(thread.id));
     void dispatch(loadThreadMessages(thread.id));
+    if (shouldSyncChatRoute) {
+      debug('[chat][route] created thread thread=%s navigate=true', thread.id);
+      navigate(chatThreadPath(thread.id));
+    } else {
+      debug('[chat][route] created thread thread=%s navigate=false', thread.id);
+    }
   };
 
   const handleUseOpenRouterFree = async () => {
@@ -502,7 +511,8 @@ const Conversations = ({
         // Tasks board) wins over passive resume — and bypasses the General-tab
         // visibility filter so a task-labelled session thread can actually be
         // opened (the resume default below only considers General threads).
-        const openThreadId = (location.state as { openThreadId?: string } | null)?.openThreadId;
+        const openThreadId =
+          routeThreadId ?? (location.state as { openThreadId?: string } | null)?.openThreadId;
         const openThread = openThreadId ? data.threads.find(t => t.id === openThreadId) : undefined;
         if (openThread) {
           // An explicit open intent (e.g. View work from the Tasks board) opens
@@ -510,6 +520,12 @@ const Conversations = ({
           // filtered to General.
           dispatch(setSelectedThread(openThread.id));
           void dispatch(loadThreadMessages(openThread.id));
+          debug('[chat][route] opened requested thread thread=%s', openThread.id);
+          return;
+        }
+        if (openThreadId) {
+          debug('[chat][route] requested thread not found thread=%s; falling back', openThreadId);
+          navigate('/chat', { replace: true });
           return;
         }
         // Default landing is a fresh "new window" (the merged Home surface) —
@@ -534,7 +550,7 @@ const Conversations = ({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch]);
+  }, [dispatch, routeThreadId]);
 
   useEffect(() => {
     if (selectedThreadId) {
@@ -1584,6 +1600,9 @@ const Conversations = ({
               onClick={() => {
                 dispatch(setSelectedThread(thread.id));
                 void dispatch(loadThreadMessages(thread.id));
+                if (shouldSyncChatRoute) {
+                  navigate(chatThreadPath(thread.id));
+                }
               }}
               onKeyDown={e => {
                 if (e.target !== e.currentTarget) return;
@@ -1591,6 +1610,9 @@ const Conversations = ({
                   e.preventDefault();
                   dispatch(setSelectedThread(thread.id));
                   void dispatch(loadThreadMessages(thread.id));
+                  if (shouldSyncChatRoute) {
+                    navigate(chatThreadPath(thread.id));
+                  }
                 }
               }}
               className={`w-full text-left px-3 py-1.5 border-b border-stone-100/60 dark:border-neutral-800/60 transition-colors group cursor-pointer ${
@@ -1677,6 +1699,9 @@ const Conversations = ({
                       cancelText: t('common.cancel'),
                       destructive: true,
                       onConfirm: () => {
+                        if (shouldSyncChatRoute && routeThreadId === thread.id) {
+                          navigate('/chat', { replace: true });
+                        }
                         void dispatch(deleteThread(thread.id));
                       },
                       onCancel: () => {},
@@ -1802,6 +1827,9 @@ const Conversations = ({
                   // event, so forcing it active would wedge the composer.
                   dispatch(setSelectedThread(card.sessionThreadId));
                   void dispatch(loadThreadMessages(card.sessionThreadId));
+                  if (shouldSyncChatRoute) {
+                    navigate(chatThreadPath(card.sessionThreadId));
+                  }
                 }}
               />
             )}
@@ -2545,6 +2573,7 @@ const Conversations = ({
             onClick={() => {
               dispatch(setSelectedThread(selectedThreadParent.id));
               void dispatch(loadThreadMessages(selectedThreadParent.id));
+              navigate(chatThreadPath(selectedThreadParent.id));
             }}
             className="mt-2 flex items-center gap-1 rounded px-1 text-[11px] font-medium text-primary-600 hover:text-primary-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
             data-testid="worker-thread-back-to-parent">
