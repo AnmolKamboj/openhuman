@@ -21,11 +21,10 @@ Each sub-check is **best-effort**: a missing tool or transient failure is
 reported inline in the Markdown, not fatal. A full lane going red never stops
 the rest of the report from being produced.
 
-## Schedule + manual trigger
+## Scheduling
 
-- Cron: every Monday at **06:00 UTC** (`0 6 * * 1`).
-- Manual: **Actions → Weekly Code Review → Run workflow**.
-- Concurrency: one run at a time; subsequent triggers queue rather than cancel.
+No scheduled GitHub Actions workflow is currently checked in for this report.
+Run the script locally when a weekly code-health snapshot is needed.
 
 ## Outputs
 
@@ -59,7 +58,7 @@ for the JSON shaping. Missing tools are skipped with a note in the report.
 - **TODO backlog** — the counter is a direction signal, not an action item
   on its own. Watch for a rising trend over successive weeks.
 
-## Disabling / overrides
+## Retiring
 
 - **One-off skip** — cancel the scheduled run from the Actions tab.
 - **Pause indefinitely** — no scheduled workflow is currently installed.

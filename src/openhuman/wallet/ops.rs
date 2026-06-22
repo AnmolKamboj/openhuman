@@ -995,11 +995,8 @@ mod tests {
     async fn reveal_recovery_phrase_returns_error_when_no_wallet() {
         let temp = tempfile::tempdir().expect("temp dir");
         let _wallet_lock = crate::openhuman::wallet::test_support::TEST_LOCK.lock();
-        let _env_lock = crate::openhuman::config::TEST_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let _workspace =
-            crate::openhuman::wallet::test_support::WorkspaceEnvGuard::set(temp.path());
+        let _workspace_guard =
+            crate::openhuman::wallet::test_support::set_workspace_env_for_test(&temp);
         let result = reveal_recovery_phrase().await;
         let err = result.expect_err("should error when no wallet configured");
         assert!(
@@ -1012,12 +1009,7 @@ mod tests {
     async fn reveal_recovery_phrase_returns_phrase_for_existing_wallet() {
         let temp = tempfile::tempdir().expect("temp dir");
         let _wallet_lock = crate::openhuman::wallet::test_support::TEST_LOCK.lock();
-        let _env_lock = crate::openhuman::config::TEST_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let _workspace =
-            crate::openhuman::wallet::test_support::WorkspaceEnvGuard::set(temp.path());
-        crate::openhuman::wallet::test_support::setup_wallet_in(&temp)
+        let _workspace_guard = crate::openhuman::wallet::test_support::setup_wallet_in(&temp)
             .await
             .expect("setup wallet");
         let result = reveal_recovery_phrase()
