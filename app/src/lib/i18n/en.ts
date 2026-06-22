@@ -2935,6 +2935,22 @@ const en: TranslationMap = {
   'subconscious.decision.cancelled': 'Cancelled',
   'subconscious.decision.skipped': 'Skipped',
 
+  // Subconscious triggers (event-driven orchestrator) debug panel
+  'subconsciousTriggers.title': 'Subconscious Triggers',
+  'subconsciousTriggers.subtitle': 'Event-driven background orchestrator',
+  'subconsciousTriggers.pipeline': 'Pipeline',
+  'subconsciousTriggers.mode': 'Mode',
+  'subconsciousTriggers.orchestrator': 'Orchestrator',
+  'subconsciousTriggers.running': 'Running',
+  'subconsciousTriggers.stopped': 'Stopped',
+  'subconsciousTriggers.promotionsPerHour': 'Promotions / hour',
+  'subconsciousTriggers.queueDepth': 'Queue depth',
+  'subconsciousTriggers.orchestratorThread': 'Orchestrator thread',
+  'subconsciousTriggers.userThread': 'User thread',
+  'subconsciousTriggers.disabledHint': 'Enable event-driven mode to activate the pipeline.',
+  'subconsciousTriggers.enable': 'Enable',
+  'subconsciousTriggers.disable': 'Disable',
+
   // Actionable
   'actionable.complete': 'Complete',
   'actionable.dismiss': 'Dismiss',
