@@ -1265,7 +1265,28 @@ fn is_provider_user_state_message(lower: &str) -> bool {
     // No `inference/provider/ops.rs::list_models` other than this site emits
     // the `provider returned NNN` prefix (verified via grep), so the prefix
     // alone is a sufficient anchor.
-    if lower.starts_with("provider returned 404") {
+    //
+    // TAURI-RUST-8X3: anchor to the position where `provider returned 404` is
+    // the formatted *error prefix* — never to any occurrence in the response
+    // body. The primary fix classifies the *raw* error at the source
+    // (`inference/ops.rs::inference_list_models`) before any log prefix is
+    // applied, so the raw shape always starts with `provider returned 404:`.
+    // The one historically-observed prefixed re-report path is the
+    // `inference/ops.rs` `error!("[inference::ops] list_models:error: {err}")`
+    // log line — handled below as an explicit prefixed shape.
+    //
+    // A bare `contains` would mis-fire: a genuine 400/500 list-models failure
+    // formats as `provider returned 500: <body>`, and if `<body>` merely
+    // relays an upstream phrase like `upstream provider returned 404 ...`, the
+    // loose substring would demote that real 4xx/5xx defect out of Sentry —
+    // exactly the failures the discrimination guard
+    // (`does_not_classify_non_404_list_models_failures_as_user_state`) says
+    // must still escalate. So we require the anchor to be the prefix, not buried
+    // text. (Mirrors the parenthesised `(401` anchoring in
+    // `is_session_expired_message`.)
+    if lower.starts_with("provider returned 404")
+        || lower.contains("list_models:error: provider returned 404")
+    {
         return true;
     }
 
@@ -4391,6 +4412,55 @@ mod tests {
     }
 
     #[test]
+    fn couples_list_models_404_source_shape_to_classifier() {
+        // TAURI-RUST-8X3 coupling guard. Ties the TYPED SOURCE error shape
+        // emitted by `inference/provider/ops/models.rs` (the
+        // `provider returned 404: <body>` format) to the classifier, so a
+        // wording / prefix drift fails CI instead of silently leaking events.
+        //
+        // The wild Sentry message carried the `inference/ops.rs`
+        // `error!("[inference::ops] list_models:error: {err}")` PREFIX. The
+        // primary fix classifies the raw `err` at the source before that
+        // prefix is applied, but the `contains` widening above must ALSO
+        // catch the prefixed variant for any future prefixed re-report path.
+        // Assert BOTH the raw source shape and the prefixed log-line shape.
+
+        // (a) Raw source shape — exactly what `models.rs` returns for a Go
+        //     default-handler 404 (`404 page not found`).
+        let raw_source = "provider returned 404: 404 page not found";
+        assert_eq!(
+            expected_error_kind(raw_source),
+            Some(ExpectedErrorKind::ProviderUserState),
+            "raw list_models 404 source shape must classify as ProviderUserState"
+        );
+
+        // (b) Raw source shape WITH the actionable hint appended by
+        //     `models.rs` for the 404 case — the prefix anchor must survive
+        //     the suffix.
+        let raw_with_hint = "provider returned 404: 404 page not found — the configured base URL does not expose a `/models` endpoint; check the provider's base URL (it usually ends in `/v1`)";
+        assert_eq!(
+            expected_error_kind(raw_with_hint),
+            Some(ExpectedErrorKind::ProviderUserState),
+            "list_models 404 + actionable hint must still classify as ProviderUserState"
+        );
+
+        // (c) Prefixed log-line shape — the exact pattern from
+        //     `inference/ops.rs::inference_list_models` `error!`. The explicit
+        //     `list_models:error: provider returned 404` anchor must catch this
+        //     even though it does not start with `provider returned 404`. The
+        //     anchor is the formatted prefix, not a bare `404` substring, so it
+        //     does NOT mis-fire on a 500 whose body merely relays an upstream
+        //     404 (see `does_not_classify_non_404_list_models_failures_as_user_state`).
+        let prefixed =
+            "[inference::ops] list_models:error: provider returned 404: 404 page not found";
+        assert_eq!(
+            expected_error_kind(prefixed),
+            Some(ExpectedErrorKind::ProviderUserState),
+            "prefixed list_models 404 log line must still classify as ProviderUserState (anchored prefix)"
+        );
+    }
+
+    #[test]
     fn does_not_classify_non_404_list_models_failures_as_user_state() {
         // Discrimination guard: only the 404 prefix demotes. Sibling 4xx /
         // 5xx codes from the same `provider returned NNN:` emit site must
@@ -4411,6 +4481,16 @@ mod tests {
             r#"provider returned 503: upstream temporarily unavailable"#,
             // 500 — a real upstream bug; must reach Sentry.
             r#"provider returned 500: {"error":"internal_server_error"}"#,
+            // TAURI-RUST-8X3 false-negative guard: a genuine 4xx/5xx whose
+            // *body* merely relays an upstream 404 phrase. The actual status
+            // is 500/400, so this is a real failure that MUST reach Sentry —
+            // the classifier anchors on the `provider returned 404:` prefix,
+            // not on any `404` occurrence in the body, so these must NOT demote.
+            r#"provider returned 500: {"error":"upstream provider returned 404 page not found"}"#,
+            r#"provider returned 400: gateway error — upstream provider returned 404"#,
+            // Prefixed log-line variant of the same trap: the genuine status is
+            // 500, the buried `... 404` is body text.
+            "[inference::ops] list_models:error: provider returned 500: upstream provider returned 404 not found",
         ] {
             assert_ne!(
                 expected_error_kind(raw),
