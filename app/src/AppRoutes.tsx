@@ -11,6 +11,7 @@ import { getIsMobile } from './lib/platform';
 import Accounts from './pages/Accounts';
 import Brain from './pages/Brain';
 import AgentInsightsPreview from './pages/dev/AgentInsightsPreview';
+import Feedback from './pages/Feedback';
 import Invites from './pages/Invites';
 import Notifications from './pages/Notifications';
 import Onboarding from './pages/onboarding/Onboarding';
@@ -146,6 +147,15 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute requireAuth={true}>
             <Invites />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/feedback"
+        element={
+          <ProtectedRoute requireAuth={true}>
+            <Feedback />
           </ProtectedRoute>
         }
       />
