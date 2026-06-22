@@ -1489,6 +1489,87 @@ async fn clickup_sync_max_items_caps_ingest_to_exact_count() {
     server.abort();
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// ClickUp sync_depth_days enforcement (via the shared orchestrator)
+//
+// ClickUp's `date_updated` is an epoch-millis string, so the orchestrator's
+// depth floor must be epoch-ms too (ClickUpSource::depth_floor override). The
+// mock returns 2 recent tasks (year-2030 epoch-ms) + 3 ancient (year-2001) in
+// descending order; with sync_depth_days=7 only the 2 recent tasks persist.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Build `recent` + `old` ClickUp tasks in descending `date_updated` order,
+/// using epoch-millis strings so the epoch-ms depth floor compares correctly.
+fn clickup_depth_tasks(recent: usize, old: usize) -> Vec<Value> {
+    let mut tasks = Vec::new();
+    for i in 0..recent {
+        tasks.push(json!({
+            "id": format!("clickup-recent-{i:04}"),
+            "name": format!("Recent {i}"),
+            "text_content": "recent",
+            "status": { "status": "open" },
+            "date_updated": format!("{}", 1_900_000_000_000_u64 + (recent - i) as u64),
+            "url": format!("https://app.clickup.com/t/clickup-recent-{i:04}")
+        }));
+    }
+    for i in 0..old {
+        tasks.push(json!({
+            "id": format!("clickup-old-{i:04}"),
+            "name": format!("Old {i}"),
+            "text_content": "old",
+            "status": { "status": "open" },
+            "date_updated": format!("{}", 1_000_000_000_000_u64 + (old - i) as u64),
+            "url": format!("https://app.clickup.com/t/clickup-old-{i:04}")
+        }));
+    }
+    tasks
+}
+
+#[tokio::test]
+async fn clickup_sync_depth_days_filters_old_tasks() {
+    let _guard = env_lock();
+    let tmp = TempDir::new().expect("tempdir");
+    let _workspace = EnvGuard::set_path("OPENHUMAN_WORKSPACE", tmp.path());
+    let _home = EnvGuard::set_path("HOME", tmp.path());
+    let _backend = EnvGuard::unset("BACKEND_URL");
+
+    // One workspace, one page: 2 recent + 3 ancient. With a 7-day window only
+    // the 2 recent tasks must be ingested.
+    let requests: Arc<Mutex<Vec<Value>>> = Arc::new(Mutex::new(Vec::new()));
+    let (base, server) = loopback_router(clickup_cap_router(
+        clickup_depth_tasks(2, 3),
+        Arc::clone(&requests),
+    ))
+    .await;
+
+    let mut config = config_in(&tmp);
+    config.api_url = Some(base);
+    persist_config(&config).await;
+    store_session(&config);
+    memory_global::init(config.workspace_dir.clone()).expect("init global memory");
+
+    let ctx = ProviderContext {
+        config: Arc::new(config),
+        toolkit: "clickup".to_string(),
+        connection_id: Some("conn-clickup-depth".to_string()),
+        usage: Default::default(),
+        max_items: None,
+        sync_depth_days: Some(7),
+    };
+
+    let outcome = ClickUpProvider::new()
+        .sync(&ctx, SyncReason::ConnectionCreated)
+        .await
+        .expect("clickup depth sync");
+
+    assert_eq!(
+        outcome.items_ingested, 2,
+        "sync_depth_days=7 must drop the 3 year-2001 tasks and keep the 2 recent ones"
+    );
+
+    server.abort();
+}
+
 fn walk_files(root: &Path) -> Vec<std::path::PathBuf> {
     let mut out = Vec::new();
     if !root.exists() {
