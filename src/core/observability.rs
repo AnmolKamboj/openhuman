@@ -518,15 +518,29 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
 /// burst always produces an os-error-28/112 sibling event) or a
 /// `max_page_count` PRAGMA cap (we set none).
 ///
-/// The rusqlite `Display` for `SQLITE_FULL` is exactly the five words
-/// `"database or disk is full"` — no preamble, no trailing context. Our local
-/// memory-store write call-sites wrap it with `format!("<verb>: {e}")`
-/// (e.g. `"commit tx: ..."` / `"clear_namespace commit tx: ..."` in
-/// `memory_store::unified::documents`), so the phrase always lands as the
-/// **suffix** of the local emit. Anchor on suffix, not `contains`, so the
-/// silencer does not match a non-2xx backend response body whose payload
-/// happens to mention the same phrase (e.g. an `api.tinyhumans.ai` 5xx whose
-/// server-side SQLite is full). Non-2xx backend bodies are framed by
+/// rusqlite renders `SQLITE_FULL` in one of two shapes. The **bare** shape is
+/// the five words `"database or disk is full"` — Our local memory-store write
+/// call-sites wrap it with `format!("<verb>: {e}")` (e.g. `"commit tx: ..."` /
+/// `"clear_namespace commit tx: ..."` in `memory_store::unified::documents`),
+/// so the phrase lands as the **suffix** of the local emit. The **extended**
+/// shape carries the full error-code envelope, `"database or disk is full:
+/// Error code 13: Insertion failed because database is full"` (Sentry
+/// TAURI-RUST-4R8, `memory_queue::store::claim_next` on `mem_tree_jobs`); here
+/// the canonical phrase sits mid-string, so the suffix anchor can't catch it.
+/// We detect this shape by requiring **both** local fragments together — the
+/// `"database or disk is full"` phrase AND the libsqlite3-sys `code_to_str`
+/// token `"insertion failed because database is full"` — which only rusqlite's
+/// own `SQLITE_FULL` Display emits as a pair. Requiring both (rather than the
+/// `code_to_str` token alone) keeps the silencer from matching a remote
+/// provider body that merely quotes the token half — e.g. an OpenAI-compatible
+/// `OpenAiEmbedding::embed` failure framed as `"Embedding API error (… Error
+/// code 13: Insertion failed because database is full)"` whose *server-side*
+/// SQLite is full is operator-actionable and must still surface to Sentry
+/// (codex CR on #3911). Both arms anchor on local-emit fragments rather than a
+/// bare `contains("database or disk is full")` so the silencer does not match a
+/// non-2xx backend response body whose payload happens to mention the phrase
+/// (e.g. an `api.tinyhumans.ai` 5xx whose server-side SQLite is full). Non-2xx
+/// backend bodies are framed by
 /// `integrations::client::post` / `composio::client` as `"Backend returned
 /// <status> <reason> for <METHOD> <url>: <detail>"` — an operator-actionable
 /// server/storage failure that must still surface to Sentry. As
@@ -546,15 +560,22 @@ fn is_disk_full_message(lower: &str) -> bool {
     {
         return true;
     }
-    // SQLITE_FULL — see the fifth-shape section above for the scoping
-    // rationale. Suffix anchor (after trimming trailing whitespace and
-    // punctuation that closures / JSON wrappers commonly append) pins to the
-    // local-emit shape; the negative `"backend returned "` guard rejects the
-    // remote envelope as a second line of defense.
+    // Two SQLITE_FULL renderings — see the fifth-shape section above. The
+    // **bare** shape lands the phrase as a suffix (after trimming trailing
+    // whitespace / punctuation that closures + JSON wrappers append). The
+    // **extended** shape (TAURI-RUST-4R8) puts the phrase mid-string followed
+    // by `: Error code 13: Insertion failed because database is full`; require
+    // BOTH local fragments so we match only rusqlite's own `SQLITE_FULL` Display
+    // and never a remote provider body that merely quotes the `code_to_str`
+    // half (codex CR on #3911). The negative `"backend returned "` guard
+    // rejects the remote 5xx envelope as a further line of defense.
     let trimmed = lower.trim_end_matches(|c: char| {
         c.is_ascii_whitespace() || matches!(c, '.' | ',' | ';' | ':' | '"' | '\'')
     });
-    trimmed.ends_with("database or disk is full") && !lower.contains("backend returned ")
+    let bare_suffix = trimmed.ends_with("database or disk is full");
+    let extended_local = lower.contains("database or disk is full")
+        && lower.contains("insertion failed because database is full");
+    (bare_suffix || extended_local) && !lower.contains("backend returned ")
 }
 
 /// Detect the literal `"Config loading timed out"` string produced by
@@ -3000,6 +3021,12 @@ mod tests {
             // `openhuman.memory_doc_ingest`, in the same burst that emits
             // os-error-112 siblings (Sentry TAURI-RUST-B6N).
             "commit tx: database or disk is full",
+            // SQLITE_FULL **extended** rendering — the full error-code envelope
+            // where the canonical phrase is mid-string, not a suffix (Sentry
+            // TAURI-RUST-4R8, `memory_queue::store::claim_next` on
+            // `mem_tree_jobs`). Caught via the `code_to_str` token arm.
+            "Failed to claim next mem_tree_jobs row: database or disk is full: \
+             Error code 13: Insertion failed because database is full",
         ] {
             assert_eq!(
                 expected_error_kind(raw),
@@ -3059,6 +3086,33 @@ mod tests {
             ),
             None,
             "remote-backend body must surface even when the body itself ends with the phrase"
+        );
+        // Same guard for the extended-code token: a backend body that quotes
+        // the SQLITE_FULL `code_to_str` string is still operator-actionable
+        // and must surface (TAURI-RUST-4R8 token arm + `"backend returned "`
+        // exclusion).
+        assert_eq!(
+            expected_error_kind(
+                "Backend returned 507 Insufficient Storage for POST \
+                 https://api.tinyhumans.ai/agent-integrations/composio/list: \
+                 Error code 13: Insertion failed because database is full"
+            ),
+            None,
+            "remote-backend body carrying the extended SQLITE_FULL token must surface"
+        );
+        // A remote OpenAI-compatible embeddings 500 whose server-side SQLite is
+        // full is wrapped by `OpenAiEmbedding::embed` as `"Embedding API error
+        // (…)"` — no `"backend returned "` prefix and no local `"database or
+        // disk is full"` phrase, just the `code_to_str` half. Requiring BOTH
+        // local fragments for the extended shape keeps this operator-actionable
+        // server fault reportable (codex CR on #3911).
+        assert_eq!(
+            expected_error_kind(
+                "Embedding API error (status 500): Error code 13: \
+                 Insertion failed because database is full"
+            ),
+            None,
+            "remote embedding-API body quoting only the code_to_str token must surface"
         );
         // Non-suffix occurrences in other body framings (no `"Backend
         // returned"` prefix) are also excluded by the suffix anchor — locks
