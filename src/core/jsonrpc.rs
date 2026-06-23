@@ -2322,6 +2322,14 @@ fn register_domain_subscribers(
         // originating chat as an idle-gated, batched, system-injected turn.
         crate::openhuman::agent_orchestration::background_delivery::register_background_delivery();
 
+        // Run-ledger finalizer: detached `spawn_async_subagent` runs outlive
+        // their parent turn, so their terminal `AgentProgress` never reaches the
+        // per-turn progress bridge that settles the ledger. This global-bus
+        // subscriber settles `agent_runs` from `DomainEvent::Subagent{Completed,
+        // Failed}` (always fired from the detached task), preventing rows from
+        // leaking as perpetual `running` timeline entries on thread reopen.
+        crate::openhuman::agent_orchestration::run_ledger_finalize::register_run_ledger_finalize_subscriber(&config);
+
         // MCP clients lifecycle subscriber: logs McpServer{Installed,Connected,
         // Disconnected} + McpClientToolExecuted for observability. The boot-time
         // spawn of installed servers (boot::spawn_installed_servers) runs later
@@ -2390,6 +2398,18 @@ pub async fn bootstrap_core_runtime(host_kind: crate::core::types::HostKind) {
                 log::warn!("[runtime] failed to mark stale turn snapshots interrupted: {err}")
             }
         }
+    }
+
+    // --- Run-ledger recovery -------------------------------------------
+    // Detached sub-agent runs (`spawn_async_subagent`) from a previous process
+    // are gone with that process. Any `agent_runs` row still marked `running`
+    // at boot is orphaned — its driver died without firing a terminal event, so
+    // the finalizer never settled it. Stamp such rows `interrupted` so they stop
+    // rendering as perpetual "running" timeline entries on thread reopen.
+    match crate::openhuman::session_db::run_ledger::interrupt_orphaned_agent_runs(&cfg) {
+        Ok(0) => {}
+        Ok(count) => log::info!("[runtime] settled {count} orphaned agent run(s) on startup"),
+        Err(err) => log::warn!("[runtime] failed to settle orphaned agent runs: {err}"),
     }
 
     // --- Cost dashboard tracker ---
