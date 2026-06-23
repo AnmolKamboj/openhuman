@@ -31,6 +31,7 @@ import SecurityBanner from './components/SecurityBanner';
 import SettingsModal from './components/settings/modal/SettingsModal';
 import { resolveSettingsOverlay } from './components/settings/modal/settingsOverlay';
 import GlobalUpsellBanner from './components/upsell/GlobalUpsellBanner';
+import UserErrorCenter from './components/userErrors/UserErrorCenter';
 import AppWalkthrough from './components/walkthrough/AppWalkthrough';
 import { MascotFrameProducer } from './features/meet/MascotFrameProducer';
 import { useNotchBootSync } from './hooks/useNotchBootSync';
@@ -309,6 +310,11 @@ export function AppShellDesktop() {
             beneath when the URL is a settings path. */}
         {settingsOpen && !chromeless && <SettingsModal />}
         <OpenhumanLinkModal />
+        {/* User-actionable runtime errors (#3931): a first-class panel for
+            expected user states (insufficient BYO credits, managed-budget
+            exhaustion). Mounted outside the routes so entries survive route
+            changes and background-job completion. */}
+        <UserErrorCenter />
         {/* Hidden Remotion-driven producer for the Meet camera. Mounts a
             640×480 JPEG frame stream to the Rust frame bus while a meet
             call is active; idle no-op otherwise. See
