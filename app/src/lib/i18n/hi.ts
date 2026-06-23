@@ -5017,6 +5017,44 @@ const messages: TranslationMap = {
   'upsell.usageLimit.resetsIn': 'यह {time} रीसेट होती है।',
   'upsell.usageLimit.upgradePlan': 'प्लान अपग्रेड करें',
   'upsell.usageLimit.weeklyInference': '{amount}',
+  'walkthrough.steps.startChat.title': 'चैट से शुरू करें',
+  'walkthrough.steps.startChat.content':
+    'चैट आपका शुरुआती स्थान है। नई विंडो उसी स्वागत संदेश और तेज़ कार्रवाइयों के साथ खुलती हैं जो आपने सेटअप के बाद देखीं।',
+  'walkthrough.steps.sayHello.title': 'नमस्ते कहें',
+  'walkthrough.steps.sayHello.content':
+    'कभी भी अपने AI सहायक से बातचीत शुरू करने के लिए यहां टैप करें।',
+  'walkthrough.steps.meetAi.title': 'अपने AI से मिलें',
+  'walkthrough.steps.meetAi.content':
+    'बातचीत यहीं होती है। सवाल पूछें, सारांश लें या विचार करें। सब कुछ खोजने योग्य रहता है।',
+  'walkthrough.steps.connectWorld.title': 'अपनी दुनिया जोड़ें',
+  'walkthrough.steps.connectWorld.content':
+    'Gmail, Slack, WhatsApp और बहुत कुछ: हर कनेक्शन आपके सहायक को नई क्षमताएं देता है।',
+  'walkthrough.steps.messagingApps.title': 'जहां आप पहले से हैं वहीं चैट करें',
+  'walkthrough.steps.messagingApps.content':
+    'WhatsApp, Telegram, Slack, Discord जोड़ें ताकि आपका सहायक आपको कहीं भी पहुंच सके।',
+  'walkthrough.steps.settings.title': 'इसे अपना बनाएं',
+  'walkthrough.steps.settings.content':
+    'पसंद, गोपनीयता और सूचनाएं यहां हैं। आप इस पेज से यह टूर कभी भी फिर शुरू कर सकते हैं।',
+  'walkthrough.steps.chatTab.title': 'चैट पर वापस जाएं',
+  'walkthrough.steps.chatTab.content': 'जब भी बातचीत पर लौटना हो, Chat टैब का उपयोग करें।',
+  'walkthrough.steps.humanTab.title': 'अपनी Human प्रोफ़ाइल देखें',
+  'walkthrough.steps.humanTab.content':
+    'Human आपका निजी संदर्भ, पहचान और सहायक को दिखने वाली प्रोफ़ाइल एक साथ रखता है।',
+  'walkthrough.steps.brainTab.title': 'अपना Brain खोलें',
+  'walkthrough.steps.brainTab.content':
+    'Brain मेमोरी ग्राफ है: यहां देखें कि OpenHuman क्या जानता है और विचार कैसे जुड़े हैं।',
+  'walkthrough.steps.agentWorldTab.title': 'Agent World देखें',
+  'walkthrough.steps.agentWorldTab.content':
+    'Agent World में पुन: उपयोग योग्य एजेंट और साझा ऑटोमेशन रहते हैं।',
+  'walkthrough.steps.connectionsTab.title': 'कनेक्शन प्रबंधित करें',
+  'walkthrough.steps.connectionsTab.content':
+    'सेवाएं जोड़ने या बदलने के लिए Connections हमेशा मुख्य नेविगेशन में उपलब्ध है।',
+  'walkthrough.steps.feedbackTab.title': 'फ़ीडबैक भेजें',
+  'walkthrough.steps.feedbackTab.content':
+    'Feedback समस्याएं बताने या सुधार मांगने की सीधी जगह है।',
+  'walkthrough.steps.allSet.title': 'सब तैयार है!',
+  'walkthrough.steps.allSet.content':
+    'आपके सहायक ने स्वागत नोट छोड़ा है: यहां आप चैट कर सकते हैं, सवाल पूछ सकते हैं या विचार कर सकते हैं। आनंद लें!',
   'walkthrough.tooltip.letsGo': 'चलिए शुरू करें!',
   'walkthrough.tooltip.next': 'अगला →',
   'walkthrough.tooltip.skip': 'टूर छोड़ें',

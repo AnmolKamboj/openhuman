@@ -5127,6 +5127,45 @@ const messages: TranslationMap = {
   'upsell.usageLimit.resetsIn': 'Réinitialisation {time}.',
   'upsell.usageLimit.upgradePlan': 'Mettre à niveau le plan',
   'upsell.usageLimit.weeklyInference': '{amount}',
+  'walkthrough.steps.startChat.title': 'Commencez dans le chat',
+  'walkthrough.steps.startChat.content':
+    'Le chat est votre point de départ. Les nouvelles fenêtres s’ouvrent avec le même accueil et les actions rapides vues pendant la configuration.',
+  'walkthrough.steps.sayHello.title': 'Dites bonjour',
+  'walkthrough.steps.sayHello.content':
+    'Appuyez ici pour lancer une conversation avec votre assistant IA à tout moment.',
+  'walkthrough.steps.meetAi.title': 'Rencontrez votre IA',
+  'walkthrough.steps.meetAi.content':
+    'C’est ici que les conversations ont lieu. Posez des questions, demandez des résumés ou explorez des idées. Tout reste consultable.',
+  'walkthrough.steps.connectWorld.title': 'Connectez votre monde',
+  'walkthrough.steps.connectWorld.content':
+    'Gmail, Slack, WhatsApp et plus encore : chaque connexion donne de nouveaux pouvoirs à votre assistant.',
+  'walkthrough.steps.messagingApps.title': 'Discutez là où vous êtes déjà',
+  'walkthrough.steps.messagingApps.content':
+    'WhatsApp, Telegram, Slack, Discord : connectez vos messageries pour que votre assistant puisse vous joindre partout.',
+  'walkthrough.steps.settings.title': 'Personnalisez-le',
+  'walkthrough.steps.settings.content':
+    'Préférences, confidentialité et notifications sont ici. Vous pouvez relancer cette visite depuis cette page à tout moment.',
+  'walkthrough.steps.chatTab.title': 'Retour au chat',
+  'walkthrough.steps.chatTab.content':
+    'Utilisez l’onglet Chat dès que vous voulez revenir à vos conversations.',
+  'walkthrough.steps.humanTab.title': 'Votre profil humain',
+  'walkthrough.steps.humanTab.content':
+    'Human réunit votre contexte personnel, votre identité et le profil visible par l’assistant.',
+  'walkthrough.steps.brainTab.title': 'Ouvrez votre Brain',
+  'walkthrough.steps.brainTab.content':
+    'Brain est le graphe de mémoire : l’endroit où vérifier ce qu’OpenHuman sait et comment les idées se relient.',
+  'walkthrough.steps.agentWorldTab.title': 'Explorez Agent World',
+  'walkthrough.steps.agentWorldTab.content':
+    'Agent World regroupe les agents réutilisables et les automatisations partagées.',
+  'walkthrough.steps.connectionsTab.title': 'Gérer les connexions',
+  'walkthrough.steps.connectionsTab.content':
+    'Connections reste disponible dans la navigation principale pour ajouter ou ajuster des services.',
+  'walkthrough.steps.feedbackTab.title': 'Envoyer un retour',
+  'walkthrough.steps.feedbackTab.content':
+    'Feedback vous donne un lieu direct pour signaler les problèmes ou demander des améliorations.',
+  'walkthrough.steps.allSet.title': 'Tout est prêt !',
+  'walkthrough.steps.allSet.content':
+    'Votre assistant vous a laissé une note de bienvenue : cet espace sert à discuter, poser des questions ou explorer des idées. Amusez-vous bien !',
   'walkthrough.tooltip.letsGo': "C'est parti !",
   'walkthrough.tooltip.next': 'Suivant →',
   'walkthrough.tooltip.skip': 'Passer la visite',

@@ -5096,6 +5096,44 @@ const messages: TranslationMap = {
   'upsell.usageLimit.resetsIn': 'Si resetta {time}.',
   'upsell.usageLimit.upgradePlan': 'Aggiorna piano',
   'upsell.usageLimit.weeklyInference': '{amount}',
+  'walkthrough.steps.startChat.title': 'Inizia dalla chat',
+  'walkthrough.steps.startChat.content':
+    'La chat è il tuo punto di partenza. Le nuove finestre si aprono con lo stesso saluto e le azioni rapide viste durante la configurazione.',
+  'walkthrough.steps.sayHello.title': 'Saluta',
+  'walkthrough.steps.sayHello.content':
+    'Tocca qui per avviare una conversazione con il tuo assistente IA in qualsiasi momento.',
+  'walkthrough.steps.meetAi.title': 'Conosci la tua IA',
+  'walkthrough.steps.meetAi.content':
+    'Qui avvengono le conversazioni. Fai domande, ottieni riassunti o sviluppa idee. Tutto resta ricercabile.',
+  'walkthrough.steps.connectWorld.title': 'Connetti il tuo mondo',
+  'walkthrough.steps.connectWorld.content':
+    'Gmail, Slack, WhatsApp e altro: ogni connessione dà nuovi poteri al tuo assistente.',
+  'walkthrough.steps.messagingApps.title': 'Chatta dove sei già',
+  'walkthrough.steps.messagingApps.content':
+    'WhatsApp, Telegram, Slack, Discord: collega le app di messaggistica così il tuo assistente può raggiungerti ovunque.',
+  'walkthrough.steps.settings.title': 'Rendilo tuo',
+  'walkthrough.steps.settings.content':
+    'Preferenze, privacy e notifiche sono qui. Puoi riavviare questo tour da questa pagina in qualsiasi momento.',
+  'walkthrough.steps.chatTab.title': 'Torna alla chat',
+  'walkthrough.steps.chatTab.content': 'Usa la scheda Chat quando vuoi tornare alle conversazioni.',
+  'walkthrough.steps.humanTab.title': 'Scopri il tuo profilo umano',
+  'walkthrough.steps.humanTab.content':
+    'Human riunisce contesto personale, identità e profilo visibile all’assistente.',
+  'walkthrough.steps.brainTab.title': 'Apri il tuo Brain',
+  'walkthrough.steps.brainTab.content':
+    'Brain è il grafo della memoria: il posto dove vedere cosa sa OpenHuman e come si collegano le idee.',
+  'walkthrough.steps.agentWorldTab.title': 'Esplora Agent World',
+  'walkthrough.steps.agentWorldTab.content':
+    'Agent World ospita agenti riutilizzabili e automazioni condivise.',
+  'walkthrough.steps.connectionsTab.title': 'Gestisci connessioni',
+  'walkthrough.steps.connectionsTab.content':
+    'Connections è sempre nella navigazione principale quando vuoi aggiungere o modificare servizi.',
+  'walkthrough.steps.feedbackTab.title': 'Invia feedback',
+  'walkthrough.steps.feedbackTab.content':
+    'Feedback è il luogo diretto per segnalare problemi o chiedere miglioramenti.',
+  'walkthrough.steps.allSet.title': 'Tutto pronto!',
+  'walkthrough.steps.allSet.content':
+    'Il tuo assistente ti ha lasciato una nota di benvenuto: qui puoi chattare, fare domande o sviluppare idee. Buon divertimento!',
   'walkthrough.tooltip.letsGo': 'Andiamo!',
   'walkthrough.tooltip.next': 'Avanti →',
   'walkthrough.tooltip.skip': 'Salta tour',

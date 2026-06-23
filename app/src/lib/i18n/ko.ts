@@ -4971,6 +4971,43 @@ const messages: TranslationMap = {
   'upsell.usageLimit.resetsIn': '{time}에 초기화됩니다.',
   'upsell.usageLimit.upgradePlan': '플랜 업그레이드',
   'upsell.usageLimit.weeklyInference': '{amount}',
+  'walkthrough.steps.startChat.title': '채팅에서 시작하기',
+  'walkthrough.steps.startChat.content':
+    '채팅이 시작점입니다. 새 창은 설정 후 보았던 같은 인사와 빠른 작업으로 열립니다.',
+  'walkthrough.steps.sayHello.title': '인사하기',
+  'walkthrough.steps.sayHello.content': '언제든 여기를 눌러 AI 어시스턴트와 대화를 시작하세요.',
+  'walkthrough.steps.meetAi.title': 'AI 만나기',
+  'walkthrough.steps.meetAi.content':
+    '대화가 이루어지는 곳입니다. 질문하고, 요약을 받고, 아이디어를 정리하세요. 모든 내용은 검색할 수 있습니다.',
+  'walkthrough.steps.connectWorld.title': '내 세계 연결하기',
+  'walkthrough.steps.connectWorld.content':
+    'Gmail, Slack, WhatsApp 등 각 연결은 어시스턴트에 더 많은 기능을 더합니다.',
+  'walkthrough.steps.messagingApps.title': '이미 쓰는 곳에서 채팅하기',
+  'walkthrough.steps.messagingApps.content':
+    'WhatsApp, Telegram, Slack, Discord를 연결하면 어시스턴트가 어디서든 연락할 수 있습니다.',
+  'walkthrough.steps.settings.title': '내 방식으로 설정하기',
+  'walkthrough.steps.settings.content':
+    '환경설정, 개인정보, 알림이 모두 여기에 있습니다. 이 페이지에서 언제든 투어를 다시 시작할 수 있습니다.',
+  'walkthrough.steps.chatTab.title': '채팅으로 돌아가기',
+  'walkthrough.steps.chatTab.content': '대화로 돌아가고 싶을 때 Chat 탭을 사용하세요.',
+  'walkthrough.steps.humanTab.title': 'Human 프로필 보기',
+  'walkthrough.steps.humanTab.content':
+    'Human은 개인 맥락, 정체성, 어시스턴트가 보는 프로필을 한곳에 모읍니다.',
+  'walkthrough.steps.brainTab.title': 'Brain 열기',
+  'walkthrough.steps.brainTab.content':
+    'Brain은 메모리 그래프입니다. OpenHuman이 무엇을 알고 아이디어가 어떻게 연결되는지 확인하는 곳입니다.',
+  'walkthrough.steps.agentWorldTab.title': 'Agent World 탐색',
+  'walkthrough.steps.agentWorldTab.content':
+    'Agent World에는 재사용 가능한 에이전트와 공유 자동화가 있습니다.',
+  'walkthrough.steps.connectionsTab.title': '연결 관리',
+  'walkthrough.steps.connectionsTab.content':
+    '서비스를 추가하거나 조정하고 싶을 때 Connections는 항상 기본 내비게이션에 있습니다.',
+  'walkthrough.steps.feedbackTab.title': '피드백 보내기',
+  'walkthrough.steps.feedbackTab.content':
+    'Feedback은 문제를 보고하거나 개선을 요청하는 직접적인 공간입니다.',
+  'walkthrough.steps.allSet.title': '준비 완료!',
+  'walkthrough.steps.allSet.content':
+    '어시스턴트가 환영 메모를 남겼습니다. 이곳에서 채팅하고, 질문하고, 아이디어를 정리해 보세요. 즐겁게 사용하세요!',
   'walkthrough.tooltip.letsGo': '시작해 봅시다!',
   'walkthrough.tooltip.next': '다음 →',
   'walkthrough.tooltip.skip': '투어 건너뛰기',

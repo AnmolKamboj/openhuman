@@ -4917,6 +4917,42 @@ const messages: TranslationMap = {
   'upsell.usageLimit.resetsIn': 'يُعاد التعيين {time}.',
   'upsell.usageLimit.upgradePlan': 'ترقية الخطة',
   'upsell.usageLimit.weeklyInference': '{amount}',
+  'walkthrough.steps.startChat.title': 'ابدأ من الدردشة',
+  'walkthrough.steps.startChat.content':
+    'الدردشة هي نقطة البداية. تفتح النوافذ الجديدة بالترحيب نفسه والإجراءات السريعة التي رأيتها بعد الإعداد.',
+  'walkthrough.steps.sayHello.title': 'قل مرحباً',
+  'walkthrough.steps.sayHello.content': 'اضغط هنا لبدء محادثة مع مساعد الذكاء الاصطناعي في أي وقت.',
+  'walkthrough.steps.meetAi.title': 'تعرّف إلى الذكاء الاصطناعي',
+  'walkthrough.steps.meetAi.content':
+    'هنا تجري المحادثات. اطرح الأسئلة، واحصل على الملخصات، أو طوّر الأفكار. يبقى كل شيء قابلاً للبحث.',
+  'walkthrough.steps.connectWorld.title': 'صِل عالمك',
+  'walkthrough.steps.connectWorld.content':
+    'Gmail وSlack وWhatsApp والمزيد: كل اتصال يمنح مساعدك قدرات جديدة.',
+  'walkthrough.steps.messagingApps.title': 'تحدث حيث أنت بالفعل',
+  'walkthrough.steps.messagingApps.content':
+    'اربط WhatsApp وTelegram وSlack وDiscord حتى يتمكن مساعدك من الوصول إليك في أي مكان.',
+  'walkthrough.steps.settings.title': 'اجعله مناسباً لك',
+  'walkthrough.steps.settings.content':
+    'التفضيلات والخصوصية والإشعارات كلها هنا. يمكنك إعادة تشغيل هذه الجولة من هذه الصفحة في أي وقت.',
+  'walkthrough.steps.chatTab.title': 'ارجع إلى الدردشة',
+  'walkthrough.steps.chatTab.content': 'استخدم تبويب Chat عندما تريد الرجوع إلى محادثاتك.',
+  'walkthrough.steps.humanTab.title': 'تعرّف إلى ملف Human',
+  'walkthrough.steps.humanTab.content': 'يجمع Human سياقك الشخصي وهويتك والملف الذي يراه المساعد.',
+  'walkthrough.steps.brainTab.title': 'افتح Brain',
+  'walkthrough.steps.brainTab.content':
+    'Brain هو مخطط الذاكرة: المكان الذي تفحص فيه ما يعرفه OpenHuman وكيف ترتبط الأفكار.',
+  'walkthrough.steps.agentWorldTab.title': 'استكشف Agent World',
+  'walkthrough.steps.agentWorldTab.content':
+    'Agent World هو مكان الوكلاء القابلين لإعادة الاستخدام والأتمتة المشتركة.',
+  'walkthrough.steps.connectionsTab.title': 'إدارة الاتصالات',
+  'walkthrough.steps.connectionsTab.content':
+    'Connections متاح دائماً في التنقل الرئيسي عندما تريد إضافة الخدمات أو تعديلها.',
+  'walkthrough.steps.feedbackTab.title': 'إرسال ملاحظات',
+  'walkthrough.steps.feedbackTab.content':
+    'يوفر Feedback مكاناً مباشراً للإبلاغ عن المشاكل أو طلب التحسينات.',
+  'walkthrough.steps.allSet.title': 'كل شيء جاهز!',
+  'walkthrough.steps.allSet.content':
+    'ترك لك المساعد رسالة ترحيب: هذه مساحتك للدردشة وطرح الأسئلة وتطوير الأفكار. استمتع!',
   'walkthrough.tooltip.letsGo': 'هيا بنا!',
   'walkthrough.tooltip.next': 'التالي →',
   'walkthrough.tooltip.skip': 'تخطّي الجولة',

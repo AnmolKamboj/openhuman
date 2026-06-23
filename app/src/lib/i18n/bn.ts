@@ -5014,6 +5014,44 @@ const messages: TranslationMap = {
   'upsell.usageLimit.resetsIn': 'এটি {time} রিসেট হবে।',
   'upsell.usageLimit.upgradePlan': 'প্ল্যান আপগ্রেড করুন',
   'upsell.usageLimit.weeklyInference': '{amount}',
+  'walkthrough.steps.startChat.title': 'চ্যাট থেকে শুরু করুন',
+  'walkthrough.steps.startChat.content':
+    'চ্যাটই আপনার শুরু করার জায়গা। নতুন উইন্ডো সেটআপের পর দেখা একই শুভেচ্ছা ও দ্রুত কাজ নিয়ে খুলবে।',
+  'walkthrough.steps.sayHello.title': 'শুভেচ্ছা জানান',
+  'walkthrough.steps.sayHello.content':
+    'যেকোনো সময় আপনার AI সহকারীর সঙ্গে কথা শুরু করতে এখানে চাপুন।',
+  'walkthrough.steps.meetAi.title': 'আপনার AI-কে জানুন',
+  'walkthrough.steps.meetAi.content':
+    'কথোপকথন এখানেই হয়। প্রশ্ন করুন, সারাংশ নিন বা ভাবনা গুছান। সবকিছু খুঁজে পাওয়া যায়।',
+  'walkthrough.steps.connectWorld.title': 'আপনার জগৎ যুক্ত করুন',
+  'walkthrough.steps.connectWorld.content':
+    'Gmail, Slack, WhatsApp এবং আরও অনেক কিছু: প্রতিটি সংযোগ আপনার সহকারীকে নতুন ক্ষমতা দেয়।',
+  'walkthrough.steps.messagingApps.title': 'যেখানে আছেন সেখানেই চ্যাট করুন',
+  'walkthrough.steps.messagingApps.content':
+    'WhatsApp, Telegram, Slack, Discord যুক্ত করুন, যাতে সহকারী আপনাকে যেকোনো জায়গায় পৌঁছাতে পারে।',
+  'walkthrough.steps.settings.title': 'নিজের মতো সাজান',
+  'walkthrough.steps.settings.content':
+    'পছন্দ, গোপনীয়তা ও নোটিফিকেশন এখানে আছে। এই পেজ থেকে যেকোনো সময় ট্যুরটি আবার শুরু করতে পারেন।',
+  'walkthrough.steps.chatTab.title': 'চ্যাটে ফিরে যান',
+  'walkthrough.steps.chatTab.content': 'কথোপকথনে ফিরতে চাইলে Chat ট্যাব ব্যবহার করুন।',
+  'walkthrough.steps.humanTab.title': 'আপনার Human প্রোফাইল দেখুন',
+  'walkthrough.steps.humanTab.content':
+    'Human আপনার ব্যক্তিগত প্রসঙ্গ, পরিচয় এবং সহকারীর দেখা প্রোফাইল একত্র করে।',
+  'walkthrough.steps.brainTab.title': 'আপনার Brain খুলুন',
+  'walkthrough.steps.brainTab.content':
+    'Brain হলো মেমোরি গ্রাফ: OpenHuman কী জানে এবং ধারণাগুলো কীভাবে যুক্ত তা দেখার জায়গা।',
+  'walkthrough.steps.agentWorldTab.title': 'Agent World ঘুরে দেখুন',
+  'walkthrough.steps.agentWorldTab.content':
+    'Agent World-এ পুনরায় ব্যবহারযোগ্য এজেন্ট ও শেয়ার করা অটোমেশন থাকে।',
+  'walkthrough.steps.connectionsTab.title': 'সংযোগ পরিচালনা করুন',
+  'walkthrough.steps.connectionsTab.content':
+    'সেবা যোগ বা বদলাতে চাইলে Connections সবসময় প্রধান নেভিগেশনে থাকে।',
+  'walkthrough.steps.feedbackTab.title': 'মতামত পাঠান',
+  'walkthrough.steps.feedbackTab.content':
+    'Feedback সমস্যা জানানো বা উন্নতির অনুরোধ করার সরাসরি জায়গা।',
+  'walkthrough.steps.allSet.title': 'সব প্রস্তুত!',
+  'walkthrough.steps.allSet.content':
+    'আপনার সহকারী একটি স্বাগত নোট রেখে গেছে: এখানে আপনি চ্যাট করতে, প্রশ্ন করতে বা ধারণা গুছাতে পারেন। উপভোগ করুন!',
   'walkthrough.tooltip.letsGo': 'চলুন শুরু করি!',
   'walkthrough.tooltip.next': 'পরবর্তী →',
   'walkthrough.tooltip.skip': 'ট্যুর এড়িয়ে যান',

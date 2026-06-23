@@ -5029,6 +5029,45 @@ const messages: TranslationMap = {
   'upsell.usageLimit.resetsIn': 'Akan direset {time}.',
   'upsell.usageLimit.upgradePlan': 'Upgrade paket',
   'upsell.usageLimit.weeklyInference': '{amount}',
+  'walkthrough.steps.startChat.title': 'Mulai di chat',
+  'walkthrough.steps.startChat.content':
+    'Chat adalah titik awal Anda. Jendela baru terbuka dengan sapaan dan tindakan cepat yang sama seperti setelah penyiapan.',
+  'walkthrough.steps.sayHello.title': 'Sapa dulu',
+  'walkthrough.steps.sayHello.content':
+    'Ketuk di sini untuk memulai percakapan dengan asisten AI kapan saja.',
+  'walkthrough.steps.meetAi.title': 'Kenali AI Anda',
+  'walkthrough.steps.meetAi.content':
+    'Di sinilah percakapan berlangsung. Ajukan pertanyaan, minta ringkasan, atau susun ide. Semuanya tetap bisa dicari.',
+  'walkthrough.steps.connectWorld.title': 'Hubungkan dunia Anda',
+  'walkthrough.steps.connectWorld.content':
+    'Gmail, Slack, WhatsApp, dan lainnya: setiap koneksi memberi asisten Anda kemampuan baru.',
+  'walkthrough.steps.messagingApps.title': 'Chat di tempat Anda biasa berada',
+  'walkthrough.steps.messagingApps.content':
+    'WhatsApp, Telegram, Slack, Discord: hubungkan aplikasi pesan agar asisten dapat menjangkau Anda di mana saja.',
+  'walkthrough.steps.settings.title': 'Sesuaikan sendiri',
+  'walkthrough.steps.settings.content':
+    'Preferensi, privasi, dan notifikasi ada di sini. Anda dapat memulai ulang tur ini dari halaman ini kapan saja.',
+  'walkthrough.steps.chatTab.title': 'Kembali ke chat',
+  'walkthrough.steps.chatTab.content':
+    'Gunakan tab Chat kapan pun Anda ingin kembali ke percakapan.',
+  'walkthrough.steps.humanTab.title': 'Kenali profil Human Anda',
+  'walkthrough.steps.humanTab.content':
+    'Human menyatukan konteks pribadi, identitas, dan profil yang dilihat asisten.',
+  'walkthrough.steps.brainTab.title': 'Buka Brain Anda',
+  'walkthrough.steps.brainTab.content':
+    'Brain adalah grafik memori: tempat melihat apa yang diketahui OpenHuman dan bagaimana ide saling terhubung.',
+  'walkthrough.steps.agentWorldTab.title': 'Jelajahi Agent World',
+  'walkthrough.steps.agentWorldTab.content':
+    'Agent World adalah tempat agen yang dapat digunakan ulang dan automasi bersama.',
+  'walkthrough.steps.connectionsTab.title': 'Kelola koneksi',
+  'walkthrough.steps.connectionsTab.content':
+    'Connections selalu tersedia di navigasi utama saat Anda ingin menambah atau menyesuaikan layanan.',
+  'walkthrough.steps.feedbackTab.title': 'Kirim masukan',
+  'walkthrough.steps.feedbackTab.content':
+    'Feedback memberi tempat langsung untuk melaporkan masalah atau meminta peningkatan.',
+  'walkthrough.steps.allSet.title': 'Semua siap!',
+  'walkthrough.steps.allSet.content':
+    'Asisten meninggalkan catatan sambutan: ini ruang Anda untuk chat, bertanya, atau menyusun ide. Selamat mencoba!',
   'walkthrough.tooltip.letsGo': 'Ayo mulai!',
   'walkthrough.tooltip.next': 'Berikutnya →',
   'walkthrough.tooltip.skip': 'Lewati tur',

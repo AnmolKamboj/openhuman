@@ -5091,6 +5091,44 @@ const messages: TranslationMap = {
   'upsell.usageLimit.resetsIn': 'Resetuje się {time}.',
   'upsell.usageLimit.upgradePlan': 'Podnieś plan',
   'upsell.usageLimit.weeklyInference': '{amount}',
+  'walkthrough.steps.startChat.title': 'Zacznij na czacie',
+  'walkthrough.steps.startChat.content':
+    'Czat jest punktem startowym. Nowe okna otwierają się z tym samym powitaniem i szybkimi akcjami z konfiguracji.',
+  'walkthrough.steps.sayHello.title': 'Przywitaj się',
+  'walkthrough.steps.sayHello.content':
+    'Kliknij tutaj, aby w dowolnym momencie rozpocząć rozmowę z asystentem AI.',
+  'walkthrough.steps.meetAi.title': 'Poznaj swoją AI',
+  'walkthrough.steps.meetAi.content':
+    'Tutaj odbywają się rozmowy. Zadawaj pytania, proś o podsumowania lub rozwijaj pomysły. Wszystko pozostaje wyszukiwalne.',
+  'walkthrough.steps.connectWorld.title': 'Połącz swój świat',
+  'walkthrough.steps.connectWorld.content':
+    'Gmail, Slack, WhatsApp i więcej: każde połączenie daje asystentowi nowe możliwości.',
+  'walkthrough.steps.messagingApps.title': 'Czatuj tam, gdzie już jesteś',
+  'walkthrough.steps.messagingApps.content':
+    'WhatsApp, Telegram, Slack, Discord: połącz komunikatory, aby asystent mógł dotrzeć do Ciebie wszędzie.',
+  'walkthrough.steps.settings.title': 'Dostosuj pod siebie',
+  'walkthrough.steps.settings.content':
+    'Preferencje, prywatność i powiadomienia są tutaj. Możesz uruchomić tę prezentację ponownie z tej strony.',
+  'walkthrough.steps.chatTab.title': 'Wróć do czatu',
+  'walkthrough.steps.chatTab.content': 'Użyj karty Chat, gdy chcesz wrócić do rozmów.',
+  'walkthrough.steps.humanTab.title': 'Poznaj profil Human',
+  'walkthrough.steps.humanTab.content':
+    'Human łączy Twój kontekst osobisty, tożsamość i profil widoczny dla asystenta.',
+  'walkthrough.steps.brainTab.title': 'Otwórz Brain',
+  'walkthrough.steps.brainTab.content':
+    'Brain to graf pamięci: miejsce, w którym sprawdzisz, co wie OpenHuman i jak łączą się idee.',
+  'walkthrough.steps.agentWorldTab.title': 'Odkryj Agent World',
+  'walkthrough.steps.agentWorldTab.content':
+    'Agent World to miejsce na agentów wielokrotnego użytku i wspólne automatyzacje.',
+  'walkthrough.steps.connectionsTab.title': 'Zarządzaj połączeniami',
+  'walkthrough.steps.connectionsTab.content':
+    'Connections jest zawsze dostępne w głównej nawigacji, gdy chcesz dodać lub zmienić usługi.',
+  'walkthrough.steps.feedbackTab.title': 'Wyślij opinię',
+  'walkthrough.steps.feedbackTab.content':
+    'Feedback daje bezpośrednie miejsce do zgłaszania problemów lub próśb o ulepszenia.',
+  'walkthrough.steps.allSet.title': 'Gotowe!',
+  'walkthrough.steps.allSet.content':
+    'Asystent zostawił Ci wiadomość powitalną: tu możesz czatować, pytać i rozwijać pomysły. Miłej zabawy!',
   'walkthrough.tooltip.letsGo': 'Zaczynamy!',
   'walkthrough.tooltip.next': 'Dalej →',
   'walkthrough.tooltip.skip': 'Pomiń przewodnik',

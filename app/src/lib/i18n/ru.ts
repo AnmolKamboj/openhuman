@@ -5060,6 +5060,45 @@ const messages: TranslationMap = {
   'upsell.usageLimit.resetsIn': 'Сбросится {time}.',
   'upsell.usageLimit.upgradePlan': 'Улучшить план',
   'upsell.usageLimit.weeklyInference': '{amount}',
+  'walkthrough.steps.startChat.title': 'Начните в чате',
+  'walkthrough.steps.startChat.content':
+    'Чат — ваша отправная точка. Новые окна открываются с тем же приветствием и быстрыми действиями, которые вы видели после настройки.',
+  'walkthrough.steps.sayHello.title': 'Поздоровайтесь',
+  'walkthrough.steps.sayHello.content':
+    'Нажмите здесь, чтобы в любой момент начать разговор с ИИ-ассистентом.',
+  'walkthrough.steps.meetAi.title': 'Познакомьтесь с ИИ',
+  'walkthrough.steps.meetAi.content':
+    'Здесь проходят разговоры. Задавайте вопросы, получайте сводки или обдумывайте идеи. Все остается доступным для поиска.',
+  'walkthrough.steps.connectWorld.title': 'Подключите свой мир',
+  'walkthrough.steps.connectWorld.content':
+    'Gmail, Slack, WhatsApp и другое: каждое подключение дает ассистенту новые возможности.',
+  'walkthrough.steps.messagingApps.title': 'Общайтесь там, где уже работаете',
+  'walkthrough.steps.messagingApps.content':
+    'WhatsApp, Telegram, Slack, Discord: подключите мессенджеры, чтобы ассистент мог связаться с вами где угодно.',
+  'walkthrough.steps.settings.title': 'Настройте под себя',
+  'walkthrough.steps.settings.content':
+    'Предпочтения, приватность и уведомления находятся здесь. Этот тур можно перезапустить с этой страницы в любое время.',
+  'walkthrough.steps.chatTab.title': 'Вернуться в чат',
+  'walkthrough.steps.chatTab.content':
+    'Используйте вкладку Chat, когда хотите вернуться к разговорам.',
+  'walkthrough.steps.humanTab.title': 'Ваш профиль Human',
+  'walkthrough.steps.humanTab.content':
+    'Human объединяет личный контекст, идентичность и профиль, видимый ассистенту.',
+  'walkthrough.steps.brainTab.title': 'Откройте Brain',
+  'walkthrough.steps.brainTab.content':
+    'Brain — это граф памяти: здесь можно увидеть, что знает OpenHuman и как связаны идеи.',
+  'walkthrough.steps.agentWorldTab.title': 'Исследуйте Agent World',
+  'walkthrough.steps.agentWorldTab.content':
+    'Agent World — место для переиспользуемых агентов и общих автоматизаций.',
+  'walkthrough.steps.connectionsTab.title': 'Управляйте подключениями',
+  'walkthrough.steps.connectionsTab.content':
+    'Connections всегда доступен в основной навигации, когда нужно добавить или настроить сервисы.',
+  'walkthrough.steps.feedbackTab.title': 'Отправить отзыв',
+  'walkthrough.steps.feedbackTab.content':
+    'Feedback дает прямое место для сообщений о проблемах и просьб об улучшениях.',
+  'walkthrough.steps.allSet.title': 'Все готово!',
+  'walkthrough.steps.allSet.content':
+    'Ассистент оставил приветственную заметку: здесь можно общаться, задавать вопросы и развивать идеи. Удачи!',
   'walkthrough.tooltip.letsGo': 'Поехали!',
   'walkthrough.tooltip.next': 'Далее →',
   'walkthrough.tooltip.skip': 'Пропустить тур',

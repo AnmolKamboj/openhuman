@@ -5145,6 +5145,45 @@ const messages: TranslationMap = {
   'upsell.usageLimit.resetsIn': 'Es setzt {time} zurück.',
   'upsell.usageLimit.upgradePlan': 'Upgrade-Plan',
   'upsell.usageLimit.weeklyInference': '{amount}',
+  'walkthrough.steps.startChat.title': 'Im Chat starten',
+  'walkthrough.steps.startChat.content':
+    'Der Chat ist dein Startpunkt. Neue Fenster öffnen mit derselben Begrüßung und den Schnellaktionen aus der Einrichtung.',
+  'walkthrough.steps.sayHello.title': 'Sag Hallo',
+  'walkthrough.steps.sayHello.content':
+    'Tippe hier, um jederzeit ein Gespräch mit deinem KI-Assistenten zu starten.',
+  'walkthrough.steps.meetAi.title': 'Lerne deine KI kennen',
+  'walkthrough.steps.meetAi.content':
+    'Hier finden Unterhaltungen statt. Stelle Fragen, lass dir Zusammenfassungen geben oder sammle Ideen. Alles bleibt durchsuchbar.',
+  'walkthrough.steps.connectWorld.title': 'Verbinde deine Welt',
+  'walkthrough.steps.connectWorld.content':
+    'Gmail, Slack, WhatsApp und mehr: Jede Verbindung gibt deinem Assistenten neue Fähigkeiten.',
+  'walkthrough.steps.messagingApps.title': 'Chatte dort, wo du schon bist',
+  'walkthrough.steps.messagingApps.content':
+    'WhatsApp, Telegram, Slack, Discord: Verbinde deine Messenger, damit dein Assistent dich überall erreichen kann.',
+  'walkthrough.steps.settings.title': 'Passe alles an',
+  'walkthrough.steps.settings.content':
+    'Einstellungen, Datenschutz und Benachrichtigungen sind hier. Du kannst diese Tour jederzeit von dieser Seite neu starten.',
+  'walkthrough.steps.chatTab.title': 'Zurück zum Chat',
+  'walkthrough.steps.chatTab.content':
+    'Nutze den Chat-Tab, wenn du zu deinen Unterhaltungen zurückkehren möchtest.',
+  'walkthrough.steps.humanTab.title': 'Dein Human-Profil',
+  'walkthrough.steps.humanTab.content':
+    'Human bündelt deinen persönlichen Kontext, deine Identität und dein Assistentenprofil.',
+  'walkthrough.steps.brainTab.title': 'Öffne dein Brain',
+  'walkthrough.steps.brainTab.content':
+    'Brain ist der Wissensgraph: Hier prüfst du, was OpenHuman weiß und wie Ideen verbunden sind.',
+  'walkthrough.steps.agentWorldTab.title': 'Agent World erkunden',
+  'walkthrough.steps.agentWorldTab.content':
+    'In Agent World findest du wiederverwendbare Agenten und gemeinsame Automatisierungen.',
+  'walkthrough.steps.connectionsTab.title': 'Verbindungen verwalten',
+  'walkthrough.steps.connectionsTab.content':
+    'Connections ist immer in der Hauptnavigation verfügbar, wenn du Dienste hinzufügen oder anpassen möchtest.',
+  'walkthrough.steps.feedbackTab.title': 'Feedback senden',
+  'walkthrough.steps.feedbackTab.content':
+    'Feedback ist der direkte Ort, um Probleme zu melden oder Verbesserungen vorzuschlagen.',
+  'walkthrough.steps.allSet.title': 'Alles bereit!',
+  'walkthrough.steps.allSet.content':
+    'Dein Assistent hat dir eine Willkommensnotiz hinterlassen: Hier kannst du chatten, fragen oder Ideen sammeln. Viel Spaß!',
   'walkthrough.tooltip.letsGo': 'Lass uns gehen!',
   'walkthrough.tooltip.next': 'Weiter →',
   'walkthrough.tooltip.skip': 'Tour überspringen',

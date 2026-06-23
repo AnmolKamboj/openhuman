@@ -4774,6 +4774,39 @@ const messages: TranslationMap = {
   'upsell.usageLimit.resetsIn': '重置时间',
   'upsell.usageLimit.upgradePlan': '升级方案',
   'upsell.usageLimit.weeklyInference': '{amount}',
+  'walkthrough.steps.startChat.title': '从聊天开始',
+  'walkthrough.steps.startChat.content':
+    '聊天是你的起点。新窗口会显示设置后看到的同一欢迎语和快捷操作。',
+  'walkthrough.steps.sayHello.title': '打个招呼',
+  'walkthrough.steps.sayHello.content': '随时点击这里，开始和你的 AI 助手对话。',
+  'walkthrough.steps.meetAi.title': '认识你的 AI',
+  'walkthrough.steps.meetAi.content':
+    '对话都在这里进行。你可以提问、获取摘要或整理想法，所有内容都可以搜索。',
+  'walkthrough.steps.connectWorld.title': '连接你的世界',
+  'walkthrough.steps.connectWorld.content': 'Gmail、Slack、WhatsApp 等连接会为助手带来更多能力。',
+  'walkthrough.steps.messagingApps.title': '在常用地方聊天',
+  'walkthrough.steps.messagingApps.content':
+    '连接 WhatsApp、Telegram、Slack、Discord，让助手能在任何地方联系你。',
+  'walkthrough.steps.settings.title': '按你的方式设置',
+  'walkthrough.steps.settings.content':
+    '偏好、隐私和通知都在这里。你可以随时从此页面重新开始本引导。',
+  'walkthrough.steps.chatTab.title': '返回聊天',
+  'walkthrough.steps.chatTab.content': '想回到对话时，使用 Chat 标签。',
+  'walkthrough.steps.humanTab.title': '了解你的 Human 资料',
+  'walkthrough.steps.humanTab.content': 'Human 汇集你的个人上下文、身份以及助手可见的资料。',
+  'walkthrough.steps.brainTab.title': '打开 Brain',
+  'walkthrough.steps.brainTab.content':
+    'Brain 是记忆图谱，用来查看 OpenHuman 知道什么，以及想法如何相互连接。',
+  'walkthrough.steps.agentWorldTab.title': '探索 Agent World',
+  'walkthrough.steps.agentWorldTab.content': 'Agent World 是可复用代理和共享自动化所在的位置。',
+  'walkthrough.steps.connectionsTab.title': '管理连接',
+  'walkthrough.steps.connectionsTab.content':
+    '想添加或调整服务时，Connections 始终可从主导航进入。',
+  'walkthrough.steps.feedbackTab.title': '发送反馈',
+  'walkthrough.steps.feedbackTab.content': 'Feedback 提供直接入口，用来报告问题或请求改进。',
+  'walkthrough.steps.allSet.title': '全部就绪！',
+  'walkthrough.steps.allSet.content':
+    '你的助手留下了一条欢迎消息：这里就是你聊天、提问和整理想法的空间。祝你使用愉快！',
   'walkthrough.tooltip.letsGo': '出发吧！',
   'walkthrough.tooltip.next': '下一步 →',
   'walkthrough.tooltip.skip': '跳过引导',
