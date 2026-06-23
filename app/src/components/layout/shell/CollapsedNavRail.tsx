@@ -6,6 +6,7 @@ import { useT } from '../../../lib/i18n/I18nContext';
 import { trackEvent } from '../../../services/analytics';
 import { useAppSelector } from '../../../store/hooks';
 import { selectUnreadCount } from '../../../store/notificationSlice';
+import { Tooltip } from '../../ui';
 import { NavIcon } from './navIcons';
 import { useHomeNav } from './useHomeNav';
 
@@ -58,63 +59,65 @@ export default function CollapsedNavRail() {
   return (
     <nav className="flex flex-col items-center gap-0.5" aria-label={t('nav.home')}>
       {/* Home */}
-      <button
-        type="button"
-        onClick={handleHome}
-        title={t('nav.home')}
-        aria-label={t('nav.home')}
-        aria-current={homeActive ? 'page' : undefined}
-        className={`${RAIL_BTN} ${
-          homeActive
-            ? 'bg-white text-stone-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100'
-            : 'text-stone-500 hover:bg-stone-100 hover:text-stone-700 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-200'
-        }`}>
-        <NavIcon id="home" className="h-4 w-4" />
-      </button>
+      <Tooltip label={t('nav.home')}>
+        <button
+          type="button"
+          onClick={handleHome}
+          aria-label={t('nav.home')}
+          aria-current={homeActive ? 'page' : undefined}
+          className={`${RAIL_BTN} ${
+            homeActive
+              ? 'bg-white text-stone-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100'
+              : 'text-stone-500 hover:bg-stone-100 hover:text-stone-700 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-200'
+          }`}>
+          <NavIcon id="home" className="h-4 w-4" />
+        </button>
+      </Tooltip>
 
       {/* Wallet shortcut — mirrors SidebarHeader wallet button for collapsed state. */}
-      <button
-        type="button"
-        onClick={() => navigate('/settings/wallet-balances')}
-        title={t('nav.wallet')}
-        aria-label={t('nav.wallet')}
-        aria-current={
-          matchActive('/settings/wallet-balances', location.pathname) ? 'page' : undefined
-        }
-        data-analytics-id="collapsed-rail-wallet"
-        className={`${RAIL_BTN} ${
-          matchActive('/settings/wallet-balances', location.pathname)
-            ? 'bg-white text-stone-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100'
-            : 'text-stone-500 hover:bg-stone-100 hover:text-stone-700 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-200'
-        }`}>
-        <NavIcon id="wallet" className="h-4 w-4" />
-      </button>
+      <Tooltip label={t('nav.wallet')}>
+        <button
+          type="button"
+          onClick={() => navigate('/settings/wallet-balances')}
+          aria-label={t('nav.wallet')}
+          aria-current={
+            matchActive('/settings/wallet-balances', location.pathname) ? 'page' : undefined
+          }
+          data-analytics-id="collapsed-rail-wallet"
+          className={`${RAIL_BTN} ${
+            matchActive('/settings/wallet-balances', location.pathname)
+              ? 'bg-white text-stone-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100'
+              : 'text-stone-500 hover:bg-stone-100 hover:text-stone-700 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-200'
+          }`}>
+          <NavIcon id="wallet" className="h-4 w-4" />
+        </button>
+      </Tooltip>
 
       {/* Primary nav destinations */}
       {tabs.map(tab => {
         const active = matchActive(tab.path, location.pathname);
         const showBadge = tab.id === 'notifications' && unreadCount > 0;
         return (
-          <button
-            key={tab.id}
-            type="button"
-            data-walkthrough={tab.walkthroughAttr}
-            onClick={() => handleClick(tab, active)}
-            title={tab.label}
-            aria-label={tab.label}
-            aria-current={active ? 'page' : undefined}
-            className={`${RAIL_BTN} ${
-              active
-                ? 'bg-white text-stone-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100'
-                : 'text-stone-500 hover:bg-stone-100 hover:text-stone-700 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-200'
-            }`}>
-            <NavIcon id={tab.id} className="h-4 w-4" />
-            {showBadge && (
-              <span className="absolute -right-0.5 -top-0.5 flex h-[13px] min-w-[13px] items-center justify-center rounded-full bg-coral-500 px-1 text-[9px] font-bold leading-none text-white">
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
-          </button>
+          <Tooltip key={tab.id} label={tab.label}>
+            <button
+              type="button"
+              data-walkthrough={tab.walkthroughAttr}
+              onClick={() => handleClick(tab, active)}
+              aria-label={tab.label}
+              aria-current={active ? 'page' : undefined}
+              className={`${RAIL_BTN} ${
+                active
+                  ? 'bg-white text-stone-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100'
+                  : 'text-stone-500 hover:bg-stone-100 hover:text-stone-700 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-200'
+              }`}>
+              <NavIcon id={tab.id} className="h-4 w-4" />
+              {showBadge && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-[13px] min-w-[13px] items-center justify-center rounded-full bg-coral-500 px-1 text-[9px] font-bold leading-none text-white">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+          </Tooltip>
         );
       })}
 
