@@ -37,7 +37,11 @@ describe('CollapsedNavRail', () => {
   it('wallet button navigates to /settings/wallet-balances', () => {
     renderWithProviders(<CollapsedNavRail />, { initialEntries: ['/home'] });
     fireEvent.click(screen.getByRole('button', { name: 'nav.wallet' }));
-    expect(mockNavigate).toHaveBeenCalledWith('/settings/wallet-balances');
+    // Carries the backgroundLocation so the desktop Settings modal renders over
+    // the page it was opened from.
+    expect(mockNavigate).toHaveBeenCalledWith('/settings/wallet-balances', {
+      state: { backgroundLocation: expect.objectContaining({ pathname: '/home' }) },
+    });
   });
 
   it('wallet button has correct data-analytics-id', () => {

@@ -31,7 +31,11 @@ describe('SidebarHeader', () => {
   it('wallet button navigates to /settings/wallet-balances', () => {
     renderWithProviders(<SidebarHeader />, { initialEntries: ['/home'] });
     fireEvent.click(screen.getByRole('button', { name: 'nav.wallet' }));
-    expect(mockNavigate).toHaveBeenCalledWith('/settings/wallet-balances');
+    // Carries the backgroundLocation so the desktop Settings modal renders over
+    // the page it was opened from.
+    expect(mockNavigate).toHaveBeenCalledWith('/settings/wallet-balances', {
+      state: { backgroundLocation: expect.objectContaining({ pathname: '/home' }) },
+    });
   });
 
   it('wallet button has correct data-analytics-id', () => {
@@ -54,7 +58,9 @@ describe('SidebarHeader', () => {
   it('settings button navigates to /settings', () => {
     renderWithProviders(<SidebarHeader />, { initialEntries: ['/home'] });
     fireEvent.click(screen.getByRole('button', { name: 'nav.settings' }));
-    expect(mockNavigate).toHaveBeenCalledWith('/settings');
+    expect(mockNavigate).toHaveBeenCalledWith('/settings', {
+      state: { backgroundLocation: expect.objectContaining({ pathname: '/home' }) },
+    });
   });
 
   it('Home button invokes the shared Home action', () => {

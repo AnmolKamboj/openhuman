@@ -6,6 +6,7 @@ import { useT } from '../../../lib/i18n/I18nContext';
 import { trackEvent } from '../../../services/analytics';
 import { useAppSelector } from '../../../store/hooks';
 import { selectUnreadCount } from '../../../store/notificationSlice';
+import { settingsNavState } from '../../settings/modal/settingsOverlay';
 import { Tooltip } from '../../ui';
 import { NavIcon } from './navIcons';
 import { useHomeNav } from './useHomeNav';
@@ -78,7 +79,7 @@ export default function CollapsedNavRail() {
       <Tooltip label={t('nav.wallet')}>
         <button
           type="button"
-          onClick={() => navigate('/settings/wallet-balances')}
+          onClick={() => navigate('/settings/wallet-balances', settingsNavState(location))}
           aria-label={t('nav.wallet')}
           aria-current={
             matchActive('/settings/wallet-balances', location.pathname) ? 'page' : undefined
