@@ -2593,6 +2593,14 @@ const messages: TranslationMap = {
   'bootCheck.portConflictFixing': 'ठीक हो रहा है…',
   'bootCheck.portConflictFixFailed':
     'स्वचालित सुधार काम नहीं आया। कृपया अपना कंप्यूटर पुनः आरंभ करें और पुनः प्रयास करें।',
+  'bootCheck.portConflictOwner':
+    '{name} (PID {pid}) उस नेटवर्क पोर्ट का उपयोग कर रहा है जिसकी OpenHuman को ज़रूरत है।',
+  'bootCheck.portConflictGuidance':
+    'पोर्ट खाली करने के लिए उस प्रोग्राम को बंद करें, या नीचे से उसे ज़बरदस्ती बंद करें, फिर पुनः प्रयास करें।',
+  'bootCheck.portConflictForceQuit': '{name} को ज़बरदस्ती बंद करें',
+  'bootCheck.portConflictForceQuitting': '{name} बंद हो रहा है…',
+  'bootCheck.portConflictForceQuitFailed':
+    'वह प्रोग्राम बंद नहीं किया जा सका। आपको इसे मैन्युअल रूप से बंद करके पुनः प्रयास करना पड़ सकता है।',
   'notifications.justNow': 'अभी-अभी',
   'notifications.minAgo': '{n}मि. पहले',
   'notifications.hrAgo': '{n}घं. पहले',

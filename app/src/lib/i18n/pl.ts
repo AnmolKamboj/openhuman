@@ -2620,6 +2620,13 @@ const messages: TranslationMap = {
   'bootCheck.portConflictFixing': 'Naprawianie…',
   'bootCheck.portConflictFixFailed':
     'Automatyczna naprawa się nie powiodła. Zrestartuj komputer i spróbuj ponownie.',
+  'bootCheck.portConflictOwner': '{name} (PID {pid}) używa portu sieciowego potrzebnego OpenHuman.',
+  'bootCheck.portConflictGuidance':
+    'Zamknij ten program, aby zwolnić port, lub wymuś jego zamknięcie poniżej, a następnie spróbuj ponownie.',
+  'bootCheck.portConflictForceQuit': 'Wymuś zamknięcie {name}',
+  'bootCheck.portConflictForceQuitting': 'Zamykanie {name}…',
+  'bootCheck.portConflictForceQuitFailed':
+    'Nie udało się zamknąć tego programu. Może być konieczne zamknięcie go ręcznie i ponowienie próby.',
   'notifications.justNow': 'przed chwilą',
   'notifications.minAgo': '{n} min temu',
   'notifications.hrAgo': '{n} godz. temu',

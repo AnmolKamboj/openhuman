@@ -2597,6 +2597,14 @@ const messages: TranslationMap = {
   'bootCheck.portConflictFixing': 'ঠিক করা হচ্ছে…',
   'bootCheck.portConflictFixFailed':
     'স্বয়ংক্রিয় সংশোধন কাজ করেনি। অনুগ্রহ করে আপনার কম্পিউটার পুনরায় চালু করুন এবং আবার চেষ্টা করুন।',
+  'bootCheck.portConflictOwner':
+    '{name} (PID {pid}) OpenHuman-এর প্রয়োজনীয় নেটওয়ার্ক পোর্টটি ব্যবহার করছে।',
+  'bootCheck.portConflictGuidance':
+    'পোর্টটি মুক্ত করতে ওই প্রোগ্রামটি বন্ধ করুন, অথবা নিচে থেকে জোর করে বন্ধ করুন, তারপর আবার চেষ্টা করুন।',
+  'bootCheck.portConflictForceQuit': '{name} জোর করে বন্ধ করুন',
+  'bootCheck.portConflictForceQuitting': '{name} বন্ধ করা হচ্ছে…',
+  'bootCheck.portConflictForceQuitFailed':
+    'প্রোগ্রামটি বন্ধ করা যায়নি। আপনাকে সম্ভবত এটি ম্যানুয়ালি বন্ধ করে আবার চেষ্টা করতে হবে।',
   'notifications.justNow': 'এইমাত্র',
   'notifications.minAgo': '{n} মিনিট আগে',
   'notifications.hrAgo': '{n} ঘণ্টা আগে',

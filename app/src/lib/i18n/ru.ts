@@ -2616,6 +2616,13 @@ const messages: TranslationMap = {
   'bootCheck.portConflictFixing': 'Исправление…',
   'bootCheck.portConflictFixFailed':
     'Автоматическое исправление не сработало. Перезагрузите компьютер и попробуйте снова.',
+  'bootCheck.portConflictOwner': '{name} (PID {pid}) использует сетевой порт, нужный OpenHuman.',
+  'bootCheck.portConflictGuidance':
+    'Закройте эту программу, чтобы освободить порт, или принудительно завершите её ниже, затем повторите попытку.',
+  'bootCheck.portConflictForceQuit': 'Принудительно закрыть {name}',
+  'bootCheck.portConflictForceQuitting': 'Закрытие {name}…',
+  'bootCheck.portConflictForceQuitFailed':
+    'Не удалось закрыть эту программу. Возможно, потребуется закрыть её вручную и повторить попытку.',
   'notifications.justNow': 'только что',
   'notifications.minAgo': '{n} мин назад',
   'notifications.hrAgo': '{n} ч назад',

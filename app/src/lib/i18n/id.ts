@@ -2597,6 +2597,14 @@ const messages: TranslationMap = {
   'bootCheck.portConflictFixing': 'Memperbaiki…',
   'bootCheck.portConflictFixFailed':
     'Perbaikan otomatis tidak berhasil. Silakan restart komputer Anda dan coba lagi.',
+  'bootCheck.portConflictOwner':
+    '{name} (PID {pid}) sedang menggunakan port jaringan yang dibutuhkan OpenHuman.',
+  'bootCheck.portConflictGuidance':
+    'Tutup program tersebut untuk membebaskan port, atau paksa tutup di bawah, lalu coba lagi.',
+  'bootCheck.portConflictForceQuit': 'Paksa tutup {name}',
+  'bootCheck.portConflictForceQuitting': 'Menutup {name}…',
+  'bootCheck.portConflictForceQuitFailed':
+    'Tidak dapat menutup program tersebut. Anda mungkin perlu menutupnya secara manual, lalu coba lagi.',
   'notifications.justNow': 'baru saja',
   'notifications.minAgo': '{n}m lalu',
   'notifications.hrAgo': '{n}j lalu',

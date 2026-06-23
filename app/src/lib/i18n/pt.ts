@@ -2642,6 +2642,14 @@ const messages: TranslationMap = {
   'bootCheck.portConflictFixing': 'Corrigindo…',
   'bootCheck.portConflictFixFailed':
     'A correção automática não funcionou. Reinicie o computador e tente novamente.',
+  'bootCheck.portConflictOwner':
+    '{name} (PID {pid}) está usando a porta de rede que o OpenHuman precisa.',
+  'bootCheck.portConflictGuidance':
+    'Feche esse programa para liberar a porta, ou force o encerramento abaixo e tente novamente.',
+  'bootCheck.portConflictForceQuit': 'Forçar encerramento de {name}',
+  'bootCheck.portConflictForceQuitting': 'Encerrando {name}…',
+  'bootCheck.portConflictForceQuitFailed':
+    'Não foi possível encerrar esse programa. Talvez seja necessário fechá-lo manualmente e tentar novamente.',
   'notifications.justNow': 'agora mesmo',
   'notifications.minAgo': '{n}min atrás',
   'notifications.hrAgo': '{n}h atrás',

@@ -2570,6 +2570,14 @@ const messages: TranslationMap = {
   'bootCheck.portConflictFixing': '수정 중…',
   'bootCheck.portConflictFixFailed':
     '자동 수정에 실패했습니다. 컴퓨터를 재시작한 후 다시 시도해 주세요.',
+  'bootCheck.portConflictOwner':
+    '{name}(PID {pid})이(가) OpenHuman에 필요한 네트워크 포트를 사용하고 있습니다.',
+  'bootCheck.portConflictGuidance':
+    '포트를 비우려면 해당 프로그램을 닫거나 아래에서 강제 종료한 후 다시 시도하세요.',
+  'bootCheck.portConflictForceQuit': '{name} 강제 종료',
+  'bootCheck.portConflictForceQuitting': '{name} 종료 중…',
+  'bootCheck.portConflictForceQuitFailed':
+    '해당 프로그램을 닫지 못했습니다. 수동으로 닫은 후 다시 시도해야 할 수 있습니다.',
   'notifications.justNow': '방금 전',
   'notifications.minAgo': '{n}분 전',
   'notifications.hrAgo': '{n}시간 전',

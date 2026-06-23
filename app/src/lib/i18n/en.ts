@@ -3085,6 +3085,13 @@ const en: TranslationMap = {
   'bootCheck.portConflictFixing': 'Fixing…',
   'bootCheck.portConflictFixFailed':
     "Automatic fix didn't work. Please restart your computer and try again.",
+  'bootCheck.portConflictOwner': '{name} (PID {pid}) is using the network port OpenHuman needs.',
+  'bootCheck.portConflictGuidance':
+    'Close that program to free the port, or force-quit it below, then try again.',
+  'bootCheck.portConflictForceQuit': 'Force-quit {name}',
+  'bootCheck.portConflictForceQuitting': 'Closing {name}…',
+  'bootCheck.portConflictForceQuitFailed':
+    "Couldn't close that program. You may need to close it manually, then retry.",
 
   // Notifications: category labels & timestamps
   'notifications.justNow': 'just now',

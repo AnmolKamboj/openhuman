@@ -2543,6 +2543,13 @@ const messages: TranslationMap = {
   'bootCheck.portConflictFixing': 'جارٍ الإصلاح…',
   'bootCheck.portConflictFixFailed':
     'لم ينجح الإصلاح التلقائي. يُرجى إعادة تشغيل الكمبيوتر والمحاولة مجددًا.',
+  'bootCheck.portConflictOwner': '{name} (المعرّف {pid}) يستخدم منفذ الشبكة الذي يحتاجه OpenHuman.',
+  'bootCheck.portConflictGuidance':
+    'أغلق ذلك البرنامج لتحرير المنفذ، أو افرض إنهاءه أدناه، ثم حاول مرة أخرى.',
+  'bootCheck.portConflictForceQuit': 'فرض إنهاء {name}',
+  'bootCheck.portConflictForceQuitting': 'جارٍ إغلاق {name}…',
+  'bootCheck.portConflictForceQuitFailed':
+    'تعذّر إغلاق ذلك البرنامج. قد تحتاج إلى إغلاقه يدويًا ثم إعادة المحاولة.',
   'notifications.justNow': 'الآن',
   'notifications.minAgo': 'منذ {n} د',
   'notifications.hrAgo': 'منذ {n} س',
