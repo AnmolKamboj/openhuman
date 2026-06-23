@@ -3090,6 +3090,7 @@ const messages: TranslationMap = {
   'conversations.agentTaskInsights.sourcesHeading': 'Источники',
   'conversations.agentTaskInsights.noSteps': 'Шаги не записаны',
   'conversations.agentTaskInsights.viewProcessSource': 'Показать полный источник процесса агента',
+  'conversations.agentTaskInsights.processing': 'Обработка',
   'daemon.serviceBlockingGate.body': 'Текст',
   'daemon.serviceBlockingGate.downloadHint': 'Подсказка по загрузке',
   'daemon.serviceBlockingGate.downloadLatest': 'Скачать последнюю версию',
@@ -4645,6 +4646,9 @@ const messages: TranslationMap = {
     'Если этот параметр отключен, метки отображаются только при наведении курсора мыши или на активной вкладке.',
   'settings.appearance.chatHeading': 'Чат',
   'settings.appearance.assistantTextMode': 'Ответы ассистента текстом',
+  'settings.appearance.hideAgentInsights': 'Скрыть размышления агента',
+  'settings.appearance.hideAgentInsightsDesc':
+    'Сворачивает пошаговую ленту действий агента в чате. Мигающая ссылка «Обработка» по-прежнему позволяет открыть весь процесс.',
   'settings.appearance.assistantTextModeDesc':
     'Показывает ответы ассистента как текст без рамки, оставляя ваши сообщения в пузырьках.',
   'settings.mascot.active': 'Активно',

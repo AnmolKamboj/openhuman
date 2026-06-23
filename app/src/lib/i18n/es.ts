@@ -3119,6 +3119,7 @@ const messages: TranslationMap = {
   'conversations.agentTaskInsights.noSteps': 'No hay pasos registrados',
   'conversations.agentTaskInsights.viewProcessSource':
     'Ver la fuente completa del proceso del agente',
+  'conversations.agentTaskInsights.processing': 'Procesando',
   'daemon.serviceBlockingGate.body': 'Cuerpo',
   'daemon.serviceBlockingGate.downloadHint': 'Sugerencia de descarga',
   'daemon.serviceBlockingGate.downloadLatest': 'Descargar la última versión',
@@ -4690,6 +4691,9 @@ const messages: TranslationMap = {
     'Cuando está desactivado, las etiquetas solo aparecen al pasar el mouse o para la pestaña activa.',
   'settings.appearance.chatHeading': 'Chat',
   'settings.appearance.assistantTextMode': 'Respuestas del asistente en texto',
+  'settings.appearance.hideAgentInsights': 'Ocultar el razonamiento del agente',
+  'settings.appearance.hideAgentInsightsDesc':
+    'Contrae la cronología paso a paso del agente en el chat. Un enlace «Procesando» parpadeante te permite abrir el proceso completo.',
   'settings.appearance.assistantTextModeDesc':
     'Muestra las respuestas del asistente como texto sin marco y mantiene tus mensajes en burbujas.',
   'settings.mascot.active': 'Activo',

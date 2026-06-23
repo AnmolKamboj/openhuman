@@ -3141,6 +3141,7 @@ const messages: TranslationMap = {
   'conversations.agentTaskInsights.noSteps': 'Keine Schritte aufgezeichnet',
   'conversations.agentTaskInsights.viewProcessSource':
     'Vollständige Agentenprozess-Quelle anzeigen',
+  'conversations.agentTaskInsights.processing': 'Wird verarbeitet',
   'daemon.serviceBlockingGate.body': 'Körper',
   'daemon.serviceBlockingGate.downloadHint': 'Hinweis herunterladen',
   'daemon.serviceBlockingGate.downloadLatest': 'Lade die neueste Version herunter',
@@ -4721,6 +4722,9 @@ const messages: TranslationMap = {
     'Wenn diese Option deaktiviert ist, werden Beschriftungen nur beim Hover oder für die aktive Registerkarte angezeigt.',
   'settings.appearance.chatHeading': 'Chat',
   'settings.appearance.assistantTextMode': 'Assistentenantworten als Text',
+  'settings.appearance.hideAgentInsights': 'Agent-Denkprozess ausblenden',
+  'settings.appearance.hideAgentInsightsDesc':
+    'Blendet die schrittweise Live-Zeitleiste des Agenten im Chat aus. Über einen blinkenden „Wird verarbeitet“-Link lässt sich der vollständige Ablauf weiterhin öffnen.',
   'settings.appearance.assistantTextModeDesc':
     'Zeigt Assistentenantworten als ungerahmten Text an und lässt deine Nachrichten in Blasen.',
   'settings.mascot.active': 'Aktiv',

@@ -3067,6 +3067,7 @@ const messages: TranslationMap = {
   'conversations.agentTaskInsights.sourcesHeading': 'উৎসসমূহ',
   'conversations.agentTaskInsights.noSteps': 'কোনো ধাপ রেকর্ড করা হয়নি',
   'conversations.agentTaskInsights.viewProcessSource': 'সম্পূর্ণ এজেন্ট প্রক্রিয়ার উৎস দেখুন',
+  'conversations.agentTaskInsights.processing': 'প্রসেসিং',
   'daemon.serviceBlockingGate.body': 'বডি',
   'daemon.serviceBlockingGate.downloadHint': 'ডাউনলোড হিন্ট',
   'daemon.serviceBlockingGate.downloadLatest': 'সর্বশেষ সংস্করণ ডাউনলোড করুন',
@@ -4602,6 +4603,9 @@ const messages: TranslationMap = {
     'বন্ধ থাকা অবস্থায়, লেবেলগুলি শুধুমাত্র হোভারে বা সক্রিয় ট্যাবের জন্য প্রদর্শিত হয়৷',
   'settings.appearance.chatHeading': 'চ্যাট',
   'settings.appearance.assistantTextMode': 'অ্যাসিস্ট্যান্টের উত্তর টেক্সট হিসেবে',
+  'settings.appearance.hideAgentInsights': 'এজেন্টের চিন্তা লুকান',
+  'settings.appearance.hideAgentInsightsDesc':
+    'চ্যাটে এজেন্টের ধাপে ধাপে লাইভ টাইমলাইন সংকুচিত করুন। একটি ব্লিঙ্কিং "প্রসেসিং" লিঙ্ক এখনও আপনাকে সম্পূর্ণ প্রক্রিয়া খুলতে দেয়।',
   'settings.appearance.assistantTextModeDesc':
     'আপনার বার্তাগুলি বাবলে রেখে অ্যাসিস্ট্যান্টের উত্তর ফ্রেমহীন টেক্সট হিসেবে দেখান।',
   'settings.mascot.active': 'সক্রিয়',

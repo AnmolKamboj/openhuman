@@ -3134,6 +3134,7 @@ const messages: TranslationMap = {
   'conversations.agentTaskInsights.noSteps': 'Aucune étape enregistrée',
   'conversations.agentTaskInsights.viewProcessSource':
     "Voir la source complète du processus de l'agent",
+  'conversations.agentTaskInsights.processing': 'Traitement en cours',
   'daemon.serviceBlockingGate.body': 'Corps',
   'daemon.serviceBlockingGate.downloadHint': 'Indice de téléchargement',
   'daemon.serviceBlockingGate.downloadLatest': 'Télécharger la dernière version',
@@ -4707,6 +4708,9 @@ const messages: TranslationMap = {
     "Lorsqu'elle est désactivée, les étiquettes n'apparaissent qu'au survol ou pour l'onglet actif.",
   'settings.appearance.chatHeading': 'Chat',
   'settings.appearance.assistantTextMode': "Réponses de l'assistant en texte",
+  'settings.appearance.hideAgentInsights': 'Masquer le raisonnement de l’agent',
+  'settings.appearance.hideAgentInsightsDesc':
+    'Réduit la chronologie en direct des étapes de l’agent dans le chat. Un lien clignotant « Traitement en cours » permet toujours d’ouvrir le déroulé complet.',
   'settings.appearance.assistantTextModeDesc':
     "Affiche les réponses de l'assistant en texte sans cadre tout en gardant vos messages en bulles.",
   'settings.mascot.active': 'Actif',

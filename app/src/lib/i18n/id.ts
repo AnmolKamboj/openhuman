@@ -3071,6 +3071,7 @@ const messages: TranslationMap = {
   'conversations.agentTaskInsights.sourcesHeading': 'Sumber',
   'conversations.agentTaskInsights.noSteps': 'Tidak ada langkah yang tercatat',
   'conversations.agentTaskInsights.viewProcessSource': 'Lihat sumber proses agen lengkap',
+  'conversations.agentTaskInsights.processing': 'Memproses',
   'daemon.serviceBlockingGate.body': 'Isi',
   'daemon.serviceBlockingGate.downloadHint': 'Petunjuk unduhan',
   'daemon.serviceBlockingGate.downloadLatest': 'Unduh Versi Terbaru',
@@ -4615,6 +4616,9 @@ const messages: TranslationMap = {
     'Saat nonaktif, label hanya muncul saat diarahkan atau untuk tab yang aktif.',
   'settings.appearance.chatHeading': 'Chat',
   'settings.appearance.assistantTextMode': 'Respons asisten sebagai teks',
+  'settings.appearance.hideAgentInsights': 'Sembunyikan proses berpikir agen',
+  'settings.appearance.hideAgentInsightsDesc':
+    'Ciutkan lini masa langkah demi langkah agen secara langsung di obrolan. Tautan "Memproses" yang berkedip tetap memungkinkan Anda membuka proses lengkapnya.',
   'settings.appearance.assistantTextModeDesc':
     'Tampilkan balasan asisten sebagai teks tanpa bingkai, sementara pesan Anda tetap dalam gelembung.',
   'settings.mascot.active': 'Aktif',

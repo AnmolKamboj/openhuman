@@ -3043,6 +3043,7 @@ const messages: TranslationMap = {
   'conversations.agentTaskInsights.sourcesHeading': '소스',
   'conversations.agentTaskInsights.noSteps': '기록된 단계 없음',
   'conversations.agentTaskInsights.viewProcessSource': '전체 에이전트 프로세스 소스 보기',
+  'conversations.agentTaskInsights.processing': '처리 중',
   'daemon.serviceBlockingGate.body': '본문',
   'daemon.serviceBlockingGate.downloadHint': '다운로드 안내',
   'daemon.serviceBlockingGate.downloadLatest': '최신 버전 다운로드',
@@ -4558,6 +4559,9 @@ const messages: TranslationMap = {
     '끄면 레이블은 마우스를 가져가거나 활성 탭에 대해서만 표시됩니다.',
   'settings.appearance.chatHeading': '채팅',
   'settings.appearance.assistantTextMode': '어시스턴트 답변을 텍스트로 표시',
+  'settings.appearance.hideAgentInsights': '에이전트 사고 숨기기',
+  'settings.appearance.hideAgentInsightsDesc':
+    '채팅에서 에이전트의 단계별 실시간 타임라인을 접습니다. 깜박이는 "처리 중" 링크로 전체 과정을 열 수 있습니다.',
   'settings.appearance.assistantTextModeDesc':
     '사용자 메시지는 말풍선으로 유지하고 어시스턴트 답변은 프레임 없는 텍스트로 표시합니다.',
   'settings.mascot.active': '활성',

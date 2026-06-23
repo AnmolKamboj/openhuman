@@ -3068,6 +3068,7 @@ const messages: TranslationMap = {
   'conversations.agentTaskInsights.sourcesHeading': 'स्रोत',
   'conversations.agentTaskInsights.noSteps': 'कोई चरण दर्ज नहीं किया गया',
   'conversations.agentTaskInsights.viewProcessSource': 'पूर्ण एजेंट प्रक्रिया स्रोत देखें',
+  'conversations.agentTaskInsights.processing': 'प्रोसेसिंग',
   'daemon.serviceBlockingGate.body': 'विवरण',
   'daemon.serviceBlockingGate.downloadHint': 'डाउनलोड संकेत',
   'daemon.serviceBlockingGate.downloadLatest': 'नवीनतम संस्करण डाउनलोड करें',
@@ -4606,6 +4607,9 @@ const messages: TranslationMap = {
     'बंद होने पर, लेबल केवल होवर पर या सक्रिय टैब के लिए दिखाई देते हैं।',
   'settings.appearance.chatHeading': 'चैट',
   'settings.appearance.assistantTextMode': 'असिस्टेंट जवाब टेक्स्ट में',
+  'settings.appearance.hideAgentInsights': 'एजेंट की सोच छिपाएँ',
+  'settings.appearance.hideAgentInsightsDesc':
+    'चैट में एजेंट की चरण-दर-चरण लाइव टाइमलाइन को छिपाएँ। एक ब्लिंक करता "प्रोसेसिंग" लिंक फिर भी आपको पूरी प्रक्रिया खोलने देता है।',
   'settings.appearance.assistantTextModeDesc':
     'असिस्टेंट के जवाबों को बिना फ्रेम वाले टेक्स्ट के रूप में दिखाएं और आपके संदेश बबल में रखें।',
   'settings.mascot.active': 'एक्टिव',

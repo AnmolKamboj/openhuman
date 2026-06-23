@@ -3614,6 +3614,7 @@ const en: TranslationMap = {
   'conversations.agentTaskInsights.sourcesHeading': 'Sources',
   'conversations.agentTaskInsights.noSteps': 'No steps recorded',
   'conversations.agentTaskInsights.viewProcessSource': 'View full agent process Source',
+  'conversations.agentTaskInsights.processing': 'Processing',
   'daemon.serviceBlockingGate.body':
     'Retrying in the background. This usually resolves in a few seconds.',
   'daemon.serviceBlockingGate.downloadHint':
@@ -5204,6 +5205,9 @@ const en: TranslationMap = {
   'settings.appearance.assistantTextMode': 'Plain assistant responses',
   'settings.appearance.assistantTextModeDesc':
     'Render assistant replies as unframed text while keeping your messages in bubbles.',
+  'settings.appearance.hideAgentInsights': 'Hide agent thinking',
+  'settings.appearance.hideAgentInsightsDesc':
+    'Collapse the live step-by-step agent timeline in chat. A blinking “Processing” link still lets you open the full run.',
   'settings.mascot.active': 'Active',
   'settings.mascot.characterDesc': 'Choose your OpenHuman character.',
   'settings.mascot.characterHeading': 'Character',

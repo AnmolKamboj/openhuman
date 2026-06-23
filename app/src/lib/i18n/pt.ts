@@ -3117,6 +3117,7 @@ const messages: TranslationMap = {
   'conversations.agentTaskInsights.sourcesHeading': 'Fontes',
   'conversations.agentTaskInsights.noSteps': 'Nenhuma etapa registrada',
   'conversations.agentTaskInsights.viewProcessSource': 'Ver a fonte completa do processo do agente',
+  'conversations.agentTaskInsights.processing': 'Processando',
   'daemon.serviceBlockingGate.body': 'Corpo',
   'daemon.serviceBlockingGate.downloadHint': 'Dica de download',
   'daemon.serviceBlockingGate.downloadLatest': 'Baixar Versão Mais Recente',
@@ -4682,6 +4683,9 @@ const messages: TranslationMap = {
     'Quando desativado, os rótulos só aparecem ao passar o mouse ou para a guia ativa.',
   'settings.appearance.chatHeading': 'Chat',
   'settings.appearance.assistantTextMode': 'Respostas do assistente em texto',
+  'settings.appearance.hideAgentInsights': 'Ocultar o raciocínio do agente',
+  'settings.appearance.hideAgentInsightsDesc':
+    'Recolhe a linha do tempo passo a passo do agente no chat. Um link “Processando” piscando ainda permite abrir o processo completo.',
   'settings.appearance.assistantTextModeDesc':
     'Renderiza as respostas do assistente como texto sem moldura e mantém suas mensagens em balões.',
   'settings.mascot.active': 'Ativo',

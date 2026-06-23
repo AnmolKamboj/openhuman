@@ -3113,6 +3113,7 @@ const messages: TranslationMap = {
   'conversations.agentTaskInsights.noSteps': 'Nessun passaggio registrato',
   'conversations.agentTaskInsights.viewProcessSource':
     "Visualizza l'origine completa del processo dell'agente",
+  'conversations.agentTaskInsights.processing': 'Elaborazione',
   'daemon.serviceBlockingGate.body': 'Corpo',
   'daemon.serviceBlockingGate.downloadHint': 'Suggerimento di download',
   'daemon.serviceBlockingGate.downloadLatest': "Scarica l'ultima versione",
@@ -4678,6 +4679,9 @@ const messages: TranslationMap = {
     'Quando disattivata, le etichette vengono visualizzate solo al passaggio del mouse o per la scheda attiva.',
   'settings.appearance.chatHeading': 'Chat',
   'settings.appearance.assistantTextMode': "Risposte dell'assistente in testo",
+  'settings.appearance.hideAgentInsights': 'Nascondi il ragionamento dell’agente',
+  'settings.appearance.hideAgentInsightsDesc':
+    'Comprime la cronologia in tempo reale dei passaggi dell’agente nella chat. Un link lampeggiante «Elaborazione» consente comunque di aprire l’intero processo.',
   'settings.appearance.assistantTextModeDesc':
     "Mostra le risposte dell'assistente come testo senza cornice mantenendo i tuoi messaggi nei fumetti.",
   'settings.mascot.active': 'Attivo',

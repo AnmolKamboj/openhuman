@@ -3099,6 +3099,7 @@ const messages: TranslationMap = {
   'conversations.agentTaskInsights.sourcesHeading': 'Źródła',
   'conversations.agentTaskInsights.noSteps': 'Brak zarejestrowanych kroków',
   'conversations.agentTaskInsights.viewProcessSource': 'Zobacz pełne źródło procesu agenta',
+  'conversations.agentTaskInsights.processing': 'Przetwarzanie',
   'daemon.serviceBlockingGate.body':
     'Rdzeń OpenHuman nie odpowiada. Spróbuj ponownie lub pobierz najnowszą wersję aplikacji.',
   'daemon.serviceBlockingGate.downloadHint':
@@ -4672,6 +4673,9 @@ const messages: TranslationMap = {
     'Wyłączone — etykiety pojawiają się tylko po najechaniu lub dla aktywnej zakładki.',
   'settings.appearance.chatHeading': 'Czat',
   'settings.appearance.assistantTextMode': 'Odpowiedzi asystenta jako tekst',
+  'settings.appearance.hideAgentInsights': 'Ukryj myślenie agenta',
+  'settings.appearance.hideAgentInsightsDesc':
+    'Zwija oś czasu z krokami agenta na żywo w czacie. Migający link „Przetwarzanie” nadal pozwala otworzyć pełny przebieg.',
   'settings.appearance.assistantTextModeDesc':
     'Wyświetla odpowiedzi asystenta jako tekst bez ramki, a Twoje wiadomości pozostawia w dymkach.',
   'settings.mascot.active': 'Aktywny',

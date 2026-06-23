@@ -3003,6 +3003,7 @@ const messages: TranslationMap = {
   'conversations.agentTaskInsights.sourcesHeading': 'المصادر',
   'conversations.agentTaskInsights.noSteps': 'لم يتم تسجيل أي خطوات',
   'conversations.agentTaskInsights.viewProcessSource': 'عرض مصدر عملية الوكيل الكامل',
+  'conversations.agentTaskInsights.processing': 'قيد المعالجة',
   'daemon.serviceBlockingGate.body': 'المحتوى',
   'daemon.serviceBlockingGate.downloadHint': 'تلميح التنزيل',
   'daemon.serviceBlockingGate.downloadLatest': 'تنزيل أحدث إصدار',
@@ -4509,6 +4510,9 @@ const messages: TranslationMap = {
     'عند إيقاف التشغيل، تظهر التسميات فقط عند التمرير أو لعلامة التبويب النشطة.',
   'settings.appearance.chatHeading': 'الدردشة',
   'settings.appearance.assistantTextMode': 'ردود المساعد كنص',
+  'settings.appearance.hideAgentInsights': 'إخفاء تفكير الوكيل',
+  'settings.appearance.hideAgentInsightsDesc':
+    'طيّ الجدول الزمني المباشر لخطوات الوكيل في المحادثة. سيظل رابط "قيد المعالجة" الوامض يتيح لك فتح العملية الكاملة.',
   'settings.appearance.assistantTextModeDesc':
     'اعرض ردود المساعد كنص بلا إطار مع إبقاء رسائلك داخل فقاعات.',
   'settings.mascot.active': 'نشط',

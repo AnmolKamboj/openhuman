@@ -2920,6 +2920,7 @@ const messages: TranslationMap = {
   'conversations.agentTaskInsights.sourcesHeading': '来源',
   'conversations.agentTaskInsights.noSteps': '未记录任何步骤',
   'conversations.agentTaskInsights.viewProcessSource': '查看完整的智能体处理来源',
+  'conversations.agentTaskInsights.processing': '处理中',
   'daemon.serviceBlockingGate.body': '核心服务不可用，请等待或下载最新版本。',
   'daemon.serviceBlockingGate.downloadHint': '下载最新版本',
   'daemon.serviceBlockingGate.downloadLatest': '下载最新版本',
@@ -4379,6 +4380,9 @@ const messages: TranslationMap = {
   'settings.appearance.tabBarAlwaysShowLabelsDesc': '关闭时，标签仅出现在悬停时或活动选项卡上。',
   'settings.appearance.chatHeading': '聊天',
   'settings.appearance.assistantTextMode': '助手回复以文本显示',
+  'settings.appearance.hideAgentInsights': '隐藏智能体思考过程',
+  'settings.appearance.hideAgentInsightsDesc':
+    '折叠聊天中智能体逐步执行的实时时间线。闪烁的“处理中”链接仍可让你打开完整过程。',
   'settings.appearance.assistantTextModeDesc': '将助手回复渲染为无边框文本，同时保留你的消息气泡。',
   'settings.mascot.active': '活跃',
   'settings.mascot.characterDesc': '选择你的 OpenHuman 角色',
