@@ -533,6 +533,24 @@ const Conversations = ({
           navigate('/chat', { replace: true });
           return;
         }
+        // Restore the thread the user last had open — persisted across reloads
+        // via redux-persist on the `thread` slice, and kept in-memory across
+        // in-app navigation — whenever it still exists server-side. This must
+        // run BEFORE the General-only default below: a non-General active
+        // session (task / worker / subconscious / meeting) is filtered out of
+        // `visibleThreads`, so without this branch, navigating away from the
+        // Chat tab and back would drop the active thread and either resume an
+        // unrelated General thread or spawn a fresh chat — losing the
+        // conversation the user was in (#chat-tab-active-thread).
+        const persistedThread = selectedThreadId
+          ? data.threads.find(t => t.id === selectedThreadId)
+          : undefined;
+        if (persistedThread) {
+          dispatch(setSelectedThread(persistedThread.id));
+          void dispatch(loadThreadMessages(persistedThread.id));
+          debug('[chat][route] restored active thread thread=%s', persistedThread.id);
+          return;
+        }
         // Default landing is a fresh "new window" (the merged Home surface) —
         // we no longer resume the last conversation on open. Reuse an existing
         // empty thread if one is lying around so repeated opens don't pile up

@@ -1445,9 +1445,8 @@ describe('Conversations — worker thread back-to-parent navigation (#1624)', ()
       });
     });
 
-    // The mount effect resumes onto the first visible General thread. Re-select
-    // the worker thread now that mount has settled to mimic opening it from the
-    // Tasks bucket or parent reference card.
+    // The mount effect now restores the persisted worker session directly;
+    // re-select it explicitly so the assertion is independent of mount timing.
     await act(async () => {
       store!.dispatch(setSelectedThread('t-child'));
     });
@@ -2022,5 +2021,104 @@ describe('Conversations — open-session resume (View work)', () => {
     });
 
     await waitFor(() => expect(threadApi.decidePlan).toHaveBeenCalledWith(selectedId, 'pc1', true));
+  });
+});
+
+// Returning to the Chat tab must restore the thread the user last had open
+// (persisted on the `thread` slice, kept in-memory across in-app navigation),
+// even when it's hidden behind the default General tab — a task / worker /
+// subconscious / meeting session. The previous General-only resume default
+// dropped such a session and, when it was the only thread, spawned a fresh
+// chat — losing the active conversation.
+describe('Conversations — active-thread restore across in-app navigation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetThreadMessages.mockResolvedValue({ messages: [], count: 0 });
+  });
+
+  it('restores a non-General active session on remount instead of spawning a new chat', async () => {
+    const taskThread = makeThread({
+      id: 'task-active-1',
+      title: 'Active task session',
+      labels: ['tasks'],
+    });
+    // Only the (hidden) task session exists — pre-fix this falls through to
+    // handleCreateNewThread and replaces the active session with a new chat.
+    mockGetThreads.mockResolvedValue({ threads: [taskThread], count: 1 });
+
+    let store: ReturnType<typeof buildStore> | undefined;
+    await act(async () => {
+      store = await renderConversations({
+        thread: {
+          ...emptyThreadState,
+          threads: [taskThread],
+          selectedThreadId: 'task-active-1',
+          messagesByThreadId: { 'task-active-1': [] },
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(store!.getState().thread.selectedThreadId).toBe('task-active-1');
+    });
+    expect(threadApi.createNewThread).not.toHaveBeenCalled();
+    expect(mockGetThreadMessages).toHaveBeenCalledWith('task-active-1');
+  });
+
+  it('keeps the General-only sidebar while restoring a non-General session', async () => {
+    const taskThread = makeThread({
+      id: 'task-active-2',
+      title: 'Restored task',
+      labels: ['tasks'],
+    });
+    mockGetThreads.mockResolvedValue({ threads: [taskThread], count: 1 });
+
+    await act(async () => {
+      await renderConversations({
+        thread: {
+          ...emptyThreadState,
+          threads: [taskThread],
+          selectedThreadId: 'task-active-2',
+          messagesByThreadId: { 'task-active-2': [] },
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(threadApi.createNewThread).not.toHaveBeenCalled();
+    });
+    // Main removed the visible General/Subconscious/Tasks chips; restoring a
+    // task session should not reintroduce that tab UI.
+    await openSidebar();
+    expect(screen.queryByRole('tab', { name: 'Tasks' })).not.toBeInTheDocument();
+  });
+
+  it('reuses an empty General thread when there is no active selection', async () => {
+    // Fresh session (no persisted selection) keeps main's new-window behaviour:
+    // reuse an existing empty General thread rather than spawning duplicates.
+    const threads = [makeThread({ id: 'g-1', title: 'Recent general' })];
+    mockGetThreads.mockResolvedValue({ threads, count: 1 });
+
+    let store: ReturnType<typeof buildStore> | undefined;
+    await act(async () => {
+      store = await renderConversations({ thread: emptyThreadState });
+    });
+
+    await waitFor(() => {
+      expect(store!.getState().thread.selectedThreadId).toBe('g-1');
+    });
+    expect(threadApi.createNewThread).not.toHaveBeenCalled();
+  });
+
+  it('opens a new chat for a genuinely fresh session with no threads', async () => {
+    mockGetThreads.mockResolvedValue({ threads: [], count: 0 });
+
+    await act(async () => {
+      await renderConversations({ thread: emptyThreadState });
+    });
+
+    await waitFor(() => {
+      expect(threadApi.createNewThread).toHaveBeenCalled();
+    });
   });
 });
