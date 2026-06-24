@@ -203,6 +203,20 @@ impl Provider for OpenAiCompatibleProvider {
                     Some(model),
                     status,
                 );
+            } else if super::super::is_provider_insufficient_credits_402(status, &error) {
+                // Insufficient-credits 402: the user's own BYO provider account
+                // is out of balance — a flat billing fact, not a reservation-
+                // window error, so there is NO local max_tokens lever to apply.
+                // Demote to info instead of paging on every retry; this is the
+                // complete classification for a genuinely-unpreventable
+                // BYO-balance condition (TAURI-RUST-4QF — DeepSeek "Insufficient
+                // Balance"; same class as the native_chat arm added for -C62).
+                super::super::log_provider_insufficient_credits_402(
+                    "chat_completions",
+                    self.name.as_str(),
+                    Some(model),
+                    status,
+                );
             } else if super::super::should_report_provider_http_failure(status) {
                 crate::core::observability::report_error(
                     message.as_str(),
@@ -1005,6 +1019,23 @@ impl Provider for OpenAiCompatibleProvider {
                         Some(model_owned.as_str()),
                         status,
                     );
+                } else if crate::openhuman::inference::provider::is_provider_insufficient_credits_402(
+                    status,
+                    &raw_error,
+                ) {
+                    // Insufficient-credits 402: the user's own BYO provider
+                    // account is out of balance — a flat billing fact, not a
+                    // reservation-window error, so there is NO local max_tokens
+                    // lever to apply. Demote to info instead of paging on every
+                    // retry; complete classification for a genuinely-
+                    // unpreventable BYO-balance condition
+                    // (TAURI-RUST-4QF — DeepSeek "Insufficient Balance").
+                    crate::openhuman::inference::provider::log_provider_insufficient_credits_402(
+                        "stream_chat",
+                        provider_name.as_str(),
+                        Some(model_owned.as_str()),
+                        status,
+                    );
                 } else if crate::openhuman::inference::provider::should_report_provider_http_failure(
                     status,
                 ) {
@@ -1217,6 +1248,23 @@ impl Provider for OpenAiCompatibleProvider {
                     &raw_error,
                 ) {
                     crate::openhuman::inference::provider::log_byo_provider_auth_failure(
+                        "stream_chat_history",
+                        provider_name.as_str(),
+                        Some(model_owned.as_str()),
+                        status,
+                    );
+                } else if crate::openhuman::inference::provider::is_provider_insufficient_credits_402(
+                    status,
+                    &raw_error,
+                ) {
+                    // Insufficient-credits 402: the user's own BYO provider
+                    // account is out of balance — a flat billing fact, not a
+                    // reservation-window error, so there is NO local max_tokens
+                    // lever to apply. Demote to info instead of paging on every
+                    // retry; complete classification for a genuinely-
+                    // unpreventable BYO-balance condition
+                    // (TAURI-RUST-4QF — DeepSeek "Insufficient Balance").
+                    crate::openhuman::inference::provider::log_provider_insufficient_credits_402(
                         "stream_chat_history",
                         provider_name.as_str(),
                         Some(model_owned.as_str()),

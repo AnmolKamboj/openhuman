@@ -719,6 +719,14 @@ pub async fn api_error(provider: &str, response: reqwest::Response) -> anyhow::E
     // from Sentry (TAURI-RUST-8FQ flood).
     let is_openai_oauth_session_expired =
         is_openai_oauth_session_expired_http(provider, status, &body);
+    // Insufficient-credits 402: the user's own BYO provider account is out of
+    // balance — a flat billing fact, not a reservation-window error, so there is
+    // NO local max_tokens lever to apply. Demote from Sentry like the per-method
+    // compatible-provider arms; the complete classification for a genuinely-
+    // unpreventable BYO-balance condition (TAURI-RUST-4QF DeepSeek "Insufficient
+    // Balance"). This shared helper backs the two methods that delegate here
+    // (chat_via_responses fallback and the non-streaming completion path).
+    let is_insufficient_credits_402 = is_provider_insufficient_credits_402(status, &body);
 
     if is_auth_failure && is_backend {
         // Single source of truth for backend session-expiry handling (warn +
@@ -741,6 +749,8 @@ pub async fn api_error(provider: &str, response: reqwest::Response) -> anyhow::E
         log_byo_provider_auth_failure("api_error", provider, None, status);
     } else if is_openai_oauth_session_expired {
         log_openai_oauth_session_expired("api_error", provider, None, status);
+    } else if is_insufficient_credits_402 {
+        log_provider_insufficient_credits_402("api_error", provider, None, status);
     } else if should_report_provider_http_failure(status) {
         crate::core::observability::report_error(
             message.as_str(),
