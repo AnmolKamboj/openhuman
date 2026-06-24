@@ -497,6 +497,7 @@ const messages: TranslationMap = {
   'skills.title': 'Connessioni',
   'skills.search': 'Cerca connessioni...',
   'skills.noResults': 'Nessuna connessione trovata',
+  'skills.loadingIntegrations': 'Caricamento delle integrazioni…',
   'skills.connect': 'Connetti',
   'skills.disconnect': 'Disconnetti',
   'skills.configure': 'Gestisci',

@@ -489,6 +489,7 @@ const messages: TranslationMap = {
   'skills.title': 'Koneksi',
   'skills.search': 'Cari koneksi...',
   'skills.noResults': 'Koneksi tidak ditemukan',
+  'skills.loadingIntegrations': 'Memuat integrasi…',
   'skills.connect': 'Hubungkan',
   'skills.disconnect': 'Putuskan',
   'skills.configure': 'Kelola',

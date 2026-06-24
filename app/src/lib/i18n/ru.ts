@@ -493,6 +493,7 @@ const messages: TranslationMap = {
   'skills.title': 'Подключения',
   'skills.search': 'Поиск подключений...',
   'skills.noResults': 'Подключения не найдены',
+  'skills.loadingIntegrations': 'Загрузка интеграций…',
   'skills.connect': 'Подключить',
   'skills.disconnect': 'Отключить',
   'skills.configure': 'Управление',

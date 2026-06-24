@@ -486,6 +486,7 @@ const messages: TranslationMap = {
   'skills.title': '연결',
   'skills.search': '연결 검색...',
   'skills.noResults': '연결을 찾을 수 없습니다',
+  'skills.loadingIntegrations': '통합을 불러오는 중…',
   'skills.connect': '연결',
   'skills.disconnect': '연결 해제',
   'skills.configure': '관리',

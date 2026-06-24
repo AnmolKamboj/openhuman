@@ -487,6 +487,7 @@ const messages: TranslationMap = {
   'skills.title': 'সংযোগ',
   'skills.search': 'সংযোগ খুঁজুন...',
   'skills.noResults': 'কোনো সংযোগ পাওয়া যায়নি',
+  'skills.loadingIntegrations': 'ইন্টিগ্রেশন লোড হচ্ছে…',
   'skills.connect': 'সংযুক্ত করুন',
   'skills.disconnect': 'সংযোগ বিচ্ছিন্ন',
   'skills.configure': 'পরিচালনা',

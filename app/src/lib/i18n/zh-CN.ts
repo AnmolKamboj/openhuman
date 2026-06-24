@@ -469,6 +469,7 @@ const messages: TranslationMap = {
   'skills.title': '连接',
   'skills.search': '搜索连接...',
   'skills.noResults': '未找到连接',
+  'skills.loadingIntegrations': '正在加载集成…',
   'skills.connect': '连接',
   'skills.disconnect': '断开',
   'skills.configure': '配置',

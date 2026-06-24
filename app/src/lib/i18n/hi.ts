@@ -486,6 +486,7 @@ const messages: TranslationMap = {
   'skills.title': 'कनेक्शन',
   'skills.search': 'कनेक्शन सर्च करें...',
   'skills.noResults': 'कोई कनेक्शन नहीं मिला',
+  'skills.loadingIntegrations': 'इंटीग्रेशन लोड हो रहे हैं…',
   'skills.connect': 'कनेक्ट करें',
   'skills.disconnect': 'डिसकनेक्ट करें',
   'skills.configure': 'मैनेज करें',

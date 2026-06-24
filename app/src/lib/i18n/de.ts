@@ -502,6 +502,7 @@ const messages: TranslationMap = {
   'skills.title': 'Verbindungen',
   'skills.search': 'Verbindungen suchen...',
   'skills.noResults': 'Keine Verbindungen gefunden',
+  'skills.loadingIntegrations': 'Integrationen werden geladen…',
   'skills.connect': 'Verbinden',
   'skills.disconnect': 'Trennen',
   'skills.configure': 'Verwalten',

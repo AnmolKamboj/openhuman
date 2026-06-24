@@ -545,6 +545,7 @@ const en: TranslationMap = {
   'skills.title': 'Connections',
   'skills.search': 'Search connections...',
   'skills.noResults': 'No connections found',
+  'skills.loadingIntegrations': 'Loading integrations…',
   'skills.connect': 'Connect',
   'skills.disconnect': 'Disconnect',
   'skills.configure': 'Manage',

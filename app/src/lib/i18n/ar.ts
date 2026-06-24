@@ -479,6 +479,7 @@ const messages: TranslationMap = {
   'skills.title': 'الاتصالات',
   'skills.search': 'البحث في الاتصالات...',
   'skills.noResults': 'لم يتم العثور على اتصالات',
+  'skills.loadingIntegrations': 'جارٍ تحميل التكاملات…',
   'skills.connect': 'توصيل',
   'skills.disconnect': 'قطع الاتصال',
   'skills.configure': 'إدارة',
