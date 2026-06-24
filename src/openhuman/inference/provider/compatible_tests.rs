@@ -2973,6 +2973,67 @@ fn custom_openai_provider_has_no_responses_fallback() {
 }
 
 #[test]
+fn responses_404_disables_fallback_for_endpoint() {
+    // TAURI-RUST-FJZ: a custom slug (factory can't classify it, so the static
+    // fallback flag is ON) whose endpoint 404s on `/responses` must stop
+    // attempting that fallback once the route is known-missing — routing to
+    // chat-completions only. Use a unique base_url; the cache is process-global.
+    let base_url = "https://responses-404-test.example.com/v1";
+    let p =
+        OpenAiCompatibleProvider::new("nous-portal", base_url, Some("sk-test"), AuthStyle::Bearer);
+    assert!(
+        p.responses_fallback_active(),
+        "a fresh custom slug starts with the fallback enabled"
+    );
+
+    super::mark_responses_api_unsupported(base_url);
+
+    assert!(
+        super::responses_api_known_unsupported(base_url),
+        "the endpoint is recorded as Responses-incapable after a 404"
+    );
+    assert!(
+        !p.responses_fallback_active(),
+        "the fallback is disabled once `/responses` has 404'd for this endpoint"
+    );
+
+    // A provider for a different endpoint is unaffected.
+    let other = OpenAiCompatibleProvider::new(
+        "nous-portal",
+        "https://responses-404-test.example.com/v2",
+        Some("sk-test"),
+        AuthStyle::Bearer,
+    );
+    assert!(
+        other.responses_fallback_active(),
+        "the cache is keyed per-endpoint, not globally"
+    );
+}
+
+#[test]
+fn responses_404_route_vs_model_disambiguation() {
+    // A generic "route missing" 404 → this endpoint has no Responses API.
+    assert!(OpenAiCompatibleProvider::responses_404_indicates_missing_route("404 Not Found"));
+    assert!(
+        OpenAiCompatibleProvider::responses_404_indicates_missing_route(
+            "<html><body>404 page not found</body></html>"
+        )
+    );
+    // A model/deployment-specific 404 → the route exists; keep the fallback so
+    // we don't poison the cache for other models on a Responses-capable endpoint.
+    assert!(
+        !OpenAiCompatibleProvider::responses_404_indicates_missing_route(
+            r#"{"error":{"message":"model 'gpt-x' not found","code":"model_not_found"}}"#
+        )
+    );
+    assert!(
+        !OpenAiCompatibleProvider::responses_404_indicates_missing_route(
+            r#"{"error":{"message":"The API deployment for this resource does not exist"}}"#
+        )
+    );
+}
+
+#[test]
 fn enrich_404_message_adds_hint_when_no_fallback() {
     let p = OpenAiCompatibleProvider::new_no_responses_fallback(
         "custom_openai",
