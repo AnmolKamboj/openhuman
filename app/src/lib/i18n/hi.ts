@@ -863,6 +863,7 @@ const messages: TranslationMap = {
   'onboarding.custom.memory.configureDesc':
     'मेमोरी खुद देखें, एक्सपोर्ट करें या मिटाएं। Settings › Memory में कॉन्फिगर करें।',
   'accounts.addAccount': 'अकाउंट जोड़ें',
+  'accounts.addApps': 'ऐप्स जोड़ें',
   'accounts.manageAccounts': 'अकाउंट मैनेज करें',
   'accounts.noAccounts': 'कोई अकाउंट कनेक्ट नहीं है',
   'accounts.connectAccount': 'शुरू करने के लिए एक अकाउंट कनेक्ट करें',

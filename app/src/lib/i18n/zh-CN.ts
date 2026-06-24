@@ -825,6 +825,7 @@ const messages: TranslationMap = {
   'onboarding.custom.memory.defaultDesc': 'OpenHuman 会自动管理记忆存储和检索。无需设置。',
   'onboarding.custom.memory.configureDesc': '你可以自行查看、导出或清除记忆。在设置 › 记忆中配置。',
   'accounts.addAccount': '添加账户',
+  'accounts.addApps': '添加应用',
   'accounts.manageAccounts': '管理账户',
   'accounts.noAccounts': '未连接任何账户',
   'accounts.connectAccount': '连接一个账户以开始使用',

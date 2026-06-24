@@ -845,6 +845,7 @@ const messages: TranslationMap = {
   'onboarding.custom.memory.configureDesc':
     'افحص الذاكرة أو صدّرها أو امسحها بنفسك. اضبطها من الإعدادات › الذاكرة.',
   'accounts.addAccount': 'إضافة حساب',
+  'accounts.addApps': 'إضافة تطبيقات',
   'accounts.manageAccounts': 'إدارة الحسابات',
   'accounts.noAccounts': 'لا توجد حسابات متصلة',
   'accounts.connectAccount': 'اربط حسابًا للبدء',

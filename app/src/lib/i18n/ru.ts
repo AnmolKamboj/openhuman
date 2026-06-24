@@ -874,6 +874,7 @@ const messages: TranslationMap = {
   'onboarding.custom.memory.configureDesc':
     'Просматривай, экспортируй или очищай память самостоятельно. Настрой в Настройки › Память.',
   'accounts.addAccount': 'Добавить аккаунт',
+  'accounts.addApps': 'Добавить приложения',
   'accounts.manageAccounts': 'Управление аккаунтами',
   'accounts.noAccounts': 'Аккаунты не подключены',
   'accounts.connectAccount': 'Подключи аккаунт для начала работы',

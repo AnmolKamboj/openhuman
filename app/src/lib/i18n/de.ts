@@ -889,6 +889,7 @@ const messages: TranslationMap = {
   'onboarding.custom.memory.configureDesc':
     'Überprüfe, exportiere oder lösche den Speicher selbst. Konfiguriere in den Einstellungen › Speicher.',
   'accounts.addAccount': 'Konto hinzufügen',
+  'accounts.addApps': 'Apps hinzufügen',
   'accounts.manageAccounts': 'Konten verwalten',
   'accounts.noAccounts': 'Keine Konten verbunden',
   'accounts.connectAccount': 'Verbinde ein Konto, um loszulegen',

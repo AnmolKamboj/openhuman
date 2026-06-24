@@ -870,6 +870,7 @@ const messages: TranslationMap = {
   'onboarding.custom.memory.configureDesc':
     'Periksa, ekspor, atau hapus memori sendiri. Konfigurasi di Pengaturan › Memori.',
   'accounts.addAccount': 'Tambah Akun',
+  'accounts.addApps': 'Tambah aplikasi',
   'accounts.manageAccounts': 'Kelola Akun',
   'accounts.noAccounts': 'Belum ada akun terhubung',
   'accounts.connectAccount': 'Hubungkan akun untuk memulai',

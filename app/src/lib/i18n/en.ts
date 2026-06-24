@@ -1192,6 +1192,7 @@ const en: TranslationMap = {
 
   // Accounts
   'accounts.addAccount': 'Add Account',
+  'accounts.addApps': 'Add apps',
   'accounts.manageAccounts': 'Manage Accounts',
   'accounts.noAccounts': 'No accounts connected',
   'accounts.connectAccount': 'Connect an account to get started',

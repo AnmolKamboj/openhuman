@@ -864,6 +864,7 @@ const messages: TranslationMap = {
   'onboarding.custom.memory.configureDesc':
     '메모리를 직접 검사, 내보내기 또는 삭제할 수 있습니다. 설정 › 메모리에서 구성할 수 있습니다.',
   'accounts.addAccount': '계정 추가',
+  'accounts.addApps': '앱 추가',
   'accounts.manageAccounts': '계정 관리',
   'accounts.noAccounts': '연결된 계정이 없습니다',
   'accounts.connectAccount': '시작하려면 계정을 연결하세요',
