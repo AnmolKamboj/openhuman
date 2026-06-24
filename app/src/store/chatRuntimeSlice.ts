@@ -221,6 +221,13 @@ export interface PendingApproval {
    * extracted from the event's redacted args for display. Empty if unavailable.
    */
   command?: string;
+  /**
+   * Toolkit slug carried on `composio_connect` requests (#3993). Present only
+   * when `toolName === 'composio_connect'`; the inline connect card uses it to
+   * run the OAuth handoff and poll for completion. The slug is a public
+   * identifier (not PII), so it survives arg redaction unchanged.
+   */
+  toolkit?: string;
 }
 
 /**

@@ -961,6 +961,9 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
           firstString(a.path) ??
           firstString(a.url) ??
           firstString(a.target);
+        // `composio_connect` carries the toolkit slug so the inline connect
+        // card (#3993) knows which integration to authorize.
+        const toolkit = firstString(a.toolkit);
         dispatch(
           setPendingApprovalForThread({
             threadId: event.thread_id,
@@ -969,6 +972,7 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
               toolName: event.tool_name,
               message: event.message,
               command,
+              toolkit,
             },
           })
         );

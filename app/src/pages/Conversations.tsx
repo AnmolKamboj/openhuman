@@ -11,6 +11,7 @@ import ChatComposer from '../components/chat/ChatComposer';
 import ChatFilesChip from '../components/chat/ChatFilesChip';
 import ChatNewWindowHero from '../components/chat/ChatNewWindowHero';
 import ComposerTokenStats from '../components/chat/ComposerTokenStats';
+import IntegrationConnectCard from '../components/chat/IntegrationConnectCard';
 import QueuedFollowups from '../components/chat/QueuedFollowups';
 import { ConfirmationModal } from '../components/intelligence/ConfirmationModal';
 import { SidebarContent } from '../components/layout/shell/SidebarSlot';
@@ -2527,11 +2528,31 @@ const Conversations = ({
           const pendingApproval = approvalThreadId
             ? pendingApprovalByThread[approvalThreadId]
             : undefined;
-          return pendingApproval && approvalThreadId ? (
+          if (!pendingApproval || !approvalThreadId) return null;
+          // `composio_connect` parks on the same gate but needs a Connect
+          // button + OAuth poll rather than approve/deny (#3993).
+          const isConnect = pendingApproval.toolName === 'composio_connect';
+          return (
             <div className="mb-2">
-              <ApprovalRequestCard threadId={approvalThreadId} approval={pendingApproval} />
+              {isConnect ? (
+                // Key by requestId so switching from one parked approval to
+                // another remounts the card with fresh local state (phase,
+                // field values, cancellation refs, poll timers) instead of
+                // bleeding the previous request's state in (#4062, coderabbit).
+                <IntegrationConnectCard
+                  key={pendingApproval.requestId}
+                  threadId={approvalThreadId}
+                  approval={pendingApproval}
+                />
+              ) : (
+                <ApprovalRequestCard
+                  key={pendingApproval.requestId}
+                  threadId={approvalThreadId}
+                  approval={pendingApproval}
+                />
+              )}
             </div>
-          ) : null;
+          );
         })()}
 
         {(() => {

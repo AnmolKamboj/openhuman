@@ -2977,6 +2977,9 @@ const messages: TranslationMap = {
   'composio.connect.wabaIdHint':
     'GET /me/businesses를 통해 찾은 다음 Meta 액세스 토큰을 사용하여 /{business_id}/owned_whatsapp_business_accounts를 GET하세요.',
   'composio.connect.wabaIdLabel': 'WABA ID 라벨',
+  'composio.connect.atlassianSubdomainPlaceholder': 'your-subdomain',
+  'composio.connect.dynamicsOrgNamePlaceholder': 'myorg',
+  'composio.connect.wabaIdPlaceholder': 'e.g. 123456789012345',
   'composio.connect.wabaIdRequired':
     '계속하려면 WhatsApp Business Account ID (WABA ID)를 입력하세요.',
   'composio.connect.waitingFor': '대기 중:',
