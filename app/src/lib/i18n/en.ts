@@ -489,6 +489,11 @@ const en: TranslationMap = {
   'chat.typeMessage': 'How can I help you today?',
   'chat.send': 'Send message',
   'chat.parallelBranchHint': 'Type a parallel branch — ⌘/Ctrl+Enter to send',
+  'chat.followupHint':
+    'Queue a follow-up — sent after this reply · ⌘/Ctrl+Enter for a parallel branch',
+  'chat.queuedFollowups.label': 'Queued follow-ups',
+  'chat.queuedFollowups.clear': 'Clear',
+  'chat.queuedFollowups.clearFailed': "Couldn't clear the queue — try again.",
   'chat.parallelBranchLabel': 'Parallel branch',
   'chat.thinking': 'Thinking...',
   'chat.noMessages': 'No messages yet',
