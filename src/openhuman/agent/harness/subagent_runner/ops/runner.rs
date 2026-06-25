@@ -473,9 +473,65 @@ async fn run_typed_mode(
             Some(prefix) => format!("{}__{}", prefix, parent.session_key),
             None => parent.session_key.clone(),
         };
+        // Resolve the extraction provider + model through the `summarization`
+        // role so extraction follows the user's `memory_provider` routing.
+        //
+        // When summarization routes to the **managed** backend, the parent
+        // provider already speaks the managed tier names, so we reuse it with the
+        // fixed `summarization-v1` model — no redundant provider build, and (with
+        // no live backend) no network dependency. Only when summarization routes
+        // to a **concrete BYOK/local** provider — exactly where passing the
+        // parent agent's (agentic) provider the literal `summarization-v1` would
+        // 400/404 — do we build the dedicated summarization provider so the call
+        // lands on the right endpoint + model.
+        //
+        // A local parent never reuses (its runtime would 404 on the managed tier
+        // string): it falls through to building the managed summarization
+        // provider. Any config/factory glitch degrades to parent + the fixed tier
+        // id rather than dead-ending extraction.
+        let summarization_tier =
+            crate::openhuman::inference::provider::factory::summarization_tier_model().to_string();
+        let (extract_provider, extract_model): (
+            Arc<dyn crate::openhuman::inference::provider::Provider>,
+            String,
+        ) = match crate::openhuman::config::Config::load_or_init().await {
+            Ok(cfg) => {
+                let route =
+                    crate::openhuman::inference::provider::provider_for_role("summarization", &cfg);
+                let r = route.trim();
+                let route_is_managed = r.is_empty() || r == "cloud" || r == "openhuman";
+                if route_is_managed && !parent.provider.is_local_provider() {
+                    (parent.provider.clone(), summarization_tier.clone())
+                } else {
+                    match crate::openhuman::inference::provider::create_chat_provider(
+                        "summarization",
+                        &cfg,
+                    ) {
+                        Ok((p, m)) => (Arc::from(p), m),
+                        Err(e) => {
+                            tracing::warn!(
+                                agent_id = %definition.id,
+                                error = %e,
+                                "[subagent_runner:typed] extract summarization provider build failed; falling back to parent provider"
+                            );
+                            (parent.provider.clone(), summarization_tier.clone())
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    agent_id = %definition.id,
+                    error = %e,
+                    "[subagent_runner:typed] config load failed for extract provider; falling back to parent provider + summarization-v1"
+                );
+                (parent.provider.clone(), summarization_tier.clone())
+            }
+        };
         dynamic_tools.push(Box::new(ExtractFromResultTool::new(
             cache.clone(),
-            parent.provider.clone(),
+            extract_provider,
+            extract_model,
             parent.workspace_dir.clone(),
             parent_chain,
             definition.id.clone(),
