@@ -493,6 +493,7 @@ const messages: TranslationMap = {
   'chat.newWindowWelcome3': 'ध्यान लगाने का समय 🧘🏻',
   'chat.typeMessage': 'आज मैं आपकी कैसे मदद कर सकता हूँ?',
   'chat.send': 'मैसेज भेजें',
+  'chat.stopGeneration': 'जेनरेशन रोकें',
   'chat.parallelBranchHint': 'समानांतर शाखा टाइप करें — भेजने के लिए ⌘/Ctrl+Enter',
   'chat.followupHint':
     'फ़ॉलो-अप कतार में लगाएँ — इस उत्तर के बाद भेजा जाएगा · समानांतर शाखा के लिए ⌘/Ctrl+Enter',

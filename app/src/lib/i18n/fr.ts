@@ -508,6 +508,7 @@ const messages: TranslationMap = {
   'chat.newWindowWelcome3': 'Place à la concentration 🧘🏻',
   'chat.typeMessage': "Comment puis-je t'aider aujourd'hui ?",
   'chat.send': 'Envoyer le message',
+  'chat.stopGeneration': 'Arrêter la génération',
   'chat.parallelBranchHint': 'Saisir une branche parallèle — ⌘/Ctrl+Entrée pour envoyer',
   'chat.followupHint':
     'Mettre un suivi en file — envoyé après cette réponse · ⌘/Ctrl+Entrée pour une branche parallèle',

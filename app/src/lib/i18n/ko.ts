@@ -494,6 +494,7 @@ const messages: TranslationMap = {
   'chat.newWindowWelcome3': '집중할 시간이에요 🧘🏻',
   'chat.typeMessage': '오늘 무엇을 도와드릴까요?',
   'chat.send': '메시지 보내기',
+  'chat.stopGeneration': '생성 중지',
   'chat.parallelBranchHint': '병렬 분기 입력 — 보내려면 ⌘/Ctrl+Enter',
   'chat.followupHint': '후속 메시지를 대기열에 추가 — 이 응답 후 전송 · 병렬 분기는 ⌘/Ctrl+Enter',
   'chat.queuedFollowups.label': '대기 중인 후속 메시지',

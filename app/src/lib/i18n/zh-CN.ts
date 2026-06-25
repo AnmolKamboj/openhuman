@@ -477,6 +477,7 @@ const messages: TranslationMap = {
   'chat.newWindowWelcome3': '是时候专注了 🧘🏻',
   'chat.typeMessage': '今天我能帮您做什么？',
   'chat.send': '发送',
+  'chat.stopGeneration': '停止生成',
   'chat.parallelBranchHint': '输入并行分支 — ⌘/Ctrl+Enter 发送',
   'chat.followupHint': '将后续消息加入队列 — 将在本次回复后发送 · ⌘/Ctrl+Enter 开启并行分支',
   'chat.queuedFollowups.label': '排队的后续消息',

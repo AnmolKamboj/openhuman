@@ -487,6 +487,7 @@ const messages: TranslationMap = {
   'chat.newWindowWelcome3': 'حان وقت التركيز 🧘🏻',
   'chat.typeMessage': 'كيف يمكنني مساعدتك اليوم؟',
   'chat.send': 'إرسال الرسالة',
+  'chat.stopGeneration': 'إيقاف التوليد',
   'chat.parallelBranchHint': 'فرع متوازٍ — ⌘/Ctrl+Enter للإرسال',
   'chat.followupHint': 'أضِف متابعة إلى القائمة — تُرسَل بعد هذا الرد · ⌘/Ctrl+Enter لفرع متوازٍ',
   'chat.queuedFollowups.label': 'متابعات في قائمة الانتظار',

@@ -496,6 +496,7 @@ const messages: TranslationMap = {
   'chat.newWindowWelcome3': 'Waktunya fokus 🧘🏻',
   'chat.typeMessage': 'Apa yang bisa saya bantu hari ini?',
   'chat.send': 'Kirim pesan',
+  'chat.stopGeneration': 'Hentikan pembuatan',
   'chat.parallelBranchHint': 'Ketik cabang paralel — ⌘/Ctrl+Enter untuk mengirim',
   'chat.followupHint':
     'Antrekan tindak lanjut — dikirim setelah balasan ini · ⌘/Ctrl+Enter untuk cabang paralel',

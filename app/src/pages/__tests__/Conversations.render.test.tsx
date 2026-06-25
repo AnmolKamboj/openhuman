@@ -15,7 +15,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SidebarSlotOutlet, SidebarSlotProvider } from '../../components/layout/shell/SidebarSlot';
 import { threadApi } from '../../services/api/threadApi';
-import { chatClearQueue, chatSend } from '../../services/chatService';
+import { chatCancel, chatClearQueue, chatSend } from '../../services/chatService';
 import { CoreRpcError } from '../../services/coreRpcClient';
 import agentProfileReducer from '../../store/agentProfileSlice';
 import chatRuntimeReducer, {
@@ -1058,8 +1058,79 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
       profileId: 'default',
       locale: 'en',
     });
-    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    // The send cleared the composer; with an empty composer mid-send the Send
+    // button morphs into the Stop button, so there is no Send affordance left
+    // to fire a duplicate send.
+    expect(screen.getByTestId('stop-generation-button')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send message' })).not.toBeInTheDocument();
     resolveSend?.();
+  });
+
+  it('cancels the in-flight generation when the in-composer Stop button is clicked', async () => {
+    let resolveSend: (() => void) | undefined;
+    vi.mocked(chatSend).mockImplementationOnce(
+      () =>
+        new Promise<string | undefined>(resolve => {
+          resolveSend = () => resolve(undefined);
+        })
+    );
+    const { textarea, thread } = await renderSelectedConversation();
+
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: 'cancel me' } });
+    });
+    const sendButton = screen.getByRole('button', { name: 'Send message' });
+    await act(async () => {
+      fireEvent.click(sendButton);
+    });
+
+    // Empty composer + in-flight turn -> the Send button became the Stop button.
+    const stopButton = await screen.findByTestId('stop-generation-button');
+    await act(async () => {
+      fireEvent.click(stopButton);
+    });
+
+    expect(chatCancel).toHaveBeenCalledWith(thread.id);
+    resolveSend?.();
+  });
+
+  it('keeps a footer Cancel control in the mic-cloud composer while generating', async () => {
+    const thread = makeThread({ id: 'mic-cancel-thread', title: 'Mic' });
+    mockGetThreads.mockResolvedValue({ threads: [thread], count: 1 });
+    mockGetThreadMessages.mockResolvedValue({ messages: [], count: 0 });
+    const { default: Conversations } = await import('../Conversations');
+    const store = buildStore({
+      thread: selectedThreadState(thread),
+      socket: socketState('connected'),
+    });
+    await act(async () => {
+      render(
+        <Provider store={store}>
+          <MemoryRouter initialEntries={['/conversations']}>
+            <SidebarSlotProvider>
+              <SidebarSlotOutlet />
+              <Conversations composer="mic-cloud" />
+            </SidebarSlotProvider>
+          </MemoryRouter>
+        </Provider>
+      );
+    });
+
+    // Drive an in-flight turn so `isSending` is true. The mic-cloud composer has
+    // no in-box Stop button, so the footer Cancel control is the cancel path.
+    await act(async () => {
+      store.dispatch(beginInferenceTurn({ threadId: thread.id }));
+    });
+
+    const cancelButtons = await screen.findAllByRole('button', { name: 'Cancel' });
+    const footerCancel = cancelButtons.find(
+      b => b.getAttribute('data-analytics-id') === 'chat-cancel-generation'
+    );
+    expect(footerCancel).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(footerCancel as HTMLElement);
+    });
+    expect(chatCancel).toHaveBeenCalledWith(thread.id);
   });
 
   it('releases the pending-send lock when appendMessage rejects with a generic error', async () => {

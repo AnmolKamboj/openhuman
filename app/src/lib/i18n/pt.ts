@@ -507,6 +507,7 @@ const messages: TranslationMap = {
   'chat.newWindowWelcome3': 'Hora de focar 🧘🏻',
   'chat.typeMessage': 'Como posso ajudá-lo hoje?',
   'chat.send': 'Enviar mensagem',
+  'chat.stopGeneration': 'Parar geração',
   'chat.parallelBranchHint': 'Digite uma ramificação paralela — ⌘/Ctrl+Enter para enviar',
   'chat.followupHint':
     'Enfileirar um acompanhamento — enviado após esta resposta · ⌘/Ctrl+Enter para uma ramificação paralela',

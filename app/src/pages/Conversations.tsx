@@ -1223,6 +1223,13 @@ const Conversations = ({
   const handleComposerSend = (text?: string): Promise<void> =>
     selectedThreadActive ? handleSendFollowup(text) : handleSendMessage(text);
 
+  // Cancel the in-flight turn for the selected thread. Shared by the in-composer
+  // Stop button (text mode) and the footer Cancel control (mic-cloud / voice
+  // modes) so the cancel path lives in one place.
+  const handleStopGeneration = useCallback(() => {
+    if (selectedThreadId) void chatCancel(selectedThreadId);
+  }, [selectedThreadId]);
+
   const transcribeAndSendAudio = async (mimeType: string) => {
     setIsRecording(false);
     mediaRecorderRef.current = null;
@@ -2635,18 +2642,17 @@ const Conversations = ({
           />
         )}
 
-        {/* Cancel the in-flight turn. Lives in the floating footer (above the
-            queued-follow-ups strip + composer) so it stays reachable now that
-            the composer is interactive mid-stream — otherwise the taller footer
-            would paint over a cancel control left in the message flow. */}
-        {isSending && rustChat && (
+        {/* Cancel the in-flight turn for composer modes that don't render the
+            text ChatComposer (mic-cloud + voice). The text composer carries its
+            own in-box Stop button, so the footer control only appears for the
+            non-text branches — otherwise voice/mic flows would have no way to
+            stop a long-running generation. */}
+        {isSending && rustChat && (composer === 'mic-cloud' || inputMode !== 'text') && (
           <div className="mb-2 flex justify-start px-1">
             <button
               type="button"
               data-analytics-id="chat-cancel-generation"
-              onClick={() => {
-                if (selectedThreadId) void chatCancel(selectedThreadId);
-              }}
+              onClick={handleStopGeneration}
               className="text-xs text-stone-500 transition-colors hover:text-stone-700 dark:text-neutral-400 dark:hover:text-neutral-200">
               {t('common.cancel')}
             </button>
@@ -2672,6 +2678,7 @@ const Conversations = ({
               inputValue={inputValue}
               setInputValue={setInputValue}
               onSend={handleComposerSend}
+              onStopGeneration={rustChat ? handleStopGeneration : undefined}
               textInputRef={textInputRef}
               fileInputRef={fileInputRef}
               composerInteractionBlocked={composerInteractionBlocked}
