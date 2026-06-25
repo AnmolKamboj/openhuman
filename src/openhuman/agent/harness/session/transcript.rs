@@ -54,7 +54,7 @@ use crate::openhuman::inference::provider::ChatMessage;
 use crate::openhuman::inference::provider::ToolCall;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as FmtWrite;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -618,6 +618,206 @@ pub fn find_root_transcript_for_thread(workspace_dir: &Path, thread_id: &str) ->
 
     matches.sort();
     matches.pop()
+}
+
+/// Aggregated token/cost usage for a chat thread, summed across **all** of the
+/// thread's root session transcripts (a thread reopened across days/restarts
+/// produces several files). `last_turn_*`, `model`, and `updated` come from the
+/// newest transcript so the UI can render a context-window gauge for the most
+/// recent turn. Returns `None` when no transcript exists yet (a brand-new
+/// thread with no completed turns).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ThreadUsageSummary {
+    /// Orchestrator (parent) token totals — the root transcript(s) only. Root
+    /// transcripts never include sub-agent calls (those go to a separate
+    /// observer + their own `__` transcript files); see [`Self::subagents`].
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cached_input_tokens: u64,
+    pub cost_usd: f64,
+    pub turn_count: usize,
+    /// Input/output tokens of the most recent assistant turn (context gauge).
+    pub last_turn_input_tokens: u64,
+    pub last_turn_output_tokens: u64,
+    /// Model that served the most recent turn, if recorded.
+    pub model: Option<String>,
+    /// RFC-3339 `updated` of the newest transcript.
+    pub updated: String,
+    /// Per-archetype sub-agent spend, reconstructed from the thread's `__`
+    /// sub-agent transcripts (grouped by `agent_name`).
+    pub subagents: Vec<SubagentArchetypeUsage>,
+}
+
+/// One sub-agent archetype's summed spend within a thread (e.g. all `coder`
+/// runs). `model` is the model that served one of its runs, used to price it.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SubagentArchetypeUsage {
+    pub agent_id: String,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cached_input_tokens: u64,
+    /// How many sub-agent runs of this archetype contributed.
+    pub runs: usize,
+    pub model: Option<String>,
+}
+
+/// Parse just the `_meta` header of a root transcript JSONL (cheap — stops at
+/// the first non-empty line).
+fn read_transcript_meta_only(path: &Path) -> Option<TranscriptMeta> {
+    let raw = fs::read_to_string(path).ok()?;
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let ml: MetaLine = serde_json::from_str(line).ok()?;
+        let mp = ml.meta;
+        return Some(TranscriptMeta {
+            agent_name: mp.agent,
+            agent_id: mp.agent_id,
+            agent_type: mp.agent_type,
+            dispatcher: mp.dispatcher,
+            provider: mp.provider,
+            model: mp.model,
+            created: mp.created,
+            updated: mp.updated,
+            turn_count: mp.turn_count,
+            input_tokens: mp.input_tokens,
+            output_tokens: mp.output_tokens,
+            cached_input_tokens: mp.cached_input_tokens,
+            charged_amount_usd: mp.charged_amount_usd,
+            thread_id: mp.thread_id,
+            task_id: mp.task_id,
+        });
+    }
+    None
+}
+
+/// Extract the last assistant message's usage + model from a transcript JSONL.
+/// Only the final assistant message of a turn carries these (see the JSONL
+/// format docs at the top of this module).
+fn read_last_assistant_usage(path: &Path) -> Option<(MessageUsage, Option<String>)> {
+    let raw = fs::read_to_string(path).ok()?;
+    let mut result = None;
+    let mut seen_meta = false;
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if !seen_meta {
+            seen_meta = true; // first non-empty line is the `_meta` header
+            continue;
+        }
+        if let Ok(ml) = serde_json::from_str::<MessageLine>(line) {
+            if ml.role == "assistant" {
+                if let Some(usage) = ml.usage {
+                    result = Some((usage, ml.model));
+                }
+            }
+        }
+    }
+    result
+}
+
+/// Summed token/cost usage for `thread_id` across its root transcripts, or
+/// `None` when the thread has no persisted turns yet.
+pub fn read_thread_usage_summary(
+    workspace_dir: &Path,
+    thread_id: &str,
+) -> Option<ThreadUsageSummary> {
+    let thread_id = thread_id.trim();
+    if thread_id.is_empty() {
+        return None;
+    }
+
+    let raw_dir = raw_session_dir(workspace_dir);
+    let entries = fs::read_dir(&raw_dir).ok()?;
+
+    // Single scan: split the thread's transcripts into root (orchestrator) and
+    // `__` sub-agent files. Root totals stay the parent's; sub-agent files are
+    // grouped by archetype for the per-agent breakdown.
+    let mut root_matches: Vec<PathBuf> = Vec::new();
+    let mut sub_matches: Vec<PathBuf> = Vec::new();
+    for path in entries.flatten().map(|entry| entry.path()) {
+        if path.extension().and_then(|s| s.to_str()) != Some("jsonl") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let is_subagent = stem.contains("__");
+        let matches_thread = read_transcript_meta_only(&path)
+            .map(|m| m.thread_id.as_deref() == Some(thread_id))
+            .unwrap_or(false);
+        if !matches_thread {
+            continue;
+        }
+        if is_subagent {
+            sub_matches.push(path);
+        } else {
+            root_matches.push(path);
+        }
+    }
+
+    if root_matches.is_empty() && sub_matches.is_empty() {
+        return None;
+    }
+    root_matches.sort();
+
+    let mut summary = ThreadUsageSummary::default();
+    for path in &root_matches {
+        if let Some(meta) = read_transcript_meta_only(path) {
+            summary.input_tokens = summary.input_tokens.saturating_add(meta.input_tokens);
+            summary.output_tokens = summary.output_tokens.saturating_add(meta.output_tokens);
+            summary.cached_input_tokens = summary
+                .cached_input_tokens
+                .saturating_add(meta.cached_input_tokens);
+            summary.cost_usd += meta.charged_amount_usd;
+            summary.turn_count = summary.turn_count.saturating_add(meta.turn_count);
+        }
+    }
+
+    // Newest root transcript drives the last-turn gauge + model + updated stamp.
+    if let Some(newest) = root_matches.last() {
+        if let Some(meta) = read_transcript_meta_only(newest) {
+            summary.updated = meta.updated;
+        }
+        if let Some((usage, model)) = read_last_assistant_usage(newest) {
+            summary.last_turn_input_tokens = usage.input;
+            summary.last_turn_output_tokens = usage.output;
+            summary.model = model;
+        }
+    }
+
+    // Group sub-agent transcripts by archetype (`agent_name`).
+    let mut groups: BTreeMap<String, SubagentArchetypeUsage> = BTreeMap::new();
+    for path in &sub_matches {
+        let Some(meta) = read_transcript_meta_only(path) else {
+            continue;
+        };
+        let group =
+            groups
+                .entry(meta.agent_name.clone())
+                .or_insert_with(|| SubagentArchetypeUsage {
+                    agent_id: meta.agent_name.clone(),
+                    ..Default::default()
+                });
+        group.input_tokens = group.input_tokens.saturating_add(meta.input_tokens);
+        group.output_tokens = group.output_tokens.saturating_add(meta.output_tokens);
+        group.cached_input_tokens = group
+            .cached_input_tokens
+            .saturating_add(meta.cached_input_tokens);
+        group.runs = group.runs.saturating_add(1);
+        if group.model.is_none() {
+            if let Some((_, model)) = read_last_assistant_usage(path) {
+                group.model = model;
+            }
+        }
+    }
+    summary.subagents = groups.into_values().collect();
+
+    Some(summary)
 }
 
 // ── Path resolution ──────────────────────────────────────────────────

@@ -18,6 +18,9 @@ pub(super) struct SubagentObserver {
     pub(super) task_id: String,
     pub(super) force_text_mode: bool,
     pub(super) usage: AggregatedUsage,
+    /// Provenance + usage of the sub-agent's most recent provider call. Persisted
+    /// onto the transcript's last assistant message (carries provider + model so
+    /// per-thread usage reads can price the sub-agent at its actual model).
     pub(super) last_turn_usage: Option<transcript::TurnUsage>,
 }
 
@@ -109,22 +112,36 @@ impl super::super::super::engine::TurnObserver for SubagentObserver {
     fn record_usage(
         &mut self,
         provider: &str,
-        _model: &str,
+        model: &str,
         usage: &crate::openhuman::inference::provider::UsageInfo,
     ) {
         self.usage.input_tokens += usage.input_tokens;
         self.usage.output_tokens += usage.output_tokens;
         self.usage.cached_input_tokens += usage.cached_input_tokens;
-        self.usage.charged_amount_usd += usage.charged_amount_usd;
+        // Effective per-call cost: backend-charged when present, else the
+        // per-model catalog estimate (#4124) — so a sub-agent on a BYO/local
+        // provider that bills no charge still contributes a priced cost to the
+        // parent turn's net total. `charged_amount_usd` here is the *net cost*,
+        // matching the parent adapter's convention.
+        let call_cost = crate::openhuman::agent::cost::call_cost_usd(model, usage);
+        self.usage.charged_amount_usd += call_cost;
+        // Mirror the parent adapter: feed every sub-agent provider call into the
+        // global cost tracker so the cost dashboard/summary reflects delegated
+        // spend (previously sub-agent tokens were invisible to it). The per-turn
+        // rollup into the UI footer happens separately via `turn_subagent_usage`.
+        crate::openhuman::cost::record_provider_usage(model, usage);
+        // Provenance for the transcript's last assistant message (#4134): keeps
+        // the provider + model so per-thread usage reads can price the sub-agent
+        // at its actual model.
         self.last_turn_usage = Some(transcript::TurnUsage {
             provider: provider.to_string(),
-            model: _model.to_string(),
+            model: model.to_string(),
             usage: transcript::MessageUsage {
                 input: usage.input_tokens,
                 output: usage.output_tokens,
                 cached_input: usage.cached_input_tokens,
                 context_window: usage.context_window,
-                cost_usd: usage.charged_amount_usd,
+                cost_usd: call_cost,
             },
             ts: chrono::Utc::now().to_rfc3339(),
             reasoning_content: None,

@@ -13264,3 +13264,127 @@ async fn poll_team_task_status(rpc_base: &str, team_id: &str, task_id: &str, wan
     }
     false
 }
+
+/// End-to-end: plant a thread's session transcript on disk, then verify the
+/// `openhuman.threads_token_usage` RPC reads back the correct cumulative token
+/// totals, cost, last-turn usage, model, and inferred context window — the data
+/// the composer footer seeds itself from when a thread is selected.
+#[tokio::test]
+async fn json_rpc_threads_token_usage_reads_persisted_thread_totals() {
+    let _env_lock = json_rpc_e2e_env_lock();
+    let tmp = tempdir().expect("tempdir");
+    let home = tmp.path();
+    let openhuman_home = home.join(".openhuman");
+    let workspace = home.join("workspace");
+
+    let _home_guard = EnvVarGuard::set_to_path("HOME", home);
+    let _workspace_guard = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", &workspace);
+    let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
+    let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
+
+    write_min_config(&openhuman_home, "http://127.0.0.1:9");
+
+    // Plant a root session transcript for thread "thr-e2e": a `_meta` header with
+    // the cumulative totals + an assistant message carrying last-turn usage/model.
+    let raw = workspace.join("session_raw");
+    std::fs::create_dir_all(&raw).expect("mkdir session_raw");
+    let jsonl = format!(
+        "{}\n{}\n{}\n",
+        json!({"_meta": {
+            "agent": "main", "dispatcher": "native",
+            "created": "2026-04-11T14:30:00Z", "updated": "2026-04-11T14:35:22Z",
+            "turn_count": 2, "input_tokens": 4200, "output_tokens": 900,
+            "cached_input_tokens": 600, "charged_amount_usd": 0.0123, "thread_id": "thr-e2e"
+        }}),
+        json!({"role": "user", "content": "hi"}),
+        json!({"role": "assistant", "content": "hello", "model": "reasoning-v1",
+            "usage": {"input": 350, "output": 80, "cached_input": 40, "cost_usd": 0.0009},
+            "ts": "2026-04-11T14:35:22Z"}),
+    );
+    std::fs::write(raw.join("1700000000_main.jsonl"), jsonl).expect("write transcript");
+
+    // A sub-agent transcript (stem contains `__`) for the SAME thread: a `coder`
+    // archetype. Its message carries NO model (mirroring how sub-agent
+    // transcripts were historically written), so pricing must fall back to the
+    // thread's model rather than $0. Its spend is grouped under `coder` and
+    // folded into the thread totals — not collapsed into the orchestrator.
+    let sub_jsonl = format!(
+        "{}\n{}\n",
+        json!({"_meta": {
+            "agent": "coder", "dispatcher": "native",
+            "created": "2026-04-11T14:33:00Z", "updated": "2026-04-11T14:34:00Z",
+            "turn_count": 1, "input_tokens": 1000, "output_tokens": 200,
+            "cached_input_tokens": 0, "charged_amount_usd": 0.0, "thread_id": "thr-e2e"
+        }}),
+        json!({"role": "assistant", "content": "done"}),
+    );
+    std::fs::write(
+        raw.join("1700000000_main__1700000050_coder.jsonl"),
+        sub_jsonl,
+    )
+    .expect("write subagent transcript");
+
+    let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
+    let rpc_base = format!("http://{rpc_addr}");
+
+    // Known thread → totals read back from the transcripts (orchestrator + coder).
+    let resp = post_json_rpc(
+        &rpc_base,
+        1,
+        "openhuman.threads_token_usage",
+        json!({ "thread_id": "thr-e2e" }),
+    )
+    .await;
+    let envelope = assert_no_jsonrpc_error(&resp, "threads_token_usage");
+    let data = envelope
+        .get("data")
+        .unwrap_or_else(|| panic!("missing data envelope: {envelope}"));
+    // Top-level totals include the sub-agent: 4200+1000 in, 900+200 out.
+    assert_eq!(data["input_tokens"], 5200);
+    assert_eq!(data["output_tokens"], 1100);
+    assert_eq!(data["cached_input_tokens"], 600);
+    // Cost is RE-AUDITED at current pricing, NOT the stale persisted charge.
+    // The coder sub-agent has no model, so it's priced at the thread's model
+    // (reasoning-v1 = "Pro"), NOT $0.
+    // orchestrator: (4200-600)*0.435 + 600*0.003625 + 900*0.87 = 0.002351175
+    // coder:        1000*0.435 + 0 + 200*0.87                  = 0.000609
+    // total                                                     = 0.002960175
+    let cost = data["cost_usd"].as_f64().expect("cost_usd");
+    assert!(
+        (cost - 0.002_960_175).abs() < 1e-9,
+        "re-audited total cost should be ~0.00296, got {cost}"
+    );
+    assert_eq!(data["turn_count"], 2);
+    assert_eq!(data["last_turn_input_tokens"], 350);
+    assert_eq!(data["last_turn_output_tokens"], 80);
+    assert_eq!(data["model"], "reasoning-v1");
+    // reasoning-v1 resolves to a 1M context window.
+    assert_eq!(data["context_window"], 1_000_000);
+    assert_eq!(data["has_usage"], true);
+    // Sub-agent breakdown grouped by archetype.
+    let subs = data["subagents"].as_array().expect("subagents array");
+    assert_eq!(subs.len(), 1);
+    assert_eq!(subs[0]["agent_id"], "coder");
+    assert_eq!(subs[0]["input_tokens"], 1000);
+    assert_eq!(subs[0]["output_tokens"], 200);
+    assert_eq!(subs[0]["runs"], 1);
+    assert!((subs[0]["cost_usd"].as_f64().expect("sub cost") - 0.000_609).abs() < 1e-9);
+
+    // Unknown thread → all-zero totals with has_usage=false (brand-new thread).
+    let resp_unknown = post_json_rpc(
+        &rpc_base,
+        2,
+        "openhuman.threads_token_usage",
+        json!({ "thread_id": "thr-does-not-exist" }),
+    )
+    .await;
+    let unknown = assert_no_jsonrpc_error(&resp_unknown, "threads_token_usage unknown");
+    let unknown_data = unknown
+        .get("data")
+        .unwrap_or_else(|| panic!("missing data envelope: {unknown}"));
+    assert_eq!(unknown_data["input_tokens"], 0);
+    assert_eq!(unknown_data["cost_usd"], 0.0);
+    assert_eq!(unknown_data["has_usage"], false);
+
+    rpc_join.abort();
+}
