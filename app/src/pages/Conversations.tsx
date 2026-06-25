@@ -13,6 +13,8 @@ import ChatNewWindowHero from '../components/chat/ChatNewWindowHero';
 import ComposerTokenStats from '../components/chat/ComposerTokenStats';
 import IntegrationConnectCard from '../components/chat/IntegrationConnectCard';
 import QueuedFollowups from '../components/chat/QueuedFollowups';
+import SuperContextToggle from '../components/chat/SuperContextToggle';
+import { whenSuperContextWriteSettled } from '../components/chat/superContextWrite';
 import { ConfirmationModal } from '../components/intelligence/ConfirmationModal';
 import { SidebarContent } from '../components/layout/shell/SidebarSlot';
 import { settingsNavState } from '../components/settings/modal/settingsOverlay';
@@ -891,6 +893,12 @@ const Conversations = ({
     // Guard double-submit to the SAME thread only; a send to another thread
     // may proceed concurrently.
     if (selectedThreadId && pendingSendsRef.current.has(selectedThreadId)) return;
+
+    // If the user just flipped the Super Context toggle, make sure that config
+    // write has landed before the core builds this thread's session (which
+    // reads `context.super_context_enabled`). Resolves instantly when nothing
+    // is pending.
+    await whenSuperContextWriteSettled();
 
     const normalized = text ?? inputValue;
     const trimmedInput = normalized.trim();
@@ -2788,6 +2796,12 @@ const Conversations = ({
                   {t('chat.agentProfile.reasoning')}
                 </button>
               </div>
+              {/* Super context is read at thread construction, so it only
+                  affects NEW threads. Hide the toggle once the thread has ANY
+                  activity — use the raw `messages` (not `hasVisibleMessages`,
+                  which ignores hidden transcript entries) so an already-started
+                  thread never looks "fresh" here. */}
+              {messages.length === 0 && <SuperContextToggle />}
               {selectedThreadId && (
                 <button
                   type="button"
