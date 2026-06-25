@@ -3173,6 +3173,13 @@ const messages: TranslationMap = {
   'conversations.agentTaskInsights.noSteps': 'Brak zarejestrowanych kroków',
   'conversations.agentTaskInsights.viewProcessSource': 'Zobacz pełne źródło procesu agenta',
   'conversations.agentTaskInsights.processing': 'Przetwarzanie',
+  'conversations.agentTaskInsights.done': 'Gotowe',
+  'conversations.agentTaskInsights.failed': 'Niepowodzenie',
+  'conversations.agentTaskInsights.running': 'W toku',
+  'conversations.agentTaskInsights.cancelled': 'Anulowano',
+  'conversations.agentTaskInsights.awaitingUser': 'Oczekiwanie na dane',
+  'conversations.agentTaskInsights.viewDetails': 'Zobacz szczegóły',
+  'conversations.agentTaskInsights.subagentsHeading': 'Podagenci',
   'daemon.serviceBlockingGate.body':
     'Rdzeń OpenHuman nie odpowiada. Spróbuj ponownie lub pobierz najnowszą wersję aplikacji.',
   'daemon.serviceBlockingGate.downloadHint':
