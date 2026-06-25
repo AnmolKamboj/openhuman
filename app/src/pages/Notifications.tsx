@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 import NotificationBody from '../components/notifications/NotificationBody';
 import NotificationCenter from '../components/notifications/NotificationCenter';
+import Button from '../components/ui/Button';
 import { useT } from '../lib/i18n/I18nContext';
 import { resolveSystemRoute } from '../lib/notificationRouter';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
@@ -122,20 +123,20 @@ const Notifications = () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
+            <Button
+              variant="tertiary"
+              size="xs"
               onClick={() => dispatch(markAllRead())}
-              disabled={unread === 0}
-              className="text-xs font-medium text-stone-600 dark:text-neutral-400 hover:text-stone-900 dark:hover:text-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed">
+              disabled={unread === 0}>
               {t('alerts.markAllRead')}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="tertiary"
+              size="xs"
               onClick={() => dispatch(clearAll())}
-              disabled={items.length === 0}
-              className="text-xs font-medium text-stone-600 dark:text-neutral-400 hover:text-stone-900 dark:hover:text-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed">
+              disabled={items.length === 0}>
               {t('common.clear')}
-            </button>
+            </Button>
           </div>
         </div>
 

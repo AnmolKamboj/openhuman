@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 
+import Button from '../../../components/ui/Button';
 import { useT } from '../../../lib/i18n/I18nContext';
 import type { ToolTimelineEntry } from '../../../store/chatRuntimeSlice';
 import { type AgentSource, extractAgentSources } from '../../../utils/toolTimelineFormatting';
@@ -104,13 +105,15 @@ export function AgentProcessSourcePanel({
           <span className="min-w-0 flex-1 truncate font-semibold text-stone-800 dark:text-neutral-100">
             {t('conversations.agentTaskInsights.processSourceTitle')}
           </span>
-          <button
-            type="button"
+          <Button
+            iconOnly
+            variant="tertiary"
+            size="sm"
             onClick={onClose}
             aria-label={t('conversations.subagent.close')}
-            className="shrink-0 rounded-full p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-200">
+            className="shrink-0 rounded-full">
             ✕
-          </button>
+          </Button>
         </header>
 
         {/* Body — the full agent timeline, then the visited sources. */}
