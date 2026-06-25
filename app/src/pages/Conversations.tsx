@@ -100,6 +100,7 @@ import {
   selectBackgroundProcesses,
 } from './conversations/components/BackgroundProcessesPanel';
 import { CitationChips, type MessageCitation } from './conversations/components/CitationChips';
+import { PlanReviewCard } from './conversations/components/PlanReviewCard';
 import { SubagentDrawer } from './conversations/components/SubagentDrawer';
 import {
   ThreadGoalEditorPanel,
@@ -114,7 +115,6 @@ import {
   handleComposerSlashCommand,
 } from './conversations/composerSendDecision';
 import { useMemorySyncActive } from './conversations/hooks/useBackgroundActivity';
-import { runDecidePlan } from './conversations/taskPlanActions';
 import {
   type AgentBubblePosition,
   buildAcceptedInlineCompletion,
@@ -320,6 +320,9 @@ const Conversations = ({
   const artifactsByThread = useAppSelector(state => state.chatRuntime.artifactsByThread);
   const pendingApprovalByThread = useAppSelector(
     state => state.chatRuntime.pendingApprovalByThread
+  );
+  const pendingPlanReviewByThread = useAppSelector(
+    state => state.chatRuntime.pendingPlanReviewByThread
   );
   const streamingAssistantByThread = useAppSelector(
     state => state.chatRuntime.streamingAssistantByThread
@@ -1503,6 +1506,12 @@ const Conversations = ({
     : undefined;
   const selectedTaskBoard = selectedThreadId ? (taskBoardByThread[selectedThreadId] ?? null) : null;
   const hasTaskBoard = Boolean(selectedTaskBoard?.cards.length);
+  // A plan the orchestrator parked for interactive review (request_plan_review
+  // gate). When present, the PlanReviewCard renders above the composer and
+  // resolves the parked turn; the todo strip stays read-only progress.
+  const pendingPlanReview = selectedThreadId
+    ? (pendingPlanReviewByThread[selectedThreadId] ?? null)
+    : null;
   const visibleMessages = messages.filter(msg => !msg.extraMetadata?.hidden);
   const hasVisibleMessages = visibleMessages.length > 0;
   const latestVisibleMessage = visibleMessages[visibleMessages.length - 1] ?? null;
@@ -2672,20 +2681,25 @@ const Conversations = ({
             pinned above the composer. Distinct from the Intelligence-tab kanban
             (global `user-tasks`). Renders nothing when the thread has no active
             cards. */}
+        {/* Plan-mode review: the orchestrator parked the live turn on a
+            thread-scoped plan (request_plan_review gate). Surface it for the
+            user to Approve / Reject / send feedback on before anything executes;
+            the card resolves the parked turn via plan_review_decide. */}
+        {selectedThreadId && pendingPlanReview && (
+          // Key by request id so a re-parked (revised) plan — or a thread switch —
+          // remounts the card and resets its local decision/feedback state,
+          // matching the ApprovalRequestCard pattern above.
+          <PlanReviewCard
+            key={pendingPlanReview.requestId}
+            threadId={selectedThreadId}
+            review={pendingPlanReview}
+          />
+        )}
+
         {selectedThreadId && (
           <ThreadTodoStrip
             board={selectedTaskBoard}
             disabled={!selectedThreadId}
-            onDecidePlan={(card, approve) => {
-              void runDecidePlan({
-                threadId: selectedThreadId,
-                card,
-                approve,
-                dispatch,
-                notify: setSendAdvisory,
-                t,
-              });
-            }}
             onViewSession={card => {
               if (!card.sessionThreadId) return;
               // Navigation only — do NOT mark the thread active. activeThreadId

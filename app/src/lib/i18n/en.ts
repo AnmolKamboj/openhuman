@@ -3590,6 +3590,14 @@ const en: TranslationMap = {
   'conversations.taskKanban.moveRight': 'Move right',
   'conversations.taskKanban.title': 'Tasks',
   'conversations.threadTodo.title': 'Plan',
+  'conversations.planReview.title': 'Review plan',
+  'conversations.planReview.subtitle':
+    'Approve to run it, reject to discard, or send feedback to revise.',
+  'conversations.planReview.approve': 'Approve & run',
+  'conversations.planReview.reject': 'Reject',
+  'conversations.planReview.feedbackLabel': 'Request changes',
+  'conversations.planReview.feedbackPlaceholder': 'Describe what to change…',
+  'conversations.planReview.sendFeedback': 'Send feedback',
   // Thread-level goal chip (Codex-style per-thread completion contract).
   'conversations.threadGoal.label': 'Goal',
   'conversations.threadGoal.setCta': 'Set goal',
