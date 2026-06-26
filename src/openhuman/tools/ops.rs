@@ -176,6 +176,8 @@ pub fn all_tools_with_runtime(
         // durable `subagent_session_id` (preferred) or transient `task_id`.
         Box::new(ListSubagentsTool::new()),
         Box::new(SteerSubagentTool::new()),
+        Box::new(WaitTool::new()),
+        Box::new(WaitLoopTool::new()),
         Box::new(WaitSubagentTool::new()),
         Box::new(CloseSubagentTool::new()),
         Box::new(ContinueSubagentTool::new()),

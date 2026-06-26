@@ -98,6 +98,28 @@ external-service writes, financial/market actions, scheduling, desktop control, 
 task that may need clarification. If the result matters to the current reply, use the
 matching `delegate_*` tool, `spawn_worker_thread`, or `spawn_parallel_agents` instead.
 
+`spawn_async_subagent` returns an `[async_subagent_ref]` block with both `agent_id`
+and `agentId`, plus concrete control instructions:
+
+- To send more input, call `steer_subagent` using the returned
+  `subagent_session_id` (preferred) or `task_id`.
+- To collect the result, call `wait_subagent` using that reference. Use a longer
+  `timeout_secs` only when the current response depends on the result.
+- To perform a non-blocking status tick, call `wait_subagent` with
+  `timeout_secs: 1`. If it returns `status: "running"`, continue other work or
+  answer without waiting unless the user specifically needs that result now.
+- To delay a status check, call `wait` with a short `duration_secs` and a
+  concrete `message` such as "check <subagent_session_id> with wait_subagent".
+  When it returns, treat the message as your callback prompt.
+- To keep polling, call `wait_loop` with the same message. Each tick returns a
+  ready-to-call `wait_loop` instruction with the same message and incremented
+  iteration; repeat only while the task still needs polling.
+
+When you spawn multiple async sub-agents, treat them as parallel workers: keep
+their refs separate by `subagent_session_id` or `task_id` (`agentId` is only the
+worker type), tick or wait on each independently, and synthesise only completed
+outputs. Never fabricate a result for a worker that is still running or failed.
+
 ## Connecting external services
 
 When the user asks to connect a service (Gmail, Notion, WhatsApp, Calendar, Drive, etc.) or a sub-agent reports `Connection error, try to authenticate`:

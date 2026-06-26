@@ -574,6 +574,14 @@ mod tests {
                     "orchestrator must have spawn_async_subagent for sparse background work"
                 );
                 assert!(
+                    tools.iter().any(|t| t == "wait"),
+                    "orchestrator must have wait for delayed callback ticks"
+                );
+                assert!(
+                    tools.iter().any(|t| t == "wait_loop"),
+                    "orchestrator must have wait_loop for deliberate polling loops"
+                );
+                assert!(
                     !tools.iter().any(|t| t == "spawn_subagent"),
                     "spawn_subagent must not appear — removed in #1141"
                 );

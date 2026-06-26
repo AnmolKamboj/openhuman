@@ -191,6 +191,8 @@ named = [
     "spawn_worker_thread",
     "spawn_async_subagent",
     "spawn_parallel_agents",
+    "wait",
+    "wait_loop",
     "composio_list_connections",
     # Inline OAuth connect card (#3993). Free-form `toolkit` slug — the
     # orchestrator calls this directly to connect a service the user names,
