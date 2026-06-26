@@ -231,7 +231,7 @@ const SearchPanel = ({ embedded = false }: { embedded?: boolean }) => {
       contentClassName=""
       description={embedded ? undefined : t('settings.search.menuDesc')}
       leading={embedded ? undefined : <SettingsBackButton onBack={navigateBack} />}>
-      <div className={embedded ? 'space-y-4' : 'p-4 space-y-4'}>
+      <div className={embedded ? 'space-y-5' : 'p-4 space-y-5'}>
         <p className="text-xs text-content-muted leading-relaxed">
           {t('settings.search.description')}
         </p>

@@ -103,7 +103,7 @@ const ProfilesPanel = () => {
                 return (
                   <li
                     key={profile.id}
-                    className="flex items-center justify-between gap-3 py-3 first:pt-1 last:pb-1">
+                    className="flex items-center justify-between gap-3 px-4 py-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="truncate text-sm font-semibold text-content">

@@ -81,7 +81,7 @@ const BackgroundActivityTab = () => {
   }, []);
 
   return (
-    <div className="p-4 space-y-3" data-testid="usage-background-tab">
+    <div className="p-4 space-y-5" data-testid="usage-background-tab">
       <SettingsStatusLine saving={false} error={loadError} savingLabel="" />
       {snapshot ? (
         <BackgroundLoopControls

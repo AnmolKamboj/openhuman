@@ -4,7 +4,13 @@ import { useScreenIntelligenceState } from '../../../features/screen-intelligenc
 import { useT } from '../../../lib/i18n/I18nContext';
 import { isTauri, openhumanUpdateScreenIntelligenceSettings } from '../../../utils/tauriCommands';
 import Button from '../../ui/Button';
-import { SettingsRow, SettingsSection, SettingsSelect, SettingsStatusLine } from '../controls';
+import {
+  SettingsRow,
+  SettingsSection,
+  SettingsSelect,
+  SettingsStatusLine,
+  SettingsSwitch,
+} from '../controls';
 import SettingsPanel from '../layout/SettingsPanel';
 import PermissionsSection from './screen-intelligence/PermissionsSection';
 
@@ -131,14 +137,18 @@ const ScreenIntelligencePanel = () => {
         {/* Screen awareness config */}
         <SettingsSection title={t('settings.features.screenAwareness')}>
           {/* Enabled toggle */}
-          <label className="flex items-center justify-between px-4 py-3">
-            <span className="text-sm text-content-secondary">{t('common.enabled')}</span>
-            <input
-              type="checkbox"
-              checked={enabled}
-              onChange={event => setEnabled(event.target.checked)}
-            />
-          </label>
+          <SettingsRow
+            htmlFor="screen-intelligence-enabled"
+            label={t('common.enabled')}
+            control={
+              <SettingsSwitch
+                id="screen-intelligence-enabled"
+                checked={enabled}
+                onCheckedChange={setEnabled}
+                aria-label={t('common.enabled')}
+              />
+            }
+          />
 
           {/* Policy mode */}
           <SettingsRow
@@ -167,21 +177,20 @@ const ScreenIntelligencePanel = () => {
           />
 
           {/* Screen monitoring toggle */}
-          <label className="flex items-center justify-between px-4 py-3">
-            <span className="text-sm text-content-secondary">
-              {t('settings.screenAwareness.screenMonitoring')}
-            </span>
-            <input
-              type="checkbox"
-              checked={screenMonitoring}
-              onChange={event =>
-                setFeatureOverrides(current => ({
-                  ...current,
-                  screen_monitoring: event.target.checked,
-                }))
-              }
-            />
-          </label>
+          <SettingsRow
+            htmlFor="screen-intelligence-monitoring"
+            label={t('settings.screenAwareness.screenMonitoring')}
+            control={
+              <SettingsSwitch
+                id="screen-intelligence-monitoring"
+                checked={screenMonitoring}
+                onCheckedChange={next =>
+                  setFeatureOverrides(current => ({ ...current, screen_monitoring: next }))
+                }
+                aria-label={t('settings.screenAwareness.screenMonitoring')}
+              />
+            }
+          />
 
           {/* Save */}
           <div className="px-4 py-3 space-y-2">

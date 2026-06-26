@@ -5,6 +5,7 @@ import { openhumanAgentChat } from '../../../utils/tauriCommands';
 import Button from '../../ui/Button';
 import {
   SettingsEmptyState,
+  SettingsRow,
   SettingsSection,
   SettingsStatusLine,
   SettingsTextArea,
@@ -82,31 +83,35 @@ const AgentChatPanel = () => {
   return (
     <SettingsPanel description={t('settings.developerMenu.agentChat.desc')}>
       <SettingsSection title={t('chat.overrides')} description={t('chat.agentChatDesc')}>
-        <div className="px-4 py-3 grid gap-3 md:grid-cols-2">
-          <div className="space-y-1">
-            <label htmlFor="agent-chat-model" className="text-xs text-content-muted">
-              {t('chat.model')}
-            </label>
-            <SettingsTextField
-              id="agent-chat-model"
-              placeholder={t('chat.modelPlaceholder')}
-              value={modelOverride}
-              onChange={event => setModelOverride(event.target.value)}
-              aria-label={t('chat.model')}
-            />
-          </div>
-          <div className="space-y-1">
-            <label htmlFor="agent-chat-temperature" className="text-xs text-content-muted">
-              {t('chat.temperature')}
-            </label>
-            <SettingsTextField
-              id="agent-chat-temperature"
-              placeholder="0.7"
-              value={temperature}
-              onChange={event => setTemperature(event.target.value)}
-              aria-label={t('chat.temperature')}
-            />
-          </div>
+        <div className="grid md:grid-cols-2">
+          <SettingsRow
+            stacked
+            htmlFor="agent-chat-model"
+            label={t('chat.model')}
+            control={
+              <SettingsTextField
+                id="agent-chat-model"
+                placeholder={t('chat.modelPlaceholder')}
+                value={modelOverride}
+                onChange={event => setModelOverride(event.target.value)}
+                aria-label={t('chat.model')}
+              />
+            }
+          />
+          <SettingsRow
+            stacked
+            htmlFor="agent-chat-temperature"
+            label={t('chat.temperature')}
+            control={
+              <SettingsTextField
+                id="agent-chat-temperature"
+                placeholder="0.7"
+                value={temperature}
+                onChange={event => setTemperature(event.target.value)}
+                aria-label={t('chat.temperature')}
+              />
+            }
+          />
         </div>
       </SettingsSection>
 

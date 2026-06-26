@@ -137,7 +137,7 @@ const MigrationPanel = ({ embedded = false }: MigrationPanelProps = {}) => {
       <p className="text-sm text-content-secondary">{t('migration.description')}</p>
 
       <SettingsSection>
-        <div className="p-4 space-y-4" data-testid="migration-form">
+        <div className="p-4 space-y-5" data-testid="migration-form">
           <div className="space-y-1">
             <label className="block text-xs font-medium text-content-secondary">
               {t('migration.vendorLabel')}
@@ -270,7 +270,7 @@ const MigrationPanel = ({ embedded = false }: MigrationPanelProps = {}) => {
   if (embedded) {
     return (
       <PanelPage className="z-10" contentClassName="">
-        <div className="space-y-6 p-6">{body}</div>
+        <div className="space-y-5 p-6">{body}</div>
       </PanelPage>
     );
   }

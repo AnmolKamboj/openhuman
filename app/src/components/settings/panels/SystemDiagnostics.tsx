@@ -165,7 +165,7 @@ const SystemDiagnostics = () => {
       <h3 className="px-1 pb-2 text-sm font-medium text-content">
         {t('devOptions.titleDiagnostics')}
       </h3>
-      <div className="flex flex-col gap-3">
+      <div className="space-y-3">
         <LogsFolderRow />
         {showSentryTest && <SentryTestRow />}
         <RestartTourRow />

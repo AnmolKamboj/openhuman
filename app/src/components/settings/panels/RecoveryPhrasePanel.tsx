@@ -374,7 +374,7 @@ const RecoveryPhrasePanel = () => {
   );
 
   const renderViewMode = () => (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {statusError ? (
         <div
           role="alert"
@@ -645,7 +645,7 @@ const RecoveryPhrasePanel = () => {
   );
 
   const renderReplaceConfirm = () => (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Danger warning */}
       <div className="flex items-start gap-2.5 p-4 rounded-xl bg-coral-50 dark:bg-coral-500/10 border border-coral-200 dark:border-coral-500/30">
         <svg

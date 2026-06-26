@@ -233,14 +233,16 @@ const NotificationRoutingPanel = ({ embedded = false }: NotificationRoutingPanel
                 />
                 <span>{s.importance_threshold.toFixed(2)}</span>
               </label>
-              <label className="text-xs text-content-secondary flex items-center gap-2">
+              <label
+                htmlFor={`notification-orchestrator-${provider}`}
+                className="text-xs text-content-secondary flex items-center gap-2">
                 {t('notifications.routing.routeToOrchestrator')}
-                <input
-                  type="checkbox"
+                <SettingsCheckbox
+                  id={`notification-orchestrator-${provider}`}
                   checked={s.route_to_orchestrator}
                   disabled={controlsDisabled}
-                  onChange={e => {
-                    void updateSetting(provider, { route_to_orchestrator: e.target.checked });
+                  onCheckedChange={next => {
+                    void updateSetting(provider, { route_to_orchestrator: next });
                   }}
                 />
               </label>
@@ -258,7 +260,7 @@ const NotificationRoutingPanel = ({ embedded = false }: NotificationRoutingPanel
 
   // Embedded inside the tabbed Notifications page: the parent owns the header,
   // so render just the padded body.
-  if (embedded) return <div className="p-4 space-y-4">{body}</div>;
+  if (embedded) return <div className="p-4 space-y-5">{body}</div>;
 
   return <SettingsPanel>{body}</SettingsPanel>;
 };

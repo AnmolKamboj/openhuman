@@ -203,7 +203,7 @@ const MemoryDebugPanel = () => {
       testId="memory-debug-panel"
       description={t('devOptions.debugPanelsDesc')}
       leading={<SettingsBackButton onBack={navigateBack} />}>
-      <div className="p-4 space-y-4">
+      <div className="p-4 space-y-5">
         {/* Documents */}
         <SettingsSection title={t('memory.documents')}>
           <div className="px-4 py-3 space-y-3">

@@ -3142,12 +3142,12 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
       contentClassName=""
       description={embedded ? undefined : t('pages.settings.ai.llmDesc')}
       leading={embedded ? undefined : <SettingsBackButton onBack={navigateBack} />}>
-      <div className={embedded ? 'space-y-6' : 'space-y-6 p-4'}>
+      <div className={embedded ? 'space-y-5' : 'space-y-5 p-4'}>
         {/* ═══════════════════════════════════════════════════════════════
             AUTH — provider authentication (cloud providers + local Ollama
             setup). Everything the user needs to wire a model up.
             ═══════════════════════════════════════════════════════════════ */}
-        <div className="space-y-4">
+        <div className="space-y-5">
           <div className="border-b border-line pb-2">
             <h2 className="text-base font-semibold text-content">
               {t('settings.ai.llmProviders')}
@@ -3174,7 +3174,7 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
               <SettingsStatusLine saving={false} error={error} savedNote={null} savingLabel="" />
             )}
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               <ProviderToggleChip
                 key="openhuman"
                 slug="openhuman"
@@ -3372,7 +3372,7 @@ const AIPanel = ({ embedded = false }: AIPanelProps = {}) => {
             Own = one provider/model for everything. Custom = fine-grained
             per-workload routing.
             ═══════════════════════════════════════════════════════════════ */}
-        <div className="space-y-4">
+        <div className="space-y-5">
           <div className="border-b border-line pb-2">
             <h2 className="text-base font-semibold text-content">{t('settings.ai.routing')}</h2>
             <p className="text-xs text-content-muted mt-0.5">{t('settings.ai.routingDesc')}</p>

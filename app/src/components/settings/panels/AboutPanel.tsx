@@ -69,7 +69,7 @@ const AboutPanel = () => {
     <SettingsPanel description={t('settings.aboutDesc')}>
       {/* Version */}
       <SettingsSection>
-        <div className="px-4 py-4">
+        <div className="px-4 py-3">
           <div className="text-xs text-content-muted">{t('settings.about.version')}</div>
           <div className="mt-1 text-lg font-semibold text-content">v{APP_VERSION}</div>
           {info?.available && info.available_version && (
@@ -97,7 +97,7 @@ const AboutPanel = () => {
           }
         />
         {lastCheckedAt && (
-          <div className="px-4 pb-3 text-[11px] text-content-faint">
+          <div className="px-4 py-3 text-[11px] text-content-faint">
             {t('settings.about.lastChecked')} {formatRelative(lastCheckedAt, t)}
           </div>
         )}
@@ -127,7 +127,7 @@ const AboutPanel = () => {
             </span>
           }
         />
-        <div className="px-4 pb-3">
+        <div className="px-4 py-3">
           <p className="text-[11px] text-content-muted leading-relaxed">
             {coreMode.kind === 'cloud'
               ? t('settings.about.connectionHelperCloud')
@@ -138,7 +138,7 @@ const AboutPanel = () => {
 
       {/* Releases */}
       <SettingsSection>
-        <div className="px-4 py-4 space-y-2">
+        <div className="px-4 py-3 space-y-2">
           <div className="text-sm font-medium text-content">{t('settings.about.releases')}</div>
           <p className="text-xs text-content-muted leading-relaxed">
             {t('settings.about.releasesDesc')}

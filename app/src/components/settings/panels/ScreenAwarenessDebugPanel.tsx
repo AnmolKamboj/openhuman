@@ -5,10 +5,10 @@ import { useScreenIntelligenceState } from '../../../features/screen-intelligenc
 import { useT } from '../../../lib/i18n/I18nContext';
 import { isTauri, openhumanUpdateScreenIntelligenceSettings } from '../../../utils/tauriCommands';
 import Button from '../../ui/Button';
-import Input from '../../ui/Input';
 import {
   SettingsCheckbox,
   SettingsEmptyState,
+  SettingsNumberField,
   SettingsRow,
   SettingsSection,
   SettingsStatusLine,
@@ -120,20 +120,22 @@ const ScreenAwarenessDebugPanel = () => {
         {/* Advanced policy settings */}
         <SettingsSection title={t('screenAwareness.debug.policyTitle')}>
           <div className="px-4 py-3 space-y-3">
-            <label className="flex items-center justify-between rounded-xl border border-line bg-surface-muted px-3 py-2">
-              <span className="text-sm text-content">{t('screenAwareness.debug.baselineFps')}</span>
-              <Input
-                type="number"
-                inputSize="sm"
-                min={0.2}
-                max={30}
-                step={0.1}
-                value={baselineFps}
-                onChange={event => setBaselineFps(event.target.value)}
-                className="w-24"
-                aria-label={t('screenAwareness.debug.baselineFps')}
-              />
-            </label>
+            <SettingsRow
+              htmlFor="screen-baseline-fps"
+              label={t('screenAwareness.debug.baselineFps')}
+              control={
+                <SettingsNumberField
+                  id="screen-baseline-fps"
+                  min={0.2}
+                  max={30}
+                  step={0.1}
+                  value={baselineFps}
+                  onChange={setBaselineFps}
+                  onCommit={() => {}}
+                  aria-label={t('screenAwareness.debug.baselineFps')}
+                />
+              }
+            />
 
             <SettingsRow
               htmlFor="screen-use-vision-model"

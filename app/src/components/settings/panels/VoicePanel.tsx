@@ -559,7 +559,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
       contentClassName=""
       description={embedded ? undefined : t('pages.settings.ai.voiceDesc')}
       leading={embedded ? undefined : <SettingsBackButton onBack={navigateBack} />}>
-      <div className={embedded ? 'space-y-4' : 'p-4 space-y-4'}>
+      <div className={embedded ? 'space-y-5' : 'p-4 space-y-5'}>
         {/* Always-on listening moved to Settings → Features → Desktop Agent. */}
 
         {/* ─── Section 1: Voice Provider Chips ─────────────────────────── */}

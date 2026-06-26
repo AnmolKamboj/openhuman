@@ -188,7 +188,7 @@ const PermissionsPanel = () => {
 
   return (
     <SettingsPanel>
-      <div className="space-y-6">
+      <div className="space-y-5">
         {!isTauri() && (
           <p className="text-sm text-coral-600 dark:text-coral-300">
             {t('settings.agentAccess.desktopOnly')}
@@ -209,12 +209,13 @@ const PermissionsPanel = () => {
               </p>
               <div className="grid gap-2">
                 {presets.map(p => (
-                  <button
+                  <Button
                     key={p.id}
                     type="button"
+                    variant="tertiary"
                     onClick={() => selectTier(p.id)}
                     data-testid={`permissions-preset-${p.id}`}
-                    className={`text-left rounded-lg border p-3 transition ${
+                    className={`!inline-block h-auto w-full !justify-start text-left rounded-lg border p-3 transition ${
                       level === p.id
                         ? 'border-primary-500 bg-primary-50 dark:bg-primary-500/10'
                         : 'border-line hover:border-primary-300 dark:hover:border-primary-500'
@@ -235,7 +236,7 @@ const PermissionsPanel = () => {
                       )}
                     </div>
                     <p className="mt-1 text-xs text-content-muted">{p.description}</p>
-                  </button>
+                  </Button>
                 ))}
                 {level === 'full' && (
                   <p className="rounded border border-coral/40 bg-coral/5 dark:bg-coral/10 p-2 text-xs text-coral-600 dark:text-coral-300">
