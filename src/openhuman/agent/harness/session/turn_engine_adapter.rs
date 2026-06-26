@@ -103,6 +103,8 @@ pub(super) struct AgentToolSource {
     /// Stage 1a kill-switch. Constant for the session, so (unlike the tool
     /// surface) it is set once at construction and never re-synced.
     pub compaction_enabled: bool,
+    /// Agent-level TokenJuice profile. Constant for the session.
+    pub tokenjuice_compression: crate::openhuman::tokenjuice::AgentTokenjuiceCompression,
     pub artifact_store: Option<ToolResultArtifactStore>,
     pub should_send_specs: bool,
     pub advertised_specs: Vec<ToolSpec>,
@@ -146,6 +148,7 @@ impl ToolSource for AgentToolSource {
             prefer_markdown: self.prefer_markdown,
             budget_bytes: self.budget_bytes,
             compaction_enabled: self.compaction_enabled,
+            tokenjuice_compression: self.tokenjuice_compression,
             artifact_store: self.artifact_store.as_ref(),
         };
         let (exec_result, record) =

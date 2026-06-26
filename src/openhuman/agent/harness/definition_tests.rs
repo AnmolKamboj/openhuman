@@ -25,6 +25,7 @@ fn make_def(id: &str) -> AgentDefinition {
         sandbox_mode: SandboxMode::None,
         background: false,
         trigger_memory_agent: Default::default(),
+        tokenjuice_compression: crate::openhuman::tokenjuice::AgentTokenjuiceCompression::Auto,
         subagents: vec![],
         delegate_name: None,
         agent_tier: crate::openhuman::agent::harness::definition::AgentTier::Worker,

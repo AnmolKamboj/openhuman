@@ -64,6 +64,7 @@ fn make_def_named_tools(names: &[&str]) -> AgentDefinition {
         sandbox_mode: crate::openhuman::agent::harness::definition::SandboxMode::None,
         background: false,
         trigger_memory_agent: Default::default(),
+        tokenjuice_compression: crate::openhuman::tokenjuice::AgentTokenjuiceCompression::Auto,
         subagents: vec![],
         delegate_name: None,
         agent_tier: crate::openhuman::agent::harness::definition::AgentTier::Worker,

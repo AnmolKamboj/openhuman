@@ -46,6 +46,7 @@ impl AgentBuilder {
             omit_memory_md: None,
             payload_summarizer: None,
             trigger_memory_agent: None,
+            tokenjuice_compression: crate::openhuman::tokenjuice::AgentTokenjuiceCompression::Full,
             tool_policy: None,
             archivist_hook: None,
             unified_compaction_enabled: true,
@@ -365,6 +366,15 @@ impl AgentBuilder {
         self
     }
 
+    /// Set the per-agent TokenJuice tool-output compression profile.
+    pub fn tokenjuice_compression(
+        mut self,
+        profile: crate::openhuman::tokenjuice::AgentTokenjuiceCompression,
+    ) -> Self {
+        self.tokenjuice_compression = profile;
+        self
+    }
+
     /// Validates the configuration and constructs a new `Agent` instance.
     ///
     /// This method is responsible for wiring together the provided components,
@@ -578,6 +588,7 @@ impl AgentBuilder {
             omit_memory_md: self.omit_memory_md.unwrap_or(true),
             payload_summarizer: self.payload_summarizer,
             trigger_memory_agent: self.trigger_memory_agent.unwrap_or_default(),
+            tokenjuice_compression: self.tokenjuice_compression,
             tool_policy: self.tool_policy.unwrap_or_else(|| {
                 Arc::new(crate::openhuman::agent::tool_policy::AllowAllToolPolicy)
             }),

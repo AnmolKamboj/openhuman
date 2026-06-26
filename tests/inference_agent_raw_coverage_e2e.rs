@@ -181,6 +181,7 @@ use openhuman_core::openhuman::profiles::{
 };
 use openhuman_core::openhuman::security::SecurityPolicy;
 use openhuman_core::openhuman::todos::ops::BoardLocation;
+use openhuman_core::openhuman::tokenjuice::AgentTokenjuiceCompression;
 use openhuman_core::openhuman::tools::{Tool, ToolResult, ToolSpec};
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -1602,6 +1603,7 @@ named = ["todo", "plan_exit"]
         sandbox_mode: SandboxMode::None,
         background: false,
         trigger_memory_agent: Default::default(),
+        tokenjuice_compression: AgentTokenjuiceCompression::Auto,
         subagents: Vec::new(),
         delegate_name: None,
         agent_tier: AgentTier::Worker,

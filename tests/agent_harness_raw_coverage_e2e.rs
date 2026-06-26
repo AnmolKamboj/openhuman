@@ -15,6 +15,7 @@ use openhuman_core::openhuman::inference::provider::{
     ChatMessage, ChatRequest, ChatResponse, Provider, ToolCall, UsageInfo,
 };
 use openhuman_core::openhuman::memory::{Memory, MemoryCategory, MemoryEntry, NamespaceSummary};
+use openhuman_core::openhuman::tokenjuice::AgentTokenjuiceCompression;
 use openhuman_core::openhuman::tools::SpawnSubagentTool;
 use openhuman_core::openhuman::tools::{Tool, ToolResult};
 use parking_lot::Mutex;
@@ -321,6 +322,7 @@ fn coverage_definition() -> AgentDefinition {
         sandbox_mode: SandboxMode::ReadOnly,
         background: false,
         trigger_memory_agent: Default::default(),
+        tokenjuice_compression: AgentTokenjuiceCompression::Auto,
         subagents: Vec::new(),
         delegate_name: None,
         agent_tier: Default::default(),

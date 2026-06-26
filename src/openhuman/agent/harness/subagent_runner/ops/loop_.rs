@@ -60,6 +60,7 @@ pub(super) async fn run_inner_loop(
     handoff_cache: Option<&ResultHandoffCache>,
     parent: &ParentExecutionContext,
     extended_policy: bool,
+    tokenjuice_compression: crate::openhuman::tokenjuice::AgentTokenjuiceCompression,
     // Optional steering channel. When `Some`, the child engine drains
     // steer/collect messages at iteration boundaries so the parent can
     // `steer_subagent` a running async sub-agent. `None` = non-steerable.
@@ -146,6 +147,7 @@ pub(super) async fn run_inner_loop(
         handoff_cache,
         policy: crate::openhuman::tools::policy::DefaultToolPolicy,
         agent_id: agent_id.to_string(),
+        tokenjuice_compression,
     };
     let mut observer = SubagentObserver {
         worker_thread_id,

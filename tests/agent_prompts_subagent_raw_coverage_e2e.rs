@@ -21,6 +21,7 @@ use openhuman_core::openhuman::inference::provider::{
 use openhuman_core::openhuman::memory::{
     Memory, MemoryCategory, MemoryEntry, NamespaceSummary as MemoryNamespaceSummary, RecallOpts,
 };
+use openhuman_core::openhuman::tokenjuice::AgentTokenjuiceCompression;
 use openhuman_core::openhuman::tools::{PermissionLevel, Tool, ToolResult};
 use parking_lot::Mutex;
 use serde_json::json;
@@ -261,6 +262,7 @@ fn definition(prompt: PromptSource) -> AgentDefinition {
         sandbox_mode: SandboxMode::None,
         background: false,
         trigger_memory_agent: Default::default(),
+        tokenjuice_compression: AgentTokenjuiceCompression::Auto,
         subagents: Vec::new(),
         delegate_name: None,
         agent_tier: Default::default(),

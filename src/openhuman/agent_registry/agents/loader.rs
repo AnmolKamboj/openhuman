@@ -356,6 +356,7 @@ mod tests {
     use crate::openhuman::agent::harness::definition::{
         ModelSpec, SandboxMode, SubagentEntry, ToolScope, TriggerMemoryAgent,
     };
+    use crate::openhuman::tokenjuice::AgentTokenjuiceCompression;
 
     #[test]
     fn all_builtins_parse() {
@@ -643,6 +644,10 @@ mod tests {
         assert_eq!(def.sandbox_mode, SandboxMode::Sandboxed);
         assert!(!def.omit_safety_preamble);
         assert_eq!(def.max_iterations, 10);
+        assert_eq!(
+            def.effective_tokenjuice_compression(),
+            AgentTokenjuiceCompression::Light
+        );
     }
 
     #[test]
@@ -651,6 +656,10 @@ mod tests {
         assert_eq!(def.sandbox_mode, SandboxMode::Sandboxed);
         assert_eq!(def.max_iterations, 2);
         assert!(!def.omit_safety_preamble);
+        assert_eq!(
+            def.effective_tokenjuice_compression(),
+            AgentTokenjuiceCompression::Light
+        );
     }
 
     #[test]
@@ -659,6 +668,10 @@ mod tests {
         assert_eq!(def.sandbox_mode, SandboxMode::Sandboxed);
         assert_eq!(def.max_iterations, 10);
         assert!(!def.omit_safety_preamble);
+        assert_eq!(
+            def.effective_tokenjuice_compression(),
+            AgentTokenjuiceCompression::Light
+        );
         match &def.tools {
             ToolScope::Named(names) => {
                 for required in ["node_exec", "npm_exec", "apply_patch", "update_memory_md"] {

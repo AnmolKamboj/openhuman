@@ -812,6 +812,7 @@ async fn run_typed_mode(
         handoff_cache.as_deref(),
         parent,
         definition.iteration_policy == IterationPolicy::Extended,
+        definition.effective_tokenjuice_compression(),
         options.run_queue.clone(),
     ))
     .await?;

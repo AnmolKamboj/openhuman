@@ -280,6 +280,7 @@ mod tests {
             sandbox_mode: SandboxMode::None,
             background: false,
             trigger_memory_agent: Default::default(),
+            tokenjuice_compression: crate::openhuman::tokenjuice::AgentTokenjuiceCompression::Auto,
             subagents: vec![],
             delegate_name: delegate_name.map(String::from),
             agent_tier: crate::openhuman::agent::harness::definition::AgentTier::Worker,
