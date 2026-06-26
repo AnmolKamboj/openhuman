@@ -2655,10 +2655,13 @@ pub fn run() {
         // manager. Both are no-ops on Windows/Linux, so safe to always set.
         //
         // CDP attach goes through the in-process channel only — see
-        // `app/src-tauri/src/cdp/in_process.rs`. The legacy
-        // `--remote-debugging-port` flag is no longer passed: every
+        // `app/src-tauri/src/cdp/in_process.rs`. Production builds do
+        // not pass the legacy `--remote-debugging-port` flag: every
         // scanner attaches via `Webview::send_dev_tools_message` and
-        // there is no remaining loopback DevTools listener.
+        // there is no remaining loopback DevTools listener. The E2E
+        // test-support build can opt into a loopback port below because
+        // the Appium Chromium harness still attaches through
+        // `debuggerAddress`.
         //
         // NOTE: flags must be prefixed with `--`. The runtime's
         // `on_before_command_line_processing` dispatch (in
@@ -2763,10 +2766,13 @@ pub fn run() {
             args.push(("--use-fake-ui-for-media-stream", None));
             args.push(("--use-file-for-fake-video-capture", Some(path)));
         }
-        // CDP attach runs entirely through the in-process channel; the
-        // `--remote-debugging-port` flag is intentionally NOT passed so
-        // no loopback DevTools listener is bound for the lifetime of
-        // the embedded browser.
+        #[cfg(feature = "e2e-test-support")]
+        if std::env::var("OPENHUMAN_E2E_MODE").ok().as_deref() == Some("1") {
+            let port = std::env::var("CEF_CDP_PORT").unwrap_or_else(|_| "19222".to_string());
+            let leaked_port: &'static str = Box::leak(port.into_boxed_str());
+            log::info!("[cef-startup] e2e remote-debugging-port enabled port={leaked_port}");
+            args.push(("--remote-debugging-port", Some(leaked_port)));
+        }
         let force_gpu_env = std::env::var("OPENHUMAN_FORCE_GPU").ok();
         append_platform_cef_gpu_workarounds(
             &mut args,
