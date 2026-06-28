@@ -171,6 +171,56 @@ pub fn insert_server_conn(conn: &Connection, server: &InstalledServer) -> Result
     Ok(())
 }
 
+/// Insert a server row only if no row with the same `qualified_name` already
+/// exists, in a single atomic statement. The `mcp_clients_install` flow checks
+/// `find_server_by_qualified_name` before inserting, but an awaited
+/// `registry_get` sits between that read and the write, so two concurrent
+/// installs of the same service could both miss and insert (the PK is
+/// `server_id`, which doesn't prevent duplicate `qualified_name`s). `INSERT …
+/// SELECT … WHERE NOT EXISTS` closes that window without a schema change.
+/// Returns `true` if this call inserted the row, `false` if one already existed.
+pub fn insert_server_if_absent(config: &Config, server: &InstalledServer) -> Result<bool> {
+    with_connection(config, |conn| insert_server_if_absent_conn(conn, server))
+}
+
+pub fn insert_server_if_absent_conn(conn: &Connection, server: &InstalledServer) -> Result<bool> {
+    let args_json = serde_json::to_string(&server.args)?;
+    let env_keys_json = serde_json::to_string(&server.env_keys)?;
+    let config_json = server
+        .config
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?;
+    let n = conn
+        .execute(
+            "INSERT INTO mcp_servers
+                     (server_id, qualified_name, display_name, description, icon_url,
+                      command_kind, command, args_json, env_keys_json, config_json,
+                      installed_at, last_connected_at, transport, deployment_url, enabled)
+                 SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
+                 WHERE NOT EXISTS (SELECT 1 FROM mcp_servers WHERE qualified_name = ?2)",
+            params![
+                server.server_id,
+                server.qualified_name,
+                server.display_name,
+                server.description,
+                server.icon_url,
+                server.command_kind.as_str(),
+                server.command,
+                args_json,
+                env_keys_json,
+                config_json,
+                server.installed_at,
+                server.last_connected_at,
+                server.transport.dispatch_kind(),
+                server.transport.deployment_url(),
+                server.enabled as i64,
+            ],
+        )
+        .context("Failed to insert mcp_server (if absent)")?;
+    Ok(n > 0)
+}
+
 /// Update only the `env_keys` list for an installed server. Used by
 /// `mcp_clients_update_env` to keep the persisted key-name list in sync with a
 /// reconfigure — the env *values* live in the separate `mcp_client_env` table,
@@ -186,6 +236,34 @@ pub fn update_server_env_keys(config: &Config, server_id: &str, env_keys: &[Stri
         .context("Failed to update mcp_server env_keys")?;
         Ok(())
     })
+}
+
+/// Update only the `config_json` blob for an installed server. Used by the
+/// idempotent re-install path so a second install carrying new config refreshes
+/// the existing row instead of dropping it — a plain `insert_server` would
+/// conflict on the primary key. `None` clears the stored config.
+pub fn update_server_config(
+    config: &Config,
+    server_id: &str,
+    value: Option<&serde_json::Value>,
+) -> Result<()> {
+    with_connection(config, |conn| {
+        update_server_config_conn(conn, server_id, value)
+    })
+}
+
+pub fn update_server_config_conn(
+    conn: &Connection,
+    server_id: &str,
+    value: Option<&serde_json::Value>,
+) -> Result<()> {
+    let config_json = value.map(serde_json::to_string).transpose()?;
+    conn.execute(
+        "UPDATE mcp_servers SET config_json = ?2 WHERE server_id = ?1",
+        params![server_id, config_json],
+    )
+    .context("Failed to update mcp_server config")?;
+    Ok(())
 }
 
 pub fn list_servers(config: &Config) -> Result<Vec<InstalledServer>> {
@@ -205,6 +283,37 @@ pub fn list_servers_conn(conn: &Connection) -> Result<Vec<InstalledServer>> {
         servers.push(row?);
     }
     Ok(servers)
+}
+
+/// First installed server with this qualified name, if any. The schema allows
+/// multiple installs of the same `qualified_name` (the PK is `server_id`), so
+/// this returns the earliest by `installed_at` — used to keep install
+/// idempotent (one install per service).
+pub fn find_server_by_qualified_name(
+    config: &Config,
+    qualified_name: &str,
+) -> Result<Option<InstalledServer>> {
+    with_connection(config, |conn| {
+        find_server_by_qualified_name_conn(conn, qualified_name)
+    })
+}
+
+pub fn find_server_by_qualified_name_conn(
+    conn: &Connection,
+    qualified_name: &str,
+) -> Result<Option<InstalledServer>> {
+    let mut stmt = conn.prepare(
+        "SELECT server_id, qualified_name, display_name, description, icon_url,
+                command_kind, command, args_json, env_keys_json, config_json,
+                installed_at, last_connected_at, transport, deployment_url, enabled
+         FROM mcp_servers WHERE qualified_name = ?1
+         ORDER BY installed_at ASC LIMIT 1",
+    )?;
+    let mut rows = stmt.query(params![qualified_name])?;
+    match rows.next()? {
+        Some(row) => Ok(Some(map_server_row(row)?)),
+        None => Ok(None),
+    }
 }
 
 pub fn get_server(config: &Config, server_id: &str) -> Result<InstalledServer> {
@@ -473,6 +582,64 @@ mod tests {
         assert_eq!(servers.len(), 1);
         assert_eq!(servers[0].server_id, "srv-1");
         assert_eq!(servers[0].command_kind, CommandKind::Node);
+    }
+
+    #[test]
+    fn update_server_config_round_trips_and_clears() {
+        let (_f, conn) = open_test_conn();
+        insert_server_conn(&conn, &sample_server("srv-cfg")).unwrap();
+        // sample_server starts with no config.
+        assert_eq!(get_server_conn(&conn, "srv-cfg").unwrap().config, None);
+        // Setting a config blob persists and reads back identically.
+        let cfg = serde_json::json!({ "mode": "fast", "n": 3 });
+        update_server_config_conn(&conn, "srv-cfg", Some(&cfg)).unwrap();
+        assert_eq!(get_server_conn(&conn, "srv-cfg").unwrap().config, Some(cfg));
+        // None clears it back to NULL.
+        update_server_config_conn(&conn, "srv-cfg", None).unwrap();
+        assert_eq!(get_server_conn(&conn, "srv-cfg").unwrap().config, None);
+    }
+
+    #[test]
+    fn insert_server_if_absent_dedups_on_qualified_name() {
+        let (_f, conn) = open_test_conn();
+        // First install of a service inserts the row.
+        let mut first = sample_server("srv-a");
+        first.qualified_name = "@dup/server".to_string();
+        assert!(insert_server_if_absent_conn(&conn, &first).unwrap());
+        // A second install of the SAME qualified_name (different server_id) is a
+        // no-op — the count stays at one and the original row survives.
+        let mut second = sample_server("srv-b");
+        second.qualified_name = "@dup/server".to_string();
+        assert!(!insert_server_if_absent_conn(&conn, &second).unwrap());
+        let rows: Vec<_> = list_servers_conn(&conn)
+            .unwrap()
+            .into_iter()
+            .filter(|s| s.qualified_name == "@dup/server")
+            .collect();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].server_id, "srv-a");
+    }
+
+    #[test]
+    fn find_server_by_qualified_name_returns_earliest_install() {
+        let (_f, conn) = open_test_conn();
+        // Two installs of the same service (different ids, different times).
+        let mut early = sample_server("srv-early");
+        early.installed_at = 100;
+        let mut late = sample_server("srv-late");
+        late.installed_at = 200;
+        // Insert the later one first to prove ordering is by installed_at.
+        insert_server_conn(&conn, &late).unwrap();
+        insert_server_conn(&conn, &early).unwrap();
+
+        let found = find_server_by_qualified_name_conn(&conn, "@test/server")
+            .unwrap()
+            .expect("server present");
+        assert_eq!(found.server_id, "srv-early");
+
+        assert!(find_server_by_qualified_name_conn(&conn, "@nope/missing")
+            .unwrap()
+            .is_none());
     }
 
     #[test]
