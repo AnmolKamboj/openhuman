@@ -6197,6 +6197,25 @@ mod tests {
     }
 
     #[test]
+    fn quota_exhausted_filter_matches_responses_usage_limit_reached_event() {
+        // TAURI-RUST-AFE: verbatim message as formatted by the `chat_via_responses`
+        // emit site — the Codex/ChatGPT OAuth `/responses` plan cap. Mirrors the
+        // real production shape `"<name> Responses API error (<status>): <body>"`
+        // (`compatible_helpers.rs:135`), including the `(429)` status segment and
+        // the full AFE payload (`plan_type` + `resets_at`) from `ops/http_error.rs`,
+        // so this stays coupled to the actual wire format rather than a loose
+        // substring. No "monthly"/"quota" co-marker, so it exercises the AFE
+        // phrase extension reaching the before_send net on both message and
+        // exception paths (the subconscious loop retries until `resets_at`).
+        let body = "openai Responses API error (429): {\"error\":{\"type\":\
+            \"usage_limit_reached\",\"message\":\"The usage limit has been reached\",\
+            \"plan_type\":\"plus\",\"resets_at\":1750000000}}";
+        assert!(is_quota_exhausted_event(&event_with_message(body)));
+        assert!(is_quota_exhausted_event(&event_with_exception_value(body)));
+        assert!(is_quota_exhausted_message(body));
+    }
+
+    #[test]
     fn quota_exhausted_filter_ignores_generic_500_and_rate_limit() {
         // A generic 500 outage and a 429 rate-limit are not plan-quota
         // exhaustion — they must keep reaching Sentry / their own handling.
