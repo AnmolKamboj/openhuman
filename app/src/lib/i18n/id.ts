@@ -1812,6 +1812,8 @@ const messages: TranslationMap = {
   'team.teamName': 'Nama tim',
   'team.creating': 'Membuat...',
   'team.joinExistingTeam': 'Bergabung dengan Tim yang Ada',
+  'team.personalAutoCreatedNote':
+    'Tim pribadi Anda dibuat secara otomatis. Untuk berkolaborasi, gabung ke tim yang sudah ada dengan kode undangan di bawah.',
   'team.inviteCode': 'Kode undangan',
   'team.joining': 'Bergabung...',
   'team.join': 'Bergabung',
