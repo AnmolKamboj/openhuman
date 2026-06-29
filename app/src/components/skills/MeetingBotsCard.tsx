@@ -3,6 +3,7 @@ import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } fro
 import { type MascotFace, RiveMascot } from '../../features/human/Mascot';
 import { useT } from '../../lib/i18n/I18nContext';
 import {
+  isCapacityGateMessage,
   joinMeetViaBackendBot,
   leaveBackendMeetBot,
   listMeetCalls,
@@ -260,7 +261,12 @@ function MeetingBotsInline({ onToast, hasSubmittedRef }: MeetingBotsInlineProps)
     if (!hasSubmittedRef.current) return;
     if (meetStatus === 'error') {
       hasSubmittedRef.current = false;
-      const message = meetError?.trim() || t('skills.meetingBots.failedToStart');
+      const raw = meetError?.trim() || t('skills.meetingBots.failedToStart');
+      // A capacity-gate error carries the backend's terse "…try again later."
+      // wording; show the tailored, actionable (and localized) copy instead (#4151).
+      const message = isCapacityGateMessage(raw)
+        ? t('skills.meetingBots.serverOverloaded')
+        : raw;
       setError(message);
       setSubmitting(false);
       onToast?.({ type: 'error', title: t('skills.meetingBots.couldNotStartTitle'), message });
@@ -288,7 +294,10 @@ function MeetingBotsInline({ onToast, hasSubmittedRef }: MeetingBotsInlineProps)
         listenOnly,
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : t('skills.meetingBots.failedToStart');
+      const raw = err instanceof Error ? err.message : t('skills.meetingBots.failedToStart');
+      const message = isCapacityGateMessage(raw)
+        ? t('skills.meetingBots.serverOverloaded')
+        : raw;
       setError(message);
       setSubmitting(false);
       hasSubmittedRef.current = false;
