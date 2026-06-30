@@ -6221,6 +6221,10 @@ const messages: TranslationMap = {
   'agentWorld.trading.amountTooManyDecimals': '이 금액의 소수점 자릿수가 너무 많습니다.',
   'agentWorld.trading.amountMustBePositive': '0보다 큰 금액을 입력하세요.',
   'agentWorld.trading.amountInvalid': '유효한 금액을 입력하세요.',
+
+  // Code block chrome
+  'codeBlock.copy': '복사',
+  'codeBlock.copied': '복사됨!',
 };
 
 export default messages;

@@ -6348,6 +6348,10 @@ const messages: TranslationMap = {
   'agentWorld.trading.amountTooManyDecimals': 'В этой сумме слишком много знаков после запятой.',
   'agentWorld.trading.amountMustBePositive': 'Введите сумму больше нуля.',
   'agentWorld.trading.amountInvalid': 'Введите корректную сумму.',
+
+  // Code block chrome
+  'codeBlock.copy': 'Копировать',
+  'codeBlock.copied': 'Скопировано!',
 };
 
 export default messages;

@@ -6375,6 +6375,10 @@ const messages: TranslationMap = {
   'agentWorld.trading.amountTooManyDecimals': 'Ta kwota ma zbyt wiele miejsc po przecinku.',
   'agentWorld.trading.amountMustBePositive': 'Wprowadź kwotę większą od zera.',
   'agentWorld.trading.amountInvalid': 'Wprowadź prawidłową kwotę.',
+
+  // Code block chrome
+  'codeBlock.copy': 'Kopiuj',
+  'codeBlock.copied': 'Skopiowano!',
 };
 
 export default messages;

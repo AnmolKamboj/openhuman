@@ -6308,6 +6308,10 @@ const messages: TranslationMap = {
   'agentWorld.trading.amountTooManyDecimals': 'Jumlah ini memiliki terlalu banyak angka desimal.',
   'agentWorld.trading.amountMustBePositive': 'Masukkan jumlah lebih besar dari nol.',
   'agentWorld.trading.amountInvalid': 'Masukkan jumlah yang valid.',
+
+  // Code block chrome
+  'codeBlock.copy': 'Salin',
+  'codeBlock.copied': 'Disalin!',
 };
 
 export default messages;

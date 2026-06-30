@@ -6281,6 +6281,10 @@ const messages: TranslationMap = {
   'agentWorld.trading.amountTooManyDecimals': 'এই পরিমাণে অত্যধিক দশমিক স্থান রয়েছে।',
   'agentWorld.trading.amountMustBePositive': 'শূন্যের চেয়ে বড় একটি পরিমাণ লিখুন।',
   'agentWorld.trading.amountInvalid': 'একটি বৈধ পরিমাণ লিখুন।',
+
+  // Code block chrome
+  'codeBlock.copy': 'কপি করুন',
+  'codeBlock.copied': 'কপি হয়েছে!',
 };
 
 export default messages;

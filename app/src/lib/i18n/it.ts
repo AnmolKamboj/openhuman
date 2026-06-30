@@ -6401,6 +6401,10 @@ const messages: TranslationMap = {
   'agentWorld.trading.amountTooManyDecimals': 'Questo importo ha troppe cifre decimali.',
   'agentWorld.trading.amountMustBePositive': 'Inserisci un importo maggiore di zero.',
   'agentWorld.trading.amountInvalid': 'Inserisci un importo valido.',
+
+  // Code block chrome
+  'codeBlock.copy': 'Copia',
+  'codeBlock.copied': 'Copiato!',
 };
 
 export default messages;

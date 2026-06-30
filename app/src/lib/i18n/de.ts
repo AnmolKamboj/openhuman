@@ -6455,6 +6455,10 @@ const messages: TranslationMap = {
   'agentWorld.trading.amountTooManyDecimals': 'Dieser Betrag hat zu viele Nachkommastellen.',
   'agentWorld.trading.amountMustBePositive': 'Gib einen Betrag größer als null ein.',
   'agentWorld.trading.amountInvalid': 'Gib einen gültigen Betrag ein.',
+
+  // Code block chrome
+  'codeBlock.copy': 'Kopieren',
+  'codeBlock.copied': 'Kopiert!',
 };
 
 export default messages;

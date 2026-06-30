@@ -6286,6 +6286,10 @@ const messages: TranslationMap = {
   'agentWorld.trading.amountTooManyDecimals': 'इस राशि में बहुत अधिक दशमलव स्थान हैं।',
   'agentWorld.trading.amountMustBePositive': 'शून्य से बड़ी राशि दर्ज करें।',
   'agentWorld.trading.amountInvalid': 'एक मान्य राशि दर्ज करें।',
+
+  // Code block chrome
+  'codeBlock.copy': 'कॉपी करें',
+  'codeBlock.copied': 'कॉपी हो गया!',
 };
 
 export default messages;

@@ -6544,6 +6544,10 @@ const en: TranslationMap = {
   'agentworld.messaging.missingSignalBundle':
     "This user hasn't enabled encrypted messaging yet. Ask them to open Agent World and enable secure DMs before sending a message.",
 
+  // Code block chrome
+  'codeBlock.copy': 'Copy',
+  'codeBlock.copied': 'Copied!',
+
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Action needed',
   'userErrors.dismiss': 'Dismiss',

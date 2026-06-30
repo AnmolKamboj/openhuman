@@ -6434,6 +6434,10 @@ const messages: TranslationMap = {
   'agentWorld.trading.amountTooManyDecimals': 'Ce montant comporte trop de décimales.',
   'agentWorld.trading.amountMustBePositive': 'Saisissez un montant supérieur à zéro.',
   'agentWorld.trading.amountInvalid': 'Saisissez un montant valide.',
+
+  // Code block chrome
+  'codeBlock.copy': 'Copier',
+  'codeBlock.copied': 'Copié !',
 };
 
 export default messages;

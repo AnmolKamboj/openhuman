@@ -6413,6 +6413,10 @@ const messages: TranslationMap = {
   'agentWorld.trading.amountTooManyDecimals': 'Este importe tiene demasiados decimales.',
   'agentWorld.trading.amountMustBePositive': 'Introduce un importe mayor que cero.',
   'agentWorld.trading.amountInvalid': 'Introduce un importe válido.',
+
+  // Code block chrome
+  'codeBlock.copy': 'Copiar',
+  'codeBlock.copied': '¡Copiado!',
 };
 
 export default messages;

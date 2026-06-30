@@ -5962,6 +5962,10 @@ const messages: TranslationMap = {
   'agentWorld.trading.amountTooManyDecimals': '该金额的小数位数过多。',
   'agentWorld.trading.amountMustBePositive': '请输入大于零的金额。',
   'agentWorld.trading.amountInvalid': '请输入有效的金额。',
+
+  // Code block chrome
+  'codeBlock.copy': '复制',
+  'codeBlock.copied': '已复制！',
 };
 
 export default messages;

@@ -6393,6 +6393,10 @@ const messages: TranslationMap = {
   'agentWorld.trading.amountTooManyDecimals': 'Este valor tem casas decimais em excesso.',
   'agentWorld.trading.amountMustBePositive': 'Insira um valor maior que zero.',
   'agentWorld.trading.amountInvalid': 'Insira um valor válido.',
+
+  // Code block chrome
+  'codeBlock.copy': 'Copiar',
+  'codeBlock.copied': 'Copiado!',
 };
 
 export default messages;

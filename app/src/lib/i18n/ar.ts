@@ -6153,6 +6153,10 @@ const messages: TranslationMap = {
     'يحتوي هذا المبلغ على عدد كبير جدًا من المنازل العشرية.',
   'agentWorld.trading.amountMustBePositive': 'أدخل مبلغًا أكبر من صفر.',
   'agentWorld.trading.amountInvalid': 'أدخل مبلغًا صالحًا.',
+
+  // Code block chrome
+  'codeBlock.copy': 'نسخ',
+  'codeBlock.copied': 'تم النسخ!',
 };
 
 export default messages;
