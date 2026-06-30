@@ -3151,6 +3151,8 @@ const messages: TranslationMap = {
   'composio.triggers.heading': 'ট্রিগার',
   'composio.triggers.listenFrom': 'ইভেন্টের জন্য শুনুন',
   'composio.triggers.loadError': 'ট্রিগার লোড করা যায়নি',
+  'composio.triggers.sessionExpired':
+    'আপনার OpenHuman সেশনের মেয়াদ শেষ হয়েছে। ট্রিগার লোড করতে আবার সাইন ইন করুন।',
   'composio.triggers.needsConfiguration': 'কনফিগারেশন প্রয়োজন',
   'composio.triggers.noneAvailable': 'বর্তমানে কোনো ট্রিগার উপলব্ধ নেই',
   'conversations.taskKanban.moveLeft': 'বামে সরান',

@@ -3175,6 +3175,8 @@ const messages: TranslationMap = {
   'composio.triggers.heading': 'Триггеры',
   'composio.triggers.listenFrom': 'Слушать события от',
   'composio.triggers.loadError': 'Не удалось загрузить триггеры',
+  'composio.triggers.sessionExpired':
+    'Срок действия сессии OpenHuman истёк. Войдите снова, чтобы загрузить триггеры.',
   'composio.triggers.needsConfiguration': 'Требуется настройка',
   'composio.triggers.noneAvailable': 'Сейчас нет доступных триггеров для',
   'conversations.taskKanban.moveLeft': 'Переместить влево',

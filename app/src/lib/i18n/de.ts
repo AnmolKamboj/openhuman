@@ -3226,6 +3226,8 @@ const messages: TranslationMap = {
   'composio.triggers.heading': 'Auslöser',
   'composio.triggers.listenFrom': 'Auf Ereignisse hören von',
   'composio.triggers.loadError': 'Trigger konnten nicht geladen werden',
+  'composio.triggers.sessionExpired':
+    'Deine OpenHuman-Sitzung ist abgelaufen. Melde dich erneut an, um Trigger zu laden.',
   'composio.triggers.needsConfiguration': 'Muss konfiguriert werden',
   'composio.triggers.noneAvailable': 'Derzeit sind keine Auslöser verfügbar für',
   'conversations.taskKanban.moveLeft': 'Bewege dich nach links',

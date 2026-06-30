@@ -3158,6 +3158,8 @@ const messages: TranslationMap = {
   'composio.triggers.heading': 'Pemicu',
   'composio.triggers.listenFrom': 'Dengarkan event dari',
   'composio.triggers.loadError': 'Tidak bisa memuat trigger',
+  'composio.triggers.sessionExpired':
+    'Sesi OpenHuman Anda telah berakhir. Masuk lagi untuk memuat trigger.',
   'composio.triggers.needsConfiguration': 'Perlu konfigurasi',
   'composio.triggers.noneAvailable': 'Tidak ada trigger yang tersedia saat ini untuk',
   'conversations.taskKanban.moveLeft': 'Pindah ke kiri',

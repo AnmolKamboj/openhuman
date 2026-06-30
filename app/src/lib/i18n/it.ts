@@ -3199,6 +3199,8 @@ const messages: TranslationMap = {
   'composio.triggers.heading': 'Trigger',
   'composio.triggers.listenFrom': 'Ascolta eventi da',
   'composio.triggers.loadError': 'Impossibile caricare i trigger',
+  'composio.triggers.sessionExpired':
+    'La tua sessione OpenHuman è scaduta. Accedi di nuovo per caricare i trigger.',
   'composio.triggers.needsConfiguration': 'Richiede configurazione',
   'composio.triggers.noneAvailable': 'Nessun trigger attualmente disponibile per',
   'conversations.taskKanban.moveLeft': 'Sposta a sinistra',

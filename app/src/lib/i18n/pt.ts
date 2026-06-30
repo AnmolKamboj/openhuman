@@ -3203,6 +3203,8 @@ const messages: TranslationMap = {
   'composio.triggers.heading': 'Gatilhos',
   'composio.triggers.listenFrom': 'Ouvir eventos de',
   'composio.triggers.loadError': 'Não foi possível carregar os gatilhos',
+  'composio.triggers.sessionExpired':
+    'Sua sessão do OpenHuman expirou. Entre novamente para carregar os gatilhos.',
   'composio.triggers.needsConfiguration': 'Precisa de configuração',
   'composio.triggers.noneAvailable': 'Nenhum gatilho disponível no momento para',
   'conversations.taskKanban.moveLeft': 'Mover para esquerda',

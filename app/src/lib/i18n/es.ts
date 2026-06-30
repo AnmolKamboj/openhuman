@@ -3203,6 +3203,8 @@ const messages: TranslationMap = {
   'composio.triggers.heading': 'Disparadores',
   'composio.triggers.listenFrom': 'Escuchar eventos de',
   'composio.triggers.loadError': 'No se pudieron cargar los triggers',
+  'composio.triggers.sessionExpired':
+    'Tu sesión de OpenHuman ha caducado. Vuelve a iniciar sesión para cargar los triggers.',
   'composio.triggers.needsConfiguration': 'Necesita configuración',
   'composio.triggers.noneAvailable': 'Actualmente no hay triggers disponibles para',
   'conversations.taskKanban.moveLeft': 'Mover a la izquierda',

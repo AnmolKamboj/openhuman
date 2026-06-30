@@ -3220,6 +3220,8 @@ const messages: TranslationMap = {
   'composio.triggers.heading': 'Déclencheurs',
   'composio.triggers.listenFrom': 'Écouter les événements de',
   'composio.triggers.loadError': 'Impossible de charger les déclencheurs',
+  'composio.triggers.sessionExpired':
+    'Votre session OpenHuman a expiré. Reconnectez-vous pour charger les déclencheurs.',
   'composio.triggers.needsConfiguration': 'Configuration requise',
   'composio.triggers.noneAvailable': "Aucun déclencheur n'est actuellement disponible pour",
   'conversations.taskKanban.moveLeft': 'Déplacer à gauche',

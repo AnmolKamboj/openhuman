@@ -3183,6 +3183,8 @@ const messages: TranslationMap = {
   'composio.triggers.heading': 'Wyzwalacze',
   'composio.triggers.listenFrom': 'Nasłuchuj zdarzeń z',
   'composio.triggers.loadError': 'Nie udało się wczytać wyzwalaczy',
+  'composio.triggers.sessionExpired':
+    'Twoja sesja OpenHuman wygasła. Zaloguj się ponownie, aby wczytać wyzwalacze.',
   'composio.triggers.needsConfiguration': 'Wymaga konfiguracji',
   'composio.triggers.noneAvailable': 'Brak dostępnych wyzwalaczy dla',
   'conversations.taskKanban.moveLeft': 'Przesuń w lewo',

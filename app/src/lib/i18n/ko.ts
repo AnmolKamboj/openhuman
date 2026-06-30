@@ -3122,6 +3122,8 @@ const messages: TranslationMap = {
   'composio.triggers.heading': '트리거',
   'composio.triggers.listenFrom': '다음에서 이벤트 수신:',
   'composio.triggers.loadError': '트리거를 불러올 수 없습니다',
+  'composio.triggers.sessionExpired':
+    'OpenHuman 세션이 만료되었습니다. 트리거를 불러오려면 다시 로그인하세요.',
   'composio.triggers.needsConfiguration': '구성이 필요합니다',
   'composio.triggers.noneAvailable': '현재 사용할 수 있는 트리거가 없습니다:',
   'conversations.taskKanban.moveLeft': '왼쪽으로 이동',

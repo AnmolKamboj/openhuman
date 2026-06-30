@@ -3084,6 +3084,8 @@ const messages: TranslationMap = {
   'composio.triggers.heading': 'المشغّلات',
   'composio.triggers.listenFrom': 'الاستماع للأحداث من',
   'composio.triggers.loadError': 'تعذّر تحميل المشغّلات',
+  'composio.triggers.sessionExpired':
+    'انتهت صلاحية جلسة OpenHuman. سجّل الدخول مرة أخرى لتحميل المشغّلات.',
   'composio.triggers.needsConfiguration': 'يحتاج إلى إعداد',
   'composio.triggers.noneAvailable': 'لا توجد مشغّلات متاحة حاليًا لـ',
   'conversations.taskKanban.moveLeft': 'نقل لليسار',

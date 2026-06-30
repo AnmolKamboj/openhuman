@@ -2994,6 +2994,7 @@ const messages: TranslationMap = {
   'composio.triggers.heading': '触发器',
   'composio.triggers.listenFrom': '监听来自以下的事件',
   'composio.triggers.loadError': '无法加载触发器',
+  'composio.triggers.sessionExpired': '你的 OpenHuman 会话已过期。请重新登录以加载触发器。',
   'composio.triggers.needsConfiguration': '需要配置',
   'composio.triggers.noneAvailable': '当前没有可用的触发器：',
   'conversations.taskKanban.moveLeft': '向左移动',
