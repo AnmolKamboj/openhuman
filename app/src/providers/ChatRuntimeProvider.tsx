@@ -3,6 +3,10 @@ import { useCallback, useEffect, useRef } from 'react';
 
 import { requestUsageRefresh } from '../hooks/usageRefresh';
 import { useRefetchSnapshotOnTurnEnd } from '../hooks/useRefetchSnapshotOnTurnEnd';
+import {
+  createSkillToolChainLatencyTracker,
+  SKILL_TOOL_CHAIN_TARGET_MS,
+} from '../lib/ai/skillToolChainLatency';
 import { ingestRuntimeErrorSignal } from '../lib/userErrors/report';
 import {
   type ChatApprovalRequestEvent,
@@ -284,6 +288,10 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
   const toolTimelineRef = useRef(toolTimelineByThread);
   const inferenceStatusRef = useRef(inferenceStatusByThread);
   const streamingAssistantRef = useRef(streamingAssistantByThread);
+  // Measures wall-clock of each turn's tool chain against the 60s target
+  // (#4273, AC3). Single instance for the provider's lifetime; observability
+  // only — it never gates or cancels a turn.
+  const skillLatencyRef = useRef(createSkillToolChainLatencyTracker());
 
   useEffect(() => {
     toolTimelineRef.current = toolTimelineByThread;
@@ -509,6 +517,11 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
           !markChatEventSeen(eventKey, { threadId: event.thread_id, requestId: event.request_id })
         )
           return;
+
+        // Start (or extend) the tool-chain latency window for this turn (#4273).
+        // Key by thread+request (same scheme as segment delivery) so parallel /
+        // forked turns that share a thread_id keep independent chains (#4288).
+        skillLatencyRef.current.noteToolCall(segmentDeliveryKey(event.thread_id, event.request_id));
 
         const existing = store.getState().chatRuntime.toolTimelineByThread[event.thread_id] ?? [];
         const existingIdx = event.tool_call_id
@@ -1121,6 +1134,28 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
           output_tokens: event.total_output_tokens,
         });
 
+        // Close the tool-chain latency window and surface overruns of the 60s
+        // target (#4273, AC3). Observability only — never blocks the turn.
+        const latency = skillLatencyRef.current.finishChain(
+          segmentDeliveryKey(event.thread_id, event.request_id),
+          { ok: true }
+        );
+        if (latency) {
+          rtLog('skill_tool_chain_latency', {
+            thread: event.thread_id,
+            request: event.request_id,
+            elapsed_ms: latency.elapsedMs,
+            tools: latency.toolCount,
+            within_target: latency.withinTarget ? 'true' : 'false',
+          });
+          if (!latency.withinTarget) {
+            console.warn(
+              `[skill-latency] tool chain on thread ${event.thread_id} took ${latency.elapsedMs}ms ` +
+                `across ${latency.toolCount} tool(s) — exceeds the ${SKILL_TOOL_CHAIN_TARGET_MS}ms target`
+            );
+          }
+        }
+
         // Parallel (forked) turn: resolve only its own lane. The primary turn's
         // stream / status / lifecycle / active marker may still be running, so
         // we must NOT clear them here. Segmented parallel turns already
@@ -1263,6 +1298,23 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
           err: event.error_type,
         });
 
+        // A failed turn still closes its latency window so the chain timer never
+        // leaks into a later turn on the same thread (#4273, AC3).
+        const errLatency = skillLatencyRef.current.finishChain(
+          segmentDeliveryKey(event.thread_id, event.request_id),
+          { ok: false }
+        );
+        if (errLatency) {
+          rtLog('skill_tool_chain_latency', {
+            thread: event.thread_id,
+            request: event.request_id,
+            elapsed_ms: errLatency.elapsedMs,
+            tools: errLatency.toolCount,
+            within_target: errLatency.withinTarget ? 'true' : 'false',
+            ok: 'false',
+          });
+        }
+
         // #3931: surface expected, user-actionable provider/billing states
         // (insufficient BYO credits, managed-budget exhaustion) in the shell's
         // dedicated error panel — in ADDITION to the inline chat message below.
@@ -1377,6 +1429,10 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
     const threadIds = Object.keys(lifecycles);
     const activeThreadIds = Object.keys(state.thread.activeThreadIds);
     if (threadIds.length === 0 && activeThreadIds.length === 0) return;
+    // Abandon any in-flight tool-chain latency windows: a disconnect tears down
+    // these turns without an onDone/onError, so without this the next tool call
+    // on a reused thread would attribute stale elapsed/tool counts (#4288).
+    skillLatencyRef.current.reset();
     rtLog('socket_disconnect_reconcile', {
       socket: socketStatus,
       inFlight: threadIds.length,
