@@ -1,0 +1,353 @@
+/**
+ * Core process and update commands.
+ */
+import { invoke } from '@tauri-apps/api/core';
+
+import { callCoreRpc, clearCoreRpcTokenCache } from '../../services/coreRpcClient';
+import { IS_DEV_LIKE } from '../config';
+import { CommandResponse, isTauri } from './common';
+
+export interface CoreUpdateStatus {
+  running_version: string;
+  minimum_version: string;
+  /** True if running < minimum (compatibility issue). */
+  outdated: boolean;
+  /** Latest version on GitHub Releases (if fetch succeeded). */
+  latest_version: string | null;
+  /** True if running < latest (newer release available). */
+  update_available: boolean;
+}
+
+export type DoctorSeverity = 'Ok' | 'Warn' | 'Error';
+export type ModelProbeOutcome = 'Ok' | 'Skipped' | 'AuthOrAccess' | 'Error';
+
+export interface DoctorReport {
+  items: { severity: DoctorSeverity; category: string; message: string }[];
+  summary: { ok: number; warnings: number; errors: number };
+}
+
+export interface ModelProbeReport {
+  entries: { provider: string; outcome: ModelProbeOutcome; message?: string | null }[];
+  summary: { ok: number; skipped: number; auth_or_access: number; errors: number };
+}
+
+export interface MigrationStats {
+  from_sqlite: number;
+  from_markdown: number;
+  imported: number;
+  skipped_unchanged: number;
+  renamed_conflicts: number;
+}
+
+export interface MigrationReport {
+  source_workspace: string;
+  target_workspace: string;
+  dry_run: boolean;
+  stats: MigrationStats;
+  warnings: string[];
+}
+
+/**
+ * Restart the core sidecar process.
+ */
+export async function restartCoreProcess(): Promise<void> {
+  if (!isTauri()) {
+    console.debug('[core] restartCoreProcess: skipped — not running in Tauri');
+    return;
+  }
+  console.debug('[core] restartCoreProcess: invoking restart_core_process');
+  await invoke<void>('restart_core_process');
+  // The Tauri shell mints a fresh `OPENHUMAN_CORE_TOKEN` for the new core
+  // process. Drop the cached bearer so token-bearing long-lived consumers
+  // (e.g. webhook SSE per #1922) reconnect with the new value.
+  clearCoreRpcTokenCache();
+  console.debug('[core] restartCoreProcess: done');
+}
+
+/**
+ * Restart the desktop shell so CEF relaunches with updated profile paths.
+ *
+ * In `pnpm dev:app` the launcher graph is:
+ *   `pnpm tauri dev` → `cargo run` → `tauri-cef` CLI → `vite` (child).
+ * Tauri's `app.restart()` exits the cargo parent, which orphans/kills the
+ * vite child and tears down the entire dev session (#1068). Use a webview
+ * reload in dev mode instead — module init re-runs, so localStorage seeds
+ * (e.g. `OPENHUMAN_ACTIVE_USER_ID`, set by `setActiveUserId` before the
+ * caller invokes us) are read fresh and redux-persist re-hydrates from
+ * the active user's namespace, all without touching the cargo / vite
+ * processes. Packaged builds keep the original `app.restart()` path —
+ * there is no vite child to orphan there.
+ */
+export async function restartApp(): Promise<void> {
+  if (!isTauri()) {
+    console.debug('[app] restartApp: skipped — not running in Tauri');
+    return;
+  }
+  // `IS_DEV_LIKE` is true for both `vite dev` (DEV=true) and the E2E build
+  // (`vite build --mode development` → DEV=false but MODE='development').
+  // Without the E2E case we'd hit the OS-level restart path in the packaged
+  // E2E binary and kill the WebDriver CDP target every time identity flips
+  // on login. See `app/src/utils/config.ts` for the canonical definition.
+  if (IS_DEV_LIKE) {
+    console.debug('[app] restartApp: dev mode → window.location.reload()');
+    window.location.reload();
+    return;
+  }
+  console.debug('[app] restartApp: invoking restart_app');
+  await invoke<void>('restart_app');
+}
+
+/**
+ * Read the active user id from `~/.openhuman/active_user.toml` via Rust.
+ * Used at startup (before redux-persist hydrates) to seed
+ * `userScopedStorage` from the profile-independent source of truth so
+ * the UI always lands on the right user namespace, regardless of any
+ * stale `localStorage` value bound to a previously-active CEF profile.
+ * (#900)
+ */
+export async function getActiveUserIdFromCore(): Promise<string | null> {
+  if (!isTauri()) return null;
+  try {
+    return await invoke<string | null>('get_active_user_id');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Queue deletion of a user-scoped CEF profile on the next app launch.
+ */
+export async function scheduleCefProfilePurge(userId?: string | null): Promise<string | null> {
+  if (!isTauri()) {
+    console.debug('[cef-profile] scheduleCefProfilePurge: skipped — not running in Tauri');
+    return null;
+  }
+  console.debug('[cef-profile] scheduleCefProfilePurge: invoking schedule_cef_profile_purge', {
+    hasUserId: userId != null,
+  });
+  return invoke<string>('schedule_cef_profile_purge', { userId: userId ?? null });
+}
+
+/**
+ * Check if the running core sidecar is outdated compared to what the app expects.
+ */
+export const checkCoreUpdate = async (): Promise<CoreUpdateStatus | null> => {
+  if (!isTauri()) {
+    console.debug('[core-update] checkCoreUpdate: skipped — not running in Tauri');
+    return null;
+  }
+  console.debug('[core-update] checkCoreUpdate: invoking check_core_update');
+  const result = await invoke<CoreUpdateStatus>('check_core_update');
+  console.debug('[core-update] checkCoreUpdate: result', result);
+  return result;
+};
+
+/**
+ * Trigger a full core update.
+ */
+export const applyCoreUpdate = async (): Promise<void> => {
+  if (!isTauri()) {
+    console.debug('[core-update] applyCoreUpdate: skipped — not running in Tauri');
+    return;
+  }
+  console.debug('[core-update] applyCoreUpdate: invoking apply_core_update');
+  await invoke<void>('apply_core_update');
+  console.debug('[core-update] applyCoreUpdate: done');
+};
+
+export interface AppUpdateInfo {
+  /** Currently-running app version (matches `tauri.conf.json::version`). */
+  current_version: string;
+  /** True if the updater endpoint advertises a newer build. */
+  available: boolean;
+  /** Newer version reported by the updater endpoint, if any. */
+  available_version: string | null;
+  /** Release notes for the new version, if the manifest provided any. */
+  body: string | null;
+}
+
+/**
+ * Probe the Tauri shell updater endpoint for a newer build. Does NOT install.
+ * Pair with {@link applyAppUpdate} to actually upgrade.
+ */
+export const checkAppUpdate = async (): Promise<AppUpdateInfo | null> => {
+  if (!isTauri()) {
+    console.debug('[app-update] checkAppUpdate: skipped — not running in Tauri');
+    return null;
+  }
+  console.debug('[app-update] checkAppUpdate: invoking check_app_update');
+  const result = await invoke<AppUpdateInfo>('check_app_update');
+  console.debug('[app-update] checkAppUpdate: result', result);
+  return result;
+};
+
+/**
+ * Download + install the latest shell build, then relaunch.
+ *
+ * Legacy combined path — kept so the manual "do everything" flow still
+ * works. The auto-update flow uses {@link downloadAppUpdate} +
+ * {@link installAppUpdate} so the user can defer the restart.
+ *
+ * The Rust side shuts the core sidecar down before the install step so the
+ * macOS .app bundle replacement does not race with live file handles. After
+ * `app.restart()` the new bundled sidecar is launched fresh.
+ *
+ * Listen on Tauri events `app-update:status` ("checking", "downloading",
+ * "installing", "restarting", "up_to_date", "error") and `app-update:progress`
+ * (`{ chunk: number, total: number | null }`) to drive UI feedback.
+ */
+export const applyAppUpdate = async (): Promise<void> => {
+  if (!isTauri()) {
+    console.debug('[app-update] applyAppUpdate: skipped — not running in Tauri');
+    return;
+  }
+  console.debug('[app-update] applyAppUpdate: invoking apply_app_update');
+  // Note: when an update is installed the process restarts mid-await. The
+  // promise rejection from the abrupt termination is expected; only surface
+  // errors that come back before that.
+  await invoke<void>('apply_app_update');
+  console.debug('[app-update] applyAppUpdate: returned (no update was applied)');
+};
+
+export interface AppUpdateDownloadResult {
+  /** True when an update was found and bundle bytes are now staged. */
+  ready: boolean;
+  /** Version of the staged update, if any. */
+  version: string | null;
+  /** Release notes for the staged update, if the manifest provided any. */
+  body: string | null;
+}
+
+/**
+ * Probe the updater endpoint and, if a newer build is available, download
+ * the bundle bytes into memory but DO NOT install. Pair with
+ * {@link installAppUpdate} to finalize at a moment that's safe for the user.
+ *
+ * Emits the same `app-update:status` and `app-update:progress` events as
+ * {@link applyAppUpdate}, with status sequence
+ * `checking` → `downloading` → `ready_to_install` (or `up_to_date` / `error`).
+ */
+export const downloadAppUpdate = async (): Promise<AppUpdateDownloadResult | null> => {
+  if (!isTauri()) {
+    console.debug('[app-update] downloadAppUpdate: skipped — not running in Tauri');
+    return null;
+  }
+  console.debug('[app-update] downloadAppUpdate: invoking download_app_update');
+  const result = await invoke<AppUpdateDownloadResult>('download_app_update');
+  console.debug('[app-update] downloadAppUpdate: result', result);
+  return result;
+};
+
+/**
+ * Install the bundle bytes staged by a prior {@link downloadAppUpdate}, then
+ * relaunch. Throws if no download has been staged this session — the caller
+ * should fall back to {@link applyAppUpdate} in that case.
+ *
+ * The Rust side shuts the core sidecar down before install for the same
+ * reason as `apply_app_update` (avoid live file handles during the .app
+ * replacement on macOS).
+ */
+export const installAppUpdate = async (): Promise<void> => {
+  if (!isTauri()) {
+    console.debug('[app-update] installAppUpdate: skipped — not running in Tauri');
+    return;
+  }
+  console.debug('[app-update] installAppUpdate: invoking install_app_update');
+  // Like applyAppUpdate, the process restarts mid-await on success. Promise
+  // rejection from the abrupt termination is expected; failures BEFORE the
+  // restart bubble up here.
+  await invoke<void>('install_app_update');
+  console.debug('[app-update] installAppUpdate: returned (install did not relaunch)');
+};
+
+export async function resetOpenHumanDataAndRestartCore(): Promise<void> {
+  if (!isTauri()) {
+    console.debug('[core] resetOpenHumanDataAndRestartCore: skipped — not running in Tauri');
+    return;
+  }
+  // Single Tauri command: the shell stops the embedded core (dropping
+  // every open file handle inside the data directory), removes the
+  // resolved data paths, then restarts the core. Previously this was a
+  // two-step `callCoreRpc('config_reset_local_data') + restartCoreProcess()`
+  // dance, but the core RPC ran the remove *inside* the running core's
+  // tokio task — on Windows that hit `ERROR_SHARING_VIOLATION` (os error
+  // 32) because the core still held SQLite / log / Sentry handles open in
+  // the directory it was trying to delete (OPENHUMAN-TAURI-AF).
+  console.debug('[core] resetOpenHumanDataAndRestartCore: invoking reset_local_data');
+  try {
+    await invoke<void>('reset_local_data');
+  } catch (err) {
+    console.error('[core] resetOpenHumanDataAndRestartCore: reset_local_data failed', err);
+    throw err;
+  }
+  console.debug('[core] resetOpenHumanDataAndRestartCore: done');
+}
+
+/** Read onboarding_completed from core config. */
+export async function getOnboardingCompleted(): Promise<boolean> {
+  if (!isTauri()) return false;
+  const res = await callCoreRpc<boolean | { result: boolean }>({
+    method: 'openhuman.config_get_onboarding_completed',
+  });
+  // RpcOutcome may wrap value in { result, logs } when logs are present
+  if (typeof res === 'boolean') return res;
+  if (res && typeof res === 'object' && 'result' in res) return res.result;
+  return false;
+}
+
+/** Write onboarding_completed to core config. */
+export async function setOnboardingCompleted(value: boolean): Promise<boolean> {
+  if (!isTauri()) return false;
+  const res = await callCoreRpc<boolean | { result: boolean }>({
+    method: 'openhuman.config_set_onboarding_completed',
+    params: { value },
+  });
+  if (typeof res === 'boolean') return res;
+  if (res && typeof res === 'object' && 'result' in res) return res.result;
+  return false;
+}
+
+export async function openhumanDoctorReport(): Promise<CommandResponse<DoctorReport>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await callCoreRpc<CommandResponse<DoctorReport>>({ method: 'openhuman.doctor_report' });
+}
+
+export async function openhumanDoctorModels(
+  useCache = true
+): Promise<CommandResponse<ModelProbeReport>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await callCoreRpc<CommandResponse<ModelProbeReport>>({
+    method: 'openhuman.doctor_models',
+    params: { use_cache: useCache },
+  });
+}
+
+export async function openhumanMigrateOpenclaw(
+  sourceWorkspace?: string,
+  dryRun = true
+): Promise<CommandResponse<MigrationReport>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await callCoreRpc<CommandResponse<MigrationReport>>({
+    method: 'openhuman.migrate_openclaw',
+    params: { source_workspace: sourceWorkspace, dry_run: dryRun },
+  });
+}
+
+export async function openhumanMigrateHermes(
+  sourceWorkspace?: string,
+  dryRun = true
+): Promise<CommandResponse<MigrationReport>> {
+  if (!isTauri()) {
+    throw new Error('Not running in Tauri');
+  }
+  return await callCoreRpc<CommandResponse<MigrationReport>>({
+    method: 'openhuman.migrate_hermes',
+    params: { source_workspace: sourceWorkspace, dry_run: dryRun },
+  });
+}

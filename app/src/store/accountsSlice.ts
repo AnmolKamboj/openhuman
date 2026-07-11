@@ -1,0 +1,217 @@
+import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
+import debug from 'debug';
+import { REHYDRATE } from 'redux-persist';
+
+import type {
+  Account,
+  AccountLogEntry,
+  AccountsState,
+  AccountStatus,
+  IngestedMessage,
+} from '../types/accounts';
+import { resetUserScopedState } from './resetActions';
+
+const log = debug('accounts:rehydrate');
+
+// Statuses that describe a *live* webview session, not durable account
+// state. Persisting any of these across an app restart would mean the
+// next session paints stale UI (a spinner for a webview that no longer
+// exists, or — issue #1379 — a "taking longer than expected" overlay
+// before the new session has even tried to load).
+const TRANSIENT_ACCOUNT_STATUSES: ReadonlySet<AccountStatus> = new Set([
+  'pending',
+  'loading',
+  'timeout',
+  'open',
+  'error',
+]);
+
+const MAX_MESSAGES_PER_ACCOUNT = 200;
+const MAX_LOG_LINES_PER_ACCOUNT = 100;
+
+const initialState: AccountsState = {
+  accounts: {},
+  order: [],
+  activeAccountId: null,
+  lastActiveAccountId: null,
+  messages: {},
+  unread: {},
+  logs: {},
+  overlayOpen: false,
+};
+
+const accountsSlice = createSlice({
+  name: 'accounts',
+  initialState,
+  reducers: {
+    addAccount(state, action: PayloadAction<Account>) {
+      const acct = action.payload;
+      if (!state.accounts[acct.id]) {
+        state.order.push(acct.id);
+      }
+      state.accounts[acct.id] = acct;
+      state.messages[acct.id] ??= [];
+      state.unread[acct.id] ??= 0;
+      state.logs[acct.id] ??= [];
+      state.activeAccountId ??= acct.id;
+    },
+
+    removeAccount(state, action: PayloadAction<{ accountId: string }>) {
+      const { accountId } = action.payload;
+      delete state.accounts[accountId];
+      delete state.messages[accountId];
+      delete state.unread[accountId];
+      delete state.logs[accountId];
+      state.order = state.order.filter(id => id !== accountId);
+      if (state.activeAccountId === accountId) {
+        state.activeAccountId = state.order[0] ?? null;
+      }
+      // Issue #1233 — drop the MRU pointer if the deleted account was the
+      // last-active one, otherwise the next session would try to prewarm a
+      // gone account, hit the `accountsById[mruId]` undefined branch, and
+      // silently no-op. Replace it with whatever's still in `order`
+      // (matches `activeAccountId`'s fallback above) so the prewarm has a
+      // real candidate.
+      if (state.lastActiveAccountId === accountId) {
+        state.lastActiveAccountId = state.order[0] ?? null;
+      }
+    },
+
+    setActiveAccount(state, action: PayloadAction<string | null>) {
+      state.activeAccountId = action.payload;
+    },
+
+    /**
+     * Issue #1233 — record the most-recently-activated non-agent account
+     * id. Persisted via the `lastActiveAccountId` whitelist entry in
+     * `store/index.ts` so it survives across sessions and drives the
+     * Accounts-mount prewarm. The agent pseudo-id is filtered out at the
+     * dispatch site, not here, because this slice has no knowledge of
+     * the agent constant.
+     */
+    setLastActiveAccount(state, action: PayloadAction<string | null>) {
+      state.lastActiveAccountId = action.payload;
+    },
+
+    setAccountStatus(
+      state,
+      action: PayloadAction<{ accountId: string; status: AccountStatus; lastError?: string }>
+    ) {
+      const acct = state.accounts[action.payload.accountId];
+      if (!acct) return;
+      acct.status = action.payload.status;
+      acct.lastError = action.payload.lastError;
+    },
+
+    appendMessages(
+      state,
+      action: PayloadAction<{ accountId: string; messages: IngestedMessage[]; unread?: number }>
+    ) {
+      const { accountId, messages, unread } = action.payload;
+      if (!state.accounts[accountId]) return;
+      const list = (state.messages[accountId] ??= []);
+      // Replace the snapshot entirely — recipes ingest the visible chat list,
+      // not deltas, so the latest scrape is the truth. Cap to avoid runaway.
+      const next = messages.slice(0, MAX_MESSAGES_PER_ACCOUNT);
+      list.length = 0;
+      list.push(...next);
+      if (typeof unread === 'number') {
+        state.unread[accountId] = unread;
+      }
+    },
+
+    appendLog(state, action: PayloadAction<{ accountId: string; entry: AccountLogEntry }>) {
+      const { accountId, entry } = action.payload;
+      const list = (state.logs[accountId] ??= []);
+      list.push(entry);
+      if (list.length > MAX_LOG_LINES_PER_ACCOUNT) {
+        list.splice(0, list.length - MAX_LOG_LINES_PER_ACCOUNT);
+      }
+    },
+
+    noteWebviewNotificationFired(state, action: PayloadAction<{ accountId: string }>) {
+      const { accountId } = action.payload;
+      if (!state.accounts[accountId]) return;
+      state.unread[accountId] = (state.unread[accountId] ?? 0) + 1;
+    },
+
+    focusAccountFromNotification(state, action: PayloadAction<{ accountId: string }>) {
+      const { accountId } = action.payload;
+      if (!state.accounts[accountId]) return;
+      state.activeAccountId = accountId;
+      state.unread[accountId] = 0;
+    },
+
+    /**
+     * Signals that a rail overlay (add-account modal / context menu) opened or
+     * closed. Read by the desktop shell to hide/restore the active provider
+     * webview, which composites above HTML and would otherwise paint over the
+     * overlay.
+     */
+    setAccountsOverlayOpen(state, action: PayloadAction<boolean>) {
+      state.overlayOpen = action.payload;
+    },
+
+    resetAccountsState() {
+      return initialState;
+    },
+  },
+  extraReducers: builder => {
+    builder.addCase(resetUserScopedState, () => initialState);
+    // Issue #1379 — every account's webview is destroyed when the app
+    // closes, so any non-`closed` status persisted from the previous
+    // session is stale. Reset transient statuses on rehydrate so the
+    // next session starts from a fresh load state instead of replaying
+    // last session's `timeout` / `loading` / `pending` overlay before
+    // the new webview spawn has even started.
+    builder.addCase(REHYDRATE, (state, action) => {
+      const rehydrateAction = action as {
+        type: typeof REHYDRATE;
+        key: string;
+        payload?: Partial<AccountsState>;
+      };
+      if (rehydrateAction.key !== 'accounts') return;
+      const reset: Array<{ id: string; previous: AccountStatus }> = [];
+      for (const acct of Object.values(state.accounts)) {
+        if (TRANSIENT_ACCOUNT_STATUSES.has(acct.status)) {
+          reset.push({ id: acct.id, previous: acct.status });
+          acct.status = 'closed';
+          acct.lastError = undefined;
+        }
+      }
+      // Issue #2044 — even though `activeAccountId` is no longer in the
+      // persist whitelist, redux-persist blobs written by older builds
+      // can still carry it. Force-clear on rehydrate so a dev hot reload
+      // / app restart never auto-surfaces a provider webview without an
+      // explicit user click. `lastActiveAccountId` is preserved — it
+      // only drives the off-screen MRU prewarm.
+      if (state.activeAccountId !== null) {
+        log('clearing persisted activeAccountId=%s on rehydrate', state.activeAccountId);
+        state.activeAccountId = null;
+      }
+      if (reset.length > 0) {
+        log('reset %d transient account status(es) on rehydrate: %o', reset.length, reset);
+      }
+    });
+  },
+});
+
+export const {
+  addAccount,
+  removeAccount,
+  setActiveAccount,
+  setLastActiveAccount,
+  setAccountStatus,
+  appendMessages,
+  appendLog,
+  noteWebviewNotificationFired,
+  focusAccountFromNotification,
+  setAccountsOverlayOpen,
+  resetAccountsState,
+} = accountsSlice.actions;
+
+/** Issue #1233 — selector for the persisted MRU account id. */
+export const selectLastActiveAccountId = (state: { accounts: AccountsState }): string | null =>
+  state.accounts.lastActiveAccountId;
+
+export default accountsSlice.reducer;

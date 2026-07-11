@@ -1,0 +1,119 @@
+import type { User } from '../types/api';
+import type { TeamInvite, TeamMember, TeamWithRole } from '../types/team';
+import type { AccessibilityStatus } from '../utils/tauriCommands/accessibility';
+import type { AutocompleteStatus } from '../utils/tauriCommands/autocomplete';
+import type { LocalAiStatus } from '../utils/tauriCommands/localAi';
+import type { ServiceStatus } from '../utils/tauriCommands/service';
+import { callCoreRpc } from './coreRpcClient';
+
+export interface OnboardingTasks {
+  accessibilityPermissionGranted: boolean;
+  localModelConsentGiven: boolean;
+  localModelDownloadStarted: boolean;
+  enabledTools: string[];
+  connectedSources: string[];
+  updatedAtMs?: number;
+}
+
+export interface KeyringConsentPreference {
+  storageMode: string;
+  consentedAtMs?: number;
+}
+
+export interface KeyringStatus {
+  available: boolean;
+  failureReason?: string | null;
+  activeMode: string;
+  backendName: string;
+}
+
+export interface UpdateCoreLocalStateParams {
+  encryptionKey?: string | null;
+  onboardingTasks?: OnboardingTasks | null;
+  keyringConsent?: KeyringConsentPreference | null;
+}
+
+interface AppStateSnapshotResult {
+  auth: {
+    isAuthenticated: boolean;
+    userId: string | null;
+    user: unknown | null;
+    profileId: string | null;
+  };
+  sessionToken: string | null;
+  currentUser: User | null;
+  onboardingCompleted: boolean;
+  chatOnboardingCompleted: boolean;
+  analyticsEnabled: boolean;
+  /**
+   * Mirror of `Config::meet.auto_orchestrator_handoff` (#1299). Older
+   * core builds may omit the field on the wire — `fetchCoreAppSnapshot`
+   * normalises the missing case to `false` before returning so callers
+   * never observe `undefined` here.
+   */
+  meetAutoOrchestratorHandoff?: boolean;
+  localState: {
+    encryptionKey?: string | null;
+    onboardingTasks?: OnboardingTasks | null;
+    keyringConsent?: KeyringConsentPreference | null;
+  };
+  keyringStatus?: KeyringStatus;
+  runtime: {
+    screenIntelligence: AccessibilityStatus;
+    localAi: LocalAiStatus;
+    autocomplete: AutocompleteStatus;
+    service: ServiceStatus;
+  };
+}
+
+/**
+ * First-launch `app_state_snapshot` can take 30–40s on M-series Macs while
+ * memory tree init, Composio registry warmup, and other boot work compete
+ * for the snapshot critical path (#2156). The global `CORE_RPC_TIMEOUT_MS`
+ * default of 30s caused users with merely slow-but-alive cores to be parked
+ * on the post-login fallback. Use a longer-but-still-bounded budget here so
+ * legitimate slow-success completes inline, while real failures still abort
+ * within `SNAPSHOT_TIMEOUT_MS` rather than hanging forever.
+ */
+export const SNAPSHOT_TIMEOUT_MS = 90_000;
+
+export const fetchCoreAppSnapshot = async (): Promise<AppStateSnapshotResult> => {
+  const response = await callCoreRpc<{ result: AppStateSnapshotResult }>({
+    method: 'openhuman.app_state_snapshot',
+    timeoutMs: SNAPSHOT_TIMEOUT_MS,
+  });
+  // Normalise the optional #1299 field at the API boundary so older core
+  // builds without `meetAutoOrchestratorHandoff` still surface the
+  // privacy-conservative `false` to callers (e.g. CoreStateProvider).
+  return {
+    ...response.result,
+    meetAutoOrchestratorHandoff: response.result.meetAutoOrchestratorHandoff ?? false,
+  };
+};
+
+export const updateCoreLocalState = async (params: UpdateCoreLocalStateParams): Promise<void> => {
+  await callCoreRpc({ method: 'openhuman.app_state_update_local_state', params });
+};
+
+export const listTeams = async (): Promise<TeamWithRole[]> => {
+  const response = await callCoreRpc<{ result: TeamWithRole[] }>({
+    method: 'openhuman.team_list_teams',
+  });
+  return response.result;
+};
+
+export const getTeamMembers = async (teamId: string): Promise<TeamMember[]> => {
+  const response = await callCoreRpc<{ result: TeamMember[] }>({
+    method: 'openhuman.team_list_members',
+    params: { teamId },
+  });
+  return response.result;
+};
+
+export const getTeamInvites = async (teamId: string): Promise<TeamInvite[]> => {
+  const response = await callCoreRpc<{ result: TeamInvite[] }>({
+    method: 'openhuman.team_list_invites',
+    params: { teamId },
+  });
+  return response.result;
+};

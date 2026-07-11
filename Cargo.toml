@@ -1,0 +1,413 @@
+[package]
+name = "openhuman"
+version = "0.58.14"
+edition = "2021"
+description = "OpenHuman core business logic and RPC server"
+autobins = false
+# build.rs globs tests/raw_coverage/*.rs into the single `raw_coverage_all`
+# integration target (see tests/raw_coverage_all.rs). Those files used to be ~76
+# individual `tests/*.rs` targets, each statically relinking the whole crate —
+# collapsing them into one target removes ~75 full-crate link steps per test run.
+build = "build.rs"
+
+[[bin]]
+name = "openhuman-core"
+path = "src/main.rs"
+
+[[bin]]
+name = "slack-backfill"
+path = "src/bin/slack_backfill.rs"
+
+[[bin]]
+name = "gmail-backfill-3d"
+path = "src/bin/gmail_backfill_3d.rs"
+
+[[bin]]
+name = "memory-tree-init-smoke"
+path = "src/bin/memory_tree_init_smoke.rs"
+
+[[bin]]
+name = "inference-probe"
+path = "src/bin/inference_probe.rs"
+
+[[bin]]
+name = "harness-subagent-audit"
+path = "src/bin/harness_subagent_audit.rs"
+
+[[bin]]
+name = "test-mcp-stub"
+path = "src/bin/test_mcp_stub.rs"
+
+[lib]
+name = "openhuman_core"
+crate-type = ["rlib"]
+
+[dependencies]
+# tiny.place A2A social network SDK — published on crates.io and patched below
+# to the vendored tiny.place submodule so OpenHuman can test SDK changes before
+# publishing.
+tinyplace = "2.0"
+# tinyflows — host-agnostic workflow engine (typed node graph → validate → compile →
+# run on tinyagents). Powers the "Workflows" feature via the seam in
+# `src/openhuman/tinyflows/` + the `flows::` domain. Pulls tinyagents 1.7 transitively
+# (same version openhuman already uses — no conflict). Published on crates.io
+# and patched below to the vendored submodule.
+#
+# `mock` feature: enables `tinyflows::caps::mock::mock_capabilities()` — the
+# deterministic in-memory capability bundle the flows `dry_run_workflow` agent
+# tool (Phase 5b) runs a *draft* graph against so the workflow-builder agent can
+# self-verify a proposal without any real side effects (no real LLM/tool/HTTP/code).
+tinyflows = { version = "0.5", features = ["mock"] }
+# TinyJuice — host-agnostic TokenJuice compression engine. OpenHuman keeps
+# config/RPC/tool/runtime adapters in `src/openhuman/tokenjuice/` and patches
+# this dependency to the vendored submodule below.
+tinyjuice = { version = "0.2.1", default-features = false }
+# TinyAgents — Rust LLM orchestration framework (LangGraph/LangChain-style):
+# durable state graphs, agent-loop harness, model/tool registries, REPL +
+# `.rag` workflow language. openhuman's agent engine + orchestration run on this
+# crate's primitives via the adapter seam in `src/openhuman/tinyagents/` (issue
+# #4249): every turn drives through the harness; the workflow phase DAG, team
+# member runtime, parallel fan-out, and multi-stage delegation run on graphs.
+# We wire openhuman's own Provider/Tool, not the removed bundled openai client.
+# The `sqlite` feature is enabled now that openhuman's direct rusqlite pin is
+# aligned to 0.40, avoiding duplicate `links = "sqlite3"` native bindings.
+# Durable graph checkpoints still use `SqlRunLedgerCheckpointer` until the
+# migration re-points those rows to the crate checkpointer.
+# The `repl` feature adds the embedded Rhai `.ragsh` session runtime powering
+# the `rhai_workflows` language-workflow tool (`src/openhuman/rhai_workflows/`).
+tinyagents = { version = "1.7", features = ["sqlite", "repl"] }
+# TinyCortex — Rust core for the memory engine (store/chunks/tree/retrieval/
+# queue/ingest/score + long tail), vendored as a git submodule and patched
+# below to `vendor/tinycortex`. OpenHuman's memory subsystem migrates onto this
+# crate through the adapter seam in `src/openhuman/tinycortex/` (mirroring the
+# tinyagents seam): engine logic in the crate; RPC, agent tools, live sync,
+# security gating, and the global singleton stay host-side. rusqlite/git2 are
+# aligned to the host pins (=0.40 / 0.21) so one bundled SQLite + one libgit2
+# link. Keep the version pin in lockstep with the submodule tag.
+tinycortex = "0.1"
+tinychannels = { version = "0.1", features = ["relay-websocket"] }
+# TokenJuice code compressor — AST-aware signature extraction. Optional (C build)
+# behind the default `tokenjuice-treesitter` feature; disabling it falls back to
+# the language-agnostic brace-depth heuristic. See src/openhuman/tokenjuice/compressors/code.rs.
+tree-sitter = { version = "0.26", optional = true }
+tree-sitter-rust = { version = "0.24", optional = true }
+tree-sitter-typescript = { version = "0.23", optional = true }
+tree-sitter-python = { version = "0.25", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_repr = "0.1"
+serde_yaml = "0.9"
+# (Removed `html2md` dep. dhat-rs profiling on real Gmail inboxes
+# showed `html2md::walk` and `html2md::tables::handle` allocating
+# ~894 MB peak heap on a 10 KB HTML input from Otter.ai-style emails
+# (deeply-nested table-as-layout HTML). Cause: recursive walker holding
+# per-frame Vec state across nesting layers + 5 sequential
+# `regex::replace_all` passes in `clean_markdown` each producing a
+# fresh full-size String. We now use a linear-time tag-and-entity
+# stripper (`fast_html_to_text` in
+# providers/gmail/post_process.rs) and prefer the email's
+# `text/plain` MIME part when available.)
+reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls", "native-tls", "stream", "http2", "multipart", "socks"] }
+# Already in-tree via reqwest/hyper; named directly so `IntegrationClient::get_bytes`
+# can return `bytes::Bytes` without a copy.
+bytes = "1"
+tokio = { version = "1", features = ["full", "sync"] }
+once_cell = "1.19"
+parking_lot = "0.12"
+log = "0.4"
+libc = "0.2"
+nu-ansi-term = "0.46"
+env_logger = "0.11"
+base64 = "0.22"
+aes-gcm = "0.10"
+argon2 = "0.5"
+rand = "0.10"
+dirs = "5"
+sha2 = "0.10"
+# Line-level text diffs for the memory_diff module (modified-item unified diffs).
+similar = "2"
+# Git-backed change ledger for the memory_diff module: snapshots are commits,
+# checkpoints are tags, read markers are refs, diffs are git tree diffs.
+# Vendored libgit2 (no system git dependency on end-user machines).
+git2 = { version = "0.21", default-features = false, features = ["vendored-libgit2"] }
+# Legacy SHA-1 only used for Tencent COS HMAC-SHA1 signing (yuanbao
+# channel media upload). Not used for any new security-sensitive work.
+sha1 = "0.10"
+hmac = "0.12"
+# Archive extraction for the Node.js runtime bootstrap. Unix Node
+# distributions ship as .tar.xz, Windows as .zip. `xz2` with `static`
+# bundles liblzma so we don't need it as a system dependency.
+tar = "0.4"
+xz2 = { version = "0.1", features = ["static"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+# gzip decoder for the Piper tar.gz binary releases on macOS / Linux. Already
+# pulled in transitively by zip's `deflate` feature; declared directly so
+# the installer module can `use flate2::read::GzDecoder`.
+flate2 = "1"
+# Real timeout for `node --version` probes in the runtime resolver. Guards
+# against a broken shim on PATH hanging the bootstrap forever.
+wait-timeout = "0.2"
+uuid = { version = "1", features = ["v4"] }
+anyhow = "1.0"
+async-trait = "0.1"
+chacha20poly1305 = "0.10"
+# Wipe master keys / decrypted secret buffers from memory on drop (audit C9).
+# Already present transitively (resolved to 1.8.x via the *-dalek / cipher
+# crates); declared directly so the keyring module can `use zeroize::Zeroizing`.
+zeroize = "1"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+hkdf = "0.12"
+hex = "0.4"
+tokio-util = { version = "0.7", features = ["rt", "io"] }
+# tokio-tungstenite is declared per-target below so the TLS backend
+# (native-tls on Windows, rustls on macOS / Linux) matches the reqwest
+# backend selected at each TLS call site.
+futures = "0.3"
+rusqlite = { version = "=0.40.0", features = ["bundled"] }
+chrono = { version = "0.4", features = ["serde"] }
+iana-time-zone = "0.1"
+cron = "0.12"
+futures-util = "0.3"
+directories = "6"
+toml = "1.0"
+shellexpand = "3.1"
+schemars = "1.2"
+tracing = { version = "0.1", default-features = false }
+tracing-log = "0.2"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "ansi", "env-filter"] }
+tracing-appender = "0.2"
+prometheus = { version = "0.14", default-features = false }
+urlencoding = "2.1"
+motosan-ai-oauth = { version = "0.2", features = ["codex"] }
+thiserror = "2.0"
+ring = "0.17"
+prost = { version = "0.14", default-features = false }
+postgres = { version = "0.19", features = ["with-chrono-0_4"] }
+chrono-tz = "0.10"
+dialoguer = { version = "0.12", features = ["fuzzy-select"] }
+dotenvy = "0.15"
+console = "0.16"
+regex = "1.10"
+# Multi-pattern fixed-string DFA matcher used by `routing::quality` for
+# refusal/empty-noise detection on local-model responses. Already in the
+# dep graph transitively via `regex` (which uses it for literal
+# optimization); declared directly here so `openhuman` owns the
+# version pin and the import isn't an unstable transitive surface.
+aho-corasick = "1.1"
+walkdir = "2"
+glob = "0.3"
+unicode-segmentation = "1"
+unicode-width = "0.2"
+# NFKC + combining-mark detection for the cross-thread search inverted
+# index (`memory_conversations::tokenize`). NFKC unifies CJK half/full-
+# width variants and Arabic presentation forms; `canonical_combining_class`
+# lets us strip diacritics across all scripts (Polish ą→a, Arabic harakat,
+# Hebrew niqqud, etc.) without per-language tables.
+unicode-normalization = "0.1"
+hostname = "0.4.2"
+rustls = { version = "0.23", features = ["ring"] }
+rustls-pki-types = "1.14.0"
+tokio-rustls = "0.26.4"
+webpki-roots = "1.0.6"
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }
+keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native"] }
+clap = { version = "4.5", features = ["derive"] }
+clap_complete = "4.5"
+lettre = { version = "0.11.22", default-features = false, features = ["builder", "smtp-transport", "rustls-tls"] }
+mail-parser = "0.11.2"
+async-imap = { version = "0.11", features = ["runtime-tokio"], default-features = false }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query", "ws", "macros"] }
+tower = { version = "0.5", default-features = false }
+opentelemetry = { version = "0.32", default-features = false, features = ["trace", "metrics"] }
+opentelemetry_sdk = { version = "0.32", default-features = false, features = ["trace", "metrics"] }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = ["trace", "metrics", "http-proto", "reqwest-client", "reqwest-rustls-webpki-roots"] }
+sentry = { version = "0.47.0", default-features = false, features = ["backtrace", "contexts", "panic", "tracing", "debug-images", "reqwest", "rustls"] }
+tokio-stream = { version = "0.1.18", features = ["full"] }
+url = "2"
+socketioxide = { version = "0.15", features = ["extensions"] }
+whisper-rs = "0.16"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+tempfile = "3"
+cpal = "0.15"
+hound = "3.5"
+enigo = "0.3"
+arboard = "3"
+rdev = "0.5"
+fs2 = "0.4"
+# Cross-platform battery probe for the scheduler gate. Maintained fork of
+# the abandoned `battery` crate; same `use battery::*;` API surface. Used
+# only by `openhuman::scheduler_gate::signals` to decide when to throttle
+# background LLM work on laptops.
+starship-battery = "0.10"
+ethers-core = { version = "2.0.14", default-features = false }
+ethers-signers = { version = "2.0.14", default-features = false }
+# Multi-chain wallet signing.
+# - bitcoin: P2WPKH PSBT build/sign/broadcast (includes secp256k1).
+# - ed25519-dalek: Solana transaction signing.
+# - bs58: Solana base58 addresses + Tron base58check addresses.
+# - ripemd: RIPEMD160 for BTC HASH160 (P2WPKH) and Tron address hash.
+bitcoin = { version = "0.32", default-features = false, features = ["std", "secp-recovery", "rand-std"] }
+ed25519-dalek = { version = "2", default-features = false, features = ["std", "rand_core"] }
+bs58 = { version = "0.5", default-features = false, features = ["std", "check"] }
+ripemd = "0.1"
+# Shared BIP-39 mnemonic → seed for non-EVM chains (BTC P2WPKH derivation,
+# Tron secp256k1 derivation, Solana ed25519 SLIP-0010 derivation). Same crate
+# ethers-signers uses internally, exposed as a direct dep so we can derive
+# off the recovery phrase without going through the EVM signer wrapper.
+coins-bip39 = "0.8"
+# Solana off-curve check for ATA derivation (find_program_address).
+curve25519-dalek = { version = "4", default-features = false, features = ["alloc"] }
+
+fantoccini = { version = "0.22.0", optional = true, default-features = false, features = ["rustls-tls"] }
+pdf-extract = "0.10"
+# The WhatsApp Web provider (and its `whatsapp-rust` / `wacore` / `serde-big-array`
+# stack) now lives in the tinychannels crate; the `whatsapp-web` feature forwards
+# to `tinychannels/whatsapp-web`.
+ppt-rs = "0.2.14"
+
+[target.'cfg(windows)'.dependencies]
+# Windows: tokio-tungstenite uses native-tls (schannel) so wss://
+# connections honor the Windows cert store, including corporate CAs
+# installed by AV / TLS-inspection proxies. See run-dev-win.sh notes.
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "handshake", "native-tls"] }
+# AppContainer / process-jail backend in `openhuman::cwd_jail`.
+# Feature list mirrors the Win32 surface used by cwd_jail/windows.rs:
+# AppContainer profile APIs, ACL editing, STARTUPINFOEXW process spawn,
+# and the GENERIC_* file access masks. `Win32_System_Com` is used by the
+# UIA accessibility backend (`accessibility::uia_interact`) to initialise COM
+# on the worker thread before creating the UI Automation client.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Security_Isolation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_Memory",
+    "Win32_System_Threading",
+] }
+# Microsoft UI Automation (UIA) bindings — the Windows backend for the
+# `ax_interact` tool (`accessibility::uia_interact`). Safe Rust wrappers over
+# the UIA COM API; the Windows analogue of the macOS AXUIElement Swift helper.
+uiautomation = "0.25"
+
+[target.'cfg(not(windows))'.dependencies]
+# macOS / Linux: keep rustls + Mozilla webpki-roots — the historical
+# default. Avoids pulling OpenSSL as a runtime dep on Linux.
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+whisper-rs = { version = "0.16", features = ["metal"] }
+# Contacts framework bindings for address book seeding.
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSArray", "NSError", "NSObject", "NSString", "NSPredicate"] }
+objc2-contacts = { version = "0.3.2", features = ["CNContact", "CNContactFetchRequest", "CNContactStore", "CNLabeledValue", "CNPhoneNumber"] }
+block2 = "0.6"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = { version = "0.4", optional = true }
+rppal = { version = "0.22", optional = true }
+
+[dev-dependencies]
+# Enable sentry's TestTransport for runtime smoke of the observability
+# before_send filter (see tests/observability_smoke.rs). `default-features
+# = false` here is load-bearing — sentry's default feature set pulls in
+# actix-web / actix-http / actix-server / sentry-actix and ~13 transitive
+# crates we never use (and that bloat the dev Cargo.lock noticeably).
+# TestTransport only needs the `test` feature.
+sentry = { version = "0.47.0", default-features = false, features = ["test"] }
+# Mock HTTP server for provider E2E tests (inference_provider_e2e).
+wiremock = "0.6"
+# Used in json_rpc_e2e to backdate mtime on stale lock files.
+filetime = "0.2"
+# `test-util` enables tokio's paused virtual clock (`start_paused`,
+# `time::advance`) so the #4270 inference-heartbeat tests assert the periodic
+# beat without real-time waits. Test-only — the runtime feature set in
+# `[dependencies]` (`full`) intentionally excludes it.
+tokio = { version = "1", features = ["test-util"] }
+# Property-based testing for the adversarial-input surfaces (command classifier,
+# encryption round-trip) — plan.md §6.3. Version already resolved in Cargo.lock.
+proptest = "1"
+
+[features]
+default = ["tokenjuice-treesitter"]
+# AST-aware code compression (tree-sitter Rust/TS/Python grammars; C build).
+# On by default; disable to fall back to the brace-depth heuristic.
+tokenjuice-treesitter = [
+    "tinyjuice/tinyjuice-treesitter",
+]
+sandbox-landlock = ["dep:landlock"]
+sandbox-bubblewrap = []
+peripheral-rpi = ["dep:rppal"]
+browser-native = ["dep:fantoccini"]
+fantoccini = ["browser-native"]
+landlock = ["sandbox-landlock"]
+# The WhatsApp Web provider now lives in tinychannels; forward to its feature.
+whatsapp-web = ["tinychannels/whatsapp-web"]
+# Exposes the destructive `openhuman.test_reset` RPC. Off by default; the E2E
+# build (app/scripts/e2e-build.sh) flips it on. Shipped binaries never have
+# this feature so the wipe RPC isn't even registered, let alone reachable.
+e2e-test-support = []
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
+
+# Fix whisper-rs-sys CRT mismatch on Windows MSVC (LNK2038).
+# Upstream cmake build defaults to /MD but Rust uses /MT.
+# This fork adds config.static_crt(true) to the build script.
+# See: https://github.com/tinyhumansai/openhuman/issues/273
+[patch.crates-io]
+whisper-rs-sys = { git = "https://github.com/tinyhumansai/whisper-rs-sys.git", branch = "main" }
+# TinyAgents is vendored as a git submodule (pinned at the released tag) so
+# migration work can change the SDK source in-tree, test it against OpenHuman
+# immediately, and PR the diff upstream from the submodule. Keep the submodule
+# version in lockstep with the `tinyagents` requirement above. After cloning:
+# `git submodule update --init vendor/tinyagents` (worktrees included).
+tinyagents = { path = "vendor/tinyagents" }
+# TinyFlows, TinyCortex, TinyJuice, TinyChannels, and TinyPlace are vendored beside
+# TinyAgents so integration work can test crate changes against OpenHuman before
+# publishing.
+tinyflows = { path = "vendor/tinyflows" }
+tinycortex = { path = "vendor/tinycortex" }
+tinyjuice = { path = "vendor/tinyjuice" }
+tinychannels = { path = "vendor/tinychannels" }
+tinyplace = { path = "vendor/tinyplace/sdk/rust" }
+
+# Emit just enough DWARF in release builds for Sentry to symbolicate Rust
+# panics + render surrounding source lines. `line-tables-only` keeps the
+# binary small (only file+line tables, no full type info) while still
+# letting `sentry-cli debug-files upload --include-sources` produce a
+# usable `.src.zip`. `split-debuginfo = "packed"` writes the debug data
+# into a separate `.dSYM` bundle on macOS so the shipped executable
+# itself stays slim.
+[profile.release]
+debug = "line-tables-only"
+split-debuginfo = "packed"
+
+# Fast CI builds: trade runtime perf for compile speed
+[profile.ci]
+inherits = "release"
+opt-level = 1
+codegen-units = 16
+lto = false
+incremental = false
+strip = true
+debug = false
+
+# Faster local + CI iteration (#3877): compile third-party dependencies in the
+# dev/test profiles WITHOUT debuginfo. The dependency graph here is large (a
+# local checkout showed root `target/` ~12G and Tauri `target/` ~4.4G), and
+# DWARF generation + linking for every dependency is a dominant, repeated cost
+# across `cargo build`, `cargo test`, `cargo clippy`, and `cargo llvm-cov`.
+#
+# Scope is intentionally narrow and low-risk:
+#   * `package."*"` targets dependencies only — our own crates keep full
+#     debuginfo, so panics/backtraces in OpenHuman code still resolve to
+#     file:line and a debugger can still step through our code.
+#   * Only the unoptimised `dev`/`test` profiles change. `release` and `ci`
+#     (which already set `debug = false` / `line-tables-only`) are untouched.
+#   * No artifact paths, features, or runtime behaviour change — this only
+#     reduces how much DWARF is emitted for dependencies, which also shrinks
+#     `target/` substantially.
+[profile.dev.package."*"]
+debug = false

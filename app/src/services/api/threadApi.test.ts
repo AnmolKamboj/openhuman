@@ -1,0 +1,224 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mockCallCoreRpc = vi.fn();
+
+vi.mock('../coreRpcClient', () => ({
+  callCoreRpc: (...args: unknown[]) => mockCallCoreRpc(...args),
+}));
+
+describe('threadApi', () => {
+  beforeEach(() => {
+    mockCallCoreRpc.mockReset();
+  });
+
+  it('loads threads from the threads RPC store', async () => {
+    mockCallCoreRpc.mockResolvedValueOnce({
+      data: {
+        threads: [
+          {
+            id: 'default-thread',
+            title: 'Conversation',
+            chatId: null,
+            isActive: true,
+            messageCount: 2,
+            lastMessageAt: '2026-04-10T12:01:00Z',
+            createdAt: '2026-04-10T12:00:00Z',
+          },
+        ],
+        count: 1,
+      },
+    });
+
+    const { threadApi } = await import('./threadApi');
+    const result = await threadApi.getThreads();
+
+    expect(mockCallCoreRpc).toHaveBeenCalledWith({ method: 'openhuman.threads_list' });
+    expect(result.count).toBe(1);
+    expect(result.threads[0].id).toBe('default-thread');
+  });
+
+  it('appends a message via threads RPC', async () => {
+    const message = {
+      id: 'm1',
+      content: 'hello',
+      type: 'text',
+      extraMetadata: {},
+      sender: 'user' as const,
+      createdAt: '2026-04-10T12:01:00Z',
+    };
+    mockCallCoreRpc.mockResolvedValueOnce({ data: message });
+
+    const { threadApi } = await import('./threadApi');
+    const result = await threadApi.appendMessage('default-thread', message);
+
+    expect(mockCallCoreRpc).toHaveBeenCalledWith({
+      method: 'openhuman.threads_message_append',
+      params: { thread_id: 'default-thread', message },
+    });
+    expect(result).toEqual(message);
+  });
+
+  it('generates a thread title via threads RPC', async () => {
+    const thread = {
+      id: 'default-thread',
+      title: 'Invoice follow-up',
+      chatId: null,
+      isActive: true,
+      messageCount: 2,
+      lastMessageAt: '2026-04-10T12:01:00Z',
+      createdAt: '2026-04-10T12:00:00Z',
+    };
+    mockCallCoreRpc.mockResolvedValueOnce({ data: thread });
+
+    const { threadApi } = await import('./threadApi');
+    const result = await threadApi.generateTitleIfNeeded(
+      'default-thread',
+      'I can draft the invoice follow-up note for you.'
+    );
+
+    expect(mockCallCoreRpc).toHaveBeenCalledWith({
+      method: 'openhuman.threads_generate_title',
+      params: {
+        thread_id: 'default-thread',
+        assistant_message: 'I can draft the invoice follow-up note for you.',
+      },
+    });
+    expect(result).toEqual(thread);
+  });
+
+  it('loads and updates a task board via threads RPC', async () => {
+    const taskBoard = {
+      threadId: 'thread-1',
+      updatedAt: '2026-05-04T10:00:05Z',
+      cards: [{ id: 'task-1', title: 'Plan', status: 'todo' as const, order: 0, updatedAt: 'now' }],
+    };
+    mockCallCoreRpc.mockResolvedValueOnce({ data: { taskBoard } });
+
+    const { threadApi } = await import('./threadApi');
+    await expect(threadApi.getTaskBoard('thread-1')).resolves.toEqual(taskBoard);
+    expect(mockCallCoreRpc).toHaveBeenCalledWith({
+      method: 'openhuman.threads_task_board_get',
+      params: { thread_id: 'thread-1' },
+    });
+
+    mockCallCoreRpc.mockResolvedValueOnce({ data: { taskBoard } });
+    await expect(threadApi.putTaskBoard('thread-1', taskBoard.cards)).resolves.toEqual(taskBoard);
+    expect(mockCallCoreRpc).toHaveBeenLastCalledWith({
+      method: 'openhuman.threads_task_board_put',
+      params: { thread_id: 'thread-1', cards: taskBoard.cards },
+    });
+  });
+
+  it('returns null when task board RPC envelopes omit the board', async () => {
+    mockCallCoreRpc.mockResolvedValueOnce({ data: {} });
+
+    const { threadApi } = await import('./threadApi');
+    await expect(threadApi.getTaskBoard('thread-1')).resolves.toBeNull();
+
+    mockCallCoreRpc.mockResolvedValueOnce({ data: {} });
+    await expect(threadApi.putTaskBoard('thread-1', [])).resolves.toBeNull();
+  });
+
+  it('updates a thread title via threads RPC', async () => {
+    const thread = {
+      id: 'thread-1',
+      title: 'Invoice follow-up',
+      chatId: null,
+      isActive: true,
+      messageCount: 3,
+      lastMessageAt: '2026-05-01T09:00:00Z',
+      createdAt: '2026-05-01T08:00:00Z',
+    };
+    mockCallCoreRpc.mockResolvedValueOnce({ data: thread });
+
+    const { threadApi } = await import('./threadApi');
+    const result = await threadApi.updateTitle('thread-1', 'Invoice follow-up');
+
+    expect(mockCallCoreRpc).toHaveBeenCalledWith({
+      method: 'openhuman.threads_update_title',
+      params: { thread_id: 'thread-1', title: 'Invoice follow-up' },
+    });
+    expect(result).toEqual(thread);
+  });
+
+  it('approves a plan via the todos_decide_plan RPC and rebuilds the board', async () => {
+    mockCallCoreRpc.mockResolvedValueOnce({
+      data: { threadId: 'thread-1', cards: [{ id: 'card-1', title: 'T', status: 'ready' }] },
+    });
+
+    const { threadApi } = await import('./threadApi');
+    const board = await threadApi.decidePlan('thread-1', 'card-1', true);
+
+    expect(mockCallCoreRpc).toHaveBeenCalledWith({
+      method: 'openhuman.todos_decide_plan',
+      params: { thread_id: 'thread-1', id: 'card-1', approve: true },
+    });
+    expect(board?.threadId).toBe('thread-1');
+    expect(board?.cards[0].status).toBe('ready');
+  });
+
+  it('returns null from decidePlan when the snapshot has no cards', async () => {
+    mockCallCoreRpc.mockResolvedValueOnce({ data: {} });
+
+    const { threadApi } = await import('./threadApi');
+    const board = await threadApi.decidePlan('thread-1', 'card-1', false);
+
+    expect(mockCallCoreRpc).toHaveBeenCalledWith({
+      method: 'openhuman.todos_decide_plan',
+      params: { thread_id: 'thread-1', id: 'card-1', approve: false },
+    });
+    expect(board).toBeNull();
+  });
+
+  it('loads durable run ledger rows and events through run_ledger RPCs', async () => {
+    const run = {
+      id: 'sub-1',
+      kind: 'worker_thread',
+      parentRunId: 'req-1',
+      parentThreadId: 'thread-1',
+      agentId: 'researcher',
+      status: 'awaiting_user',
+      workerThreadId: 'worker-1',
+      checkpoint: { resumeTool: 'continue_subagent' },
+      metadata: {},
+      startedAt: '2026-06-04T12:00:00Z',
+      updatedAt: '2026-06-04T12:00:10Z',
+    };
+    mockCallCoreRpc.mockResolvedValueOnce({ data: { runs: [run], count: 1 } });
+
+    const { threadApi } = await import('./threadApi');
+    await expect(threadApi.listRuns({ parentThreadId: 'thread-1' })).resolves.toEqual([run]);
+    expect(mockCallCoreRpc).toHaveBeenCalledWith({
+      method: 'openhuman.run_ledger_list',
+      params: { parentThreadId: 'thread-1' },
+    });
+
+    mockCallCoreRpc.mockResolvedValueOnce({ data: { runs: [], count: 0 } });
+    await expect(threadApi.listRuns()).resolves.toEqual([]);
+    expect(mockCallCoreRpc).toHaveBeenLastCalledWith({
+      method: 'openhuman.run_ledger_list',
+      params: {},
+    });
+
+    mockCallCoreRpc.mockResolvedValueOnce({ data: { run } });
+    await expect(threadApi.getRun('sub-1')).resolves.toEqual(run);
+    expect(mockCallCoreRpc).toHaveBeenLastCalledWith({
+      method: 'openhuman.run_ledger_get',
+      params: { id: 'sub-1' },
+    });
+
+    const event = {
+      runId: 'sub-1',
+      sequence: 1,
+      eventType: 'subagent_awaiting_user',
+      payload: { question: 'Which file?' },
+      timestamp: '2026-06-04T12:00:10Z',
+    };
+    mockCallCoreRpc.mockResolvedValueOnce({ data: { events: [event], count: 1 } });
+    await expect(threadApi.listRunEvents('sub-1', { afterSequence: 0 })).resolves.toEqual([event]);
+    expect(mockCallCoreRpc).toHaveBeenLastCalledWith({
+      method: 'openhuman.run_ledger_events',
+      params: { runId: 'sub-1', afterSequence: 0 },
+    });
+  });
+});
