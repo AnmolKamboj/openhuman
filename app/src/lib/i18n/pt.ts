@@ -3299,6 +3299,8 @@ const messages: TranslationMap = {
   'chat.flowProposal.openInCanvas': 'Abrir no canvas',
   'chat.flowProposal.dismiss': 'Dispensar',
   'chat.flowProposal.error': 'Não foi possível salvar o fluxo de trabalho. Tente novamente.',
+  'chat.flowProposal.enableError':
+    'Fluxo de trabalho salvo, mas não foi possível ativá-lo. Tente novamente ou ative-o na página Workflows.',
   'channels.authMode.managed_dm': 'Faça login com OpenHuman',
   'channels.authMode.oauth': 'OAuth Faça login',
   'channels.authMode.bot_token': 'Use seu próprio token de bot',

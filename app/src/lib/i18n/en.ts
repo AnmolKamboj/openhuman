@@ -3660,6 +3660,8 @@ const en: TranslationMap = {
   'chat.flowProposal.openInCanvas': 'Open in canvas',
   'chat.flowProposal.dismiss': 'Dismiss',
   'chat.flowProposal.error': 'Could not save the workflow. Please try again.',
+  'chat.flowProposal.enableError':
+    'Workflow saved, but could not enable it. Try again, or enable it from the Workflows page.',
 
   // Auth mode labels
   'channels.authMode.managed_dm': 'Login with OpenHuman',

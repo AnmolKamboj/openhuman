@@ -3175,6 +3175,8 @@ const messages: TranslationMap = {
   'chat.flowProposal.openInCanvas': 'فتح في اللوحة',
   'chat.flowProposal.dismiss': 'إغلاق',
   'chat.flowProposal.error': 'تعذّر حفظ سير العمل. حاول مرة أخرى.',
+  'chat.flowProposal.enableError':
+    'تم حفظ سير العمل، لكن تعذّر تفعيله. حاول مرة أخرى، أو فعّله من صفحة سير العمل.',
   'channels.authMode.managed_dm': 'قم بتسجيل الدخول باستخدام OpenHuman',
   'channels.authMode.oauth': 'OAuth تسجيل الدخول',
   'channels.authMode.bot_token': 'استخدم رمز الروبوت الخاص بك',

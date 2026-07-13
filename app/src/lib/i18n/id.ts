@@ -3256,6 +3256,8 @@ const messages: TranslationMap = {
   'chat.flowProposal.openInCanvas': 'Buka di kanvas',
   'chat.flowProposal.dismiss': 'Abaikan',
   'chat.flowProposal.error': 'Alur kerja tidak dapat disimpan. Silakan coba lagi.',
+  'chat.flowProposal.enableError':
+    'Alur kerja disimpan, tetapi tidak dapat diaktifkan. Coba lagi, atau aktifkan dari halaman Workflows.',
   'channels.authMode.managed_dm': 'Masuk dengan OpenHuman',
   'channels.authMode.oauth': 'OAuth Masuk',
   'channels.authMode.bot_token': 'Gunakan Token Bot Anda sendiri',

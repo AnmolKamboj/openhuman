@@ -3078,6 +3078,7 @@ const messages: TranslationMap = {
   'chat.flowProposal.openInCanvas': '在画布中打开',
   'chat.flowProposal.dismiss': '忽略',
   'chat.flowProposal.error': '无法保存该工作流。请重试。',
+  'chat.flowProposal.enableError': '工作流已保存，但无法启用。请重试，或在“工作流”页面手动启用。',
   'channels.authMode.managed_dm': '使用 OpenHuman 登录',
   'channels.authMode.oauth': 'OAuth 登录',
   'channels.authMode.bot_token': '使用你自己的 Bot Token',

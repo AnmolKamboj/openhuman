@@ -3301,6 +3301,8 @@ const messages: TranslationMap = {
   'chat.flowProposal.openInCanvas': 'Abrir en el lienzo',
   'chat.flowProposal.dismiss': 'Descartar',
   'chat.flowProposal.error': 'No se pudo guardar el flujo de trabajo. Inténtalo de nuevo.',
+  'chat.flowProposal.enableError':
+    'Flujo de trabajo guardado, pero no se pudo activar. Inténtalo de nuevo o actívalo desde la página de Workflows.',
   'channels.authMode.managed_dm': 'Iniciar sesión con OpenHuman',
   'channels.authMode.oauth': 'OAuth Iniciar sesión',
   'channels.authMode.bot_token': 'Utilice su propio token de bot',

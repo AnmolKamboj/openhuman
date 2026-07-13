@@ -3244,6 +3244,8 @@ const messages: TranslationMap = {
   'chat.flowProposal.openInCanvas': 'ক্যানভাসে খুলুন',
   'chat.flowProposal.dismiss': 'খারিজ করুন',
   'chat.flowProposal.error': 'ওয়ার্কফ্লো সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।',
+  'chat.flowProposal.enableError':
+    'ওয়ার্কফ্লো সংরক্ষিত হয়েছে, কিন্তু সক্ষম করা যায়নি। আবার চেষ্টা করুন, বা Workflows পৃষ্ঠা থেকে সক্ষম করুন।',
   'channels.authMode.managed_dm': 'OpenHuman দিয়ে লগইন করুন',
   'channels.authMode.oauth': 'OAuth সাইন-ইন করুন',
   'channels.authMode.bot_token': 'আপনার নিজের বট টোকেন ব্যবহার করুন',

@@ -3281,6 +3281,8 @@ const messages: TranslationMap = {
   'chat.flowProposal.openInCanvas': 'Otwórz na kanwie',
   'chat.flowProposal.dismiss': 'Odrzuć',
   'chat.flowProposal.error': 'Nie udało się zapisać przepływu pracy. Spróbuj ponownie.',
+  'chat.flowProposal.enableError':
+    'Przepływ pracy zapisany, ale nie udało się go włączyć. Spróbuj ponownie lub włącz go na stronie Workflows.',
   'channels.authMode.managed_dm': 'Zaloguj się z OpenHuman',
   'channels.authMode.oauth': 'Logowanie OAuth',
   'channels.authMode.bot_token': 'Użyj własnego tokena bota',

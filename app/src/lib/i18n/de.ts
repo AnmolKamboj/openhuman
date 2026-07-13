@@ -3326,6 +3326,8 @@ const messages: TranslationMap = {
   'chat.flowProposal.dismiss': 'Verwerfen',
   'chat.flowProposal.error':
     'Der Workflow konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.',
+  'chat.flowProposal.enableError':
+    'Workflow gespeichert, konnte aber nicht aktiviert werden. Versuchen Sie es erneut oder aktivieren Sie ihn auf der Workflows-Seite.',
   'channels.authMode.managed_dm': 'Mit OpenHuman anmelden',
   'channels.authMode.oauth': 'OAuth-Anmeldung',
   'channels.authMode.bot_token': 'Eigenen Bot-Token verwenden',

@@ -3315,6 +3315,8 @@ const messages: TranslationMap = {
   'chat.flowProposal.openInCanvas': 'Ouvrir dans le canevas',
   'chat.flowProposal.dismiss': 'Ignorer',
   'chat.flowProposal.error': "Impossible d'enregistrer le workflow. Veuillez réessayer.",
+  'chat.flowProposal.enableError':
+    "Workflow enregistré, mais impossible de l'activer. Réessayez, ou activez-le depuis la page Workflows.",
   'channels.authMode.managed_dm': 'Connectez-vous avec OpenHuman',
   'channels.authMode.oauth': 'OAuth Connectez-vous',
   'channels.authMode.bot_token': 'Utiliser votre propre jeton de robot',
