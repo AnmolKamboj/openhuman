@@ -47,6 +47,9 @@ pub use schemas::{
 };
 
 // Helpers re-exported for tests
+#[cfg(any(test, debug_assertions))]
+#[allow(unused_imports)]
+pub(crate) use ops::sentry_suppression_reason;
 pub(crate) use ops::{event_session_id_for, key_for};
 pub(crate) use progress_bridge::spawn_progress_bridge;
 
@@ -76,6 +79,8 @@ pub(crate) use web_errors::{
 // Test helpers (debug/test builds only)
 #[cfg(any(test, debug_assertions))]
 pub use ops::set_test_forced_run_chat_task_error;
+#[cfg(any(test, debug_assertions))]
+pub use ops::RUN_CHAT_TASK_TEST_LOCK;
 #[cfg(any(test, debug_assertions))]
 pub use ops::{set_test_run_chat_task_block, TestRunChatTaskBlock};
 
