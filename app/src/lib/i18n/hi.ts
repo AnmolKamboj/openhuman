@@ -3915,6 +3915,10 @@ const messages: TranslationMap = {
   'flows.copilot.previewHint':
     'एक प्रस्तावित ड्राफ़्ट की समीक्षा हो रही है — अभी कुछ सहेजा नहीं गया।',
   'flows.copilot.repairDisplay': 'एक रन विफल हुआ; उसे देखें और सुधार सुझाएँ।',
+  'flows.copilot.tool.proposing': 'वर्कफ़्लो प्रस्तावित किया जा रहा है…',
+  'flows.copilot.tool.dryRunning': 'वर्कफ़्लो का ड्राई-रन किया जा रहा है…',
+  'flows.copilot.tool.saving': 'वर्कफ़्लो सहेजा जा रहा है…',
+  'flows.copilot.tool.usingTools': 'टूल का उपयोग किया जा रहा है…',
   'flows.list.view': 'वर्कफ़्लो देखें',
   'flows.list.export': 'निर्यात',
   'flows.list.exported': 'वर्कफ़्लो निर्यात किया गया',

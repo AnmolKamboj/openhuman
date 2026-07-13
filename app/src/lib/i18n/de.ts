@@ -4017,6 +4017,10 @@ const messages: TranslationMap = {
     'Ein vorgeschlagener Entwurf wird geprüft — es wurde noch nichts gespeichert.',
   'flows.copilot.repairDisplay':
     'Eine Ausführung ist fehlgeschlagen; sieh sie dir an und schlage eine Lösung vor.',
+  'flows.copilot.tool.proposing': 'Workflow wird vorgeschlagen…',
+  'flows.copilot.tool.dryRunning': 'Workflow wird testweise ausgeführt…',
+  'flows.copilot.tool.saving': 'Workflow wird gespeichert…',
+  'flows.copilot.tool.usingTools': 'Werkzeuge werden verwendet…',
   'flows.list.view': 'Workflow anzeigen',
   'flows.list.export': 'Exportieren',
   'flows.list.exported': 'Workflow exportiert',

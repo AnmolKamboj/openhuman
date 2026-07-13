@@ -3965,6 +3965,10 @@ const messages: TranslationMap = {
     'Przeglądasz proponowaną wersję roboczą — nic nie zostało jeszcze zapisane.',
   'flows.copilot.repairDisplay':
     'Uruchomienie nie powiodło się; przejrzyj je i zaproponuj poprawkę.',
+  'flows.copilot.tool.proposing': 'Proponowanie przepływu pracy…',
+  'flows.copilot.tool.dryRunning': 'Testowe uruchamianie przepływu pracy…',
+  'flows.copilot.tool.saving': 'Zapisywanie przepływu pracy…',
+  'flows.copilot.tool.usingTools': 'Używanie narzędzi…',
   'flows.list.view': 'Wyświetl przepływ pracy',
   'flows.list.export': 'Eksportuj',
   'flows.list.exported': 'Wyeksportowano przepływ pracy',

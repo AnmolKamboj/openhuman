@@ -3917,6 +3917,10 @@ const messages: TranslationMap = {
   'flows.copilot.previewHint':
     'একটি প্রস্তাবিত খসড়া পর্যালোচনা হচ্ছে — এখনও কিছু সংরক্ষণ করা হয়নি।',
   'flows.copilot.repairDisplay': 'একটি রান ব্যর্থ হয়েছে; এটি দেখুন এবং একটি সমাধান প্রস্তাব করুন।',
+  'flows.copilot.tool.proposing': 'ওয়ার্কফ্লো প্রস্তাব করা হচ্ছে…',
+  'flows.copilot.tool.dryRunning': 'ওয়ার্কফ্লো ড্রাই-রান করা হচ্ছে…',
+  'flows.copilot.tool.saving': 'ওয়ার্কফ্লো সংরক্ষণ করা হচ্ছে…',
+  'flows.copilot.tool.usingTools': 'টুল ব্যবহার করা হচ্ছে…',
   'flows.list.view': 'ওয়ার্কফ্লো দেখুন',
   'flows.list.export': 'রপ্তানি',
   'flows.list.exported': 'ওয়ার্কফ্লো রপ্তানি হয়েছে',

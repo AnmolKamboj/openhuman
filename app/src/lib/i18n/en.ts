@@ -4603,6 +4603,10 @@ const en: TranslationMap = {
   'flows.copilot.reject': 'Dismiss',
   'flows.copilot.previewHint': 'Reviewing a proposed draft — nothing is saved yet.',
   'flows.copilot.repairDisplay': 'A run failed — please look at it and propose a fix.',
+  'flows.copilot.tool.proposing': 'Proposing workflow…',
+  'flows.copilot.tool.dryRunning': 'Dry-running workflow…',
+  'flows.copilot.tool.saving': 'Saving workflow…',
+  'flows.copilot.tool.usingTools': 'Using tools…',
 
   // ── Workflow Canvas (issue B5b.1) — the read-only graph view of a saved
   // flow at /flows/:id. `flows.nodeKind.*` labels the 12 tinyflows node
