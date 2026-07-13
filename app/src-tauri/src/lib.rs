@@ -3946,6 +3946,19 @@ pub fn run() {
                     "[window] close requested on main window — hiding to tray"
                 );
                 api.prevent_close();
+                // Persist geometry now, while the window handle is still
+                // reachable. On Windows the hide below is a raw SW_HIDE on the
+                // OS frame, after which `get_webview_window("main")` returns
+                // `None` until the window is shown again (#1607). If the user
+                // then picks tray "Quit" while hidden, the ExitRequested save
+                // finds no window and nothing is persisted, so the next launch
+                // falls back to the default geometry (#4810). Saving here
+                // captures the last on-screen size/position before it becomes
+                // unreachable; ExitRequested still saves for the shown-window
+                // quit paths (`save_main` is best-effort and idempotent).
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    window_state::save_main(&window);
+                }
                 // Hide the OS top-level Chrome_WidgetWin_1 frame via
                 // EnumWindows + SW_HIDE — full hide-to-tray as PR #1548
                 // intended. `window.hide()` and `window.minimize()` through
@@ -3966,6 +3979,18 @@ pub fn run() {
                 }
             }
             RunEvent::ExitRequested { .. } => {
+                // Persist the main window's geometry on every clean quit
+                // (Cmd+Q, tray "Quit", dock quit, or the frontend
+                // `app_quit` command) so the next launch restores the
+                // user's size + position. Previously `save_main` ran only
+                // on the identity-flip `restart_app` path (#900): a normal
+                // quit never saved, so the window always reopened at the
+                // default small centered size (#4810). `save_main` is
+                // best-effort and idempotent — safe to also run here even
+                // though `restart_app` saves before it triggers exit.
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    window_state::save_main(&window);
+                }
                 // Run our cleanup BEFORE CEF's own Exit handler does
                 // `close_all_windows() → cef::shutdown()`. Doing this in
                 // RunEvent::Exit instead races CEF's teardown and the
