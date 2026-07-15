@@ -3163,10 +3163,14 @@ async fn flows_build_hides_the_live_run_tool_from_the_builder_belt() {
     }
 }
 
-/// Regression for B31: `flows_build` must apply the `workflow_builder`
-/// `AgentDefinition`'s `effective_max_iterations()` (50, from `agent.toml`'s
+/// Regression for issue #4868 (systemic fix, superseding the old B31
+/// per-caller `apply_builder_iteration_cap` override): `flows_build` must get
+/// an agent carrying the `workflow_builder` `AgentDefinition`'s
+/// `effective_max_iterations()` (50, from `agent.toml`'s
 /// `iteration_policy = "extended"`), not the global `Config::default()`
-/// `agent.max_tool_iterations` (10) — see `apply_builder_iteration_cap`'s doc.
+/// `agent.max_tool_iterations` (10) — and it must get this from the shared
+/// resolution point in `build_session_agent_inner`, with **no** per-caller
+/// override needed (that function was deleted as part of #4868).
 #[tokio::test]
 async fn flows_build_applies_the_builder_definitions_effective_iteration_cap() {
     let tmp = TempDir::new().unwrap();
@@ -3190,21 +3194,43 @@ async fn flows_build_applies_the_builder_definitions_effective_iteration_cap() {
          yielding an effective cap of EXTENDED_MAX_TOOL_ITERATIONS (50)"
     );
 
-    let build_config = apply_builder_iteration_cap(&config);
-    assert_eq!(
-        build_config.agent.max_tool_iterations, expected,
-        "flows_build's build_config must carry the definition's effective cap, not the global \
-         default"
-    );
+    // End-to-end: the agent actually built for this path carries the
+    // definition's cap straight off the unmodified `config` — the session
+    // builder resolves it internally now, no `flows_build`-side override.
+    let agent = crate::openhuman::agent::Agent::from_config_for_agent(&config, "workflow_builder")
+        .expect("build workflow_builder agent");
+    assert_eq!(agent.agent_config().max_tool_iterations, expected);
     assert_ne!(
-        build_config.agent.max_tool_iterations, config.agent.max_tool_iterations,
-        "sanity: the override must actually differ from the unmodified global config"
+        agent.agent_config().max_tool_iterations,
+        config.agent.max_tool_iterations,
+        "sanity: the resolved cap must actually differ from the unmodified global config"
     );
+}
 
-    // End-to-end: the agent actually built for this path carries the override.
-    let agent =
-        crate::openhuman::agent::Agent::from_config_for_agent(&build_config, "workflow_builder")
-            .expect("build workflow_builder agent");
+/// Regression for issue #4868: `flows_discover`'s `flow_discovery` agent must
+/// also resolve to its definition's effective cap (50, `iteration_policy =
+/// "extended"`), not the global default of 10. Before the systemic fix, this
+/// call site had NO override at all (unlike `flows_build`'s now-deleted
+/// `apply_builder_iteration_cap`), so it silently got the global 10 in
+/// production.
+#[tokio::test]
+async fn flows_discover_applies_the_flow_discovery_definitions_effective_iteration_cap() {
+    let tmp = TempDir::new().unwrap();
+    let config = test_config(&tmp);
+    assert_eq!(config.agent.max_tool_iterations, 10);
+
+    crate::openhuman::agent::harness::AgentDefinitionRegistry::init_global(&config.workspace_dir)
+        .expect("agent registry init");
+    let def = crate::openhuman::agent::harness::AgentDefinitionRegistry::global()
+        .expect("registry initialised")
+        .get("flow_discovery")
+        .expect("flow_discovery definition registered")
+        .clone();
+    let expected = def.effective_max_iterations();
+    assert_eq!(expected, 50);
+
+    let agent = crate::openhuman::agent::Agent::from_config_for_agent(&config, "flow_discovery")
+        .expect("build flow_discovery agent");
     assert_eq!(agent.agent_config().max_tool_iterations, expected);
 }
 

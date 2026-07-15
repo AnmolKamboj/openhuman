@@ -3259,11 +3259,12 @@ pub async fn flows_discover(
 /// own `max_iterations` caps its loop, but a hung LLM/tool call must never let
 /// the RPC block indefinitely.
 ///
-/// Matches [`FLOW_RUN_TIMEOUT_SECS`] (600s): since the (B31) fix below actually
-/// applies the builder's `effective_max_iterations()` (50, not the global
-/// default of 10) to this path, a worst-case run at ~10s/iteration can take up
-/// to ~500s — the old 300s bound would have clipped a legitimate long build
-/// before the iteration cap ever got a chance to.
+/// Matches [`FLOW_RUN_TIMEOUT_SECS`] (600s): the session builder applies the
+/// `workflow_builder` definition's `effective_max_iterations()` (50, not the
+/// global default of 10) to this path (issue #4868), so a worst-case run at
+/// ~10s/iteration can take up to ~500s — the old 300s bound would have
+/// clipped a legitimate long build before the iteration cap ever got a
+/// chance to.
 const FLOW_BUILD_TIMEOUT_SECS: u64 = 600;
 
 /// Tools stripped from the `workflow_builder` belt on the direct `flows_build`
@@ -3305,61 +3306,6 @@ fn restrict_builder_toolset(agent: &mut crate::openhuman::agent::Agent) {
         "[flows] flows_build: hiding live-run tools from builder belt"
     );
     agent.hide_tools(FLOWS_BUILD_HIDDEN_TOOLS);
-}
-
-/// (B31) Returns a clone of `config` with `agent.max_tool_iterations`
-/// overridden to the `workflow_builder` [`AgentDefinition`](crate::openhuman::agent::harness::definition::AgentDefinition)'s
-/// [`effective_max_iterations()`](crate::openhuman::agent::harness::definition::AgentDefinition::effective_max_iterations),
-/// for use by [`Agent::from_config_for_agent`](crate::openhuman::agent::Agent::from_config_for_agent)
-/// in [`flows_build`].
-///
-/// Two independent iteration-cap systems exist in the harness: the per-agent
-/// `AgentDefinition.max_iterations`/`iteration_policy` (`workflow_builder`'s
-/// `agent.toml` declares `iteration_policy = "extended"`, so its effective cap
-/// is `max(max_iterations, EXTENDED_MAX_TOOL_ITERATIONS)` = 50), and the
-/// GLOBAL `Config.agent.max_tool_iterations` (default 10). Only the
-/// **sub-agent runner** path (`spawn_subagent`, used when `workflow_builder`
-/// is invoked as a chat delegate) applies the definition's effective cap.
-/// `flows_build` calls `Agent::from_config_for_agent` directly — the session
-/// builder stamps `config.agent.clone()` onto the session unconditionally, so
-/// without this override the builder silently got the global default (10)
-/// instead of the 50 its own `agent.toml` intends, burning its entire budget
-/// on a handful of dry-run cycles for anything past a trivial graph.
-///
-/// A missing registry or missing `workflow_builder` definition (registry not
-/// yet initialised, a stripped-down test registry) falls back to `config`
-/// unchanged — same behavior as before this fix, never a hard failure.
-fn apply_builder_iteration_cap(config: &Config) -> Config {
-    let mut build_config = config.clone();
-    let Some(reg) = crate::openhuman::agent::harness::AgentDefinitionRegistry::global() else {
-        tracing::warn!(
-            target: "flows",
-            "[flows] flows_build: agent registry not initialised; falling back to global \
-             max_tool_iterations={}",
-            config.agent.max_tool_iterations
-        );
-        return build_config;
-    };
-    let Some(def) = reg.get("workflow_builder") else {
-        tracing::warn!(
-            target: "flows",
-            "[flows] flows_build: workflow_builder definition not found in registry; falling \
-             back to global max_tool_iterations={}",
-            config.agent.max_tool_iterations
-        );
-        return build_config;
-    };
-    let effective = def.effective_max_iterations();
-    tracing::debug!(
-        target: "flows",
-        toml_max_iterations = def.max_iterations,
-        effective_max_iterations = effective,
-        global_default = config.agent.max_tool_iterations,
-        "[flows] flows_build: overriding max_tool_iterations from the workflow_builder agent \
-         definition (the session path does not apply effective_max_iterations() by default)"
-    );
-    build_config.agent.max_tool_iterations = effective;
-    build_config
 }
 
 /// Runs the `workflow_builder` agent for one authoring turn and returns its
@@ -3404,13 +3350,11 @@ pub async fn flows_build(
     crate::openhuman::agent::harness::AgentDefinitionRegistry::init_global(&config.workspace_dir)
         .map_err(|e| format!("failed to initialise agent registry: {e}"))?;
 
-    // (B31) See `apply_builder_iteration_cap`'s doc: the session path below
-    // otherwise stamps the GLOBAL `config.agent.max_tool_iterations` (10)
-    // instead of the `workflow_builder` definition's intended
-    // `effective_max_iterations()` (50).
-    let build_config = apply_builder_iteration_cap(config);
-
-    let mut agent = Agent::from_config_for_agent(&build_config, "workflow_builder")
+    // Issue #4868 — the session builder (`build_session_agent_inner`) now
+    // resolves the per-agent iteration cap from the `workflow_builder`
+    // `AgentDefinition` itself (`iteration_policy = "extended"` ->
+    // `effective_max_iterations()` = 50), so no override is needed here.
+    let mut agent = Agent::from_config_for_agent(config, "workflow_builder")
         .map_err(|e| format!("failed to build workflow_builder agent: {e:#}"))?;
     agent.set_agent_definition_name("workflow_builder".to_string());
 
