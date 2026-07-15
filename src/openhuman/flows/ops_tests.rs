@@ -143,6 +143,7 @@ async fn flows_update_replaces_name_and_graph() {
         Some("renamed".to_string()),
         Some(new_graph),
         None,
+        None,
     )
     .await
     .unwrap();
@@ -160,13 +161,13 @@ async fn flows_update_can_set_require_approval() {
         .unwrap();
     assert!(!created.value.require_approval);
 
-    let updated = flows_update(&config, &created.value.id, None, None, Some(true))
+    let updated = flows_update(&config, &created.value.id, None, None, Some(true), None)
         .await
         .unwrap();
     assert!(updated.value.require_approval);
 
     // Omitting `require_approval` on a later update preserves the current value.
-    let unchanged = flows_update(&config, &created.value.id, None, None, None)
+    let unchanged = flows_update(&config, &created.value.id, None, None, None, None)
         .await
         .unwrap();
     assert!(unchanged.value.require_approval);
@@ -186,9 +187,16 @@ async fn flows_update_rejects_invalid_replacement_graph() {
         "edges": []
     });
 
-    let err = flows_update(&config, &created.value.id, None, Some(invalid_graph), None)
-        .await
-        .expect_err("invalid replacement graph must be rejected");
+    let err = flows_update(
+        &config,
+        &created.value.id,
+        None,
+        Some(invalid_graph),
+        None,
+        None,
+    )
+    .await
+    .expect_err("invalid replacement graph must be rejected");
     assert!(err.contains("trigger"));
 }
 
@@ -490,6 +498,7 @@ async fn flows_update_rebinds_schedule_cron_job_when_trigger_schedule_changes() 
         None,
         Some(schedule_trigger_graph("30 8 * * *")),
         None,
+        None,
     )
     .await
     .unwrap();
@@ -536,6 +545,7 @@ async fn flows_update_does_not_rebind_when_graph_is_not_supplied() {
         &config,
         &created.value.id,
         Some("renamed".to_string()),
+        None,
         None,
         None,
     )
@@ -1459,6 +1469,76 @@ fn flows_validate_reports_error_for_graph_without_trigger() {
         outcome.value.warnings.is_empty(),
         "an invalid graph reports no warnings"
     );
+}
+
+#[test]
+fn flows_validate_accumulates_every_structural_error() {
+    // A graph with several independent problems: no trigger, a duplicate node
+    // id, and a dangling edge. Multi-error validation must surface all of them
+    // in one call (fail-fast would report only the first).
+    let graph = json!({
+        "name": "riddled",
+        "nodes": [
+            { "id": "dup", "kind": "agent", "name": "One" },
+            { "id": "dup", "kind": "agent", "name": "Two" }
+        ],
+        "edges": [ { "from_node": "dup", "to_node": "ghost" } ]
+    });
+    let outcome = flows_validate(graph);
+    assert!(!outcome.value.valid);
+    // errors[] and error_details[] must be 1:1.
+    assert_eq!(
+        outcome.value.errors.len(),
+        outcome.value.error_details.len(),
+        "errors and error_details must be parallel: {:?} vs {:?}",
+        outcome.value.errors,
+        outcome.value.error_details
+    );
+    assert!(
+        outcome.value.errors.len() >= 3,
+        "expected >=3 accumulated errors, got {:?}",
+        outcome.value.errors
+    );
+    let codes: Vec<&str> = outcome
+        .value
+        .error_details
+        .iter()
+        .map(|e| e.code.as_str())
+        .collect();
+    assert!(codes.contains(&"missing_trigger"), "{codes:?}");
+    assert!(codes.contains(&"duplicate_node_id"), "{codes:?}");
+    assert!(codes.contains(&"unknown_node"), "{codes:?}");
+    // A node-anchored error carries its node id; a graph-wide one does not.
+    let dup = outcome
+        .value
+        .error_details
+        .iter()
+        .find(|e| e.code == "duplicate_node_id")
+        .unwrap();
+    assert_eq!(dup.node_id.as_deref(), Some("dup"));
+    let missing = outcome
+        .value
+        .error_details
+        .iter()
+        .find(|e| e.code == "missing_trigger")
+        .unwrap();
+    assert_eq!(missing.node_id, None);
+}
+
+#[test]
+fn flows_validate_reports_unparseable_graph_as_single_error() {
+    // A pre-validation failure (an unknown node kind can't deserialize) is a
+    // genuine single error, not a structural-error accumulation.
+    let graph = json!({
+        "name": "bad",
+        "nodes": [ { "id": "a", "kind": "not_a_real_kind", "name": "A" } ],
+        "edges": []
+    });
+    let outcome = flows_validate(graph);
+    assert!(!outcome.value.valid);
+    assert_eq!(outcome.value.errors.len(), 1);
+    assert_eq!(outcome.value.error_details.len(), 1);
+    assert_eq!(outcome.value.error_details[0].code, "unparseable_graph");
 }
 
 #[tokio::test]
@@ -3656,4 +3736,230 @@ fn trigger_is_automatic_manual() {
 fn trigger_is_automatic_no_trigger_kind() {
     let g = graph(trigger_only_graph());
     assert!(!trigger_is_automatic(&g));
+}
+
+#[tokio::test]
+async fn strict_gate_passes_a_valid_graph_and_rejects_a_structurally_invalid_one() {
+    let config = Config::default();
+    // A trigger-only graph is structurally valid and has no outbound gates.
+    assert!(strict_gate(&config, &trigger_only_graph()).await.is_ok());
+
+    // No trigger → structural failure surfaced by strict mode.
+    let bad = json!({
+        "nodes": [ { "id": "a", "kind": "output_parser", "name": "A" } ],
+        "edges": []
+    });
+    let err = strict_gate(&config, &bad).await.unwrap_err();
+    assert!(err.contains("structurally invalid"), "{err}");
+    assert!(err.contains("trigger"), "{err}");
+}
+
+// ── core-managed drafts (F5) ─────────────────────────────────────────────────
+
+#[tokio::test]
+async fn draft_promote_creates_a_new_flow_and_removes_the_draft() {
+    use crate::openhuman::flows::DraftOrigin;
+    let tmp = TempDir::new().unwrap();
+    let config = test_config(&tmp);
+
+    let draft = flows_draft_create(
+        &config,
+        None,
+        "From draft".to_string(),
+        trigger_only_graph(),
+        DraftOrigin::Chat,
+    )
+    .unwrap()
+    .value;
+
+    let flow = flows_draft_promote(&config, &draft.id, None)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(flow.name, "From draft");
+    // The draft file is gone once promoted.
+    assert!(flows_draft_get(&config, &draft.id).is_err());
+    // The flow really exists.
+    assert!(flows_get(&config, &flow.id).await.is_ok());
+}
+
+#[tokio::test]
+async fn draft_promote_with_flow_id_updates_the_existing_flow() {
+    use crate::openhuman::flows::DraftOrigin;
+    let tmp = TempDir::new().unwrap();
+    let config = test_config(&tmp);
+
+    let flow = flows_create(&config, "Original".to_string(), trigger_only_graph(), false)
+        .await
+        .unwrap()
+        .value;
+
+    let draft = flows_draft_create(
+        &config,
+        Some(flow.id.clone()),
+        "Renamed via draft".to_string(),
+        trigger_only_graph(),
+        DraftOrigin::Canvas,
+    )
+    .unwrap()
+    .value;
+
+    let updated = flows_draft_promote(&config, &draft.id, None)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(updated.id, flow.id, "same flow, not a new one");
+    assert_eq!(updated.name, "Renamed via draft");
+    assert!(
+        flows_draft_get(&config, &draft.id).is_err(),
+        "draft removed"
+    );
+}
+
+#[tokio::test]
+async fn draft_promote_of_invalid_graph_is_rejected_and_keeps_the_draft() {
+    use crate::openhuman::flows::DraftOrigin;
+    let tmp = TempDir::new().unwrap();
+    let config = test_config(&tmp);
+
+    // A graph with no trigger fails the create gate.
+    let bad = json!({
+        "nodes": [ { "id": "a", "kind": "output_parser", "name": "A" } ],
+        "edges": []
+    });
+    let draft = flows_draft_create(&config, None, "Bad".to_string(), bad, DraftOrigin::Chat)
+        .unwrap()
+        .value;
+
+    assert!(flows_draft_promote(&config, &draft.id, None).await.is_err());
+    // The draft survives a failed promote so the user can fix it.
+    assert!(flows_draft_get(&config, &draft.id).is_ok());
+}
+
+// ── Phase 3: optimistic concurrency + revisions + rollback (F6) ───────────────
+
+#[tokio::test]
+async fn flows_update_rejects_a_stale_expected_version() {
+    let tmp = TempDir::new().unwrap();
+    let config = test_config(&tmp);
+    let flow = flows_create(&config, "V".to_string(), trigger_only_graph(), false)
+        .await
+        .unwrap()
+        .value;
+
+    // A correct expected_version succeeds.
+    let ok = flows_update(
+        &config,
+        &flow.id,
+        Some("renamed".to_string()),
+        None,
+        None,
+        Some(flow.updated_at.clone()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(ok.value.name, "renamed");
+
+    // The OLD version is now stale → conflict.
+    let err = flows_update(
+        &config,
+        &flow.id,
+        Some("again".to_string()),
+        None,
+        None,
+        Some(flow.updated_at.clone()),
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("version_conflict"), "{err}");
+    // The structured error carries the current flow.
+    let parsed: serde_json::Value = serde_json::from_str(&err).unwrap();
+    assert_eq!(parsed["code"], "version_conflict");
+    assert_eq!(parsed["current"]["name"], "renamed");
+}
+
+#[tokio::test]
+async fn update_records_revisions_and_rollback_restores() {
+    let tmp = TempDir::new().unwrap();
+    let config = test_config(&tmp);
+    let flow = flows_create(&config, "Orig".to_string(), trigger_only_graph(), false)
+        .await
+        .unwrap()
+        .value;
+
+    // Update the graph → the prior graph is snapshotted as a revision.
+    let two_node = json!({
+        "nodes": [
+            { "id": "t", "kind": "trigger", "name": "Manual" },
+            { "id": "a", "kind": "agent", "name": "Step", "config": { "prompt": "hi" } }
+        ],
+        "edges": [ { "from_node": "t", "to_node": "a" } ]
+    });
+    flows_update(&config, &flow.id, None, Some(two_node), None, None)
+        .await
+        .unwrap();
+
+    let history = flows_get_history(&config, &flow.id, 20).unwrap().value;
+    assert_eq!(history.len(), 1, "one prior snapshot");
+    let rev = &history[0];
+    // The snapshot holds the ORIGINAL (single-node trigger-only) graph.
+    assert_eq!(rev.graph["nodes"].as_array().unwrap().len(), 1);
+
+    // Roll back → the flow returns to the single-node graph.
+    let rolled = flows_rollback(&config, &flow.id, &rev.id, None)
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(rolled.graph.nodes.len(), 1);
+
+    // Rollback is itself undoable — it snapshotted the pre-rollback (2-node) graph.
+    let history2 = flows_get_history(&config, &flow.id, 20).unwrap().value;
+    assert_eq!(history2.len(), 2);
+}
+
+// ── Phase 5: connector onboarding (required_connections, item 18) ─────────────
+
+#[tokio::test]
+async fn compute_required_connections_flags_missing_composio_toolkits() {
+    let tmp = TempDir::new().unwrap();
+    let config = test_config(&tmp);
+    // A tool_call to a Gmail action (no connections in a fresh workspace).
+    let graph_json = json!({
+        "nodes": [
+            { "id": "t", "kind": "trigger", "name": "Manual" },
+            { "id": "send", "kind": "tool_call", "name": "Send",
+              "config": { "slug": "GMAIL_SEND_EMAIL", "args": {} } }
+        ],
+        "edges": [ { "from_node": "t", "to_node": "send" } ]
+    });
+    let graph = migrate_and_deserialize_graph(graph_json).unwrap();
+    let required = compute_required_connections(&config, &graph).await;
+    assert_eq!(required.len(), 1);
+    assert_eq!(required[0]["toolkit"], "gmail");
+    assert_eq!(required[0]["status"], "missing");
+}
+
+#[tokio::test]
+async fn compute_required_connections_skips_native_and_http_nodes() {
+    let tmp = TempDir::new().unwrap();
+    let config = test_config(&tmp);
+    let graph_json = json!({
+        "nodes": [
+            { "id": "t", "kind": "trigger", "name": "Manual" },
+            { "id": "search", "kind": "tool_call", "name": "Search",
+              "config": { "slug": "oh:web_search", "args": {} } },
+            { "id": "http", "kind": "http_request", "name": "Fetch",
+              "config": { "method": "GET", "url": "https://example.com" } }
+        ],
+        "edges": [
+            { "from_node": "t", "to_node": "search" },
+            { "from_node": "search", "to_node": "http" }
+        ]
+    });
+    let graph = migrate_and_deserialize_graph(graph_json).unwrap();
+    let required = compute_required_connections(&config, &graph).await;
+    assert!(
+        required.is_empty(),
+        "native oh: and http_request need no connection: {required:?}"
+    );
 }

@@ -31,6 +31,7 @@ import BetaBanner from '../components/ui/BetaBanner';
 import Button from '../components/ui/Button';
 import { CenteredLoadingState, ErrorBanner } from '../components/ui/LoadingState';
 import { ModalShell } from '../components/ui/ModalShell';
+import { useFlowChanged } from '../hooks/useFlowChanged';
 import { FLOW_CANVAS_DRAFT_ROUTE, type FlowCanvasDraftState } from '../lib/flows/canvasDraft';
 import { downloadFlowGraph } from '../lib/flows/exportFlow';
 import { type FlowTemplate, templateNameKey } from '../lib/flows/templates';
@@ -104,6 +105,17 @@ export default function FlowsPage() {
   useEffect(() => {
     void loadFlows();
   }, [loadFlows]);
+
+  // Refetch (silently, no spinner) whenever any flow changes underneath us —
+  // e.g. an agent save_workflow — so the list never shows stale state (F6).
+  useFlowChanged(
+    useCallback(() => {
+      log('flow:changed — refetching list');
+      void listFlows()
+        .then(setFlows)
+        .catch(err => log('refetch failed: %o', err));
+    }, [])
+  );
 
   const handleToggle = useCallback(
     async (flow: Flow) => {
