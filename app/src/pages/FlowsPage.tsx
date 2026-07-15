@@ -19,9 +19,7 @@ import type { FlowRepairRequest } from '../components/flows/FlowRunInspectorDraw
 import FlowRunsDrawer from '../components/flows/FlowRunsDrawer';
 import FlowTemplateGallery from '../components/flows/FlowTemplateGallery';
 import NewWorkflowModal from '../components/flows/NewWorkflowModal';
-import SuggestedWorkflows from '../components/flows/SuggestedWorkflows';
 import { useCreateFlow } from '../components/flows/useCreateFlow';
-import WorkflowPromptBar from '../components/flows/WorkflowPromptBar';
 import { ToastContainer } from '../components/intelligence/Toast';
 import PageSectionHeader from '../components/layout/PageSectionHeader';
 import PageWelcome from '../components/layout/PageWelcome';
@@ -47,6 +45,8 @@ import {
   setFlowEnabled,
 } from '../services/api/flowsApi';
 import type { ToastNotification } from '../types/intelligence';
+import WorkflowDiscoveriesPage from './WorkflowDiscoveriesPage';
+import WorkflowRunsPage from './WorkflowRunsPage';
 
 const log = createDebug('app:flows');
 
@@ -330,6 +330,19 @@ export default function FlowsPage() {
     mainLabel: t('flows.welcome.main'),
     mainIconPath:
       'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4',
+    // Sub-pages within Workflows: aggregate Runs, and Flow Scout Discoveries.
+    extraItems: [
+      {
+        value: 'runs',
+        label: t('nav.workflowRuns'),
+        iconPath: 'M3 3v5h5M3.05 13A9 9 0 106 5.3L3 8M12 7v5l3 2',
+      },
+      {
+        value: 'discoveries',
+        label: t('nav.workflowDiscoveries'),
+        iconPath: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z',
+      },
+    ],
   });
 
   if (view === 'welcome') {
@@ -376,6 +389,24 @@ export default function FlowsPage() {
     );
   }
 
+  if (view === 'runs') {
+    return (
+      <>
+        {nav}
+        <WorkflowRunsPage />
+      </>
+    );
+  }
+
+  if (view === 'discoveries') {
+    return (
+      <>
+        {nav}
+        <WorkflowDiscoveriesPage />
+      </>
+    );
+  }
+
   return (
     <>
       {nav}
@@ -417,16 +448,8 @@ export default function FlowsPage() {
             <BetaBanner />
           </div>
 
-          {/* Prompt-first authoring (Phase 5c): describe a workflow and let the
-            builder agent propose it. Hero presentation when the list is empty,
-            compact otherwise. Always visible, so it's the single "describe a
-            workflow" entry point (the chooser modal no longer duplicates it). */}
-          <WorkflowPromptBar variant={!loading && flows.length === 0 ? 'hero' : 'compact'} />
-
-          {/* Flow Scout discovery: proactive, buildable workflow suggestions
-            grounded in how the user works. Read-only until they click "Build
-            this" (→ workflow_builder) and save. */}
-          <SuggestedWorkflows />
+          {/* Flow Scout discovery moved to its own sidebar page
+              (/flows/discoveries); the list stays focused on saved workflows. */}
 
           {error && (
             <div data-testid="flows-error">
