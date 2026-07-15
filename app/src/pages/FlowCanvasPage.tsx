@@ -595,6 +595,7 @@ function FlowEditor({
       type="button"
       variant="primary"
       size="xs"
+      analyticsId="flow-canvas-run"
       iconOnly
       data-testid="flow-canvas-run"
       aria-label={running ? t('flows.editor.running') : t('flows.editor.run')}

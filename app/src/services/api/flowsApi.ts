@@ -30,6 +30,7 @@ import debug from 'debug';
 
 import type { WorkflowGraph } from '../../lib/flows/types';
 import type { WorkflowProposal } from '../../store/chatRuntimeSlice';
+import { trackAnalyticsEvent } from '../analytics';
 import { callCoreRpc } from '../coreRpcClient';
 
 const log = debug('flowsApi');
@@ -390,6 +391,7 @@ export async function resumeFlow(
     result.thread_id,
     result.pending_approvals?.length ?? 0
   );
+  trackAnalyticsEvent('automation_run_resumed', { automation_kind: 'flow' });
   return result;
 }
 
@@ -509,6 +511,7 @@ export async function runFlow(id: string, input?: unknown): Promise<FlowResumeRe
     result.thread_id,
     result.pending_approvals?.length ?? 0
   );
+  trackAnalyticsEvent('automation_run_started', { automation_kind: 'flow' });
   return result;
 }
 

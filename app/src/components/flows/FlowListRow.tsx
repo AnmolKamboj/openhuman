@@ -178,6 +178,7 @@ const FlowListRow = ({
           type="button"
           variant="primary"
           size="sm"
+          analyticsId="flows-list-run"
           iconOnly
           data-testid={`flow-run-${flow.id}`}
           aria-label={runBusy ? t('flows.list.running') : t('flows.list.runNow')}
