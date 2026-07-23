@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <key>com.apple.security.device.camera</key>
+    <true/>
+    <!-- Required for the core sidecar to make outbound HTTPS calls (registry fetch,
+         skill manifest + JS bundle downloads) under the macOS Hardened Runtime.
+         Without this, reqwest connections are silently blocked by the OS in signed
+         DMG builds, causing skills_install to appear stuck for ~30 s per request. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <!-- Required for the core sidecar to bind and accept connections on port 7788
+         (JSON-RPC server, Socket.IO) under the macOS Hardened Runtime. -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+    <!-- Required for the autocomplete focus query and screen-intelligence
+         foreground-context query to send Apple Events to "System Events"
+         under the Hardened Runtime. Without this entitlement, signed DMG
+         builds have AE calls blocked outright before the macOS consent
+         dialog renders, producing the broken-looking error popup tracked
+         in #985. The companion `NSAppleEventsUsageDescription` in
+         `Info.plist` supplies the user-facing text shown in that
+         consent dialog. -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+    <!-- Required so embedded Chromium can enumerate Bluetooth audio devices
+         (AirPods, headsets) inside getUserMedia() / enumerateDevices() calls
+         on macOS 11+. The companion `NSBluetoothAlwaysUsageDescription` in
+         `Info.plist` supplies the user-facing text shown in the consent
+         dialog; the entitlement is belt-and-braces under the Hardened
+         Runtime — harmless when non-sandboxed, future-safe if Apple
+         tightens the sandbox. Tracked in #1288. -->
+    <key>com.apple.security.device.bluetooth</key>
+    <true/>
+</dict>
+</plist>
