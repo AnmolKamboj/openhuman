@@ -4314,6 +4314,19 @@ const messages: TranslationMap = {
   'flows.nodeConfig.memory.minScoreLabel': '최소 점수',
   'flows.nodeConfig.memory.minScoreHint': '0에서 1 사이의 관련성 임곗값입니다.',
 
+  'flows.enableApproval.title': '이 워크플로가 작업을 수행하도록 허용할까요?',
+  'flows.enableApproval.intro':
+    '이 워크플로는 아래 작업에 대한 권한이 필요합니다. 승인은 이 워크플로에만 적용됩니다.',
+  'flows.enableApproval.approveAll': '모두 승인',
+  'flows.enableApproval.deny': '거부',
+  'flows.enableApproval.enableAnyway': '그래도 켜기',
+  'flows.enableApproval.granting': '승인하는 중…',
+  'flows.enableApproval.error': '승인을 저장하지 못했습니다. 다시 시도해 주세요.',
+  'flows.enableApproval.blockedHint': '에이전트 접근 설정에 의해 차단되었습니다.',
+  'flows.enableApproval.dynamicHint': '워크플로 실행 중에 결정되며, 필요하면 다시 묻습니다.',
+  'flows.enableApproval.agentHint':
+    '이 AI 단계는 자체 작업에 대해 별도로 권한을 요청할 수 있습니다.',
+  'flows.enableApproval.deniedDisabled': '저장되었지만 워크플로는 꺼진 상태로 유지됩니다.',
   'flows.chooser.title': '워크플로 만들기',
   'flows.chooser.subtitle': '시작 방법을 선택하세요.',
   'flows.chooser.scratchTitle': '처음부터 시작',

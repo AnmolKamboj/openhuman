@@ -4954,6 +4954,19 @@ const en: TranslationMap = {
   // Phase 4a "New workflow" chooser + Phase 4c templates gallery. The chooser
   // offers scratch / template / describe; the gallery lists the curated
   // `WorkflowGraph` templates bundled under `lib/flows/templates/`.
+  // ── Save+enable pre-authorization card (consolidated Approve all / Deny)
+  'flows.enableApproval.title': 'Allow this workflow to act?',
+  'flows.enableApproval.intro':
+    'This workflow needs your permission for the actions below. Approving applies to this workflow only.',
+  'flows.enableApproval.approveAll': 'Approve all',
+  'flows.enableApproval.deny': 'Deny',
+  'flows.enableApproval.enableAnyway': 'Enable anyway',
+  'flows.enableApproval.granting': 'Approving…',
+  'flows.enableApproval.error': 'Could not save the approvals. Please try again.',
+  'flows.enableApproval.blockedHint': 'Blocked by your agent access settings.',
+  'flows.enableApproval.dynamicHint': 'Chosen while the workflow runs; it will ask you if needed.',
+  'flows.enableApproval.agentHint': 'This AI step may ask separately for its own actions.',
+  'flows.enableApproval.deniedDisabled': 'Saved, but the workflow was left turned off.',
   'flows.chooser.title': 'Create a workflow',
   'flows.chooser.subtitle': 'Choose how you want to start.',
   'flows.chooser.scratchTitle': 'Start from scratch',

@@ -4437,6 +4437,19 @@ const messages: TranslationMap = {
   'flows.nodeConfig.memory.minScoreLabel': 'Punteggio minimo',
   'flows.nodeConfig.memory.minScoreHint': 'Soglia di rilevanza da 0 a 1.',
 
+  'flows.enableApproval.title': 'Consentire a questo workflow di agire?',
+  'flows.enableApproval.intro':
+    'Questo workflow richiede la tua autorizzazione per le azioni seguenti. L’approvazione vale solo per questo workflow.',
+  'flows.enableApproval.approveAll': 'Approva tutto',
+  'flows.enableApproval.deny': 'Nega',
+  'flows.enableApproval.enableAnyway': 'Attiva comunque',
+  'flows.enableApproval.granting': 'Approvazione in corso…',
+  'flows.enableApproval.error': 'Impossibile salvare le approvazioni. Riprova.',
+  'flows.enableApproval.blockedHint': 'Bloccato dalle impostazioni di accesso dell’agente.',
+  'flows.enableApproval.dynamicHint': 'Deciso durante l’esecuzione; ti chiederà se necessario.',
+  'flows.enableApproval.agentHint':
+    'Questo passaggio IA può chiedere separatamente per le proprie azioni.',
+  'flows.enableApproval.deniedDisabled': 'Salvato, ma il workflow è rimasto disattivato.',
   'flows.chooser.title': 'Crea un flusso di lavoro',
   'flows.chooser.subtitle': 'Scegli come iniziare.',
   'flows.chooser.scratchTitle': 'Parti da zero',

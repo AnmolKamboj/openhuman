@@ -4423,6 +4423,19 @@ const messages: TranslationMap = {
   'flows.nodeConfig.memory.minScoreLabel': 'Minimalny wynik',
   'flows.nodeConfig.memory.minScoreHint': 'Próg trafności od 0 do 1.',
 
+  'flows.enableApproval.title': 'Zezwolić temu przepływowi pracy na działanie?',
+  'flows.enableApproval.intro':
+    'Ten przepływ pracy potrzebuje Twojej zgody na poniższe działania. Zatwierdzenie dotyczy tylko tego przepływu pracy.',
+  'flows.enableApproval.approveAll': 'Zatwierdź wszystko',
+  'flows.enableApproval.deny': 'Odmów',
+  'flows.enableApproval.enableAnyway': 'Włącz mimo to',
+  'flows.enableApproval.granting': 'Zatwierdzanie…',
+  'flows.enableApproval.error': 'Nie udało się zapisać zatwierdzeń. Spróbuj ponownie.',
+  'flows.enableApproval.blockedHint': 'Zablokowane przez ustawienia dostępu agenta.',
+  'flows.enableApproval.dynamicHint':
+    'Ustalane podczas działania przepływu; w razie potrzeby zapyta.',
+  'flows.enableApproval.agentHint': 'Ten krok AI może osobno prosić o zgodę na własne działania.',
+  'flows.enableApproval.deniedDisabled': 'Zapisano, ale przepływ pracy pozostał wyłączony.',
   'flows.chooser.title': 'Utwórz przepływ pracy',
   'flows.chooser.subtitle': 'Wybierz, jak chcesz zacząć.',
   'flows.chooser.scratchTitle': 'Zacznij od zera',
