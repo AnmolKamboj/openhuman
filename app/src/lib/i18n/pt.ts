@@ -4253,6 +4253,7 @@ const messages: TranslationMap = {
   'flows.nodeKind.output_parser': 'Analisador de saída',
   'flows.nodeKind.sub_workflow': 'Subfluxo de trabalho',
   'flows.nodeKind.memory': 'Memória',
+  'flows.nodeKind.dedup': 'Deduplicação',
   'flows.palette.title': 'Nós',
   'flows.palette.addNode': 'Adicionar nó {kind}',
   'flows.editor.save': 'Salvar',
@@ -4426,6 +4427,9 @@ const messages: TranslationMap = {
   'flows.nodeConfig.memory.limitHint': 'Número máximo de resultados.',
   'flows.nodeConfig.memory.minScoreLabel': 'Pontuação mínima',
   'flows.nodeConfig.memory.minScoreHint': 'Limite de relevância de 0 a 1.',
+  'flows.nodeConfig.dedup.keyLabel': 'Chave',
+  'flows.nodeConfig.dedup.keyHint':
+    'Uma expressão de id estável por item, ex.: =item.id. Itens com uma chave já vista são ignorados.',
 
   'flows.enableApproval.title': 'Permitir que este fluxo de trabalho aja?',
   'flows.enableApproval.intro':

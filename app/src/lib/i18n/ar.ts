@@ -4093,6 +4093,7 @@ const messages: TranslationMap = {
   'flows.nodeKind.output_parser': 'محلل المخرجات',
   'flows.nodeKind.sub_workflow': 'سير عمل فرعي',
   'flows.nodeKind.memory': 'الذاكرة',
+  'flows.nodeKind.dedup': 'إزالة التكرار',
   'flows.palette.title': 'العقد',
   'flows.palette.addNode': 'إضافة عقدة {kind}',
   'flows.editor.save': 'حفظ',
@@ -4258,6 +4259,9 @@ const messages: TranslationMap = {
   'flows.nodeConfig.memory.limitHint': 'أقصى عدد من النتائج.',
   'flows.nodeConfig.memory.minScoreLabel': 'الحد الأدنى للنتيجة',
   'flows.nodeConfig.memory.minScoreHint': 'عتبة الصلة من 0 إلى 1.',
+  'flows.nodeConfig.dedup.keyLabel': 'المفتاح',
+  'flows.nodeConfig.dedup.keyHint':
+    'تعبير معرف ثابت لكل عنصر، مثل =item.id. يتم تخطي العناصر التي شوهد مفتاحها من قبل.',
 
   'flows.enableApproval.title': 'هل تسمح لسير العمل هذا بالتنفيذ؟',
   'flows.enableApproval.intro':

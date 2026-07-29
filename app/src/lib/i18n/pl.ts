@@ -4249,6 +4249,7 @@ const messages: TranslationMap = {
   'flows.nodeKind.output_parser': 'Parser wyjścia',
   'flows.nodeKind.sub_workflow': 'Podprzepływ pracy',
   'flows.nodeKind.memory': 'Pamięć',
+  'flows.nodeKind.dedup': 'Deduplikacja',
   'flows.palette.title': 'Węzły',
   'flows.palette.addNode': 'Dodaj węzeł {kind}',
   'flows.editor.save': 'Zapisz',
@@ -4422,6 +4423,9 @@ const messages: TranslationMap = {
   'flows.nodeConfig.memory.limitHint': 'Maksymalna liczba wyników.',
   'flows.nodeConfig.memory.minScoreLabel': 'Minimalny wynik',
   'flows.nodeConfig.memory.minScoreHint': 'Próg trafności od 0 do 1.',
+  'flows.nodeConfig.dedup.keyLabel': 'Klucz',
+  'flows.nodeConfig.dedup.keyHint':
+    'Stabilne wyrażenie identyfikatora dla każdego elementu, np. =item.id. Elementy z już widzianym kluczem są pomijane.',
 
   'flows.enableApproval.title': 'Zezwolić temu przepływowi pracy na działanie?',
   'flows.enableApproval.intro':

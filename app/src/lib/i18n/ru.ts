@@ -4231,6 +4231,7 @@ const messages: TranslationMap = {
   'flows.nodeKind.output_parser': 'Парсер вывода',
   'flows.nodeKind.sub_workflow': 'Подпроцесс',
   'flows.nodeKind.memory': 'Память',
+  'flows.nodeKind.dedup': 'Дедупликация',
   'flows.palette.title': 'Узлы',
   'flows.palette.addNode': 'Добавить узел {kind}',
   'flows.editor.save': 'Сохранить',
@@ -4406,6 +4407,9 @@ const messages: TranslationMap = {
   'flows.nodeConfig.memory.limitHint': 'Максимальное количество результатов.',
   'flows.nodeConfig.memory.minScoreLabel': 'Минимальная оценка',
   'flows.nodeConfig.memory.minScoreHint': 'Порог релевантности от 0 до 1.',
+  'flows.nodeConfig.dedup.keyLabel': 'Ключ',
+  'flows.nodeConfig.dedup.keyHint':
+    'Стабильное выражение id для каждого элемента, напр. =item.id. Элементы с уже встреченным ключом пропускаются.',
 
   'flows.enableApproval.title': 'Разрешить этому рабочему процессу действовать?',
   'flows.enableApproval.intro':

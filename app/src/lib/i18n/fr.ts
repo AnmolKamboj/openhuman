@@ -4292,6 +4292,7 @@ const messages: TranslationMap = {
   'flows.nodeKind.output_parser': 'Analyseur de sortie',
   'flows.nodeKind.sub_workflow': 'Sous-workflow',
   'flows.nodeKind.memory': 'Mémoire',
+  'flows.nodeKind.dedup': 'Déduplication',
   'flows.palette.title': 'Nœuds',
   'flows.palette.addNode': 'Ajouter un nœud {kind}',
   'flows.editor.save': 'Enregistrer',
@@ -4468,6 +4469,9 @@ const messages: TranslationMap = {
   'flows.nodeConfig.memory.limitHint': 'Nombre maximal de résultats.',
   'flows.nodeConfig.memory.minScoreLabel': 'Score minimal',
   'flows.nodeConfig.memory.minScoreHint': 'Seuil de pertinence de 0 à 1.',
+  'flows.nodeConfig.dedup.keyLabel': 'Clé',
+  'flows.nodeConfig.dedup.keyHint':
+    "Une expression d'identifiant stable par élément, ex. =item.id. Les éléments dont la clé a déjà été vue sont ignorés.",
 
   'flows.enableApproval.title': 'Autoriser ce workflow à agir ?',
   'flows.enableApproval.intro':

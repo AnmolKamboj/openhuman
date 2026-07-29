@@ -4195,6 +4195,7 @@ const messages: TranslationMap = {
   'flows.nodeKind.output_parser': 'আউটপুট পার্সার',
   'flows.nodeKind.sub_workflow': 'সাব-ওয়ার্কফ্লো',
   'flows.nodeKind.memory': 'মেমরি',
+  'flows.nodeKind.dedup': 'ডুপ্লিকেট অপসারণ',
   'flows.palette.title': 'নোড',
   'flows.palette.addNode': '{kind} নোড যোগ করুন',
   'flows.editor.save': 'সংরক্ষণ করুন',
@@ -4365,6 +4366,9 @@ const messages: TranslationMap = {
   'flows.nodeConfig.memory.limitHint': 'সর্বোচ্চ ফলাফল সংখ্যা।',
   'flows.nodeConfig.memory.minScoreLabel': 'সর্বনিম্ন স্কোর',
   'flows.nodeConfig.memory.minScoreHint': '০ থেকে ১ পর্যন্ত প্রাসঙ্গিকতার থ্রেশহোল্ড।',
+  'flows.nodeConfig.dedup.keyLabel': 'কী',
+  'flows.nodeConfig.dedup.keyHint':
+    'প্রতিটি আইটেমের জন্য একটি স্থিতিশীল আইডি এক্সপ্রেশন, যেমন =item.id। যেসব আইটেমের কী আগে দেখা গেছে সেগুলো এড়িয়ে যাওয়া হয়।',
 
   'flows.enableApproval.title': 'এই ওয়ার্কফ্লোকে কাজ করার অনুমতি দেবেন?',
   'flows.enableApproval.intro':

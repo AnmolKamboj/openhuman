@@ -4145,6 +4145,7 @@ const messages: TranslationMap = {
   'flows.nodeKind.output_parser': '출력 파서',
   'flows.nodeKind.sub_workflow': '하위 워크플로',
   'flows.nodeKind.memory': '메모리',
+  'flows.nodeKind.dedup': '중복 제거',
   'flows.palette.title': '노드',
   'flows.palette.addNode': '{kind} 노드 추가',
   'flows.editor.save': '저장',
@@ -4313,6 +4314,9 @@ const messages: TranslationMap = {
   'flows.nodeConfig.memory.limitHint': '최대 결과 수입니다.',
   'flows.nodeConfig.memory.minScoreLabel': '최소 점수',
   'flows.nodeConfig.memory.minScoreHint': '0에서 1 사이의 관련성 임곗값입니다.',
+  'flows.nodeConfig.dedup.keyLabel': '키',
+  'flows.nodeConfig.dedup.keyHint':
+    '항목별 안정적인 id 표현식입니다. 예: =item.id. 이미 본 키를 가진 항목은 건너뜁니다.',
 
   'flows.enableApproval.title': '이 워크플로가 작업을 수행하도록 허용할까요?',
   'flows.enableApproval.intro':

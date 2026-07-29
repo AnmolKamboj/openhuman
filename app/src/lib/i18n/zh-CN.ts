@@ -3973,6 +3973,7 @@ const messages: TranslationMap = {
   'flows.nodeKind.output_parser': '输出解析器',
   'flows.nodeKind.sub_workflow': '子工作流',
   'flows.nodeKind.memory': '记忆',
+  'flows.nodeKind.dedup': '去重',
   'flows.palette.title': '节点',
   'flows.palette.addNode': '添加{kind}节点',
   'flows.editor.save': '保存',
@@ -4134,6 +4135,9 @@ const messages: TranslationMap = {
   'flows.nodeConfig.memory.limitHint': '返回结果的最大数量。',
   'flows.nodeConfig.memory.minScoreLabel': '最低分数',
   'flows.nodeConfig.memory.minScoreHint': '相关性阈值，范围为 0 到 1。',
+  'flows.nodeConfig.dedup.keyLabel': '键',
+  'flows.nodeConfig.dedup.keyHint':
+    '每个项目的稳定 id 表达式，例如 =item.id。已出现过该键的项目将被跳过。',
 
   'flows.enableApproval.title': '允许此工作流执行操作吗？',
   'flows.enableApproval.intro': '此工作流需要您对以下操作的许可。批准仅适用于此工作流。',

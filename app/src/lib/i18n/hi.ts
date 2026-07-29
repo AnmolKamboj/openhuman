@@ -4192,6 +4192,7 @@ const messages: TranslationMap = {
   'flows.nodeKind.output_parser': 'आउटपुट पार्सर',
   'flows.nodeKind.sub_workflow': 'सब-वर्कफ़्लो',
   'flows.nodeKind.memory': 'मेमोरी',
+  'flows.nodeKind.dedup': 'डुप्लिकेट हटाएं',
   'flows.palette.title': 'नोड',
   'flows.palette.addNode': '{kind} नोड जोड़ें',
   'flows.editor.save': 'सहेजें',
@@ -4362,6 +4363,9 @@ const messages: TranslationMap = {
   'flows.nodeConfig.memory.limitHint': 'अधिकतम परिणामों की संख्या।',
   'flows.nodeConfig.memory.minScoreLabel': 'न्यूनतम स्कोर',
   'flows.nodeConfig.memory.minScoreHint': '0 से 1 तक की प्रासंगिकता सीमा।',
+  'flows.nodeConfig.dedup.keyLabel': 'कुंजी',
+  'flows.nodeConfig.dedup.keyHint':
+    'प्रति आइटम एक स्थिर आईडी एक्सप्रेशन, जैसे =item.id। जिन आइटम की कुंजी पहले देखी जा चुकी है उन्हें छोड़ दिया जाता है।',
 
   'flows.enableApproval.title': 'क्या इस वर्कफ़्लो को काम करने की अनुमति दें?',
   'flows.enableApproval.intro':

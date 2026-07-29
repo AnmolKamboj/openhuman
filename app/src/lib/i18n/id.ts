@@ -4208,6 +4208,7 @@ const messages: TranslationMap = {
   'flows.nodeKind.output_parser': 'Pengurai keluaran',
   'flows.nodeKind.sub_workflow': 'Sub-alur kerja',
   'flows.nodeKind.memory': 'Memori',
+  'flows.nodeKind.dedup': 'Hapus duplikat',
   'flows.palette.title': 'Simpul',
   'flows.palette.addNode': 'Tambah simpul {kind}',
   'flows.editor.save': 'Simpan',
@@ -4380,6 +4381,9 @@ const messages: TranslationMap = {
   'flows.nodeConfig.memory.limitHint': 'Jumlah maksimum hasil.',
   'flows.nodeConfig.memory.minScoreLabel': 'Skor minimum',
   'flows.nodeConfig.memory.minScoreHint': 'Ambang batas relevansi dari 0 hingga 1.',
+  'flows.nodeConfig.dedup.keyLabel': 'Kunci',
+  'flows.nodeConfig.dedup.keyHint':
+    'Ekspresi id stabil per item, mis. =item.id. Item dengan kunci yang sudah pernah dilihat akan dilewati.',
 
   'flows.enableApproval.title': 'Izinkan alur kerja ini bertindak?',
   'flows.enableApproval.intro':
