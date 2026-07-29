@@ -89,6 +89,21 @@ export function describeNode(
       return 'Parses the previous output';
     case 'sub_workflow':
       return 'Runs a nested workflow';
+    case 'memory': {
+      const operation = str(config, 'operation') || 'recall';
+      const scope = str(config, 'scope');
+      if (operation === 'flavour') {
+        const flavour = str(config, 'flavour');
+        return flavour ? `Reads the "${flavour}" flavour` : 'Reads a memory flavour';
+      }
+      if (operation === 'people') return 'Looks up people memory';
+      if (operation === 'remember') return 'Remembers a value in this workflow';
+      if (operation === 'forget') return 'Forgets a value from this workflow';
+      const scoped = scope ? ` (${scope})` : '';
+      if (operation === 'search') return `Searches memory${scoped}`;
+      // recall
+      return `Recalls memory${scoped}`;
+    }
     default:
       return '';
   }

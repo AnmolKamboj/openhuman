@@ -14,6 +14,8 @@
  *  - `switch`       → `expression` (=-expr, precedence) / `field` (fallback)
  *  - `transform`    → `set` (key → =-expression map)
  *  - `trigger`      → `trigger_kind` + kind-specific (`schedule`, `toolkit`/`trigger_slug`)
+ *  - `memory`       → `operation` + operation-specific (`scope`/`query`/`flavour`/`key`/`value`/
+ *                     `limit`/`min_score`), see `memoryFields.tsx`
  */
 import createDebug from 'debug';
 import { useEffect, useState } from 'react';
@@ -30,6 +32,7 @@ import {
   ComposioTriggerField,
   fetchActionSchema,
 } from './composioFields';
+import { MemoryForm } from './memoryFields';
 import { NATIVE_TOOL_PREFIX, NativeToolField } from './nativeToolFields';
 import {
   configString,
@@ -492,4 +495,5 @@ export const NODE_CONFIG_FORMS: Partial<Record<NodeKind, NodeConfigForm>> = {
   switch: SwitchForm,
   transform: TransformForm,
   code: CodeForm,
+  memory: MemoryForm,
 };

@@ -62,4 +62,14 @@ describe('describeNode', () => {
   it('returns empty string for an unknown kind', () => {
     expect(describeNode('time_travel', {})).toBe('');
   });
+
+  it('gives memory search its own summary, distinct from recall', () => {
+    expect(describeNode('memory', { operation: 'search', scope: 'user' })).toBe(
+      'Searches memory (user)'
+    );
+    expect(describeNode('memory', { operation: 'recall', scope: 'user' })).toBe(
+      'Recalls memory (user)'
+    );
+    expect(describeNode('memory', { operation: 'search' })).toBe('Searches memory');
+  });
 });

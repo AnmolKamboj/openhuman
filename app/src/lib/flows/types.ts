@@ -36,8 +36,18 @@ export interface Position {
 }
 
 /**
- * The 12 node kinds `tinyflows` currently defines (`tinyflows::model::NodeKind`).
+ * The 13 node kinds `tinyflows` currently defines (`tinyflows::model::NodeKind`).
  * Wire values are `snake_case` (`#[serde(rename_all = "snake_case")]`).
+ *
+ * `memory` (issue #5226) is the 13th kind — declarative, in-graph memory
+ * access (`recall`/`search`/`flavour`/`people`/`remember`/`forget`, see
+ * `my_docs/memory_access_in_workflows/08-memory-node.md`). Its config is
+ * still the same free-form `WorkflowNode.config` bag as every other kind
+ * (see {@link WorkflowNode}); there is no dedicated TS config interface
+ * because no other kind has one either — the node-config form
+ * (`nodeConfig/memoryFields.tsx`) reads/writes the known keys
+ * (`operation`, `scope`, `query`, `flavour`, `key`, `value`, `limit`,
+ * `min_score`) directly off that bag, same as `condition`/`switch`/etc.
  */
 export type NodeKind =
   | 'trigger'
@@ -51,7 +61,8 @@ export type NodeKind =
   | 'split_out'
   | 'transform'
   | 'output_parser'
-  | 'sub_workflow';
+  | 'sub_workflow'
+  | 'memory';
 
 /**
  * A named connection point on a node. Mirrors `tinyflows::model::Port`.

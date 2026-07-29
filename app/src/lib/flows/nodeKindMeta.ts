@@ -1,5 +1,5 @@
 /**
- * Per-kind visual metadata for the 12 tinyflows `NodeKind`s, shared by the
+ * Per-kind visual metadata for the 13 tinyflows `NodeKind`s, shared by the
  * canvas node renderer (`FlowNodeComponent`) and the editable canvas's node
  * palette (`NodePalette`). Kept dependency-free (no React) so both a rendered
  * `<Handle>`-bearing card and a plain palette button can pull the same
@@ -8,7 +8,7 @@
  * Colors cycle through the four CSS-variable-backed semantic ramps
  * (primary/sage/amber/coral) that support Tailwind's `/opacity` modifiers in
  * this codebase (see `tailwind.config.js`) so light/dark theming comes for
- * free; with 12 kinds and 4 ramps some kinds share a color family — the emoji
+ * free; with 13 kinds and 4 ramps some kinds share a color family — the emoji
  * + name remain the primary distinguishers.
  */
 import type { NodeKind } from './types';
@@ -29,9 +29,12 @@ interface NodeKindMeta {
 }
 
 /**
- * The 12 `NodeKind`s in the order they should appear in the palette. Trigger
+ * The 13 `NodeKind`s in the order they should appear in the palette. Trigger
  * leads (every graph needs exactly one); the rest follow the logical grouping
- * of the `tinyflows::model::NodeKind` enum.
+ * of the `tinyflows::model::NodeKind` enum. `memory` (issue #5226) is
+ * appended last — the design doc (`08-memory-node.md`) sequences it as the
+ * 13th kind deliberately, so it trails `sub_workflow` here too rather than
+ * being interleaved with the other `actions`-group kinds.
  */
 const NODE_KINDS: NodeKind[] = [
   'trigger',
@@ -46,6 +49,7 @@ const NODE_KINDS: NodeKind[] = [
   'transform',
   'output_parser',
   'sub_workflow',
+  'memory',
 ];
 
 /** Per-kind emoji + border/chip color + palette group. See the module doc. */
@@ -56,6 +60,10 @@ const NODE_KIND_META: Record<NodeKind, NodeKindMeta> = {
   http_request: { emoji: '🌐', color: 'coral', group: 'actions' },
   code: { emoji: '📝', color: 'sage', group: 'actions' },
   sub_workflow: { emoji: '🧩', color: 'coral', group: 'actions' },
+  // Declarative in-graph memory access (recall/search/flavour/people/
+  // remember/forget) — an "actions" node like `tool_call`/`http_request`
+  // (it reads/writes state), not `logic` (it doesn't itself branch/reshape).
+  memory: { emoji: '🧠', color: 'sage', group: 'actions' },
   condition: { emoji: '🔀', color: 'primary', group: 'logic' },
   switch: { emoji: '🔁', color: 'amber', group: 'logic' },
   merge: { emoji: '🔗', color: 'coral', group: 'logic' },
@@ -128,7 +136,7 @@ export const PALETTE_ENTRIES_BY_GROUP: Record<NodeGroup, PaletteEntry[]> = {
 
 /**
  * Fallback for any `kind` outside {@link NODE_KIND_META} — a saved graph is
- * `unknown` on the wire (cast in `FlowCanvasPage.tsx`), so a future 13th
+ * `unknown` on the wire (cast in `FlowCanvasPage.tsx`), so a future 14th
  * tinyflows kind, or any other value the backend ever emits, can reach the
  * renderer at runtime even though TypeScript can't see it. Lookups fall back
  * here so an unrecognized kind renders as a plain neutral node instead of

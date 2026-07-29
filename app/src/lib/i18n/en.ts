@@ -4741,7 +4741,7 @@ const en: TranslationMap = {
   'flows.copilot.continueBuilding': 'Continue building',
 
   // ── Workflow Canvas (issue B5b.1): the read-only graph view of a saved
-  // flow at /flows/:id. `flows.nodeKind.*` labels the 12 tinyflows node
+  // flow at /flows/:id. `flows.nodeKind.*` labels the 13 tinyflows node
   // kinds (`tinyflows::model::NodeKind`) shown in each canvas node card.
   'flows.canvas.title': 'Workflow',
   'flows.canvas.loading': 'Loading workflow…',
@@ -4766,6 +4766,7 @@ const en: TranslationMap = {
   'flows.nodeKind.transform': 'Transform',
   'flows.nodeKind.output_parser': 'Output parser',
   'flows.nodeKind.sub_workflow': 'Sub-workflow',
+  'flows.nodeKind.memory': 'Memory',
 
   // ── Editable Workflow Canvas (issue B5b.2 / Phase 3a): the node palette
   // and editor toolbar layered on top of the read-only canvas above.
@@ -4917,6 +4918,38 @@ const en: TranslationMap = {
   'flows.nodeConfig.code.language_javascript': 'JavaScript',
   'flows.nodeConfig.code.language_python': 'Python',
   'flows.nodeConfig.code.sourceLabel': 'Source',
+  // `memory` node (issue #5226): recall/search/flavour/people read; remember/forget write.
+  'flows.nodeConfig.memory.operationLabel': 'Operation',
+  'flows.nodeConfig.memory.operation_recall': 'Recall',
+  'flows.nodeConfig.memory.operation_search': 'Search',
+  'flows.nodeConfig.memory.operation_flavour': 'Flavour',
+  'flows.nodeConfig.memory.operation_people': 'People',
+  'flows.nodeConfig.memory.operation_remember': 'Remember',
+  'flows.nodeConfig.memory.operation_forget': 'Forget',
+  'flows.nodeConfig.memory.scopeLabel': 'Scope',
+  'flows.nodeConfig.memory.scopeHint': 'Where to look for this memory.',
+  'flows.nodeConfig.memory.scopeWriteHint':
+    'Writes are only allowed within this workflow, never to your personal memory.',
+  'flows.nodeConfig.memory.scope_user': 'You (read-only)',
+  'flows.nodeConfig.memory.scope_flow': 'This workflow',
+  'flows.nodeConfig.memory.scope_flows': 'All workflows (read-only)',
+  'flows.nodeConfig.memory.queryLabel': 'Query',
+  'flows.nodeConfig.memory.queryOptionalHint': 'Optional: narrows the people lookup.',
+  'flows.nodeConfig.memory.flavourLabel': 'Flavour',
+  'flows.nodeConfig.memory.flavourHint': 'Which persona facet to read, e.g. communication.',
+  'flows.nodeConfig.memory.flavour_communication': 'Communication',
+  'flows.nodeConfig.memory.flavour_coding_style': 'Coding style',
+  'flows.nodeConfig.memory.flavour_stack': 'Stack',
+  'flows.nodeConfig.memory.flavour_workflow': 'Workflow',
+  'flows.nodeConfig.memory.flavour_environment': 'Environment',
+  'flows.nodeConfig.memory.flavour_directives': 'Directives',
+  'flows.nodeConfig.memory.flavour_anti_preferences': 'Anti-preferences',
+  'flows.nodeConfig.memory.keyLabel': 'Key',
+  'flows.nodeConfig.memory.valueLabel': 'Value',
+  'flows.nodeConfig.memory.limitLabel': 'Limit',
+  'flows.nodeConfig.memory.limitHint': 'Maximum number of results.',
+  'flows.nodeConfig.memory.minScoreLabel': 'Minimum score',
+  'flows.nodeConfig.memory.minScoreHint': 'Relevance threshold from 0 to 1.',
 
   // Phase 4a "New workflow" chooser + Phase 4c templates gallery. The chooser
   // offers scratch / template / describe; the gallery lists the curated
