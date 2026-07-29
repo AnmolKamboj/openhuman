@@ -4618,6 +4618,8 @@ const messages: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': 'সাইন-ইন অবস্থা অজানা',
   'settings.ai.claudeCode.connectedNotSignedIn': 'সংযুক্ত · সাইন-ইন করা হয়নি',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'claude CLI যে মডেল আইডি গ্রহণ করে: একটি উপনাম (sonnet, opus) বা পূর্ণ নাম (claude-sonnet-4-5)। এটি হুবহু claude --model-এ পাঠানো হয়, তাই sonnet-4-5-এর মতো বিপণন নাম গ্রহণ করা হয় না।',
   'settings.ai.claudeCode.modalDescription':
     'চ্যাট, এজেন্টিক ও যুক্তিনির্ভর কাজগুলো আপনার স্থানীয়ভাবে ইনস্টল করা Claude Code CLI-এর মাধ্যমে রুট করে। কোনো API কী লাগে না: এটি CLI-এর নিজস্ব লগইন ব্যবহার করে।',
   'settings.ai.claudeCode.close': 'বন্ধ করুন',
@@ -4737,6 +4739,22 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} মডেল আইডি',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'একটি মডেল নির্বাচন করুন...',
+  'settings.ai.deploymentNameLabel': 'ডিপ্লয়মেন্টের নাম',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
+  'settings.ai.deploymentNameHelp':
+    'Azure AI Foundry-তে আপনি যে ডিপ্লয়মেন্টের নাম সেট করেছেন তা লিখুন। এটি মডেল আইডি নয়।',
+  'settings.ai.deploymentNameLegacyHint':
+    'এই মানটি প্রদানকারীর তালিকার বেস মডেল আইডির সঙ্গে মেলে। Azure ডিপ্লয়মেন্টের নাম দিয়ে অনুরোধ পাঠায়, তাই নিশ্চিত করুন এটি আপনার ডিপ্লয়মেন্টের নাম।',
+  'settings.ai.deploymentNameProviderHint':
+    'Azure এন্ডপয়েন্ট শনাক্ত হয়েছে। এই প্রদানকারী নির্বাচন করার পর মডেল ফিল্ডে আপনার ডিপ্লয়মেন্টের নাম দিন।',
+  'settings.ai.chooseModelFromList': 'তালিকা থেকে বেছে নিন',
+  'settings.ai.enterModelIdManuallyAction': 'ম্যানুয়ালি মডেল আইডি লিখুন',
+  'settings.ai.enterDeploymentNameManuallyAction': 'ম্যানুয়ালি ডিপ্লয়মেন্ট নাম লিখুন',
+  'settings.ai.probeFailedHint':
+    'এই প্রদানকারীর মডেল তালিকা আমরা পড়তে পারিনি। ওই তালিকা কেবল ড্রপডাউন ভরাট করে, তাই আপনি এখনও প্রদানকারী যোগ করে নিজেই মডেল বা ডিপ্লয়মেন্টের নাম লিখতে পারেন।',
+  'settings.ai.probeFailedAddAnyway': 'যাচাই না করেই যোগ করুন',
+  'settings.ai.azureV1EndpointHint':
+    'Azure-এর জন্য v1 বেস URL ব্যবহার করুন: https://YOUR-RESOURCE.openai.azure.com/openai/v1। পুরোনো রিসোর্স URL কোনো মডেল তালিকা দেয় না এবং ভিন্ন প্রমাণীকরণ হেডার আশা করে।',
   'settings.ai.temperatureOverride': 'তাপমাত্রা ওভাররাইড',
   'settings.ai.temperatureOverrideSlider': 'তাপমাত্রা ওভাররাইড (স্লাইডার)',
   'settings.ai.temperatureOverrideValue': 'তাপমাত্রা ওভাররাইড (মান)',

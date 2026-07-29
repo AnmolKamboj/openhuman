@@ -4633,6 +4633,8 @@ const messages: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': 'Status masuk tidak diketahui',
   'settings.ai.claudeCode.connectedNotSignedIn': 'Terhubung · belum masuk',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'ID model yang diterima CLI claude: sebuah alias (sonnet, opus) atau nama lengkap (claude-sonnet-4-5). Nilainya diteruskan apa adanya ke claude --model, sehingga nama pemasaran seperti sonnet-4-5 akan ditolak.',
   'settings.ai.claudeCode.modalDescription':
     'Merutekan beban kerja obrolan, agentik, dan penalaran melalui Claude Code CLI yang terpasang secara lokal. Tanpa kunci API: menggunakan login milik CLI itu sendiri.',
   'settings.ai.claudeCode.close': 'Tutup',
@@ -4755,6 +4757,22 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} ID model',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'Pilih model...',
+  'settings.ai.deploymentNameLabel': 'Nama penerapan',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
+  'settings.ai.deploymentNameHelp':
+    'Masukkan nama penerapan yang Anda atur di Azure AI Foundry. Ini bukan ID model.',
+  'settings.ai.deploymentNameLegacyHint':
+    'Nilai ini cocok dengan ID model dasar dari katalog penyedia. Azure merutekan permintaan berdasarkan nama penerapan, jadi pastikan ini adalah nama yang Anda berikan untuk penerapan Anda.',
+  'settings.ai.deploymentNameProviderHint':
+    'Endpoint Azure terdeteksi. Atur nama penerapan Anda di bidang model setelah memilih penyedia ini.',
+  'settings.ai.chooseModelFromList': 'Pilih dari daftar',
+  'settings.ai.enterModelIdManuallyAction': 'Masukkan ID model secara manual',
+  'settings.ai.enterDeploymentNameManuallyAction': 'Masukkan nama penerapan secara manual',
+  'settings.ai.probeFailedHint':
+    'Kami tidak dapat membaca daftar model penyedia ini. Daftar itu hanya mengisi menu dropdown, jadi Anda tetap bisa menambahkan penyedia dan mengetik sendiri nama model atau penerapannya.',
+  'settings.ai.probeFailedAddAnyway': 'Tambahkan tanpa verifikasi',
+  'settings.ai.azureV1EndpointHint':
+    'Untuk Azure, gunakan URL dasar v1: https://YOUR-RESOURCE.openai.azure.com/openai/v1. URL sumber daya yang lama tidak menyediakan daftar model dan mengharapkan header autentikasi yang berbeda.',
   'settings.ai.temperatureOverride': 'Penggantian suhu',
   'settings.ai.temperatureOverrideSlider': 'Penggantian suhu (slider)',
   'settings.ai.temperatureOverrideValue': 'Penggantian suhu (nilai)',

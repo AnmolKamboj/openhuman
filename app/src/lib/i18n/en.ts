@@ -5205,6 +5205,8 @@ const en: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': 'Sign-in state unknown',
   'settings.ai.claudeCode.connectedNotSignedIn': 'Connected · not signed in',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'A model id the claude CLI accepts: an alias (sonnet, opus) or a full name (claude-sonnet-4-5). It is passed verbatim to claude --model, so marketing strings like sonnet-4-5 are rejected.',
   'settings.ai.claudeCode.modalDescription':
     "Routes chat, agentic and reasoning workloads through your locally-installed Claude Code CLI. No API key: it uses the CLI's own login.",
   'settings.ai.claudeCode.close': 'Close',
@@ -5326,6 +5328,22 @@ const en: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} model id',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'Select a model...',
+  'settings.ai.deploymentNameLabel': 'Deployment name',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
+  'settings.ai.deploymentNameHelp':
+    'Enter the deployment name you set in Azure AI Foundry. This is not the model ID.',
+  'settings.ai.deploymentNameLegacyHint':
+    'This matches a base model ID from the provider catalog. Azure routes by deployment name, so confirm this is the name you gave your deployment.',
+  'settings.ai.deploymentNameProviderHint':
+    'Azure endpoint detected. Set your deployment name in the model field after choosing this provider.',
+  'settings.ai.chooseModelFromList': 'Choose from list',
+  'settings.ai.enterModelIdManuallyAction': 'Enter model ID manually',
+  'settings.ai.enterDeploymentNameManuallyAction': 'Enter deployment name manually',
+  'settings.ai.probeFailedHint':
+    'We could not read this provider’s model list. That list only fills the dropdown, so you can still add the provider and type the model or deployment name yourself.',
+  'settings.ai.probeFailedAddAnyway': 'Add without verifying',
+  'settings.ai.azureV1EndpointHint':
+    'For Azure, use the v1 base URL: https://YOUR-RESOURCE.openai.azure.com/openai/v1. The older resource URL does not serve a model list and expects a different auth header.',
   'settings.ai.temperatureOverride': 'Temperature override',
   'settings.ai.temperatureOverrideSlider': 'Temperature override (slider)',
   'settings.ai.temperatureOverrideValue': 'Temperature override (value)',

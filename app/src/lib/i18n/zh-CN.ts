@@ -4371,6 +4371,8 @@ const messages: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': '登录状态未知',
   'settings.ai.claudeCode.connectedNotSignedIn': '已连接 · 未登录',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'claude 命令行接受的模型 ID：别名（sonnet、opus）或完整名称（claude-sonnet-4-5）。该值会原样传给 claude --model，因此 sonnet-4-5 这类营销名称会被拒绝。',
   'settings.ai.claudeCode.modalDescription':
     '通过你本地安装的 Claude Code CLI 路由聊天、智能体和推理任务。无需 API 密钥：它使用 CLI 自身的登录。',
   'settings.ai.claudeCode.close': '关闭',
@@ -4479,6 +4481,21 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} 型号 ID',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': '选择型号...',
+  'settings.ai.deploymentNameLabel': '部署名称',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
+  'settings.ai.deploymentNameHelp': '请输入您在 Azure AI Foundry 中设置的部署名称。这不是模型 ID。',
+  'settings.ai.deploymentNameLegacyHint':
+    '此值与提供商目录中的基础模型 ID 相同。Azure 按部署名称路由请求，请确认这是您为部署指定的名称。',
+  'settings.ai.deploymentNameProviderHint':
+    '已检测到 Azure 端点。选择此提供商后，请在模型字段中设置部署名称。',
+  'settings.ai.chooseModelFromList': '从列表中选择',
+  'settings.ai.enterModelIdManuallyAction': '手动输入模型 ID',
+  'settings.ai.enterDeploymentNameManuallyAction': '手动输入部署名称',
+  'settings.ai.probeFailedHint':
+    '我们无法读取该提供方的模型列表。该列表只用于填充下拉菜单，你仍然可以添加该提供方，并自行输入模型或部署名称。',
+  'settings.ai.probeFailedAddAnyway': '不验证直接添加',
+  'settings.ai.azureV1EndpointHint':
+    '在 Azure 上请使用 v1 基础地址：https://YOUR-RESOURCE.openai.azure.com/openai/v1。旧的资源地址不提供模型列表，并且需要不同的认证请求头。',
   'settings.ai.temperatureOverride': '温度超控',
   'settings.ai.temperatureOverrideSlider': '温度超控（滑块）',
   'settings.ai.temperatureOverrideValue': '温度超控（值）',

@@ -4681,6 +4681,8 @@ const messages: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': 'Estado de login desconhecido',
   'settings.ai.claudeCode.connectedNotSignedIn': 'Conectado · não autenticado',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'Um ID de modelo aceito pela CLI claude: um alias (sonnet, opus) ou um nome completo (claude-sonnet-4-5). Ele é repassado sem alterações para claude --model, portanto nomes comerciais como sonnet-4-5 são recusados.',
   'settings.ai.claudeCode.modalDescription':
     'Encaminha cargas de chat, agênticas e de raciocínio pela sua Claude Code CLI instalada localmente. Sem chave de API: usa o próprio login da CLI.',
   'settings.ai.claudeCode.close': 'Fechar',
@@ -4804,6 +4806,22 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} ID do modelo',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'Selecione um modelo...',
+  'settings.ai.deploymentNameLabel': 'Nome da implantação',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
+  'settings.ai.deploymentNameHelp':
+    'Digite o nome da implantação que você definiu no Azure AI Foundry. Este não é o ID do modelo.',
+  'settings.ai.deploymentNameLegacyHint':
+    'Este valor corresponde a um ID de modelo base do catálogo do provedor. O Azure roteia as solicitações pelo nome da implantação, portanto confirme que este é o nome que você deu à sua implantação.',
+  'settings.ai.deploymentNameProviderHint':
+    'Endpoint do Azure detectado. Defina o nome da sua implantação no campo do modelo depois de escolher este provedor.',
+  'settings.ai.chooseModelFromList': 'Escolher da lista',
+  'settings.ai.enterModelIdManuallyAction': 'Inserir o ID do modelo manualmente',
+  'settings.ai.enterDeploymentNameManuallyAction': 'Inserir o nome da implantação manualmente',
+  'settings.ai.probeFailedHint':
+    'Não foi possível ler a lista de modelos deste provedor. Essa lista só preenche o menu suspenso, portanto você ainda pode adicionar o provedor e digitar o nome do modelo ou da implantação.',
+  'settings.ai.probeFailedAddAnyway': 'Adicionar sem verificar',
+  'settings.ai.azureV1EndpointHint':
+    'No Azure, use o URL base v1: https://YOUR-RESOURCE.openai.azure.com/openai/v1. O URL de recurso antigo não fornece uma lista de modelos e espera outro cabeçalho de autenticação.',
   'settings.ai.temperatureOverride': 'Substituição de temperatura',
   'settings.ai.temperatureOverrideSlider': 'Substituição de temperatura (controle deslizante)',
   'settings.ai.temperatureOverrideValue': 'Substituição de temperatura (valor)',

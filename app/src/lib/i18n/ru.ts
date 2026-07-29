@@ -4657,6 +4657,8 @@ const messages: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': 'Состояние входа неизвестно',
   'settings.ai.claudeCode.connectedNotSignedIn': 'Подключено · вход не выполнен',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'Идентификатор модели, который принимает CLI claude: псевдоним (sonnet, opus) или полное имя (claude-sonnet-4-5). Значение передаётся в claude --model без изменений, поэтому маркетинговые названия вроде sonnet-4-5 отклоняются.',
   'settings.ai.claudeCode.modalDescription':
     'Направляет задачи чата, агентные и рассуждающие нагрузки через локально установленный Claude Code CLI. Без ключа API: используется собственный вход CLI.',
   'settings.ai.claudeCode.close': 'Закрыть',
@@ -4781,6 +4783,22 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} идентификатор модели',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'Выберите модель...',
+  'settings.ai.deploymentNameLabel': 'Имя развёртывания',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
+  'settings.ai.deploymentNameHelp':
+    'Введите имя развёртывания, заданное в Azure AI Foundry. Это не идентификатор модели.',
+  'settings.ai.deploymentNameLegacyHint':
+    'Это значение совпадает с идентификатором базовой модели из каталога поставщика. Azure маршрутизирует запросы по имени развёртывания, поэтому убедитесь, что это имя вашего развёртывания.',
+  'settings.ai.deploymentNameProviderHint':
+    'Обнаружена конечная точка Azure. Укажите имя развёртывания в поле модели после выбора этого поставщика.',
+  'settings.ai.chooseModelFromList': 'Выбрать из списка',
+  'settings.ai.enterModelIdManuallyAction': 'Ввести идентификатор модели вручную',
+  'settings.ai.enterDeploymentNameManuallyAction': 'Ввести имя развёртывания вручную',
+  'settings.ai.probeFailedHint':
+    'Не удалось прочитать список моделей этого провайдера. Этот список только заполняет выпадающее меню, поэтому вы всё равно можете добавить провайдера и ввести имя модели или развёртывания вручную.',
+  'settings.ai.probeFailedAddAnyway': 'Добавить без проверки',
+  'settings.ai.azureV1EndpointHint':
+    'Для Azure используйте базовый адрес v1: https://YOUR-RESOURCE.openai.azure.com/openai/v1. Старый адрес ресурса не отдаёт список моделей и ожидает другой заголовок аутентификации.',
   'settings.ai.temperatureOverride': 'Переопределение температуры',
   'settings.ai.temperatureOverrideSlider': 'Переопределение температуры (ползунок)',
   'settings.ai.temperatureOverrideValue': 'Переопределение температуры (значение)',

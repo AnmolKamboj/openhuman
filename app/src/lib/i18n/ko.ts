@@ -4565,6 +4565,8 @@ const messages: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': '로그인 상태 알 수 없음',
   'settings.ai.claudeCode.connectedNotSignedIn': '연결됨 · 로그인되지 않음',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'claude CLI가 허용하는 모델 ID입니다. 별칭(sonnet, opus) 또는 전체 이름(claude-sonnet-4-5)을 쓸 수 있습니다. 값은 claude --model에 그대로 전달되므로 sonnet-4-5 같은 마케팅 이름은 거부됩니다.',
   'settings.ai.claudeCode.modalDescription':
     '채팅, 에이전트, 추론 작업을 로컬에 설치된 Claude Code CLI를 통해 라우팅합니다. API 키가 필요 없으며 CLI 자체 로그인을 사용합니다.',
   'settings.ai.claudeCode.close': '닫기',
@@ -4683,6 +4685,22 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} 모델 ID',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': '모델 선택...',
+  'settings.ai.deploymentNameLabel': '배포 이름',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
+  'settings.ai.deploymentNameHelp':
+    'Azure AI Foundry에서 설정한 배포 이름을 입력하세요. 모델 ID가 아닙니다.',
+  'settings.ai.deploymentNameLegacyHint':
+    '이 값은 공급자 카탈로그의 기본 모델 ID와 일치합니다. Azure는 배포 이름으로 요청을 라우팅하므로 배포에 지정한 이름인지 확인하세요.',
+  'settings.ai.deploymentNameProviderHint':
+    'Azure 엔드포인트가 감지되었습니다. 이 공급자를 선택한 후 모델 필드에 배포 이름을 설정하세요.',
+  'settings.ai.chooseModelFromList': '목록에서 선택',
+  'settings.ai.enterModelIdManuallyAction': '모델 ID 수동 입력',
+  'settings.ai.enterDeploymentNameManuallyAction': '배포 이름 수동 입력',
+  'settings.ai.probeFailedHint':
+    '이 제공업체의 모델 목록을 읽지 못했습니다. 그 목록은 드롭다운을 채우는 용도일 뿐이므로, 제공업체를 그대로 추가한 뒤 모델 또는 배포 이름을 직접 입력해도 됩니다.',
+  'settings.ai.probeFailedAddAnyway': '확인 없이 추가',
+  'settings.ai.azureV1EndpointHint':
+    'Azure에서는 v1 기본 URL을 사용하세요: https://YOUR-RESOURCE.openai.azure.com/openai/v1. 이전 리소스 URL은 모델 목록을 제공하지 않으며 다른 인증 헤더를 요구합니다.',
   'settings.ai.temperatureOverride': '온도 재정의',
   'settings.ai.temperatureOverrideSlider': '온도 재정의(슬라이더)',
   'settings.ai.temperatureOverrideValue': '온도 재정의(값)',

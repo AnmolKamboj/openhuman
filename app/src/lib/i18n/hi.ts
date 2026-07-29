@@ -4615,6 +4615,8 @@ const messages: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': 'साइन-इन स्थिति अज्ञात',
   'settings.ai.claudeCode.connectedNotSignedIn': 'कनेक्टेड · साइन इन नहीं',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'ऐसी मॉडल आईडी जिसे claude CLI स्वीकार करता है: एक उपनाम (sonnet, opus) या पूरा नाम (claude-sonnet-4-5)। इसे ज्यों का त्यों claude --model को भेजा जाता है, इसलिए sonnet-4-5 जैसे मार्केटिंग नाम अस्वीकार हो जाते हैं।',
   'settings.ai.claudeCode.modalDescription':
     'चैट, एजेंटिक और रीज़निंग कार्यभार को आपके स्थानीय रूप से इंस्टॉल किए गए Claude Code CLI के माध्यम से रूट करता है। कोई API कुंजी नहीं: यह CLI के अपने लॉगिन का उपयोग करता है।',
   'settings.ai.claudeCode.close': 'बंद करें',
@@ -4737,6 +4739,22 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} मॉडल आईडी',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'एक मॉडल चुनें...',
+  'settings.ai.deploymentNameLabel': 'परिनियोजन नाम',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
+  'settings.ai.deploymentNameHelp':
+    'Azure AI Foundry में आपके द्वारा सेट किया गया परिनियोजन नाम दर्ज करें। यह मॉडल आईडी नहीं है।',
+  'settings.ai.deploymentNameLegacyHint':
+    'यह मान प्रदाता सूची की आधार मॉडल आईडी से मेल खाता है। Azure अनुरोधों को परिनियोजन नाम से भेजता है, इसलिए पुष्टि करें कि यह आपके परिनियोजन का नाम है।',
+  'settings.ai.deploymentNameProviderHint':
+    'Azure एंडपॉइंट मिला। यह प्रदाता चुनने के बाद मॉडल फ़ील्ड में अपना परिनियोजन नाम दर्ज करें।',
+  'settings.ai.chooseModelFromList': 'सूची से चुनें',
+  'settings.ai.enterModelIdManuallyAction': 'मॉडल आईडी मैन्युअल रूप से दर्ज करें',
+  'settings.ai.enterDeploymentNameManuallyAction': 'डिप्लॉयमेंट नाम मैन्युअल रूप से दर्ज करें',
+  'settings.ai.probeFailedHint':
+    'हम इस प्रदाता की मॉडल सूची नहीं पढ़ सके। वह सूची केवल ड्रॉपडाउन भरती है, इसलिए आप प्रदाता को फिर भी जोड़ सकते हैं और मॉडल या डिप्लॉयमेंट का नाम खुद लिख सकते हैं।',
+  'settings.ai.probeFailedAddAnyway': 'सत्यापन के बिना जोड़ें',
+  'settings.ai.azureV1EndpointHint':
+    'Azure के लिए v1 बेस URL का उपयोग करें: https://YOUR-RESOURCE.openai.azure.com/openai/v1. पुराना रिसोर्स URL मॉडल सूची नहीं देता और अलग प्रमाणीकरण हेडर की अपेक्षा करता है।',
   'settings.ai.temperatureOverride': 'तापमान ओवरराइड',
   'settings.ai.temperatureOverrideSlider': 'तापमान ओवरराइड (स्लाइडर)',
   'settings.ai.temperatureOverrideValue': 'तापमान ओवरराइड (मान)',

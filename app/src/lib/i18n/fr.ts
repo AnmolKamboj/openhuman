@@ -4723,6 +4723,8 @@ const messages: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': 'État de connexion inconnu',
   'settings.ai.claudeCode.connectedNotSignedIn': 'Connecté · non authentifié',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'Un identifiant de modèle accepté par la CLI claude : un alias (sonnet, opus) ou un nom complet (claude-sonnet-4-5). Il est transmis tel quel à claude --model, donc les noms commerciaux comme sonnet-4-5 sont refusés.',
   'settings.ai.claudeCode.modalDescription':
     'Achemine les tâches de chat, agentiques et de raisonnement via votre Claude Code CLI installée localement. Aucune clé API: elle utilise sa propre connexion.',
   'settings.ai.claudeCode.close': 'Fermer',
@@ -4848,6 +4850,22 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} identifiant du modèle',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'Sélectionnez un modèle...',
+  'settings.ai.deploymentNameLabel': 'Nom du déploiement',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
+  'settings.ai.deploymentNameHelp':
+    "Saisissez le nom du déploiement que vous avez défini dans Azure AI Foundry. Ce n'est pas l'identifiant du modèle.",
+  'settings.ai.deploymentNameLegacyHint':
+    "Cette valeur correspond à un identifiant de modèle de base du catalogue du fournisseur. Azure achemine les requêtes par nom de déploiement, confirmez donc qu'il s'agit bien du nom de votre déploiement.",
+  'settings.ai.deploymentNameProviderHint':
+    'Point de terminaison Azure détecté. Définissez le nom de votre déploiement dans le champ du modèle après avoir choisi ce fournisseur.',
+  'settings.ai.chooseModelFromList': 'Choisir dans la liste',
+  'settings.ai.enterModelIdManuallyAction': "Saisir l'identifiant du modèle manuellement",
+  'settings.ai.enterDeploymentNameManuallyAction': 'Saisir le nom du déploiement manuellement',
+  'settings.ai.probeFailedHint':
+    "Nous n'avons pas pu lire la liste des modèles de ce fournisseur. Cette liste ne sert qu'à remplir le menu déroulant : vous pouvez donc quand même ajouter le fournisseur et saisir vous-même le nom du modèle ou du déploiement.",
+  'settings.ai.probeFailedAddAnyway': 'Ajouter sans vérifier',
+  'settings.ai.azureV1EndpointHint':
+    "Pour Azure, utilisez l'URL de base v1 : https://YOUR-RESOURCE.openai.azure.com/openai/v1. L'ancienne URL de ressource ne fournit pas de liste de modèles et attend un autre en-tête d'authentification.",
   'settings.ai.temperatureOverride': 'Température override',
   'settings.ai.temperatureOverrideSlider': 'Override de température (curseur)',
   'settings.ai.temperatureOverrideValue': 'Override de température (valeur)',

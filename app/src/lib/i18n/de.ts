@@ -4747,6 +4747,8 @@ const messages: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': 'Anmeldestatus unbekannt',
   'settings.ai.claudeCode.connectedNotSignedIn': 'Verbunden · nicht angemeldet',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'Eine Modell-ID, die die claude-CLI akzeptiert: ein Alias (sonnet, opus) oder ein vollständiger Name (claude-sonnet-4-5). Sie wird unverändert an claude --model übergeben, Marketingnamen wie sonnet-4-5 werden daher abgelehnt.',
   'settings.ai.claudeCode.modalDescription':
     'Leitet Chat-, Agenten- und Reasoning-Aufgaben über deine lokal installierte Claude Code CLI. Kein API-Schlüssel: sie nutzt die eigene Anmeldung der CLI.',
   'settings.ai.claudeCode.close': 'Schließen',
@@ -4871,6 +4873,22 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} Modell-ID',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'Wählen Sie ein Modell...',
+  'settings.ai.deploymentNameLabel': 'Bereitstellungsname',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
+  'settings.ai.deploymentNameHelp':
+    'Geben Sie den Bereitstellungsnamen ein, den Sie in Azure AI Foundry festgelegt haben. Dies ist nicht die Modell-ID.',
+  'settings.ai.deploymentNameLegacyHint':
+    'Dieser Wert entspricht einer Basismodell-ID aus dem Anbieterkatalog. Azure leitet Anfragen über den Bereitstellungsnamen weiter, bestätigen Sie daher, dass dies der Name Ihrer Bereitstellung ist.',
+  'settings.ai.deploymentNameProviderHint':
+    'Azure-Endpunkt erkannt. Legen Sie Ihren Bereitstellungsnamen im Modellfeld fest, nachdem Sie diesen Anbieter ausgewählt haben.',
+  'settings.ai.chooseModelFromList': 'Aus Liste wählen',
+  'settings.ai.enterModelIdManuallyAction': 'Modell-ID manuell eingeben',
+  'settings.ai.enterDeploymentNameManuallyAction': 'Bereitstellungsnamen manuell eingeben',
+  'settings.ai.probeFailedHint':
+    'Die Modellliste dieses Anbieters konnte nicht gelesen werden. Diese Liste füllt nur das Auswahlmenü, du kannst den Anbieter also trotzdem hinzufügen und den Modell- oder Bereitstellungsnamen selbst eintippen.',
+  'settings.ai.probeFailedAddAnyway': 'Ohne Prüfung hinzufügen',
+  'settings.ai.azureV1EndpointHint':
+    'Verwende für Azure die v1-Basis-URL: https://YOUR-RESOURCE.openai.azure.com/openai/v1. Die ältere Ressourcen-URL liefert keine Modellliste und erwartet einen anderen Auth-Header.',
   'settings.ai.temperatureOverride': 'Temperatur-Override',
   'settings.ai.temperatureOverrideSlider': 'Temperatur-Override (Schieberegler)',
   'settings.ai.temperatureOverrideValue': 'Temperatur-Override (Wert)',

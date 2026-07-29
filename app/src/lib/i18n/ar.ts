@@ -4504,6 +4504,8 @@ const messages: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': 'حالة تسجيل الدخول غير معروفة',
   'settings.ai.claudeCode.connectedNotSignedIn': 'متصل · لم يتم تسجيل الدخول',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'معرّف نموذج تقبله أداة claude: اسم مختصر (sonnet أو opus) أو اسم كامل (claude-sonnet-4-5). يُمرَّر كما هو إلى claude --model، لذا تُرفض الصيغ التسويقية مثل sonnet-4-5.',
   'settings.ai.claudeCode.modalDescription':
     'يوجّه أعباء المحادثة والمهام الوكيلة والاستدلال عبر واجهة Claude Code CLI المثبَّتة محليًا. لا حاجة لمفتاح API: فهي تستخدم تسجيل الدخول الخاص بها.',
   'settings.ai.claudeCode.close': 'إغلاق',
@@ -4623,6 +4625,22 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} معرف النموذج',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'حدد نموذجًا...',
+  'settings.ai.deploymentNameLabel': 'اسم النشر',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
+  'settings.ai.deploymentNameHelp':
+    'أدخل اسم النشر الذي حددته في Azure AI Foundry. هذا ليس معرف النموذج.',
+  'settings.ai.deploymentNameLegacyHint':
+    'تطابق هذه القيمة معرف نموذج أساسي من كتالوج المزود. يوجه Azure الطلبات حسب اسم النشر، لذا تأكد من أن هذا هو الاسم الذي منحته لعملية النشر.',
+  'settings.ai.deploymentNameProviderHint':
+    'تم اكتشاف نقطة نهاية Azure. حدد اسم النشر في حقل النموذج بعد اختيار هذا المزود.',
+  'settings.ai.chooseModelFromList': 'اختر من القائمة',
+  'settings.ai.enterModelIdManuallyAction': 'أدخل معرف النموذج يدويًا',
+  'settings.ai.enterDeploymentNameManuallyAction': 'أدخل اسم النشر يدويًا',
+  'settings.ai.probeFailedHint':
+    'تعذّر علينا قراءة قائمة النماذج لدى هذا المزوّد. تلك القائمة تملأ القائمة المنسدلة فقط، لذا لا يزال بإمكانك إضافة المزوّد وكتابة اسم النموذج أو النشر بنفسك.',
+  'settings.ai.probeFailedAddAnyway': 'أضِف دون التحقق',
+  'settings.ai.azureV1EndpointHint':
+    'مع Azure استخدم عنوان الإصدار v1‏: https://YOUR-RESOURCE.openai.azure.com/openai/v1. لا يوفّر عنوان المورد الأقدم قائمة نماذج ويتوقّع ترويسة مصادقة مختلفة.',
   'settings.ai.temperatureOverride': 'تجاوز درجة الحرارة',
   'settings.ai.temperatureOverrideSlider': 'تجاوز درجة الحرارة (شريط التمرير)',
   'settings.ai.temperatureOverrideValue': 'تجاوز درجة الحرارة (القيمة)',

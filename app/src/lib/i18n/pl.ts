@@ -4685,6 +4685,8 @@ const messages: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': 'Nieznany stan logowania',
   'settings.ai.claudeCode.connectedNotSignedIn': 'Połączono · nie zalogowano',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'Identyfikator modelu akceptowany przez CLI claude: alias (sonnet, opus) albo pełna nazwa (claude-sonnet-4-5). Jest przekazywany bez zmian do claude --model, więc nazwy marketingowe takie jak sonnet-4-5 są odrzucane.',
   'settings.ai.claudeCode.modalDescription':
     'Kieruje zadania czatu, agentowe i wnioskowania przez lokalnie zainstalowane Claude Code CLI. Bez klucza API: używa własnego logowania CLI.',
   'settings.ai.claudeCode.close': 'Zamknij',
@@ -4808,6 +4810,22 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': 'ID modelu {slug}',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'Wybierz model...',
+  'settings.ai.deploymentNameLabel': 'Nazwa wdrożenia',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
+  'settings.ai.deploymentNameHelp':
+    'Wprowadź nazwę wdrożenia ustawioną w Azure AI Foundry. To nie jest identyfikator modelu.',
+  'settings.ai.deploymentNameLegacyHint':
+    'Ta wartość odpowiada identyfikatorowi modelu bazowego z katalogu dostawcy. Azure kieruje żądania według nazwy wdrożenia, więc potwierdź, że jest to nazwa nadana Twojemu wdrożeniu.',
+  'settings.ai.deploymentNameProviderHint':
+    'Wykryto punkt końcowy Azure. Ustaw nazwę wdrożenia w polu modelu po wybraniu tego dostawcy.',
+  'settings.ai.chooseModelFromList': 'Wybierz z listy',
+  'settings.ai.enterModelIdManuallyAction': 'Wpisz identyfikator modelu ręcznie',
+  'settings.ai.enterDeploymentNameManuallyAction': 'Wpisz nazwę wdrożenia ręcznie',
+  'settings.ai.probeFailedHint':
+    'Nie udało się odczytać listy modeli tego dostawcy. Ta lista wypełnia tylko listę rozwijaną, więc nadal możesz dodać dostawcę i samodzielnie wpisać nazwę modelu lub wdrożenia.',
+  'settings.ai.probeFailedAddAnyway': 'Dodaj bez weryfikacji',
+  'settings.ai.azureV1EndpointHint':
+    'W przypadku Azure użyj bazowego adresu v1: https://YOUR-RESOURCE.openai.azure.com/openai/v1. Starszy adres zasobu nie udostępnia listy modeli i oczekuje innego nagłówka uwierzytelniania.',
   'settings.ai.temperatureOverride': 'Nadpisanie temperatury',
   'settings.ai.temperatureOverrideSlider': 'Nadpisanie temperatury (suwak)',
   'settings.ai.temperatureOverrideValue': 'Nadpisanie temperatury (wartość)',

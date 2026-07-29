@@ -4689,6 +4689,8 @@ const messages: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': 'Stato di accesso sconosciuto',
   'settings.ai.claudeCode.connectedNotSignedIn': 'Connesso · accesso non effettuato',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'Un ID di modello accettato dalla CLI claude: un alias (sonnet, opus) o un nome completo (claude-sonnet-4-5). Viene passato invariato a claude --model, quindi i nomi commerciali come sonnet-4-5 vengono rifiutati.',
   'settings.ai.claudeCode.modalDescription':
     'Instrada i carichi di chat, agentici e di ragionamento tramite la tua Claude Code CLI installata localmente. Nessuna chiave API: usa il login della CLI stessa.',
   'settings.ai.claudeCode.close': 'Chiudi',
@@ -4811,6 +4813,23 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} ID modello',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'Seleziona un modello...',
+  'settings.ai.deploymentNameLabel': 'Nome della distribuzione',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
+  'settings.ai.deploymentNameHelp':
+    "Inserisci il nome della distribuzione impostato in Azure AI Foundry. Non è l'ID del modello.",
+  'settings.ai.deploymentNameLegacyHint':
+    'Questo valore corrisponde a un ID di modello base del catalogo del fornitore. Azure instrada le richieste in base al nome della distribuzione, quindi conferma che sia il nome assegnato alla tua distribuzione.',
+  'settings.ai.deploymentNameProviderHint':
+    'Endpoint Azure rilevato. Imposta il nome della distribuzione nel campo del modello dopo aver scelto questo fornitore.',
+  'settings.ai.chooseModelFromList': "Scegli dall'elenco",
+  'settings.ai.enterModelIdManuallyAction': "Inserisci manualmente l'ID del modello",
+  'settings.ai.enterDeploymentNameManuallyAction':
+    'Inserisci manualmente il nome della distribuzione',
+  'settings.ai.probeFailedHint':
+    "Non siamo riusciti a leggere l'elenco dei modelli di questo provider. Quell'elenco riempie solo il menu a tendina, quindi puoi comunque aggiungere il provider e scrivere tu stesso il nome del modello o della distribuzione.",
+  'settings.ai.probeFailedAddAnyway': 'Aggiungi senza verificare',
+  'settings.ai.azureV1EndpointHint':
+    "Per Azure usa l'URL di base v1: https://YOUR-RESOURCE.openai.azure.com/openai/v1. Il vecchio URL della risorsa non espone un elenco di modelli e si aspetta un'intestazione di autenticazione diversa.",
   'settings.ai.temperatureOverride': 'Ignora temperatura',
   'settings.ai.temperatureOverrideSlider': 'Ignora temperatura (cursore)',
   'settings.ai.temperatureOverrideValue': 'Ignora temperatura (valore)',
