@@ -2343,7 +2343,7 @@ impl Tool for ListAgentProfilesTool {
 // list_node_kinds / get_node_kind_contract — queryable DSL schema (F2)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// `list_node_kinds`: enumerate the 13 tinyflows node kinds with a one-line
+/// `list_node_kinds`: enumerate the 14 tinyflows node kinds with a one-line
 /// summary each. The DSL counterpart of `search_tool_catalog` for Composio
 /// actions — a cheap first call to orient before fetching a full contract.
 pub struct ListNodeKindsTool;
@@ -2369,7 +2369,7 @@ impl Tool for ListNodeKindsTool {
     }
 
     fn description(&self) -> &str {
-        "List the 13 tinyflows node kinds you can put in a WorkflowGraph, each with a one-line \
+        "List the 14 tinyflows node kinds you can put in a WorkflowGraph, each with a one-line \
          summary and its config field names. Read-only, no args. Returns a JSON array of { kind, \
          summary, required_config, optional_config }. Call get_node_kind_contract { kind } for the \
          full config-field shapes, ports, an example node, and authoring gotchas of any one kind — \
@@ -2460,7 +2460,7 @@ impl Tool for GetNodeKindContractTool {
             "properties": {
                 "kind": {
                     "type": "string",
-                    "description": "One of the 13 node kinds, e.g. 'tool_call' (from list_node_kinds).",
+                    "description": "One of the 14 node kinds, e.g. 'tool_call' (from list_node_kinds).",
                     "enum": crate::openhuman::flows::NODE_KINDS,
                 }
             },
@@ -2488,7 +2488,7 @@ impl Tool for GetNodeKindContractTool {
                 &contract,
             )?)),
             None => Ok(ToolResult::error(format!(
-                "'{kind}' is not a tinyflows node kind — call list_node_kinds for the 13 valid \
+                "'{kind}' is not a tinyflows node kind — call list_node_kinds for the 14 valid \
                  kinds."
             ))),
         }

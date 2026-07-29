@@ -57,7 +57,7 @@ impl Tool for ProposeWorkflowTool {
          (to_port just stays \"main\"); routing is keyed exclusively on from_port, so a label \
          on to_port instead silently turns the branch into an unconditional fan-out and is a \
          hard reject. Exactly ONE \
-         trigger node is required. The 13 node kinds: trigger (config.trigger_kind: manual | \
+         trigger node is required. The 14 node kinds: trigger (config.trigger_kind: manual | \
          schedule | webhook | app_event | form | chat_message | evaluation | system | \
          execute_by_workflow; schedule needs config.schedule = {kind:\"cron\",expr,tz?} | \
          {kind:\"at\",at} | {kind:\"every\",every_ms}; app_event needs config.toolkit + \
@@ -75,9 +75,12 @@ impl Tool for ProposeWorkflowTool {
          this flow's own memory and the ONLY scope remember/forget may target, \"flows\" is \
          cross-flow READ-ONLY; config.query for recall/search; config.flavour for the flavour \
          slug; config.key/config.value for remember/forget. Place remember AFTER the real \
-         action it records, never before, so a failed action never marks an item as done. \
-         Exact \"process each item once\" dedup is not reliably expressible via semantic \
-         recall — don't improvise a recall/condition dedupe graph). If \
+         action it records, never before, so a failed action never marks an item as done), \
+         dedup (config.key REQUIRED: an \"=expr\" per-item key, e.g. \"=item.id\"; drops an item \
+         whose key was already committed by a PRIOR successful run, else passes it through. Use \
+         this — not a memory recall/condition graph — for exact \"process each item once\": \
+         place it right after the item source and before the action, e.g. split_out → dedup → \
+         …action…). If \
          validation fails, fix the graph and call this tool again."
     }
 
@@ -104,7 +107,8 @@ impl Tool for ProposeWorkflowTool {
                                         "enum": [
                                             "trigger", "agent", "tool_call", "http_request",
                                             "code", "condition", "switch", "merge", "split_out",
-                                            "transform", "output_parser", "sub_workflow", "memory"
+                                            "transform", "output_parser", "sub_workflow", "memory",
+                                            "dedup"
                                         ]
                                     },
                                     "name": { "type": "string", "description": "Human-readable node name." },
@@ -483,6 +487,10 @@ fn config_hint(node: &Node) -> Option<String> {
             };
             Some(truncate_hint(&hint))
         }
+        NodeKind::Dedup => cfg
+            .get("key")
+            .and_then(Value::as_str)
+            .map(|k| truncate_hint(&format!("key: {k}"))),
         NodeKind::Merge | NodeKind::OutputParser | NodeKind::Trigger => None,
     }
 }

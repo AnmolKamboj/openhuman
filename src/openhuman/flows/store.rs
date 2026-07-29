@@ -613,6 +613,25 @@ pub fn kv_set(
     })
 }
 
+/// Deletes one key from the `flow_state` KV table, scoped to `namespace`.
+/// A no-op (not an error) when the key doesn't exist.
+///
+/// Used by `flows::bus::DedupCommitSubscriber` (issue #5263 PR2) to clear a
+/// `dedup` node's `tentative` key set once a run's outcome has been settled —
+/// preferred over `kv_set(.., json!([]))` because an absent key reads back as
+/// `None` (an unambiguous "nothing pending"), matching what a fresh flow that
+/// never ran a dedup node also reads back as.
+pub fn kv_delete(config: &Config, namespace: &str, key: &str) -> Result<()> {
+    with_connection(config, |conn| {
+        conn.execute(
+            "DELETE FROM flow_state WHERE namespace = ?1 AND key = ?2",
+            params![namespace, key],
+        )
+        .context("Failed to delete flow state value")?;
+        Ok(())
+    })
+}
+
 /// Shared column list for every `flow_runs` SELECT — keeps
 /// [`map_flow_run_row`]'s positional `row.get(N)` calls in sync.
 const FLOW_RUN_COLUMNS: &str = "id, flow_id, thread_id, status, started_at, finished_at, \
