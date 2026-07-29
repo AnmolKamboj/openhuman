@@ -1,0 +1,158 @@
+//! OpenHuman — a lightweight agent runtime for human-AI collaboration.
+//!
+//! The `openhuman` module is the heart of the agent-specific logic within the core.
+//! It provides a comprehensive set of features for building and running AI agents,
+//! including:
+//! - **Configuration & Credentials**: Management of user settings and secure storage.
+//! - **Agent Runtime**: Dispatchers, loops, and prompt management for agent execution.
+//! - **Memory & Knowledge**: Systems for persistent storage and retrieval of information.
+//! - **Channels & Providers**: Integrations with external platforms (Telegram, Discord, etc.).
+//! - **Skills & Tools**: Extensible runtime for adding custom capabilities to agents.
+//! - **Security & Monitoring**: Sandboxing, health checks, and audit logging.
+
+// These modules define the public API surface for agent features.
+// Many types/functions are intended for future use or integration with the frontend.
+#![allow(dead_code)]
+
+pub mod about_app;
+pub mod accessibility;
+pub mod agent;
+pub mod agent_experience;
+pub mod agent_meetings;
+pub mod agent_memory;
+pub mod agent_orchestration;
+pub mod agent_registry;
+pub mod agent_tool_policy;
+pub mod agentbox;
+pub mod announcements;
+pub mod app_state;
+pub mod approval;
+pub mod artifacts;
+#[cfg(feature = "voice")]
+pub mod audio_toolkit;
+pub mod billing;
+pub mod channels;
+pub mod composio;
+pub mod config;
+pub mod connectivity;
+pub mod context;
+pub mod cost;
+pub mod credentials;
+pub mod cron;
+pub mod cwd_jail;
+pub mod dashboard;
+pub mod dev_paths;
+pub mod devices;
+pub mod doctor;
+pub mod embeddings;
+pub mod encryption;
+pub mod file_state;
+pub mod file_storage;
+#[cfg(feature = "flows")]
+pub mod flows;
+pub mod harness_init;
+pub mod health;
+pub mod heartbeat;
+// The whole http_host domain is an axum static-directory server, so it is
+// exclusive to the `http-server` feature (#5048). Its only outside reference is
+// the controller-registration push in `core::all`, itself gated in lockstep, so
+// no stub facade is needed — a slim build simply omits the `http_host.*` RPC
+// surface (unknown-method over `/rpc`, absent from `/schema`).
+#[cfg(feature = "http-server")]
+pub mod http_host;
+#[cfg(feature = "media")]
+pub mod image;
+pub mod inference;
+pub mod integrations;
+pub mod javascript;
+pub mod keyring;
+pub mod keyring_consent;
+pub mod learning;
+pub mod mcp_audit;
+pub mod mcp_client;
+pub mod mcp_registry;
+pub mod mcp_server;
+#[cfg(feature = "media")]
+pub mod media_generation;
+pub mod medulla;
+#[cfg(feature = "medulla")]
+pub mod medulla_chat;
+#[cfg(feature = "meet")]
+pub mod meet;
+pub mod meet_agent;
+pub mod memory;
+pub mod memory_conversations;
+pub mod memory_diff;
+pub mod memory_goals;
+pub mod memory_queue;
+pub mod memory_search;
+pub mod memory_sources;
+pub mod memory_store;
+pub mod memory_sync;
+pub mod memory_tools;
+pub mod memory_tree;
+pub mod migration;
+pub mod migrations;
+pub mod monitor;
+pub mod notifications;
+pub mod orchestration;
+pub mod overlay;
+pub mod people;
+pub mod plan_review;
+pub mod proc_metrics;
+pub mod profiles;
+pub mod prompt_injection;
+pub mod provider_surfaces;
+pub mod recall_calendar;
+pub mod referral;
+#[cfg(feature = "flows")]
+pub mod rhai_workflows;
+pub mod runtime_node;
+pub mod runtime_pool;
+pub mod runtime_python;
+pub mod runtime_python_server;
+pub mod sandbox;
+pub mod scheduler_gate;
+pub mod search;
+pub mod security;
+pub mod service;
+pub mod session_db;
+pub mod session_import;
+pub mod skill_registry;
+pub mod skill_runtime;
+pub mod skills;
+pub mod socket;
+pub mod startup;
+pub mod subconscious;
+pub mod subconscious_triggers;
+pub mod task_sources;
+pub mod team;
+#[cfg(feature = "e2e-test-support")]
+pub mod test_support;
+pub mod thread_goals;
+pub mod threads;
+pub mod tinyagents;
+pub mod tinycortex;
+#[cfg(feature = "flows")]
+pub mod tinyflows;
+pub mod tinyplace;
+pub mod tls;
+pub mod todos;
+pub mod tokenjuice;
+pub mod tool_registry;
+pub mod tool_status;
+pub mod tool_timeout;
+pub mod tools;
+pub mod update;
+pub mod util;
+pub mod voice;
+pub mod wallet;
+pub mod web3;
+pub mod web_chat;
+pub mod webhooks;
+#[cfg(feature = "channels")]
+pub mod webview_accounts;
+#[cfg(feature = "channels")]
+pub mod whatsapp_data;
+pub mod workspace;
+pub mod x402;
