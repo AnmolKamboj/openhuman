@@ -3444,6 +3444,7 @@ pub async fn flows_duplicate(config: &Config, id: &str) -> Result<RpcOutcome<Flo
         store::insert_duplicate_flow(config, &source, new_name).map_err(|e| e.to_string())?;
     // Intentionally NO bind_trigger: a duplicate is disabled and must stay
     // inert (no schedule/trigger dispatch) until the user enables it.
+    publish_flow_changed(&flow.id, "created", "system");
     Ok(RpcOutcome::single_log(
         flow,
         format!("flow duplicated from {id}"),
@@ -3737,6 +3738,14 @@ fn publish_flow_changed(flow_id: &str, kind: &str, actor: &str) {
         kind: kind.to_string(),
         actor: actor.to_string(),
     });
+    // Re-advertise the workflow set to the medulla backend. This is the single
+    // funnel every store mutation passes through (create / duplicate / update /
+    // delete / enable), and the backend replaces a socket's whole entry on each
+    // registration — so re-sending here is what keeps a remote orchestrator from
+    // reasoning about a set that no longer exists. A no-op (one debug log, no
+    // task spawned) when no bridge is installed, which is every build that is
+    // not talking to a backend, and every test.
+    crate::openhuman::socket::medulla::workflows::emit_register_workflows();
 }
 
 /// Maps a store-level [`FlowUpdateError`](store::FlowUpdateError) to the RPC
@@ -3810,6 +3819,54 @@ pub async fn flows_update(
     require_approval: Option<bool>,
     expected_version: Option<String>,
 ) -> Result<RpcOutcome<Flow>, String> {
+    flows_update_inner(
+        config,
+        id,
+        name,
+        graph_json,
+        require_approval,
+        expected_version,
+        false,
+    )
+    .await
+}
+
+/// Update a flow while atomically disarming any automatic-trigger graph.
+///
+/// Remote authoring surfaces use this variant so revising a schedule,
+/// app-event, or webhook flow never preserves a prior local opt-in to run the
+/// old graph. The same guarded store write persists the graph and
+/// `enabled=false`, so no trigger can observe the revised graph armed between
+/// two writes.
+pub(crate) async fn flows_update_disarming_automatic(
+    config: &Config,
+    id: &str,
+    name: Option<String>,
+    graph_json: Option<Value>,
+    require_approval: Option<bool>,
+    expected_version: Option<String>,
+) -> Result<RpcOutcome<Flow>, String> {
+    flows_update_inner(
+        config,
+        id,
+        name,
+        graph_json,
+        require_approval,
+        expected_version,
+        true,
+    )
+    .await
+}
+
+async fn flows_update_inner(
+    config: &Config,
+    id: &str,
+    name: Option<String>,
+    graph_json: Option<Value>,
+    require_approval: Option<bool>,
+    expected_version: Option<String>,
+    disarm_automatic: bool,
+) -> Result<RpcOutcome<Flow>, String> {
     let existing = store::get_flow(config, id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("flow '{id}' not found"))?;
@@ -3834,13 +3891,15 @@ pub async fn flows_update(
     let was_auto = trigger_is_automatic(&existing.graph);
     let now_auto = trigger_is_automatic(&graph);
     let is_manual_to_auto_transition = now_auto && !was_auto;
-    let enabled_override = is_manual_to_auto_transition.then_some(false);
+    let forced_automatic_disarm = disarm_automatic && now_auto;
+    let enabled_override =
+        (is_manual_to_auto_transition || forced_automatic_disarm).then_some(false);
     // Best-effort flag for the info log / result message below: whether the
     // flow *appeared* live going into this update. Not used for the
     // override decision itself (that's unconditional, see above) — only to
     // avoid telling the user "flow was auto-disabled" when it was already
     // disabled going in.
-    let should_disarm = is_manual_to_auto_transition && existing.enabled;
+    let should_disarm = enabled_override == Some(false) && existing.enabled;
     tracing::debug!(
         target: "flows",
         flow_id = %id,
@@ -3848,6 +3907,7 @@ pub async fn flows_update(
         now_auto,
         currently_enabled = existing.enabled,
         is_manual_to_auto_transition,
+        forced_automatic_disarm,
         should_disarm,
         "[flows] flows_update: auto-trigger disarm decision inputs"
     );
@@ -3896,7 +3956,7 @@ pub async fn flows_update(
         tracing::info!(
             target: "flows",
             flow_id = %id,
-            "[flows] flows_update: auto-disabled — graph changed manual→automatic trigger on an enabled flow"
+            "[flows] flows_update: auto-disabled automatic-trigger graph pending explicit re-arm"
         );
     }
 
@@ -3914,12 +3974,16 @@ pub async fn flows_update(
     publish_flow_changed(id, "updated", "system");
     let mut logs = vec![format!("flow updated: {id}")];
     if should_disarm {
-        logs.push(
+        let reason = if forced_automatic_disarm {
+            "Flow was auto-disabled because this authoring surface revised an automatic trigger \
+             (schedule / app_event / webhook). Enable it explicitly (flows_set_enabled) once \
+             you've reviewed the revision."
+        } else {
             "Flow was auto-disabled because its trigger changed from manual to automatic \
              (schedule / app_event / webhook). Enable it explicitly (flows_set_enabled) once \
              you've reviewed the new trigger."
-                .to_string(),
-        );
+        };
+        logs.push(reason.to_string());
     }
     if side_effect_forced {
         logs.push(
@@ -6166,6 +6230,21 @@ pub async fn flows_build(
     req: crate::openhuman::flows::agents::workflow_builder::builder_prompt::BuilderRequest,
     stream: Option<FlowStreamTarget>,
 ) -> Result<RpcOutcome<Value>, String> {
+    flows_build_with_extra_hidden_tools(config, req, stream, &[]).await
+}
+
+/// [`flows_build`] with caller-specific tools removed in addition to the
+/// standard streaming/headless safety lists.
+///
+/// This is intentionally crate-private: product surfaces use [`flows_build`]'s
+/// normal builder belt. Host integrations that add their own persistence
+/// boundary can hide tools that would bypass that boundary.
+pub(crate) async fn flows_build_with_extra_hidden_tools(
+    config: &Config,
+    req: crate::openhuman::flows::agents::workflow_builder::builder_prompt::BuilderRequest,
+    stream: Option<FlowStreamTarget>,
+    extra_hidden_tools: &[&str],
+) -> Result<RpcOutcome<Value>, String> {
     use crate::openhuman::agent::Agent;
     use crate::openhuman::flows::agents::workflow_builder::builder_prompt::render_prompt;
 
@@ -6224,6 +6303,14 @@ pub async fn flows_build(
             );
         }
         restrict_builder_toolset(&mut agent);
+    }
+    if !extra_hidden_tools.is_empty() {
+        tracing::debug!(
+            target: "flows",
+            hidden = ?extra_hidden_tools,
+            "[flows] flows_build: applying caller-specific hidden tools"
+        );
+        agent.hide_tools(extra_hidden_tools);
     }
 
     // When a chat thread is attached (the copilot pane), stream the builder turn
