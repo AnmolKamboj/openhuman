@@ -332,6 +332,29 @@ const KNOWN_MODEL_PRICING: &[ModelPrice] = &[
         output_per_mtok_usd: 0.10,
         context_window: 128_000,
     },
+    // ── MiniMax (cache read = 0.2× input, published) ──────────────────────────
+    // MiniMax exposes a full OpenAI-compatible surface at its `/v1` endpoint
+    // (see `BuiltinCloudProvider` "minimax"). BYOK spend is addressed by the
+    // real model id (`minimax/minimax-m3`, `minimax/minimax-m2.7`), so the
+    // cost catalog must price both current models or BYOK turns record a $0
+    // estimate. M3 publishes a 1M context window and accepts image/video
+    // input; M2.7 is text-only at 204800 tokens.
+    ModelPrice {
+        provider: "minimax",
+        model_id: "minimax-m3",
+        input_per_mtok_usd: 0.60,
+        cached_input_per_mtok_usd: 0.12,
+        output_per_mtok_usd: 2.40,
+        context_window: 1_000_000,
+    },
+    ModelPrice {
+        provider: "minimax",
+        model_id: "minimax-m2.7",
+        input_per_mtok_usd: 0.30,
+        cached_input_per_mtok_usd: 0.06,
+        output_per_mtok_usd: 1.20,
+        context_window: 204_800,
+    },
 ];
 
 /// Normalise a model string for matching: lower-case, trim, drop a trailing
@@ -444,7 +467,7 @@ pub fn default_registry_entries() -> Vec<ModelRegistryEntry> {
             cost_per_1m_cached_input: p.cached_input_per_mtok_usd,
             cost_per_1m_output: p.output_per_mtok_usd,
             context_window: p.context_window,
-            vision: false,
+            vision: model_accepts_image_input(p.model_id),
         })
         .collect()
 }
@@ -453,13 +476,32 @@ fn per_token(rate_per_mtok: f64) -> Option<f64> {
     (rate_per_mtok > 0.0).then_some(rate_per_mtok / 1_000_000.0)
 }
 
+/// Models that publish image (and, for some, video) input alongside text. The
+/// cost catalog is otherwise text-only — this is the one place a static row
+/// records a vision input capability, because BYOK providers cannot be
+/// introspected per-model at runtime the way the managed backend can. A row
+/// listed here is projected into [`ModelRegistryEntry::vision`] (and the
+/// TinyAgents catalog `vision` capability) so the resolve / sub-agent gates
+/// treat it as image-capable.
+const VISION_INPUT_MODELS: &[&str] = &["minimax-m3"];
+
+/// Whether a catalogued model id accepts image input, per the static
+/// [`VISION_INPUT_MODELS`] list.
+pub fn model_accepts_image_input(model_id: &str) -> bool {
+    VISION_INPUT_MODELS.contains(&model_id)
+}
+
 /// Project one OpenHuman catalog row into a TinyAgents model-catalog entry.
 ///
 /// This is intentionally a pricing/window projection only. OpenHuman still
-/// derives live runtime capability flags (tools, vision, streaming) from the
+/// derives most live runtime capability flags (tools, streaming) from the
 /// provider adapter at construction time, because the static cost catalog does
-/// not yet encode those fields authoritatively for every provider/model.
+/// not yet encode those fields authoritatively for every provider/model. The
+/// exception is image input: a row in [`VISION_INPUT_MODELS`] is projected as
+/// vision-capable, since the BYOK OpenAI-compatible path cannot derive that
+/// flag at runtime.
 pub fn tinyagents_catalog_entry(price: &ModelPrice) -> tinyagents::registry::ModelCatalogEntry {
+    let vision = model_accepts_image_input(price.model_id);
     tinyagents::registry::ModelCatalogEntry {
         provider: price.provider.to_string(),
         model_id: price.model_id.to_string(),
@@ -478,6 +520,7 @@ pub fn tinyagents_catalog_entry(price: &ModelPrice) -> tinyagents::registry::Mod
         },
         capabilities: tinyagents::registry::ModelCapabilities {
             prompt_caching: price.cached_input_per_mtok_usd > 0.0,
+            vision,
             ..tinyagents::registry::ModelCapabilities::default()
         },
         source: TINYAGENTS_CATALOG_SOURCE.to_string(),
@@ -903,6 +946,70 @@ mod tests {
                 p.model_id
             );
         }
+    }
+
+    // ── MiniMax M3 / M2.7 BYOK pricing rows ──────────────────────────────────
+
+    #[test]
+    fn minimax_models_resolve_byok_ids() {
+        // The runtime addresses MiniMax BYOK by its real model id, including a
+        // `vendor/` segment (`minimax/minimax-m3`); the vendor prefix is stripped
+        // before lookup. The mixed-case vendor id (`MiniMax-M3`) must also
+        // resolve (case-insensitive normalization).
+        let m3 = lookup("minimax/minimax-m3").expect("minimax-m3 row");
+        assert_eq!(m3.provider, "minimax");
+        assert_eq!(m3.model_id, "minimax-m3");
+        assert_eq!(lookup("MiniMax-M3").unwrap().model_id, "minimax-m3");
+
+        let m27 = lookup("minimax/minimax-m2.7").expect("minimax-m2.7 row");
+        assert_eq!(m27.provider, "minimax");
+        assert_eq!(m27.model_id, "minimax-m2.7");
+        assert_eq!(lookup("MiniMax-M2.7").unwrap().model_id, "minimax-m2.7");
+    }
+
+    #[test]
+    fn minimax_m3_prices_and_window() {
+        // M3: $0.60/$2.40 in/out per MTok, $0.12 cached read, 1M context.
+        let m3 = lookup("minimax-m3").unwrap();
+        assert_eq!(m3.input_per_mtok_usd, 0.60);
+        assert_eq!(m3.output_per_mtok_usd, 2.40);
+        assert_eq!(m3.cached_input_per_mtok_usd, 0.12);
+        assert_eq!(m3.context_window, 1_000_000);
+    }
+
+    #[test]
+    fn minimax_m27_prices_and_window() {
+        // M2.7: $0.30/$1.20 in/out per MTok, $0.06 cached read, 204800 context.
+        let m27 = lookup("minimax-m2.7").unwrap();
+        assert_eq!(m27.input_per_mtok_usd, 0.30);
+        assert_eq!(m27.output_per_mtok_usd, 1.20);
+        assert_eq!(m27.cached_input_per_mtok_usd, 0.06);
+        assert_eq!(m27.context_window, 204_800);
+    }
+
+    #[test]
+    fn minimax_m3_advertises_image_input_but_m27_does_not() {
+        // M3 publishes image (and video) input; M2.7 is text-only. The catalog
+        // records only the image-input capability flag for the BYOK path.
+        assert!(model_accepts_image_input("minimax-m3"));
+        assert!(!model_accepts_image_input("minimax-m2.7"));
+        // Projected into the unified catalog / registry, the vision flag tracks
+        // the same list.
+        let m3 = tinyagents_catalog_entry_for_model("minimax-m3").unwrap();
+        assert!(m3.capabilities.vision);
+        let m27 = tinyagents_catalog_entry_for_model("minimax-m2.7").unwrap();
+        assert!(!m27.capabilities.vision);
+        let entries = default_registry_entries();
+        let e_m3 = entries
+            .iter()
+            .find(|e| e.id == "minimax-m3")
+            .expect("m3 registry entry");
+        assert!(e_m3.vision);
+        let e_m27 = entries
+            .iter()
+            .find(|e| e.id == "minimax-m2.7")
+            .expect("m27 registry entry");
+        assert!(!e_m27.vision);
     }
 
     // ── estimate_cost_usd (issue #4249, Phase 5 — the $0-cost turn fix) ──────
