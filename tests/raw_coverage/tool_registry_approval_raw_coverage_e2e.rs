@@ -18,11 +18,11 @@ use tempfile::{tempdir, TempDir};
 use openhuman_core::core::auth::{init_rpc_token, CORE_TOKEN_ENV_VAR};
 use openhuman_core::core::jsonrpc::build_core_http_router;
 use openhuman_core::openhuman::agent::turn_origin::{self, AgentTurnOrigin};
-use openhuman_core::openhuman::approval::gate::{
+use openhuman_core::openhuman::security::approval::gate::{
     parse_approval_reply, ApprovalChatContext, ApprovalGate, APPROVAL_CHAT_CONTEXT,
 };
-use openhuman_core::openhuman::approval::store as approval_store;
-use openhuman_core::openhuman::approval::{
+use openhuman_core::openhuman::security::approval::store as approval_store;
+use openhuman_core::openhuman::security::approval::{
     all_approval_controller_schemas, all_approval_registered_controllers, redact_args,
     summarize_action, ApprovalDecision, ExecutionOutcome, GateOutcome, PendingApproval,
 };
@@ -30,10 +30,10 @@ use openhuman_core::openhuman::config::schema::{
     CapabilityProviderConfig, CapabilityProviderTrustState,
 };
 use openhuman_core::openhuman::config::Config;
-use openhuman_core::openhuman::mcp_registry::connections;
-use openhuman_core::openhuman::mcp_registry::types::{CommandKind, InstalledServer, Transport};
+use openhuman_core::openhuman::mcp::registry::connections;
+use openhuman_core::openhuman::mcp::registry::types::{CommandKind, InstalledServer, Transport};
 use openhuman_core::openhuman::security::{live_policy, SecurityPolicy};
-use openhuman_core::openhuman::tool_registry::{
+use openhuman_core::openhuman::tools::registry::{
     all_tool_registry_controller_schemas, all_tool_registry_registered_controllers,
     capability_provider_by_id, capability_provider_diagnostics, capability_provider_registry,
     denials, get_tool, is_capability_provider_trusted_enabled, list_capability_providers,
@@ -595,7 +595,7 @@ fn tool_registry_diagnostics_for_config_reports_audit_success_and_policy_shape()
     };
 
     let diagnostics =
-        openhuman_core::openhuman::tool_registry::ops::diagnostics_for_config(&config)
+        openhuman_core::openhuman::tools::registry::ops::diagnostics_for_config(&config)
             .into_cli_compatible_json()
             .expect("diagnostics json");
     assert!(diagnostics
@@ -750,7 +750,7 @@ async fn tool_registry_diagnostics_reports_config_and_audit_store_failures() {
     std::fs::write(&workspace_file, "not a directory").expect("workspace sentinel");
     let _workspace_guard = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", &workspace_file);
 
-    let err = openhuman_core::openhuman::tool_registry::ops::diagnostics()
+    let err = openhuman_core::openhuman::tools::registry::ops::diagnostics()
         .await
         .expect_err("workspace file should prevent config load");
     assert!(err.contains("failed to load config for tool registry diagnostics"));
@@ -760,7 +760,7 @@ async fn tool_registry_diagnostics_reports_config_and_audit_store_failures() {
         ..Config::default()
     };
     let diagnostics =
-        openhuman_core::openhuman::tool_registry::ops::diagnostics_for_config(&broken_audit_config);
+        openhuman_core::openhuman::tools::registry::ops::diagnostics_for_config(&broken_audit_config);
     assert!(diagnostics.value.mcp_write_audit.enabled);
     assert_eq!(diagnostics.value.mcp_write_audit.recent_rows, None);
     assert!(diagnostics
@@ -1066,7 +1066,7 @@ async fn approval_schema_handlers_validate_params_and_surface_empty_gate_state()
             "preauthorize_flow"
         ]
     );
-    let unknown = openhuman_core::openhuman::approval::schemas::schemas("missing");
+    let unknown = openhuman_core::openhuman::security::approval::schemas::schemas("missing");
     assert_eq!(unknown.namespace, "approval");
     assert_eq!(unknown.function, "unknown");
     assert_eq!(unknown.outputs[0].name, "error");
@@ -1304,7 +1304,7 @@ async fn approval_rpc_decision_paths_persist_always_allow_and_recent_audit() {
     let (outcome, approved_id) = approval_task.await.expect("approval task");
     assert!(matches!(
         outcome,
-        openhuman_core::openhuman::approval::GateOutcome::Allow
+        openhuman_core::openhuman::security::approval::GateOutcome::Allow
     ));
     assert_eq!(approved_id.as_deref(), Some(request_id.as_str()));
     gate.record_execution(
@@ -1369,7 +1369,7 @@ async fn approval_rpc_decision_paths_persist_always_allow_and_recent_audit() {
         )
         .await;
     match &no_chat.0 {
-        openhuman_core::openhuman::approval::GateOutcome::Deny { reason } => {
+        openhuman_core::openhuman::security::approval::GateOutcome::Deny { reason } => {
             assert!(
                 reason.contains("no origin label"),
                 "unlabelled call should be denied for missing origin: {reason}"
@@ -1420,7 +1420,7 @@ async fn approval_rpc_decision_paths_persist_always_allow_and_recent_audit() {
     .await;
     assert!(matches!(
         auto_approved.0,
-        openhuman_core::openhuman::approval::GateOutcome::Allow
+        openhuman_core::openhuman::security::approval::GateOutcome::Allow
     ));
     assert_eq!(
         auto_approved.1, None,
@@ -1525,7 +1525,7 @@ async fn approval_rpc_decision_paths_persist_always_allow_and_recent_audit() {
     );
     let (deny_outcome, deny_approved_id) = deny_task.await.expect("deny task");
     match deny_outcome {
-        openhuman_core::openhuman::approval::GateOutcome::Deny { reason } => {
+        openhuman_core::openhuman::security::approval::GateOutcome::Deny { reason } => {
             assert!(reason.contains("User denied"));
         }
         other => panic!("expected deny outcome, got {other:?}"),

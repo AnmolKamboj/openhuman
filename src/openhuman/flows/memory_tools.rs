@@ -77,7 +77,7 @@ fn trusted_flow_id() -> Option<String> {
 ///
 /// **Deviates from the originally specced `"flow:"` (colon) separator —
 /// deliberately.** The `Memory` trait's `UnifiedMemory` backend
-/// (`src/openhuman/memory_store/`) is internally inconsistent about
+/// (`src/openhuman/memory/store/`) is internally inconsistent about
 /// namespace sanitization: `store_with_taint`/`recall`/`list`/
 /// `MemoryClient::clear_namespace` all route through
 /// `UnifiedMemory::sanitize_namespace`
@@ -136,7 +136,7 @@ const FLOW_MEMORY_NAMESPACE_LISTED_PREFIX: &str = FLOW_MEMORY_NAMESPACE_PREFIX;
 ///
 /// Shared by [`FlowMemoryRecallTool`]'s `scope: "flows"` arm and the
 /// tinyflows `memory` node's `scope: "flows"` (`OpenHumanMemory::recall` in
-/// `crate::openhuman::tinyflows::memory_adapter`) — both surfaces must see
+/// `crate::openhuman::flows::tinyflows::memory_adapter`) — both surfaces must see
 /// identical cross-flow results, so this is the one place that walks
 /// [`Memory::namespace_summaries`] and filters to `flow_*`. A per-namespace
 /// recall failure is logged and skipped rather than failing the whole call,
@@ -474,7 +474,7 @@ impl Tool for FlowMemoryRememberTool {
             return Ok(ToolResult::error("key cannot be empty".to_string()));
         }
 
-        if crate::openhuman::memory_store::safety::has_likely_secret(content) {
+        if crate::openhuman::memory::store::safety::has_likely_secret(content) {
             log::warn!(
                 "[flows:memory:safety] flow_memory_remember rejected secret-like content flow_id_chars={} key_chars={} content_chars={}",
                 flow_id.chars().count(),
@@ -517,8 +517,8 @@ impl Tool for FlowMemoryRememberTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openhuman::embeddings::NoopEmbedding;
-    use crate::openhuman::memory_store::UnifiedMemory;
+    use crate::openhuman::inference::embeddings::NoopEmbedding;
+    use crate::openhuman::memory::store::UnifiedMemory;
     use crate::openhuman::security::AutonomyLevel;
     use tempfile::TempDir;
 

@@ -323,7 +323,7 @@ pub enum ExpectedErrorKind {
     /// openhuman@0.57.53, `Cohere embed API error (403 Forbidden):
     /// <!doctype html>…<title>403</title>…`).
     UpstreamEdgeBlock,
-    /// `approval_decide` (`src/openhuman/approval/rpc.rs`) resolved a request_id
+    /// `approval_decide` (`src/openhuman/security/approval/rpc.rs`) resolved a request_id
     /// whose pending row was **already decided, lazily expired, or superseded**
     /// — `store::decide` updated 0 rows because `decided_at` was already set,
     /// and `store::get_decision` confirms a persisted decision exists. The
@@ -343,9 +343,9 @@ pub enum ExpectedErrorKind {
     ApprovalNoPendingRace,
     /// A remote MCP server answered the connect handshake with HTTP 401 — it
     /// needs OAuth sign-in, not a code fix. `McpHttpClient::read_response`
-    /// (`src/openhuman/mcp_client/client.rs`) raises the typed
-    /// [`crate::openhuman::mcp_client::McpUnauthorizedError`], and
-    /// `mcp_registry::connections::connect` already classifies it and stores a
+    /// (`src/openhuman/mcp/http_client/client.rs`) raises the typed
+    /// [`crate::openhuman::mcp::http_client::McpUnauthorizedError`], and
+    /// `mcp::registry::connections::connect` already classifies it and stores a
     /// `needs_auth` flag so the UI prompts the user to authenticate (the
     /// `needs_auth` UX shipped in #3733 / #3719). But `mcp_clients_connect`
     /// still returns `Err(e.to_string())`, which propagates to the RPC
@@ -371,7 +371,7 @@ pub enum ExpectedErrorKind {
     ///
     /// The PII half of the family no longer rejects at all: those identifiers
     /// are canonicalized on write and on read (see
-    /// [`crate::openhuman::memory_store::safety::canonical_identifier`]). This
+    /// [`crate::openhuman::memory::store::safety::canonical_identifier`]). This
     /// arm covers the rejections that remain deliberate — a secret must never
     /// be persisted as a storage address (#4947), and an empty key has no row
     /// to address — and keeps their retry volume out of the error stream.
@@ -887,7 +887,7 @@ fn is_embedding_backend_auth_failure(lower: &str) -> bool {
 /// Detect a custom embeddings endpoint that exposes **no embeddings API** —
 /// the `OpenAiEmbedding` client POSTed `/embeddings` and the host answered
 /// `404 Not Found` (route absent) or `405 Method Not Allowed`. Canonical wire
-/// shape from `src/openhuman/embeddings/openai.rs`:
+/// shape from `src/openhuman/inference/embeddings/openai.rs`:
 ///
 /// ```text
 /// Embedding API error (404 Not Found): <body>
@@ -915,7 +915,7 @@ pub(crate) fn is_embedding_endpoint_absent(lower: &str) -> bool {
 /// Detect a custom/cloud embeddings endpoint that IS an embeddings API but
 /// **rejected the configured model id** — the user pasted a non-embedding
 /// (chat/reasoning) model into the embeddings model field. Canonical wire shape
-/// from `src/openhuman/embeddings/openai.rs` (TAURI-RUST-9SK, ~2205 events):
+/// from `src/openhuman/inference/embeddings/openai.rs` (TAURI-RUST-9SK, ~2205 events):
 ///
 /// ```text
 /// Embedding API error (400 Bad Request): {"error":{"message":"Model nvidia/nemotron-3-super-120b-a12b does not exist","code":400}}
@@ -1001,7 +1001,7 @@ fn is_memory_store_breaker_open(lower: &str) -> bool {
 /// - `"Embedding API error (401 Unauthorized): {…\"error\":\"Invalid token\"…}"`
 ///   — TAURI-RUST-4K5 (~118 events, escalating on 0.56.0). Same OpenHuman
 ///   backend session-expired envelope as 4P0, but the embedding client at
-///   `src/openhuman/embeddings/openai.rs:139` wraps it with the
+///   `src/openhuman/inference/embeddings/openai.rs:139` wraps it with the
 ///   `"Embedding API error"` prefix instead of `"OpenHuman API error"`.
 ///   Uses the same conjunctive-anchor pattern so BYO-key embedding 401s
 ///   from third-party providers (OpenAI / Voyage / Cohere) still escalate
@@ -1044,7 +1044,7 @@ pub fn is_session_expired_message(msg: &str) -> bool {
         || (msg.contains("OpenHuman API error (401")
             && msg.contains("\"error\":\"Invalid token\""))
         // TAURI-RUST-4K5 — same OpenHuman backend "Invalid token" envelope
-        // wrapped by `src/openhuman/embeddings/openai.rs:139` with the
+        // wrapped by `src/openhuman/inference/embeddings/openai.rs:139` with the
         // `"Embedding API error"` prefix instead of `"OpenHuman API error"`.
         // Same conjunctive-anchor pattern as 4P0: the embedding-scoped
         // prefix gates the match so a third-party BYO-key embedding 401
@@ -1084,7 +1084,7 @@ pub fn is_session_expired_message(msg: &str) -> bool {
 
 /// Detect a remote MCP server's connect-time 401 — the user must sign in to
 /// that server (OAuth), not a code defect. Anchored on the canonical
-/// [`crate::openhuman::mcp_client::McpUnauthorizedError`] `Display`
+/// [`crate::openhuman::mcp::http_client::McpUnauthorizedError`] `Display`
 /// body, which renders as `"MCP unauthorized for \`<endpoint>\` (HTTP 401…)"`.
 ///
 /// Conjunctive match — both anchors must hit (input already lower-cased):
@@ -1569,7 +1569,7 @@ fn is_upstream_edge_block_message(lower: &str) -> bool {
 ///
 /// The canonical wire format from
 /// [`crate::openhuman::integrations::client::IntegrationClient::post`] / `get`
-/// and [`crate::openhuman::composio::client::ComposioClient`] is:
+/// and [`crate::openhuman::integrations::composio::client::ComposioClient`] is:
 /// `"Backend returned <status> <reason> for <METHOD> <url>: <detail>"` — e.g.
 /// `"Backend returned 400 Bad Request for POST https://api.tinyhumans.ai/agent-integrations/composio/authorize: Composio authorization failed: 400 …"`
 /// (OPENHUMAN-TAURI-BC: user submitted SharePoint authorize without filling in
@@ -1590,7 +1590,7 @@ fn is_upstream_edge_block_message(lower: &str) -> bool {
 /// 5xx is intentionally **not** classified here — server-side failures from
 /// our backend are real bugs that should reach Sentry. The transient
 /// 502/503/504 deduplication is handled by the threshold logic in callers
-/// (see e.g. `openhuman::socket::ws_loop::FAIL_ESCALATE_THRESHOLD`).
+/// (see e.g. `openhuman::platform::socket::ws_loop::FAIL_ESCALATE_THRESHOLD`).
 fn is_backend_user_error_message(lower: &str) -> bool {
     let Some(rest) = lower.split_once("backend returned ").map(|(_, r)| r) else {
         return false;
@@ -1722,7 +1722,7 @@ fn is_provider_user_state_message(lower: &str) -> bool {
     // personal Composio v3 tenant rejected with a 401 because the stored
     // API key is invalid / revoked / has the wrong prefix. The canonical
     // wire shape rendered by
-    // `src/openhuman/composio/tools/impl/network/composio.rs::response_error`
+    // `src/openhuman/integrations/composio/tools/impl/network/composio.rs::response_error`
     // and the various direct-mode op wrappers is:
     //
     //   `[composio-direct] list_connections failed: Composio v3
@@ -1771,7 +1771,9 @@ fn is_provider_user_state_message(lower: &str) -> bool {
     // anchor const (not a copied literal) and coupled to the typed source by
     // `demotes_composio_set_key_invalid_key_rejection` so a reword that drops the
     // phrase fails CI instead of silently re-opening the leak.
-    if lower.contains(crate::openhuman::composio::direct_auth::COMPOSIO_INVALID_API_KEY_ANCHOR) {
+    if lower.contains(
+        crate::openhuman::integrations::composio::direct_auth::COMPOSIO_INVALID_API_KEY_ANCHOR,
+    ) {
         return true;
     }
 
@@ -2071,7 +2073,7 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
         }
         ExpectedErrorKind::McpServerNeedsAuth => {
             // A remote MCP server rejected the connect handshake with HTTP 401:
-            // it needs OAuth sign-in. `mcp_registry::connections::connect`
+            // it needs OAuth sign-in. `mcp::registry::connections::connect`
             // already stores a `needs_auth` flag and the UI prompts the user to
             // authenticate (#3733 / #3719) — but `mcp_clients_connect` re-raises
             // the stringified error to the RPC dispatcher, where it was being
@@ -2853,7 +2855,7 @@ pub fn is_session_expired_event(event: &sentry::protocol::Event<'_>) -> bool {
 /// RPC failures whose message body has been collapsed to just the bare
 /// HTTP method + path (`"GET /auth/me"`) with no underlying transport error.
 ///
-/// Pairs with the primary fix at `openhuman::credentials::ops::auth_get_me`,
+/// Pairs with the primary fix at `openhuman::security::credentials::ops::auth_get_me`,
 /// which replaced `e.to_string()` with `format!("{e:#}")` so the full
 /// `anyhow` context chain reaches the rpc dispatcher. Before that
 /// fix, every transient network failure under this RPC — reqwest timeout,
@@ -3023,7 +3025,7 @@ pub fn is_skill_install_user_fetch_failure(event: &sentry::protocol::Event<'_>) 
 /// [`crate::openhuman::integrations::IntegrationClient`] HTTP wrapper that
 /// fronts every backend-proxied integration) and `domain="composio"` (errors
 /// reported from the Composio op layer in
-/// [`crate::openhuman::composio::ops`]). Composio routes through the same
+/// [`crate::openhuman::integrations::composio::ops`]). Composio routes through the same
 /// `IntegrationClient`, so the failure shape is identical — but op-level
 /// reporters that wrap and re-emit those errors with their own domain tag
 /// would otherwise escape the integrations-scoped filter (OPENHUMAN-TAURI-35
@@ -3127,7 +3129,7 @@ pub fn is_transient_message_failure(msg: &str) -> bool {
 }
 
 /// Sentinel prefix stamped on a `/teams/me/usage` probe error that the
-/// failure-backoff in `crate::openhuman::team::ops` short-circuited — i.e. an
+/// failure-backoff in `crate::openhuman::hosted::team::ops` short-circuited — i.e. an
 /// already-reported repeat within the backoff window. The FIRST failure of a
 /// streak propagates its real error string and reports normally; only the
 /// suppressed repeats carry this prefix so the JSON-RPC boundary can demote
@@ -3776,7 +3778,7 @@ mod tests {
     /// the dispatcher.
     #[test]
     fn classifies_mcp_connect_401_as_needs_auth() {
-        use crate::openhuman::mcp_client::McpUnauthorizedError;
+        use crate::openhuman::mcp::http_client::McpUnauthorizedError;
 
         let bare = McpUnauthorizedError {
             endpoint: "https://youtube.run.tools".to_string(),
@@ -5891,7 +5893,7 @@ mod tests {
     fn classifies_embedding_endpoint_absent_as_config_rejection() {
         // TAURI-RUST-5JR — custom embeddings provider pointed at a chat-only
         // base URL (DeepSeek) that has no `/embeddings` route. Verbatim shape
-        // produced by `src/openhuman/embeddings/openai.rs` (prefix preserved
+        // produced by `src/openhuman/inference/embeddings/openai.rs` (prefix preserved
         // even after the actionable-hint suffix is appended).
         assert_eq!(
             expected_error_kind(
@@ -6097,7 +6099,7 @@ mod tests {
         // instead of silently re-opening the TAURI-RUST-K27 leak.
         assert_eq!(
             expected_error_kind(
-                crate::openhuman::composio::direct_auth::COMPOSIO_INVALID_API_KEY_USER_MESSAGE
+                crate::openhuman::integrations::composio::direct_auth::COMPOSIO_INVALID_API_KEY_USER_MESSAGE
             ),
             Some(ExpectedErrorKind::ProviderUserState),
             "composio_set_api_key invalid-key rejection must demote to ProviderUserState"
@@ -6110,7 +6112,7 @@ mod tests {
         // `COMPOSIO_INVALID_API_KEY_ANCHOR`; it is only correct if that anchor is a
         // genuine lowercase substring of the message the probe returns. Assert the
         // two consts stay in sync so neither can be reworded independently.
-        use crate::openhuman::composio::direct_auth::{
+        use crate::openhuman::integrations::composio::direct_auth::{
             COMPOSIO_INVALID_API_KEY_ANCHOR, COMPOSIO_INVALID_API_KEY_USER_MESSAGE,
         };
         assert!(
@@ -6537,7 +6539,7 @@ mod tests {
     }
 
     /// TAURI-RUST-4K5 (118 events, escalating on 0.56.0): the embedding
-    /// client at `src/openhuman/embeddings/openai.rs:139` wraps the same
+    /// client at `src/openhuman/inference/embeddings/openai.rs:139` wraps the same
     /// OpenHuman backend `{"success":false,"error":"Invalid token"}` 401
     /// envelope as 4P0, but with the `"Embedding API error"` prefix
     /// instead of `"OpenHuman API error"` (different emit-site format
@@ -7238,7 +7240,7 @@ mod tests {
     fn updater_real_panic_still_reported() {
         let event = event_with_tags_and_message(
             &[("domain", "update"), ("operation", "check_releases")],
-            "thread 'main' panicked at src/openhuman/update/core.rs: index out of bounds",
+            "thread 'main' panicked at src/openhuman/platform/update/core.rs: index out of bounds",
         );
         assert!(
             !is_updater_transient_event(&event),
@@ -8355,7 +8357,7 @@ mod tests {
     // `operation=invoke_method`, `method=openhuman.auth_get_me`, message
     // body = exactly "GET /auth/me" (no underlying chain). See the
     // function docstring + the `auth_get_me` fix in
-    // `openhuman::credentials::ops::auth_get_me` for the broader
+    // `openhuman::security::credentials::ops::auth_get_me` for the broader
     // context.
 
     #[cfg(feature = "crash-reporting")]

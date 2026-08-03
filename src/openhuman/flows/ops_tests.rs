@@ -1555,8 +1555,8 @@ async fn reconcile_schedule_triggers_on_boot_survives_a_corrupt_row() {
 
 #[tokio::test]
 async fn flows_delete_clears_flow_memory_namespace() {
+    use crate::openhuman::memory::store::MemoryClient;
     use crate::openhuman::memory::{MemoryCategory, MemoryTaint};
-    use crate::openhuman::memory_store::MemoryClient;
 
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
@@ -2821,7 +2821,7 @@ async fn flows_get_run_missing_run_errors() {
 async fn flows_run_emits_pending_approval_notification() {
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
-    let mut rx = crate::openhuman::notifications::bus::subscribe_core_notifications();
+    let mut rx = crate::openhuman::desktop::notifications::bus::subscribe_core_notifications();
 
     let created = flows_create(
         &config,
@@ -2862,7 +2862,7 @@ async fn flows_run_emits_pending_approval_notification() {
 
     assert_eq!(
         notification.category,
-        crate::openhuman::notifications::types::CoreNotificationCategory::Agents
+        crate::openhuman::desktop::notifications::types::CoreNotificationCategory::Agents
     );
     let actions = notification
         .actions
@@ -2884,7 +2884,7 @@ async fn flows_run_emits_pending_approval_notification() {
 async fn flows_run_does_not_notify_when_run_completes_without_pending_approvals() {
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
-    let mut rx = crate::openhuman::notifications::bus::subscribe_core_notifications();
+    let mut rx = crate::openhuman::desktop::notifications::bus::subscribe_core_notifications();
 
     let created = flows_create(&config, "no-gate".to_string(), trigger_only_graph(), false)
         .await
@@ -3127,7 +3127,7 @@ async fn flows_run_finished_event_skips_pending_approval_and_fires_once_on_resum
 
 // ── Live run observation (issue G2) ───────────────────────────────────────
 
-use crate::openhuman::tinyflows::observability::FlowRunObserver;
+use crate::openhuman::flows::tinyflows::observability::FlowRunObserver;
 use std::sync::Arc as StdArc;
 // `RunObserver` must be in scope to call `on_step_finish` on the observer.
 use tinyflows::observability::{ExecutionStep, RunObserver as _, StepStatus};
@@ -3716,8 +3716,10 @@ async fn flows_set_enabled_schedule_flow_has_no_warning() {
 
 // ── flows_list_connections (picker source) ──────────────────────────────
 
-use crate::openhuman::composio::ComposioConnection;
-use crate::openhuman::credentials::{HttpCredential, HttpCredentialSummary, HttpCredentialsStore};
+use crate::openhuman::integrations::composio::ComposioConnection;
+use crate::openhuman::security::credentials::{
+    HttpCredential, HttpCredentialSummary, HttpCredentialsStore,
+};
 
 fn composio_conn(id: &str, toolkit: &str, status: &str, email: Option<&str>) -> ComposioConnection {
     ComposioConnection {
@@ -3760,7 +3762,7 @@ fn build_flow_connections_emits_parseable_refs_for_both_kinds() {
     // exact parser the caps seam uses on execution.
     assert_eq!(gmail.connection_ref, "composio:gmail:ca_abc");
     assert_eq!(
-        crate::openhuman::tinyflows::caps::composio_connection_id(&gmail.connection_ref),
+        crate::openhuman::flows::tinyflows::caps::composio_connection_id(&gmail.connection_ref),
         Some("ca_abc")
     );
     assert_eq!(gmail.toolkit.as_deref(), Some("gmail"));
@@ -3772,7 +3774,7 @@ fn build_flow_connections_emits_parseable_refs_for_both_kinds() {
     assert_eq!(stripe.kind, "http");
     assert_eq!(stripe.connection_ref, "http_cred:stripe");
     assert_eq!(
-        crate::openhuman::tinyflows::caps::http_cred_name(&stripe.connection_ref),
+        crate::openhuman::flows::tinyflows::caps::http_cred_name(&stripe.connection_ref),
         Some("stripe")
     );
     assert_eq!(stripe.scheme.as_deref(), Some("bearer"));
@@ -3818,7 +3820,7 @@ fn build_flow_connections_never_carries_secret_fields() {
 
 #[test]
 fn build_flow_connections_attaches_platform_user_id_from_a_seeded_identity() {
-    use crate::openhuman::composio::providers::profile::ConnectedIdentity;
+    use crate::openhuman::integrations::composio::providers::profile::ConnectedIdentity;
 
     let composio = vec![composio_conn("ca_slack1", "slack", "ACTIVE", None)];
     let identities = vec![ConnectedIdentity {
@@ -3835,7 +3837,7 @@ fn build_flow_connections_attaches_platform_user_id_from_a_seeded_identity() {
 
 #[test]
 fn build_flow_connections_platform_user_id_is_none_without_a_matching_identity() {
-    use crate::openhuman::composio::providers::profile::ConnectedIdentity;
+    use crate::openhuman::integrations::composio::providers::profile::ConnectedIdentity;
 
     // No identities at all.
     let composio = vec![composio_conn("ca_slack1", "slack", "ACTIVE", None)];
@@ -4206,7 +4208,7 @@ async fn agent_ref_unknown_is_rejected() {
 // configured for slug" branch), before any HTTP client is built.
 
 fn seed_app_session_for_gate_test(tmp: &TempDir) {
-    use crate::openhuman::credentials::{
+    use crate::openhuman::security::credentials::{
         AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
     };
     // `verify_session_active` reads from `config.config_path.parent()`, which
@@ -4255,7 +4257,7 @@ async fn run_builder_gates_does_not_reject_when_signed_out() {
     // Authoring is never blocked by inference readiness (design correction,
     // B45): a signed-out session must NOT appear among `run_builder_gates`'
     // errors for an otherwise-valid agent-node graph.
-    let _signed_out = crate::openhuman::scheduler_gate::SignedOutTestGuard::set(true);
+    let _signed_out = crate::openhuman::cron::scheduler_gate::SignedOutTestGuard::set(true);
 
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
@@ -4280,7 +4282,7 @@ async fn proposal_surfaces_signed_out_inference_status() {
     // The proposal still WARNS about the signed-out state (advisory, never a
     // rejection) so the UI can render a "sign in" nudge alongside the built
     // workflow.
-    let _signed_out = crate::openhuman::scheduler_gate::SignedOutTestGuard::set(true);
+    let _signed_out = crate::openhuman::cron::scheduler_gate::SignedOutTestGuard::set(true);
 
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
@@ -4394,7 +4396,7 @@ fn agent_node_role_prefers_custom_registry_entry_model_pin_over_default() {
     // precedence `OpenHumanAgentRunner::run_via_harness` applies via
     // `resolve_node_model(&request, entry_model)`, reusing the same sync,
     // config-only accessor (`find_custom_in_config`) it calls.
-    use crate::openhuman::agent_registry::types::{AgentRegistryEntry, AgentRegistrySource};
+    use crate::openhuman::agent::registry::types::{AgentRegistryEntry, AgentRegistrySource};
 
     let tmp = TempDir::new().unwrap();
     let mut config = test_config(&tmp);
@@ -4487,7 +4489,7 @@ async fn inference_gate_reports_signed_out_for_dynamic_agent_ref_only_graph() {
     // dynamic-ref filter excluded such nodes entirely, so a graph made up
     // only of them returned `None` (no readiness signal at all) and a
     // signed-out session went completely unreported.
-    let _signed_out = crate::openhuman::scheduler_gate::SignedOutTestGuard::set(true);
+    let _signed_out = crate::openhuman::cron::scheduler_gate::SignedOutTestGuard::set(true);
 
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
@@ -4614,7 +4616,7 @@ async fn proposal_omits_inference_status_for_tool_call_only_graph() {
 /// negative-cache test below (through `cached_probe_inference_readiness`).
 #[tokio::test]
 async fn flows_run_fails_cleanly_without_invoking_engine_when_inference_not_ready() {
-    let _signed_out = crate::openhuman::scheduler_gate::SignedOutTestGuard::set(true);
+    let _signed_out = crate::openhuman::cron::scheduler_gate::SignedOutTestGuard::set(true);
 
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
@@ -4755,7 +4757,7 @@ async fn cached_probe_inference_readiness_caches_a_negative_result() {
 // test below seeds the exact toolkit it needs via `seed_live_catalog_cache`
 // so none of this touches a live Composio backend.
 
-use crate::openhuman::tinyflows::caps::{
+use crate::openhuman::flows::tinyflows::caps::{
     seed_live_catalog_cache, seed_probe_cache, ProbedOutputSample, ToolContract,
 };
 

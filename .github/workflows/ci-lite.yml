@@ -302,7 +302,12 @@ jobs:
         env:
           NODE_ENV: test
           FULL: ${{ needs.changes.outputs['frontend-full'] }}
-          CHANGED_FILES: ${{ needs.changes.outputs['frontend-src-files'] }}
+          # Same argument-limit guard as the rust-core lane below. The condition is
+          # inverted so the file list sits on the `&&` (truthy) side: GitHub's
+          # `a && b || c` ternary falls through to `c` whenever `b` is falsy, so
+          # `... == 'true' && '' || <files>` would hand back the full list in
+          # exactly the full-suite case this is meant to blank.
+          CHANGED_FILES: ${{ needs.changes.outputs['frontend-full'] != 'true' && needs.changes.outputs['frontend-src-files'] || '' }}
 
       - name: Normalize lcov source paths to repo root
         if: needs.changes.outputs.frontend == 'true'
@@ -419,7 +424,7 @@ jobs:
       - name: Check core builds with the default domain gates disabled
         # Lib-scoped on purpose. `--all-targets` would additionally compile the
         # `tests/` integration crates, which today name gated symbols
-        # (voice::reply_speech::test_seam, mcp_registry::store, x402::tools) without
+        # (voice::reply_speech::test_seam, mcp::registry::store, web3::x402::tools) without
         # a #[cfg] and so do not compile with the gates off. That cleanup is tracked
         # in #5021 alongside running the full gates-off suite; until it lands, this
         # lane checks the lib and RUNS the gate-contract lib tests below.
@@ -440,10 +445,10 @@ jobs:
         run: |
           bash scripts/ci-cancel-aware.sh cargo test --manifest-path Cargo.toml \
             --no-default-features --features tokenjuice-treesitter --lib -- \
-            core::all:: core::cli:: core::jsonrpc:: core::legacy_aliases:: core::runtime:: agent_registry::agents::loader:: tools::schemas:: tools::ops::tests::
+            core::all:: core::cli:: core::jsonrpc:: core::legacy_aliases:: core::runtime:: agent::registry::agents::loader:: tools::schemas:: tools::ops::tests::
           bash scripts/ci-cancel-aware.sh cargo test --manifest-path Cargo.toml \
             --no-default-features --features tokenjuice-treesitter,mcp --lib -- \
-            mcp_server::resources::
+            mcp::server::resources::
 
       - name: Guard — the kernel dependency floor may not grow
         # The `--no-default-features --features flows` profile is the surface a
@@ -491,19 +496,19 @@ jobs:
           openhuman/agent/harness/definition_tests.rs
           openhuman/agent/harness/session/tests.rs
           openhuman/agent/harness/subagent_runner/tool_prep.rs
-          openhuman/agent_registry/agents/loader.rs
+          openhuman/agent/registry/agents/loader.rs
           openhuman/inference/local/mod.rs
-          openhuman/mcp_server/resources.rs
-          openhuman/socket/ops.rs
+          openhuman/mcp/server/resources.rs
+          openhuman/platform/socket/ops.rs
           openhuman/tinyplace/manifest.rs
-          openhuman/tool_registry/ops_tests.rs
-          openhuman/tool_registry/schemas.rs
+          openhuman/tools/registry/ops_tests.rs
+          openhuman/tools/registry/schemas.rs
           openhuman/tools/ops_tests.rs
           openhuman/tools/schemas.rs
           openhuman/voice/compile_status.rs
-          openhuman/wallet/stub.rs
           openhuman/web3/stub.rs
-          openhuman/x402/stub.rs
+          openhuman/web3/wallet/stub.rs
+          openhuman/web3/x402/stub.rs
           EOF
           )
           ACTUAL=$(grep -rlE '#\[cfg\((not\()?feature = "(voice|media|web3|meet|mcp|skills|flows|channels|prediction-markets)"' src --include='*.rs' \
@@ -635,7 +640,14 @@ jobs:
         env:
           CARGO_BUILD_JOBS: "1"
           FULL: ${{ needs.changes.outputs['rust-core-full'] }}
-          CHANGED_FILES: ${{ needs.changes.outputs['rust-core-src-files'] }}
+          # Suppressed in full-suite mode. The list is ignored when FULL=true, but a
+          # large refactor can push it past the container job's argument/env limit,
+          # and `docker exec` then fails to START the step —
+          # "Argument list too long" — before the script can apply its own
+          # MAX_CHANGED_FILES fallback. Blanking it here keeps the step launchable.
+          # Condition inverted so the file list is on the `&&` side — `a && '' || b`
+          # always falls through to `b` because `''` is falsy.
+          CHANGED_FILES: ${{ needs.changes.outputs['rust-core-full'] != 'true' && needs.changes.outputs['rust-core-src-files'] || '' }}
           OUT: lcov-core.info
           # The tinyagents harness is the agent engine on every build now
           # (issue #4249); the suite exercises it by default. The legacy engine

@@ -10,6 +10,10 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::openhuman::agent::context::prompt::{
+    render_subagent_system_prompt_with_format, PromptContext, PromptTool, SubagentRenderOptions,
+};
+use crate::openhuman::agent::file_state::with_file_state_agent_id;
 use crate::openhuman::agent::harness::agent_graph::{AgentTurnRequest, AgentTurnUsage};
 use crate::openhuman::agent::harness::artifact_offload::{
     effective_offload_threshold, extract_artifact_paths, note_artifact_handoff,
@@ -37,12 +41,10 @@ use crate::openhuman::agent::harness::subagent_runner::types::{
 use crate::openhuman::agent::harness::{
     current_spawn_depth, with_current_sandbox_mode, with_spawn_depth, MAX_SPAWN_DEPTH,
 };
-use crate::openhuman::context::prompt::{
-    render_subagent_system_prompt_with_format, PromptContext, PromptTool, SubagentRenderOptions,
-};
-use crate::openhuman::file_state::with_file_state_agent_id;
 use crate::openhuman::inference::provider::AGENT_TURN_MAX_OUTPUT_TOKENS;
-use crate::openhuman::memory_tree::retrieval::{fast_retrieve, FastRetrieveOptions, QueryResponse};
+use crate::openhuman::memory::tree::retrieval::{
+    fast_retrieve, FastRetrieveOptions, QueryResponse,
+};
 use crate::openhuman::tools::{Tool, ToolCategory, ToolSpec};
 use tinyagents::harness::tool::SandboxMode as TinyagentsSandboxMode;
 use tinyagents::harness::workspace::WorkspaceDescriptor;
@@ -247,7 +249,7 @@ async fn try_deterministic_memory_retrieval(
     // extraction here is deterministic and cheap (regex, or one spaCy call);
     // `fast_retrieve` repeats it internally, which is the same work its first
     // model-driven tool call would have done.
-    if crate::openhuman::memory_tree::nlp::extract_query_entities(&config, query)
+    if crate::openhuman::memory::tree::nlp::extract_query_entities(&config, query)
         .await
         .is_empty()
     {
@@ -620,7 +622,7 @@ async fn run_typed_mode(
     task_id: &str,
 ) -> Result<SubagentRunOutcome, SubagentRunError> {
     let started = Instant::now();
-    match crate::openhuman::tinyagents::subagent_graph::run_subagent_pipeline_skeleton(
+    match crate::openhuman::agent::tinyagents::subagent_graph::run_subagent_pipeline_skeleton(
         &definition.id,
         task_id,
     )
@@ -672,7 +674,7 @@ async fn run_typed_mode(
     // once the OAuth handshake reaches ACTIVE/CONNECTED, so this call
     // returns the fresh list almost for free on the warm path. Fall back
     // to the parent's frozen list when the live fetch returns empty.
-    let live_integrations: Vec<crate::openhuman::context::prompt::ConnectedIntegration> = {
+    let live_integrations: Vec<crate::openhuman::agent::context::prompt::ConnectedIntegration> = {
         let probe_config = crate::openhuman::config::Config::load_or_init().await.ok();
         let signed_in = probe_config
             .as_ref()
@@ -683,8 +685,8 @@ async fn run_typed_mode(
         } else {
             match crate::openhuman::config::Config::load_or_init().await {
                 Ok(config) => {
-                    use crate::openhuman::composio::FetchConnectedIntegrationsStatus;
-                    match crate::openhuman::composio::fetch_connected_integrations_status(&config)
+                    use crate::openhuman::integrations::composio::FetchConnectedIntegrationsStatus;
+                    match crate::openhuman::integrations::composio::fetch_connected_integrations_status(&config)
                         .await
                     {
                         FetchConnectedIntegrationsStatus::Authoritative(fresh) => {
@@ -797,7 +799,9 @@ async fn run_typed_mode(
                 }
             };
 
-            use crate::openhuman::composio::client::{create_composio_client, ComposioClientKind};
+            use crate::openhuman::integrations::composio::client::{
+                create_composio_client, ComposioClientKind,
+            };
             let client_kind = match create_composio_client(arc_config.as_ref()) {
                 Ok(k) => Some(k),
                 Err(e) => {
@@ -817,8 +821,10 @@ async fn run_typed_mode(
             {
                 let fresh_actions = match &client_kind {
                     Some(ComposioClientKind::Backend(client)) => {
-                        match crate::openhuman::composio::fetch_toolkit_actions(client, tk, None)
-                            .await
+                        match crate::openhuman::integrations::composio::fetch_toolkit_actions(
+                            client, tk, None,
+                        )
+                        .await
                         {
                             Ok(actions) if !actions.is_empty() => actions,
                             Ok(_) => {
@@ -859,7 +865,7 @@ async fn run_typed_mode(
                         cached_integration.tools.clone()
                     }
                 };
-                let integration = crate::openhuman::context::prompt::ConnectedIntegration {
+                let integration = crate::openhuman::agent::context::prompt::ConnectedIntegration {
                     toolkit: cached_integration.toolkit.clone(),
                     description: cached_integration.description.clone(),
                     tools: fresh_actions,
@@ -875,31 +881,32 @@ async fn run_typed_mode(
                     &integration.tools,
                     top_k,
                 );
-                let selected: Vec<&crate::openhuman::context::prompt::ConnectedIntegrationTool> =
-                    if filter_hits.len() >= super::super::super::tool_filter::MIN_CONFIDENT_HITS {
-                        tracing::info!(
-                            agent_id = %definition.id,
-                            toolkit = %tk,
-                            total = integration.tools.len(),
-                            kept = filter_hits.len(),
-                            top_k = top_k,
-                            "[subagent_runner:typed] fuzzy tool filter narrowed toolkit"
-                        );
-                        filter_hits.iter().map(|&i| &integration.tools[i]).collect()
-                    } else {
-                        tracing::info!(
-                            agent_id = %definition.id,
-                            toolkit = %tk,
-                            total = integration.tools.len(),
-                            filter_hits = filter_hits.len(),
-                            "[subagent_runner:typed] fuzzy filter thin; falling back to full toolkit"
-                        );
-                        integration.tools.iter().collect()
-                    };
+                let selected: Vec<
+                    &crate::openhuman::agent::context::prompt::ConnectedIntegrationTool,
+                > = if filter_hits.len() >= super::super::super::tool_filter::MIN_CONFIDENT_HITS {
+                    tracing::info!(
+                        agent_id = %definition.id,
+                        toolkit = %tk,
+                        total = integration.tools.len(),
+                        kept = filter_hits.len(),
+                        top_k = top_k,
+                        "[subagent_runner:typed] fuzzy tool filter narrowed toolkit"
+                    );
+                    filter_hits.iter().map(|&i| &integration.tools[i]).collect()
+                } else {
+                    tracing::info!(
+                        agent_id = %definition.id,
+                        toolkit = %tk,
+                        total = integration.tools.len(),
+                        filter_hits = filter_hits.len(),
+                        "[subagent_runner:typed] fuzzy filter thin; falling back to full toolkit"
+                    );
+                    integration.tools.iter().collect()
+                };
 
                 for action in selected {
                     dynamic_tools.push(Box::new(
-                        crate::openhuman::composio::ComposioActionTool::new(
+                        crate::openhuman::integrations::composio::ComposioActionTool::new(
                             arc_config.clone(),
                             action.name.clone(),
                             action.description.clone(),
@@ -986,7 +993,7 @@ async fn run_typed_mode(
                         parent.temperature,
                     ) {
                         Ok((_model, resolved_model)) => (
-                            crate::openhuman::tinyagents::TurnModelSource::new_crate_native(
+                            crate::openhuman::agent::tinyagents::TurnModelSource::new_crate_native(
                                 "summarization",
                                 Arc::new(cfg.clone()),
                             ),
@@ -1068,7 +1075,7 @@ async fn run_typed_mode(
         definition.omit_memory_md,
     );
 
-    let narrowed_integrations: Vec<crate::openhuman::context::prompt::ConnectedIntegration> =
+    let narrowed_integrations: Vec<crate::openhuman::agent::context::prompt::ConnectedIntegration> =
         match toolkit_filter {
             Some(tk) => live_integrations
                 .iter()
@@ -1101,11 +1108,11 @@ async fn run_typed_mode(
     let visible_tool_names: std::collections::HashSet<String> =
         prompt_tools.iter().map(|t| t.name.to_string()).collect();
     let dispatcher_instructions = {
+        use crate::openhuman::agent::context::prompt::ToolCallFormat;
         use crate::openhuman::agent::dispatcher::{
             NativeToolDispatcher, PFormatToolDispatcher, ToolDispatcher, XmlToolDispatcher,
         };
         use crate::openhuman::agent::pformat::PFormatRegistry;
-        use crate::openhuman::context::prompt::ToolCallFormat;
         let empty_tools: Vec<Box<dyn Tool>> = Vec::new();
         match parent.tool_call_format {
             ToolCallFormat::PFormat => {
@@ -1153,7 +1160,7 @@ async fn run_typed_mode(
         tools: &prompt_tools,
         workflows: &parent.workflows,
         dispatcher_instructions: &dispatcher_instructions,
-        learned: crate::openhuman::context::prompt::LearnedContextData::default(),
+        learned: crate::openhuman::agent::context::prompt::LearnedContextData::default(),
         visible_tool_names: &visible_tool_names,
         tool_call_format: parent.tool_call_format,
         connected_integrations: &narrowed_integrations,
@@ -1161,7 +1168,7 @@ async fn run_typed_mode(
         include_profile: !definition.omit_profile,
         include_memory_md: !definition.omit_memory_md,
         curated_snapshot: None,
-        user_identity: crate::openhuman::app_state::peek_cached_current_user_identity(),
+        user_identity: crate::openhuman::desktop::app_state::peek_cached_current_user_identity(),
         personality_soul_md: None,
         personality_memory_md: None,
         personality_roster: vec![],
@@ -1568,8 +1575,8 @@ mod fast_path_tests {
         apply_max_result_chars, format_deterministic_memory_hits, parse_memory_fast_path_enabled,
         MEMORY_FAST_PATH_LIMIT,
     };
-    use crate::openhuman::memory_store::trees::types::TreeKind;
-    use crate::openhuman::memory_tree::retrieval::types::{NodeKind, QueryResponse, RetrievalHit};
+    use crate::openhuman::memory::store::trees::types::TreeKind;
+    use crate::openhuman::memory::tree::retrieval::types::{NodeKind, QueryResponse, RetrievalHit};
     use chrono::Utc;
 
     fn hit(content: &str, scope: &str, score: f32) -> RetrievalHit {

@@ -50,7 +50,7 @@ impl ChatModel<()> for MockProvider {
             guard.remove(0)
         };
         Ok(
-            crate::openhuman::tinyagents::model::native_model_response_for_request(
+            crate::openhuman::agent::tinyagents::model::native_model_response_for_request(
                 &response, &request,
             ),
         )
@@ -115,7 +115,7 @@ impl ChatModel<()> for RecordingProvider {
             guard.remove(0)
         };
         Ok(
-            crate::openhuman::tinyagents::model::native_model_response_for_request(
+            crate::openhuman::agent::tinyagents::model::native_model_response_for_request(
                 &response, &request,
             ),
         )
@@ -180,7 +180,7 @@ fn build_minimal_agent_with_definition_name(definition_name: Option<&str>) -> Ag
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory_store::create_memory(&memory_cfg, &workspace_path).unwrap(),
+        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
     );
 
     let mut builder = Agent::builder()
@@ -276,7 +276,7 @@ fn set_connected_integrations_marks_session_initialized_and_updates_hash() {
     );
 
     agent.set_connected_integrations(vec![
-        crate::openhuman::context::prompt::ConnectedIntegration {
+        crate::openhuman::agent::context::prompt::ConnectedIntegration {
             toolkit: "gmail".into(),
             description: "Email".into(),
             tools: vec![],
@@ -292,7 +292,9 @@ fn set_connected_integrations_marks_session_initialized_and_updates_hash() {
     assert_eq!(agent.connected_integrations()[0].toolkit, "gmail");
     assert_eq!(
         agent.last_seen_integrations_hash,
-        crate::openhuman::composio::connected_set_hash(agent.connected_integrations())
+        crate::openhuman::integrations::composio::connected_set_hash(
+            agent.connected_integrations()
+        )
     );
 }
 
@@ -303,7 +305,7 @@ fn refresh_delegation_tools_updates_schema_even_when_tool_arc_is_shared() {
     AgentDefinitionRegistry::init_global_builtins().unwrap();
     let mut agent = build_minimal_agent_with_definition_name(Some("orchestrator"));
     agent.set_connected_integrations(vec![
-        crate::openhuman::context::prompt::ConnectedIntegration {
+        crate::openhuman::agent::context::prompt::ConnectedIntegration {
             toolkit: "gmail".into(),
             description: "Email".into(),
             tools: vec![],
@@ -323,7 +325,7 @@ fn refresh_delegation_tools_updates_schema_even_when_tool_arc_is_shared() {
     // Simulate an in-flight turn holding a shared Arc clone.
     let _shared_tools = agent.tools_arc();
     agent.set_connected_integrations(vec![
-        crate::openhuman::context::prompt::ConnectedIntegration {
+        crate::openhuman::agent::context::prompt::ConnectedIntegration {
             toolkit: "gmail".into(),
             description: "Email".into(),
             tools: vec![],
@@ -332,7 +334,7 @@ fn refresh_delegation_tools_updates_schema_even_when_tool_arc_is_shared() {
             connections: Vec::new(),
             non_active_status: None,
         },
-        crate::openhuman::context::prompt::ConnectedIntegration {
+        crate::openhuman::agent::context::prompt::ConnectedIntegration {
             toolkit: "notion".into(),
             description: "Docs".into(),
             tools: vec![],
@@ -366,15 +368,16 @@ fn refresh_delegation_tools_no_duplicate_specs_across_shared_arc_connects() {
     AgentDefinitionRegistry::init_global_builtins().unwrap();
     let mut agent = build_minimal_agent_with_definition_name(Some("orchestrator"));
 
-    let conn = |slug: &str, desc: &str| crate::openhuman::context::prompt::ConnectedIntegration {
-        toolkit: slug.into(),
-        description: desc.into(),
-        tools: vec![],
-        gated_tools: vec![],
-        connected: true,
-        connections: Vec::new(),
-        non_active_status: None,
-    };
+    let conn =
+        |slug: &str, desc: &str| crate::openhuman::agent::context::prompt::ConnectedIntegration {
+            toolkit: slug.into(),
+            description: desc.into(),
+            tools: vec![],
+            gated_tools: vec![],
+            connected: true,
+            connections: Vec::new(),
+            non_active_status: None,
+        };
 
     let delegate_spec_count = |agent: &Agent| -> usize {
         agent
@@ -536,7 +539,7 @@ fn refresh_workflows_picks_up_skill_installed_on_disk() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&memory_cfg, &wsp).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&memory_cfg, &wsp).unwrap());
     let provider = Arc::new(MockProvider {
         responses: Mutex::new(vec![]),
     });
@@ -606,7 +609,7 @@ fn refresh_workflows_retracts_skill_removed_from_disk() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&memory_cfg, &wsp).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&memory_cfg, &wsp).unwrap());
     let provider = Arc::new(MockProvider {
         responses: Mutex::new(vec![]),
     });
@@ -705,7 +708,7 @@ async fn turn_without_tools_returns_text() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory_store::create_memory(&memory_cfg, &workspace_path).unwrap(),
+        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
     );
 
     let mut agent = Agent::builder()
@@ -751,7 +754,7 @@ async fn last_turn_usage_is_public_and_non_draining() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory_store::create_memory(&memory_cfg, &workspace_path).unwrap(),
+        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
     );
 
     let mut agent = Agent::builder()
@@ -831,7 +834,7 @@ async fn turn_with_native_dispatcher_handles_tool_results_variant() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory_store::create_memory(&memory_cfg, &workspace_path).unwrap(),
+        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
     );
 
     let mut agent = Agent::builder()
@@ -881,7 +884,7 @@ async fn turn_with_native_dispatcher_persists_fallback_tool_calls() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory_store::create_memory(&memory_cfg, &workspace_path).unwrap(),
+        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
     );
 
     let mut agent = Agent::builder()
@@ -1012,7 +1015,7 @@ async fn turn_dispatches_spawn_subagent_through_full_path_inner() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory_store::create_memory(&memory_cfg, &workspace_path).unwrap(),
+        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
     );
 
     // Tools include SpawnSubagentTool so the parent can call it.
@@ -1104,7 +1107,7 @@ async fn system_prompt_and_model_are_byte_stable_across_turns() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory_store::create_memory(&memory_cfg, &workspace_path).unwrap(),
+        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
     );
 
     let mut agent = Agent::builder()
@@ -1475,7 +1478,7 @@ fn seed_resume_from_thread_transcript_preserves_tool_calls_and_reasoning() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&memory_cfg, &wsp).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&memory_cfg, &wsp).unwrap());
     let mut agent = Agent::builder()
         .chat_model(Arc::new(MockProvider {
             responses: Mutex::new(vec![]),

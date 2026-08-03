@@ -25,7 +25,6 @@
 
 use crate::openhuman::config::schema::cloud_providers::AuthStyle;
 use crate::openhuman::config::Config;
-use crate::openhuman::credentials::AuthService;
 use crate::openhuman::inference::provider::auth::AuthStyle as CompatAuthStyle;
 use crate::openhuman::inference::provider::claude_agent_sdk::subprocess::ClaudeAgentSdkProvider;
 use crate::openhuman::inference::provider::openai_codex::{
@@ -34,6 +33,7 @@ use crate::openhuman::inference::provider::openai_codex::{
 };
 use crate::openhuman::inference::provider::openhuman_backend_model::OpenHumanBackendModel;
 use crate::openhuman::inference::provider::ProviderRuntimeOptions;
+use crate::openhuman::security::credentials::AuthService;
 use std::sync::Arc;
 use tinyagents::harness::model::{ChatModel, ModelRequest, ModelResponse, ModelStream};
 
@@ -1290,7 +1290,7 @@ pub(crate) fn make_openhuman_backend_model(
 /// `model` string — the turn's effective/dispatched model after any config-level
 /// agent pin (issue #4249, Phase 3 P3-B). The per-`(role, model)` analogue of
 /// [`create_chat_model_with_model_id`] used by the crate-native
-/// [`TurnModelSource`](crate::openhuman::tinyagents::TurnModelSource) to construct
+/// [`TurnModelSource`](crate::openhuman::agent::tinyagents::TurnModelSource) to construct
 /// the primary + each workload-tier route directly.
 ///
 /// - **Managed** → [`OpenHumanBackendModel`](super::openhuman_backend_model::OpenHumanBackendModel)
@@ -1881,14 +1881,14 @@ pub(crate) fn verify_session_active(config: &Config) -> anyhow::Result<()> {
     // custom provider; that threat model doesn't apply here, so bypass it.
     // Without this, every `/run` job would fail `SESSION_EXPIRED` before
     // reaching GMI (the startup path stores only `provider:gmi-maas`).
-    if crate::openhuman::agentbox::agentbox_mode_enabled() {
+    if crate::openhuman::agent::agentbox::agentbox_mode_enabled() {
         log::debug!(
             "[chat-factory] AgentBox mode — bypassing app-session gate for custom provider"
         );
         return Ok(());
     }
     // Fast path: the scheduler gate already knows the session is dead.
-    if crate::openhuman::scheduler_gate::is_signed_out() {
+    if crate::openhuman::cron::scheduler_gate::is_signed_out() {
         anyhow::bail!(
             "SESSION_EXPIRED: backend session not active — sign in to use custom providers"
         );
@@ -1905,7 +1905,10 @@ pub(crate) fn verify_session_active(config: &Config) -> anyhow::Result<()> {
         });
     let auth = AuthService::new(&state_dir, config.secrets.encrypt);
     let has_session = auth
-        .get_provider_bearer_token(crate::openhuman::credentials::APP_SESSION_PROVIDER, None)?
+        .get_provider_bearer_token(
+            crate::openhuman::security::credentials::APP_SESSION_PROVIDER,
+            None,
+        )?
         .filter(|s| !s.trim().is_empty())
         .is_some();
     if !has_session {

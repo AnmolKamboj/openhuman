@@ -131,7 +131,7 @@ async fn tool_timeout_seeds_on_channelless_core_boot() {
     );
 
     assert_eq!(
-        crate::openhuman::tool_timeout::tool_execution_timeout_secs(),
+        crate::openhuman::tools::timeout::tool_execution_timeout_secs(),
         1234,
         "channel-less core boot must seed the tool-execution timeout from [agent].agent_timeout_secs"
     );
@@ -248,7 +248,8 @@ async fn wait_until_port_released(port: u16) {
 #[tokio::test]
 #[ignore = "calls full server bootstrap; leaks process-global state into sibling tests (#1552). Re-cover via integration test."]
 async fn shutdown_token_stops_axum_listener_within_timeout() {
-    let _signed_out_restore = crate::openhuman::scheduler_gate::SignedOutTestGuard::set(false);
+    let _signed_out_restore =
+        crate::openhuman::cron::scheduler_gate::SignedOutTestGuard::set(false);
 
     let workspace = tempfile::tempdir().expect("workspace tempdir");
 
@@ -1705,7 +1706,7 @@ fn is_wallet_not_configured_error_matches_wallet_constant() {
     // The classifier keys off the wallet layer's exact "not configured"
     // message so a wallet-less user's tinyplace RPC stays out of Sentry.
     assert!(is_wallet_not_configured_error(
-        crate::openhuman::wallet::WALLET_NOT_CONFIGURED_MESSAGE
+        crate::openhuman::web3::wallet::WALLET_NOT_CONFIGURED_MESSAGE
     ));
 }
 
@@ -1716,7 +1717,7 @@ fn is_wallet_not_configured_error_is_coupled_to_the_wallet_constant() {
     // constant the classifier matches, this fails — preventing the noise from
     // silently returning to Sentry. Mirrors the param-validation prefix locks.
     assert_eq!(
-        crate::openhuman::wallet::WALLET_NOT_CONFIGURED_MESSAGE,
+        crate::openhuman::web3::wallet::WALLET_NOT_CONFIGURED_MESSAGE,
         "wallet is not configured; run wallet setup first"
     );
 }

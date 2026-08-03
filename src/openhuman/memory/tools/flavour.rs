@@ -1,6 +1,6 @@
 //! Agent tool: read a compiled persona flavour profile (issue #5172).
 //!
-//! Persona ingestion (`src/openhuman/tinycortex/persona.rs`) distills a
+//! Persona ingestion (`src/openhuman/memory/tinycortex/persona.rs`) distills a
 //! person's coding-agent history into seven [`PersonaFacet`] flavoured trees
 //! (communication, coding style, stack, workflow, environment, directives,
 //! anti-preferences), each compiled into a small prompt-ready markdown
@@ -23,7 +23,7 @@ use tinycortex::memory::tree::store::{get_tree_by_scope, TreeKind};
 use tinycortex::memory::tree::{compile_flavoured_root, flavoured_root_abs_path};
 
 use crate::openhuman::config::Config;
-use crate::openhuman::tinycortex::memory_config_from;
+use crate::openhuman::memory::tinycortex::memory_config_from;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
 
 /// The seven valid `flavour` slugs, for error messages.
@@ -76,7 +76,7 @@ pub(crate) enum FlavourLookup {
 
 /// Pure lookup shared by [`MemoryFlavourTool::execute`] and the tinyflows
 /// `memory` node's `flavour` operation
-/// (`OpenHumanMemory::flavour` in `crate::openhuman::tinyflows::memory_adapter`)
+/// (`OpenHumanMemory::flavour` in `crate::openhuman::flows::tinyflows::memory_adapter`)
 /// — both surfaces read the exact same flavoured-tree path, so there is only
 /// one place that knows how a `flavour` slug resolves to a compiled profile.
 ///
