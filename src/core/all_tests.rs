@@ -1570,3 +1570,33 @@ fn every_domain_group_is_accounted_for_in_subscriber_plan() {
     let none = DomainSubscriberPlan::for_domains(crate::core::runtime::DomainSet::none());
     assert_ne!(full, none, "full() and none() must differ");
 }
+
+// ---- runtime-node gate -----------------------------------------------------
+
+#[test]
+#[cfg(feature = "runtime-node")]
+fn javascript_controllers_registered_when_feature_on() {
+    let ns: Vec<&str> = all_controller_schemas()
+        .iter()
+        .map(|s| s.namespace)
+        .collect();
+    assert!(
+        ns.contains(&"javascript"),
+        "runtime-node ON must register the `javascript` namespace"
+    );
+}
+
+/// The half that proves the gate removes anything: absent, not
+/// registered-and-failing.
+#[test]
+#[cfg(not(feature = "runtime-node"))]
+fn javascript_controllers_absent_when_feature_off() {
+    let ns: Vec<&str> = all_controller_schemas()
+        .iter()
+        .map(|s| s.namespace)
+        .collect();
+    assert!(
+        !ns.contains(&"javascript"),
+        "runtime-node OFF must not register the `javascript` namespace"
+    );
+}

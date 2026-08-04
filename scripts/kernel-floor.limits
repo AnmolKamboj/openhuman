@@ -13,6 +13,13 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   310/283/5  2026-08-04  runtime-node gate (-2, and -1 NATIVE). xz2 + its
+#                      static liblzma C build are exclusive to
+#                      runtime::node::extractor's .tar.xz path. FIRST native
+#                      toolchain build removed by the gating program: lzma-sys
+#                      leaves the list, 6 -> 5. Remaining: aws-lc-sys,
+#                      libgit2-sys, libsqlite3-sys, libz-sys, ring — the target
+#                      keeps the last two.
 #   312/285/6  2026-08-02  merge origin/main (+5 names) — INHERITED, not introduced here.
 #                      A rise in this number is the one thing this file exists
 #                      to make someone justify, so: main grew the graph on its
@@ -62,4 +69,4 @@
 #                      Native: aws-lc-sys libgit2-sys libsqlite3-sys libz-sys
 #                      lzma-sys ring. Target after gating is 222 names / 2 native
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
-flows:312:285:6
+flows:310:283:5
