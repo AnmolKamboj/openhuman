@@ -6,6 +6,7 @@ import { I18nProvider } from '../../../../lib/i18n/I18nContext';
 import {
   clearCloudProviderKey,
   completeOpenAiCodexOAuth,
+  flushCloudProviders,
   importOpenAiCodexCliAuth,
   listProviderModels,
   loadAISettings,
@@ -36,49 +37,52 @@ import AIPanel, {
   type RoutingMap,
 } from '../AIPanel';
 
-vi.mock('../../../../services/api/aiSettingsApi', () => ({
-  ALL_WORKLOADS: [
-    'chat',
-    'reasoning',
-    'agentic',
-    'coding',
-    'memory',
-    'embeddings',
-    'heartbeat',
-    'learning',
-    'subconscious',
-  ],
-  loadAISettings: vi.fn(),
-  saveAISettings: vi.fn(),
-  loadLocalProviderSnapshot: vi.fn(),
-  loadProviderAuthErrors: vi.fn().mockResolvedValue([]),
-  testProviderModel: vi.fn(),
-  // #5146 §2.4: AIPanel no longer renders the raw provider string — it maps
-  // the failure onto actionable copy first. Mirror that shape here so the
-  // banner asserted below is what a user actually sees; the mapping itself is
-  // covered in aiSettingsApi.test.ts.
-  describeProviderVerificationFailure: (slug: string, _raw: string) =>
-    `The key was saved, but '${slug}' rejected it. Check that you pasted the whole key.`,
-  modelRegistryVision: vi.fn(() => false),
-  upsertModelRegistryVision: vi.fn((registry: unknown[]) => registry),
-  setCloudProviderKey: vi.fn().mockResolvedValue(undefined),
-  clearCloudProviderKey: vi.fn().mockResolvedValue(undefined),
-  serializeProviderRef: vi.fn((r: { kind: string; providerSlug?: string; model?: string }) =>
-    r.kind === 'openhuman'
-      ? 'openhuman'
-      : r.kind === 'local'
-        ? `ollama:${r.model}`
-        : `${r.providerSlug}:${r.model}`
-  ),
-  localProvider: { download: vi.fn(), applyPreset: vi.fn() },
-  flushCloudProviders: vi.fn().mockResolvedValue(undefined),
-  importOpenAiCodexCliAuth: vi.fn().mockResolvedValue(undefined),
-  listProviderModels: vi.fn().mockResolvedValue([]),
-  OPENAI_CODEX_OAUTH_MISSING_AUTH_URL: 'OPENAI_CODEX_OAUTH_MISSING_AUTH_URL',
-  OPENAI_CODEX_OAUTH_MISSING_CALLBACK_URL: 'OPENAI_CODEX_OAUTH_MISSING_CALLBACK_URL',
-  startOpenAiCodexOAuth: vi.fn(),
-  completeOpenAiCodexOAuth: vi.fn(),
-}));
+vi.mock('../../../../services/api/aiSettingsApi', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../../services/api/aiSettingsApi')>();
+  return {
+    ALL_WORKLOADS: [
+      'chat',
+      'reasoning',
+      'agentic',
+      'coding',
+      'memory',
+      'embeddings',
+      'heartbeat',
+      'learning',
+      'subconscious',
+    ],
+    loadAISettings: vi.fn(),
+    saveAISettings: vi.fn(),
+    loadLocalProviderSnapshot: vi.fn(),
+    loadProviderAuthErrors: vi.fn().mockResolvedValue([]),
+    testProviderModel: vi.fn(),
+    // #5341: use the REAL classifier + describer (pure, translator-driven) instead
+    // of a hand-copied third implementation that could drift from the source. The
+    // classification rules (403/proxy handling, etc.) are unit-tested in
+    // aiSettingsApi.test.ts; here they drive the real component branch.
+    classifyProviderVerificationFailure: actual.classifyProviderVerificationFailure,
+    describeProviderVerificationFailure: actual.describeProviderVerificationFailure,
+    modelRegistryVision: vi.fn(() => false),
+    upsertModelRegistryVision: vi.fn((registry: unknown[]) => registry),
+    setCloudProviderKey: vi.fn().mockResolvedValue(undefined),
+    clearCloudProviderKey: vi.fn().mockResolvedValue(undefined),
+    serializeProviderRef: vi.fn((r: { kind: string; providerSlug?: string; model?: string }) =>
+      r.kind === 'openhuman'
+        ? 'openhuman'
+        : r.kind === 'local'
+          ? `ollama:${r.model}`
+          : `${r.providerSlug}:${r.model}`
+    ),
+    localProvider: { download: vi.fn(), applyPreset: vi.fn() },
+    flushCloudProviders: vi.fn().mockResolvedValue(undefined),
+    importOpenAiCodexCliAuth: vi.fn().mockResolvedValue(undefined),
+    listProviderModels: vi.fn().mockResolvedValue([]),
+    OPENAI_CODEX_OAUTH_MISSING_AUTH_URL: 'OPENAI_CODEX_OAUTH_MISSING_AUTH_URL',
+    OPENAI_CODEX_OAUTH_MISSING_CALLBACK_URL: 'OPENAI_CODEX_OAUTH_MISSING_CALLBACK_URL',
+    startOpenAiCodexOAuth: vi.fn(),
+    completeOpenAiCodexOAuth: vi.fn(),
+  };
+});
 
 vi.mock('../../hooks/useSettingsNavigation', () => ({
   useSettingsNavigation: () => ({
@@ -958,6 +962,146 @@ describe('AIPanel', () => {
     expect(
       within(dialog).queryByRole('button', { name: /Sign in with ChatGPT \/ Codex/i })
     ).not.toBeInTheDocument();
+  });
+
+  it('#5339: keeps a valid key and saves the provider when the add-time probe fails for a non-auth reason', async () => {
+    vi.mocked(loadAISettings).mockResolvedValue({ ...baseSettings, cloudProviders: [] });
+    // `/models` is momentarily unreachable — NOT an auth failure. The key is
+    // plausibly valid and must not be discarded or the save blocked.
+    vi.mocked(listProviderModels).mockRejectedValue(new Error('HTTP request failed'));
+
+    renderWithProviders(<AIPanel />);
+    fireEvent.click(await screen.findByRole('switch', { name: /Connect DeepSeek/i }));
+    const dialog = await screen.findByRole('dialog', { name: /Connect DeepSeek/i });
+    fireEvent.change(within(dialog).getByLabelText(/API key/i), {
+      target: { value: 'sk-deepseek-123' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Save$/i }));
+
+    // Settings persisted, key kept (never cleared).
+    await waitFor(() => expect(saveAISettings).toHaveBeenCalled());
+    expect(setCloudProviderKey).toHaveBeenCalledWith('deepseek', 'sk-deepseek-123');
+    expect(clearCloudProviderKey).not.toHaveBeenCalled();
+    // A truthful advisory replaces the old "not saved" dead end. Non-auth copy
+    // is the "a test call … failed" branch (not the auth "rejected it" branch).
+    const advisory = await screen.findByText(/The key was saved, but a test call to 'deepseek'/);
+    expect(advisory).toBeInTheDocument();
+    // The advisory is dismissible.
+    fireEvent.click(screen.getByRole('button', { name: /Dismiss/i }));
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/The key was saved, but a test call to 'deepseek'/)
+      ).not.toBeInTheDocument()
+    );
+  });
+
+  it('#5339: rejects and clears the key when the add-time probe fails with an auth error', async () => {
+    vi.mocked(loadAISettings).mockResolvedValue({ ...baseSettings, cloudProviders: [] });
+    // A 401 means the key itself is wrong — roll back and reject so the user fixes it.
+    vi.mocked(listProviderModels).mockRejectedValue(new Error('HTTP 401 invalid api key'));
+
+    renderWithProviders(<AIPanel />);
+    fireEvent.click(await screen.findByRole('switch', { name: /Connect DeepSeek/i }));
+    const dialog = await screen.findByRole('dialog', { name: /Connect DeepSeek/i });
+    fireEvent.change(within(dialog).getByLabelText(/API key/i), { target: { value: 'sk-bad' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Save$/i }));
+
+    await waitFor(() => expect(clearCloudProviderKey).toHaveBeenCalledWith('deepseek'));
+    expect(saveAISettings).not.toHaveBeenCalled();
+  });
+
+  it('#5341: treats a bare 403/Forbidden probe failure as auth — clears the key, no save', async () => {
+    vi.mocked(loadAISettings).mockResolvedValue({ ...baseSettings, cloudProviders: [] });
+    // A revoked / forbidden key surfaces as a bare 403 with no "401"/"unauthorized"
+    // text. It must still be rejected, not kept behind a "saved" advisory.
+    vi.mocked(listProviderModels).mockRejectedValue(new Error('provider returned 403: forbidden'));
+
+    renderWithProviders(<AIPanel />);
+    fireEvent.click(await screen.findByRole('switch', { name: /Connect DeepSeek/i }));
+    const dialog = await screen.findByRole('dialog', { name: /Connect DeepSeek/i });
+    fireEvent.change(within(dialog).getByLabelText(/API key/i), {
+      target: { value: 'sk-revoked' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Save$/i }));
+
+    await waitFor(() => expect(clearCloudProviderKey).toHaveBeenCalledWith('deepseek'));
+    expect(saveAISettings).not.toHaveBeenCalled();
+    // No "key was saved" advisory for a rejected key.
+    expect(screen.queryByText(/The key was saved, but/)).not.toBeInTheDocument();
+  });
+
+  it('#5341: logs (does not swallow) a rollback flush + key-clear failure on a rejected add', async () => {
+    vi.mocked(loadAISettings).mockResolvedValue({ ...baseSettings, cloudProviders: [] });
+    // Auth failure → rollback path. Both rollback legs then fail; the code must
+    // log each instead of swallowing, and must not persist the provider.
+    vi.mocked(listProviderModels).mockRejectedValue(new Error('HTTP 401 invalid api key'));
+    // First flush (writing the new provider) succeeds; the SECOND flush (rollback
+    // to the prior list) is the one that fails.
+    vi.mocked(flushCloudProviders)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('flush boom'));
+    vi.mocked(clearCloudProviderKey).mockRejectedValueOnce(new Error('clear boom'));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      renderWithProviders(<AIPanel />);
+      fireEvent.click(await screen.findByRole('switch', { name: /Connect DeepSeek/i }));
+      const dialog = await screen.findByRole('dialog', { name: /Connect DeepSeek/i });
+      fireEvent.change(within(dialog).getByLabelText(/API key/i), { target: { value: 'sk-bad' } });
+      fireEvent.click(within(dialog).getByRole('button', { name: /^Save$/i }));
+
+      await waitFor(() =>
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('rollback clearCloudProviderKey failed'),
+          expect.any(Error)
+        )
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('rollback flush failed'),
+        expect.any(Error)
+      );
+      expect(saveAISettings).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('#5341: logs (does not swallow) a rollback failure when a custom-provider add is rejected', async () => {
+    // Same un-swallow guarantee on the custom-provider editor path.
+    vi.mocked(loadAISettings).mockResolvedValue(baseSettings);
+    vi.mocked(listProviderModels).mockRejectedValue(new Error('provider returned 500'));
+    vi.mocked(flushCloudProviders)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('flush boom'));
+    vi.mocked(clearCloudProviderKey).mockRejectedValueOnce(new Error('clear boom'));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      renderWithProviders(<AIPanel />);
+      fireEvent.click(await screen.findByRole('button', { name: /Add Custom Provider/i }));
+      fireEvent.change(await screen.findByPlaceholderText('My Provider'), {
+        target: { value: 'My Host' },
+      });
+      fireEvent.change(screen.getByPlaceholderText('https://api.openai.com/v1'), {
+        target: { value: 'https://my-host.example.com/v1' },
+      });
+      fireEvent.change(screen.getByLabelText(/API Key/i), { target: { value: 'sk-test-key' } });
+      fireEvent.click(screen.getByRole('button', { name: /^Add Provider$/i }));
+
+      await waitFor(() =>
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('rollback clearCloudProviderKey failed'),
+          expect.any(Error)
+        )
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('rollback flush failed'),
+        expect.any(Error)
+      );
+      expect(saveAISettings).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it('shows a localized Kimi platform link and opens the supported .ai platform', async () => {

@@ -1202,6 +1202,20 @@ describe('describeProviderVerificationFailure', () => {
 describe('classifyProviderVerificationFailure', () => {
   it('maps each recognised shape onto its reason, defaulting to unknown', () => {
     expect(classifyProviderVerificationFailure('HTTP 401 invalid_api_key')).toBe('auth');
+    // A 403 counts as a rejected credential only with credential wording…
+    expect(classifyProviderVerificationFailure('provider returned 403: forbidden')).toBe('auth');
+    expect(classifyProviderVerificationFailure('403: API key does not have permission')).toBe(
+      'auth'
+    );
+    // …but network-side 403/407 (proxy / WAF / gateway) must NOT delete the key
+    // (#5341): they classify as unknown even though they contain 403/authentication.
+    expect(classifyProviderVerificationFailure('403 Forbidden (via Cloudflare)')).toBe('unknown');
+    expect(classifyProviderVerificationFailure('407 Proxy Authentication Required')).toBe(
+      'unknown'
+    );
+    expect(classifyProviderVerificationFailure('502 Bad Gateway')).toBe('unknown');
+    // Bare digit runs like a request id must not trip the 401/403 match.
+    expect(classifyProviderVerificationFailure('request id 1403 failed')).toBe('unknown');
     expect(classifyProviderVerificationFailure('unknown model')).toBe('model');
     expect(classifyProviderVerificationFailure('429 rate limit')).toBe('quota');
     expect(classifyProviderVerificationFailure('HTTP 404')).toBe('endpoint');
