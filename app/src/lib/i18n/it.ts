@@ -7375,6 +7375,9 @@ const messages: TranslationMap = {
   'sync.pipeline.treeDegraded':
     'Albero di memoria degradato. Il recupero potrebbe restituire risultati obsoleti.',
   'sync.pipeline.viewHealth': 'Visualizza lo stato della memoria',
+  'notifications.configRecovered.title': 'File delle impostazioni recuperato',
+  'notifications.configRecovered.body':
+    'Non è stato possibile leggere il tuo file delle impostazioni, quindi è stato ripristinato da un backup o reimpostato ai valori predefiniti. Il file illeggibile è stato conservato con il suffisso ".corrupted" nel caso ti servisse.',
 };
 
 export default messages;

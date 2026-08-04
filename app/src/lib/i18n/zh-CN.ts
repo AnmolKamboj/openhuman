@@ -6848,6 +6848,9 @@ const messages: TranslationMap = {
   'sync.pipeline.extractionFailed': '记忆结构提取失败。维基可能不完整。',
   'sync.pipeline.treeDegraded': '记忆树已降级。检索可能返回过时的结果。',
   'sync.pipeline.viewHealth': '查看记忆健康状况',
+  'notifications.configRecovered.title': '已恢复设置文件',
+  'notifications.configRecovered.body':
+    '无法读取你的设置文件，因此已从备份恢复或重置为默认值。无法读取的文件已保留并加上 ".corrupted" 后缀，以备你需要。',
 };
 
 export default messages;

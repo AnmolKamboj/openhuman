@@ -7442,6 +7442,9 @@ const messages: TranslationMap = {
   'sync.pipeline.treeDegraded':
     'Speicherbaum beeinträchtigt. Die Abfrage liefert möglicherweise veraltete Ergebnisse.',
   'sync.pipeline.viewHealth': 'Speicherzustand anzeigen',
+  'notifications.configRecovered.title': 'Einstellungsdatei wiederhergestellt',
+  'notifications.configRecovered.body':
+    'Deine Einstellungsdatei konnte nicht gelesen werden und wurde daher aus einer Sicherung wiederhergestellt oder auf die Standardwerte zurückgesetzt. Die unlesbare Datei wurde mit der Endung ".corrupted" aufbewahrt, falls du sie noch brauchst.',
 };
 
 export default messages;

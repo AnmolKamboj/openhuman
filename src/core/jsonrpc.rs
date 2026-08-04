@@ -2408,6 +2408,11 @@ pub async fn bootstrap_core_runtime(
     // DomainSet still installs its newly-enabled groups).
     register_domain_subscribers(workspace_dir.clone(), cfg.clone(), embedded_core, domains);
 
+    // Latch the config-corruption recovery signal (#5167) so `app_state_snapshot`
+    // keeps reporting it after the loader heals the file on this same boot; the
+    // frontend raises a one-shot "settings were reset" notice off it.
+    crate::openhuman::desktop::app_state::latch_from_config(&cfg);
+
     // --- Turn-state recovery -------------------------------------------
     // Any per-thread turn snapshots left on disk from a previous process
     // are stale by definition — there is no live driver to resume them.

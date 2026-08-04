@@ -7345,6 +7345,9 @@ const messages: TranslationMap = {
   'sync.pipeline.treeDegraded':
     'Drzewo pamięci osłabione. Wyszukiwanie może zwracać nieaktualne wyniki.',
   'sync.pipeline.viewHealth': 'Zobacz kondycję pamięci',
+  'notifications.configRecovered.title': 'Odzyskano plik ustawień',
+  'notifications.configRecovered.body':
+    'Nie można było odczytać pliku ustawień, więc został przywrócony z kopii zapasowej lub zresetowany do wartości domyślnych. Nieczytelny plik zachowano z sufiksem ".corrupted" na wypadek, gdybyś go potrzebował.',
 };
 
 export default messages;

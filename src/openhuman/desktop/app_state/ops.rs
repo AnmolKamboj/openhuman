@@ -173,6 +173,12 @@ pub struct AppStateSnapshot {
     /// second `health_snapshot` poller. Fields stay snake_case (the type has no
     /// camelCase rename) to match the frontend's existing health parser.
     pub health: crate::openhuman::platform::health::HealthSnapshot,
+    /// `true` when this session's config loader had to recover a corrupted
+    /// `config.toml` (renamed to `.corrupted.<ts>` and reset to defaults / a
+    /// backup). Latched at boot so it stays reported even after the file is
+    /// healed; the frontend raises a one-shot "settings were reset" notice
+    /// (#5167). Serialized as `configRecovered`.
+    pub config_recovered: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -917,6 +923,13 @@ pub async fn snapshot() -> Result<RpcOutcome<AppStateSnapshot>, String> {
 
     let t_config = Instant::now();
     let config = config_rpc::load_config_with_timeout().await?;
+    // Latch corruption recovery from *this* poll's load, not only from boot.
+    // `load_config_with_timeout` re-reads config.toml on every snapshot, so a
+    // config that becomes corrupt after boot is healed here — carrying a fresh
+    // `recovered_from_corruption`. Without this, that mid-session recovery would
+    // be dropped (the boot latch never saw it) and the notice never surfaces
+    // (#5167). No-op when the load was clean; idempotent once latched.
+    super::latch_from_config(&config);
     let config_ms = t_config.elapsed().as_millis();
 
     let t_auth = Instant::now();
@@ -1187,6 +1200,7 @@ pub async fn snapshot() -> Result<RpcOutcome<AppStateSnapshot>, String> {
             keyring_status,
             runtime,
             health,
+            config_recovered: super::config_recovered_this_session(),
         },
         vec!["core app state snapshot fetched".to_string()],
     ))

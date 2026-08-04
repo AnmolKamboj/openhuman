@@ -7235,6 +7235,9 @@ const messages: TranslationMap = {
   'sync.pipeline.extractionFailed': 'मेमोरी संरचना निष्कर्षण विफल रहा। विकी अपूर्ण हो सकता है।',
   'sync.pipeline.treeDegraded': 'मेमोरी ट्री अवक्रमित। पुनर्प्राप्ति पुराने परिणाम दे सकती है।',
   'sync.pipeline.viewHealth': 'मेमोरी स्वास्थ्य देखें',
+  'notifications.configRecovered.title': 'सेटिंग फ़ाइल पुनर्प्राप्त की गई',
+  'notifications.configRecovered.body':
+    'आपकी सेटिंग फ़ाइल पढ़ी नहीं जा सकी, इसलिए इसे बैकअप से पुनर्स्थापित किया गया या डिफ़ॉल्ट पर रीसेट कर दिया गया। न पढ़ी जा सकने वाली फ़ाइल को, ज़रूरत पड़ने पर, ".corrupted" प्रत्यय के साथ रखा गया है।',
 };
 
 export default messages;

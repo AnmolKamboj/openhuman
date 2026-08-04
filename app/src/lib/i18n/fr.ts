@@ -7421,6 +7421,9 @@ const messages: TranslationMap = {
   'sync.pipeline.treeDegraded':
     'Arbre mémoire dégradé. La récupération peut renvoyer des résultats obsolètes.',
   'sync.pipeline.viewHealth': "Voir l'état de la mémoire",
+  'notifications.configRecovered.title': 'Fichier de paramètres récupéré',
+  'notifications.configRecovered.body':
+    'Votre fichier de paramètres n\'a pas pu être lu ; il a donc été restauré à partir d\'une sauvegarde ou réinitialisé aux valeurs par défaut. Le fichier illisible a été conservé avec le suffixe ".corrupted" au cas où vous en auriez besoin.',
 };
 
 export default messages;

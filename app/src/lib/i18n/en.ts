@@ -7562,6 +7562,9 @@ const en: TranslationMap = {
   'memorySources.codingSessions.moreRemaining':
     'The session batch limit was reached. Run ingestion again to continue importing your history.',
   'memorySources.codingSessions.failed': 'Coding-session ingestion failed',
+  'notifications.configRecovered.title': 'Settings file recovered',
+  'notifications.configRecovered.body':
+    'Your settings file could not be read, so it was restored from a backup or reset to defaults. The unreadable file was kept with a ".corrupted" suffix in case you need it.',
 };
 
 export default en;

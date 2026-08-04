@@ -7236,6 +7236,9 @@ const messages: TranslationMap = {
   'sync.pipeline.extractionFailed': 'মেমরি কাঠামো নিষ্কাশন ব্যর্থ হয়েছে। উইকি অসম্পূর্ণ হতে পারে।',
   'sync.pipeline.treeDegraded': 'মেমরি ট্রি অবনমিত। পুনরুদ্ধার পুরনো ফলাফল দিতে পারে।',
   'sync.pipeline.viewHealth': 'মেমরির স্বাস্থ্য দেখুন',
+  'notifications.configRecovered.title': 'সেটিংস ফাইল পুনরুদ্ধার করা হয়েছে',
+  'notifications.configRecovered.body':
+    'আপনার সেটিংস ফাইল পড়া যায়নি, তাই এটি একটি ব্যাকআপ থেকে পুনরুদ্ধার করা হয়েছে বা ডিফল্টে রিসেট করা হয়েছে। অপঠনযোগ্য ফাইলটি, প্রয়োজনে ব্যবহারের জন্য, ".corrupted" প্রত্যয় সহ রাখা হয়েছে।',
 };
 
 export default messages;

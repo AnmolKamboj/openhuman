@@ -65,6 +65,14 @@ interface AppStateSnapshotResult {
    * gracefully — the daemon store simply isn't refreshed from those.
    */
   health?: RawHealthSnapshot;
+  /**
+   * `true` when the core recovered a corrupted `config.toml` this session — the
+   * on-disk settings were unreadable/unparseable, so the file was renamed to
+   * `.corrupted.<ts>` and reset to defaults (#5167). Latched at boot so it stays
+   * reported after the file is healed. Optional so older cores that omit it
+   * degrade to "no recovery". `CoreStateProvider` raises a one-shot notice.
+   */
+  configRecovered?: boolean;
 }
 
 /** Raw (snake_case) health payload embedded in the app-state snapshot. */

@@ -402,6 +402,10 @@ impl Config {
             config.config_path = config_path.clone();
             config.workspace_dir = workspace_dir;
             config.action_dir = resolve_action_dir(&config.action_dir_override);
+            // Runtime-only signal consumed once at boot to raise a user-visible
+            // "settings were reset" notice (#5167). Set before env overrides so a
+            // later override can never mask that recovery happened.
+            config.recovered_from_corruption = config_was_corrupted;
             migrate_legacy_inference_url(&mut config);
             migrate_cloud_provider_slugs(&mut config);
             config.apply_env_overrides_from(env);
@@ -593,6 +597,7 @@ impl Config {
         config.config_path = config_path;
         config.workspace_dir = workspace_dir;
         config.action_dir = resolve_action_dir(&config.action_dir_override);
+        config.recovered_from_corruption = config_was_corrupted;
         migrate_legacy_inference_url(&mut config);
         migrate_cloud_provider_slugs(&mut config);
         config.apply_env_overrides_from(&ProcessEnvWithoutWorkspace);

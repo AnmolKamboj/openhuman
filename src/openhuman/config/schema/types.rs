@@ -94,6 +94,14 @@ pub struct Config {
     pub action_dir_override: Option<PathBuf>,
     #[serde(skip)]
     pub config_path: PathBuf,
+    /// Runtime only — `true` when this config was produced by the loader's
+    /// corruption-recovery path: the on-disk `config.toml` was unreadable
+    /// (non-UTF-8) or unparseable, so it was renamed to `.corrupted.<ts>` and the
+    /// config was reset to defaults (or restored from `.bak`). Never persisted and
+    /// recomputed on every load. Read once at boot by `bootstrap_core_runtime` to
+    /// raise a user-visible "settings were reset" notice (#5167).
+    #[serde(skip)]
+    pub recovered_from_corruption: bool,
     /// Workspace data-schema version. Bumped each time a one-shot data
     /// migration under [`crate::openhuman::config::migrations`] runs successfully.
     /// `#[serde(default)]` so existing `config.toml` files (which predate
@@ -736,6 +744,7 @@ impl Default for Config {
             action_dir: crate::openhuman::config::default_action_dir(),
             action_dir_override: None,
             config_path: openhuman_dir.join("config.toml"),
+            recovered_from_corruption: false,
             schema_version: 0,
             api_url: None,
             api_key: None,

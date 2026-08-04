@@ -1760,6 +1760,10 @@ default_temperature = 0.7
         Some("gpt-valid"),
         "valid config must load normally without recovery"
     );
+    assert!(
+        !config.recovered_from_corruption,
+        "a valid config must not set the recovery flag"
+    );
 }
 
 #[tokio::test]
@@ -1949,6 +1953,13 @@ async fn load_or_init_recovers_from_non_utf8_config() {
         "must load defaults from non-UTF-8 config"
     );
 
+    // The runtime recovery flag must be set so the boot path can surface a
+    // user-visible notice (#5167).
+    assert!(
+        config.recovered_from_corruption,
+        "recovered_from_corruption must be set after non-UTF-8 recovery"
+    );
+
     // The original binary file should have been renamed to .corrupted.<ts>.
     let dir = std::fs::read_dir(root).unwrap();
     let mut found_corrupted = false;
@@ -2082,6 +2093,32 @@ default_temperature = 0.7
     assert!(
         bak_contents.contains("preserve-backup-test"),
         "backup content must be preserved: {bak_contents}"
+    );
+}
+
+#[tokio::test]
+async fn load_from_config_path_sets_recovery_flag_on_non_utf8() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let workspace = root.join("workspace");
+
+    // The snapshot-reload path (`load_from_config_path`) must set the per-load
+    // recovery flag on the returned `Config`. This test asserts only that flag;
+    // the surfacing itself is wired one layer up in `app_state_snapshot`, which
+    // latches this flag on every poll (see `desktop::app_state::recovery_signal`
+    // and its `latch_from_config` call in `snapshot`), so a long-lived runtime
+    // that reloads a since-corrupted config does surface the notice (#5167).
+    let config_path = root.join("config.toml");
+    let binary_bytes: Vec<u8> = vec![0xff, 0xfe, 0x00, 0x01, 0x02];
+    write_binary(&config_path, &binary_bytes).await;
+
+    let config = Config::load_from_config_path(&config_path, &workspace)
+        .await
+        .expect("load_from_config_path must recover, not error");
+
+    assert!(
+        config.recovered_from_corruption,
+        "load_from_config_path must set the recovery flag on non-UTF-8 content"
     );
 }
 

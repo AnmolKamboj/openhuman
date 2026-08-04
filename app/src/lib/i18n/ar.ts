@@ -7076,6 +7076,9 @@ const messages: TranslationMap = {
   'sync.pipeline.extractionFailed': 'فشل استخراج بنية الذاكرة. قد يكون الويكي غير مكتمل.',
   'sync.pipeline.treeDegraded': 'شجرة الذاكرة متدهورة. قد يُرجع الاسترجاع نتائج قديمة.',
   'sync.pipeline.viewHealth': 'عرض حالة الذاكرة',
+  'notifications.configRecovered.title': 'تمت استعادة ملف الإعدادات',
+  'notifications.configRecovered.body':
+    'تعذّرت قراءة ملف الإعدادات، لذا تمت استعادته من نسخة احتياطية أو إعادة تعيينه إلى الإعدادات الافتراضية. تم الاحتفاظ بالملف غير القابل للقراءة باللاحقة ".corrupted" في حال احتجت إليه.',
 };
 
 export default messages;

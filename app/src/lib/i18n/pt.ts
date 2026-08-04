@@ -7356,6 +7356,9 @@ const messages: TranslationMap = {
   'sync.pipeline.treeDegraded':
     'Árvore de memória degradada. A recuperação pode retornar resultados desatualizados.',
   'sync.pipeline.viewHealth': 'Ver a saúde da memória',
+  'notifications.configRecovered.title': 'Arquivo de configurações recuperado',
+  'notifications.configRecovered.body':
+    'Não foi possível ler seu arquivo de configurações, então ele foi restaurado de um backup ou redefinido para os padrões. O arquivo ilegível foi mantido com o sufixo ".corrupted" caso você precise dele.',
 };
 
 export default messages;

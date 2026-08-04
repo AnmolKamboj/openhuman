@@ -7316,6 +7316,9 @@ const messages: TranslationMap = {
   'sync.pipeline.treeDegraded':
     'Дерево памяти деградировало. Поиск может возвращать устаревшие результаты.',
   'sync.pipeline.viewHealth': 'Показать состояние памяти',
+  'notifications.configRecovered.title': 'Файл настроек восстановлен',
+  'notifications.configRecovered.body':
+    'Не удалось прочитать файл настроек, поэтому он был восстановлен из резервной копии или сброшен к значениям по умолчанию. Нечитаемый файл сохранён с суффиксом ".corrupted" на случай, если он вам понадобится.',
 };
 
 export default messages;

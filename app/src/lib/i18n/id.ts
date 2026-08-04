@@ -7274,6 +7274,9 @@ const messages: TranslationMap = {
   'sync.pipeline.treeDegraded':
     'Pohon memori menurun. Pengambilan mungkin mengembalikan hasil usang.',
   'sync.pipeline.viewHealth': 'Lihat kesehatan memori',
+  'notifications.configRecovered.title': 'File pengaturan dipulihkan',
+  'notifications.configRecovered.body':
+    'File pengaturan Anda tidak dapat dibaca, jadi dipulihkan dari cadangan atau disetel ulang ke default. File yang tidak terbaca disimpan dengan akhiran ".corrupted" jika Anda membutuhkannya.',
 };
 
 export default messages;

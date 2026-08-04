@@ -7156,6 +7156,9 @@ const messages: TranslationMap = {
   'sync.pipeline.treeDegraded':
     '메모리 트리가 저하되었습니다. 검색이 오래된 결과를 반환할 수 있습니다.',
   'sync.pipeline.viewHealth': '메모리 상태 보기',
+  'notifications.configRecovered.title': '설정 파일 복구됨',
+  'notifications.configRecovered.body':
+    '설정 파일을 읽을 수 없어 백업에서 복원하거나 기본값으로 재설정했습니다. 읽을 수 없는 파일은 필요할 경우를 대비해 ".corrupted" 접미사를 붙여 보관했습니다.',
 };
 
 export default messages;
