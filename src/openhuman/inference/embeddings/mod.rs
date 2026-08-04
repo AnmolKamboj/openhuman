@@ -42,8 +42,9 @@ pub use cloud::{
     OpenHumanCloudEmbedding, DEFAULT_CLOUD_EMBEDDING_DIMENSIONS, DEFAULT_CLOUD_EMBEDDING_MODEL,
 };
 pub use factory::{
-    create_embedding_provider, create_embedding_provider_with_credentials,
-    default_embedding_provider, default_local_embedding_provider,
+    create_embedding_provider, create_embedding_provider_with_config,
+    create_embedding_provider_with_credentials, default_embedding_provider,
+    default_local_embedding_provider,
 };
 // `pub(crate)` helper — reused by the memory-tree OpenAI-compat adapter to gate
 // configs whose dimension the fixed-1024 tree can't store (#4056). Not part of

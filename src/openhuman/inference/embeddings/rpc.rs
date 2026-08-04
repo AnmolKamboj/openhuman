@@ -7,7 +7,7 @@ use crate::openhuman::security::credentials::AuthService;
 use crate::rpc::RpcOutcome;
 
 use super::catalog;
-use super::factory::{create_embedding_provider_with_credentials, model_supports_dimensions};
+use super::factory::{create_embedding_provider_with_config, model_supports_dimensions};
 
 const LOG_PREFIX: &str = "[embeddings::rpc]";
 
@@ -470,7 +470,8 @@ pub async fn embed(
         provider_name.as_str()
     };
 
-    let embedder = create_embedding_provider_with_credentials(
+    let embedder = create_embedding_provider_with_config(
+        config,
         provider_slug,
         model,
         dims,
@@ -540,7 +541,8 @@ pub async fn test_connection(
         dims
     };
 
-    let embedder = create_embedding_provider_with_credentials(
+    let embedder = create_embedding_provider_with_config(
+        config,
         provider_tag,
         model,
         probe_dims,
@@ -617,7 +619,8 @@ fn build_embedder(
     } else {
         provider_name
     };
-    create_embedding_provider_with_credentials(
+    create_embedding_provider_with_config(
+        config,
         provider_slug,
         model,
         dims,
@@ -979,6 +982,10 @@ pub(crate) fn resolve_api_key(config: &Config, provider_name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Production code now routes managed construction through
+    // `create_embedding_provider_with_config`; this low-level custom-endpoint
+    // regression test still drives the credentialed factory directly.
+    use super::super::create_embedding_provider_with_credentials;
     use tempfile::TempDir;
 
     /// The seam the memory factory depends on (TAURI-RUST-52S fix): the three
@@ -1475,5 +1482,65 @@ mod tests {
             serde_json::json!(["connection test"]),
             "input is the OpenAI array-of-strings shape"
         );
+    }
+
+    /// #5356: the managed paths build the cloud embedder through the
+    /// config-aware factory, so the bearer resolver reads the config-scoped
+    /// credential store. With no stored `app-session` token the resolver
+    /// short-circuits to the backend-session error *before* any network call
+    /// (privacy defaults to `Standard`, so egress is allowed and the failure is
+    /// the missing session, not a local-only block). Also covers the rerouted
+    /// `test_connection` construction line.
+    #[tokio::test]
+    async fn test_connection_managed_without_session_reports_no_backend_session() {
+        let tmp = TempDir::new().unwrap();
+        let mut config = Config::default();
+        config.config_path = tmp.path().join("config.toml");
+        let out = test_connection(&config, Some("managed"), Some("voyage-3-large"), Some(1024))
+            .await
+            .expect("rpc returns Ok carrying a success flag");
+        assert_eq!(
+            out.value["success"],
+            serde_json::json!(false),
+            "managed test with no session must not pass"
+        );
+        let err = out.value["error"].as_str().unwrap_or_default();
+        assert!(
+            err.contains("No backend session"),
+            "managed test with no session must report the backend-session error, got: {err}"
+        );
+    }
+
+    /// Live `embed` (RPC) for managed also routes through the config-aware
+    /// factory; with no session it surfaces the same backend-session error.
+    #[tokio::test]
+    async fn embed_managed_without_session_errors_with_no_backend_session() {
+        let tmp = TempDir::new().unwrap();
+        let mut config = Config::default();
+        config.config_path = tmp.path().join("config.toml");
+        config.memory.embedding_provider = "managed".to_string();
+        config.memory.embedding_model = "voyage-3-large".to_string();
+        let err = embed(&config, &["hello".to_string()])
+            .await
+            .expect_err("managed embed with no session must error");
+        assert!(
+            err.contains("No backend session"),
+            "expected backend-session error, got: {err}"
+        );
+    }
+
+    /// `provider_from_config` (reused by other domains for direct embedding)
+    /// routes managed construction through the config-aware factory too — pure
+    /// construction, so it builds the cloud provider without a network call.
+    #[test]
+    fn provider_from_config_managed_builds_cloud() {
+        let tmp = TempDir::new().unwrap();
+        let mut config = Config::default();
+        config.config_path = tmp.path().join("config.toml");
+        config.memory.embedding_provider = "managed".to_string();
+        config.memory.embedding_model = "voyage-3-large".to_string();
+        config.memory.embedding_dimensions = 1024;
+        let provider = provider_from_config(&config).expect("managed provider must build");
+        assert_eq!(provider.name(), "cloud");
     }
 }
