@@ -49,6 +49,18 @@ const HumanPage = () => {
     [mascotColor, customSecondary, palette]
   );
 
+  // The mascot drives a ~60fps lipsync re-render while the agent is speaking
+  // (useHumanMascot forces a frame each rAF tick). Conversations is a heavy
+  // subtree, so co-rendering it here would reconcile the whole chat tree every
+  // frame and starve the main thread — which is what made tab switching feel
+  // locked during TTS playback (#5357). Its props are constant, so hold a stable
+  // element: React short-circuits reconciliation of an unchanged child, keeping
+  // the per-frame mascot re-render off the chat tree and the UI responsive.
+  const chatPanel = useMemo(
+    () => <Conversations variant="sidebar" composer="mic-cloud" projectThreadList />,
+    []
+  );
+
   return (
     <div className="absolute inset-0 bg-surface-subtle dark:bg-surface-canvas overflow-hidden">
       <div
@@ -100,8 +112,10 @@ const HumanPage = () => {
       <div className="absolute right-4 top-4 bottom-4 z-10 flex items-center">
         <aside className="w-[420px] h-[min(760px,100%)] rounded-2xl border border-line-strong bg-surface shadow-soft flex flex-col overflow-hidden">
           {/* Right-rail chat, but its thread list is surfaced in the (otherwise
-              empty) root sidebar so the Human page shows the user's threads. */}
-          <Conversations variant="sidebar" composer="mic-cloud" projectThreadList />
+              empty) root sidebar so the Human page shows the user's threads.
+              Held as a stable element (chatPanel) so mascot lipsync re-renders
+              don't reconcile it — see #5357. */}
+          {chatPanel}
         </aside>
       </div>
     </div>
