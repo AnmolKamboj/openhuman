@@ -6753,6 +6753,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': '비밀 저장 모드 및 키체인 상태',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': '저하됨',
+  'memoryTree.status.statusBudgetExhausted': '일시 중지됨: 임베딩 예산 소진',
   'memoryTree.status.degradedRecall': '의미 기반 검색 비활성화됨',
   'memoryTree.status.degradedStructure': '위키 구조 불완전',
   'memoryTree.status.extractionCoverage': '추출 범위: 청크의 {pct}%에 구조가 있음',
@@ -7073,6 +7074,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': '닫기',
   'userErrors.action.openBilling': '결제 열기',
   'userErrors.action.openProviderSettings': '제공업체 설정',
+  'userErrors.action.openEmbeddingsSettings': '임베딩 설정',
   'userErrors.budgetExceeded.title': '관리형 예산 소진',
   'userErrors.budgetExceeded.body': '관리형 AI 예산이 모두 소진되었습니다.',
   'userErrors.insufficientCredits.title': '제공업체 크레딧 필요',
@@ -7085,6 +7087,17 @@ const messages: TranslationMap = {
     '구성된 엔드포인트에서 Ollama에 연결할 수 없거나 필요한 모델이 그곳에 설치되어 있지 않습니다. Ollama를 실행하고 해당 엔드포인트에 모델을 내려받거나, 이 작업을 클라우드 제공업체로 전환하세요.',
   'userErrors.scope.chat': '채팅',
   'userErrors.scope.cron': '예약된 작업',
+  'userErrors.scope.workspace': '작업 공간',
+  'userErrors.memoryBudgetExhausted.title': '메모리가 더 이상 늘어나지 않습니다',
+  'userErrors.memoryBudgetExhausted.body':
+    '임베딩 예산을 모두 사용해 새 콘텐츠가 메모리에 추가되지 않습니다. 로컬 임베딩을 설정하거나 본인의 API 키를 추가하면 다시 시작됩니다.',
+  'memoryBudget.approachingTitle': '메모리가 임베딩 한도에 근접했습니다',
+  'memoryBudget.approachingMessage':
+    '임베딩 예산의 {pct}%를 사용했습니다. 로컬 임베딩을 설정하거나 본인의 API 키를 추가하면 메모리가 끊김 없이 계속 쌓입니다.',
+  'memoryBudget.exhaustedTitle': '메모리가 더 이상 늘어나지 않습니다',
+  'memoryBudget.exhaustedMessage':
+    '임베딩 예산을 모두 사용해 새 콘텐츠가 메모리에 추가되지 않습니다. 로컬 임베딩을 설정하거나 본인의 API 키를 추가하면 다시 시작됩니다.',
+  'memoryBudget.cta': '임베딩 설정',
   'userErrors.scope.memory': '메모리',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': '금액',

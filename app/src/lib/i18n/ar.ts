@@ -6680,6 +6680,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': 'وضع تخزين الأسرار وحالة سلسلة المفاتيح',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': 'متدهور',
+  'memoryTree.status.statusBudgetExhausted': 'متوقف مؤقتًا: انتهت ميزانية التضمينات',
   'memoryTree.status.degradedRecall': 'الاسترجاع الدلالي معطّل',
   'memoryTree.status.degradedStructure': 'بنية الويكي غير مكتملة',
   'memoryTree.status.extractionCoverage': 'تغطية الاستخراج: {pct}% من الأجزاء لها بنية',
@@ -6995,6 +6996,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': 'تجاهل',
   'userErrors.action.openBilling': 'فتح الفوترة',
   'userErrors.action.openProviderSettings': 'إعدادات المزود',
+  'userErrors.action.openEmbeddingsSettings': 'إعداد التضمينات',
   'userErrors.budgetExceeded.title': 'تم استنفاد الميزانية المُدارة',
   'userErrors.budgetExceeded.body': 'نفدت الميزانية المُدارة. أضف ميزانية أو غيّر خطتك.',
   'userErrors.insufficientCredits.title': 'مطلوب رصيد المزود',
@@ -7007,6 +7009,17 @@ const messages: TranslationMap = {
     'لا يمكن الوصول إلى Ollama على النقطة الطرفية المُهيأة، أو أن النموذج المطلوب غير مثبّت عليها. شغّل Ollama ونزّل النموذج على تلك النقطة الطرفية، أو حوّل هذا العمل إلى مزوّد سحابي.',
   'userErrors.scope.chat': 'الدردشة',
   'userErrors.scope.cron': 'مهمة مجدوَلة',
+  'userErrors.scope.workspace': 'مساحة العمل',
+  'userErrors.memoryBudgetExhausted.title': 'توقفت الذاكرة عن النمو',
+  'userErrors.memoryBudgetExhausted.body':
+    'انتهت ميزانية التضمينات لديك، لذلك لم يعد المحتوى الجديد يُضاف إلى الذاكرة. أعدّ تضمينات محلية أو أضف مفتاح API الخاص بك للمتابعة.',
+  'memoryBudget.approachingTitle': 'الذاكرة تقترب من حد التضمينات',
+  'memoryBudget.approachingMessage':
+    'لقد استخدمت {pct}% من ميزانية التضمينات. أعدّ تضمينات محلية أو أضف مفتاح API الخاص بك كي تستمر الذاكرة في النمو دون انقطاع.',
+  'memoryBudget.exhaustedTitle': 'توقفت الذاكرة عن النمو',
+  'memoryBudget.exhaustedMessage':
+    'انتهت ميزانية التضمينات لديك، لذلك لم يعد المحتوى الجديد يُضاف إلى الذاكرة. أعدّ تضمينات محلية أو أضف مفتاح API الخاص بك للمتابعة.',
+  'memoryBudget.cta': 'إعداد التضمينات',
   'userErrors.scope.memory': 'الذاكرة',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'المبلغ',

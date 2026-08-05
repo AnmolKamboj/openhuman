@@ -6861,6 +6861,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': 'Mode penyimpanan rahasia dan status keychain',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': 'Terdegradasi',
+  'memoryTree.status.statusBudgetExhausted': 'Dijeda: batas embedding tercapai',
   'memoryTree.status.degradedRecall': 'Recall semantik dinonaktifkan',
   'memoryTree.status.degradedStructure': 'Struktur wiki tidak lengkap',
   'memoryTree.status.extractionCoverage': 'Cakupan ekstraksi: {pct}% bagian memiliki struktur',
@@ -7188,6 +7189,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': 'Tutup',
   'userErrors.action.openBilling': 'Buka penagihan',
   'userErrors.action.openProviderSettings': 'Pengaturan penyedia',
+  'userErrors.action.openEmbeddingsSettings': 'Siapkan embedding',
   'userErrors.budgetExceeded.title': 'Anggaran terkelola habis',
   'userErrors.budgetExceeded.body':
     'Anggaran AI terkelola Anda sudah habis. Tambahkan anggaran atau ubah paket.',
@@ -7202,6 +7204,17 @@ const messages: TranslationMap = {
     'Ollama tidak dapat dijangkau di endpoint yang dikonfigurasi, atau model yang dibutuhkan belum terpasang di sana. Jalankan Ollama dan unduh modelnya di endpoint tersebut, atau alihkan pekerjaan ini ke penyedia cloud.',
   'userErrors.scope.chat': 'Obrolan',
   'userErrors.scope.cron': 'Tugas terjadwal',
+  'userErrors.scope.workspace': 'Ruang kerja',
+  'userErrors.memoryBudgetExhausted.title': 'Memori berhenti bertambah',
+  'userErrors.memoryBudgetExhausted.body':
+    'Anggaran embedding Anda sudah habis, sehingga konten baru tidak lagi ditambahkan ke memori. Siapkan embedding lokal atau tambahkan kunci API Anda sendiri untuk melanjutkan.',
+  'memoryBudget.approachingTitle': 'Memori hampir mencapai batas embedding',
+  'memoryBudget.approachingMessage':
+    'Anda telah memakai {pct}% anggaran embedding. Siapkan embedding lokal atau tambahkan kunci API Anda sendiri agar memori terus bertambah tanpa gangguan.',
+  'memoryBudget.exhaustedTitle': 'Memori berhenti bertambah',
+  'memoryBudget.exhaustedMessage':
+    'Anggaran embedding Anda sudah habis, sehingga konten baru tidak lagi ditambahkan ke memori. Siapkan embedding lokal atau tambahkan kunci API Anda sendiri untuk melanjutkan.',
+  'memoryBudget.cta': 'Siapkan embedding',
   'userErrors.scope.memory': 'Memori',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Jumlah',

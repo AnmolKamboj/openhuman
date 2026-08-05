@@ -36,7 +36,10 @@ pub mod testing;
 pub mod types;
 pub(crate) mod worker;
 
-pub use ops::{backfill_in_progress, ensure_reembed_backfill, set_backfill_in_progress};
+pub use ops::{
+    backfill_in_progress, ensure_reembed_backfill, requeue_failed_after_provider_change,
+    set_backfill_in_progress,
+};
 pub use store::{
     claim_next, count_by_status, count_total, enqueue, enqueue_tx, get_job, mark_deferred,
     mark_done, mark_failed, recover_stale_locks, DEFAULT_LOCK_DURATION_MS,

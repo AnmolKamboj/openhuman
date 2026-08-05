@@ -250,6 +250,94 @@ pub fn build_write_embedder(config: &Config) -> Result<Option<Box<dyn Embedder>>
     })
 }
 
+/// Render a ladder-resolution error safely for a log line.
+///
+/// The only user-controlled values these errors interpolate are the configured
+/// provider string and model (see `openai_compat::try_from_config`), and one of
+/// them is an endpoint: in its `custom:<url>` form `memory.embedding_provider`
+/// *is* a URL, which may carry `user:pass@` userinfo. Configured
+/// `cloud_providers` endpoints can reach the message the same way through the
+/// underlying constructor's own context.
+///
+/// So rather than dropping the reason — which would cost the diagnostic that
+/// makes this log worth having ("dimension mismatch", "build failed") — replace
+/// each known endpoint substring with its [`redact_endpoint`] form. Scrubbing
+/// the exact strings we already hold is precise, where a generic URL-matching
+/// pass over free text would be guesswork (CodeRabbit, #5402 / CWE-532).
+fn redact_ladder_error(config: &Config, err: &anyhow::Error) -> String {
+    use crate::openhuman::memory::util::redact::redact_endpoint;
+
+    // Candidates: the inline `custom:<url>` endpoint (when that is the
+    // configured form) plus every configured OpenAI-compatible endpoint
+    // (LM Studio, vLLM, …), any of which the ladder may have been resolving.
+    let mut endpoints: Vec<&str> = config
+        .memory
+        .embedding_provider
+        .trim()
+        .strip_prefix("custom:")
+        .into_iter()
+        .chain(config.cloud_providers.iter().map(|e| e.endpoint.as_str()))
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+        .collect();
+
+    // Longest first. Substring replacement is order-sensitive: if a short
+    // endpoint is a strict prefix of a longer one (`https://host` vs
+    // `https://host/v1?key=…`), scrubbing the short one first rewrites the
+    // longer one's prefix, so its own replacement no longer matches and the
+    // credential-bearing suffix survives in the log (CodeRabbit, #5402).
+    endpoints.sort_by_key(|e| std::cmp::Reverse(e.len()));
+    endpoints.dedup();
+
+    let mut msg = format!("{err:#}");
+    for endpoint in endpoints {
+        msg = msg.replace(endpoint, &redact_endpoint(endpoint));
+    }
+    msg
+}
+
+/// Slug naming the embedder ingestion will **actually** use, walking the same
+/// [`resolve_embedder_choice`] ladder the read and write factories walk.
+///
+/// This exists because `config.memory.embedding_provider` is *not* authoritative
+/// for how embeddings are funded, and reading it as if it were produces a false
+/// alarm. The ladder resolves local Ollama from `memory_tree.embedding_endpoint`
+/// or from the unified `workload_local_model("embeddings")` setting (the "Memory
+/// embeddings" toggle in Local AI Settings), and **neither path rewrites
+/// `memory.embedding_provider`** — so a user running fully local still reads as
+/// `"cloud"` there. Any surface that asks "do these embeddings bill against the
+/// managed budget?" must ask this function, not that field (reviewer M3gA-Mind,
+/// #5402: otherwise a local-embeddings user whose *chat* budget crosses 90% is
+/// told memory has stopped growing while it is growing fine).
+///
+/// Slugs are stable wire values consumed by the frontend:
+/// - `"ollama"` — local daemon; user-funded.
+/// - `"custom"` — user's own OpenAI-compatible endpoint / key; user-funded.
+/// - `"cloud"` — managed OpenHuman backend; **bills the managed cycle budget**.
+/// - `"none"` — deliberate opt-out (`embeddings_provider = "none"`).
+/// - `"unconfigured"` — no usable provider (signed out); nothing is billed.
+/// - `"unknown"` — the ladder itself failed to resolve. Deliberately not
+///   `"cloud"`: an unresolvable config must never manufacture a budget warning.
+pub fn effective_embedder_slug(config: &Config) -> &'static str {
+    let slug = match resolve_embedder_choice(config) {
+        Ok(EmbedderChoice::Ollama { .. }) => "ollama",
+        Ok(EmbedderChoice::OptOut) => "none",
+        Ok(EmbedderChoice::OpenAiCompat(_)) => "custom",
+        Ok(EmbedderChoice::Cloud) => "cloud",
+        Ok(EmbedderChoice::NoProvider) => "unconfigured",
+        Err(err) => {
+            log::warn!(
+                "[memory_tree::embed::factory] effective_embedder_slug: ladder failed to \
+                 resolve ({}) — reporting 'unknown' (treated as NOT managed)",
+                redact_ladder_error(config, &err)
+            );
+            "unknown"
+        }
+    };
+    log::debug!("[memory_tree::embed::factory] effective_embedder_slug → {slug}");
+    slug
+}
+
 fn build_ollama_embedder(endpoint: &str, model: &str, timeout_ms: u64) -> Result<ProviderEmbedder> {
     let timeout = Duration::from_millis(if timeout_ms == 0 { 10_000 } else { timeout_ms });
     let client = reqwest::Client::builder()
@@ -605,5 +693,172 @@ mod tests {
         cfg.local_ai.usage.embeddings = true;
         let e = build_embedder_from_config(&cfg).expect("override path should build");
         assert_eq!(e.name(), "ollama");
+    }
+
+    /// The regression this whole helper exists for (reviewer M3gA-Mind, #5402):
+    /// a user who enabled local embeddings through Local AI Settings still has
+    /// `memory.embedding_provider == "cloud"` (nothing rewrites it), so any
+    /// surface reading that field concludes they bill against the managed
+    /// budget and warns them their memory has stopped growing — while it is
+    /// growing fine, fully locally, costing them nothing.
+    #[test]
+    fn effective_slug_reports_ollama_when_local_ai_overrides_cloud_setting() {
+        let (_tmp, mut cfg) = test_config();
+        cfg.memory.embedding_provider = "cloud".to_string();
+        cfg.embeddings_provider = Some("ollama:all-minilm:latest".into());
+        cfg.local_ai.runtime_enabled = true;
+        cfg.local_ai.embedding_model_id = "all-minilm:latest".to_string();
+        touch_auth_profile(&cfg);
+
+        // The stale per-section field still says cloud …
+        assert_eq!(cfg.memory.embedding_provider, "cloud");
+        // … but the ladder — and therefore the wire field — says local.
+        assert_eq!(effective_embedder_slug(&cfg), "ollama");
+    }
+
+    #[test]
+    fn effective_slug_reports_ollama_for_explicit_endpoint_override() {
+        let (_tmp, mut cfg) = test_config();
+        cfg.memory.embedding_provider = "cloud".to_string();
+        cfg.memory_tree.embedding_endpoint = Some("http://localhost:11434".into());
+        cfg.memory_tree.embedding_model = Some("bge-m3".into());
+        touch_auth_profile(&cfg);
+        assert_eq!(effective_embedder_slug(&cfg), "ollama");
+    }
+
+    #[test]
+    fn effective_slug_reports_cloud_only_for_a_real_managed_session() {
+        let (_tmp, mut cfg) = test_config();
+        cfg.memory.embedding_provider = "cloud".to_string();
+        touch_auth_profile(&cfg);
+        assert_eq!(effective_embedder_slug(&cfg), "cloud");
+    }
+
+    #[test]
+    fn effective_slug_reports_unconfigured_without_a_session() {
+        // No auth-profiles.json → nothing is billed, so this must not read as
+        // managed even though the per-section field defaults to cloud.
+        let (_tmp, mut cfg) = test_config();
+        cfg.memory.embedding_provider = "cloud".to_string();
+        assert_eq!(effective_embedder_slug(&cfg), "unconfigured");
+    }
+
+    #[test]
+    fn effective_slug_reports_none_for_deliberate_opt_out() {
+        let (_tmp, mut cfg) = test_config();
+        cfg.embeddings_provider = Some("none".into());
+        touch_auth_profile(&cfg);
+        assert_eq!(effective_embedder_slug(&cfg), "none");
+    }
+
+    /// The ladder error quotes `memory.embedding_provider` verbatim, and in the
+    /// `custom:<url>` form that string is a full endpoint URL — potentially with
+    /// `user:pass@` userinfo. Logging it raw would write credentials to disk
+    /// (CodeRabbit, #5402 / CWE-532). Scrub the endpoint, keep the reason.
+    #[test]
+    fn ladder_error_log_redacts_custom_endpoint_credentials() {
+        let (_tmp, mut cfg) = test_config();
+        // No model + a non-tree dimension → `try_from_config` bails, and its
+        // message interpolates the provider string.
+        cfg.memory.embedding_provider = "custom:https://user:pass@embed.example.com/v1".to_string();
+        cfg.memory.embedding_model = String::new();
+        cfg.memory.embedding_dimensions = 512;
+
+        // `EmbedderChoice` is not `Debug` (it holds a live embedder), so unwrap
+        // the error by hand rather than via `expect_err`.
+        let err = match resolve_embedder_choice(&cfg) {
+            Err(e) => e,
+            Ok(_) => panic!("a non-tree dimension with no model must fail to resolve"),
+        };
+        let raw = format!("{err:#}");
+        assert!(
+            raw.contains("user:pass"),
+            "precondition: the unredacted error really does carry the credentials — \
+             otherwise this test proves nothing. Got: {raw}"
+        );
+
+        let rendered = redact_ladder_error(&cfg, &err);
+        assert!(
+            !rendered.contains("user:pass"),
+            "userinfo must not reach the log: {rendered}"
+        );
+        assert!(
+            !rendered.contains("/v1"),
+            "path must not reach the log: {rendered}"
+        );
+        assert!(
+            rendered.contains("embed.example.com"),
+            "host is kept so the line stays diagnosable: {rendered}"
+        );
+        assert!(
+            rendered.contains("1024"),
+            "the failure reason must survive redaction: {rendered}"
+        );
+
+        // And the caller degrades to not-managed rather than to `cloud`.
+        assert_eq!(effective_embedder_slug(&cfg), "unknown");
+    }
+
+    /// Substring replacement is order-sensitive. With a short endpoint that is a
+    /// strict prefix of the long one, scrubbing shortest-first rewrites the long
+    /// endpoint's prefix, its own replacement then fails to match, and the
+    /// credential-bearing suffix survives in the log. Longest-first is the fix
+    /// (CodeRabbit, #5402).
+    #[test]
+    fn ladder_error_redaction_handles_prefix_overlapping_endpoints() {
+        use crate::openhuman::config::schema::cloud_providers::CloudProviderCreds;
+        let (_tmp, mut cfg) = test_config();
+        // The SHORT endpoint is the one the old code scrubbed first (the inline
+        // `custom:` form led the list), and it is a strict prefix of the long
+        // one. That ordering is what let the long endpoint's secret survive:
+        // scrubbing `https://embed.example.com` first rewrote the long string's
+        // prefix, so the long string's own replacement no longer matched.
+        cfg.memory.embedding_provider = "custom:https://embed.example.com".to_string();
+        cfg.cloud_providers = vec![CloudProviderCreds {
+            id: "p_long".to_string(),
+            slug: "longpfx".to_string(),
+            endpoint: "https://embed.example.com/v1?key=super-secret".to_string(),
+            ..Default::default()
+        }];
+
+        // Synthesize the error rather than driving the ladder: this pins the
+        // redaction function's ordering contract for ANY message carrying both
+        // endpoints, which is the property at risk. Which ladder branch happens
+        // to surface a `cloud_providers` endpoint today is beside the point.
+        let err = anyhow::anyhow!(
+            "build custom embedder failed (provider='custom:https://embed.example.com', \
+             endpoint='https://embed.example.com/v1?key=super-secret')"
+        );
+        let rendered = redact_ladder_error(&cfg, &err);
+
+        assert!(
+            !rendered.contains("super-secret"),
+            "the long endpoint's query must not survive the short endpoint's scrub: {rendered}"
+        );
+        assert!(
+            !rendered.contains("/v1"),
+            "the long endpoint's path must not survive either: {rendered}"
+        );
+        assert!(
+            rendered.contains("embed.example.com"),
+            "host is still kept: {rendered}"
+        );
+    }
+
+    #[test]
+    fn effective_slug_reports_custom_for_byo_openai_compatible() {
+        use crate::openhuman::config::schema::cloud_providers::CloudProviderCreds;
+        let (_tmp, mut cfg) = test_config();
+        cfg.embeddings_provider = None;
+        cfg.memory.embedding_provider = "lmstudio".to_string();
+        cfg.memory.embedding_model = "bge-m3".to_string();
+        cfg.cloud_providers = vec![CloudProviderCreds {
+            id: "p_lmstudio".to_string(),
+            slug: "lmstudio".to_string(),
+            endpoint: "http://localhost:1234/v1".to_string(),
+            ..Default::default()
+        }];
+        touch_auth_profile(&cfg);
+        assert_eq!(effective_embedder_slug(&cfg), "custom");
     }
 }

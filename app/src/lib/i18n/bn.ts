@@ -6832,6 +6832,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': 'গোপনীয়তা সঞ্চয়স্থান মোড এবং কিচেন অবস্থা',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': 'অবনমিত',
+  'memoryTree.status.statusBudgetExhausted': 'বিরতি: এমবেডিং বাজেট শেষ',
   'memoryTree.status.degradedRecall': 'সিম্যান্টিক রিকল নিষ্ক্রিয়',
   'memoryTree.status.degradedStructure': 'উইকি কাঠামো অসম্পূর্ণ',
   'memoryTree.status.extractionCoverage': 'এক্সট্র্যাকশন কভারেজ: {pct}% অংশের কাঠামো আছে',
@@ -7153,6 +7154,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': 'বাতিল করুন',
   'userErrors.action.openBilling': 'বিলিং খুলুন',
   'userErrors.action.openProviderSettings': 'প্রদানকারী সেটিংস',
+  'userErrors.action.openEmbeddingsSettings': 'এমবেডিং সেট আপ করুন',
   'userErrors.budgetExceeded.title': 'পরিচালিত বাজেট শেষ',
   'userErrors.budgetExceeded.body': 'পরিচালিত AI বাজেট শেষ। বাজেট যোগ করুন বা প্ল্যান বদলান।',
   'userErrors.insufficientCredits.title': 'প্রদানকারীর ক্রেডিট প্রয়োজন',
@@ -7166,6 +7168,17 @@ const messages: TranslationMap = {
     'কনফিগার করা এন্ডপয়েন্টে Ollama-তে পৌঁছানো যাচ্ছে না, অথবা সেখানে প্রয়োজনীয় মডেলটি ইনস্টল করা নেই। Ollama চালু করে সেই এন্ডপয়েন্টে মডেলটি পুল করুন, অথবা এই কাজটি কোনো ক্লাউড প্রোভাইডারে সরিয়ে নিন।',
   'userErrors.scope.chat': 'চ্যাট',
   'userErrors.scope.cron': 'নির্ধারিত কাজ',
+  'userErrors.scope.workspace': 'ওয়ার্কস্পেস',
+  'userErrors.memoryBudgetExhausted.title': 'মেমরি আর বাড়ছে না',
+  'userErrors.memoryBudgetExhausted.body':
+    'আপনার এমবেডিং বাজেট শেষ, তাই নতুন কনটেন্ট আর মেমরিতে যুক্ত হচ্ছে না। আবার শুরু করতে লোকাল এমবেডিং সেট আপ করুন বা নিজের API কী যোগ করুন।',
+  'memoryBudget.approachingTitle': 'মেমরি এমবেডিং সীমার কাছাকাছি',
+  'memoryBudget.approachingMessage':
+    'আপনি এমবেডিং বাজেটের {pct}% ব্যবহার করেছেন। মেমরি নিরবচ্ছিন্নভাবে বাড়তে থাকুক, তার জন্য লোকাল এমবেডিং সেট আপ করুন বা নিজের API কী যোগ করুন।',
+  'memoryBudget.exhaustedTitle': 'মেমরি আর বাড়ছে না',
+  'memoryBudget.exhaustedMessage':
+    'আপনার এমবেডিং বাজেট শেষ, তাই নতুন কনটেন্ট আর মেমরিতে যুক্ত হচ্ছে না। আবার শুরু করতে লোকাল এমবেডিং সেট আপ করুন বা নিজের API কী যোগ করুন।',
+  'memoryBudget.cta': 'এমবেডিং সেট আপ করুন',
   'userErrors.scope.memory': 'মেমরি',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'পরিমাণ',

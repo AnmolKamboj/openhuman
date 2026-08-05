@@ -34,6 +34,39 @@ export interface RuntimeErrorSignal {
   provider?: string;
 }
 
+/**
+ * #5324: the memory pipeline's typed `budget_exhausted` cause, promoted to a
+ * first-class user-actionable error.
+ *
+ * Unlike the classifiers below this takes the core's stable `FailureCode`
+ * directly rather than pattern-matching prose — the memory pipeline already
+ * emits a typed cause on `first_blocking_cause`, so there is nothing to guess.
+ * That is the end state the text matchers below are migrating toward.
+ *
+ * Scoped to `workspace` (not `chat`) so a memory outage and a chat outage
+ * dedupe as separate entries. They have different fixes, and a user can hit
+ * both at once off the same exhausted budget.
+ *
+ * @param failureCode The `first_blocking_cause.code` from
+ *   `memory_tree_pipeline_status`.
+ * @returns A descriptor when the cause is user-actionable, else `null`.
+ */
+export function classifyMemoryPipelineFailure(
+  failureCode: string | null | undefined
+): UserErrorDescriptor | null {
+  if (failureCode !== 'budget_exhausted') return null;
+  return {
+    id: userErrorId('memory_budget_exhausted', 'workspace'),
+    kind: 'memory_budget_exhausted',
+    severity: 'warning',
+    scope: 'workspace',
+    sourceDomain: 'memory_tree',
+    titleKey: 'userErrors.memoryBudgetExhausted.title',
+    bodyKey: 'userErrors.memoryBudgetExhausted.body',
+    action: 'open_embeddings_settings',
+  };
+}
+
 /** Build the stable dedupe identity for an error. */
 export function userErrorId(
   kind: UserErrorDescriptor['kind'],

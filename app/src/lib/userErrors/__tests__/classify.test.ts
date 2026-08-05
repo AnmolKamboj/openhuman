@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { classifyUserActionableError, userErrorId } from '../classify';
+import {
+  classifyMemoryPipelineFailure,
+  classifyUserActionableError,
+  userErrorId,
+} from '../classify';
 
 const BUDGET_MSG = 'OpenHuman API error (400): Insufficient budget';
 const CREDITS_MSG = 'OpenRouter: this request requires more credits';
@@ -117,5 +121,54 @@ describe('classifyUserActionableError', () => {
     });
     expect(a?.scope).toBe('chat');
     expect(a?.id).toBe(userErrorId('insufficient_credits', 'chat', 'openrouter'));
+  });
+});
+
+// ── #5324: memory pipeline budget exhaustion ────────────────────────────────
+
+describe('classifyMemoryPipelineFailure', () => {
+  it('promotes a budget-exhausted memory pipeline to a user-actionable error', () => {
+    const d = classifyMemoryPipelineFailure('budget_exhausted');
+    expect(d).not.toBeNull();
+    expect(d!.kind).toBe('memory_budget_exhausted');
+    expect(d!.scope).toBe('workspace');
+    expect(d!.sourceDomain).toBe('memory_tree');
+  });
+
+  it('routes the CTA to embeddings settings, not billing', () => {
+    // Adding credits does not fix a memory outage — pointing embeddings at a
+    // local or BYO provider does. Sending the user to billing would be a dead
+    // end.
+    expect(classifyMemoryPipelineFailure('budget_exhausted')!.action).toBe(
+      'open_embeddings_settings'
+    );
+  });
+
+  it('dedupes separately from the chat-scoped budget error', () => {
+    // One exhausted budget can break both chat and memory at once; they need
+    // different fixes, so they must not collapse into one panel entry.
+    const memory = classifyMemoryPipelineFailure('budget_exhausted')!;
+    const chat = classifyUserActionableError({ message: 'Insufficient budget' })!;
+    expect(memory.id).not.toBe(chat.id);
+  });
+
+  it('ignores every other failure code', () => {
+    for (const code of [
+      'auth_missing',
+      'auth_invalid',
+      'embeddings_unconfigured',
+      'embedding_dim_mismatch',
+      'local_model_unavailable',
+      'extraction_timeout',
+      'storage_unavailable',
+      'transient',
+    ]) {
+      expect(classifyMemoryPipelineFailure(code)).toBeNull();
+    }
+  });
+
+  it('is null-safe for an absent cause', () => {
+    expect(classifyMemoryPipelineFailure(null)).toBeNull();
+    expect(classifyMemoryPipelineFailure(undefined)).toBeNull();
   });
 });

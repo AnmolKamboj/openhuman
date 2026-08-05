@@ -6947,6 +6947,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': 'Modalità archiviazione segreti e stato del portachiavi',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': 'Degradato',
+  'memoryTree.status.statusBudgetExhausted': 'In pausa: budget di embedding raggiunto',
   'memoryTree.status.degradedRecall': 'Richiamo semantico disattivato',
   'memoryTree.status.degradedStructure': 'Struttura del wiki incompleta',
   'memoryTree.status.extractionCoverage':
@@ -7285,6 +7286,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': 'Ignora',
   'userErrors.action.openBilling': 'Apri fatturazione',
   'userErrors.action.openProviderSettings': 'Impostazioni del provider',
+  'userErrors.action.openEmbeddingsSettings': 'Configura gli embedding',
   'userErrors.budgetExceeded.title': 'Budget gestito esaurito',
   'userErrors.budgetExceeded.body':
     'Il tuo budget IA gestito è esaurito. Aggiungi budget o cambia piano.',
@@ -7299,6 +7301,17 @@ const messages: TranslationMap = {
     "Ollama non è raggiungibile sull'endpoint configurato, oppure il modello necessario non è installato lì. Avvia Ollama e scarica il modello su quell'endpoint, oppure sposta questo lavoro su un provider cloud.",
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Attività pianificata',
+  'userErrors.scope.workspace': 'Spazio di lavoro',
+  'userErrors.memoryBudgetExhausted.title': 'La memoria ha smesso di crescere',
+  'userErrors.memoryBudgetExhausted.body':
+    'Il tuo budget di embedding è esaurito, quindi i nuovi contenuti non vengono più aggiunti alla memoria. Configura embedding locali o aggiungi la tua chiave API per riprendere.',
+  'memoryBudget.approachingTitle': 'La memoria si sta avvicinando al limite di embedding',
+  'memoryBudget.approachingMessage':
+    'Hai usato il {pct}% del tuo budget di embedding. Configura embedding locali o aggiungi la tua chiave API per far crescere la memoria senza interruzioni.',
+  'memoryBudget.exhaustedTitle': 'La memoria ha smesso di crescere',
+  'memoryBudget.exhaustedMessage':
+    'Il tuo budget di embedding è esaurito, quindi i nuovi contenuti non vengono più aggiunti alla memoria. Configura embedding locali o aggiungi la tua chiave API per riprendere.',
+  'memoryBudget.cta': 'Configura gli embedding',
   'userErrors.scope.memory': 'Memoria',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Importo',
