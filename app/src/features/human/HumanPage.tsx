@@ -7,7 +7,9 @@ import {
   selectCustomPrimaryColor,
   selectCustomSecondaryColor,
   selectMascotColor,
+  selectVoiceMode,
 } from '../../store/mascotSlice';
+import { VOICE_MODE_FLAG_ENABLED } from '../../utils/config';
 import Conversations from '../conversations/Conversations';
 import {
   CustomGifMascot,
@@ -17,6 +19,7 @@ import {
   RiveMascot,
 } from './Mascot';
 import { useMascotManifest } from './Mascot/manifest/useMascotManifest';
+import RealtimeVoiceControls from './RealtimeVoiceControls';
 import { useHumanMascot } from './useHumanMascot';
 
 const SPEAK_REPLIES_KEY = 'human.speakReplies';
@@ -33,6 +36,8 @@ const HumanPage = () => {
   }, [speakReplies]);
 
   const { face, visemeCode } = useHumanMascot({ speakReplies });
+  const voiceMode = useAppSelector(selectVoiceMode);
+  const realtimeEnabled = VOICE_MODE_FLAG_ENABLED && voiceMode === 'realtime';
   const mascotColor = useAppSelector(selectMascotColor);
   const customPrimary = useAppSelector(selectCustomPrimaryColor);
   const customSecondary = useAppSelector(selectCustomSecondaryColor);
@@ -96,6 +101,15 @@ const HumanPage = () => {
           )}
         </div>
       </div>
+
+      {/* Realtime voice-chat controls (#5399) — additive overlay shown only when
+          the flag + realtime mode are on; the classic push-to-talk path below
+          is untouched. */}
+      {realtimeEnabled && (
+        <div className="absolute bottom-8 left-0 right-[436px] z-10 flex justify-center">
+          <RealtimeVoiceControls />
+        </div>
+      )}
 
       <label className="absolute top-4 left-4 z-10 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface/80 backdrop-blur-sm border border-line-strong text-xs text-content-secondary shadow-soft cursor-pointer select-none">
         <input
