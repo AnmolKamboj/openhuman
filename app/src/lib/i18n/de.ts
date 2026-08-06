@@ -1351,6 +1351,12 @@ const messages: TranslationMap = {
   'memoryTree.status.never': 'Nie',
   'memoryTree.status.fetchError': 'Speicherbaum-Status konnte nicht abgerufen werden',
   'memoryTree.status.retry': 'Wiederholen',
+  'memoryTree.status.retryFailed': 'Fehlgeschlagene Jobs erneut ausführen',
+  'memoryTree.status.retryFailedBusy': 'Wird wiederholt...',
+  'memoryTree.status.retryFailedDone': 'Fehlgeschlagene Jobs neu eingereiht',
+  'memoryTree.status.retryFailedCount': 'Erneut eingereihte Jobs: {count}.',
+  'memoryTree.status.retryFailedError':
+    'Die fehlgeschlagenen Jobs konnten nicht neu eingereiht werden',
   'memoryTree.status.toggleFailed':
     'Automatische Synchronisierung konnte nicht umgeschaltet werden',
   'memoryTree.status.justNow': 'gerade eben',
