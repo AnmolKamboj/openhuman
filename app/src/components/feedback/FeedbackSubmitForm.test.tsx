@@ -5,8 +5,12 @@ import type { CreateFeedbackResult, FeedbackItem } from '../../types/feedback';
 import FeedbackSubmitForm from './FeedbackSubmitForm';
 
 const mockSubmit = vi.fn();
+const mockValidate = vi.fn();
 vi.mock('../../services/api/feedbackApi', () => ({
-  feedbackApi: { submitFeedback: (...args: unknown[]) => mockSubmit(...args) },
+  feedbackApi: {
+    submitFeedback: (...args: unknown[]) => mockSubmit(...args),
+    validateFeedback: (...args: unknown[]) => mockValidate(...args),
+  },
 }));
 
 function makeItem(overrides: Partial<FeedbackItem> = {}): FeedbackItem {
@@ -45,7 +49,11 @@ function fillForm(title: string, body: string) {
 }
 
 describe('<FeedbackSubmitForm />', () => {
-  beforeEach(() => mockSubmit.mockReset());
+  beforeEach(() => {
+    mockSubmit.mockReset();
+    mockValidate.mockReset();
+    mockValidate.mockResolvedValue({ tier: 'pass', reason: '' });
+  });
 
   it('exposes accessible labels for the title and body fields', () => {
     render(<FeedbackSubmitForm onAccepted={() => {}} />);
@@ -114,5 +122,105 @@ describe('<FeedbackSubmitForm />', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
 
     expect(await screen.findByText('network down')).toBeInTheDocument();
+  });
+});
+
+describe('<FeedbackSubmitForm /> quality tiers', () => {
+  beforeEach(() => {
+    mockSubmit.mockReset();
+    mockValidate.mockReset();
+    mockValidate.mockResolvedValue({ tier: 'pass', reason: '' });
+  });
+
+  it('shows the reason while the draft is still being written', async () => {
+    mockValidate.mockResolvedValue({ tier: 'warn', reason: 'Add steps to reproduce.' });
+
+    render(<FeedbackSubmitForm onAccepted={() => {}} />);
+    fillForm('Crash', 'It crashes.');
+
+    const hint = await screen.findByTestId('feedback-quality-hint');
+    expect(hint).toHaveTextContent('Add steps to reproduce.');
+    expect(hint).toHaveAttribute('data-tier', 'warn');
+  });
+
+  // The point of checking as they type: stop the round trip that would be
+  // refused anyway, while the text can still be changed.
+  it('blocks submitting a draft the server would refuse', async () => {
+    mockValidate.mockResolvedValue({ tier: 'block', reason: 'Please describe the problem.' });
+
+    render(<FeedbackSubmitForm onAccepted={() => {}} />);
+    fillForm('test', 'test');
+
+    const hint = await screen.findByTestId('feedback-quality-hint');
+    expect(hint).toHaveAttribute('data-tier', 'block');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Submit' })).toBeDisabled());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    expect(mockSubmit).not.toHaveBeenCalled();
+  });
+
+  it('says nothing about a draft that passes', async () => {
+    render(<FeedbackSubmitForm onAccepted={() => {}} />);
+    fillForm('A real title', 'A real description of the problem.');
+
+    await waitFor(() => expect(mockValidate).toHaveBeenCalled());
+    expect(screen.queryByTestId('feedback-quality-hint')).not.toBeInTheDocument();
+  });
+
+  it('does not ask the server about an empty draft', async () => {
+    render(<FeedbackSubmitForm onAccepted={() => {}} />);
+    fillForm('', '');
+
+    await new Promise(resolve => setTimeout(resolve, 400));
+    expect(mockValidate).not.toHaveBeenCalled();
+  });
+
+  // Warn is advisory. The submission is published; the reason is a nudge.
+  it('still publishes a warned submission and keeps its reason visible', async () => {
+    mockValidate.mockResolvedValue({ tier: 'warn', reason: 'Add steps to reproduce.' });
+    mockSubmit.mockResolvedValueOnce({
+      accepted: true,
+      reason: 'ok',
+      feedback: makeItem(),
+      quality: { tier: 'warn', reason: 'Add steps to reproduce.' },
+    });
+    const onAccepted = vi.fn();
+
+    render(<FeedbackSubmitForm onAccepted={onAccepted} />);
+    fillForm('Crash', 'It crashes.');
+    await screen.findByTestId('feedback-quality-hint');
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+
+    await waitFor(() => expect(onAccepted).toHaveBeenCalled());
+    expect(await screen.findByText('Add steps to reproduce.')).toBeInTheDocument();
+  });
+
+  // apiClient rejects with a plain `{ success, error }` object, not an Error.
+  // Without handling that shape the server's reason is replaced by the generic
+  // failure copy, and a blocked submitter is told nothing useful.
+  it('surfaces the server reason when only the server catches the block', async () => {
+    mockSubmit.mockRejectedValueOnce({ success: false, error: 'You have already reported this.' });
+
+    render(<FeedbackSubmitForm onAccepted={() => {}} />);
+    fillForm('Crash', 'It crashes.');
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+
+    expect(await screen.findByText('You have already reported this.')).toBeInTheDocument();
+  });
+
+  // A quality verdict must not read as a moderation flag.
+  it('keeps the quality hint separate from a moderation rejection', async () => {
+    mockSubmit.mockResolvedValueOnce({
+      accepted: false,
+      reason: 'Looks like spam',
+      feedback: null,
+    });
+
+    render(<FeedbackSubmitForm onAccepted={() => {}} />);
+    fillForm('Crash', 'It crashes.');
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+
+    expect(await screen.findByText('Looks like spam')).toBeInTheDocument();
+    expect(screen.queryByTestId('feedback-quality-hint')).not.toBeInTheDocument();
   });
 });

@@ -9,6 +9,7 @@ import type {
   FeedbackItem,
   FeedbackListParams,
   FeedbackListResult,
+  FeedbackQuality,
   FeedbackStatus,
   FeedbackVoteValue,
 } from '../../types/feedback';
@@ -59,6 +60,22 @@ export const feedbackApi = {
   submitFeedback: async (input: CreateFeedbackInput): Promise<CreateFeedbackResult> => {
     log('submitFeedback type=%s titleLen=%d', input.type, input.title.length);
     const response = await apiClient.post<ApiResponse<CreateFeedbackResult>>('/feedback', input);
+    return response.data;
+  },
+
+  /**
+   * POST /feedback/validate — the quality tier for a draft, without submitting.
+   *
+   * Deterministic and local on the server: no moderation model call, nothing
+   * written, and it does not count against the daily submission limit, so the
+   * composer can call it as the user types.
+   */
+  validateFeedback: async (input: CreateFeedbackInput): Promise<FeedbackQuality> => {
+    log('validateFeedback type=%s titleLen=%d', input.type, input.title.length);
+    const response = await apiClient.post<ApiResponse<FeedbackQuality>>(
+      '/feedback/validate',
+      input
+    );
     return response.data;
   },
 

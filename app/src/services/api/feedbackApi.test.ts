@@ -114,4 +114,27 @@ describe('feedbackApi', () => {
 
     expect(mockPatch).toHaveBeenCalledWith('/feedback/f1/status', { status: 'planned' });
   });
+
+  // The composer calls this on every keystroke burst, so it must stay a plain
+  // POST with no query building or retry wrapper around it.
+  it('validateFeedback posts the draft and unwraps the tier', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: { tier: 'warn', reason: 'Add steps to reproduce.' },
+    });
+
+    const { feedbackApi } = await import('./feedbackApi');
+    const result = await feedbackApi.validateFeedback({
+      type: 'bug',
+      title: 'Crash',
+      body: 'It crashes.',
+    });
+
+    expect(mockPost).toHaveBeenCalledWith('/feedback/validate', {
+      type: 'bug',
+      title: 'Crash',
+      body: 'It crashes.',
+    });
+    expect(result).toEqual({ tier: 'warn', reason: 'Add steps to reproduce.' });
+  });
 });

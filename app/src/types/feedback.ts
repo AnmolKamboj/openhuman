@@ -86,8 +86,25 @@ export interface CreateFeedbackInput {
  * Result of a submission. `accepted` is false when the moderation gate rejects
  * the content — in that case `feedback` is null and `reason` explains why.
  */
+/**
+ * The quality gate's verdict on a draft. Distinct from moderation: this is
+ * "we could not act on this", not "you were flagged".
+ *
+ * `block` never reaches the board — the submit endpoint applies the same rules,
+ * so the composer's check is a courtesy, not the enforcement point. `warn` is
+ * published; the reason is a nudge to improve it.
+ */
+export type FeedbackQualityTier = 'block' | 'warn' | 'pass';
+
+export interface FeedbackQuality {
+  tier: FeedbackQualityTier;
+  /** Shown to the submitter. Empty on `pass`. */
+  reason: string;
+}
+
 export interface CreateFeedbackResult {
   accepted: boolean;
   reason: string;
   feedback: FeedbackItem | null;
+  quality?: FeedbackQuality;
 }
