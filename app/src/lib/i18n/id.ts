@@ -5877,10 +5877,15 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Draf',
   'settings.mascot.characterHeading': 'Judul karakter',
   'settings.mascot.customGifError':
-    'Masukkan HTTPS .gif URL, loopback HTTP .gif URL, file:// .gif URL, atau jalur .gif lokal.',
-  'settings.mascot.customGifHeading': 'Avatar GIF khusus',
-  'settings.mascot.customGifLabel': 'Avatar GIF khusus URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Masukkan URL gambar HTTPS, file://, atau lokal (PNG, GIF, JPEG, WebP, atau BMP), atau unggah berkas.',
+  'settings.mascot.customGifHeading': 'Avatar gambar khusus',
+  'settings.mascot.customGifLabel': 'URL avatar gambar khusus',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Unggah gambar',
+  'settings.mascot.customGifInvalidType':
+    'Tipe berkas tidak didukung. Unggah gambar PNG, GIF, JPEG, WebP, atau BMP.',
+  'settings.mascot.customGifTooLarge': 'Gambar terlalu besar. Unggah berkas hingga 1,5 MB.',
+  'settings.mascot.customGifReadError': 'Tidak dapat membaca gambar itu. Coba berkas lain.',
   'settings.mascot.characterPreview': 'Pratinjau',
   'settings.mascot.characterStates': 'status',
   'settings.mascot.characterVisemes': 'visem',
@@ -5988,7 +5993,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'Hangat, ramah, aman untuk segala usia',
   'settings.persona.appearanceHeading': 'Avatar & Suara',
   'settings.persona.appearanceDesc':
-    'Warna Mascot, avatar GIF kustom, dan suara balasan dikonfigurasi dalam pengaturan Mascot.',
+    'Warna Mascot, avatar gambar kustom, dan suara balasan dikonfigurasi dalam pengaturan Mascot.',
   'settings.persona.openMascotSettings': 'Buka pengaturan Mascot',
   'settings.memoryWindow.balanced.badge': 'Direkomendasikan',
   'settings.memoryWindow.balanced.hint':

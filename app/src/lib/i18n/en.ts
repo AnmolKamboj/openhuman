@@ -6448,10 +6448,15 @@ const en: TranslationMap = {
   'settings.mascot.characterDraft': 'Draft',
   'settings.mascot.characterHeading': 'Character',
   'settings.mascot.customGifError':
-    'Enter an HTTPS .gif URL, loopback HTTP .gif URL, file:// .gif URL, or local .gif path.',
-  'settings.mascot.customGifHeading': 'Custom GIF avatar',
-  'settings.mascot.customGifLabel': 'Custom GIF avatar URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Enter an HTTPS, file://, or local image URL (PNG, GIF, JPEG, WebP, or BMP), or upload a file.',
+  'settings.mascot.customGifHeading': 'Custom image avatar',
+  'settings.mascot.customGifLabel': 'Custom image avatar URL',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Upload image',
+  'settings.mascot.customGifInvalidType':
+    'Unsupported file type. Upload a PNG, GIF, JPEG, WebP, or BMP image.',
+  'settings.mascot.customGifTooLarge': 'Image is too large. Upload a file up to 1.5 MB.',
+  'settings.mascot.customGifReadError': 'Could not read that image. Please try another file.',
   'settings.mascot.characterPreview': 'Preview',
   'settings.mascot.characterStates': 'states',
   'settings.mascot.characterVisemes': 'visemes',
@@ -6559,7 +6564,7 @@ const en: TranslationMap = {
   'settings.persona.templates.family.desc': 'Warm, friendly, safe for all ages',
   'settings.persona.appearanceHeading': 'Avatar & Voice',
   'settings.persona.appearanceDesc':
-    'Mascot color, custom GIF avatar, and reply voice are configured in Mascot settings.',
+    'Mascot color, custom image avatar, and reply voice are configured in Mascot settings.',
   'settings.persona.openMascotSettings': 'Open Mascot settings',
   'settings.memoryWindow.balanced.badge': 'Recommended',
   'settings.memoryWindow.balanced.hint':

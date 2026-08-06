@@ -5780,10 +5780,15 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': '초안',
   'settings.mascot.characterHeading': '캐릭터 제목',
   'settings.mascot.customGifError':
-    'HTTPS .gif URL, loopback HTTP .gif URL, file:// .gif URL 또는 로컬 .gif 경로를 입력하세요.',
-  'settings.mascot.customGifHeading': '사용자 지정 GIF 아바타',
-  'settings.mascot.customGifLabel': '사용자 지정 GIF 아바타 URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'HTTPS, file:// 또는 로컬 이미지 URL(PNG, GIF, JPEG, WebP 또는 BMP)을 입력하거나 파일을 업로드하세요.',
+  'settings.mascot.customGifHeading': '사용자 지정 이미지 아바타',
+  'settings.mascot.customGifLabel': '사용자 지정 이미지 아바타 URL',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': '이미지 업로드',
+  'settings.mascot.customGifInvalidType':
+    '지원되지 않는 파일 형식입니다. PNG, GIF, JPEG, WebP 또는 BMP 이미지를 업로드하세요.',
+  'settings.mascot.customGifTooLarge': '이미지가 너무 큽니다. 최대 1.5MB 파일을 업로드하세요.',
+  'settings.mascot.customGifReadError': '이미지를 읽을 수 없습니다. 다른 파일을 시도하세요.',
   'settings.mascot.characterPreview': '미리보기',
   'settings.mascot.characterStates': '상태',
   'settings.mascot.characterVisemes': '입 모양',
@@ -5891,7 +5896,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': '따뜻하고 친근하며 모든 연령에 안전',
   'settings.persona.appearanceHeading': '아바타 및 음성',
   'settings.persona.appearanceDesc':
-    '마스코트 색상, 사용자 지정 GIF 아바타, 응답 음성은 마스코트 설정에서 구성합니다.',
+    '마스코트 색상, 사용자 지정 이미지 아바타, 응답 음성은 마스코트 설정에서 구성합니다.',
   'settings.persona.openMascotSettings': '마스코트 설정 열기',
   'settings.memoryWindow.balanced.badge': '추천',
   'settings.memoryWindow.balanced.hint':

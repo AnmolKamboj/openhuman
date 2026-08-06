@@ -5990,10 +5990,16 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Brouillon',
   'settings.mascot.characterHeading': 'Titre du personnage',
   'settings.mascot.customGifError':
-    'Entrez un HTTPS .gif URL, un bouclage HTTP .gif URL, un fichier:// .gif URL ou un chemin local .gif.',
-  'settings.mascot.customGifHeading': 'Avatar GIF personnalisé',
-  'settings.mascot.customGifLabel': 'Avatar GIF personnalisé URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Saisissez une URL d’image HTTPS, file:// ou locale (PNG, GIF, JPEG, WebP ou BMP), ou importez un fichier.',
+  'settings.mascot.customGifHeading': 'Avatar image personnalisé',
+  'settings.mascot.customGifLabel': 'URL de l’avatar image personnalisé',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Importer une image',
+  'settings.mascot.customGifInvalidType':
+    'Type de fichier non pris en charge. Importez une image PNG, GIF, JPEG, WebP ou BMP.',
+  'settings.mascot.customGifTooLarge':
+    'L’image est trop volumineuse. Importez un fichier de 1,5 Mo maximum.',
+  'settings.mascot.customGifReadError': 'Impossible de lire cette image. Essayez un autre fichier.',
   'settings.mascot.characterPreview': 'Aperçu',
   'settings.mascot.characterStates': 'états',
   'settings.mascot.characterVisemes': 'visèmes',
@@ -6103,7 +6109,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'Chaleureux, amical, adapté à tous les âges',
   'settings.persona.appearanceHeading': 'Avatar et Voix',
   'settings.persona.appearanceDesc':
-    "La couleur de la mascotte, l'avatar personnalisé GIF et la voix de réponse sont configurés dans les paramètres de la mascotte.",
+    "La couleur de la mascotte, l'avatar personnalisé en image et la voix de réponse sont configurés dans les paramètres de la mascotte.",
   'settings.persona.openMascotSettings': 'Ouvrir les paramètres de Mascot',
   'settings.memoryWindow.balanced.badge': 'Recommandé',
   'settings.memoryWindow.balanced.hint':

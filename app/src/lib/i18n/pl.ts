@@ -5937,10 +5937,15 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Wersja robocza',
   'settings.mascot.characterHeading': 'Charakter',
   'settings.mascot.customGifError':
-    'Wprowadź URL .gif HTTPS, URL .gif loopback HTTP, URL file:// .gif lub lokalną ścieżkę .gif.',
-  'settings.mascot.customGifHeading': 'Własny awatar GIF',
-  'settings.mascot.customGifLabel': 'URL własnego awatara GIF',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Wprowadź adres URL obrazu HTTPS, file:// lub lokalny (PNG, GIF, JPEG, WebP lub BMP) albo prześlij plik.',
+  'settings.mascot.customGifHeading': 'Własny awatar graficzny',
+  'settings.mascot.customGifLabel': 'URL własnego awatara graficznego',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Prześlij obraz',
+  'settings.mascot.customGifInvalidType':
+    'Nieobsługiwany typ pliku. Prześlij obraz PNG, GIF, JPEG, WebP lub BMP.',
+  'settings.mascot.customGifTooLarge': 'Obraz jest za duży. Prześlij plik do 1,5 MB.',
+  'settings.mascot.customGifReadError': 'Nie udało się odczytać tego obrazu. Spróbuj innego pliku.',
   'settings.mascot.characterPreview': 'Podgląd',
   'settings.mascot.characterStates': 'stanów',
   'settings.mascot.characterVisemes': 'wizemów',
@@ -6047,7 +6052,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'Ciepły, przyjazny, bezpieczny dla każdego wieku',
   'settings.persona.appearanceHeading': 'Awatar i głos',
   'settings.persona.appearanceDesc':
-    'Kolor maskotki, własny awatar GIF i głos odpowiedzi są konfigurowane w ustawieniach Maskotki.',
+    'Kolor maskotki, własny awatar obrazkowy i głos odpowiedzi są konfigurowane w ustawieniach Maskotki.',
   'settings.persona.openMascotSettings': 'Otwórz ustawienia Maskotki',
   'settings.memoryWindow.balanced.badge': 'Zalecane',
   'settings.memoryWindow.balanced.hint':

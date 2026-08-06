@@ -5847,10 +5847,15 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'ड्राफ़्ट',
   'settings.mascot.characterHeading': 'कैरेक्टर शीर्षक',
   'settings.mascot.customGifError':
-    'एक HTTPS .gif URL, लूपबैक HTTP .gif URL, फ़ाइल:// .gif URL, या स्थानीय .gif पथ दर्ज करें।',
-  'settings.mascot.customGifHeading': 'कस्टम GIF अवतार',
-  'settings.mascot.customGifLabel': 'कस्टम GIF अवतार URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'HTTPS, file://, या स्थानीय इमेज URL (PNG, GIF, JPEG, WebP, या BMP) दर्ज करें, या कोई फ़ाइल अपलोड करें।',
+  'settings.mascot.customGifHeading': 'कस्टम इमेज अवतार',
+  'settings.mascot.customGifLabel': 'कस्टम इमेज अवतार URL',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'इमेज अपलोड करें',
+  'settings.mascot.customGifInvalidType':
+    'असमर्थित फ़ाइल प्रकार। PNG, GIF, JPEG, WebP, या BMP इमेज अपलोड करें।',
+  'settings.mascot.customGifTooLarge': 'इमेज बहुत बड़ी है। 1.5 MB तक की फ़ाइल अपलोड करें।',
+  'settings.mascot.customGifReadError': 'यह इमेज पढ़ी नहीं जा सकी। कृपया दूसरी फ़ाइल आज़माएँ।',
   'settings.mascot.characterPreview': 'पूर्वावलोकन',
   'settings.mascot.characterStates': 'राज्य',
   'settings.mascot.characterVisemes': 'हिंदी',
@@ -5957,7 +5962,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'गर्मजोश, मिलनसार, हर उम्र के लिए सुरक्षित',
   'settings.persona.appearanceHeading': 'अवतार और आवाज',
   'settings.persona.appearanceDesc':
-    'Mascot रंग, कस्टम GIF अवतार, और उत्तर आवाज Mascot सेटिंग्स में कॉन्फ़िगर किया गया है।',
+    'Mascot रंग, कस्टम इमेज अवतार, और उत्तर आवाज Mascot सेटिंग्स में कॉन्फ़िगर किया गया है।',
   'settings.persona.openMascotSettings': 'ओपन Mascot सेटिंग्स',
   'settings.memoryWindow.balanced.badge': 'अनुशंसित',
   'settings.memoryWindow.balanced.hint':

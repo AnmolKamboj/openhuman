@@ -5540,10 +5540,15 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': '草稿',
   'settings.mascot.characterHeading': '角色',
   'settings.mascot.customGifError':
-    '输入 HTTPS .gif 链接、本地回环 HTTP .gif 链接、file:// .gif 链接或本地 .gif 路径。',
-  'settings.mascot.customGifHeading': '自定义 GIF 头像',
-  'settings.mascot.customGifLabel': '自定义 GIF 头像链接',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    '输入 HTTPS、file:// 或本地图片链接（PNG、GIF、JPEG、WebP 或 BMP），或上传文件。',
+  'settings.mascot.customGifHeading': '自定义图片头像',
+  'settings.mascot.customGifLabel': '自定义图片头像链接',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': '上传图片',
+  'settings.mascot.customGifInvalidType':
+    '不支持的文件类型。请上传 PNG、GIF、JPEG、WebP 或 BMP 图片。',
+  'settings.mascot.customGifTooLarge': '图片太大。请上传不超过 1.5 MB 的文件。',
+  'settings.mascot.customGifReadError': '无法读取该图片。请尝试其他文件。',
   'settings.mascot.characterPreview': '预览',
   'settings.mascot.characterStates': '状态',
   'settings.mascot.characterVisemes': '视素',
@@ -5644,7 +5649,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.label': '家庭助手',
   'settings.persona.templates.family.desc': '温暖、友好、老少皆宜',
   'settings.persona.appearanceHeading': '头像和声音',
-  'settings.persona.appearanceDesc': '吉祥物颜色、自定义 GIF 头像和回复声音在吉祥物设置中配置。',
+  'settings.persona.appearanceDesc': '吉祥物颜色、自定义图片头像和回复声音在吉祥物设置中配置。',
   'settings.persona.openMascotSettings': '打开吉祥物设置',
   'settings.memoryWindow.balanced.badge': '推荐',
   'settings.memoryWindow.balanced.hint':
