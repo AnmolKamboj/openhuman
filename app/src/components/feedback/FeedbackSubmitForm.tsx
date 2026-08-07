@@ -122,7 +122,9 @@ export default function FeedbackSubmitForm({ onAccepted }: FeedbackSubmitFormPro
         setMessage(result.reason || t('feedback.submit.rejected'));
       }
     } catch (err) {
-      log('submit failed type=%s error=%O', type, err);
+      // No error payload: on a quality block the message is the server's
+      // account of the user's own draft, and it is already on screen below.
+      log('submit failed type=%s', type);
       setStatus('error');
       setSubmittedQuality(null);
       setMessage(messageForApiError(err, t('feedback.submit.error')));
