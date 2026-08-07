@@ -289,9 +289,12 @@ fn client_for(base: String) -> IntegrationClient {
 
 /// The `x-sdk-name` each of `IntegrationClient`'s two transports sent.
 ///
-/// The verb methods go out through the SDK, but `get_bytes` drives the separate
-/// `download_client` directly and so gets its header from the transport instead
-/// — two independent code paths, so both are asserted.
+/// The verb methods go out through the SDK and are tagged. `get_bytes` drives
+/// the separate `download_client`, which deliberately is NOT tagged: it follows
+/// a 302 to presigned S3 storage, and reqwest preserves non-sensitive headers
+/// across a cross-host redirect, so tagging it would hand the product identity
+/// to the storage provider. Two independent transports with deliberately
+/// opposite expectations, so both are asserted.
 struct ProductIdentitySeen {
     sdk: Option<String>,
     download: Option<String>,
@@ -373,8 +376,9 @@ async fn integration_requests_carry_the_default_product_identity() {
     );
     assert_eq!(
         seen.download.as_deref(),
-        expected,
-        "file downloads bypass the SDK and need the header from the transport"
+        None,
+        "the download transport must stay untagged — it follows a 302 to presigned \
+         storage and reqwest keeps non-sensitive headers across the cross-host hop"
     );
 }
 
@@ -383,7 +387,9 @@ async fn integration_requests_carry_an_overridden_product_identity() {
     let _guard = crate::api::product::product_identity_test_lock();
     let seen = product_identity_seen_by_backend(Some("opencompany")).await;
     assert_eq!(seen.sdk.as_deref(), Some("opencompany"));
-    assert_eq!(seen.download.as_deref(), Some("opencompany"));
+    // An override must not leak to storage either — same redirect reasoning as
+    // the default case above.
+    assert_eq!(seen.download.as_deref(), None);
 }
 
 #[tokio::test]

@@ -235,7 +235,7 @@ request-building code path with the others:
 | Path | Where |
 | ---- | ----- |
 | `BackendOAuthClient` | both the reqwest transport (`build_backend_reqwest_client`, so `raw_client()` multipart uploads are covered too) and the SDK's `with_default_headers` |
-| `IntegrationClient` (`/agent-integrations/*`) | its own transport + SDK default headers |
+| `IntegrationClient` (`/agent-integrations/*`) | the SDK's `with_default_headers` **only** — its separate `download_client` is deliberately untagged, see below |
 | `MedullaClient` | `authed()` for HTTP, and **separately** `sse::StreamState::connect` — the SSE handshake authenticates with a `?token=` query parameter and never reaches `authed()` |
 | `desktop::app_state::ops` (`GET /auth/me`) | its local `build_client()` default headers — a hand-rolled TLS client, not `BackendOAuthClient`'s |
 | `agent::progress_tracing::langfuse` (`POST /telemetry/langfuse/ingestion`) | at the call site — a bare `reqwest::Client::new()` against the backend's Langfuse proxy route |
@@ -253,13 +253,28 @@ ones — those are the paths that go unattributed silently.
 `sanitize_client_version` applies to `x-core-version`, so the wrapped value can
 never carry CR/LF and header construction cannot fail.
 
+**Deliberately untagged — do not "fix" these.** `IntegrationClient`'s
+`download_client` fetches `/agent-integrations/file-storage/files/{id}/download`,
+which answers a 302 to presigned S3. reqwest follows redirects and strips only
+*sensitive* headers (Authorization, Cookie, …) when the host changes, so a
+custom header like `x-sdk-name` survives onto the storage request; attaching it
+per-request does not help, because redirected requests carry the original
+headers too. Scoping it to the first hop would mean hand-rolling redirect
+following, which is not worth it when every other call in the same session is
+already tagged. MCP servers (`mcp::http_client`) and third-party BYOK inference
+endpoints are excluded for the same reason: they are not our backend, and
+telling an unrelated operator which TinyHumans product a user runs discloses
+something for no benefit.
+
 **Not covered** (would need upstream changes, tracked separately): managed
 inference and embeddings go out through `tinyagents`' own clients, and the
 Socket.IO upgrade sets no HTTP headers at all — its auth rides in the
-Socket.IO CONNECT payload. MCP servers (`mcp::http_client`) and third-party
-BYOK inference endpoints are deliberately **never** tagged — they are not our
-backend, and telling an unrelated operator which TinyHumans product a user runs
-discloses something for no benefit.
+Socket.IO CONNECT payload. The flow-run Langfuse exporter
+(`flows::tinyflows::langfuse_export`) posts to the same
+`/telemetry/langfuse/ingestion` proxy as the agent-turn path but goes through
+`tinyagents::LangfuseClient`, which builds its own `reqwest::Client` internally
+and exposes no seam for default headers or an injected client — so flow traces
+stay unattributed until `tinyagents` gains one.
 
 **Every SDK-backed call must map its error through `classify_sdk_error`.** That
 function mirrors `authed_json`'s classification exactly (401 →

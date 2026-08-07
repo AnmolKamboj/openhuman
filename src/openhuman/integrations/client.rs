@@ -334,7 +334,7 @@ impl IntegrationClient {
         // `/agent-integrations/*` is backend traffic like any other, so it
         // carries the same product identity as `BackendOAuthClient`. The SDK
         // merges its own default headers into every request, so `http_client`
-        // needs nothing; `download_client` is driven raw and does.
+        // needs nothing beyond `with_default_headers` below.
         let product_headers = crate::api::product::product_identity_headers();
         let http_client = crate::openhuman::util::tls::tls_client_builder()
             .http1_only()
@@ -345,9 +345,22 @@ impl IntegrationClient {
         let sdk = TinyHumansClient::new(&backend_url)
             .with_token(Some(auth_token.clone()))
             .with_http_client(http_client.clone())
-            .with_default_headers(product_headers.clone());
+            .with_default_headers(product_headers);
+        // `download_client` deliberately does NOT carry the product identity.
+        // Its one caller (`get_bytes`) fetches
+        // `/agent-integrations/file-storage/files/{id}/download`, which answers
+        // a 302 to a presigned S3 URL. reqwest follows redirects by default and
+        // strips only *sensitive* headers (Authorization, Cookie, …) when the
+        // host changes — a custom header like `x-sdk-name` survives the hop, so
+        // tagging this transport would disclose the product identity to the
+        // storage provider. Attaching it per-request would not help: redirected
+        // requests carry the original request headers too.
+        //
+        // The lost attribution is deliberate and cheap: the header cannot be
+        // scoped to the first hop without hand-rolling redirect following, and
+        // any session that downloads a file has already made SDK-path calls that
+        // are tagged.
         let download_client = crate::openhuman::util::tls::tls_client_builder()
-            .default_headers(product_headers)
             .http1_only()
             .timeout(Duration::from_secs(15 * 60))
             .connect_timeout(Duration::from_secs(15))
