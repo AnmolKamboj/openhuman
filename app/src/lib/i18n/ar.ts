@@ -317,8 +317,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'تمت المزامنة مؤخرًا',
   'conversations.backgroundTasks.memProviderIdle': 'خامل',
   'nav.home': 'الرئيسية',
-  'nav.human': 'إنسان',
   'nav.chat': 'المحادثة',
+  'nav.human': 'إنسان',
   'nav.assistant': 'المساعد',
   'assistant.faceMode.on': 'يتحدث إلى Tiny',
   'assistant.faceMode.off': 'تحدث إلى Tiny',
@@ -2677,6 +2677,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'تشغيل الرد الصوتي',
   'chat.voiceHint': 'استخدم الميكروفون للتحدث',
   'chat.micUnavailable': 'الميكروفون غير متاح',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'تحدّث إلى مساعدك',
+  'chat.mascot.collapse': 'العودة إلى المحادثة',
+  'chat.mascot.speakReplies': 'نطق الردود بصوت مسموع',
+  'chat.mascot.speakRepliesHint':
+    'تُقرأ الردود بصوت مسموع طالما التميمة مفتوحة. أوقف هذا الخيار لإبقاء المحادثة صامتة.',
+  'chat.mascot.dismiss': 'إخفاء Tiny',
+  'chat.mascot.dismissTitle': 'إخفاء Tiny؟',
+  'chat.mascot.dismissBody':
+    'لا مشكلة إذا كنت تفضّل صندوق الرسائل لنفسك. يمكنك إعادة Tiny في أي وقت من الإعدادات › المظهر › الدردشة.',
+  'chat.mascot.dismissConfirm': 'إخفاء Tiny',
+  'chat.mascot.dismissCancel': 'الإبقاء على Tiny',
   'chat.turn': 'دورة',
   'chat.turns': 'دورات',
   'chat.openWorkerThread': 'فتح محادثة العامل',
@@ -5716,6 +5728,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'إخفاء تفكير الوكيل',
   'settings.appearance.hideAgentInsightsDesc':
     'طيّ الجدول الزمني المباشر لخطوات الوكيل في المحادثة. سيظل رابط "قيد المعالجة" الوامض يتيح لك فتح العملية الكاملة.',
+  'settings.appearance.showChatMascot': 'إظهار Tiny على صندوق الرسائل',
+  'settings.appearance.showChatMascotDesc':
+    'يبقى التميمة واقفة على صندوق الكتابة. عند الإخفاء تصبح المحادثة نصية فقط حتى تعيد تفعيل الخيار.',
   'settings.appearance.assistantTextModeDesc':
     'اعرض ردود المساعد كنص بلا إطار مع إبقاء رسائلك داخل فقاعات.',
   'settings.mascot.active': 'نشط',

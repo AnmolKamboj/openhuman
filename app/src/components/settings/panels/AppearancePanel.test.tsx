@@ -100,3 +100,48 @@ describe('<AppearancePanel /> font size', () => {
     expect(store.getState().theme.hideAgentInsights).toBe(false);
   });
 });
+
+describe('<AppearancePanel /> chat mascot', () => {
+  const renderWithMascot = (chatMascotDismissed: boolean) =>
+    renderWithProviders(<AppearancePanel />, {
+      preloadedState: {
+        theme: {
+          mode: 'system',
+          tabBarLabels: 'hover',
+          fontSize: 'medium',
+          customFontSizePx: null,
+          agentMessageViewMode: 'bubbles',
+        },
+        mascot: { chatMascotDismissed },
+      },
+    });
+
+  it('reads on when the mascot is showing', () => {
+    // The switch is framed as "show", the stored flag is "dismissed" — so the
+    // inversion is worth pinning in both directions.
+    const { getByTestId } = renderWithMascot(false);
+    expect(getByTestId('switch-show-chat-mascot')).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('reads off once the mascot has been dismissed from the composer', () => {
+    const { getByTestId } = renderWithMascot(true);
+    expect(getByTestId('switch-show-chat-mascot')).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('brings a dismissed mascot back', () => {
+    // This is the only route back after dismissing it, so it has to work.
+    const { getByTestId, store } = renderWithMascot(true);
+
+    fireEvent.click(getByTestId('switch-show-chat-mascot'));
+
+    expect(store.getState().mascot.chatMascotDismissed).toBe(false);
+  });
+
+  it('hides it from settings too', () => {
+    const { getByTestId, store } = renderWithMascot(false);
+
+    fireEvent.click(getByTestId('switch-show-chat-mascot'));
+
+    expect(store.getState().mascot.chatMascotDismissed).toBe(true);
+  });
+});

@@ -350,8 +350,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'Kürzlich synchronisiert',
   'conversations.backgroundTasks.memProviderIdle': 'Inaktiv',
   'nav.home': 'Start',
-  'nav.human': 'Mensch',
   'nav.chat': 'Chat',
+  'nav.human': 'Mensch',
   'nav.assistant': 'Assistent',
   'assistant.faceMode.on': 'Spricht mit Tiny',
   'assistant.faceMode.off': 'Mit Tiny sprechen',
@@ -2821,6 +2821,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'Sprachantwort wird abgespielt',
   'chat.voiceHint': 'Nutze das Mikrofon zum Sprechen',
   'chat.micUnavailable': 'Mikrofon nicht verfügbar',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Mit deinem Assistenten sprechen',
+  'chat.mascot.collapse': 'Zurück zum Chat',
+  'chat.mascot.speakReplies': 'Antworten vorlesen',
+  'chat.mascot.speakRepliesHint':
+    'Antworten werden vorgelesen, solange das Maskottchen geöffnet ist. Schalte dies aus, damit das Gespräch stumm bleibt.',
+  'chat.mascot.dismiss': 'Tiny ausblenden',
+  'chat.mascot.dismissTitle': 'Tiny ausblenden?',
+  'chat.mascot.dismissBody':
+    'Kein Problem, wenn du das Nachrichtenfeld lieber für dich hast. Du kannst Tiny jederzeit über Einstellungen › Aussehen › Chat zurückholen.',
+  'chat.mascot.dismissConfirm': 'Tiny ausblenden',
+  'chat.mascot.dismissCancel': 'Tiny behalten',
   'chat.turn': 'drehen',
   'chat.turns': 'dreht sich',
   'chat.openWorkerThread': 'Arbeitsthread öffnen',
@@ -6010,6 +6022,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Agent-Denkprozess ausblenden',
   'settings.appearance.hideAgentInsightsDesc':
     'Blendet die schrittweise Live-Zeitleiste des Agenten im Chat aus. Über einen blinkenden „Wird verarbeitet“-Link lässt sich der vollständige Ablauf weiterhin öffnen.',
+  'settings.appearance.showChatMascot': 'Tiny am Nachrichtenfeld anzeigen',
+  'settings.appearance.showChatMascotDesc':
+    'Das Maskottchen bleibt auf dem Eingabefeld stehen. Ausgeblendet ist der Chat nur Text, bis du dies wieder einschaltest.',
   'settings.appearance.assistantTextModeDesc':
     'Zeigt Assistentenantworten als ungerahmten Text an und lässt deine Nachrichten in Blasen.',
   'settings.mascot.active': 'Aktiv',
