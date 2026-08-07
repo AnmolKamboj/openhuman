@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
+import TinyPlaceSunsetNotice from '../agentworld/TinyPlaceSunsetNotice';
 import { CodingSessionsCard } from '../components/intelligence/CodingSessionsCard';
 import GoalsPanel from '../components/intelligence/GoalsPanel';
 import IntelligenceSubconsciousTab from '../components/intelligence/IntelligenceSubconsciousTab';
@@ -26,6 +27,7 @@ import TwoPaneNav from '../components/layout/TwoPaneNav';
 import OrchestrationView from '../components/orchestration/OrchestrationView';
 import BetaBanner from '../components/ui/BetaBanner';
 import { useSubconscious } from '../hooks/useSubconscious';
+import { useTinyPlaceIdentity } from '../hooks/useTinyPlaceIdentity';
 import { useT } from '../lib/i18n/I18nContext';
 import { useCoreState } from '../providers/CoreStateProvider';
 import type { ToastNotification } from '../types/intelligence';
@@ -104,6 +106,18 @@ export default function Brain() {
       navigate('/brain?tab=orchestration', { replace: true });
     }
   }, [location.search, navigate]);
+
+  // #5424 — the Orchestration sub-tab is a tiny.place surface, hidden from users
+  // without an identity. If one lands on `?tab=orchestration` via a stale deep
+  // link, send them to the Brain welcome tab once the identity check confirms
+  // they have none (holders and the in-flight window are left untouched).
+  const { status: tinyplaceStatus, hasIdentity: hasTinyplaceIdentity } = useTinyPlaceIdentity();
+  useEffect(() => {
+    if (activeTab === 'orchestration' && tinyplaceStatus === 'ready' && !hasTinyplaceIdentity) {
+      console.debug('[brain] orchestration tab without tiny.place identity → welcome');
+      navigate('/brain', { replace: true });
+    }
+  }, [activeTab, tinyplaceStatus, hasTinyplaceIdentity, navigate]);
 
   const [graph, setGraph] = useState<GraphExportResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -232,15 +246,20 @@ export default function Brain() {
                       'M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z'
                     ),
                   },
-                  {
-                    // TinyPlace multi-agent orchestration, folded back under
-                    // Brain from the former top-level `/orchestration` tab.
-                    value: 'orchestration',
-                    label: t('brain.tabs.orchestration'),
-                    icon: navIcon(
-                      'M12 7v3m0 0l-5.5 6M12 10l5.5 6M12 5a2 2 0 100 0M5 19a2 2 0 100 0M19 19a2 2 0 100 0'
-                    ),
-                  },
+                  // TinyPlace multi-agent orchestration, folded back under Brain
+                  // from the former top-level `/orchestration` tab. Hidden from
+                  // users without a tiny.place identity (#5424).
+                  ...(hasTinyplaceIdentity
+                    ? [
+                        {
+                          value: 'orchestration',
+                          label: t('brain.tabs.orchestration'),
+                          icon: navIcon(
+                            'M12 7v3m0 0l-5.5 6M12 10l5.5 6M12 5a2 2 0 100 0M5 19a2 2 0 100 0M19 19a2 2 0 100 0'
+                          ),
+                        },
+                      ]
+                    : []),
                 ],
               },
             ]}
@@ -251,8 +270,11 @@ export default function Brain() {
         // Full-bleed: OrchestrationView renders its own chip nav + surfaces
         // (chat, graph, task board), which need the full content width — so it
         // sits outside the shared max-w scaffold the other tabs use.
-        <div className="h-full">
-          <OrchestrationView />
+        <div className="flex h-full flex-col">
+          <TinyPlaceSunsetNotice />
+          <div className="min-h-0 flex-1">
+            <OrchestrationView />
+          </div>
         </div>
       ) : (
         <div className="mx-auto h-full w-full max-w-5xl">
