@@ -16,12 +16,16 @@ const BODY_MAX = 4000;
 // still arrives while the user is looking at what they wrote.
 const VALIDATE_DEBOUNCE_MS = 300;
 
+// Shared by the hint and the `aria-describedby` that points submit at it.
+const QUALITY_HINT_ID = 'feedback-quality-hint';
+
 type SubmitStatus = 'idle' | 'loading' | 'accepted' | 'rejected' | 'error';
 
 /**
- * The server rejects a blocked submission anyway — `POST /feedback` runs the
- * same rules — so this is a courtesy that saves a round trip on text the user
- * can still fix, not the enforcement point.
+ * Reads the server's message off a rejected API call, falling back to
+ * `fallback` when neither shape carries one. `apiClient` rejects with a plain
+ * `{ success, error }` object rather than an `Error`, so an `instanceof Error`
+ * check alone drops the reason and substitutes generic failure copy.
  */
 function messageForApiError(err: unknown, fallback: string): string {
   if (err instanceof Error) return err.message;
@@ -67,13 +71,23 @@ export default function FeedbackSubmitForm({ onAccepted }: FeedbackSubmitFormPro
   const validatable = Boolean(draftTitle && draftBody && withinCaps);
   const draftKey = JSON.stringify([type, draftTitle, draftBody]);
 
+  // The server rejects a blocked submission anyway — `POST /feedback` runs the
+  // same rules — so this is a courtesy that saves a round trip on text the user
+  // can still fix, not the enforcement point.
   useEffect(() => {
     if (!validatable) return;
 
+    // A superseded check must not write at all. Keying the verdict only guards
+    // the *read*: if an older call answers after a newer one, an unguarded
+    // write replaces a correct verdict with one that no longer matches the
+    // draft, and the hint disappears until the user types again.
+    let cancelled = false;
     const timer = setTimeout(() => {
       feedbackApi
         .validateFeedback({ type, title: draftTitle, body: draftBody })
-        .then(quality => setVerdict({ draft: draftKey, quality }))
+        .then(quality => {
+          if (!cancelled) setVerdict({ draft: draftKey, quality });
+        })
         .catch(() => {
           // The check is advisory. If it cannot run, say nothing and let the
           // submit path be the judge rather than blocking on our own outage.
@@ -82,12 +96,21 @@ export default function FeedbackSubmitForm({ onAccepted }: FeedbackSubmitFormPro
         });
     }, VALIDATE_DEBOUNCE_MS);
 
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [validatable, draftKey, type, draftTitle, draftBody]);
 
   const draftQuality = verdict?.draft === draftKey ? verdict.quality : null;
   const hint = submittedQuality ?? draftQuality;
-  const blocked = draftQuality?.tier === 'block';
+  // `pass` has nothing to say, and neither does an empty reason: rendering one
+  // would be an empty paragraph that still shifts the layout.
+  const visibleHint = hint && hint.tier !== 'pass' && hint.reason ? hint : null;
+  // Never disable submit without saying why. A `block` we cannot explain would
+  // be a dead end, so let it through and take the server's refusal, which
+  // carries the reason. Enforcement is server-side either way.
+  const blocked = draftQuality?.tier === 'block' && Boolean(draftQuality.reason);
 
   const canSubmit =
     status !== 'loading' &&
@@ -148,7 +171,12 @@ export default function FeedbackSubmitForm({ onAccepted }: FeedbackSubmitFormPro
       <div className="mb-4 grid grid-cols-2 gap-2.5">
         <button
           type="button"
-          onClick={() => setType('feature')}
+          onClick={() => {
+            // Changing the type is an edit like any other: the advice the last
+            // submission came back with is no longer about what is on screen.
+            setType('feature');
+            setSubmittedQuality(null);
+          }}
           aria-pressed={type === 'feature'}
           className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all ${
             type === 'feature'
@@ -167,7 +195,10 @@ export default function FeedbackSubmitForm({ onAccepted }: FeedbackSubmitFormPro
         </button>
         <button
           type="button"
-          onClick={() => setType('bug')}
+          onClick={() => {
+            setType('bug');
+            setSubmittedQuality(null);
+          }}
           aria-pressed={type === 'bug'}
           className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all ${
             type === 'bug'
@@ -221,19 +252,33 @@ export default function FeedbackSubmitForm({ onAccepted }: FeedbackSubmitFormPro
         className={`${INPUT_CLASS} resize-y`}
       />
 
-      {hint && hint.tier !== 'pass' && (
+      {visibleHint && (
         <p
+          id={QUALITY_HINT_ID}
           data-testid="feedback-quality-hint"
-          data-tier={hint.tier}
+          data-tier={visibleHint.tier}
+          // Nothing moves focus here and the paragraph arrives ~300ms after
+          // typing stops, so without a live region a blocked submitter hears
+          // the button go disabled with no reason given.
+          role="status"
+          aria-live="polite"
+          // `block` is the harder outcome, so it gets the louder colour.
           className={`mt-2 text-xs ${
-            hint.tier === 'block' ? 'text-content-muted' : 'text-primary-600 dark:text-primary-400'
+            visibleHint.tier === 'block'
+              ? 'text-primary-600 dark:text-primary-400'
+              : 'text-content-muted'
           }`}>
-          {hint.reason}
+          {visibleHint.reason}
         </p>
       )}
 
       <div className="mt-3 flex items-center justify-between gap-3">
-        <Button variant="primary" size="lg" onClick={handleSubmit} disabled={!canSubmit}>
+        <Button
+          variant="primary"
+          size="lg"
+          onClick={handleSubmit}
+          disabled={!canSubmit}
+          aria-describedby={visibleHint ? QUALITY_HINT_ID : undefined}>
           {status === 'loading' ? '...' : t('feedback.submit.action')}
         </Button>
         <div className="flex items-center gap-3">

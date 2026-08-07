@@ -83,10 +83,6 @@ export interface CreateFeedbackInput {
 }
 
 /**
- * Result of a submission. `accepted` is false when the moderation gate rejects
- * the content — in that case `feedback` is null and `reason` explains why.
- */
-/**
  * The quality gate's verdict on a draft. Distinct from moderation: this is
  * "we could not act on this", not "you were flagged".
  *
@@ -102,6 +98,11 @@ export interface FeedbackQuality {
   reason: string;
 }
 
+/**
+ * Result of a submission. `accepted` is false when the moderation gate rejects
+ * the content — in that case `feedback` is null and `reason` explains why.
+ * `quality` carries the gate's verdict when the submission was published.
+ */
 export interface CreateFeedbackResult {
   accepted: boolean;
   reason: string;

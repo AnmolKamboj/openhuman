@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CreateFeedbackResult, FeedbackItem } from '../../types/feedback';
@@ -40,6 +40,14 @@ const accepted = (item: FeedbackItem): CreateFeedbackResult => ({
   reason: 'ok',
   feedback: item,
 });
+
+/** Let a resolved validate promise run its `.then` and flush the state update. */
+async function settle() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
 
 function fillForm(title: string, body: string) {
   fireEvent.change(screen.getByPlaceholderText('Title'), { target: { value: title } });
@@ -253,6 +261,112 @@ describe('<FeedbackSubmitForm /> quality tiers', () => {
     resolveFirst({ tier: 'block', reason: 'Please describe the problem.' });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled());
     expect(screen.queryByText('Please describe the problem.')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('feedback-quality-hint')).not.toBeInTheDocument();
+  });
+
+  // The sibling of the test above, and the case the draft key alone does not
+  // cover: the stale call answers *after* the current one, so keying the read
+  // is not enough — the late write has to be dropped, or it replaces a correct
+  // verdict with one that no longer matches the draft and the hint vanishes.
+  it('keeps the current verdict when a superseded check answers late', async () => {
+    let resolveStale!: (value: { tier: string; reason: string }) => void;
+    let resolveCurrent!: (value: { tier: string; reason: string }) => void;
+    mockValidate
+      .mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            resolveStale = resolve;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            resolveCurrent = resolve;
+          })
+      );
+
+    render(<FeedbackSubmitForm onAccepted={() => {}} />);
+    fillForm('test', 'test');
+    await waitFor(() => expect(mockValidate).toHaveBeenCalledTimes(1));
+
+    fillForm('Upload fails on retry', 'Uploading a second file after a failure hangs forever.');
+    await waitFor(() => expect(mockValidate).toHaveBeenCalledTimes(2));
+
+    resolveCurrent({ tier: 'warn', reason: 'Add steps to reproduce.' });
+    expect(await screen.findByTestId('feedback-quality-hint')).toHaveTextContent(
+      'Add steps to reproduce.'
+    );
+
+    resolveStale({ tier: 'block', reason: 'Please describe the problem.' });
+    await settle();
+
+    expect(screen.getByTestId('feedback-quality-hint')).toHaveTextContent(
+      'Add steps to reproduce.'
+    );
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled();
+  });
+
+  // A disabled submit with nothing on screen is a dead end. If the gate cannot
+  // say why, let the submit through and take the server's refusal, which can.
+  it('does not disable submit for a block it cannot explain', async () => {
+    mockValidate.mockResolvedValue({ tier: 'block', reason: '' });
+
+    render(<FeedbackSubmitForm onAccepted={() => {}} />);
+    fillForm('test', 'test');
+
+    await waitFor(() => expect(mockValidate).toHaveBeenCalled());
+    await settle();
+
+    expect(screen.queryByTestId('feedback-quality-hint')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled();
+  });
+
+  // The hint appears ~300ms after typing stops and is the only account of why
+  // submit went disabled. Nothing moves focus to it, so it has to announce.
+  it('announces the hint and describes the submit button with it', async () => {
+    mockValidate.mockResolvedValue({ tier: 'block', reason: 'Please describe the problem.' });
+
+    render(<FeedbackSubmitForm onAccepted={() => {}} />);
+    fillForm('test', 'test');
+
+    const hint = await screen.findByTestId('feedback-quality-hint');
+    expect(hint).toHaveAttribute('role', 'status');
+    expect(hint).toHaveAttribute('aria-live', 'polite');
+    expect(hint.id).toBe('feedback-quality-hint');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Submit' })).toHaveAttribute(
+        'aria-describedby',
+        'feedback-quality-hint'
+      )
+    );
+  });
+
+  // Changing the type is an edit like any other, so the advice the last
+  // submission came back with is no longer about what is on screen. Both
+  // directions, because each toggle has its own handler.
+  it.each([
+    ['Feature', 'Bug'],
+    ['Bug', 'Feature'],
+  ])('drops the last submission advice when the type changes from %s to %s', async (from, to) => {
+    mockValidate.mockResolvedValue({ tier: 'warn', reason: 'Add steps to reproduce.' });
+    mockSubmit.mockResolvedValueOnce({
+      accepted: true,
+      reason: 'ok',
+      feedback: makeItem(),
+      quality: { tier: 'warn', reason: 'Add steps to reproduce.' },
+    });
+
+    render(<FeedbackSubmitForm onAccepted={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: from }));
+    fillForm('Crash', 'It crashes.');
+    await screen.findByTestId('feedback-quality-hint');
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+
+    // The form clears but the advice outlives the text it was about.
+    await waitFor(() => expect(screen.getByPlaceholderText('Title')).toHaveValue(''));
+    expect(screen.getByTestId('feedback-quality-hint')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: to }));
     expect(screen.queryByTestId('feedback-quality-hint')).not.toBeInTheDocument();
   });
 });
