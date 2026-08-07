@@ -11,22 +11,22 @@ The agent can search the live web on its own. By default this runs on **OpenHuma
 
 ## What it's good for
 
-* Research - "what's the latest on X".
-* Citation hunting - "find me three sources for Y".
-* Fact-checking before answering - the agent runs a quick search if it isn't confident.
+- Research - "what's the latest on X".
+- Citation hunting - "find me three sources for Y".
+- Fact-checking before answering - the agent runs a quick search if it isn't confident.
 
 ## Search engines
 
 Pick the engine under **Connections → Search**. Exactly one engine is active at a time, and that engine owns the canonical `web_search_tool` the agent calls.
 
-| Engine | Setup | Where your queries go |
-| --- | --- | --- |
-| **OpenHuman Managed** (default) | Not needed | The OpenHuman backend, currently powered by [Exa](https://exa.ai). |
-| **Exa** | Your API key | Straight to `https://api.exa.ai` with your key. |
-| **Parallel** | Local enablement value | Parallel-specific tools go through the OpenHuman backend to Parallel; the canonical `web_search_tool` keeps using the backend-resolved managed provider (currently Exa). The value selects the engine locally and is not sent to Parallel for authentication or billing. |
-| **Brave** | Your API key | Straight to the Brave Search API with your key. |
-| **Querit** | Your API key | Straight to the Querit API with your key. |
-| **Disabled** | Not needed | Nowhere. All agent-facing search tools are removed; an enabled SearXNG endpoint remains available through RPC/MCP. |
+| Engine                          | Setup                  | Where your queries go                                                                                                                                                                                                                                                    |
+| ------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **OpenHuman Managed** (default) | Not needed             | The OpenHuman backend, currently powered by [Exa](https://exa.ai).                                                                                                                                                                                                       |
+| **Exa**                         | Your API key           | Straight to `https://api.exa.ai` with your key.                                                                                                                                                                                                                          |
+| **Parallel**                    | Local enablement value | Parallel-specific tools go through the OpenHuman backend to Parallel; the canonical `web_search_tool` keeps using the backend-resolved managed provider (currently Exa). The value selects the engine locally and is not sent to Parallel for authentication or billing. |
+| **Brave**                       | Your API key           | Straight to the Brave Search API with your key.                                                                                                                                                                                                                          |
+| **Querit**                      | Your API key           | Straight to the Querit API with your key.                                                                                                                                                                                                                                |
+| **Disabled**                    | Not needed             | Nowhere. All agent-facing search tools are removed; an enabled SearXNG endpoint remains available through RPC/MCP.                                                                                                                                                       |
 
 Selecting a bring-your-own-key engine without saving a key falls back to managed search. That fallback requires a backend-authenticated session; local or offline users must configure a direct provider key. Once a search finishes, the chat timeline names the provider that answered it ("Searched with Exa"), so the managed path is never an unattributed black box.
 
@@ -40,9 +40,9 @@ Prefer to run search on your own Exa account? Grab a key from [exa.ai](https://e
 
 Choosing Exa registers Exa's neural-search family for the agent, on top of the usual `web_search_tool`:
 
-* `exa_search` - ranked pages with URLs, titles, publish dates, and optional page text. Supports search modes from instant to deep reasoning, domain include/exclude filters, a published-date range, and result categories.
-* `exa_find_similar` - pages semantically similar to a URL you already have, for expanding from one good source to comparable ones (competitors, related papers, similar articles). This tool uses Exa's deprecated `/findSimilar` endpoint and may change if Exa removes it.
-* `exa_get_contents` - the full crawled contents of one or more URLs, with an optional summary or query-relevant highlights per URL.
+- `exa_search` - ranked pages with URLs, titles, publish dates, and optional page text. Supports search modes from instant to deep reasoning, domain include/exclude filters, a published-date range, and result categories.
+- `exa_find_similar` - pages semantically similar to a URL you already have, for expanding from one good source to comparable ones (competitors, related papers, similar articles). This tool uses Exa's deprecated `/findSimilar` endpoint and may change if Exa removes it.
+- `exa_get_contents` - the full crawled contents of one or more URLs, with an optional summary or query-relevant highlights per URL.
 
 You can also select it from `config.toml`:
 
@@ -95,10 +95,10 @@ Per call, the tool accepts `query`, optional `categories` (`web`, `news`, `image
 
 ## How it differs from generic HTTP
 
-A pure `http_request` tool can fetch a URL but can't *find* one. Web Search is the discovery layer: it picks the right URLs for the agent, which then hands them off to the [Web Scraper](web-scraper.md) for the actual reading.
+A pure `http_request` tool can fetch a URL but can't _find_ one. Web Search is the discovery layer: it picks the right URLs for the agent, which then hands them off to the [Web Scraper](web-scraper.md) for the actual reading.
 
 ## See also
 
-* [MCP Server](../../developing/mcp-server.md) - how `searxng_search` appears to MCP clients.
-* [Web Scraper](web-scraper.md) - fetch and clean a specific URL.
-* [Smart Token Compression](../token-compression.md) - search snippets are compressed before they hit the model.
+- [MCP Server](../../developing/mcp-server.md) - how `searxng_search` appears to MCP clients.
+- [Web Scraper](web-scraper.md) - fetch and clean a specific URL.
+- [Smart Token Compression](../token-compression.md) - search snippets are compressed before they hit the model.

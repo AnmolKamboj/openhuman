@@ -303,8 +303,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': '最近已同步',
   'conversations.backgroundTasks.memProviderIdle': '空闲',
   'nav.home': '首页',
-  'nav.human': '助手',
   'nav.chat': '对话',
+  'nav.human': '助手',
   'nav.assistant': '助手',
   'assistant.faceMode.on': '正在与 Tiny 对话',
   'assistant.faceMode.off': '与 Tiny 对话',
@@ -2588,7 +2588,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': '正在播放语音回复',
   'chat.voiceHint': '使用麦克风说话',
   'chat.micUnavailable': '麦克风不可用',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': '和你的助手说话',
+  'chat.mascot.collapse': '返回聊天',
+  'chat.mascot.speakReplies': '朗读回复',
+  'chat.mascot.speakRepliesHint': '吉祥物打开时会朗读回复。关闭后对话将保持静音。',
   'chat.turn': '轮',
+  'chat.mascot.dismiss': '隐藏 Tiny',
+  'chat.mascot.dismissTitle': '隐藏 Tiny？',
+  'chat.mascot.dismissBody':
+    '如果你更想独占消息框，也没关系。随时可以在设置 › 外观 › 聊天中把 Tiny 请回来。',
+  'chat.mascot.dismissConfirm': '隐藏 Tiny',
+  'chat.mascot.dismissCancel': '留下 Tiny',
   'chat.turns': '轮',
   'chat.openWorkerThread': '打开工作线程',
   'chat.attachment.attach': '添加图片',
@@ -5539,6 +5550,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': '隐藏智能体思考过程',
   'settings.appearance.hideAgentInsightsDesc':
     '折叠聊天中智能体逐步执行的实时时间线。闪烁的“处理中”链接仍可让你打开完整过程。',
+  'settings.appearance.showChatMascot': '在消息框上显示 Tiny',
+  'settings.appearance.showChatMascotDesc':
+    '吉祥物会站在输入框上。隐藏后，聊天将只保留文字，直到你重新开启。',
   'settings.appearance.assistantTextModeDesc': '将助手回复渲染为无边框文本，同时保留你的消息气泡。',
   'settings.mascot.active': '活跃',
   'settings.mascot.characterDesc': '选择你的 OpenHuman 角色',

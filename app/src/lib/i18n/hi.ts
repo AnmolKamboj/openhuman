@@ -329,8 +329,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'हाल ही में सिंक हुआ',
   'conversations.backgroundTasks.memProviderIdle': 'निष्क्रिय',
   'nav.home': 'होम',
-  'nav.human': 'मानव',
   'nav.chat': 'चैट',
+  'nav.human': 'मानव',
   'nav.assistant': 'सहायक',
   'assistant.faceMode.on': 'Tiny से बात हो रही है',
   'assistant.faceMode.off': 'Tiny से बात करें',
@@ -2739,6 +2739,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'वॉइस रिप्लाई चल रहा है',
   'chat.voiceHint': 'बोलने के लिए माइक इस्तेमाल करें',
   'chat.micUnavailable': 'माइक्रोफोन उपलब्ध नहीं',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'अपने असिस्टेंट से बात करें',
+  'chat.mascot.collapse': 'चैट पर वापस जाएँ',
+  'chat.mascot.speakReplies': 'जवाब बोलकर सुनाएँ',
+  'chat.mascot.speakRepliesHint':
+    'मैस्कॉट खुला रहने तक जवाब बोलकर सुनाए जाते हैं। बातचीत को शांत रखने के लिए इसे बंद कर दें।',
+  'chat.mascot.dismiss': 'Tiny छिपाएँ',
+  'chat.mascot.dismissTitle': 'Tiny छिपाएँ?',
+  'chat.mascot.dismissBody':
+    'अगर आप मैसेज बॉक्स अपने पास ही रखना चाहते हैं तो कोई बात नहीं। Tiny को कभी भी सेटिंग्स › दिखावट › चैट से वापस ला सकते हैं।',
+  'chat.mascot.dismissConfirm': 'Tiny छिपाएँ',
+  'chat.mascot.dismissCancel': 'Tiny रहने दें',
   'chat.turn': 'टर्न',
   'chat.turns': 'टर्न्स',
   'chat.openWorkerThread': 'वर्कर थ्रेड खोलें',
@@ -5845,6 +5857,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'एजेंट की सोच छिपाएँ',
   'settings.appearance.hideAgentInsightsDesc':
     'चैट में एजेंट की चरण-दर-चरण लाइव टाइमलाइन को छिपाएँ। एक ब्लिंक करता "प्रोसेसिंग" लिंक फिर भी आपको पूरी प्रक्रिया खोलने देता है।',
+  'settings.appearance.showChatMascot': 'मैसेज बॉक्स पर Tiny दिखाएँ',
+  'settings.appearance.showChatMascotDesc':
+    'मैस्कॉट लिखने के बॉक्स पर खड़ा रहता है। छिपाने पर चैट सिर्फ़ टेक्स्ट रहेगी, जब तक आप इसे दोबारा चालू न करें।',
   'settings.appearance.assistantTextModeDesc':
     'असिस्टेंट के जवाबों को बिना फ्रेम वाले टेक्स्ट के रूप में दिखाएं और आपके संदेश बबल में रखें।',
   'settings.mascot.active': 'एक्टिव',

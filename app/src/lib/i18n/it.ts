@@ -339,8 +339,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'Sincronizzato di recente',
   'conversations.backgroundTasks.memProviderIdle': 'Inattivo',
   'nav.home': 'Home',
-  'nav.human': 'Umano',
   'nav.chat': 'Chat',
+  'nav.human': 'Umano',
   'nav.assistant': 'Assistente',
   'assistant.faceMode.on': 'Sta parlando con Tiny',
   'assistant.faceMode.off': 'Parla con Tiny',
@@ -2789,6 +2789,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'Riproduzione risposta vocale',
   'chat.voiceHint': 'Usa il microfono per parlare',
   'chat.micUnavailable': 'Microfono non disponibile',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Parla con il tuo assistente',
+  'chat.mascot.collapse': 'Torna alla chat',
+  'chat.mascot.speakReplies': 'Leggi le risposte ad alta voce',
+  'chat.mascot.speakRepliesHint':
+    'Le risposte vengono lette ad alta voce finché la mascotte è aperta. Disattiva questa opzione per mantenere silenziosa la conversazione.',
+  'chat.mascot.dismiss': 'Nascondi Tiny',
+  'chat.mascot.dismissTitle': 'Nascondere Tiny?',
+  'chat.mascot.dismissBody':
+    'Nessun problema se preferisci avere il campo messaggi tutto per te. Puoi far tornare Tiny quando vuoi da Impostazioni › Aspetto › Chat.',
+  'chat.mascot.dismissConfirm': 'Nascondi Tiny',
+  'chat.mascot.dismissCancel': 'Tieni Tiny',
   'chat.turn': 'turno',
   'chat.turns': 'turni',
   'chat.openWorkerThread': 'Apri thread worker',
@@ -5945,6 +5957,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Nascondi il ragionamento dell’agente',
   'settings.appearance.hideAgentInsightsDesc':
     'Comprime la cronologia in tempo reale dei passaggi dell’agente nella chat. Un link lampeggiante «Elaborazione» consente comunque di aprire l’intero processo.',
+  'settings.appearance.showChatMascot': 'Mostra Tiny sul campo messaggi',
+  'settings.appearance.showChatMascotDesc':
+    'La mascotte resta in piedi sul campo di scrittura. Se la nascondi, la chat resta solo testo finché non la riattivi.',
   'settings.appearance.assistantTextModeDesc':
     "Mostra le risposte dell'assistente come testo senza cornice mantenendo i tuoi messaggi nei fumetti.",
   'settings.mascot.active': 'Attivo',

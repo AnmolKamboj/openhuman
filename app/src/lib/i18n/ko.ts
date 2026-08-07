@@ -324,8 +324,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': '최근 동기화됨',
   'conversations.backgroundTasks.memProviderIdle': '대기 중',
   'nav.home': '홈',
-  'nav.human': '휴먼',
   'nav.chat': '채팅',
+  'nav.human': '휴먼',
   'nav.assistant': '어시스턴트',
   'assistant.faceMode.on': 'Tiny와 대화 중',
   'assistant.faceMode.off': 'Tiny와 대화하기',
@@ -2709,6 +2709,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': '음성 응답 재생 중',
   'chat.voiceHint': '마이크를 사용해 말하세요',
   'chat.micUnavailable': '마이크를 사용할 수 없습니다',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': '어시스턴트와 대화하기',
+  'chat.mascot.collapse': '채팅으로 돌아가기',
+  'chat.mascot.speakReplies': '답변을 소리 내어 읽기',
+  'chat.mascot.speakRepliesHint':
+    '마스코트가 열려 있는 동안 답변을 소리 내어 읽어 줍니다. 조용히 대화하려면 끄세요.',
+  'chat.mascot.dismiss': 'Tiny 숨기기',
+  'chat.mascot.dismissTitle': 'Tiny를 숨길까요?',
+  'chat.mascot.dismissBody':
+    '메시지 상자를 혼자 쓰고 싶다면 괜찮아요. 설정 › 외관 › 채팅에서 언제든지 Tiny를 다시 부를 수 있습니다.',
+  'chat.mascot.dismissConfirm': 'Tiny 숨기기',
+  'chat.mascot.dismissCancel': 'Tiny 두기',
   'chat.turn': '턴',
   'chat.turns': '턴',
   'chat.openWorkerThread': '워커 스레드 열기',
@@ -5778,6 +5790,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': '에이전트 사고 숨기기',
   'settings.appearance.hideAgentInsightsDesc':
     '채팅에서 에이전트의 단계별 실시간 타임라인을 접습니다. 깜박이는 "처리 중" 링크로 전체 과정을 열 수 있습니다.',
+  'settings.appearance.showChatMascot': '메시지 상자에 Tiny 표시',
+  'settings.appearance.showChatMascotDesc':
+    '마스코트가 입력창 위에 서 있습니다. 숨기면 다시 켤 때까지 채팅은 텍스트로만 진행됩니다.',
   'settings.appearance.assistantTextModeDesc':
     '사용자 메시지는 말풍선으로 유지하고 어시스턴트 답변은 프레임 없는 텍스트로 표시합니다.',
   'settings.mascot.active': '활성',

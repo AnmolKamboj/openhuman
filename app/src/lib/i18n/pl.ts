@@ -340,8 +340,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'Niedawno zsynchronizowano',
   'conversations.backgroundTasks.memProviderIdle': 'Bezczynne',
   'nav.home': 'Start',
-  'nav.human': 'Człowiek',
   'nav.chat': 'Czat',
+  'nav.human': 'Człowiek',
   'nav.assistant': 'Asystent',
   'assistant.faceMode.on': 'Rozmawia z Tiny',
   'assistant.faceMode.off': 'Porozmawiaj z Tiny',
@@ -2774,6 +2774,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'Odtwarzanie odpowiedzi głosowej',
   'chat.voiceHint': 'Użyj mikrofonu, aby mówić',
   'chat.micUnavailable': 'Mikrofon niedostępny',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Porozmawiaj z asystentem',
+  'chat.mascot.collapse': 'Wróć do czatu',
+  'chat.mascot.speakReplies': 'Czytaj odpowiedzi na głos',
+  'chat.mascot.speakRepliesHint':
+    'Odpowiedzi są czytane na głos, dopóki maskotka jest otwarta. Wyłącz tę opcję, aby rozmowa pozostała cicha.',
+  'chat.mascot.dismiss': 'Ukryj Tiny',
+  'chat.mascot.dismissTitle': 'Ukryć Tiny?',
+  'chat.mascot.dismissBody':
+    'Nic się nie stanie, jeśli wolisz mieć pole wiadomości tylko dla siebie. Tiny wróci w każdej chwili przez Ustawienia › Wygląd › Czat.',
+  'chat.mascot.dismissConfirm': 'Ukryj Tiny',
+  'chat.mascot.dismissCancel': 'Zostaw Tiny',
   'chat.turn': 'tura',
   'chat.turns': 'tury',
   'chat.openWorkerThread': 'Otwórz wątek workera',
@@ -5935,6 +5947,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Ukryj myślenie agenta',
   'settings.appearance.hideAgentInsightsDesc':
     'Zwija oś czasu z krokami agenta na żywo w czacie. Migający link „Przetwarzanie” nadal pozwala otworzyć pełny przebieg.',
+  'settings.appearance.showChatMascot': 'Pokaż Tiny na polu wiadomości',
+  'settings.appearance.showChatMascotDesc':
+    'Maskotka stoi na polu pisania. Po ukryciu czat pozostaje tekstowy, dopóki nie włączysz tego z powrotem.',
   'settings.appearance.assistantTextModeDesc':
     'Wyświetla odpowiedzi asystenta jako tekst bez ramki, a Twoje wiadomości pozostawia w dymkach.',
   'settings.mascot.active': 'Aktywny',

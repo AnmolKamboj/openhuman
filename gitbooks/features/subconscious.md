@@ -11,7 +11,7 @@ A background task evaluation and execution system. On a periodic tick, it loads 
 
 Think of it as the agent's idle thread: the part that keeps thinking after you've stopped typing.
 
-***
+---
 
 ## How a tick works
 
@@ -41,7 +41,7 @@ Think of it as the agent's idle thread: the part that keeps thinking after you'v
 
 Each tick is independent. If a tick is still running when the next one starts (slow model call, network blip), the new tick takes over and the old one's in-progress entries are marked cancelled. Ticks never stack.
 
-***
+---
 
 ## Task types
 
@@ -49,9 +49,9 @@ Each tick is independent. If a tick is still running when the next one starts (s
 
 Seeded automatically when the engine starts. Cannot be deleted, only disabled. The defaults cover things you'd want any assistant watching for:
 
-* Check connected skills for errors or disconnections
-* Review new memory updates for actionable items
-* Monitor system health (local model, memory, connections)
+- Check connected skills for errors or disconnections
+- Review new memory updates for actionable items
+- Monitor system health (local model, memory, connections)
 
 You can extend the system task set by listing additional ones in a `HEARTBEAT.md` file in your workspace, one task per line.
 
@@ -59,11 +59,11 @@ You can extend the system task set by listing additional ones in a `HEARTBEAT.md
 
 Anything you add manually from the UI. Toggle on/off, edit, delete. Examples:
 
-* "Check urgent emails" (read-only)
-* "Send daily summary to Slack" (write intent)
-* "Summarize Notion updates" (read-only)
+- "Check urgent emails" (read-only)
+- "Send daily summary to Slack" (write intent)
+- "Summarize Notion updates" (read-only)
 
-***
+---
 
 ## Decisions
 
@@ -109,7 +109,7 @@ Every task evaluation lands in the activity log with a colored dot and a short s
 | Cancelled         | Gray           | "Cancelled"            |
 | Dismissed         | Gray           | "Skipped"              |
 
-***
+---
 
 ## Two models, one loop
 
@@ -122,7 +122,7 @@ Every task evaluation lands in the activity log with a colored dot and a short s
 
 The split keeps the loop cheap: you only pay for cloud calls when a task actually needs them.
 
-***
+---
 
 ## Approval gate
 
@@ -144,7 +144,7 @@ The approval flow:
 
 Skill-related escalations (broken integration, expired OAuth, missing scope) show a **Fix in Skills** button that takes you straight to the Skills page instead.
 
-***
+---
 
 ## Failure handling
 
@@ -154,50 +154,50 @@ Per-task failures don't trip this counter, the tick itself is still considered s
 
 If a tick fails or is cancelled, the engine doesn't advance its "last seen" timestamp, so the next successful tick covers the same window. Nothing in your workspace gets skipped.
 
-***
+---
 
 ## Configuration
 
 The loop is configurable in the desktop app:
 
-* **Enable / disable.** Turn the entire background loop on or off.
-* **Tick interval.** How often a tick fires. Defaults to 5 minutes; that's also the minimum.
-* **Inference.** Whether the local model evaluates tasks each tick. Disable this if you'd rather only run things via the manual **Run Now** button.
-* **Context budget.** How much of the workspace situation report can be passed in at once. The default is sane; raise it for richer context, lower it for tighter cost.
+- **Enable / disable.** Turn the entire background loop on or off.
+- **Tick interval.** How often a tick fires. Defaults to 5 minutes; that's also the minimum.
+- **Inference.** Whether the local model evaluates tasks each tick. Disable this if you'd rather only run things via the manual **Run Now** button.
+- **Context budget.** How much of the workspace situation report can be passed in at once. The default is sane; raise it for richer context, lower it for tighter cost.
 
-***
+---
 
 ## In the UI
 
 Lives under **Intelligence → Subconscious**.
 
-* **Status bar.** Task count, total ticks, last tick time, failure counter (if any).
-* **Active Tasks.** System tasks (read-only, with a "default" badge) and your own tasks (toggle + delete).
-* **Approval Needed.** Amber cards for pending escalations. Each has a title, description, and priority. Buttons: **Go ahead**, **Fix in Skills** (when relevant), or **Skip**.
-* **Activity Log.** Chronological feed of every task evaluation, colored dot + result. Auto-refreshes while anything is in progress.
-* **Run Now.** Manually trigger a tick. Returns immediately; the UI polls for the result.
+- **Status bar.** Task count, total ticks, last tick time, failure counter (if any).
+- **Active Tasks.** System tasks (read-only, with a "default" badge) and your own tasks (toggle + delete).
+- **Approval Needed.** Amber cards for pending escalations. Each has a title, description, and priority. Buttons: **Go ahead**, **Fix in Skills** (when relevant), or **Skip**.
+- **Activity Log.** Chronological feed of every task evaluation, colored dot + result. Auto-refreshes while anything is in progress.
+- **Run Now.** Manually trigger a tick. Returns immediately; the UI polls for the result.
 
-***
+---
 
 ## See also
 
-* [Memory Tree](obsidian-wiki/memory-tree.md), what the situation report reads from.
-* [Auto-fetch from Integrations](obsidian-wiki/auto-fetch.md), how the workspace stays fresh between ticks.
-* [Local AI (optional)](model-routing/local-ai.md), the on-device model that powers evaluation.
+- [Memory Tree](obsidian-wiki/memory-tree.md), what the situation report reads from.
+- [Auto-fetch from Integrations](obsidian-wiki/auto-fetch.md), how the workspace stays fresh between ticks.
+- [Local AI (optional)](model-routing/local-ai.md), the on-device model that powers evaluation.
 
-***
+---
 
 ## The split-brain layer
 
 The subconscious does more than housekeep. It **steers**. When your agent participates in [tiny.place orchestration sessions](tinyplace.md) (agent-to-agent collaboration), inbound traffic runs through a split-brain wake graph:
 
-* A **fast reflex agent** triages every message in seconds: reply immediately, or hand the deep core a concise brief (a *what*, never a *how*).
-* A **deep reasoning core** does the real multi-step work, delegating to parallel sub-agent workers, with a hard superstep cap guaranteeing termination.
-* Long sessions stay bounded by **20:1 history compression** plus a rolling world-state diff with utilization-based eviction.
+- A **fast reflex agent** triages every message in seconds: reply immediately, or hand the deep core a concise brief (a _what_, never a _how_).
+- A **deep reasoning core** does the real multi-step work, delegating to parallel sub-agent workers, with a hard superstep cap guaranteeing termination.
+- Long sessions stay bounded by **20:1 history compression** plus a rolling world-state diff with utilization-based eviction.
 
-On its periodic tick, the subconscious reviews that compressed history and world diff and injects a short, dense **steering directive** (capped at ~900 characters, expiring after ~20 reasoning cycles) into the reasoning core's system prompt. This keeps the always-on layer aligned with *your* goals. The subconscious itself is strictly offline: it never contacts anyone and never takes external actions; ticks that reacted to external changes run **tainted**, so the approval gate refuses external-effect tools.
+On its periodic tick, the subconscious reviews that compressed history and world diff and injects a short, dense **steering directive** (capped at ~900 characters, expiring after ~20 reasoning cycles) into the reasoning core's system prompt. This keeps the always-on layer aligned with _your_ goals. The subconscious itself is strictly offline: it never contacts anyone and never takes external actions; ticks that reacted to external changes run **tainted**, so the approval gate refuses external-effect tools.
 
-***
+---
 
 ## The morning briefing
 
