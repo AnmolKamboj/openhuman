@@ -250,6 +250,48 @@ pub fn restore_main<R: Runtime>(window: &WebviewWindow<R>) -> bool {
     true
 }
 
+/// Fill the target monitor's **work area** on a first launch (no saved
+/// geometry), so the app opens at full usable size instead of the modest
+/// default declared in `tauri.conf.json`.
+///
+/// Deliberately the work area, not the full monitor bounds: the macOS menu
+/// bar / Dock and the Windows taskbar are excluded, so the window is
+/// "maximized" in the sense a user means it, without covering OS chrome or
+/// tripping the clamping in [`clamp_to_work_area`].
+///
+/// Position is applied before size for the same DPI reason documented on
+/// [`restore_main`] — the size that sticks is the one measured against the
+/// monitor the window has actually arrived on.
+///
+/// Returns `false` when no monitor can be resolved, so the caller can fall
+/// back to [`center_main`].
+pub fn maximize_to_work_area<R: Runtime>(window: &WebviewWindow<R>) -> bool {
+    let work_areas = collect_work_areas(window);
+    let Some(monitor) =
+        primary_or_current_work_area(window).or_else(|| work_areas.first().copied())
+    else {
+        log::warn!("[window-state] no monitor resolved; cannot size to work area");
+        return false;
+    };
+
+    if let Err(err) = window.set_position(PhysicalPosition::new(monitor.x, monitor.y)) {
+        log::warn!("[window-state] work-area set_position failed: {err}");
+        return false;
+    }
+    if let Err(err) = window.set_size(PhysicalSize::new(monitor.width, monitor.height)) {
+        log::warn!("[window-state] work-area set_size failed: {err}");
+        return false;
+    }
+    log::info!(
+        "[window-state] no saved geometry; opened filling work area x={} y={} w={} h={}",
+        monitor.x,
+        monitor.y,
+        monitor.width,
+        monitor.height
+    );
+    true
+}
+
 /// Center the main window on the primary display (or its current monitor
 /// if `current_monitor` resolves) when no saved state applied.
 ///
