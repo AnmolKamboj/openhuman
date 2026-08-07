@@ -63,7 +63,7 @@ export default function SidebarNav() {
   };
 
   return (
-    <nav className="flex flex-col gap-px p-1.5" aria-label={t('nav.home')}>
+    <nav className="flex flex-col gap-0.5 px-2 py-1" aria-label={t('nav.home')}>
       {tabs.map(tab => {
         const active = matchActive(tab.path, location.pathname);
         const showBadge = tab.id === 'notifications' && unreadCount > 0;
@@ -81,7 +81,7 @@ export default function SidebarNav() {
             // pill on top of it stacks two colours and reads as noise. Weight
             // and contrast carry the selection instead. Fills are alpha-based so
             // they lift against whatever backdrop the theme paints behind them.
-            className={`group flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors cursor-pointer ${
+            className={`group flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-colors cursor-pointer ${
               active
                 ? 'bg-surface/70 text-content font-semibold'
                 : 'text-content-muted hover:bg-surface/40 hover:text-content-secondary'

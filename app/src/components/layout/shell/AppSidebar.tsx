@@ -47,12 +47,12 @@ function FooterNavButton({
       onClick={onClick}
       title={label}
       aria-current={active ? 'page' : undefined}
-      className={`group flex flex-shrink-0 items-center justify-center gap-2 px-3 py-1 text-[11px] transition-colors cursor-pointer ${
+      className={`group mx-2 flex flex-shrink-0 items-center gap-2.5 rounded-md px-2.5 py-1.5 text-xs transition-colors cursor-pointer ${
         active
           ? 'bg-surface/70 text-content font-medium'
           : 'text-content-muted hover:bg-surface/40 hover:text-content-secondary'
       }`}>
-      <NavIcon id={iconId} className="h-3.5 w-3.5 flex-shrink-0" />
+      <NavIcon id={iconId} className="h-4 w-4 flex-shrink-0" />
       <span className="min-w-0 truncate">{label}</span>
     </button>
   );
@@ -70,6 +70,8 @@ function FooterNavButton({
  *   ├──────────────┤
  *   │ SidebarSlot   │  dynamic, per-route content (scrolls)
  *   │  (Outlet)     │
+ *   ├──────────────┤
+ *   │ Rewards/Fdbk  │  account affordances
  *   ├──────────────┤
  *   │ beta footer   │  app-wide build/version line
  *   └──────────────┘
@@ -172,7 +174,7 @@ export default function AppSidebar() {
       />
       {/* App-wide footer: connectivity status + build/version, pinned to the
           bottom of the sidebar. */}
-      <div className="flex flex-shrink-0 flex-wrap items-center justify-center gap-x-2 gap-y-0.5 border-t border-line-chrome/40 px-2 py-0.5">
+      <div className="flex flex-shrink-0 flex-wrap items-center justify-center gap-x-2 gap-y-0.5 px-3 pb-2 pt-3">
         <ConnectionIndicator />
         &middot;
         <span className="text-[10px] text-content-faint">

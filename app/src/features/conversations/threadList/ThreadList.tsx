@@ -55,7 +55,7 @@ export function ThreadList({
       {/* Section header: a muted group label with the "new" affordance docked on
           the right, replacing the old full-width centered button. Mirrors the
           grouped-nav idiom the settings sidebar already uses. */}
-      <div className="flex flex-shrink-0 items-center justify-between px-3 pb-1 pt-3">
+      <div className="flex flex-shrink-0 items-center justify-between px-4 pb-1.5 pt-4">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-content-muted">
           {t('chat.conversationsHeading')}
         </span>
@@ -73,7 +73,7 @@ export function ThreadList({
         </button>
       </div>
       {/* Rows are inset pills, so the scroll container carries the gutter. */}
-      <div className="flex-1 overflow-y-auto px-2 pb-2">
+      <div className="flex-1 overflow-y-auto px-2 pb-3">
         {threads.length === 0 ? (
           <p className="px-4 py-6 text-xs text-content-faint text-center">{t('chat.noThreads')}</p>
         ) : (
@@ -101,9 +101,9 @@ export function ThreadList({
               // actions are taller than the title's line box, so a padding-sized
               // row would grow 4px the moment the pointer entered it and the
               // whole list would shift under the cursor.
-              className={`group mb-0.5 flex h-8 w-full cursor-pointer items-center rounded-md px-2 text-left transition-colors ${
+              className={`group mb-0.5 flex h-8 w-full cursor-pointer items-center rounded-md px-2.5 text-left transition-colors ${
                 selectedThreadId === thread.id
-                  ? 'bg-primary-500/20'
+                  ? 'bg-surface/70'
                   : 'hover:bg-surface/40 dark:hover:bg-surface/60'
               }`}>
               <div className="flex w-full min-w-0 items-center gap-1.5">
@@ -138,7 +138,7 @@ export function ThreadList({
                     <p
                       className={`truncate flex-1 text-[13px] ${
                         selectedThreadId === thread.id
-                          ? 'font-medium text-content'
+                          ? 'font-semibold text-content'
                           : 'text-content-secondary'
                       }`}>
                       {resolveTitle(thread.id)}

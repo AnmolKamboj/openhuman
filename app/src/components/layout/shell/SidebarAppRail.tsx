@@ -235,7 +235,7 @@ export default function SidebarAppRail() {
       <div
         data-testid="sidebar-app-rail"
         data-analytics-id="sidebar-app-rail"
-        className="scrollbar-hide flex flex-none items-center gap-1.5 overflow-x-auto overflow-y-hidden border-b border-line-subtle px-2 py-2">
+        className="scrollbar-hide flex flex-none items-center gap-1.5 overflow-x-auto overflow-y-hidden px-3 pb-3 pt-1">
         <RailButton
           active={isAgentSelected}
           onClick={selectAgent}
