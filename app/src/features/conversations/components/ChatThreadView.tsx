@@ -131,6 +131,11 @@ interface ChatThreadViewProps {
    *  matching bottom padding. Sidebar variant omits this (undefined — the
    *  message list falls back to a flat `pb-4`). */
   bottomPadding?: number;
+  /** Page variant fades the top of the scroll area into the header band; the
+   *  host passes the fade's height so the first message clears it at rest
+   *  instead of sitting under the gradient, washed out. Sidebar variant omits
+   *  this (no header band, so no fade). */
+  topPadding?: number;
   /** The host's footer has pinned content (e.g. home's task board) that
    *  should keep the scroll container in "has content" layout even when
    *  there are no visible messages and no live agent activity yet. */
@@ -176,6 +181,7 @@ export const ChatThreadView = forwardRef<ChatThreadViewHandle, ChatThreadViewPro
       threadId,
       variant = 'page',
       bottomPadding,
+      topPadding,
       hasFooterContent = false,
       isLoading = false,
       loadError = null,
@@ -578,7 +584,11 @@ export const ChatThreadView = forwardRef<ChatThreadViewHandle, ChatThreadViewPro
               // measured height (+16px gap) instead of a static `pb-32`, so the
               // queued-followups panel and other dynamic footer content never
               // overlap the last message (#4268).
-              style={bottomPadding !== undefined ? { paddingBottom: bottomPadding } : undefined}>
+              style={
+                bottomPadding !== undefined || topPadding !== undefined
+                  ? { paddingBottom: bottomPadding, paddingTop: topPadding }
+                  : undefined
+              }>
               {timelineMessages.map(msg => {
                 const isAgentTextMode = msg.sender === 'agent' && agentMessageViewMode === 'text';
                 // B25: an agent turn that both talks AND calls a tool can leak

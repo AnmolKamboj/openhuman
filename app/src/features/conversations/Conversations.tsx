@@ -19,6 +19,7 @@ import SuperContextToggle from '../../components/chat/SuperContextToggle';
 import { whenSuperContextWriteSettled } from '../../components/chat/superContextWrite';
 import WorkflowProposalCard from '../../components/chat/WorkflowProposalCard';
 import { ConfirmationModal } from '../../components/intelligence/ConfirmationModal';
+import PanelHeader from '../../components/layout/PanelHeader';
 import { SidebarContent } from '../../components/layout/shell/SidebarSlot';
 import { settingsNavState } from '../../components/settings/modal/settingsOverlay';
 import UpsellBanner from '../../components/upsell/UpsellBanner';
@@ -1911,6 +1912,11 @@ const Conversations = ({
   );
 
   // Main chat area (right pane): header, message list, composer.
+  // Height of the fade under the chat header band, and the matching top padding
+  // the message list reserves so the first message clears it at rest instead of
+  // sitting under the gradient. One constant so the two cannot drift.
+  const headerFadePx = 48;
+  const showChatHeader = !isSidebar && Boolean(selectedThreadId);
   const mainPanel = (
     <div
       className={
@@ -1921,11 +1927,38 @@ const Conversations = ({
             // the absolutely-positioned floating composer.
             'relative flex-1 flex flex-col min-w-0'
       }>
+      {/* Page header band — the same flush title band every other page opens
+          with (PanelHeader / bg-surface-muted), naming the open thread. Page
+          variant only: the embedded sidebar variant lives in a narrow aside
+          where a full band would cost more vertical room than it earns, and its
+          host already titles the surface. Suppressed until a thread resolves so
+          a brand-new chat doesn't open with an empty band above the hero. */}
+      {showChatHeader && selectedThreadId && (
+        // `relative` + `z-20` so the band paints above the scrolling messages
+        // and can anchor the fade below it.
+        <div className="relative z-20 flex-shrink-0">
+          <PanelHeader
+            title={resolveThreadDisplayTitle(selectedThreadId)}
+            className="flex-shrink-0 px-4 pt-4 pb-3"
+          />
+          {/* Mirror of the composer fade at the bottom: messages dissolve into
+              the header as they scroll up under it. `top-full` pins it to the
+              band's bottom edge, so it stays correct without hard-coding the
+              header's height. Fades from `surface` — the page's own colour, not
+              the band's — because that is what the messages scroll over. */}
+          <div
+            aria-hidden="true"
+            style={{ height: headerFadePx }}
+            className="pointer-events-none absolute inset-x-0 top-full bg-gradient-to-b from-surface via-surface/90 to-transparent"
+          />
+        </div>
+      )}
       <ChatThreadView
         ref={threadViewRef}
         threadId={selectedThreadId ?? null}
         variant={variant}
         bottomPadding={!isSidebar ? composerFooterHeight + 16 : undefined}
+        topPadding={showChatHeader ? headerFadePx : undefined}
         hasFooterContent={hasTaskBoard}
         isLoading={isLoadingMessages}
         loadError={messagesError}
