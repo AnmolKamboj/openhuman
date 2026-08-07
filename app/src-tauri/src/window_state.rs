@@ -274,18 +274,27 @@ pub fn maximize_to_work_area<R: Runtime>(window: &WebviewWindow<R>) -> bool {
         return false;
     };
 
-    if let Err(err) = window.set_position(PhysicalPosition::new(monitor.x, monitor.y)) {
+    // Through `clamp_to_work_area` rather than straight to the raw work-area
+    // dimensions: `clamp_size` enforces the MIN_WINDOW_* floor, so a work area
+    // smaller than 480x360 would otherwise open below the module's minimum and
+    // make this path behave differently from `restore_main` / `center_main`.
+    let (x, y, width, height) =
+        clamp_to_work_area(monitor.x, monitor.y, monitor.width, monitor.height, monitor);
+
+    if let Err(err) = window.set_position(PhysicalPosition::new(x, y)) {
         log::warn!("[window-state] work-area set_position failed: {err}");
         return false;
     }
-    if let Err(err) = window.set_size(PhysicalSize::new(monitor.width, monitor.height)) {
+    if let Err(err) = window.set_size(PhysicalSize::new(width, height)) {
         log::warn!("[window-state] work-area set_size failed: {err}");
         return false;
     }
     log::info!(
-        "[window-state] no saved geometry; opened filling work area x={} y={} w={} h={}",
-        monitor.x,
-        monitor.y,
+        "[window-state] no saved geometry; opened filling work area x={} y={} w={} h={} (work area {}x{})",
+        x,
+        y,
+        width,
+        height,
         monitor.width,
         monitor.height
     );

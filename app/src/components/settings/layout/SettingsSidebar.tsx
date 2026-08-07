@@ -117,11 +117,14 @@ const SettingsSidebar = () => {
                       onClick={() => navigateToSettings(row.route)}
                       className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[14px] transition-colors ${rowClass}`}>
                       <span
+                        // `active` is tested first so a row that is both active
+                        // and highlighted renders fully neutral — otherwise the
+                        // label went neutral while the icon kept the accent.
                         className={`shrink-0 ${
-                          highlight
-                            ? 'text-primary-600 dark:text-primary-400'
-                            : active
-                              ? 'text-content-secondary'
+                          active
+                            ? 'text-content-secondary'
+                            : highlight
+                              ? 'text-primary-600 dark:text-primary-400'
                               : 'text-content-faint'
                         }`}>
                         {SETTINGS_NAV_ICONS[row.id] ?? null}

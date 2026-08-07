@@ -42,8 +42,16 @@ export function installAutoHideScrollbars(doc: Document = document): () => void 
     const el = target instanceof Element ? target : doc.documentElement;
     if (!el) return;
 
-    if (!timers.has(el)) log('scroll start: <%s>', el.tagName.toLowerCase());
-    else clearTimeout(timers.get(el)!);
+    if (!timers.has(el)) {
+      log('scroll start: <%s>', el.tagName.toLowerCase());
+    } else {
+      // Continued scrolling: restart the idle countdown. Deliberately silent —
+      // `scroll` fires per animation frame, so a diagnostic here would emit
+      // ~60 lines/second per pane and bury the start/idle transitions that
+      // actually carry information. The pair of those two logs already bounds
+      // every scroll gesture, which is what an investigation needs.
+      clearTimeout(timers.get(el)!);
+    }
 
     el.setAttribute(SCROLLING_ATTR, '');
     timers.set(
