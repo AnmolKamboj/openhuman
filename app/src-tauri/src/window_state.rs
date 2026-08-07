@@ -163,9 +163,14 @@ pub fn save_main<R: Runtime>(window: &WebviewWindow<R>) {
 /// Returns `true` when saved geometry was applied. Returns `false` when
 /// no saved file exists, the file is malformed, or the saved position
 /// falls outside every currently-attached monitor's work area (e.g. the
-/// user undocked an external display); the caller is then expected to
-/// fall back to a centered default so we never strand the window
-/// off-screen.
+/// user undocked an external display).
+///
+/// The caller is then expected to fall back to a placement that cannot
+/// strand the window off-screen: [`maximize_to_work_area`] first, and
+/// [`center_main`] if even that resolves no monitor. Note this is no
+/// longer "the centered default" — a `false` here means there is no
+/// usable saved geometry, and the product default for that is a window
+/// filling the work area.
 ///
 /// Even when the saved monitor is still attached, the restored size is
 /// clamped to that monitor's work area (issue #2282) so a window saved
@@ -182,7 +187,7 @@ pub fn restore_main<R: Runtime>(window: &WebviewWindow<R>) -> bool {
         Ok(s) => s,
         Err(err) => {
             log::warn!(
-                "[window-state] parse {} failed: {err}; using default placement",
+                "[window-state] parse {} failed: {err}; falling back to default placement",
                 path.display()
             );
             return false;
@@ -201,7 +206,7 @@ pub fn restore_main<R: Runtime>(window: &WebviewWindow<R>) -> bool {
         pick_monitor_for_window(state.x, state.y, state.width, state.height, &work_areas)
     else {
         log::info!(
-            "[window-state] saved geometry x={} y={} w={} h={} not on any attached monitor's work area; falling back to centered default",
+            "[window-state] saved geometry x={} y={} w={} h={} not on any attached monitor's work area; falling back to default placement",
             state.x,
             state.y,
             state.width,
