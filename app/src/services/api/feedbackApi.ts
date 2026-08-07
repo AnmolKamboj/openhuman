@@ -71,12 +71,24 @@ export const feedbackApi = {
    * composer can call it as the user types.
    */
   validateFeedback: async (input: CreateFeedbackInput): Promise<FeedbackQuality> => {
-    log('validateFeedback type=%s titleLen=%d', input.type, input.title.length);
-    const response = await apiClient.post<ApiResponse<FeedbackQuality>>(
-      '/feedback/validate',
-      input
-    );
-    return response.data;
+    log('validateFeedback start type=%s titleLen=%d', input.type, input.title.length);
+    try {
+      const response = await apiClient.post<ApiResponse<FeedbackQuality>>(
+        '/feedback/validate',
+        input
+      );
+      // The tier is the branch that decides what the composer does; the reason
+      // is the user's own draft turned into prose, so it stays out of the log.
+      log('validateFeedback ok type=%s tier=%s', input.type, response.data.tier);
+      return response.data;
+    } catch (err) {
+      log(
+        'validateFeedback failed type=%s error=%s',
+        input.type,
+        err instanceof Error ? err.message : 'non-error rejection'
+      );
+      throw err;
+    }
   },
 
   /** POST /feedback/:id/vote — 1 upvote, -1 downvote, 0 retract. */

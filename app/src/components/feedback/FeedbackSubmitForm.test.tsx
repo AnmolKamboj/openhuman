@@ -223,4 +223,36 @@ describe('<FeedbackSubmitForm /> quality tiers', () => {
     expect(await screen.findByText('Looks like spam')).toBeInTheDocument();
     expect(screen.queryByTestId('feedback-quality-hint')).not.toBeInTheDocument();
   });
+
+  // The verdict is keyed to the draft it was computed for. Without that, a slow
+  // `block` for text the user has already replaced would arrive and disable
+  // submit for a draft it was never about.
+  //
+  // The second check is left unresolved on purpose: if it answered, its verdict
+  // would replace the stale one and the test would pass whether or not the
+  // keying exists.
+  it('ignores a verdict that arrives for a draft the user has since changed', async () => {
+    let resolveFirst!: (value: { tier: string; reason: string }) => void;
+    mockValidate
+      .mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            resolveFirst = resolve;
+          })
+      )
+      .mockImplementationOnce(() => new Promise(() => {}));
+
+    render(<FeedbackSubmitForm onAccepted={() => {}} />);
+    fillForm('test', 'test');
+    await waitFor(() => expect(mockValidate).toHaveBeenCalledTimes(1));
+
+    // The user rewrites it into a real report before the first verdict lands.
+    fillForm('Upload fails on retry', 'Uploading a second file after a failure hangs forever.');
+    await waitFor(() => expect(mockValidate).toHaveBeenCalledTimes(2));
+
+    resolveFirst({ tier: 'block', reason: 'Please describe the problem.' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled());
+    expect(screen.queryByText('Please describe the problem.')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('feedback-quality-hint')).not.toBeInTheDocument();
+  });
 });
