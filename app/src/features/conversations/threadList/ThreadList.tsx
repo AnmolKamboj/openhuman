@@ -136,10 +136,10 @@ export function ThreadList({
                 ) : (
                   <>
                     <p
-                      className={`truncate flex-1 text-[13px] ${
+                      className={`truncate flex-1 text-[15px] ${
                         selectedThreadId === thread.id
                           ? 'font-semibold text-content'
-                          : 'text-content-secondary'
+                          : 'font-medium text-content-muted'
                       }`}>
                       {resolveTitle(thread.id)}
                     </p>

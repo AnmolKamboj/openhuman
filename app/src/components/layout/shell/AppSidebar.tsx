@@ -47,9 +47,9 @@ function FooterNavButton({
       onClick={onClick}
       title={label}
       aria-current={active ? 'page' : undefined}
-      className={`group mx-2 flex flex-shrink-0 items-center gap-2.5 rounded-md px-2.5 py-1.5 text-xs transition-colors cursor-pointer ${
+      className={`group mx-2 flex flex-shrink-0 items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors cursor-pointer ${
         active
-          ? 'bg-surface/70 text-content font-medium'
+          ? 'bg-surface/70 text-content font-semibold'
           : 'text-content-muted hover:bg-surface/40 hover:text-content-secondary'
       }`}>
       <NavIcon id={iconId} className="h-4 w-4 flex-shrink-0" />

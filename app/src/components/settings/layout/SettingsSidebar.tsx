@@ -102,12 +102,12 @@ const SettingsSidebar = () => {
                     // app sidebar. The accent is reserved for rows that carry
                     // real meaning (see `highlight` below), so selection and
                     // significance stay visually distinct.
-                    'bg-surface/70 font-medium text-content'
+                    'bg-surface/70 font-semibold text-content'
                   : highlight
                     ? // Highlighted-but-inactive rows (e.g. Billing) accent the
                       // text only — this is semantic, so it keeps its colour.
                       'font-medium text-primary-700 hover:bg-surface/40 dark:text-primary-300'
-                    : 'text-content-secondary hover:bg-surface/40 hover:text-content';
+                    : 'font-medium text-content-muted hover:bg-surface/40 hover:text-content-secondary';
                 return (
                   <li key={row.id}>
                     <button
@@ -115,7 +115,7 @@ const SettingsSidebar = () => {
                       data-testid={`settings-nav-${row.id}`}
                       aria-current={active ? 'page' : undefined}
                       onClick={() => navigateToSettings(row.route)}
-                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] transition-colors ${rowClass}`}>
+                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[15px] transition-colors ${rowClass}`}>
                       <span
                         className={`shrink-0 ${
                           highlight
