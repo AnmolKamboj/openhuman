@@ -1912,10 +1912,6 @@ const Conversations = ({
   );
 
   // Main chat area (right pane): header, message list, composer.
-  // Height of the fade under the chat header band, and the matching top padding
-  // the message list reserves so the first message clears it at rest instead of
-  // sitting under the gradient. One constant so the two cannot drift.
-  const headerFadePx = 48;
   const showChatHeader = !isSidebar && Boolean(selectedThreadId);
   const mainPanel = (
     <div
@@ -1934,31 +1930,22 @@ const Conversations = ({
           host already titles the surface. Suppressed until a thread resolves so
           a brand-new chat doesn't open with an empty band above the hero. */}
       {showChatHeader && selectedThreadId && (
-        // `relative` + `z-20` so the band paints above the scrolling messages
-        // and can anchor the fade below it.
-        <div className="relative z-20 flex-shrink-0">
-          <PanelHeader
-            title={resolveThreadDisplayTitle(selectedThreadId)}
-            className="flex-shrink-0 px-4 pt-4 pb-3"
-          />
-          {/* Mirror of the composer fade at the bottom: messages dissolve into
-              the header as they scroll up under it. `top-full` pins it to the
-              band's bottom edge, so it stays correct without hard-coding the
-              header's height. Fades from `surface` — the page's own colour, not
-              the band's — because that is what the messages scroll over. */}
-          <div
-            aria-hidden="true"
-            style={{ height: headerFadePx }}
-            className="pointer-events-none absolute inset-x-0 top-full bg-gradient-to-b from-surface via-surface/90 to-transparent"
-          />
-        </div>
+        // No fade beneath the band, deliberately. The bottom of the pane needs
+        // one because the composer is absolutely positioned and floats over the
+        // messages; this header is `flex-shrink-0` in normal flow, so the scroll
+        // area simply starts below it and nothing ever scrolls underneath. A
+        // gradient here has no overlap to soften — it just paints a veil over
+        // whatever message happens to be at the top of the list.
+        <PanelHeader
+          title={resolveThreadDisplayTitle(selectedThreadId)}
+          className="flex-shrink-0 px-4 pt-4 pb-3"
+        />
       )}
       <ChatThreadView
         ref={threadViewRef}
         threadId={selectedThreadId ?? null}
         variant={variant}
         bottomPadding={!isSidebar ? composerFooterHeight + 16 : undefined}
-        topPadding={showChatHeader ? headerFadePx : undefined}
         hasFooterContent={hasTaskBoard}
         isLoading={isLoadingMessages}
         loadError={messagesError}
