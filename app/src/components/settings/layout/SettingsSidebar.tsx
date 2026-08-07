@@ -106,8 +106,8 @@ const SettingsSidebar = () => {
                   : highlight
                     ? // Highlighted-but-inactive rows (e.g. Billing) accent the
                       // text only — this is semantic, so it keeps its colour.
-                      'font-medium text-primary-700 hover:bg-surface/40 dark:text-primary-300'
-                    : 'font-medium text-content-muted hover:bg-surface/40 hover:text-content-secondary';
+                      'text-primary-700 hover:bg-surface/40 dark:text-primary-300'
+                    : 'text-content-muted hover:bg-surface/40 hover:text-content-secondary';
                 return (
                   <li key={row.id}>
                     <button

@@ -81,7 +81,7 @@ export default function SidebarNav() {
             // pill on top of it stacks two colours and reads as noise. Weight
             // and contrast carry the selection instead. Fills are alpha-based so
             // they lift against whatever backdrop the theme paints behind them.
-            className={`group flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[14px] font-medium transition-colors cursor-pointer ${
+            className={`group flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[14px] transition-colors cursor-pointer ${
               active
                 ? 'bg-surface/70 text-content font-semibold'
                 : 'text-content-muted hover:bg-surface/40 hover:text-content-secondary'

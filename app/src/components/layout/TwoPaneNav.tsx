@@ -70,7 +70,7 @@ export default function TwoPaneNav({
                       // ThreadList: 15px, medium by default and semibold when
                       // selected, with an alpha fill that lifts against both the
                       // translucent chrome and an opaque pane.
-                      className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[14px] font-medium transition-colors ${
+                      className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[14px] transition-colors ${
                         active
                           ? 'bg-surface/70 font-semibold text-content'
                           : 'text-content-muted hover:bg-surface/40 hover:text-content-secondary'
