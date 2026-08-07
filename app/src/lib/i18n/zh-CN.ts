@@ -985,6 +985,7 @@ const messages: TranslationMap = {
   'nav.routines': 'Routines',
   'chat.newThread': '新对话',
   'chat.newConversation': '新对话',
+  'chat.conversationsHeading': '对话',
   'chat.newWindowWelcome1': '欢迎，{name} 👋',
   'chat.newWindowWelcome2': '开干吧，{name} 🧑‍🍳。',
   'chat.newWindowWelcome3': '是时候专注了 🧘🏻',

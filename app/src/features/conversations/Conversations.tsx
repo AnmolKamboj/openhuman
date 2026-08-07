@@ -301,7 +301,6 @@ const Conversations = ({
   // General/Subconscious/Tasks chips were removed. Subconscious reflections and
   // task/worker threads have dedicated surfaces (Intelligence, Tasks board).
   const selectedLabel = GENERAL_TAB_VALUE;
-  const [threadSearch, setThreadSearch] = useState('');
   const [sendError, setSendError] = useState<ChatSendError | null>(null);
   // Recorded by the slice for *every* create path (#5156) — including the shell's
   // "New chat" button and the home-nav shortcut, which have no UI of their own —
@@ -1790,14 +1789,6 @@ const Conversations = ({
     );
   }, [filteredThreads]);
 
-  // Free-text search over the thread sidebar — filters the visible list by
-  // title (mirrors the settings sidebar search).
-  const visibleThreads = useMemo(() => {
-    const q = threadSearch.trim().toLowerCase();
-    if (!q) return sortedThreads;
-    return sortedThreads.filter(thread => (thread.title ?? '').toLowerCase().includes(q));
-  }, [sortedThreads, threadSearch]);
-
   const isSidebar = variant === 'sidebar';
   // "New window" = the merged Home surface: a page-variant chat whose selected
   // thread has no messages yet. We show the greeting + banners hero above a
@@ -1868,10 +1859,8 @@ const Conversations = ({
   // mode; the embedded `variant="sidebar"` mode shows no thread list at all.
   const threadSidebar = (
     <ThreadList
-      threads={visibleThreads}
+      threads={sortedThreads}
       selectedThreadId={selectedThreadId ?? null}
-      search={threadSearch}
-      onSearchChange={setThreadSearch}
       onCreateThread={() => void handleCreateNewThread()}
       onSelectThread={id => {
         dispatch(setSelectedThread(id));

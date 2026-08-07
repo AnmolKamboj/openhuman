@@ -1038,6 +1038,7 @@ const messages: TranslationMap = {
   'nav.routines': 'Routines',
   'chat.newThread': 'नई थ्रेड',
   'chat.newConversation': 'नई बातचीत',
+  'chat.conversationsHeading': 'बातचीत',
   'chat.newWindowWelcome1': 'स्वागत है, {name} 👋',
   'chat.newWindowWelcome2': 'चलिए शुरू करें, {name} 🧑‍🍳.',
   'chat.newWindowWelcome3': 'ध्यान लगाने का समय 🧘🏻',

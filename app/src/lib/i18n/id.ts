@@ -1050,6 +1050,7 @@ const messages: TranslationMap = {
   'nav.routines': 'Routines',
   'chat.newThread': 'Thread baru',
   'chat.newConversation': 'Percakapan baru',
+  'chat.conversationsHeading': 'Percakapan',
   'chat.newWindowWelcome1': 'Selamat datang, {name} 👋',
   'chat.newWindowWelcome2': 'Ayo mulai, {name} 🧑‍🍳.',
   'chat.newWindowWelcome3': 'Waktunya fokus 🧘🏻',
