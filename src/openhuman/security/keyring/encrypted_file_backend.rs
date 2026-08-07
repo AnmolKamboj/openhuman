@@ -308,8 +308,17 @@ impl KeyringBackend for EncryptedFileBackend {
         let Some(key) = master_key() else {
             return Ok(None);
         };
-        // No lock: `write_atomic` publishes by rename, so a reader sees either
-        // the whole previous file or the whole next one, never a mix.
+        // Usually no lock is needed: `write_atomic` publishes by rename, so a
+        // reader sees either the whole previous file or the whole next one,
+        // never a mix. A missing encrypted file is different: `read_map`
+        // migrates the legacy store, which writes and renames files. Hold the
+        // same lock as writers across that read so its legacy snapshot cannot
+        // overwrite a concurrent `set`.
+        if !self.path.exists() {
+            let _guard = file_store::lock_for_write(&self.path)?;
+            let map = self.read_map(key)?;
+            return Ok(map.get(namespaced_key).cloned());
+        }
         let map = self.read_map(key)?;
         Ok(map.get(namespaced_key).cloned())
     }
