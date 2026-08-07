@@ -115,7 +115,7 @@ const SettingsSidebar = () => {
                       data-testid={`settings-nav-${row.id}`}
                       aria-current={active ? 'page' : undefined}
                       onClick={() => navigateToSettings(row.route)}
-                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[15px] transition-colors ${rowClass}`}>
+                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[14px] transition-colors ${rowClass}`}>
                       <span
                         className={`shrink-0 ${
                           highlight
