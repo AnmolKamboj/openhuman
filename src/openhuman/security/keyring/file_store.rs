@@ -129,7 +129,7 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), KeyringError> {
     // sequence value collide, so keep allocating sequence values until a new
     // staging path is reserved for this write.
     let (tmp_path, mut file) = reserve_temp_file(|| temp_path_for(path))?;
-    let write = || -> std::io::Result<()> {
+    let mut write = || -> std::io::Result<()> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -170,7 +170,7 @@ fn reserve_temp_file(
             .write(true)
             .open(&tmp_path)
         {
-            Ok(file) => break (tmp_path, file),
+            Ok(file) => break Ok((tmp_path, file)),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(e) => {
                 return Err(KeyringError::Backend(format!(
