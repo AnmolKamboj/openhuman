@@ -155,11 +155,19 @@ fn is_staging_or_production_value(app_env: Option<&str>) -> bool {
 /// Uses the registered value from [`init_workspace`] if set; otherwise falls
 /// back to the same env-var / home-dir logic as the config subsystem.
 /// Always resolves to a stable absolute path — never CWD.
+///
+/// Under `cfg(test)` the environment is deliberately *not* consulted — see the
+/// test build of [`fallback_workspace_dir`].
 pub fn workspace_dir_for_file_backend() -> PathBuf {
-    if let Some(dir) = WORKSPACE_DIR.get() {
-        return dir.clone();
-    }
+    WORKSPACE_DIR
+        .get()
+        .cloned()
+        .unwrap_or_else(fallback_workspace_dir)
+}
 
+/// The directory to use when no caller registered one via [`init_workspace`].
+#[cfg(not(test))]
+fn fallback_workspace_dir() -> PathBuf {
     if let Ok(custom) = std::env::var("OPENHUMAN_WORKSPACE") {
         if !custom.trim().is_empty() {
             return PathBuf::from(custom);
@@ -169,11 +177,43 @@ pub fn workspace_dir_for_file_backend() -> PathBuf {
     let home = dirs::home_dir().unwrap_or_else(|| {
         PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
     });
-    let openhuman_dir = match std::env::var("OPENHUMAN_APP_ENV").as_deref() {
+    match std::env::var("OPENHUMAN_APP_ENV").as_deref() {
         Ok("staging") => home.join(".openhuman-staging"),
         _ => home.join(".openhuman"),
-    };
-    openhuman_dir
+    }
+}
+
+/// A scratch directory owned by this test binary, used instead of any real
+/// workspace.
+///
+/// Test code must never be able to reach a developer's live secret store, and
+/// before this it could: the default honoured `OPENHUMAN_WORKSPACE`, which the
+/// Medulla TUI exports into every process it spawns. A `cargo test` run started
+/// from such a shell wrote its per-test secrets straight into the developer's
+/// `dev-keychain.json` — thousands of tempdir-scoped junk entries, sharing one
+/// read-modify-write file with the live app session sitting beside them.
+///
+/// A test that wants a specific location still gets one by calling
+/// [`init_workspace`] before its first keyring call; only the *fallback* is
+/// redirected. The directory is per-process and never cleaned up, because the
+/// backend outlives any single test (`BACKEND` is a `OnceLock`) — the OS clears
+/// it with the rest of the temp dir.
+#[cfg(test)]
+fn fallback_workspace_dir() -> PathBuf {
+    static TEST_DIR: OnceLock<PathBuf> = OnceLock::new();
+    TEST_DIR
+        .get_or_init(|| {
+            let dir =
+                std::env::temp_dir().join(format!("openhuman-test-keyring-{}", std::process::id()));
+            if let Err(e) = std::fs::create_dir_all(&dir) {
+                log::warn!(
+                    "[keyring] could not create the test keyring dir {}: {e}",
+                    dir.display()
+                );
+            }
+            dir
+        })
+        .clone()
 }
 
 #[cfg(test)]

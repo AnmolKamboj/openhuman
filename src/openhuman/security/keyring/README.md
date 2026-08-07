@@ -22,6 +22,7 @@ OS-keychain-backed secret storage with pluggable test/debug backends, plus a Cha
 | `src/openhuman/security/keyring/backend.rs` | `KeyringBackend` trait + `OsBackend` (native keychain via the `keyring` crate, service name `"openhuman"`), `FileBackend` (plaintext `dev-keychain.json`, test/debug only), and test-only `MockBackend`. |
 | `src/openhuman/security/keyring/encrypted_file_backend.rs` | `EncryptedFileBackend` — all secrets in one ChaCha20-Poly1305 `secrets.enc` file keyed by an app master key; `init_master_key`/`is_master_key_available`; legacy `dev-keychain.json` migration; corrupt-file quarantine. |
 | `src/openhuman/security/keyring/encrypted_store.rs` | `SecretStore` — config-field encryption (`enc2:` ChaCha20-Poly1305, legacy `enc:` XOR migration), keychain-backed master key with legacy `.secret_key` file migration, process-wide key cache, Windows ACL repair (`icacls`). |
+| `src/openhuman/security/keyring/file_store.rs` | Shared secrets-file primitives for both file backends: the cross-process advisory write lock (`lock_for_write`, on a sidecar `<path>.lock`), the `0600` unique-temp-then-rename `write_atomic`, and `quarantine_corrupt`. |
 | `src/openhuman/security/keyring/crypto.rs` | Shared ChaCha20-Poly1305 helpers (`chacha20_encrypt`/`chacha20_decrypt`), random-byte generation, hex encode/decode. Used by both `encrypted_store` and `encrypted_file_backend`. |
 | `src/openhuman/security/keyring/error.rs` | `KeyringError` (thiserror) with variants `Os`/`InvalidUtf8`/`MigrationReadFailed`/`VerifyFailed`/`MigrationDeleteFailed`/`RandomGeneration`/`Crypto`/`Backend`, plus a log-safe `diagnostic()` that preserves the `keyring::Error` variant + `OSStatus`. |
 | `src/openhuman/security/keyring/tests.rs` | Module tests (backend isolation via `force_backend_for_test`). |
@@ -62,7 +63,9 @@ Secret storage backend, selected once and frozen in a `OnceLock`:
 
 `SecretStore` additionally manages a master encryption key: keychain-backed (slot `secretstore.master_key`) in normal builds with one-time migration from the legacy `{data_dir}/openhuman/.secret_key` file; the file path is retained only for unit tests. Decoded keys are cached process-wide keyed by normalized path.
 
-Workspace dir resolves from `init_workspace`, else `OPENHUMAN_WORKSPACE`, else `~/.openhuman` (or `~/.openhuman-staging` under `OPENHUMAN_APP_ENV=staging`).
+Workspace dir resolves from `init_workspace`, else `OPENHUMAN_WORKSPACE`, else `~/.openhuman` (or `~/.openhuman-staging` under `OPENHUMAN_APP_ENV=staging`). **Under `cfg(test)` the environment is not consulted at all** — the fallback is a per-process scratch dir under the system temp dir, so test code cannot write into a developer's live store. A test that needs a specific location calls `init_workspace` before its first keyring call.
+
+Both file backends keep every secret in one file, so a `set` of one key rewrites all of them. That read-modify-write cycle is guarded by `file_store::lock_for_write` — an in-process mutex is not sufficient, because a desktop core, a `medulla` TUI embedding the same core, and a `cargo test` run that inherited `OPENHUMAN_WORKSPACE` all address the same path.
 
 ## Dependencies
 
@@ -86,6 +89,8 @@ Discovered consumers (`crate::openhuman::security::keyring::*`):
 - **`force_backend_for_test` panics if `BACKEND` is already initialized** — it must run before any keyring call in the same process (dedicated test binary or very top of a test).
 - **`migrate_from_file` never deletes the source unless the verified write succeeds**, so failures are retryable.
 - **`encrypted_file` corrupt/undecryptable files are quarantined** (renamed `secrets.enc.corrupt.<ts>`) and treated as empty rather than crashing.
+- **A corrupt file is never *overwritten*.** `file` reads degrade to an empty map (so a missing token means "sign in again"), but a `set`/`delete` over an unparseable file quarantines it and returns an error. Returning empty on the write path is what turned a corrupt file into a wipe: the write that followed persisted a map holding nothing but the key being set.
+- **Mutations hold a cross-process lock**, on `<secrets file>.lock` rather than the secrets file itself — `write_atomic` replaces the file by rename, so a lock on the old inode would guard nothing. Callers must hold it across the read *and* the write.
 - **`SecretStore` master-key file is write-once**; on Windows it survives transient AV-scanner sharing violations via retry/backoff and attempts `icacls` ACL self-repair on permission errors. Decoded keys are cached so repeated decrypts (e.g. snapshot polls) hit memory.
 - **Legacy formats:** `SecretStore` migrates `enc:` (XOR) → `enc2:` (ChaCha20-Poly1305) on decrypt; `EncryptedFileBackend` migrates plaintext `dev-keychain.json` → `secrets.enc` (renaming the legacy file `.json.migrated`).
 - **Errors never carry secret values** — only namespaced keys; `diagnostic()` is safe to log and preserves the underlying `keyring::Error` variant/`OSStatus`.
