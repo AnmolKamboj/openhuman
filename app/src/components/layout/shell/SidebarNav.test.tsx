@@ -8,6 +8,13 @@ import SidebarNav from './SidebarNav';
 // Analytics is fire-and-forget; stub it so the nav renders without a transport.
 vi.mock('../../../services/analytics', () => ({ trackEvent: vi.fn() }));
 
+// The Tiny.Place (agent-world) tab is gated on a tiny.place identity (#5424).
+// These tests exercise active-route matching with the full nav, so pin identity
+// present; the gate itself is covered by useNavTabs.test.ts.
+vi.mock('../../../hooks/useTinyPlaceIdentity', () => ({
+  useTinyPlaceIdentity: () => ({ status: 'ready', hasIdentity: true }),
+}));
+
 /** The rendered button for a nav label (label text lives in a child span). */
 function tabButton(label: string): HTMLButtonElement {
   return screen.getByRole('button', { name: new RegExp(label) }) as HTMLButtonElement;
