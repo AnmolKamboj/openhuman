@@ -1,8 +1,12 @@
 //! Tests for the shared secrets-file primitives.
 
+use std::collections::VecDeque;
 use std::path::Path;
 
-use super::{lock_for_write, lock_path_for, quarantine_corrupt, temp_path_for, write_atomic};
+use super::{
+    lock_for_write, lock_path_for, quarantine_corrupt, reserve_temp_file, temp_path_for,
+    write_atomic,
+};
 
 #[test]
 fn write_atomic_replaces_contents() {
@@ -60,6 +64,21 @@ fn write_atomic_leaves_no_temp_files_behind() {
         leftovers.is_empty(),
         "temp files left behind: {leftovers:?}"
     );
+}
+
+#[test]
+fn reserve_temp_file_skips_a_stale_path() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let stale = dir.path().join("stale.tmp");
+    let fresh = dir.path().join("fresh.tmp");
+
+    std::fs::write(&stale, b"stale").unwrap();
+    let mut paths = VecDeque::from([stale.clone(), fresh.clone()]);
+    let (claimed, file) = reserve_temp_file(|| paths.pop_front().unwrap()).unwrap();
+    drop(file);
+
+    assert_eq!(claimed, fresh);
+    assert_eq!(std::fs::read(&stale).unwrap(), b"stale");
 }
 
 #[cfg(unix)]

@@ -125,12 +125,11 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), KeyringError> {
         })?;
     }
 
-    let tmp_path = temp_path_for(path);
+    // A stale temp file can survive a crash. PID reuse then makes the first
+    // sequence value collide, so keep allocating sequence values until a new
+    // staging path is reserved for this write.
+    let (tmp_path, mut file) = reserve_temp_file(|| temp_path_for(path))?;
     let write = || -> std::io::Result<()> {
-        let mut file = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&tmp_path)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -158,6 +157,29 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), KeyringError> {
             path.display()
         ))
     })
+}
+
+/// Reserve a fresh temp file, advancing past leftovers from crashed writers.
+fn reserve_temp_file(
+    mut next_path: impl FnMut() -> PathBuf,
+) -> Result<(PathBuf, File), KeyringError> {
+    loop {
+        let tmp_path = next_path();
+        match OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&tmp_path)
+        {
+            Ok(file) => break (tmp_path, file),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => {
+                return Err(KeyringError::Backend(format!(
+                    "could not stage a keyring write at {}: {e}",
+                    tmp_path.display()
+                )));
+            }
+        }
+    }
 }
 
 /// A temp sibling of `path` that no other process or thread will pick.
