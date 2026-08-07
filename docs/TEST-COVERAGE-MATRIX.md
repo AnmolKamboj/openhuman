@@ -83,6 +83,7 @@ Canonical mapping of every product feature to its test source(s). Drives gap-fil
 | 1.3.1 | Token Issuance         | WD+RI | `login-flow.spec.ts`, `json_rpc_e2e.rs` | ✅     |                           |
 | 1.3.2 | Session Persistence    | WD    | `logout-relogin-onboarding.spec.ts`     | ✅     |                           |
 | 1.3.3 | Refresh Token Rotation | VU    | _missing_ — tracked #968                | ❌     | Slice-level refresh logic |
+| 1.3.4 | Product Identity Header (`x-sdk-name`) | RU | `src/api/product.rs`, `src/api/rest_tests.rs`, `src/openhuman/medulla/client/tests/{integration_tests,sse_tests}.rs`, `src/openhuman/integrations/client_tests.rs` | ✅ | #5406 — every backend-bound request is attributed to a product, defaulting to `openhuman` and overridable by an embedding product (OpenCompany, Medulla). RU covers the sanitiser (trim / allowlist / truncate / reject), the default, and the override on the wire across all four transports: the SDK path, `raw_client()`, `MedullaClient::authed`, and the SSE handshake (which authenticates by query parameter and so never reaches `authed()`). Managed inference/embeddings go out through `tinyagents`' own clients and Socket.IO sets no HTTP headers, so neither is covered here. |
 
 ### 1.4 Logout & Revocation
 

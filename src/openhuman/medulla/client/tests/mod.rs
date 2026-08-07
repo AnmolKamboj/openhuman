@@ -29,6 +29,26 @@ pub(super) async fn spawn_stub(response: Vec<u8>) -> String {
     format!("http://{addr}")
 }
 
+/// Like [`spawn_stub`], but also hands back the raw request bytes the client
+/// sent so tests can assert on the method line, query string, headers and body.
+pub(super) async fn spawn_stub_capture(
+    response: Vec<u8>,
+) -> (String, tokio::sync::oneshot::Receiver<String>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        let (mut sock, _) = listener.accept().await.unwrap();
+        let mut buf = [0u8; 8192];
+        let n = sock.read(&mut buf).await.unwrap_or(0);
+        sock.write_all(&response).await.unwrap();
+        sock.flush().await.unwrap();
+        let _ = sock.shutdown().await;
+        let _ = tx.send(String::from_utf8_lossy(&buf[..n]).to_string());
+    });
+    (format!("http://{addr}"), rx)
+}
+
 /// Build a minimal HTTP/1.1 JSON response with the given status line and body.
 pub(super) fn http_json(status_line: &str, body: &str) -> Vec<u8> {
     format!(

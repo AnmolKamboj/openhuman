@@ -196,7 +196,56 @@ The split:
 `with_http_client(...)` so the SDK inherits this crate's transport — platform
 TLS (schannel on Windows for corporate TLS-inspection proxies, rustls
 elsewhere), the 120s/15s timeouts, `http1_only`, and the `x-core-version` /
-`x-tauri-version` headers. Bind a session token with `sdk_for(bearer_jwt)`.
+`x-tauri-version` / `x-sdk-name` headers. A session token is bound per call:
+`authed_json` does `self.sdk.clone().with_token(Some(jwt))`, so the stored
+client stays token-less and concurrent calls with different bearers cannot
+race. (`clone()` is Arc-backed — the connection pool is shared, only the token
+field differs.)
+
+### Product identity — `x-sdk-name` (`src/api/product.rs`)
+
+OpenHuman, OpenCompany and Medulla share one login and all three reach the
+backend through this crate, so every backend-bound request carries
+`x-sdk-name` for the backend to attribute it to a product
+(`src/utils/sdkSource.ts` in `tinyhumansai/backend`). The value defaults to
+`openhuman`; an embedding product overrides it **once during startup, before it
+builds any backend client**:
+
+```rust
+use openhuman_core::api::{set_product_identity, ProductIdentity};
+
+if let Some(identity) = ProductIdentity::new("opencompany") {
+    set_product_identity(identity);
+}
+```
+
+It is a process-global (`OnceLock<RwLock<_>>`, same shape as
+`config::schema::proxy`'s runtime proxy config) rather than a constructor
+argument because `BackendOAuthClient::new` is called from ~35 sites across the
+domains — none of which a downstream product owns. `BackendOAuthClient` and
+`IntegrationClient` read the identity into their default headers when they are
+built, so a later `set_product_identity` does not re-tag clients that already
+exist — set it during startup, before the first client, and the distinction
+never arises. (`MedullaClient` happens to read it per request, but do not rely
+on that.)
+
+Three client paths attach it, and all three need it because none shares a
+request-building code path with the others:
+
+| Path | Where |
+| ---- | ----- |
+| `BackendOAuthClient` | both the reqwest transport (`build_backend_reqwest_client`, so `raw_client()` multipart uploads are covered too) and the SDK's `with_default_headers` |
+| `IntegrationClient` (`/agent-integrations/*`) | its own transport + SDK default headers |
+| `MedullaClient` | `authed()` for HTTP, and **separately** `sse::StreamState::connect` — the SSE handshake authenticates with a `?token=` query parameter and never reaches `authed()` |
+
+`ProductIdentity::new` sanitises with the same allowlist-and-truncate rule
+`sanitize_client_version` applies to `x-core-version`, so the wrapped value can
+never carry CR/LF and header construction cannot fail.
+
+**Not covered** (would need upstream changes, tracked separately): managed
+inference and embeddings go out through `tinyagents`' own clients, and the
+Socket.IO upgrade sets no HTTP headers at all — its auth rides in the
+Socket.IO CONNECT payload.
 
 **Every SDK-backed call must map its error through `classify_sdk_error`.** That
 function mirrors `authed_json`'s classification exactly (401 →

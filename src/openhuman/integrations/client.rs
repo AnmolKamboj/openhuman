@@ -330,6 +330,12 @@ impl IntegrationClient {
         // Windows uses schannel (native-tls) to honor the OS cert store;
         // macOS / Linux keep rustls which avoids the OpenSSL runtime dep and
         // has historically been more reliable on staging TLS handshakes.
+        //
+        // `/agent-integrations/*` is backend traffic like any other, so it
+        // carries the same product identity as `BackendOAuthClient`. The SDK
+        // merges its own default headers into every request, so `http_client`
+        // needs nothing; `download_client` is driven raw and does.
+        let product_headers = crate::api::product::product_identity_headers();
         let http_client = crate::openhuman::util::tls::tls_client_builder()
             .http1_only()
             .timeout(Duration::from_secs(60))
@@ -338,8 +344,10 @@ impl IntegrationClient {
             .expect("failed to build integration HTTP client");
         let sdk = TinyHumansClient::new(&backend_url)
             .with_token(Some(auth_token.clone()))
-            .with_http_client(http_client.clone());
+            .with_http_client(http_client.clone())
+            .with_default_headers(product_headers.clone());
         let download_client = crate::openhuman::util::tls::tls_client_builder()
+            .default_headers(product_headers)
             .http1_only()
             .timeout(Duration::from_secs(15 * 60))
             .connect_timeout(Duration::from_secs(15))
