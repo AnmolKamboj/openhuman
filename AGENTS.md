@@ -229,7 +229,7 @@ exist — set it during startup, before the first client, and the distinction
 never arises. (`MedullaClient` happens to read it per request, but do not rely
 on that.)
 
-Three client paths attach it, and all three need it because none shares a
+Five client paths attach it, and each needs its own edit because none shares a
 request-building code path with the others:
 
 | Path | Where |
@@ -237,6 +237,17 @@ request-building code path with the others:
 | `BackendOAuthClient` | both the reqwest transport (`build_backend_reqwest_client`, so `raw_client()` multipart uploads are covered too) and the SDK's `with_default_headers` |
 | `IntegrationClient` (`/agent-integrations/*`) | its own transport + SDK default headers |
 | `MedullaClient` | `authed()` for HTTP, and **separately** `sse::StreamState::connect` — the SSE handshake authenticates with a `?token=` query parameter and never reaches `authed()` |
+| `desktop::app_state::ops` (`GET /auth/me`) | its local `build_client()` default headers — a hand-rolled TLS client, not `BackendOAuthClient`'s |
+| `agent::progress_tracing::langfuse` (`POST /telemetry/langfuse/ingestion`) | at the call site — a bare `reqwest::Client::new()` against the backend's Langfuse proxy route |
+
+**Adding a backend call means adding the header.** The two entries at the
+bottom of that table were missed on the first pass and caught in review: both
+hand-roll a `reqwest` client against `effective_backend_api_url` with a session
+bearer, so neither inherits anything from the three wrapper types above. When
+you add a backend-bound request, the question is not "did I use the right
+client" but "does *this* request carry `x-sdk-name`". `grep` for
+`bearer_authorization_value` and `header(AUTHORIZATION` to find the hand-rolled
+ones — those are the paths that go unattributed silently.
 
 `ProductIdentity::new` sanitises with the same allowlist-and-truncate rule
 `sanitize_client_version` applies to `x-core-version`, so the wrapped value can
@@ -245,7 +256,10 @@ never carry CR/LF and header construction cannot fail.
 **Not covered** (would need upstream changes, tracked separately): managed
 inference and embeddings go out through `tinyagents`' own clients, and the
 Socket.IO upgrade sets no HTTP headers at all — its auth rides in the
-Socket.IO CONNECT payload.
+Socket.IO CONNECT payload. MCP servers (`mcp::http_client`) and third-party
+BYOK inference endpoints are deliberately **never** tagged — they are not our
+backend, and telling an unrelated operator which TinyHumans product a user runs
+discloses something for no benefit.
 
 **Every SDK-backed call must map its error through `classify_sdk_error`.** That
 function mirrors `authed_json`'s classification exactly (401 →

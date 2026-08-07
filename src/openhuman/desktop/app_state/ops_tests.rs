@@ -343,3 +343,61 @@ fn auth_fetch_timeout_constant_is_below_rpc_timeout() {
 fn build_dummy_runtime_snapshot() -> RuntimeSnapshot {
     degraded_runtime_snapshot(&Config::default())
 }
+
+/// `fetch_current_user` hand-rolls its own TLS client rather than borrowing
+/// `BackendOAuthClient`'s, so it inherits nothing from that path's default
+/// headers — this call went out unattributed until review caught it. Assert on
+/// the wire rather than on `build_client`'s configuration: `reqwest::Client`
+/// exposes no way to read its default headers back, so the only proof the
+/// header survives into a real request is a real request.
+#[tokio::test]
+async fn current_user_fetch_carries_the_product_identity() {
+    use axum::extract::State;
+    use axum::http::HeaderMap;
+    use axum::routing::get;
+    use axum::{Json, Router};
+    use std::sync::{Arc, Mutex as StdMutex};
+    use tokio::net::TcpListener;
+
+    // The identity is process-global, so serialise against every other test
+    // that reads or writes it — otherwise this races an override installed by
+    // `api::product`'s or `api::rest`'s tests and flakes on the default.
+    let _identity_guard = crate::api::product::product_identity_test_lock();
+    crate::api::product::reset_product_identity_for_test();
+
+    type Captured = Arc<StdMutex<Option<String>>>;
+
+    async fn auth_me(State(captured): State<Captured>, headers: HeaderMap) -> Json<Value> {
+        *captured.lock().unwrap() = headers
+            .get(crate::api::product::PRODUCT_IDENTITY_HEADER)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+        Json(json!({ "success": true, "data": { "firstName": "steven" } }))
+    }
+
+    let captured: Captured = Arc::new(StdMutex::new(None));
+    let app = Router::new()
+        .route("/auth/me", get(auth_me))
+        .with_state(captured.clone());
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+
+    let config = Config {
+        api_url: Some(format!("http://{addr}")),
+        ..Config::default()
+    };
+    fetch_current_user(&config, "tok")
+        .await
+        .expect("the stub answers /auth/me");
+
+    assert_eq!(
+        captured.lock().unwrap().as_deref(),
+        Some(crate::api::product::DEFAULT_PRODUCT_IDENTITY),
+        "GET /auth/me must carry the product identity header"
+    );
+
+    crate::api::product::reset_product_identity_for_test();
+}
