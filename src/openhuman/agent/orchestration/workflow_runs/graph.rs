@@ -25,8 +25,8 @@ use tinyagents::graph::{
     ClosureStateReducer, Command, CompiledGraph, GraphBuilder, NodeContext, NodeResult,
 };
 
-use crate::openhuman::agent::session_db::run_ledger::get_workflow_run;
 use crate::openhuman::config::Config;
+use tinyagents::session::run_ledger::get_workflow_run;
 
 use super::engine::{execute_phase, select_next_phase, PhaseExecOutcome, PhaseSelection};
 use super::types::{WorkflowDefinition, WorkflowPhase};
@@ -179,7 +179,7 @@ pub(super) async fn drive_phases(
     // provider. Production runs omit it (agents use their configured provider);
     // deterministic mock-backend tests set it so children resolve to the
     // injected mock provider.
-    let model_override = get_workflow_run(config, run_id)?
+    let model_override = get_workflow_run(&config.workspace_dir, run_id)?
         .and_then(|r| {
             r.input
                 .get("modelOverride")

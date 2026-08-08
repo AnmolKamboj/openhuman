@@ -485,6 +485,14 @@ impl Agent {
     /// user message is appended later by [`Self::run_single`] / `turn`, so it is
     /// intentionally absent from the loaded prefix — no dedup is needed here (the
     /// on-disk transcript ends at the previous completed turn).
+    ///
+    /// Goes through the S4 seam like `try_load_session_transcript` (see its doc
+    /// comment for why the read is `read_session` and not
+    /// `ChatHistory::messages()`), via the locator's `root_for_thread` — the
+    /// lookup that resolves by `_meta.thread_id` across *root* transcripts
+    /// only. That disambiguation is why it is a locator method rather than
+    /// anything a stem-bound handle could offer: several transcripts share one
+    /// thread id (every sub-agent spawned within it does).
     pub fn seed_resume_from_thread_transcript(&mut self, thread_id: &str) -> bool {
         if !self.history.is_empty() || self.cached_transcript_messages.is_some() {
             log::debug!(
@@ -497,25 +505,12 @@ impl Agent {
         }
 
         // The thread's conversation belongs to the THREAD, not the active
-        // profile. Resolve via the cross-dir finder, which scans the shared
-        // `session_raw/` AND every profile-scoped `session_raw-<id>/` for this
-        // exact `thread_id` and returns the NEWEST match. So switching the active
-        // profile mid-thread (e.g. the Quick↔Reasoning toggle) continues the same
-        // conversation even when earlier turns were written under a different
-        // profile's subtree — a dedicated-memory personality, or a profile an
-        // earlier build wrongly scoped (#5351).
-        //
-        // Deliberately NOT own-dir-first (`in_dir(session_raw_subdir).or_else(…)`):
-        // that would let an *older* transcript in the agent's own dir shadow a
-        // *newer* one a sibling scoped dir holds for the same thread — dropping
-        // the most recent turns, and diverging from the transcript view + turn
-        // mirror, which both use this same newest-across-dirs resolver. The own
-        // dir is already included in the scan, so newest-wins is a superset.
-        // Keyed on `thread_id`, so it never bleeds an unrelated session across
-        // profiles; a blank id short-circuits to `None`.
-        let Some(path) =
-            super::transcript::find_root_transcript_for_thread(&self.workspace_dir, thread_id)
-        else {
+        // profile: the locator resolves cross-dir, newest-wins across the
+        // shared `session_raw/` and every profile-scoped `session_raw-<id>/`
+        // (#5351), so switching profile mid-thread continues the same
+        // conversation. See `FileTranscriptLocator::root_for_thread` for why
+        // this must not be own-dir-first.
+        let Some(handle) = self.session_locator().root_for_thread(thread_id) else {
             log::debug!(
                 "[web-channel] no root session_raw transcript for thread={thread_id} in any \
                  (shared or profile-scoped) session_raw dir — falling back to \
@@ -523,6 +518,7 @@ impl Agent {
             );
             return false;
         };
+        let path = handle.path().to_path_buf();
 
         log::info!(
             "[web-channel] cold-boot resume — loading full-fidelity transcript for \
@@ -530,8 +526,18 @@ impl Agent {
             path.display()
         );
 
-        match super::transcript::read_transcript(&path) {
-            Ok(session) => {
+        match handle.read_session() {
+            // `Ok(None)` (file vanished between discovery and read) folds into
+            // the same empty-transcript branch, so the prose-seeding fallback
+            // triggers identically.
+            Ok(None) => {
+                log::debug!(
+                    "[web-channel] root transcript for thread={thread_id} is empty — \
+                     falling back to prose seeding"
+                );
+                false
+            }
+            Ok(Some(session)) => {
                 if session.messages.is_empty() {
                     log::debug!(
                         "[web-channel] root transcript for thread={thread_id} is empty — \

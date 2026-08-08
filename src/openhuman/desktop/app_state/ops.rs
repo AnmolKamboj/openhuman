@@ -345,6 +345,14 @@ fn build_client() -> Result<Client, String> {
         .http1_only()
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(10))
+        // `GET /auth/me` is backend traffic like any other, so it carries the
+        // product identity. This client is hand-rolled rather than obtained
+        // from `BackendOAuthClient`, so it inherits nothing from that path's
+        // default headers — see [`crate::api::product`]. Set here rather than
+        // at the one call site because every user of this builder is
+        // backend-bound by construction (`resolve_base` resolves the backend
+        // API URL and nothing else).
+        .default_headers(crate::api::product::product_identity_headers())
         .build()
         .map_err(|e| format!("failed to build HTTP client: {e}"))
 }

@@ -20,6 +20,20 @@ pub fn register_embedder_post_turn_hook(hook: Arc<dyn PostTurnHook>) {
         .push(hook);
 }
 
+/// Replace an embedder post-turn hook by name, or remove it when absent.
+///
+/// This prevents a host that rebuilds its core from retaining callbacks from a
+/// previous configuration in the process-global registry.
+pub fn replace_embedder_post_turn_hook(name: &str, hook: Option<Arc<dyn PostTurnHook>>) {
+    let mut hooks = EMBEDDER_POST_TURN_HOOKS
+        .lock()
+        .expect("embedder post-turn hooks poisoned");
+    hooks.retain(|registered| registered.name() != name);
+    if let Some(hook) = hook {
+        hooks.push(hook);
+    }
+}
+
 /// Snapshot hooks supplied by the embedding host.
 pub fn embedder_post_turn_hooks() -> Vec<Arc<dyn PostTurnHook>> {
     EMBEDDER_POST_TURN_HOOKS
@@ -162,6 +176,20 @@ pub fn register_embedder_tool_hook(hook: Arc<dyn ToolHook>) {
         .lock()
         .expect("embedder tool hooks poisoned")
         .push(hook);
+}
+
+/// Replace an embedder tool hook by name, or remove it when absent.
+///
+/// This prevents a host that rebuilds its core from retaining callbacks from a
+/// previous configuration in the process-global registry.
+pub fn replace_embedder_tool_hook(name: &str, hook: Option<Arc<dyn ToolHook>>) {
+    let mut hooks = EMBEDDER_TOOL_HOOKS
+        .lock()
+        .expect("embedder tool hooks poisoned");
+    hooks.retain(|registered| registered.name() != name);
+    if let Some(hook) = hook {
+        hooks.push(hook);
+    }
 }
 
 /// Snapshot tool hooks supplied by the embedding host.

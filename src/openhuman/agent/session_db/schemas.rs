@@ -7,8 +7,8 @@ use crate::core::{ControllerSchema, FieldSchema, TypeSchema};
 use crate::openhuman::config::rpc as config_rpc;
 use crate::rpc::RpcOutcome;
 
-use super::run_ledger::{AgentRunListRequest, RunEventListRequest};
-use super::types::SessionSearchParams;
+use tinyagents::session::run_ledger::{AgentRunListRequest, RunEventListRequest};
+use tinyagents::session::types::SessionSearchParams;
 
 pub fn all_controller_schemas() -> Vec<ControllerSchema> {
     vec![
@@ -230,8 +230,8 @@ fn handle_session_db_list(params: Map<String, Value>) -> ControllerFuture {
             .and_then(|v| v.as_str())
             .map(String::from);
 
-        let result = super::ops::list_sessions(
-            &config,
+        let result = tinyagents::session::list_sessions(
+            &config.workspace_dir,
             limit,
             offset,
             status.as_deref(),
@@ -262,7 +262,7 @@ fn handle_session_db_get(params: Map<String, Value>) -> ControllerFuture {
             .and_then(|v| v.as_str())
             .ok_or_else(|| "missing required param: id".to_string())?;
 
-        let session = super::ops::get_session(&config, id).map_err(|e| {
+        let session = tinyagents::session::get_session(&config.workspace_dir, id).map_err(|e| {
             let s = e.to_string();
             log::warn!(target: "session_db_rpc", "[session_db_rpc][{cid}] get.error id={id} err={s}");
             s
@@ -292,7 +292,11 @@ fn handle_session_db_search(params: Map<String, Value>) -> ControllerFuture {
             })?
         };
 
-        let result = super::ops::search_sessions(&config, &search_params).map_err(|e| {
+        let result = tinyagents::session::search_sessions(
+            &config.workspace_dir,
+            &search_params,
+        )
+        .map_err(|e| {
             let s = e.to_string();
             log::warn!(target: "session_db_rpc", "[session_db_rpc][{cid}] search.error err={s}");
             s
@@ -321,7 +325,7 @@ fn handle_session_db_get_messages(params: Map<String, Value>) -> ControllerFutur
             .and_then(|v| v.as_u64())
             .map(|v| v as u32);
 
-        let messages = super::ops::list_messages(&config, session_id, limit).map_err(|e| {
+        let messages = tinyagents::session::list_messages(&config.workspace_dir, session_id, limit).map_err(|e| {
             let s = e.to_string();
             log::warn!(target: "session_db_rpc", "[session_db_rpc][{cid}] get_messages.error err={s}");
             s
@@ -350,7 +354,7 @@ fn handle_session_db_get_tool_calls(params: Map<String, Value>) -> ControllerFut
             .and_then(|v| v.as_u64())
             .map(|v| v as u32);
 
-        let tool_calls = super::ops::list_tool_calls(&config, session_id, limit).map_err(|e| {
+        let tool_calls = tinyagents::session::list_tool_calls(&config.workspace_dir, session_id, limit).map_err(|e| {
             let s = e.to_string();
             log::warn!(target: "session_db_rpc", "[session_db_rpc][{cid}] get_tool_calls.error err={s}");
             s
@@ -375,7 +379,7 @@ fn handle_session_db_get_children(params: Map<String, Value>) -> ControllerFutur
             .and_then(|v| v.as_str())
             .ok_or_else(|| "missing required param: sessionId".to_string())?;
 
-        let children = super::ops::list_children(&config, session_id).map_err(|e| {
+        let children = tinyagents::session::list_children(&config.workspace_dir, session_id).map_err(|e| {
             let s = e.to_string();
             log::warn!(target: "session_db_rpc", "[session_db_rpc][{cid}] get_children.error err={s}");
             s
@@ -403,7 +407,11 @@ fn handle_run_ledger_list(params: Map<String, Value>) -> ControllerFuture {
                 s
             })?
         };
-        let response = super::run_ledger::list_agent_runs(&config, &request).map_err(|e| {
+        let response = tinyagents::session::run_ledger::list_agent_runs(
+            &config.workspace_dir,
+            &request,
+        )
+        .map_err(|e| {
             let s = e.to_string();
             log::warn!(target: "run_ledger_rpc", "[run_ledger_rpc][{cid}] list.error err={s}");
             s
@@ -423,7 +431,7 @@ fn handle_run_ledger_get(params: Map<String, Value>) -> ControllerFuture {
             .get("id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| "missing required param: id".to_string())?;
-        let run = super::run_ledger::get_agent_run(&config, id).map_err(|e| {
+        let run = tinyagents::session::run_ledger::get_agent_run(&config.workspace_dir, id).map_err(|e| {
             let s = e.to_string();
             log::warn!(target: "run_ledger_rpc", "[run_ledger_rpc][{cid}] get.error id={id} err={s}");
             s
@@ -445,12 +453,15 @@ fn handle_run_ledger_events(params: Map<String, Value>) -> ControllerFuture {
                 log::warn!(target: "run_ledger_rpc", "[run_ledger_rpc][{cid}] events.bad_params err={s}");
                 s
             })?;
-        let response =
-            super::run_ledger::list_recent_run_events(&config, &request).map_err(|e| {
-                let s = e.to_string();
-                log::warn!(target: "run_ledger_rpc", "[run_ledger_rpc][{cid}] events.error err={s}");
-                s
-            })?;
+        let response = tinyagents::session::run_ledger::list_recent_run_events(
+            &config.workspace_dir,
+            &request,
+        )
+        .map_err(|e| {
+            let s = e.to_string();
+            log::warn!(target: "run_ledger_rpc", "[run_ledger_rpc][{cid}] events.error err={s}");
+            s
+        })?;
         to_json(response)
     })
 }

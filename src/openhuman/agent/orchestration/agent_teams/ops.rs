@@ -1,6 +1,6 @@
 //! Business logic for durable agent-team coordination (#3374).
 //!
-//! Thin orchestration over `session_db::run_ledger`: create teams + members,
+//! Thin orchestration over `tinyagents::session::run_ledger`: create teams + members,
 //! assign dependency-aware tasks (with self/unknown/cycle validation reusing
 //! the same Kahn's-algorithm shape as `workflow_runs`), atomically claim tasks,
 //! and exchange teammate messages. Messaging rides the run-ledger event stream
@@ -13,13 +13,13 @@ use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::openhuman::agent::session_db::run_ledger::{
+use crate::openhuman::config::Config;
+use tinyagents::session::run_ledger::{
     self, AgentTeam, AgentTeamListRequest, AgentTeamListResponse, AgentTeamMemberStatus,
     AgentTeamMemberUpsert, AgentTeamStatus, AgentTeamTask, AgentTeamTaskStatus,
     AgentTeamTaskUpsert, AgentTeamUpsert, ClaimOutcome, CompletionOutcome, RunEvent,
     RunEventAppend, RunEventListRequest,
 };
-use crate::openhuman::config::Config;
 
 use super::types::{MemberShutdown, TeamError, TeamView};
 
@@ -59,7 +59,7 @@ pub fn create_team(
 
     let team_id = format!("team-{}", Uuid::new_v4().simple());
     run_ledger::upsert_agent_team(
-        config,
+        &config.workspace_dir,
         AgentTeamUpsert {
             id: team_id.clone(),
             parent_thread_id: parent_thread_id.map(str::to_string),
@@ -73,7 +73,7 @@ pub fn create_team(
 
     for member in members {
         run_ledger::upsert_agent_team_member(
-            config,
+            &config.workspace_dir,
             AgentTeamMemberUpsert {
                 id: format!("member-{}", Uuid::new_v4().simple()),
                 team_id: team_id.clone(),
@@ -99,13 +99,16 @@ pub fn list_teams(
     request: &AgentTeamListRequest,
 ) -> Result<AgentTeamListResponse> {
     log::debug!("{LOG_PREFIX} list_teams.entry status={:?}", request.status);
-    run_ledger::list_agent_teams(config, request)
+    Ok(run_ledger::list_agent_teams(
+        &config.workspace_dir,
+        request,
+    )?)
 }
 
 /// Build the aggregate [`TeamView`] for a team id; `None` if the team is absent.
 pub fn get_team(config: &Config, team_id: &str) -> Result<Option<TeamView>> {
     log::debug!("{LOG_PREFIX} get_team.entry id={team_id}");
-    match run_ledger::get_agent_team(config, team_id)? {
+    match run_ledger::get_agent_team(&config.workspace_dir, team_id)? {
         Some(_) => Ok(Some(team_view(config, team_id)?)),
         None => {
             log::debug!("{LOG_PREFIX} get_team.exit id={team_id} found=false");
@@ -133,15 +136,15 @@ pub fn assign_task(
         depends_on.len()
     );
 
-    let team = run_ledger::get_agent_team(config, team_id)?
+    let team = run_ledger::get_agent_team(&config.workspace_dir, team_id)?
         .ok_or_else(|| anyhow!("unknown team: {team_id}"))?;
     let _ = team;
 
-    let existing = run_ledger::list_agent_team_tasks(config, team_id)?;
+    let existing = run_ledger::list_agent_team_tasks(&config.workspace_dir, team_id)?;
     let task_id = format!("task-{}", Uuid::new_v4().simple());
 
     if let Some(owner) = owner_member_id {
-        let members = run_ledger::list_agent_team_members(config, team_id)?;
+        let members = run_ledger::list_agent_team_members(&config.workspace_dir, team_id)?;
         if !members.iter().any(|m| m.id == owner) {
             return Err(anyhow!(TeamError::UnknownMember {
                 member_id: owner.to_string(),
@@ -153,7 +156,7 @@ pub fn assign_task(
 
     let order_index = existing.len() as i64;
     let task = run_ledger::upsert_agent_team_task(
-        config,
+        &config.workspace_dir,
         AgentTeamTaskUpsert {
             id: task_id.clone(),
             team_id: team_id.to_string(),
@@ -183,13 +186,19 @@ pub fn claim_task(
     claim_token: &str,
 ) -> Result<ClaimOutcome> {
     log::debug!("{LOG_PREFIX} claim_task.entry team={team_id} task={task_id} member={member_id}");
-    let members = run_ledger::list_agent_team_members(config, team_id)?;
+    let members = run_ledger::list_agent_team_members(&config.workspace_dir, team_id)?;
     if !members.iter().any(|m| m.id == member_id) {
         return Err(anyhow!(TeamError::UnknownMember {
             member_id: member_id.to_string(),
         }));
     }
-    run_ledger::claim_agent_team_task(config, team_id, task_id, member_id, claim_token)
+    Ok(run_ledger::claim_agent_team_task(
+        &config.workspace_dir,
+        team_id,
+        task_id,
+        member_id,
+        claim_token,
+    )?)
 }
 
 /// Sentinel `from` value for a message that originates from the team lead / the
@@ -222,11 +231,11 @@ pub fn message_member(
     // `to = None`) skips both member checks below, so without this guard an
     // unknown `team_id` would still append an orphan `team_message` event to a
     // non-existent team's run ledger.
-    if run_ledger::get_agent_team(config, team_id)?.is_none() {
+    if run_ledger::get_agent_team(&config.workspace_dir, team_id)?.is_none() {
         return Err(anyhow!("unknown team: {team_id}"));
     }
 
-    let members = run_ledger::list_agent_team_members(config, team_id)?;
+    let members = run_ledger::list_agent_team_members(&config.workspace_dir, team_id)?;
     if let Some(from) = from_member_id {
         if !members.iter().any(|m| m.id == from) {
             return Err(anyhow!(TeamError::UnknownMember {
@@ -244,7 +253,7 @@ pub fn message_member(
 
     let from_value = from_member_id.unwrap_or(LEAD_SENDER);
     let event = run_ledger::append_run_event(
-        config,
+        &config.workspace_dir,
         RunEventAppend {
             run_id: team_id.to_string(),
             event_type: TEAM_MESSAGE_EVENT.to_string(),
@@ -267,7 +276,7 @@ pub fn message_member(
 pub fn list_messages(config: &Config, team_id: &str, limit: Option<u32>) -> Result<Vec<RunEvent>> {
     log::debug!("{LOG_PREFIX} list_messages.entry team={team_id}");
     let response = run_ledger::list_recent_run_events(
-        config,
+        &config.workspace_dir,
         &RunEventListRequest {
             run_id: team_id.to_string(),
             after_sequence: None,
@@ -289,10 +298,10 @@ pub fn list_messages(config: &Config, team_id: &str, limit: Option<u32>) -> Resu
 /// Mark a team closed.
 pub fn close_team(config: &Config, team_id: &str, summary: Option<&str>) -> Result<AgentTeam> {
     log::debug!("{LOG_PREFIX} close_team.entry team={team_id}");
-    let existing = run_ledger::get_agent_team(config, team_id)?
+    let existing = run_ledger::get_agent_team(&config.workspace_dir, team_id)?
         .ok_or_else(|| anyhow!("unknown team: {team_id}"))?;
     let team = run_ledger::upsert_agent_team(
-        config,
+        &config.workspace_dir,
         AgentTeamUpsert {
             id: team_id.to_string(),
             parent_thread_id: existing.parent_thread_id.clone(),
@@ -324,14 +333,14 @@ pub fn complete_task(
     log::debug!(
         "{LOG_PREFIX} complete_task.entry team={team_id} task={task_id} member={member_id}"
     );
-    let members = run_ledger::list_agent_team_members(config, team_id)?;
+    let members = run_ledger::list_agent_team_members(&config.workspace_dir, team_id)?;
     if !members.iter().any(|m| m.id == member_id) {
         return Err(anyhow!(TeamError::UnknownMember {
             member_id: member_id.to_string(),
         }));
     }
     let outcome = run_ledger::complete_agent_team_task(
-        config,
+        &config.workspace_dir,
         team_id,
         task_id,
         member_id,
@@ -349,11 +358,12 @@ pub fn complete_task(
 pub fn shutdown_member(config: &Config, team_id: &str, member_id: &str) -> Result<MemberShutdown> {
     log::debug!("{LOG_PREFIX} shutdown_member.entry team={team_id} member={member_id}");
     let (member, released_task_ids) =
-        run_ledger::shutdown_agent_team_member(config, team_id, member_id)?.ok_or_else(|| {
-            anyhow!(TeamError::UnknownMember {
-                member_id: member_id.to_string(),
-            })
-        })?;
+        run_ledger::shutdown_agent_team_member(&config.workspace_dir, team_id, member_id)?
+            .ok_or_else(|| {
+                anyhow!(TeamError::UnknownMember {
+                    member_id: member_id.to_string(),
+                })
+            })?;
     log::debug!(
         "{LOG_PREFIX} shutdown_member.exit team={team_id} member={member_id} released={}",
         released_task_ids.len()
@@ -365,10 +375,10 @@ pub fn shutdown_member(config: &Config, team_id: &str, member_id: &str) -> Resul
 }
 
 fn team_view(config: &Config, team_id: &str) -> Result<TeamView> {
-    let team = run_ledger::get_agent_team(config, team_id)?
+    let team = run_ledger::get_agent_team(&config.workspace_dir, team_id)?
         .ok_or_else(|| anyhow!("team missing after creation: {team_id}"))?;
-    let members = run_ledger::list_agent_team_members(config, team_id)?;
-    let tasks = run_ledger::list_agent_team_tasks(config, team_id)?;
+    let members = run_ledger::list_agent_team_members(&config.workspace_dir, team_id)?;
+    let tasks = run_ledger::list_agent_team_tasks(&config.workspace_dir, team_id)?;
     Ok(TeamView {
         team,
         members,
@@ -550,7 +560,7 @@ mod tests {
         // Cycle: try to make A depend_on B (A already an upstream of B).
         // Re-upserting A with depends_on [B] would close the loop; assign_task
         // only creates new tasks, so emulate the cycle check directly.
-        let existing = run_ledger::list_agent_team_tasks(&config, &team_id).unwrap();
+        let existing = run_ledger::list_agent_team_tasks(&config.workspace_dir, &team_id).unwrap();
         assert!(has_task_cycle(&a.id, &[b.id.clone()], &existing));
     }
 
@@ -694,7 +704,7 @@ mod tests {
             }
             other => panic!("expected GateFailed, got {other:?}"),
         }
-        let mid = run_ledger::get_agent_team_task(&config, &task.id)
+        let mid = run_ledger::get_agent_team_task(&config.workspace_dir, &task.id)
             .unwrap()
             .unwrap();
         assert_eq!(mid.status, AgentTeamTaskStatus::InProgress);
@@ -829,7 +839,7 @@ mod tests {
         assert_eq!(result.member.member_status, AgentTeamMemberStatus::Stopped);
 
         // Task is back to todo and unclaimed → another teammate could claim it.
-        let released = run_ledger::get_agent_team_task(&config, &task.id)
+        let released = run_ledger::get_agent_team_task(&config.workspace_dir, &task.id)
             .unwrap()
             .unwrap();
         assert_eq!(released.status, AgentTeamTaskStatus::Todo);

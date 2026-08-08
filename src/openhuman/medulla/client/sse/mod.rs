@@ -121,10 +121,16 @@ impl StreamState {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
         self.first_connect = false;
+        // The SSE handshake carries its credential in the URL rather than a
+        // header, so it never passes through `MedullaClient::authed` — the
+        // product identity has to be attached here or streaming traffic would
+        // reach the backend unattributed.
+        let (product_header, product_value) = crate::api::product::product_identity_header();
         let mut req = self
             .http
             .get(&self.url)
-            .header(reqwest::header::ACCEPT, "text/event-stream");
+            .header(reqwest::header::ACCEPT, "text/event-stream")
+            .header(product_header, product_value);
         if let Some(cursor) = self.dedup.cursor() {
             req = req.header("Last-Event-ID", cursor.to_string());
         }
