@@ -192,3 +192,44 @@ fn normalize_model_override_passes_non_empty_verbatim() {
         Some("hint:reasoning".to_string())
     );
 }
+
+/// No embedder scoped an origin: this RPC is the trusted desktop / operator
+/// entry point, so the turn keeps its historical `Cli` label rather than
+/// falling through to the gate's fail-closed `Unknown` arm.
+#[tokio::test]
+async fn effective_origin_defaults_to_cli_outside_any_scope() {
+    use crate::openhuman::agent::turn_origin::AgentTurnOrigin;
+    assert!(matches!(
+        effective_agent_chat_origin(),
+        AgentTurnOrigin::Cli
+    ));
+}
+
+/// An in-process embedder that labelled the turn keeps its label: a workflow
+/// node's `TrustedAutomation::Workflow` origin is what the approval gate must
+/// see, not the blanket `Cli` allowance this RPC would otherwise impose.
+#[tokio::test]
+async fn effective_origin_keeps_an_embedder_scoped_label() {
+    use crate::openhuman::agent::turn_origin::{
+        with_origin, AgentTurnOrigin, TrustedAutomationSource,
+    };
+    let observed = with_origin(
+        AgentTurnOrigin::TrustedAutomation {
+            job_id: "run-7".to_string(),
+            source: TrustedAutomationSource::Workflow {
+                require_approval: false,
+            },
+        },
+        async { effective_agent_chat_origin() },
+    )
+    .await;
+    assert!(matches!(
+        observed,
+        AgentTurnOrigin::TrustedAutomation {
+            source: TrustedAutomationSource::Workflow {
+                require_approval: false
+            },
+            ..
+        }
+    ));
+}
