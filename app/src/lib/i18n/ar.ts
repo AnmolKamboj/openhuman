@@ -317,8 +317,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'تمت المزامنة مؤخرًا',
   'conversations.backgroundTasks.memProviderIdle': 'خامل',
   'nav.home': 'الرئيسية',
-  'nav.human': 'إنسان',
   'nav.chat': 'المحادثة',
+  'nav.human': 'إنسان',
   'nav.assistant': 'المساعد',
   'assistant.faceMode.on': 'يتحدث إلى Tiny',
   'assistant.faceMode.off': 'تحدث إلى Tiny',
@@ -1274,6 +1274,11 @@ const messages: TranslationMap = {
   'memoryTree.status.never': 'أبداً',
   'memoryTree.status.fetchError': 'لم أستطع الحصول على وضعية شجرة الذاكرة',
   'memoryTree.status.retry': 'Retry',
+  'memoryTree.status.retryFailed': 'إعادة تشغيل المهام الفاشلة',
+  'memoryTree.status.retryFailedBusy': 'جارٍ إعادة المحاولة...',
+  'memoryTree.status.retryFailedDone': 'تمت إعادة إدراج المهام الفاشلة',
+  'memoryTree.status.retryFailedCount': 'تمت جدولة {count} مهمة للتشغيل من جديد.',
+  'memoryTree.status.retryFailedError': 'تعذّرت إعادة إدراج المهام الفاشلة',
   'memoryTree.status.toggleFailed': 'لا يمكن أن نهز السيرة الذاتية',
   'memoryTree.status.justNow': 'الآن',
   'memoryTree.status.secondsAgo': 'اكساكسوكس قبل',
@@ -2372,6 +2377,15 @@ const messages: TranslationMap = {
   'voice.providers.piperReady': 'Piper جاهز.',
   'voice.providers.piperInstallStarted': 'بدأ تثبيت Piper',
   'voice.providers.failedToInstallPiper': 'فشل تثبيت Piper',
+  'voice.mode.title': 'وضع الصوت',
+  'voice.mode.desc': 'اختر طريقة تحدث المساعد في تبويب Human.',
+  'voice.mode.realtime': 'الصوت في الوقت الفعلي (تجريبي)',
+  'voice.mode.realtimeDesc': 'أجرِ محادثة مباشرة ومتدفقة بدلاً من تبادل الأدوار.',
+  'voice.mode.start': 'بدء المحادثة الصوتية',
+  'voice.mode.stop': 'إنهاء المحادثة الصوتية',
+  'voice.mode.connecting': 'جارٍ الاتصال…',
+  'voice.mode.listening': 'يستمع',
+  'voice.mode.speaking': 'يتحدث',
   'voice.providers.title': 'موفري الصوت',
   'voice.providers.desc':
     'اختر مكان تشغيل النسخ والتوليف. استخدم أزرار «التثبيت محلياً» لتنزيل الملفات الثنائية والنماذج في مساحة عملك. يمكن حفظ الموفرين المحليين قبل اكتمال التثبيت: لا حاجة لإعداد WHISPER_BIN أو PIPER_BIN يدوياً.',
@@ -2663,6 +2677,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'تشغيل الرد الصوتي',
   'chat.voiceHint': 'استخدم الميكروفون للتحدث',
   'chat.micUnavailable': 'الميكروفون غير متاح',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'تحدّث إلى مساعدك',
+  'chat.mascot.collapse': 'العودة إلى المحادثة',
+  'chat.mascot.speakReplies': 'نطق الردود بصوت مسموع',
+  'chat.mascot.speakRepliesHint':
+    'تُقرأ الردود بصوت مسموع طالما التميمة مفتوحة. أوقف هذا الخيار لإبقاء المحادثة صامتة.',
+  'chat.mascot.dismiss': 'إخفاء Tiny',
+  'chat.mascot.dismissTitle': 'إخفاء Tiny؟',
+  'chat.mascot.dismissBody':
+    'لا مشكلة إذا كنت تفضّل صندوق الرسائل لنفسك. يمكنك إعادة Tiny في أي وقت من الإعدادات › المظهر › الدردشة.',
+  'chat.mascot.dismissConfirm': 'إخفاء Tiny',
+  'chat.mascot.dismissCancel': 'الإبقاء على Tiny',
   'chat.turn': 'دورة',
   'chat.turns': 'دورات',
   'chat.openWorkerThread': 'فتح محادثة العامل',
@@ -4113,6 +4139,7 @@ const messages: TranslationMap = {
   'flows.nodeKind.sub_workflow': 'سير عمل فرعي',
   'flows.nodeKind.memory': 'الذاكرة',
   'flows.nodeKind.dedup': 'إزالة التكرار',
+  'flows.nodeKind.loop': 'حلقة',
   'flows.nodeSummary.trigger.manual': 'يعمل عند الطلب',
   'flows.nodeSummary.trigger.webhook': 'يعمل عند استقبال ويب هوك',
   'flows.nodeSummary.trigger.appEventOn': 'عند {parts}',
@@ -4153,6 +4180,8 @@ const messages: TranslationMap = {
   'flows.nodeSummary.memory.recall': 'يسترجع من الذاكرة',
   'flows.nodeSummary.dedup.withKey': 'يتخطى العناصر التي سبق رؤيتها حسب {key}',
   'flows.nodeSummary.dedup.default': 'يتخطى العناصر التي سبقت معالجتها',
+  'flows.nodeSummary.loop.upTo': 'يتكرر حتى {max} مرة',
+  'flows.nodeSummary.loop.whileCondition': 'يتكرر حتى {max} مرة طالما {condition}',
   'flows.palette.title': 'العقد',
   'flows.palette.addNode': 'إضافة عقدة {kind}',
   'flows.editor.save': 'حفظ',
@@ -4344,6 +4373,20 @@ const messages: TranslationMap = {
   'flows.nodeConfig.dedup.keyLabel': 'المفتاح',
   'flows.nodeConfig.dedup.keyHint':
     'تعبير معرف ثابت لكل عنصر، مثل =item.id. يتم تخطي العناصر التي شوهد مفتاحها من قبل.',
+
+  // `loop` node: a bounded loop head. Emits on `body` until its cap or
+  // condition says stop, then on `done`.
+  'flows.nodeConfig.loop.maxIterationsLabel': 'الحد الأقصى للتكرارات',
+  'flows.nodeConfig.loop.maxIterationsHint':
+    'عدد المرات التي يمكن أن يعمل فيها المتن قبل توقف الحلقة. محدود دائمًا.',
+  'flows.nodeConfig.loop.onExceededLabel': 'عند بلوغ الحد',
+  'flows.nodeConfig.loop.onExceededHint':
+    'أفشل التشغيل، أو أوقف التكرار وتابع عبر المنفذ done بعناصر الجولة الأخيرة.',
+  'flows.nodeConfig.loop.onExceeded_error': 'أفشل التشغيل',
+  'flows.nodeConfig.loop.onExceeded_continue': 'تابع بنتائج جزئية',
+  'flows.nodeConfig.loop.conditionLabel': 'تابع طالما',
+  'flows.nodeConfig.loop.conditionHint':
+    'اختياري. طالما كانت النتيجة صحيحة تستمر الحلقة؛ وأول نتيجة خاطئة تخرج عبر المنفذ done.',
 
   'flows.enableApproval.title': 'هل تسمح لسير العمل هذا بالتنفيذ؟',
   'flows.enableApproval.intro':
@@ -5685,6 +5728,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'إخفاء تفكير الوكيل',
   'settings.appearance.hideAgentInsightsDesc':
     'طيّ الجدول الزمني المباشر لخطوات الوكيل في المحادثة. سيظل رابط "قيد المعالجة" الوامض يتيح لك فتح العملية الكاملة.',
+  'settings.appearance.showChatMascot': 'إظهار Tiny على صندوق الرسائل',
+  'settings.appearance.showChatMascotDesc':
+    'يبقى التميمة واقفة على صندوق الكتابة. عند الإخفاء تصبح المحادثة نصية فقط حتى تعيد تفعيل الخيار.',
   'settings.appearance.assistantTextModeDesc':
     'اعرض ردود المساعد كنص بلا إطار مع إبقاء رسائلك داخل فقاعات.',
   'settings.mascot.active': 'نشط',
@@ -5692,10 +5738,15 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'مسودة',
   'settings.mascot.characterHeading': 'عنوان الشخصية',
   'settings.mascot.customGifError':
-    'أدخل HTTPS .gif URL، أو الاسترجاع HTTP .gif URL، أو file:// .gif URL، أو مسار .gif المحلي.',
-  'settings.mascot.customGifHeading': 'الصورة الرمزية GIF المخصصة',
-  'settings.mascot.customGifLabel': 'الصورة الرمزية GIF المخصصة URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'أدخل رابط صورة HTTPS أو file:// أو رابطًا محليًا (PNG أو GIF أو JPEG أو WebP أو BMP)، أو ارفع ملفًا.',
+  'settings.mascot.customGifHeading': 'صورة رمزية مخصصة',
+  'settings.mascot.customGifLabel': 'رابط الصورة الرمزية المخصصة',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'رفع صورة',
+  'settings.mascot.customGifInvalidType':
+    'نوع الملف غير مدعوم. ارفع صورة PNG أو GIF أو JPEG أو WebP أو BMP.',
+  'settings.mascot.customGifTooLarge': 'الصورة كبيرة جدًا. ارفع ملفًا حتى 1.5 ميغابايت.',
+  'settings.mascot.customGifReadError': 'تعذّر قراءة الصورة. جرّب ملفًا آخر.',
   'settings.mascot.characterPreview': 'معاينة',
   'settings.mascot.characterStates': 'تنص على',
   'settings.mascot.characterVisemes': 'vimeses',
@@ -6663,6 +6714,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': 'وضع تخزين الأسرار وحالة سلسلة المفاتيح',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': 'متدهور',
+  'memoryTree.status.statusBudgetExhausted': 'متوقف مؤقتًا: انتهت ميزانية التضمينات',
   'memoryTree.status.degradedRecall': 'الاسترجاع الدلالي معطّل',
   'memoryTree.status.degradedStructure': 'بنية الويكي غير مكتملة',
   'memoryTree.status.extractionCoverage': 'تغطية الاستخراج: {pct}% من الأجزاء لها بنية',
@@ -6978,6 +7030,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': 'تجاهل',
   'userErrors.action.openBilling': 'فتح الفوترة',
   'userErrors.action.openProviderSettings': 'إعدادات المزود',
+  'userErrors.action.openEmbeddingsSettings': 'إعداد التضمينات',
   'userErrors.budgetExceeded.title': 'تم استنفاد الميزانية المُدارة',
   'userErrors.budgetExceeded.body': 'نفدت الميزانية المُدارة. أضف ميزانية أو غيّر خطتك.',
   'userErrors.insufficientCredits.title': 'مطلوب رصيد المزود',
@@ -6985,8 +7038,23 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'مطلوب مفتاح API',
   'userErrors.apiKeyMissing.body':
     'لا يوجد مفتاح API لمزوّد الذكاء الاصطناعي. أضِفه في إعدادات المزوّد للمتابعة.',
+  'userErrors.localModelUnavailable.title': 'النموذج المحلي غير متاح',
+  'userErrors.localModelUnavailable.body':
+    'لا يمكن الوصول إلى Ollama على النقطة الطرفية المُهيأة، أو أن النموذج المطلوب غير مثبّت عليها. شغّل Ollama ونزّل النموذج على تلك النقطة الطرفية، أو حوّل هذا العمل إلى مزوّد سحابي.',
   'userErrors.scope.chat': 'الدردشة',
   'userErrors.scope.cron': 'مهمة مجدوَلة',
+  'userErrors.scope.workspace': 'مساحة العمل',
+  'userErrors.memoryBudgetExhausted.title': 'توقفت الذاكرة عن النمو',
+  'userErrors.memoryBudgetExhausted.body':
+    'انتهت ميزانية التضمينات لديك، لذلك لم يعد المحتوى الجديد يُضاف إلى الذاكرة. أعدّ تضمينات محلية أو أضف مفتاح API الخاص بك للمتابعة.',
+  'memoryBudget.approachingTitle': 'الذاكرة تقترب من حد التضمينات',
+  'memoryBudget.approachingMessage':
+    'لقد استخدمت {pct}% من ميزانية التضمينات. أعدّ تضمينات محلية أو أضف مفتاح API الخاص بك كي تستمر الذاكرة في النمو دون انقطاع.',
+  'memoryBudget.exhaustedTitle': 'توقفت الذاكرة عن النمو',
+  'memoryBudget.exhaustedMessage':
+    'انتهت ميزانية التضمينات لديك، لذلك لم يعد المحتوى الجديد يُضاف إلى الذاكرة. أعدّ تضمينات محلية أو أضف مفتاح API الخاص بك للمتابعة.',
+  'memoryBudget.cta': 'إعداد التضمينات',
+  'userErrors.scope.memory': 'الذاكرة',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'المبلغ',
   'agentWorld.trading.networkLabel': 'الشبكة',
@@ -7046,8 +7114,14 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': 'جلسات وكلاء البرمجة',
   'memorySources.codingSessions.description':
     'حوّل قرارات وتصحيحات Codex وClaude Code إلى ذاكرة شخصية خاصة.',
-  'memorySources.codingSessions.ingest': 'استيعاب الجلسات الجديدة',
-  'memorySources.codingSessions.ingesting': 'جارٍ الاستيعاب…',
+  'memorySources.codingSessions.importAll': 'استيراد كل الجلسات',
+  'memorySources.codingSessions.draining': 'جارٍ الاستيراد… الدفعة {passes}',
+  'memorySources.codingSessions.stop': 'إيقاف',
+  'memorySources.codingSessions.progress': 'تم استيراد {processed} جلسة · {observations} ملاحظة',
+  'memorySources.codingSessions.remaining': 'يتبقى نحو {remaining}',
+  'memorySources.codingSessions.stopped': 'تم إيقاف الاستيراد مؤقتًا',
+  'memorySources.codingSessions.stoppedMessage':
+    'تم استيراد {processed} جلسة. شغّل الاستيراد مرة أخرى لمتابعة الـ {remaining} المتبقية.',
   'memorySources.codingSessions.claude': 'كلود كود',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} جلسات · {evidence} مداخلات بشرية',
@@ -7059,8 +7133,6 @@ const messages: TranslationMap = {
     'أنتجت {processed} جلسات {observations} ملاحظات شخصية.',
   'memorySources.codingSessions.partialFailure':
     'فشلت {failed} جلسات بينما تمت معالجة {processed}. شغّل الاستيعاب مرة أخرى لإعادة المحاولة.',
-  'memorySources.codingSessions.moreRemaining':
-    'تم بلوغ حد دفعة الجلسات. شغّل الاستيعاب مرة أخرى لمتابعة استيراد سجلك.',
   'memorySources.codingSessions.failed': 'فشل استيعاب جلسات البرمجة',
   'flows.canvas.sidePanelToggle': 'اللوحة الجانبية',
   'flows.canvas.legendTab': 'يدوي',

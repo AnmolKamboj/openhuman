@@ -782,6 +782,8 @@ impl Agent {
             None
         };
 
+        post_turn_hooks.extend(crate::openhuman::agent::hooks::embedder_post_turn_hooks());
+
         // Best-effort prewarm from the shared Composio cache. This avoids
         // building the session with a knowingly stale `&[]` integration view
         // and then paying a repair pass on turn 1 just to recover the real
@@ -1304,7 +1306,7 @@ impl Agent {
         let connected_integrations_initialized = prewarmed_integrations.is_some();
         agent.connected_integrations = prewarmed_integrations.unwrap_or_default();
         agent.connected_integrations_initialized = connected_integrations_initialized;
-        agent.integration_runtime_config = Some(config.clone());
+        agent.runtime_config = Some(Arc::new(config.clone()));
         agent.last_seen_integrations_hash =
             crate::openhuman::integrations::composio::connected_set_hash(
                 &agent.connected_integrations,

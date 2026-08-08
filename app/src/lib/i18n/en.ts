@@ -24,8 +24,8 @@ const en: TranslationMap = {
   'skills.recallCalendar.description': 'Auto-join Google Meet calls via Recall.ai',
   // Navigation
   'nav.home': 'Home',
-  'nav.human': 'Human',
   'nav.chat': 'Chat',
+  'nav.human': 'Human',
   'nav.assistant': 'Assistant',
 
   // Assistant surface: face mode toggle (Phase 6)
@@ -1210,6 +1210,9 @@ const en: TranslationMap = {
   'memoryTree.status.statusError': 'Error',
   'memoryTree.status.statusIdle': 'Idle',
   'memoryTree.status.statusDegraded': 'Degraded',
+  // #5324: a spent embedding budget is a distinct state from a generic error —
+  // memory is paused, not broken, and the fix is the user's to make.
+  'memoryTree.status.statusBudgetExhausted': 'Paused: embedding budget reached',
   'memoryTree.status.never': 'Never',
   // #002: degraded badges + typed remediation strings. The Rust core sends a
   // `remediation_key` (one of memory.health.remediation.*) which the status
@@ -1243,6 +1246,11 @@ const en: TranslationMap = {
     'Memory processing encountered an issue. Check Connections → API keys for configuration.',
   'memoryTree.status.fetchError': "Couldn't fetch Memory Tree status",
   'memoryTree.status.retry': 'Retry',
+  'memoryTree.status.retryFailed': 'Retry failed jobs',
+  'memoryTree.status.retryFailedBusy': 'Retrying...',
+  'memoryTree.status.retryFailedDone': 'Failed jobs requeued',
+  'memoryTree.status.retryFailedCount': 'Jobs queued to run again: {count}.',
+  'memoryTree.status.retryFailedError': 'Could not requeue the failed jobs',
   'memoryTree.status.toggleFailed': "Couldn't toggle auto-sync",
   // Relative-time buckets surfaced by the last-sync tile. `{count}` is
   // replaced client-side at the call site (the runtime `t()` does not
@@ -2539,6 +2547,15 @@ const en: TranslationMap = {
   'voice.providers.piperReady': 'Piper is ready.',
   'voice.providers.piperInstallStarted': 'Piper install started',
   'voice.providers.failedToInstallPiper': 'Failed to install Piper',
+  'voice.mode.title': 'Voice mode',
+  'voice.mode.desc': 'Choose how the assistant talks in the Human tab.',
+  'voice.mode.realtime': 'Realtime voice (beta)',
+  'voice.mode.realtimeDesc': 'Stream a live conversation instead of taking turns.',
+  'voice.mode.start': 'Start voice chat',
+  'voice.mode.stop': 'End voice chat',
+  'voice.mode.connecting': 'Connecting…',
+  'voice.mode.listening': 'Listening',
+  'voice.mode.speaking': 'Speaking',
   'voice.providers.title': 'Voice Providers',
   'voice.providers.desc':
     'Choose where transcription and synthesis run. Use the Install locally buttons to download the binaries and models into your workspace. Local providers can be saved before the install finishes: no manual WHISPER_BIN or PIPER_BIN setup required.',
@@ -2863,6 +2880,18 @@ const en: TranslationMap = {
   'chat.playingVoiceReply': 'Playing voice reply',
   'chat.voiceHint': 'Use the mic to speak',
   'chat.micUnavailable': 'Microphone unavailable',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Talk to your assistant',
+  'chat.mascot.collapse': 'Back to the chat',
+  'chat.mascot.speakReplies': 'Speak replies out loud',
+  'chat.mascot.speakRepliesHint':
+    'Replies are read aloud while the mascot is open. Turn this off to keep the conversation silent.',
+  'chat.mascot.dismiss': 'Hide Tiny',
+  'chat.mascot.dismissTitle': 'Hide Tiny?',
+  'chat.mascot.dismissBody':
+    "No hard feelings if you'd rather have the message box to yourself. You can bring Tiny back any time from Settings › Appearance › Chat.",
+  'chat.mascot.dismissConfirm': 'Hide Tiny',
+  'chat.mascot.dismissCancel': 'Keep Tiny',
   'chat.turn': 'turn',
   'chat.turns': 'turns',
   'chat.openWorkerThread': 'Open worker thread',
@@ -4787,6 +4816,7 @@ const en: TranslationMap = {
   'flows.nodeKind.sub_workflow': 'Sub-workflow',
   'flows.nodeKind.memory': 'Memory',
   'flows.nodeKind.dedup': 'Dedup',
+  'flows.nodeKind.loop': 'Loop',
 
   // ── describeNode (F-M3): the dynamic per-node card summary text shown on
   // every canvas node (`FlowNodeComponent`) and in the config drawer header.
@@ -4830,6 +4860,8 @@ const en: TranslationMap = {
   'flows.nodeSummary.memory.recall': 'Recalls memory',
   'flows.nodeSummary.dedup.withKey': 'Skips items already seen by {key}',
   'flows.nodeSummary.dedup.default': 'Skips items already processed',
+  'flows.nodeSummary.loop.upTo': 'Repeats up to {max} times',
+  'flows.nodeSummary.loop.whileCondition': 'Repeats up to {max} times while {condition}',
 
   // ── Editable Workflow Canvas (issue B5b.2 / Phase 3a): the node palette
   // and editor toolbar layered on top of the read-only canvas above.
@@ -5043,6 +5075,20 @@ const en: TranslationMap = {
   'flows.nodeConfig.dedup.keyLabel': 'Key',
   'flows.nodeConfig.dedup.keyHint':
     'A stable per-item id expression, e.g. =item.id. Items with a key already seen are skipped.',
+
+  // `loop` node: a bounded loop head. Emits on `body` until its cap or
+  // condition says stop, then on `done`.
+  'flows.nodeConfig.loop.maxIterationsLabel': 'Max iterations',
+  'flows.nodeConfig.loop.maxIterationsHint':
+    'How many times the body may run before the loop stops. Always finite.',
+  'flows.nodeConfig.loop.onExceededLabel': 'When the cap is reached',
+  'flows.nodeConfig.loop.onExceededHint':
+    "Fail the run, or stop looping and continue through the done port with the last pass's items.",
+  'flows.nodeConfig.loop.onExceeded_error': 'Fail the run',
+  'flows.nodeConfig.loop.onExceeded_continue': 'Continue with partial results',
+  'flows.nodeConfig.loop.conditionLabel': 'Continue while',
+  'flows.nodeConfig.loop.conditionHint':
+    'Optional. While this resolves truthy the loop continues; the first falsey result exits through the done port.',
 
   // Phase 4a "New workflow" chooser + Phase 4c templates gallery. The chooser
   // offers scratch / template / describe; the gallery lists the curated
@@ -6414,15 +6460,23 @@ const en: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Hide agent thinking',
   'settings.appearance.hideAgentInsightsDesc':
     'Collapse the live step-by-step agent timeline in chat. A blinking “Processing” link still lets you open the full run.',
+  'settings.appearance.showChatMascot': 'Show Tiny on the message box',
+  'settings.appearance.showChatMascotDesc':
+    'Keep the mascot standing on the composer. Hidden, the chat is text only until you turn this back on.',
   'settings.mascot.active': 'Active',
   'settings.mascot.characterDesc': 'Choose your OpenHuman character.',
   'settings.mascot.characterDraft': 'Draft',
   'settings.mascot.characterHeading': 'Character',
   'settings.mascot.customGifError':
-    'Enter an HTTPS .gif URL, loopback HTTP .gif URL, file:// .gif URL, or local .gif path.',
-  'settings.mascot.customGifHeading': 'Custom GIF avatar',
-  'settings.mascot.customGifLabel': 'Custom GIF avatar URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Enter an HTTPS, file://, or local image URL (PNG, GIF, JPEG, WebP, or BMP), or upload a file.',
+  'settings.mascot.customGifHeading': 'Custom image avatar',
+  'settings.mascot.customGifLabel': 'Custom image avatar URL',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Upload image',
+  'settings.mascot.customGifInvalidType':
+    'Unsupported file type. Upload a PNG, GIF, JPEG, WebP, or BMP image.',
+  'settings.mascot.customGifTooLarge': 'Image is too large. Upload a file up to 1.5 MB.',
+  'settings.mascot.customGifReadError': 'Could not read that image. Please try another file.',
   'settings.mascot.characterPreview': 'Preview',
   'settings.mascot.characterStates': 'states',
   'settings.mascot.characterVisemes': 'visemes',
@@ -6530,7 +6584,7 @@ const en: TranslationMap = {
   'settings.persona.templates.family.desc': 'Warm, friendly, safe for all ages',
   'settings.persona.appearanceHeading': 'Avatar & Voice',
   'settings.persona.appearanceDesc':
-    'Mascot color, custom GIF avatar, and reply voice are configured in Mascot settings.',
+    'Mascot color, custom image avatar, and reply voice are configured in Mascot settings.',
   'settings.persona.openMascotSettings': 'Open Mascot settings',
   'settings.memoryWindow.balanced.badge': 'Recommended',
   'settings.memoryWindow.balanced.hint':
@@ -7532,6 +7586,7 @@ const en: TranslationMap = {
   'userErrors.dismiss': 'Dismiss',
   'userErrors.action.openBilling': 'Open billing',
   'userErrors.action.openProviderSettings': 'Provider settings',
+  'userErrors.action.openEmbeddingsSettings': 'Set up embeddings',
   'userErrors.budgetExceeded.title': 'Managed budget reached',
   'userErrors.budgetExceeded.body':
     'Your managed AI budget is used up. Add budget or change your plan to continue.',
@@ -7541,13 +7596,37 @@ const en: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'API key required',
   'userErrors.apiKeyMissing.body':
     'Your AI provider has no API key set. Add one in provider settings to continue.',
+  'userErrors.memoryBudgetExhausted.title': 'Memory has stopped growing',
+  'userErrors.memoryBudgetExhausted.body':
+    'Your embedding budget is used up, so new content is no longer being added to memory. Set up local embeddings or add your own API key to resume.',
+  'userErrors.localModelUnavailable.title': 'Local model unavailable',
+  'userErrors.localModelUnavailable.body':
+    'Ollama is not reachable at the configured endpoint, or the required model is not installed there. Start Ollama and pull the model at that endpoint, or switch this workload to a cloud provider.',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Scheduled job',
+  'userErrors.scope.workspace': 'Workspace',
+  'userErrors.scope.memory': 'Memory',
+
+  // Memory embedding budget banners (#5324)
+  'memoryBudget.approachingTitle': 'Memory is approaching its embedding limit',
+  'memoryBudget.approachingMessage':
+    "You've used {pct}% of your embedding budget. Set up local embeddings or add your own API key to keep building memory without interruption.",
+  'memoryBudget.exhaustedTitle': 'Memory has stopped growing',
+  'memoryBudget.exhaustedMessage':
+    'Your embedding budget is used up, so new content is no longer being added to memory. Set up local embeddings or add your own API key to resume.',
+  'memoryBudget.cta': 'Set up embeddings',
   'memorySources.codingSessions.title': 'Coding-agent sessions',
   'memorySources.codingSessions.description':
     'Turn your Codex and Claude Code decisions and corrections into private persona memory.',
-  'memorySources.codingSessions.ingest': 'Ingest new sessions',
-  'memorySources.codingSessions.ingesting': 'Ingesting…',
+  'memorySources.codingSessions.importAll': 'Import all sessions',
+  'memorySources.codingSessions.draining': 'Importing… pass {passes}',
+  'memorySources.codingSessions.stop': 'Stop',
+  'memorySources.codingSessions.progress':
+    '{processed} sessions imported · {observations} observations',
+  'memorySources.codingSessions.remaining': 'about {remaining} left',
+  'memorySources.codingSessions.stopped': 'Import paused',
+  'memorySources.codingSessions.stoppedMessage':
+    'Imported {processed} sessions. Run import again to continue the remaining {remaining}.',
   'memorySources.codingSessions.claude': 'Claude Code',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} sessions · {evidence} human turns',
@@ -7559,8 +7638,6 @@ const en: TranslationMap = {
     '{processed} sessions produced {observations} persona observations.',
   'memorySources.codingSessions.partialFailure':
     '{failed} sessions failed while {processed} were processed. Run ingestion again to retry them.',
-  'memorySources.codingSessions.moreRemaining':
-    'The session batch limit was reached. Run ingestion again to continue importing your history.',
   'memorySources.codingSessions.failed': 'Coding-session ingestion failed',
   'notifications.configRecovered.title': 'Settings file recovered',
   'notifications.configRecovered.body':

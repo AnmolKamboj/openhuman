@@ -2,6 +2,7 @@ import { type ChangeEvent, type ReactElement, useState } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
+import { selectChatMascotDismissed, setChatMascotDismissed } from '../../../store/mascotSlice';
 import {
   type AgentMessageViewMode,
   FONT_SIZE_PX,
@@ -171,6 +172,12 @@ const AppearancePanel = () => {
       glyphClass: 'text-lg',
     },
   ];
+
+  // Mirrors the composer's dismiss affordance. Framed positively ("show")
+  // rather than as the stored `dismissed` flag, so the switch reads the same
+  // direction as every other one in this section.
+  const mascotDismissed = useAppSelector(selectChatMascotDismissed);
+  const showChatMascot = !mascotDismissed;
 
   return (
     <SettingsPanel description={t('settings.appearance.menuDesc')}>
@@ -371,6 +378,20 @@ const AppearancePanel = () => {
               checked={hideAgentInsights}
               onCheckedChange={toggleHideAgentInsights}
               aria-label={t('settings.appearance.hideAgentInsights')}
+            />
+          }
+        />
+        <SettingsRow
+          htmlFor="switch-show-chat-mascot"
+          label={t('settings.appearance.showChatMascot')}
+          description={t('settings.appearance.showChatMascotDesc')}
+          control={
+            <SettingsSwitch
+              id="switch-show-chat-mascot"
+              checked={showChatMascot}
+              onCheckedChange={next => dispatch(setChatMascotDismissed(!next))}
+              aria-label={t('settings.appearance.showChatMascot')}
+              data-testid="switch-show-chat-mascot"
             />
           }
         />

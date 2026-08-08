@@ -1215,12 +1215,12 @@ impl Agent {
         // `[FILE:…]` markers into provider-ready content before dispatch. The
         // expanded copy is provider-only and never persisted to `history`.
         let multimodal = self
-            .integration_runtime_config
+            .runtime_config
             .as_ref()
             .map(|c| c.multimodal.clone())
             .unwrap_or_default();
         let multimodal_files = self
-            .integration_runtime_config
+            .runtime_config
             .as_ref()
             .map(|c| c.multimodal_files.clone())
             .unwrap_or_default();
@@ -1489,7 +1489,16 @@ impl Agent {
         // The trailing assistant message is rewritten to match, and the repair
         // call's usage is folded into the turn accounting. `required_output`
         // defaults to `None`, so existing agents are entirely unaffected.
-        let reply = if let Some(contract) = self.config.required_output.clone() {
+        // Converted to the crate contract at the read site: the enforcement
+        // helpers below are part of the runtime slated to move into TinyAgents
+        // and so speak the crate type, while the session still holds the host's
+        // `AgentConfig`. See `tinyagents::config::required_output_from`.
+        let reply = if let Some(contract) = self
+            .config
+            .required_output
+            .as_ref()
+            .map(crate::openhuman::agent::tinyagents::config::required_output_from)
+        {
             match self
                 .enforce_required_output(
                     &reply,
@@ -1594,7 +1603,7 @@ impl Agent {
         // never reaches the span store or any exporter. The collector applies the
         // same storage-level gate as defense in depth.
         let capture_content = self
-            .integration_runtime_config
+            .runtime_config
             .as_ref()
             .map(|c| c.observability.agent_tracing.capture_content)
             .unwrap_or(false);

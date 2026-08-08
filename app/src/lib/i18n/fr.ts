@@ -346,8 +346,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'Synchronisé récemment',
   'conversations.backgroundTasks.memProviderIdle': 'Inactif',
   'nav.home': 'Accueil',
-  'nav.human': 'Humain',
   'nav.chat': 'Chat',
+  'nav.human': 'Humain',
   'nav.assistant': 'Assistant',
   'assistant.faceMode.on': 'Parle avec Tiny',
   'assistant.faceMode.off': 'Parler à Tiny',
@@ -1344,6 +1344,11 @@ const messages: TranslationMap = {
   'memoryTree.status.never': 'Jamais',
   'memoryTree.status.fetchError': "Impossible de récupérer l'état de l'arborescence de mémoire",
   'memoryTree.status.retry': 'Réessayer',
+  'memoryTree.status.retryFailed': 'Relancer les tâches en échec',
+  'memoryTree.status.retryFailedBusy': 'Nouvelle tentative...',
+  'memoryTree.status.retryFailedDone': 'Tâches en échec remises en file',
+  'memoryTree.status.retryFailedCount': "Tâches remises en file d'attente : {count}.",
+  'memoryTree.status.retryFailedError': 'Impossible de remettre en file les tâches en échec',
   'memoryTree.status.toggleFailed':
     "Impossible d'activer/désactiver la synchronisation automatique",
   'memoryTree.status.justNow': "à l'instant",
@@ -2498,6 +2503,15 @@ const messages: TranslationMap = {
   'voice.providers.piperReady': 'Piper est prêt.',
   'voice.providers.piperInstallStarted': 'Installation de Piper démarrée',
   'voice.providers.failedToInstallPiper': "Échec de l'installation de Piper",
+  'voice.mode.title': 'Mode vocal',
+  'voice.mode.desc': 'Choisissez comment l’assistant parle dans l’onglet Human.',
+  'voice.mode.realtime': 'Voix en temps réel (bêta)',
+  'voice.mode.realtimeDesc': 'Ayez une conversation en direct au lieu d’alterner les tours.',
+  'voice.mode.start': 'Démarrer le chat vocal',
+  'voice.mode.stop': 'Terminer le chat vocal',
+  'voice.mode.connecting': 'Connexion…',
+  'voice.mode.listening': 'À l’écoute',
+  'voice.mode.speaking': 'En train de parler…',
   'voice.providers.title': 'Fournisseurs de voix',
   'voice.providers.desc':
     "Choisissez où la transcription et la synthèse s'exécutent. Utilisez les boutons Installer localement pour télécharger les binaires et modèles dans votre espace de travail. Les fournisseurs locaux peuvent être enregistrés avant la fin de l'installation: aucune configuration manuelle de WHISPER_BIN ou PIPER_BIN requise.",
@@ -2801,6 +2815,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'Lecture de la réponse vocale',
   'chat.voiceHint': 'Utilise le micro pour parler',
   'chat.micUnavailable': 'Microphone indisponible',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Parlez à votre assistant',
+  'chat.mascot.collapse': 'Revenir à la discussion',
+  'chat.mascot.speakReplies': 'Lire les réponses à voix haute',
+  'chat.mascot.speakRepliesHint':
+    'Les réponses sont lues à voix haute tant que la mascotte est ouverte. Désactivez cette option pour garder la conversation silencieuse.',
+  'chat.mascot.dismiss': 'Masquer Tiny',
+  'chat.mascot.dismissTitle': 'Masquer Tiny ?',
+  'chat.mascot.dismissBody':
+    'Aucun souci si vous préférez garder la zone de message pour vous. Vous pouvez faire revenir Tiny à tout moment depuis Paramètres › Apparence › Chat.',
+  'chat.mascot.dismissConfirm': 'Masquer Tiny',
+  'chat.mascot.dismissCancel': 'Garder Tiny',
   'chat.turn': 'tour',
   'chat.turns': 'tours',
   'chat.openWorkerThread': 'Ouvrir le fil worker',
@@ -4312,6 +4338,7 @@ const messages: TranslationMap = {
   'flows.nodeKind.sub_workflow': 'Sous-workflow',
   'flows.nodeKind.memory': 'Mémoire',
   'flows.nodeKind.dedup': 'Déduplication',
+  'flows.nodeKind.loop': 'Boucle',
   'flows.nodeSummary.trigger.manual': "S'exécute à la demande",
   'flows.nodeSummary.trigger.webhook': 'Se déclenche sur un webhook entrant',
   'flows.nodeSummary.trigger.appEventOn': 'Sur {parts}',
@@ -4352,6 +4379,8 @@ const messages: TranslationMap = {
   'flows.nodeSummary.memory.recall': 'Rappelle depuis la mémoire',
   'flows.nodeSummary.dedup.withKey': 'Ignore les éléments déjà vus via {key}',
   'flows.nodeSummary.dedup.default': 'Ignore les éléments déjà traités',
+  'flows.nodeSummary.loop.upTo': "Se répète jusqu'à {max} fois",
+  'flows.nodeSummary.loop.whileCondition': "Se répète jusqu'à {max} fois tant que {condition}",
   'flows.palette.title': 'Nœuds',
   'flows.palette.addNode': 'Ajouter un nœud {kind}',
   'flows.editor.save': 'Enregistrer',
@@ -4554,6 +4583,20 @@ const messages: TranslationMap = {
   'flows.nodeConfig.dedup.keyLabel': 'Clé',
   'flows.nodeConfig.dedup.keyHint':
     "Une expression d'identifiant stable par élément, ex. =item.id. Les éléments dont la clé a déjà été vue sont ignorés.",
+
+  // `loop` node: a bounded loop head. Emits on `body` until its cap or
+  // condition says stop, then on `done`.
+  'flows.nodeConfig.loop.maxIterationsLabel': 'Itérations maximales',
+  'flows.nodeConfig.loop.maxIterationsHint':
+    "Combien de fois le corps peut s'exécuter avant l'arrêt de la boucle. Toujours fini.",
+  'flows.nodeConfig.loop.onExceededLabel': 'Quand la limite est atteinte',
+  'flows.nodeConfig.loop.onExceededHint':
+    "Faire échouer l'exécution, ou arrêter de boucler et continuer par le port done avec les éléments du dernier passage.",
+  'flows.nodeConfig.loop.onExceeded_error': "Faire échouer l'exécution",
+  'flows.nodeConfig.loop.onExceeded_continue': 'Continuer avec des résultats partiels',
+  'flows.nodeConfig.loop.conditionLabel': 'Continuer tant que',
+  'flows.nodeConfig.loop.conditionHint':
+    'Facultatif. Tant que ceci est vrai la boucle continue; le premier résultat faux sort par le port done.',
 
   'flows.enableApproval.title': 'Autoriser ce workflow à agir ?',
   'flows.enableApproval.intro':
@@ -5957,6 +6000,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Masquer le raisonnement de l’agent',
   'settings.appearance.hideAgentInsightsDesc':
     'Réduit la chronologie en direct des étapes de l’agent dans le chat. Un lien clignotant « Traitement en cours » permet toujours d’ouvrir le déroulé complet.',
+  'settings.appearance.showChatMascot': 'Afficher Tiny sur la zone de message',
+  'settings.appearance.showChatMascotDesc':
+    "La mascotte reste posée sur le champ de saisie. Masquée, la discussion reste en texte seul jusqu'à ce que vous la réactiviez.",
   'settings.appearance.assistantTextModeDesc':
     "Affiche les réponses de l'assistant en texte sans cadre tout en gardant vos messages en bulles.",
   'settings.mascot.active': 'Actif',
@@ -5964,10 +6010,16 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Brouillon',
   'settings.mascot.characterHeading': 'Titre du personnage',
   'settings.mascot.customGifError':
-    'Entrez un HTTPS .gif URL, un bouclage HTTP .gif URL, un fichier:// .gif URL ou un chemin local .gif.',
-  'settings.mascot.customGifHeading': 'Avatar GIF personnalisé',
-  'settings.mascot.customGifLabel': 'Avatar GIF personnalisé URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Saisissez une URL d’image HTTPS, file:// ou locale (PNG, GIF, JPEG, WebP ou BMP), ou importez un fichier.',
+  'settings.mascot.customGifHeading': 'Avatar image personnalisé',
+  'settings.mascot.customGifLabel': 'URL de l’avatar image personnalisé',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Importer une image',
+  'settings.mascot.customGifInvalidType':
+    'Type de fichier non pris en charge. Importez une image PNG, GIF, JPEG, WebP ou BMP.',
+  'settings.mascot.customGifTooLarge':
+    'L’image est trop volumineuse. Importez un fichier de 1,5 Mo maximum.',
+  'settings.mascot.customGifReadError': 'Impossible de lire cette image. Essayez un autre fichier.',
   'settings.mascot.characterPreview': 'Aperçu',
   'settings.mascot.characterStates': 'états',
   'settings.mascot.characterVisemes': 'visèmes',
@@ -6077,7 +6129,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'Chaleureux, amical, adapté à tous les âges',
   'settings.persona.appearanceHeading': 'Avatar et Voix',
   'settings.persona.appearanceDesc':
-    "La couleur de la mascotte, l'avatar personnalisé GIF et la voix de réponse sont configurés dans les paramètres de la mascotte.",
+    "La couleur de la mascotte, l'avatar personnalisé en image et la voix de réponse sont configurés dans les paramètres de la mascotte.",
   'settings.persona.openMascotSettings': 'Ouvrir les paramètres de Mascot',
   'settings.memoryWindow.balanced.badge': 'Recommandé',
   'settings.memoryWindow.balanced.hint':
@@ -6978,6 +7030,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': 'Mode de stockage des secrets et état du trousseau',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': 'Dégradé',
+  'memoryTree.status.statusBudgetExhausted': "En pause : budget d'embeddings atteint",
   'memoryTree.status.degradedRecall': 'Rappel sémantique désactivé',
   'memoryTree.status.degradedStructure': 'Structure du wiki incomplète',
   'memoryTree.status.extractionCoverage':
@@ -7315,6 +7368,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': 'Ignorer',
   'userErrors.action.openBilling': 'Ouvrir la facturation',
   'userErrors.action.openProviderSettings': 'Paramètres du fournisseur',
+  'userErrors.action.openEmbeddingsSettings': 'Configurer les embeddings',
   'userErrors.budgetExceeded.title': 'Budget géré atteint',
   'userErrors.budgetExceeded.body':
     'Votre budget IA géré est épuisé. Ajoutez du budget ou changez de forfait.',
@@ -7324,8 +7378,23 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'Clé API requise',
   'userErrors.apiKeyMissing.body':
     "Aucune clé API n'est définie pour votre fournisseur d'IA. Ajoutez-en une dans les paramètres du fournisseur pour continuer.",
+  'userErrors.localModelUnavailable.title': 'Modèle local indisponible',
+  'userErrors.localModelUnavailable.body':
+    "Ollama n'est pas joignable sur le point de terminaison configuré, ou le modèle requis n'y est pas installé. Lancez Ollama et téléchargez le modèle sur ce point de terminaison, ou basculez cette charge de travail vers un fournisseur cloud.",
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Tâche planifiée',
+  'userErrors.scope.workspace': 'Espace de travail',
+  'userErrors.memoryBudgetExhausted.title': 'La mémoire a cessé de grandir',
+  'userErrors.memoryBudgetExhausted.body':
+    "Votre budget d'embeddings est épuisé, les nouveaux contenus ne sont donc plus ajoutés à la mémoire. Configurez des embeddings locaux ou ajoutez votre propre clé API pour reprendre.",
+  'memoryBudget.approachingTitle': "La mémoire approche de la limite de son budget d'embeddings",
+  'memoryBudget.approachingMessage':
+    "Vous avez utilisé {pct}% de votre budget d'embeddings. Configurez des embeddings locaux ou ajoutez votre propre clé API pour que la mémoire continue de croître sans interruption.",
+  'memoryBudget.exhaustedTitle': 'La mémoire a cessé de grandir',
+  'memoryBudget.exhaustedMessage':
+    "Votre budget d'embeddings est épuisé, les nouveaux contenus ne sont donc plus ajoutés à la mémoire. Configurez des embeddings locaux ou ajoutez votre propre clé API pour reprendre.",
+  'memoryBudget.cta': 'Configurer les embeddings',
+  'userErrors.scope.memory': 'Mémoire',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Montant',
   'agentWorld.trading.networkLabel': 'Réseau',
@@ -7387,8 +7456,15 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': 'Sessions d’agents de programmation',
   'memorySources.codingSessions.description':
     'Transformez vos décisions et corrections Codex et Claude Code en mémoire de persona privée.',
-  'memorySources.codingSessions.ingest': 'Ingérer les nouvelles sessions',
-  'memorySources.codingSessions.ingesting': 'Ingestion…',
+  'memorySources.codingSessions.importAll': 'Importer toutes les sessions',
+  'memorySources.codingSessions.draining': 'Importation… passe {passes}',
+  'memorySources.codingSessions.stop': 'Arrêter',
+  'memorySources.codingSessions.progress':
+    '{processed} sessions importées · {observations} observations',
+  'memorySources.codingSessions.remaining': 'il reste environ {remaining}',
+  'memorySources.codingSessions.stopped': 'Importation en pause',
+  'memorySources.codingSessions.stoppedMessage':
+    '{processed} sessions importées. Relancez l’importation pour continuer avec les {remaining} restantes.',
   'memorySources.codingSessions.claude': 'Historique Claude Code',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} sessions · {evidence} interventions humaines',
@@ -7401,8 +7477,6 @@ const messages: TranslationMap = {
     '{processed} sessions ont produit {observations} observations de persona.',
   'memorySources.codingSessions.partialFailure':
     '{failed} sessions ont échoué tandis que {processed} ont été traitées. Relancez l’ingestion pour réessayer.',
-  'memorySources.codingSessions.moreRemaining':
-    'La limite de sessions du lot a été atteinte. Relancez l’ingestion pour continuer à importer votre historique.',
   'memorySources.codingSessions.failed': 'Échec de l’ingestion des sessions de programmation',
   'flows.canvas.sidePanelToggle': 'Panneau latéral',
   'flows.canvas.legendTab': 'Manuel',

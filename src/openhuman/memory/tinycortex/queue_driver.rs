@@ -182,6 +182,17 @@ async fn reembed_collect(
             }
             Err(e) => {
                 let failure = health::classify_embed_error(&e);
+                // Correlation is the re-embed operation identity + typed
+                // outcome only — never the raw provider error or row content.
+                log::debug!(
+                    "[tinycortex::queue_driver] action=classify_embed_failure op=reembed \
+                     label={label} id={id} sig={active_sig} code={} class={}",
+                    failure.code.as_str(),
+                    failure.class.as_str()
+                );
+                // #5354: name the local-runtime fix on the status panel now
+                // rather than after the retry budget drains.
+                health::mark_local_model_unavailable_if_applicable(&failure);
                 if matches!(failure.code, health::FailureCode::AuthMissing) {
                     return Err(anyhow::Error::new(failure).context(format!(
                         "reembed: {label} {id} cloud auth missing (sig={active_sig}): {e:#}"

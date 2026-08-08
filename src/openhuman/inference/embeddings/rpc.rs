@@ -93,8 +93,19 @@ pub async fn get_settings(config: &Config) -> Result<RpcOutcome<serde_json::Valu
         slug != "none"
     };
 
+    // The embedder ingestion will *actually* use. `provider` above is the
+    // per-section setting the picker writes; it is NOT authoritative for how
+    // embeddings are funded, because the Local AI "Memory embeddings" toggle and
+    // the `memory_tree.embedding_endpoint` override both route to local Ollama
+    // without rewriting it. Additive field — callers that only need the picker
+    // value are unaffected; callers asking "does this bill the managed budget?"
+    // must read this one (#5402).
+    let effective_provider =
+        crate::openhuman::memory::tree::score::embed::effective_embedder_slug(config);
+
     let payload = serde_json::json!({
         "provider": provider,
+        "effective_provider": effective_provider,
         "model": model,
         "dimensions": dimensions,
         "rate_limit_per_min": rate_limit,
@@ -104,6 +115,7 @@ pub async fn get_settings(config: &Config) -> Result<RpcOutcome<serde_json::Valu
 
     tracing::debug!(
         provider = provider.as_str(),
+        effective_provider,
         model = model.as_str(),
         dimensions,
         vector_search_enabled,
@@ -367,11 +379,41 @@ pub async fn update_settings(
         crate::openhuman::memory::queue::ensure_reembed_backfill(&config);
     }
 
+    // #5324: this is the exact screen the "embedding budget reached" alert
+    // deep-links to, so a provider/endpoint save here is the user completing
+    // the remediation. Un-park the jobs that failed under the old
+    // (budget-exhausted / misconfigured) provider so memory resumes growing
+    // without the user also having to find "Retry failed" in Memory Tree
+    // settings.
+    //
+    // Gated on an actual provider/endpoint/signature touch — NOT unconditional:
+    // a save that only nudges `rate_limit_per_min` does not remediate the
+    // embedder, so it must leave terminally-failed jobs parked. `provider`
+    // covers re-selecting the *same* provider after fixing the account behind
+    // it (a legitimate remediation even when the signature is unchanged).
+    let is_embedding_remediation = sig_changed || provider.is_some() || custom_endpoint.is_some();
+    // #5324: the settings save has already succeeded. A failed un-park must not
+    // fail the RPC, but it must be surfaced (not reported as `0`) so a queue
+    // that stayed parked isn't presented as remediated.
+    let requeue_result = if is_embedding_remediation {
+        crate::openhuman::memory::queue::requeue_failed_after_provider_change(&config)
+    } else {
+        Ok(0)
+    };
+    let requeued_count = *requeue_result.as_ref().unwrap_or(&0);
+    let requeue_error = requeue_result.as_ref().err().cloned();
+    let requeued_note = match &requeue_error {
+        None => requeued_count.to_string(),
+        Some(e) => format!("error ({e})"),
+    };
+
     tracing::info!(
         provider = config.memory.embedding_provider.as_str(),
         model = config.memory.embedding_model.as_str(),
         dimensions = config.memory.embedding_dimensions,
         sig_changed,
+        requeued = requeued_count,
+        requeue_error = requeue_error.as_deref().unwrap_or(""),
         "{LOG_PREFIX} update_settings applied"
     );
 
@@ -381,12 +423,14 @@ pub async fn update_settings(
         "dimensions": config.memory.embedding_dimensions,
         "signature_changed": sig_changed,
         "new_signature": new_sig,
+        "requeued_failed_jobs": requeued_count,
+        "requeue_error": requeue_error,
     });
 
     Ok(RpcOutcome::new(
         payload,
         vec![format!(
-            "embeddings settings updated (sig_changed={sig_changed})"
+            "embeddings settings updated (sig_changed={sig_changed} requeued_failed={requeued_note})"
         )],
     ))
 }
@@ -409,11 +453,34 @@ pub async fn set_api_key(
     auth.store_provider_token(&cred_provider, "default", api_key, HashMap::new(), true)
         .map_err(|e| format!("failed to store embedding API key: {e}"))?;
 
-    tracing::info!(provider = provider_slug, "{LOG_PREFIX} set_api_key stored");
+    // #5324: supplying a BYO key does NOT change the embedding signature, so
+    // `ensure_reembed_backfill` has nothing to enqueue — but it is precisely
+    // the action that unblocks jobs parked on `budget_exhausted` /
+    // `auth_missing`. Requeue them here or they stay dead until the user
+    // separately discovers the "Retry failed" button. A store failure is
+    // surfaced (not reported as `0`) so the key-stored response can't imply the
+    // parked queue was recovered when it wasn't.
+    let requeue_result =
+        crate::openhuman::memory::queue::requeue_failed_after_provider_change(config);
+    let requeued_count = *requeue_result.as_ref().unwrap_or(&0);
+    let requeue_error = requeue_result.as_ref().err().cloned();
+    let requeued_note = match &requeue_error {
+        None => requeued_count.to_string(),
+        Some(e) => format!("error ({e})"),
+    };
+
+    tracing::info!(
+        provider = provider_slug,
+        requeued = requeued_count,
+        requeue_error = requeue_error.as_deref().unwrap_or(""),
+        "{LOG_PREFIX} set_api_key stored"
+    );
 
     Ok(RpcOutcome::new(
-        serde_json::json!({ "stored": true, "provider": provider_slug }),
-        vec![format!("embedding API key stored for {provider_slug}")],
+        serde_json::json!({ "stored": true, "provider": provider_slug, "requeued_failed_jobs": requeued_count, "requeue_error": requeue_error }),
+        vec![format!(
+            "embedding API key stored for {provider_slug} (requeued_failed={requeued_note})"
+        )],
     ))
 }
 
@@ -1019,6 +1086,38 @@ mod tests {
         // Resolve returns it; a provider with no stored key stays empty.
         assert_eq!(resolve_api_key(&config, "cohere"), "sk-cohere-test");
         assert_eq!(resolve_api_key(&config, "voyage"), "");
+    }
+
+    /// `get_settings` must report the embedder ingestion will **actually** use
+    /// alongside the picker's own setting (#5402). The two disagree whenever
+    /// the user enabled local embeddings through Local AI Settings: that path
+    /// never rewrites `memory.embedding_provider`, so `provider` still reads
+    /// `"cloud"` while nothing bills the managed budget. A consumer that gated
+    /// a "your memory has stopped growing" banner on `provider` would fire it
+    /// at a user whose memory is growing fine.
+    #[tokio::test]
+    async fn get_settings_reports_effective_provider_separately_from_the_setting() {
+        let tmp = TempDir::new().unwrap();
+        let mut config = Config::default();
+        config.config_path = tmp.path().join("config.toml");
+        config.workspace_dir = tmp.path().to_path_buf();
+        config.memory.embedding_provider = "cloud".to_string();
+        // A managed session exists, so the ladder would resolve to cloud …
+        std::fs::write(tmp.path().join("auth-profiles.json"), "{}").unwrap();
+        // … except the unified workload setting routes embeddings to Ollama.
+        config.embeddings_provider = Some("ollama:all-minilm:latest".into());
+
+        let out = get_settings(&config)
+            .await
+            .expect("get_settings must succeed");
+        assert_eq!(
+            out.value["provider"], "cloud",
+            "the picker setting is unchanged"
+        );
+        assert_eq!(
+            out.value["effective_provider"], "ollama",
+            "the effective embedder is local, so nothing bills the managed budget"
+        );
     }
 
     /// `custom:<url>` providers must look up under the `embeddings:custom`

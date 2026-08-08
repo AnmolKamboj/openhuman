@@ -350,8 +350,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'Kürzlich synchronisiert',
   'conversations.backgroundTasks.memProviderIdle': 'Inaktiv',
   'nav.home': 'Start',
-  'nav.human': 'Mensch',
   'nav.chat': 'Chat',
+  'nav.human': 'Mensch',
   'nav.assistant': 'Assistent',
   'assistant.faceMode.on': 'Spricht mit Tiny',
   'assistant.faceMode.off': 'Mit Tiny sprechen',
@@ -1351,6 +1351,12 @@ const messages: TranslationMap = {
   'memoryTree.status.never': 'Nie',
   'memoryTree.status.fetchError': 'Speicherbaum-Status konnte nicht abgerufen werden',
   'memoryTree.status.retry': 'Wiederholen',
+  'memoryTree.status.retryFailed': 'Fehlgeschlagene Jobs erneut ausführen',
+  'memoryTree.status.retryFailedBusy': 'Wird wiederholt...',
+  'memoryTree.status.retryFailedDone': 'Fehlgeschlagene Jobs neu eingereiht',
+  'memoryTree.status.retryFailedCount': 'Erneut eingereihte Jobs: {count}.',
+  'memoryTree.status.retryFailedError':
+    'Die fehlgeschlagenen Jobs konnten nicht neu eingereiht werden',
   'memoryTree.status.toggleFailed':
     'Automatische Synchronisierung konnte nicht umgeschaltet werden',
   'memoryTree.status.justNow': 'gerade eben',
@@ -2504,6 +2510,15 @@ const messages: TranslationMap = {
   'voice.providers.piperReady': 'Piper ist bereit.',
   'voice.providers.piperInstallStarted': 'Piper-Installation gestartet',
   'voice.providers.failedToInstallPiper': 'Installation von Piper fehlgeschlagen',
+  'voice.mode.title': 'Sprachmodus',
+  'voice.mode.desc': 'Lege fest, wie der Assistent im Human-Tab spricht.',
+  'voice.mode.realtime': 'Echtzeit-Sprache (Beta)',
+  'voice.mode.realtimeDesc': 'Führe ein flüssiges Live-Gespräch, statt abwechselnd zu sprechen.',
+  'voice.mode.start': 'Sprachchat starten',
+  'voice.mode.stop': 'Sprachchat beenden',
+  'voice.mode.connecting': 'Verbinden…',
+  'voice.mode.listening': 'Hört zu',
+  'voice.mode.speaking': 'Spricht',
   'voice.providers.title': 'Sprachanbieter',
   'voice.providers.desc':
     "Wähle, wo Transkription und Synthese ausgeführt werden. Mit den Schaltflächen 'Lokal installieren' werden die Binärdateien und Modelle in den Arbeitsbereich geladen. Lokale Anbieter können vor Abschluss der Installation gespeichert werden – keine manuelle WHISPER_BIN- oder PIPER_BIN-Konfiguration erforderlich.",
@@ -2806,6 +2821,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'Sprachantwort wird abgespielt',
   'chat.voiceHint': 'Nutze das Mikrofon zum Sprechen',
   'chat.micUnavailable': 'Mikrofon nicht verfügbar',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Mit deinem Assistenten sprechen',
+  'chat.mascot.collapse': 'Zurück zum Chat',
+  'chat.mascot.speakReplies': 'Antworten vorlesen',
+  'chat.mascot.speakRepliesHint':
+    'Antworten werden vorgelesen, solange das Maskottchen geöffnet ist. Schalte dies aus, damit das Gespräch stumm bleibt.',
+  'chat.mascot.dismiss': 'Tiny ausblenden',
+  'chat.mascot.dismissTitle': 'Tiny ausblenden?',
+  'chat.mascot.dismissBody':
+    'Kein Problem, wenn du das Nachrichtenfeld lieber für dich hast. Du kannst Tiny jederzeit über Einstellungen › Aussehen › Chat zurückholen.',
+  'chat.mascot.dismissConfirm': 'Tiny ausblenden',
+  'chat.mascot.dismissCancel': 'Tiny behalten',
   'chat.turn': 'drehen',
   'chat.turns': 'dreht sich',
   'chat.openWorkerThread': 'Arbeitsthread öffnen',
@@ -4333,6 +4360,7 @@ const messages: TranslationMap = {
   'flows.nodeKind.sub_workflow': 'Unter-Workflow',
   'flows.nodeKind.memory': 'Gedächtnis',
   'flows.nodeKind.dedup': 'Deduplizierung',
+  'flows.nodeKind.loop': 'Schleife',
   'flows.nodeSummary.trigger.manual': 'Wird bei Bedarf ausgeführt',
   'flows.nodeSummary.trigger.webhook': 'Wird durch einen eingehenden Webhook ausgelöst',
   'flows.nodeSummary.trigger.appEventOn': 'Bei {parts}',
@@ -4373,6 +4401,8 @@ const messages: TranslationMap = {
   'flows.nodeSummary.memory.recall': 'Ruft aus dem Gedächtnis ab',
   'flows.nodeSummary.dedup.withKey': 'Überspringt bereits gesehene Elemente anhand von {key}',
   'flows.nodeSummary.dedup.default': 'Überspringt bereits verarbeitete Elemente',
+  'flows.nodeSummary.loop.upTo': 'Wiederholt bis zu {max} Mal',
+  'flows.nodeSummary.loop.whileCondition': 'Wiederholt bis zu {max} Mal, solange {condition}',
   'flows.palette.title': 'Knoten',
   'flows.palette.addNode': '{kind}-Knoten hinzufügen',
   'flows.editor.save': 'Speichern',
@@ -4574,6 +4604,20 @@ const messages: TranslationMap = {
   'flows.nodeConfig.dedup.keyLabel': 'Schlüssel',
   'flows.nodeConfig.dedup.keyHint':
     'Ein stabiler Id-Ausdruck pro Element, z. B. =item.id. Elemente mit einem bereits gesehenen Schlüssel werden übersprungen.',
+
+  // `loop` node: a bounded loop head. Emits on `body` until its cap or
+  // condition says stop, then on `done`.
+  'flows.nodeConfig.loop.maxIterationsLabel': 'Maximale Durchläufe',
+  'flows.nodeConfig.loop.maxIterationsHint':
+    'Wie oft der Rumpf laufen darf, bevor die Schleife stoppt. Immer endlich.',
+  'flows.nodeConfig.loop.onExceededLabel': 'Beim Erreichen des Limits',
+  'flows.nodeConfig.loop.onExceededHint':
+    'Lauf fehlschlagen lassen, oder die Schleife beenden und über den Port done mit den Elementen des letzten Durchlaufs fortfahren.',
+  'flows.nodeConfig.loop.onExceeded_error': 'Lauf fehlschlagen lassen',
+  'flows.nodeConfig.loop.onExceeded_continue': 'Mit Teilergebnissen fortfahren',
+  'flows.nodeConfig.loop.conditionLabel': 'Fortsetzen solange',
+  'flows.nodeConfig.loop.conditionHint':
+    'Optional. Solange dies wahr ergibt, läuft die Schleife weiter; das erste falsche Ergebnis führt zum Port done.',
 
   'flows.enableApproval.title': 'Darf dieser Workflow Aktionen ausführen?',
   'flows.enableApproval.intro':
@@ -5978,6 +6022,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Agent-Denkprozess ausblenden',
   'settings.appearance.hideAgentInsightsDesc':
     'Blendet die schrittweise Live-Zeitleiste des Agenten im Chat aus. Über einen blinkenden „Wird verarbeitet“-Link lässt sich der vollständige Ablauf weiterhin öffnen.',
+  'settings.appearance.showChatMascot': 'Tiny am Nachrichtenfeld anzeigen',
+  'settings.appearance.showChatMascotDesc':
+    'Das Maskottchen bleibt auf dem Eingabefeld stehen. Ausgeblendet ist der Chat nur Text, bis du dies wieder einschaltest.',
   'settings.appearance.assistantTextModeDesc':
     'Zeigt Assistentenantworten als ungerahmten Text an und lässt deine Nachrichten in Blasen.',
   'settings.mascot.active': 'Aktiv',
@@ -5985,10 +6032,16 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Entwurf',
   'settings.mascot.characterHeading': 'Zeichenüberschrift',
   'settings.mascot.customGifError':
-    'GIF konnte nicht geladen werden. Bitte überprüfe die URL und versuche es erneut.',
-  'settings.mascot.customGifHeading': 'Benutzerdefinierter GIF-Avatar',
-  'settings.mascot.customGifLabel': 'URL für benutzerdefinierten GIF-Avatar',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Gib eine HTTPS-, file:// oder lokale Bild-URL (PNG, GIF, JPEG, WebP oder BMP) ein oder lade eine Datei hoch.',
+  'settings.mascot.customGifHeading': 'Benutzerdefinierter Bild-Avatar',
+  'settings.mascot.customGifLabel': 'URL für benutzerdefinierten Bild-Avatar',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Bild hochladen',
+  'settings.mascot.customGifInvalidType':
+    'Nicht unterstützter Dateityp. Lade ein PNG-, GIF-, JPEG-, WebP- oder BMP-Bild hoch.',
+  'settings.mascot.customGifTooLarge': 'Bild ist zu groß. Lade eine Datei bis 1,5 MB hoch.',
+  'settings.mascot.customGifReadError':
+    'Bild konnte nicht gelesen werden. Bitte versuche eine andere Datei.',
   'settings.mascot.characterPreview': 'Vorschau',
   'settings.mascot.characterStates': 'Staaten',
   'settings.mascot.characterVisemes': 'Mundbilder',
@@ -6099,7 +6152,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'Herzlich, freundlich, für alle Altersgruppen geeignet',
   'settings.persona.appearanceHeading': 'Avatar und Stimme',
   'settings.persona.appearanceDesc':
-    'Maskottchenfarbe, benutzerdefinierter GIF-Avatar und Antwortstimme werden in den Maskottcheneinstellungen konfiguriert.',
+    'Maskottchenfarbe, benutzerdefinierter Bild-Avatar und Antwortstimme werden in den Maskottcheneinstellungen konfiguriert.',
   'settings.persona.openMascotSettings': 'Öffnen Sie die Maskottchen-Einstellungen',
   'settings.memoryWindow.balanced.badge': 'Empfohlen',
   'settings.memoryWindow.balanced.hint':
@@ -6995,6 +7048,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': 'Geheimnisspeicher-Modus und Schlüsselbund-Status',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': 'Eingeschränkt',
+  'memoryTree.status.statusBudgetExhausted': 'Pausiert: Embedding-Budget erreicht',
   'memoryTree.status.degradedRecall': 'Semantische Suche deaktiviert',
   'memoryTree.status.degradedStructure': 'Wiki-Struktur unvollständig',
   'memoryTree.status.extractionCoverage':
@@ -7336,6 +7390,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': 'Verwerfen',
   'userErrors.action.openBilling': 'Abrechnung öffnen',
   'userErrors.action.openProviderSettings': 'Anbietereinstellungen',
+  'userErrors.action.openEmbeddingsSettings': 'Embeddings einrichten',
   'userErrors.budgetExceeded.title': 'Verwaltetes Budget erreicht',
   'userErrors.budgetExceeded.body':
     'Dein verwaltetes KI-Budget ist aufgebraucht. Füge Budget hinzu oder ändere deinen Tarif.',
@@ -7345,8 +7400,23 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'API-Schlüssel erforderlich',
   'userErrors.apiKeyMissing.body':
     'Für deinen KI-Anbieter ist kein API-Schlüssel hinterlegt. Füge in den Anbietereinstellungen einen hinzu, um fortzufahren.',
+  'userErrors.localModelUnavailable.title': 'Lokales Modell nicht verfügbar',
+  'userErrors.localModelUnavailable.body':
+    'Ollama ist unter dem konfigurierten Endpunkt nicht erreichbar, oder das benötigte Modell ist dort nicht installiert. Starte Ollama und lade das Modell auf diesem Endpunkt, oder verlagere diese Arbeit auf einen Cloud-Anbieter.',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Geplante Aufgabe',
+  'userErrors.scope.workspace': 'Arbeitsbereich',
+  'userErrors.memoryBudgetExhausted.title': 'Das Gedächtnis wächst nicht mehr',
+  'userErrors.memoryBudgetExhausted.body':
+    'Dein Embedding-Budget ist aufgebraucht, daher werden keine neuen Inhalte mehr ins Gedächtnis aufgenommen. Richte lokale Embeddings ein oder hinterlege deinen eigenen API-Schlüssel, um fortzufahren.',
+  'memoryBudget.approachingTitle': 'Das Gedächtnis nähert sich seinem Embedding-Limit',
+  'memoryBudget.approachingMessage':
+    'Du hast {pct} % deines Embedding-Budgets verbraucht. Richte lokale Embeddings ein oder hinterlege deinen eigenen API-Schlüssel, damit das Gedächtnis ohne Unterbrechung weiterwächst.',
+  'memoryBudget.exhaustedTitle': 'Das Gedächtnis wächst nicht mehr',
+  'memoryBudget.exhaustedMessage':
+    'Dein Embedding-Budget ist aufgebraucht, daher werden keine neuen Inhalte mehr ins Gedächtnis aufgenommen. Richte lokale Embeddings ein oder hinterlege deinen eigenen API-Schlüssel, um fortzufahren.',
+  'memoryBudget.cta': 'Embeddings einrichten',
+  'userErrors.scope.memory': 'Speicher',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Betrag',
   'agentWorld.trading.networkLabel': 'Netzwerk',
@@ -7408,8 +7478,15 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': 'Coding-Agent-Sitzungen',
   'memorySources.codingSessions.description':
     'Verwandle Entscheidungen und Korrekturen aus Codex und Claude Code in private Persona-Erinnerungen.',
-  'memorySources.codingSessions.ingest': 'Neue Sitzungen einlesen',
-  'memorySources.codingSessions.ingesting': 'Wird eingelesen…',
+  'memorySources.codingSessions.importAll': 'Alle Sitzungen importieren',
+  'memorySources.codingSessions.draining': 'Import läuft… Durchlauf {passes}',
+  'memorySources.codingSessions.stop': 'Stopp',
+  'memorySources.codingSessions.progress':
+    '{processed} Sitzungen importiert · {observations} Beobachtungen',
+  'memorySources.codingSessions.remaining': 'noch etwa {remaining}',
+  'memorySources.codingSessions.stopped': 'Import angehalten',
+  'memorySources.codingSessions.stoppedMessage':
+    '{processed} Sitzungen importiert. Starten Sie den Import erneut, um die restlichen {remaining} fortzusetzen.',
   'memorySources.codingSessions.claude': 'Claude-Code-Verlauf',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} Sitzungen · {evidence} menschliche Beiträge',
@@ -7422,8 +7499,6 @@ const messages: TranslationMap = {
     '{processed} Sitzungen ergaben {observations} Persona-Beobachtungen.',
   'memorySources.codingSessions.partialFailure':
     '{failed} Sitzungen sind fehlgeschlagen, während {processed} verarbeitet wurden. Starten Sie das Einlesen erneut.',
-  'memorySources.codingSessions.moreRemaining':
-    'Das Sitzungslimit für diesen Durchlauf wurde erreicht. Starten Sie das Einlesen erneut, um den Import fortzusetzen.',
   'memorySources.codingSessions.failed': 'Einlesen der Coding-Sitzungen fehlgeschlagen',
   'flows.canvas.sidePanelToggle': 'Seitenleiste',
   'flows.canvas.legendTab': 'Manuell',

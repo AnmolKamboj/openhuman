@@ -324,8 +324,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': '최근 동기화됨',
   'conversations.backgroundTasks.memProviderIdle': '대기 중',
   'nav.home': '홈',
-  'nav.human': '휴먼',
   'nav.chat': '채팅',
+  'nav.human': '휴먼',
   'nav.assistant': '어시스턴트',
   'assistant.faceMode.on': 'Tiny와 대화 중',
   'assistant.faceMode.off': 'Tiny와 대화하기',
@@ -1292,6 +1292,11 @@ const messages: TranslationMap = {
   'memoryTree.status.never': '없음',
   'memoryTree.status.fetchError': '메모리 트리 상태를 가져올 수 없습니다.',
   'memoryTree.status.retry': '다시 시도',
+  'memoryTree.status.retryFailed': '실패한 작업 다시 실행',
+  'memoryTree.status.retryFailedBusy': '다시 시도하는 중...',
+  'memoryTree.status.retryFailedDone': '실패한 작업을 다시 대기열에 넣었습니다',
+  'memoryTree.status.retryFailedCount': '{count}개 작업이 다시 실행되도록 대기열에 있습니다.',
+  'memoryTree.status.retryFailedError': '실패한 작업을 다시 대기열에 넣지 못했습니다',
   'memoryTree.status.toggleFailed': '자동 동기화를 전환할 수 없습니다.',
   'memoryTree.status.justNow': '방금 전',
   'memoryTree.status.secondsAgo': '{count}초 전',
@@ -2399,6 +2404,15 @@ const messages: TranslationMap = {
   'voice.providers.piperReady': 'Piper가 준비되었습니다.',
   'voice.providers.piperInstallStarted': 'Piper 설치가 시작되었습니다.',
   'voice.providers.failedToInstallPiper': 'Piper를 설치하지 못했습니다.',
+  'voice.mode.title': '음성 모드',
+  'voice.mode.desc': 'Human 탭에서 어시스턴트가 말하는 방식을 선택하세요.',
+  'voice.mode.realtime': '실시간 음성 (베타)',
+  'voice.mode.realtimeDesc': '번갈아 말하는 대신 실시간으로 대화하세요.',
+  'voice.mode.start': '음성 채팅 시작',
+  'voice.mode.stop': '음성 채팅 종료',
+  'voice.mode.connecting': '연결 중…',
+  'voice.mode.listening': '듣는 중',
+  'voice.mode.speaking': '말하는 중',
   'voice.providers.title': '음성 공급자',
   'voice.providers.desc':
     '전사 및 합성이 실행되는 위치를 선택하세요. 로컬 설치 버튼을 사용하여 바이너리 및 모델을 워크스페이스에 다운로드하세요. 로컬 공급자는 설치 완료 전에도 저장할 수 있으며 WHISPER_BIN 또는 PIPER_BIN 수동 설정이 필요 없습니다.',
@@ -2695,6 +2709,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': '음성 응답 재생 중',
   'chat.voiceHint': '마이크를 사용해 말하세요',
   'chat.micUnavailable': '마이크를 사용할 수 없습니다',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': '어시스턴트와 대화하기',
+  'chat.mascot.collapse': '채팅으로 돌아가기',
+  'chat.mascot.speakReplies': '답변을 소리 내어 읽기',
+  'chat.mascot.speakRepliesHint':
+    '마스코트가 열려 있는 동안 답변을 소리 내어 읽어 줍니다. 조용히 대화하려면 끄세요.',
+  'chat.mascot.dismiss': 'Tiny 숨기기',
+  'chat.mascot.dismissTitle': 'Tiny를 숨길까요?',
+  'chat.mascot.dismissBody':
+    '메시지 상자를 혼자 쓰고 싶다면 괜찮아요. 설정 › 외관 › 채팅에서 언제든지 Tiny를 다시 부를 수 있습니다.',
+  'chat.mascot.dismissConfirm': 'Tiny 숨기기',
+  'chat.mascot.dismissCancel': 'Tiny 두기',
   'chat.turn': '턴',
   'chat.turns': '턴',
   'chat.openWorkerThread': '워커 스레드 열기',
@@ -4165,6 +4191,7 @@ const messages: TranslationMap = {
   'flows.nodeKind.sub_workflow': '하위 워크플로',
   'flows.nodeKind.memory': '메모리',
   'flows.nodeKind.dedup': '중복 제거',
+  'flows.nodeKind.loop': '반복',
   'flows.nodeSummary.trigger.manual': '요청 시 실행됩니다',
   'flows.nodeSummary.trigger.webhook': '수신 웹훅으로 실행됩니다',
   'flows.nodeSummary.trigger.appEventOn': '{parts}에서',
@@ -4205,6 +4232,8 @@ const messages: TranslationMap = {
   'flows.nodeSummary.memory.recall': '메모리에서 회상합니다',
   'flows.nodeSummary.dedup.withKey': '{key} 기준으로 이미 본 항목을 건너뜁니다',
   'flows.nodeSummary.dedup.default': '이미 처리된 항목을 건너뜁니다',
+  'flows.nodeSummary.loop.upTo': '최대 {max}회 반복',
+  'flows.nodeSummary.loop.whileCondition': '{condition}인 동안 최대 {max}회 반복',
   'flows.palette.title': '노드',
   'flows.palette.addNode': '{kind} 노드 추가',
   'flows.editor.save': '저장',
@@ -4399,6 +4428,20 @@ const messages: TranslationMap = {
   'flows.nodeConfig.dedup.keyLabel': '키',
   'flows.nodeConfig.dedup.keyHint':
     '항목별 안정적인 id 표현식입니다. 예: =item.id. 이미 본 키를 가진 항목은 건너뜁니다.',
+
+  // `loop` node: a bounded loop head. Emits on `body` until its cap or
+  // condition says stop, then on `done`.
+  'flows.nodeConfig.loop.maxIterationsLabel': '최대 반복 횟수',
+  'flows.nodeConfig.loop.maxIterationsHint':
+    '루프가 멈추기 전까지 본문이 실행될 수 있는 횟수입니다. 항상 유한합니다.',
+  'flows.nodeConfig.loop.onExceededLabel': '한도에 도달하면',
+  'flows.nodeConfig.loop.onExceededHint':
+    '실행을 실패시키거나, 반복을 멈추고 마지막 회차의 항목과 함께 done 포트로 계속합니다.',
+  'flows.nodeConfig.loop.onExceeded_error': '실행을 실패시키기',
+  'flows.nodeConfig.loop.onExceeded_continue': '부분 결과로 계속하기',
+  'flows.nodeConfig.loop.conditionLabel': '계속 조건',
+  'flows.nodeConfig.loop.conditionHint':
+    '선택 사항. 참으로 평가되는 동안 루프가 계속되며, 처음 거짓이 되면 done 포트로 나갑니다.',
 
   'flows.enableApproval.title': '이 워크플로가 작업을 수행하도록 허용할까요?',
   'flows.enableApproval.intro':
@@ -5747,6 +5790,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': '에이전트 사고 숨기기',
   'settings.appearance.hideAgentInsightsDesc':
     '채팅에서 에이전트의 단계별 실시간 타임라인을 접습니다. 깜박이는 "처리 중" 링크로 전체 과정을 열 수 있습니다.',
+  'settings.appearance.showChatMascot': '메시지 상자에 Tiny 표시',
+  'settings.appearance.showChatMascotDesc':
+    '마스코트가 입력창 위에 서 있습니다. 숨기면 다시 켤 때까지 채팅은 텍스트로만 진행됩니다.',
   'settings.appearance.assistantTextModeDesc':
     '사용자 메시지는 말풍선으로 유지하고 어시스턴트 답변은 프레임 없는 텍스트로 표시합니다.',
   'settings.mascot.active': '활성',
@@ -5754,10 +5800,15 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': '초안',
   'settings.mascot.characterHeading': '캐릭터 제목',
   'settings.mascot.customGifError':
-    'HTTPS .gif URL, loopback HTTP .gif URL, file:// .gif URL 또는 로컬 .gif 경로를 입력하세요.',
-  'settings.mascot.customGifHeading': '사용자 지정 GIF 아바타',
-  'settings.mascot.customGifLabel': '사용자 지정 GIF 아바타 URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'HTTPS, file:// 또는 로컬 이미지 URL(PNG, GIF, JPEG, WebP 또는 BMP)을 입력하거나 파일을 업로드하세요.',
+  'settings.mascot.customGifHeading': '사용자 지정 이미지 아바타',
+  'settings.mascot.customGifLabel': '사용자 지정 이미지 아바타 URL',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': '이미지 업로드',
+  'settings.mascot.customGifInvalidType':
+    '지원되지 않는 파일 형식입니다. PNG, GIF, JPEG, WebP 또는 BMP 이미지를 업로드하세요.',
+  'settings.mascot.customGifTooLarge': '이미지가 너무 큽니다. 최대 1.5MB 파일을 업로드하세요.',
+  'settings.mascot.customGifReadError': '이미지를 읽을 수 없습니다. 다른 파일을 시도하세요.',
   'settings.mascot.characterPreview': '미리보기',
   'settings.mascot.characterStates': '상태',
   'settings.mascot.characterVisemes': '입 모양',
@@ -5865,7 +5916,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': '따뜻하고 친근하며 모든 연령에 안전',
   'settings.persona.appearanceHeading': '아바타 및 음성',
   'settings.persona.appearanceDesc':
-    '마스코트 색상, 사용자 지정 GIF 아바타, 응답 음성은 마스코트 설정에서 구성합니다.',
+    '마스코트 색상, 사용자 지정 이미지 아바타, 응답 음성은 마스코트 설정에서 구성합니다.',
   'settings.persona.openMascotSettings': '마스코트 설정 열기',
   'settings.memoryWindow.balanced.badge': '추천',
   'settings.memoryWindow.balanced.hint':
@@ -6736,6 +6787,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': '비밀 저장 모드 및 키체인 상태',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': '저하됨',
+  'memoryTree.status.statusBudgetExhausted': '일시 중지됨: 임베딩 예산 소진',
   'memoryTree.status.degradedRecall': '의미 기반 검색 비활성화됨',
   'memoryTree.status.degradedStructure': '위키 구조 불완전',
   'memoryTree.status.extractionCoverage': '추출 범위: 청크의 {pct}%에 구조가 있음',
@@ -7056,6 +7108,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': '닫기',
   'userErrors.action.openBilling': '결제 열기',
   'userErrors.action.openProviderSettings': '제공업체 설정',
+  'userErrors.action.openEmbeddingsSettings': '임베딩 설정',
   'userErrors.budgetExceeded.title': '관리형 예산 소진',
   'userErrors.budgetExceeded.body': '관리형 AI 예산이 모두 소진되었습니다.',
   'userErrors.insufficientCredits.title': '제공업체 크레딧 필요',
@@ -7063,8 +7116,23 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'API 키 필요',
   'userErrors.apiKeyMissing.body':
     'AI 제공업체에 API 키가 설정되지 않았습니다. 제공업체 설정에서 추가하세요.',
+  'userErrors.localModelUnavailable.title': '로컬 모델을 사용할 수 없음',
+  'userErrors.localModelUnavailable.body':
+    '구성된 엔드포인트에서 Ollama에 연결할 수 없거나 필요한 모델이 그곳에 설치되어 있지 않습니다. Ollama를 실행하고 해당 엔드포인트에 모델을 내려받거나, 이 작업을 클라우드 제공업체로 전환하세요.',
   'userErrors.scope.chat': '채팅',
   'userErrors.scope.cron': '예약된 작업',
+  'userErrors.scope.workspace': '작업 공간',
+  'userErrors.memoryBudgetExhausted.title': '메모리가 더 이상 늘어나지 않습니다',
+  'userErrors.memoryBudgetExhausted.body':
+    '임베딩 예산을 모두 사용해 새 콘텐츠가 메모리에 추가되지 않습니다. 로컬 임베딩을 설정하거나 본인의 API 키를 추가하면 다시 시작됩니다.',
+  'memoryBudget.approachingTitle': '메모리가 임베딩 한도에 근접했습니다',
+  'memoryBudget.approachingMessage':
+    '임베딩 예산의 {pct}%를 사용했습니다. 로컬 임베딩을 설정하거나 본인의 API 키를 추가하면 메모리가 끊김 없이 계속 쌓입니다.',
+  'memoryBudget.exhaustedTitle': '메모리가 더 이상 늘어나지 않습니다',
+  'memoryBudget.exhaustedMessage':
+    '임베딩 예산을 모두 사용해 새 콘텐츠가 메모리에 추가되지 않습니다. 로컬 임베딩을 설정하거나 본인의 API 키를 추가하면 다시 시작됩니다.',
+  'memoryBudget.cta': '임베딩 설정',
+  'userErrors.scope.memory': '메모리',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': '금액',
   'agentWorld.trading.networkLabel': '네트워크',
@@ -7125,8 +7193,14 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': '코딩 에이전트 세션',
   'memorySources.codingSessions.description':
     'Codex와 Claude Code의 결정 및 수정 사항을 비공개 페르소나 메모리로 변환합니다.',
-  'memorySources.codingSessions.ingest': '새 세션 수집',
-  'memorySources.codingSessions.ingesting': '수집 중…',
+  'memorySources.codingSessions.importAll': '모든 세션 가져오기',
+  'memorySources.codingSessions.draining': '가져오는 중… {passes}회차',
+  'memorySources.codingSessions.stop': '중지',
+  'memorySources.codingSessions.progress': '{processed}개 세션 가져옴 · 관찰 {observations}개',
+  'memorySources.codingSessions.remaining': '약 {remaining}개 남음',
+  'memorySources.codingSessions.stopped': '가져오기 일시중지됨',
+  'memorySources.codingSessions.stoppedMessage':
+    '{processed}개 세션을 가져왔습니다. 남은 {remaining}개를 계속하려면 가져오기를 다시 실행하세요.',
   'memorySources.codingSessions.claude': '클로드 코드',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '세션 {files}개 · 사용자 입력 {evidence}개',
@@ -7138,8 +7212,6 @@ const messages: TranslationMap = {
     '세션 {processed}개에서 페르소나 관찰 {observations}개를 만들었습니다.',
   'memorySources.codingSessions.partialFailure':
     '세션 {processed}개를 처리하는 동안 {failed}개가 실패했습니다. 다시 시도하려면 수집을 다시 실행하세요.',
-  'memorySources.codingSessions.moreRemaining':
-    '세션 배치 한도에 도달했습니다. 기록 가져오기를 계속하려면 수집을 다시 실행하세요.',
   'memorySources.codingSessions.failed': '코딩 세션 수집 실패',
   'flows.canvas.sidePanelToggle': '사이드 패널',
   'flows.canvas.legendTab': '수동',

@@ -92,7 +92,7 @@ limit enforcement on every cycle.
 
 ## Running unattended (stage 8)
 
-- **No message loss**: ingest dedupes by relay `message_id` *before* decrypt (the
+- **No message loss**: ingest dedupes by relay `message_id` _before_ decrypt (the
   Signal ratchet is never advanced twice); a relay/decrypt error leaves the message
   un-acked for a clean retry.
 - **No duplicate DM**: the idempotence cursor advances only after a completed,

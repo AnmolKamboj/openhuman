@@ -334,8 +334,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'Недавно синхронизировано',
   'conversations.backgroundTasks.memProviderIdle': 'Простаивает',
   'nav.home': 'Главная',
-  'nav.human': 'Человек',
   'nav.chat': 'Чат',
+  'nav.human': 'Человек',
   'nav.assistant': 'Ассистент',
   'assistant.faceMode.on': 'Говорит с Tiny',
   'assistant.faceMode.off': 'Поговорить с Tiny',
@@ -1316,6 +1316,11 @@ const messages: TranslationMap = {
   'memoryTree.status.never': 'Никогда',
   'memoryTree.status.fetchError': 'Не удалось получить статус дерева памяти.',
   'memoryTree.status.retry': 'Повторить попытку',
+  'memoryTree.status.retryFailed': 'Повторить неудавшиеся задачи',
+  'memoryTree.status.retryFailedBusy': 'Повторяем...',
+  'memoryTree.status.retryFailedDone': 'Неудавшиеся задачи снова в очереди',
+  'memoryTree.status.retryFailedCount': 'Задач в очереди на повторный запуск: {count}.',
+  'memoryTree.status.retryFailedError': 'Не удалось вернуть неудавшиеся задачи в очередь',
   'memoryTree.status.toggleFailed': 'Не удалось включить автосинхронизацию.',
   'memoryTree.status.justNow': 'прямо сейчас',
   'memoryTree.status.secondsAgo': '{count} сек. назад',
@@ -2448,6 +2453,15 @@ const messages: TranslationMap = {
   'voice.providers.piperReady': 'Piper готов.',
   'voice.providers.piperInstallStarted': 'Началась установка Piper.',
   'voice.providers.failedToInstallPiper': 'Не удалось установить Piper.',
+  'voice.mode.title': 'Голосовой режим',
+  'voice.mode.desc': 'Выберите, как ассистент говорит на вкладке Human.',
+  'voice.mode.realtime': 'Голос в реальном времени (бета)',
+  'voice.mode.realtimeDesc': 'Ведите живой разговор вместо поочерёдного обмена репликами.',
+  'voice.mode.start': 'Начать голосовой чат',
+  'voice.mode.stop': 'Завершить голосовой чат',
+  'voice.mode.connecting': 'Подключение…',
+  'voice.mode.listening': 'Слушает',
+  'voice.mode.speaking': 'Говорит',
   'voice.providers.title': 'Поставщики голоса.',
   'voice.providers.desc':
     'Выберите, где выполняется транскрипция и синтез речи. Используйте кнопки «Установить локально» для загрузки бинарных файлов и моделей в вашу рабочую область. Локальные провайдеры можно сохранить до завершения установки: ручная настройка WHISPER_BIN или PIPER_BIN не требуется.',
@@ -2748,6 +2762,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'Воспроизведение голосового ответа',
   'chat.voiceHint': 'Используй микрофон для речи',
   'chat.micUnavailable': 'Микрофон недоступен',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Поговорите с ассистентом',
+  'chat.mascot.collapse': 'Вернуться к чату',
+  'chat.mascot.speakReplies': 'Читать ответы вслух',
+  'chat.mascot.speakRepliesHint':
+    'Пока маскот открыт, ответы читаются вслух. Отключите, чтобы разговор оставался беззвучным.',
+  'chat.mascot.dismiss': 'Скрыть Tiny',
+  'chat.mascot.dismissTitle': 'Скрыть Tiny?',
+  'chat.mascot.dismissBody':
+    'Ничего страшного, если поле сообщения вам нужнее. Вернуть Tiny можно в любой момент через Настройки › Внешний вид › Чат.',
+  'chat.mascot.dismissConfirm': 'Скрыть Tiny',
+  'chat.mascot.dismissCancel': 'Оставить Tiny',
   'chat.turn': 'ход',
   'chat.turns': 'ходов',
   'chat.openWorkerThread': 'Открыть чат воркера',
@@ -4251,6 +4277,7 @@ const messages: TranslationMap = {
   'flows.nodeKind.sub_workflow': 'Подпроцесс',
   'flows.nodeKind.memory': 'Память',
   'flows.nodeKind.dedup': 'Дедупликация',
+  'flows.nodeKind.loop': 'Цикл',
   'flows.nodeSummary.trigger.manual': 'Запускается вручную',
   'flows.nodeSummary.trigger.webhook': 'Запускается входящим вебхуком',
   'flows.nodeSummary.trigger.appEventOn': 'При {parts}',
@@ -4291,6 +4318,8 @@ const messages: TranslationMap = {
   'flows.nodeSummary.memory.recall': 'Вспоминает из памяти',
   'flows.nodeSummary.dedup.withKey': 'Пропускает уже встреченные элементы по {key}',
   'flows.nodeSummary.dedup.default': 'Пропускает уже обработанные элементы',
+  'flows.nodeSummary.loop.upTo': 'Повторяется до {max} раз',
+  'flows.nodeSummary.loop.whileCondition': 'Повторяется до {max} раз, пока {condition}',
   'flows.palette.title': 'Узлы',
   'flows.palette.addNode': 'Добавить узел {kind}',
   'flows.editor.save': 'Сохранить',
@@ -4492,6 +4521,20 @@ const messages: TranslationMap = {
   'flows.nodeConfig.dedup.keyLabel': 'Ключ',
   'flows.nodeConfig.dedup.keyHint':
     'Стабильное выражение id для каждого элемента, напр. =item.id. Элементы с уже встреченным ключом пропускаются.',
+
+  // `loop` node: a bounded loop head. Emits on `body` until its cap or
+  // condition says stop, then on `done`.
+  'flows.nodeConfig.loop.maxIterationsLabel': 'Максимум итераций',
+  'flows.nodeConfig.loop.maxIterationsHint':
+    'Сколько раз может выполниться тело, прежде чем цикл остановится. Всегда конечно.',
+  'flows.nodeConfig.loop.onExceededLabel': 'При достижении предела',
+  'flows.nodeConfig.loop.onExceededHint':
+    'Завершить запуск ошибкой или прекратить цикл и продолжить через порт done с элементами последнего прохода.',
+  'flows.nodeConfig.loop.onExceeded_error': 'Завершить запуск ошибкой',
+  'flows.nodeConfig.loop.onExceeded_continue': 'Продолжить с частичными результатами',
+  'flows.nodeConfig.loop.conditionLabel': 'Продолжать пока',
+  'flows.nodeConfig.loop.conditionHint':
+    'Необязательно. Пока это истинно, цикл продолжается; первый ложный результат выходит через порт done.',
 
   'flows.enableApproval.title': 'Разрешить этому рабочему процессу действовать?',
   'flows.enableApproval.intro':
@@ -5874,6 +5917,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Скрыть размышления агента',
   'settings.appearance.hideAgentInsightsDesc':
     'Сворачивает пошаговую ленту действий агента в чате. Мигающая ссылка «Обработка» по-прежнему позволяет открыть весь процесс.',
+  'settings.appearance.showChatMascot': 'Показывать Tiny на поле сообщения',
+  'settings.appearance.showChatMascotDesc':
+    'Маскот стоит на поле ввода. Если скрыть, чат останется только текстовым, пока вы не включите это снова.',
   'settings.appearance.assistantTextModeDesc':
     'Показывает ответы ассистента как текст без рамки, оставляя ваши сообщения в пузырьках.',
   'settings.mascot.active': 'Активно',
@@ -5881,10 +5927,15 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Черновик',
   'settings.mascot.characterHeading': 'Персонаж',
   'settings.mascot.customGifError':
-    'Введите HTTPS .gif URL, петлевой путь HTTP .gif URL, file:// .gif URL или локальный путь .gif.',
-  'settings.mascot.customGifHeading': 'Пользовательский аватар GIF',
-  'settings.mascot.customGifLabel': 'Пользовательский аватар GIF URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Введите HTTPS, file:// или локальный URL изображения (PNG, GIF, JPEG, WebP или BMP) либо загрузите файл.',
+  'settings.mascot.customGifHeading': 'Пользовательский аватар-изображение',
+  'settings.mascot.customGifLabel': 'URL пользовательского аватара-изображения',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Загрузить изображение',
+  'settings.mascot.customGifInvalidType':
+    'Неподдерживаемый тип файла. Загрузите изображение PNG, GIF, JPEG, WebP или BMP.',
+  'settings.mascot.customGifTooLarge': 'Изображение слишком большое. Загрузите файл до 1,5 МБ.',
+  'settings.mascot.customGifReadError': 'Не удалось прочитать изображение. Попробуйте другой файл.',
   'settings.mascot.characterPreview': 'Предварительный просмотр',
   'settings.mascot.characterStates': 'содержит',
   'settings.mascot.characterVisemes': 'виземы',
@@ -5994,7 +6045,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'Тёплый, дружелюбный, подходит для всех возрастов',
   'settings.persona.appearanceHeading': 'Аватар и голос',
   'settings.persona.appearanceDesc':
-    'Цвет талисмана, пользовательский аватар GIF и голос ответа настраиваются в настройках талисмана.',
+    'Цвет талисмана, пользовательский аватар-изображение и голос ответа настраиваются в настройках талисмана.',
   'settings.persona.openMascotSettings': 'Открыть настройки талисмана',
   'settings.memoryWindow.balanced.badge': 'Рекомендуется',
   'settings.memoryWindow.balanced.hint':
@@ -6883,6 +6934,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': 'Режим хранения секретов и статус связки ключей',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': 'Ухудшено',
+  'memoryTree.status.statusBudgetExhausted': 'Приостановлено: бюджет эмбеддингов исчерпан',
   'memoryTree.status.degradedRecall': 'Семантический поиск отключён',
   'memoryTree.status.degradedStructure': 'Структура вики неполная',
   'memoryTree.status.extractionCoverage': 'Охват извлечения: {pct}% фрагментов имеют структуру',
@@ -7215,6 +7267,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': 'Отклонить',
   'userErrors.action.openBilling': 'Открыть оплату',
   'userErrors.action.openProviderSettings': 'Настройки провайдера',
+  'userErrors.action.openEmbeddingsSettings': 'Настроить эмбеддинги',
   'userErrors.budgetExceeded.title': 'Управляемый бюджет исчерпан',
   'userErrors.budgetExceeded.body': 'Управляемый бюджет ИИ исчерпан. Измените план.',
   'userErrors.insufficientCredits.title': 'Требуются кредиты провайдера',
@@ -7222,8 +7275,23 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'Требуется ключ API',
   'userErrors.apiKeyMissing.body':
     'У провайдера ИИ не задан ключ API. Добавьте его в настройках провайдера.',
+  'userErrors.localModelUnavailable.title': 'Локальная модель недоступна',
+  'userErrors.localModelUnavailable.body':
+    'Ollama недоступен по настроенному адресу, либо нужная модель там не установлена. Запустите Ollama и загрузите модель по этому адресу или переведите эту работу на облачного провайдера.',
   'userErrors.scope.chat': 'Чат',
   'userErrors.scope.cron': 'Запланированная задача',
+  'userErrors.scope.workspace': 'Рабочая область',
+  'userErrors.memoryBudgetExhausted.title': 'Память перестала расти',
+  'userErrors.memoryBudgetExhausted.body':
+    'Бюджет эмбеддингов израсходован, поэтому новые данные больше не добавляются в память. Настройте локальные эмбеддинги или добавьте свой ключ API, чтобы продолжить.',
+  'memoryBudget.approachingTitle': 'Память приближается к лимиту эмбеддингов',
+  'memoryBudget.approachingMessage':
+    'Вы израсходовали {pct}% бюджета эмбеддингов. Настройте локальные эмбеддинги или добавьте свой ключ API, чтобы память продолжала расти без перерывов.',
+  'memoryBudget.exhaustedTitle': 'Память перестала расти',
+  'memoryBudget.exhaustedMessage':
+    'Бюджет эмбеддингов израсходован, поэтому новые данные больше не добавляются в память. Настройте локальные эмбеддинги или добавьте свой ключ API, чтобы продолжить.',
+  'memoryBudget.cta': 'Настроить эмбеддинги',
+  'userErrors.scope.memory': 'Память',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Сумма',
   'agentWorld.trading.networkLabel': 'Сеть',
@@ -7284,8 +7352,15 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': 'Сеансы агентов программирования',
   'memorySources.codingSessions.description':
     'Превратите решения и исправления из Codex и Claude Code в приватную память персоны.',
-  'memorySources.codingSessions.ingest': 'Загрузить новые сеансы',
-  'memorySources.codingSessions.ingesting': 'Загрузка…',
+  'memorySources.codingSessions.importAll': 'Импортировать все сеансы',
+  'memorySources.codingSessions.draining': 'Импорт… проход {passes}',
+  'memorySources.codingSessions.stop': 'Остановить',
+  'memorySources.codingSessions.progress':
+    'Импортировано {processed} сеансов · {observations} наблюдений',
+  'memorySources.codingSessions.remaining': 'осталось около {remaining}',
+  'memorySources.codingSessions.stopped': 'Импорт приостановлен',
+  'memorySources.codingSessions.stoppedMessage':
+    'Импортировано {processed} сеансов. Запустите импорт снова, чтобы продолжить оставшиеся {remaining}.',
   'memorySources.codingSessions.claude': 'Клод Код',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': 'Сеансы: {files} · Сообщения пользователя: {evidence}',
@@ -7297,8 +7372,6 @@ const messages: TranslationMap = {
     'Обработано сеансов: {processed}; наблюдений персоны: {observations}.',
   'memorySources.codingSessions.partialFailure':
     'Не удалось обработать сеансов: {failed}; обработано: {processed}. Запустите загрузку ещё раз для повтора.',
-  'memorySources.codingSessions.moreRemaining':
-    'Достигнут лимит сеансов в пакете. Запустите загрузку ещё раз, чтобы продолжить импорт истории.',
   'memorySources.codingSessions.failed': 'Не удалось загрузить сеансы программирования',
   'flows.canvas.sidePanelToggle': 'Боковая панель',
   'flows.canvas.legendTab': 'Вручную',

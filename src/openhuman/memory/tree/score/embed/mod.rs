@@ -33,7 +33,7 @@ pub mod factory;
 pub mod inert;
 pub mod openai_compat;
 
-pub use factory::{build_embedder_from_config, build_write_embedder};
+pub use factory::{build_embedder_from_config, build_write_embedder, effective_embedder_slug};
 pub use inert::InertEmbedder;
 pub use openai_compat::OpenAiCompatEmbedder;
 

@@ -463,6 +463,9 @@ fn normalise_state(state: AgentProfilesState) -> AgentProfilesState {
         .into_iter()
         .map(|profile| (profile.id.clone(), profile))
         .collect();
+    // `by_id` currently holds exactly the built-in profile ids — capture them so
+    // the overlay loop below can recognise a persisted override of a built-in.
+    let built_in_ids: std::collections::HashSet<String> = by_id.keys().cloned().collect();
 
     for profile in state.profiles {
         let mut profile = normalise_profile(profile);
@@ -472,6 +475,27 @@ fn normalise_state(state: AgentProfilesState) -> AgentProfilesState {
         if profile.id == DEFAULT_PROFILE_ID {
             profile.is_master = true;
             profile.memory_dir_suffix = Some(String::new());
+        } else if built_in_ids.contains(&profile.id) && !profile.dedicated_memory {
+            tracing::debug!(
+                profile_id = %profile.id,
+                had_suffix = profile.memory_dir_suffix.is_some(),
+                "[profiles] normalise pinning built-in profile to shared memory/session_raw subtree"
+            );
+            // #5351: the built-in helper profiles (reasoning/research/planner/
+            // review) ship `dedicated_memory: false` and are meant to SHARE the
+            // default memory + `session_raw` subtree. An earlier `upsert` path
+            // (store.rs `upsert`) wrongly stamped them with a numeric
+            // `memory_dir_suffix` ("-1") — isolating their transcripts + memory
+            // recall into `session_raw-1/` / `memory-1/`, which dropped all prior
+            // context when the user flipped the Quick/Reasoning toggle mid-thread.
+            // Pin them back to the shared subtree here (mirroring how `default` is
+            // pinned above, the canonical normalization point that runs on every
+            // load AND save), so both a fresh mis-assignment and an
+            // already-persisted stale suffix are healed. A user who genuinely
+            // wants isolated memory sets `dedicated_memory` (honoured by the guard
+            // above) or creates a custom (non-built-in) profile — neither is
+            // touched here.
+            profile.memory_dir_suffix = None;
         }
         by_id.insert(profile.id.clone(), profile);
     }
@@ -685,6 +709,72 @@ mod tests {
 
         let resolved = store.resolve(Some("custom-profile")).expect("resolve").1;
         assert_eq!(resolved.id, "custom-profile");
+    }
+
+    #[test]
+    fn normalise_state_heals_stale_numeric_suffix_on_built_in_profiles() {
+        // An earlier `upsert` bug stamped the built-in `reasoning` profile with a
+        // scoped `memory_dir_suffix`, isolating its transcripts + memory into
+        // `session_raw-1/` / `memory-1/` and dropping context on a mid-thread
+        // Quick↔Reasoning switch (#5351). Loading must heal it back to the shared
+        // subtree; a genuine custom profile's suffix must be left alone.
+        let mut reasoning = custom("reasoning", "Reasoning", "orchestrator");
+        reasoning.built_in = true;
+        reasoning.memory_dir_suffix = Some("-1".into());
+        let mut sidekick = custom("sidekick", "Sidekick", "orchestrator");
+        sidekick.memory_dir_suffix = Some("-2".into());
+
+        let state = normalise_state(AgentProfilesState {
+            active_profile_id: DEFAULT_PROFILE_ID.into(),
+            profiles: vec![reasoning, sidekick],
+        });
+
+        let reasoning = state
+            .profiles
+            .iter()
+            .find(|p| p.id == "reasoning")
+            .expect("reasoning present");
+        assert_eq!(
+            reasoning.memory_dir_suffix, None,
+            "built-in reasoning must be pinned to the shared memory/session_raw subtree"
+        );
+        let sidekick = state
+            .profiles
+            .iter()
+            .find(|p| p.id == "sidekick")
+            .expect("custom sidekick present");
+        assert_eq!(
+            sidekick.memory_dir_suffix.as_deref(),
+            Some("-2"),
+            "a genuine custom profile's isolated-memory suffix must be preserved"
+        );
+    }
+
+    #[test]
+    fn upsert_of_built_in_reasoning_stays_on_shared_subtree() {
+        // Editing + saving the built-in Reasoning profile must NOT scope its
+        // memory: it ships `dedicated_memory:false` and shares the default
+        // subtree, so a mid-thread switch keeps context (#5351).
+        let dir = tempdir().expect("tempdir");
+        let store = AgentProfileStore::new(dir.path().to_path_buf());
+        let mut reasoning = custom("reasoning", "Reasoning", "orchestrator");
+        reasoning.built_in = true;
+        reasoning.model_override = Some("hint:reasoning".into());
+        // ProfileEditorPage submits without a `memory_dir_suffix`.
+        reasoning.memory_dir_suffix = None;
+
+        store.upsert(reasoning).expect("upsert reasoning");
+
+        let loaded = store.load().expect("load");
+        let reasoning = loaded
+            .profiles
+            .iter()
+            .find(|p| p.id == "reasoning")
+            .expect("reasoning present");
+        assert_eq!(
+            reasoning.memory_dir_suffix, None,
+            "upsert must never stamp a built-in profile with a scoped memory suffix"
+        );
     }
 
     #[test]

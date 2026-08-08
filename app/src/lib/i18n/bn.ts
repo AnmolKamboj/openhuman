@@ -327,8 +327,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'সম্প্রতি সিঙ্ক হয়েছে',
   'conversations.backgroundTasks.memProviderIdle': 'নিষ্ক্রিয়',
   'nav.home': 'হোম',
-  'nav.human': 'হিউম্যান',
   'nav.chat': 'চ্যাট',
+  'nav.human': 'হিউম্যান',
   'nav.assistant': 'সহকারী',
   'assistant.faceMode.on': 'Tiny-র সাথে কথা বলছে',
   'assistant.faceMode.off': 'Tiny-র সাথে কথা বলুন',
@@ -1305,6 +1305,11 @@ const messages: TranslationMap = {
   'memoryTree.status.never': 'কখনো নয়',
   'memoryTree.status.fetchError': 'মেমরি প্রাপ্ত করতে ব্যর্থ',
   'memoryTree.status.retry': 'পুনরায় চেষ্টা করুন',
+  'memoryTree.status.retryFailed': 'ব্যর্থ কাজগুলো আবার চালান',
+  'memoryTree.status.retryFailedBusy': 'আবার চেষ্টা করা হচ্ছে...',
+  'memoryTree.status.retryFailedDone': 'ব্যর্থ কাজগুলো আবার সারিতে দেওয়া হয়েছে',
+  'memoryTree.status.retryFailedCount': '{count}টি কাজ আবার চালানোর জন্য সারিতে রাখা হয়েছে।',
+  'memoryTree.status.retryFailedError': 'ব্যর্থ কাজগুলো আবার সারিতে দেওয়া যায়নি',
   'memoryTree.status.toggleFailed': 'স্বয়ংক্রিয়ভাবে সনাক্ত করা সম্ভব হয়নি',
   'memoryTree.status.justNow': 'এখন',
   'memoryTree.status.secondsAgo': 'xqxqx পূর্বে',
@@ -2429,6 +2434,15 @@ const messages: TranslationMap = {
   'voice.providers.piperReady': 'পাইপার প্রস্তুত।',
   'voice.providers.piperInstallStarted': 'পাইপার ইনস্টল শুরু হয়েছে',
   'voice.providers.failedToInstallPiper': 'পাইপার ইনস্টল করতে ব্যর্থ হয়েছে',
+  'voice.mode.title': 'ভয়েস মোড',
+  'voice.mode.desc': 'Human ট্যাবে সহকারী কীভাবে কথা বলবে তা বেছে নিন।',
+  'voice.mode.realtime': 'রিয়েলটাইম ভয়েস (বেটা)',
+  'voice.mode.realtimeDesc': 'পালা করে নেওয়ার বদলে সরাসরি লাইভ কথোপকথন করুন।',
+  'voice.mode.start': 'ভয়েস চ্যাট শুরু করুন',
+  'voice.mode.stop': 'ভয়েস চ্যাট শেষ করুন',
+  'voice.mode.connecting': 'সংযুক্ত হচ্ছে…',
+  'voice.mode.listening': 'শুনছে',
+  'voice.mode.speaking': 'বলছে',
   'voice.providers.title': 'ভয়েস প্রদানকারী',
   'voice.providers.desc':
     'ট্রান্সক্রিপশন এবং সিনথেসিস কোথায় চলবে তা বেছে নিন। বাইনারি এবং মডেলগুলি আপনার ওয়ার্কস্পেসে ডাউনলোড করতে Install locally বোতাম ব্যবহার করুন। ইনস্টল শেষ হওয়ার আগেই স্থানীয় প্রোভাইডার সংরক্ষণ করা যাবে: কোনো ম্যানুয়াল WHISPER_BIN বা PIPER_BIN সেটআপ প্রয়োজন নেই।',
@@ -2729,6 +2743,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'ভয়েস রিপ্লি বাজছে',
   'chat.voiceHint': 'কথা বলতে মাইক ব্যবহার করুন',
   'chat.micUnavailable': 'মাইক্রোফোন পাওয়া যাচ্ছে না',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'আপনার সহকারীর সঙ্গে কথা বলুন',
+  'chat.mascot.collapse': 'চ্যাটে ফিরে যান',
+  'chat.mascot.speakReplies': 'উত্তর জোরে পড়ে শোনানো হোক',
+  'chat.mascot.speakRepliesHint':
+    'ম্যাসকট খোলা থাকলে উত্তরগুলি জোরে পড়ে শোনানো হয়। কথোপকথন নীরব রাখতে এটি বন্ধ করুন।',
+  'chat.mascot.dismiss': 'Tiny লুকান',
+  'chat.mascot.dismissTitle': 'Tiny লুকাবেন?',
+  'chat.mascot.dismissBody':
+    'মেসেজ বক্সটি নিজের মতো রাখতে চাইলে কোনও অসুবিধা নেই। সেটিংস › উপস্থিতি › চ্যাট থেকে যেকোনো সময় Tiny-কে ফিরিয়ে আনতে পারবেন।',
+  'chat.mascot.dismissConfirm': 'Tiny লুকান',
+  'chat.mascot.dismissCancel': 'Tiny-কে রাখুন',
   'chat.turn': 'টার্ন',
   'chat.turns': 'টার্ন',
   'chat.openWorkerThread': 'ওয়ার্কার থ্রেড খুলুন',
@@ -4215,6 +4241,7 @@ const messages: TranslationMap = {
   'flows.nodeKind.sub_workflow': 'সাব-ওয়ার্কফ্লো',
   'flows.nodeKind.memory': 'মেমরি',
   'flows.nodeKind.dedup': 'ডুপ্লিকেট অপসারণ',
+  'flows.nodeKind.loop': 'লুপ',
   'flows.nodeSummary.trigger.manual': 'চাহিদা অনুযায়ী চলে',
   'flows.nodeSummary.trigger.webhook': 'ইনকামিং ওয়েবহুকে চলে',
   'flows.nodeSummary.trigger.appEventOn': '{parts}-এ',
@@ -4255,6 +4282,9 @@ const messages: TranslationMap = {
   'flows.nodeSummary.memory.recall': 'মেমরি থেকে পুনরুদ্ধার করে',
   'flows.nodeSummary.dedup.withKey': '{key} দ্বারা ইতিমধ্যে দেখা আইটেম বাদ দেয়',
   'flows.nodeSummary.dedup.default': 'ইতিমধ্যে প্রক্রিয়াকৃত আইটেম বাদ দেয়',
+  'flows.nodeSummary.loop.upTo': 'সর্বোচ্চ {max} বার পুনরাবৃত্তি করে',
+  'flows.nodeSummary.loop.whileCondition':
+    'যতক্ষণ {condition} ততক্ষণ সর্বোচ্চ {max} বার পুনরাবৃত্তি করে',
   'flows.palette.title': 'নোড',
   'flows.palette.addNode': '{kind} নোড যোগ করুন',
   'flows.editor.save': 'সংরক্ষণ করুন',
@@ -4451,6 +4481,19 @@ const messages: TranslationMap = {
   'flows.nodeConfig.dedup.keyLabel': 'কী',
   'flows.nodeConfig.dedup.keyHint':
     'প্রতিটি আইটেমের জন্য একটি স্থিতিশীল আইডি এক্সপ্রেশন, যেমন =item.id। যেসব আইটেমের কী আগে দেখা গেছে সেগুলো এড়িয়ে যাওয়া হয়।',
+
+  // `loop` node: a bounded loop head. Emits on `body` until its cap or
+  // condition says stop, then on `done`.
+  'flows.nodeConfig.loop.maxIterationsLabel': 'সর্বোচ্চ পুনরাবৃত্তি',
+  'flows.nodeConfig.loop.maxIterationsHint': 'লুপ থামার আগে বডি কতবার চলতে পারে। সর্বদা সসীম।',
+  'flows.nodeConfig.loop.onExceededLabel': 'সীমায় পৌঁছালে',
+  'flows.nodeConfig.loop.onExceededHint':
+    'রান ব্যর্থ করুন, অথবা লুপ থামিয়ে শেষ ধাপের আইটেম নিয়ে done পোর্ট দিয়ে এগিয়ে যান।',
+  'flows.nodeConfig.loop.onExceeded_error': 'রান ব্যর্থ করুন',
+  'flows.nodeConfig.loop.onExceeded_continue': 'আংশিক ফলাফল নিয়ে চালিয়ে যান',
+  'flows.nodeConfig.loop.conditionLabel': 'যতক্ষণ চালিয়ে যান',
+  'flows.nodeConfig.loop.conditionHint':
+    'ঐচ্ছিক। যতক্ষণ এটি সত্য ততক্ষণ লুপ চলে; প্রথম মিথ্যা ফলাফলে done পোর্ট দিয়ে বেরিয়ে যায়।',
 
   'flows.enableApproval.title': 'এই ওয়ার্কফ্লোকে কাজ করার অনুমতি দেবেন?',
   'flows.enableApproval.intro':
@@ -5817,6 +5860,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'এজেন্টের চিন্তা লুকান',
   'settings.appearance.hideAgentInsightsDesc':
     'চ্যাটে এজেন্টের ধাপে ধাপে লাইভ টাইমলাইন সংকুচিত করুন। একটি ব্লিঙ্কিং "প্রসেসিং" লিঙ্ক এখনও আপনাকে সম্পূর্ণ প্রক্রিয়া খুলতে দেয়।',
+  'settings.appearance.showChatMascot': 'মেসেজ বক্সে Tiny দেখান',
+  'settings.appearance.showChatMascotDesc':
+    'ম্যাসকটটি লেখার বাক্সের উপরে দাঁড়িয়ে থাকবে। লুকালে আবার চালু না করা পর্যন্ত চ্যাট শুধু টেক্সট থাকবে।',
   'settings.appearance.assistantTextModeDesc':
     'আপনার বার্তাগুলি বাবলে রেখে অ্যাসিস্ট্যান্টের উত্তর ফ্রেমহীন টেক্সট হিসেবে দেখান।',
   'settings.mascot.active': 'সক্রিয়',
@@ -5824,10 +5870,15 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'খসড়া',
   'settings.mascot.characterHeading': 'চরিত্রের শিরোনাম',
   'settings.mascot.customGifError':
-    'একটি HTTPS .gif URL, লুপব্যাক HTTP .gif URL, file:// .gif URL, অথবা স্থানীয় .gif পাথ লিখুন।',
-  'settings.mascot.customGifHeading': 'কাস্টম GIF অবতার',
-  'settings.mascot.customGifLabel': 'কাস্টম GIF অবতার URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'একটি HTTPS, file://, বা স্থানীয় ইমেজ URL (PNG, GIF, JPEG, WebP, বা BMP) লিখুন, অথবা একটি ফাইল আপলোড করুন।',
+  'settings.mascot.customGifHeading': 'কাস্টম ইমেজ অবতার',
+  'settings.mascot.customGifLabel': 'কাস্টম ইমেজ অবতার URL',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'ইমেজ আপলোড করুন',
+  'settings.mascot.customGifInvalidType':
+    'অসমর্থিত ফাইলের ধরন। একটি PNG, GIF, JPEG, WebP, বা BMP ইমেজ আপলোড করুন।',
+  'settings.mascot.customGifTooLarge': 'ইমেজটি খুব বড়। ১.৫ MB পর্যন্ত একটি ফাইল আপলোড করুন।',
+  'settings.mascot.customGifReadError': 'ইমেজটি পড়া যায়নি। অন্য একটি ফাইল চেষ্টা করুন।',
   'settings.mascot.characterPreview': 'পূর্বরূপ',
   'settings.mascot.characterStates': 'স্টেটস',
   'settings.mascot.characterVisemes': 'তুষারপাত',
@@ -6815,6 +6866,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': 'গোপনীয়তা সঞ্চয়স্থান মোড এবং কিচেন অবস্থা',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': 'অবনমিত',
+  'memoryTree.status.statusBudgetExhausted': 'বিরতি: এমবেডিং বাজেট শেষ',
   'memoryTree.status.degradedRecall': 'সিম্যান্টিক রিকল নিষ্ক্রিয়',
   'memoryTree.status.degradedStructure': 'উইকি কাঠামো অসম্পূর্ণ',
   'memoryTree.status.extractionCoverage': 'এক্সট্র্যাকশন কভারেজ: {pct}% অংশের কাঠামো আছে',
@@ -7136,6 +7188,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': 'বাতিল করুন',
   'userErrors.action.openBilling': 'বিলিং খুলুন',
   'userErrors.action.openProviderSettings': 'প্রদানকারী সেটিংস',
+  'userErrors.action.openEmbeddingsSettings': 'এমবেডিং সেট আপ করুন',
   'userErrors.budgetExceeded.title': 'পরিচালিত বাজেট শেষ',
   'userErrors.budgetExceeded.body': 'পরিচালিত AI বাজেট শেষ। বাজেট যোগ করুন বা প্ল্যান বদলান।',
   'userErrors.insufficientCredits.title': 'প্রদানকারীর ক্রেডিট প্রয়োজন',
@@ -7144,8 +7197,23 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'API কী প্রয়োজন',
   'userErrors.apiKeyMissing.body':
     'আপনার AI প্রদানকারীর কোনো API কী সেট নেই। চালিয়ে যেতে প্রদানকারী সেটিংসে একটি যোগ করুন।',
+  'userErrors.localModelUnavailable.title': 'লোকাল মডেল অনুপলব্ধ',
+  'userErrors.localModelUnavailable.body':
+    'কনফিগার করা এন্ডপয়েন্টে Ollama-তে পৌঁছানো যাচ্ছে না, অথবা সেখানে প্রয়োজনীয় মডেলটি ইনস্টল করা নেই। Ollama চালু করে সেই এন্ডপয়েন্টে মডেলটি পুল করুন, অথবা এই কাজটি কোনো ক্লাউড প্রোভাইডারে সরিয়ে নিন।',
   'userErrors.scope.chat': 'চ্যাট',
   'userErrors.scope.cron': 'নির্ধারিত কাজ',
+  'userErrors.scope.workspace': 'ওয়ার্কস্পেস',
+  'userErrors.memoryBudgetExhausted.title': 'মেমরি আর বাড়ছে না',
+  'userErrors.memoryBudgetExhausted.body':
+    'আপনার এমবেডিং বাজেট শেষ, তাই নতুন কনটেন্ট আর মেমরিতে যুক্ত হচ্ছে না। আবার শুরু করতে লোকাল এমবেডিং সেট আপ করুন বা নিজের API কী যোগ করুন।',
+  'memoryBudget.approachingTitle': 'মেমরি এমবেডিং সীমার কাছাকাছি',
+  'memoryBudget.approachingMessage':
+    'আপনি এমবেডিং বাজেটের {pct}% ব্যবহার করেছেন। মেমরি নিরবচ্ছিন্নভাবে বাড়তে থাকুক, তার জন্য লোকাল এমবেডিং সেট আপ করুন বা নিজের API কী যোগ করুন।',
+  'memoryBudget.exhaustedTitle': 'মেমরি আর বাড়ছে না',
+  'memoryBudget.exhaustedMessage':
+    'আপনার এমবেডিং বাজেট শেষ, তাই নতুন কনটেন্ট আর মেমরিতে যুক্ত হচ্ছে না। আবার শুরু করতে লোকাল এমবেডিং সেট আপ করুন বা নিজের API কী যোগ করুন।',
+  'memoryBudget.cta': 'এমবেডিং সেট আপ করুন',
+  'userErrors.scope.memory': 'মেমরি',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'পরিমাণ',
   'agentWorld.trading.networkLabel': 'নেটওয়ার্ক',
@@ -7206,8 +7274,15 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': 'কোডিং-এজেন্ট সেশন',
   'memorySources.codingSessions.description':
     'Codex ও Claude Code-এর সিদ্ধান্ত এবং সংশোধনকে ব্যক্তিগত পারসোনা মেমরিতে রূপ দিন।',
-  'memorySources.codingSessions.ingest': 'নতুন সেশন গ্রহণ করুন',
-  'memorySources.codingSessions.ingesting': 'গ্রহণ করা হচ্ছে…',
+  'memorySources.codingSessions.importAll': 'সব সেশন আমদানি করুন',
+  'memorySources.codingSessions.draining': 'আমদানি হচ্ছে… পাস {passes}',
+  'memorySources.codingSessions.stop': 'থামান',
+  'memorySources.codingSessions.progress':
+    '{processed}টি সেশন আমদানি হয়েছে · {observations}টি পর্যবেক্ষণ',
+  'memorySources.codingSessions.remaining': 'আরও প্রায় {remaining} বাকি',
+  'memorySources.codingSessions.stopped': 'আমদানি থামানো হয়েছে',
+  'memorySources.codingSessions.stoppedMessage':
+    '{processed}টি সেশন আমদানি হয়েছে। বাকি {remaining}টি চালিয়ে যেতে আবার আমদানি চালান।',
   'memorySources.codingSessions.claude': 'ক্লড কোড',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files}টি সেশন · {evidence}টি মানব বার্তা',
@@ -7219,8 +7294,6 @@ const messages: TranslationMap = {
     '{processed}টি সেশন থেকে {observations}টি পারসোনা পর্যবেক্ষণ তৈরি হয়েছে।',
   'memorySources.codingSessions.partialFailure':
     '{processed}টি সেশন প্রক্রিয়া করার সময় {failed}টি ব্যর্থ হয়েছে। আবার চেষ্টা করতে গ্রহণ পুনরায় চালান।',
-  'memorySources.codingSessions.moreRemaining':
-    'সেশন ব্যাচের সীমা পূর্ণ হয়েছে। আপনার ইতিহাস আমদানি চালিয়ে যেতে আবার গ্রহণ চালান।',
   'memorySources.codingSessions.failed': 'কোডিং সেশন গ্রহণ ব্যর্থ হয়েছে',
   'flows.canvas.sidePanelToggle': 'সাইড প্যানেল',
   'flows.canvas.legendTab': 'ম্যানুয়াল',

@@ -336,8 +336,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'Baru saja disinkronkan',
   'conversations.backgroundTasks.memProviderIdle': 'Diam',
   'nav.home': 'Beranda',
-  'nav.human': 'Manusia',
   'nav.chat': 'Obrolan',
+  'nav.human': 'Manusia',
   'nav.assistant': 'Asisten',
   'assistant.faceMode.on': 'Berbicara dengan Tiny',
   'assistant.faceMode.off': 'Bicara dengan Tiny',
@@ -1316,6 +1316,11 @@ const messages: TranslationMap = {
   'memoryTree.status.never': 'Tidak pernah',
   'memoryTree.status.fetchError': 'Gagal mengambil status Pohon Memori',
   'memoryTree.status.retry': 'Coba lagi',
+  'memoryTree.status.retryFailed': 'Jalankan ulang tugas yang gagal',
+  'memoryTree.status.retryFailedBusy': 'Mencoba lagi...',
+  'memoryTree.status.retryFailedDone': 'Tugas yang gagal masuk antrean lagi',
+  'memoryTree.status.retryFailedCount': '{count} tugas diantrekan untuk dijalankan ulang.',
+  'memoryTree.status.retryFailedError': 'Tidak dapat mengantrekan ulang tugas yang gagal',
   'memoryTree.status.toggleFailed': 'Gagal mengalihkan sinkronisasi otomatis',
   'memoryTree.status.justNow': 'baru saja',
   'memoryTree.status.secondsAgo': '{count} dtk lalu',
@@ -2441,6 +2446,15 @@ const messages: TranslationMap = {
   'voice.providers.piperReady': 'Piper sudah siap.',
   'voice.providers.piperInstallStarted': 'Penginstalan Piper dimulai',
   'voice.providers.failedToInstallPiper': 'Gagal menginstal Piper',
+  'voice.mode.title': 'Mode suara',
+  'voice.mode.desc': 'Pilih cara asisten berbicara di tab Human.',
+  'voice.mode.realtime': 'Suara realtime (beta)',
+  'voice.mode.realtimeDesc': 'Lakukan percakapan langsung alih-alih bergantian.',
+  'voice.mode.start': 'Mulai obrolan suara',
+  'voice.mode.stop': 'Akhiri obrolan suara',
+  'voice.mode.connecting': 'Menghubungkan…',
+  'voice.mode.listening': 'Mendengarkan',
+  'voice.mode.speaking': 'Berbicara',
   'voice.providers.title': 'Penyedia Suara',
   'voice.providers.desc':
     'Pilih tempat transkripsi dan sintesis dijalankan. Gunakan tombol Instal secara lokal untuk mengunduh biner dan model ke workspace Anda. Penyedia lokal dapat disimpan sebelum instalasi selesai: tidak perlu pengaturan WHISPER_BIN atau PIPER_BIN secara manual.',
@@ -2735,6 +2749,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'Memutar balasan suara',
   'chat.voiceHint': 'Gunakan mikrofon untuk bicara',
   'chat.micUnavailable': 'Mikrofon tidak tersedia',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Bicara dengan asisten Anda',
+  'chat.mascot.collapse': 'Kembali ke obrolan',
+  'chat.mascot.speakReplies': 'Bacakan balasan dengan suara',
+  'chat.mascot.speakRepliesHint':
+    'Balasan dibacakan selama maskot terbuka. Matikan agar percakapan tetap senyap.',
+  'chat.mascot.dismiss': 'Sembunyikan Tiny',
+  'chat.mascot.dismissTitle': 'Sembunyikan Tiny?',
+  'chat.mascot.dismissBody':
+    'Tidak masalah kalau Anda ingin kotak pesan untuk diri sendiri. Anda bisa memunculkan Tiny lagi kapan saja lewat Pengaturan › Tampilan › Chat.',
+  'chat.mascot.dismissConfirm': 'Sembunyikan Tiny',
+  'chat.mascot.dismissCancel': 'Biarkan Tiny',
   'chat.turn': 'giliran',
   'chat.turns': 'giliran',
   'chat.openWorkerThread': 'Buka thread worker',
@@ -4228,6 +4254,7 @@ const messages: TranslationMap = {
   'flows.nodeKind.sub_workflow': 'Sub-alur kerja',
   'flows.nodeKind.memory': 'Memori',
   'flows.nodeKind.dedup': 'Hapus duplikat',
+  'flows.nodeKind.loop': 'Perulangan',
   'flows.nodeSummary.trigger.manual': 'Berjalan sesuai permintaan',
   'flows.nodeSummary.trigger.webhook': 'Berjalan saat menerima webhook',
   'flows.nodeSummary.trigger.appEventOn': 'Pada {parts}',
@@ -4268,6 +4295,8 @@ const messages: TranslationMap = {
   'flows.nodeSummary.memory.recall': 'Mengingat dari memori',
   'flows.nodeSummary.dedup.withKey': 'Melewati item yang sudah terlihat berdasarkan {key}',
   'flows.nodeSummary.dedup.default': 'Melewati item yang sudah diproses',
+  'flows.nodeSummary.loop.upTo': 'Diulang hingga {max} kali',
+  'flows.nodeSummary.loop.whileCondition': 'Diulang hingga {max} kali selama {condition}',
   'flows.palette.title': 'Simpul',
   'flows.palette.addNode': 'Tambah simpul {kind}',
   'flows.editor.save': 'Simpan',
@@ -4466,6 +4495,20 @@ const messages: TranslationMap = {
   'flows.nodeConfig.dedup.keyLabel': 'Kunci',
   'flows.nodeConfig.dedup.keyHint':
     'Ekspresi id stabil per item, mis. =item.id. Item dengan kunci yang sudah pernah dilihat akan dilewati.',
+
+  // `loop` node: a bounded loop head. Emits on `body` until its cap or
+  // condition says stop, then on `done`.
+  'flows.nodeConfig.loop.maxIterationsLabel': 'Iterasi maksimum',
+  'flows.nodeConfig.loop.maxIterationsHint':
+    'Berapa kali badan perulangan boleh berjalan sebelum berhenti. Selalu terbatas.',
+  'flows.nodeConfig.loop.onExceededLabel': 'Saat batas tercapai',
+  'flows.nodeConfig.loop.onExceededHint':
+    'Gagalkan proses, atau hentikan perulangan dan lanjutkan lewat port done dengan item dari putaran terakhir.',
+  'flows.nodeConfig.loop.onExceeded_error': 'Gagalkan proses',
+  'flows.nodeConfig.loop.onExceeded_continue': 'Lanjutkan dengan hasil sebagian',
+  'flows.nodeConfig.loop.conditionLabel': 'Lanjutkan selama',
+  'flows.nodeConfig.loop.conditionHint':
+    'Opsional. Selama ini bernilai benar perulangan berlanjut; hasil salah pertama keluar lewat port done.',
 
   'flows.enableApproval.title': 'Izinkan alur kerja ini bertindak?',
   'flows.enableApproval.intro':
@@ -5844,6 +5887,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Sembunyikan proses berpikir agen',
   'settings.appearance.hideAgentInsightsDesc':
     'Ciutkan lini masa langkah demi langkah agen secara langsung di obrolan. Tautan "Memproses" yang berkedip tetap memungkinkan Anda membuka proses lengkapnya.',
+  'settings.appearance.showChatMascot': 'Tampilkan Tiny di kotak pesan',
+  'settings.appearance.showChatMascotDesc':
+    'Maskot tetap berdiri di kotak tulis. Jika disembunyikan, obrolan hanya berupa teks sampai Anda menyalakannya lagi.',
   'settings.appearance.assistantTextModeDesc':
     'Tampilkan balasan asisten sebagai teks tanpa bingkai, sementara pesan Anda tetap dalam gelembung.',
   'settings.mascot.active': 'Aktif',
@@ -5851,10 +5897,15 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Draf',
   'settings.mascot.characterHeading': 'Judul karakter',
   'settings.mascot.customGifError':
-    'Masukkan HTTPS .gif URL, loopback HTTP .gif URL, file:// .gif URL, atau jalur .gif lokal.',
-  'settings.mascot.customGifHeading': 'Avatar GIF khusus',
-  'settings.mascot.customGifLabel': 'Avatar GIF khusus URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Masukkan URL gambar HTTPS, file://, atau lokal (PNG, GIF, JPEG, WebP, atau BMP), atau unggah berkas.',
+  'settings.mascot.customGifHeading': 'Avatar gambar khusus',
+  'settings.mascot.customGifLabel': 'URL avatar gambar khusus',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Unggah gambar',
+  'settings.mascot.customGifInvalidType':
+    'Tipe berkas tidak didukung. Unggah gambar PNG, GIF, JPEG, WebP, atau BMP.',
+  'settings.mascot.customGifTooLarge': 'Gambar terlalu besar. Unggah berkas hingga 1,5 MB.',
+  'settings.mascot.customGifReadError': 'Tidak dapat membaca gambar itu. Coba berkas lain.',
   'settings.mascot.characterPreview': 'Pratinjau',
   'settings.mascot.characterStates': 'status',
   'settings.mascot.characterVisemes': 'visem',
@@ -5962,7 +6013,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'Hangat, ramah, aman untuk segala usia',
   'settings.persona.appearanceHeading': 'Avatar & Suara',
   'settings.persona.appearanceDesc':
-    'Warna Mascot, avatar GIF kustom, dan suara balasan dikonfigurasi dalam pengaturan Mascot.',
+    'Warna Mascot, avatar gambar kustom, dan suara balasan dikonfigurasi dalam pengaturan Mascot.',
   'settings.persona.openMascotSettings': 'Buka pengaturan Mascot',
   'settings.memoryWindow.balanced.badge': 'Direkomendasikan',
   'settings.memoryWindow.balanced.hint':
@@ -6844,6 +6895,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': 'Mode penyimpanan rahasia dan status keychain',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': 'Terdegradasi',
+  'memoryTree.status.statusBudgetExhausted': 'Dijeda: batas embedding tercapai',
   'memoryTree.status.degradedRecall': 'Recall semantik dinonaktifkan',
   'memoryTree.status.degradedStructure': 'Struktur wiki tidak lengkap',
   'memoryTree.status.extractionCoverage': 'Cakupan ekstraksi: {pct}% bagian memiliki struktur',
@@ -7171,6 +7223,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': 'Tutup',
   'userErrors.action.openBilling': 'Buka penagihan',
   'userErrors.action.openProviderSettings': 'Pengaturan penyedia',
+  'userErrors.action.openEmbeddingsSettings': 'Siapkan embedding',
   'userErrors.budgetExceeded.title': 'Anggaran terkelola habis',
   'userErrors.budgetExceeded.body':
     'Anggaran AI terkelola Anda sudah habis. Tambahkan anggaran atau ubah paket.',
@@ -7180,8 +7233,23 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'Kunci API diperlukan',
   'userErrors.apiKeyMissing.body':
     'Penyedia AI Anda belum memiliki kunci API. Tambahkan satu di pengaturan penyedia untuk melanjutkan.',
+  'userErrors.localModelUnavailable.title': 'Model lokal tidak tersedia',
+  'userErrors.localModelUnavailable.body':
+    'Ollama tidak dapat dijangkau di endpoint yang dikonfigurasi, atau model yang dibutuhkan belum terpasang di sana. Jalankan Ollama dan unduh modelnya di endpoint tersebut, atau alihkan pekerjaan ini ke penyedia cloud.',
   'userErrors.scope.chat': 'Obrolan',
   'userErrors.scope.cron': 'Tugas terjadwal',
+  'userErrors.scope.workspace': 'Ruang kerja',
+  'userErrors.memoryBudgetExhausted.title': 'Memori berhenti bertambah',
+  'userErrors.memoryBudgetExhausted.body':
+    'Anggaran embedding Anda sudah habis, sehingga konten baru tidak lagi ditambahkan ke memori. Siapkan embedding lokal atau tambahkan kunci API Anda sendiri untuk melanjutkan.',
+  'memoryBudget.approachingTitle': 'Memori hampir mencapai batas embedding',
+  'memoryBudget.approachingMessage':
+    'Anda telah memakai {pct}% anggaran embedding. Siapkan embedding lokal atau tambahkan kunci API Anda sendiri agar memori terus bertambah tanpa gangguan.',
+  'memoryBudget.exhaustedTitle': 'Memori berhenti bertambah',
+  'memoryBudget.exhaustedMessage':
+    'Anggaran embedding Anda sudah habis, sehingga konten baru tidak lagi ditambahkan ke memori. Siapkan embedding lokal atau tambahkan kunci API Anda sendiri untuk melanjutkan.',
+  'memoryBudget.cta': 'Siapkan embedding',
+  'userErrors.scope.memory': 'Memori',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Jumlah',
   'agentWorld.trading.networkLabel': 'Jaringan',
@@ -7243,8 +7311,14 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': 'Sesi agen pemrograman',
   'memorySources.codingSessions.description':
     'Ubah keputusan dan koreksi Codex serta Claude Code menjadi memori persona pribadi.',
-  'memorySources.codingSessions.ingest': 'Serap sesi baru',
-  'memorySources.codingSessions.ingesting': 'Menyerap…',
+  'memorySources.codingSessions.importAll': 'Impor semua sesi',
+  'memorySources.codingSessions.draining': 'Mengimpor… lintasan {passes}',
+  'memorySources.codingSessions.stop': 'Hentikan',
+  'memorySources.codingSessions.progress': '{processed} sesi diimpor · {observations} observasi',
+  'memorySources.codingSessions.remaining': 'sekitar {remaining} tersisa',
+  'memorySources.codingSessions.stopped': 'Impor dijeda',
+  'memorySources.codingSessions.stoppedMessage':
+    '{processed} sesi diimpor. Jalankan impor lagi untuk melanjutkan {remaining} yang tersisa.',
   'memorySources.codingSessions.claude': 'Riwayat Claude Code',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} sesi · {evidence} masukan manusia',
@@ -7256,8 +7330,6 @@ const messages: TranslationMap = {
     '{processed} sesi menghasilkan {observations} pengamatan persona.',
   'memorySources.codingSessions.partialFailure':
     '{failed} sesi gagal sementara {processed} berhasil diproses. Jalankan penyerapan lagi untuk mencoba ulang.',
-  'memorySources.codingSessions.moreRemaining':
-    'Batas batch sesi tercapai. Jalankan penyerapan lagi untuk melanjutkan impor riwayat Anda.',
   'memorySources.codingSessions.failed': 'Gagal menyerap sesi pemrograman',
   'flows.canvas.sidePanelToggle': 'Panel samping',
   'flows.canvas.legendTab': 'Manual',

@@ -252,12 +252,13 @@ describe.skip('Voice mode — Human tab capture & error mapping (#1610)', () => 
 
   // ---------------------------------------------------------------------------
   // Helper: navigate to the Assistant (Chat) tab via hash routing.
-  // Phase 6: /human merged into /chat (Assistant surface). /human redirects.
+  // /human merged into /chat: the mascot docks on the chat composer, and
+  // /human is kept only as a back-compat redirect.
   // ---------------------------------------------------------------------------
   async function navigateToHumanTab(): Promise<void> {
     if (supportsExecuteScript()) {
       await browser.execute(() => {
-        // Phase 6: /human → /chat (back-compat redirect preserved)
+        // /human → /chat (back-compat redirect preserved)
         window.location.hash = '#/chat';
       });
     } else {

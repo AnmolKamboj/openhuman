@@ -133,18 +133,50 @@ pub(crate) fn validate_and_migrate_graph(graph_json: Value) -> Result<WorkflowGr
 pub(crate) fn engine_compatibility_errors(
     graph: &WorkflowGraph,
 ) -> Vec<crate::openhuman::flows::FlowValidationError> {
+    engine_compatibility_errors_with_max_depth(graph, max_sub_workflow_depth(graph))
+}
+
+/// Same walk as [`engine_compatibility_errors`], but with the inline-nesting
+/// budget passed in rather than recomputed from `graph`'s own trigger.
+///
+/// [`referenced_workflow_compatibility_errors`] needs this: a saved child
+/// reached partway through the root's referenced-workflow chain must still be
+/// checked to the *remaining* depth the root's own `max_sub_workflow_depth`
+/// allows, not to the child's own (possibly lower/default) declared cap —
+/// the engine's runtime depth counter is one budget shared across the whole
+/// inline-plus-referenced call chain, so a fan-in the child's own cap would
+/// not reach can still be reached from the root.
+pub(crate) fn engine_compatibility_errors_with_max_depth(
+    graph: &WorkflowGraph,
+    max_depth: u64,
+) -> Vec<crate::openhuman::flows::FlowValidationError> {
     let mut errors = Vec::new();
-    collect_engine_compatibility_errors(graph, 0, &mut errors);
+    collect_engine_compatibility_errors(graph, 0, max_depth, &mut errors);
     errors
+}
+
+/// The nesting cap this graph declares on its trigger, or the engine default.
+///
+/// The static walk below has to descend as deep as the run actually will, or a
+/// graph that legitimately nests past the default would stop being checked
+/// exactly where it starts being interesting.
+pub(crate) fn max_sub_workflow_depth(graph: &WorkflowGraph) -> u64 {
+    graph
+        .trigger()
+        .and_then(|t| t.config.get("max_sub_workflow_depth"))
+        .and_then(serde_json::Value::as_u64)
+        .filter(|n| *n > 0)
+        .unwrap_or(tinyflows::engine::MAX_SUB_WORKFLOW_DEPTH)
 }
 
 fn collect_engine_compatibility_errors(
     graph: &WorkflowGraph,
     depth: u64,
+    max_depth: u64,
     errors: &mut Vec<crate::openhuman::flows::FlowValidationError>,
 ) {
     errors.extend(graph_engine_compatibility_errors(graph));
-    if depth >= tinyflows::engine::MAX_SUB_WORKFLOW_DEPTH {
+    if depth >= max_depth {
         return;
     }
 
@@ -162,7 +194,7 @@ fn collect_engine_compatibility_errors(
             continue;
         };
         let first_child_error = errors.len();
-        collect_engine_compatibility_errors(&child, depth + 1, errors);
+        collect_engine_compatibility_errors(&child, depth + 1, max_depth, errors);
         for error in &mut errors[first_child_error..] {
             error.message = format!("Inline sub_workflow node '{}': {}", node.id, error.message);
         }
@@ -177,11 +209,19 @@ fn graph_engine_compatibility_errors(
     };
     let mut errors = Vec::new();
 
+    // The edges that close a cycle, from the engine's own classifier rather
+    // than a second implementation here — this gate mirrors TinyFlows' fan-in
+    // lowering, so the two must agree on which edges count. A back-edge is a
+    // loop head's re-entry, not a predecessor it barriers on, and counting it
+    // would report every legal loop as an unrelieved fan-in.
+    let loop_edges = tinyflows::engine::back_edges(graph);
+
     for fan_in in &graph.nodes {
         let incoming: Vec<&str> = graph
             .edges
             .iter()
             .filter(|edge| edge.to_node == fan_in.id)
+            .filter(|edge| !loop_edges.contains(&(edge.from_node.clone(), edge.to_node.clone())))
             .map(|edge| edge.from_node.as_str())
             .collect();
         if incoming.len() <= 1 {
@@ -577,6 +617,9 @@ pub(crate) async fn run_builder_gates(config: &Config, graph: &WorkflowGraph) ->
 /// missing ids, and store failures retain their existing runtime diagnostics;
 /// this gate only rejects a saved graph whose topology is demonstrably unsafe.
 fn referenced_workflow_compatibility_errors(config: &Config, graph: &WorkflowGraph) -> Vec<String> {
+    // Descend as deep as the root graph declared it may nest, for the same
+    // reason as the inline walk above.
+    let max_depth = max_sub_workflow_depth(graph);
     let mut pending = vec![(graph.clone(), 0_u64, Vec::<String>::new())];
     // Record the shallowest visit, not just whether an id was seen. The same
     // child can be referenced by multiple branches; a deep DFS visit must not
@@ -584,7 +627,7 @@ fn referenced_workflow_compatibility_errors(config: &Config, graph: &WorkflowGra
     let mut visited_depths = std::collections::HashMap::<String, u64>::new();
 
     while let Some((current, depth, path)) = pending.pop() {
-        if depth >= tinyflows::engine::MAX_SUB_WORKFLOW_DEPTH {
+        if depth >= max_depth {
             continue;
         }
 
@@ -633,7 +676,14 @@ fn referenced_workflow_compatibility_errors(config: &Config, graph: &WorkflowGra
             let Ok(Some(child)) = load_flow_graph(config, workflow_id) else {
                 continue;
             };
-            if let Some(error) = engine_compatibility_errors(&child).into_iter().next() {
+            // Thread the root's remaining depth budget through, not the
+            // child's own cap — see `engine_compatibility_errors_with_max_depth`'s
+            // doc comment.
+            let remaining_depth = max_depth.saturating_sub(child_depth);
+            if let Some(error) = engine_compatibility_errors_with_max_depth(&child, remaining_depth)
+                .into_iter()
+                .next()
+            {
                 return vec![format!(
                     "Sub_workflow path '{}' references workflow_id '{}' with an unsupported \
                      engine topology: {}: {}",

@@ -34,11 +34,30 @@ static OLLAMA_HEALTH_REPORTED: AtomicBool = AtomicBool::new(false);
 /// Reports the Ollama-unreachable fallback to Sentry at most once per
 /// process and publishes an [`EmbeddingModelUnhealthy`] domain event.
 ///
+/// The "once" applies to the Sentry report and the domain event only. The
+/// client-facing `user_error` broadcast fires on **every** call, deliberately
+/// — see the comment on the first statement.
+///
 /// Returns `true` on the firing call, `false` afterwards — callers use the
 /// return value only for logging context.
 ///
 /// [`EmbeddingModelUnhealthy`]: crate::core::event_bus::events::DomainEvent::EmbeddingModelUnhealthy
 fn report_ollama_health_gate_once(base_url: &str, model: &str) -> bool {
+    // Deliberately ABOVE the Sentry latch (#5354). `publish_web_channel_event`
+    // is a `broadcast::send`: with no socket client attached yet it returns Err
+    // and the event is dropped, with no buffering and no redelivery. Memory is
+    // constructed early (once per agent in the harness), so the very first
+    // failed probe usually lands before the renderer's socket is up — under the
+    // latch that one dropped send would be the only attempt ever made, and the
+    // UserErrorCenter would stay empty for the whole outage.
+    //
+    // Re-broadcasting per failed probe is safe and intended: the panel store
+    // dedupes on the descriptor's `kind:scope:provider` identity and bumps
+    // `count`, so repeats collapse into one entry rather than stacking. Only
+    // the Sentry report below stays once-per-process, which is what the latch
+    // was introduced for.
+    surface_local_model_unavailable_to_clients();
+
     if OLLAMA_HEALTH_REPORTED
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         .is_err()
@@ -90,6 +109,20 @@ fn report_ollama_health_gate_once(base_url: &str, model: &str) -> bool {
     crate::core::event_bus::publish_global(event);
 
     true
+}
+
+/// Surface the Ollama-unreachable fallback in every connected client's
+/// UserErrorCenter (#5354).
+///
+/// `DomainEvent::EmbeddingModelUnhealthy` is published above, but nothing
+/// bridges the domain bus to the product UI — `/events/domain` is consumed only
+/// by the developer Event Log panel — so that event alone reaches no user. The
+/// payload and publisher live in `memory::tree::health::user_error` so this
+/// producer and the embed-failure classifier emit one identical, tested shape.
+fn surface_local_model_unavailable_to_clients() {
+    crate::openhuman::memory::tree::health::publish_local_model_unavailable_user_error(
+        "health_gate",
+    );
 }
 
 /// Resets the once-per-process Sentry latch. Test-only — any test that
@@ -551,6 +584,8 @@ pub fn create_memory_for_migration(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::openhuman::memory::tree::health::user_error::LOCAL_MODEL_UNAVAILABLE_KIND;
+
     use axum::{routing::get, Json, Router};
     use std::ffi::OsString;
     use std::net::SocketAddr;
@@ -835,6 +870,45 @@ mod tests {
         assert_eq!(redact_ollama_host("host:1234"), "host:1234");
         // Empty / malformed inputs fall back to a safe constant.
         assert_eq!(redact_ollama_host(""), "unknown");
+    }
+
+    /// #5354 — the client broadcast must NOT ride the once-per-process Sentry
+    /// latch.
+    ///
+    /// `publish_web_channel_event` is a `broadcast::send` with no buffering: if
+    /// no socket client is attached the event is dropped outright. Memory is
+    /// built early (once per agent), so the first failed probe typically fires
+    /// before the renderer connects. Latched, that single dropped send would be
+    /// the only attempt ever made and the UserErrorCenter would stay empty for
+    /// the entire outage. Subscribing here proves a second gate call still
+    /// broadcasts even though its Sentry half is suppressed.
+    #[test]
+    fn user_error_broadcast_is_not_suppressed_by_the_sentry_latch() {
+        let _lock = crate::openhuman::inference::local::inference_test_guard();
+        reset_health_gate_for_test();
+
+        let mut rx = crate::openhuman::web_chat::subscribe_web_channel_events();
+
+        assert!(
+            report_ollama_health_gate_once("http://127.0.0.1:1", "bge-m3"),
+            "first call must fire the Sentry report"
+        );
+        assert!(
+            !report_ollama_health_gate_once("http://127.0.0.1:1", "bge-m3"),
+            "second call must suppress the Sentry report"
+        );
+
+        // Both calls must still have reached connected clients.
+        for attempt in 1..=2 {
+            let event = rx
+                .try_recv()
+                .unwrap_or_else(|e| panic!("broadcast {attempt} missing: {e}"));
+            assert_eq!(event.event, "user_error");
+            assert_eq!(
+                event.error_type.as_deref(),
+                Some(LOCAL_MODEL_UNAVAILABLE_KIND)
+            );
+        }
     }
 
     /// First call to `report_ollama_health_gate_once` fires the report;

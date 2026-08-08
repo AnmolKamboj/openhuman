@@ -338,8 +338,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'Sincronizado recientemente',
   'conversations.backgroundTasks.memProviderIdle': 'Inactivo',
   'nav.home': 'Inicio',
-  'nav.human': 'Humano',
   'nav.chat': 'Charla',
+  'nav.human': 'Humano',
   'nav.assistant': 'Asistente',
   'assistant.faceMode.on': 'Hablando con Tiny',
   'assistant.faceMode.off': 'Habla con Tiny',
@@ -1331,6 +1331,12 @@ const messages: TranslationMap = {
   'memoryTree.status.never': 'Nunca',
   'memoryTree.status.fetchError': 'No se pudo obtener el estado del Árbol de Memoria',
   'memoryTree.status.retry': 'Rever',
+  'memoryTree.status.retryFailed': 'Reintentar los trabajos fallidos',
+  'memoryTree.status.retryFailedBusy': 'Reintentando...',
+  'memoryTree.status.retryFailedDone': 'Trabajos fallidos añadidos de nuevo a la cola',
+  'memoryTree.status.retryFailedCount': 'Trabajos en cola para ejecutarse de nuevo: {count}.',
+  'memoryTree.status.retryFailedError':
+    'No se pudieron volver a poner en cola los trabajos fallidos',
   'memoryTree.status.toggleFailed': 'No se pudo activar la sincronización automática',
   'memoryTree.status.justNow': 'justo ahora',
   'memoryTree.status.secondsAgo': '{count}s hace',
@@ -2476,6 +2482,15 @@ const messages: TranslationMap = {
   'voice.providers.piperReady': 'Piper está listo.',
   'voice.providers.piperInstallStarted': 'Instalación de Piper iniciada',
   'voice.providers.failedToInstallPiper': 'No se pudo instalar Piper',
+  'voice.mode.title': 'Modo de voz',
+  'voice.mode.desc': 'Elige cómo habla el asistente en la pestaña Human.',
+  'voice.mode.realtime': 'Voz en tiempo real (beta)',
+  'voice.mode.realtimeDesc': 'Mantén una conversación en directo en lugar de por turnos.',
+  'voice.mode.start': 'Iniciar chat de voz',
+  'voice.mode.stop': 'Finalizar chat de voz',
+  'voice.mode.connecting': 'Conectando…',
+  'voice.mode.listening': 'Escuchando',
+  'voice.mode.speaking': 'Hablando',
   'voice.providers.title': 'Proveedores de voz',
   'voice.providers.desc':
     'Elige dónde se ejecutan la transcripción y la síntesis. Usa los botones Instalar localmente para descargar los binarios y modelos en tu espacio de trabajo. Los proveedores locales se pueden guardar antes de que finalice la instalación; no se requiere configuración manual de WHISPER_BIN o PIPER_BIN.',
@@ -2778,6 +2793,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'Reproduciendo respuesta de voz',
   'chat.voiceHint': 'Usa el micrófono para hablar',
   'chat.micUnavailable': 'Micrófono no disponible',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Habla con tu asistente',
+  'chat.mascot.collapse': 'Volver al chat',
+  'chat.mascot.speakReplies': 'Leer las respuestas en voz alta',
+  'chat.mascot.speakRepliesHint':
+    'Las respuestas se leen en voz alta mientras la mascota está abierta. Desactívalo para mantener la conversación en silencio.',
+  'chat.mascot.dismiss': 'Ocultar a Tiny',
+  'chat.mascot.dismissTitle': '¿Ocultar a Tiny?',
+  'chat.mascot.dismissBody':
+    'Sin rencores si prefieres tener el cuadro de mensaje para ti. Puedes traer a Tiny de vuelta cuando quieras desde Configuración › Apariencia › Chat.',
+  'chat.mascot.dismissConfirm': 'Ocultar a Tiny',
+  'chat.mascot.dismissCancel': 'Conservar a Tiny',
   'chat.turn': 'turno',
   'chat.turns': 'turnos',
   'chat.openWorkerThread': 'Abrir hilo de worker',
@@ -4284,6 +4311,7 @@ const messages: TranslationMap = {
   'flows.nodeKind.sub_workflow': 'Subflujo de trabajo',
   'flows.nodeKind.memory': 'Memoria',
   'flows.nodeKind.dedup': 'Deduplicación',
+  'flows.nodeKind.loop': 'Bucle',
   'flows.nodeSummary.trigger.manual': 'Se ejecuta a petición',
   'flows.nodeSummary.trigger.webhook': 'Se ejecuta con un webhook entrante',
   'flows.nodeSummary.trigger.appEventOn': 'En {parts}',
@@ -4324,6 +4352,8 @@ const messages: TranslationMap = {
   'flows.nodeSummary.memory.recall': 'Recupera de la memoria',
   'flows.nodeSummary.dedup.withKey': 'Omite elementos ya vistos por {key}',
   'flows.nodeSummary.dedup.default': 'Omite elementos ya procesados',
+  'flows.nodeSummary.loop.upTo': 'Se repite hasta {max} veces',
+  'flows.nodeSummary.loop.whileCondition': 'Se repite hasta {max} veces mientras {condition}',
   'flows.palette.title': 'Nodos',
   'flows.palette.addNode': 'Añadir nodo {kind}',
   'flows.editor.save': 'Guardar',
@@ -4524,6 +4554,20 @@ const messages: TranslationMap = {
   'flows.nodeConfig.dedup.keyLabel': 'Clave',
   'flows.nodeConfig.dedup.keyHint':
     'Una expresión de id estable por elemento, p. ej. =item.id. Los elementos con una clave ya vista se omiten.',
+
+  // `loop` node: a bounded loop head. Emits on `body` until its cap or
+  // condition says stop, then on `done`.
+  'flows.nodeConfig.loop.maxIterationsLabel': 'Iteraciones máximas',
+  'flows.nodeConfig.loop.maxIterationsHint':
+    'Cuántas veces puede ejecutarse el cuerpo antes de que el bucle se detenga. Siempre finito.',
+  'flows.nodeConfig.loop.onExceededLabel': 'Al alcanzar el límite',
+  'flows.nodeConfig.loop.onExceededHint':
+    'Hacer fallar la ejecución, o dejar de iterar y continuar por el puerto done con los elementos de la última pasada.',
+  'flows.nodeConfig.loop.onExceeded_error': 'Hacer fallar la ejecución',
+  'flows.nodeConfig.loop.onExceeded_continue': 'Continuar con resultados parciales',
+  'flows.nodeConfig.loop.conditionLabel': 'Continuar mientras',
+  'flows.nodeConfig.loop.conditionHint':
+    'Opcional. Mientras esto sea verdadero el bucle continúa; el primer resultado falso sale por el puerto done.',
 
   'flows.enableApproval.title': '¿Permitir que este flujo de trabajo actúe?',
   'flows.enableApproval.intro':
@@ -5926,6 +5970,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Ocultar el razonamiento del agente',
   'settings.appearance.hideAgentInsightsDesc':
     'Contrae la cronología paso a paso del agente en el chat. Un enlace «Procesando» parpadeante te permite abrir el proceso completo.',
+  'settings.appearance.showChatMascot': 'Mostrar a Tiny en el cuadro de mensaje',
+  'settings.appearance.showChatMascotDesc':
+    'La mascota se queda de pie sobre el campo de escritura. Si la ocultas, el chat será solo texto hasta que vuelvas a activarlo.',
   'settings.appearance.assistantTextModeDesc':
     'Muestra las respuestas del asistente como texto sin marco y mantiene tus mensajes en burbujas.',
   'settings.mascot.active': 'Activo',
@@ -5933,10 +5980,16 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Borrador',
   'settings.mascot.characterHeading': 'Encabezado del personaje',
   'settings.mascot.customGifError':
-    'Introduzca una ruta HTTPS .gif URL, loopback HTTP .gif URL, file:// .gif URL o ruta .gif local.',
-  'settings.mascot.customGifHeading': 'Avatar GIF personalizado',
-  'settings.mascot.customGifLabel': 'Avatar GIF personalizado URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Introduce una URL de imagen HTTPS, file:// o local (PNG, GIF, JPEG, WebP o BMP), o sube un archivo.',
+  'settings.mascot.customGifHeading': 'Avatar de imagen personalizado',
+  'settings.mascot.customGifLabel': 'URL del avatar de imagen personalizado',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Subir imagen',
+  'settings.mascot.customGifInvalidType':
+    'Tipo de archivo no compatible. Sube una imagen PNG, GIF, JPEG, WebP o BMP.',
+  'settings.mascot.customGifTooLarge':
+    'La imagen es demasiado grande. Sube un archivo de hasta 1,5 MB.',
+  'settings.mascot.customGifReadError': 'No se pudo leer la imagen. Prueba con otro archivo.',
   'settings.mascot.characterPreview': 'Vista previa',
   'settings.mascot.characterStates': 'estados',
   'settings.mascot.characterVisemes': 'visemas',
@@ -6045,7 +6098,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'Cálido, amable, seguro para todas las edades',
   'settings.persona.appearanceHeading': 'Avatar y Voz',
   'settings.persona.appearanceDesc':
-    'El color de la mascota, el avatar personalizado GIF y la voz de respuesta se configuran en los ajustes de la mascota.',
+    'El color de la mascota, el avatar de imagen personalizado y la voz de respuesta se configuran en los ajustes de la mascota.',
   'settings.persona.openMascotSettings': 'Abrir la configuración de Mascota',
   'settings.memoryWindow.balanced.badge': 'Recomendado',
   'settings.memoryWindow.balanced.hint':
@@ -6945,6 +6998,7 @@ const messages: TranslationMap = {
   'pages.settings.account.securityDesc': 'Modo de almacenamiento de secretos y estado del llavero',
   // #002 memory-pipeline-hardening: degraded badges + typed remediation.
   'memoryTree.status.statusDegraded': 'Degradado',
+  'memoryTree.status.statusBudgetExhausted': 'En pausa: se alcanzó el límite de embeddings',
   'memoryTree.status.degradedRecall': 'Recuperación semántica desactivada',
   'memoryTree.status.degradedStructure': 'Estructura de la wiki incompleta',
   'memoryTree.status.extractionCoverage':
@@ -7283,6 +7337,7 @@ const messages: TranslationMap = {
   'userErrors.dismiss': 'Descartar',
   'userErrors.action.openBilling': 'Abrir facturación',
   'userErrors.action.openProviderSettings': 'Configuración del proveedor',
+  'userErrors.action.openEmbeddingsSettings': 'Configurar embeddings',
   'userErrors.budgetExceeded.title': 'Presupuesto gestionado agotado',
   'userErrors.budgetExceeded.body':
     'Tu presupuesto de IA gestionado se ha agotado. Añade presupuesto o cambia de plan.',
@@ -7292,8 +7347,23 @@ const messages: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'Se requiere clave de API',
   'userErrors.apiKeyMissing.body':
     'Tu proveedor de IA no tiene una clave de API configurada. Añade una en los ajustes del proveedor para continuar.',
+  'userErrors.localModelUnavailable.title': 'Modelo local no disponible',
+  'userErrors.localModelUnavailable.body':
+    'No se puede acceder a Ollama en el punto de conexión configurado, o el modelo necesario no está instalado allí. Inicia Ollama y descarga el modelo en ese punto de conexión, o cambia este trabajo a un proveedor en la nube.',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Tarea programada',
+  'userErrors.scope.workspace': 'Espacio de trabajo',
+  'userErrors.memoryBudgetExhausted.title': 'La memoria dejó de crecer',
+  'userErrors.memoryBudgetExhausted.body':
+    'Tu presupuesto de embeddings se agotó, así que el contenido nuevo ya no se añade a la memoria. Configura embeddings locales o añade tu propia clave de API para reanudar.',
+  'memoryBudget.approachingTitle': 'La memoria se acerca a su límite de embeddings',
+  'memoryBudget.approachingMessage':
+    'Has usado el {pct}% de tu presupuesto de embeddings. Configura embeddings locales o añade tu propia clave de API para que la memoria siga creciendo sin interrupciones.',
+  'memoryBudget.exhaustedTitle': 'La memoria dejó de crecer',
+  'memoryBudget.exhaustedMessage':
+    'Tu presupuesto de embeddings se agotó, así que el contenido nuevo ya no se añade a la memoria. Configura embeddings locales o añade tu propia clave de API para reanudar.',
+  'memoryBudget.cta': 'Configurar embeddings',
+  'userErrors.scope.memory': 'Memoria',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Importe',
   'agentWorld.trading.networkLabel': 'Red',
@@ -7354,8 +7424,15 @@ const messages: TranslationMap = {
   'memorySources.codingSessions.title': 'Sesiones de agentes de programación',
   'memorySources.codingSessions.description':
     'Convierte tus decisiones y correcciones de Codex y Claude Code en memoria privada de personalidad.',
-  'memorySources.codingSessions.ingest': 'Ingerir sesiones nuevas',
-  'memorySources.codingSessions.ingesting': 'Ingiriendo…',
+  'memorySources.codingSessions.importAll': 'Importar todas las sesiones',
+  'memorySources.codingSessions.draining': 'Importando… lote {passes}',
+  'memorySources.codingSessions.stop': 'Detener',
+  'memorySources.codingSessions.progress':
+    '{processed} sesiones importadas · {observations} observaciones',
+  'memorySources.codingSessions.remaining': 'quedan unas {remaining}',
+  'memorySources.codingSessions.stopped': 'Importación en pausa',
+  'memorySources.codingSessions.stoppedMessage':
+    'Se importaron {processed} sesiones. Ejecuta la importación de nuevo para continuar con las {remaining} restantes.',
   'memorySources.codingSessions.claude': 'Historial de Claude Code',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} sesiones · {evidence} intervenciones humanas',
@@ -7368,8 +7445,6 @@ const messages: TranslationMap = {
     '{processed} sesiones produjeron {observations} observaciones de personalidad.',
   'memorySources.codingSessions.partialFailure':
     'Fallaron {failed} sesiones mientras se procesaron {processed}. Ejecuta la ingesta de nuevo para reintentarlas.',
-  'memorySources.codingSessions.moreRemaining':
-    'Se alcanzó el límite de sesiones del lote. Ejecuta la ingesta de nuevo para seguir importando tu historial.',
   'memorySources.codingSessions.failed': 'Falló la ingesta de sesiones de programación',
   'flows.canvas.sidePanelToggle': 'Panel lateral',
   'flows.canvas.legendTab': 'Manual',

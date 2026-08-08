@@ -386,6 +386,42 @@ pub(super) fn handle_sio_event(
                 correlation_id,
             });
         }
+        "voice:harness" => {
+            // Realtime voice-agent turn relayed from the backend Custom-LLM
+            // bridge (#5399): run the local orchestrator and stream the reply
+            // back up as voice:harness:delta / :done / :error.
+            let correlation_id = data
+                .get("correlationId")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let messages: Vec<serde_json::Value> = data
+                .get("messages")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            log::info!(
+                "[socket] voice:harness correlation={} messages={}",
+                correlation_id,
+                messages.len()
+            );
+            if correlation_id.is_empty() {
+                log::warn!("[socket] voice:harness missing correlationId — dropping");
+            } else {
+                #[cfg(feature = "voice")]
+                tokio::spawn(
+                    crate::openhuman::voice::realtime_harness::handle_voice_harness_turn(
+                        correlation_id,
+                        messages,
+                    ),
+                );
+                #[cfg(not(feature = "voice"))]
+                {
+                    let _ = messages;
+                    log::warn!("[socket] voice:harness ignored — voice feature disabled");
+                }
+            }
+        }
         "bot:transcript" => {
             let turns: Vec<BackendMeetTurn> = data
                 .get("turns")
