@@ -25,6 +25,12 @@ impl RssReader {
     }
 }
 
+impl Default for RssReader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl SourceReader for RssReader {
     fn kind(&self) -> SourceKind {

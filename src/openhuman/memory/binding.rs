@@ -433,8 +433,10 @@ pub(crate) fn bind_provider_for_test(
 /// `MemorySubsystemConfig` in the key (it derives `Hash`) means a changed
 /// config hits a different slot and binds fresh, while a returned-to config
 /// still resolves its original binding.
-static BINDINGS: OnceLock<RwLock<HashMap<(PathBuf, MemorySubsystemConfig), Arc<MemoryBinding>>>> =
-    OnceLock::new();
+type BindingCacheKey = (PathBuf, MemorySubsystemConfig);
+type BindingCache = RwLock<HashMap<BindingCacheKey, Arc<MemoryBinding>>>;
+
+static BINDINGS: OnceLock<BindingCache> = OnceLock::new();
 
 /// The bound memory driver for `workspace_dir`, constructing it on first use.
 ///
