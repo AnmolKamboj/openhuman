@@ -187,7 +187,10 @@ fn normalize_model_override_passes_non_empty_verbatim() {
 #[tokio::test]
 async fn effective_origin_defaults_to_cli_outside_any_scope() {
     use crate::openhuman::agent::turn_origin::AgentTurnOrigin;
-    assert!(matches!(effective_agent_chat_origin(), AgentTurnOrigin::Cli));
+    assert!(matches!(
+        effective_agent_chat_origin(),
+        AgentTurnOrigin::Cli
+    ));
 }
 
 /// An in-process embedder that labelled the turn keeps its label: a workflow

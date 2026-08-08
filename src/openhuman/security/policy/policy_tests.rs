@@ -2823,11 +2823,7 @@ async fn write_into_the_scoped_turn_root_is_allowed() {
     let resolved = crate::openhuman::agent::turn_workspace::with_workspace(checkout.clone(), {
         let policy = &policy;
         let target = target.clone();
-        async move {
-            policy
-                .validate_parent_path(target.to_str().unwrap())
-                .await
-        }
+        async move { policy.validate_parent_path(target.to_str().unwrap()).await }
     })
     .await
     .expect("the scoped turn root must be writable");
@@ -2845,11 +2841,7 @@ async fn the_turn_root_grant_does_not_reach_a_sibling_directory() {
     let err = crate::openhuman::agent::turn_workspace::with_workspace(checkout, {
         let policy = &policy;
         let target = target.clone();
-        async move {
-            policy
-                .validate_parent_path(target.to_str().unwrap())
-                .await
-        }
+        async move { policy.validate_parent_path(target.to_str().unwrap()).await }
     })
     .await
     .expect_err("a sibling of the scoped root must stay outside it");
@@ -2870,11 +2862,7 @@ async fn the_turn_root_grant_never_reaches_a_credential_store() {
     let err = crate::openhuman::agent::turn_workspace::with_workspace(checkout, {
         let policy = &policy;
         let target = target.clone();
-        async move {
-            policy
-                .validate_parent_path(target.to_str().unwrap())
-                .await
-        }
+        async move { policy.validate_parent_path(target.to_str().unwrap()).await }
     })
     .await
     .expect_err("credential stores stay forbidden inside a granted root");
