@@ -296,16 +296,17 @@ mod tests {
     fn all_steps_have_stable_ids_and_are_non_required() {
         let steps = all_steps();
         let ids: Vec<_> = steps.iter().map(|s| s.id).collect();
-        assert_eq!(
-            ids,
-            vec![
-                "python_runtime",
-                "spacy",
-                "kompress",
-                "runtime_python_server",
-                "node_runtime"
-            ]
-        );
+        let mut expected = vec![
+            "python_runtime",
+            "spacy",
+            "kompress",
+            "runtime_python_server",
+        ];
+        // `node_runtime` is a registration-site gate: it is absent (not
+        // dead-but-listed) when the managed Node runtime is compiled out.
+        #[cfg(feature = "runtime-node")]
+        expected.push("node_runtime");
+        assert_eq!(ids, expected);
         assert!(steps.iter().all(|s| !s.required));
         assert!(steps.iter().all(|s| !s.label.is_empty()));
     }
