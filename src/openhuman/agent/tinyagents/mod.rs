@@ -2310,6 +2310,22 @@ fn assemble_turn_harness(
         tool_sets.clone(),
     )));
 
+    // Embedder tool lifecycle hooks. Registered AFTER `ArgRecoveryMiddleware`:
+    // `before_tool` runs in registration order, so a hook installed earlier would
+    // observe the provider's raw (possibly JSON-encoded-string / non-object)
+    // arguments instead of the recovered object that `ToolHookContext` documents.
+    // The middleware caches the normalized pre-call arguments by `call_id` and
+    // replays them into the `PostToolUse` context. Its `after_tool` is
+    // observation-only (never mutates the result), so running first in the
+    // reverse-order `after_tool` chain is safe — it cannot perturb the
+    // summarization/cap or tool-outcome capture layers.
+    let embedder_tool_hooks = crate::openhuman::agent::hooks::embedder_tool_hooks();
+    if !embedder_tool_hooks.is_empty() {
+        harness.push_middleware(Arc::new(middleware::EmbedderToolHooksMiddleware::new(
+            embedder_tool_hooks,
+        )));
+    }
+
     AssembledTurnHarness {
         harness,
         cursor,
