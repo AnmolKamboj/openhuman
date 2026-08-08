@@ -319,7 +319,7 @@ docx-rs = { version = "0.4.20", optional = true }
 # Windows: tokio-tungstenite uses native-tls (schannel) so wss://
 # connections honor the Windows cert store, including corporate CAs
 # installed by AV / TLS-inspection proxies. See run-dev-win.sh notes.
-tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "handshake", "native-tls"] }
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "handshake", "native-tls"] }
 # Windows re-adds reqwest's native-tls backend (dropped from the base decl in
 # `[dependencies]`) so `tls::tls_client_builder()` can call `.use_native_tls()`
 # and reach the SChannel/OS cert store — same rationale as tokio-tungstenite
@@ -343,7 +343,7 @@ windows-sys = { version = "0.61", features = [
 [target.'cfg(not(windows))'.dependencies]
 # macOS / Linux: keep rustls + Mozilla webpki-roots — the historical
 # default. Avoids pulling OpenSSL as a runtime dep on Linux.
-tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 whisper-rs = { version = "0.16", features = ["metal"], optional = true }
