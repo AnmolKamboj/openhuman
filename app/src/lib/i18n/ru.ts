@@ -334,8 +334,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'Недавно синхронизировано',
   'conversations.backgroundTasks.memProviderIdle': 'Простаивает',
   'nav.home': 'Главная',
-  'nav.human': 'Человек',
   'nav.chat': 'Чат',
+  'nav.human': 'Человек',
   'nav.assistant': 'Ассистент',
   'assistant.faceMode.on': 'Говорит с Tiny',
   'assistant.faceMode.off': 'Поговорить с Tiny',
@@ -1316,6 +1316,11 @@ const messages: TranslationMap = {
   'memoryTree.status.never': 'Никогда',
   'memoryTree.status.fetchError': 'Не удалось получить статус дерева памяти.',
   'memoryTree.status.retry': 'Повторить попытку',
+  'memoryTree.status.retryFailed': 'Повторить неудавшиеся задачи',
+  'memoryTree.status.retryFailedBusy': 'Повторяем...',
+  'memoryTree.status.retryFailedDone': 'Неудавшиеся задачи снова в очереди',
+  'memoryTree.status.retryFailedCount': 'Задач в очереди на повторный запуск: {count}.',
+  'memoryTree.status.retryFailedError': 'Не удалось вернуть неудавшиеся задачи в очередь',
   'memoryTree.status.toggleFailed': 'Не удалось включить автосинхронизацию.',
   'memoryTree.status.justNow': 'прямо сейчас',
   'memoryTree.status.secondsAgo': '{count} сек. назад',
@@ -2757,6 +2762,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'Воспроизведение голосового ответа',
   'chat.voiceHint': 'Используй микрофон для речи',
   'chat.micUnavailable': 'Микрофон недоступен',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Поговорите с ассистентом',
+  'chat.mascot.collapse': 'Вернуться к чату',
+  'chat.mascot.speakReplies': 'Читать ответы вслух',
+  'chat.mascot.speakRepliesHint':
+    'Пока маскот открыт, ответы читаются вслух. Отключите, чтобы разговор оставался беззвучным.',
+  'chat.mascot.dismiss': 'Скрыть Tiny',
+  'chat.mascot.dismissTitle': 'Скрыть Tiny?',
+  'chat.mascot.dismissBody':
+    'Ничего страшного, если поле сообщения вам нужнее. Вернуть Tiny можно в любой момент через Настройки › Внешний вид › Чат.',
+  'chat.mascot.dismissConfirm': 'Скрыть Tiny',
+  'chat.mascot.dismissCancel': 'Оставить Tiny',
   'chat.turn': 'ход',
   'chat.turns': 'ходов',
   'chat.openWorkerThread': 'Открыть чат воркера',
@@ -5900,6 +5917,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Скрыть размышления агента',
   'settings.appearance.hideAgentInsightsDesc':
     'Сворачивает пошаговую ленту действий агента в чате. Мигающая ссылка «Обработка» по-прежнему позволяет открыть весь процесс.',
+  'settings.appearance.showChatMascot': 'Показывать Tiny на поле сообщения',
+  'settings.appearance.showChatMascotDesc':
+    'Маскот стоит на поле ввода. Если скрыть, чат останется только текстовым, пока вы не включите это снова.',
   'settings.appearance.assistantTextModeDesc':
     'Показывает ответы ассистента как текст без рамки, оставляя ваши сообщения в пузырьках.',
   'settings.mascot.active': 'Активно',
@@ -5907,10 +5927,15 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Черновик',
   'settings.mascot.characterHeading': 'Персонаж',
   'settings.mascot.customGifError':
-    'Введите HTTPS .gif URL, петлевой путь HTTP .gif URL, file:// .gif URL или локальный путь .gif.',
-  'settings.mascot.customGifHeading': 'Пользовательский аватар GIF',
-  'settings.mascot.customGifLabel': 'Пользовательский аватар GIF URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Введите HTTPS, file:// или локальный URL изображения (PNG, GIF, JPEG, WebP или BMP) либо загрузите файл.',
+  'settings.mascot.customGifHeading': 'Пользовательский аватар-изображение',
+  'settings.mascot.customGifLabel': 'URL пользовательского аватара-изображения',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Загрузить изображение',
+  'settings.mascot.customGifInvalidType':
+    'Неподдерживаемый тип файла. Загрузите изображение PNG, GIF, JPEG, WebP или BMP.',
+  'settings.mascot.customGifTooLarge': 'Изображение слишком большое. Загрузите файл до 1,5 МБ.',
+  'settings.mascot.customGifReadError': 'Не удалось прочитать изображение. Попробуйте другой файл.',
   'settings.mascot.characterPreview': 'Предварительный просмотр',
   'settings.mascot.characterStates': 'содержит',
   'settings.mascot.characterVisemes': 'виземы',
@@ -6020,7 +6045,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'Тёплый, дружелюбный, подходит для всех возрастов',
   'settings.persona.appearanceHeading': 'Аватар и голос',
   'settings.persona.appearanceDesc':
-    'Цвет талисмана, пользовательский аватар GIF и голос ответа настраиваются в настройках талисмана.',
+    'Цвет талисмана, пользовательский аватар-изображение и голос ответа настраиваются в настройках талисмана.',
   'settings.persona.openMascotSettings': 'Открыть настройки талисмана',
   'settings.memoryWindow.balanced.badge': 'Рекомендуется',
   'settings.memoryWindow.balanced.hint':

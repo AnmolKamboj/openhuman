@@ -24,8 +24,8 @@ const en: TranslationMap = {
   'skills.recallCalendar.description': 'Auto-join Google Meet calls via Recall.ai',
   // Navigation
   'nav.home': 'Home',
-  'nav.human': 'Human',
   'nav.chat': 'Chat',
+  'nav.human': 'Human',
   'nav.assistant': 'Assistant',
 
   // Assistant surface: face mode toggle (Phase 6)
@@ -1246,6 +1246,11 @@ const en: TranslationMap = {
     'Memory processing encountered an issue. Check Connections → API keys for configuration.',
   'memoryTree.status.fetchError': "Couldn't fetch Memory Tree status",
   'memoryTree.status.retry': 'Retry',
+  'memoryTree.status.retryFailed': 'Retry failed jobs',
+  'memoryTree.status.retryFailedBusy': 'Retrying...',
+  'memoryTree.status.retryFailedDone': 'Failed jobs requeued',
+  'memoryTree.status.retryFailedCount': 'Jobs queued to run again: {count}.',
+  'memoryTree.status.retryFailedError': 'Could not requeue the failed jobs',
   'memoryTree.status.toggleFailed': "Couldn't toggle auto-sync",
   // Relative-time buckets surfaced by the last-sync tile. `{count}` is
   // replaced client-side at the call site (the runtime `t()` does not
@@ -2875,6 +2880,18 @@ const en: TranslationMap = {
   'chat.playingVoiceReply': 'Playing voice reply',
   'chat.voiceHint': 'Use the mic to speak',
   'chat.micUnavailable': 'Microphone unavailable',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Talk to your assistant',
+  'chat.mascot.collapse': 'Back to the chat',
+  'chat.mascot.speakReplies': 'Speak replies out loud',
+  'chat.mascot.speakRepliesHint':
+    'Replies are read aloud while the mascot is open. Turn this off to keep the conversation silent.',
+  'chat.mascot.dismiss': 'Hide Tiny',
+  'chat.mascot.dismissTitle': 'Hide Tiny?',
+  'chat.mascot.dismissBody':
+    "No hard feelings if you'd rather have the message box to yourself. You can bring Tiny back any time from Settings › Appearance › Chat.",
+  'chat.mascot.dismissConfirm': 'Hide Tiny',
+  'chat.mascot.dismissCancel': 'Keep Tiny',
   'chat.turn': 'turn',
   'chat.turns': 'turns',
   'chat.openWorkerThread': 'Open worker thread',
@@ -6443,15 +6460,23 @@ const en: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Hide agent thinking',
   'settings.appearance.hideAgentInsightsDesc':
     'Collapse the live step-by-step agent timeline in chat. A blinking “Processing” link still lets you open the full run.',
+  'settings.appearance.showChatMascot': 'Show Tiny on the message box',
+  'settings.appearance.showChatMascotDesc':
+    'Keep the mascot standing on the composer. Hidden, the chat is text only until you turn this back on.',
   'settings.mascot.active': 'Active',
   'settings.mascot.characterDesc': 'Choose your OpenHuman character.',
   'settings.mascot.characterDraft': 'Draft',
   'settings.mascot.characterHeading': 'Character',
   'settings.mascot.customGifError':
-    'Enter an HTTPS .gif URL, loopback HTTP .gif URL, file:// .gif URL, or local .gif path.',
-  'settings.mascot.customGifHeading': 'Custom GIF avatar',
-  'settings.mascot.customGifLabel': 'Custom GIF avatar URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Enter an HTTPS, file://, or local image URL (PNG, GIF, JPEG, WebP, or BMP), or upload a file.',
+  'settings.mascot.customGifHeading': 'Custom image avatar',
+  'settings.mascot.customGifLabel': 'Custom image avatar URL',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Upload image',
+  'settings.mascot.customGifInvalidType':
+    'Unsupported file type. Upload a PNG, GIF, JPEG, WebP, or BMP image.',
+  'settings.mascot.customGifTooLarge': 'Image is too large. Upload a file up to 1.5 MB.',
+  'settings.mascot.customGifReadError': 'Could not read that image. Please try another file.',
   'settings.mascot.characterPreview': 'Preview',
   'settings.mascot.characterStates': 'states',
   'settings.mascot.characterVisemes': 'visemes',
@@ -6559,7 +6584,7 @@ const en: TranslationMap = {
   'settings.persona.templates.family.desc': 'Warm, friendly, safe for all ages',
   'settings.persona.appearanceHeading': 'Avatar & Voice',
   'settings.persona.appearanceDesc':
-    'Mascot color, custom GIF avatar, and reply voice are configured in Mascot settings.',
+    'Mascot color, custom image avatar, and reply voice are configured in Mascot settings.',
   'settings.persona.openMascotSettings': 'Open Mascot settings',
   'settings.memoryWindow.balanced.badge': 'Recommended',
   'settings.memoryWindow.balanced.hint':

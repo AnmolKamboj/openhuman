@@ -340,8 +340,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'Niedawno zsynchronizowano',
   'conversations.backgroundTasks.memProviderIdle': 'Bezczynne',
   'nav.home': 'Start',
-  'nav.human': 'Człowiek',
   'nav.chat': 'Czat',
+  'nav.human': 'Człowiek',
   'nav.assistant': 'Asystent',
   'assistant.faceMode.on': 'Rozmawia z Tiny',
   'assistant.faceMode.off': 'Porozmawiaj z Tiny',
@@ -1323,6 +1323,11 @@ const messages: TranslationMap = {
   'memoryTree.status.never': 'Nigdy',
   'memoryTree.status.fetchError': 'Nie udało się pobrać statusu drzewa pamięci',
   'memoryTree.status.retry': 'Ponów',
+  'memoryTree.status.retryFailed': 'Ponów nieudane zadania',
+  'memoryTree.status.retryFailedBusy': 'Ponawianie...',
+  'memoryTree.status.retryFailedDone': 'Nieudane zadania wróciły do kolejki',
+  'memoryTree.status.retryFailedCount': 'W kolejce do ponownego uruchomienia: {count}.',
+  'memoryTree.status.retryFailedError': 'Nie udało się ponowić nieudanych zadań',
   'memoryTree.status.toggleFailed': 'Nie udało się przełączyć automatycznej synchronizacji',
   'memoryTree.status.justNow': 'przed chwilą',
   'memoryTree.status.secondsAgo': '{count} s temu',
@@ -2769,6 +2774,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'Odtwarzanie odpowiedzi głosowej',
   'chat.voiceHint': 'Użyj mikrofonu, aby mówić',
   'chat.micUnavailable': 'Mikrofon niedostępny',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Porozmawiaj z asystentem',
+  'chat.mascot.collapse': 'Wróć do czatu',
+  'chat.mascot.speakReplies': 'Czytaj odpowiedzi na głos',
+  'chat.mascot.speakRepliesHint':
+    'Odpowiedzi są czytane na głos, dopóki maskotka jest otwarta. Wyłącz tę opcję, aby rozmowa pozostała cicha.',
+  'chat.mascot.dismiss': 'Ukryj Tiny',
+  'chat.mascot.dismissTitle': 'Ukryć Tiny?',
+  'chat.mascot.dismissBody':
+    'Nic się nie stanie, jeśli wolisz mieć pole wiadomości tylko dla siebie. Tiny wróci w każdej chwili przez Ustawienia › Wygląd › Czat.',
+  'chat.mascot.dismissConfirm': 'Ukryj Tiny',
+  'chat.mascot.dismissCancel': 'Zostaw Tiny',
   'chat.turn': 'tura',
   'chat.turns': 'tury',
   'chat.openWorkerThread': 'Otwórz wątek workera',
@@ -5930,6 +5947,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Ukryj myślenie agenta',
   'settings.appearance.hideAgentInsightsDesc':
     'Zwija oś czasu z krokami agenta na żywo w czacie. Migający link „Przetwarzanie” nadal pozwala otworzyć pełny przebieg.',
+  'settings.appearance.showChatMascot': 'Pokaż Tiny na polu wiadomości',
+  'settings.appearance.showChatMascotDesc':
+    'Maskotka stoi na polu pisania. Po ukryciu czat pozostaje tekstowy, dopóki nie włączysz tego z powrotem.',
   'settings.appearance.assistantTextModeDesc':
     'Wyświetla odpowiedzi asystenta jako tekst bez ramki, a Twoje wiadomości pozostawia w dymkach.',
   'settings.mascot.active': 'Aktywny',
@@ -5937,10 +5957,15 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Wersja robocza',
   'settings.mascot.characterHeading': 'Charakter',
   'settings.mascot.customGifError':
-    'Wprowadź URL .gif HTTPS, URL .gif loopback HTTP, URL file:// .gif lub lokalną ścieżkę .gif.',
-  'settings.mascot.customGifHeading': 'Własny awatar GIF',
-  'settings.mascot.customGifLabel': 'URL własnego awatara GIF',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Wprowadź adres URL obrazu HTTPS, file:// lub lokalny (PNG, GIF, JPEG, WebP lub BMP) albo prześlij plik.',
+  'settings.mascot.customGifHeading': 'Własny awatar graficzny',
+  'settings.mascot.customGifLabel': 'URL własnego awatara graficznego',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Prześlij obraz',
+  'settings.mascot.customGifInvalidType':
+    'Nieobsługiwany typ pliku. Prześlij obraz PNG, GIF, JPEG, WebP lub BMP.',
+  'settings.mascot.customGifTooLarge': 'Obraz jest za duży. Prześlij plik do 1,5 MB.',
+  'settings.mascot.customGifReadError': 'Nie udało się odczytać tego obrazu. Spróbuj innego pliku.',
   'settings.mascot.characterPreview': 'Podgląd',
   'settings.mascot.characterStates': 'stanów',
   'settings.mascot.characterVisemes': 'wizemów',
@@ -6047,7 +6072,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'Ciepły, przyjazny, bezpieczny dla każdego wieku',
   'settings.persona.appearanceHeading': 'Awatar i głos',
   'settings.persona.appearanceDesc':
-    'Kolor maskotki, własny awatar GIF i głos odpowiedzi są konfigurowane w ustawieniach Maskotki.',
+    'Kolor maskotki, własny awatar obrazkowy i głos odpowiedzi są konfigurowane w ustawieniach Maskotki.',
   'settings.persona.openMascotSettings': 'Otwórz ustawienia Maskotki',
   'settings.memoryWindow.balanced.badge': 'Zalecane',
   'settings.memoryWindow.balanced.hint':

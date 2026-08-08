@@ -280,16 +280,15 @@ export const MASCOT_VOICE_MODEL_ID =
   'eleven_multilingual_v2';
 
 /**
- * Gates the realtime ElevenLabs Agents voice mode (#5399). Off by default so
- * the classic turn-based voice pipeline stays the only path until the realtime
- * session is ready; set `VITE_VOICE_MODE` to any non-empty value to expose the
- * Settings toggle. This gates only the UI switch — the realtime code paths
- * additionally check the persisted `mascot.voiceMode`, so the feature ships
- * dark even where the flag is on.
+ * Gates the realtime ElevenLabs Agents voice mode (#5399). On by default in
+ * every build (local, staging, production) so the Settings toggle is exposed
+ * without any build-time env wiring; set `VITE_VOICE_MODE=false` to hide it
+ * (kill switch). This gates only the UI switch — the realtime code paths
+ * additionally check the persisted `mascot.voiceMode`, so the feature still
+ * ships dark until the user opts in via the toggle.
  */
-export const VOICE_MODE_FLAG_ENABLED = Boolean(
-  (import.meta.env.VITE_VOICE_MODE as string | undefined)?.trim()
-);
+export const VOICE_MODE_FLAG_ENABLED =
+  (import.meta.env.VITE_VOICE_MODE as string | undefined)?.trim() !== 'false';
 
 /**
  * URL of the published mascot manifest (`dist/mascots.json` from the

@@ -324,8 +324,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': '최근 동기화됨',
   'conversations.backgroundTasks.memProviderIdle': '대기 중',
   'nav.home': '홈',
-  'nav.human': '휴먼',
   'nav.chat': '채팅',
+  'nav.human': '휴먼',
   'nav.assistant': '어시스턴트',
   'assistant.faceMode.on': 'Tiny와 대화 중',
   'assistant.faceMode.off': 'Tiny와 대화하기',
@@ -1292,6 +1292,11 @@ const messages: TranslationMap = {
   'memoryTree.status.never': '없음',
   'memoryTree.status.fetchError': '메모리 트리 상태를 가져올 수 없습니다.',
   'memoryTree.status.retry': '다시 시도',
+  'memoryTree.status.retryFailed': '실패한 작업 다시 실행',
+  'memoryTree.status.retryFailedBusy': '다시 시도하는 중...',
+  'memoryTree.status.retryFailedDone': '실패한 작업을 다시 대기열에 넣었습니다',
+  'memoryTree.status.retryFailedCount': '{count}개 작업이 다시 실행되도록 대기열에 있습니다.',
+  'memoryTree.status.retryFailedError': '실패한 작업을 다시 대기열에 넣지 못했습니다',
   'memoryTree.status.toggleFailed': '자동 동기화를 전환할 수 없습니다.',
   'memoryTree.status.justNow': '방금 전',
   'memoryTree.status.secondsAgo': '{count}초 전',
@@ -2704,6 +2709,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': '음성 응답 재생 중',
   'chat.voiceHint': '마이크를 사용해 말하세요',
   'chat.micUnavailable': '마이크를 사용할 수 없습니다',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': '어시스턴트와 대화하기',
+  'chat.mascot.collapse': '채팅으로 돌아가기',
+  'chat.mascot.speakReplies': '답변을 소리 내어 읽기',
+  'chat.mascot.speakRepliesHint':
+    '마스코트가 열려 있는 동안 답변을 소리 내어 읽어 줍니다. 조용히 대화하려면 끄세요.',
+  'chat.mascot.dismiss': 'Tiny 숨기기',
+  'chat.mascot.dismissTitle': 'Tiny를 숨길까요?',
+  'chat.mascot.dismissBody':
+    '메시지 상자를 혼자 쓰고 싶다면 괜찮아요. 설정 › 외관 › 채팅에서 언제든지 Tiny를 다시 부를 수 있습니다.',
+  'chat.mascot.dismissConfirm': 'Tiny 숨기기',
+  'chat.mascot.dismissCancel': 'Tiny 두기',
   'chat.turn': '턴',
   'chat.turns': '턴',
   'chat.openWorkerThread': '워커 스레드 열기',
@@ -5773,6 +5790,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': '에이전트 사고 숨기기',
   'settings.appearance.hideAgentInsightsDesc':
     '채팅에서 에이전트의 단계별 실시간 타임라인을 접습니다. 깜박이는 "처리 중" 링크로 전체 과정을 열 수 있습니다.',
+  'settings.appearance.showChatMascot': '메시지 상자에 Tiny 표시',
+  'settings.appearance.showChatMascotDesc':
+    '마스코트가 입력창 위에 서 있습니다. 숨기면 다시 켤 때까지 채팅은 텍스트로만 진행됩니다.',
   'settings.appearance.assistantTextModeDesc':
     '사용자 메시지는 말풍선으로 유지하고 어시스턴트 답변은 프레임 없는 텍스트로 표시합니다.',
   'settings.mascot.active': '활성',
@@ -5780,10 +5800,15 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': '초안',
   'settings.mascot.characterHeading': '캐릭터 제목',
   'settings.mascot.customGifError':
-    'HTTPS .gif URL, loopback HTTP .gif URL, file:// .gif URL 또는 로컬 .gif 경로를 입력하세요.',
-  'settings.mascot.customGifHeading': '사용자 지정 GIF 아바타',
-  'settings.mascot.customGifLabel': '사용자 지정 GIF 아바타 URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'HTTPS, file:// 또는 로컬 이미지 URL(PNG, GIF, JPEG, WebP 또는 BMP)을 입력하거나 파일을 업로드하세요.',
+  'settings.mascot.customGifHeading': '사용자 지정 이미지 아바타',
+  'settings.mascot.customGifLabel': '사용자 지정 이미지 아바타 URL',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': '이미지 업로드',
+  'settings.mascot.customGifInvalidType':
+    '지원되지 않는 파일 형식입니다. PNG, GIF, JPEG, WebP 또는 BMP 이미지를 업로드하세요.',
+  'settings.mascot.customGifTooLarge': '이미지가 너무 큽니다. 최대 1.5MB 파일을 업로드하세요.',
+  'settings.mascot.customGifReadError': '이미지를 읽을 수 없습니다. 다른 파일을 시도하세요.',
   'settings.mascot.characterPreview': '미리보기',
   'settings.mascot.characterStates': '상태',
   'settings.mascot.characterVisemes': '입 모양',
@@ -5891,7 +5916,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': '따뜻하고 친근하며 모든 연령에 안전',
   'settings.persona.appearanceHeading': '아바타 및 음성',
   'settings.persona.appearanceDesc':
-    '마스코트 색상, 사용자 지정 GIF 아바타, 응답 음성은 마스코트 설정에서 구성합니다.',
+    '마스코트 색상, 사용자 지정 이미지 아바타, 응답 음성은 마스코트 설정에서 구성합니다.',
   'settings.persona.openMascotSettings': '마스코트 설정 열기',
   'settings.memoryWindow.balanced.badge': '추천',
   'settings.memoryWindow.balanced.hint':

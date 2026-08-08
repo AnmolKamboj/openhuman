@@ -11,19 +11,19 @@ OpenHuman bundles three loosely related growth mechanics behind one surface: a *
 
 All of this requires a signed-in backend session. On a local-only session the Rewards page shows an empty state prompting you to sign in - none of these features work offline.
 
-***
+---
 
 ## The Rewards screen
 
 Lives at `/rewards` with three chip tabs. The middle **Rewards** (community) tab is selected by default.
 
-| Tab           | What it does                                                       |
+| Tab           | What it does                                                      |
 | ------------- | ----------------------------------------------------------------- |
 | **Referrals** | Your referral code, earnings, and referred-user activity          |
 | **Rewards**   | Discord connection, progress ring, and unlockable community roles |
 | **Coupons**   | Redeem promo codes for promotional credit + redemption history    |
 
-***
+---
 
 ## Referrals
 
@@ -45,14 +45,14 @@ Reward amounts, conversion rules, and eligibility are all enforced **server-side
 
 The referral domain (`src/openhuman/hosted/referral/`) is a stateless RPC adapter, not business logic. It exists because the desktop WebView `fetch` can fail with a generic "Load failed" (CORS/TLS/WebKit), so these calls reuse the same server-side `reqwest` path as billing.
 
-| RPC                  | Backend call            | Purpose                                   |
-| -------------------- | ----------------------- | ----------------------------------------- |
-| `referral.get_stats` | `GET /referral/stats`   | Code, totals, and referred-user rows      |
-| `referral.claim`     | `POST /referral/claim`  | Apply a referral code (optional device fingerprint for abuse signals) |
+| RPC                  | Backend call           | Purpose                                                               |
+| -------------------- | ---------------------- | --------------------------------------------------------------------- |
+| `referral.get_stats` | `GET /referral/stats`  | Code, totals, and referred-user rows                                  |
+| `referral.claim`     | `POST /referral/claim` | Apply a referral code (optional device fingerprint for abuse signals) |
 
 Both fail closed with `no backend session token` when no session is stored.
 
-***
+---
 
 ## Coupons (Redeem)
 
@@ -60,13 +60,13 @@ The Coupons tab redeems **promo codes** for promotional credit - separate from r
 
 A **recent redemptions** table lists each code, its reward amount, status, and when it was redeemed.
 
-| Coupon status   | Meaning                                                |
-| --------------- | ------------------------------------------------------ |
-| Applied         | Fulfilled - credit is on your account                  |
-| Pending action  | Conditional coupon awaiting a triggering action        |
-| Redeemed        | Accepted, not yet fulfilled                            |
+| Coupon status  | Meaning                                         |
+| -------------- | ----------------------------------------------- |
+| Applied        | Fulfilled - credit is on your account           |
+| Pending action | Conditional coupon awaiting a triggering action |
+| Redeemed       | Accepted, not yet fulfilled                     |
 
-***
+---
 
 ## Community rewards & Discord
 
@@ -80,17 +80,17 @@ Rewards are delivered as **Discord roles**, so the tab is built around linking y
 
 Once linked, each unlocked achievement shows its Discord role-assignment state:
 
-| Role status     | Meaning                                                     |
-| --------------- | ----------------------------------------------------------- |
-| Assigned        | Role granted on the server                                  |
-| Pending         | Unlocked but the role hasn't been assigned yet              |
-| Join to claim   | Linked but not in the server - join to receive the role     |
+| Role status   | Meaning                                                 |
+| ------------- | ------------------------------------------------------- |
+| Assigned      | Role granted on the server                              |
+| Pending       | Unlocked but the role hasn't been assigned yet          |
+| Join to claim | Linked but not in the server - join to receive the role |
 
 If you've unlocked a role-bearing achievement but haven't joined the server, a **claim banner** prompts you to join. Membership status is one of `member`, `not_in_guild`, `not_linked`, or `unavailable`.
 
 > GitHub-based contributor rewards are a **separate** mechanism: a GitHub Actions workflow (`.github/workflows/contributor-rewards.yml`) that posts a Discord/merch invite comment when a contributor's first PR merges. It is not part of the in-app Rewards screen and uses no in-app GitHub OAuth.
 
-***
+---
 
 ## Invite codes
 
@@ -101,9 +101,9 @@ The **Invites** screen (`/invites`) is distinct from referral codes. It manages 
 
 Invite codes carry a `type` (`USER` or `CAMPAIGN`), `maxUses`/`currentUses` counters, and a `usageHistory` of who redeemed them and when.
 
-***
+---
 
 ## See also
 
-* [Billing & usage](billing-and-usage.md) - where referral, coupon, and achievement credit gets spent.
-* [Welcome](../README.md) - the documentation home.
+- [Billing & usage](billing-and-usage.md) - where referral, coupon, and achievement credit gets spent.
+- [Welcome](../README.md) - the documentation home.

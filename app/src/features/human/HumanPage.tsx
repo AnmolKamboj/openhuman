@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import { useT } from '../../lib/i18n/I18nContext';
-import { useAppSelector } from '../../store/hooks';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import {
   selectCustomMascotGifUrl,
   selectCustomPrimaryColor,
   selectCustomSecondaryColor,
   selectMascotColor,
+  selectSpeakReplies,
   selectVoiceMode,
+  setSpeakReplies,
 } from '../../store/mascotSlice';
 import { VOICE_MODE_FLAG_ENABLED } from '../../utils/config';
 import Conversations from '../conversations/Conversations';
@@ -22,18 +24,15 @@ import { useMascotManifest } from './Mascot/manifest/useMascotManifest';
 import RealtimeVoiceControls from './RealtimeVoiceControls';
 import { useHumanMascot } from './useHumanMascot';
 
-const SPEAK_REPLIES_KEY = 'human.speakReplies';
-
 const HumanPage = () => {
   const { t } = useT();
-  const [speakReplies, setSpeakReplies] = useState<boolean>(() => {
-    const raw = window.localStorage.getItem(SPEAK_REPLIES_KEY);
-    return raw === null ? true : raw === '1';
-  });
-
-  useEffect(() => {
-    window.localStorage.setItem(SPEAK_REPLIES_KEY, speakReplies ? '1' : '0');
-  }, [speakReplies]);
+  const dispatch = useAppDispatch();
+  // Reads the shared preference rather than the old
+  // `localStorage['human.speakReplies']` this page used to own. That key is
+  // consumed and deleted by the mascot slice's persist migration, so keeping the
+  // local copy would leave this page and the chat mascot disagreeing about the
+  // same setting — and would silently drop whatever the user had chosen before.
+  const speakReplies = useAppSelector(selectSpeakReplies);
 
   const { face, visemeCode } = useHumanMascot({ speakReplies });
   const voiceMode = useAppSelector(selectVoiceMode);
@@ -115,7 +114,7 @@ const HumanPage = () => {
         <input
           type="checkbox"
           checked={speakReplies}
-          onChange={e => setSpeakReplies(e.target.checked)}
+          onChange={e => dispatch(setSpeakReplies(e.target.checked))}
           className="cursor-pointer"
         />
         {t('voice.pushToTalk')}

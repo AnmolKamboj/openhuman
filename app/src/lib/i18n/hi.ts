@@ -329,8 +329,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'हाल ही में सिंक हुआ',
   'conversations.backgroundTasks.memProviderIdle': 'निष्क्रिय',
   'nav.home': 'होम',
-  'nav.human': 'मानव',
   'nav.chat': 'चैट',
+  'nav.human': 'मानव',
   'nav.assistant': 'सहायक',
   'assistant.faceMode.on': 'Tiny से बात हो रही है',
   'assistant.faceMode.off': 'Tiny से बात करें',
@@ -1302,6 +1302,11 @@ const messages: TranslationMap = {
   'memoryTree.status.never': 'कभी नहीं',
   'memoryTree.status.fetchError': 'स्मृति वृक्ष की स्थिति नहीं मिला',
   'memoryTree.status.retry': 'रेस्त्री',
+  'memoryTree.status.retryFailed': 'विफल कार्य दोबारा चलाएँ',
+  'memoryTree.status.retryFailedBusy': 'दोबारा चलाया जा रहा है...',
+  'memoryTree.status.retryFailedDone': 'विफल कार्य फिर से कतार में डाले गए',
+  'memoryTree.status.retryFailedCount': '{count} कार्य दोबारा चलने के लिए कतार में हैं।',
+  'memoryTree.status.retryFailedError': 'विफल कार्यों को फिर से कतार में नहीं डाला जा सका',
   'memoryTree.status.toggleFailed': 'ऑटो सिंक को टॉगल नहीं कर सका',
   'memoryTree.status.justNow': 'अभी',
   'memoryTree.status.secondsAgo': '{count} पहले',
@@ -2734,6 +2739,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'वॉइस रिप्लाई चल रहा है',
   'chat.voiceHint': 'बोलने के लिए माइक इस्तेमाल करें',
   'chat.micUnavailable': 'माइक्रोफोन उपलब्ध नहीं',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'अपने असिस्टेंट से बात करें',
+  'chat.mascot.collapse': 'चैट पर वापस जाएँ',
+  'chat.mascot.speakReplies': 'जवाब बोलकर सुनाएँ',
+  'chat.mascot.speakRepliesHint':
+    'मैस्कॉट खुला रहने तक जवाब बोलकर सुनाए जाते हैं। बातचीत को शांत रखने के लिए इसे बंद कर दें।',
+  'chat.mascot.dismiss': 'Tiny छिपाएँ',
+  'chat.mascot.dismissTitle': 'Tiny छिपाएँ?',
+  'chat.mascot.dismissBody':
+    'अगर आप मैसेज बॉक्स अपने पास ही रखना चाहते हैं तो कोई बात नहीं। Tiny को कभी भी सेटिंग्स › दिखावट › चैट से वापस ला सकते हैं।',
+  'chat.mascot.dismissConfirm': 'Tiny छिपाएँ',
+  'chat.mascot.dismissCancel': 'Tiny रहने दें',
   'chat.turn': 'टर्न',
   'chat.turns': 'टर्न्स',
   'chat.openWorkerThread': 'वर्कर थ्रेड खोलें',
@@ -5840,6 +5857,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'एजेंट की सोच छिपाएँ',
   'settings.appearance.hideAgentInsightsDesc':
     'चैट में एजेंट की चरण-दर-चरण लाइव टाइमलाइन को छिपाएँ। एक ब्लिंक करता "प्रोसेसिंग" लिंक फिर भी आपको पूरी प्रक्रिया खोलने देता है।',
+  'settings.appearance.showChatMascot': 'मैसेज बॉक्स पर Tiny दिखाएँ',
+  'settings.appearance.showChatMascotDesc':
+    'मैस्कॉट लिखने के बॉक्स पर खड़ा रहता है। छिपाने पर चैट सिर्फ़ टेक्स्ट रहेगी, जब तक आप इसे दोबारा चालू न करें।',
   'settings.appearance.assistantTextModeDesc':
     'असिस्टेंट के जवाबों को बिना फ्रेम वाले टेक्स्ट के रूप में दिखाएं और आपके संदेश बबल में रखें।',
   'settings.mascot.active': 'एक्टिव',
@@ -5847,10 +5867,15 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'ड्राफ़्ट',
   'settings.mascot.characterHeading': 'कैरेक्टर शीर्षक',
   'settings.mascot.customGifError':
-    'एक HTTPS .gif URL, लूपबैक HTTP .gif URL, फ़ाइल:// .gif URL, या स्थानीय .gif पथ दर्ज करें।',
-  'settings.mascot.customGifHeading': 'कस्टम GIF अवतार',
-  'settings.mascot.customGifLabel': 'कस्टम GIF अवतार URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'HTTPS, file://, या स्थानीय इमेज URL (PNG, GIF, JPEG, WebP, या BMP) दर्ज करें, या कोई फ़ाइल अपलोड करें।',
+  'settings.mascot.customGifHeading': 'कस्टम इमेज अवतार',
+  'settings.mascot.customGifLabel': 'कस्टम इमेज अवतार URL',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'इमेज अपलोड करें',
+  'settings.mascot.customGifInvalidType':
+    'असमर्थित फ़ाइल प्रकार। PNG, GIF, JPEG, WebP, या BMP इमेज अपलोड करें।',
+  'settings.mascot.customGifTooLarge': 'इमेज बहुत बड़ी है। 1.5 MB तक की फ़ाइल अपलोड करें।',
+  'settings.mascot.customGifReadError': 'यह इमेज पढ़ी नहीं जा सकी। कृपया दूसरी फ़ाइल आज़माएँ।',
   'settings.mascot.characterPreview': 'पूर्वावलोकन',
   'settings.mascot.characterStates': 'राज्य',
   'settings.mascot.characterVisemes': 'हिंदी',
@@ -5957,7 +5982,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'गर्मजोश, मिलनसार, हर उम्र के लिए सुरक्षित',
   'settings.persona.appearanceHeading': 'अवतार और आवाज',
   'settings.persona.appearanceDesc':
-    'Mascot रंग, कस्टम GIF अवतार, और उत्तर आवाज Mascot सेटिंग्स में कॉन्फ़िगर किया गया है।',
+    'Mascot रंग, कस्टम इमेज अवतार, और उत्तर आवाज Mascot सेटिंग्स में कॉन्फ़िगर किया गया है।',
   'settings.persona.openMascotSettings': 'ओपन Mascot सेटिंग्स',
   'settings.memoryWindow.balanced.badge': 'अनुशंसित',
   'settings.memoryWindow.balanced.hint':

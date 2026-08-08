@@ -350,8 +350,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'Kürzlich synchronisiert',
   'conversations.backgroundTasks.memProviderIdle': 'Inaktiv',
   'nav.home': 'Start',
-  'nav.human': 'Mensch',
   'nav.chat': 'Chat',
+  'nav.human': 'Mensch',
   'nav.assistant': 'Assistent',
   'assistant.faceMode.on': 'Spricht mit Tiny',
   'assistant.faceMode.off': 'Mit Tiny sprechen',
@@ -1351,6 +1351,12 @@ const messages: TranslationMap = {
   'memoryTree.status.never': 'Nie',
   'memoryTree.status.fetchError': 'Speicherbaum-Status konnte nicht abgerufen werden',
   'memoryTree.status.retry': 'Wiederholen',
+  'memoryTree.status.retryFailed': 'Fehlgeschlagene Jobs erneut ausführen',
+  'memoryTree.status.retryFailedBusy': 'Wird wiederholt...',
+  'memoryTree.status.retryFailedDone': 'Fehlgeschlagene Jobs neu eingereiht',
+  'memoryTree.status.retryFailedCount': 'Erneut eingereihte Jobs: {count}.',
+  'memoryTree.status.retryFailedError':
+    'Die fehlgeschlagenen Jobs konnten nicht neu eingereiht werden',
   'memoryTree.status.toggleFailed':
     'Automatische Synchronisierung konnte nicht umgeschaltet werden',
   'memoryTree.status.justNow': 'gerade eben',
@@ -2815,6 +2821,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'Sprachantwort wird abgespielt',
   'chat.voiceHint': 'Nutze das Mikrofon zum Sprechen',
   'chat.micUnavailable': 'Mikrofon nicht verfügbar',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Mit deinem Assistenten sprechen',
+  'chat.mascot.collapse': 'Zurück zum Chat',
+  'chat.mascot.speakReplies': 'Antworten vorlesen',
+  'chat.mascot.speakRepliesHint':
+    'Antworten werden vorgelesen, solange das Maskottchen geöffnet ist. Schalte dies aus, damit das Gespräch stumm bleibt.',
+  'chat.mascot.dismiss': 'Tiny ausblenden',
+  'chat.mascot.dismissTitle': 'Tiny ausblenden?',
+  'chat.mascot.dismissBody':
+    'Kein Problem, wenn du das Nachrichtenfeld lieber für dich hast. Du kannst Tiny jederzeit über Einstellungen › Aussehen › Chat zurückholen.',
+  'chat.mascot.dismissConfirm': 'Tiny ausblenden',
+  'chat.mascot.dismissCancel': 'Tiny behalten',
   'chat.turn': 'drehen',
   'chat.turns': 'dreht sich',
   'chat.openWorkerThread': 'Arbeitsthread öffnen',
@@ -6004,6 +6022,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Agent-Denkprozess ausblenden',
   'settings.appearance.hideAgentInsightsDesc':
     'Blendet die schrittweise Live-Zeitleiste des Agenten im Chat aus. Über einen blinkenden „Wird verarbeitet“-Link lässt sich der vollständige Ablauf weiterhin öffnen.',
+  'settings.appearance.showChatMascot': 'Tiny am Nachrichtenfeld anzeigen',
+  'settings.appearance.showChatMascotDesc':
+    'Das Maskottchen bleibt auf dem Eingabefeld stehen. Ausgeblendet ist der Chat nur Text, bis du dies wieder einschaltest.',
   'settings.appearance.assistantTextModeDesc':
     'Zeigt Assistentenantworten als ungerahmten Text an und lässt deine Nachrichten in Blasen.',
   'settings.mascot.active': 'Aktiv',
@@ -6011,10 +6032,16 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Entwurf',
   'settings.mascot.characterHeading': 'Zeichenüberschrift',
   'settings.mascot.customGifError':
-    'GIF konnte nicht geladen werden. Bitte überprüfe die URL und versuche es erneut.',
-  'settings.mascot.customGifHeading': 'Benutzerdefinierter GIF-Avatar',
-  'settings.mascot.customGifLabel': 'URL für benutzerdefinierten GIF-Avatar',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Gib eine HTTPS-, file:// oder lokale Bild-URL (PNG, GIF, JPEG, WebP oder BMP) ein oder lade eine Datei hoch.',
+  'settings.mascot.customGifHeading': 'Benutzerdefinierter Bild-Avatar',
+  'settings.mascot.customGifLabel': 'URL für benutzerdefinierten Bild-Avatar',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Bild hochladen',
+  'settings.mascot.customGifInvalidType':
+    'Nicht unterstützter Dateityp. Lade ein PNG-, GIF-, JPEG-, WebP- oder BMP-Bild hoch.',
+  'settings.mascot.customGifTooLarge': 'Bild ist zu groß. Lade eine Datei bis 1,5 MB hoch.',
+  'settings.mascot.customGifReadError':
+    'Bild konnte nicht gelesen werden. Bitte versuche eine andere Datei.',
   'settings.mascot.characterPreview': 'Vorschau',
   'settings.mascot.characterStates': 'Staaten',
   'settings.mascot.characterVisemes': 'Mundbilder',
@@ -6125,7 +6152,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'Herzlich, freundlich, für alle Altersgruppen geeignet',
   'settings.persona.appearanceHeading': 'Avatar und Stimme',
   'settings.persona.appearanceDesc':
-    'Maskottchenfarbe, benutzerdefinierter GIF-Avatar und Antwortstimme werden in den Maskottcheneinstellungen konfiguriert.',
+    'Maskottchenfarbe, benutzerdefinierter Bild-Avatar und Antwortstimme werden in den Maskottcheneinstellungen konfiguriert.',
   'settings.persona.openMascotSettings': 'Öffnen Sie die Maskottchen-Einstellungen',
   'settings.memoryWindow.balanced.badge': 'Empfohlen',
   'settings.memoryWindow.balanced.hint':

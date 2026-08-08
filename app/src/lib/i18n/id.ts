@@ -336,8 +336,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'Baru saja disinkronkan',
   'conversations.backgroundTasks.memProviderIdle': 'Diam',
   'nav.home': 'Beranda',
-  'nav.human': 'Manusia',
   'nav.chat': 'Obrolan',
+  'nav.human': 'Manusia',
   'nav.assistant': 'Asisten',
   'assistant.faceMode.on': 'Berbicara dengan Tiny',
   'assistant.faceMode.off': 'Bicara dengan Tiny',
@@ -1316,6 +1316,11 @@ const messages: TranslationMap = {
   'memoryTree.status.never': 'Tidak pernah',
   'memoryTree.status.fetchError': 'Gagal mengambil status Pohon Memori',
   'memoryTree.status.retry': 'Coba lagi',
+  'memoryTree.status.retryFailed': 'Jalankan ulang tugas yang gagal',
+  'memoryTree.status.retryFailedBusy': 'Mencoba lagi...',
+  'memoryTree.status.retryFailedDone': 'Tugas yang gagal masuk antrean lagi',
+  'memoryTree.status.retryFailedCount': '{count} tugas diantrekan untuk dijalankan ulang.',
+  'memoryTree.status.retryFailedError': 'Tidak dapat mengantrekan ulang tugas yang gagal',
   'memoryTree.status.toggleFailed': 'Gagal mengalihkan sinkronisasi otomatis',
   'memoryTree.status.justNow': 'baru saja',
   'memoryTree.status.secondsAgo': '{count} dtk lalu',
@@ -2744,6 +2749,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'Memutar balasan suara',
   'chat.voiceHint': 'Gunakan mikrofon untuk bicara',
   'chat.micUnavailable': 'Mikrofon tidak tersedia',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Bicara dengan asisten Anda',
+  'chat.mascot.collapse': 'Kembali ke obrolan',
+  'chat.mascot.speakReplies': 'Bacakan balasan dengan suara',
+  'chat.mascot.speakRepliesHint':
+    'Balasan dibacakan selama maskot terbuka. Matikan agar percakapan tetap senyap.',
+  'chat.mascot.dismiss': 'Sembunyikan Tiny',
+  'chat.mascot.dismissTitle': 'Sembunyikan Tiny?',
+  'chat.mascot.dismissBody':
+    'Tidak masalah kalau Anda ingin kotak pesan untuk diri sendiri. Anda bisa memunculkan Tiny lagi kapan saja lewat Pengaturan › Tampilan › Chat.',
+  'chat.mascot.dismissConfirm': 'Sembunyikan Tiny',
+  'chat.mascot.dismissCancel': 'Biarkan Tiny',
   'chat.turn': 'giliran',
   'chat.turns': 'giliran',
   'chat.openWorkerThread': 'Buka thread worker',
@@ -5870,6 +5887,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Sembunyikan proses berpikir agen',
   'settings.appearance.hideAgentInsightsDesc':
     'Ciutkan lini masa langkah demi langkah agen secara langsung di obrolan. Tautan "Memproses" yang berkedip tetap memungkinkan Anda membuka proses lengkapnya.',
+  'settings.appearance.showChatMascot': 'Tampilkan Tiny di kotak pesan',
+  'settings.appearance.showChatMascotDesc':
+    'Maskot tetap berdiri di kotak tulis. Jika disembunyikan, obrolan hanya berupa teks sampai Anda menyalakannya lagi.',
   'settings.appearance.assistantTextModeDesc':
     'Tampilkan balasan asisten sebagai teks tanpa bingkai, sementara pesan Anda tetap dalam gelembung.',
   'settings.mascot.active': 'Aktif',
@@ -5877,10 +5897,15 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Draf',
   'settings.mascot.characterHeading': 'Judul karakter',
   'settings.mascot.customGifError':
-    'Masukkan HTTPS .gif URL, loopback HTTP .gif URL, file:// .gif URL, atau jalur .gif lokal.',
-  'settings.mascot.customGifHeading': 'Avatar GIF khusus',
-  'settings.mascot.customGifLabel': 'Avatar GIF khusus URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Masukkan URL gambar HTTPS, file://, atau lokal (PNG, GIF, JPEG, WebP, atau BMP), atau unggah berkas.',
+  'settings.mascot.customGifHeading': 'Avatar gambar khusus',
+  'settings.mascot.customGifLabel': 'URL avatar gambar khusus',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Unggah gambar',
+  'settings.mascot.customGifInvalidType':
+    'Tipe berkas tidak didukung. Unggah gambar PNG, GIF, JPEG, WebP, atau BMP.',
+  'settings.mascot.customGifTooLarge': 'Gambar terlalu besar. Unggah berkas hingga 1,5 MB.',
+  'settings.mascot.customGifReadError': 'Tidak dapat membaca gambar itu. Coba berkas lain.',
   'settings.mascot.characterPreview': 'Pratinjau',
   'settings.mascot.characterStates': 'status',
   'settings.mascot.characterVisemes': 'visem',
@@ -5988,7 +6013,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'Hangat, ramah, aman untuk segala usia',
   'settings.persona.appearanceHeading': 'Avatar & Suara',
   'settings.persona.appearanceDesc':
-    'Warna Mascot, avatar GIF kustom, dan suara balasan dikonfigurasi dalam pengaturan Mascot.',
+    'Warna Mascot, avatar gambar kustom, dan suara balasan dikonfigurasi dalam pengaturan Mascot.',
   'settings.persona.openMascotSettings': 'Buka pengaturan Mascot',
   'settings.memoryWindow.balanced.badge': 'Direkomendasikan',
   'settings.memoryWindow.balanced.hint':
