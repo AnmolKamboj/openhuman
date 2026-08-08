@@ -231,8 +231,16 @@ impl Agent {
         // The expression is extracted into [`derive_profile_workspace_descriptor`]
         // so the unit tests exercise the *same* code path rather than a
         // hand-copied mirror.
+        //
+        // When no profile binds one, an embedder may still have scoped a
+        // per-turn root (`agent::turn_workspace`) — a workflow node running
+        // this turn against the checkout it names. The profile's dedicated
+        // workspace wins where both exist: it is the stronger, persisted
+        // isolation boundary, and a profile that asked for its own home must
+        // not be relocated by an ambient host hint.
         let profile_workspace_descriptor =
-            derive_profile_workspace_descriptor(&config.action_dir, profile);
+            derive_profile_workspace_descriptor(&config.action_dir, profile)
+                .or_else(derive_turn_workspace_descriptor);
 
         let runtime: Arc<dyn host_runtime::RuntimeAdapter> = Arc::from(
             host_runtime::create_runtime(&config.runtime, config.shell.hide_window)?,
@@ -1616,6 +1624,45 @@ pub(crate) fn derive_profile_workspace_descriptor(
         tinyagents::harness::workspace::WorkspaceDescriptor::new(dir).with_policy_id(
             crate::openhuman::agent::profiles::workspace_policy_id(&profile_id),
         ),
+    )
+}
+
+/// Section D, embedder variant — the turn's workspace descriptor from the
+/// per-turn root an embedder scoped via
+/// [`turn_workspace::with_workspace`](crate::openhuman::agent::turn_workspace::with_workspace).
+///
+/// Returns a [`WorkspaceDescriptor`](tinyagents::harness::workspace::WorkspaceDescriptor)
+/// rooted at the scoped directory so this turn's acting tools (shell, file,
+/// git) resolve their default cwd there instead of the shared `action_dir`.
+/// `None` — every caller that scoped nothing — leaves the shared-`action_dir`
+/// behaviour byte-identical.
+///
+/// The root is only honoured when it is an existing directory: binding every
+/// acting tool to a cwd that does not exist would turn a host's stale path into
+/// an unexplained failure in each individual tool, and the shared `action_dir`
+/// is the better fallback (same reasoning as the profile variant's
+/// create-failure path).
+///
+/// The policy id is a fixed label rather than the path: it is surfaced in tool
+/// logs, and a host's checkout path is not something to spread through them.
+fn derive_turn_workspace_descriptor() -> Option<tinyagents::harness::workspace::WorkspaceDescriptor>
+{
+    let root = crate::openhuman::agent::turn_workspace::current()?;
+    if !root.is_dir() {
+        tracing::warn!(
+            root = %root.display(),
+            "[turn_workspace] scoped root is not an existing directory — \
+             falling back to the shared action_dir cwd for this turn"
+        );
+        return None;
+    }
+    tracing::debug!(
+        root = %root.display(),
+        "[turn_workspace] turn bound to the embedder's per-turn root as default cwd"
+    );
+    Some(
+        tinyagents::harness::workspace::WorkspaceDescriptor::new(root)
+            .with_policy_id("turn-workspace"),
     )
 }
 
