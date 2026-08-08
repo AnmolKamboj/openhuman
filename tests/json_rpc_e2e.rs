@@ -3092,9 +3092,10 @@ async fn json_rpc_thread_generate_title_falls_back_when_provider_path_is_unavail
         .expect("generated title");
 
     assert_ne!(generated_title, original_title);
-    assert!(
-        generated_title.contains("Please summarize the latest five email threads for"),
-        "fallback title should be derived from the first user message: {generated_title}"
+    assert_eq!(
+        generated_title,
+        "summarize latest five",
+        "fallback title should be the 3-word shape derived from the first user message (filler stripped), got: {generated_title}"
     );
 
     let captured_models = with_chat_completion_models(|models| models.clone());
