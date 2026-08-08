@@ -387,6 +387,213 @@ fn tool_failure_metadata_round_trips_write_to_display_line() {
     assert_eq!(failed.failure_detail.as_deref(), Some("boom: exit 1"));
 }
 
+/// The **golden test for the turn path's write call site**.
+///
+/// Every other test in this file hand-writes JSONL string literals, so they pin
+/// the reader/projector but say nothing about the writer the live turn loop
+/// actually calls. `tool_failure_metadata_round_trips_write_to_display_line`
+/// goes through `write_transcript`, not `append_transcript_turn`. That left the
+/// seam this test covers — `append_transcript_turn` → `read_transcript_display`
+/// → `project_thread` — with no coverage at all, which is exactly the seam the
+/// tinyagents `ChatHistory` migration touches.
+///
+/// It fails loudly if a write ever drops `request_id` or `turn_usage`: without
+/// `request_id` there is no `DisplayItem::TurnBoundary` (project.rs
+/// `maybe_emit_turn_boundary`) and `turn_segments` goes empty, unanchoring every
+/// sub-agent; without `turn_usage` every `DisplayItem::ToolCall` disappears
+/// (tool calls are read off `turn_usage.tool_calls`), `Reasoning` vanishes, and
+/// `AssistantMessage.{model,iteration,interim}` collapse to `None`/`false`.
+///
+/// All timestamps are fixed literals so nothing here is clock-dependent.
+#[test]
+fn append_transcript_turn_projects_full_display_shape() {
+    let dir = TempDir::new().unwrap();
+    let now = "2026-07-21T09:00:00Z".to_string();
+    let meta = transcript::TranscriptMeta {
+        agent_name: "orchestrator".into(),
+        agent_id: Some("orchestrator".into()),
+        agent_type: Some("root".into()),
+        dispatcher: "native".into(),
+        provider: Some("anthropic".into()),
+        model: Some("claude-x".into()),
+        created: now.clone(),
+        updated: now,
+        turn_count: 1,
+        input_tokens: 30,
+        output_tokens: 13,
+        cached_input_tokens: 0,
+        charged_amount_usd: 0.003,
+        thread_id: Some("thr_golden".into()),
+        task_id: None,
+    };
+
+    let usage = |cost: f64| transcript::MessageUsage {
+        input: 20,
+        output: 8,
+        cached_input: 0,
+        context_window: 200_000,
+        cost_usd: cost,
+    };
+
+    // Iteration 1 of the turn: the model reasons and emits a native tool call.
+    // `turn_usage` attaches to the last assistant row of the written slice, so
+    // this one lands on the interim assistant.
+    let interim_usage = transcript::TurnUsage {
+        provider: "anthropic".into(),
+        model: "claude-x".into(),
+        usage: usage(0.001),
+        ts: "2026-07-21T09:00:01Z".into(),
+        reasoning_content: Some("I should call the weather tool.".into()),
+        tool_calls: vec![crate::openhuman::inference::provider::ToolCall {
+            id: "call-1".into(),
+            name: "get_weather".into(),
+            arguments: r#"{"city":"NYC"}"#.into(),
+            extra_content: None,
+        }],
+        iteration: 1,
+    };
+    // Iteration 2: the final answer, no further tool calls.
+    let final_usage = transcript::TurnUsage {
+        provider: "anthropic".into(),
+        model: "claude-x".into(),
+        usage: usage(0.002),
+        ts: "2026-07-21T09:00:02Z".into(),
+        reasoning_content: None,
+        tool_calls: vec![],
+        iteration: 2,
+    };
+
+    let msg = |id: Option<&str>, role: &str, content: &str| ChatMessage {
+        id: id.map(str::to_string),
+        role: role.into(),
+        content: content.into(),
+        extra_metadata: None,
+    };
+
+    let first = vec![
+        msg(None, "user", "What's the weather in NYC?"),
+        msg(None, "assistant", "Let me check."),
+    ];
+    let mut second = first.clone();
+    second.push(msg(Some("call-1"), "tool", "72F and sunny"));
+    second.push(msg(None, "assistant", "It's 72F and sunny in NYC."));
+
+    let path = transcript::resolve_keyed_transcript_path(dir.path(), "900_orchestrator").unwrap();
+    // First write creates the file (meta + all lines); the second is a pure
+    // extension appending only the new tail — both are the real turn-path shape.
+    transcript::append_transcript_turn(
+        &path,
+        &[],
+        &first,
+        &meta,
+        Some(&interim_usage),
+        Some("req-1"),
+    )
+    .unwrap();
+    transcript::append_transcript_turn(
+        &path,
+        &first,
+        &second,
+        &meta,
+        Some(&final_usage),
+        Some("req-1"),
+    )
+    .unwrap();
+
+    let display = read_transcript_display(&path).unwrap();
+    let items = project_records(&display.records);
+
+    // A turn boundary must be emitted from the stamped request_id.
+    let boundary = items
+        .iter()
+        .find_map(|i| match i {
+            DisplayItem::TurnBoundary { request_id } => Some(request_id.clone()),
+            _ => None,
+        })
+        .expect("turnBoundary projected from request_id");
+    assert_eq!(boundary, "req-1");
+
+    // Reasoning comes off turn_usage.reasoning_content.
+    let reasoning = items
+        .iter()
+        .find_map(|i| match i {
+            DisplayItem::Reasoning { text } => Some(text.clone()),
+            _ => None,
+        })
+        .expect("reasoning projected from turn_usage");
+    assert_eq!(reasoning, "I should call the weather tool.");
+
+    // The tool call itself is read off turn_usage.tool_calls, and pairs with the
+    // role:"tool" line by id.
+    let tool = items
+        .iter()
+        .find_map(|i| match i {
+            DisplayItem::ToolCall {
+                call_id,
+                name,
+                args,
+                result,
+                status,
+                ..
+            } => Some((
+                call_id.clone(),
+                name.clone(),
+                args.clone(),
+                result.clone(),
+                *status,
+            )),
+            _ => None,
+        })
+        .expect("toolCall projected from turn_usage.tool_calls");
+    assert_eq!(tool.0, "call-1");
+    assert_eq!(tool.1, "get_weather");
+    assert_eq!(
+        tool.2
+            .as_ref()
+            .and_then(|v| v.get("city"))
+            .and_then(|v| v.as_str()),
+        Some("NYC")
+    );
+    assert_eq!(tool.3.as_deref(), Some("72F and sunny"));
+    assert_eq!(tool.4, ToolCallStatus::Success);
+
+    // Model / iteration / request_id / interim all come off the persisted
+    // `turn_usage` + `request_id`; each is `None`/`false` if either is dropped.
+    let assistants: Vec<_> = items
+        .iter()
+        .filter_map(|i| match i {
+            DisplayItem::AssistantMessage {
+                content,
+                model,
+                iteration,
+                request_id,
+                interim,
+                ..
+            } => Some((
+                content.clone(),
+                model.clone(),
+                *iteration,
+                request_id.clone(),
+                *interim,
+            )),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(assistants.len(), 2, "unexpected items: {items:#?}");
+
+    assert_eq!(assistants[0].0, "Let me check.");
+    assert_eq!(assistants[0].1.as_deref(), Some("claude-x"));
+    assert_eq!(assistants[0].2, Some(1));
+    assert_eq!(assistants[0].3.as_deref(), Some("req-1"));
+    assert!(assistants[0].4, "tool-calling step is interim");
+
+    assert_eq!(assistants[1].0, "It's 72F and sunny in NYC.");
+    assert_eq!(assistants[1].1.as_deref(), Some("claude-x"));
+    assert_eq!(assistants[1].2, Some(2));
+    assert_eq!(assistants[1].3.as_deref(), Some("req-1"));
+    assert!(!assistants[1].4, "final answer is not interim");
+}
+
 #[test]
 fn subagent_anchors_to_parent_turn_by_spawn_timestamp() {
     let dir = TempDir::new().unwrap();

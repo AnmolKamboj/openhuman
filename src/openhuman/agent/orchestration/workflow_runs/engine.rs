@@ -50,10 +50,10 @@ use tinyagents::graph::parallel::{map_reduce, FailurePolicy, ParallelOptions};
 use tinyagents::{CancellationToken, TinyAgentsError};
 
 use crate::openhuman::agent::orchestration::parent_context::with_root_parent;
-use crate::openhuman::agent::session_db::run_ledger::{
+use crate::openhuman::config::Config;
+use tinyagents::session::run_ledger::{
     get_workflow_run, upsert_workflow_run, WorkflowRun, WorkflowRunStatus, WorkflowRunUpsert,
 };
-use crate::openhuman::config::Config;
 
 use super::ops::definition_by_id;
 use super::types::{WorkflowDefinition, WorkflowPhase};
@@ -169,7 +169,7 @@ pub async fn start_workflow_run(
     let phase_states = init_phase_states(&definition);
 
     let run = upsert_workflow_run(
-        config,
+        &config.workspace_dir,
         WorkflowRunUpsert {
             id: run_id.clone(),
             definition_id: definition.id.clone(),
@@ -221,7 +221,7 @@ pub async fn start_workflow_run(
 /// terminal or unknown run is a no-op that returns the current row.
 pub async fn stop_workflow_run(config: &Config, id: &str) -> Result<Option<WorkflowRun>> {
     log::debug!(target: LOG_TARGET, "[workflow_run_engine] stop.entry run={id}");
-    let Some(run) = get_workflow_run(config, id)? else {
+    let Some(run) = get_workflow_run(&config.workspace_dir, id)? else {
         log::debug!(target: LOG_TARGET, "[workflow_run_engine] stop.unknown run={id}");
         return Ok(None);
     };
@@ -250,7 +250,7 @@ pub async fn stop_workflow_run(config: &Config, id: &str) -> Result<Option<Workf
     }
 
     let updated = upsert_workflow_run(
-        config,
+        &config.workspace_dir,
         WorkflowRunUpsert {
             id: run.id.clone(),
             definition_id: run.definition_id.clone(),
@@ -280,7 +280,8 @@ pub async fn stop_workflow_run(config: &Config, id: &str) -> Result<Option<Workf
 /// definition no longer exists.
 pub async fn resume_workflow_run(config: &Config, id: &str) -> Result<WorkflowRun> {
     log::debug!(target: LOG_TARGET, "[workflow_run_engine] resume.entry run={id}");
-    let run = get_workflow_run(config, id)?.ok_or_else(|| anyhow!("unknown workflow run: {id}"))?;
+    let run = get_workflow_run(&config.workspace_dir, id)?
+        .ok_or_else(|| anyhow!("unknown workflow run: {id}"))?;
 
     if matches!(run.status, WorkflowRunStatus::Completed) {
         return Err(anyhow!("workflow run {id} is already completed"));
@@ -294,7 +295,7 @@ pub async fn resume_workflow_run(config: &Config, id: &str) -> Result<WorkflowRu
     register_cancel_flag(id);
 
     let resumed = upsert_workflow_run(
-        config,
+        &config.workspace_dir,
         WorkflowRunUpsert {
             id: run.id.clone(),
             definition_id: run.definition_id.clone(),
@@ -354,7 +355,7 @@ async fn run_engine_loop(config: &Config, run_id: &str, definition: WorkflowDefi
             "[workflow_run_engine] loop.failed run={run_id} err={err}"
         );
         // Best-effort terminal failure write, preserving partial phase state.
-        if let Ok(Some(run)) = get_workflow_run(config, run_id) {
+        if let Ok(Some(run)) = get_workflow_run(&config.workspace_dir, run_id) {
             if !matches!(
                 run.status,
                 WorkflowRunStatus::Completed
@@ -407,7 +408,7 @@ pub(super) async fn select_next_phase(
 ) -> Result<PhaseSelection> {
     // Reload so we read the latest phase_states (and a resume picks up persisted
     // progress).
-    let run = get_workflow_run(config, run_id)?
+    let run = get_workflow_run(&config.workspace_dir, run_id)?
         .ok_or_else(|| anyhow!("workflow run {run_id} vanished mid-loop"))?;
     let phase_states = run.phase_states.clone();
     let child_run_ids = run.child_run_ids.clone();
@@ -494,7 +495,7 @@ pub(super) async fn execute_phase(
     };
 
     // Reload so the phase state we mutate + persist is the latest projection.
-    let run = get_workflow_run(config, run_id)?
+    let run = get_workflow_run(&config.workspace_dir, run_id)?
         .ok_or_else(|| anyhow!("workflow run {run_id} vanished mid-phase"))?;
     let mut phase_states = run.phase_states.clone();
     let mut child_run_ids = run.child_run_ids.clone();
@@ -984,7 +985,7 @@ fn persist(
     terminal: bool,
 ) -> Result<WorkflowRun> {
     upsert_workflow_run(
-        config,
+        &config.workspace_dir,
         WorkflowRunUpsert {
             id: run.id.clone(),
             definition_id: run.definition_id.clone(),

@@ -2441,7 +2441,7 @@ pub async fn bootstrap_core_runtime(
     // the finalizer never settled it. Stamp such rows `interrupted` so they stop
     // rendering as perpetual "running" timeline entries on thread reopen.
     if agent_enabled {
-        match crate::openhuman::agent::session_db::run_ledger::interrupt_orphaned_agent_runs(&cfg) {
+        match tinyagents::session::run_ledger::interrupt_orphaned_agent_runs(&cfg.workspace_dir) {
             Ok(0) => {}
             Ok(count) => log::info!("[runtime] settled {count} orphaned agent run(s) on startup"),
             Err(err) => log::warn!("[runtime] failed to settle orphaned agent runs: {err}"),
