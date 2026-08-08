@@ -521,9 +521,14 @@ web3 = [
 # FACADE + STUB, not a leaf gate. `ShellTool` holds `Option<Arc<NodeBootstrap>>`
 # for managed-Node PATH injection and `tools/impl/system/shell.rs` is kernel, so
 # deleting the module would take the shell tool with it. `runtime/node/stub.rs`
-# carries the type surface; registration sites (`node_runtime_step`, the
-# `javascript` controllers, `node_exec`/`npm_exec`) are leaf-gated at their call
+# carries the `NodeBootstrap` type surface; registration sites (`node_runtime_step`,
+# the `javascript` controllers, `node_exec`/`npm_exec`) are leaf-gated at their call
 # sites, because registration sites want absence.
+#
+# The generic native-tool dispatcher (`runtime::node::ops` / `runtime::node::types`)
+# is deliberately NOT gated: it backs both the gated `javascript.*` controllers and
+# the ungated `flows` `oh:` `NativeToolBackend`, so native flow tools keep working
+# when the managed Node runtime is compiled out.
 #
 # Off-state: `try_cached`/`probe_installed` return `None`, so the shell never
 # prepends a managed bin dir — identical to today's `node.enabled = false` path.
