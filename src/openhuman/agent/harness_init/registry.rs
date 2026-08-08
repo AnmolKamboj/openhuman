@@ -303,9 +303,12 @@ mod tests {
             "runtime_python_server",
         ];
         // `node_runtime` is a registration-site gate: it is absent (not
-        // dead-but-listed) when the managed Node runtime is compiled out.
-        #[cfg(feature = "runtime-node")]
-        expected.push("node_runtime");
+        // dead-but-listed) when the managed Node runtime is compiled out. `cfg!`
+        // (not `#[cfg]`) keeps `expected` mutable-and-used in both builds — same
+        // idiom as `tools/ops_tests.rs`.
+        if cfg!(feature = "runtime-node") {
+            expected.push("node_runtime");
+        }
         assert_eq!(ids, expected);
         assert!(steps.iter().all(|s| !s.required));
         assert!(steps.iter().all(|s| !s.label.is_empty()));
