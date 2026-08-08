@@ -5,7 +5,6 @@ use super::entry::{
     resolve_tts_voice, DEFAULT_PIPER_VOICE,
 };
 use super::helpers::{effective_stt_provider, effective_tts_provider, split_slug_model};
-use super::traits::TtsProvider;
 use crate::openhuman::config::schema::voice_providers::{SttApiStyle, VoiceCapability};
 use crate::openhuman::config::schema::SttEngine;
 use crate::openhuman::config::Config;

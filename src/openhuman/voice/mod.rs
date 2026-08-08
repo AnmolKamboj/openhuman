@@ -4,7 +4,7 @@
 //! transcription, synthesis, proactive availability checking, and a
 //! standalone voice dictation server (hotkey → record → transcribe → insert).
 //!
-//! Inference implementations (local_speech, local_transcribe, cloud_transcribe,
+//! Inference implementations (local_speech, cloud_transcribe,
 //! hallucination, streaming, postprocess) now live under
 //! `crate::openhuman::inference::voice` so all inference concerns share a
 //! single domain root.

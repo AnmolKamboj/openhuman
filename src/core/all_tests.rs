@@ -251,13 +251,11 @@ fn inference_engine_compiled_in_when_feature_on() {
 #[test]
 #[cfg(not(feature = "inference"))]
 fn inference_engine_compiled_out_when_feature_off() {
-    use crate::openhuman::desktop::accessibility::permissions::{
-        microphone_permission_status, PermissionStatus,
-    };
+    use crate::openhuman::desktop::accessibility::{detect_microphone_permission, PermissionState};
     assert!(!crate::openhuman::inference::INFERENCE_COMPILED_IN);
     assert_eq!(
-        microphone_permission_status(),
-        PermissionStatus::Unknown,
+        detect_microphone_permission(),
+        PermissionState::Unknown,
         "without `inference` there is no audio-device API to probe"
     );
 }

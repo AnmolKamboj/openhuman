@@ -252,7 +252,6 @@ async fn local_service_public_inference_assets_and_shutdown_use_loopback_ollama(
     config.local_ai.preload_vision_model = false;
     config.local_ai.preload_stt_model = false;
     config.local_ai.preload_tts_voice = false;
-    config.local_ai.whisper_in_process = false;
 
     let service = LocalAiService::new(&config);
     let prompt = service

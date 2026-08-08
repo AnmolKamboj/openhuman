@@ -58,9 +58,7 @@ pub fn effective_stt_provider(config: &Config) -> String {
         config.local_ai.stt_provider.as_str(),
     ] {
         if !defers_to_engine(candidate) {
-            debug!(
-                "{LOG_PREFIX} effective_stt_provider using explicit routing string {candidate}"
-            );
+            debug!("{LOG_PREFIX} effective_stt_provider using explicit routing string {candidate}");
             return candidate.trim().to_string();
         }
     }

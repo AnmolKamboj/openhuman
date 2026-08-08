@@ -1184,23 +1184,6 @@ fn config_schema_defaults_cover_dashboard_capability_memory_and_security_shapes(
         let _: openhuman_core::openhuman::config::schema::McpAuthConfig =
             serde_json::from_value(auth).expect("mcp auth variant should deserialize");
     }
-
-    let incomplete_poly = openhuman_core::openhuman::config::schema::PolymarketClobCredentials {
-        api_key: " key ".into(),
-        secret: "   ".into(),
-        passphrase: " pass ".into(),
-    };
-    assert!(!incomplete_poly.is_complete());
-    let complete_poly = openhuman_core::openhuman::config::schema::PolymarketClobCredentials {
-        api_key: " key ".into(),
-        secret: " secret ".into(),
-        passphrase: " pass ".into(),
-    };
-    assert!(complete_poly.is_complete());
-    assert_eq!(
-        format!("{complete_poly:?}"),
-        "PolymarketClobCredentials { api_key: \"<redacted>\", secret: \"<redacted>\", passphrase: \"<redacted>\" }"
-    );
 }
 
 #[test]

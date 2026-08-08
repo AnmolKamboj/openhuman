@@ -391,7 +391,10 @@ mod tests {
         config.config_path = tmp.path().join("config.toml");
 
         let result = voice_status(&config).await.unwrap();
-        assert!(result.value.stt_available, "backend engine is always routable");
+        assert!(
+            result.value.stt_available,
+            "backend engine is always routable"
+        );
         assert_eq!(result.value.stt_engine, "cloud");
         assert!(result.value.stt_error.is_none());
     }
@@ -405,8 +408,7 @@ mod tests {
         let mut config = Config::default();
         config.workspace_dir = tmp.path().join("workspace");
         config.config_path = tmp.path().join("config.toml");
-        config.voice_server.stt_engine =
-            crate::openhuman::config::schema::SttEngine::Elevenlabs;
+        config.voice_server.stt_engine = crate::openhuman::config::schema::SttEngine::Elevenlabs;
 
         let result = voice_status(&config).await.unwrap();
         assert!(!result.value.stt_available);
