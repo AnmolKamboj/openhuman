@@ -49,24 +49,28 @@ tokio::task_local! {
 /// [`CoreContext::scope`]s read isolated state — the Phase 3 exit criterion.
 pub struct CoreContext {
     host_kind: HostKind,
-    workspace_dir: RwLock<Option<std::path::PathBuf>>,
+    /// The workspace and its memory-driver configuration form one binding
+    /// input. They must be read and updated together: a caller that observes a
+    /// new workspace with the previous user's memory config could cache a
+    /// permanently incorrect memory binding for that workspace.
+    workspace_binding: RwLock<WorkspaceBinding>,
     /// Which domain families are live for this context (#4796). The registry
     /// filters its controller/schema/dispatch surface by this set via
     /// [`CoreContext::current`] → [`CoreContext::domains`]. `full()` for the
     /// desktop shell / standalone CLI (byte-identical to pre-#4796).
     domains: crate::core::runtime::DomainSet,
-    /// `[subsystems.memory]` for this context, captured at build time so
-    /// [`CoreContext::memory_binding`] stays synchronous and I/O-free.
-    /// `Config::load_or_init` is async and expensive; a "cheap, infallible"
-    /// capability accessor cannot afford to call it.
-    ///
-    /// Writable so a workspace rebind (desktop login / logout / pending-session
-    /// revalidation) can refresh it **together with** the workspace dir — the
-    /// caller already holds the target user's `Config`, and without the refresh
-    /// the rebound context would keep binding the pre-switch driver, so a user
-    /// with `driver = "null"` would inherit the previous user's TinyCortex
-    /// binding and full capability surface.
-    memory_subsystem: RwLock<crate::openhuman::config::schema::MemorySubsystemConfig>,
+}
+
+/// The complete input to a workspace-scoped memory binding.
+///
+/// This is deliberately one value behind one lock. `MemoryBinding` caches by
+/// this pair, so splitting either its read or update would let concurrent RPC
+/// traffic associate a workspace with another user's driver, hooks, or trust
+/// policy. The config is captured at build time so
+/// [`CoreContext::memory_binding`] stays synchronous and I/O-free.
+struct WorkspaceBinding {
+    workspace_dir: Option<std::path::PathBuf>,
+    memory_subsystem: crate::openhuman::config::schema::MemorySubsystemConfig,
 }
 
 impl CoreContext {
@@ -165,9 +169,11 @@ impl CoreContext {
 
         let ctx = Arc::new(CoreContext {
             host_kind,
-            workspace_dir: RwLock::new(workspace_dir),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir,
+                memory_subsystem,
+            }),
             domains,
-            memory_subsystem: RwLock::new(memory_subsystem),
         });
 
         // Register the process default context (first build wins). Dispatch
@@ -191,9 +197,10 @@ impl CoreContext {
 
     /// The resolved per-user workspace directory this context is bound to.
     pub fn workspace_dir(&self) -> Result<std::path::PathBuf, String> {
-        self.workspace_dir
+        self.workspace_binding
             .read()
             .map_err(|e| format!("workspace unavailable: context lock poisoned: {e}"))?
+            .workspace_dir
             .clone()
             .ok_or_else(|| {
                 "workspace unavailable: Config::load_or_init failed during core boot; \
@@ -237,12 +244,18 @@ impl CoreContext {
     pub fn memory_binding(
         &self,
     ) -> Result<Arc<crate::openhuman::memory::binding::MemoryBinding>, String> {
-        let workspace_dir = self.workspace_dir()?;
-        let memory_subsystem = self
-            .memory_subsystem
+        let binding = self
+            .workspace_binding
             .read()
-            .map_err(|e| format!("[core-context] memory subsystem config lock poisoned: {e}"))?
-            .clone();
+            .map_err(|e| format!("[core-context] workspace binding lock poisoned: {e}"))?;
+        let workspace_dir = binding.workspace_dir.clone();
+        let memory_subsystem = binding.memory_subsystem.clone();
+        drop(binding);
+        let workspace_dir = workspace_dir.ok_or_else(|| {
+            "workspace unavailable: Config::load_or_init failed during core boot; \
+             fix config.toml or OPENHUMAN_WORKSPACE and restart"
+                .to_string()
+        })?;
         crate::openhuman::memory::binding::for_workspace(&workspace_dir, &memory_subsystem)
     }
 
@@ -342,18 +355,13 @@ impl CoreContext {
         workspace_dir: &std::path::Path,
         memory_subsystem: crate::openhuman::config::schema::MemorySubsystemConfig,
     ) -> Result<(), String> {
-        let same_workspace = self
-            .workspace_dir
-            .read()
-            .map_err(|e| format!("workspace rebind failed: context lock poisoned: {e}"))?
-            .as_deref()
-            == Some(workspace_dir);
-        let same_subsystem = self
-            .memory_subsystem
-            .read()
-            .map_err(|e| format!("workspace rebind failed: subsystem lock poisoned: {e}"))?
-            .eq(&memory_subsystem);
-        if same_workspace && same_subsystem {
+        let mut binding = self
+            .workspace_binding
+            .write()
+            .map_err(|e| format!("workspace rebind failed: binding lock poisoned: {e}"))?;
+        if binding.workspace_dir.as_deref() == Some(workspace_dir)
+            && binding.memory_subsystem == memory_subsystem
+        {
             log::debug!(
                 "[core-context] workspace {} already bound with the current subsystem config",
                 workspace_dir.display()
@@ -365,16 +373,10 @@ impl CoreContext {
             workspace_dir.display(),
             memory_subsystem.driver
         );
-        *self
-            .workspace_dir
-            .write()
-            .map_err(|e| format!("workspace rebind failed: context lock poisoned: {e}"))? =
-            Some(workspace_dir.to_path_buf());
-        *self
-            .memory_subsystem
-            .write()
-            .map_err(|e| format!("workspace rebind failed: subsystem lock poisoned: {e}"))? =
-            memory_subsystem;
+        *binding = WorkspaceBinding {
+            workspace_dir: Some(workspace_dir.to_path_buf()),
+            memory_subsystem,
+        };
         Ok(())
     }
 
@@ -406,9 +408,11 @@ impl CoreContext {
     ) -> Arc<CoreContext> {
         Arc::new(CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(workspace_dir),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir,
+                memory_subsystem: memory_subsystem.unwrap_or_default(),
+            }),
             domains,
-            memory_subsystem: RwLock::new(memory_subsystem.unwrap_or_default()),
         })
     }
 }
@@ -593,9 +597,11 @@ mod tests {
     fn ctx(dir: &str) -> Arc<CoreContext> {
         Arc::new(CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(Some(PathBuf::from(dir))),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(PathBuf::from(dir)),
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
-            memory_subsystem: RwLock::new(Default::default()),
         })
     }
 
@@ -716,15 +722,19 @@ mod tests {
         let dir_b = tempfile::tempdir().unwrap();
         let a = Arc::new(CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(Some(dir_a.path().to_path_buf())),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_a.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
-            memory_subsystem: RwLock::new(Default::default()),
         });
         let b = Arc::new(CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(Some(dir_b.path().to_path_buf())),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_b.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
-            memory_subsystem: RwLock::new(Default::default()),
         });
 
         let store_a = a.people().expect("open people store for workspace A");
@@ -743,9 +753,11 @@ mod tests {
         let dir_b = tempfile::tempdir().unwrap();
         let ctx = CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(Some(dir_a.path().to_path_buf())),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_a.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
-            memory_subsystem: RwLock::new(Default::default()),
         };
 
         let store_a = ctx.people().expect("open people store for workspace A");
@@ -765,15 +777,19 @@ mod tests {
         let dir_b = tempfile::tempdir().unwrap();
         let a = Arc::new(CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(Some(dir_a.path().to_path_buf())),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_a.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
-            memory_subsystem: RwLock::new(Default::default()),
         });
         let b = Arc::new(CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(Some(dir_b.path().to_path_buf())),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_b.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
-            memory_subsystem: RwLock::new(Default::default()),
         });
 
         let params = serde_json::json!({
@@ -819,9 +835,11 @@ mod tests {
     fn degraded_context_rejects_workspace_bound_stores() {
         let ctx = CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(None),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: None,
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
-            memory_subsystem: RwLock::new(Default::default()),
         };
 
         let err = match ctx.people() {
@@ -860,15 +878,19 @@ mod tests {
         let dir_b = tempfile::tempdir().unwrap();
         let a = Arc::new(CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(Some(dir_a.path().to_path_buf())),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_a.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
-            memory_subsystem: RwLock::new(Default::default()),
         });
         let b = Arc::new(CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(Some(dir_b.path().to_path_buf())),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_b.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
-            memory_subsystem: RwLock::new(Default::default()),
         });
 
         let bind_a = a.memory_binding().expect("bind workspace A");
@@ -888,9 +910,11 @@ mod tests {
         let dir_b = tempfile::tempdir().unwrap();
         let ctx = CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(Some(dir_a.path().to_path_buf())),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_a.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
-            memory_subsystem: RwLock::new(Default::default()),
         };
 
         let bind_a = ctx.memory_binding().expect("bind workspace A");
@@ -909,12 +933,13 @@ mod tests {
     #[test]
     fn rebind_workspace_refreshes_memory_subsystem_config() {
         let dir_a = tempfile::tempdir().unwrap();
-        let dir_b = tempfile::tempdir().unwrap();
         let ctx = CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(Some(dir_a.path().to_path_buf())),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_a.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
-            memory_subsystem: RwLock::new(Default::default()),
         };
 
         let bind_a = ctx.memory_binding().expect("bind workspace A");
@@ -927,8 +952,11 @@ mod tests {
             driver: "null".to_string(),
             ..Default::default()
         };
-        ctx.rebind_workspace(dir_b.path(), null_cfg)
-            .expect("rebind context workspace + subsystem");
+        // This is the dangerous case: changing only the memory config for an
+        // already-bound workspace must replace the complete snapshot, so the
+        // binding cache sees the new (workspace, config) pair.
+        ctx.rebind_workspace(dir_a.path(), null_cfg)
+            .expect("rebind context subsystem config");
 
         let bind_b = ctx.memory_binding().expect("bind workspace B");
         assert_eq!(bind_b.class(), crate::core::subsystem::DriverClass::Null);
@@ -943,15 +971,19 @@ mod tests {
         let dir_b = tempfile::tempdir().unwrap();
         let a = CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(Some(dir_a.path().to_path_buf())),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_a.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
-            memory_subsystem: RwLock::new(Default::default()),
         };
         let b = CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(Some(dir_b.path().to_path_buf())),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_b.path().to_path_buf()),
+                memory_subsystem: untrusted_external_memory_cfg(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
-            memory_subsystem: RwLock::new(untrusted_external_memory_cfg()),
         };
 
         let bind_a = a.memory_binding().expect("bind workspace A");
@@ -975,9 +1007,11 @@ mod tests {
     fn memory_capabilities_defaults_open_without_a_workspace() {
         let ctx = CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(None),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: None,
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
-            memory_subsystem: RwLock::new(Default::default()),
         };
         assert!(ctx.memory_binding().is_err(), "no workspace ⇒ no binding");
         assert_eq!(
