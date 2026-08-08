@@ -9,9 +9,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// Post-turn hooks supplied by a process embedding OpenHuman.
-static EMBEDDER_POST_TURN_HOOKS: std::sync::LazyLock<
-    std::sync::Mutex<Vec<Arc<dyn PostTurnHook>>>,
-> = std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
+static EMBEDDER_POST_TURN_HOOKS: std::sync::LazyLock<std::sync::Mutex<Vec<Arc<dyn PostTurnHook>>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
 
 /// Register a hook that is copied into subsequently-created agent sessions.
 pub fn register_embedder_post_turn_hook(hook: Arc<dyn PostTurnHook>) {
@@ -154,9 +153,8 @@ pub trait ToolHook: Send + Sync {
 }
 
 /// Tool hooks supplied by an embedding host.
-static EMBEDDER_TOOL_HOOKS: std::sync::LazyLock<
-    std::sync::Mutex<Vec<Arc<dyn ToolHook>>>,
-> = std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
+static EMBEDDER_TOOL_HOOKS: std::sync::LazyLock<std::sync::Mutex<Vec<Arc<dyn ToolHook>>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
 
 /// Register a tool hook for subsequently-created harnesses.
 pub fn register_embedder_tool_hook(hook: Arc<dyn ToolHook>) {

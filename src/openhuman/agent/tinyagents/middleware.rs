@@ -1493,7 +1493,9 @@ impl EmbedderToolHooksMiddleware {
 
 #[async_trait]
 impl Middleware<()> for EmbedderToolHooksMiddleware {
-    fn name(&self) -> &str { "embedder_tool_hooks" }
+    fn name(&self) -> &str {
+        "embedder_tool_hooks"
+    }
 
     async fn before_tool(
         &self,
@@ -1503,12 +1505,19 @@ impl Middleware<()> for EmbedderToolHooksMiddleware {
     ) -> TaResult<()> {
         let context = crate::openhuman::agent::hooks::ToolHookContext {
             event: crate::openhuman::agent::hooks::ToolHookEvent::PreToolUse,
-            call_id: call.id.clone(), tool_name: call.name.clone(),
-            arguments: call.arguments.clone(), success: None, duration_ms: None,
+            call_id: call.id.clone(),
+            tool_name: call.name.clone(),
+            arguments: call.arguments.clone(),
+            success: None,
+            duration_ms: None,
         };
         for hook in &self.hooks {
             hook.before_tool(&context).await.map_err(|error| {
-                tinyagents::error::TinyAgentsError::Tool(format!("tool hook '{}' denied {}: {error:#}", hook.name(), context.tool_name))
+                tinyagents::error::TinyAgentsError::Tool(format!(
+                    "tool hook '{}' denied {}: {error:#}",
+                    hook.name(),
+                    context.tool_name
+                ))
             })?;
         }
         Ok(())
@@ -1522,13 +1531,19 @@ impl Middleware<()> for EmbedderToolHooksMiddleware {
     ) -> TaResult<()> {
         let context = crate::openhuman::agent::hooks::ToolHookContext {
             event: crate::openhuman::agent::hooks::ToolHookEvent::PostToolUse,
-            call_id: result.call_id.clone(), tool_name: result.name.clone(),
-            arguments: serde_json::Value::Null, success: Some(result.error.is_none()),
+            call_id: result.call_id.clone(),
+            tool_name: result.name.clone(),
+            arguments: serde_json::Value::Null,
+            success: Some(result.error.is_none()),
             duration_ms: Some(result.elapsed_ms),
         };
         for hook in &self.hooks {
             if let Err(error) = hook.after_tool(&context).await {
-                tracing::warn!(hook = hook.name(), tool = context.tool_name, "embedder post-tool hook failed: {error:#}");
+                tracing::warn!(
+                    hook = hook.name(),
+                    tool = context.tool_name,
+                    "embedder post-tool hook failed: {error:#}"
+                );
             }
         }
         Ok(())
