@@ -182,6 +182,20 @@ pub(super) const CAPABILITIES: &[Capability] = &[
         privacy: DERIVED_TO_BACKEND,
     },
     Capability {
+        id: "voice.stt_engine",
+        name: "Speech Recognition Engine",
+        domain: "voice",
+        category: CapabilityCategory::Conversation,
+        description: "Choose which hosted engine transcribes your speech. \"Backend\" uses \
+                      OpenHuman's transcription proxy and needs no setup; ElevenLabs and OpenAI \
+                      call the provider directly with your own API key. Audio always leaves the \
+                      device — the bundled offline whisper.cpp engine was removed, so there is \
+                      no local option.",
+        how_to: "Settings → Voice → Speech recognition engine",
+        status: CapabilityStatus::Beta,
+        privacy: DERIVED_TO_BACKEND,
+    },
+    Capability {
         id: "voice.ptt",
         name: "Global push-to-talk",
         domain: "voice",
@@ -990,19 +1004,6 @@ pub(super) const CAPABILITIES: &[Capability] = &[
         privacy: LOCAL_RAW,
     },
     Capability {
-        id: "local_ai.speech_to_text",
-        name: "Speech Recognition (Local)",
-        domain: "local_ai",
-        category: CapabilityCategory::LocalAI,
-        description:
-            "Transcribe audio into text using local whisper.cpp via the voice STT factory. \
-             Pick the model size (tiny / base / small / medium / large-v3-turbo) in \
-             Settings > Voice; the factory routes through WHISPER_BIN or the in-process engine.",
-        how_to: "Settings > Voice > STT Provider = Whisper",
-        status: CapabilityStatus::Beta,
-        privacy: None,
-    },
-    Capability {
         id: "local_ai.text_to_speech",
         name: "Text to Speech (Local)",
         domain: "local_ai",
@@ -1034,20 +1035,6 @@ pub(super) const CAPABILITIES: &[Capability] = &[
         how_to: "Settings > Local AI Model > Advanced > Test Custom Prompt",
         status: CapabilityStatus::Beta,
         privacy: None,
-    },
-    Capability {
-        id: "local_ai.whisper_installer",
-        name: "Whisper Installer (Local STT)",
-        domain: "local_ai",
-        category: CapabilityCategory::LocalAI,
-        description:
-            "One-click download of the whisper.cpp GGML model (and on Windows the whisper-cli \
-             binary) into the workspace so local Speech-to-Text runs without manual setup. \
-             Streams to disk via a .part file + atomic rename so a crash never leaves a corrupt \
-             model behind.",
-        how_to: "Settings > Voice > Voice Providers > Install Whisper",
-        status: CapabilityStatus::Beta,
-        privacy: MODEL_DOWNLOAD,
     },
     Capability {
         id: "local_ai.piper_installer",

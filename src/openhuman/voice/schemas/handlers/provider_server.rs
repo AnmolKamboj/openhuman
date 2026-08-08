@@ -314,7 +314,7 @@ pub(crate) fn handle_voice_test_provider(params: Map<String, Value>) -> Controll
                         .map_err(|e| e.to_string())?;
 
                 // 0.1s of silence as WAV (16kHz mono 16-bit PCM) so the local
-                // Whisper provider can transcribe it in-process without an
+                // The selected engine can transcribe it without an
                 // external binary (issue #3425).
                 let silent_wav = generate_silent_wav();
                 let audio_b64 = {

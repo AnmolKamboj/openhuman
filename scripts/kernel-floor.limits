@@ -13,6 +13,22 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   304/281/5  2026-08-08  local whisper.cpp STT deleted (`whisper-rs` +
+#                      `whisper-rs-sys` out of BOTH Cargo worlds, and the
+#                      `[patch.crates-io] whisper-rs-sys` fork entries with
+#                      them). Speech-to-text is a hosted call now, selected by
+#                      `voice_server.stt_engine`. No change to the `flows`
+#                      number: whisper sat behind the default-ON `inference`
+#                      gate, which that profile never enabled — so the kernel
+#                      floor could not see it, which is exactly why a
+#                      CMake-driven C++ inference library survived nine
+#                      ratchet entries. The DEFAULT (full-feature) profile
+#                      moved 569/525/8 -> 567/523/7 native (whisper-rs-sys
+#                      dropped from the native list; its whisper.cpp/GGML
+#                      build was the reason `GGML_NATIVE=OFF` had to prefix
+#                      every macOS cargo invocation). Verified with
+#                      `cargo tree -e normal | grep -ci whisper` = 0 on both
+#                      the root crate and app/src-tauri.
 #   304/281/5  2026-08-08  tokenjuice-treesitter feature deleted entirely (AST-
 #                      aware code compression dropped; tinyjuice's non-AST
 #                      compression path is now the only mode). tinyjuice is

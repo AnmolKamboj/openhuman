@@ -16,8 +16,8 @@ use crate::rpc::RpcOutcome;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SttResult {
     pub text: String,
-    /// Lowercase provider id (`"cloud"`, `"whisper"`) — exposed on the wire
-    /// so the renderer can show the user which path actually ran.
+    /// Lowercase provider id (`"cloud"`, or the third-party slug) — exposed on
+    /// the wire so the renderer can show which engine actually ran.
     pub provider: String,
 }
 
@@ -25,12 +25,12 @@ pub struct SttResult {
 // Provider traits
 // ---------------------------------------------------------------------------
 
-/// Speech-to-text provider abstraction. Cloud (backend proxy) and Whisper
-/// (local subprocess / in-process) both implement this; the factory hands
-/// the caller a boxed trait object.
+/// Speech-to-text provider abstraction. The backend proxy and every
+/// third-party engine implement this; the factory hands the caller a boxed
+/// trait object.
 #[async_trait]
 pub trait SttProvider: Send + Sync {
-    /// Stable identifier used in logs and config (`"cloud"`, `"whisper"`).
+    /// Stable identifier used in logs and config (`"cloud"`, `"external"`).
     fn name(&self) -> &'static str;
 
     /// Transcribe a single base64-encoded audio blob.

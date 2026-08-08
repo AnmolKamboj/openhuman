@@ -916,7 +916,8 @@ const Conversations = ({
         if (cancelled) return;
         if (!status.stt_available) {
           setVoiceStatus(
-            'Voice input needs a speech model to work. Go to Settings > Local AI Models to set it up.'
+            status.stt_error ??
+              'Voice input needs a working speech-to-text engine. Pick one in Settings > Voice.'
           );
         } else {
           setVoiceStatus('Ready — tap "Start Talking" to record.');
@@ -1424,7 +1425,7 @@ const Conversations = ({
     }
 
     setIsTranscribing(true);
-    setVoiceStatus('Transcribing with Whisper…');
+    setVoiceStatus('Transcribing…');
     try {
       const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
       const audioBytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
@@ -1453,14 +1454,14 @@ const Conversations = ({
       notifyOverlaySttState('error');
       const message = err instanceof Error ? err.message : String(err);
       const isSetupIssue =
-        message.includes('whisper') ||
+        message.includes('no voice provider') ||
         message.includes('binary not found') ||
-        message.includes('STT model');
+        message.includes('sign in first');
       setSendError(
         chatSendError(
           isSetupIssue ? 'stt_not_ready' : 'voice_transcription',
           isSetupIssue
-            ? 'Voice input needs a speech model. Go to Settings to download one.'
+            ? 'Voice input needs a working speech-to-text engine. Set one up in Settings > Voice.'
             : `Voice transcription failed: ${message}`
         )
       );

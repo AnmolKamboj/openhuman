@@ -19,8 +19,9 @@ GGML_NATIVE=OFF cargo build --release \
   --no-default-features --features "skills,flows"
 ```
 
-- `GGML_NATIVE=OFF` is the Apple-Silicon dev workaround for whisper-rs/llama; on
-  the x86-64 Linux target it is unnecessary (the always-on whisper build uses the
+- `GGML_NATIVE=OFF` was the Apple-Silicon dev workaround for whisper-rs/llama.
+  With whisper deleted it only matters for llama; on the x86-64 Linux target it
+  is unnecessary anyway (the historical always-on whisper build used the
   AVX path). Keep it in the command for macOS developers.
 - To build the profiling harness against the same recipe, add the dev-only
   `rss-bench` feature and the two bench bins:
@@ -189,19 +190,16 @@ Largest remaining always-on costs a headless library host does not need. These
 are **not implemented here** — they require new gates/refactors — listed for
 prioritization.
 
-1. **`inference` gate → shed `whisper-rs` + `whisper-rs-sys` (+ `cpal`/`coreaudio`).**
-   `whisper-rs-sys` statically links the whisper.cpp + GGML C++ inference library
-   — the single largest always-on *native* chunk in the binary and the reason for
-   the `GGML_NATIVE=OFF` build dance. `cargo tree` confirms `whisper-rs 0.16` is a
-   **direct always-on dependency of `openhuman`** (not gated by `voice`, per the
-   AGENTS.md scope note), pulling `whisper-rs-sys 0.15`; `cpal 0.15` + `coreaudio`
-   ride alongside for audio capture. A headless library host does no local STT, so
-   an `inference` gate would shed all of this — the biggest remaining binary +
-   native-build win by far. Bonus: `cpal` is shared only with `accessibility`,
-   which `desktop-automation` (already dropped here) owns — so with this recipe,
-   `cpal` becomes sheddable the moment the inference gate lands.
-   *(No `llama`/`candle`/`tokenizers`/`onnx` crates appear in the recipe's tree, so
-   the local-LLM path is either already optional or absent — whisper is the target.)*
+1. ~~**`inference` gate → shed `whisper-rs` + `whisper-rs-sys` (+ `cpal`/`coreaudio`).**~~
+   **DONE, and better than proposed.** The bundled whisper.cpp STT engine was not
+   gated — it was **deleted**. `whisper-rs` / `whisper-rs-sys` (and the
+   `[patch.crates-io] whisper-rs-sys` fork entries in both Cargo worlds) are gone
+   from every build, not just the slim one, and with them the whisper.cpp + GGML
+   C++ static link that was the reason for the `GGML_NATIVE=OFF` build dance.
+   Speech-to-text is a hosted call now, with the engine chosen by
+   `voice_server.stt_engine` (see the AGENTS.md scope note). The `inference`
+   feature survives with a narrower job: it gates `cpal` alone, which is what a
+   headless library host wanted shed anyway.
 
 2. **Split `rhai` out of the `flows` gate.** `flows` is the most expensive domain
    we *keep* (+12.7 MiB, dominated by `rhai 1.25` — a full scripting engine).

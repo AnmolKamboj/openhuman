@@ -260,7 +260,6 @@ sentry = { version = "0.47.0", default-features = false, optional = true, featur
 tokio-stream = { version = "0.1.18", default-features = false, features = ["sync"] }
 url = "2"
 socketioxide = { version = "0.15", features = ["extensions"], optional = true }
-whisper-rs = { version = "0.16", optional = true }
 tempfile = "3"
 cpal = { version = "0.15", optional = true }
 hound = { version = "3.5", optional = true }
@@ -346,7 +345,6 @@ windows-sys = { version = "0.61", features = [
 tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-whisper-rs = { version = "0.16", features = ["metal"], optional = true }
 # Contacts framework bindings for address book seeding. Exclusive to
 # `memory::people::address_book` (verified: no other file in src/ names any of
 # the four), so the default-ON `contacts` feature sheds the whole cohort.
@@ -423,19 +421,23 @@ default = ["inference", "voice", "web3", "media", "documents", "meet", "skills",
 # socketioxide/axum-touching bodies are gated. Likewise `inference::http::types`
 # and `EXTERNAL_OPENAI_COMPAT_PROVIDER` stay compiled for `core::auth`.
 http-server = ["dep:axum", "dep:socketioxide"]
-# In-process inference engine: the whisper.cpp STT engine
-# (`inference::local::service::whisper_engine`) plus the `cpal` audio-device
-# probe shared by voice capture and the accessibility microphone-permission
-# check. Default-ON. Slim / headless builds opt out via
-# `--no-default-features --features "<explicit list without inference>"`, which
-# drops the exclusive `whisper-rs` (including the macOS `metal` variant and the
-# `whisper-rs-sys` patch, which go inert once whisper-rs leaves the graph) and
-# `cpal` dependencies. When off, the whisper facade resolves to
-# `whisper_engine::stub` — in-process STT returns a disabled error, while the
-# local-AI service still reaches Ollama / LM Studio over HTTP — and the
-# microphone probe reports `Unknown`. `voice` requires this gate, so building
-# `voice` always pulls `inference` in transitively.
-inference = ["dep:whisper-rs", "dep:cpal"]
+# Local audio-device access: the `cpal` capture stack behind voice recording
+# and the accessibility microphone-permission probe. Default-ON. Slim /
+# headless builds opt out via `--no-default-features --features "<explicit list
+# without inference>"`, which drops the exclusive `cpal` dependency; the
+# microphone probe then reports `Unknown`. `voice` requires this gate, so
+# building `voice` always pulls `inference` in transitively.
+#
+# NOTE ON THE NAME (do not "fix" it to `audio`): this gate used to cover the
+# bundled whisper.cpp STT engine (`whisper-rs` + the `whisper-rs-sys` CRT
+# patch) as well. That engine is gone — STT is now cloud/engine-configurable
+# only (`voice_server.stt_engine`, `voice::factory`) — so `cpal` is all that is
+# left behind the gate. The gate name stays `inference` because it is forwarded
+# by name from `app/src-tauri/Cargo.toml`, asserted by `INFERENCE_COMPILED_IN`,
+# and referenced from `desktop::accessibility::permissions`; renaming it buys
+# nothing and would silently drop the microphone probe from the shipped app if
+# the forwarding list were not updated in lockstep.
+inference = ["dep:cpal"]
 # Office-document tools: the `generate_presentation` (ppt-rs) and
 # `generate_document` (docx-rs) agent tools, plus `pdf-extract` for PDF text
 # extraction during multimodal file ingest. Default-ON. Slim / headless builds
@@ -452,8 +454,8 @@ documents = ["dep:pdf-extract", "dep:ppt-rs", "dep:docx-rs"]
 # which also drops the exclusive `hound` (WAV I/O) + `lettre` (podcast email)
 # dependencies. Composes with the runtime `DomainSet::voice` flag (#4796): the
 # feature narrows the compile-time surface, `DomainSet` gates it at runtime.
-# Requires `inference` (the whisper engine + the cpal capture stack), so
-# enabling `voice` turns `inference` on transitively.
+# Requires `inference` (the cpal capture stack), so enabling `voice` turns
+# `inference` on transitively.
 # `arboard`/`enigo`/`rdev` join here rather than getting their own gate: their
 # only call sites are `voice::text_input` (clipboard + synthetic keystrokes to
 # insert a dictated transcript) and `voice::hotkey` (the global push-to-talk
@@ -757,12 +759,7 @@ should_implement_trait = "allow"
 too_many_arguments = "allow"
 while_let_loop = "allow"
 
-# Fix whisper-rs-sys CRT mismatch on Windows MSVC (LNK2038).
-# Upstream cmake build defaults to /MD but Rust uses /MT.
-# This fork adds config.static_crt(true) to the build script.
-# See: https://github.com/tinyhumansai/openhuman/issues/273
 [patch.crates-io]
-whisper-rs-sys = { git = "https://github.com/tinyhumansai/whisper-rs-sys.git", branch = "main" }
 # Upstream 0.2.1 enables reqwest's default native-tls backend even though it
 # also requests rustls. Patch the official release locally so Linux/macOS do
 # not inherit OpenSSL; the only source delta disables reqwest defaults.

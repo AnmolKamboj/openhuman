@@ -342,7 +342,7 @@ impl LocalAiService {
             stt: LocalAiAssetStatus {
                 state: stt_state.to_string(),
                 id: stt_model,
-                provider: "whisper.cpp".to_string(),
+                provider: "ggml".to_string(),
                 path: stt_path,
                 warning: stt_warning,
             },

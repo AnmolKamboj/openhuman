@@ -530,8 +530,6 @@ dependencies = [
  "cexpr",
  "clang-sys",
  "itertools 0.13.0",
- "log",
- "prettyplease",
  "proc-macro2",
  "quote",
  "regex",
@@ -4744,7 +4742,6 @@ dependencies = [
  "uuid 1.23.1",
  "wait-timeout",
  "walkdir",
- "whisper-rs",
  "windows-sys 0.61.2",
  "wiremock",
  "x25519-dalek",
@@ -8597,27 +8594,6 @@ dependencies = [
  "tokio",
  "ureq",
  "wacore",
-]
-
-[[package]]
-name = "whisper-rs"
-version = "0.16.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2088172d00f936c348d6a72f488dc2660ab3f507263a195df308a3c2383229f6"
-dependencies = [
- "whisper-rs-sys",
-]
-
-[[package]]
-name = "whisper-rs-sys"
-version = "0.15.0"
-source = "git+https://github.com/tinyhumansai/whisper-rs-sys.git?branch=main#229cb4c97e41ca302d3f13b1fa7e93a9b417a5f9"
-dependencies = [
- "bindgen",
- "cfg-if",
- "cmake",
- "fs_extra",
- "semver",
 ]
 
 [[package]]

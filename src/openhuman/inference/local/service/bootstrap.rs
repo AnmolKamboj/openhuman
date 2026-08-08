@@ -15,7 +15,6 @@ impl LocalAiService {
         let vision_mode = vision_mode_str(config);
         let provider = provider_from_config(config);
         Self {
-            whisper: super::whisper_engine::new_handle(),
             status: parking_lot::Mutex::new(LocalAiStatus {
                 state: "idle".to_string(),
                 model_id: model_id.clone(),
@@ -47,7 +46,6 @@ impl LocalAiService {
                 gen_toks_per_sec: None,
             }),
             bootstrap_lock: tokio::sync::Mutex::new(()),
-            whisper_load_lock: tokio::sync::Mutex::new(()),
             last_memory_summary_at: parking_lot::Mutex::new(None),
             owned_ollama: parking_lot::Mutex::new(None),
             http: reqwest::Client::builder()
@@ -318,38 +316,6 @@ impl LocalAiService {
             status.error_category = Some("download".to_string());
             status.warning = Some(format_degraded_warning(&err, &effective_config));
             return;
-        }
-
-        // Attempt to load whisper model in-process if configured (blocking I/O).
-        // Pass GPU info from the device profile so whisper can use hardware acceleration.
-        if effective_config.local_ai.whisper_in_process {
-            if let Ok(model_path) =
-                crate::openhuman::inference::paths::resolve_stt_model_path(&effective_config)
-            {
-                let model = std::path::PathBuf::from(&model_path);
-                let handle = self.whisper.clone();
-                let gpu = device.has_gpu;
-                let gpu_desc = device.gpu_description.clone();
-                let load_result = tokio::task::spawn_blocking(move || {
-                    super::whisper_engine::load_engine(&handle, &model, gpu, gpu_desc.as_deref())
-                })
-                .await;
-                match load_result {
-                    Ok(Ok(())) => {
-                        log::info!("[local_ai] whisper engine loaded in-process: {model_path}");
-                    }
-                    Ok(Err(e)) => {
-                        log::warn!(
-                            "[local_ai] whisper in-process load failed, will fall back to CLI: {e}"
-                        );
-                    }
-                    Err(e) => {
-                        log::warn!("[local_ai] whisper load task panicked: {e}");
-                    }
-                }
-            } else {
-                log::debug!("[local_ai] STT model not found, whisper in-process not loaded");
-            }
         }
 
         let mut status = self.status.lock();

@@ -258,11 +258,6 @@ sandbox-bubblewrap = []
 e2e-test-support = ["openhuman_core/e2e-test-support"]
 
 [patch.crates-io]
-# `cargo tauri build` resolves dependencies from this manifest, so the
-# workspace-level whisper-rs-sys patch is not applied here. The fork forces
-# whisper.cpp to use MSVC's static runtime (/MT), matching CEF and avoiding
-# LNK2038/LNK1169 CRT conflicts on Windows.
-whisper-rs-sys = { git = "https://github.com/tinyhumansai/whisper-rs-sys.git", branch = "main" }
 # Keep reqwest defaults disabled in this independent Cargo world too. Without
 # this patch, the registry release reintroduces native-tls/OpenSSL on Linux.
 motosan-ai-oauth = { path = "../../vendor/motosan-ai-oauth" }
