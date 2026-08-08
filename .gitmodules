@@ -29,4 +29,4 @@
 [submodule "vendor/tinybus"]
 	path = vendor/tinybus
 	url = https://github.com/tinyhumansai/tinybus.git
-	branch = openhuman-port
+	branch = main
