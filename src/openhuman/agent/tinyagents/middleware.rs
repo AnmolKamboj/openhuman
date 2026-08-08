@@ -1487,8 +1487,7 @@ pub(crate) struct EmbedderToolHooksMiddleware {
     /// original call arguments, so without this cache every post-use event would
     /// report `Null` and an auditing/correlating host could not match inputs to
     /// outcomes.
-    arguments_by_call_id:
-        std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
+    arguments_by_call_id: std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
 }
 
 impl EmbedderToolHooksMiddleware {
@@ -4737,7 +4736,10 @@ mod tests {
             arguments: json!({"path": "/"}),
             invalid: None,
         };
-        let error = mw.before_tool(&mut ctx(), &(), &mut call).await.unwrap_err();
+        let error = mw
+            .before_tool(&mut ctx(), &(), &mut call)
+            .await
+            .unwrap_err();
         assert!(
             error.to_string().contains("vetoed"),
             "veto must surface as a tool error: {error}"
