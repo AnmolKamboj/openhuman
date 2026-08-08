@@ -782,6 +782,8 @@ impl Agent {
             None
         };
 
+        post_turn_hooks.extend(crate::openhuman::agent::hooks::embedder_post_turn_hooks());
+
         // Best-effort prewarm from the shared Composio cache. This avoids
         // building the session with a knowingly stale `&[]` integration view
         // and then paying a repair pass on turn 1 just to recover the real
