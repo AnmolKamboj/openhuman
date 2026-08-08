@@ -2,7 +2,7 @@
 set -euo pipefail
 
 target="${1:-x86_64-unknown-linux-gnu}"
-forbidden='^(native-tls|openssl|openssl-sys) v'
+forbidden='^(native-tls|openssl|openssl-sys|aws-lc-sys|aws-lc-rs) v'
 
 check_world() {
   local label="$1"
