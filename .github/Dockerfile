@@ -71,19 +71,6 @@ RUN curl -fsSL https://github.com/mozilla/sccache/releases/download/v0.10.0/scca
 # tauri-driver (WebDriver server for Tauri E2E tests)
 RUN cargo install tauri-driver --version 2.0.5
 
-# Vendored CEF-aware tauri-cli. The upstream @tauri-apps/cli binary does not
-# bundle CEF framework files into installers — only the fork at
-# app/src-tauri/vendor/tauri-cef (a submodule) does. We compile it here so
-# release/build workflows can invoke `cargo tauri build` directly without
-# paying the ~5 min compile cost every run.
-#
-# Submodule must be checked out before `docker build` (see docker-ci-image.yml
-# `submodules: recursive`). Source is discarded after install — only the
-# `cargo-tauri` binary in $CARGO_HOME/bin is kept.
-COPY app/src-tauri/vendor/tauri-cef /opt/tauri-cef
-RUN cargo install --locked --path /opt/tauri-cef/crates/tauri-cli \
-    && rm -rf /opt/tauri-cef /usr/local/cargo/registry/cache /usr/local/cargo/registry/src
-
 # E2E entrypoint (starts Xvfb + dbus for headless webkit2gtk testing)
 COPY e2e/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
