@@ -8,7 +8,22 @@ use crate::openhuman::memory::sources::types::{
     MemorySourceEntry, SourceContent, SourceItem, SourceKind,
 };
 
-pub struct RssReader;
+/// Product adapter retaining the engine reader for a complete sync pass.
+///
+/// The engine reader caches a freshly fetched feed between `list_items` and
+/// `read_item`, so constructing it per trait call would turn one sync into
+/// N+1 downloads.
+pub struct RssReader {
+    inner: tinycortex::memory::sources::readers::rss::RssReader,
+}
+
+impl RssReader {
+    pub fn new() -> Self {
+        Self {
+            inner: tinycortex::memory::sources::readers::rss::RssReader::new(),
+        }
+    }
+}
 
 #[async_trait]
 impl SourceReader for RssReader {
@@ -22,7 +37,7 @@ impl SourceReader for RssReader {
         config: &Config,
     ) -> Result<Vec<SourceItem>, String> {
         tinycortex::memory::sources::SourceReader::list_items(
-            &tinycortex::memory::sources::readers::rss::RssReader,
+            &self.inner,
             source,
             &crate::openhuman::memory::tinycortex::memory_config_from(
                 config,
@@ -40,7 +55,7 @@ impl SourceReader for RssReader {
         config: &Config,
     ) -> Result<SourceContent, String> {
         tinycortex::memory::sources::SourceReader::read_item(
-            &tinycortex::memory::sources::readers::rss::RssReader,
+            &self.inner,
             source,
             item_id,
             &crate::openhuman::memory::tinycortex::memory_config_from(

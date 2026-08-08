@@ -161,6 +161,7 @@ fn response_to_model_response(
         raw: openhuman_usage_meta_raw(response.usage.as_ref()),
         resolved_model: None,
         continue_turn: None,
+        served_from_cache: false,
     }
 }
 

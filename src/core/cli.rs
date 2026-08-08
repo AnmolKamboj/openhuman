@@ -423,6 +423,15 @@ fn run_call_command(args: &[String]) -> Result<()> {
     let method = method.ok_or_else(|| anyhow::anyhow!("--method is required"))?;
     let params = parse_json_params(&params).map_err(anyhow::Error::msg)?;
 
+    // Raw calls bypass namespace parsing, but not the configured memory-driver
+    // binding. Without this gate an absent capability could still reach a
+    // destructive embedded handler because plain CLI invocations have no
+    // ambient CoreContext to filter the registry.
+    crate::core::cli_capability::ensure_capability_blocking(
+        all::capability_for_rpc_method(&method).flatten(),
+        &format!("openhuman call --method {method}"),
+    )?;
+
     // `call` invokes a JSON-RPC method that may run an orchestrator turn
     // (e.g. `agent.chat`), so it needs the same roomy stack as the server.
     let rt = tokio::runtime::Builder::new_multi_thread()

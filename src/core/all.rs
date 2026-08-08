@@ -1349,6 +1349,20 @@ pub fn capability_for_parts(namespace: &str, function: &str) -> Option<Option<Ca
         .map(|g| g.capability)
 }
 
+/// The memory-driver capability family required by an RPC method, looked up in
+/// the **UNFILTERED** registry.
+///
+/// This is the method-name counterpart of [`capability_for_parts`]. The raw
+/// `openhuman call --method …` CLI form has no namespace/function split, but
+/// must still produce the CLI's configuration-fact diagnostic before it
+/// dispatches a capability-gated method.
+pub fn capability_for_rpc_method(method: &str) -> Option<Option<Capability>> {
+    registry()
+        .iter()
+        .find(|g| g.controller.rpc_method_name() == method)
+        .map(|g| g.capability)
+}
+
 /// The capability a whole namespace's surface requires, when every controller
 /// in it agrees — looked up in the **UNFILTERED** registry.
 ///

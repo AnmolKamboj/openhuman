@@ -124,6 +124,9 @@ impl MemorySourceSink for EmbeddedMemoryProvider {
                 metadata: json!({
                     "sourceId": source_id,
                     "sourceKind": source_kind,
+                    // This is collection identity, deliberately separate
+                    // from `item_id`, which is only the per-item dedupe key.
+                    "path_scope": namespace,
                     "url": item.url,
                     "mime": item.mime,
                     "updatedAtMs": item.updated_at_ms,

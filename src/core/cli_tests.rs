@@ -326,7 +326,9 @@ fn chat_alias_reports_disabled_build_when_gate_off() {
 // `OPENHUMAN_WORKSPACE`, i.e. env mutation plus disk writes. Same reasoning
 // recorded in the M5.4 block of `all_tests.rs`.
 
-use crate::core::all::{capability_for_parts, sole_capability_for_namespace};
+use crate::core::all::{
+    capability_for_parts, capability_for_rpc_method, sole_capability_for_namespace,
+};
 use crate::core::cli_capability::capability_verdict;
 use tinycortex_api::capabilities::Capabilities;
 
@@ -360,6 +362,14 @@ fn capability_gated_function_reports_a_config_fact_not_a_typo() {
     let msg = err.to_string();
     assert!(msg.contains("ingest"), "{msg}");
     assert!(!msg.contains("unknown function"), "{msg}");
+}
+
+#[test]
+fn capability_gated_rpc_method_reports_its_family_unfiltered() {
+    assert_eq!(
+        capability_for_rpc_method("openhuman.memory_tree_wipe_all"),
+        Some(Some(tinycortex_api::capabilities::Capability::Tree))
+    );
 }
 
 /// A real typo must stay a typo — the gate never fires for it, because the
@@ -444,5 +454,36 @@ fn generic_namespace_path_reports_the_config_fact_under_a_driver_without_the_fam
     assert!(
         !message.contains("unknown"),
         "a gated command is not a typo and must not read like one: {message}"
+    );
+}
+
+#[test]
+fn raw_call_path_rejects_a_method_the_bound_driver_does_not_advertise() {
+    let _env_lock = crate::openhuman::config::TEST_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let workspace = tempdir().expect("temp workspace");
+
+    // SAFETY: serialised by TEST_ENV_LOCK, and both vars are restored below.
+    std::env::set_var("OPENHUMAN_WORKSPACE", workspace.path());
+    std::env::set_var("OPENHUMAN_MEMORY_DRIVER", "null");
+
+    let err = super::run_call_command(&[
+        "--method".to_string(),
+        "openhuman.memory_tree_wipe_all".to_string(),
+    ])
+    .expect_err("the null driver must not dispatch a tree wipe");
+
+    std::env::remove_var("OPENHUMAN_MEMORY_DRIVER");
+    std::env::remove_var("OPENHUMAN_WORKSPACE");
+
+    let message = err.to_string();
+    assert!(
+        message.starts_with(crate::core::cli_capability::CAPABILITY_UNAVAILABLE_PREFIX),
+        "must reject before dispatching: {message}"
+    );
+    assert!(
+        message.contains("null") && message.contains("tree"),
+        "{message}"
     );
 }

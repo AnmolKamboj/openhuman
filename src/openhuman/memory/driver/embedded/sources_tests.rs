@@ -74,6 +74,41 @@ async fn accept_source_items_persists_the_caller_supplied_taint() {
 }
 
 #[tokio::test]
+async fn accept_source_items_persists_a_source_level_path_scope() {
+    use tinycortex_api::provider::MemoryDocuments;
+
+    let (_tmp, provider) = fresh_driver();
+    provider
+        .accept_source_items(
+            "src_a",
+            "folder",
+            vec![
+                item("first", "First", "one"),
+                item("second", "Second", "two"),
+            ],
+            MemoryTaint::ExternalSync,
+        )
+        .await
+        .expect("accept_source_items");
+
+    for item_id in ["first", "second"] {
+        let stored = provider
+            .get_document("source:src_a", item_id)
+            .await
+            .expect("get_document")
+            .expect("document exists");
+        assert_eq!(
+            stored
+                .metadata
+                .get("path_scope")
+                .and_then(serde_json::Value::as_str),
+            Some("source:src_a"),
+            "path scope must identify the collection rather than item `{item_id}`"
+        );
+    }
+}
+
+#[tokio::test]
 async fn accept_source_items_upserts_on_the_item_id() {
     use tinycortex_api::provider::MemoryDocuments;
 
