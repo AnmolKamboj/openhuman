@@ -17,6 +17,12 @@
 //! `node.enabled = false`. `resolve()` is the one erroring method and is only
 //! reachable from `harness_init`'s bootstrap step, itself gated off; it returns
 //! a build fact so a stray caller reports something actionable.
+//!
+//! Note: this stub carries **only** the managed-Node toolchain type surface.
+//! [`super::ops`] and [`super::types`] are not stubbed — they are the generic
+//! native-tool dispatcher and its inert serde types, always compiled so the
+//! ungated `flows` `NativeToolBackend` can keep dispatching `oh:*` tools when
+//! the managed Node runtime is off.
 
 use std::path::PathBuf;
 
@@ -79,47 +85,5 @@ impl NodeBootstrap {
     /// Always `Err`. See [`RUNTIME_NODE_DISABLED_MESSAGE`].
     pub async fn resolve(&self) -> Result<ResolvedNode> {
         anyhow::bail!(RUNTIME_NODE_DISABLED_MESSAGE)
-    }
-}
-
-/// Outcome of a runtime tool call. Never constructed here; kept so the
-/// `javascript` facade's re-export and any caller binding still resolve.
-#[derive(Debug, Clone)]
-pub struct ExecuteToolOutcome {
-    pub tool_name: String,
-    pub elapsed_ms: u64,
-    pub result: crate::openhuman::skills::types::ToolResult,
-}
-
-/// Mirrors `node::ops` for the flows capability adapters.
-///
-/// Signatures must match `node::ops` exactly — the gated-off build is the only
-/// thing that catches drift, and both of these were guessed wrong on a first
-/// attempt (`classify_tool_call` returns `Result<CommandClass, _>`, not
-/// `Option<String>`; `execute_tool` returns `ExecuteToolOutcome`, not `Value`).
-pub mod ops {
-    use super::RUNTIME_NODE_DISABLED_MESSAGE;
-    use crate::openhuman::config::Config;
-    use crate::openhuman::security::CommandClass;
-
-    /// Always `Err`. The flows adapter does `.unwrap_or(CommandClass::Network)`,
-    /// so this degrades to the most restrictive classification rather than
-    /// silently widening what a workflow may call.
-    pub fn classify_tool_call(
-        _config: &Config,
-        _tool_name: &str,
-        _args: &serde_json::Value,
-    ) -> Result<CommandClass, String> {
-        Err(RUNTIME_NODE_DISABLED_MESSAGE.to_string())
-    }
-
-    /// Always `Err` — the runtime that would execute the call is compiled out.
-    pub async fn execute_tool(
-        _config: &Config,
-        _tool_name: &str,
-        _args: serde_json::Value,
-        _prefer_markdown: bool,
-    ) -> Result<super::ExecuteToolOutcome, String> {
-        Err(RUNTIME_NODE_DISABLED_MESSAGE.to_string())
     }
 }
