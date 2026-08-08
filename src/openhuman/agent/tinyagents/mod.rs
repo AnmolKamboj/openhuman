@@ -2135,12 +2135,6 @@ fn assemble_turn_harness(
         tool_outcome_sink.clone(),
         failure_map.clone(),
     )));
-    let embedder_tool_hooks = crate::openhuman::agent::hooks::embedder_tool_hooks();
-    if !embedder_tool_hooks.is_empty() {
-        harness.push_middleware(Arc::new(middleware::EmbedderToolHooksMiddleware::new(
-            embedder_tool_hooks,
-        )));
-    }
 
     let tool_policies = harness.tools().policies();
     context_mw.install(&mut harness, tool_policies);
