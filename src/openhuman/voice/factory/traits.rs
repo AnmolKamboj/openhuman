@@ -46,6 +46,16 @@ pub trait SttProvider: Send + Sync {
         file_name: Option<&str>,
         language: Option<&str>,
     ) -> Result<RpcOutcome<SttResult>, String>;
+
+    /// The model selected when the provider was constructed.
+    ///
+    /// Test-only: factory tests use this to ensure an empty external-provider
+    /// model defers to the registry default rather than inheriting the cloud
+    /// proxy's model id.
+    #[cfg(test)]
+    fn configured_model(&self) -> Option<&str> {
+        None
+    }
 }
 
 /// Text-to-speech provider abstraction. Cloud returns rich viseme alignment

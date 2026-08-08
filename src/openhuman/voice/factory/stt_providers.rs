@@ -150,6 +150,11 @@ impl SttProvider for ExternalSttProvider {
             format!("voice-factory: external STT completed via {}", self.slug),
         ))
     }
+
+    #[cfg(test)]
+    fn configured_model(&self) -> Option<&str> {
+        Some(&self.model)
+    }
 }
 
 impl ExternalSttProvider {

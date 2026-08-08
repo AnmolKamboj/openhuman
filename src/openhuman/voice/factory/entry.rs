@@ -12,9 +12,9 @@ use super::traits::{SttProvider, TtsProvider};
 use super::tts_providers::{CloudTtsProvider, PiperTtsProvider};
 use crate::openhuman::config::Config;
 
-/// Default STT model id. Sent verbatim to whichever hosted engine is selected;
-/// `"whisper-v1"` is the OpenHuman backend proxy's alias for its transcription
-/// model, and third-party slugs override it from their `default_stt_model`.
+/// Default STT model id for the OpenHuman backend proxy.
+/// Third-party providers use the `default_stt_model` configured in their
+/// registry entry when callers leave the model empty.
 pub const DEFAULT_STT_MODEL: &str = "whisper-v1";
 
 /// Default Piper voice — `en_US-lessac-medium`, matches
@@ -45,11 +45,6 @@ pub fn create_stt_provider(
     config: &Config,
 ) -> anyhow::Result<Box<dyn SttProvider>> {
     debug!("{LOG_PREFIX} create_stt_provider provider={provider} model={model}");
-    let model = if model.trim().is_empty() {
-        DEFAULT_STT_MODEL
-    } else {
-        model
-    };
     match provider.trim() {
         "cloud" | "openhuman" | "backend" => Ok(Box::new(CloudSttProvider::new(
             super::super::cloud_transcribe_default_model(),
@@ -57,7 +52,7 @@ pub fn create_stt_provider(
         other => {
             let (slug, slug_model) = split_slug_model(other);
             let effective_model = if slug_model.is_empty() {
-                model
+                model.trim()
             } else {
                 slug_model
             };

@@ -92,6 +92,7 @@ fn stt_factory_bare_slug_resolves_with_registry() {
     );
     let p = create_stt_provider("openai", "", &config).unwrap();
     assert_eq!(p.name(), "external");
+    assert_eq!(p.configured_model(), Some("whisper-1"));
 }
 
 #[test]
