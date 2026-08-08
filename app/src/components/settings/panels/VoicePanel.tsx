@@ -399,7 +399,12 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
           endpoint: BUILTIN_ENDPOINTS[slug] ?? '',
           auth_style: 'bearer',
           capability: meta?.capability ?? 'both',
-          stt_api_style: slug === 'deepgram' ? 'deepgram' : 'openai_audio',
+          stt_api_style:
+            slug === 'deepgram'
+              ? 'deepgram'
+              : slug === 'elevenlabs'
+                ? 'elevenlabs'
+                : 'openai_audio',
           tts_api_style: slug === 'elevenlabs' ? 'elevenlabs' : 'openai_audio',
           default_stt_model:
             slug === 'deepgram'

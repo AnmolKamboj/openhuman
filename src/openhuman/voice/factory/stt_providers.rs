@@ -79,7 +79,7 @@ impl SttProvider for CloudSttProvider {
 // ---------------------------------------------------------------------------
 
 /// Third-party STT provider dispatched via the voice provider registry.
-/// Supports OpenAI-compatible and Deepgram API styles.
+/// Supports OpenAI-compatible, Deepgram, and ElevenLabs API styles.
 pub struct ExternalSttProvider {
     slug: String,
     model: String,
@@ -138,6 +138,10 @@ impl SttProvider for ExternalSttProvider {
             }
             SttApiStyle::Deepgram => {
                 self.transcribe_deepgram(&audio_bytes, mime, language)
+                    .await?
+            }
+            SttApiStyle::ElevenLabs => {
+                self.transcribe_elevenlabs(&audio_bytes, mime, file_name, language)
                     .await?
             }
         };
@@ -273,5 +277,101 @@ impl ExternalSttProvider {
             .map(|a| a.transcript.clone())
             .unwrap_or_default();
         Ok(text)
+    }
+
+    async fn transcribe_elevenlabs(
+        &self,
+        audio_bytes: &[u8],
+        mime: &str,
+        file_name: Option<&str>,
+        language: Option<&str>,
+    ) -> Result<String, String> {
+        let url = format!("{}/speech-to-text", self.endpoint.trim_end_matches('/'));
+        let ext = extension_for_mime(mime);
+        let default_fname = format!("audio.{ext}");
+        let fname = file_name.unwrap_or(&default_fname);
+
+        let file_part = reqwest::multipart::Part::bytes(audio_bytes.to_vec())
+            .file_name(fname.to_string())
+            .mime_str(mime)
+            .map_err(|e| format!("[voice-stt] mime error: {e}"))?;
+        let mut form = reqwest::multipart::Form::new()
+            .text("model_id", self.model.clone())
+            .part("file", file_part);
+
+        if let Some(lang) = language {
+            form = form.text("language_code", lang.to_string());
+        }
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .post(&url)
+            .header("xi-api-key", &self.api_key)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| format!("[voice-stt] elevenlabs request failed: {e}"))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("[voice-stt] elevenlabs error {status}: {body}"));
+        }
+
+        #[derive(Deserialize)]
+        struct TranscriptionResp {
+            text: String,
+        }
+        let parsed: TranscriptionResp = resp
+            .json()
+            .await
+            .map_err(|e| format!("[voice-stt] elevenlabs parse error: {e}"))?;
+        Ok(parsed.text)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use wiremock::matchers::{body_string_contains, header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn elevenlabs_stt_uses_scribe_endpoint_request_shape_and_authentication() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/speech-to-text"))
+            .and(header("xi-api-key", "test-elevenlabs-key"))
+            .and(body_string_contains("name=\"model_id\""))
+            .and(body_string_contains("scribe_v1"))
+            .and(body_string_contains("name=\"language_code\""))
+            .and(body_string_contains("en"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "text": "transcribed by scribe"
+            })))
+            .mount(&server)
+            .await;
+
+        let provider = ExternalSttProvider::new(
+            "elevenlabs",
+            "scribe_v1",
+            server.uri(),
+            "test-elevenlabs-key",
+            SttApiStyle::ElevenLabs,
+        );
+        let result = provider
+            .transcribe(
+                &Config::default(),
+                "AQID",
+                Some("audio/wav"),
+                Some("clip.wav"),
+                Some("en"),
+            )
+            .await
+            .expect("ElevenLabs transcription should succeed");
+
+        assert_eq!(result.value.text, "transcribed by scribe");
+        assert_eq!(result.value.provider, "elevenlabs");
     }
 }
