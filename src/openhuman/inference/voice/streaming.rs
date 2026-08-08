@@ -50,10 +50,10 @@ use tokio::sync::Mutex;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 
-use super::cloud_transcribe::{transcribe_cloud, CloudTranscribeOptions};
 use super::postprocess;
 use super::wav::pcm16_to_wav;
 use crate::openhuman::config::Config;
+use crate::openhuman::voice::{create_stt_provider, effective_stt_provider};
 
 const LOG_PREFIX: &str = "[voice-stream]";
 const AUDIO_SAMPLE_RATE: usize = 16_000;
@@ -140,7 +140,7 @@ pub async fn handle_dictation_ws(mut socket: WebSocket, config: Arc<Config>) {
     let full_audio_buf: Arc<Mutex<Vec<i16>>> = Arc::new(Mutex::new(Vec::new()));
     if config.dictation.streaming {
         log::debug!(
-            "{LOG_PREFIX} dictation.streaming is on but the hosted STT engine has no partial \
+            "{LOG_PREFIX} dictation.streaming is on but the configured STT engine has no partial \
              transcription path — only the final result will be sent"
         );
     }
@@ -221,7 +221,7 @@ pub async fn handle_dictation_ws(mut socket: WebSocket, config: Arc<Config>) {
     }
 
     log::info!(
-        "{LOG_PREFIX} transcribing {} samples ({:.1}s) via the hosted STT engine",
+        "{LOG_PREFIX} transcribing {} samples ({:.1}s) via the configured STT engine",
         final_samples.len(),
         final_samples.len() as f64 / AUDIO_SAMPLE_RATE as f64
     );
@@ -229,16 +229,26 @@ pub async fn handle_dictation_ws(mut socket: WebSocket, config: Arc<Config>) {
     // The client streams headerless PCM16LE; the hosted endpoint needs a
     // container, so wrap it in a WAV before upload.
     let wav_bytes = pcm16_to_wav(&final_samples, AUDIO_SAMPLE_RATE as u32, 1);
-    let opts = CloudTranscribeOptions {
-        model: None,
-        language: None,
-        mime_type: Some("audio/wav".to_string()),
-        file_name: Some("dictation.wav".to_string()),
-    };
-    let raw_text = match transcribe_cloud(&config, &BASE64.encode(&wav_bytes), &opts).await {
+    let provider_name = effective_stt_provider(&config);
+    let audio_base64 = BASE64.encode(&wav_bytes);
+    let raw_text = match async {
+        let provider =
+            create_stt_provider(&provider_name, "", &config).map_err(|error| error.to_string())?;
+        provider
+            .transcribe(
+                &config,
+                &audio_base64,
+                Some("audio/wav"),
+                Some("dictation.wav"),
+                None,
+            )
+            .await
+    }
+    .await
+    {
         Ok(outcome) => outcome.value.text,
         Err(e) => {
-            log::warn!("{LOG_PREFIX} hosted transcription failed: {e}");
+            log::warn!("{LOG_PREFIX} configured transcription failed: {e}");
             let msg = serde_json::json!({
                 "type": "error",
                 "message": format!("Transcription failed: {e}"),

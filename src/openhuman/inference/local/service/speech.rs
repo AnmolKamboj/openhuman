@@ -10,9 +10,7 @@ use crate::openhuman::inference::paths::{
     config_root_dir, resolve_piper_binary, resolve_tts_voice_path,
 };
 use crate::openhuman::inference::types::{LocalAiSpeechResult, LocalAiTtsResult};
-use crate::openhuman::inference::voice::cloud_transcribe::{
-    transcribe_cloud, CloudTranscribeOptions,
-};
+use crate::openhuman::voice::{create_stt_provider, effective_stt_provider};
 
 use super::LocalAiService;
 
@@ -46,14 +44,9 @@ impl LocalAiService {
     ///
     /// **No longer local.** The bundled whisper.cpp engine (in-process
     /// `whisper-rs` and the `whisper-cli` subprocess) was removed along with
-    /// its model downloader; speech-to-text now always goes to a hosted engine.
-    /// This entry point uploads to the OpenHuman backend proxy
-    /// (`/openai/v1/audio/transcriptions`) — the `"backend"` engine. Callers
-    /// that need the user-selected engine (`voice_server.stt_engine`, incl. the
-    /// third-party slugs) go through `voice::factory::create_stt_provider`
-    /// instead; this method keeps the `local_ai.transcribe` RPC working with the
-    /// default engine rather than growing a dependency on the `voice`-gated
-    /// factory.
+    /// its model downloader. Dispatch through the configured hosted STT engine
+    /// (`voice_server.stt_engine` or an explicit provider override), so every
+    /// dictation entry point honors the user's selected provider.
     ///
     /// `initial_prompt` (the custom-dictionary vocabulary bias) is accepted for
     /// signature compatibility and **ignored**: the backend transcription
@@ -87,7 +80,10 @@ impl LocalAiService {
             .unwrap_or("audio.wav")
             .to_string();
 
-        debug!("{LOG_PREFIX} hosted STT dispatch path={audio_path} mime={mime}");
+        let provider_name = effective_stt_provider(config);
+        debug!(
+            "{LOG_PREFIX} configured STT dispatch provider={provider_name} path={audio_path} mime={mime}"
+        );
         let bytes = tokio::fs::read(path)
             .await
             .map_err(|e| format!("failed to read audio file {audio_path}: {e}"))?;
@@ -96,15 +92,14 @@ impl LocalAiService {
         }
         let audio_base64 = BASE64.encode(&bytes);
 
-        let opts = CloudTranscribeOptions {
-            model: None,
-            language: None,
-            mime_type: Some(mime.to_string()),
-            file_name: Some(file_name),
-        };
-        let outcome = transcribe_cloud(config, &audio_base64, &opts).await?;
+        let provider =
+            create_stt_provider(&provider_name, "", config).map_err(|error| error.to_string())?;
+        let outcome = provider
+            .transcribe(config, &audio_base64, Some(mime), Some(&file_name), None)
+            .await?;
         debug!(
-            "{LOG_PREFIX} hosted STT complete (bytes={} elapsed_ms={})",
+            "{LOG_PREFIX} configured STT complete (provider={} bytes={} elapsed_ms={})",
+            outcome.value.provider,
             bytes.len(),
             started.elapsed().as_millis()
         );
