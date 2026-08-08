@@ -225,6 +225,62 @@ mod tests {
         assert!(current().is_none());
     }
 
+    /// Regression: a detached sub-agent (`spawn_async_subagent`, the
+    /// orchestration spawn task) starts on a fresh task, and without explicit
+    /// propagation its tools reach the approval gate as `Unknown` and every
+    /// external-effect call is refused — the parent's label silently lost at
+    /// the `tokio::spawn` boundary.
+    #[tokio::test]
+    async fn propagate_carries_the_origin_across_a_spawn() {
+        let observed = with_origin(
+            AgentTurnOrigin::TrustedAutomation {
+                job_id: "run-1".to_string(),
+                source: TrustedAutomationSource::Workflow {
+                    require_approval: false,
+                },
+            },
+            async {
+                tokio::spawn(propagate(async { current() }))
+                    .await
+                    .expect("spawned task panicked")
+            },
+        )
+        .await;
+        assert!(matches!(
+            observed,
+            Some(AgentTurnOrigin::TrustedAutomation {
+                source: TrustedAutomationSource::Workflow {
+                    require_approval: false
+                },
+                ..
+            })
+        ));
+    }
+
+    /// Without propagation the same spawn loses the label — the behaviour the
+    /// helper above exists to fix, pinned so a future refactor cannot quietly
+    /// reintroduce it by dropping the wrapper.
+    #[tokio::test]
+    async fn a_bare_spawn_loses_the_origin() {
+        let observed = with_origin(AgentTurnOrigin::Cli, async {
+            tokio::spawn(async { current() })
+                .await
+                .expect("spawned task panicked")
+        })
+        .await;
+        assert!(observed.is_none());
+    }
+
+    /// Fail-closed is preserved: propagation carries a decision, it does not
+    /// invent one. An unlabelled parent still yields an unlabelled child.
+    #[tokio::test]
+    async fn propagate_does_not_manufacture_an_origin() {
+        let observed = tokio::spawn(propagate(async { current() }))
+            .await
+            .expect("spawned task panicked");
+        assert!(observed.is_none());
+    }
+
     #[tokio::test]
     async fn current_returns_none_outside_scope() {
         assert!(current().is_none());
