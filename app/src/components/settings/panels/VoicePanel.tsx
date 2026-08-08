@@ -744,9 +744,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                     <h3 className="text-base font-semibold text-content">
                       {t('voice.modal.title')} {t('voice.providers.chip.piper')}
                     </h3>
-                    <p className="text-xs text-content-muted mt-1">
-                      {t('voice.modal.piperDesc')}
-                    </p>
+                    <p className="text-xs text-content-muted mt-1">{t('voice.modal.piperDesc')}</p>
                   </div>
 
                   {pendingKeySlug === 'piper' && (
@@ -991,7 +989,6 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                       </span>
                     )}
                   </div>
-
                 </div>
 
                 {/* TTS routing */}

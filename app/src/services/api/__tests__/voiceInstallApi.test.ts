@@ -1,10 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  installPiper,
-  piperInstallStatus,
-  type VoiceInstallStatus,
-} from '../voiceInstallApi';
+import { installPiper, piperInstallStatus, type VoiceInstallStatus } from '../voiceInstallApi';
 
 vi.mock('../../coreRpcClient', () => ({ callCoreRpc: vi.fn() }));
 
