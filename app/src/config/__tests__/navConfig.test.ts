@@ -51,6 +51,13 @@ describe('NAV_TABS', () => {
     ]);
   });
 
+  it('keeps Human as a first-class tab alongside the chat mascot', () => {
+    // Both surfaces show the mascot on purpose: /human is the dedicated stage,
+    // /chat carries it docked on the composer. They share one set of mascot
+    // preferences, so having both cannot make them disagree.
+    expect(NAV_TABS.find(t => t.id === 'human')?.path).toBe('/human');
+  });
+
   it('no longer contains a top-level orchestration tab (folded under Brain)', () => {
     expect(NAV_TABS.find(t => t.id === 'orchestration')).toBeUndefined();
   });

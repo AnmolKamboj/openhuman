@@ -338,8 +338,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'Sincronizado recientemente',
   'conversations.backgroundTasks.memProviderIdle': 'Inactivo',
   'nav.home': 'Inicio',
-  'nav.human': 'Humano',
   'nav.chat': 'Charla',
+  'nav.human': 'Humano',
   'nav.assistant': 'Asistente',
   'assistant.faceMode.on': 'Hablando con Tiny',
   'assistant.faceMode.off': 'Habla con Tiny',
@@ -2793,6 +2793,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'Reproduciendo respuesta de voz',
   'chat.voiceHint': 'Usa el micrófono para hablar',
   'chat.micUnavailable': 'Micrófono no disponible',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Habla con tu asistente',
+  'chat.mascot.collapse': 'Volver al chat',
+  'chat.mascot.speakReplies': 'Leer las respuestas en voz alta',
+  'chat.mascot.speakRepliesHint':
+    'Las respuestas se leen en voz alta mientras la mascota está abierta. Desactívalo para mantener la conversación en silencio.',
+  'chat.mascot.dismiss': 'Ocultar a Tiny',
+  'chat.mascot.dismissTitle': '¿Ocultar a Tiny?',
+  'chat.mascot.dismissBody':
+    'Sin rencores si prefieres tener el cuadro de mensaje para ti. Puedes traer a Tiny de vuelta cuando quieras desde Configuración › Apariencia › Chat.',
+  'chat.mascot.dismissConfirm': 'Ocultar a Tiny',
+  'chat.mascot.dismissCancel': 'Conservar a Tiny',
   'chat.turn': 'turno',
   'chat.turns': 'turnos',
   'chat.openWorkerThread': 'Abrir hilo de worker',
@@ -5958,6 +5970,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Ocultar el razonamiento del agente',
   'settings.appearance.hideAgentInsightsDesc':
     'Contrae la cronología paso a paso del agente en el chat. Un enlace «Procesando» parpadeante te permite abrir el proceso completo.',
+  'settings.appearance.showChatMascot': 'Mostrar a Tiny en el cuadro de mensaje',
+  'settings.appearance.showChatMascotDesc':
+    'La mascota se queda de pie sobre el campo de escritura. Si la ocultas, el chat será solo texto hasta que vuelvas a activarlo.',
   'settings.appearance.assistantTextModeDesc':
     'Muestra las respuestas del asistente como texto sin marco y mantiene tus mensajes en burbujas.',
   'settings.mascot.active': 'Activo',

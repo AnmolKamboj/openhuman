@@ -167,6 +167,70 @@ describe('MicComposer', () => {
     expect(transcribeWithFactoryMock).toHaveBeenCalledTimes(1);
   });
 
+  describe('onRecordingChange', () => {
+    it('reports true on capture start and false on stop', async () => {
+      transcribeWithFactoryMock.mockResolvedValueOnce('hello');
+      const onRecordingChange = vi.fn();
+      render(
+        <MicComposer disabled={false} onSubmit={vi.fn()} onRecordingChange={onRecordingChange} />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /start recording/i }));
+      await waitFor(() => expect(onRecordingChange).toHaveBeenCalledWith(true));
+
+      fireEvent.click(screen.getByRole('button', { name: /stop recording and send/i }));
+      await waitFor(() => expect(onRecordingChange).toHaveBeenLastCalledWith(false));
+    });
+
+    it('reports false when unmounted mid-recording', async () => {
+      // Without this the caller stays pinned in a hot-mic state — the chat
+      // mascot would hold its `listening` pose forever after navigating away.
+      const onRecordingChange = vi.fn();
+      const { unmount } = render(
+        <MicComposer disabled={false} onSubmit={vi.fn()} onRecordingChange={onRecordingChange} />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /start recording/i }));
+      await waitFor(() => expect(onRecordingChange).toHaveBeenCalledWith(true));
+      onRecordingChange.mockClear();
+
+      unmount();
+
+      expect(onRecordingChange).toHaveBeenCalledWith(false);
+    });
+
+    it('does not fire when capture never starts', async () => {
+      const err = Object.assign(new DOMException('', 'NotAllowedError'));
+      getUserMediaMock.mockRejectedValueOnce(err);
+      const onRecordingChange = vi.fn();
+      render(
+        <MicComposer
+          disabled={false}
+          onSubmit={vi.fn()}
+          onError={vi.fn()}
+          onRecordingChange={onRecordingChange}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /start recording/i }));
+      await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
+
+      expect(onRecordingChange).not.toHaveBeenCalled();
+    });
+
+    it('is optional — capture works without it', async () => {
+      transcribeWithFactoryMock.mockResolvedValueOnce('hi');
+      const onSubmit = vi.fn();
+      render(<MicComposer disabled={false} onSubmit={onSubmit} />);
+      fireEvent.click(screen.getByRole('button', { name: /start recording/i }));
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /stop recording and send/i })).toBeInTheDocument()
+      );
+      fireEvent.click(screen.getByRole('button', { name: /stop recording and send/i }));
+      await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('hi'));
+    });
+  });
+
   it('forwards the language prop to transcribeCloud', async () => {
     transcribeWithFactoryMock.mockResolvedValueOnce('hi');
     render(<MicComposer disabled={false} onSubmit={vi.fn()} language="es" />);

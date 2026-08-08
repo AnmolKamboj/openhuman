@@ -346,8 +346,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'Synchronisé récemment',
   'conversations.backgroundTasks.memProviderIdle': 'Inactif',
   'nav.home': 'Accueil',
-  'nav.human': 'Humain',
   'nav.chat': 'Chat',
+  'nav.human': 'Humain',
   'nav.assistant': 'Assistant',
   'assistant.faceMode.on': 'Parle avec Tiny',
   'assistant.faceMode.off': 'Parler à Tiny',
@@ -2815,6 +2815,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'Lecture de la réponse vocale',
   'chat.voiceHint': 'Utilise le micro pour parler',
   'chat.micUnavailable': 'Microphone indisponible',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Parlez à votre assistant',
+  'chat.mascot.collapse': 'Revenir à la discussion',
+  'chat.mascot.speakReplies': 'Lire les réponses à voix haute',
+  'chat.mascot.speakRepliesHint':
+    'Les réponses sont lues à voix haute tant que la mascotte est ouverte. Désactivez cette option pour garder la conversation silencieuse.',
+  'chat.mascot.dismiss': 'Masquer Tiny',
+  'chat.mascot.dismissTitle': 'Masquer Tiny ?',
+  'chat.mascot.dismissBody':
+    'Aucun souci si vous préférez garder la zone de message pour vous. Vous pouvez faire revenir Tiny à tout moment depuis Paramètres › Apparence › Chat.',
+  'chat.mascot.dismissConfirm': 'Masquer Tiny',
+  'chat.mascot.dismissCancel': 'Garder Tiny',
   'chat.turn': 'tour',
   'chat.turns': 'tours',
   'chat.openWorkerThread': 'Ouvrir le fil worker',
@@ -5988,6 +6000,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Masquer le raisonnement de l’agent',
   'settings.appearance.hideAgentInsightsDesc':
     'Réduit la chronologie en direct des étapes de l’agent dans le chat. Un lien clignotant « Traitement en cours » permet toujours d’ouvrir le déroulé complet.',
+  'settings.appearance.showChatMascot': 'Afficher Tiny sur la zone de message',
+  'settings.appearance.showChatMascotDesc':
+    "La mascotte reste posée sur le champ de saisie. Masquée, la discussion reste en texte seul jusqu'à ce que vous la réactiviez.",
   'settings.appearance.assistantTextModeDesc':
     "Affiche les réponses de l'assistant en texte sans cadre tout en gardant vos messages en bulles.",
   'settings.mascot.active': 'Actif',

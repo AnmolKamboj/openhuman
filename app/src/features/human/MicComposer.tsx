@@ -121,6 +121,9 @@ interface MicComposerProps {
   /** When provided, renders a keyboard FAB next to the gear that switches the
    *  surrounding composer back to text input. */
   onSwitchToText?: () => void;
+  /** Fires on every start/stop of capture so the caller can reflect a hot mic —
+   *  the chat mascot uses it to hold its `listening` pose while you speak. */
+  onRecordingChange?: (recording: boolean) => void;
 }
 
 type RecordingState = 'idle' | 'recording' | 'transcribing';
@@ -151,6 +154,7 @@ function MicComposer({
   language = 'en',
   showDeviceSelector = false,
   onSwitchToText,
+  onRecordingChange,
 }: MicComposerProps) {
   const { t } = useT();
   const [state, setState] = useState<RecordingState>('idle');
@@ -187,6 +191,20 @@ function MicComposer({
   const recordingTimerRef = useRef<number | null>(null);
   const countdownRef = useRef<number | null>(null);
   const [remainingSecs, setRemainingSecs] = useState<number | null>(null);
+
+  // Report a hot mic to the caller. Derived from `state` rather than wired into
+  // each of the seven `setState` sites, so every exit path — including the
+  // auto-stop timeout and the error branches — reports exactly once. The
+  // cleanup also fires on unmount, which is what stops a caller (the chat
+  // mascot) from being pinned in a listening pose after this component goes
+  // away mid-recording.
+  const onRecordingChangeRef = useRef(onRecordingChange);
+  onRecordingChangeRef.current = onRecordingChange;
+  useEffect(() => {
+    if (state !== 'recording') return;
+    onRecordingChangeRef.current?.(true);
+    return () => onRecordingChangeRef.current?.(false);
+  }, [state]);
 
   // If the component unmounts mid-record, release the mic so the OS indicator
   // doesn't get stuck on.

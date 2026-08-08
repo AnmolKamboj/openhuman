@@ -30,13 +30,13 @@ This page is the contributor reference for the token system.
 
 ## Token taxonomy
 
-| Group     | Tokens                                                                                  | Tailwind utilities |
-| --------- | --------------------------------------------------------------------------------------- | ------------------ |
-| Surfaces  | `surface`, `surface-canvas`, `surface-muted`, `surface-subtle`, `surface-strong`, `surface-hover`, `surface-overlay` | `bg-surface`, `bg-surface-muted`, … |
-| Text      | `content`, `content-secondary`, `content-muted`, `content-faint`, `content-inverted`    | `text-content`, `text-content-muted`, … |
-| Borders   | `line`, `line-strong`, `line-subtle`                                                     | `border-line`, `border-line-strong`, … |
-| Accents   | `primary-*`, `sage-*`, `amber-*`, `coral-*` (shades 50…950)                              | `bg-primary-500`, `text-coral-600`, … (var-backed, themeable, unchanged names) |
-| Fonts     | `font-title`, `font-heading`, `font-body`, `font-mono`, `font-serif`                     | `font-title`, `font-heading`, `font-body`, … |
+| Group    | Tokens                                                                                                               | Tailwind utilities                                                             |
+| -------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Surfaces | `surface`, `surface-canvas`, `surface-muted`, `surface-subtle`, `surface-strong`, `surface-hover`, `surface-overlay` | `bg-surface`, `bg-surface-muted`, …                                            |
+| Text     | `content`, `content-secondary`, `content-muted`, `content-faint`, `content-inverted`                                 | `text-content`, `text-content-muted`, …                                        |
+| Borders  | `line`, `line-strong`, `line-subtle`                                                                                 | `border-line`, `border-line-strong`, …                                         |
+| Accents  | `primary-*`, `sage-*`, `amber-*`, `coral-*` (shades 50…950)                                                          | `bg-primary-500`, `text-coral-600`, … (var-backed, themeable, unchanged names) |
+| Fonts    | `font-title`, `font-heading`, `font-body`, `font-mono`, `font-serif`                                                 | `font-title`, `font-heading`, `font-body`, …                                   |
 
 The legacy `--cmd-*` and `--color-*` variable sets are thin aliases over these
 canonical tokens. Don't add new colours there.

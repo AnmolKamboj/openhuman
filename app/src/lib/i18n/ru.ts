@@ -334,8 +334,8 @@ const messages: TranslationMap = {
   'conversations.backgroundTasks.memProviderRecent': 'Недавно синхронизировано',
   'conversations.backgroundTasks.memProviderIdle': 'Простаивает',
   'nav.home': 'Главная',
-  'nav.human': 'Человек',
   'nav.chat': 'Чат',
+  'nav.human': 'Человек',
   'nav.assistant': 'Ассистент',
   'assistant.faceMode.on': 'Говорит с Tiny',
   'assistant.faceMode.off': 'Поговорить с Tiny',
@@ -2762,6 +2762,18 @@ const messages: TranslationMap = {
   'chat.playingVoiceReply': 'Воспроизведение голосового ответа',
   'chat.voiceHint': 'Используй микрофон для речи',
   'chat.micUnavailable': 'Микрофон недоступен',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Поговорите с ассистентом',
+  'chat.mascot.collapse': 'Вернуться к чату',
+  'chat.mascot.speakReplies': 'Читать ответы вслух',
+  'chat.mascot.speakRepliesHint':
+    'Пока маскот открыт, ответы читаются вслух. Отключите, чтобы разговор оставался беззвучным.',
+  'chat.mascot.dismiss': 'Скрыть Tiny',
+  'chat.mascot.dismissTitle': 'Скрыть Tiny?',
+  'chat.mascot.dismissBody':
+    'Ничего страшного, если поле сообщения вам нужнее. Вернуть Tiny можно в любой момент через Настройки › Внешний вид › Чат.',
+  'chat.mascot.dismissConfirm': 'Скрыть Tiny',
+  'chat.mascot.dismissCancel': 'Оставить Tiny',
   'chat.turn': 'ход',
   'chat.turns': 'ходов',
   'chat.openWorkerThread': 'Открыть чат воркера',
@@ -5905,6 +5917,9 @@ const messages: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Скрыть размышления агента',
   'settings.appearance.hideAgentInsightsDesc':
     'Сворачивает пошаговую ленту действий агента в чате. Мигающая ссылка «Обработка» по-прежнему позволяет открыть весь процесс.',
+  'settings.appearance.showChatMascot': 'Показывать Tiny на поле сообщения',
+  'settings.appearance.showChatMascotDesc':
+    'Маскот стоит на поле ввода. Если скрыть, чат останется только текстовым, пока вы не включите это снова.',
   'settings.appearance.assistantTextModeDesc':
     'Показывает ответы ассистента как текст без рамки, оставляя ваши сообщения в пузырьках.',
   'settings.mascot.active': 'Активно',

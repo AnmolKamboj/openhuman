@@ -24,8 +24,8 @@ const en: TranslationMap = {
   'skills.recallCalendar.description': 'Auto-join Google Meet calls via Recall.ai',
   // Navigation
   'nav.home': 'Home',
-  'nav.human': 'Human',
   'nav.chat': 'Chat',
+  'nav.human': 'Human',
   'nav.assistant': 'Assistant',
 
   // Assistant surface: face mode toggle (Phase 6)
@@ -2880,6 +2880,18 @@ const en: TranslationMap = {
   'chat.playingVoiceReply': 'Playing voice reply',
   'chat.voiceHint': 'Use the mic to speak',
   'chat.micUnavailable': 'Microphone unavailable',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Talk to your assistant',
+  'chat.mascot.collapse': 'Back to the chat',
+  'chat.mascot.speakReplies': 'Speak replies out loud',
+  'chat.mascot.speakRepliesHint':
+    'Replies are read aloud while the mascot is open. Turn this off to keep the conversation silent.',
+  'chat.mascot.dismiss': 'Hide Tiny',
+  'chat.mascot.dismissTitle': 'Hide Tiny?',
+  'chat.mascot.dismissBody':
+    "No hard feelings if you'd rather have the message box to yourself. You can bring Tiny back any time from Settings › Appearance › Chat.",
+  'chat.mascot.dismissConfirm': 'Hide Tiny',
+  'chat.mascot.dismissCancel': 'Keep Tiny',
   'chat.turn': 'turn',
   'chat.turns': 'turns',
   'chat.openWorkerThread': 'Open worker thread',
@@ -6448,6 +6460,9 @@ const en: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Hide agent thinking',
   'settings.appearance.hideAgentInsightsDesc':
     'Collapse the live step-by-step agent timeline in chat. A blinking “Processing” link still lets you open the full run.',
+  'settings.appearance.showChatMascot': 'Show Tiny on the message box',
+  'settings.appearance.showChatMascotDesc':
+    'Keep the mascot standing on the composer. Hidden, the chat is text only until you turn this back on.',
   'settings.mascot.active': 'Active',
   'settings.mascot.characterDesc': 'Choose your OpenHuman character.',
   'settings.mascot.characterDraft': 'Draft',
