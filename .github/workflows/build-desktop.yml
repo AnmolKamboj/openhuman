@@ -157,17 +157,19 @@ jobs:
         with:
           node-version: 24.x
       - name: Install Rust (rust-toolchain.toml)
-        uses: dtolnay/rust-toolchain@1.93.0
+        uses: dtolnay/rust-toolchain@1.96.1
         with:
           targets: ${{ matrix.settings.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
       - name: Ensure macOS cross target on the toolchain-file toolchain
         if: matrix.settings.platform == 'macos-latest'
         run: |
-          # rust-toolchain.toml pins 1.96.1, which overrides the dtolnay-installed
-          # 1.93.0. The action's `targets:` input added the darwin targets to
-          # 1.93.0, not the override toolchain the vendored tauri-cli's CEF
-          # universal-helper build actually uses, so add them to the active
-          # (override) toolchain here to avoid E0463 "can't find crate for `core`".
+          # The action pin and rust-toolchain.toml agree today
+          # (scripts/ci/check-toolchain-image.mjs enforces that), so the action's
+          # `targets:` input lands on the toolchain the vendored tauri-cli's CEF
+          # universal-helper build actually uses. Re-adding the targets against
+          # the *active* (override) toolchain keeps this step correct if the two
+          # ever diverge again, which used to fail with E0463
+          # "can't find crate for `core`".
           cargo --version
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - name: Install Tauri dependencies (ubuntu only)
