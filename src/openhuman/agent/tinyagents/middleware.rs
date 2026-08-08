@@ -1481,13 +1481,24 @@ pub(crate) struct ToolOutcomeCaptureMiddleware {
 /// Delivers tool lifecycle events to hooks installed by an embedding host.
 pub(crate) struct EmbedderToolHooksMiddleware {
     hooks: Vec<std::sync::Arc<dyn crate::openhuman::agent::hooks::ToolHook>>,
+    /// Normalized pre-call arguments keyed by provider `call_id`, so the
+    /// `PostToolUse` context can hand an embedding host the same arguments its
+    /// `PreToolUse` hook saw. The crate's `ToolResult` does not carry the
+    /// original call arguments, so without this cache every post-use event would
+    /// report `Null` and an auditing/correlating host could not match inputs to
+    /// outcomes.
+    arguments_by_call_id:
+        std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
 }
 
 impl EmbedderToolHooksMiddleware {
     pub(crate) fn new(
         hooks: Vec<std::sync::Arc<dyn crate::openhuman::agent::hooks::ToolHook>>,
     ) -> Self {
-        Self { hooks }
+        Self {
+            hooks,
+            arguments_by_call_id: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
     }
 }
 
@@ -1520,6 +1531,13 @@ impl Middleware<()> for EmbedderToolHooksMiddleware {
                 ))
             })?;
         }
+        // Cache the (already-recovered) arguments only once every hook approved
+        // the call: a vetoed call never reaches `after_tool`, so storing it here
+        // would leak a cache entry for the turn.
+        self.arguments_by_call_id
+            .lock()
+            .expect("embedder tool-hook arguments poisoned")
+            .insert(call.id.clone(), call.arguments.clone());
         Ok(())
     }
 
@@ -1529,11 +1547,17 @@ impl Middleware<()> for EmbedderToolHooksMiddleware {
         _state: &(),
         result: &mut TaToolResult,
     ) -> TaResult<()> {
+        let arguments = self
+            .arguments_by_call_id
+            .lock()
+            .expect("embedder tool-hook arguments poisoned")
+            .remove(&result.call_id)
+            .unwrap_or(serde_json::Value::Null);
         let context = crate::openhuman::agent::hooks::ToolHookContext {
             event: crate::openhuman::agent::hooks::ToolHookEvent::PostToolUse,
             call_id: result.call_id.clone(),
             tool_name: result.name.clone(),
-            arguments: serde_json::Value::Null,
+            arguments,
             success: Some(result.error.is_none()),
             duration_ms: Some(result.elapsed_ms),
         };
