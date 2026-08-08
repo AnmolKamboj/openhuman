@@ -534,7 +534,18 @@ impl Tool for SpawnAsyncSubagentTool {
         );
         let background_prompt = add_background_contract(&prompt);
 
-        let join = tokio::spawn(async move {
+        // The detached child starts on a fresh task, and a `tokio::task_local`
+        // does not cross `tokio::spawn`. The parent's execution context and
+        // chat thread are already re-installed inside the task for exactly that
+        // reason; the turn's origin label and its workspace root are the other
+        // two that have to travel, and they are captured **here**, on the
+        // spawning task, rather than inside the closure where they would
+        // already be gone. Without the origin every external-effect tool the
+        // child calls reaches the approval gate unlabelled and is refused,
+        // which is the whole of why a delegated coding task could not run a
+        // shell.
+        let join = tokio::spawn(crate::openhuman::agent::turn_origin::propagate(
+            crate::openhuman::agent::turn_workspace::propagate(async move {
             let options = SubagentRunOptions {
                 skill_filter_override: None,
                 toolkit_override,
@@ -799,7 +810,8 @@ impl Tool for SpawnAsyncSubagentTool {
                     }
                 }
             }
-        });
+        }),
+        ));
 
         // Register *after* spawn so the AbortHandle is available. The task owns
         // `status_tx`; this side holds `status_rx` for `wait_subagent`.
