@@ -147,6 +147,11 @@ impl MemoryPortability for EmbeddedMemoryProvider {
         cursor: Option<&str>,
         limit: usize,
     ) -> Result<ExportPage, MemoryError> {
+        if limit == 0 {
+            return Err(MemoryError::Invalid(
+                "export page limit must be greater than zero".to_string(),
+            ));
+        }
         let (index, offset) = parse_cursor(cursor)?;
         let memory = self.memory().await?;
         let summaries = memory.namespace_summaries().await.map_err(engine_error)?;

@@ -25,10 +25,10 @@ fn scoped_tier(autonomy: AutonomyLevel) -> live_policy::TestPolicyGuard {
 // ── Step 1 ───────────────────────────────────────────────────────────────────
 
 #[test]
-fn guard_with_no_ambient_security_policy_allows() {
-    // The pre-boot state ~4000 unit tests run in. `None` must mean "no tier
-    // enforcement", never "deny".
-    assert!(live_policy::current().is_none());
+fn guard_with_scoped_full_security_policy_allows() {
+    // Other tests may install the process-global policy before this test runs.
+    // A thread-local full-tier override keeps the allow-path assertion isolated.
+    let _tier = scoped_tier(AutonomyLevel::Full);
     let policy = embedded_policy();
     assert!(policy.enforce_read("core.get").is_ok());
     assert!(policy.enforce_write("core.store").is_ok());

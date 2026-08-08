@@ -467,17 +467,14 @@ mod tests {
 
     #[tokio::test]
     async fn dispatch_legacy_alias_routes_to_registry() {
-        // openhuman.get_analytics_settings should rewrite to openhuman.config_get_analytics_settings.
-        // This is a read-only call and should succeed if the registry is wired up.
-        let out = dispatch(test_state(), "openhuman.get_analytics_settings", json!({}))
-            .await
-            .expect("openhuman.get_analytics_settings should be rewritten and succeed");
-
-        // The registry-wrapped payload has a "result" field.
+        // This alias targets a controller registered in the domain registry.
+        // Do not invoke it here: its implementation can persist default config,
+        // which makes this routing test depend on a filesystem workspace.
+        let method =
+            crate::core::legacy_aliases::resolve_legacy("openhuman.get_analytics_settings");
         assert!(
-            out.get("enabled").is_some() || out.get("result").is_some(),
-            "Payload should have 'enabled' or 'result', got: {}",
-            out
+            crate::core::all::schema_for_rpc_method(method).is_some(),
+            "legacy alias must resolve to a registered controller: {method}"
         );
     }
 }

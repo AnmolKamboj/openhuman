@@ -91,7 +91,14 @@ fn init_in_slot(
         .map_err(|e| format!("[memory:global] write lock poisoned: {e}"))?;
     if let Some(existing) = guard.as_ref() {
         if existing.workspace_dir == workspace_dir {
-            return Ok(Arc::clone(&existing.client));
+            let client = Arc::clone(&existing.client);
+            let cache = WORKSPACE_CLIENTS.get_or_init(Default::default);
+            cache
+                .write()
+                .map_err(|e| format!("[memory:global] workspace cache write lock poisoned: {e}"))?
+                .entry(workspace_dir.to_path_buf())
+                .or_insert_with(|| Arc::clone(&client));
+            return Ok(client);
         }
 
         log::info!(
