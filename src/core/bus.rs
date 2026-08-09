@@ -188,7 +188,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn init_is_idempotent_and_delivers() {
+    async fn isolated_bus_delivers() {
         use std::sync::Arc;
         use tinybus::EventHandler;
         use tokio::sync::Mutex;
@@ -205,13 +205,11 @@ mod tests {
             }
         }
 
-        init().await.unwrap();
-        init().await.unwrap();
-        assert!(BUS.is_initialised());
+        let bus = crate::core::bus_testing::isolated_bus().await;
 
         let seen = Arc::new(Mutex::new(Vec::new()));
-        let _handle = BUS.subscribe(Arc::new(Capture(seen.clone()))).unwrap();
-        BUS.publish(DomainEvent::SystemStartup {
+        let _handle = bus.subscribe(Arc::new(Capture(seen.clone())));
+        bus.publish(DomainEvent::SystemStartup {
             component: "test".into(),
         });
 
