@@ -2446,6 +2446,18 @@ impl Middleware<()> for RepeatedToolFailureMiddleware {
                         | crate::openhuman::tools::status::ToolFailureClass::ModelConnection
                 ));
         if recoverable {
+            // A poll tool's contract is the identical repeat (see
+            // [`is_repeat_call_exempt`]), and the thing it repeats on is a
+            // *timeout* — which lands here as a recoverable failure. Counting
+            // those toward the identical-argument headroom halts exactly the
+            // loop the tool is documented to ask for: a sub-agent that outlives
+            // eight wait windows killed the turn, discarding work it had already
+            // done. `RepeatProgressMiddleware` already honours this exemption on
+            // the success side; the failure ladder must agree, or the exemption
+            // only holds while the wait happens to return early.
+            if is_repeat_call_exempt(&result.name) {
+                return Ok(());
+            }
             if let Some(summary) = self.record_recoverable(&result.name, &arg_fp, &failure_text) {
                 tracing::warn!(
                     tool = %result.name,
