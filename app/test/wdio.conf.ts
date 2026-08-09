@@ -155,11 +155,11 @@ export const config: Options.Testrunner & Record<string, unknown> = {
   reporters: ['spec'],
   mochaOpts: {
     ui: 'bdd',
-    // Cap individual `it` budget at 30s so broken specs fail fast instead
-    // of burning the prior 2-minute ceiling on every hung `waitForX`.
-    // Genuinely-slow flows (billing polling) should use scoped
-    // `this.timeout(60_000)` inside the specific `it` that needs it.
-    timeout: 30_000,
+    // A cold reset + loopback onboarding routinely takes 25–30s on CI.
+    // Leave room for the first real assertion instead of timing out a valid
+    // suite during setup; individual polling helpers still keep their own
+    // short, diagnostic timeouts.
+    timeout: 60_000,
   },
   autoCompileOpts: { tsNodeOpts: { project: tsconfigE2ePath } },
   /**
