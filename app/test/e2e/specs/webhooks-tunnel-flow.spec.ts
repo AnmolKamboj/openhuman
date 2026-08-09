@@ -13,7 +13,7 @@ import { resetMockBehavior, startMockServer, stopMockServer } from '../mock-serv
 
 const USER_ID = 'e2e-webhooks-tunnel';
 
-describe('Webhook tunnel CRUD (UI + core RPC + mock backend)', () => {
+describe('Webhook controller surface and retired-route coverage', () => {
   before(async function () {
     // resetApp bring-up can run ~25-30s and race the default 30s Mocha hook
     // budget; raise it.
@@ -22,10 +22,6 @@ describe('Webhook tunnel CRUD (UI + core RPC + mock backend)', () => {
     await resetMockBehavior();
     await waitForApp();
     await resetApp(USER_ID);
-  });
-
-  beforeEach(() => {
-    clearRequestLog();
   });
 
   after(async () => {
