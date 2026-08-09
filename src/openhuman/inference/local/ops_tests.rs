@@ -180,3 +180,121 @@ fn normalize_model_override_passes_non_empty_verbatim() {
         Some("hint:reasoning".to_string())
     );
 }
+
+// --- per-turn `cwd` resolution ---------------------------------------------
+//
+// `resolve_turn_cwd` is the whole decision the `cwd` param makes before the
+// agent is built: absent/empty means "behave exactly as today", anything else
+// must be an existing directory that the turn's tools get rooted at.
+
+#[test]
+fn resolve_turn_cwd_absent_or_blank_keeps_default_root() {
+    assert_eq!(resolve_turn_cwd(None), Ok(None));
+    assert_eq!(resolve_turn_cwd(Some(String::new())), Ok(None));
+    assert_eq!(resolve_turn_cwd(Some("   ".to_string())), Ok(None));
+    assert_eq!(resolve_turn_cwd(Some("\t\n".to_string())), Ok(None));
+}
+
+#[test]
+fn resolve_turn_cwd_accepts_an_existing_directory() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let resolved = resolve_turn_cwd(Some(dir.path().to_string_lossy().to_string()))
+        .expect("an existing directory resolves")
+        .expect("a non-empty cwd yields a root");
+    // Canonicalized, so it compares equal to the canonical temp path even when
+    // the platform temp dir is itself a symlink (macOS `/var` → `/private/var`).
+    assert_eq!(
+        resolved,
+        std::fs::canonicalize(dir.path()).expect("canonicalize tempdir")
+    );
+}
+
+#[test]
+fn resolve_turn_cwd_trims_before_resolving() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let padded = format!("  {}  ", dir.path().to_string_lossy());
+    assert_eq!(
+        resolve_turn_cwd(Some(padded)).expect("padded path resolves"),
+        Some(std::fs::canonicalize(dir.path()).expect("canonicalize tempdir"))
+    );
+}
+
+#[test]
+fn resolve_turn_cwd_rejects_a_missing_path() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let missing = dir.path().join("does-not-exist");
+    let err = resolve_turn_cwd(Some(missing.to_string_lossy().to_string()))
+        .expect_err("a missing cwd must fail loudly, not silently fall back");
+    assert!(err.contains("not accessible"), "unexpected error: {err}");
+}
+
+#[test]
+fn resolve_turn_cwd_rejects_a_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let file = dir.path().join("a-file");
+    std::fs::write(&file, b"x").expect("write file");
+    let err = resolve_turn_cwd(Some(file.to_string_lossy().to_string()))
+        .expect_err("a file is not a working directory");
+    assert!(err.contains("not a directory"), "unexpected error: {err}");
+}
+
+#[test]
+fn grant_turn_cwd_adds_a_read_write_root() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut config = Config::default();
+    let before = config.autonomy.trusted_roots.len();
+
+    grant_turn_cwd(&mut config, dir.path());
+
+    assert_eq!(config.autonomy.trusted_roots.len(), before + 1);
+    let granted = config
+        .autonomy
+        .trusted_roots
+        .last()
+        .expect("the cwd was granted");
+    assert_eq!(granted.path, dir.path().to_string_lossy());
+    assert_eq!(
+        granted.access,
+        crate::openhuman::security::TrustedAccess::ReadWrite
+    );
+}
+
+#[test]
+fn grant_turn_cwd_leaves_an_existing_entry_alone() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut config = Config::default();
+    config
+        .autonomy
+        .trusted_roots
+        .push(crate::openhuman::security::TrustedRoot {
+            path: dir.path().to_string_lossy().to_string(),
+            access: crate::openhuman::security::TrustedAccess::Read,
+        });
+    let before = config.autonomy.trusted_roots.clone();
+
+    grant_turn_cwd(&mut config, dir.path());
+
+    assert_eq!(
+        config.autonomy.trusted_roots, before,
+        "a user-configured grant is never widened by the presence of a cwd"
+    );
+}
+
+#[test]
+fn grant_turn_cwd_is_the_only_mutation() {
+    // The no-cwd path never calls this; assert the cwd path touches nothing
+    // else on the config it is handed.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let base = Config::default();
+    let mut config = base.clone();
+
+    grant_turn_cwd(&mut config, dir.path());
+
+    assert_eq!(config.action_dir, base.action_dir);
+    assert_eq!(config.workspace_dir, base.workspace_dir);
+    assert_eq!(config.autonomy.workspace_only, base.autonomy.workspace_only);
+    assert_eq!(
+        config.autonomy.forbidden_paths,
+        base.autonomy.forbidden_paths
+    );
+}

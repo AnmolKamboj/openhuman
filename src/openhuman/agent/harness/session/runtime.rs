@@ -305,6 +305,32 @@ impl Agent {
         self.on_progress = tx;
     }
 
+    /// Bind this session's acting tools (shell / file / git) to `descriptor`'s
+    /// root as their default working directory.
+    ///
+    /// The post-build counterpart of
+    /// [`AgentBuilder::workspace_descriptor`](crate::openhuman::agent::AgentBuilder::workspace_descriptor),
+    /// for callers that construct the agent through
+    /// [`Agent::from_config`](crate::openhuman::agent::Agent::from_config) and
+    /// therefore never see the builder — notably the per-turn `cwd` of
+    /// [`agent_chat`](crate::openhuman::inference::local::ops::agent_chat).
+    ///
+    /// The descriptor is threaded onto the turn's run context, so it also
+    /// propagates to sub-agents spawned from this session (the same deliberate
+    /// isolation the per-profile descriptor has). `None` restores the shared
+    /// `action_dir` cwd.
+    ///
+    /// This only moves the *default* cwd: what the session may read and write is
+    /// still decided by its [`SecurityPolicy`](crate::openhuman::security::SecurityPolicy),
+    /// so a caller that wants tools rooted somewhere new must build the agent
+    /// from a config whose `action_dir` already permits it.
+    pub fn set_workspace_descriptor(
+        &mut self,
+        descriptor: Option<tinyagents::harness::workspace::WorkspaceDescriptor>,
+    ) {
+        self.workspace_descriptor = descriptor;
+    }
+
     /// Attach an active-run queue for mid-turn steering.
     pub fn set_run_queue(
         &mut self,

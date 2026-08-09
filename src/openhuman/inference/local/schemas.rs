@@ -12,12 +12,21 @@ use crate::core::{ControllerSchema, FieldSchema, TypeSchema};
 use crate::openhuman::config::rpc as config_rpc;
 use crate::rpc::RpcOutcome;
 
+/// Params for `inference.agent_chat` and `inference.agent_chat_simple`.
+///
+/// Kept byte-identical to the copy in
+/// [`crate::openhuman::agent::schemas`], which backs the `agent.chat` /
+/// `agent.chat_simple` namespace over the same ops.
 #[derive(Debug, Deserialize)]
 struct AgentChatParams {
     message: String,
     model_override: Option<String>,
     temperature: Option<f64>,
     thread_id: Option<String>,
+    /// Optional per-turn working directory for the agent's filesystem / shell
+    /// tools. Absent or empty keeps the configured `action_dir`. Ignored by the
+    /// `*_simple` variant, which runs a bare provider call with no tools.
+    cwd: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -152,6 +161,12 @@ pub fn schemas(function: &str) -> ControllerSchema {
                 optional_string(
                     "thread_id",
                     "Optional backend thread id for cache grouping and inference logs.",
+                ),
+                optional_string(
+                    "cwd",
+                    "Optional working directory for this turn: the agent's file and shell \
+                     tools are rooted here, so relative paths resolve inside it. Must be an \
+                     existing directory. Omit (or pass empty) to use the configured action_dir.",
                 ),
             ],
             outputs: vec![json_output("response", "Agent response payload.")],
@@ -303,6 +318,7 @@ fn handle_agent_chat(params: Map<String, Value>) -> ControllerFuture {
                 p.model_override,
                 p.temperature,
                 p.thread_id,
+                p.cwd,
             )
             .await?,
         )
