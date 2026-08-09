@@ -15,7 +15,6 @@ mod imp {
     use std::path::{Path, PathBuf};
     use std::time::Duration;
 
-    use crate::cef_preflight;
     use crate::core_process;
     use crate::process_kill::{kill_pid_force, kill_pid_term};
 
@@ -53,15 +52,6 @@ mod imp {
                 "[startup-recovery] OPENHUMAN_CORE_REUSE_EXISTING=1; skipping stale process reap"
             );
             return;
-        }
-
-        if let Some(pid) = live_cef_lock_holder_pid() {
-            if pid != std::process::id() as i32 {
-                log::info!(
-                    "[startup-recovery] live CEF SingletonLock holder pid={pid}; skipping stale process reap so the normal preflight handles the second-instance path"
-                );
-                return;
-            }
         }
 
         let initial = match enumerate_openhuman_processes() {
@@ -292,27 +282,6 @@ mod imp {
             cursor = path.parent();
         }
         None
-    }
-
-    fn live_cef_lock_holder_pid() -> Option<i32> {
-        let cache_path = cef_cache_path()?;
-        let target = fs::read_link(cache_path.join("SingletonLock")).ok()?;
-        let target = target.to_string_lossy();
-        let (_, pid) = cef_preflight::parse_lock_target(&target)?;
-        cef_preflight::is_pid_alive(pid).then_some(pid)
-    }
-
-    fn cef_cache_path() -> Option<PathBuf> {
-        if let Some(configured) = std::env::var_os("OPENHUMAN_CEF_CACHE_PATH") {
-            return Some(PathBuf::from(configured));
-        }
-        let home = std::env::var_os("HOME")?;
-        Some(
-            PathBuf::from(home)
-                .join("Library/Caches")
-                .join(cef_preflight::APP_IDENTIFIER)
-                .join("cef"),
-        )
     }
 
     #[cfg(test)]

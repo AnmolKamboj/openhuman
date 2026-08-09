@@ -88,7 +88,7 @@ fn validate_source(source_path: &str) -> Result<PathBuf, String> {
             "artifact source not present on disk: {source_path}"
         ));
     }
-    let root = crate::cef_profile::default_root_openhuman_dir()?;
+    let root = crate::file_logging::resolve_data_dir();
     assert_artifact_source(&source, &root)?;
     Ok(source)
 }
