@@ -22,6 +22,7 @@ use openhuman_core::openhuman::agent::learning::candidate::{
 };
 use openhuman_core::openhuman::agent::learning::profile_md_renderer::ProfileMdRenderer;
 use openhuman_core::openhuman::agent::learning::stability_detector::StabilityDetector;
+use openhuman_core::openhuman::memory::store::ProfileStore;
 use openhuman_core::openhuman::memory::store::profile::{
     FacetState, FacetType, ProfileFacet, UserState, PROFILE_INIT_SQL,
 };
@@ -72,7 +73,7 @@ impl TestHarness {
         conn.execute_batch(PROFILE_INIT_SQL).unwrap();
         let conn = Arc::new(Mutex::new(conn));
 
-        let cache = Arc::new(FacetCache::new(Arc::clone(&conn)));
+        let cache = Arc::new(FacetCache::new(ProfileStore::for_tests(Arc::clone(&conn))));
 
         let workspace = TempDir::new().unwrap();
         let renderer = Arc::new(ProfileMdRenderer::new(
@@ -84,7 +85,7 @@ impl TestHarness {
         // this test's results.
         let _ = candidate::global().drain();
 
-        let detector = StabilityDetector::new(FacetCache::new(conn));
+        let detector = StabilityDetector::new(FacetCache::new(ProfileStore::for_tests(conn)));
 
         TestHarness {
             cache,
@@ -266,7 +267,7 @@ fn phase4_end_to_end_pin_forget_profile_md_list() {
 fn list_facets_cache_direct_active_vs_all() {
     let conn = Connection::open_in_memory().unwrap();
     conn.execute_batch(PROFILE_INIT_SQL).unwrap();
-    let cache = FacetCache::new(Arc::new(Mutex::new(conn)));
+    let cache = FacetCache::new(ProfileStore::for_tests(Arc::new(Mutex::new(conn))));
 
     let make = |id: &str, key: &str, state: FacetState| ProfileFacet {
         facet_id: id.into(),
