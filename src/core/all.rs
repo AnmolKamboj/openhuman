@@ -737,9 +737,15 @@ fn build_registered_controllers() -> Vec<GroupedController> {
         &mut controllers,
         DomainGroup::Memory,
         // Core + Recall are MANDATORY families — `Capabilities::validate`
-        // refuses to bind a driver missing them — so a gate here could never
-        // fire, and a dead gate reads like a live one. Ungated on purpose.
-        None,
+        // refuses to bind a driver missing them — so against a *driver's*
+        // advertised set this gate can never fire. It is tagged anyway,
+        // because one host decision answers below the driver:
+        // `CoreContext::memory_capabilities` returns the EMPTY set for a
+        // deliberate `driver = "null"`, which is how "the operator turned
+        // memory off" removes the mandatory surface too. `Core` alone stands
+        // for the pair — the two are always advertised together, and no
+        // partition here holds only recall methods.
+        Some(Capability::Core),
         crate::openhuman::memory::all_memory_core_recall_registered_controllers(),
     );
     push_cap(

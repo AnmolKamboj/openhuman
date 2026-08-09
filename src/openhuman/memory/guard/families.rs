@@ -286,10 +286,12 @@ impl MemoryTree for GuardedTree {
     /// The ambient allowlist
     /// ([`source_scope::current_source_scope`](crate::openhuman::memory::source_scope::current_source_scope))
     /// is therefore read at this boundary and passed down, rather than being
-    /// applied to the returned rows. An explicit `scope` argument wins: a
-    /// caller that computed a narrower scope than the ambient one has more
-    /// information than the task-local does, and silently widening it back to
-    /// the ambient set would be a leak.
+    /// applied to the returned rows. An explicit `scope` argument may only
+    /// *narrow* it: the two are intersected by
+    /// [`GuardPolicy::narrow_scope`](crate::openhuman::memory::guard::GuardPolicy::narrow_scope),
+    /// so a caller that computed a tighter scope than the task-local still wins,
+    /// while one that names a collection outside the ambient allowlist cannot
+    /// widen the turn back out.
     ///
     /// There is **no double application**: the embedded `query_source` does not
     /// itself read the task-local (only the deeper `tree::retrieval` and
@@ -305,21 +307,20 @@ impl MemoryTree for GuardedTree {
         self.policy
             .admit_read(Capability::Tree, "tree.query_source", namespace, false)?;
         let ambient = self.policy.ambient_scope();
-        let effective = scope.or(ambient.as_ref());
+        let effective = self.policy.narrow_scope(scope);
         log::debug!(
             "[memory:guard] tree.query_source namespace={namespace} limit={limit} \
              scoped={} scope_from={}",
             effective.is_some(),
-            if scope.is_some() {
-                "argument"
-            } else if ambient.is_some() {
-                "ambient"
-            } else {
-                "none"
+            match (scope.is_some(), ambient.is_some()) {
+                (true, true) => "argument∩ambient",
+                (true, false) => "argument",
+                (false, true) => "ambient",
+                (false, false) => "none",
             }
         );
         self.family()?
-            .query_source(namespace, source_id, limit, effective)
+            .query_source(namespace, source_id, limit, effective.as_ref())
             .await
     }
 

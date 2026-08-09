@@ -174,28 +174,37 @@ impl EmbeddedMemoryProvider {
     ///
     /// `Config::default()` would silently substitute default embedding
     /// dimensions and would report "no summarization provider" for a host that
-    /// has one configured. So the real config is loaded — then
-    /// [`Config::workspace_dir`] is **overwritten** with this driver's
-    /// workspace, exactly as `reload_config_snapshot_with_timeout` re-anchors a
-    /// long-lived object: the process-global `OPENHUMAN_WORKSPACE` must never
-    /// win over the workspace this driver was bound to, or a driver bound to B
-    /// would read A's chunks.
+    /// has one configured. So the real config is loaded — the one belonging to
+    /// **this driver's** workspace, via
+    /// [`load_config_for_workspace_with_timeout`](crate::openhuman::config::load_config_for_workspace_with_timeout).
+    ///
+    /// Re-anchoring `workspace_dir` after a process-global load is not enough,
+    /// and that is what this used to do: everything *else* in the snapshot —
+    /// embedding routes, model dimensions, provider credentials, tree budgets —
+    /// would still be whichever workspace the process-global active-user /
+    /// `OPENHUMAN_WORKSPACE` resolution named at first use. A driver bound to B
+    /// would then run A's settings over B's files, sending data to the wrong
+    /// endpoint or writing an index at the wrong dimension. The loader resolves
+    /// the config file beside `self.workspace_dir` instead, and only falls back
+    /// to the process-global one when the workspace has no config of its own.
     ///
     /// Lazy for the same reason as [`Self::client`] — loading is async and
     /// touches disk, and bind time is neither.
     pub(super) async fn config(&self) -> Result<&Config, MemoryError> {
         self.config
             .get_or_try_init(|| async {
-                let mut config = crate::openhuman::config::load_config_with_timeout()
-                    .await
-                    .map_err(|error| {
-                        log::warn!(
-                            "[memory:driver:embedded] workspace={} config load failed: {error}",
-                            self.workspace_dir.display()
-                        );
-                        MemoryError::Other(anyhow::anyhow!("memory driver config load: {error}"))
-                    })?;
-                config.workspace_dir.clone_from(&self.workspace_dir);
+                let config = crate::openhuman::config::load_config_for_workspace_with_timeout(
+                    &self.workspace_dir,
+                )
+                .await
+                .map_err(|error| {
+                    log::warn!(
+                        "[memory:driver:embedded] workspace={} config load failed: {error}",
+                        self.workspace_dir.display()
+                    );
+                    MemoryError::Other(anyhow::anyhow!("memory driver config load: {error}"))
+                })?;
+                debug_assert_eq!(config.workspace_dir, self.workspace_dir);
                 Ok(config)
             })
             .await

@@ -269,9 +269,24 @@ impl CoreContext {
     /// bound driver; a deny-by-default here would turn every memory test red at
     /// once. Denying is only ever correct once a driver has actually answered
     /// `capabilities()`.
+    ///
+    /// One case answers **closed**: a deliberate `[subsystems.memory] driver =
+    /// "null"` returns the empty set, not the null driver's mandatory three.
+    /// The driver honestly advertises those three — `subsystems_status` still
+    /// reports them — but an operator who bound `/dev/null` asked for the whole
+    /// memory surface to be gone, and leaving the mandatory families registered
+    /// would keep `memory_store` / `memory_recall` / `memory.list_documents`
+    /// answering off the embedded store the guarded re-point has not yet
+    /// covered. See [`MemoryBinding::disables_memory`](crate::openhuman::memory::binding::MemoryBinding::disables_memory).
     pub fn memory_capabilities(&self) -> tinycortex_api::capabilities::Capabilities {
         self.memory_binding()
-            .map(|binding| binding.capabilities())
+            .map(|binding| {
+                if binding.disables_memory() {
+                    tinycortex_api::capabilities::Capabilities::default()
+                } else {
+                    binding.capabilities()
+                }
+            })
             .unwrap_or_else(|_| crate::openhuman::memory::binding::unbound_default_capabilities())
     }
 

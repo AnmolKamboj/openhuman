@@ -127,6 +127,70 @@ async fn an_empty_ambient_allowlist_stays_restrictive() {
     .await;
 }
 
+#[tokio::test]
+async fn narrow_scope_returns_the_ambient_scope_when_the_caller_asks_for_none() {
+    with_source_scope(Some(vec!["slack:#eng".into()]), async {
+        let scope = embedded_policy().narrow_scope(None).expect("scoped");
+        assert_eq!(scope.allow, vec!["slack:#eng".to_string()]);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn narrow_scope_passes_an_explicit_scope_through_when_unrestricted() {
+    let requested = SourceScope::new(["gmail:me"]);
+    let scope = embedded_policy()
+        .narrow_scope(Some(&requested))
+        .expect("explicit scope survives");
+    assert_eq!(scope.allow, vec!["gmail:me".to_string()]);
+}
+
+#[tokio::test]
+async fn narrow_scope_keeps_an_explicit_scope_that_is_a_subset_of_the_ambient_one() {
+    // The narrowing direction is the legitimate one: a caller that computed a
+    // tighter scope than the task-local still wins.
+    with_source_scope(
+        Some(vec!["slack:#eng".into(), "slack:#ops".into()]),
+        async {
+            let requested = SourceScope::new(["slack:#eng"]);
+            let scope = embedded_policy()
+                .narrow_scope(Some(&requested))
+                .expect("scoped");
+            assert_eq!(scope.allow, vec!["slack:#eng".to_string()]);
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn narrow_scope_drops_explicit_sources_outside_the_ambient_allowlist() {
+    // The leak this exists to close: an explicit scope must not widen a
+    // source-restricted turn back out.
+    with_source_scope(Some(vec!["slack:#eng".into()]), async {
+        let requested = SourceScope::new(["slack:#eng", "gmail:me"]);
+        let scope = embedded_policy()
+            .narrow_scope(Some(&requested))
+            .expect("scoped");
+        assert_eq!(scope.allow, vec!["slack:#eng".to_string()]);
+        assert!(!scope.allows_source_id("gmail:me"));
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn an_entirely_out_of_scope_request_denies_rather_than_unrestricts() {
+    // Empty `Some`, never `None`: an empty allowlist denies all
+    // source-attributed content, which is the fail-closed reading.
+    with_source_scope(Some(vec!["slack:#eng".into()]), async {
+        let requested = SourceScope::new(["gmail:me"]);
+        let scope = embedded_policy()
+            .narrow_scope(Some(&requested))
+            .expect("must stay restricted, not become unrestricted");
+        assert!(scope.is_empty());
+    })
+    .await;
+}
+
 // ── Step 3 ───────────────────────────────────────────────────────────────────
 
 #[tokio::test]

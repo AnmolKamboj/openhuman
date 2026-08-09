@@ -155,6 +155,27 @@ impl MemoryBinding {
         self.fallback.as_ref()
     }
 
+    /// Whether the operator asked for memory to be **off**.
+    ///
+    /// True only for a deliberate `[subsystems.memory] driver = "null"` — the
+    /// class alone is not enough, because a *fallback* also binds the null
+    /// placeholder and a misconfiguration must not silently take memory away
+    /// with it. A fallback is loud (`fallback()` is `Some`, status reports it)
+    /// and keeps the surface present.
+    ///
+    /// Read by [`CoreContext::memory_capabilities`](crate::core::runtime::context::CoreContext::memory_capabilities),
+    /// which answers with the empty set here, so the memory RPC methods and
+    /// memory agent tools are **absent** rather than present-and-answering off
+    /// some other store. That matters because most memory handlers still reach
+    /// the engine directly through `active_memory_client()` — the guarded
+    /// re-point is incremental and tracked in
+    /// `docs/specs/memory-guard-allowlist.md` — so leaving the surface
+    /// registered under a null binding would read the embedded SQLite store an
+    /// operator believed they had turned off.
+    pub fn disables_memory(&self) -> bool {
+        self.class == DriverClass::Null && self.fallback.is_none()
+    }
+
     /// This binding in the kernel's generic vocabulary, for the subsystem
     /// registry and `subsystems_status` (kernel.md §6 item 6). This is the
     /// memory adapter `core::subsystem`'s module docs said would land later.
@@ -199,6 +220,19 @@ pub fn unbound_default_capabilities() -> Capabilities {
     Capabilities::all()
 }
 
+/// The class a built-in driver id is *fixed* to, or `None` for any other id.
+///
+/// Both built-in ids name one specific implementation, so this is the authority
+/// for their class in every path — the implicit one below and the explicit
+/// `class = …` line in [`admit`], which may only confirm what this returns.
+pub(crate) fn reserved_class(id: &str) -> Option<DriverClass> {
+    match id {
+        NULL_DRIVER_ID => Some(DriverClass::Null),
+        EMBEDDED_DRIVER_ID => Some(DriverClass::Embedded),
+        _ => None,
+    }
+}
+
 /// The class a driver id implies when nothing says otherwise. Only the two
 /// built-in ids admit: the embedded default and the null placeholder. Anything
 /// else — a typo, or an external backend that forgot its `drivers.<id>` entry —
@@ -212,10 +246,8 @@ fn implicit_class(
     refuse: &impl Fn(&str) -> FallbackReason,
     context: &str,
 ) -> Result<(String, DriverClass), FallbackReason> {
-    if id == NULL_DRIVER_ID {
-        Ok((id.to_string(), DriverClass::Null))
-    } else if id == EMBEDDED_DRIVER_ID {
-        Ok((id.to_string(), DriverClass::Embedded))
+    if let Some(class) = reserved_class(id) {
+        Ok((id.to_string(), class))
     } else {
         Err(refuse(&format!(
             "unknown driver id \"{id}\": {context}, and the id is neither the \
@@ -267,10 +299,29 @@ pub fn admit(cfg: &MemorySubsystemConfig) -> Result<(String, DriverClass), Fallb
             &refuse,
             "[subsystems.memory.drivers.<id>] has no class line",
         )?,
-        Some(raw) => (
-            id.to_string(),
-            DriverClass::parse(raw).map_err(|e| refuse(&e))?,
-        ),
+        Some(raw) => {
+            let class = DriverClass::parse(raw).map_err(|e| refuse(&e))?;
+            // The two built-in ids name a *fixed* implementation, so an
+            // explicit `class` line may confirm it but never override it.
+            // Without this, `driver = "null"` plus
+            // `[subsystems.memory.drivers.null] class = "embedded"` would build
+            // `EmbeddedMemoryProvider`, advertise all thirteen families and
+            // persist memory under the id documented as `/dev/null`; the
+            // inverse would label a store-nothing provider `tinycortex`. Either
+            // way the bound engine is mislabelled, which is exactly what the
+            // implicit-class refusal above exists to prevent (kernel.md §3.1 —
+            // one driver per slot, named truthfully).
+            if let Some(fixed) = reserved_class(id) {
+                if class != fixed {
+                    return Err(refuse(&format!(
+                        "driver id \"{id}\" is built in and is always class \
+                         \"{}\"; remove the conflicting class = \"{raw}\" line",
+                        fixed.as_str()
+                    )));
+                }
+            }
+            (id.to_string(), class)
+        }
     };
 
     if class == DriverClass::External {

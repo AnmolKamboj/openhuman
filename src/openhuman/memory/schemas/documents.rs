@@ -25,11 +25,15 @@ use super::{parse_params, to_json};
 // it rather than tagging the whole file with a single capability:
 //
 //   * core/recall — `Capability::Core` + `Capability::Recall`, both MANDATORY.
-//     Every bindable driver advertises them (`Capabilities::validate`), so a
-//     gate here could never fire; these register UNGATED so a dead gate cannot
-//     be mistaken for a live one. Tagging the whole file `Documents` would have
-//     made `memory.recall_memories` vanish under a driver that merely lacks the
-//     document tier — gating a mandatory family.
+//     Every bindable driver advertises them (`Capabilities::validate`), so
+//     against a driver's advertised set this gate never fires. It is registered
+//     tagged `Capability::Core` regardless, because one host decision answers
+//     below the driver: `CoreContext::memory_capabilities` returns the empty
+//     set for a deliberate `[subsystems.memory] driver = "null"`, and that is
+//     how these methods disappear when an operator turns memory off. Tagging
+//     the whole file `Documents` would instead have made
+//     `memory.recall_memories` vanish under a driver that merely lacks the
+//     document tier — gating a mandatory family on an optional one.
 //   * documents — `Capability::Documents`, the namespace-document tier.
 //   * ingest — `Capability::Ingest`, where the DRIVER owns chunking/embedding.
 //     `doc_ingest` is the whole of that surface; it lives in this file only

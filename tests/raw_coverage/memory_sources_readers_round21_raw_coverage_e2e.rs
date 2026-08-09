@@ -118,7 +118,7 @@ async fn round21_rss_reader_covers_http_body_guards_and_invalid_utf8() {
     let _lock = env_lock();
     let tmp = tempdir();
     let config = config(&tmp);
-    let reader = openhuman_core::openhuman::memory::sources::readers::rss::RssReader;
+    let reader = openhuman_core::openhuman::memory::sources::readers::rss::RssReader::new();
 
     let (status_url, status_server) =
         one_response_server("503 Service Unavailable", "", b"down".to_vec()).await;

@@ -332,7 +332,7 @@ async fn rss_reader_lists_reads_and_reports_feed_errors_from_loopback() {
     );
     let (base, server) = loopback_router(router).await;
 
-    let reader = openhuman_core::openhuman::memory::sources::readers::rss::RssReader;
+    let reader = openhuman_core::openhuman::memory::sources::readers::rss::RssReader::new();
     let mut entry = source(SourceKind::RssFeed, "rss-round15");
     entry.url = Some(format!("{base}/rss"));
     entry.max_items = Some(1);

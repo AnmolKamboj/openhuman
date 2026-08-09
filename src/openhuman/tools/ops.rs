@@ -1546,10 +1546,15 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
 /// always-present bucket by accident.
 ///
 /// The mandatory families ([`Capability::Core`], [`Capability::Recall`]) are
-/// returned explicitly rather than folded into `None`. A bindable driver always
-/// advertises them (`Capability::MANDATORY`), so the filter is a no-op for those
-/// tools by construction — but the mapping stays self-documenting and the drift
-/// guard stays exhaustive.
+/// returned explicitly rather than folded into `None`. Against a *driver's*
+/// advertised set the filter is a no-op for them by construction (a bindable
+/// driver always advertises `Capability::MANDATORY`) — but it is load-bearing
+/// for one host decision below the driver: `CoreContext::memory_capabilities`
+/// answers with the empty set for a deliberate `[subsystems.memory] driver =
+/// "null"`, and that is what drops `memory_store` / `memory_forget` / the
+/// recall tools when an operator turns memory off. Folding them into `None`
+/// would leave an agent able to persist, expose or delete memory through the
+/// session builder's own `Arc<dyn Memory>` in exactly that configuration.
 ///
 /// **The `memory_` prefix is deliberately NOT a catch-all here.** [`tool_group`]
 /// can prefix-match because every `memory_*` tool is one family on the

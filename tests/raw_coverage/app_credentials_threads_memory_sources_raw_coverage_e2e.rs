@@ -765,7 +765,7 @@ async fn round19_memory_sources_registry_readers_sync_and_reconcile_edges() {
         max_items: Some(1),
         ..source_entry("src-rss", SourceKind::RssFeed, "Feed")
     };
-    let rss_reader = openhuman_core::openhuman::memory::sources::readers::rss::RssReader;
+    let rss_reader = openhuman_core::openhuman::memory::sources::readers::rss::RssReader::new();
     let feed_items = rss_reader
         .list_items(&rss, &config)
         .await

@@ -251,6 +251,49 @@ impl GuardPolicy {
         current_source_scope().map(SourceScope::new)
     }
 
+    /// The scope a query actually runs under, given what the caller asked for.
+    ///
+    /// The ambient allowlist is an **upper bound**, never a default that an
+    /// argument replaces. An earlier version returned `requested.or(ambient)`,
+    /// which let a source-restricted turn widen itself back out: passing an
+    /// explicit scope naming a collection the ambient allowlist did not contain
+    /// made that explicit scope the sole query predicate, and the restriction
+    /// the turn was running under vanished.
+    ///
+    /// So the two are intersected. Membership is decided by the ambient scope's
+    /// own [`SourceScope::allows_source_id`] rule (equality or the engine's
+    /// `mem_src:{allowed}:` prefix), so the guard and the driver's SQL agree on
+    /// what "in scope" means rather than the guard inventing a second rule.
+    ///
+    /// An empty intersection is returned as an empty `Some`, not `None`: an
+    /// empty allow list denies all source-attributed content, which is the
+    /// fail-closed reading [`SourceScope`] documents. Returning `None` there
+    /// would turn "you asked for nothing you are allowed to see" into
+    /// "unrestricted", the exact leak this method exists to close.
+    pub fn narrow_scope(&self, requested: Option<&SourceScope>) -> Option<SourceScope> {
+        match (requested, self.ambient_scope()) {
+            (None, ambient) => ambient,
+            (Some(requested), None) => Some(requested.clone()),
+            (Some(requested), Some(ambient)) => {
+                let allow: Vec<String> = requested
+                    .allow
+                    .iter()
+                    .filter(|id| ambient.allows_source_id(id))
+                    .cloned()
+                    .collect();
+                if allow.len() != requested.allow.len() {
+                    log::debug!(
+                        "[memory:guard] explicit source scope narrowed by the ambient \
+                         allowlist requested={} admitted={}",
+                        requested.allow.len(),
+                        allow.len()
+                    );
+                }
+                Some(SourceScope { allow })
+            }
+        }
+    }
+
     // ── Step 3: taint stamping ───────────────────────────────────────────────
 
     /// The provenance the guard stamps on a write.

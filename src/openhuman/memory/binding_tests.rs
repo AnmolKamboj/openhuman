@@ -504,3 +504,118 @@ fn capabilities_are_asked_exactly_once_per_bind() {
         "capabilities() must be asked exactly once, at bind time"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Built-in ids are pinned to their class
+// ---------------------------------------------------------------------------
+//
+// A per-driver table may confirm a built-in id's class but never override it.
+// Without that rule `driver = "null"` plus `class = "embedded"` builds the real
+// engine and persists memory under the id documented as `/dev/null`, and the
+// inverse labels a store-nothing provider `tinycortex`.
+
+fn cfg_with_class(driver: &str, class: &str) -> MemorySubsystemConfig {
+    let mut cfg = MemorySubsystemConfig {
+        driver: driver.into(),
+        ..Default::default()
+    };
+    cfg.drivers.insert(
+        driver.into(),
+        MemoryDriverConfig {
+            class: Some(class.into()),
+            ..Default::default()
+        },
+    );
+    cfg
+}
+
+#[test]
+fn admit_refuses_an_embedded_class_override_on_the_null_driver() {
+    let refusal = admit(&cfg_with_class("null", "embedded"))
+        .expect_err("null must not be re-classed as embedded");
+    assert_eq!(refusal.configured_driver, "null");
+    assert!(
+        refusal.reason.contains("built in"),
+        "refusal must say the id is built in: {}",
+        refusal.reason
+    );
+}
+
+#[test]
+fn admit_refuses_a_null_class_override_on_the_embedded_driver() {
+    let refusal = admit(&cfg_with_class(EMBEDDED_DRIVER_ID, "null"))
+        .expect_err("tinycortex must not be re-classed as null");
+    assert_eq!(refusal.configured_driver, EMBEDDED_DRIVER_ID);
+    assert!(
+        refusal.reason.contains("built in"),
+        "refusal must say the id is built in: {}",
+        refusal.reason
+    );
+}
+
+#[test]
+fn admit_accepts_a_class_line_that_agrees_with_the_built_in_id() {
+    // Redundant, but not a mistake: confirming the real class is allowed.
+    let (id, class) = admit(&cfg_with_class("null", "null")).expect("agreeing class admits");
+    assert_eq!(id, "null");
+    assert_eq!(class, DriverClass::Null);
+
+    let (id, class) =
+        admit(&cfg_with_class(EMBEDDED_DRIVER_ID, "embedded")).expect("agreeing class admits");
+    assert_eq!(id, EMBEDDED_DRIVER_ID);
+    assert_eq!(class, DriverClass::Embedded);
+}
+
+#[test]
+fn a_null_class_override_cannot_smuggle_the_embedded_engine_into_the_binding() {
+    // The end-to-end shape of the refusal: `build` must not hand back an
+    // embedded provider for `driver = "null"`.
+    let dir = tempfile::tempdir().unwrap();
+    let binding = for_workspace(dir.path(), &cfg_with_class("null", "embedded")).expect("binds");
+
+    assert_eq!(binding.class(), DriverClass::Null);
+    assert_eq!(binding.driver_id(), NULL_DRIVER_ID);
+    assert!(
+        binding.fallback().is_some(),
+        "a refused class override must be recorded as a fallback"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// `disables_memory` — deliberate null only
+// ---------------------------------------------------------------------------
+
+#[test]
+fn an_explicit_null_driver_disables_memory() {
+    let dir = tempfile::tempdir().unwrap();
+    let cfg = MemorySubsystemConfig {
+        driver: "null".into(),
+        ..Default::default()
+    };
+    let binding = for_workspace(dir.path(), &cfg).expect("binds");
+
+    assert!(binding.fallback().is_none(), "this is not a fallback");
+    assert!(
+        binding.disables_memory(),
+        "an operator who bound /dev/null asked for the surface to be gone"
+    );
+}
+
+#[test]
+fn a_fallback_to_null_does_not_disable_memory() {
+    // A misconfiguration must be loud, not silently memory-less: the fallback
+    // is reported in status and the surface stays present.
+    let dir = tempfile::tempdir().unwrap();
+    let binding = for_workspace(dir.path(), &external_driver_cfg("untrusted")).expect("binds");
+
+    assert_eq!(binding.class(), DriverClass::Null);
+    assert!(binding.fallback().is_some(), "this IS a fallback");
+    assert!(!binding.disables_memory());
+}
+
+#[test]
+fn the_embedded_driver_never_disables_memory() {
+    let dir = tempfile::tempdir().unwrap();
+    let binding = for_workspace(dir.path(), &MemorySubsystemConfig::default()).expect("binds");
+    assert!(!binding.disables_memory());
+}
