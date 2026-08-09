@@ -674,8 +674,8 @@ impl SyncStateStore for HostSyncAdapter {
 #[async_trait]
 impl SyncEventSink for HostSyncAdapter {
     async fn emit(&self, event: SyncEvent) -> anyhow::Result<()> {
-        crate::core::event_bus::publish_global(
-            crate::core::event_bus::DomainEvent::MemorySyncStageChanged {
+        crate::core::bus::BUS.publish(
+            crate::core::events::DomainEvent::MemorySyncStageChanged {
                 trigger: "tinycortex".into(),
                 stage: stage_name(event.stage).into(),
                 provider: Some(event.toolkit),

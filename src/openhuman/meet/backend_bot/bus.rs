@@ -9,7 +9,9 @@ use std::sync::OnceLock;
 
 use async_trait::async_trait;
 
-use crate::core::event_bus::{DomainEvent, EventHandler, SubscriptionHandle};
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 
 use super::ops::{
     append_summary_prompt_message, create_meeting_thread_with_transcript_with_summary_mode,
@@ -27,7 +29,7 @@ pub fn register_meeting_event_subscriber() {
         return;
     }
 
-    match crate::core::event_bus::subscribe_global(std::sync::Arc::new(MeetingEventSubscriber)) {
+    match crate::core::bus::BUS.subscribe(std::sync::Arc::new(MeetingEventSubscriber)) {
         Some(handle) => {
             let _ = MEETING_EVENT_HANDLE.set(handle);
             tracing::info!("{LOG_PREFIX} registered");
@@ -41,7 +43,7 @@ pub fn register_meeting_event_subscriber() {
 pub struct MeetingEventSubscriber;
 
 #[async_trait]
-impl EventHandler for MeetingEventSubscriber {
+impl EventHandler<DomainEvent> for MeetingEventSubscriber {
     fn name(&self) -> &str {
         "agent_meetings::events"
     }
@@ -343,7 +345,7 @@ mod tests {
     async fn send_transcript_for_policy(policy: AutoSummarizePolicy, correlation_id: &str) {
         save_summary_policy(policy).await;
         let event = DomainEvent::BackendMeetTranscript {
-            turns: vec![crate::core::event_bus::BackendMeetTurn {
+            turns: vec![crate::core::events::BackendMeetTurn {
                 role: "user".to_string(),
                 content: "[00:01] [Alice] ship it".to_string(),
             }],

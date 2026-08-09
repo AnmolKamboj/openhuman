@@ -8,7 +8,8 @@
 //! drive the model.
 
 use super::types::{Agent, AgentBuilder};
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::dispatcher::ParsedToolCall;
 use crate::openhuman::agent::error::AgentError;
 use crate::openhuman::agent::messages::ConversationMessage;
@@ -783,7 +784,7 @@ impl Agent {
                     ("action", action_tag),
                 ],
             );
-            publish_global(DomainEvent::AgentError {
+            BUS.publish(DomainEvent::AgentError {
                 session_id: self.event_session_id().to_string(),
                 message: user_message.to_string(),
                 recoverable: true,
@@ -792,7 +793,7 @@ impl Agent {
         }
 
         let history_snapshot = self.history.clone();
-        publish_global(DomainEvent::AgentTurnStarted {
+        BUS.publish(DomainEvent::AgentTurnStarted {
             session_id: self.event_session_id().to_string(),
             channel: self.event_channel().to_string(),
         });
@@ -800,7 +801,7 @@ impl Agent {
         match self.turn(message).await {
             Ok(response) => {
                 let new_entries = Self::new_entries_for_turn(&history_snapshot, &self.history);
-                publish_global(DomainEvent::AgentTurnCompleted {
+                BUS.publish(DomainEvent::AgentTurnCompleted {
                     session_id: self.event_session_id().to_string(),
                     text_chars: response.chars().count(),
                     iterations: Self::count_iterations(new_entries),
@@ -853,7 +854,7 @@ impl Agent {
                         ],
                     );
                 }
-                publish_global(DomainEvent::AgentError {
+                BUS.publish(DomainEvent::AgentError {
                     session_id: self.event_session_id().to_string(),
                     message: sanitized_message,
                     recoverable: false,

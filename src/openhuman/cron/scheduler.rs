@@ -1,4 +1,5 @@
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::error::AgentError;
 use crate::openhuman::agent::Agent;
 use crate::openhuman::config::Config;
@@ -168,7 +169,7 @@ fn cron_alert_body(job: &CronJob, output: &str) -> String {
 pub async fn run(config: Config) -> Result<()> {
     // Ensure the global event bus is initialized so cron delivery events
     // are not silently dropped. This is a no-op if already initialized.
-    crate::core::event_bus::init_global(crate::core::event_bus::DEFAULT_CAPACITY);
+    crate::core::bus::init().await.expect("bus init");
     crate::openhuman::platform::health::bus::register_health_subscriber();
 
     let poll_secs = config.reliability.scheduler_poll_secs.max(MIN_POLL_SECONDS);
@@ -179,7 +180,7 @@ pub async fn run(config: Config) -> Result<()> {
         &config.action_dir,
     ));
 
-    publish_global(DomainEvent::SystemStartup {
+    BUS.publish(DomainEvent::SystemStartup {
         component: "scheduler".to_string(),
     });
 
@@ -232,7 +233,7 @@ pub(crate) async fn tick_once(
             // Repeat DB failures stay quiet so subscribers don't see
             // an event-storm during a long outage.
             if *last_emitted_health != Some(false) {
-                publish_global(DomainEvent::HealthChanged {
+                BUS.publish(DomainEvent::HealthChanged {
                     component: "scheduler".to_string(),
                     healthy: false,
                     message: Some(e.to_string()),
@@ -255,7 +256,7 @@ pub(crate) async fn tick_once(
         tracing::debug!(
             "[cron:scheduler] tick poll ok due_count={due_count} (recovery signal: healthy=true)"
         );
-        publish_global(DomainEvent::HealthChanged {
+        BUS.publish(DomainEvent::HealthChanged {
             component: "scheduler".to_string(),
             healthy: true,
             message: None,
@@ -308,7 +309,7 @@ pub async fn execute_job_now(config: &Config, job: &CronJob) -> (bool, String) {
 ///
 /// When the OpenHuman backend returns 401 because the user's app JWT has
 /// lapsed, [`inference::provider::ops::api_error`] already publishes
-/// [`crate::core::event_bus::DomainEvent::SessionExpired`] (via
+/// [`crate::core::events::DomainEvent::SessionExpired`] (via
 /// `publish_backend_session_expired`) and the credentials subscriber clears
 /// the stored session + flips the scheduler-gate `signed_out` override. The
 /// gate then halts downstream LLM work until the user re-auths.
@@ -746,13 +747,13 @@ async fn process_due_jobs(config: &Config, security: &Arc<SecurityPolicy>, jobs:
 
     while let Some((job_id, success, failure_message)) = in_flight.next().await {
         if success {
-            publish_global(DomainEvent::HealthChanged {
+            BUS.publish(DomainEvent::HealthChanged {
                 component: "scheduler".to_string(),
                 healthy: true,
                 message: None,
             });
         } else {
-            publish_global(DomainEvent::HealthChanged {
+            BUS.publish(DomainEvent::HealthChanged {
                 component: "scheduler".to_string(),
                 healthy: false,
                 message: Some(failure_message.unwrap_or_else(|| format!("job {job_id} failed"))),
@@ -770,7 +771,7 @@ async fn execute_and_persist_job(
 
     let started_at = Utc::now();
 
-    publish_global(DomainEvent::CronJobTriggered {
+    BUS.publish(DomainEvent::CronJobTriggered {
         job_id: job.id.clone(),
         job_name: job.name.clone().unwrap_or_default(),
         job_type: format!("{:?}", job.job_type),
@@ -788,7 +789,7 @@ async fn execute_and_persist_job(
     )
     .await;
 
-    publish_global(DomainEvent::CronJobCompleted {
+    BUS.publish(DomainEvent::CronJobCompleted {
         job_id: job.id.clone(),
         success,
         output: crate::openhuman::util::truncate_with_ellipsis(&output, 512),
@@ -1004,7 +1005,7 @@ fn run_flow_schedule_job(job: &CronJob) -> (bool, String) {
         %flow_id,
         "[cron] flow schedule tick — publishing FlowScheduleTick"
     );
-    publish_global(DomainEvent::FlowScheduleTick {
+    BUS.publish(DomainEvent::FlowScheduleTick {
         flow_id: flow_id.clone(),
     });
     (
@@ -1327,7 +1328,7 @@ async fn deliver_if_configured(
                     source = %source,
                     "[cron] publishing ProactiveMessageRequested event"
                 );
-                publish_global(DomainEvent::ProactiveMessageRequested {
+                BUS.publish(DomainEvent::ProactiveMessageRequested {
                     source,
                     message: output.to_string(),
                     job_name: job.name.clone(),
@@ -1353,7 +1354,7 @@ async fn deliver_if_configured(
                 target = %target,
                 "[cron] publishing CronDeliveryRequested event"
             );
-            publish_global(DomainEvent::CronDeliveryRequested {
+            BUS.publish(DomainEvent::CronDeliveryRequested {
                 job_id: job.id.clone(),
                 channel: channel.to_string(),
                 target: target.to_string(),

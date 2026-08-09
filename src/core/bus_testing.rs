@@ -1,6 +1,12 @@
-//! Shared test utilities for stubbing the global native bus registry.
+//! Shared test utilities for stubbing the global native request registry.
 //!
-//! The native event bus ([`super::native_request`]) is a process-wide
+//! Moved out of the deleted `core::event_bus::testing` when the bus became
+//! `tinybus`. The registry it stubs is now `tinybus::NativeRegistry`, reached
+//! through [`crate::core::bus::BUS`]; the RAII discipline is unchanged, because
+//! the hazard it guards against — a panicking test leaving a stub installed for
+//! every later test in the process — is unchanged too.
+//!
+//! The native event bus ([`tinybus::NativeRegistry`]) is a process-wide
 //! singleton. Any test that installs a stub handler must:
 //!
 //!   1. Acquire [`BUS_HANDLER_LOCK`] so concurrent dispatch tests don't
@@ -22,7 +28,7 @@
 //! production handler.
 //!
 //! Tests in **any** module of `openhuman_core` can `use
-//! crate::core::event_bus::testing::{mock_bus_stub, MockBusGuard,
+//! crate::core::bus_testing::{mock_bus_stub, MockBusGuard,
 //! BUS_HANDLER_LOCK};` — this module is not gated on `#[cfg(test)]` at the
 //! module level so that `pub` items remain referenceable from integration
 //! tests as well as unit tests.
@@ -30,7 +36,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use crate::core::event_bus::testing::mock_bus_stub;
+//! use crate::core::bus_testing::mock_bus_stub;
 //!
 //! // Install a stub for a hypothetical `billing.charge` method with a
 //! // custom restore closure. The restore fn runs when the guard drops.
@@ -52,7 +58,7 @@ use std::future::Future;
 
 use tokio::sync::{Mutex as TokioMutex, MutexGuard as TokioMutexGuard};
 
-use super::native_request::register_native_global;
+use super::bus::BUS;
 
 /// Process-wide exclusion lock for tests that install mock bus handlers.
 ///
@@ -64,7 +70,7 @@ use super::native_request::register_native_global;
 /// should acquire this lock first.
 ///
 /// Tests that only *publish* broadcast events or that construct an
-/// isolated [`super::NativeRegistry`] via `NativeRegistry::new()` do NOT
+/// isolated [`tinybus::NativeRegistry`] via `NativeRegistry::new()` do NOT
 /// need this lock.
 pub static BUS_HANDLER_LOCK: TokioMutex<()> = TokioMutex::const_new(());
 
@@ -137,9 +143,31 @@ where
     R: FnOnce() + Send + 'static,
 {
     let lock = BUS_HANDLER_LOCK.lock().await;
-    register_native_global::<Req, Resp, F, Fut>(method, handler);
+    BUS.native().register::<Req, Resp, F, Fut>(method, handler);
     MockBusGuard {
         _lock: lock,
         restore: Some(Box::new(restore)),
     }
+}
+
+/// An isolated bus for one test: its own broker, its own connection.
+///
+/// The replacement for the old `EventBus::create(capacity)`. Isolation matters
+/// more now, not less: the global bus is process-wide, so a test publishing
+/// onto it can be observed by a subscriber another test registered. Each call
+/// here builds a private broker, so nothing leaks between tests.
+pub async fn isolated_bus() -> tinybus::EventBus<crate::core::events::DomainEvent> {
+    let transport = tinybus::transport::memory::MemoryBus::new();
+    tinybus::broker::Broker::new().spawn(transport.clone());
+    let connection = tinybus::Connection::connect(
+        transport
+            .connect()
+            .await
+            .expect("the in-process broker accepts connections"),
+    )
+    .await
+    .expect("the in-process broker completes the handshake");
+    tinybus::EventBus::attach(connection, crate::core::bus::config())
+        .await
+        .expect("attaching the catalog cannot fail on a fresh connection")
 }

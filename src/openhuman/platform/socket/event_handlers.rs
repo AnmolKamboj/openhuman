@@ -10,7 +10,9 @@ use serde_json::json;
 use tokio::sync::mpsc;
 
 use crate::api::models::socket::ConnectionStatus;
-use crate::core::event_bus::{publish_global, BackendMeetTurn, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::BackendMeetTurn;
+use crate::core::events::DomainEvent;
 use crate::openhuman::skills::webhooks::WebhookRequest;
 
 use super::manager::{emit_server_event, emit_state_change, SharedState};
@@ -138,7 +140,7 @@ pub(super) fn handle_sio_event(
             log::info!("[socket] Publishing webhook:request to event bus");
             match serde_json::from_value::<WebhookRequest>(data.clone()) {
                 Ok(request) => {
-                    publish_global(DomainEvent::WebhookIncomingRequest {
+                    BUS.publish(DomainEvent::WebhookIncomingRequest {
                         request,
                         raw_data: data,
                     });
@@ -219,7 +221,7 @@ pub(super) fn handle_sio_event(
                             event.metadata.id,
                             event.metadata.uuid
                         );
-                        publish_global(DomainEvent::ComposioTriggerReceived {
+                        BUS.publish(DomainEvent::ComposioTriggerReceived {
                             toolkit: event.toolkit,
                             trigger: event.trigger,
                             metadata_id: event.metadata.id,
@@ -244,11 +246,11 @@ pub(super) fn handle_sio_event(
             {
                 Ok(status) => {
                     if status.online {
-                        publish_global(DomainEvent::DevicePeerOnline {
+                        BUS.publish(DomainEvent::DevicePeerOnline {
                             channel_id: status.channel_id,
                         });
                     } else {
-                        publish_global(DomainEvent::DevicePeerOffline {
+                        BUS.publish(DomainEvent::DevicePeerOffline {
                             channel_id: status.channel_id,
                         });
                     }
@@ -266,7 +268,7 @@ pub(super) fn handle_sio_event(
             >(data.clone())
             {
                 Ok(frame) => {
-                    publish_global(DomainEvent::DeviceTunnelFrame {
+                    BUS.publish(DomainEvent::DeviceTunnelFrame {
                         channel_id: frame.channel_id,
                         payload_b64: frame.payload,
                     });
@@ -285,7 +287,7 @@ pub(super) fn handle_sio_event(
                 .to_string();
             log::info!("[socket] tunnel:evicted channel_id={}", channel_id);
             if !channel_id.is_empty() {
-                publish_global(DomainEvent::DevicePeerOffline { channel_id });
+                BUS.publish(DomainEvent::DevicePeerOffline { channel_id });
             }
         }
 
@@ -301,7 +303,7 @@ pub(super) fn handle_sio_event(
                 .and_then(|v| v.as_str())
                 .map(String::from);
             log::info!("[socket] bot:joined meet_url_len={}", meet_url.len());
-            publish_global(DomainEvent::BackendMeetJoined {
+            BUS.publish(DomainEvent::BackendMeetJoined {
                 meet_url,
                 correlation_id,
             });
@@ -317,7 +319,7 @@ pub(super) fn handle_sio_event(
                 .and_then(|v| v.as_str())
                 .map(String::from);
             log::info!("[socket] bot:left reason={}", reason);
-            publish_global(DomainEvent::BackendMeetLeft {
+            BUS.publish(DomainEvent::BackendMeetLeft {
                 reason,
                 correlation_id,
             });
@@ -347,7 +349,7 @@ pub(super) fn handle_sio_event(
                 reply.len(),
                 emotion
             );
-            publish_global(DomainEvent::BackendMeetReply {
+            BUS.publish(DomainEvent::BackendMeetReply {
                 transcript,
                 reply,
                 emotion,
@@ -379,7 +381,7 @@ pub(super) fn handle_sio_event(
                 instruction.len(),
                 emotion
             );
-            publish_global(DomainEvent::BackendMeetHarness {
+            BUS.publish(DomainEvent::BackendMeetHarness {
                 transcript,
                 instruction,
                 emotion,
@@ -440,7 +442,7 @@ pub(super) fn handle_sio_event(
             // Thread creation + memory ingest are handled by the
             // MeetingEventSubscriber (agent_meetings/bus.rs) reacting to
             // this event — no inline spawn needed.
-            publish_global(DomainEvent::BackendMeetTranscript {
+            BUS.publish(DomainEvent::BackendMeetTranscript {
                 turns,
                 duration_ms,
                 correlation_id,
@@ -458,7 +460,7 @@ pub(super) fn handle_sio_event(
                         is_partial,
                         turn.role
                     );
-                    publish_global(DomainEvent::BackendMeetTranscriptDelta {
+                    BUS.publish(DomainEvent::BackendMeetTranscriptDelta {
                         turn,
                         index,
                         is_partial,
@@ -508,7 +510,7 @@ pub(super) fn handle_sio_event(
                 command_text.len(),
                 mascot_slot
             );
-            publish_global(DomainEvent::BackendMeetInCallRequest {
+            BUS.publish(DomainEvent::BackendMeetInCallRequest {
                 correlation_id,
                 speaker,
                 command_text,
@@ -528,7 +530,7 @@ pub(super) fn handle_sio_event(
                 .and_then(|v| v.as_str())
                 .map(String::from);
             log::error!("[socket] bot:error: {}", error);
-            publish_global(DomainEvent::BackendMeetError {
+            BUS.publish(DomainEvent::BackendMeetError {
                 error,
                 correlation_id,
             });
@@ -664,7 +666,7 @@ pub(super) fn handle_sio_event(
             let thread_ts =
                 nonempty(data.get("thread_ts")).or_else(|| nonempty(data.get("thread_id")));
 
-            publish_global(DomainEvent::ChannelInboundMessage {
+            BUS.publish(DomainEvent::ChannelInboundMessage {
                 event_name: event_name.to_string(),
                 channel,
                 message,

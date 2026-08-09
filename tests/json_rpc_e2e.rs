@@ -9507,7 +9507,7 @@ async fn json_rpc_meet_agent_session_lifecycle() {
 /// 3. Tool metadata (names/descriptions) is intact.
 #[tokio::test(flavor = "multi_thread")]
 async fn whatsapp_data_agent_tools_e2e_1341() {
-    use openhuman_core::core::event_bus::register_native_global;
+    use openhuman_core::core::bus::BUS;
     use openhuman_core::openhuman::channels::whatsapp_data::methods;
     use openhuman_core::openhuman::channels::whatsapp_data::types::{
         ListChatsRequest, ListMessagesRequest, SearchMessagesRequest, WhatsAppChat, WhatsAppMessage,
@@ -9544,15 +9544,15 @@ async fn whatsapp_data_agent_tools_e2e_1341() {
     }
 
     // Stand in for the shell store: register canned native handlers.
-    register_native_global::<ListChatsRequest, Vec<WhatsAppChat>, _, _>(
+    BUS.native().register::<ListChatsRequest, Vec<WhatsAppChat>, _, _>(
         methods::LIST_CHATS,
         |_req| async move { Ok(vec![sample_chat("alice@c.us"), sample_chat("team@g.us")]) },
     );
-    register_native_global::<ListMessagesRequest, Vec<WhatsAppMessage>, _, _>(
+    BUS.native().register::<ListMessagesRequest, Vec<WhatsAppMessage>, _, _>(
         methods::LIST_MESSAGES,
         |_req| async move { Ok(vec![sample_msg("Send the umbrella report by Friday")]) },
     );
-    register_native_global::<SearchMessagesRequest, Vec<WhatsAppMessage>, _, _>(
+    BUS.native().register::<SearchMessagesRequest, Vec<WhatsAppMessage>, _, _>(
         methods::SEARCH_MESSAGES,
         |req| async move {
             if req.query.to_lowercase().contains("umbrella") {

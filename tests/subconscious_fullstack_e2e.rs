@@ -22,7 +22,8 @@ use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 
 use async_trait::async_trait;
 
-use openhuman_core::core::event_bus::{init_global, DomainEvent};
+use openhuman_core::core::bus::BUS;
+use openhuman_core::core::events::DomainEvent;
 use openhuman_core::openhuman::agent::harness::AgentDefinitionRegistry;
 use openhuman_core::openhuman::config::schema::SubconsciousMode;
 use openhuman_core::openhuman::inference::provider::factory::test_provider_override;
@@ -260,7 +261,7 @@ fn harness_with(mock: Arc<MockLlm>) -> Harness {
     let keyring_guard = EnvGuard::set("OPENHUMAN_KEYRING_BACKEND", "file");
 
     // Globals the real pipeline needs.
-    init_global(64);
+    openhuman_core::core::bus::init().await.expect("bus init");
     openhuman_core::openhuman::agent::bus::register_agent_handlers();
     let _ = AgentDefinitionRegistry::init_global_builtins();
 

@@ -7,7 +7,8 @@ use super::dispatch::{
     process_channel_message, process_channel_runtime_message, RuntimeChannelMessage,
 };
 pub use super::startup::test_support::resolve_yuanbao_app_secret_for_test;
-use crate::core::event_bus::{init_global, register_native_global, DomainEvent, DEFAULT_CAPACITY};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::bus::{AgentTurnRequest, AgentTurnResponse, AGENT_RUN_TURN_METHOD};
 use crate::openhuman::agent::messages::ChatMessage;
 use crate::openhuman::agent::progress::AgentProgress;
@@ -297,7 +298,7 @@ fn memory_entry(input: TestMemoryEntry) -> MemoryEntry {
 /// `start_channels`) so concurrent registrations cannot race in the same
 /// process.
 pub async fn lock_agent_handler() -> tokio::sync::MutexGuard<'static, ()> {
-    crate::core::event_bus::testing::BUS_HANDLER_LOCK
+    crate::core::bus_testing::BUS_HANDLER_LOCK
         .lock()
         .await
 }
@@ -310,7 +311,8 @@ pub async fn run_dispatch_harness(options: DispatchHarnessOptions) -> DispatchHa
     // observation capture) behind the shared agent-handler lock.
     let _harness_guard = lock_agent_handler().await;
 
-    let mut event_rx = init_global(DEFAULT_CAPACITY).raw_receiver();
+    crate::core::bus::init().await.expect("bus init");
+    let mut event_rx = crate::core::bus::BUS.get().expect("bus initialised").receiver();
     let _ =
         crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::init_global_builtins(
         );
@@ -327,7 +329,7 @@ pub async fn run_dispatch_harness(options: DispatchHarnessOptions) -> DispatchHa
     let handler_error = options.handler_error.clone();
     let handler_delay = Duration::from_millis(options.handler_delay_ms);
 
-    register_native_global::<AgentTurnRequest, AgentTurnResponse, _, _>(AGENT_RUN_TURN_METHOD, {
+    BUS.native().register::<AgentTurnRequest, AgentTurnResponse, _, _>(AGENT_RUN_TURN_METHOD, {
         let handler_roles = Arc::clone(&handler_roles);
         let handler_text = Arc::clone(&handler_text);
         let handler_provider = Arc::clone(&handler_provider);

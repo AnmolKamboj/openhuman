@@ -18,7 +18,8 @@ use tokio::sync::mpsc;
 
 use super::state::IngestionState;
 use super::MemoryIngestionConfig;
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::memory::store::{NamespaceDocumentInput, UnifiedMemory};
 
 /// Default capacity of the ingestion job channel.
@@ -235,7 +236,7 @@ async fn ingestion_worker(
 
         let queue_depth = state.snapshot().queue_depth;
         state.mark_running(&document_id, &title, &namespace);
-        publish_global(DomainEvent::MemoryIngestionStarted {
+        BUS.publish(DomainEvent::MemoryIngestionStarted {
             document_id: document_id.clone(),
             title: title.clone(),
             namespace: namespace.clone(),
@@ -275,7 +276,7 @@ async fn ingestion_worker(
         let elapsed_ms = started.elapsed().as_millis() as u64;
         let completed_at_ms = chrono::Utc::now().timestamp_millis();
         state.mark_completed(&document_id, success, completed_at_ms);
-        publish_global(DomainEvent::MemoryIngestionCompleted {
+        BUS.publish(DomainEvent::MemoryIngestionCompleted {
             document_id,
             namespace,
             success,

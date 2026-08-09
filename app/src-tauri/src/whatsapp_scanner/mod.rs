@@ -1090,7 +1090,7 @@ async fn post_whatsapp_data_ingest(
         let req: openhuman_core::openhuman::channels::whatsapp_data::types::IngestRequest =
             serde_json::from_value(params)
                 .map_err(|e| format!("build ingest request (batch {}): {e}", batch_idx + 1))?;
-        openhuman_core::core::event_bus::request_native_global::<
+        openhuman_core::core::bus::BUS.native().request::<
             openhuman_core::openhuman::channels::whatsapp_data::types::IngestRequest,
             openhuman_core::openhuman::channels::whatsapp_data::types::IngestResult,
         >(
