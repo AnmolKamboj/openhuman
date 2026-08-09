@@ -40,10 +40,19 @@ impl ProfileStore {
 
     /// Test-only: build a store over a caller-owned in-memory database.
     ///
-    /// Not a hole — the caller already holds the `Connection`; this hands out
-    /// nothing a `MemoryClient` owns, and it is absent from a release build.
-    #[cfg(test)]
-    pub(crate) fn for_tests(conn: Arc<Mutex<Connection>>) -> Self {
+    /// Not a hole — the caller already holds the `Connection`, so this hands
+    /// out nothing a [`super::MemoryClient`] owns. Confinement is about not
+    /// *extracting* the client's connection, and `profile_conn()` stays
+    /// `pub(in crate::openhuman::memory)`.
+    ///
+    /// Deliberately **not** `#[cfg(test)]`: integration tests under `tests/`
+    /// link the lib compiled without `cfg(test)`, so a test-gated constructor
+    /// is invisible to them — which is exactly how
+    /// `tests/learning_phase4_integration_test.rs` was left uncompilable when
+    /// `FacetCache::new` changed shape. `#[doc(hidden)]` keeps it off the
+    /// public docs without hiding it from the linker.
+    #[doc(hidden)]
+    pub fn for_tests(conn: Arc<Mutex<Connection>>) -> Self {
         Self { conn }
     }
 
