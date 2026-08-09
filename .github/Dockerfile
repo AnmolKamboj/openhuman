@@ -3,9 +3,6 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 # System deps for Tauri + mold linker + clang + E2E testing (xvfb, dbus, webkit2gtk-driver).
-# CEF (bundled Chromium) runtime libs: libnss3, libnspr4, libgbm1, libxshmfence1,
-# libxkbcommon0, libatk-bridge2.0-0 — required to link/run the CEF shared lib that
-# cef-dll-sys downloads at build time (CEF is the default runtime now).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
@@ -26,17 +23,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     at-spi2-core \
     dbus-x11 \
     webkit2gtk-driver \
-    libnss3 \
-    libnspr4 \
-    libgbm1 \
-    libxshmfence1 \
-    libxkbcommon0 \
-    libatk-bridge2.0-0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    libcups2 \
-    libpangocairo-1.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Rust 1.96.1 with minimal profile + fmt/clippy
@@ -76,4 +62,4 @@ COPY e2e/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 # Verify installs
-RUN rustc --version && cargo --version && node --version && pnpm --version && mold --version && sccache --version && which tauri-driver && cargo tauri --version
+RUN rustc --version && cargo --version && node --version && pnpm --version && mold --version && sccache --version && which tauri-driver

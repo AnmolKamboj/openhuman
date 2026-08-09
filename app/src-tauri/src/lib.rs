@@ -78,6 +78,7 @@ mod reset_reboot_schedule;
 mod slack_scanner;
 mod stderr_panic_hook;
 mod telegram_scanner;
+mod webview_accounts;
 mod webview_apis;
 mod wechat_scanner;
 mod whatsapp_data;
@@ -422,11 +423,13 @@ async fn restart_app(app: tauri::AppHandle<AppRuntime>) -> Result<(), String> {
 /// a restart loop. The Rust core writes `active_user.toml` atomically as part
 /// of `auth_store_session`, so it's the only profile-independent source of
 /// truth available to the UI at boot. Reuses
-/// `cef_profile::default_root_openhuman_dir()` so the lookup honors
+/// `config::default_root_openhuman_dir()` so the lookup honors
 /// `OPENHUMAN_WORKSPACE` overrides used in test harnesses. (#900)
 #[tauri::command]
 fn get_active_user_id() -> Result<Option<String>, String> {
-    Ok(None)
+    let root = openhuman_core::openhuman::config::default_root_openhuman_dir()
+        .map_err(|err| format!("resolve active-user state directory: {err}"))?;
+    Ok(openhuman_core::openhuman::config::read_active_user_id(&root))
 }
 
 /// Information about an available shell-app update returned to the frontend.
@@ -2740,18 +2743,7 @@ pub fn run() {
     #[cfg(windows)]
     let _deep_link_pipe_guard = deep_link_ipc_windows::bind_and_listen();
 
-    // CEF cache-lock preflight (macOS only): if another OpenHuman instance
-    // is already holding the CEF user-data-dir, the vendored
-    // `tauri-runtime-cef` panics inside `cef::initialize` with a Rust
-    // backtrace and no actionable message (issue #864). Catch the collision
-    // here and exit cleanly with a message that names the lock-holder PID
-    // and the workaround. Stale locks (PID dead) are removed and we
-    // continue, matching Chromium's own startup recovery.
-
-    #[cfg(target_os = "macos")]
-    process_recovery::reap_stale_openhuman_processes();
-
-    // ── Windows pre-CEF proactive stale-process reap (issues #3605, #3900) ─
+    // ── Windows proactive stale-process reap (issues #3605, #3900) ─────────
     // The Win32 mutex above already guaranteed we are the only *top-level*
     // GUI instance past that point — a concurrent secondary saw
     // `ERROR_ALREADY_EXISTS` and exited before reaching here. So a surviving
