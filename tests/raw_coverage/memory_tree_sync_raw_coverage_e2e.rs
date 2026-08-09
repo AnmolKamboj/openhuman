@@ -13,7 +13,8 @@ use chrono::{TimeZone, Utc};
 use serde_json::json;
 use tempfile::TempDir;
 
-use openhuman_core::core::event_bus::{DomainEvent, EventHandler};
+use openhuman_core::core::events::DomainEvent;
+use tinybus::EventHandler;
 use openhuman_core::openhuman::config::Config;
 use openhuman_core::openhuman::memory::store::chunks::store::upsert_chunks;
 use openhuman_core::openhuman::memory::store::chunks::types::{

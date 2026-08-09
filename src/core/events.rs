@@ -1,33 +1,30 @@
-//! Domain events for cross-module communication.
+//! The domain event catalog: every cross-module event OpenHuman emits.
 //!
-//! Events carry full payloads so subscribers have everything they need without
-//! secondary lookups. The broadcast channel clones each event per subscriber,
-//! which is fine — richness beats round-trips.
+//! This is the vocabulary half of what used to be `core::bus`. The
+//! machinery half — the bus, the subscriber trait, the handle, the native
+//! request registry — now lives in the `tinybus` crate; what stays here is the
+//! part that is specific to OpenHuman and has no business in a generic bus.
 //!
-//! ## Workspace-scoped events
+//! # Why these types are serializable now
 //!
-//! Some events are scoped to a specific workspace directory and must be
-//! validated by subscribers before acting on them.
+//! Events used to be delivered as Rust values inside one process. They now
+//! travel over tinybus, which means they cross a process boundary and are
+//! encoded as JSON. Two consequences worth knowing before adding a variant:
 //!
-//! **Publisher contract**: when constructing a workspace-scoped event, the
-//! publisher must populate `workspace_dir` with the active workspace path at
-//! event creation time. This is typically available as `ctx.workspace_dir`
-//! on the channel runtime context.
+//! - **Payloads must be plain data.** No `Arc`, no trait objects, no channels.
+//!   A cross-module call that needs those is a native request
+//!   (`tinybus::NativeRegistry`), not an event.
+//! - **Adding a variant or a field is compatible; renaming or removing one is
+//!   not.** A subscriber built before the change has to keep parsing what a
+//!   publisher built after it emits.
 //!
-//! **Subscriber contract**: subscribers that persist or mutate workspace-
-//! specific data must compare the event's `workspace_dir` against their own
-//! workspace binding and silently drop events that do not match. This prevents
-//! stale in-flight events from a previous workspace from corrupting the newly
-//! active workspace's state when the user switches workspaces (e.g. logs out
-//! and back in) while events are in flight.
-//!
-//! **Current workspace-scoped variants**:
-//! - [`DomainEvent::ChannelMessageReceived`]
-//! - [`DomainEvent::ChannelMessageProcessed`]
+//! `domain()` is the routing key: it becomes the last element of the object
+//! path the event is published at, so the broker can filter by domain and never
+//! wake a process for events it did not ask for.
 
 /// Voice-domain events.
 #[non_exhaustive]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum VoiceEvent {
     /// A PTT session committed a transcript to a thread. Carries only
     /// length/timing — never the raw text, per the PII-safe logging rule.
@@ -43,7 +40,7 @@ pub enum VoiceEvent {
 /// Top-level domain event. Non-exhaustive so new variants can be added
 /// without breaking existing match arms.
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum DomainEvent {
     // ── Agent ───────────────────────────────────────────────────────────
     /// An agent turn has started processing.
@@ -1750,3 +1747,12 @@ impl DomainEvent {
 #[cfg(test)]
 #[path = "events_tests.rs"]
 mod tests;
+
+impl tinybus::Event for DomainEvent {
+    fn domain(&self) -> &str {
+        // Delegates to the inherent method, which every variant is already
+        // matched in. Keeping one implementation means a new variant cannot
+        // route correctly for subscribers and incorrectly for the bus.
+        DomainEvent::domain(self)
+    }
+}

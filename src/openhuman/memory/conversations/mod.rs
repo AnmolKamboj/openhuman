@@ -10,7 +10,7 @@
 //! agent orchestration, agent_memory, threads, channels) keep their import paths
 //! and identical `Result<_, String>` / on-disk behaviour unchanged.
 //!
-//! Host-retained: [`bus`] — the `core::event_bus` persistence subscriber that
+//! Host-retained: [`bus`] — the `core::bus` persistence subscriber that
 //! bridges typed channel events onto the crate store (the crate abstracts the
 //! bus behind its own `ConversationEventBus` trait; the host wires the real one).
 

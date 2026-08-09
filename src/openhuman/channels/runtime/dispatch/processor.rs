@@ -10,9 +10,9 @@
 //! * [`run_message_dispatch_loop`] — bounded-concurrency worker loop that feeds
 //!   messages into [`process_channel_message`].
 
-use crate::core::event_bus::{
-    publish_global, request_native_global, DomainEvent, NativeRequestError,
-};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
+use tinybus::NativeRequestError;
 use crate::openhuman::agent::bus::{AgentTurnRequest, AgentTurnResponse, AGENT_RUN_TURN_METHOD};
 use crate::openhuman::agent::messages::ChatMessage;
 use crate::openhuman::agent::progress::AgentProgress;
@@ -163,7 +163,7 @@ pub(crate) async fn process_channel_runtime_message(
         truncate_with_ellipsis(&msg.content, 80)
     );
 
-    publish_global(DomainEvent::ChannelMessageReceived {
+    BUS.publish(DomainEvent::ChannelMessageReceived {
         channel: msg.channel.clone(),
         message_id: msg.id.clone(),
         sender: msg.sender.clone(),
@@ -519,7 +519,7 @@ pub(crate) async fn process_channel_runtime_message(
         "[channels::dispatch] dispatching {AGENT_RUN_TURN_METHOD} via native bus"
     );
     let agent_call = async {
-        request_native_global::<AgentTurnRequest, AgentTurnResponse>(
+        BUS.native().request::<AgentTurnRequest, AgentTurnResponse>(
             AGENT_RUN_TURN_METHOD,
             turn_request,
         )
@@ -669,7 +669,7 @@ pub(crate) async fn process_channel_runtime_message(
                     }
                 }
 
-                publish_global(DomainEvent::ChannelMessageProcessed {
+                BUS.publish(DomainEvent::ChannelMessageProcessed {
                     channel: msg.channel.clone(),
                     message_id: msg.id.clone(),
                     sender: msg.sender.clone(),
@@ -810,7 +810,7 @@ pub(crate) async fn process_channel_runtime_message(
         }
     };
 
-    publish_global(DomainEvent::ChannelMessageProcessed {
+    BUS.publish(DomainEvent::ChannelMessageProcessed {
         channel: msg.channel.clone(),
         message_id: msg.id.clone(),
         sender: msg.sender.clone(),

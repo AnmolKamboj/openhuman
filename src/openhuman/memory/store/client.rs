@@ -191,8 +191,8 @@ impl MemoryClient {
 
         let queue_depth = state.snapshot().queue_depth;
         state.mark_running(&placeholder_id, &title, &namespace);
-        crate::core::event_bus::publish_global(
-            crate::core::event_bus::DomainEvent::MemoryIngestionStarted {
+        crate::core::bus::BUS.publish(
+            crate::core::events::DomainEvent::MemoryIngestionStarted {
                 document_id: placeholder_id.clone(),
                 title,
                 namespace: namespace.clone(),
@@ -214,8 +214,8 @@ impl MemoryClient {
             success,
             chrono::Utc::now().timestamp_millis(),
         );
-        crate::core::event_bus::publish_global(
-            crate::core::event_bus::DomainEvent::MemoryIngestionCompleted {
+        crate::core::bus::BUS.publish(
+            crate::core::events::DomainEvent::MemoryIngestionCompleted {
                 document_id: placeholder_id,
                 namespace,
                 success,

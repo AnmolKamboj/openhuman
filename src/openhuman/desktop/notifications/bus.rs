@@ -13,7 +13,8 @@ use once_cell::sync::Lazy;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::broadcast;
 
-use crate::core::event_bus::{DomainEvent, EventHandler};
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
 use crate::openhuman::config::Config;
 use async_trait::async_trait;
 
@@ -209,7 +210,7 @@ pub fn event_to_notification(event: &DomainEvent) -> Option<CoreNotificationEven
 }
 
 #[async_trait]
-impl EventHandler for NotificationBridgeSubscriber {
+impl EventHandler<DomainEvent> for NotificationBridgeSubscriber {
     fn name(&self) -> &str {
         "notifications::bridge"
     }
@@ -252,7 +253,7 @@ impl EventHandler for NotificationBridgeSubscriber {
 /// but the caller (`register_domain_subscribers`) is Once-guarded.
 pub fn register_notification_bridge_subscriber(config: Config) {
     use std::sync::Arc;
-    if let Some(handle) = crate::core::event_bus::subscribe_global(Arc::new(
+    if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
         NotificationBridgeSubscriber::new(config),
     )) {
         // SAFETY: intentional leak; handle's Drop would cancel the subscriber.

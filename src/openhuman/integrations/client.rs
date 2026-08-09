@@ -151,7 +151,7 @@ fn handle_session_jwt_unauthorized(method: &str, path: &str, url: &str, detail: 
     // is already free of secrets (it names the path + sanitized backend
     // `error` detail), but re-scrub for defense-in-depth before it reaches the
     // subscriber's logs.
-    crate::core::event_bus::publish_global(crate::core::event_bus::DomainEvent::SessionExpired {
+    crate::core::bus::BUS.publish(crate::core::events::DomainEvent::SessionExpired {
         source: format!("integrations.{method}:{path}"),
         reason: crate::openhuman::inference::provider::ops::sanitize_api_error(&message),
     });

@@ -390,8 +390,8 @@ fn maybe_publish_session_expired(err: &TinyAgentsError, operation: &str) {
         if pe.provider.as_str() == "OpenHuman" && matches!(pe.status, Some(401 | 403)) {
             let reason =
                 crate::openhuman::inference::provider::ops::sanitize_api_error(&pe.message);
-            crate::core::event_bus::publish_global(
-                crate::core::event_bus::DomainEvent::SessionExpired {
+            crate::core::bus::BUS.publish(
+                crate::core::events::DomainEvent::SessionExpired {
                     source: format!(
                         "openhuman_backend_model.{}({})",
                         operation,

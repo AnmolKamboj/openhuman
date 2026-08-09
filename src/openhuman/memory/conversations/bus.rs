@@ -9,7 +9,9 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde_json::json;
 
-use crate::core::event_bus::{DomainEvent, EventHandler, SubscriptionHandle};
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 use tinychannels::context::conversation_history_key;
 use tinychannels::ChannelMessage;
 
@@ -42,7 +44,7 @@ pub fn register_conversation_persistence_subscriber(workspace_dir: PathBuf) {
         return;
     }
 
-    match crate::core::event_bus::subscribe_global(Arc::new(
+    match crate::core::bus::BUS.subscribe(Arc::new(
         ConversationPersistenceSubscriber::new_shared(Arc::clone(workspace)),
     )) {
         Some(handle) => {
@@ -80,7 +82,7 @@ impl ConversationPersistenceSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for ConversationPersistenceSubscriber {
+impl EventHandler<DomainEvent> for ConversationPersistenceSubscriber {
     fn name(&self) -> &str {
         "memory::conversations::persistence"
     }

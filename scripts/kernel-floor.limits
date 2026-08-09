@@ -13,6 +13,58 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   307/284/5  2026-08-09  merge upstream/main + PR #5446 memory-subsystem work.
+#                      Measured, not derived: `scripts/kernel-floor.sh flows`
+#                      reports 307/284/5 on this merge. +3 names over the
+#                      304/281/5 below, and the split matters:
+#                        * +2 INHERITED — `tinybus` + `tinybus-macros`, vendored
+#                          by upstream #5459. The event bus is always-on kernel
+#                          surface, so they are in the `flows` profile there too;
+#                          upstream landed them without moving this number.
+#                        * +1 OURS — `tinycortex-api`, the memory contract crate
+#                          (`MemoryProvider`, `Capabilities`, `NullMemoryProvider`)
+#                          that `MemorySubsystemConfig` -> `MemoryBinding` now
+#                          depends on directly. It was already in the graph
+#                          transitively via `tinycortex`, so no *new* third-party
+#                          code enters the kernel profile — only a new direct edge.
+#                      The -6 packages / -1 native from the tokio-tungstenite
+#                      unification below is preserved, not spent: native builds
+#                      stay at 5 and aws-lc-sys stays absent.
+#   304/281/5  2026-08-08  tokio-tungstenite unified on 0.29 (-6 packages/-2
+#                      names). Root Cargo.toml's two per-target
+#                      tokio-tungstenite entries and
+#                      vendor/tinyplace/sdk/rust/Cargo.toml were pinned at
+#                      "0.24"; bumped all three to "0.29" (same feature names:
+#                      connect/handshake/native-tls/rustls-tls-webpki-roots).
+#                      Sheds the duplicate tungstenite 0.24 + thiserror 1.x +
+#                      thiserror-impl 1.x majors from the `flows` profile
+#                      (confirmed: `cargo tree --no-default-features --features
+#                      flows -e normal --prefix none | grep '^thiserror 1'` is
+#                      empty, and tungstenite/tokio-tungstenite both resolve
+#                      to a single 0.29 there). Call-site fix: tungstenite
+#                      0.29's `Message::Text` now wraps `Utf8Bytes` instead of
+#                      `String` — `.into()` at each send call site in
+#                      src/openhuman/platform/socket/ws_loop.rs (+ its test
+#                      double server in ws_loop_tests.rs) and
+#                      vendor/tinyplace/sdk/rust/src/websocket.rs.
+#                      NOTE: the DEFAULT (full-feature) profile still shows
+#                      both tungstenite 0.24 and 0.29 — socketioxide 0.15.2 /
+#                      engineioxide 0.15.2 (pulled in by the default-ON
+#                      `http-server` feature, unrelated to the three
+#                      activators above) pin `tokio-tungstenite = "0.24"`
+#                      themselves and were out of scope here. Unifying the
+#                      default profile too would mean bumping socketioxide,
+#                      a separate, broader change.
+#   310/283/5  2026-08-08  aws-lc-sys shed (-2 packages/names, -1 native). The
+#                      sole activator was vendor/tinychannels: `rustls = {
+#                      features = ["ring"] }` without `default-features =
+#                      false` unions in rustls's default aws_lc_rs provider,
+#                      and bare `tokio-rustls = "0.26.4"` defaults to
+#                      aws_lc_rs too. Pinned both to default-features = false
+#                      with an explicit ring/std/logging/tls12 feature set.
+#                      Default profile moved 577/533/10 -> 575/531/9 the same
+#                      way. Verified with scripts/assert-shed.sh flows
+#                      aws-lc-sys aws-lc-rs.
 #   312/285/6  2026-08-02  merge origin/main (+5 names) — INHERITED, not introduced here.
 #                      A rise in this number is the one thing this file exists
 #                      to make someone justify, so: main grew the graph on its
@@ -62,12 +114,4 @@
 #                      Native: aws-lc-sys libgit2-sys libsqlite3-sys libz-sys
 #                      lzma-sys ring. Target after gating is 222 names / 2 native
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
-#   313/286/6  2026-08-08  PR #5446 memory-subsystem binding work: the
-#                      `MemorySubsystemConfig` → `MemoryBinding` path now takes a
-#                      direct dependency on the vendored `tinycortex-api` crate
-#                      (the memory contract — `MemoryProvider`, `Capabilities`,
-#                      `NullMemoryProvider`). +1 package / +1 name over the
-#                      2026-08-02 inherited baseline; both belong to a crate
-#                      that was already in the graph transitively via `tinycortex`,
-#                      so no *new* third-party code enters the kernel profile.
-flows:313:286:6
+flows:307:284:5

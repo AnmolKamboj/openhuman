@@ -20,7 +20,8 @@
 //! `OPENHUMAN-TAURI-1T` (5,414 Sentry events from one user's
 //! cron-driven LLM calls after session expiry).
 
-use crate::core::event_bus::{DomainEvent, EventHandler};
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
 use crate::openhuman::cron::scheduler_gate;
 use async_trait::async_trait;
 
@@ -41,7 +42,7 @@ impl SessionExpiredSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for SessionExpiredSubscriber {
+impl EventHandler<DomainEvent> for SessionExpiredSubscriber {
     fn name(&self) -> &str {
         "credentials::session_expired_handler"
     }

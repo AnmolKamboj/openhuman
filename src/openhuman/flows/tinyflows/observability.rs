@@ -31,7 +31,8 @@ use std::sync::Arc;
 
 use tinyflows::observability::{ExecutionStep, Run, RunObserver, StepStatus};
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
 use crate::openhuman::flows::{upsert_flow_run_step, FlowRunStep};
 
@@ -141,7 +142,7 @@ impl RunObserver for FlowRunObserver {
             node = %node_id,
             "[flows] observer: step started — publishing FlowRunProgress(running)"
         );
-        publish_global(DomainEvent::FlowRunProgress {
+        BUS.publish(DomainEvent::FlowRunProgress {
             run_id: self.run_id.clone(),
             node_id: node_id.to_string(),
             status: "running".to_string(),
@@ -207,7 +208,7 @@ impl RunObserver for FlowRunObserver {
             status,
             "[flows] observer: publishing FlowRunProgress"
         );
-        publish_global(DomainEvent::FlowRunProgress {
+        BUS.publish(DomainEvent::FlowRunProgress {
             run_id: self.run_id.clone(),
             node_id: step.node_id.clone(),
             status: status.to_string(),

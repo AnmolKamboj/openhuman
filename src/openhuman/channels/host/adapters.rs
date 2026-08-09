@@ -355,7 +355,8 @@ impl EventSink for OpenHumanEventSink {
                 crate::openhuman::web_chat::publish_web_channel_event(event);
             }
             "channel" => {
-                use crate::core::event_bus::{publish_global, DomainEvent};
+                use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
                 let event = match kind {
                     "reaction_received" => DomainEvent::ChannelReactionReceived {
                         channel: json_str(&payload, "channel"),
@@ -377,7 +378,7 @@ impl EventSink for OpenHumanEventSink {
                         return Ok(());
                     }
                 };
-                publish_global(event);
+                BUS.publish(event);
             }
             other => tracing::warn!("{LOG_PREFIX} unmapped event domain: {other}"),
         }

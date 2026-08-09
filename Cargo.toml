@@ -154,6 +154,21 @@ tinycortex = { version = "0.1", features = [
 # this with the `path = "api"` dependency the engine crate already declares.
 tinycortex-api = { path = "vendor/tinycortex/api" }
 tinychannels = { version = "0.1", features = ["relay-websocket"] }
+# tinybus — the message bus. Owns what `src/core/event_bus/` used to: the typed
+# pub/sub surface (`EventBus`, `EventHandler`, `SubscriptionHandle`), the
+# in-process zero-serialization request registry (`NativeRegistry`), and peer
+# version negotiation. Vendored as a git submodule beside the other tiny*
+# crates and consumed by path.
+#
+# `DomainEvent` stays here, in `src/core/events.rs`: the catalog is OpenHuman's
+# own vocabulary and a generic bus crate must not know it. tinybus is generic
+# over the event type and `DomainEvent` implements `tinybus::Event`.
+#
+# After cloning: `git submodule update --init vendor/tinybus`.
+# `uds` is on so the kernel can join a broker that out-of-process integrations
+# are already attached to (`core::bus::init_over_socket`). `cli` is not: the
+# `tinybus` binary is a developer tool, not something the kernel links.
+tinybus = { path = "vendor/tinybus/crates/tinybus", default-features = false, features = ["macros", "uds"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_repr = "0.1"
@@ -335,7 +350,7 @@ docx-rs = { version = "0.4.20", optional = true }
 # Windows: tokio-tungstenite uses native-tls (schannel) so wss://
 # connections honor the Windows cert store, including corporate CAs
 # installed by AV / TLS-inspection proxies. See run-dev-win.sh notes.
-tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "handshake", "native-tls"] }
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "handshake", "native-tls"] }
 # Windows re-adds reqwest's native-tls backend (dropped from the base decl in
 # `[dependencies]`) so `tls::tls_client_builder()` can call `.use_native_tls()`
 # and reach the SChannel/OS cert store — same rationale as tokio-tungstenite
@@ -359,7 +374,7 @@ windows-sys = { version = "0.61", features = [
 [target.'cfg(not(windows))'.dependencies]
 # macOS / Linux: keep rustls + Mozilla webpki-roots — the historical
 # default. Avoids pulling OpenSSL as a runtime dep on Linux.
-tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 whisper-rs = { version = "0.16", features = ["metal"], optional = true }
