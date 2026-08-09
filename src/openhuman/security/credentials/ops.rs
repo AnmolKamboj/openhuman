@@ -51,13 +51,13 @@ pub async fn start_login_gated_services(config: &Config) {
     // constraint is voice-server → standalone-dictation-listener (they contend
     // for the single rdev global listener on macOS). Previously each was
     // `.await`ed in series, so their cold-start costs SUMMED: the local-AI
-    // bootstrap (Ollama/whisper/embeddings) + the Windows WASAPI microphone init
+    // bootstrap (Ollama/embeddings) + the Windows WASAPI microphone init
     // (a synchronous readiness handshake in `always_on::spawn_capture_thread`) +
     // the hosted-client network sync stacked into the ~10s stall users hit
     // before hotkeys/commands were usable — worst on Windows (#3490). Worse,
     // the hotkey/command registration (steps 2–3) sat
     // *after* the local-AI bootstrap in the series, so commands could not
-    // register until Ollama/whisper finished warming.
+    // register until Ollama finished warming.
     //
     // Run them concurrently on independent tasks instead: readiness is bounded
     // by the slowest single service rather than their sum, and command
@@ -85,7 +85,7 @@ pub async fn start_login_gated_services(config: &Config) {
     // the specific stage rather than an anonymous "a service failed".
     let mut tasks: Vec<(&'static str, tokio::task::JoinHandle<()>)> = Vec::new();
 
-    // 1. Local AI (Ollama, whisper, embeddings) — the heaviest single warm-up,
+    // 1. Local AI (Ollama, embeddings) — the heaviest single warm-up,
     //    so keeping it off the critical path for the others is the biggest win.
     {
         let config = config.clone();

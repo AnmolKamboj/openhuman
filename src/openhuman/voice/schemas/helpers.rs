@@ -56,7 +56,17 @@ pub(super) fn json_output(name: &'static str, comment: &'static str) -> FieldSch
 
 pub(super) fn validate_stt_provider(provider: &str) -> Result<(), String> {
     match provider {
-        "cloud" | "openhuman" | "whisper" => Ok(()),
+        "cloud" | "openhuman" | "backend" => Ok(()),
+        // The removed local whisper.cpp engine. Rejected rather than silently
+        // remapped: `config::migrations` already rewrote persisted copies, so a
+        // *new* write of this value can only come from a stale client, and
+        // accepting it would put the config straight back into the state the
+        // migration exists to clear.
+        "whisper" | "local" => Err(
+            "stt_provider 'whisper'/'local' was removed with the bundled whisper.cpp engine; \
+             use 'cloud' (see voice_server.stt_engine) or a '<slug>:<model>' provider"
+                .to_string(),
+        ),
         other => {
             // Accept slug:model grammar or bare slug — the factory will
             // validate against the voice_providers registry at dispatch time.
@@ -64,7 +74,7 @@ pub(super) fn validate_stt_provider(provider: &str) -> Result<(), String> {
                 Ok(())
             } else {
                 Err(format!(
-                    "invalid stt_provider '{other}' (valid: 'cloud', 'whisper', or '<slug>:<model>')"
+                    "invalid stt_provider '{other}' (valid: 'cloud', or '<slug>:<model>')"
                 ))
             }
         }
@@ -153,14 +163,12 @@ pub(super) async fn validate_tts_provider_key(
 
 /// Generate a minimal WAV file with ~0.1s of silence (16kHz mono 16-bit PCM).
 ///
-/// The rate is deliberately **16kHz**, not 8kHz: the local Whisper provider
-/// prefers the bundled in-process `whisper-rs` engine, whose decoder only
-/// accepts 16kHz. An 8kHz fixture is rejected during decode and silently
-/// falls back to the `whisper-cli` subprocess — which then errors with
-/// "binary not found" on a machine that intentionally has no external binary
-/// (the whole point of issue #3425). Generating the test clip at the rate the
-/// in-process engine supports lets "Test STT" exercise the real, binary-free
-/// path instead of failing on a missing subprocess.
+/// The rate is deliberately **16kHz**, not 8kHz: 16 kHz mono is what every STT
+/// engine in the routing table takes without resampling, and it is the rate the
+/// rest of the capture pipeline (`voice::audio_capture`, the dictation
+/// WebSocket) already produces. Generating the "Test STT" clip at a rate an
+/// engine might reject would turn a working configuration into a spurious
+/// failure (the shape of issue #3425).
 pub(super) fn generate_silent_wav() -> Vec<u8> {
     let sample_rate: u32 = 16_000;
     let num_samples: u32 = 1_600; // 0.1s

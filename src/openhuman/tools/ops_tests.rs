@@ -103,19 +103,6 @@ fn find_tool<'a>(tools: &'a [Box<dyn Tool>], name: &str) -> &'a dyn Tool {
 }
 
 #[test]
-fn polymarket_runtime_tool_registration_follows_feature_gate() {
-    let tmp = TempDir::new().unwrap();
-    let mut cfg = test_config(&tmp);
-    cfg.integrations.polymarket.enabled = true;
-    let names = tool_names(&integration_tools_for_config(&tmp, &cfg));
-    assert_eq!(
-        names.iter().any(|name| name == "polymarket"),
-        cfg!(feature = "prediction-markets"),
-        "the Polymarket runtime tool must be absent when prediction-markets is compiled out"
-    );
-}
-
-#[test]
 fn default_tools_has_three() {
     let security = Arc::new(SecurityPolicy::default());
     let tools = default_tools(security);
@@ -2585,7 +2572,7 @@ fn tool_group_classifies_gate_and_harness_families() {
     assert_eq!(tool_group("session_state"), DomainGroup::Security);
     assert_eq!(tool_group("oauth_list"), DomainGroup::Security);
     assert_eq!(tool_group("schedule"), DomainGroup::Automation);
-    assert_eq!(tool_group("polymarket"), DomainGroup::Integrations);
+    assert_eq!(tool_group("web_search_tool"), DomainGroup::Integrations);
     for name in [
         "web_search_tool",
         "tinyfish_search",

@@ -23,12 +23,10 @@ use openhuman_core::openhuman::web_chat::{
     channel_web_cancel, publish_web_channel_event, schemas as web_channel_schema, start_chat,
     subscribe_web_channel_events, ChatRequestMetadata,
 };
-use openhuman_core::openhuman::config::{
-    AutonomyConfig, Config, PolymarketClobCredentials, PolymarketConfig,
-};
+use openhuman_core::openhuman::config::{AutonomyConfig, Config};
 use openhuman_core::openhuman::security::{AutonomyLevel, SecurityPolicy};
 use openhuman_core::openhuman::tools::{
-    ComposioTool, GitOperationsTool, PolymarketTool, ScheduleTool, Tool, ToolCallOptions,
+    ComposioTool, GitOperationsTool, ScheduleTool, Tool, ToolCallOptions,
 };
 
 #[derive(Clone, Debug)]
@@ -37,107 +35,11 @@ struct MockRequest {
     path: String,
     query: Option<String>,
     body: String,
-    poly_api_key: Option<String>,
 }
 
 #[derive(Clone, Default)]
 struct MockState {
     requests: Arc<Mutex<Vec<MockRequest>>>,
-}
-
-async fn start_polymarket_mock() -> (String, MockState) {
-    let state = MockState::default();
-    let app = Router::new()
-        .route("/", any(polymarket_handler))
-        .fallback(any(polymarket_handler))
-        .with_state(state.clone());
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind mock");
-    let addr = listener.local_addr().expect("mock addr");
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.expect("mock serve");
-    });
-    (format!("http://127.0.0.1:{}", addr.port()), state)
-}
-
-async fn polymarket_handler(
-    State(state): State<MockState>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Response {
-    let path = uri.path().to_string();
-    let query = uri.query().map(str::to_string);
-    let body = String::from_utf8_lossy(&body).to_string();
-    let poly_api_key = headers
-        .get("poly_api_key")
-        .and_then(|value| value.to_str().ok())
-        .map(str::to_string);
-
-    state
-        .requests
-        .lock()
-        .expect("requests lock")
-        .push(MockRequest {
-            method: method.clone(),
-            path: path.clone(),
-            query,
-            body,
-            poly_api_key,
-        });
-
-    let payload = match (method, path.as_str()) {
-        (Method::GET, "/markets") => json!([
-            {
-                "id": "m-1",
-                "slug": "will-it-rain",
-                "question": "Will it rain tomorrow?"
-            }
-        ]),
-        (Method::GET, "/markets/m-1") => json!({
-            "id": "m-1",
-            "slug": "will-it-rain",
-            "outcomes": ["Yes", "No"]
-        }),
-        (Method::GET, "/events") => json!({
-            "data": [
-                { "id": "e-1", "slug": "weather" }
-            ],
-            "next_cursor": "cursor-2"
-        }),
-        (Method::GET, "/events/e-1") => json!({
-            "id": "e-1",
-            "title": "Weather"
-        }),
-        (Method::GET, "/book") => json!({
-            "bids": [["0.42", "10"]],
-            "asks": [["0.43", "12"]]
-        }),
-        (Method::GET, "/price") => json!({ "price": "0.42" }),
-        (Method::GET, "/data/positions") => json!({
-            "positions": [
-                { "asset": "token-yes", "size": "3.5" }
-            ]
-        }),
-        (Method::GET, "/data/balance") => json!({ "balance": "125.50" }),
-        (Method::GET, "/orders") => json!({ "orders": [] }),
-        (Method::POST, "/") => json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": "0x00000000000000000000000000000000000000000000000000000000000f4240"
-        }),
-        _ => {
-            return (
-                StatusCode::NOT_FOUND,
-                axum::Json(json!({ "error": format!("unhandled {path}") })),
-            )
-                .into_response();
-        }
-    };
-
-    axum::Json(payload).into_response()
 }
 
 fn full_security(workspace: &std::path::Path) -> Arc<SecurityPolicy> {
@@ -181,92 +83,6 @@ fn assert_contains(haystack: &str, needle: &str) {
     assert!(
         haystack.contains(needle),
         "expected {haystack:?} to contain {needle:?}"
-    );
-}
-
-#[tokio::test]
-async fn polymarket_loopback_exercises_gamma_clob_and_polygon_read_paths() {
-    let (_tmp, config) = temp_config();
-    let (base, state) = start_polymarket_mock().await;
-    let user = "0x1111111111111111111111111111111111111111";
-    let tool = PolymarketTool::new(
-        &PolymarketConfig {
-            enabled: true,
-            gamma_base_url: base.clone(),
-            clob_base_url: base.clone(),
-            polygon_rpc_url: base,
-            timeout_secs: 2,
-            eoa_address: Some(user.to_string()),
-            usdc_contract: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174".to_string(),
-            clob_exchange_contract: "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E".to_string(),
-            derived_clob_credentials: Some(PolymarketClobCredentials {
-                api_key: "local-key".to_string(),
-                secret: "bG9jYWwtc2VjcmV0".to_string(),
-                passphrase: "local-pass".to_string(),
-            }),
-        },
-        full_security(&config.workspace_dir),
-    );
-
-    let cases = [
-        json!({"action": "list_markets", "slug": "will-it-rain", "limit": 5, "active": true}),
-        json!({"action": "get_market", "market_id": "m-1"}),
-        json!({"action": "get_market", "slug": "will-it-rain"}),
-        json!({"action": "list_events", "limit": 2, "closed": false, "tag": "weather"}),
-        json!({"action": "list_events", "event_id": "e-1"}),
-        json!({"action": "get_orderbook", "token_id": "token-yes"}),
-        json!({"action": "get_price", "token_id": "token-yes", "side": "BUY"}),
-        json!({"action": "get_positions", "user": user}),
-        json!({"action": "get_balance", "user": user, "token": "usdc"}),
-        json!({"action": "get_open_orders", "user": user}),
-        json!({"action": "get_usdc_allowance", "user": user}),
-    ];
-
-    for args in cases {
-        let result = tool.execute(args).await.expect("execute");
-        assert!(
-            !result.is_error,
-            "unexpected polymarket error: {}",
-            text(&result)
-        );
-    }
-
-    let missing = tool
-        .execute(json!({"action": "get_market"}))
-        .await
-        .expect("missing lookup");
-    assert!(missing.is_error);
-    assert_contains(&text(&missing), "get_market requires");
-
-    let invalid_side = tool
-        .execute(json!({"action": "get_price", "token_id": "token-yes", "side": "maybe"}))
-        .await
-        .expect("invalid side");
-    assert!(invalid_side.is_error);
-    assert_contains(&text(&invalid_side), "Invalid 'side'");
-
-    let requests = state.requests.lock().expect("requests").clone();
-    assert!(
-        requests.iter().any(|request| request.path == "/markets"
-            && request
-                .query
-                .as_deref()
-                .unwrap_or("")
-                .contains("slug=will-it-rain")),
-        "list_markets query was not captured: {requests:?}"
-    );
-    assert!(
-        requests
-            .iter()
-            .any(|request| request.path == "/data/positions"
-                && request.poly_api_key.as_deref() == Some("local-key")),
-        "signed CLOB read did not include credential headers: {requests:?}"
-    );
-    assert!(
-        requests.iter().any(|request| request.method == Method::POST
-            && request.path == "/"
-            && request.body.contains("eth_call")),
-        "Polygon allowance RPC was not captured: {requests:?}"
     );
 }
 

@@ -2714,14 +2714,8 @@ async fn inference_local_controllers_and_presets_cover_public_paths() {
     .expect("download progress");
     assert!(downloads.is_object());
 
-    let whisper_status = call(
-        controller(&local_registered, "whisper_install_status"),
-        json!({}),
-    )
-    .await
-    .expect("whisper install status");
-    assert_eq!(whisper_status.pointer("/engine"), Some(&json!("whisper")));
-
+    // `whisper_install_status` was deleted with the bundled whisper.cpp
+    // engine; piper is the only install-status controller left.
     let piper_status = call(
         controller(&local_registered, "piper_install_status"),
         json!({}),

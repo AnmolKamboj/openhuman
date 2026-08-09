@@ -161,18 +161,11 @@ cef = { version = "=146.4.1", default-features = false }
 #   the pre-gate desktop tool surface.
 # - `web3` — keeps the wallet/web3/x402 domains and their agent tools in the
 #   desktop build while allowing slim builds to omit the crypto-only deps.
-# - `tokenjuice-treesitter` — forwards `tinyjuice/tinyjuice-treesitter`, which
-#   pulls the tree-sitter Rust/TS/Python grammars. Without it TokenJuice falls
-#   back to the brace-depth heuristic, so the desktop app compresses code worse
-#   than intended. This failed *soft* (no error, no Sentry signal) and had never
-#   once been forwarded since the gate was added in #4123 (#4918).
-#
 # `scripts/ci/check-feature-forwarding.mjs` fails CI when this list drifts from
 # the core's `[features] default` (#4919) — do not hand-maintain it from memory.
 openhuman_core = { path = "../..", package = "openhuman", default-features = false, features = [
     "channels",
     "media",
-    "tokenjuice-treesitter",
     "inference",
     "voice",
     "web3",
@@ -193,10 +186,6 @@ openhuman_core = { path = "../..", package = "openhuman", default-features = fal
     # The packaged app's only durable log. Without this, a support request
     # comes back with nothing to attach — and the absence is silent.
     "file-logging",
-    # Polymarket read + trading tools. Implies `web3`, which is already
-    # forwarded — but the checker does literal set membership with no
-    # transitive resolution, so this needs its own line.
-    "prediction-markets",
     "contacts",
 ] }
 tinyjuice = { version = "0.2.1", default-features = false }
@@ -269,11 +258,6 @@ sandbox-bubblewrap = []
 e2e-test-support = ["openhuman_core/e2e-test-support"]
 
 [patch.crates-io]
-# `cargo tauri build` resolves dependencies from this manifest, so the
-# workspace-level whisper-rs-sys patch is not applied here. The fork forces
-# whisper.cpp to use MSVC's static runtime (/MT), matching CEF and avoiding
-# LNK2038/LNK1169 CRT conflicts on Windows.
-whisper-rs-sys = { git = "https://github.com/tinyhumansai/whisper-rs-sys.git", branch = "main" }
 # Keep reqwest defaults disabled in this independent Cargo world too. Without
 # this patch, the registry release reintroduces native-tls/OpenSSL on Linux.
 motosan-ai-oauth = { path = "../../vendor/motosan-ai-oauth" }

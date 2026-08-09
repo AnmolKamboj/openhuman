@@ -1184,19 +1184,6 @@ pub fn all_tools_with_runtime(
         );
     }
 
-    // Leaf gate: the registration site wants ABSENCE when the feature is off,
-    // not a tool that registers and then errors.
-    #[cfg(feature = "prediction-markets")]
-    if root_config.integrations.polymarket.enabled {
-        tools.push(Box::new(PolymarketTool::new(
-            &root_config.integrations.polymarket,
-            security.clone(),
-        )));
-        tracing::debug!("[integrations] registered polymarket tool (read + trading)");
-    } else {
-        tracing::debug!("[integrations] polymarket disabled — skipping");
-    }
-
     // Coding-harness `lsp` tool (issue #1205) — capability-gated by the
     // OPENHUMAN_LSP_ENABLED env var. The backend (real language-server
     // bridge) is a follow-up; today the gate just controls visibility
@@ -1492,7 +1479,6 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
         || name.starts_with("apify_")
         || name.starts_with("google_places_")
         || name.starts_with("stock_")
-        || name == "polymarket"
         || name.starts_with("storage_")
         || name.starts_with("task_source_")
         || name == "twilio_call"
