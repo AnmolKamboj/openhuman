@@ -702,6 +702,16 @@ impl Config {
             })?;
         }
 
+        // Parallel test/runtime cleanup can remove an otherwise valid config
+        // directory after the temporary file is written. Recreate it directly
+        // before the rename so the atomic replacement retains its guarantee.
+        fs::create_dir_all(parent_dir).await.with_context(|| {
+            format!(
+                "Failed to recreate config directory before atomic replace: {}",
+                parent_dir.display()
+            )
+        })?;
+
         if let Err(e) = fs::rename(&temp_path, &self.config_path).await {
             let _ = fs::remove_file(&temp_path).await;
             if had_existing_config && backup_path.exists() {
