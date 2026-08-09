@@ -2543,6 +2543,24 @@ pub(crate) fn openai_bearer_is_oauth(config: &Config) -> bool {
 /// "no auth", which surfaces an authentication error at first call rather than
 /// at factory build time.
 pub fn lookup_key_for_slug(slug: &str, config: &Config) -> anyhow::Result<String> {
+    // Ahead of the stored profiles, and scoped to the one slug the per-call
+    // route registers. A caller that named an endpoint and a bearer for this
+    // turn has said where the credential comes from, and there is nothing on
+    // disk to find for a slug that exists only in this `Config` copy. Scoping it
+    // by slug is what keeps the bearer from reaching a provider the caller never
+    // named — the same containment the legacy `config.api_key` fallback below
+    // gets from `legacy_inference_slug`.
+    if slug == crate::openhuman::config::schema::EPHEMERAL_ROUTE_SLUG {
+        if let Some(route) = config.ephemeral_route.as_ref() {
+            log::debug!(
+                "[providers][chat-factory] auth lookup slug={} key_present={} (per-call route)",
+                slug,
+                !route.api_key.trim().is_empty()
+            );
+            return Ok(route.api_key.trim().to_string());
+        }
+    }
+
     let auth = AuthService::from_config(config);
     // Try new-style key first.
     let new_key = auth_key_for_slug(slug);
@@ -2625,7 +2643,7 @@ pub fn lookup_key_for_slug(slug: &str, config: &Config) -> anyhow::Result<String
 }
 
 /// Return a safe-to-log representation of a URL endpoint: `scheme://host` only.
-pub(super) fn redact_endpoint(url: &str) -> String {
+pub fn redact_endpoint(url: &str) -> String {
     let trimmed = url.trim();
     if let Some(rest) = trimmed.split_once("://") {
         let scheme = rest.0;
