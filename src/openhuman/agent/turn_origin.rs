@@ -361,6 +361,7 @@ mod tests {
             }
             other => panic!("expected ExternalChannel inherited verbatim, got {other:?}"),
         }
+    }
 
     /// Regression: a detached sub-agent (`spawn_async_subagent`, the
     /// orchestration spawn task) starts on a fresh task, and without explicit
