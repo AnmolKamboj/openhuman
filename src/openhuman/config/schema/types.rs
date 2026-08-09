@@ -433,19 +433,20 @@ pub struct Config {
     // Provider-string grammar (consumed by `voice::factory`):
     //
     //   "cloud" / "openhuman"  → OpenHuman backend proxy (STT or TTS)
-    //   "whisper"              → local Whisper (STT only)
     //   "piper"                → local Piper (TTS only)
     //   "<slug>:<model>"       → voice_providers entry matched by slug
     //
     // When `stt_provider` / `tts_provider` are `None`, the factory falls
-    // back to `local_ai.stt_provider` / `local_ai.tts_provider` (legacy),
-    // then to `"cloud"`.
+    // back to `local_ai.stt_provider` / `local_ai.tts_provider` (legacy).
+    // For STT the final fallback is `voice_server.stt_engine`; for TTS it is
+    // `"cloud"`.
     /// Registered voice providers (STT/TTS). Analogous to `cloud_providers`
     /// for LLM inference.
     #[serde(default)]
     pub voice_providers: Vec<crate::openhuman::config::schema::voice_providers::VoiceProviderCreds>,
 
-    /// STT routing string. Grammar: `"cloud"` | `"whisper"` | `"<slug>:<model>"`.
+    /// STT routing string. Grammar: `"cloud"` | `"<slug>:<model>"`.
+    /// `"cloud"` (or unset) defers to `voice_server.stt_engine`.
     #[serde(default)]
     pub stt_provider: Option<String>,
 

@@ -8155,7 +8155,6 @@ async fn voice_status_returns_availability() {
     let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
     let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
     let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
-    let _whisper_guard = EnvVarGuard::unset("WHISPER_BIN");
     let _piper_guard = EnvVarGuard::unset("PIPER_BIN");
 
     let (mock_addr, mock_join) = serve_on_ephemeral(mock_upstream_router()).await;
@@ -8171,7 +8170,10 @@ async fn voice_status_returns_availability() {
     let status = post_json_rpc(&rpc_base, 1, "openhuman.voice_status", json!({})).await;
     let result = assert_no_jsonrpc_error(&status, "voice_status");
 
-    // Without whisper/piper installed in the test env, both should be unavailable
+    // Without piper installed in the test env, TTS should be unavailable. STT
+    // is a different story since the whisper.cpp engine was deleted: it is a
+    // hosted call now, and the default `backend` engine always resolves, so it
+    // reports available with nothing installed locally.
     assert!(
         result.get("stt_available").is_some(),
         "expected stt_available field: {result}"
@@ -8189,11 +8191,13 @@ async fn voice_status_returns_availability() {
         "expected tts_voice_id field: {result}"
     );
 
-    // Verify that without binaries, availability is false
+    // Hosted STT: the default engine is routable with no local install, so
+    // this is now true. It asserted `false` while a whisper.cpp binary was
+    // required.
     assert_eq!(
         result.get("stt_available").and_then(Value::as_bool),
-        Some(false),
-        "stt should be unavailable without whisper binary"
+        Some(true),
+        "hosted stt should be available with no local binaries"
     );
     assert_eq!(
         result.get("tts_available").and_then(Value::as_bool),

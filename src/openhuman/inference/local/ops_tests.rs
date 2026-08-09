@@ -92,14 +92,26 @@ async fn local_ai_summarize_errors_when_disabled() {
     assert!(err.contains("local ai is disabled"));
 }
 
+/// Transcription is the one capability here that is NOT gated on the local-AI
+/// runtime any more: the bundled whisper.cpp engine is gone and STT is a hosted
+/// call, so a disabled local runtime must not block it. The failure a caller
+/// actually hits is the audio file.
 #[tokio::test]
-async fn local_ai_transcribe_errors_when_disabled() {
+async fn local_ai_transcribe_is_not_gated_on_the_local_ai_runtime() {
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
-    let err = local_ai_transcribe(&config, "/tmp/x.wav")
+    let missing = tmp.path().join("no-such-input.wav");
+    let err = local_ai_transcribe(&config, &missing.display().to_string())
         .await
         .unwrap_err();
-    assert!(err.contains("local ai is disabled"));
+    assert!(
+        err.contains("failed to read audio file"),
+        "error should name the unreadable file, got: {err}"
+    );
+    assert!(
+        !err.contains("local ai is disabled"),
+        "hosted STT must not be gated on the local-AI runtime: {err}"
+    );
 }
 
 #[tokio::test]

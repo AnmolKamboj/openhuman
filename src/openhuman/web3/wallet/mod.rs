@@ -16,10 +16,10 @@
 //! `tinyplace_solana_rpc_endpoints`, `tinyplace_signer_seed`, the `rpc`
 //! submodule, `prepared_quotes_for_test`, and the controller-registration
 //! entry points) with no-op / disabled-error bodies — so tinyplace on-chain
-//! payments + the Polymarket tools degrade to graceful "wallet disabled"
-//! errors rather than failing to compile. Signatures MUST match the real ones;
+//! payments degrade to graceful "wallet disabled" errors rather than failing
+//! to compile. Signatures MUST match the real ones;
 //! the disabled build
-//! (`cargo check --no-default-features --features tokenjuice-treesitter`) is
+//! (`cargo check --no-default-features`) is
 //! the only thing that catches drift.
 
 #[cfg(feature = "web3")]

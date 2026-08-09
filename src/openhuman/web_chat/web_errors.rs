@@ -316,7 +316,7 @@ pub(crate) fn retry_after_hint(secs: Option<u64>) -> String {
 
 /// Detect the SecurityPolicy global hourly action-budget signal
 /// emitted by the built-in tools (`web_fetch`, `curl`, `http_request`,
-/// `polymarket`, `composio`, etc.) — see `src/openhuman/security/
+/// `composio`, etc.) — see `src/openhuman/security/
 /// policy.rs::SecurityPolicy::is_rate_limited`.
 ///
 /// We match the canonical English strings those tools emit. This is

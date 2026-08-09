@@ -194,7 +194,7 @@ silent).
 > **Feature-forwarding gate applies.** Any new default-ON gate (e.g. `memory-embedded`) must be
 > added to `app/src-tauri/Cargo.toml`'s explicit feature list — the shell sets
 > `default-features = false`. `scripts/ci/check-feature-forwarding.mjs` enforces this; the `voice`
-> and `tokenjuice-treesitter` incidents are why.
+> incident is why.
 
 ---
 

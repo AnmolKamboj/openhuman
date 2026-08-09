@@ -108,14 +108,6 @@ allowlist = [
     # the agent enforces a strict read → simulate → confirm → execute
     # contract that the generic delegation surface does not.
     "crypto_agent",
-    # Prediction-market & event-contract specialist (#2427). Synthesised
-    # into a `delegate_do_prediction_markets` tool at agent-build time.
-    # Route any Polymarket / Kalshi (and future event-contract venue)
-    # market browse, portfolio read, or order request here. The
-    # `tools_agent` wildcard explicitly disallows `polymarket` / `kalshi`
-    # so there is exactly one canonical route — through this delegate —
-    # which keeps the venue-specific approval-gate prompt in scope.
-    "markets_agent",
     # tiny.place specialist. Synthesised into a `use_tinyplace` tool
     # at agent-build time. Route requests about tiny.place/tinyplace, Agent
     # Cards, @handles, jobs, proposals, groups, messages, escrow,

@@ -233,35 +233,30 @@ fn voice_and_audio_controllers_absent_when_feature_off() {
     );
 }
 
-/// With the `inference` feature on (the default), the in-process whisper STT
-/// engine is compiled in — `INFERENCE_COMPILED_IN` reflects that, and
-/// `whisper-rs` + `cpal` are linked (dependency shed proven separately by
-/// `cargo tree -i whisper-rs` / `cargo tree -i cpal`).
+/// With the `inference` feature on (the default), the `cpal` audio-device stack
+/// is compiled in — `INFERENCE_COMPILED_IN` reflects that, and the
+/// microphone-permission probe can actually inspect a device (dependency shed
+/// proven separately by `cargo tree -i cpal`).
 #[test]
 #[cfg(feature = "inference")]
 fn inference_engine_compiled_in_when_feature_on() {
     assert!(crate::openhuman::inference::INFERENCE_COMPILED_IN);
 }
 
-/// With the `inference` feature off, the whisper engine is compiled out: the
-/// marker flips and the always-compiled `whisper_engine` facade resolves to the
-/// disabled stub — every transcription call returns the disabled error, while
-/// the local-AI service still reaches Ollama / LM Studio over HTTP. This is the
-/// compile-time stub-facade correctness gate (see
-/// `inference::local::service::whisper_engine::stub`); `whisper-rs` + `cpal`
-/// leave the dependency graph.
+/// With the `inference` feature off, the marker flips and `cpal` leaves the
+/// dependency graph. The observable effect is the microphone-permission probe:
+/// it reports `Unknown` rather than a real verdict, because there is no
+/// audio-device API compiled in to ask. Speech-to-text is unaffected in either
+/// direction — it is a hosted HTTP call now, not an in-process engine.
 #[test]
 #[cfg(not(feature = "inference"))]
 fn inference_engine_compiled_out_when_feature_off() {
-    use crate::openhuman::inference::local::service::whisper_engine;
+    use crate::openhuman::desktop::accessibility::{detect_microphone_permission, PermissionState};
     assert!(!crate::openhuman::inference::INFERENCE_COMPILED_IN);
-    let handle = whisper_engine::new_handle();
-    assert!(!whisper_engine::is_loaded(&handle));
-    let err = whisper_engine::transcribe_pcm_f32(&handle, &[0.0; 16], None, None)
-        .expect_err("in-process STT must be disabled when `inference` is off");
-    assert!(
-        err.contains("inference"),
-        "disabled error should name the gate: {err}"
+    assert_eq!(
+        detect_microphone_permission(),
+        PermissionState::Unknown,
+        "without `inference` there is no audio-device API to probe"
     );
 }
 

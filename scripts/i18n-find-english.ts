@@ -109,8 +109,6 @@ const INTENTIONAL_ENGLISH = new Set([
   "vault.excludesPlaceholder",
   "vault.syncSummaryDuration",
   "voice.providers.chip.piper",
-  "voice.providers.chip.whisper",
-  "voice.providers.whisperModelBase",
   "walkthrough.tooltip.stepCounter",
   "workflows.create.optional",
   "workspace.obsidianConfigDirPlaceholder",

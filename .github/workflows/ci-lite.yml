@@ -397,10 +397,9 @@ jobs:
   # Feature-gate smoke: proves the core still compiles with a domain gate turned
   # OFF. The disabled build is the ONLY thing that catches stub-facade signature
   # drift (see AGENTS.md "Compile-time domain gates"), so it must run in CI, not
-  # just locally. Pathfinder lane for #4803 (voice); the explicit --features
-  # list (only tokenjuice-treesitter) turns every default gate OFF, so it also
-  # covers #4804 (media) and each sibling gate as it lands — no edit needed
-  # unless a new gate must stay ON here.
+  # just locally. Pathfinder lane for #4803 (voice); plain --no-default-features
+  # turns every default gate OFF, so it also covers #4804 (media) and each
+  # sibling gate as it lands — no edit needed unless a new gate must stay ON here.
   rust-feature-gate-smoke:
     name: Rust Feature-Gate Smoke (gates off)
     needs: [changes]
@@ -440,7 +439,7 @@ jobs:
         # a #[cfg] and so do not compile with the gates off. That cleanup is tracked
         # in #5021 alongside running the full gates-off suite; until it lands, this
         # lane checks the lib and RUNS the gate-contract lib tests below.
-        run: bash scripts/ci-cancel-aware.sh cargo check --manifest-path Cargo.toml --no-default-features --features tokenjuice-treesitter
+        run: bash scripts/ci-cancel-aware.sh cargo check --manifest-path Cargo.toml --no-default-features
 
       - name: Run the gate-contract tests with the default domain gates disabled
         # `cargo check` (even --all-targets) never RUNS tests, so a gated family that
@@ -456,10 +455,10 @@ jobs:
         # test by scope, not by skip. Running the full suite is tracked in #5021.
         run: |
           bash scripts/ci-cancel-aware.sh cargo test --manifest-path Cargo.toml \
-            --no-default-features --features tokenjuice-treesitter --lib -- \
+            --no-default-features --lib -- \
             core::all:: core::cli:: core::jsonrpc:: core::legacy_aliases:: core::runtime:: agent::registry::agents::loader:: memory::people::address_book::tests:: openhuman::platform::socket::event_handlers:: tools::schemas:: tools::ops::tests::
           bash scripts/ci-cancel-aware.sh cargo test --manifest-path Cargo.toml \
-            --no-default-features --features tokenjuice-treesitter,mcp --lib -- \
+            --no-default-features --features mcp --lib -- \
             mcp::server::resources::
 
       - name: Guard — the kernel dependency floor may not grow
@@ -518,14 +517,13 @@ jobs:
           openhuman/tools/registry/ops_tests.rs
           openhuman/tools/registry/schemas.rs
           openhuman/tools/ops_tests.rs
-          openhuman/tools/schemas.rs
           openhuman/voice/compile_status.rs
           openhuman/web3/stub.rs
           openhuman/web3/wallet/stub.rs
           openhuman/web3/x402/stub.rs
           EOF
           )
-          ACTUAL=$(grep -rlE '#\[cfg\((not\()?feature = "(voice|media|web3|meet|mcp|skills|flows|channels|prediction-markets|contacts)"|#\[cfg\((not\()?all\([^]]*feature = "contacts"' src --include='*.rs' \
+          ACTUAL=$(grep -rlE '#\[cfg\((not\()?feature = "(voice|media|web3|meet|mcp|skills|flows|channels|contacts)"|#\[cfg\((not\()?all\([^]]*feature = "contacts"' src --include='*.rs' \
             | xargs grep -lE '#\[test\]|#\[tokio::test\]|fn .*_test' 2>/dev/null | sed 's|^src/||' | sort -u)
           if ! diff <(echo "$EXPECTED" | sed 's/^ *//' | sort -u) <(echo "$ACTUAL"); then
             echo "::error::Gated-test file set changed. Update the EXPECTED allowlist in the rust-feature-gate-smoke lane, and extend the scoped 'cargo test' filter if the new module can carry an ungated-assert regression (see #5022)."

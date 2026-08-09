@@ -74,7 +74,8 @@ impl Transcriber for VoiceTranscriber {
             "{LOG_PREFIX} transcribe provider={provider} bytes_b64={}",
             request.audio_base64.len()
         );
-        // Empty model → factory substitutes DEFAULT_WHISPER_MODEL.
+        // Empty model lets a configured external provider use its registry
+        // default; the cloud provider resolves its own backend default.
         let stt = crate::openhuman::voice::create_stt_provider(&provider, "", &self.config)?;
         let outcome = stt
             .transcribe(

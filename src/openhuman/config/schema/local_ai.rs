@@ -59,9 +59,10 @@ pub struct LocalAiConfig {
     pub stt_model_id: String,
     #[serde(default = "default_stt_download_url")]
     pub stt_download_url: Option<String>,
-    /// Voice STT provider selector. `"cloud"` (default) routes through the
-    /// backend Whisper proxy; `"whisper"` runs local whisper.cpp via the
-    /// `WHISPER_BIN` env var. Surfaced in Settings → Voice.
+    /// Legacy voice STT routing string. `"cloud"` (the default) means "use
+    /// `voice_server.stt_engine`"; a third-party `"<slug>[:<model>]"` overrides
+    /// the engine outright. The local `"whisper"` value it once accepted is
+    /// dead — `config::migrations` rewrites it back to `"cloud"`.
     #[serde(default = "default_stt_provider")]
     pub stt_provider: String,
     #[serde(default = "default_tts_voice_id")]
@@ -100,10 +101,6 @@ pub struct LocalAiConfig {
     /// Optional path to a manually-installed Ollama binary.
     #[serde(default)]
     pub ollama_binary_path: Option<String>,
-    /// When true, load the whisper model in-process via whisper-rs instead of
-    /// shelling out to whisper-cli for each transcription call.
-    #[serde(default = "default_whisper_in_process")]
-    pub whisper_in_process: bool,
     /// When true and Ollama is available, pass raw transcription through a
     /// local LLM to fix grammar/punctuation using conversation context.
     #[serde(default = "default_voice_llm_cleanup_enabled")]
@@ -213,10 +210,6 @@ fn default_autosummary_debounce_ms() -> u64 {
     2500
 }
 
-fn default_whisper_in_process() -> bool {
-    true
-}
-
 fn default_voice_llm_cleanup_enabled() -> bool {
     true
 }
@@ -284,7 +277,6 @@ impl Default for LocalAiConfig {
             selected_tier: None,
             opt_in_confirmed: false,
             ollama_binary_path: None,
-            whisper_in_process: default_whisper_in_process(),
             voice_llm_cleanup_enabled: default_voice_llm_cleanup_enabled(),
             num_ctx: None,
             usage: LocalAiUsage::default(),

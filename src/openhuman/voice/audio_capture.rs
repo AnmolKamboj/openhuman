@@ -1,7 +1,7 @@
 //! Microphone audio capture using cpal.
 //!
 //! Records audio from the default input device and produces 16-kHz mono WAV
-//! bytes suitable for whisper transcription.
+//! bytes suitable for STT transcription.
 
 use std::io::Cursor;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -15,7 +15,7 @@ use tokio::sync::oneshot;
 
 const LOG_PREFIX: &str = "[voice_capture]";
 
-/// Target sample rate for whisper (16 kHz mono).
+/// Target sample rate for STT (16 kHz mono).
 pub(crate) const TARGET_SAMPLE_RATE: u32 = 16_000;
 
 /// RMS threshold below which audio is considered silence.
@@ -27,7 +27,7 @@ const SILENCE_GATE_MS: usize = 500;
 /// Look-ahead duration to preserve while gated, avoiding clipped speech onset.
 const LOOKAHEAD_MS: usize = 100;
 
-/// Tracks consecutive silent samples to gate silence from being sent to Whisper.
+/// Tracks consecutive silent samples to gate silence from reaching the STT engine.
 /// When silence exceeds `SILENCE_GATE_SAMPLES`, new silent chunks are discarded
 /// but a look-ahead ring buffer is maintained so speech onset isn't clipped.
 struct SilenceGate {
@@ -104,7 +104,7 @@ impl SilenceGate {
 
 /// Encode already-16 kHz mono f32 samples to a 16-bit PCM WAV byte buffer.
 /// Shared by the one-shot recorder's finalize path and the always-on loop
-/// (`voice::always_on`), so both produce identical WAV that whisper accepts.
+/// (`voice::always_on`), so both produce identical WAV that every engine accepts.
 pub(crate) fn encode_wav_16k(samples_16k: &[f32]) -> Result<Vec<u8>, String> {
     let spec = WavSpec {
         channels: 1,
@@ -338,7 +338,7 @@ fn record_on_thread(
     let stream = {
         let samples_writer = samples.clone();
         let rms_tracker = peak_rms.clone();
-        // Shared silence gate — suppresses sustained silence to reduce Whisper hallucinations.
+        // Shared silence gate — suppresses sustained silence to reduce STT hallucinations.
         let silence_gate = Arc::new(parking_lot::Mutex::new(SilenceGate::new(
             source_sample_rate,
         )));

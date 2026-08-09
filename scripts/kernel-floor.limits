@@ -13,6 +13,39 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   304/281/5  2026-08-08  local whisper.cpp STT deleted (`whisper-rs` +
+#                      `whisper-rs-sys` out of BOTH Cargo worlds, and the
+#                      `[patch.crates-io] whisper-rs-sys` fork entries with
+#                      them). Speech-to-text is a hosted call now, selected by
+#                      `voice_server.stt_engine`. No change to the `flows`
+#                      number: whisper sat behind the default-ON `inference`
+#                      gate, which that profile never enabled — so the kernel
+#                      floor could not see it, which is exactly why a
+#                      CMake-driven C++ inference library survived nine
+#                      ratchet entries. The DEFAULT (full-feature) profile
+#                      moved 569/525/8 -> 567/523/7 native (whisper-rs-sys
+#                      dropped from the native list; its whisper.cpp/GGML
+#                      build was the reason `GGML_NATIVE=OFF` had to prefix
+#                      every macOS cargo invocation). Verified with
+#                      `cargo tree -e normal | grep -ci whisper` = 0 on both
+#                      the root crate and app/src-tauri.
+#   304/281/5  2026-08-08  tokenjuice-treesitter feature deleted entirely (AST-
+#                      aware code compression dropped; tinyjuice's non-AST
+#                      compression path is now the only mode). tinyjuice is
+#                      still consumed with `default-features = false` and its
+#                      own `tinyjuice-treesitter` feature is no longer enabled
+#                      from the root manifest, dropping tree-sitter +
+#                      tree-sitter-{python,rust,typescript}. No change to the
+#                      `flows` number here — that profile never enabled this
+#                      feature to begin with (it was never on the kernel
+#                      path). The DEFAULT (full-feature) profile moved
+#                      575/?/9 -> 569/525/8 native (tree-sitter's C runtime
+#                      build dropped from the native list). Verified with
+#                      `scripts/assert-shed.sh flows tree-sitter
+#                      tree-sitter-python tree-sitter-rust
+#                      tree-sitter-typescript` (all 4 shed) and `cargo tree -e
+#                      normal --prefix none | grep '^tree-sitter'` (empty) on
+#                      the default graph.
 #   304/281/5  2026-08-08  tokio-tungstenite unified on 0.29 (-6 packages/-2
 #                      names). Root Cargo.toml's two per-target
 #                      tokio-tungstenite entries and
