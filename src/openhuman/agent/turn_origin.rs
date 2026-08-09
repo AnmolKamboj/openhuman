@@ -157,6 +157,64 @@ pub fn current() -> Option<AgentTurnOrigin> {
     AGENT_TURN_ORIGIN.try_with(|o| o.clone()).ok()
 }
 
+/// Capture the ambient origin so it can be carried across a `tokio::spawn`
+/// boundary by [`with_inherited_origin`].
+///
+/// This is exactly [`current()`] — it exists as a named pair with
+/// `with_inherited_origin` so the capture/re-scope idiom is greppable at every
+/// delegation site, and so the capture is obviously required to happen on the
+/// *parent* task (task-locals do not cross `tokio::spawn`; calling this inside
+/// the spawned future always yields `None`).
+pub fn capture() -> Option<AgentTurnOrigin> {
+    current()
+}
+
+/// Re-scope a [`capture()`]d origin around `fut` on a freshly-spawned task.
+///
+/// # Why this is inherit-only
+///
+/// `AGENT_TURN_ORIGIN` is a `tokio` task-local, so it is **lost** the moment
+/// work moves onto a new task via `tokio::spawn`. An async sub-agent, team
+/// member, or workflow phase therefore runs unlabelled, the approval gate reads
+/// [`AgentTurnOrigin::Unknown`], and every `external_effect` tool (shell/exec)
+/// is refused. Re-establishing the parent's label is the fix.
+///
+/// It re-establishes the parent's label and **nothing else**:
+///
+/// * `Some(origin)` — scope that exact origin, unchanged. A worker descending
+///   from an [`AgentTurnOrigin::ExternalChannel`] turn stays `ExternalChannel`
+///   (remote, untrusted); it is never promoted to `Cli` or any other origin
+///   just because it now runs on a background task. Delegation must not be a
+///   privilege-escalation primitive.
+/// * `None` — run `fut` with **no** scope at all. The spawned task stays
+///   unlabelled and the gate keeps failing closed exactly as it does today.
+///   Never substitute a default origin here: fabricating a label for an
+///   unlabelled parent would hand every unlabelled call site in the process a
+///   trust root it never earned.
+///
+/// Capture on the parent task *before* the `tokio::spawn`, move the
+/// `Option<AgentTurnOrigin>` into the spawned future, and wrap the future's
+/// body:
+///
+/// ```ignore
+/// let inherited = turn_origin::capture();
+/// tokio::spawn(async move {
+///     turn_origin::with_inherited_origin(inherited, async move { /* agent work */ }).await
+/// });
+/// ```
+pub async fn with_inherited_origin<F: std::future::Future>(
+    captured: Option<AgentTurnOrigin>,
+    fut: F,
+) -> F::Output {
+    match captured {
+        // Box-pinned by `with_origin` for the same stack-depth reason
+        // documented there — the agent loop downstream can be very deep.
+        Some(origin) => with_origin(origin, fut).await,
+        // Deliberately unlabelled: fail-closed is the correct default.
+        None => fut.await,
+    }
+}
+
 /// Read the ambient web-chat `request_id` for the current turn, when one was
 /// scoped by an [`AgentTurnOrigin::WebChat`] entry point. `None` for every
 /// other origin (channel / cron / CLI / sub-agent) and outside any scope —
@@ -187,6 +245,86 @@ mod tests {
 
         // After the scope exits, current() is None again.
         assert!(current().is_none());
+    }
+
+    /// The defect this helper fixes: a `tokio::spawn`ed delegation loses the
+    /// task-local, so the gate saw `Unknown` and refused every shell/exec tool.
+    /// Capturing on the parent and re-scoping inside the spawned task restores
+    /// the label.
+    #[tokio::test]
+    async fn inherited_origin_crosses_a_spawn_boundary() {
+        let observed = with_origin(AgentTurnOrigin::Cli, async {
+            // Capture happens on the still-scoped parent task.
+            let captured = capture();
+            tokio::spawn(async move {
+                // Without the re-scope this is `None` (task-locals don't cross
+                // `tokio::spawn`).
+                with_inherited_origin(captured, async { current() }).await
+            })
+            .await
+            .expect("spawned task panicked")
+        })
+        .await;
+        assert!(
+            matches!(observed, Some(AgentTurnOrigin::Cli)),
+            "expected the parent's Cli origin to be inherited, got {observed:?}"
+        );
+    }
+
+    /// Fail-closed is preserved: an unlabelled parent produces an unlabelled
+    /// child. The helper must never fabricate an origin.
+    #[tokio::test]
+    async fn inherited_origin_stays_unlabelled_without_an_outer_scope() {
+        let captured = capture();
+        assert!(captured.is_none(), "test precondition: no ambient scope");
+
+        let observed =
+            tokio::spawn(async move { with_inherited_origin(captured, async { current() }).await })
+                .await
+                .expect("spawned task panicked");
+
+        assert!(
+            observed.is_none(),
+            "unlabelled parent must stay unlabelled, got {observed:?}"
+        );
+    }
+
+    /// A remote-untrusted origin is inherited *as itself* — delegation is not a
+    /// privilege-escalation primitive, so no upgrade to `Cli` may happen.
+    #[tokio::test]
+    async fn inherited_origin_preserves_a_non_cli_origin_verbatim() {
+        let observed = with_origin(
+            AgentTurnOrigin::ExternalChannel {
+                channel: "telegram".into(),
+                sender: Some("u-42".into()),
+                reply_target: "chat-7".into(),
+                message_id: "m-9".into(),
+            },
+            async {
+                let captured = capture();
+                tokio::spawn(
+                    async move { with_inherited_origin(captured, async { current() }).await },
+                )
+                .await
+                .expect("spawned task panicked")
+            },
+        )
+        .await;
+
+        match observed {
+            Some(AgentTurnOrigin::ExternalChannel {
+                channel,
+                sender,
+                reply_target,
+                message_id,
+            }) => {
+                assert_eq!(channel, "telegram");
+                assert_eq!(sender.as_deref(), Some("u-42"));
+                assert_eq!(reply_target, "chat-7");
+                assert_eq!(message_id, "m-9");
+            }
+            other => panic!("expected ExternalChannel inherited verbatim, got {other:?}"),
+        }
     }
 
     #[tokio::test]

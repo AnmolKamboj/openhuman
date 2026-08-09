@@ -191,10 +191,19 @@ pub async fn start_workflow_run(
     // config inside the task so it can build a real Agent without holding a
     // borrow across the spawn boundary).
     let task_run_id = run_id.clone();
+    // Task-locals don't cross `tokio::spawn`, so capture the starting turn's
+    // origin here and re-scope it around the engine loop — the phases spawn
+    // sub-agents whose tool calls the approval gate judges by that label.
+    // Inherit-only: `None` leaves the loop unlabelled and failing closed.
+    let inherited_origin = crate::openhuman::agent::turn_origin::capture();
     tokio::spawn(async move {
         match Config::load_or_init().await {
             Ok(task_config) => {
-                run_engine_loop(&task_config, &task_run_id, definition).await;
+                crate::openhuman::agent::turn_origin::with_inherited_origin(
+                    inherited_origin,
+                    run_engine_loop(&task_config, &task_run_id, definition),
+                )
+                .await;
             }
             Err(err) => {
                 log::error!(
@@ -311,10 +320,17 @@ pub async fn resume_workflow_run(config: &Config, id: &str) -> Result<WorkflowRu
     .context("persist workflow run resume")?;
 
     let task_run_id = id.to_string();
+    // Same inherit-only origin propagation as `start_workflow_run`: the resumed
+    // loop runs on a fresh task, which would otherwise drop the caller's label.
+    let inherited_origin = crate::openhuman::agent::turn_origin::capture();
     tokio::spawn(async move {
         match Config::load_or_init().await {
             Ok(task_config) => {
-                run_engine_loop(&task_config, &task_run_id, definition).await;
+                crate::openhuman::agent::turn_origin::with_inherited_origin(
+                    inherited_origin,
+                    run_engine_loop(&task_config, &task_run_id, definition),
+                )
+                .await;
             }
             Err(err) => {
                 log::error!(

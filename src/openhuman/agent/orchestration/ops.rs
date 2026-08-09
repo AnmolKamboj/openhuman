@@ -486,11 +486,19 @@ impl AgentOrchestrationSession {
 
         let task_session = self.clone();
         let task_id = orchestration_id.clone();
+        // Task-locals don't cross `tokio::spawn`: capture the spawning turn's
+        // origin label on this (still-scoped) task so the child re-scopes the
+        // *same* label. Inherit-only — an unlabelled parent stays unlabelled
+        // and the approval gate keeps failing closed.
+        let task_turn_origin = crate::openhuman::agent::turn_origin::capture();
         let task = tokio::spawn(async move {
             task_session.mark_running(&task_id).await;
-            let result = with_parent_context(parent, async move {
-                run_subagent(&definition, &prompt, options).await
-            })
+            let result = crate::openhuman::agent::turn_origin::with_inherited_origin(
+                task_turn_origin,
+                with_parent_context(parent, async move {
+                    run_subagent(&definition, &prompt, options).await
+                }),
+            )
             .await;
             task_session.finish_agent(&task_id, result).await;
         });

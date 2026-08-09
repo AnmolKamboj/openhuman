@@ -533,6 +533,12 @@ impl Tool for SpawnAsyncSubagentTool {
             register_parent_thread_id.as_deref().unwrap_or("none")
         );
         let background_prompt = add_background_contract(&prompt);
+        // Capture the spawning turn's origin label HERE, on the still-scoped
+        // parent task — `AGENT_TURN_ORIGIN` is a task-local and does not cross
+        // `tokio::spawn`, so without this the background worker runs unlabelled
+        // and the approval gate refuses every external_effect (shell/exec)
+        // tool. Inherit-only: `None` stays `None` and keeps failing closed.
+        let background_turn_origin = crate::openhuman::agent::turn_origin::capture();
 
         let join = tokio::spawn(async move {
             let options = SubagentRunOptions {
@@ -549,15 +555,18 @@ impl Tool for SpawnAsyncSubagentTool {
                 run_queue: Some(task_queue),
             };
 
-            let result = with_parent_context(background_parent, async move {
-                crate::openhuman::agent::tinyagents::thread_context::with_thread_id(
-                    background_thread_affinity_id,
-                    async move {
-                        run_subagent(&background_definition, &background_prompt, options).await
-                    },
-                )
-                .await
-            })
+            let result = crate::openhuman::agent::turn_origin::with_inherited_origin(
+                background_turn_origin,
+                with_parent_context(background_parent, async move {
+                    crate::openhuman::agent::tinyagents::thread_context::with_thread_id(
+                        background_thread_affinity_id,
+                        async move {
+                            run_subagent(&background_definition, &background_prompt, options).await
+                        },
+                    )
+                    .await
+                }),
+            )
             .await;
 
             match result {
