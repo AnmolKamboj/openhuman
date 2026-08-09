@@ -1091,7 +1091,6 @@ fn configured_openhuman_jwt_slug_routes_to_managed_chat_model() {
 
 #[tokio::test]
 async fn openhuman_jwt_slug_discloses_pinned_model() {
-    use crate::core::bus::BUS;
     use crate::core::events::DomainEvent;
     use crate::openhuman::security::egress::{EgressDescriptor, EgressReason};
     use std::time::Duration;
@@ -1140,7 +1139,6 @@ async fn openhuman_jwt_slug_discloses_pinned_model() {
 
 #[tokio::test]
 async fn native_claude_turn_routes_disclose_pinned_models() {
-    use crate::core::bus::BUS;
     use crate::core::events::DomainEvent;
     use crate::openhuman::security::egress::EgressDescriptor;
     use std::time::Duration;
@@ -1326,7 +1324,6 @@ fn crate_native_chat_model_factory_preserves_invalid_route_diagnostics() {
 /// Complements the isolated emit unit tests in `security::egress`.
 #[tokio::test]
 async fn from_string_external_provider_emits_egress_realpath() {
-    use crate::core::bus::BUS;
     use crate::core::events::DomainEvent;
     use crate::openhuman::security::egress::EgressReason;
 
@@ -1368,7 +1365,6 @@ async fn from_string_external_provider_emits_egress_realpath() {
 /// on the legacy `Provider` path, so the default managed turn disclosed nothing.
 #[tokio::test]
 async fn create_chat_model_managed_emits_exactly_one_egress_realpath() {
-    use crate::core::bus::BUS;
     use crate::core::events::DomainEvent;
     use crate::openhuman::security::egress::{EgressDescriptor, EgressReason};
     use std::time::Duration;
@@ -1421,7 +1417,6 @@ async fn create_chat_model_managed_emits_exactly_one_egress_realpath() {
 /// (nothing leaves the device — it is disclosed as non-external, no event).
 #[tokio::test]
 async fn create_chat_model_local_runtime_does_not_emit_egress_realpath() {
-    use crate::core::bus::BUS;
     use crate::core::events::DomainEvent;
     use crate::openhuman::security::egress::EgressDescriptor;
     use std::time::Duration;

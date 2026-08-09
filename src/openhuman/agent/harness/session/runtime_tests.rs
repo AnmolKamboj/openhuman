@@ -1,5 +1,4 @@
 use super::*;
-use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
 use crate::openhuman::agent::dispatcher::XmlToolDispatcher;
 use crate::openhuman::agent::error::AgentError;
