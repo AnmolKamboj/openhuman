@@ -98,10 +98,20 @@ export const config: Options.Testrunner & Record<string, unknown> = {
   maxInstances: 1,
   capabilities:
     process.platform === 'linux'
-      ? [{ 'tauri:options': { application: linuxAppPath() } }]
+      ? [
+          {
+            'tauri:options': { application: linuxAppPath() },
+            // WDIO's per-capability ceiling is required by the Tauri driver.
+            // Without it, the runner can schedule one WebKit session per spec
+            // despite the global maxInstances: 1, causing simultaneous app
+            // resets and cascading startup timeouts.
+            'wdio:maxInstances': 1,
+          },
+        ]
       : [
           {
             platformName: platformNameForHost(),
+            'wdio:maxInstances': 1,
             'appium:automationName': 'Chromium',
             // Provider specs can spend long stretches polling mock backends between
             // visible browser operations. Keep Appium from expiring the Chromium
