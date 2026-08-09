@@ -137,6 +137,22 @@ if [ -f "$CONFIG_PATH" ] && grep -Fq "$MARKER_BEGIN" "$CONFIG_PATH"; then
   exit 0
 fi
 
+# A TOML table cannot be declared twice. Do not append a second target table
+# to a developer's global Cargo config: merging their existing rustflags could
+# silently discard linker options they deliberately configured.
+if [ -f "$CONFIG_PATH" ] && awk -v table="[target.$target]" '
+  {
+    sub(/[[:space:]]*#.*/, "")
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+    if ($0 == table) found = 1
+  }
+  END { exit !found }
+' "$CONFIG_PATH"; then
+  log "$CONFIG_PATH already declares [target.$target]; refusing to modify it"
+  log "add the linker rustflags manually or remove that table and re-run"
+  exit 1
+fi
+
 if [ "$DRY_RUN" -eq 1 ]; then
   log "--dry-run: would write to $CONFIG_PATH:"
   echo ""
