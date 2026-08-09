@@ -1,5 +1,6 @@
 use super::bus::TelegramRemoteSubscriber;
-use crate::core::event_bus::{DomainEvent, EventHandler};
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
 use tempfile::tempdir;
 
 #[tokio::test]

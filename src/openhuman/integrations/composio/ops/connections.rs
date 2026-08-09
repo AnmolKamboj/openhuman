@@ -132,8 +132,8 @@ pub async fn composio_authorize(
         }
     };
 
-    crate::core::event_bus::publish_global(
-        crate::core::event_bus::DomainEvent::ComposioConnectionCreated {
+    crate::core::bus::BUS.publish(
+        crate::core::events::DomainEvent::ComposioConnectionCreated {
             toolkit: toolkit.to_string(),
             connection_id: resp.connection_id.clone(),
             connect_url: resp.connect_url.clone(),
@@ -232,8 +232,8 @@ pub async fn composio_delete_connection(
             "[composio] failed to prune memory_sources entry after connection deletion (non-fatal)"
         ),
     }
-    crate::core::event_bus::publish_global(
-        crate::core::event_bus::DomainEvent::ComposioConnectionDeleted {
+    crate::core::bus::BUS.publish(
+        crate::core::events::DomainEvent::ComposioConnectionDeleted {
             toolkit: toolkit.unwrap_or_else(|| "unknown".to_string()),
             connection_id: connection_id.to_string(),
         },

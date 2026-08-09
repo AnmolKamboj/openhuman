@@ -4,10 +4,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 
 use crate::openhuman::config::Config;
-
-fn engine_config(config: &Config) -> tinycortex::memory::MemoryConfig {
-    crate::openhuman::memory::tinycortex::memory_config_from(config, config.workspace_dir.clone())
-}
+use crate::openhuman::memory::tinycortex::engine_config;
 
 #[doc(hidden)]
 pub fn with_connection<T>(config: &Config, f: impl FnOnce(&Connection) -> Result<T>) -> Result<T> {

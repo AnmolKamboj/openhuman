@@ -1,7 +1,7 @@
 //! Read-only command-center projection over the durable run ledger.
 //!
 //! [`list_agent_work`] fetches recent background agent runs from
-//! `session_db::run_ledger` and projects them into a [`CommandCenterView`]
+//! `tinyagents::session::run_ledger` and projects them into a [`CommandCenterView`]
 //! grouped by normalized [`AgentWorkBucket`]. The projection is split so the
 //! pure grouping logic ([`build_view`]) is unit-testable without a database,
 //! while [`list_agent_work`] owns the one ledger read.
@@ -9,10 +9,10 @@
 use anyhow::Result;
 
 use crate::openhuman::agent::harness::definition::AgentDefinitionRegistry;
-use crate::openhuman::agent::session_db::run_ledger::{
+use crate::openhuman::config::Config;
+use tinyagents::session::run_ledger::{
     list_agent_runs, AgentRun, AgentRunListRequest, AgentRunStatus,
 };
-use crate::openhuman::config::Config;
 
 use super::types::{AgentWorkBucket, AgentWorkRow, CommandCenterGroup, CommandCenterView};
 
@@ -55,7 +55,7 @@ pub fn list_agent_work(config: &Config, limit: Option<u32>) -> Result<CommandCen
         limit: Some(limit),
         offset: None,
     };
-    let response = list_agent_runs(config, &request)?;
+    let response = list_agent_runs(&config.workspace_dir, &request)?;
     let view = build_view(response.runs);
     log::debug!(
         target: "command_center",
@@ -136,7 +136,7 @@ mod tests {
     fn run_with(id: &str, status: AgentRunStatus, updated_secs: i64) -> AgentRun {
         AgentRun {
             id: id.to_string(),
-            kind: crate::openhuman::agent::session_db::run_ledger::AgentRunKind::Subagent,
+            kind: tinyagents::session::run_ledger::AgentRunKind::Subagent,
             parent_run_id: None,
             parent_thread_id: Some("thread-1".to_string()),
             agent_id: Some("researcher".to_string()),

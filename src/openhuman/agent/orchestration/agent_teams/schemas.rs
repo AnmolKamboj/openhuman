@@ -11,9 +11,9 @@ use serde_json::{Map, Value};
 
 use crate::core::all::{ControllerFuture, RegisteredController};
 use crate::core::{ControllerSchema, FieldSchema, TypeSchema};
-use crate::openhuman::agent::session_db::run_ledger::AgentTeamListRequest;
 use crate::openhuman::config::rpc as config_rpc;
 use crate::rpc::RpcOutcome;
+use tinyagents::session::run_ledger::AgentTeamListRequest;
 
 use super::ops::{self, NewMember};
 use super::runtime;

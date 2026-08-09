@@ -129,10 +129,10 @@ fn cap_wire_output(output: String) -> String {
 
 pub(super) fn ledger_upsert_agent_run(
     config: &crate::openhuman::config::Config,
-    upsert: crate::openhuman::agent::session_db::run_ledger::AgentRunUpsert,
+    upsert: tinyagents::session::run_ledger::AgentRunUpsert,
 ) {
     if let Err(err) =
-        crate::openhuman::agent::session_db::run_ledger::upsert_agent_run(config, upsert)
+        tinyagents::session::run_ledger::upsert_agent_run(&config.workspace_dir, upsert)
     {
         log::warn!("[run_ledger][web_channel] failed to upsert run: {err}");
     }
@@ -140,10 +140,10 @@ pub(super) fn ledger_upsert_agent_run(
 
 pub(super) fn ledger_append_event(
     config: &crate::openhuman::config::Config,
-    event: crate::openhuman::agent::session_db::run_ledger::RunEventAppend,
+    event: tinyagents::session::run_ledger::RunEventAppend,
 ) {
     if let Err(err) =
-        crate::openhuman::agent::session_db::run_ledger::append_run_event(config, event)
+        tinyagents::session::run_ledger::append_run_event(&config.workspace_dir, event)
     {
         log::warn!("[run_ledger][web_channel] failed to append event: {err}");
     }
@@ -151,10 +151,10 @@ pub(super) fn ledger_append_event(
 
 pub(super) fn ledger_upsert_telemetry(
     config: &crate::openhuman::config::Config,
-    telemetry: crate::openhuman::agent::session_db::run_ledger::RunTelemetryUpsert,
+    telemetry: tinyagents::session::run_ledger::RunTelemetryUpsert,
 ) {
     if let Err(err) =
-        crate::openhuman::agent::session_db::run_ledger::upsert_run_telemetry(config, telemetry)
+        tinyagents::session::run_ledger::upsert_run_telemetry(&config.workspace_dir, telemetry)
     {
         log::warn!("[run_ledger][web_channel] failed to upsert telemetry: {err}");
     }
@@ -163,8 +163,8 @@ pub(super) fn ledger_upsert_telemetry(
 pub(super) fn ledger_get_telemetry(
     config: &crate::openhuman::config::Config,
     run_id: &str,
-) -> Option<crate::openhuman::agent::session_db::run_ledger::RunTelemetry> {
-    match crate::openhuman::agent::session_db::run_ledger::get_agent_run(config, run_id) {
+) -> Option<tinyagents::session::run_ledger::RunTelemetry> {
+    match tinyagents::session::run_ledger::get_agent_run(&config.workspace_dir, run_id) {
         Ok(Some(run)) => {
             let telemetry = run.telemetry;
             log::debug!(
@@ -338,10 +338,10 @@ pub(crate) fn spawn_progress_bridge(
     config: crate::openhuman::config::Config,
 ) {
     use crate::openhuman::agent::progress::AgentProgress;
-    use crate::openhuman::agent::session_db::run_ledger::{
+    use std::collections::HashMap;
+    use tinyagents::session::run_ledger::{
         AgentRunKind, AgentRunStatus, AgentRunUpsert, RunEventAppend, RunTelemetryUpsert,
     };
-    use std::collections::HashMap;
 
     tokio::spawn(async move {
         log::debug!(
@@ -1682,7 +1682,6 @@ mod tests {
                         return ev;
                     }
                     Ok(_) => continue,
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(err) => panic!("bus closed: {err}"),
                 }
             }
@@ -1743,7 +1742,6 @@ mod tests {
             match rx.recv().await {
                 Ok(ev) if ev.thread_id == thread_id => return ev,
                 Ok(_) => continue,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                 Err(err) => panic!("web-channel bus closed before event: {err}"),
             }
         }

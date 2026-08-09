@@ -53,7 +53,7 @@ cargo check --manifest-path Cargo.toml
 cargo build --manifest-path Cargo.toml --bin openhuman-core
 cargo check --manifest-path app/src-tauri/Cargo.toml   # or: pnpm rust:check
 
-# macOS Apple Silicon workaround (whisper-rs / llama.cpp)
+# macOS Apple Silicon workaround (llama.cpp)
 GGML_NATIVE=OFF cargo check --manifest-path Cargo.toml
 ```
 
@@ -196,7 +196,85 @@ The split:
 `with_http_client(...)` so the SDK inherits this crate's transport — platform
 TLS (schannel on Windows for corporate TLS-inspection proxies, rustls
 elsewhere), the 120s/15s timeouts, `http1_only`, and the `x-core-version` /
-`x-tauri-version` headers. Bind a session token with `sdk_for(bearer_jwt)`.
+`x-tauri-version` / `x-sdk-name` headers. A session token is bound per call:
+`authed_json` does `self.sdk.clone().with_token(Some(jwt))`, so the stored
+client stays token-less and concurrent calls with different bearers cannot
+race. (`clone()` is Arc-backed — the connection pool is shared, only the token
+field differs.)
+
+### Product identity — `x-sdk-name` (`src/api/product.rs`)
+
+OpenHuman, OpenCompany and Medulla share one login and all three reach the
+backend through this crate, so every backend-bound request carries
+`x-sdk-name` for the backend to attribute it to a product
+(`src/utils/sdkSource.ts` in `tinyhumansai/backend`). The value defaults to
+`openhuman`; an embedding product overrides it **once during startup, before it
+builds any backend client**:
+
+```rust
+use openhuman_core::api::{set_product_identity, ProductIdentity};
+
+if let Some(identity) = ProductIdentity::new("opencompany") {
+    set_product_identity(identity);
+}
+```
+
+It is a process-global (`OnceLock<RwLock<_>>`, same shape as
+`config::schema::proxy`'s runtime proxy config) rather than a constructor
+argument because `BackendOAuthClient::new` is called from ~35 sites across the
+domains — none of which a downstream product owns. `BackendOAuthClient` and
+`IntegrationClient` read the identity into their default headers when they are
+built, so a later `set_product_identity` does not re-tag clients that already
+exist — set it during startup, before the first client, and the distinction
+never arises. (`MedullaClient` happens to read it per request, but do not rely
+on that.)
+
+Five client paths attach it, and each needs its own edit because none shares a
+request-building code path with the others:
+
+| Path | Where |
+| ---- | ----- |
+| `BackendOAuthClient` | both the reqwest transport (`build_backend_reqwest_client`, so `raw_client()` multipart uploads are covered too) and the SDK's `with_default_headers` |
+| `IntegrationClient` (`/agent-integrations/*`) | the SDK's `with_default_headers` **only** — its separate `download_client` is deliberately untagged, see below |
+| `MedullaClient` | `authed()` for HTTP, and **separately** `sse::StreamState::connect` — the SSE handshake authenticates with a `?token=` query parameter and never reaches `authed()` |
+| `desktop::app_state::ops` (`GET /auth/me`) | its local `build_client()` default headers — a hand-rolled TLS client, not `BackendOAuthClient`'s |
+| `agent::progress_tracing::langfuse` (`POST /telemetry/langfuse/ingestion`) | at the call site — a bare `reqwest::Client::new()` against the backend's Langfuse proxy route |
+
+**Adding a backend call means adding the header.** The two entries at the
+bottom of that table were missed on the first pass and caught in review: both
+hand-roll a `reqwest` client against `effective_backend_api_url` with a session
+bearer, so neither inherits anything from the three wrapper types above. When
+you add a backend-bound request, the question is not "did I use the right
+client" but "does *this* request carry `x-sdk-name`". `grep` for
+`bearer_authorization_value` and `header(AUTHORIZATION` to find the hand-rolled
+ones — those are the paths that go unattributed silently.
+
+`ProductIdentity::new` sanitises with the same allowlist-and-truncate rule
+`sanitize_client_version` applies to `x-core-version`, so the wrapped value can
+never carry CR/LF and header construction cannot fail.
+
+**Deliberately untagged — do not "fix" these.** `IntegrationClient`'s
+`download_client` fetches `/agent-integrations/file-storage/files/{id}/download`,
+which answers a 302 to presigned S3. reqwest follows redirects and strips only
+*sensitive* headers (Authorization, Cookie, …) when the host changes, so a
+custom header like `x-sdk-name` survives onto the storage request; attaching it
+per-request does not help, because redirected requests carry the original
+headers too. Scoping it to the first hop would mean hand-rolling redirect
+following, which is not worth it when every other call in the same session is
+already tagged. MCP servers (`mcp::http_client`) and third-party BYOK inference
+endpoints are excluded for the same reason: they are not our backend, and
+telling an unrelated operator which TinyHumans product a user runs discloses
+something for no benefit.
+
+**Not covered** (would need upstream changes, tracked separately): managed
+inference and embeddings go out through `tinyagents`' own clients, and the
+Socket.IO upgrade sets no HTTP headers at all — its auth rides in the
+Socket.IO CONNECT payload. The flow-run Langfuse exporter
+(`flows::tinyflows::langfuse_export`) posts to the same
+`/telemetry/langfuse/ingestion` proxy as the agent-turn path but goes through
+`tinyagents::LangfuseClient`, which builds its own `reqwest::Client` internally
+and exposes no seam for default headers or an injected client — so flow traces
+stay unattributed until `tinyagents` gains one.
 
 **Every SDK-backed call must map its error through `classify_sdk_error`.** That
 function mirrors `authed_json`'s classification exactly (401 →
@@ -282,7 +360,7 @@ Per-domain Cargo features drop whole domains **at compile time** (smaller binary
 ```bash
 # check / build without the voice family (incl. audio_toolkit)
 GGML_NATIVE=OFF cargo check --manifest-path Cargo.toml \
-  --no-default-features --features tokenjuice-treesitter
+  --no-default-features
 ```
 
 #### The kernel profile, and the floor ratchet that protects it
@@ -326,6 +404,7 @@ whole cohort or expect a delta of 0.
 | Feature | Default | Gates | Drops deps |
 | ------- | ------- | ----- | ---------- |
 | `voice` | ON | the `openhuman::voice` family (incl. `voice::audio_toolkit`) — STT/TTS providers, dictation server, always-on listening, podcast audio + email | `hound`, `lettre` |
+| `inference` | ON | the `cpal` audio-device stack: microphone capture for voice, plus `desktop::accessibility::permissions`' mic-permission probe. Implied by `voice`. Off ⇒ the probe reports `Unknown`. **The name is historical** — it used to gate the bundled whisper.cpp STT engine, which no longer exists (see the scope note below); do not rename it, it is forwarded by name from the shell manifest and asserted by `INFERENCE_COMPILED_IN` | `cpal` |
 | `web3` | ON | the `openhuman::web3` family (`web3`, `web3::wallet`, `web3::x402`) — crypto wallet (multi-chain sign/broadcast), swaps/bridges/dapp calls, x402 machine payments | `bitcoin`, `curve25519-dalek` |
 | `media` | ON | `openhuman::media::generation` (the `media_generate_*` agent tools) + `openhuman::media::image` scaffold | none (surface-only) |
 | `meet` | ON | `openhuman::meet` (join-URL validation) + `openhuman::meet::agent` (live STT/LLM/TTS loop) + `openhuman::meet::backend_bot` (backend-delegated Meet bot over Socket.IO) | none — see note |
@@ -334,22 +413,22 @@ whole cohort or expect a delta of 0.
 | `mcp` | ON | `openhuman::mcp::server` (the `openhuman mcp` stdio/HTTP server), `openhuman::mcp::registry` (dynamic Smithery installs — `mcp_clients` RPC namespace, SQLite, boot spawn, supervisor, OAuth), `openhuman::mcp::audit` (write-audit log), and the static config-declared server set in `openhuman::mcp::config_servers`. ~19 agent tools, ~20k LOC | **none** (see scope note) |
 | `tui` | ON | `openhuman::tui` — the tabbed ratatui/crossterm CLI UI (Logs, Chat, Config, Settings), auto-opened by bare `openhuman` on interactive non-container hosts and forced with `openhuman tui` (alias `chat`). Runs the core in-process. No controllers, no agent tools. **Intentionally NOT forwarded to the desktop shell** (allowlisted in `check-feature-forwarding.mjs`). | `ratatui`, `crossterm` |
 | `channels` | ON | `openhuman::channels` (external-messaging providers — Telegram/Discord/Slack/Signal/WhatsApp/iMessage/IRC/… — plus the channel runtime, controllers, host, proactive messaging + inbound dispatch) and the `channels::webview_accounts` / `webview_apis` / `webview_notifications` / `channels::whatsapp_data` webview-bridge domains (incl. the 3 `whatsapp_data_*` agent tools). **Carve-outs `channels::{traits, cli}` stay ungated.** | **28** via `tinychannels/{email,lark}` — the crate itself stays (load-bearing), its two heavy providers do not |
-| `contacts` | ON | `memory::people::address_book`'s macOS CNContactStore reader — the address-book seeding path for the people domain. Leaf gate over a **pre-existing** off-state: the module already shipped a non-macOS `imp` stub returning an empty contact list, so the gate only widens that stub's cfg. `read`/`read_with`/`AddressBookError`/`SystemContactsSource` and the whole `people` RPC surface stay compiled in every build; off ⇒ a refresh seeds nothing instead of failing. | **6** on macOS (`objc2`, `objc2-foundation`, `objc2-contacts`, `block2` + 2 transitive). **No-op on Linux/Windows** — never in those graphs, so the kernel-floor ratchet does not move. Verify cross-target: `cargo tree --target aarch64-apple-darwin -e normal -i objc2-contacts --no-default-features --features tokenjuice-treesitter` (294 → 288 packages). |
+| `contacts` | ON | `memory::people::address_book`'s macOS CNContactStore reader — the address-book seeding path for the people domain. Leaf gate over a **pre-existing** off-state: the module already shipped a non-macOS `imp` stub returning an empty contact list, so the gate only widens that stub's cfg. `read`/`read_with`/`AddressBookError`/`SystemContactsSource` and the whole `people` RPC surface stay compiled in every build; off ⇒ a refresh seeds nothing instead of failing. | **6** on macOS (`objc2`, `objc2-foundation`, `objc2-contacts`, `block2` + 2 transitive). **No-op on Linux/Windows** — never in those graphs, so the kernel-floor ratchet does not move. Verify cross-target: `cargo tree --target aarch64-apple-darwin -e normal -i objc2-contacts --no-default-features` (294 → 288 packages). |
 | `runtime-node` | ON | `runtime::node` (download / verify / extract / install a pinned Node.js toolchain), the `runtime::javascript` language slot, `runtime::pool::node`, the `node_exec` / `npm_exec` agent tools, and the `node_runtime` harness-init step. **Facade + stub** — `ShellTool` holds `Option<Arc<NodeBootstrap>>` and `shell.rs` is kernel, so the module cannot simply vanish; `runtime/node/stub.rs` carries the `NodeBootstrap` type surface while registration sites are leaf-gated. **The generic native-tool dispatcher (`runtime::node::ops` / `runtime::node::types`) is NOT gated** — it backs both the gated `javascript.*` controllers and the ungated `flows` `oh:` `NativeToolBackend`, so native flow tools (`memory_search`, file, shell, …) keep working when the managed Node runtime is off. Off ⇒ `try_cached`/`probe_installed` return `None` and the shell never prepends a managed bin dir, identical to today's `node.enabled = false` path. | **`xz2` + its static liblzma C build.** First gate to remove a NATIVE toolchain build: `lzma-sys` leaves the list, 6 → 5. `tar`/`zip` are NOT shed — shared with `inference` (install_piper), `runtime::python`, and the document tools. |
 
-**Facade pattern (pathfinder for the other gates).** `pub mod voice;` is **always compiled** as a facade: the real submodules are `#[cfg(feature = "voice")]`, and a `#[cfg(not(feature = "voice"))] mod stub;` (`src/openhuman/voice/stub.rs`) re-exposes the same public surface that always-on / other-gated callers use (`server`, `dictation_listener`, `streaming`, `reply_speech`, `cloud_transcribe`, `cli`, `create_stt_provider`, `effective_stt_provider`, `publish_ptt_transcript_committed`) with no-op / `None` / disabled-error bodies. Callers therefore do **not** need per-call `#[cfg]`. When voice is off: the voice/audio controllers are unregistered (unknown-method over `/rpc`, absent from `/schema`), the `audio_generate_podcast` agent tools are absent, and `openhuman voice` returns a "voice disabled" error. Stub signatures must match the real ones exactly — the disabled build (`--no-default-features --features tokenjuice-treesitter`) is the **only** thing that catches drift, so run it before pushing any change to the voice surface.
+**Facade pattern (pathfinder for the other gates).** `pub mod voice;` is **always compiled** as a facade: the real submodules are `#[cfg(feature = "voice")]`, and a `#[cfg(not(feature = "voice"))] mod stub;` (`src/openhuman/voice/stub.rs`) re-exposes the same public surface that always-on / other-gated callers use (`server`, `dictation_listener`, `streaming`, `reply_speech`, `cloud_transcribe`, `cli`, `create_stt_provider`, `effective_stt_provider`, `publish_ptt_transcript_committed`) with no-op / `None` / disabled-error bodies. Callers therefore do **not** need per-call `#[cfg]`. When voice is off: the voice/audio controllers are unregistered (unknown-method over `/rpc`, absent from `/schema`), the `audio_generate_podcast` agent tools are absent, and `openhuman voice` returns a "voice disabled" error. Stub signatures must match the real ones exactly — the disabled build (`--no-default-features`) is the **only** thing that catches drift, so run it before pushing any change to the voice surface.
 
-**Scope note:** the `voice` gate does **not** drop `whisper-rs` / `llama` / `cpal`. Those live in the inference domain (`src/openhuman/inference/local/service/whisper_engine.rs`; `cpal` is shared with accessibility) and await a separate future `inference` gate. The issue-level DoD line claiming whisper is dropped is superseded by this scope correction.
+**Scope note — there is no local STT engine any more.** The bundled whisper.cpp engine (in-process `whisper-rs` plus the `whisper-cli` subprocess fallback), its GGML model/binary downloader (`inference::local::install_whisper` + the `inference.install_whisper` / `inference.whisper_install_status` RPCs), and the `whisper-rs` / `whisper-rs-sys` dependencies were **deleted** from both Cargo worlds. Speech-to-text is now always a hosted HTTP call, and *which* host is a user choice: `voice_server.stt_engine` (`backend` / `elevenlabs` / `openai`) resolved by `voice::factory::effective_stt_provider`, with an explicit `stt_provider` routing string still overriding it. `config::migrations` (9 → 10, `retire_local_whisper_stt`) rewrites a persisted `stt_provider = "whisper"` to `"cloud"`; the factory does **not** silently remap it, so an unmigrated value fails by name instead of hiding.
 
-**`web3` gate — first gate that sheds real crypto deps.** Same facade pattern: `pub mod wallet;` / `pub mod web3;` / `pub mod x402;` stay always-compiled, real submodules are `#[cfg(feature = "web3")]`, and each domain's `stub.rs` re-exposes the always-on caller surface with disabled-error / empty bodies. When off, the wallet/web3/x402 controllers are unregistered, the web3 swap/bridge/dapp agent tools are absent (via `all_web3_agent_tools()` → empty), and the exclusive `bitcoin` (BTC P2WPKH PSBT) dep is dropped. `curve25519-dalek` (used for Solana off-curve ATA here) is **not** among them — see the correction below: it stays enabled transitively through the always-on `ed25519-dalek`. **tinyplace on-chain payments + Polymarket writes degrade to graceful "wallet disabled" errors** (the tinyplace comms path and the core itself are unaffected — `tinyplace::signer` still works via ed25519). The stubs cover `WALLET_NOT_CONFIGURED_MESSAGE`, `status`, `secret_material`, `WalletChain`, `prepare_transfer`/`execute_prepared` (+ param/result types), `solana_cluster`/`SolanaCluster`/`tinyplace_solana_rpc_endpoints`, `tinyplace_signer_seed`, `wallet::rpc::{redact_rpc_url, with_tinyplace_solana_endpoints}`, and the `all_*_registered_controllers`/`all_*_controller_schemas`/`all_web3_agent_tools` entry points. Two caller families still need per-call `#[cfg(feature = "web3")]` because they name concrete gated types rather than a stubbable aggregator: the six `Wallet*Tool` + `X402RequestTool` registrations in `tools/ops.rs`, the `wallet::tools::*` glob in `tools/mod.rs`, and the x402 402-retry path in `tools/impl/network/http_request.rs` (with the feature off a 402 returns to the caller unpaid). **Now DOES drop `ethers-core` / `ethers-signers` / `coins-bip39` / `ripemd`** — the largest single shed in the kernelization work, **−67 crates** (375 → 308). This paragraph previously said the opposite, and the reason it was true is worth keeping: the Polymarket tools (`tools/impl/network/polymarket*`, `clob_auth`) consumed the same EVM/mnemonic stack while living *outside* the wallet/web3/x402 domains, so gating `web3` left them — and therefore the crates — behind.
+The `voice` gate still does not drop `llama` or `cpal`: `cpal` belongs to the `inference` gate above, and `llama`/`whisper` inference for the *local model runtime* is a separate concern. Earlier revisions of this note promised a future `inference` gate that would shed whisper — that gate exists and sheds `cpal`; whisper left the graph entirely instead.
 
-The fix was a second gate rather than a bigger one: **`prediction-markets` implies `web3`** and owns the Polymarket surface (the two `mod` declarations + `clob_auth`, the `PolymarketTool` re-export, the registration in `tools/ops.rs`, and the `tools.polymarket_execute` RPC controller in `tools/schemas.rs`). Both are default-ON and both are forwarded to the shell — `check-feature-forwarding.mjs` does literal set membership with **no transitive resolution**, so `prediction-markets` needs its own line even though it implies `web3`.
+**`web3` gate — first gate that sheds real crypto deps.** Same facade pattern: `pub mod wallet;` / `pub mod web3;` / `pub mod x402;` stay always-compiled, real submodules are `#[cfg(feature = "web3")]`, and each domain's `stub.rs` re-exposes the always-on caller surface with disabled-error / empty bodies. When off, the wallet/web3/x402 controllers are unregistered, the web3 swap/bridge/dapp agent tools are absent (via `all_web3_agent_tools()` → empty), and the exclusive `bitcoin` (BTC P2WPKH PSBT) + `ethers-core` / `ethers-signers` / `coins-bip39` (EVM/mnemonic signing, used by the multi-chain wallet's EVM path) deps are dropped. `curve25519-dalek` (used for Solana off-curve ATA here) is **not** among them — it stays enabled transitively through the always-on `ed25519-dalek`. **tinyplace on-chain payments degrade to graceful "wallet disabled" errors** (the tinyplace comms path and the core itself are unaffected — `tinyplace::signer` still works via ed25519). The stubs cover `WALLET_NOT_CONFIGURED_MESSAGE`, `status`, `secret_material`, `WalletChain`, `prepare_transfer`/`execute_prepared` (+ param/result types), `solana_cluster`/`SolanaCluster`/`tinyplace_solana_rpc_endpoints`, `tinyplace_signer_seed`, `wallet::rpc::{redact_rpc_url, with_tinyplace_solana_endpoints}`, and the `all_*_registered_controllers`/`all_*_controller_schemas`/`all_web3_agent_tools` entry points. Two caller families still need per-call `#[cfg(feature = "web3")]` because they name concrete gated types rather than a stubbable aggregator: the six `Wallet*Tool` + `X402RequestTool` registrations in `tools/ops.rs`, the `wallet::tools::*` glob in `tools/mod.rs`, and the x402 402-retry path in `tools/impl/network/http_request.rs` (with the feature off a 402 returns to the caller unpaid).
 
 **`bs58` and `ed25519-dalek` still do NOT drop, deliberately.** `orchestration/ingest` and `tinyplace/payment` use them for agent-network identity, which is unrelated to the wallet. `curve25519-dalek` also survives now, beneath `ed25519-dalek`. Measured: excluding all three from the cohort costs **0**, because tinyplace pulls them in regardless — so there is nothing to gain by chasing them.
 
-`tools/schemas.rs`'s two aggregators build a `Vec` and conditionally `push` rather than using a `vec![]` literal, because an element of a `vec![]` cannot carry `#[cfg]`. Same shape as the `flows` registration in `core/all.rs`.
+`core/all.rs`'s `flows` registration builds a `Vec` and conditionally `push`es rather than using a `vec![]` literal, because an element of a `vec![]` cannot carry `#[cfg]`.
 
-Run the disabled build (`--no-default-features --features tokenjuice-treesitter`) before pushing any change to the wallet/web3/x402/Polymarket surface — it is the only drift catcher. Prove a claimed shed with `scripts/assert-shed.sh`, **not** `cargo tree -i`: the latter exits non-zero when a crate is absent and reports dev-dependency-only survivors as present.
+Run the disabled build (`--no-default-features`) before pushing any change to the wallet/web3/x402 surface — it is the only drift catcher. Prove a claimed shed with `scripts/assert-shed.sh`, **not** `cargo tree -i`: the latter exits non-zero when a crate is absent and reports dev-dependency-only survivors as present.
 
 **Leaf-gate variant (`media`, #4804).** Unlike `voice`, the `media` gate needs **no** stub facade: `media::generation` has a single caller (the `build_media_tools` call in `src/openhuman/tools/ops.rs`, itself `#[cfg(feature = "media")]`) and `openhuman::media::image` is unwired scaffold (#2997), so both modules are simply `#[cfg(feature = "media")] pub mod …`. It is a **surface-only** gate: media generation is backend-proxied (`reqwest`, shared) and the `image` crate is shared with channel upload, so no exclusive deps are shed — the issue's "sheds media processing dependencies" / "controllers unregistered" DoD lines are superseded (Media is agent-tools-only; no controller/store/subscriber is tagged `Media`). When a gated domain is a true leaf, prefer this over the facade+stub.
 **`meet` gate (#4800)** — the three Meet domains are one **family directory**, `src/openhuman/meet/`:
@@ -367,7 +446,7 @@ Run the disabled build (`--no-default-features --features tokenjuice-treesitter`
 **No deps to shed (do not re-litigate).** Unlike `voice`, this gate drops **zero** dependencies — the Meet domains have no exclusive crates. `meet::agent::wav` is a hand-rolled 79-line RIFF writer with no `use` statements, written precisely so Meet never needed `hound` (which `voice` already owns and sheds). The dependency shed was pre-paid; this gate's value is compile-time surface and binary size, not the dep tree.
 
 
-**Both-ways tests.** `src/core/all_tests.rs` pins the gate in both directions (`meet_controllers_registered_when_feature_on` / `meet_controllers_absent_when_feature_off`). The negative half is the one that proves the gate removes anything. Note CI's smoke lane runs `cargo check` only and never compiles test code, so a disabled-build **test** break is invisible to it — run `cargo test --lib --no-default-features --features tokenjuice-treesitter core::all::tests` locally after touching any gated surface.
+**Both-ways tests.** `src/core/all_tests.rs` pins the gate in both directions (`meet_controllers_registered_when_feature_on` / `meet_controllers_absent_when_feature_off`). The negative half is the one that proves the gate removes anything. Note CI's smoke lane runs `cargo check` only and never compiles test code, so a disabled-build **test** break is invisible to it — run `cargo test --lib --no-default-features core::all::tests` locally after touching any gated surface.
 
 **`skills` gate — the type carve-out (read before adding the next gate).** The three skill domains follow the same facade+stub shape as `voice`, with one important refinement: **`skills` is not a leaf — it is partly load-bearing infrastructure.** `src/openhuman/tools/traits.rs` re-exports the crate's unified `ToolResult` / `ToolContent` out of `skills::types`, and ~236 files consume them (`mcp`, `runtime::node`, every `Tool` impl). `Workflow` / `WorkflowFrontmatter` / `WorkflowScope` from `skills::ops_types` likewise appear in always-on agent-harness and prompt signatures. Gating `skills` wholesale would take down the entire tool trait system, MCP, and the Node runtime.
 
@@ -386,9 +465,9 @@ When skills are off: the `skills` / `skill_runtime` / `skill_registry` controlle
 
 **Leaf-gate pattern (`flows`).** Where `voice` needs a stub facade, `flows` needs **none** — and deliberately so. Every symbol reached from outside the gate is a *registration site* (controller push in `src/core/all.rs`, the `FlowTriggerSubscriber` in `src/core/jsonrpc.rs`, boot reconcile in `src/core/runtime/services.rs`, agent-tool `vec!` elements in `src/openhuman/tools/ops.rs`, `BuiltinAgent` entries in `agent/registry/agents/loader.rs`). Registration sites want **absence**: a stub that registered a controller returning `Err("flows disabled")` would make `flows.*` a *known* method that fails at runtime — the opposite of the intended "unknown method / omitted tool". So the family carries a **single** `#[cfg(feature = "flows")]` on `pub mod flows;` in `src/openhuman/mod.rs` — the nested `flows::tinyflows` and `flows::rhai` submodules inherit it — and each call site carries its own `#[cfg]`. The leaf gate holds only because no always-compiled domain has a real code edge into the tree: `memory/tools.rs` and `memory/tools/flavour.rs` name `flows::tinyflows` in comments only. There is no `openhuman flows` CLI subcommand, so no CLI stub is needed either. When flows is off: the `flows.*` controllers are unregistered (unknown-method over `/rpc`, absent from `/schema`), all 25 flow agent tools + the `rhai_workflows` tool are absent, and the `workflow_builder` / `flow_discovery` built-in agents are not advertised.
 
-**Scope note (`flows` deps):** the gate sheds `tinyflows` + its `jaq-core` / `jaq-std` / `jaq-json` JSON-query stack, and `rhai`. It does **not** shed `tinyagents` — 26+ domains consume that crate. The issue-level DoD line reading "sheds the rhai scripting engine" is therefore true only at the **feature** level: `rhai` arrives via `tinyagents/repl`, which the root `Cargo.toml` no longer enables directly — the `flows` feature turns it on. Dropping `flows` drops `repl`, which drops `rhai`; `tinyagents` itself stays. Verify a claimed shed with `cargo tree -i <crate> --no-default-features --features tokenjuice-treesitter` (must return nothing) — compiling clean is **not** proof that a dep was dropped.
+**Scope note (`flows` deps):** the gate sheds `tinyflows` + its `jaq-core` / `jaq-std` / `jaq-json` JSON-query stack, and `rhai`. It does **not** shed `tinyagents` — 26+ domains consume that crate. The issue-level DoD line reading "sheds the rhai scripting engine" is therefore true only at the **feature** level: `rhai` arrives via `tinyagents/repl`, which the root `Cargo.toml` no longer enables directly — the `flows` feature turns it on. Dropping `flows` drops `repl`, which drops `rhai`; `tinyagents` itself stays. Verify a claimed shed with `cargo tree -i <crate> --no-default-features` (must return nothing) — compiling clean is **not** proof that a dep was dropped.
 
-**Testing gotcha (applies to every gate).** The CI smoke lane runs `cargo check` only — it never runs `cargo test --no-default-features`, so CI stays green while the disabled-build **test** suite is broken. Tests that hard-assert a gated family (`.expect("a flows.* method exists")`, `assert!(full_ns.contains("flows"))`, `group_for_namespace("flows")`, built-in-agent id lists) must be `#[cfg]`-gated in lockstep with the feature. Run `GGML_NATIVE=OFF cargo test --lib --no-default-features --features tokenjuice-treesitter core::` locally before pushing any gate change.
+**Testing gotcha (applies to every gate).** The CI smoke lane runs `cargo check` only — it never runs `cargo test --no-default-features`, so CI stays green while the disabled-build **test** suite is broken. Tests that hard-assert a gated family (`.expect("a flows.* method exists")`, `assert!(full_ns.contains("flows"))`, `group_for_namespace("flows")`, built-in-agent id lists) must be `#[cfg]`-gated in lockstep with the feature. Run `GGML_NATIVE=OFF cargo test --lib --no-default-features core::` locally before pushing any gate change.
 
 #### The `mcp` gate
 
@@ -423,7 +502,7 @@ The tabbed terminal UI (`openhuman`, or explicitly `openhuman tui` / alias `chat
 - **Terminal hygiene is load-bearing.** `logging::init_for_tui` installs a **file-only** subscriber (never stderr) — a single core boot log on stdout/stderr would corrupt the alternate-screen UI. `terminal::TerminalGuard` restores raw mode + the main screen on `Drop`, and a panic hook chains a restore ahead of the default hook. All `[tui]` state-transition logs go to the file, never `println!`.
 - **Intentionally NOT forwarded to the desktop shell** (the app ships its own Tauri UI). It carries the only current entry in `INTENTIONALLY_NOT_FORWARDED` in `scripts/ci/check-feature-forwarding.mjs`; the pure reducer lives in `src/openhuman/tui/state.rs` (`TranscriptState::apply_event`) with unit tests, so most behaviour is testable without a terminal.
 
-Drops the exclusive `ratatui` + `crossterm` deps when off. Verify with `cargo tree -i ratatui --no-default-features --features tokenjuice-treesitter` (must return nothing).
+Drops the exclusive `ratatui` + `crossterm` deps when off. Verify with `cargo tree -i ratatui --no-default-features` (must return nothing).
 #### The `channels` gate (#4801 — last child of #4795)
 
 Leaf-gate pattern with **two ungated carve-outs and no stub file** — the reach-map put every gated symbol at a *registration/leaf* call site, so absence (unknown-method / omitted tool), not a disabled-error stub, is the correct off-state (same rationale as `flows` / `meet`).
@@ -443,7 +522,7 @@ Leaf-gate pattern with **two ungated carve-outs and no stub file** — the reach
 - **Leaf-gated call sites** (each carries its own `#[cfg]`): the 5 controller-registration pushes in `src/core/all.rs` (channels controllers, `webview_apis`, `webview_notifications`, public + internal `whatsapp_data`), the `ChannelInboundSubscriber` + web-only-proactive block in `src/core/jsonrpc.rs`, `spawn_channels_service` in `src/core/runtime/services.rs`, the `whatsapp_data::global::init` block in `src/core/runtime/context.rs`, and the `whatsapp_data::tools::*` glob + 3 `WhatsAppData*Tool` registrations in `src/openhuman/tools/{mod,ops}.rs`. The `webview_accounts` / `whatsapp_data` `pub mod` declarations now live in `channels/mod.rs` (still `#[cfg(feature = "channels")]` each, because the parent stays ungated for the `traits`/`cli` carve-outs); `webview_apis` / `webview_notifications` moved under `desktop/` in the family reorg and stay leaf-gated there. String-match arms (`"channels" =>` descriptions, `whatsapp_data_` in `group_for_namespace`) stay **ungated** — they are data.
 - **`start_bootstrap_jobs`' `services.channels` block keeps running slim** — it drives composio sync / workspace-memory sync / orchestration drain and names **no** `channels::` symbol, so it stays ungated by design.
 - **No CLI change.** There is no `openhuman channels` subcommand; generic namespace resolution yields "unknown namespace" when off (the `flows` precedent — acceptable).
-- **Both-ways tests.** `channels_controllers_{registered_when_feature_on,absent_when_feature_off}` in `src/core/all_tests.rs` pin the controller surface (the OFF half also asserts `channel`/web_chat survives), and `whatsapp_data_tools_{present_when_channels_on,absent_when_channels_off}` in `src/openhuman/tools/ops_tests.rs` pin the 3 agent tools (that module has the full-tool-list machinery). CI's smoke lane runs `cargo check` only, so run `cargo test --lib --no-default-features --features tokenjuice-treesitter core::all::tests` locally after touching any gated surface.
+- **Both-ways tests.** `channels_controllers_{registered_when_feature_on,absent_when_feature_off}` in `src/core/all_tests.rs` pin the controller surface (the OFF half also asserts `channel`/web_chat survives), and `whatsapp_data_tools_{present_when_channels_on,absent_when_channels_off}` in `src/openhuman/tools/ops_tests.rs` pin the 3 agent tools (that module has the full-tool-list machinery). CI's smoke lane runs `cargo check` only, so run `cargo test --lib --no-default-features core::all::tests` locally after touching any gated surface.
 
 ### Event bus (`src/core/event_bus/`)
 

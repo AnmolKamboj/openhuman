@@ -397,7 +397,7 @@ async fn round20_memory_sources_readers_and_sync_cover_error_edges_without_netwo
     let harness = setup("http://127.0.0.1:9");
     let config = harness.config().await;
 
-    let rss = openhuman_core::openhuman::memory::sources::readers::rss::RssReader;
+    let rss = openhuman_core::openhuman::memory::sources::readers::rss::RssReader::new();
     let mut missing_url = source_entry("rss-missing-url", SourceKind::RssFeed);
     assert_eq!(
         rss.list_items(&missing_url, &config)

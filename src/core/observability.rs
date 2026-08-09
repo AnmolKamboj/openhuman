@@ -2028,7 +2028,7 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
             );
         }
         ExpectedErrorKind::LocalAiBinaryMissing => {
-            // User-state condition: piper / whisper.cpp / Ollama binary
+            // User-state condition: the piper or Ollama binary
             // isn't installed on this host. The error message itself is
             // the user-facing instruction ("Set PIPER_BIN or install
             // piper.") — Sentry has nothing to act on, since we can't
@@ -6363,12 +6363,6 @@ mod tests {
         // identical (install / configure the binary).
         assert_eq!(
             expected_error_kind(
-                "whisper.cpp binary not found. Set WHISPER_BIN or install whisper-cli."
-            ),
-            Some(ExpectedErrorKind::LocalAiBinaryMissing)
-        );
-        assert_eq!(
-            expected_error_kind(
                 "Ollama binary not found at '/usr/local/bin/ollama'. Provide a valid path to the ollama executable."
             ),
             Some(ExpectedErrorKind::LocalAiBinaryMissing)
@@ -6399,7 +6393,7 @@ mod tests {
             None
         );
         assert_eq!(
-            expected_error_kind("whisper.cpp returned empty transcript"),
+            expected_error_kind("piper returned an empty audio file"),
             None
         );
     }

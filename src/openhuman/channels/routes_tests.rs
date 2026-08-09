@@ -1,5 +1,6 @@
 use super::*;
-use crate::core::event_bus::{DomainEvent, EventHandler};
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
 use crate::openhuman::agent::messages::ChatMessage;
 use crate::openhuman::channels::context::{
     ChannelRuntimeContext, RouteSelectionMap, TurnModelSourceCacheMap,

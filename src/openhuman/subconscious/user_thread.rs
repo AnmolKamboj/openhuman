@@ -18,7 +18,8 @@ use async_trait::async_trait;
 use serde_json::json;
 use tracing::{info, warn};
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::memory::conversations::ConversationMessage;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolCategory, ToolResult, ToolScope};
 
@@ -55,7 +56,7 @@ pub fn notify_user(workspace_dir: std::path::PathBuf, message: &str, subject: Op
         warn!("[subconscious::user_thread] persist notify_user message failed: {err}");
     }
 
-    publish_global(DomainEvent::ProactiveMessageRequested {
+    BUS.publish(DomainEvent::ProactiveMessageRequested {
         source: SUBCONSCIOUS_PROACTIVE_SOURCE.to_string(),
         message: message.to_string(),
         job_name: subject.map(|s| s.to_string()),

@@ -34,7 +34,8 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context};
 
-use crate::core::event_bus::{request_native_global, NativeRequestError};
+use crate::core::bus::BUS;
+use tinybus::NativeRequestError;
 use crate::openhuman::agent::bus::{AgentTurnRequest, AgentTurnResponse, AGENT_RUN_TURN_METHOD};
 use crate::openhuman::agent::harness::definition::{AgentDefinition, PromptSource};
 use crate::openhuman::agent::harness::AgentDefinitionRegistry;
@@ -507,7 +508,7 @@ async fn try_arm(
         },
     };
 
-    let response = match request_native_global::<AgentTurnRequest, AgentTurnResponse>(
+    let response = match BUS.native().request::<AgentTurnRequest, AgentTurnResponse>(
         AGENT_RUN_TURN_METHOD,
         request,
     )

@@ -9,7 +9,10 @@ use std::sync::{Arc, OnceLock};
 
 use async_trait::async_trait;
 
-use crate::core::event_bus::{subscribe_global, DomainEvent, EventHandler, SubscriptionHandle};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 use crate::openhuman::config::rpc as config_rpc;
 
 use super::types::{FetchReason, ProviderSlug};
@@ -22,7 +25,7 @@ static CONNECTION_HANDLE: OnceLock<SubscriptionHandle> = OnceLock::new();
 pub struct TaskSourcesConnectionSubscriber;
 
 #[async_trait]
-impl EventHandler for TaskSourcesConnectionSubscriber {
+impl EventHandler<DomainEvent> for TaskSourcesConnectionSubscriber {
     fn name(&self) -> &str {
         "task_sources::connection"
     }
@@ -100,7 +103,7 @@ pub fn register_task_sources_subscriber() {
     if CONNECTION_HANDLE.get().is_some() {
         return;
     }
-    match subscribe_global(Arc::new(TaskSourcesConnectionSubscriber)) {
+    match BUS.subscribe(Arc::new(TaskSourcesConnectionSubscriber)) {
         Some(handle) => {
             let _ = CONNECTION_HANDLE.set(handle);
             tracing::debug!("[task_sources:bus] connection subscriber registered");

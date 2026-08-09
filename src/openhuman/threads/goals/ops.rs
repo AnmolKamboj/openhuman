@@ -9,7 +9,8 @@ use serde::Serialize;
 
 use super::store;
 use super::ThreadGoal;
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::rpc::RpcOutcome;
 
 /// Envelope returned by reads/clears where the goal may be absent.
@@ -30,7 +31,7 @@ pub struct ClearResult {
 
 /// Publish a `thread/goal/updated` event for live UI sync (best-effort).
 fn emit_updated(goal: &ThreadGoal) {
-    publish_global(DomainEvent::ThreadGoalUpdated {
+    BUS.publish(DomainEvent::ThreadGoalUpdated {
         thread_id: goal.thread_id.clone(),
         goal_id: goal.goal_id.clone(),
         status: goal.status.as_str().to_string(),
@@ -125,7 +126,7 @@ pub async fn clear(
     log::debug!("[thread_goals] rpc=clear thread_id={thread_id}");
     let removed = store::clear(workspace_dir, thread_id).await?;
     if removed {
-        publish_global(DomainEvent::ThreadGoalCleared {
+        BUS.publish(DomainEvent::ThreadGoalCleared {
             thread_id: thread_id.to_string(),
         });
     }

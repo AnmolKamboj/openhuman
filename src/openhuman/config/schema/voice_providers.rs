@@ -54,6 +54,9 @@ pub enum SttApiStyle {
     OpenaiAudio,
     /// Deepgram: POST binary audio to `/listen?model=<model>`.
     Deepgram,
+    /// ElevenLabs Scribe: multipart POST to `/speech-to-text` with `model_id`
+    /// and an `xi-api-key` header.
+    ElevenLabs,
 }
 
 /// API style for TTS requests.
@@ -145,7 +148,7 @@ pub const BUILTIN_VOICE_PROVIDERS: &[BuiltinVoiceProvider] = &[
         label: "ElevenLabs",
         endpoint: "https://api.elevenlabs.io/v1",
         capability: VoiceCapability::Both,
-        stt_api_style: SttApiStyle::OpenaiAudio,
+        stt_api_style: SttApiStyle::ElevenLabs,
         tts_api_style: TtsApiStyle::ElevenLabs,
         default_stt_model: Some("scribe_v1"),
         default_tts_voice: Some("JBFqnCBsd6RMkjVDRZzb"),
@@ -172,7 +175,10 @@ pub fn builtin_voice_provider(slug: &str) -> Option<&'static BuiltinVoiceProvide
 /// Reserved slugs that may not be used for user-configured voice providers.
 /// These are sentinels in the voice factory's routing grammar.
 pub fn is_voice_slug_reserved(s: &str) -> bool {
-    matches!(s.trim(), "" | "cloud" | "openhuman" | "whisper" | "piper")
+    matches!(
+        s.trim(),
+        "" | "cloud" | "openhuman" | "backend" | "whisper" | "local" | "piper"
+    )
 }
 
 /// Generate a short opaque id for a new voice provider entry.
@@ -214,7 +220,16 @@ mod tests {
 
     #[test]
     fn reserved_slugs() {
-        for s in ["", " ", "cloud", "openhuman", "whisper", "piper"] {
+        for s in [
+            "",
+            " ",
+            "cloud",
+            "openhuman",
+            "backend",
+            "whisper",
+            "local",
+            "piper",
+        ] {
             assert!(is_voice_slug_reserved(s), "{s:?} must be reserved");
         }
     }

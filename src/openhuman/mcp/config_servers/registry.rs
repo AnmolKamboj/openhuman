@@ -2,7 +2,8 @@ use super::super::http_client::{
     McpAuthorizationContext, McpHttpClient, McpInitializeResult, McpRemoteTool, McpServerToolResult,
 };
 use super::stdio::McpStdioClient;
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::config::{Config, McpAuthConfig, McpClientIdentityConfig, McpServerConfig};
 use crate::openhuman::security::prompt_injection::scan_tool_definition;
 use serde::{Deserialize, Serialize};
@@ -99,7 +100,7 @@ fn emit_rejection(server: &str, tool: &str, reason: &str) {
         reason = reason,
         "remote MCP tool dropped by input-validation scan"
     );
-    publish_global(DomainEvent::McpToolRejected {
+    BUS.publish(DomainEvent::McpToolRejected {
         server: server.to_string(),
         tool: tool.to_string(),
         reason: reason.to_string(),

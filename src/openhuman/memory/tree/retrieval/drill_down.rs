@@ -2,7 +2,8 @@ use anyhow::Result;
 
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::source_scope::current_source_scope;
-use crate::openhuman::memory::tree::retrieval::engine::{config as engine_config, EmbedderBridge};
+use crate::openhuman::memory::tinycortex::engine_config;
+use crate::openhuman::memory::tree::retrieval::engine::EmbedderBridge;
 use crate::openhuman::memory::tree::retrieval::types::RetrievalHit;
 use crate::openhuman::memory::tree::score::embed::{build_embedder_from_config, InertEmbedder};
 

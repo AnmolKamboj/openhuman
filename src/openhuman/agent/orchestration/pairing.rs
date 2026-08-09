@@ -15,7 +15,8 @@ use tokio::sync::Mutex;
 
 use chrono::{DateTime, Duration, Utc};
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
 use crate::openhuman::hosted::orchestration::ingest::resolve_linked_id;
 use crate::openhuman::tinyplace::ops::{global_state as tinyplace_state, map_err};
@@ -214,7 +215,7 @@ pub async fn decline_request(
         .await
         .map_err(map_err)?;
     remove_record(&config.workspace_dir, &agent_id).await?;
-    publish_global(DomainEvent::OrchestrationPairingChanged {
+    BUS.publish(DomainEvent::OrchestrationPairingChanged {
         agent_id: agent_id.clone(),
         status: "removed".to_string(),
         source: "approved_request".to_string(),
@@ -710,7 +711,7 @@ fn encode_path_segment(raw: &str) -> String {
 }
 
 fn publish_pairing_changed(record: &PairingRecord) {
-    publish_global(DomainEvent::OrchestrationPairingChanged {
+    BUS.publish(DomainEvent::OrchestrationPairingChanged {
         agent_id: record.agent_id.clone(),
         status: serde_json::to_value(&record.status)
             .ok()

@@ -1,6 +1,7 @@
 //! Event-bus subscriber for Telegram remote-control lifecycle signals.
 
-use crate::core::event_bus::{DomainEvent, EventHandler};
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
 use crate::openhuman::channels::providers::telegram::session_store::with_store;
 use async_trait::async_trait;
 use std::path::PathBuf;
@@ -42,7 +43,7 @@ impl TelegramRemoteSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for TelegramRemoteSubscriber {
+impl EventHandler<DomainEvent> for TelegramRemoteSubscriber {
     fn name(&self) -> &str {
         "telegram::remote_control"
     }

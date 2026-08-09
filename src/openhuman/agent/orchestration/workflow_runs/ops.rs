@@ -2,7 +2,7 @@
 //!
 //! PR1 scope: expose the builtin [`WorkflowDefinition`]s, validate them
 //! (structure + agent existence), and read durable [`WorkflowRun`]s from
-//! `session_db::run_ledger`. No execution engine yet — starting / stopping /
+//! `tinyagents::session::run_ledger`. No execution engine yet — starting / stopping /
 //! resuming runs lands in a follow-up PR.
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -10,11 +10,11 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use anyhow::Result;
 
 use crate::openhuman::agent::harness::definition::AgentDefinitionRegistry;
-use crate::openhuman::agent::session_db::run_ledger::{
+use crate::openhuman::config::Config;
+use tinyagents::session::run_ledger::{
     get_workflow_run, list_workflow_runs, WorkflowRun, WorkflowRunListRequest,
     WorkflowRunListResponse,
 };
-use crate::openhuman::config::Config;
 
 use super::types::{
     DefinitionError, WorkflowDefinition, WorkflowDefinitionListResponse, WorkflowPhase,
@@ -261,13 +261,13 @@ pub fn list_runs(
         request.definition_id,
         request.status
     );
-    list_workflow_runs(config, request)
+    Ok(list_workflow_runs(&config.workspace_dir, request)?)
 }
 
 /// Get one durable workflow run by id (delegates to the run ledger).
 pub fn get_run(config: &Config, id: &str) -> Result<Option<WorkflowRun>> {
     log::debug!(target: "workflow_run", "[workflow_run] get_run.entry id={id}");
-    get_workflow_run(config, id)
+    Ok(get_workflow_run(&config.workspace_dir, id)?)
 }
 
 #[cfg(test)]

@@ -2,7 +2,8 @@
 
 use anyhow::Result;
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::store::chunks::store::RawRef;
 use tinycortex::memory::ingest::canonicalize::{
@@ -125,7 +126,7 @@ fn publish_canonicalized(
     } else {
         utf8_prefix(&canonical.markdown, 2048)
     };
-    publish_global(DomainEvent::DocumentCanonicalized {
+    BUS.publish(DomainEvent::DocumentCanonicalized {
         source_id: source_id.into(),
         source_kind: canonical.metadata.source_kind.as_str().into(),
         chunks_written: result.chunks_written,

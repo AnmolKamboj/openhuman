@@ -6,10 +6,7 @@ use anyhow::Result;
 use rusqlite::{Connection, Transaction};
 
 use crate::openhuman::config::Config;
-
-fn engine_config(config: &Config) -> tinycortex::memory::MemoryConfig {
-    crate::openhuman::memory::tinycortex::memory_config_from(config, config.workspace_dir.clone())
-}
+use crate::openhuman::memory::tinycortex::engine_config;
 
 pub(crate) fn tree_active_signature(config: &Config) -> String {
     tinycortex::memory::chunks::tree_active_signature(&engine_config(config))

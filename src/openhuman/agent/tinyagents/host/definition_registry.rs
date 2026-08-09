@@ -365,10 +365,9 @@ impl OpenHumanDefinitionRegistry {
                 }
                 // Fail closed. Emitting the wildcard here would silently
                 // re-grant every denied tool — for shipped definitions that
-                // means specialist-only routes like `polymarket` / `kalshi` /
-                // `tinyplace_*` becoming generally available. An agent with no
-                // tools is a visible, debuggable failure; a silently widened
-                // one is not.
+                // means specialist-only routes like `tinyplace_*` becoming
+                // generally available. An agent with no tools is a visible,
+                // debuggable failure; a silently widened one is not.
                 None => {
                     log::error!(
                         "[tinyagents][definitions] agent '{}' has a wildcard tool scope with a \
@@ -787,18 +786,12 @@ mod tests {
         );
     }
 
-    /// `tools_agent` ships `disallowed_tools = ["polymarket", "kalshi",
-    /// "tinyplace_*"]` on a wildcard scope, precisely so those route through
-    /// their specialist agents. Projecting it as the unrestricted marker would
-    /// hand all three back.
+    /// `tools_agent` ships `disallowed_tools = ["tinyplace_*"]` on a wildcard
+    /// scope, precisely so that route through its specialist agent.
+    /// Projecting it as the unrestricted marker would hand it back.
     #[tokio::test]
     async fn a_wildcard_denylist_is_materialized_against_the_registered_tools() {
-        let registered = Arc::new(vec![
-            "file_read".to_string(),
-            "polymarket".to_string(),
-            "kalshi".to_string(),
-            "tinyplace_post".to_string(),
-        ]);
+        let registered = Arc::new(vec!["file_read".to_string(), "tinyplace_post".to_string()]);
         let def = builtins()
             .host_definition("tools_agent")
             .expect("tools_agent is a built-in");
@@ -815,7 +808,7 @@ mod tests {
             .expect("tools_agent is a built-in");
 
         assert_eq!(projected.tools, vec!["file_read".to_string()]);
-        for denied in ["polymarket", "kalshi", "tinyplace_post"] {
+        for denied in ["tinyplace_post"] {
             assert!(
                 !projected.tools.iter().any(|t| t == denied),
                 "{denied} is reserved for its specialist route"
@@ -858,9 +851,9 @@ mod tests {
     #[test]
     fn a_named_scope_emptied_by_its_denylist_projects_the_no_tools_sentinel() {
         let mut def = synthetic("denied", AgentTier::Worker, &[]);
-        def.tools = ToolScope::Named(vec!["polymarket".to_string()]);
+        def.tools = ToolScope::Named(vec!["example_tool".to_string()]);
         def.extra_tools = Vec::new();
-        def.disallowed_tools = vec!["polymarket".to_string()];
+        def.disallowed_tools = vec!["example_tool".to_string()];
 
         assert_eq!(
             registry_of(vec![def.clone()]).project(&def).tools,

@@ -423,6 +423,15 @@ fn run_call_command(args: &[String]) -> Result<()> {
     let method = method.ok_or_else(|| anyhow::anyhow!("--method is required"))?;
     let params = parse_json_params(&params).map_err(anyhow::Error::msg)?;
 
+    // Raw calls bypass namespace parsing, but not the configured memory-driver
+    // binding. Without this gate an absent capability could still reach a
+    // destructive embedded handler because plain CLI invocations have no
+    // ambient CoreContext to filter the registry.
+    crate::core::cli_capability::ensure_capability_blocking(
+        all::capability_for_rpc_method(&method).flatten(),
+        &format!("openhuman call --method {method}"),
+    )?;
+
     // `call` invokes a JSON-RPC method that may run an orchestrator turn
     // (e.g. `agent.chat`), so it needs the same roomy stack as the server.
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -454,6 +463,20 @@ fn run_namespace_command(
     grouped: &BTreeMap<String, Vec<ControllerSchema>>,
 ) -> Result<()> {
     let Some(schemas) = grouped.get(namespace) else {
+        // Reachable only when `grouped` really was filtered — i.e. under
+        // `run`/`serve`/TUI, which build a `CoreContext`. On a plain CLI
+        // invocation there is no ambient context, so nothing is filtered and a
+        // gated namespace is still present; the per-function gate below is what
+        // fires there. Consult the UNFILTERED registry before reporting a typo:
+        // silence reads as a mistyped command and sends the user off debugging
+        // their own command line, which is exactly what `docs/specs/kernel.md`
+        // §3.3 carves the CLI out of. Same reasoning as the retained `mcp` and
+        // `tui` arms above. A namespace that does not exist at all yields `None`
+        // and still reports unknown.
+        crate::core::cli_capability::ensure_capability_blocking(
+            all::sole_capability_for_namespace(namespace),
+            &format!("openhuman {namespace}"),
+        )?;
         return Err(anyhow::anyhow!(
             "unknown namespace '{namespace}'. Run `openhuman --help` to see available namespaces."
         ));
@@ -469,6 +492,30 @@ fn run_namespace_command(
     }
 
     let function = args[0].as_str();
+
+    // Gate BEFORE resolving the schema, not in the not-found arm below.
+    //
+    // `grouped` comes from `all_controller_schemas()`, which filters through the
+    // ambient `CoreContext` — and no plain CLI subcommand builds one, since
+    // `DEFAULT_CONTEXT` is set only in `CoreContext::init` (reached by
+    // `run`/`serve` and the TUI). So on a real `openhuman <ns> <fn>` invocation
+    // *nothing* is filtered, a gated function is still found here, and a check
+    // placed only in the not-found arm would never execute — the command would
+    // simply run. Gating the resolved function instead makes this fire on the
+    // path users actually take, and it stays correct under `run`/`serve` where
+    // `grouped` genuinely is filtered.
+    //
+    // `capability_for_parts` consults the UNFILTERED registry and yields `None`
+    // for a function registered nowhere, so a genuine typo short-circuits the
+    // gate and falls through to the unknown-function message below. Keeping the
+    // two distinguishable is the point: collapsing them would make real typos
+    // harder to diagnose, which is the failure `docs/specs/kernel.md` §3.3
+    // carves the CLI out of.
+    crate::core::cli_capability::ensure_capability_blocking(
+        all::capability_for_parts(namespace, function).flatten(),
+        &format!("openhuman {namespace} {function}"),
+    )?;
+
     let Some(schema) = schemas.iter().find(|s| s.function == function).cloned() else {
         return Err(anyhow::anyhow!(
             "unknown function '{namespace} {function}'. Run `openhuman {namespace} --help`."

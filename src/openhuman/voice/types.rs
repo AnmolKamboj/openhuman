@@ -10,7 +10,7 @@ pub struct VoiceSpeechResult {
     /// Final text — cleaned by LLM post-processing when available,
     /// otherwise identical to `raw_text`.
     pub text: String,
-    /// Raw whisper output before LLM cleanup.
+    /// Raw engine output before LLM cleanup.
     pub raw_text: String,
     pub model_id: String,
 }
@@ -29,18 +29,19 @@ pub struct VoiceStatus {
     pub tts_available: bool,
     pub stt_model_id: String,
     pub tts_voice_id: String,
-    pub whisper_binary: Option<String>,
     pub piper_binary: Option<String>,
-    pub stt_model_path: Option<String>,
     pub tts_voice_path: Option<String>,
-    /// Whether the whisper model is loaded in-process (low-latency mode).
-    pub whisper_in_process: bool,
     /// Whether LLM post-processing is enabled for transcription cleanup.
     pub llm_cleanup_enabled: bool,
-    /// Currently selected STT provider ("cloud" or "whisper"). Echoed so
-    /// the settings panel can render the picker without an extra RPC.
+    /// Resolved STT routing string — `"cloud"` for the backend proxy, or the
+    /// third-party slug selected by `voice_server.stt_engine`. Echoed so the
+    /// settings panel can render the picker without an extra RPC.
     #[serde(default)]
-    pub stt_provider: String,
+    pub stt_engine: String,
+    /// Why `stt_available` is false, when it is (e.g. the selected engine has
+    /// no `voice_providers` entry). `None` when STT is usable.
+    #[serde(default)]
+    pub stt_error: Option<String>,
     /// Currently selected TTS provider ("cloud" or "piper").
     #[serde(default)]
     pub tts_provider: String,
@@ -100,22 +101,20 @@ mod tests {
             tts_available: false,
             stt_model_id: "tiny.bin".into(),
             tts_voice_id: "en_US-lessac-medium".into(),
-            whisper_binary: Some("/usr/local/bin/whisper-cli".into()),
             piper_binary: None,
-            stt_model_path: Some("/models/stt/tiny.bin".into()),
             tts_voice_path: None,
-            whisper_in_process: true,
             llm_cleanup_enabled: true,
-            stt_provider: "whisper".into(),
+            stt_engine: "elevenlabs".into(),
+            stt_error: None,
             tts_provider: "cloud".into(),
         };
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(v["stt_available"], true);
         assert_eq!(v["tts_available"], false);
         assert!(v["piper_binary"].is_null());
-        assert_eq!(v["whisper_in_process"], true);
         assert_eq!(v["llm_cleanup_enabled"], true);
-        assert_eq!(v["stt_provider"], "whisper");
+        assert_eq!(v["stt_engine"], "elevenlabs");
+        assert!(v["stt_error"].is_null());
         assert_eq!(v["tts_provider"], "cloud");
     }
 

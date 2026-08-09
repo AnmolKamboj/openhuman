@@ -59,8 +59,8 @@ pub async fn take_snapshot(
         "[memory_diff] snapshot taken"
     );
 
-    crate::core::event_bus::publish_global(
-        crate::core::event_bus::DomainEvent::MemoryDiffSnapshotTaken {
+    crate::core::bus::BUS.publish(
+        crate::core::events::DomainEvent::MemoryDiffSnapshotTaken {
             snapshot_id: snapshot.id.clone(),
             source_id: source.id.clone(),
             source_kind: source.kind.as_str().to_string(),
@@ -78,6 +78,34 @@ pub async fn auto_snapshot_after_sync(
     config: &Config,
 ) -> Result<Snapshot, String> {
     take_snapshot(source, config, SnapshotTrigger::Auto).await
+}
+
+/// List snapshots, newest first — for one source when `source_id` is `Some`,
+/// across every source otherwise.
+///
+/// Lifted verbatim out of [`super::rpc::list_snapshots_rpc`], which had the
+/// only copy of this query and returned it wrapped in an `RpcOutcome`. The
+/// embedded memory driver's `MemoryDiff::snapshots` needs the same read without
+/// the RPC envelope, and a second `Ledger::open` call site would make this
+/// module no longer the only place that knows the ledger layout.
+///
+/// An unknown `source_id` yields an empty vector rather than an error — the
+/// ledger has no source registry to check against.
+pub async fn list_snapshots(
+    config: &Config,
+    source_id: Option<&str>,
+    limit: u32,
+) -> Result<Vec<Snapshot>, String> {
+    let workspace_dir = config.workspace_dir.clone();
+    let source_id = source_id.map(str::to_string);
+
+    tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<Snapshot>> {
+        let ledger = tinycortex::memory::diff::Ledger::open(&workspace_dir)?;
+        ledger.list_snapshots(source_id.as_deref(), limit)
+    })
+    .await
+    .map_err(|e| format!("list_snapshots join: {e}"))?
+    .map_err(|e: anyhow::Error| format!("list_snapshots: {e:#}"))
 }
 
 /// Compute the diff between two snapshots of the same source.
@@ -202,8 +230,8 @@ pub async fn mark_read(config: &Config, source_ids: Option<Vec<String>>) -> Resu
         "[memory_diff] mark_read committed read markers"
     );
 
-    crate::core::event_bus::publish_global(
-        crate::core::event_bus::DomainEvent::MemoryDiffMarkedRead {
+    crate::core::bus::BUS.publish(
+        crate::core::events::DomainEvent::MemoryDiffMarkedRead {
             source_ids: target_ids,
             snapshot_ids,
         },

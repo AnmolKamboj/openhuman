@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use openhuman_core::core::event_bus::{init_global, request_native_global, DEFAULT_CAPACITY};
+use openhuman_core::core::bus::BUS;
 use openhuman_core::openhuman::agent::bus::{
     register_agent_handlers, AgentTurnRequest, AgentTurnResponse, AGENT_RUN_TURN_METHOD,
 };
@@ -185,6 +185,7 @@ fn tool_response(name: &str, args: serde_json::Value) -> ModelResponse {
         raw: None,
         resolved_model: None,
         continue_turn: None,
+            served_from_cache: false,
     }
 }
 
@@ -199,9 +200,9 @@ async fn run_turn(
     on_delta: Option<tokio::sync::mpsc::Sender<String>>,
     on_progress: Option<tokio::sync::mpsc::Sender<AgentProgress>>,
 ) -> Result<AgentTurnResponse, String> {
-    init_global(DEFAULT_CAPACITY);
+    openhuman_core::core::bus::init().await.expect("bus init");
     register_agent_handlers();
-    request_native_global::<AgentTurnRequest, AgentTurnResponse>(
+    BUS.native().request::<AgentTurnRequest, AgentTurnResponse>(
         AGENT_RUN_TURN_METHOD,
         AgentTurnRequest {
             turn_model_source: openhuman_core::openhuman::agent::tinyagents::TurnModelSource::from_model(

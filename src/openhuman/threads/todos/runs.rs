@@ -415,8 +415,8 @@ pub async fn reclaim_stale(
                 );
 
                 if let Some(thread_id) = location.thread_id() {
-                    crate::core::event_bus::publish_global(
-                        crate::core::event_bus::DomainEvent::TaskRunReclaimed {
+                    crate::core::bus::BUS.publish(
+                        crate::core::events::DomainEvent::TaskRunReclaimed {
                             run_id: stale_run.run_id.clone(),
                             card_id: stale_run.card_id.clone(),
                             thread_id: thread_id.to_string(),

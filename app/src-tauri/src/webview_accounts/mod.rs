@@ -25,6 +25,7 @@ use std::sync::Mutex;
 use std::sync::{mpsc::sync_channel, OnceLock};
 use std::time::{Duration, Instant};
 
+use crate::cdp;
 use chrono::{TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -34,11 +35,6 @@ use tauri::{
 };
 #[cfg(windows)]
 use tauri_plugin_notification::NotificationExt;
-// `ImplBrowser` exposes `Browser::identifier()` — bring the trait into scope
-// so the `with_webview` callback can read the CEF browser id.
-use cef::ImplBrowser;
-
-use crate::cdp;
 
 const RUNTIME_JS: &str = include_str!("runtime.js");
 const LINKEDIN_RECIPE_JS: &str = include_str!("../../recipes/linkedin/recipe.js");
@@ -944,13 +940,8 @@ impl WebviewAccountsState {
             .ok()
             .map(|mut g| g.drain().collect())
             .unwrap_or_default();
-        for (acct, browser_id) in browser_ids {
-            tauri_runtime_cef::notification::unregister(browser_id);
-            log::debug!(
-                "[notify-cef] shutdown unregistered handler account={} browser_id={}",
-                acct,
-                browser_id
-            );
+        for (acct, _browser_id) in browser_ids {
+            log::debug!("[notifications] shutdown cleared account={}", acct);
         }
         if let Ok(mut g) = self.loaded_accounts.lock() {
             g.clear();
@@ -1212,11 +1203,18 @@ fn enqueue_linux_notification(job: Box<dyn FnOnce() + Send>) {
 /// Gated on the runtime `NotificationSettings` flag (OFF by default) so
 /// v1 ships the plumbing without surprising users with a toast storm the
 /// first time they open a busy Slack tab.
+struct NotificationPayload {
+    title: String,
+    body: Option<String>,
+    tag: Option<String>,
+    silent: bool,
+}
+
 fn forward_native_notification<R: Runtime>(
     app: &AppHandle<R>,
     account_id: &str,
     provider: &str,
-    payload: &tauri_runtime_cef::notification::NotificationPayload,
+    payload: &NotificationPayload,
 ) {
     if let Some(state) = app.try_state::<WebviewAccountsState>() {
         let prefs = state.notification_bypass.lock().unwrap().clone();
@@ -1269,9 +1267,8 @@ fn forward_native_notification<R: Runtime>(
     };
     let body = payload.body.as_deref().unwrap_or("");
     log::info!(
-        "[notify-cef][{}] source={:?} tag={:?} silent={} title_chars={} body_chars={}",
+        "[notifications][{}] tag={:?} silent={} title_chars={} body_chars={}",
         account_id,
-        payload.source,
         payload.tag,
         payload.silent,
         raw_title.chars().count(),
@@ -1470,14 +1467,11 @@ pub(crate) fn forward_synthetic_notification<R: Runtime>(
     title: impl Into<String>,
     body: impl Into<String>,
 ) {
-    let payload = tauri_runtime_cef::notification::NotificationPayload {
-        source: tauri_runtime_cef::notification::NotificationSource::Window,
+    let payload = NotificationPayload {
         title: title.into(),
         body: Some(body.into()),
-        icon: None,
         tag: None,
         silent: false,
-        origin: format!("synthetic://{}", provider),
     };
     forward_native_notification(app, account_id, provider, &payload);
 }
@@ -2675,58 +2669,9 @@ pub async fn webview_account_open<R: Runtime>(
             }
         }
 
-        // Browser Notification interception, native CEF path. The renderer
-        // subprocess (cef-helper) has already replaced `window.Notification`
-        // and `ServiceWorkerRegistration.prototype.showNotification` with
-        // V8 native bindings that send a `"openhuman.notify"` ProcessMessage
-        // to the browser process. `tauri-runtime-cef::notification::register`
-        // installs a per-browser callback that the runtime invokes when that
-        // IPC arrives. We need the CEF browser id to key the registration —
-        // hence the `with_webview` downcast hop. The callback is dispatched
-        // from a CEF thread, so keep work inside it short / non-blocking.
-        let app_for_register = app.clone();
-        let acct_for_register = args.account_id.clone();
-        let provider_for_register = args.provider.clone();
-        if let Err(err) = webview.with_webview(move |raw| {
-            let Some(browser) = raw.downcast_ref::<cef::Browser>() else {
-                log::warn!(
-                    "[notify-cef] with_webview returned non-cef::Browser handle for account={} — skipping notification registration",
-                    acct_for_register
-                );
-                return;
-            };
-            let browser_id = browser.identifier();
-            if let Some(state) = app_for_register.try_state::<WebviewAccountsState>() {
-                state
-                    .browser_ids
-                    .lock()
-                    .unwrap()
-                    .insert(acct_for_register.clone(), browser_id);
-            }
-            let acct_in_handler = acct_for_register.clone();
-            let provider_in_handler = provider_for_register.clone();
-            let app_in_handler = app_for_register.clone();
-            tauri_runtime_cef::notification::register(browser_id, move |payload| {
-                forward_native_notification(
-                    &app_in_handler,
-                    &acct_in_handler,
-                    &provider_in_handler,
-                    &payload,
-                );
-            });
-            log::info!(
-                "[notify-cef] registered handler account={} provider={} browser_id={}",
-                acct_for_register,
-                provider_for_register,
-                browser_id
-            );
-        }) {
-            log::warn!(
-                "[notify-cef] with_webview dispatch failed for account={}: {}",
-                args.account_id,
-                err
-            );
-        }
+        // Upstream Tauri does not offer CEF's native browser-notification
+        // interception. Synthetic notifications continue to use the platform
+        // notification bridge above.
     }
 
     Ok(label)
@@ -2797,14 +2742,7 @@ pub async fn webview_account_close<R: Runtime>(
         }
     }
     teardown_account_scanners(&app, &args.account_id);
-    if let Some(browser_id) = state.browser_ids.lock().unwrap().remove(&args.account_id) {
-        tauri_runtime_cef::notification::unregister(browser_id);
-        log::debug!(
-            "[notify-cef] unregistered handler account={} browser_id={}",
-            args.account_id,
-            browser_id
-        );
-    }
+    state.browser_ids.lock().unwrap().remove(&args.account_id);
     if let Some(task) = state.cdp_sessions.lock().unwrap().remove(&args.account_id) {
         task.abort();
         log::debug!(
@@ -2883,14 +2821,7 @@ pub async fn webview_account_purge<R: Runtime>(
     }
 
     teardown_account_scanners(&app, &args.account_id);
-    if let Some(browser_id) = state.browser_ids.lock().unwrap().remove(&args.account_id) {
-        tauri_runtime_cef::notification::unregister(browser_id);
-        log::debug!(
-            "[notify-cef] purge unregistered handler account={} browser_id={}",
-            args.account_id,
-            browser_id
-        );
-    }
+    state.browser_ids.lock().unwrap().remove(&args.account_id);
     if let Some(task) = state.cdp_sessions.lock().unwrap().remove(&args.account_id) {
         task.abort();
         log::debug!(

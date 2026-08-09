@@ -4,7 +4,8 @@
 //! by the socket transport layer. It runs the agent inference loop via the web
 //! channel provider and sends the reply back through the REST API.
 
-use crate::core::event_bus::{DomainEvent, EventHandler};
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
@@ -30,7 +31,7 @@ impl ChannelInboundSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for ChannelInboundSubscriber {
+impl EventHandler<DomainEvent> for ChannelInboundSubscriber {
     fn name(&self) -> &str {
         "channel::inbound_handler"
     }

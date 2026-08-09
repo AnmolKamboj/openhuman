@@ -276,11 +276,16 @@ pub fn agent_ready_toolkits() -> Vec<&'static str> {
 }
 
 pub use descriptions::toolkit_description;
-pub(crate) use helpers::{first_array_str, merge_extra, pick_str};
+pub(crate) use helpers::{first_array_str, merge_extra};
+// `pick_str` is a provider payload normaliser and lives in tinycortex; it is
+// re-exported here so the ~40 in-tree call sites keep resolving unchanged.
+// Note this is deliberately NOT `providers::common::pick_str`, which coerces
+// numbers to strings — see the doc comments on both definitions.
 pub use registry::{
     all_providers, get_provider, init_default_providers, register_provider, ProviderArc,
 };
 pub use scope_lookup::{curated_scope_for, toolkit_has_scope};
+pub(crate) use tinycortex::memory::sync::composio::providers::normalize::helpers::pick_str;
 pub use tool_scope::{classify_unknown, find_curated, toolkit_from_slug, CuratedTool, ToolScope};
 pub use traits::{resolve_sync_interval_secs, sync_interval_env_var, ComposioProvider};
 pub use types::{

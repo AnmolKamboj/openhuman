@@ -2,7 +2,8 @@ use super::store::MonitorStore;
 use super::types::{
     now_ms, MonitorEvent, MonitorSnapshot, MonitorStatus, MonitorStream, MAX_OUTPUT_BYTES,
 };
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::harness::run_queue::{QueueMode, QueuedMessage, RunQueue};
 use crate::openhuman::agent::host_runtime::RuntimeAdapter;
 use crate::openhuman::security::{AuditLogger, CommandExecutionLog, SecurityPolicy};
@@ -312,7 +313,7 @@ async fn enqueue_collect(ctx: &RunnerContext, snapshot: &MonitorSnapshot, event:
         })
         .await;
     let status = run_queue.status().await;
-    publish_global(DomainEvent::RunQueueMessageQueued {
+    BUS.publish(DomainEvent::RunQueueMessageQueued {
         thread_id,
         mode: QueueMode::Collect.to_string(),
         queue_depth: status.total,
@@ -320,7 +321,7 @@ async fn enqueue_collect(ctx: &RunnerContext, snapshot: &MonitorSnapshot, event:
 }
 
 fn publish_status(snapshot: &MonitorSnapshot, status: MonitorStatus) {
-    publish_global(DomainEvent::MonitorStatusChanged {
+    BUS.publish(DomainEvent::MonitorStatusChanged {
         monitor_id: snapshot.monitor_id.clone(),
         status: format!("{:?}", status).to_lowercase(),
         thread_id: snapshot.thread_id.clone(),
@@ -329,7 +330,7 @@ fn publish_status(snapshot: &MonitorSnapshot, status: MonitorStatus) {
 }
 
 fn publish_line(event: &MonitorEvent) {
-    publish_global(DomainEvent::MonitorLine {
+    BUS.publish(DomainEvent::MonitorLine {
         monitor_id: event.monitor_id.clone(),
         thread_id: event.thread_id.clone(),
         timestamp_ms: event.timestamp_ms,

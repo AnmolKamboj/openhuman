@@ -4,10 +4,7 @@ use anyhow::Result;
 
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::store::trees::types::{Tree, TreeKind};
-
-fn engine_config(config: &Config) -> tinycortex::memory::MemoryConfig {
-    crate::openhuman::memory::tinycortex::memory_config_from(config, config.workspace_dir.clone())
-}
+use crate::openhuman::memory::tinycortex::engine_config;
 
 pub fn list_trees_by_kind(config: &Config, kind: TreeKind) -> Result<Vec<Tree>> {
     tinycortex::memory::tree::store::list_trees_by_kind(&engine_config(config), kind)

@@ -3092,9 +3092,10 @@ async fn json_rpc_thread_generate_title_falls_back_when_provider_path_is_unavail
         .expect("generated title");
 
     assert_ne!(generated_title, original_title);
-    assert!(
-        generated_title.contains("Please summarize the latest five email threads for"),
-        "fallback title should be derived from the first user message: {generated_title}"
+    assert_eq!(
+        generated_title,
+        "summarize latest five",
+        "fallback title should be the 3-word shape derived from the first user message (filler stripped), got: {generated_title}"
     );
 
     let captured_models = with_chat_completion_models(|models| models.clone());
@@ -3338,15 +3339,15 @@ async fn json_rpc_run_ledger_lifecycle() {
         .await
         .expect("load config");
 
-    openhuman_core::openhuman::agent::session_db::run_ledger::upsert_agent_run(
-        &config,
-        openhuman_core::openhuman::agent::session_db::run_ledger::AgentRunUpsert {
+    tinyagents::session::run_ledger::upsert_agent_run(
+        &config.workspace_dir,
+        tinyagents::session::run_ledger::AgentRunUpsert {
             id: "sub-run-1".to_string(),
-            kind: openhuman_core::openhuman::agent::session_db::run_ledger::AgentRunKind::WorkerThread,
+            kind: tinyagents::session::run_ledger::AgentRunKind::WorkerThread,
             parent_run_id: Some("req-run-1".to_string()),
             parent_thread_id: Some("thread-run-1".to_string()),
             agent_id: Some("researcher".to_string()),
-            status: openhuman_core::openhuman::agent::session_db::run_ledger::AgentRunStatus::AwaitingUser,
+            status: tinyagents::session::run_ledger::AgentRunStatus::AwaitingUser,
             prompt_ref: Some("thread:worker-1:message:seed".to_string()),
             worker_thread_id: Some("worker-1".to_string()),
             task_board_id: Some("thread-run-1".to_string()),
@@ -3365,9 +3366,9 @@ async fn json_rpc_run_ledger_lifecycle() {
     )
     .expect("seed run");
 
-    openhuman_core::openhuman::agent::session_db::run_ledger::append_run_event(
-        &config,
-        openhuman_core::openhuman::agent::session_db::run_ledger::RunEventAppend {
+    tinyagents::session::run_ledger::append_run_event(
+        &config.workspace_dir,
+        tinyagents::session::run_ledger::RunEventAppend {
             run_id: "sub-run-1".to_string(),
             event_type: "subagent_awaiting_user".to_string(),
             payload: json!({ "question": "Which repo should I inspect?" }),
@@ -3457,7 +3458,7 @@ async fn json_rpc_agent_work_list_groups_runs_by_bucket() {
         .await
         .expect("load config");
 
-    use openhuman_core::openhuman::agent::session_db::run_ledger::{
+    use tinyagents::session::run_ledger::{
         upsert_agent_run, AgentRunKind, AgentRunStatus, AgentRunUpsert,
     };
     let seed = |id: &str, status: AgentRunStatus| AgentRunUpsert {
@@ -3480,10 +3481,26 @@ async fn json_rpc_agent_work_list_groups_runs_by_bucket() {
         completed_at: None,
     };
     // Two awaiting-user (needs_input), one running (working), one completed.
-    upsert_agent_run(&config, seed("work-a", AgentRunStatus::AwaitingUser)).expect("seed a");
-    upsert_agent_run(&config, seed("work-b", AgentRunStatus::AwaitingUser)).expect("seed b");
-    upsert_agent_run(&config, seed("work-c", AgentRunStatus::Running)).expect("seed c");
-    upsert_agent_run(&config, seed("work-d", AgentRunStatus::Completed)).expect("seed d");
+    upsert_agent_run(
+        &config.workspace_dir,
+        seed("work-a", AgentRunStatus::AwaitingUser),
+    )
+    .expect("seed a");
+    upsert_agent_run(
+        &config.workspace_dir,
+        seed("work-b", AgentRunStatus::AwaitingUser),
+    )
+    .expect("seed b");
+    upsert_agent_run(
+        &config.workspace_dir,
+        seed("work-c", AgentRunStatus::Running),
+    )
+    .expect("seed c");
+    upsert_agent_run(
+        &config.workspace_dir,
+        seed("work-d", AgentRunStatus::Completed),
+    )
+    .expect("seed d");
 
     let list = post_json_rpc(&rpc_base, 9131, "openhuman.agent_work_list", json!({})).await;
     let outer = assert_no_jsonrpc_error(&list, "agent_work_list");
@@ -3572,16 +3589,16 @@ async fn json_rpc_workflow_run_definitions_and_runs_roundtrip() {
     );
 
     // Seed a durable workflow run, then list + get it.
-    openhuman_core::openhuman::agent::session_db::run_ledger::upsert_workflow_run(
-        &config,
-        openhuman_core::openhuman::agent::session_db::run_ledger::WorkflowRunUpsert {
+    tinyagents::session::run_ledger::upsert_workflow_run(
+        &config.workspace_dir,
+        tinyagents::session::run_ledger::WorkflowRunUpsert {
             id: "wf-run-1".to_string(),
             definition_id: "parallel_research_cross_check".to_string(),
             parent_thread_id: Some("thread-wf-1".to_string()),
             input: json!({ "question": "test" }),
             phase_states: json!({ "decompose": "completed" }),
             child_run_ids: vec!["child-1".to_string()],
-            status: openhuman_core::openhuman::agent::session_db::run_ledger::WorkflowRunStatus::Running,
+            status: tinyagents::session::run_ledger::WorkflowRunStatus::Running,
             summary: None,
             started_at: None,
             completed_at: None,
@@ -3770,20 +3787,18 @@ async fn json_rpc_agent_team_coordination_roundtrip() {
     );
 
     // Mark A done directly via the run ledger, then B claims fine.
-    let task_a = openhuman_core::openhuman::agent::session_db::run_ledger::get_agent_team_task(
-        &config, &task_a_id,
-    )
-    .expect("get task A")
-    .expect("task A present");
-    openhuman_core::openhuman::agent::session_db::run_ledger::upsert_agent_team_task(
-        &config,
-        openhuman_core::openhuman::agent::session_db::run_ledger::AgentTeamTaskUpsert {
+    let task_a =
+        tinyagents::session::run_ledger::get_agent_team_task(&config.workspace_dir, &task_a_id)
+            .expect("get task A")
+            .expect("task A present");
+    tinyagents::session::run_ledger::upsert_agent_team_task(
+        &config.workspace_dir,
+        tinyagents::session::run_ledger::AgentTeamTaskUpsert {
             id: task_a.id.clone(),
             team_id: task_a.team_id.clone(),
             title: task_a.title.clone(),
             objective: task_a.objective.clone(),
-            status:
-                openhuman_core::openhuman::agent::session_db::run_ledger::AgentTeamTaskStatus::Done,
+            status: tinyagents::session::run_ledger::AgentTeamTaskStatus::Done,
             owner_member_id: task_a.owner_member_id.clone(),
             depends_on: task_a.depends_on.clone(),
             gate_status: Some(task_a.gate_status.clone()),
@@ -8140,7 +8155,6 @@ async fn voice_status_returns_availability() {
     let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
     let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
     let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
-    let _whisper_guard = EnvVarGuard::unset("WHISPER_BIN");
     let _piper_guard = EnvVarGuard::unset("PIPER_BIN");
 
     let (mock_addr, mock_join) = serve_on_ephemeral(mock_upstream_router()).await;
@@ -8156,7 +8170,10 @@ async fn voice_status_returns_availability() {
     let status = post_json_rpc(&rpc_base, 1, "openhuman.voice_status", json!({})).await;
     let result = assert_no_jsonrpc_error(&status, "voice_status");
 
-    // Without whisper/piper installed in the test env, both should be unavailable
+    // Without piper installed in the test env, TTS should be unavailable. STT
+    // is a different story since the whisper.cpp engine was deleted: it is a
+    // hosted call now, and the default `backend` engine always resolves, so it
+    // reports available with nothing installed locally.
     assert!(
         result.get("stt_available").is_some(),
         "expected stt_available field: {result}"
@@ -8174,11 +8191,13 @@ async fn voice_status_returns_availability() {
         "expected tts_voice_id field: {result}"
     );
 
-    // Verify that without binaries, availability is false
+    // Hosted STT: the default engine is routable with no local install, so
+    // this is now true. It asserted `false` while a whisper.cpp binary was
+    // required.
     assert_eq!(
         result.get("stt_available").and_then(Value::as_bool),
-        Some(false),
-        "stt should be unavailable without whisper binary"
+        Some(true),
+        "hosted stt should be available with no local binaries"
     );
     assert_eq!(
         result.get("tts_available").and_then(Value::as_bool),
@@ -9492,7 +9511,7 @@ async fn json_rpc_meet_agent_session_lifecycle() {
 /// 3. Tool metadata (names/descriptions) is intact.
 #[tokio::test(flavor = "multi_thread")]
 async fn whatsapp_data_agent_tools_e2e_1341() {
-    use openhuman_core::core::event_bus::register_native_global;
+    use openhuman_core::core::bus::BUS;
     use openhuman_core::openhuman::channels::whatsapp_data::methods;
     use openhuman_core::openhuman::channels::whatsapp_data::types::{
         ListChatsRequest, ListMessagesRequest, SearchMessagesRequest, WhatsAppChat, WhatsAppMessage,
@@ -9529,15 +9548,15 @@ async fn whatsapp_data_agent_tools_e2e_1341() {
     }
 
     // Stand in for the shell store: register canned native handlers.
-    register_native_global::<ListChatsRequest, Vec<WhatsAppChat>, _, _>(
+    BUS.native().register::<ListChatsRequest, Vec<WhatsAppChat>, _, _>(
         methods::LIST_CHATS,
         |_req| async move { Ok(vec![sample_chat("alice@c.us"), sample_chat("team@g.us")]) },
     );
-    register_native_global::<ListMessagesRequest, Vec<WhatsAppMessage>, _, _>(
+    BUS.native().register::<ListMessagesRequest, Vec<WhatsAppMessage>, _, _>(
         methods::LIST_MESSAGES,
         |_req| async move { Ok(vec![sample_msg("Send the umbrella report by Friday")]) },
     );
-    register_native_global::<SearchMessagesRequest, Vec<WhatsAppMessage>, _, _>(
+    BUS.native().register::<SearchMessagesRequest, Vec<WhatsAppMessage>, _, _>(
         methods::SEARCH_MESSAGES,
         |req| async move {
             if req.query.to_lowercase().contains("umbrella") {

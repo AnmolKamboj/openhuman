@@ -2,7 +2,7 @@
 //!
 //! The store itself lives in the Tauri shell. Each tool dispatches its query
 //! over the in-process native request bus
-//! ([`crate::core::event_bus::request_native_global`]) to the shell-registered
+//! ([`crate::core::bus::BUS.native().request`]) to the shell-registered
 //! handler, unwraps the typed response, and emits a compact JSON object that
 //! includes a `"provider": "whatsapp"` provenance tag so replies can cite
 //! WhatsApp as the source.
@@ -29,18 +29,18 @@ pub use list_chats::WhatsAppDataListChatsTool;
 pub use list_messages::WhatsAppDataListMessagesTool;
 pub use search_messages::WhatsAppDataSearchMessagesTool;
 
-use crate::core::event_bus::NativeRequestError;
+use tinybus::NativeRequestError;
 
 /// Note surfaced when the WhatsApp data store is unavailable because no desktop
 /// shell handler is registered (headless / CLI / docker builds).
 pub(crate) const UNAVAILABLE_NOTE: &str = "WhatsApp data unavailable (desktop only)";
 
-/// True when `err` means "no shell handler is wired" — i.e. the native registry
-/// is uninitialized or has no handler for this method. Both map to graceful
-/// degradation (empty result) rather than a tool error.
+/// True when `err` means "no shell handler is wired" — which maps to graceful
+/// degradation (an empty result) rather than a tool error.
+///
+/// The old bus also had an `Init` case for "the registry itself was never
+/// initialised". `tinybus::NativeRegistry` is created on first access, so that
+/// state no longer exists: an absent handler is the only way to be absent.
 pub(crate) fn is_handler_absent(err: &NativeRequestError) -> bool {
-    matches!(
-        err,
-        NativeRequestError::NotInitialized | NativeRequestError::UnregisteredHandler { .. }
-    )
+    matches!(err, NativeRequestError::UnregisteredHandler { .. })
 }

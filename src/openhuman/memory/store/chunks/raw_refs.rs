@@ -16,18 +16,11 @@ use anyhow::Result;
 use rusqlite::Transaction;
 
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::tinycortex::memory_config_from;
+use crate::openhuman::memory::tinycortex::engine_config;
 
 // `RawRef` is re-exported from the crate (identical fields + serde derives), so
 // every `chunks::RawRef { path, start, end }` construction site keeps compiling.
 pub use tinycortex::memory::chunks::RawRef;
-
-/// Map the host `Config` to the engine `MemoryConfig` addressing the same
-/// `<workspace_dir>/memory_tree/chunks.db` (only `workspace` is load-bearing for
-/// these DB ops).
-fn engine_config(config: &Config) -> tinycortex::memory::MemoryConfig {
-    memory_config_from(config, config.workspace_dir.clone())
-}
 
 /// Stash a list of [`RawRef`] entries on a chunk row. Replaces any previous
 /// value.

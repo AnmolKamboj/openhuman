@@ -139,7 +139,7 @@ pub trait ComposioProvider: Send + Sync {
     }
 
     /// Hook fired when an OAuth handoff completes
-    /// ([`crate::core::event_bus::DomainEvent::ComposioConnectionCreated`]).
+    /// ([`crate::core::events::DomainEvent::ComposioConnectionCreated`]).
     ///
     /// Default impl: fetch and persist the user profile. Initial memory
     /// ingestion is dispatched separately through tinycortex by the bus.
