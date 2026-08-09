@@ -383,6 +383,79 @@ impl UnifiedMemory {
         Ok(document_id)
     }
 
+    /// Fetch a single document by `(namespace, key)`.
+    ///
+    /// The same SELECT as [`Self::load_documents_for_scope`] with a `key`
+    /// predicate bolted on — deliberately *not* implemented as
+    /// `load_documents_for_scope(ns).find(…)`, which would load every document
+    /// body in the namespace to return one.
+    ///
+    /// `key` goes through [`safety::canonical_document_key`], the exact
+    /// transform `upsert_document` applies before writing the column. Reading
+    /// the raw key here would reproduce #5164: the lookup misses, the caller
+    /// treats the row as absent, and writes it again.
+    pub(crate) async fn get_document_by_key(
+        &self,
+        namespace: &str,
+        key: &str,
+    ) -> Result<Option<StoredMemoryDocument>, String> {
+        let conn = self.conn.lock();
+        let ns = Self::sanitize_namespace(namespace);
+        let key = safety::canonical_document_key(key);
+        let mut stmt = conn
+            .prepare(
+                "SELECT
+                    document_id,
+                    namespace,
+                    key,
+                    title,
+                    content,
+                    source_type,
+                    priority,
+                    tags_json,
+                    metadata_json,
+                    category,
+                    session_id,
+                    created_at,
+                    updated_at,
+                    markdown_rel_path,
+                    taint
+                 FROM memory_docs
+                 WHERE namespace = ?1 AND key = ?2
+                 LIMIT 1",
+            )
+            .map_err(|e| format!("prepare get_document_by_key: {e}"))?;
+        let mut rows = stmt
+            .query(params![ns, key])
+            .map_err(|e| format!("query get_document_by_key: {e}"))?;
+        let Some(row) = rows
+            .next()
+            .map_err(|e| format!("row get_document_by_key: {e}"))?
+        else {
+            return Ok(None);
+        };
+        let tags_json: String = row.get(7).map_err(|e| e.to_string())?;
+        let metadata_json: String = row.get(8).map_err(|e| e.to_string())?;
+        let taint_str: String = row.get(14).map_err(|e| e.to_string())?;
+        Ok(Some(StoredMemoryDocument {
+            document_id: row.get(0).map_err(|e| e.to_string())?,
+            namespace: row.get(1).map_err(|e| e.to_string())?,
+            key: row.get(2).map_err(|e| e.to_string())?,
+            title: row.get(3).map_err(|e| e.to_string())?,
+            content: row.get(4).map_err(|e| e.to_string())?,
+            source_type: row.get(5).map_err(|e| e.to_string())?,
+            priority: row.get(6).map_err(|e| e.to_string())?,
+            tags: serde_json::from_str(&tags_json).unwrap_or_default(),
+            metadata: serde_json::from_str(&metadata_json).unwrap_or_else(|_| json!({})),
+            category: row.get(9).map_err(|e| e.to_string())?,
+            session_id: row.get(10).map_err(|e| e.to_string())?,
+            created_at: row.get(11).map_err(|e| e.to_string())?,
+            updated_at: row.get(12).map_err(|e| e.to_string())?,
+            markdown_rel_path: row.get(13).map_err(|e| e.to_string())?,
+            taint: crate::openhuman::memory::MemoryTaint::from_db_str(&taint_str),
+        }))
+    }
+
     pub(crate) async fn load_documents_for_scope(
         &self,
         namespace: &str,

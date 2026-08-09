@@ -9,7 +9,10 @@
 
 use std::sync::{Arc, OnceLock};
 
-use crate::core::event_bus::{publish_global, DomainEvent, EventHandler, SubscriptionHandle};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 use crate::openhuman::security::devices::crypto::{
     base64url_decode, base64url_encode, derive_session_keys, TunnelCipher, TunnelRole,
 };
@@ -31,7 +34,7 @@ pub fn register_device_tunnel_subscriber() {
     if DEVICE_TUNNEL_HANDLE.get().is_some() {
         return;
     }
-    match crate::core::event_bus::subscribe_global(Arc::new(DeviceTunnelSubscriber::new())) {
+    match crate::core::bus::BUS.subscribe(Arc::new(DeviceTunnelSubscriber::new())) {
         Some(handle) => {
             let _ = DEVICE_TUNNEL_HANDLE.set(handle);
             log::info!("[devices/bus] DeviceTunnelSubscriber registered");
@@ -60,7 +63,7 @@ impl Default for DeviceTunnelSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for DeviceTunnelSubscriber {
+impl EventHandler<DomainEvent> for DeviceTunnelSubscriber {
     fn name(&self) -> &str {
         "device::tunnel"
     }
@@ -364,7 +367,7 @@ async fn handle_tunnel_frame(channel_id: &str, payload_b64: &str) {
                     device.channel_id,
                     device.label
                 );
-                publish_global(DomainEvent::DevicePaired {
+                BUS.publish(DomainEvent::DevicePaired {
                     channel_id: channel_id.to_string(),
                     device_pubkey: device_pubkey_b64,
                     label: Some(label),

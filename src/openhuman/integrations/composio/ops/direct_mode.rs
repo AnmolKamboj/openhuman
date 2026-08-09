@@ -111,8 +111,8 @@ pub async fn composio_set_api_key(
         config.composio.mode.clone()
     };
 
-    crate::core::event_bus::publish_global(
-        crate::core::event_bus::DomainEvent::ComposioConfigChanged {
+    crate::core::bus::BUS.publish(
+        crate::core::events::DomainEvent::ComposioConfigChanged {
             mode: effective_mode.clone(),
             api_key_set: true,
         },
@@ -149,8 +149,8 @@ pub async fn composio_clear_api_key(config: &Config) -> OpResult<RpcOutcome<serd
         .map_err(|e| format!("[composio-direct] save config failed: {e}"))?;
     direct_auth::reset_all_direct_auth_failures();
 
-    crate::core::event_bus::publish_global(
-        crate::core::event_bus::DomainEvent::ComposioConfigChanged {
+    crate::core::bus::BUS.publish(
+        crate::core::events::DomainEvent::ComposioConfigChanged {
             mode: "backend".to_string(),
             api_key_set: false,
         },

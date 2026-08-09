@@ -8155,7 +8155,6 @@ async fn voice_status_returns_availability() {
     let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
     let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
     let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
-    let _whisper_guard = EnvVarGuard::unset("WHISPER_BIN");
     let _piper_guard = EnvVarGuard::unset("PIPER_BIN");
 
     let (mock_addr, mock_join) = serve_on_ephemeral(mock_upstream_router()).await;
@@ -8171,7 +8170,10 @@ async fn voice_status_returns_availability() {
     let status = post_json_rpc(&rpc_base, 1, "openhuman.voice_status", json!({})).await;
     let result = assert_no_jsonrpc_error(&status, "voice_status");
 
-    // Without whisper/piper installed in the test env, both should be unavailable
+    // Without piper installed in the test env, TTS should be unavailable. STT
+    // is a different story since the whisper.cpp engine was deleted: it is a
+    // hosted call now, and the default `backend` engine always resolves, so it
+    // reports available with nothing installed locally.
     assert!(
         result.get("stt_available").is_some(),
         "expected stt_available field: {result}"
@@ -8189,11 +8191,13 @@ async fn voice_status_returns_availability() {
         "expected tts_voice_id field: {result}"
     );
 
-    // Verify that without binaries, availability is false
+    // Hosted STT: the default engine is routable with no local install, so
+    // this is now true. It asserted `false` while a whisper.cpp binary was
+    // required.
     assert_eq!(
         result.get("stt_available").and_then(Value::as_bool),
-        Some(false),
-        "stt should be unavailable without whisper binary"
+        Some(true),
+        "hosted stt should be available with no local binaries"
     );
     assert_eq!(
         result.get("tts_available").and_then(Value::as_bool),
@@ -9507,7 +9511,7 @@ async fn json_rpc_meet_agent_session_lifecycle() {
 /// 3. Tool metadata (names/descriptions) is intact.
 #[tokio::test(flavor = "multi_thread")]
 async fn whatsapp_data_agent_tools_e2e_1341() {
-    use openhuman_core::core::event_bus::register_native_global;
+    use openhuman_core::core::bus::BUS;
     use openhuman_core::openhuman::channels::whatsapp_data::methods;
     use openhuman_core::openhuman::channels::whatsapp_data::types::{
         ListChatsRequest, ListMessagesRequest, SearchMessagesRequest, WhatsAppChat, WhatsAppMessage,
@@ -9544,15 +9548,15 @@ async fn whatsapp_data_agent_tools_e2e_1341() {
     }
 
     // Stand in for the shell store: register canned native handlers.
-    register_native_global::<ListChatsRequest, Vec<WhatsAppChat>, _, _>(
+    BUS.native().register::<ListChatsRequest, Vec<WhatsAppChat>, _, _>(
         methods::LIST_CHATS,
         |_req| async move { Ok(vec![sample_chat("alice@c.us"), sample_chat("team@g.us")]) },
     );
-    register_native_global::<ListMessagesRequest, Vec<WhatsAppMessage>, _, _>(
+    BUS.native().register::<ListMessagesRequest, Vec<WhatsAppMessage>, _, _>(
         methods::LIST_MESSAGES,
         |_req| async move { Ok(vec![sample_msg("Send the umbrella report by Friday")]) },
     );
-    register_native_global::<SearchMessagesRequest, Vec<WhatsAppMessage>, _, _>(
+    BUS.native().register::<SearchMessagesRequest, Vec<WhatsAppMessage>, _, _>(
         methods::SEARCH_MESSAGES,
         |req| async move {
             if req.query.to_lowercase().contains("umbrella") {

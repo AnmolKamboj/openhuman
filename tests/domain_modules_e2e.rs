@@ -551,7 +551,6 @@ async fn config_agent_tools_and_threads_mutation_paths_round_trip() {
         ("openhuman.tools_querit_search", json!({})),
         ("openhuman.tools_searxng_search", json!({})),
         ("openhuman.tools_apify_linkedin_scrape", json!({})),
-        ("openhuman.tools_polymarket_execute", json!({})),
     ]
     .into_iter()
     .enumerate()

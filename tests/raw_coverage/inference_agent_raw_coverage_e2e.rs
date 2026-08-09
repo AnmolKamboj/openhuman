@@ -20,8 +20,8 @@ use serde_json::{json, Value};
 use tempfile::{tempdir, TempDir};
 
 use openhuman_core::core::all::RegisteredController;
-use openhuman_core::core::event_bus::testing::BUS_HANDLER_LOCK;
-use openhuman_core::core::event_bus::{register_native_global, request_native_global};
+use openhuman_core::core::bus_testing::BUS_HANDLER_LOCK;
+use openhuman_core::core::bus::BUS;
 use openhuman_core::openhuman::agent::bus::{
     register_agent_handlers, AgentTurnRequest, AgentTurnResponse, AGENT_RUN_TURN_METHOD,
 };
@@ -2489,7 +2489,7 @@ async fn agent_triage_evaluator_covers_native_dispatch_decision_and_deferred_pat
     AgentDefinitionRegistry::init_global_builtins().expect("init builtins");
 
     register_agent_handlers();
-    let blocked = match request_native_global::<AgentTurnRequest, AgentTurnResponse>(
+    let blocked = match BUS.native().request::<AgentTurnRequest, AgentTurnResponse>(
         AGENT_RUN_TURN_METHOD,
         AgentTurnRequest {
             turn_model_source: openhuman_core::openhuman::agent::tinyagents::TurnModelSource::from_model(
@@ -2524,7 +2524,7 @@ async fn agent_triage_evaluator_covers_native_dispatch_decision_and_deferred_pat
         .to_string()
         .contains("Prompt blocked by security policy"));
 
-    register_native_global::<AgentTurnRequest, AgentTurnResponse, _, _>(
+    BUS.native().register::<AgentTurnRequest, AgentTurnResponse, _, _>(
         AGENT_RUN_TURN_METHOD,
         |req| async move {
             assert_eq!(req.channel_name, "triage");
@@ -2562,7 +2562,7 @@ async fn agent_triage_evaluator_covers_native_dispatch_decision_and_deferred_pat
     assert_eq!(decision.resolution_path.as_str(), "cloud");
     assert!(!decision.used_local);
 
-    register_native_global::<AgentTurnRequest, AgentTurnResponse, _, _>(
+    BUS.native().register::<AgentTurnRequest, AgentTurnResponse, _, _>(
         AGENT_RUN_TURN_METHOD,
         |_req| async move { Err("budget exceeded: add credits before retrying".into()) },
     );
@@ -2593,7 +2593,7 @@ async fn agent_triage_evaluator_covers_native_dispatch_decision_and_deferred_pat
 
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_handler = Arc::clone(&attempts);
-    register_native_global::<AgentTurnRequest, AgentTurnResponse, _, _>(
+    BUS.native().register::<AgentTurnRequest, AgentTurnResponse, _, _>(
         AGENT_RUN_TURN_METHOD,
         move |_req| {
             let attempts_for_handler = Arc::clone(&attempts_for_handler);
@@ -2714,14 +2714,8 @@ async fn inference_local_controllers_and_presets_cover_public_paths() {
     .expect("download progress");
     assert!(downloads.is_object());
 
-    let whisper_status = call(
-        controller(&local_registered, "whisper_install_status"),
-        json!({}),
-    )
-    .await
-    .expect("whisper install status");
-    assert_eq!(whisper_status.pointer("/engine"), Some(&json!("whisper")));
-
+    // `whisper_install_status` was deleted with the bundled whisper.cpp
+    // engine; piper is the only install-status controller left.
     let piper_status = call(
         controller(&local_registered, "piper_install_status"),
         json!({}),

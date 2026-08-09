@@ -1,6 +1,6 @@
-//! Whisper hallucination detection — shared filter for all voice pipelines.
+//! STT hallucination detection — shared filter for all voice pipelines.
 //!
-//! Whisper.cpp outputs "[BLANK_AUDIO]" for silence and stock phrases
+//! Whisper-family models output "[BLANK_AUDIO]" for silence and stock phrases
 //! ("Thank you for watching", etc.) when fed noisy or near-empty audio.
 //! This module provides a robust detector that catches:
 //!
@@ -90,7 +90,7 @@ fn strip_punctuation(word: &str) -> String {
     word.chars().filter(|c| !c.is_ascii_punctuation()).collect()
 }
 
-/// Check if whisper output is a known hallucination pattern.
+/// Check if an STT transcript is a known hallucination pattern.
 ///
 /// Detection layers (applied in order):
 /// 1. **Exact match** against `ALWAYS_HALLUCINATION` patterns (both modes),
@@ -106,7 +106,7 @@ pub fn is_hallucinated_output(text: &str, mode: HallucinationMode) -> bool {
         return false; // handled separately as "empty"
     }
 
-    // Strip trailing punctuation for matching (whisper often appends periods).
+    // Strip trailing punctuation for matching (engines often append periods).
     let stripped = normalized.trim_end_matches(|c: char| c.is_ascii_punctuation());
 
     // Layer 1: Exact match against known hallucination phrases.

@@ -55,7 +55,22 @@ fn retry_transient_failures(config: &Config) {
     }
 }
 
-fn enqueue_flush_stale(config: &Config) {
+/// Enqueue one stale-buffer flush job for the current 3-hour UTC window and
+/// wake the workers, reporting whether a job was actually created.
+///
+/// `Ok(false)` means the window already had one — the enqueue is deduped on
+/// `(date, hour_block)`, so this is the normal repeat-call outcome and not a
+/// failure.
+///
+/// `pub(crate)` (it was private) so the embedded memory driver's
+/// `MemoryMaintenance::consolidate` can drive the **same** path the periodic
+/// scheduler drives. That matters: the flush job fans out into per-tree `Seal`
+/// jobs whose label strategy is derived per tree by the queue worker
+/// (`TreeFactory::from_tree(&tree).label_strategy(...)`). The alternative entry
+/// point, `tree::tree::flush::flush_stale_buffers_default`, takes **one**
+/// `LabelStrategy` for every tree, which no production caller uses and which
+/// would apply one tree kind's labelling to all of them.
+pub(crate) fn enqueue_flush_stale_job(config: &Config) -> Result<bool, String> {
     let memory = crate::openhuman::memory::tinycortex::memory_config_from(
         config,
         config.workspace_dir.clone(),
@@ -63,11 +78,16 @@ fn enqueue_flush_stale(config: &Config) {
     match tinycortex::memory::queue::scheduler::enqueue_flush_stale(&memory) {
         Ok(Some(_)) => {
             super::worker::wake_workers();
+            Ok(true)
         }
-        Ok(None) => {}
-        Err(err) => {
-            log::warn!("[memory::jobs] periodic flush_stale enqueue failed: {err:#}");
-        }
+        Ok(None) => Ok(false),
+        Err(err) => Err(format!("{err:#}")),
+    }
+}
+
+fn enqueue_flush_stale(config: &Config) {
+    if let Err(err) = enqueue_flush_stale_job(config) {
+        log::warn!("[memory::jobs] periodic flush_stale enqueue failed: {err}");
     }
 }
 

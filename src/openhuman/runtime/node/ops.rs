@@ -1,7 +1,8 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::host_runtime::{NativeRuntime, RuntimeAdapter};
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::Memory;
@@ -216,7 +217,7 @@ pub async fn execute_tool(
         tool_name,
         "[runtime_node::ops] execute_tool: publish ToolExecutionStarted"
     );
-    publish_global(DomainEvent::ToolExecutionStarted {
+    BUS.publish(DomainEvent::ToolExecutionStarted {
         tool_name: tool_name.to_string(),
         session_id: "javascript".to_string(),
     });
@@ -246,7 +247,7 @@ pub async fn execute_tool(
         tool_name,
         success, elapsed_ms, "[runtime_node::ops] execute_tool: publish ToolExecutionCompleted"
     );
-    publish_global(DomainEvent::ToolExecutionCompleted {
+    BUS.publish(DomainEvent::ToolExecutionCompleted {
         tool_name: tool_name.to_string(),
         session_id: "javascript".to_string(),
         success,

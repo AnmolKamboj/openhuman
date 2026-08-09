@@ -1776,9 +1776,9 @@ fn discover_automations_excludes_agents_skills_root() {
             .path()
             .join(".agents")
             .join("skills")
-            .join("polymarket")
+            .join("example_skill")
             .join(SKILL_MD),
-        "---\nname: polymarket\ndescription: Query Polymarket\n---\n",
+        "---\nname: example_skill\ndescription: Example skill\n---\n",
     );
 
     let automations = discover_automations(Some(home.path()), None, false);
@@ -1788,7 +1788,7 @@ fn discover_automations_excludes_agents_skills_root() {
     );
     let all = discover_workflows(Some(home.path()), None, false);
     assert_eq!(all.len(), 1);
-    assert_eq!(all[0].name, "polymarket");
+    assert_eq!(all[0].name, "example_skill");
 }
 
 #[test]

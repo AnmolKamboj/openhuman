@@ -6,14 +6,17 @@
 //! re-learning a new shape:
 //!
 //! - `provider.rs` — `impl ComposioProvider for ClickUpProvider`
-//! - `normalization.rs`     — payload-shape helpers (results extraction, title)
+//! - `normalization`  — payload-shape helpers, now `tinycortex::…::normalize::clickup`
 //! - `ingest.rs`   — memory_tree document ingest (issue #2885)
 //! - `tools.rs`    — `CLICKUP_CURATED` whitelist of Composio actions
 //! - `tests.rs`    — unit tests for the helpers + trait metadata
 //!
 //! Issue: #2288 (introduction); #2885 (memory_tree migration).
 
-mod normalization;
+// The payload normalisers moved to tinycortex (they are pure Value
+// transforms, i.e. driver-side). Aliased under the old module name so
+// every `normalization::extract_*` call site below stays unchanged.
+use tinycortex::memory::sync::composio::providers::normalize::clickup as normalization;
 mod provider;
 #[cfg(test)]
 mod tests;

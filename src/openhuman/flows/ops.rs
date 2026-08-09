@@ -3821,13 +3821,13 @@ fn title_case_toolkit(toolkit: &str) -> String {
         .join(" ")
 }
 
-/// Publishes a [`DomainEvent::FlowChanged`](crate::core::event_bus::DomainEvent::FlowChanged)
+/// Publishes a [`DomainEvent::FlowChanged`](crate::core::events::DomainEvent::FlowChanged)
 /// so an open Workflows list/canvas refetches (bridged to a `flow:changed`
 /// socket event) — the observability half of audit F6. Best-effort broadcast;
 /// `actor` is a coarse hint (`"system"` for RPC-driven changes today).
 fn publish_flow_changed(flow_id: &str, kind: &str, actor: &str) {
     tracing::debug!(target: "flows", %flow_id, kind, actor, "[flows] publishing FlowChanged");
-    crate::core::event_bus::publish_global(crate::core::event_bus::DomainEvent::FlowChanged {
+    crate::core::bus::BUS.publish(crate::core::events::DomainEvent::FlowChanged {
         flow_id: flow_id.to_string(),
         kind: kind.to_string(),
         actor: actor.to_string(),
@@ -4736,7 +4736,7 @@ fn publish_flow_run_started(flow_id: &str, thread_id: &str) {
         run_id = %thread_id,
         "[flows] flows_run: publishing FlowRunStarted"
     );
-    crate::core::event_bus::publish_global(crate::core::event_bus::DomainEvent::FlowRunStarted {
+    crate::core::bus::BUS.publish(crate::core::events::DomainEvent::FlowRunStarted {
         flow_id: flow_id.to_string(),
         run_id: thread_id.to_string(),
     });
@@ -5731,8 +5731,8 @@ pub async fn sweep_expired_parked_runs(config: &Config) -> usize {
             flow_id,
             "[flows] TTL sweep: publishing FlowRunFinished for expired parked run"
         );
-        crate::core::event_bus::publish_global(
-            crate::core::event_bus::DomainEvent::FlowRunFinished {
+        crate::core::bus::BUS.publish(
+            crate::core::events::DomainEvent::FlowRunFinished {
                 flow_id: flow_id.to_string(),
                 run_id: run_id.to_string(),
                 status: "cancelled".to_string(),
@@ -5806,8 +5806,8 @@ pub async fn sweep_orphaned_running_runs_on_boot(config: &Config) -> usize {
                 if let Err(e) = store::record_run(config, &flow_id, "interrupted") {
                     tracing::warn!(target: "flows", run_id = %run_id, flow_id = %flow_id, error = %e, "[flows] boot sweep: failed to update flow summary for reconciled run");
                 }
-                crate::core::event_bus::publish_global(
-                    crate::core::event_bus::DomainEvent::FlowRunFinished {
+                crate::core::bus::BUS.publish(
+                    crate::core::events::DomainEvent::FlowRunFinished {
                         flow_id: flow_id.clone(),
                         run_id: run_id.clone(),
                         status: "interrupted".to_string(),
@@ -6078,7 +6078,7 @@ fn finish_flow_run_row(
         status,
         "[flows] finish_flow_run_row: publishing FlowRunFinished"
     );
-    crate::core::event_bus::publish_global(crate::core::event_bus::DomainEvent::FlowRunFinished {
+    crate::core::bus::BUS.publish(crate::core::events::DomainEvent::FlowRunFinished {
         flow_id: flow_id.to_string(),
         run_id: thread_id.to_string(),
         status: status.to_string(),

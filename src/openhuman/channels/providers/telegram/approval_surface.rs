@@ -35,7 +35,8 @@
 //! [`ApprovalGate::decide`]: crate::openhuman::security::approval::ApprovalGate::decide
 //! [`parse_approval_reply`]: crate::openhuman::security::approval::parse_approval_reply
 
-use crate::core::event_bus::{DomainEvent, EventHandler};
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
 use crate::openhuman::channels::traits::{ChannelSendExt, SendMessage};
 use crate::openhuman::channels::Channel;
 use async_trait::async_trait;
@@ -184,7 +185,7 @@ pub(crate) fn format_approval_prompt(tool_name: &str, action_summary: &str) -> S
 }
 
 #[async_trait]
-impl EventHandler for TelegramApprovalSurfaceSubscriber {
+impl EventHandler<DomainEvent> for TelegramApprovalSurfaceSubscriber {
     fn name(&self) -> &str {
         "telegram::approval_surface"
     }

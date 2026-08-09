@@ -307,13 +307,13 @@ pub struct Agent {
     /// Drained before each provider dispatch so a connection that flips to
     /// ACTIVE mid-turn can refresh the delegation schema in the same thread.
     pub(super) composio_integrations_rx:
-        Option<tokio::sync::broadcast::Receiver<crate::core::event_bus::DomainEvent>>,
+        Option<tinybus::events::EventReceiver<crate::core::events::DomainEvent>>,
     /// Lazily-armed global-bus receiver for [`DomainEvent::WorkflowsChanged`]
     /// (skill install / uninstall / create). Drained at each turn boundary so
     /// `refresh_workflows` only re-scans disk when the installed set actually
     /// changed — no per-turn filesystem walk on the steady-state hot path.
     pub(super) skill_events_rx:
-        Option<tokio::sync::broadcast::Receiver<crate::core::event_bus::DomainEvent>>,
+        Option<tinybus::events::EventReceiver<crate::core::events::DomainEvent>>,
     /// Toolkit slugs already surfaced to the model as freshly-connected
     /// this session. Seeded at turn 1 with the startup connected set, then
     /// extended whenever a mid-session connect is announced — so each new

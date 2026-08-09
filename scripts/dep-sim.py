@@ -54,7 +54,7 @@ from pathlib import Path
 # with the same list in kernel-floor.sh — if you add one here, add it there.
 NATIVE = {
     "libsqlite3-sys", "libgit2-sys", "libz-sys", "lzma-sys", "aws-lc-sys",
-    "ring", "whisper-rs-sys", "openssl-sys", "zstd-sys", "bzip2-sys",
+    "ring", "openssl-sys", "zstd-sys", "bzip2-sys",
     "curl-sys", "onig_sys", "tree-sitter",
 }
 

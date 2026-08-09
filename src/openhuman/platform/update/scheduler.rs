@@ -6,7 +6,8 @@
 
 use std::time::Duration;
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::config::UpdateConfig;
 use crate::openhuman::platform::update::core as update_core;
 
@@ -21,9 +22,9 @@ pub async fn run(config: UpdateConfig) {
         return;
     }
 
-    crate::core::event_bus::init_global(crate::core::event_bus::DEFAULT_CAPACITY);
+    crate::core::bus::init().await.expect("bus init");
     crate::openhuman::platform::health::bus::register_health_subscriber();
-    publish_global(DomainEvent::SystemStartup {
+    BUS.publish(DomainEvent::SystemStartup {
         component: "update_checker".to_string(),
     });
 
@@ -63,7 +64,7 @@ async fn tick() {
                     info.latest_version
                 );
             }
-            publish_global(DomainEvent::HealthChanged {
+            BUS.publish(DomainEvent::HealthChanged {
                 component: "update_checker".to_string(),
                 healthy: true,
                 message: None,
@@ -71,7 +72,7 @@ async fn tick() {
         }
         Err(e) => {
             log::warn!("[update:scheduler] update check failed: {e}");
-            publish_global(DomainEvent::HealthChanged {
+            BUS.publish(DomainEvent::HealthChanged {
                 component: "update_checker".to_string(),
                 healthy: false,
                 message: Some(e.to_string()),

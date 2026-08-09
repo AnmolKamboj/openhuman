@@ -575,7 +575,7 @@ fn collect_tree_root_summaries_maps_namespace_body_and_timestamp() {
     // store tuple into the `NamespaceSummary` the prompt renderer stamps.
     use crate::openhuman::config::Config;
     use crate::openhuman::memory::tree::tree_runtime::store::write_node;
-    use crate::openhuman::memory::tree::tree_runtime::types::{
+    use tinycortex::memory::tree::runtime::{
         derive_parent_id, estimate_tokens, level_from_node_id, TreeNode,
     };
 
@@ -616,7 +616,7 @@ fn collect_tree_root_summaries_maps_namespace_body_and_timestamp() {
 fn collect_tree_root_summaries_reads_only_profile_memory_subtree() {
     use crate::openhuman::config::Config;
     use crate::openhuman::memory::tree::tree_runtime::store::write_node;
-    use crate::openhuman::memory::tree::tree_runtime::types::{
+    use tinycortex::memory::tree::runtime::{
         derive_parent_id, estimate_tokens, level_from_node_id, TreeNode,
     };
 

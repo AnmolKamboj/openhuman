@@ -94,7 +94,7 @@ pub struct TriggerEnvelope {
 
     /// Wall-clock receipt time — stamped by the caller so the triage
     /// pipeline can report a meaningful `latency_ms` when it
-    /// publishes [`crate::core::event_bus::DomainEvent::TriggerEvaluated`].
+    /// publishes [`crate::core::events::DomainEvent::TriggerEvaluated`].
     pub received_at: DateTime<Utc>,
 
     /// Set when this trigger corresponds to a task-board card, so the

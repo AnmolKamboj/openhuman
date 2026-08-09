@@ -55,14 +55,14 @@ function isTransientError(err: unknown): boolean {
 }
 
 /**
- * A missing local STT binary (`whisper-cli`) won't reappear on retry, and the
- * native MediaRecorder codec (webm/mp4) can't use the binary-free in-process
- * engine — only 16kHz WAV can. This error must therefore stop the *current*
- * codec's retry loop immediately (no wasted backoff), yet still let
- * `transcribeWithFallback` re-encode to WAV and reach the in-process route.
- * It is deliberately NOT a `PERMANENT_ERROR_PATTERN`: those bail out before the
- * WAV fallback, which is exactly the path that makes local STT work without an
- * external binary on macOS (issue #3425).
+ * A "binary not found" failure means the engine on the other side of the RPC
+ * could not run at all, which no amount of retrying the *same* codec will fix.
+ * Stop the current codec's retry loop immediately (no wasted backoff) yet still
+ * let `transcribeWithFallback` re-encode to 16 kHz WAV and try once more —
+ * plain WAV is the format every engine accepts, so it is the one shot worth
+ * taking. Deliberately NOT a `PERMANENT_ERROR_PATTERN`: those bail out before
+ * the WAV fallback, which is exactly the path that rescued local STT on macOS
+ * (issue #3425) and still rescues a hosted engine that rejects a container.
  */
 function isMissingLocalBinaryError(err: unknown): boolean {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
@@ -90,7 +90,7 @@ export function isLowConfidenceTranscript(text: string): boolean {
 
 /** MIME types MediaRecorder will be asked to use, in priority order.
  *
- *  AAC-in-MP4 is preferred because the hosted STT upstream (GMI Whisper)
+ *  AAC-in-MP4 is preferred because the hosted STT upstream
  *  rejected Opus-in-WebM with "Invalid JSON payload" — AAC is far more
  *  broadly accepted by OpenAI-compatible audio endpoints. We fall through
  *  to WebM/Opus on Chromium builds that haven't shipped MP4 recording, then
@@ -140,9 +140,10 @@ export { STT_MAX_RETRIES };
  * dispatched STT RPC (`openhuman.voice_stt_dispatch`), then forwards the
  * transcript through `onSubmit` so it joins the agent's normal send pipeline.
  *
- * The provider (cloud vs local Whisper) is resolved server-side from
- * `config.local_ai.stt_provider`, so the renderer doesn't have to know
- * which backend ran — it only sees `{ text, provider }`.
+ * Which hosted engine runs is resolved server-side from
+ * `voice_server.stt_engine` (or an explicit `stt_provider` routing string), so
+ * the renderer doesn't have to know which one ran — it only sees
+ * `{ text, provider }`.
  *
  * Single button, single decision: tap once to start recording, tap again to
  * stop and send. No textarea — that's the whole point of the mascot tab.

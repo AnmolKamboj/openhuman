@@ -551,7 +551,7 @@ allowlist is seam-free.
 **Phase 7 — Exit gate.**
 Full `scripts/test-rust-with-mock.sh`, `cargo test --all-features` in both
 vendored crates, slim disabled build **and** `cargo test --lib
---no-default-features --features tokenjuice-treesitter core::`, `pnpm
+--no-default-features core::`, `pnpm
 rust:check`, deletion-ledger totals reconciled, architecture docs rewritten.
 
 ---

@@ -1448,6 +1448,7 @@ async fn load_and_apply_voice_server_settings_rejects_invalid_activation_mode() 
         custom_dictionary: None,
         always_on_enabled: None,
         wake_word: None,
+        stt_engine: None,
     };
     let err = load_and_apply_voice_server_settings(patch)
         .await
@@ -1502,6 +1503,7 @@ async fn load_and_apply_voice_server_settings_accepts_valid_modes_and_clamps() {
         custom_dictionary: Some(vec!["term".into()]),
         always_on_enabled: Some(true),
         wake_word: Some("Hey Tiny".to_string()),
+        stt_engine: Some("elevenlabs".into()),
     };
     let outcome = load_and_apply_voice_server_settings(patch)
         .await
@@ -1512,6 +1514,46 @@ async fn load_and_apply_voice_server_settings_accepts_valid_modes_and_clamps() {
             .unwrap_or(-1.0)
             >= 0.0
     );
+    assert_eq!(
+        outcome.value["config"]["voice_server"]["stt_engine"]
+            .as_str()
+            .unwrap_or_default(),
+        "elevenlabs",
+        "the engine picker must persist through the config update RPC"
+    );
+    unsafe {
+        std::env::remove_var("OPENHUMAN_WORKSPACE");
+    }
+}
+
+/// An engine name the core does not know must fail loudly. Defaulting to the
+/// backend proxy would silently transcribe (and bill) somewhere the caller did
+/// not ask for.
+#[tokio::test]
+async fn load_and_apply_voice_server_settings_rejects_unknown_stt_engine() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempdir().unwrap();
+    unsafe {
+        std::env::set_var("OPENHUMAN_WORKSPACE", tmp.path());
+    }
+    let patch = VoiceServerSettingsPatch {
+        auto_start: None,
+        hotkey: None,
+        activation_mode: None,
+        skip_cleanup: None,
+        min_duration_secs: None,
+        silence_threshold: None,
+        custom_dictionary: None,
+        always_on_enabled: None,
+        wake_word: None,
+        // The removed local engine is the case that matters: an old client
+        // could still send it.
+        stt_engine: Some("whisper".into()),
+    };
+    let err = load_and_apply_voice_server_settings(patch)
+        .await
+        .unwrap_err();
+    assert!(err.contains("invalid stt_engine"), "got: {err}");
     unsafe {
         std::env::remove_var("OPENHUMAN_WORKSPACE");
     }

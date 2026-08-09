@@ -97,6 +97,9 @@ pub struct VoiceServerSettingsPatch {
     pub custom_dictionary: Option<Vec<String>>,
     pub always_on_enabled: Option<bool>,
     pub wake_word: Option<String>,
+    /// Hosted STT engine name — `"backend"` / `"elevenlabs"` / `"openai"`
+    /// (the `"cloud"` / `"openhuman"` aliases also resolve to backend).
+    pub stt_engine: Option<String>,
 }
 
 /// Updates the browser-related settings in the configuration.
@@ -600,6 +603,7 @@ pub async fn get_voice_server_settings() -> Result<RpcOutcome<serde_json::Value>
         "custom_dictionary": config.voice_server.custom_dictionary,
         "always_on_enabled": config.voice_server.always_on_enabled,
         "wake_word": config.voice_server.wake_word,
+        "stt_engine": config.voice_server.stt_engine,
     });
     Ok(RpcOutcome::new(
         result,
@@ -652,6 +656,15 @@ pub async fn load_and_apply_voice_server_settings(
     }
     if let Some(wake_word) = update.wake_word {
         config.voice_server.wake_word = wake_word.trim().to_string();
+    }
+    if let Some(engine) = update.stt_engine {
+        // Reject rather than silently defaulting: an unknown engine name means
+        // the caller and the core disagree about what is available, and quietly
+        // routing to the backend proxy would bill the wrong account.
+        let parsed = crate::openhuman::config::SttEngine::parse(&engine).ok_or_else(|| {
+            format!("invalid stt_engine: {engine} (valid: backend, elevenlabs, openai)")
+        })?;
+        config.voice_server.stt_engine = parsed;
     }
     config.save().await.map_err(|e| e.to_string())?;
     let snapshot = snapshot_config_json(&config)?;

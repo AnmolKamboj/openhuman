@@ -40,6 +40,30 @@ pub async fn get_source(id: &str) -> Result<Option<MemorySourceEntry>, String> {
     registry().await?.get(id).map_err(|error| error.to_string())
 }
 
+/// [`get_source`] against an **explicit** config rather than the process-global
+/// one.
+///
+/// [`registry`] resolves its config path through
+/// `config_rpc::load_config_with_timeout`, i.e. from the process environment.
+/// That is right for RPC handlers, which serve the active user, and wrong for
+/// the embedded memory driver
+/// ([`crate::openhuman::memory::driver::embedded`]), which is bound to one
+/// workspace and holds a `Config` re-anchored to it. Reading the global path
+/// there would let a driver bound to workspace B answer with workspace A's
+/// sources — the cross-workspace leak the workspace-keyed binding map exists to
+/// prevent.
+///
+/// Synchronous because the registry read itself is; only the config lookup in
+/// [`registry`] was ever async.
+pub(crate) fn get_source_in(
+    config: &crate::openhuman::config::Config,
+    id: &str,
+) -> Result<Option<MemorySourceEntry>, String> {
+    tinycortex::memory::sources::SourceRegistry::new(config.config_path.clone())
+        .get(id)
+        .map_err(|error| error.to_string())
+}
+
 pub async fn add_source(entry: MemorySourceEntry) -> Result<MemorySourceEntry, String> {
     let _guard = memory_sources_write_guard().await;
     log::debug!("[memory_sources] crate add kind={}", entry.kind.as_str());

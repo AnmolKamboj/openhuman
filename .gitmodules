@@ -19,3 +19,7 @@
 [submodule "vendor/tinyhumans-sdk"]
 	path = vendor/tinyhumans-sdk
 	url = https://github.com/tinyhumansai/sdk.git
+[submodule "vendor/tinybus"]
+	path = vendor/tinybus
+	url = https://github.com/tinyhumansai/tinybus.git
+	branch = main

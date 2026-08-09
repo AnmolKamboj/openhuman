@@ -19,7 +19,8 @@
 //! (step 1). This avoids double-delivering to a channel that doesn't
 //! exist.
 
-use crate::core::event_bus::{DomainEvent, EventHandler};
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
 use crate::core::socketio::WebChannelEvent;
 use crate::openhuman::channels::{Channel, ChannelSendExt, SendMessage};
 use crate::openhuman::web_chat::publish_web_channel_event;
@@ -45,7 +46,7 @@ pub fn register_web_only_proactive_subscriber() {
     use std::sync::Once;
     static REGISTERED: Once = Once::new();
     REGISTERED.call_once(|| {
-        if let Some(handle) = crate::core::event_bus::subscribe_global(Arc::new(
+        if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
             ProactiveMessageSubscriber::web_only(),
         )) {
             std::mem::forget(handle);
@@ -158,7 +159,7 @@ pub fn set_runtime_active_channel(channel: Option<String>) {
 }
 
 #[async_trait]
-impl EventHandler for ProactiveMessageSubscriber {
+impl EventHandler<DomainEvent> for ProactiveMessageSubscriber {
     fn name(&self) -> &str {
         "channels::proactive"
     }
