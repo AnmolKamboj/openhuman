@@ -155,11 +155,11 @@ export const config: Options.Testrunner & Record<string, unknown> = {
   reporters: ['spec'],
   mochaOpts: {
     ui: 'bdd',
-    // A cold reset + loopback onboarding routinely takes 25–30s on CI.
-    // Leave room for the first real assertion instead of timing out a valid
-    // suite during setup; individual polling helpers still keep their own
-    // short, diagnostic timeouts.
-    timeout: 60_000,
+    // Under the native Linux driver, a reset after a tool-heavy spec can wait
+    // behind WebKit and core cleanup long enough to exceed one minute. Keep
+    // the historical two-minute suite budget; individual polling helpers
+    // still keep their own short, diagnostic timeouts.
+    timeout: 120_000,
   },
   autoCompileOpts: { tsNodeOpts: { project: tsconfigE2ePath } },
   /**
