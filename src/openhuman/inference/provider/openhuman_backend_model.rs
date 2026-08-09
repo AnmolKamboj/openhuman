@@ -529,6 +529,7 @@ mod tests {
             raw: Some(raw),
             resolved_model: None,
             continue_turn: None,
+            served_from_cache: false,
         };
 
         let projected = project_managed_usage(response);
@@ -569,6 +570,7 @@ mod tests {
             raw: Some(serde_json::json!({ "id": "resp_1" })),
             resolved_model: None,
             continue_turn: None,
+            served_from_cache: false,
         };
 
         let projected = project_managed_usage(response);
@@ -595,6 +597,7 @@ mod tests {
             code: Some("BAD_REQUEST".to_string()),
             message: "API key not configured for provider".to_string(),
             retryable: false,
+            retry_after_ms: None,
             raw: None,
         };
         assert!(is_provider_not_configured_error(&err));
@@ -612,6 +615,7 @@ mod tests {
             code: Some("BAD_REQUEST".to_string()),
             message: "invalid request: messages must not be empty".to_string(),
             retryable: false,
+            retry_after_ms: None,
             raw: None,
         };
         assert!(!is_provider_not_configured_error(&err));
@@ -630,6 +634,7 @@ mod tests {
             code: Some("BAD_REQUEST".to_string()),
             message: "credentials not configured for provider 'anthropic'".to_string(),
             retryable: false,
+            retry_after_ms: None,
             raw: None,
         };
         assert!(is_provider_not_configured_error(&err));
@@ -651,6 +656,7 @@ mod tests {
             code: Some("BAD_REQUEST".to_string()),
             message: "webhook target not configured".to_string(),
             retryable: false,
+            retry_after_ms: None,
             raw: None,
         };
         assert!(!is_provider_not_configured_error(&err));
@@ -665,6 +671,7 @@ mod tests {
             code: None,
             message: "API key not configured for provider".to_string(),
             retryable: false,
+            retry_after_ms: None,
             raw: None,
         };
         assert!(!is_provider_not_configured_error(&err));

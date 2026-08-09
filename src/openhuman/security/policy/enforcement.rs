@@ -13,6 +13,31 @@ impl SecurityPolicy {
         self.autonomy != AutonomyLevel::ReadOnly
     }
 
+    /// The **tier** half of an act check, without touching the hourly action
+    /// budget.
+    ///
+    /// [`Self::enforce_tool_operation`]'s `Act` arm is tier *plus* budget, and
+    /// that budget is denominated in agent *tool calls*. Callers that write on
+    /// a caller's behalf at a finer grain than a tool call — the kernel memory
+    /// guard, which sits under `MemoryCore::store` and is hit hundreds of times
+    /// by one bulk ingest — want the tier refusal and nothing else. That is the
+    /// same shape the ~15 acting tools which gate on bare [`Self::can_act`]
+    /// already use (e.g. `tools/impl/filesystem/file_write.rs`,
+    /// `tools/impl/system/python_exec.rs`, `cron/scheduler.rs`).
+    pub fn enforce_write_tier(&self, operation_name: &str) -> Result<(), String> {
+        if !self.can_act() {
+            log::warn!(
+                "[openhuman:policy] Operation '{}' blocked: read-only mode",
+                operation_name
+            );
+            return Err(format!(
+                "{POLICY_BLOCKED_MARKER} Security policy: read-only mode, cannot perform \
+                 '{operation_name}'. Do not retry; this tier blocks all write actions."
+            ));
+        }
+        Ok(())
+    }
+
     /// Enforce policy for a tool operation.
     ///
     /// Read operations are always allowed by autonomy/rate gates.
@@ -25,16 +50,7 @@ impl SecurityPolicy {
         match operation {
             ToolOperation::Read => Ok(()),
             ToolOperation::Act => {
-                if !self.can_act() {
-                    log::warn!(
-                        "[openhuman:policy] Operation '{}' blocked: read-only mode",
-                        operation_name
-                    );
-                    return Err(format!(
-                        "{POLICY_BLOCKED_MARKER} Security policy: read-only mode, cannot perform \
-                         '{operation_name}'. Do not retry; this tier blocks all write actions."
-                    ));
-                }
+                self.enforce_write_tier(operation_name)?;
 
                 if !self.record_action() {
                     log::warn!(

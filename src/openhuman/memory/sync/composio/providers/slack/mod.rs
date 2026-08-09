@@ -6,7 +6,11 @@
 //! against the user's Composio-authorized Slack connection. The reusable
 //! synchronization and ingestion engine is owned by tinycortex.
 
-pub mod post_process;
+// The Slack post-processor moved to tinycortex (a pure Value transform, i.e.
+// driver-side). Re-exported under the old module name — `pub`, not a plain
+// `use`, because `tests/raw_coverage/memory_threads_raw_coverage_e2e.rs`
+// imports this path directly.
+pub use tinycortex::memory::sync::composio::providers::normalize::slack_post_process as post_process;
 pub mod rpc;
 pub mod schemas;
 pub mod types;

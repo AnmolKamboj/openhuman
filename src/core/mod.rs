@@ -10,6 +10,7 @@ pub mod agent_cli;
 pub mod all;
 pub mod auth;
 pub mod cli;
+pub mod cli_capability;
 pub mod dispatch;
 pub mod event_bind_tokens;
 pub mod bus;
@@ -32,6 +33,8 @@ pub mod sentry_transport;
 pub mod shutdown;
 pub mod socketio;
 pub mod subconscious_cli;
+pub mod subsystem;
+pub mod subsystems_cli;
 pub mod types;
 
 /// Canonical function contract for domain controllers.

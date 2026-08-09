@@ -123,6 +123,7 @@ impl MockLlm {
                 raw: None,
                 resolved_model: None,
                 continue_turn: None,
+            served_from_cache: false,
             };
         } else {
             "Mock orchestrator handled the promoted trigger.".to_string()

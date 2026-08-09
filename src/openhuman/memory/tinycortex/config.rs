@@ -44,6 +44,17 @@ pub fn memory_config_from(config: &Config, workspace: PathBuf) -> MemoryConfig {
     mc
 }
 
+/// Build a [`MemoryConfig`] rooted at the host's own `workspace_dir`.
+///
+/// This is the shape ~15 `memory/**` adapter modules each used to re-declare as
+/// a private `fn engine_config` / `fn memory_config` / `fn config`; they were
+/// byte-identical, so they now all call this. Use [`memory_config_from`]
+/// directly only when the workspace root is *not* `config.workspace_dir` (the
+/// sync/rebuild paths that address an alternate root).
+pub fn engine_config(config: &Config) -> MemoryConfig {
+    memory_config_from(config, config.workspace_dir.clone())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -75,5 +86,24 @@ mod tests {
         assert_eq!(mc.tree.output_token_budget, 5_000);
         assert_eq!(mc.tree.summary_fanout, 10);
         assert_eq!(mc.tree.flush_age_secs, 604_800);
+    }
+
+    #[test]
+    fn engine_config_roots_at_host_workspace_dir() {
+        // Pins the wrapper's only behavioural claim: identical to
+        // `memory_config_from(config, config.workspace_dir.clone())`.
+        let mut config = Config::default();
+        config.memory.embedding_dimensions = 768;
+        config.memory_tree.embedding_strict = true;
+
+        let via_wrapper = engine_config(&config);
+        let via_explicit = memory_config_from(&config, config.workspace_dir.clone());
+
+        assert_eq!(via_wrapper.workspace, config.workspace_dir);
+        assert_eq!(via_wrapper.workspace, via_explicit.workspace);
+        assert_eq!(via_wrapper.content_root, via_explicit.content_root);
+        assert_eq!(via_wrapper.embedding.dim, via_explicit.embedding.dim);
+        assert_eq!(via_wrapper.embedding.model, via_explicit.embedding.model);
+        assert_eq!(via_wrapper.embedding.strict, via_explicit.embedding.strict);
     }
 }

@@ -19,7 +19,8 @@ use crate::openhuman::memory::ingestion::{
 };
 use crate::openhuman::memory::store::namespace_store::UnifiedMemory;
 use crate::openhuman::memory::store::types::{
-    NamespaceDocumentInput, NamespaceMemoryHit, NamespaceRetrievalContext,
+    GraphRelationRecord, MemoryKvRecord, NamespaceDocumentInput, NamespaceMemoryHit,
+    NamespaceRetrievalContext, StoredMemoryDocument,
 };
 
 /// Reference-counted handle to a `MemoryClient`.
@@ -72,7 +73,12 @@ impl MemoryClient {
     /// want to build on top of the `Memory` trait (e.g. the
     /// tool-scoped memory layer) without depending on the concrete
     /// `MemoryClient` type or holding a reference to it.
-    pub fn memory_handle(&self) -> Arc<dyn crate::openhuman::memory::Memory> {
+    ///
+    /// Intentionally `pub(crate)` — handing a raw `Arc<dyn Memory>` to an
+    /// external consumer bypasses any policy decorator wrapped around the
+    /// `MemoryClient` API, so the escape hatch stays in-crate. Mirrors
+    /// [`Self::profile_conn`].
+    pub(crate) fn memory_handle(&self) -> Arc<dyn crate::openhuman::memory::Memory> {
         Arc::clone(&self.inner) as Arc<dyn crate::openhuman::memory::Memory>
     }
 
@@ -316,6 +322,21 @@ impl MemoryClient {
         self.inner.list_documents(namespace).await
     }
 
+    /// Fetch one document by `(namespace, key)`.
+    ///
+    /// `pub(crate)` on the same reasoning as [`Self::memory_handle`]: the only
+    /// in-crate consumer is the embedded memory driver
+    /// ([`crate::openhuman::memory::driver::embedded`]), which needs a read-one
+    /// path that [`Self::list_documents`] cannot provide — the latter's SELECT
+    /// carries no `content` column.
+    pub(crate) async fn get_document(
+        &self,
+        namespace: &str,
+        key: &str,
+    ) -> Result<Option<StoredMemoryDocument>, String> {
+        self.inner.get_document_by_key(namespace, key).await
+    }
+
     /// List all unique namespaces in the memory store.
     pub async fn list_namespaces(&self) -> Result<Vec<String>, String> {
         self.inner.list_namespaces().await
@@ -443,6 +464,63 @@ impl MemoryClient {
         match namespace {
             Some(ns) => self.inner.kv_delete_namespace(ns, key).await,
             None => self.inner.kv_delete_global(key).await,
+        }
+    }
+
+    /// Typed key/value records for one namespace, or the global slice when
+    /// `namespace` is `None`.
+    ///
+    /// `pub(crate)` for the embedded driver. Distinct from
+    /// [`Self::kv_list_namespace`], which returns a camelCase
+    /// `Vec<serde_json::Value>` with no `updated_at` and no global slice —
+    /// re-parsing that back into [`MemoryKvRecord`] would be lossy new logic.
+    pub(crate) async fn kv_records(
+        &self,
+        namespace: Option<&str>,
+    ) -> Result<Vec<MemoryKvRecord>, String> {
+        match namespace {
+            Some(ns) => self.inner.kv_records_namespace(ns).await,
+            None => self.inner.kv_records_global().await,
+        }
+    }
+
+    /// Typed relation records, filtered by subject/predicate.
+    ///
+    /// `namespace: None` spans every namespace *and* the global graph, matching
+    /// [`Self::graph_query`]'s `None` behaviour. `pub(crate)` for the embedded
+    /// driver, for the same reason as [`Self::kv_records`]: `graph_query`
+    /// returns camelCase JSON, these return the record type directly.
+    ///
+    /// Inherits the storage layer's hard `LIMIT 300` per SQL statement.
+    pub(crate) async fn graph_relations(
+        &self,
+        namespace: Option<&str>,
+        subject: Option<&str>,
+        predicate: Option<&str>,
+    ) -> Result<Vec<GraphRelationRecord>, String> {
+        match namespace {
+            Some(ns) => {
+                self.inner
+                    .graph_relations_namespace(ns, subject, predicate)
+                    .await
+            }
+            None => {
+                let mut rows = self
+                    .inner
+                    .graph_relations_all_namespaces(subject, predicate)
+                    .await?;
+                rows.extend(
+                    self.inner
+                        .graph_relations_global(subject, predicate)
+                        .await?,
+                );
+                rows.sort_by(|a, b| {
+                    b.updated_at
+                        .partial_cmp(&a.updated_at)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+                Ok(rows)
+            }
         }
     }
 

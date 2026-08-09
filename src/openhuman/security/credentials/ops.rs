@@ -555,8 +555,9 @@ async fn store_session_inner(
             logs.push(format!("memory client bind warning: {e}"));
         }
     }
-    match crate::core::runtime::context::CoreContext::rebind_default_workspace_dir(
+    match crate::core::runtime::context::CoreContext::rebind_default_workspace(
         &effective_config.workspace_dir,
+        effective_config.subsystems.memory.clone(),
     ) {
         Ok(_) => logs.push(format!(
             "core context bound to workspace {}",
@@ -811,9 +812,10 @@ pub async fn clear_session(config: &Config) -> Result<RpcOutcome<serde_json::Val
             if let Err(error) = crate::openhuman::memory::global::init(workspace.clone()) {
                 tracing::warn!(%error, "failed to rebind memory after logout");
             }
-            if let Err(error) =
-                crate::core::runtime::context::CoreContext::rebind_default_workspace_dir(&workspace)
-            {
+            if let Err(error) = crate::core::runtime::context::CoreContext::rebind_default_workspace(
+                &workspace,
+                signed_out_config.subsystems.memory.clone(),
+            ) {
                 tracing::warn!(%error, "failed to rebind core context after logout");
             }
             if let Err(error) =

@@ -263,6 +263,14 @@ pub struct Config {
     #[serde(default)]
     pub storage: StorageConfig,
 
+    /// `[subsystems.*]` — the uniform cross-subsystem driver-binding config
+    /// (kernel.md §3.6 / plan-memory.md §4.5). Currently only `subsystems.memory` is
+    /// populated; nothing reads this yet (zero behaviour change). The
+    /// existing `[memory]`, `[memory_tree]`, `[[memory_sources]]` blocks
+    /// above are unaffected.
+    #[serde(default)]
+    pub subsystems: SubsystemsConfig,
+
     #[serde(default)]
     pub composio: ComposioConfig,
 
@@ -781,6 +789,7 @@ impl Default for Config {
             memory: MemoryConfig::default(),
             memory_tree: MemoryTreeConfig::default(),
             storage: StorageConfig::default(),
+            subsystems: SubsystemsConfig::default(),
             composio: ComposioConfig::default(),
             secrets: SecretsConfig::default(),
             browser: BrowserConfig::default(),

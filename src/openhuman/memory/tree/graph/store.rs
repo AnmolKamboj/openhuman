@@ -4,12 +4,9 @@ use anyhow::Result;
 use rusqlite::Transaction;
 
 use crate::openhuman::config::Config;
+use crate::openhuman::memory::tinycortex::engine_config;
 
 pub use tinycortex::memory::graph::pairs_from_entities;
-
-fn engine_config(config: &Config) -> tinycortex::memory::MemoryConfig {
-    crate::openhuman::memory::tinycortex::memory_config_from(config, config.workspace_dir.clone())
-}
 
 pub fn upsert_edges_tx(
     transaction: &Transaction<'_>,

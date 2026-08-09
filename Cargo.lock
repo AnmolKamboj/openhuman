@@ -4723,6 +4723,7 @@ dependencies = [
  "tinybus",
  "tinychannels",
  "tinycortex",
+ "tinycortex-api",
  "tinyflows",
  "tinyhumans-sdk",
  "tinyjuice",
@@ -7288,8 +7289,10 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "dirs 5.0.1",
  "futures",
  "git2",
+ "hex",
  "log",
  "parking_lot",
  "rand 0.10.1",
@@ -7302,11 +7305,26 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror 2.0.18",
  "tinyagents",
+ "tinycortex-api",
  "tokio",
  "toml 0.8.23",
  "tracing",
  "uuid 1.23.1",
  "walkdir",
+]
+
+[[package]]
+name = "tinycortex-api"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+ "uuid 1.23.1",
 ]
 
 [[package]]

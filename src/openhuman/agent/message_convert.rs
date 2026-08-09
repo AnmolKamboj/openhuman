@@ -115,6 +115,7 @@ pub(crate) fn chat_message_to_message(msg: &ChatMessage) -> Message {
                 tool_call_id,
                 content: vec![ContentBlock::Text(content)],
                 trusted_verbatim: false,
+                artifact: None,
             })
         }
         // "user" and any unrecognized role default to a user turn — the safest
@@ -742,6 +743,7 @@ mod tests {
             tool_call_id: "call-7".into(),
             content: vec![ContentBlock::Text("done".into())],
             trusted_verbatim: false,
+            artifact: None,
         })];
         let back = messages_to_history(&messages);
         assert_eq!(back[0].role, "tool");
@@ -770,6 +772,7 @@ mod tests {
                 tool_call_id: "c1".into(),
                 content: vec![ContentBlock::Text("echoed:hi".into())],
                 trusted_verbatim: false,
+                artifact: None,
             }),
             Message::Assistant(AssistantMessage {
                 id: None,

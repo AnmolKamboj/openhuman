@@ -136,7 +136,23 @@ tinyagents = { version = "2.1", features = ["sqlite"] }
 # aligned to the host pins (=0.40 / 0.21) so one bundled SQLite + one libgit2
 # link. The submodule intentionally tracks reviewed upstream main commits;
 # keep this semver requirement compatible with the vendored crate version.
-tinycortex = { version = "0.1", features = ["git-diff", "persona", "sync"] }
+tinycortex = { version = "0.1", features = [
+    "git-diff",
+    "obsidian",
+    "persona",
+    "sync",
+    "wiki-git",
+] }
+# The memory *contract* — value types, the thirteen capability families, the
+# `MemoryProvider` driver trait, and the null reference driver. A direct path
+# dependency rather than a re-export, because `tinycortex::memory` aliases back
+# only `{error, traits, types}`; `capabilities`, `provider`, `null`, `health`,
+# `recall`, and `version` are reachable only through the api crate itself.
+# Deliberately dependency-light (no rusqlite/git2/reqwest/regex/async runtime)
+# so a third-party driver can compile against the contract without pulling in
+# the embedded engine. No `[patch.crates-io]` entry is needed: cargo unifies
+# this with the `path = "api"` dependency the engine crate already declares.
+tinycortex-api = { path = "vendor/tinycortex/api" }
 tinychannels = { version = "0.1", features = ["relay-websocket"] }
 # tinybus — the message bus. Owns what `src/core/event_bus/` used to: the typed
 # pub/sub surface (`EventBus`, `EventHandler`, `SubscriptionHandle`), the

@@ -594,3 +594,14 @@ fn workflows_changed_domain_and_name() {
     assert_eq!(event.domain(), "workflow");
     assert_eq!(event.variant_name(), "WorkflowsChanged");
 }
+
+#[test]
+fn memory_driver_bind_failed_domain_and_name() {
+    let event = DomainEvent::MemoryDriverBindFailed {
+        configured_driver: "supermemory".into(),
+        bound_driver: "null".into(),
+        reason: "external driver is untrusted".into(),
+    };
+    assert_eq!(event.domain(), "memory");
+    assert_eq!(event.variant_name(), "MemoryDriverBindFailed");
+}

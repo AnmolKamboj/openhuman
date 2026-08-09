@@ -3,7 +3,7 @@ use anyhow::Result;
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::source_scope::current_source_scope;
 use crate::openhuman::memory::store::chunks::types::SourceKind;
-use crate::openhuman::memory::tree::retrieval::engine::config as engine_config;
+use crate::openhuman::memory::tinycortex::engine_config;
 use crate::openhuman::memory::tree::retrieval::types::QueryResponse;
 
 const DEFAULT_LIMIT: usize = 200;

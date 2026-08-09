@@ -534,8 +534,9 @@ async fn finish_revalidated_user_activation(
             "{LOG_PREFIX} failed to bind memory client after pending session revalidation: {error}"
         );
     }
-    if let Err(error) = crate::core::runtime::context::CoreContext::rebind_default_workspace_dir(
+    if let Err(error) = crate::core::runtime::context::CoreContext::rebind_default_workspace(
         &target_config.workspace_dir,
+        target_config.subsystems.memory.clone(),
     ) {
         warn!("{LOG_PREFIX} failed to rebind core context after pending session revalidation: {error}");
     }

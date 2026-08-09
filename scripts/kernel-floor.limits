@@ -13,6 +13,23 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   307/284/5  2026-08-09  merge upstream/main + PR #5446 memory-subsystem work.
+#                      Measured, not derived: `scripts/kernel-floor.sh flows`
+#                      reports 307/284/5 on this merge. +3 names over the
+#                      304/281/5 below, and the split matters:
+#                        * +2 INHERITED — `tinybus` + `tinybus-macros`, vendored
+#                          by upstream #5459. The event bus is always-on kernel
+#                          surface, so they are in the `flows` profile there too;
+#                          upstream landed them without moving this number.
+#                        * +1 OURS — `tinycortex-api`, the memory contract crate
+#                          (`MemoryProvider`, `Capabilities`, `NullMemoryProvider`)
+#                          that `MemorySubsystemConfig` -> `MemoryBinding` now
+#                          depends on directly. It was already in the graph
+#                          transitively via `tinycortex`, so no *new* third-party
+#                          code enters the kernel profile — only a new direct edge.
+#                      The -6 packages / -1 native from the tokio-tungstenite
+#                      unification below is preserved, not spent: native builds
+#                      stay at 5 and aws-lc-sys stays absent.
 #   304/281/5  2026-08-08  local whisper.cpp STT deleted (`whisper-rs` +
 #                      `whisper-rs-sys` out of BOTH Cargo worlds, and the
 #                      `[patch.crates-io] whisper-rs-sys` fork entries with
@@ -130,4 +147,4 @@
 #                      Native: aws-lc-sys libgit2-sys libsqlite3-sys libz-sys
 #                      lzma-sys ring. Target after gating is 222 names / 2 native
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
-flows:304:281:5
+flows:307:284:5

@@ -2764,3 +2764,274 @@ const TOOL_LESS: &[crate::core::all::DomainGroup] = {
     use crate::core::all::DomainGroup as G;
     &[G::Config, G::Security, G::Meet, G::Medulla]
 };
+
+// ---- tool_capability() drift guard (M5.3) ----------------------------------
+
+/// Driver-backed memory tools and the capability each requires.
+const MEMORY_TOOL_CAPABILITIES: &[(&str, tinycortex_api::capabilities::Capability)] = {
+    use tinycortex_api::capabilities::Capability as C;
+    &[
+        ("memory_store", C::Core),
+        ("memory_forget", C::Core),
+        ("remember_preference", C::Core),
+        ("save_preference", C::Core),
+        ("memory_recall", C::Recall),
+        ("memory_vector_search", C::Recall),
+        ("memory_chunk_context", C::Recall),
+        ("memory_hybrid_search", C::Recall),
+        ("memory_store_raw_chunks", C::Recall),
+        ("memory_tree", C::Tree),
+        ("memory_flavour", C::Tree),
+        ("memory_store_raw_search", C::Entities),
+        ("memory_diff", C::Diff),
+        ("memory_doctor", C::Maintenance),
+        ("tool_stats", C::ToolMemory),
+        ("goals_list", C::Goals),
+        ("goals_add", C::Goals),
+        ("goals_edit", C::Goals),
+        ("goals_delete", C::Goals),
+    ]
+};
+
+/// Memory-family tools that are deliberately NOT driver-backed. Each entry is
+/// an argument, not an omission — see `tool_capability`.
+const MEMORY_TOOLS_NOT_DRIVER_BACKED: &[&str] = &[
+    "update_memory_md",
+    "memory_store_kinds",
+    "people_list",
+    "people_resolve",
+    "people_score",
+    "people_get",
+    "people_add_alias",
+    "people_record_interaction",
+    "people_refresh_address_book",
+];
+
+/// Every `DomainGroup::Memory` tool must be a deliberate decision in
+/// [`tool_capability`]: either it maps to a capability, or it is listed as
+/// explicitly not driver-backed.
+///
+/// The failure this prevents is silent and one-directional. A new memory tool
+/// with no `tool_capability` rule returns `None`, which the post-filter reads as
+/// "never filter" — so it stays advertised to the model under a driver that
+/// cannot serve it, which is exactly the registered-but-failing surface
+/// `kernel.md` §3.3 exists to prevent.
+///
+/// Deliberately tests the FUNCTION, not a built registry, for the same reason
+/// `every_domain_group_is_accounted_for_in_tool_group` does: which tools a
+/// registry contains depends on config flags, security tier and enabled
+/// integrations. `tool_stats` is the live example — it is only registered when
+/// `learning.enabled && learning.tool_tracking_enabled`.
+#[test]
+fn every_memory_tool_has_an_explicit_capability_or_is_core() {
+    use crate::core::all::DomainGroup;
+
+    for name in MEMORY_TOOLS_NOT_DRIVER_BACKED {
+        assert_eq!(
+            tool_group(name),
+            DomainGroup::Memory,
+            "`{name}` is no longer a Memory-family tool — this table is stale"
+        );
+        assert!(
+            tool_capability(name).is_none(),
+            "`{name}` is listed as not driver-backed but now maps to a capability"
+        );
+    }
+    for (name, want) in MEMORY_TOOL_CAPABILITIES {
+        assert_eq!(
+            tool_group(name),
+            DomainGroup::Memory,
+            "`{name}` is no longer a Memory-family tool — this table is stale"
+        );
+        assert_eq!(
+            tool_capability(name),
+            Some(*want),
+            "`{name}` must map to {want:?}; if it moved, the rule has drifted"
+        );
+    }
+}
+
+/// A new tool in a prefix-gated memory family must NOT fall through to `None`
+/// (the never-filtered bucket). Synthetic names matching only the prefix.
+#[test]
+fn no_prefix_family_memory_tool_silently_defaults_to_uncapped() {
+    use tinycortex_api::capabilities::Capability;
+    for (name, want) in [
+        ("goals_new_thing", Capability::Goals),
+        ("memory_tree_new_thing", Capability::Tree),
+    ] {
+        assert_eq!(tool_capability(name), Some(want), "`{name}` must auto-gate");
+    }
+    // …and the `goals_` prefix must not swallow the per-thread goal tools,
+    // which are `DomainGroup::Threads` and not memory-driver-backed at all.
+    for name in ["goal_get", "goal_set", "goal_complete"] {
+        assert_eq!(tool_capability(name), None, "`{name}` is a Threads tool");
+    }
+}
+
+/// Neither table may rot into names no tool answers to.
+#[test]
+fn memory_capability_table_names_are_real() {
+    let tmp = TempDir::new().unwrap();
+    let names = tool_names(&expansion_tools_for(&tmp));
+    for name in MEMORY_TOOL_CAPABILITIES
+        .iter()
+        .map(|(n, _)| *n)
+        .chain(MEMORY_TOOLS_NOT_DRIVER_BACKED.iter().copied())
+        // `tool_stats` is registered only when `learning.tool_tracking_enabled`,
+        // so it is config-dependent and asserted by the function-level guard
+        // above instead.
+        .filter(|n| *n != "tool_stats")
+    {
+        assert!(
+            names.iter().any(|n| n == name),
+            "`{name}` is not a real registered tool; got: {names:?}"
+        );
+    }
+}
+
+// ---- both-ways: the capability post-filter (M5.3) --------------------------
+//
+// The ABSENT half is the one that proves the filter removes anything.
+
+/// A distinct workspace per test: the memory binding cache is keyed by
+/// workspace dir, so sharing one path between an ON and an OFF test would make
+/// one of them silently assert the other's driver (the `caps_ws` convention
+/// from `core::all_tests`).
+fn caps_tools_ws(name: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("oh-m53-tools-{name}"))
+}
+
+/// `[subsystems.memory] driver = "null"` — `NullMemoryProvider` advertises
+/// exactly `Capability::MANDATORY` = {core, recall, portability}, so every
+/// optional family is OFF at once. An operator who wrote `driver = "null"` is
+/// honoured rather than falling back (`memory::binding`).
+fn null_driver_memory_cfg() -> crate::openhuman::config::schema::MemorySubsystemConfig {
+    crate::openhuman::config::schema::MemorySubsystemConfig {
+        driver: "null".into(),
+        ..Default::default()
+    }
+}
+
+/// The optional-family tools that must vanish under a driver advertising
+/// nothing optional.
+const OPTIONAL_FAMILY_MEMORY_TOOLS: &[&str] = &[
+    "memory_tree",
+    "memory_flavour",
+    "memory_store_raw_search",
+    "memory_diff",
+    "memory_doctor",
+    "goals_list",
+    "goals_add",
+    "goals_edit",
+    "goals_delete",
+];
+
+/// Tools that must survive any driver: the mandatory families plus the
+/// host-owned surface that never touches the driver.
+const ALWAYS_PRESENT_MEMORY_TOOLS: &[&str] = &[
+    "memory_store",
+    "memory_recall",
+    "memory_forget",
+    "remember_preference",
+    "save_preference",
+    "update_memory_md",
+    "memory_store_kinds",
+    "memory_vector_search",
+    "memory_chunk_context",
+    "memory_hybrid_search",
+    "memory_store_raw_chunks",
+    "people_list",
+];
+
+/// The ~4000-pre-boot-test default-open property, asserted once directly: with
+/// no ambient context at all the capability filter removes nothing.
+#[test]
+fn memory_tools_all_present_with_no_ambient_context() {
+    let tmp = TempDir::new().unwrap();
+    let names = tool_names(&expansion_tools_for(&tmp));
+    for name in OPTIONAL_FAMILY_MEMORY_TOOLS
+        .iter()
+        .chain(ALWAYS_PRESENT_MEMORY_TOOLS.iter())
+    {
+        assert!(
+            names.iter().any(|n| n == name),
+            "`{name}` must be present with no ambient context; got: {names:?}"
+        );
+    }
+}
+
+/// Under the default (`driver = "tinycortex"`) binding the embedded driver
+/// advertises all thirteen families, so the list is byte-identical to today.
+#[tokio::test]
+async fn memory_tools_all_present_under_the_embedded_driver() {
+    use crate::core::runtime::context::CoreContext;
+    use crate::core::runtime::DomainSet;
+
+    let tmp = TempDir::new().unwrap();
+    let ctx = CoreContext::for_test(
+        DomainSet::full(),
+        Some(caps_tools_ws("embedded")),
+        Some(crate::openhuman::config::schema::MemorySubsystemConfig::default()),
+    );
+    let names = CoreContext::scope(ctx, async { tool_names(&expansion_tools_for(&tmp)) }).await;
+    for name in OPTIONAL_FAMILY_MEMORY_TOOLS
+        .iter()
+        .chain(ALWAYS_PRESENT_MEMORY_TOOLS.iter())
+    {
+        assert!(
+            names.iter().any(|n| n == name),
+            "`{name}` must survive the embedded driver; got: {names:?}"
+        );
+    }
+}
+
+/// The half that proves the filter removes anything.
+#[tokio::test]
+async fn optional_family_memory_tools_absent_under_the_null_driver() {
+    use crate::core::runtime::context::CoreContext;
+    use crate::core::runtime::DomainSet;
+
+    let tmp = TempDir::new().unwrap();
+    let ctx = CoreContext::for_test(
+        DomainSet::full(),
+        Some(caps_tools_ws("null")),
+        Some(null_driver_memory_cfg()),
+    );
+    let names = CoreContext::scope(ctx, async { tool_names(&expansion_tools_for(&tmp)) }).await;
+
+    for absent in OPTIONAL_FAMILY_MEMORY_TOOLS {
+        assert!(
+            !names.iter().any(|n| n == absent),
+            "`{absent}` must be ABSENT under the null driver; got: {names:?}"
+        );
+    }
+    for present in ALWAYS_PRESENT_MEMORY_TOOLS {
+        assert!(
+            names.iter().any(|n| n == present),
+            "`{present}` is mandatory or host-owned and must survive the null driver"
+        );
+    }
+}
+
+/// The two post-filters are independent axes (kernel.md §3.7): a narrowed
+/// capability set must not narrow the DomainSet axis.
+#[tokio::test]
+async fn narrow_capabilities_do_not_narrow_the_domain_axis() {
+    use crate::core::runtime::context::CoreContext;
+    use crate::core::runtime::DomainSet;
+
+    let tmp = TempDir::new().unwrap();
+    let ctx = CoreContext::for_test(
+        DomainSet::full(),
+        Some(caps_tools_ws("axes")),
+        Some(null_driver_memory_cfg()),
+    );
+    let names = CoreContext::scope(ctx, async { tool_names(&expansion_tools_for(&tmp)) }).await;
+    for name in ["shell", "file_read", "file_write", "thread_list"] {
+        assert!(
+            names.iter().any(|n| n == name),
+            "a narrowed memory capability set must not remove `{name}`"
+        );
+    }
+}

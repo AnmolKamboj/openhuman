@@ -224,6 +224,7 @@ mod tests {
             raw: None,
             resolved_model: None,
             continue_turn: None,
+            served_from_cache: false,
         };
 
         assert!(model_outcome(response(" ", Usage::default()), false).is_err());
@@ -262,6 +263,7 @@ mod tests {
             raw: None,
             resolved_model: None,
             continue_turn: None,
+            served_from_cache: false,
         };
         assert_eq!(
             model_outcome(reasoning_only, false).unwrap().reply,

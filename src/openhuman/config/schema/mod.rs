@@ -51,6 +51,7 @@ mod runtime_pool;
 mod runtime_python;
 mod scheduler_gate;
 mod storage_memory;
+mod subsystems;
 mod task_sources;
 mod tokenjuice;
 mod tools;
@@ -98,6 +99,9 @@ pub use scheduler_gate::{SchedulerGateConfig, SchedulerGateMode};
 pub use storage_memory::{
     LlmBackend, MemoryConfig, MemoryTreeConfig, StorageConfig, StorageProviderConfig,
     StorageProviderSection, DEFAULT_CLOUD_LLM_MODEL,
+};
+pub use subsystems::{
+    MemoryDriverConfig, MemoryHooksConfig, MemorySubsystemConfig, SubsystemsConfig,
 };
 pub use task_sources::TaskSourcesConfig;
 pub use tokenjuice::TokenjuiceConfig;

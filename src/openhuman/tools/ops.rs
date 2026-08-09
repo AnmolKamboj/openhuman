@@ -1229,29 +1229,46 @@ pub fn all_tools_with_runtime(
         "[rhai_workflows] rhai_workflows tool not registered — flows feature disabled at compile time"
     );
 
-    // DomainSet post-filter (#4796): drop tools whose DomainGroup is disabled
-    // under the ambient CoreContext. With no active context, or under
-    // `DomainSet::full()`, every tool is kept (byte-identical). Under
-    // `harness()` the gate-family tools (web3/mcp/skills/flows/media/voice/meet)
-    // are dropped so agent turns can't call a domain that isn't live; only the
-    // memory + threads tools survive (the mapped harness families) — see
-    // `tool_group` for the classification and its Platform-default caveat.
+    // Two INDEPENDENT post-filters over the assembled list (kernel.md §3.7's
+    // separate axes — a narrowed DomainSet must not narrow capabilities, and
+    // vice versa):
+    //
+    // 1. DomainSet (#4796): drop tools whose DomainGroup is disabled under the
+    //    ambient CoreContext. With no active context, or under
+    //    `DomainSet::full()`, every tool is kept (byte-identical). Under
+    //    `harness()` the gate-family tools (web3/mcp/skills/flows/media/voice/
+    //    meet) are dropped so agent turns can't call a domain that isn't live;
+    //    only the memory + threads tools survive (the mapped harness families)
+    //    — see `tool_group` for the classification and its Platform-default
+    //    caveat.
+    // 2. Memory capability (M5.3): drop tools whose memory family the bound
+    //    driver does not advertise — see `tool_capability`.
+    //
+    // Both default OPEN: with no ambient context and with nothing bound the
+    // list is unchanged. Absence beats a stub that errors — a
+    // registered-but-failing memory tool teaches the model the capability
+    // exists and makes it retry (the `flows` compile-gate's reasoning).
+    let before = tools.len();
     let domains = crate::core::runtime::context::CoreContext::current().map(|c| c.domains());
-    if let Some(set) = domains {
-        let before = tools.len();
-        let filtered: Vec<Box<dyn Tool>> = tools
+    let mut tools: Vec<Box<dyn Tool>> = if let Some(set) = domains {
+        tools
             .into_iter()
             .filter(|t| set.allows(tool_group(t.name())))
-            .collect();
-        log::debug!(
-            "[tools::ops][domain-filter] ambient DomainSet active — {} of {before} tools retained",
-            filtered.len()
-        );
-        filtered
+            .collect()
     } else {
-        // No ambient context (unit tests / pre-boot) ⇒ no filtering.
+        // No ambient context (unit tests / pre-boot) ⇒ no domain filtering.
         tools
-    }
+    };
+    let after_domains = tools.len();
+
+    tools.retain(|t| crate::core::all::capability_allowed(tool_capability(t.name())));
+
+    log::debug!(
+        "[tools::ops][post-filter] {before} assembled → {after_domains} after DomainSet → {} after \
+         memory capabilities",
+        tools.len()
+    );
+    tools
 }
 
 /// Classify an agent tool into its [`DomainGroup`](crate::core::all::DomainGroup)
@@ -1499,6 +1516,99 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
     // Everything else — shell/file and other kernel utilities — is Platform:
     // present under full(), absent under harness()/none().
     DomainGroup::Platform
+}
+
+/// Classify an agent tool into the memory capability family its surface
+/// requires, so [`all_tools_with_runtime`] can drop tools the bound memory
+/// driver does not advertise (`docs/specs/kernel.md` §3.3).
+///
+/// `None` means "not backed by the memory driver" — a workspace file
+/// (`update_memory_md`), the per-workspace people SQLite store, pure
+/// introspection (`memory_store_kinds`), or a flow-sandboxed namespace
+/// (`flow_memory_*`, already `DomainGroup::Flows`). Such a tool is never
+/// filtered on the capability axis. `None` here is a *decision*, not a default:
+/// `every_memory_tool_has_an_explicit_capability_or_is_core` forces every
+/// memory-family tool through this function so a new one cannot land in the
+/// always-present bucket by accident.
+///
+/// The mandatory families ([`Capability::Core`], [`Capability::Recall`]) are
+/// returned explicitly rather than folded into `None`. Against a *driver's*
+/// advertised set the filter is a no-op for them by construction (a bindable
+/// driver always advertises `Capability::MANDATORY`) — but it is load-bearing
+/// for one host decision below the driver: `CoreContext::memory_capabilities`
+/// answers with the empty set for a deliberate `[subsystems.memory] driver =
+/// "null"`, and that is what drops `memory_store` / `memory_forget` / the
+/// recall tools when an operator turns memory off. Folding them into `None`
+/// would leave an agent able to persist, expose or delete memory through the
+/// session builder's own `Arc<dyn Memory>` in exactly that configuration.
+///
+/// **The `memory_` prefix is deliberately NOT a catch-all here.** [`tool_group`]
+/// can prefix-match because every `memory_*` tool is one family on the
+/// *DomainSet* axis; on the capability axis the family differs per tool, and a
+/// wrong default is worse than no rule. Hence enumeration plus two narrow
+/// prefix rules, backed by the drift guard.
+///
+/// ## Honesty clause — three assignments run ahead of the plumbing
+///
+/// `goals_*` is filesystem-backed today (`memory::goals::store`), not
+/// `MemoryGoals`; `tool_stats` reads the legacy `Arc<dyn Memory>` plus
+/// `agent::learning::tool_tracker`, not `MemoryToolMemory`; `memory_diff` reads
+/// `memory::diff::ops`, not `MemoryDiff`. Filtering them on the driver's
+/// advertised set is nevertheless the correct M5 behaviour: §3.3 is a contract
+/// about what the *model is told exists*, and the later re-point onto
+/// `MemoryGuard` must not change the advertised surface. Assigning them `None`
+/// to dodge the mismatch would bake the wrong contract in.
+fn tool_capability(name: &str) -> Option<tinycortex_api::capabilities::Capability> {
+    use tinycortex_api::capabilities::Capability;
+
+    // Not driver-backed. Each entry is an argued exception, not a fallthrough.
+    if name == "update_memory_md"          // writes the workspace `MEMORY.md` file directly
+        || name == "memory_store_kinds"    // enumerates `MemoryKind` constants; no store access
+        || name.starts_with("people_")     // per-workspace people SQLite store, not the driver
+        || name.starts_with("flow_memory_")
+    // flow-sandboxed; DomainGroup::Flows
+    {
+        return None;
+    }
+
+    let capability = match name {
+        // ── Mandatory families: always advertised, listed for the record ──
+        "memory_store" | "memory_forget" | "remember_preference" | "save_preference" => {
+            Capability::Core
+        }
+        // Chunk/recall retrieval surface. NOT `Tree` — these read chunk
+        // embeddings and chunk rows, never the summary tree.
+        "memory_recall"
+        | "memory_vector_search"
+        | "memory_chunk_context"
+        | "memory_hybrid_search"
+        | "memory_store_raw_chunks" => Capability::Recall,
+
+        // ── Optional families: absence means the tool disappears ──
+        // The one registered tree tool (`MemoryQueryTool` is an alias of
+        // `MemoryTreeTool`, `memory/query/mod.rs`) plus the compiled persona
+        // flavour reader, which reads a flavoured summary-tree root.
+        "memory_tree" | "memory_flavour" => Capability::Tree,
+        // Free-text search over the canonical *entity* index
+        // (`memory::tree::retrieval::search::search_entities`).
+        "memory_store_raw_search" => Capability::Entities,
+        "memory_diff" => Capability::Diff,
+        "memory_doctor" => Capability::Maintenance,
+        "tool_stats" => Capability::ToolMemory,
+
+        // Prefix rules, so a NEW tool in one of these families auto-gates
+        // instead of silently landing in the un-filtered bucket — the same
+        // reasoning as `tool_group`'s prefix families (#4808 review). Ordered
+        // after the exact arms so `memory_tree` is not swallowed by
+        // `memory_tree_`. The underscore in `goals_` is load-bearing: the
+        // per-thread `goal_get`/`goal_set`/`goal_complete` tools are
+        // `DomainGroup::Threads` and must not be caught.
+        n if n.starts_with("goals_") => Capability::Goals,
+        n if n.starts_with("memory_tree_") => Capability::Tree,
+
+        _ => return None,
+    };
+    Some(capability)
 }
 
 #[cfg(test)]
