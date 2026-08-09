@@ -100,7 +100,7 @@ impl Tool for MemoryToolsPutTool {
             parsed.priority,
             parsed.tags.len()
         );
-        let client = crate::openhuman::memory::ops::active_memory_client()
+        let client = crate::openhuman::memory::helpers::active_memory_client()
             .await
             .map_err(|e| anyhow::anyhow!("memory_tools_put: {e}"))?;
         let family =
