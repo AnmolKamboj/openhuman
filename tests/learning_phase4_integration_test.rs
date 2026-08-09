@@ -22,10 +22,10 @@ use openhuman_core::openhuman::agent::learning::candidate::{
 };
 use openhuman_core::openhuman::agent::learning::profile_md_renderer::ProfileMdRenderer;
 use openhuman_core::openhuman::agent::learning::stability_detector::StabilityDetector;
-use openhuman_core::openhuman::memory::store::ProfileStore;
 use openhuman_core::openhuman::memory::store::profile::{
     FacetState, FacetType, ProfileFacet, UserState, PROFILE_INIT_SQL,
 };
+use openhuman_core::openhuman::memory::store::ProfileStore;
 use parking_lot::Mutex;
 use rusqlite::Connection;
 use tempfile::TempDir;
