@@ -31,8 +31,24 @@ MAX_CHANGED_FILES="${MAX_CHANGED_FILES:-200}"
 
 log() { echo "[ci][rust-cov-changed] $*"; }
 
+# The desktop product's gates. `[features] default` is the CONTRIBUTOR set now
+# and deliberately omits voice, web3, documents, meet, contacts, inference and
+# crash-reporting — so a coverage run on default features would silently stop
+# measuring code that ships, and the diff-coverage gate would pass a PR whose
+# changed lines were never compiled. Source of truth:
+# scripts/ci/product-features.txt.
+PRODUCT_FEATURES="$(bash scripts/ci/product-features.sh)"
+
 llvm_cov() {
-  bash scripts/ci-cancel-aware.sh cargo llvm-cov "$@"
+  # `clean` and `report` are cargo-llvm-cov subcommands that take no feature
+  # selection; passing --features to them is an error.
+  case "${1:-}" in
+    clean | report | show-env)
+      bash scripts/ci-cancel-aware.sh cargo llvm-cov "$@"
+      return
+      ;;
+  esac
+  bash scripts/ci-cancel-aware.sh cargo llvm-cov --features "${PRODUCT_FEATURES}" "$@"
 }
 
 integration_test_targets() {

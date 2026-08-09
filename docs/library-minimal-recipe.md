@@ -39,6 +39,14 @@ There is **no** `library-minimal` meta-feature in `Cargo.toml`, on purpose — s
 
 `default = ["voice","web3","media","meet","skills","flows","mcp","desktop-automation","tui"]`
 
+> **Superseded — that is the `default` list as it stood when this session ran.**
+> `desktop-automation` no longer exists, and `default` is the *contributor* set
+> now rather than the product set: `voice`, `web3`, `meet` and `tui` are already
+> OFF there (see AGENTS.md "Compile-time domain gates"). The Decision column
+> below still records what a library host wants; the Default column no longer
+> describes reality. What the product ships lives in
+> `scripts/ci/product-features.txt`.
+
 | Gate | Default | Decision | Why | Deps shed |
 | --- | :---: | :---: | --- | --- |
 | `skills` | ON | **KEEP** | python/js `SKILL.md` execution is a stated opencompany use case | none (surface/prompt/startup only) |
