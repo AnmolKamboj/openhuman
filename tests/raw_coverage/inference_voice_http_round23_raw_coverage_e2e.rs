@@ -291,11 +291,9 @@ async fn local_service_assets_report_state_from_fake_files_and_binaries() {
     // advertises it, so an Ondemand-mode vision model that is present reports
     // "ready", not "ondemand".
     assert_eq!(assets.vision.state, "ready");
-    assert_eq!(assets.stt.state, "ready");
     assert_eq!(assets.tts.state, "ondemand");
 
     let progress = service.downloads_progress(&config).await.expect("progress");
-    assert_eq!(progress.stt.state, "ready");
     assert_eq!(progress.tts.state, "ondemand");
 
     // No transcription assertion here any more: `transcribe_with_prompt` is a
@@ -303,15 +301,6 @@ async fn local_service_assets_report_state_from_fake_files_and_binaries() {
     // deleted, so there is no local binary to stub and nothing this offline
     // test can drive. Hosted STT is covered where the backend is mocked.
 
-    assert_eq!(
-        local_ai_assets_status(&config)
-            .await
-            .expect("ops assets")
-            .value
-            .stt
-            .state,
-        "ready"
-    );
     assert_eq!(
         local_ai_downloads_progress(&config)
             .await

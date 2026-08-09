@@ -253,6 +253,19 @@ describe('VoicePanel', () => {
     expect(screen.queryByTestId('tts-voice-input')).not.toBeInTheDocument();
   });
 
+  it('shows the effective hosted STT engine when cloud routing delegates to it', async () => {
+    runtime.voiceStatus.stt_engine = 'elevenlabs';
+    runtime.voiceSettings = makeVoiceSettings({
+      voiceProviders: [ELEVENLABS_PROVIDER],
+      sttProvider: { kind: 'cloud' },
+    });
+
+    renderWithProviders(<VoicePanel />, { initialEntries: ['/settings/voice'] });
+
+    const sttSelect = (await screen.findByTestId('stt-provider-select')) as HTMLSelectElement;
+    await waitFor(() => expect(sttSelect.value).toBe('elevenlabs'));
+  });
+
   it('selecting a new STT provider updates local state without immediately calling the RPC', async () => {
     // Seed an external STT provider so the dropdown starts on a non-cloud value.
     runtime.voiceSettings = makeVoiceSettings({

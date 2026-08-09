@@ -424,17 +424,16 @@ fn effective_stt_explicit_slug_outranks_engine() {
     assert_eq!(effective_stt_provider(&config), "deepgram:nova-2");
 }
 
-/// An unmigrated `"whisper"` must not reach the factory (where it would error);
-/// it defers to the engine field like any other non-specific value.
+/// Removed local slugs are only rewritten by the config migration. A manually
+/// reintroduced value must reach the factory and fail by name rather than being
+/// silently routed to an engine the user did not select.
 #[test]
-fn effective_stt_unmigrated_local_value_defers_to_engine() {
+fn effective_stt_unmigrated_local_value_is_not_a_sentinel() {
     let mut config = cfg();
     config.stt_provider = Some("whisper".into());
     config.local_ai.stt_provider = "whisper".into();
-    assert_eq!(effective_stt_provider(&config), "cloud");
-
     config.voice_server.stt_engine = SttEngine::Elevenlabs;
-    assert_eq!(effective_stt_provider(&config), "elevenlabs");
+    assert_eq!(effective_stt_provider(&config), "whisper");
 }
 
 #[test]

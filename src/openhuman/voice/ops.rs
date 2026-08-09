@@ -35,6 +35,22 @@ pub async fn voice_status(config: &Config) -> Result<RpcOutcome<VoiceStatus>, St
     // — so this reports the real failure a user would hit, not a guess.
     let stt_engine = effective_stt_provider(config);
     let stt_error = create_stt_provider(&stt_engine, "", config)
+        .and_then(|_| {
+            let slug = stt_engine
+                .split_once(':')
+                .map_or(stt_engine.as_str(), |(slug, _)| slug);
+            if matches!(slug.trim(), "cloud" | "openhuman" | "backend") {
+                return Ok(());
+            }
+            let key = crate::openhuman::inference::provider::factory::lookup_key_for_slug(
+                slug.trim(),
+                config,
+            )?;
+            if key.trim().is_empty() {
+                anyhow::bail!("voice provider '{slug}' has no API credential configured")
+            }
+            Ok(())
+        })
         .err()
         .map(|e| e.to_string());
     let stt_available = stt_error.is_none();
@@ -415,6 +431,31 @@ mod tests {
         assert_eq!(result.value.stt_engine, "elevenlabs");
         let err = result.value.stt_error.expect("reason must be reported");
         assert!(err.contains("elevenlabs"), "reason names the slug: {err}");
+    }
+
+    #[tokio::test]
+    async fn voice_status_reports_external_engine_without_credentials_as_unavailable() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut config = Config::default();
+        config.workspace_dir = tmp.path().join("workspace");
+        config.config_path = tmp.path().join("config.toml");
+        config.voice_server.stt_engine = crate::openhuman::config::schema::SttEngine::Elevenlabs;
+        config.voice_providers.push(
+            crate::openhuman::config::schema::voice_providers::VoiceProviderCreds {
+                slug: "elevenlabs".into(),
+                endpoint: "https://api.elevenlabs.io/v1".into(),
+                capability:
+                    crate::openhuman::config::schema::voice_providers::VoiceCapability::Both,
+                ..Default::default()
+            },
+        );
+
+        let status = voice_status(&config).await.unwrap().value;
+        assert!(!status.stt_available);
+        assert!(status
+            .stt_error
+            .as_deref()
+            .is_some_and(|error| error.contains("no API credential")));
     }
 
     #[test]

@@ -177,9 +177,8 @@ impl LocalAiService {
 
         if provider_from_config(&effective_config) == LocalAiProvider::LmStudio {
             log::debug!(
-                "[local_ai] LM Studio bootstrap branch entry preload_embedding={} preload_stt={} preload_tts={}",
+                "[local_ai] LM Studio bootstrap branch entry preload_embedding={} preload_tts={}",
                 effective_config.local_ai.preload_embedding_model,
-                effective_config.local_ai.preload_stt_model,
                 effective_config.local_ai.preload_tts_voice
             );
             log::trace!("[local_ai] LM Studio bootstrap availability check start");
@@ -241,19 +240,6 @@ impl LocalAiService {
             }
 
             log::trace!(
-                "[local_ai] LM Studio bootstrap STT preload decision: {}",
-                effective_config.local_ai.preload_stt_model
-            );
-            if effective_config.local_ai.preload_stt_model {
-                log::debug!("[local_ai] LM Studio bootstrap STT preload start");
-                if let Err(err) = self.ensure_stt_asset_available(&effective_config).await {
-                    log::warn!("[local_ai] LM Studio bootstrap STT preload failed: {err}");
-                    self.status.lock().stt_state = "missing".to_string();
-                } else {
-                    log::debug!("[local_ai] LM Studio bootstrap STT preload succeeded");
-                }
-            }
-            log::trace!(
                 "[local_ai] LM Studio bootstrap TTS preload decision: {}",
                 effective_config.local_ai.preload_tts_voice
             );
@@ -275,9 +261,6 @@ impl LocalAiService {
             } else if status.embedding_state != "ready" {
                 status.embedding_state = "missing".to_string();
             }
-            if !effective_config.local_ai.preload_stt_model {
-                status.stt_state = "idle".to_string();
-            }
             if !effective_config.local_ai.preload_tts_voice {
                 status.tts_state = "idle".to_string();
             }
@@ -291,9 +274,8 @@ impl LocalAiService {
             status.eta_seconds = None;
             status.model_path = Some(model_path_for_config(&effective_config));
             log::debug!(
-                "[local_ai] LM Studio bootstrap ready embedding_state={} stt_state={} tts_state={}",
+                "[local_ai] LM Studio bootstrap ready embedding_state={} tts_state={}",
                 status.embedding_state,
-                status.stt_state,
                 status.tts_state
             );
             return;
@@ -330,9 +312,6 @@ impl LocalAiService {
         } else {
             "idle".to_string()
         };
-        if !effective_config.local_ai.preload_stt_model {
-            status.stt_state = "idle".to_string();
-        }
         if !effective_config.local_ai.preload_tts_voice {
             status.tts_state = "idle".to_string();
         }

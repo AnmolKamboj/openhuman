@@ -104,10 +104,7 @@ async fn local_services_cover_mocked_inference_assets_speech_and_ops_entry_point
     config.local_ai.vision_model_id = String::new();
     config.local_ai.preload_embedding_model = false;
     config.local_ai.preload_vision_model = false;
-    config.local_ai.preload_stt_model = false;
     config.local_ai.preload_tts_voice = false;
-    config.local_ai.stt_model_id = "round21-stt.bin".to_string();
-    config.local_ai.stt_download_url = Some(format!("{base}/asset/stt"));
     config.local_ai.tts_voice_id = "round21-voice".to_string();
     config.local_ai.tts_download_url = Some(format!("{base}/asset/tts"));
     config.local_ai.tts_config_download_url = Some(format!("{base}/asset/tts-json"));
@@ -126,7 +123,6 @@ async fn local_services_cover_mocked_inference_assets_speech_and_ops_entry_point
     assert_eq!(initial_assets.chat.state, "ready");
     assert_eq!(initial_assets.vision.state, "disabled");
     assert_eq!(initial_assets.embedding.state, "ready");
-    assert_eq!(initial_assets.stt.state, "ondemand");
     assert_eq!(initial_assets.tts.state, "ondemand");
 
     assert_eq!(
@@ -158,14 +154,7 @@ async fn local_services_cover_mocked_inference_assets_speech_and_ops_entry_point
         "adds tests"
     );
 
-    let after_stt = service
-        .download_asset(&config, "stt")
-        .await
-        .expect("download stt");
-    assert_eq!(after_stt.stt.state, "ready");
     let progress = service.downloads_progress(&config).await.expect("progress");
-    assert_eq!(progress.stt.state, "ready");
-    assert_eq!(progress.warning, Some("Downloading stt asset".to_string()));
     let after_tts = service
         .download_asset(&config, "tts")
         .await
@@ -230,15 +219,6 @@ async fn local_services_cover_mocked_inference_assets_speech_and_ops_entry_point
     assert!(reaction.should_react);
     assert_eq!(reaction.emoji.as_deref(), Some("⭐"));
 
-    assert_eq!(
-        local_ai_assets_status(&config)
-            .await
-            .expect("ops assets")
-            .value
-            .stt
-            .state,
-        "ready"
-    );
     assert_eq!(
         local_ai_downloads_progress(&config)
             .await

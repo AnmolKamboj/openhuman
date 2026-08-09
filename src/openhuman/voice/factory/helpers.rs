@@ -29,19 +29,13 @@ pub(super) fn split_slug_model(s: &str) -> (&str, &str) {
 // ---------------------------------------------------------------------------
 
 /// Routing strings that name "the hosted default" rather than a specific
-/// provider, plus the two legacy strings for the removed local whisper.cpp
-/// engine. Any of them defers to `voice_server.stt_engine`, so a user who
+/// provider. Any of them defers to `voice_server.stt_engine`, so a user who
 /// picks an engine in Settings is not shadowed by the `"cloud"` value that
 /// `local_ai.stt_provider` has defaulted to since long before engines existed.
-///
-/// `"whisper"` / `"local"` are here so an unmigrated config still lands on a
-/// working engine instead of erroring in the factory; `config::migrations`
-/// rewrites them on startup, but the migration only runs once per workspace and
-/// a config edited by hand can reintroduce them at any time.
 fn defers_to_engine(provider: &str) -> bool {
     matches!(
         provider.trim().to_ascii_lowercase().as_str(),
-        "" | "cloud" | "openhuman" | "backend" | "whisper" | "local"
+        "" | "cloud" | "openhuman" | "backend"
     )
 }
 
