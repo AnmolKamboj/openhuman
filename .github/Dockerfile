@@ -39,12 +39,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpangocairo-1.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Rust 1.93.0 with minimal profile + fmt/clippy
+# Rust 1.96.1 with minimal profile + fmt/clippy
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH="/usr/local/cargo/bin:$PATH"
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- \
-    -y --default-toolchain 1.93.0 --profile minimal \
+    -y --default-toolchain 1.96.1 --profile minimal \
     -c rustfmt -c clippy \
     -t x86_64-unknown-linux-gnu
 

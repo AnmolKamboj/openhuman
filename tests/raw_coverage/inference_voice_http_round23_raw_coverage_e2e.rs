@@ -214,7 +214,7 @@ async fn dictation_ws_empty_stop_and_audio_cap_do_not_load_whisper() {
     let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url)
         .await
         .expect("connect empty dictation ws");
-    ws.send(WsMessage::Text(r#"{"type":"stop"}"#.to_string()))
+    ws.send(WsMessage::Text(r#"{"type":"stop"}"#.into()))
         .await
         .expect("send stop");
     let final_msg = ws.next().await.expect("final frame").expect("final ok");
@@ -227,7 +227,7 @@ async fn dictation_ws_empty_stop_and_audio_cap_do_not_load_whisper() {
     let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url)
         .await
         .expect("connect capped dictation ws");
-    ws.send(WsMessage::Binary(vec![0u8; 9_600_002]))
+    ws.send(WsMessage::Binary(vec![0u8; 9_600_002].into()))
         .await
         .expect("send oversized pcm");
     let error_msg = ws.next().await.expect("error frame").expect("error ok");

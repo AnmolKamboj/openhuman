@@ -1896,3 +1896,246 @@ fn set_max_tool_iterations_survives_after_definition_backed_construction() {
         "post-construction override must win over the definition-resolved cap"
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// S4: the transcript seam is genuinely substitutable
+// ─────────────────────────────────────────────────────────────────────
+
+/// A `SessionHistory` that keeps everything in memory and touches no file.
+///
+/// The point of the fake is not that it is convenient — it is that it is
+/// *possible*. Before the locator existed, `session_history` was an
+/// `Arc<dyn …>` the turn path constructed inline, so nothing could ever be put
+/// behind it; this fake failing to compile or failing to receive the turn is
+/// the regression signal for that.
+struct FakeSessionHistory {
+    path: std::path::PathBuf,
+    canned: Option<crate::openhuman::agent::harness::session::transcript::SessionTranscript>,
+    appended: Mutex<Vec<Vec<crate::openhuman::agent::messages::ChatMessage>>>,
+}
+
+impl crate::openhuman::agent::harness::session::transcript_history::SessionTranscriptRead
+    for FakeSessionHistory
+{
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+
+    fn read_session(
+        &self,
+    ) -> Result<Option<crate::openhuman::agent::harness::session::transcript::SessionTranscript>>
+    {
+        Ok(self.canned.clone())
+    }
+}
+
+impl crate::openhuman::agent::harness::session::transcript_history::SessionHistory
+    for FakeSessionHistory
+{
+    fn append_turn(
+        &self,
+        turn: crate::openhuman::agent::harness::session::transcript_history::TranscriptTurn<'_>,
+    ) -> Result<()> {
+        self.appended.lock().push(turn.next.to_vec());
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl tinyagents::harness::memory::ChatHistory for FakeSessionHistory {
+    async fn messages(&self, _thread_id: &str) -> tinyagents::Result<Vec<Message>> {
+        Ok(vec![])
+    }
+    async fn append(&self, _thread_id: &str, _message: Message) -> tinyagents::Result<()> {
+        Ok(())
+    }
+    async fn replace(&self, _thread_id: &str, _messages: Vec<Message>) -> tinyagents::Result<()> {
+        Ok(())
+    }
+    async fn clear(&self, _thread_id: &str) -> tinyagents::Result<()> {
+        Ok(())
+    }
+}
+
+/// Serves one canned transcript for every lookup and one recording write
+/// handle, so a whole session's transcript I/O can be observed off-disk.
+struct FakeLocator {
+    handle: Arc<FakeSessionHistory>,
+}
+
+impl crate::openhuman::agent::harness::session::transcript_history::SessionHistoryLocator
+    for FakeLocator
+{
+    fn latest_for_agent(
+        &self,
+        _agent_name: &str,
+    ) -> Option<
+        Arc<dyn crate::openhuman::agent::harness::session::transcript_history::SessionTranscriptRead>,
+    >{
+        Some(self.handle.clone())
+    }
+
+    fn root_for_thread(
+        &self,
+        _thread_id: &str,
+    ) -> Option<
+        Arc<dyn crate::openhuman::agent::harness::session::transcript_history::SessionTranscriptRead>,
+    >{
+        Some(self.handle.clone())
+    }
+
+    fn open_stem(
+        &self,
+        _stem: &str,
+        _seed: crate::openhuman::agent::harness::session::transcript::TranscriptMeta,
+    ) -> Result<
+        Arc<dyn crate::openhuman::agent::harness::session::transcript_history::SessionHistory>,
+    > {
+        Ok(self.handle.clone())
+    }
+}
+
+fn fake_transcript_meta(
+    thread_id: &str,
+) -> crate::openhuman::agent::harness::session::transcript::TranscriptMeta {
+    crate::openhuman::agent::harness::session::transcript::TranscriptMeta {
+        agent_name: "faker".into(),
+        agent_id: None,
+        agent_type: Some("root".into()),
+        dispatcher: "native".into(),
+        provider: None,
+        model: None,
+        created: "2026-08-08T00:00:00Z".into(),
+        updated: "2026-08-08T00:00:00Z".into(),
+        turn_count: 1,
+        input_tokens: 0,
+        output_tokens: 0,
+        cached_input_tokens: 0,
+        charged_amount_usd: 0.0,
+        thread_id: Some(thread_id.into()),
+        task_id: None,
+    }
+}
+
+fn agent_with_fake_locator(
+    workspace: &std::path::Path,
+    canned: Option<crate::openhuman::agent::harness::session::transcript::SessionTranscript>,
+) -> (Agent, Arc<FakeSessionHistory>) {
+    let handle = Arc::new(FakeSessionHistory {
+        path: workspace.join("session_raw").join("fake.jsonl"),
+        canned,
+        appended: Mutex::new(Vec::new()),
+    });
+    let memory_cfg = crate::openhuman::config::MemoryConfig {
+        backend: "none".into(),
+        ..crate::openhuman::config::MemoryConfig::default()
+    };
+    let mem: Arc<dyn Memory> =
+        Arc::from(crate::openhuman::memory::store::create_memory(&memory_cfg, workspace).unwrap());
+    let agent = Agent::builder()
+        .chat_model(Arc::new(MockProvider {
+            responses: Mutex::new(vec![]),
+        }))
+        .tools(vec![Box::new(MockTool)])
+        .memory(mem)
+        .tool_dispatcher(Box::new(NativeToolDispatcher))
+        .agent_definition_name("faker")
+        .workspace_dir(workspace.to_path_buf())
+        .with_session_history_locator(Arc::new(FakeLocator {
+            handle: handle.clone(),
+        }))
+        .build()
+        .expect("agent build should succeed");
+    (agent, handle)
+}
+
+/// Both resume reads and the turn write are served by the injected locator,
+/// with **nothing written under the workspace**. That last assertion is the
+/// whole point: it is the proof the `Arc<dyn …>` is a real seam rather than
+/// decoration around a hardcoded filesystem call.
+#[tokio::test]
+async fn fake_locator_substitutes_the_whole_turn_path() {
+    let workspace = tempfile::TempDir::new().expect("temp workspace");
+    let canned = crate::openhuman::agent::harness::session::transcript::SessionTranscript {
+        meta: fake_transcript_meta("thr_fake"),
+        messages: vec![
+            crate::openhuman::agent::messages::ChatMessage::system("canned system"),
+            crate::openhuman::agent::messages::ChatMessage::user("canned question"),
+            crate::openhuman::agent::messages::ChatMessage::assistant("canned answer"),
+        ],
+    };
+    let (mut agent, handle) = agent_with_fake_locator(workspace.path(), Some(canned));
+
+    // (1) The stem-keyed resume read.
+    agent.try_load_session_transcript();
+    let cached = agent
+        .cached_transcript_messages
+        .as_ref()
+        .expect("resume prefix came from the fake locator");
+    assert_eq!(
+        cached
+            .iter()
+            .map(|m| m.content.as_str())
+            .collect::<Vec<_>>(),
+        vec!["canned system", "canned question", "canned answer"]
+    );
+
+    // (2) The thread-keyed cold-boot read (cleared first — it no-ops on a warm
+    // agent by design).
+    agent.cached_transcript_messages = None;
+    assert!(agent.seed_resume_from_thread_transcript("thr_fake"));
+    assert_eq!(
+        agent
+            .cached_transcript_messages
+            .as_ref()
+            .expect("cold-boot prefix")
+            .len(),
+        3
+    );
+
+    // (3) The write.
+    let turn = vec![
+        crate::openhuman::agent::messages::ChatMessage::user("live question"),
+        crate::openhuman::agent::messages::ChatMessage::assistant("live answer"),
+    ];
+    agent.persist_session_transcript(&turn, 1, 2, 0, 0.0, None);
+    let appended = handle.appended.lock();
+    assert_eq!(appended.len(), 1, "the turn reached the injected handle");
+    assert_eq!(
+        appended[0]
+            .iter()
+            .map(|m| m.content.as_str())
+            .collect::<Vec<_>>(),
+        vec!["live question", "live answer"]
+    );
+    assert_eq!(
+        agent.session_transcript_path.as_deref(),
+        Some(handle.path.as_path()),
+        "session_transcript_path is the bound handle's own path — they cannot drift"
+    );
+
+    drop(appended);
+
+    // (4) Nothing touched the transcript filesystem. (The #4249 store mirror
+    // still runs — it is a separate, gated path this seam does not own — but it
+    // never writes `session_raw/`.)
+    assert!(
+        !workspace.path().join("session_raw").exists(),
+        "an injected locator must take the turn path entirely off disk"
+    );
+}
+
+/// A locator that finds nothing must leave the agent cold, so the caller's
+/// prose-seeding fallback still fires.
+#[test]
+fn fake_locator_with_no_transcript_leaves_the_agent_cold() {
+    let workspace = tempfile::TempDir::new().expect("temp workspace");
+    let (mut agent, _handle) = agent_with_fake_locator(workspace.path(), None);
+
+    agent.try_load_session_transcript();
+    assert!(agent.cached_transcript_messages.is_none());
+    assert!(
+        !agent.seed_resume_from_thread_transcript("thr_fake"),
+        "an Ok(None) read must report false like a missing file did"
+    );
+}

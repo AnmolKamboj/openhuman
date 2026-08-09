@@ -486,14 +486,21 @@ impl AgentOrchestrationSession {
 
         let task_session = self.clone();
         let task_id = orchestration_id.clone();
-        let task = tokio::spawn(async move {
-            task_session.mark_running(&task_id).await;
-            let result = with_parent_context(parent, async move {
-                run_subagent(&definition, &prompt, options).await
-            })
-            .await;
-            task_session.finish_agent(&task_id, result).await;
-        });
+        // Captured on *this* task: a `tokio::task_local` does not cross
+        // `tokio::spawn`, so the turn's origin label and workspace root are
+        // carried across the same boundary the parent execution context
+        // already is. Without the origin the spawned agent's external-effect
+        // tools reach the approval gate unlabelled and are refused.
+        let task = tokio::spawn(crate::openhuman::agent::turn_origin::propagate(
+            crate::openhuman::agent::turn_workspace::propagate(async move {
+                task_session.mark_running(&task_id).await;
+                let result = with_parent_context(parent, async move {
+                    run_subagent(&definition, &prompt, options).await
+                })
+                .await;
+                task_session.finish_agent(&task_id, result).await;
+            }),
+        ));
 
         {
             let mut state = self.state.lock().await;
