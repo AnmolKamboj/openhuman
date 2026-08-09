@@ -51,7 +51,10 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 
-use crate::core::event_bus::{subscribe_global, DomainEvent, EventHandler, SubscriptionHandle};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 use crate::openhuman::agent::triage::{apply_decision, run_triage, TriageOutcome, TriggerEnvelope};
 use crate::openhuman::config::rpc as config_rpc;
 use crate::openhuman::config::schema::COMPOSIO_MODE_DIRECT;
@@ -109,7 +112,7 @@ pub fn register_composio_trigger_subscriber() {
     super::providers::init_default_providers();
 
     if COMPOSIO_TRIGGER_HANDLE.get().is_none() {
-        match subscribe_global(Arc::new(ComposioTriggerSubscriber::new())) {
+        match BUS.subscribe(Arc::new(ComposioTriggerSubscriber::new())) {
             Some(handle) => {
                 let _ = COMPOSIO_TRIGGER_HANDLE.set(handle);
                 log::debug!("[event_bus] composio trigger subscriber registered");
@@ -123,7 +126,7 @@ pub fn register_composio_trigger_subscriber() {
     }
 
     if COMPOSIO_CONNECTION_HANDLE.get().is_none() {
-        match subscribe_global(Arc::new(ComposioConnectionCreatedSubscriber::new())) {
+        match BUS.subscribe(Arc::new(ComposioConnectionCreatedSubscriber::new())) {
             Some(handle) => {
                 let _ = COMPOSIO_CONNECTION_HANDLE.set(handle);
                 log::debug!("[event_bus] composio connection_created subscriber registered");
@@ -137,7 +140,7 @@ pub fn register_composio_trigger_subscriber() {
     }
 
     if COMPOSIO_CONFIG_HANDLE.get().is_none() {
-        match subscribe_global(Arc::new(ComposioConfigChangedSubscriber::new())) {
+        match BUS.subscribe(Arc::new(ComposioConfigChangedSubscriber::new())) {
             Some(handle) => {
                 let _ = COMPOSIO_CONFIG_HANDLE.set(handle);
                 log::debug!("[event_bus] composio config_changed subscriber registered");
@@ -168,7 +171,7 @@ impl Default for ComposioTriggerSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for ComposioTriggerSubscriber {
+impl EventHandler<DomainEvent> for ComposioTriggerSubscriber {
     fn name(&self) -> &str {
         "composio::trigger"
     }
@@ -421,7 +424,7 @@ impl Default for ComposioConnectionCreatedSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for ComposioConnectionCreatedSubscriber {
+impl EventHandler<DomainEvent> for ComposioConnectionCreatedSubscriber {
     fn name(&self) -> &str {
         "composio::connection_created"
     }
@@ -588,7 +591,7 @@ impl EventHandler for ComposioConnectionCreatedSubscriber {
                                 .collect();
                             toolkits.sort();
                             toolkits.dedup();
-                            crate::core::event_bus::publish_global(
+                            crate::core::bus::BUS.publish(
                                 DomainEvent::ComposioIntegrationsChanged {
                                     toolkits: toolkits.clone(),
                                 },
@@ -849,7 +852,7 @@ impl Default for ComposioConfigChangedSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for ComposioConfigChangedSubscriber {
+impl EventHandler<DomainEvent> for ComposioConfigChangedSubscriber {
     fn name(&self) -> &str {
         "composio::config_changed"
     }
@@ -891,7 +894,7 @@ impl EventHandler for ComposioConfigChangedSubscriber {
                         .collect();
                     toolkits.sort();
                     toolkits.dedup();
-                    crate::core::event_bus::publish_global(
+                    crate::core::bus::BUS.publish(
                         DomainEvent::ComposioIntegrationsChanged {
                             toolkits: toolkits.clone(),
                         },

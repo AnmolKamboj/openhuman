@@ -177,6 +177,7 @@ impl Config {
         self.apply_observability_env(env);
         self.apply_learning_env(env);
         self.apply_memory_tree_env(env);
+        self.apply_subsystems_env(env);
         self.apply_update_env(env);
         self.apply_dictation_env(env);
         self.apply_context_env(env);
@@ -848,6 +849,66 @@ impl Config {
         if let Some(raw) = env.get("OPENHUMAN_MEMORY_TREE_SPACY_ENABLED") {
             if let Some(val) = parse_env_bool("OPENHUMAN_MEMORY_TREE_SPACY_ENABLED", &raw) {
                 self.memory_tree.spacy_enabled = val;
+            }
+        }
+    }
+
+    /// `[subsystems.memory]` overrides — kernel.md §3.6 / plan-memory.md §4.5. Mirrors
+    /// the `apply_memory_tree_env` reading pattern above. GREENFIELD: nothing
+    /// reads `self.subsystems` yet, so these overrides have no runtime effect
+    /// beyond making the field settable via env for forward compatibility.
+    fn apply_subsystems_env<E: super::env::EnvLookup + ?Sized>(&mut self, env: &E) {
+        if let Some(raw) = env.get("OPENHUMAN_MEMORY_DRIVER") {
+            let trimmed = raw.trim();
+            if !trimmed.is_empty() {
+                self.subsystems.memory.driver = trimmed.to_string();
+            }
+        }
+
+        if let Some(raw) = env.get("OPENHUMAN_MEMORY_HOOKS_AUTO_RECALL") {
+            if let Some(val) = parse_env_bool("OPENHUMAN_MEMORY_HOOKS_AUTO_RECALL", &raw) {
+                self.subsystems.memory.hooks.auto_recall = val;
+            }
+        }
+        if let Some(raw) = env.get("OPENHUMAN_MEMORY_HOOKS_AUTO_CAPTURE") {
+            if let Some(val) = parse_env_bool("OPENHUMAN_MEMORY_HOOKS_AUTO_CAPTURE", &raw) {
+                self.subsystems.memory.hooks.auto_capture = val;
+            }
+        }
+        if let Some(raw) = env.get("OPENHUMAN_MEMORY_HOOKS_MAX_CONTEXT_TOKENS") {
+            let trimmed = raw.trim();
+            if !trimmed.is_empty() {
+                match trimmed.parse::<usize>() {
+                    Ok(v) => self.subsystems.memory.hooks.max_context_tokens = v,
+                    Err(_) => tracing::warn!(
+                        value = %raw,
+                        "invalid OPENHUMAN_MEMORY_HOOKS_MAX_CONTEXT_TOKENS ignored; expected an unsigned integer"
+                    ),
+                }
+            }
+        }
+        if let Some(raw) = env.get("OPENHUMAN_MEMORY_HOOKS_RECALL_MAX_CHARS") {
+            let trimmed = raw.trim();
+            if !trimmed.is_empty() {
+                match trimmed.parse::<usize>() {
+                    Ok(v) => self.subsystems.memory.hooks.recall_max_chars = v,
+                    Err(_) => tracing::warn!(
+                        value = %raw,
+                        "invalid OPENHUMAN_MEMORY_HOOKS_RECALL_MAX_CHARS ignored; expected an unsigned integer"
+                    ),
+                }
+            }
+        }
+        if let Some(raw) = env.get("OPENHUMAN_MEMORY_HOOKS_CAPTURE_MAX_CHARS") {
+            let trimmed = raw.trim();
+            if !trimmed.is_empty() {
+                match trimmed.parse::<usize>() {
+                    Ok(v) => self.subsystems.memory.hooks.capture_max_chars = v,
+                    Err(_) => tracing::warn!(
+                        value = %raw,
+                        "invalid OPENHUMAN_MEMORY_HOOKS_CAPTURE_MAX_CHARS ignored; expected an unsigned integer"
+                    ),
+                }
             }
         }
     }

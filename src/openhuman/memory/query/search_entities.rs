@@ -57,9 +57,9 @@ impl Tool for MemoryTreeSearchEntitiesTool {
         let req: SearchEntitiesRequest = serde_json::from_value(args).map_err(|e| {
             anyhow::anyhow!("invalid arguments for memory_tree_search_entities: {e}")
         })?;
-        let cfg = config_rpc::load_config_with_timeout()
-            .await
-            .map_err(|e| anyhow::anyhow!("memory_tree_search_entities: load config failed: {e}"))?;
+        // Validate arguments before touching config/disk — `EntityKind::parse`
+        // is pure, and a bad `kinds` value must fail with the kind error
+        // regardless of workspace state.
         let kinds = match req.kinds {
             None => None,
             Some(list) => {
@@ -70,6 +70,9 @@ impl Tool for MemoryTreeSearchEntitiesTool {
                 })?)
             }
         };
+        let cfg = config_rpc::load_config_with_timeout()
+            .await
+            .map_err(|e| anyhow::anyhow!("memory_tree_search_entities: load config failed: {e}"))?;
         let limit = req.limit.unwrap_or(5).min(100);
         let matches = retrieval::search_entities(&cfg, &req.query, kinds, limit).await?;
         log::debug!(

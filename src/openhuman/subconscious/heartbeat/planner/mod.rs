@@ -25,7 +25,8 @@ use std::collections::HashSet;
 
 use chrono::{DateTime, Duration, Utc};
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
 use crate::openhuman::desktop::notifications::bus::publish_core_notification;
 use crate::openhuman::desktop::notifications::types::CoreNotificationEvent;
@@ -217,7 +218,7 @@ pub async fn evaluate_and_dispatch(config: &Config, now: DateTime<Utc>) -> Plann
         });
 
         if config.heartbeat.external_delivery_enabled && plan.allow_external {
-            publish_global(DomainEvent::ProactiveMessageRequested {
+            BUS.publish(DomainEvent::ProactiveMessageRequested {
                 source: format!("heartbeat:{}", event.category.as_str()),
                 message: plan.proactive_message,
                 job_name: Some(format!("heartbeat-{}", event.category.as_str())),

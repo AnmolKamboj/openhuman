@@ -263,6 +263,14 @@ pub struct Config {
     #[serde(default)]
     pub storage: StorageConfig,
 
+    /// `[subsystems.*]` — the uniform cross-subsystem driver-binding config
+    /// (kernel.md §3.6 / plan-memory.md §4.5). Currently only `subsystems.memory` is
+    /// populated; nothing reads this yet (zero behaviour change). The
+    /// existing `[memory]`, `[memory_tree]`, `[[memory_sources]]` blocks
+    /// above are unaffected.
+    #[serde(default)]
+    pub subsystems: SubsystemsConfig,
+
     #[serde(default)]
     pub composio: ComposioConfig,
 
@@ -433,19 +441,20 @@ pub struct Config {
     // Provider-string grammar (consumed by `voice::factory`):
     //
     //   "cloud" / "openhuman"  → OpenHuman backend proxy (STT or TTS)
-    //   "whisper"              → local Whisper (STT only)
     //   "piper"                → local Piper (TTS only)
     //   "<slug>:<model>"       → voice_providers entry matched by slug
     //
     // When `stt_provider` / `tts_provider` are `None`, the factory falls
-    // back to `local_ai.stt_provider` / `local_ai.tts_provider` (legacy),
-    // then to `"cloud"`.
+    // back to `local_ai.stt_provider` / `local_ai.tts_provider` (legacy).
+    // For STT the final fallback is `voice_server.stt_engine`; for TTS it is
+    // `"cloud"`.
     /// Registered voice providers (STT/TTS). Analogous to `cloud_providers`
     /// for LLM inference.
     #[serde(default)]
     pub voice_providers: Vec<crate::openhuman::config::schema::voice_providers::VoiceProviderCreds>,
 
-    /// STT routing string. Grammar: `"cloud"` | `"whisper"` | `"<slug>:<model>"`.
+    /// STT routing string. Grammar: `"cloud"` | `"<slug>:<model>"`.
+    /// `"cloud"` (or unset) defers to `voice_server.stt_engine`.
     #[serde(default)]
     pub stt_provider: Option<String>,
 
@@ -780,6 +789,7 @@ impl Default for Config {
             memory: MemoryConfig::default(),
             memory_tree: MemoryTreeConfig::default(),
             storage: StorageConfig::default(),
+            subsystems: SubsystemsConfig::default(),
             composio: ComposioConfig::default(),
             secrets: SecretsConfig::default(),
             browser: BrowserConfig::default(),

@@ -2,7 +2,7 @@
 //! `captions_bridge.js` we install at session start, and forwards each
 //! new line to core's `meet_agent_push_caption` RPC.
 //!
-//! Replaces the old CEF audio-handler and Whisper STT path, which proved
+//! Replaces the old CEF audio-handler and in-process STT path, which proved
 //! unreliable: CEF's `cef_audio_handler_t`
 //! is queried lazily on first audio output, so a solo agent in a
 //! lobby never engaged the pipeline. Captions handle that case for

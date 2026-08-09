@@ -92,14 +92,26 @@ async fn local_ai_summarize_errors_when_disabled() {
     assert!(err.contains("local ai is disabled"));
 }
 
+/// Transcription is the one capability here that is NOT gated on the local-AI
+/// runtime any more: the bundled whisper.cpp engine is gone and STT is a hosted
+/// call, so a disabled local runtime must not block it. The failure a caller
+/// actually hits is the audio file.
 #[tokio::test]
-async fn local_ai_transcribe_errors_when_disabled() {
+async fn local_ai_transcribe_is_not_gated_on_the_local_ai_runtime() {
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
-    let err = local_ai_transcribe(&config, "/tmp/x.wav")
+    let missing = tmp.path().join("no-such-input.wav");
+    let err = local_ai_transcribe(&config, &missing.display().to_string())
         .await
         .unwrap_err();
-    assert!(err.contains("local ai is disabled"));
+    assert!(
+        err.contains("failed to read audio file"),
+        "error should name the unreadable file, got: {err}"
+    );
+    assert!(
+        !err.contains("local ai is disabled"),
+        "hosted STT must not be gated on the local-AI runtime: {err}"
+    );
 }
 
 #[tokio::test]
@@ -297,4 +309,45 @@ fn grant_turn_cwd_is_the_only_mutation() {
         config.autonomy.forbidden_paths,
         base.autonomy.forbidden_paths
     );
+}
+
+/// No embedder scoped an origin: this RPC is the trusted desktop / operator
+/// entry point, so the turn keeps its historical `Cli` label rather than
+/// falling through to the gate's fail-closed `Unknown` arm.
+#[tokio::test]
+async fn effective_origin_defaults_to_cli_outside_any_scope() {
+    use crate::openhuman::agent::turn_origin::AgentTurnOrigin;
+    assert!(matches!(
+        effective_agent_chat_origin(),
+        AgentTurnOrigin::Cli
+    ));
+}
+
+/// An in-process embedder that labelled the turn keeps its label: a workflow
+/// node's `TrustedAutomation::Workflow` origin is what the approval gate must
+/// see, not the blanket `Cli` allowance this RPC would otherwise impose.
+#[tokio::test]
+async fn effective_origin_keeps_an_embedder_scoped_label() {
+    use crate::openhuman::agent::turn_origin::{
+        with_origin, AgentTurnOrigin, TrustedAutomationSource,
+    };
+    let observed = with_origin(
+        AgentTurnOrigin::TrustedAutomation {
+            job_id: "run-7".to_string(),
+            source: TrustedAutomationSource::Workflow {
+                require_approval: false,
+            },
+        },
+        async { effective_agent_chat_origin() },
+    )
+    .await;
+    assert!(matches!(
+        observed,
+        AgentTurnOrigin::TrustedAutomation {
+            source: TrustedAutomationSource::Workflow {
+                require_approval: false
+            },
+            ..
+        }
+    ));
 }

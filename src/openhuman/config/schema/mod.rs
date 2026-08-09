@@ -51,6 +51,7 @@ mod runtime_pool;
 mod runtime_python;
 mod scheduler_gate;
 mod storage_memory;
+mod subsystems;
 mod task_sources;
 mod tokenjuice;
 mod tools;
@@ -99,20 +100,23 @@ pub use storage_memory::{
     LlmBackend, MemoryConfig, MemoryTreeConfig, StorageConfig, StorageProviderConfig,
     StorageProviderSection, DEFAULT_CLOUD_LLM_MODEL,
 };
+pub use subsystems::{
+    MemoryDriverConfig, MemoryHooksConfig, MemorySubsystemConfig, SubsystemsConfig,
+};
 pub use task_sources::TaskSourcesConfig;
 pub use tokenjuice::TokenjuiceConfig;
 pub use tools::{
     BrowserComputerUseConfig, BrowserConfig, ComposioConfig, CurlConfig, GitbooksConfig,
     HttpHeader, HttpRequestConfig, IntegrationToggle, IntegrationsConfig, McpAuthConfig,
     McpClientConfig, McpClientIdentityConfig, McpServerConfig, MultimodalConfig,
-    MultimodalFileConfig, PolymarketClobCredentials, PolymarketConfig, SearchConfig, SearchEngine,
-    SearchEngineCredentials, SearxngConfig, SecretsConfig, SeltzConfig, WebSearchConfig,
-    COMPOSIO_MODE_BACKEND, COMPOSIO_MODE_DIRECT, SEARCH_ENGINE_BRAVE, SEARCH_ENGINE_DISABLED,
-    SEARCH_ENGINE_EXA, SEARCH_ENGINE_MANAGED, SEARCH_ENGINE_PARALLEL, SEARCH_ENGINE_QUERIT,
+    MultimodalFileConfig, SearchConfig, SearchEngine, SearchEngineCredentials, SearxngConfig,
+    SecretsConfig, SeltzConfig, WebSearchConfig, COMPOSIO_MODE_BACKEND, COMPOSIO_MODE_DIRECT,
+    SEARCH_ENGINE_BRAVE, SEARCH_ENGINE_DISABLED, SEARCH_ENGINE_EXA, SEARCH_ENGINE_MANAGED,
+    SEARCH_ENGINE_PARALLEL, SEARCH_ENGINE_QUERIT,
 };
 pub use update::{UpdateConfig, UpdateRestartStrategy};
 mod voice_server;
-pub use voice_server::{VoiceActivationMode, VoiceServerConfig};
+pub use voice_server::{SttEngine, VoiceActivationMode, VoiceServerConfig};
 pub mod voice_providers;
 pub use voice_providers::{
     generate_voice_provider_id, is_voice_slug_reserved, BuiltinVoiceProvider, SttApiStyle,

@@ -9,7 +9,8 @@ chunks/    SQLite chunk rows (metadata + tags + md path pointer +
            lifecycle status) + the two chunkers that produce them
 entities/  mem_tree_entity_index — every entity occurrence per node
 trees/     summary tree persistence (one table, kind-parameterized)
-vectors/   local vector DB (cosine, brute-force)
+vectors    [tinycortex::memory::store::vectors] — local vector DB
+           (cosine, brute-force), moved into the TinyCortex substrate
 kv/        global + namespace key-value (kv_global, kv_namespace)
 contacts/  [removed] facade over people::store (Person/Handle/Interaction)
 namespace_store/  host-retained namespace documents, graph, episodic/event/
@@ -39,7 +40,7 @@ namespace_store/  host-retained namespace documents, graph, episodic/event/
 | [`chunks/`](chunks/) | Full chunk lifecycle. `types.rs` (`Chunk`, `Metadata`, `SourceKind`, `RawRef`, `ListChunksQuery`) + `store.rs` (SQLite persistence + connection cache) + `produce.rs` (source-kind dispatch chunker used by the ingest pipeline) + `semantic.rs` (heading/paragraph-aware chunker). |
 | [`entities.rs`](entities.rs) | Thin re-export of `memory_tree::score::store` — `index_entity`, `index_entities`, `lookup_entity`, `list_entity_ids_for_node`, `clear_entity_index_for_node`, `count_entity_index`, `EntityHit`. Reads/writes the `mem_tree_entity_index` table. |
 | [`trees/`](trees/) | `store.rs` (`mem_tree_trees` / `mem_tree_summaries` / `mem_tree_buffers`), `types.rs` (Tree / SummaryNode / TreeKind / TreeStatus / Buffer + topic hotness types), `registry.rs` (kind-parameterized helpers), `hotness.rs` (entity hotness side-table). |
-| [`vectors/`](vectors/) | Standalone vector store. `VectorStore` over SQLite, byte-codec for f32 vectors, cosine similarity. |
+| `vectors/` | Moved into the TinyCortex substrate (`tinycortex::memory::store::vectors`): standalone vector store, `VectorStore` over SQLite, byte-codec for f32 vectors, cosine similarity. |
 | [`kv.rs`](kv.rs) | Global + namespace key-value (`kv_global`, `kv_namespace` tables). |
 | `contacts/` | Removed. Contact access now lives outside `memory_store` via `people::store`. |
 | [`namespace_store/`](namespace_store/) | Host-retained namespace/document tier over the shared SQLite database: documents, persisted product graph relations, episodic/events, segments, profile facets, and host retrieval policy. TinyCortex owns the generic chunk/vector/tree/queue substrate; this tier remains the stable `Memory` implementation. See [`namespace_store/README.md`](namespace_store/README.md). |

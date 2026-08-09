@@ -16,7 +16,7 @@
 //!      launches only when `enabled_backends` is non-empty.
 //!   4. `node_runtime`   — managed Node.js (skills / MCP).
 //!
-//! Voice models (Whisper, Piper) and Ollama stay lazy/opt-in and are
+//! Voice models (Piper) and Ollama stay lazy/opt-in and are
 //! intentionally NOT registered here; they can be added later as steps.
 
 use std::future::Future;

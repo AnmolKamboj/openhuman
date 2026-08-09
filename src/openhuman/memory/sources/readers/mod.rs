@@ -40,7 +40,7 @@ pub fn reader_for(kind: &SourceKind) -> Box<dyn SourceReader> {
         SourceKind::Folder => Box::new(folder::FolderReader),
         SourceKind::GithubRepo => Box::new(github::GithubReader),
         SourceKind::TwitterQuery => Box::new(twitter::TwitterReader),
-        SourceKind::RssFeed => Box::new(rss::RssReader),
+        SourceKind::RssFeed => Box::new(rss::RssReader::new()),
         SourceKind::WebPage => Box::new(web_page::WebPageReader),
     }
 }

@@ -2,7 +2,8 @@
 
 use super::super::traits;
 use super::super::Channel;
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,9 +15,10 @@ pub(crate) fn spawn_supervised_listener(
     initial_backoff_secs: u64,
     max_backoff_secs: u64,
 ) -> tokio::task::JoinHandle<()> {
-    // This helper is used directly in tests and isolated runtime paths, so make
-    // sure channel health events always have a live bus + subscriber target.
-    crate::core::event_bus::init_global(crate::core::event_bus::DEFAULT_CAPACITY);
+    // Health events need a live bus, but standing one up is async now and this
+    // helper is not. Registering the subscriber is still sync and still safe
+    // before init; the bus itself is initialised once at startup, and a publish
+    // that lands before that is a documented no-op rather than a panic.
     crate::openhuman::platform::health::bus::register_health_subscriber();
 
     tokio::spawn(async move {
@@ -32,7 +34,7 @@ pub(crate) fn spawn_supervised_listener(
         );
 
         loop {
-            publish_global(DomainEvent::ChannelConnected {
+            BUS.publish(DomainEvent::ChannelConnected {
                 channel: ch.name().to_string(),
             });
             tracing::debug!(
@@ -48,7 +50,7 @@ pub(crate) fn spawn_supervised_listener(
             match result {
                 Ok(()) => {
                     tracing::warn!("Channel {} exited unexpectedly; restarting", ch.name());
-                    publish_global(DomainEvent::ChannelDisconnected {
+                    BUS.publish(DomainEvent::ChannelDisconnected {
                         channel: ch.name().to_string(),
                         reason: "exited unexpectedly".to_string(),
                     });
@@ -63,14 +65,14 @@ pub(crate) fn spawn_supervised_listener(
                         "supervised_listener",
                         &[("channel", ch.name())],
                     );
-                    publish_global(DomainEvent::ChannelDisconnected {
+                    BUS.publish(DomainEvent::ChannelDisconnected {
                         channel: ch.name().to_string(),
                         reason: e.to_string(),
                     });
                 }
             }
 
-            publish_global(DomainEvent::HealthRestarted {
+            BUS.publish(DomainEvent::HealthRestarted {
                 component: component.clone(),
             });
             tokio::time::sleep(Duration::from_secs(backoff)).await;

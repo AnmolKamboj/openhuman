@@ -26,9 +26,9 @@ use tinyagents::harness::observability::{AgentObservation, LangfuseClient, Langf
 
 use crate::api::config::effective_backend_api_url;
 use crate::api::jwt::bearer_authorization_value;
-use crate::openhuman::agent::session_db::run_ledger::RunTelemetry;
 use crate::openhuman::config::Config;
 use crate::openhuman::security::credentials::session_support::require_live_session_token;
+use tinyagents::session::run_ledger::RunTelemetry;
 
 use super::{SpanStatus, TraceContext, TraceSpan};
 
@@ -616,12 +616,19 @@ pub(crate) async fn push_spans(config: &Config, spans: &[TraceSpan]) -> Result<(
         "[agent-tracing] pushing {span_count} spans to Langfuse at {url}"
     );
 
+    // `ingestion_url` resolves to the backend's own Langfuse proxy route on the
+    // backend host, authenticated with a TinyHumans session token — backend
+    // traffic, so it carries the product identity. This is a bare
+    // `reqwest::Client`, not `BackendOAuthClient`'s, so nothing is inherited
+    // from that path's default headers; see [`crate::api::product`].
+    let (product_header, product_value) = crate::api::product::product_identity_header();
     let response = reqwest::Client::new()
         .post(&url)
         .header(
             reqwest::header::AUTHORIZATION,
             bearer_authorization_value(&token),
         )
+        .header(product_header, product_value)
         .timeout(PUSH_TIMEOUT)
         .json(&batch)
         .send()

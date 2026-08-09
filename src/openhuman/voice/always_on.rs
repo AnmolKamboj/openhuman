@@ -392,25 +392,23 @@ async fn transcribe_and_deliver(config: &Config, samples_16k: Vec<f32>) {
             return;
         }
     };
-    // Route through the *configured* STT provider (cloud / whisper / slug) — the
+    // Route through the *configured* STT provider (cloud / slug) — the
     // same factory dispatch the `voice.stt_dispatch` RPC uses — so always-on
-    // honors the user's choice instead of forcing local whisper.
+    // honors the user's choice of engine.
     let provider_name = crate::openhuman::voice::effective_stt_provider(config);
-    let model = crate::openhuman::voice::DEFAULT_WHISPER_MODEL.to_string();
     // Which STT backend is doing the work matters when diagnosing slow/failed
-    // transcription across machines (local whisper download state vs cloud).
+    // transcription across machines.
     log::info!(
-        "{LOG_PREFIX} transcribing utterance: provider={provider_name} model={model} samples={sample_count} wav_bytes={}",
+        "{LOG_PREFIX} transcribing utterance: provider={provider_name} model=<provider default> samples={sample_count} wav_bytes={}",
         wav.len()
     );
-    let provider =
-        match crate::openhuman::voice::create_stt_provider(&provider_name, &model, config) {
-            Ok(p) => p,
-            Err(e) => {
-                log::warn!("{LOG_PREFIX} STT provider '{provider_name}' unavailable: {e}");
-                return;
-            }
-        };
+    let provider = match crate::openhuman::voice::create_stt_provider(&provider_name, "", config) {
+        Ok(p) => p,
+        Err(e) => {
+            log::warn!("{LOG_PREFIX} STT provider '{provider_name}' unavailable: {e}");
+            return;
+        }
+    };
     let audio_b64 = base64::engine::general_purpose::STANDARD.encode(&wav);
     let stt_started = std::time::Instant::now();
     // Force English transcription. Auto-detect was rendering the English wake

@@ -16,8 +16,8 @@ memory_tree            (this module — generic mechanics)
    ├── retrieval/      agent-facing read tools (walk, drill, fetch)
    ├── score/          scoring, embedding, entity extraction
    ├── tools.rs        re-exports from memory::query
-   └── io.rs           canonical Tree{Write,Read}{Request,Outcome,Result}
-                        │
+   └── mod.rs          re-exports the canonical Tree{Write,Read}{Request,Outcome,Result}
+                        │        contract types from tinycortex::memory::tree
                         ▼
 memory_store::trees    (persistence: one Tree table, one schema)
 ```
@@ -26,8 +26,7 @@ memory_store::trees    (persistence: one Tree table, one schema)
 
 | Path | Role |
 | --- | --- |
-| [`mod.rs`](mod.rs) | Re-exports `io::*` and the controller-schema registries hosted in `memory`. Re-exports `memory::tree_global` + `memory::tree_topic` under the legacy `memory_tree::tree_{global,topic}` paths. |
-| [`io.rs`](io.rs) | Canonical contract types: `TreeWriteRequest`/`TreeWriteOutcome`, `TreeReadRequest`/`TreeReadHit`/`TreeReadResult`, `TreeLeafPayload`, `TreeLabelStrategy`. Pure types, no IO. |
+| [`mod.rs`](mod.rs) | Re-exports the canonical contract types from `tinycortex::memory::tree` (`TreeWriteRequest`/`TreeWriteOutcome`, `TreeReadRequest`/`TreeReadHit`/`TreeReadResult`, `TreeLeafPayload`, `TreeLabelStrategy` — pure types, no IO) and the controller-schema registries hosted in `memory`. Re-exports `memory::tree_global` + `memory::tree_topic` under the legacy `memory_tree::tree_{global,topic}` paths. |
 | [`tree/`](tree/) | `bucket_seal` (append leaf + cascade seal), `flush` (time-based partial seal), `registry` (kind-parameterized `get_or_create_tree` with UNIQUE-race recovery), `mod.rs` (re-exports + `memory_store::trees` shims for legacy paths). |
 | [`summarise.rs`](summarise.rs) | One function: produce the next-level summary text for a bucket. Wraps the chat model with a fixed prompt and token budget. |
 | [`retrieval/`](retrieval/) | Agent-facing tools. Read: `walk` (agentic), `drill_down`, `fetch_leaves`, `query_{source,global,topic}`, `search_entities`. Write: `ingest_document` (orchestrator-facing). |

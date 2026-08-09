@@ -335,6 +335,7 @@ fn text_response_with_reasoning(text: &str, reasoning: &str) -> ModelResponse {
         raw: None,
         resolved_model: None,
         continue_turn: None,
+        served_from_cache: false,
     }
 }
 
@@ -355,6 +356,7 @@ fn tool_response(name: &str, args: &str) -> ModelResponse {
         raw: None,
         resolved_model: None,
         continue_turn: None,
+        served_from_cache: false,
     }
 }
 

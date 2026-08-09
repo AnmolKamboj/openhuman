@@ -121,6 +121,19 @@ fn grant_turn_cwd(config: &mut Config, root: &std::path::Path) {
         });
 }
 
+/// The origin label [`agent_chat`] scopes around its turn.
+///
+/// An ambient origin — scoped by an in-process embedder around its
+/// `invoke("openhuman.inference_agent_chat", …)` — is the caller's own,
+/// deliberate trust statement about the turn and is kept. Absent one, the
+/// historical [`AgentTurnOrigin::Cli`] label applies: this RPC is reached by
+/// trusted clients (desktop UI, operator CLI), and leaving it unlabelled would
+/// fail the approval gate closed on every external-effect tool.
+fn effective_agent_chat_origin() -> crate::openhuman::agent::turn_origin::AgentTurnOrigin {
+    crate::openhuman::agent::turn_origin::current()
+        .unwrap_or(crate::openhuman::agent::turn_origin::AgentTurnOrigin::Cli)
+}
+
 /// Executes a single chat turn with an AI agent.
 ///
 /// This function initializes an agent from the provided configuration and
@@ -210,9 +223,14 @@ pub async fn agent_chat(
     }
     // Direct `agent_chat` RPC — invoked by trusted clients (desktop UI,
     // operator CLI). Label as CLI so the approval gate doesn't fail
-    // closed on an unlabelled call site.
+    // closed on an unlabelled call site — *unless* the caller already scoped a
+    // more specific origin around this dispatch, which an in-process embedder
+    // can do (a workflow node labels its turn `TrustedAutomation::Workflow`).
+    // Overwriting that with `Cli` would silently discard the caller's own
+    // trust statement and hand every such turn the blanket CLI allowance
+    // instead of the narrower one it asked for.
     let run = crate::openhuman::agent::turn_origin::with_origin(
-        crate::openhuman::agent::turn_origin::AgentTurnOrigin::Cli,
+        effective_agent_chat_origin(),
         agent.run_single(message),
     );
     let response = match thread_id.as_deref() {

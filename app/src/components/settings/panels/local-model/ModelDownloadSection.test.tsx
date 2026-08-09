@@ -90,7 +90,6 @@ describe('ModelDownloadSection runtime gate', () => {
             path: 'ollama://bge-m3',
             warning: null,
           },
-          stt: { id: 'whisper', provider: 'whisper', state: 'ondemand', path: null, warning: null },
           tts: { id: 'piper', provider: 'piper', state: 'ondemand', path: null, warning: null },
           ollama_available: true,
         }}

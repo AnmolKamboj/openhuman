@@ -1,7 +1,7 @@
 //! Tests for the Telegram approval-surface subscriber.
 
 use super::*;
-use crate::core::event_bus::EventHandler;
+use tinybus::EventHandler;
 use crate::openhuman::channels::traits::{ChannelMessage, SendMessage};
 use crate::openhuman::channels::Channel;
 use async_trait::async_trait;

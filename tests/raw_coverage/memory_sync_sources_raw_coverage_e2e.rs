@@ -332,7 +332,7 @@ async fn rss_reader_lists_reads_and_reports_feed_errors_from_loopback() {
     );
     let (base, server) = loopback_router(router).await;
 
-    let reader = openhuman_core::openhuman::memory::sources::readers::rss::RssReader;
+    let reader = openhuman_core::openhuman::memory::sources::readers::rss::RssReader::new();
     let mut entry = source(SourceKind::RssFeed, "rss-round15");
     entry.url = Some(format!("{base}/rss"));
     entry.max_items = Some(1);
@@ -610,19 +610,19 @@ fn composio_provider_registry_and_bus_subscribers_expose_stable_metadata() {
     let connection = ComposioConnectionCreatedSubscriber::new();
     let config_changed = ComposioConfigChangedSubscriber::new();
     assert_eq!(
-        openhuman_core::core::event_bus::EventHandler::name(&trigger),
+        tinybus::EventHandler::name(&trigger),
         "composio::trigger"
     );
     assert_eq!(
-        openhuman_core::core::event_bus::EventHandler::domains(&trigger),
+        tinybus::EventHandler::domains(&trigger),
         Some(&["composio"][..])
     );
     assert_eq!(
-        openhuman_core::core::event_bus::EventHandler::name(&connection),
+        tinybus::EventHandler::name(&connection),
         "composio::connection_created"
     );
     assert_eq!(
-        openhuman_core::core::event_bus::EventHandler::name(&config_changed),
+        tinybus::EventHandler::name(&config_changed),
         "composio::config_changed"
     );
 

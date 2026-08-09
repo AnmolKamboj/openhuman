@@ -11,14 +11,12 @@ use tinycortex::memory::tree::runtime::{
     NodeLevel, RuntimeObserver, Summariser, TreeNode, TreeStatus,
 };
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
+use crate::openhuman::memory::tinycortex::engine_config;
 
 const SUMMARIZATION_TEMP: f64 = 0.3;
-
-fn engine_config(config: &Config) -> tinycortex::memory::MemoryConfig {
-    crate::openhuman::memory::tinycortex::memory_config_from(config, config.workspace_dir.clone())
-}
 
 struct ChatSummariser<'a>(&'a dyn ChatModel<()>);
 
@@ -56,7 +54,7 @@ struct EventObserver;
 
 impl RuntimeObserver for EventObserver {
     fn hour_completed(&self, namespace: &str, node_id: &str, token_count: u32) {
-        publish_global(DomainEvent::TreeSummarizerHourCompleted {
+        BUS.publish(DomainEvent::TreeSummarizerHourCompleted {
             namespace: namespace.to_string(),
             node_id: node_id.to_string(),
             token_count,
@@ -64,7 +62,7 @@ impl RuntimeObserver for EventObserver {
     }
 
     fn node_propagated(&self, namespace: &str, node_id: &str, level: NodeLevel, token_count: u32) {
-        publish_global(DomainEvent::TreeSummarizerPropagated {
+        BUS.publish(DomainEvent::TreeSummarizerPropagated {
             namespace: namespace.to_string(),
             node_id: node_id.to_string(),
             level: level.as_str().to_string(),
@@ -73,7 +71,7 @@ impl RuntimeObserver for EventObserver {
     }
 
     fn rebuild_completed(&self, namespace: &str, total_nodes: u64) {
-        publish_global(DomainEvent::TreeSummarizerRebuildCompleted {
+        BUS.publish(DomainEvent::TreeSummarizerRebuildCompleted {
             namespace: namespace.to_string(),
             total_nodes,
         });

@@ -53,8 +53,6 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tauri::{PhysicalPosition, PhysicalSize, Runtime, WebviewWindow, WindowEvent};
 
-use crate::cef_profile;
-
 const STATE_FILE: &str = "window_state.toml";
 
 /// Smallest size we will ever shrink the window to. Below this the UI
@@ -100,9 +98,7 @@ struct WorkArea {
 }
 
 fn state_path() -> Option<PathBuf> {
-    cef_profile::default_root_openhuman_dir()
-        .ok()
-        .map(|root| root.join(STATE_FILE))
+    Some(crate::file_logging::resolve_data_dir().join(STATE_FILE))
 }
 
 /// Capture the main window's outer geometry and write it to disk.

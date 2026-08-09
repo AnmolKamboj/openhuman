@@ -33,8 +33,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::core::event_bus;
-use crate::core::event_bus::DomainEvent;
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::learning::cache::FacetCache;
 use crate::openhuman::agent::learning::candidate::{
     self, CueFamily, FacetClass, LearningCandidate,
@@ -388,7 +388,7 @@ impl StabilityDetector {
         );
 
         // Step 8 — publish CacheRebuilt event.
-        event_bus::publish_global(DomainEvent::CacheRebuilt {
+        BUS.publish(DomainEvent::CacheRebuilt {
             added,
             evicted,
             kept,

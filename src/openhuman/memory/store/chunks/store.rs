@@ -8,15 +8,12 @@ use rusqlite::Transaction;
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::store::chunks::types::{Chunk, SourceKind};
 use crate::openhuman::memory::store::content::StagedChunk;
+use crate::openhuman::memory::tinycortex::engine_config;
 
 pub use tinycortex::memory::chunks::{
     ListChunksQuery, RawRef, CHUNK_STATUS_ADMITTED, CHUNK_STATUS_BUFFERED, CHUNK_STATUS_DROPPED,
     CHUNK_STATUS_PENDING_EXTRACTION, CHUNK_STATUS_SEALED, RAW_FILE_GATE_KIND,
 };
-
-fn engine_config(config: &Config) -> tinycortex::memory::MemoryConfig {
-    crate::openhuman::memory::tinycortex::memory_config_from(config, config.workspace_dir.clone())
-}
 
 pub fn upsert_chunks(config: &Config, chunks: &[Chunk]) -> Result<usize> {
     tinycortex::memory::chunks::upsert_chunks(&engine_config(config), chunks)

@@ -57,9 +57,9 @@ impl Tool for MemoryTreeQuerySourceTool {
         log::debug!("[tool][memory_tree] query_source invoked");
         let req: QuerySourceRequest = serde_json::from_value(args)
             .map_err(|e| anyhow::anyhow!("invalid arguments for memory_tree_query_source: {e}"))?;
-        let cfg = config_rpc::load_config_with_timeout()
-            .await
-            .map_err(|e| anyhow::anyhow!("memory_tree_query_source: load config failed: {e}"))?;
+        // Validate arguments before touching config/disk — `SourceKind::parse`
+        // is pure, so a bad `source_kind` must fail with the parse error
+        // regardless of workspace state.
         let source_kind = match req.source_kind.as_deref() {
             Some(s) => Some(
                 SourceKind::parse(s)
@@ -67,6 +67,9 @@ impl Tool for MemoryTreeQuerySourceTool {
             ),
             None => None,
         };
+        let cfg = config_rpc::load_config_with_timeout()
+            .await
+            .map_err(|e| anyhow::anyhow!("memory_tree_query_source: load config failed: {e}"))?;
         let resp = match req.source_id.as_deref() {
             Some(source_id) => {
                 backend::query_source_scope(
@@ -164,7 +167,11 @@ mod tests {
             }))
             .await
             .expect_err("invalid source kind should fail");
-        assert!(err.to_string().contains("memory_tree_query_source:"));
+        let msg = err.to_string();
+        assert!(
+            msg.contains("memory_tree_query_source:") && !msg.contains("load config failed"),
+            "expected a source-kind parse error, got: {msg}"
+        );
     }
 
     #[tokio::test]

@@ -446,12 +446,12 @@ async fn spawn_mock_eio_server(
         // 1. Send EIO OPEN (type 0) — short intervals so tests stay snappy.
         let open =
             r#"0{"sid":"mock-eio-sid","upgrades":[],"pingInterval":1000,"pingTimeout":2000}"#;
-        let _ = write.send(WsMessage::Text(open.to_string())).await;
+        let _ = write.send(WsMessage::Text(open.into())).await;
 
         // 2. Read client SIO CONNECT (`40{...}`) and forward it so tests
         //    can assert the token round-trip before the ack.
         if let Some(Ok(WsMessage::Text(t))) = read.next().await {
-            let _ = forward_tx.send(t);
+            let _ = forward_tx.send(t.to_string());
         }
 
         match connect_behavior {
@@ -512,7 +512,7 @@ async fn pump_client_to_forward(
     while tokio::time::Instant::now() < end {
         match timeout(Duration::from_millis(100), read.next()).await {
             Ok(Some(Ok(WsMessage::Text(t)))) => {
-                let _ = forward_tx.send(t);
+                let _ = forward_tx.send(t.to_string());
             }
             Ok(Some(Ok(WsMessage::Close(_)))) | Ok(None) => break,
             Ok(Some(Err(_))) => break,
@@ -910,14 +910,12 @@ async fn spawn_mock_invalid_token_server() -> std::net::SocketAddr {
                 // 1. Send EIO OPEN.
                 let open =
                     r#"0{"sid":"mock-eio","upgrades":[],"pingInterval":1000,"pingTimeout":2000}"#;
-                let _ = write.send(WsMessage::Text(open.to_string())).await;
+                let _ = write.send(WsMessage::Text(open.into())).await;
                 // 2. Drain the SIO CONNECT frame (don't care about its content).
                 let _ = read.next().await;
                 // 3. Reply with CONNECT_ERROR "Invalid token".
                 let _ = write
-                    .send(WsMessage::Text(
-                        r#"44{"message":"Invalid token"}"#.to_string(),
-                    ))
+                    .send(WsMessage::Text(r#"44{"message":"Invalid token"}"#.into()))
                     .await;
                 let _ = write.close().await;
             });

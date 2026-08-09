@@ -2,8 +2,11 @@
 
 use serde::Deserialize;
 
+use tinycortex_api::provider::MemoryProvider;
+
 use crate::rpc::RpcOutcome;
 
+use super::guard::active_memory_guard;
 use super::helpers::active_memory_client;
 
 /// Parameters for the `kv_set` RPC method.
@@ -64,11 +67,24 @@ pub struct GraphQueryParams {
 // ---------------------------------------------------------------------------
 
 /// Sets a key-value pair in the memory store.
+///
+/// Routed through [`MemoryGuard`](crate::openhuman::memory::guard::MemoryGuard)
+/// rather than the bare client. `MemoryGraph::kv_put` on the embedded driver is
+/// `client.kv_set(namespace, key, &value)` — the same call on the same store,
+/// so the only differences are the policy steps the guard adds (tier check,
+/// audit span) and an error string that gains a `"kv_put: "` prefix.
+///
+/// Its three siblings in this file deliberately stay on the bare client; see
+/// `docs/specs/memory-guard-allowlist.md`.
 pub async fn kv_set(params: KvSetParams) -> Result<RpcOutcome<bool>, String> {
-    let client = active_memory_client().await?;
-    client
-        .kv_set(params.namespace.as_deref(), &params.key, &params.value)
-        .await?;
+    let guard = active_memory_guard().await?;
+    let graph = guard
+        .as_graph()
+        .ok_or_else(|| "memory driver does not support the graph family".to_string())?;
+    graph
+        .kv_put(params.namespace.as_deref(), &params.key, params.value)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(RpcOutcome::single_log(true, "memory kv set"))
 }
 
@@ -240,5 +256,39 @@ mod tests {
         assert_eq!(queried.value[0]["subject"], subject.to_uppercase());
         assert_eq!(queried.value[0]["predicate"], "OWNS");
         assert_eq!(queried.value[0]["object"], "ATLAS");
+    }
+
+    /// The guarded `kv_set` must land in the **same** store the unguarded
+    /// readers use. This is the failure a re-point can hide: routing through a
+    /// binding over a different workspace still returns `Ok`, it just writes
+    /// somewhere nobody reads. Asserted against the raw client rather than the
+    /// sibling handler so a shared bug in `active_memory_client` cannot make
+    /// both halves agree while both are wrong.
+    #[tokio::test]
+    async fn kv_set_through_the_guard_is_visible_to_the_unguarded_client() {
+        let _serial = crate::openhuman::memory::ops::GLOBAL_MEMORY_TEST_LOCK
+            .lock()
+            .await;
+        ensure_memory_client();
+        let namespace = unique_namespace("kv-guard");
+        let key = format!(
+            "guarded{}",
+            &uuid::Uuid::new_v4().as_simple().to_string()[..12]
+        );
+
+        kv_set(KvSetParams {
+            namespace: Some(namespace.clone()),
+            key: key.clone(),
+            value: serde_json::json!({"via": "guard"}),
+        })
+        .await
+        .expect("guarded kv set");
+
+        let client = active_memory_client().await.expect("client");
+        let raw = client
+            .kv_get(Some(namespace.as_str()), &key)
+            .await
+            .expect("unguarded kv get");
+        assert_eq!(raw, Some(serde_json::json!({"via": "guard"})));
     }
 }

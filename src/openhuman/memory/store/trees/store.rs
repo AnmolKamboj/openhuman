@@ -9,12 +9,9 @@ use rusqlite::{Connection, Transaction};
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::store::content::StagedSummary;
 use crate::openhuman::memory::store::trees::types::{Buffer, SummaryNode, Tree, TreeKind};
+use crate::openhuman::memory::tinycortex::engine_config;
 
 pub(crate) use tinycortex::memory::tree::store::TreeCascadeDeletion;
-
-fn engine_config(config: &Config) -> tinycortex::memory::MemoryConfig {
-    crate::openhuman::memory::tinycortex::memory_config_from(config, config.workspace_dir.clone())
-}
 
 pub fn insert_tree(config: &Config, tree: &Tree) -> Result<()> {
     tinycortex::memory::tree::store::insert_tree(&engine_config(config), tree)

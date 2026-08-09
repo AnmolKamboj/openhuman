@@ -47,7 +47,7 @@ mod summariser;
 mod sync;
 
 pub use chat::{build_chat_provider, SeamChatProvider};
-pub use config::memory_config_from;
+pub use config::{engine_config, memory_config_from};
 pub use embeddings::SeamEmbedder;
 pub use ingest::{context as ingest_context, HostTreeJobSink};
 pub use persona::{

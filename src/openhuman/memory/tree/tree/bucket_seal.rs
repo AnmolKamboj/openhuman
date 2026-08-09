@@ -5,12 +5,9 @@ use chrono::{DateTime, Utc};
 
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::store::trees::types::{Buffer, Tree};
+use crate::openhuman::memory::tinycortex::engine_config;
 
 pub use tinycortex::memory::tree::{LabelStrategy, LeafRef, MERGE_LEVEL_BASE};
-
-fn engine_config(config: &Config) -> tinycortex::memory::MemoryConfig {
-    crate::openhuman::memory::tinycortex::memory_config_from(config, config.workspace_dir.clone())
-}
 
 pub async fn append_leaf(
     config: &Config,

@@ -217,6 +217,8 @@ fn run_policy_for(max_iterations: usize, response_cache_enabled: bool) -> RunPol
         multiplier: 2.0,
         jitter: false,
         backoff_sleep: true,
+        max_retry_after_ms: RetryPolicy::DEFAULT_MAX_RETRY_AFTER_MS,
+        retry_on: None,
     };
     // Unknown-tool recovery (01.2 / C3): the crate policy owns this end to end —
     // the `__openhuman_unknown_tool__` sentinel tool + `UnknownToolRewriteMiddleware`

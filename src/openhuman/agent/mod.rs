@@ -81,6 +81,12 @@ pub mod triage;
 /// origin-aware decisions rather than inferring trust from the absence of
 /// `APPROVAL_CHAT_CONTEXT`.
 pub mod turn_origin;
+/// Turn-workspace task-local — the per-turn filesystem root an embedder binds
+/// a single agent turn to. Read by the session builder (as the turn's default
+/// cwd) and by the path policy (as a read/write trusted root), so a host that
+/// runs one turn against a checkout it names does not have to mutate
+/// process-global state to do it.
+pub mod turn_workspace;
 pub use schemas::{
     all_controller_schemas as all_agent_controller_schemas,
     all_registered_controllers as all_agent_registered_controllers,
