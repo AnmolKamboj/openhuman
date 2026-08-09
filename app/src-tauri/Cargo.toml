@@ -173,6 +173,7 @@ openhuman_core = { path = "../..", package = "openhuman", default-features = fal
     # comes back with nothing to attach — and the absence is silent.
     "file-logging",
     "contacts",
+    "runtime-node",
 ] }
 tinyjuice = { version = "0.2.1", default-features = false }
 

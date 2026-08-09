@@ -2408,3 +2408,33 @@ fn sole_capability_for_namespace_is_none_for_mixed_and_unknown_namespaces() {
     assert_eq!(sole_capability_for_namespace("people"), None);
     assert_eq!(sole_capability_for_namespace("not_a_namespace"), None);
 }
+
+// ---- runtime-node gate -----------------------------------------------------
+
+#[test]
+#[cfg(feature = "runtime-node")]
+fn javascript_controllers_registered_when_feature_on() {
+    let ns: Vec<&str> = all_controller_schemas()
+        .iter()
+        .map(|s| s.namespace)
+        .collect();
+    assert!(
+        ns.contains(&"javascript"),
+        "runtime-node ON must register the `javascript` namespace"
+    );
+}
+
+/// The half that proves the gate removes anything: absent, not
+/// registered-and-failing.
+#[test]
+#[cfg(not(feature = "runtime-node"))]
+fn javascript_controllers_absent_when_feature_off() {
+    let ns: Vec<&str> = all_controller_schemas()
+        .iter()
+        .map(|s| s.namespace)
+        .collect();
+    assert!(
+        !ns.contains(&"javascript"),
+        "runtime-node OFF must not register the `javascript` namespace"
+    );
+}

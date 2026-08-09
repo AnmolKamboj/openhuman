@@ -13,6 +13,17 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   305/282/4  2026-08-09  runtime-node gate, measured on top of the
+#                      upstream/main merge below (307/284/5 -> 305/282/4).
+#                      `xz2` + its static liblzma C build are exclusive to
+#                      runtime::node::extractor's .tar.xz path, so gating the
+#                      managed Node toolchain removes them: -2 packages, -2
+#                      names, and lzma-sys leaves the NATIVE list (5 -> 4) —
+#                      the first native toolchain build removed by the gating
+#                      program. Remaining native: libgit2-sys, libsqlite3-sys,
+#                      libz-sys, ring — the target keeps the last two.
+#                      Measured with `scripts/kernel-floor.sh flows`, and
+#                      `scripts/dep-sim.py --cut-nothing` agrees (282 names).
 #   307/284/5  2026-08-09  merge upstream/main + PR #5446 memory-subsystem work.
 #                      Measured, not derived: `scripts/kernel-floor.sh flows`
 #                      reports 307/284/5 on this merge. +3 names over the
@@ -147,4 +158,4 @@
 #                      Native: aws-lc-sys libgit2-sys libsqlite3-sys libz-sys
 #                      lzma-sys ring. Target after gating is 222 names / 2 native
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
-flows:307:284:5
+flows:305:282:4

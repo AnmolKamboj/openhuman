@@ -675,7 +675,10 @@ fn build_registered_controllers() -> Vec<GroupedController> {
         DomainGroup::Platform,
         crate::openhuman::platform::socket::all_socket_registered_controllers(),
     );
-    // Managed Node.js runtime bridge (tool listing + dispatch)
+    // Managed Node.js runtime bridge (tool listing + dispatch). Registration-site
+    // gate: with `runtime-node` off the `javascript.*` namespace is absent from
+    // `/schema` and unknown-method over `/rpc`, rather than registered+failing.
+    #[cfg(feature = "runtime-node")]
     push(
         &mut controllers,
         DomainGroup::Runtimes,
