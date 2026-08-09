@@ -121,7 +121,7 @@ impl ProfileStore {
             .query_row(
                 "SELECT 1 FROM user_profile
                   WHERE facet_type = ?1
-                    AND key LIKE ?2
+                    AND key = ?2
                     AND value = ?3
                   LIMIT 1",
                 params![FacetType::Workflow.as_str(), key_pattern, canonical_value],
