@@ -125,28 +125,21 @@ fn script_pubkey_for_addr(addr: &str) -> Result<ScriptBuf, String> {
     Ok(parsed.script_pubkey())
 }
 
-/// Derive a P2WPKH PrivateKey for `derivation_path` from a BIP39 mnemonic.
+/// Derive the P2WPKH signing key for `derivation_path` from a BIP-39 mnemonic.
+///
+/// Delegates to the vendored [`tinywallet`] crate, which owns BIP-32
+/// secp256k1 derivation. Custody stays here: the mnemonic is decrypted from
+/// the keyring by this crate and handed over as a `&str` that is not retained.
 fn derive_btc_private_key(
     mnemonic: &str,
     derivation_path: &str,
 ) -> Result<(PrivateKey, CompressedPublicKey), String> {
-    use coins_bip39::{English, Mnemonic};
-    let mnemonic: Mnemonic<English> = mnemonic
-        .trim()
-        .parse()
-        .map_err(|e| format!("invalid BIP39 mnemonic: {e}"))?;
-    let seed = mnemonic
-        .to_seed(None)
-        .map_err(|e| format!("failed to derive BIP39 seed: {e}"))?;
-    let xpriv = Xpriv::new_master(Network::Bitcoin, &seed)
-        .map_err(|e| format!("failed to derive BTC master key: {e}"))?;
+    let derived = tinywallet::key::derive(tinywallet::Chain::Btc, mnemonic, derivation_path)
+        .map_err(|e| e.to_string())?;
+    let secret = bitcoin::secp256k1::SecretKey::from_slice(derived.secret_bytes())
+        .map_err(|e| format!("tinywallet returned an unusable BTC key: {e}"))?;
     let secp = Secp256k1::signing_only();
-    let path = DerivationPath::from_str(derivation_path)
-        .map_err(|e| format!("invalid BTC derivation path '{derivation_path}': {e}"))?;
-    let derived = xpriv
-        .derive_priv(&secp, &path)
-        .map_err(|e| format!("failed to derive BTC child key: {e}"))?;
-    let private_key = PrivateKey::new(derived.private_key, Network::Bitcoin);
+    let private_key = PrivateKey::new(secret, Network::Bitcoin);
     let public_key = CompressedPublicKey::from_private_key(&secp, &private_key)
         .map_err(|e| format!("failed to derive BTC public key: {e}"))?;
     Ok((private_key, public_key))

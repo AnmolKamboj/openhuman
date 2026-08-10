@@ -76,93 +76,21 @@ struct TriggerSmartContractResponse {
     transaction: CreateTransactionResponse,
 }
 
+/// Derive the Tron signing key and its base58check address.
+///
+/// Delegates to the vendored [`tinywallet`] crate, which owns BIP-32
+/// secp256k1 derivation and the Keccak-then-base58check address construction.
+/// The hand-rolled BIP-32 walk and path parser that used to live here moved
+/// there wholesale. Custody stays here.
 fn derive_tron_keypair(
     mnemonic: &str,
     derivation_path: &str,
 ) -> Result<(SecretKey, String), String> {
-    use coins_bip39::{English, Mnemonic};
-    let mnemonic_obj: Mnemonic<English> = mnemonic
-        .trim()
-        .parse()
-        .map_err(|e| format!("invalid BIP39 mnemonic: {e}"))?;
-    let seed = mnemonic_obj
-        .to_seed(None)
-        .map_err(|e| format!("failed to derive BIP39 seed: {e}"))?;
-
-    // BIP32 derivation (secp256k1) — same algorithm as BTC, distinct from Solana.
-    type HmacSha512 = Hmac<Sha512>;
-    let mut mac = HmacSha512::new_from_slice(b"Bitcoin seed")
-        .map_err(|e| format!("HMAC init failed: {e}"))?;
-    mac.update(&seed);
-    let i = mac.finalize().into_bytes();
-    let mut key = [0u8; 32];
-    let mut chain_code = [0u8; 32];
-    key.copy_from_slice(&i[..32]);
-    chain_code.copy_from_slice(&i[32..]);
-
-    let segments = parse_bip32_path(derivation_path)?;
-    let secp = Secp256k1::signing_only();
-    for (idx, hardened) in segments {
-        let mut mac = HmacSha512::new_from_slice(&chain_code)
-            .map_err(|e| format!("HMAC init failed: {e}"))?;
-        if hardened {
-            mac.update(&[0u8]);
-            mac.update(&key);
-        } else {
-            let sk = SecretKey::from_slice(&key).map_err(|e| format!("bad sk: {e}"))?;
-            let pk = sk.public_key(&secp);
-            mac.update(&pk.serialize());
-        }
-        let composite = idx | if hardened { 0x8000_0000 } else { 0 };
-        mac.update(&composite.to_be_bytes());
-        let i = mac.finalize().into_bytes();
-        let mut il = [0u8; 32];
-        il.copy_from_slice(&i[..32]);
-        // child = (parent + IL) mod n
-        let mut child_sk = SecretKey::from_slice(&il).map_err(|e| format!("bad il: {e}"))?;
-        let parent = bitcoin::secp256k1::Scalar::from_be_bytes(key)
-            .map_err(|e| format!("scalar from key: {e}"))?;
-        child_sk = child_sk
-            .add_tweak(&parent)
-            .map_err(|e| format!("child tweak failed: {e}"))?;
-        key = child_sk.secret_bytes();
-        chain_code.copy_from_slice(&i[32..]);
-    }
-
-    let sk = SecretKey::from_slice(&key).map_err(|e| format!("bad final sk: {e}"))?;
-    let secp_all = Secp256k1::new();
-    let pk = sk.public_key(&secp_all);
-    let uncompressed = pk.serialize_uncompressed();
-    // Drop the 0x04 prefix, then keccak256 the 64-byte payload.
-    let hash = keccak256(&uncompressed[1..]);
-    // Tron address = TRON_PREFIX || hash[12..]
-    let mut addr_bytes = [0u8; 21];
-    addr_bytes[0] = TRON_PREFIX;
-    addr_bytes[1..].copy_from_slice(&hash[12..]);
-    let address = bs58::encode(&addr_bytes).with_check().into_string();
-    Ok((sk, address))
-}
-
-fn parse_bip32_path(path: &str) -> Result<Vec<(u32, bool)>, String> {
-    let trimmed = path.trim();
-    let mut iter = trimmed.split('/');
-    match iter.next() {
-        Some("m") => {}
-        _ => return Err(format!("BIP32 path '{path}' must start with 'm'")),
-    }
-    let mut out = Vec::new();
-    for seg in iter {
-        let (idx_str, hardened) = if let Some(stripped) = seg.strip_suffix('\'') {
-            (stripped, true)
-        } else {
-            (seg, false)
-        };
-        let v: u32 = idx_str
-            .parse()
-            .map_err(|e| format!("BIP32 path '{path}' segment '{seg}': {e}"))?;
-        out.push((v, hardened));
-    }
-    Ok(out)
+    let derived = tinywallet::key::derive(tinywallet::Chain::Tron, mnemonic, derivation_path)
+        .map_err(|e| e.to_string())?;
+    let secret = SecretKey::from_slice(derived.secret_bytes())
+        .map_err(|e| format!("tinywallet returned an unusable Tron key: {e}"))?;
+    Ok((secret, derived.address().to_string()))
 }
 
 fn pad_left_32(bytes: &[u8]) -> Vec<u8> {
