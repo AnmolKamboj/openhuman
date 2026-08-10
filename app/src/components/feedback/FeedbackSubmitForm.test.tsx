@@ -322,16 +322,21 @@ describe('<FeedbackSubmitForm /> quality tiers', () => {
   });
 
   // The hint appears ~300ms after typing stops and is the only account of why
-  // submit went disabled. Nothing moves focus to it, so it has to announce.
-  it('announces the hint and describes the submit button with it', async () => {
+  // submit went disabled. Nothing moves focus to it, so it has to announce —
+  // and the region has to be in the tree *before* the text lands, because a
+  // region inserted along with its content gives AT no change to observe.
+  it('announces the hint from a live region that predates it, and describes submit with it', async () => {
     mockValidate.mockResolvedValue({ tier: 'block', reason: 'Please describe the problem.' });
 
     render(<FeedbackSubmitForm onAccepted={() => {}} />);
+    const region = screen.getByRole('status');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toBeEmptyDOMElement();
+
     fillForm('test', 'test');
 
     const hint = await screen.findByTestId('feedback-quality-hint');
-    expect(hint).toHaveAttribute('role', 'status');
-    expect(hint).toHaveAttribute('aria-live', 'polite');
+    expect(region).toContainElement(hint);
     expect(hint.id).toBe('feedback-quality-hint');
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Submit' })).toHaveAttribute(

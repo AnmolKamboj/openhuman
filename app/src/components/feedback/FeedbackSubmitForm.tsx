@@ -252,25 +252,30 @@ export default function FeedbackSubmitForm({ onAccepted }: FeedbackSubmitFormPro
         className={`${INPUT_CLASS} resize-y`}
       />
 
-      {visibleHint && (
-        <p
-          id={QUALITY_HINT_ID}
-          data-testid="feedback-quality-hint"
-          data-tier={visibleHint.tier}
-          // Nothing moves focus here and the paragraph arrives ~300ms after
-          // typing stops, so without a live region a blocked submitter hears
-          // the button go disabled with no reason given.
-          role="status"
-          aria-live="polite"
-          // `block` is the harder outcome, so it gets the louder colour.
-          className={`mt-2 text-xs ${
-            visibleHint.tier === 'block'
-              ? 'text-primary-600 dark:text-primary-400'
-              : 'text-content-muted'
-          }`}>
-          {visibleHint.reason}
-        </p>
-      )}
+      {/* Nothing moves focus here and the hint arrives ~300ms after typing
+          stops, so without a live region a blocked submitter hears the button
+          go disabled with no reason given. The region is mounted
+          unconditionally: one inserted at the same moment as its text gives
+          assistive tech no change to observe, and on `block` it is the only
+          announcement path there is — `aria-describedby` cannot cover for it,
+          because a disabled button is not focusable. Same shape as
+          `SystemDiagnostics.tsx` / `DeveloperOptionsPanel.tsx`. */}
+      <div role="status" aria-live="polite" aria-atomic="true">
+        {visibleHint && (
+          <p
+            id={QUALITY_HINT_ID}
+            data-testid="feedback-quality-hint"
+            data-tier={visibleHint.tier}
+            // `block` is the harder outcome, so it gets the louder colour.
+            className={`mt-2 text-xs ${
+              visibleHint.tier === 'block'
+                ? 'text-primary-600 dark:text-primary-400'
+                : 'text-content-muted'
+            }`}>
+            {visibleHint.reason}
+          </p>
+        )}
+      </div>
 
       <div className="mt-3 flex items-center justify-between gap-3">
         <Button

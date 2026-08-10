@@ -17,6 +17,22 @@ import { apiClient } from '../apiClient';
 
 const log = createDebug('feedback:api');
 
+/**
+ * The cause of a rejected `apiClient` call, for logging only.
+ *
+ * `apiClient` rejects with a plain `{ success, error }` object rather than an
+ * `Error`, so the `error` string is the branch that actually fires; the
+ * `Error` branch is there for a non-`apiClient` throw on the way in.
+ */
+function rejectionCause(err: unknown): string {
+  if (err && typeof err === 'object' && 'error' in err) {
+    const { error } = err as { error?: unknown };
+    if (typeof error === 'string' && error.trim()) return error;
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return 'unknown rejection';
+}
+
 function buildListQuery(params: FeedbackListParams): string {
   const search = new URLSearchParams();
   if (params.type) search.set('type', params.type);
@@ -82,11 +98,13 @@ export const feedbackApi = {
       log('validateFeedback ok type=%s tier=%s', input.type, response.data.tier);
       return response.data;
     } catch (err) {
-      log(
-        'validateFeedback failed type=%s error=%s',
-        input.type,
-        err instanceof Error ? err.message : 'non-error rejection'
-      );
+      // `apiClient` never rejects with an `Error` — every throw path in
+      // `apiClient.request` ends in a plain `{ success, error }` object — so
+      // reading only `.message` would log every failure, from a 404 on the
+      // unshipped route to a timeout, as the same "non-error rejection".
+      // A transport or server fault, never the user's draft, so it is safe to
+      // log. The composer swallows this failure; this line is its only trace.
+      log('validateFeedback failed type=%s error=%s', input.type, rejectionCause(err));
       throw err;
     }
   },
