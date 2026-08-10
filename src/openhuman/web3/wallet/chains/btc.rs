@@ -8,7 +8,6 @@
 //! native segwit address.
 
 use bitcoin::absolute::LockTime;
-use bitcoin::bip32::{DerivationPath, Xpriv};
 use bitcoin::hashes::Hash;
 use bitcoin::key::{CompressedPublicKey, PrivateKey};
 use bitcoin::secp256k1::{Message, Secp256k1};

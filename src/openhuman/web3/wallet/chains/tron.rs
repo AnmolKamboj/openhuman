@@ -6,12 +6,10 @@
 //! `sha3_256(uncompressed_pubkey[1..])[12..]` prefixed with 0x41, base58check.
 
 use bitcoin::secp256k1::{Message, Secp256k1, SecretKey};
-use ethers_core::utils::keccak256;
-use hmac::{Hmac, Mac};
 use log::debug;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256, Sha512};
+use sha2::{Digest, Sha256};
 
 use crate::openhuman::config::rpc as config_rpc;
 
