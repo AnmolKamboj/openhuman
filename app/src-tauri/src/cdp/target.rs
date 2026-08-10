@@ -44,39 +44,8 @@ pub fn parse_targets(v: &Value) -> Vec<CdpTarget> {
         .unwrap_or_default()
 }
 
-/// Get a [`CdpConn`] for an account-keyed webview, looking up the
-/// pre-installed in-process transport from the [`CdpRegistry`] managed
-/// on `app`.
-///
-/// On a cache miss, falls back to
-/// [`super::in_process::install_for_account`] so a transient install
-/// failure during `webview_accounts::open` (logged as a warning by the
-/// account-open path, not fatal) doesn't permanently lock the account
-/// out of CDP. The install call is idempotent and cheap on the cached
-/// path. Still returns `Err` when the webview itself has not yet been
-/// created — caller backs off and retries.
-pub fn conn_for_account<R: Runtime>(
-    app: &AppHandle<R>,
-    account_id: &str,
-) -> Result<CdpConn, String> {
-    let registry = app
-        .try_state::<CdpRegistry>()
-        .ok_or_else(|| "CdpRegistry not managed by app".to_string())?;
-    if let Some(transport) = registry.by_account(account_id) {
-        return Ok(CdpConn::new(transport));
-    }
-    // Retry — the install path is idempotent. The most common cause of
-    // a cache miss here is an earlier non-fatal `install_for_account`
-    // failure in `webview_accounts::open` (warn-logged) that left the
-    // webview alive without a transport.
-    let transport = super::in_process::install_for_account(account_id)
-        .map_err(|e| format!("no cdp transport for account {account_id} (install retry: {e})"))?;
-    Ok(CdpConn::new(transport))
-}
-
 /// Get a [`CdpConn`] for a webview keyed by its concrete label
-/// (e.g. `"meet-call-<request_id>"`). Generic counterpart of
-/// [`conn_for_account`] for webviews that aren't account scanners.
+/// (e.g. `"meet-call-<request_id>"`).
 ///
 /// Falls back to [`super::in_process::install_for_label`] on a cache
 /// miss so a transient install race at window creation doesn't
@@ -93,30 +62,10 @@ pub fn conn_for_label<R: Runtime>(app: &AppHandle<R>, label: &str) -> Result<Cdp
     Ok(CdpConn::new(transport))
 }
 
-/// Full short-lived attach sequence on the account's webview via the
-/// in-process channel: look up the [`CdpRegistry`] transport for the
-/// given account, find the matching page target via
-/// `Target.getTargets`, attach with `flatten: true`. Caller gets a
-/// ready `CdpConn` + session id. Caller MUST `detach_session` (or drop
-/// the `CdpConn`) when done so the session id doesn't linger inside
-/// CEF.
-pub async fn connect_and_attach_matching_in_process<R, F>(
-    app: &AppHandle<R>,
-    account_id: &str,
-    pred: F,
-) -> Result<(CdpConn, String), String>
-where
-    R: Runtime,
-    F: Fn(&CdpTarget) -> bool,
-{
-    let cdp = conn_for_account(app, account_id)?;
-    attach_matching_on_conn(cdp, pred).await
-}
-
-/// Same as [`connect_and_attach_matching_in_process`] but keyed by the
-/// webview's concrete label rather than an account id. Used by Meet
-/// (window label `meet-call-{request_id}`) and any other CEF surface
-/// that isn't an account scanner.
+/// Full short-lived attach sequence keyed by the webview's concrete
+/// label: look up the [`CdpRegistry`] transport, find the matching page
+/// target via `Target.getTargets`, then attach with `flatten: true`.
+/// Used by the Meet call window (label `meet-call-{request_id}`).
 pub async fn connect_and_attach_matching_in_process_by_label<R, F>(
     app: &AppHandle<R>,
     label: &str,
@@ -150,20 +99,8 @@ where
     Ok((cdp, session))
 }
 
-pub async fn detach_session(cdp: &mut CdpConn, session_id: &str) {
-    let _ = cdp
-        .call(
-            "Target.detachFromTarget",
-            json!({ "sessionId": session_id }),
-            None,
-        )
-        .await;
-}
-
 /// Generalised target search — caller supplies the predicate
-/// (url-hash marker, title marker, etc). Used by the per-account
-/// session opener, which matches on `#openhuman-account-{id}` so
-/// multiple webviews on the same origin don't collide.
+/// (url-hash marker, title marker, etc).
 pub async fn find_page_target_where<F>(cdp: &mut CdpConn, pred: F) -> Result<CdpTarget, String>
 where
     F: Fn(&CdpTarget) -> bool,

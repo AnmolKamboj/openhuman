@@ -1,4 +1,4 @@
-//! Compatibility surface for account scanners.
+//! Compatibility surface for the remaining CDP consumers.
 //!
 //! Upstream Tauri's native WebView runtime intentionally does not expose the
 //! Chromium DevTools Protocol transport used by the removed CEF runtime. Keep
@@ -84,10 +84,6 @@ impl CdpRegistry {
 }
 
 pub fn set_cef_app_handle(_app: tauri::AppHandle<crate::AppRuntime>) {}
-
-pub fn install_for_account(account_id: &str) -> Result<Arc<WebviewCdpTransport>, String> {
-    install_for_label(&format!("acct_{account_id}"))
-}
 
 pub fn install_for_label(label: &str) -> Result<Arc<WebviewCdpTransport>, String> {
     Err(format!(

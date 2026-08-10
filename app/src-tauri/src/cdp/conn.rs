@@ -1,10 +1,9 @@
 //! [`CdpConn`] — per-attach handle on top of the in-process CDP transport.
 //!
 //! Wraps an [`Arc<WebviewCdpTransport>`](super::in_process::WebviewCdpTransport)
-//! with the same `call` / `pump_events` surface scanners and the per-account
-//! session opener use. All attaches for a given webview share the same
-//! in-process channel, and a [`CdpConn`] is just a cheap session-scoped
-//! view.
+//! with the same `call` / `pump_events` surface its consumers use. All
+//! attaches for a given webview share the same in-process channel, and a
+//! [`CdpConn`] is just a cheap session-scoped view.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -26,7 +25,7 @@ pub struct CdpConn {
 impl CdpConn {
     /// Wrap an already-installed in-process transport. Callers obtain
     /// the transport from the per-app [`super::CdpRegistry`]
-    /// (`app.state()`) — typically via [`super::conn_for_account`] or
+    /// (`app.state()`) — typically via
     /// [`super::conn_for_label`].
     pub fn new(transport: Arc<WebviewCdpTransport>) -> Self {
         let label = transport.label().to_string();
