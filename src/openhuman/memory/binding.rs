@@ -72,18 +72,16 @@ use crate::openhuman::memory::guard::{GuardPolicy, MemoryGuard};
 
 /// Why a bind fell back to the placeholder driver.
 ///
-/// `reason` is operator-facing: it is logged, published on the event bus, and
-/// rendered in status. It must therefore never interpolate `credential_ref` or
-/// `endpoint` from [`crate::openhuman::config::schema::MemoryDriverConfig`],
-/// which carries a manual redacting `Debug` for exactly that reason. Pinned by
+/// Defined in [`tinymemory::registry`] alongside the admission rules that
+/// produce it. `reason` is operator-facing: it is logged, published on the
+/// event bus, and rendered in status, so it must never interpolate
+/// `credential_ref` or `endpoint` from
+/// [`crate::openhuman::config::schema::MemoryDriverConfig`], which carries a
+/// manual redacting `Debug` for exactly that reason. The crate enforces this
+/// structurally — [`DriverEntry`] carries neither field, so a refusal built
+/// there cannot reach one. Pinned by
 /// `fallback_reason_never_contains_credential_ref_or_endpoint`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FallbackReason {
-    /// The driver id that was asked for in `[subsystems.memory] driver`.
-    pub configured_driver: String,
-    /// Why it was refused.
-    pub reason: String,
-}
+pub use tinymemory::registry::FallbackReason;
 
 /// One bound memory driver, for one workspace.
 pub struct MemoryBinding {
