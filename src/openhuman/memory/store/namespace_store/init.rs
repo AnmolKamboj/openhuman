@@ -19,6 +19,76 @@ use crate::openhuman::memory::store::types::GLOBAL_NAMESPACE;
 
 use super::UnifiedMemory;
 
+/// What an idempotent additive `ALTER TABLE … ADD COLUMN` actually did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AdditiveMigration {
+    /// The column did not exist and was added.
+    Applied,
+    /// SQLite reported `duplicate column name` — an older DB already has it.
+    AlreadyPresent,
+    /// SQLite reported `no such table` — the table has not been created yet
+    /// (the fresh-install case for the profile Phase-3 columns, which run
+    /// *before* `PROFILE_INIT_SQL`).
+    TableAbsent,
+}
+
+/// Classify a rusqlite error as one of the two benign, expected outcomes of an
+/// idempotent additive migration, or `None` when it is a genuine failure.
+///
+/// SQLite reports both conditions as the generic `SQLITE_ERROR` (code 1) with
+/// no distinguishing extended code, so the message is the only signal. Every
+/// other error — a malformed statement, a read-only or corrupt database, disk
+/// I/O — must surface rather than be swallowed as "column already exists".
+fn classify_additive_migration_error(err: &rusqlite::Error) -> Option<AdditiveMigration> {
+    let rusqlite::Error::SqliteFailure(_, Some(message)) = err else {
+        return None;
+    };
+    let lowered = message.to_ascii_lowercase();
+    if lowered.contains("duplicate column name") {
+        Some(AdditiveMigration::AlreadyPresent)
+    } else if lowered.contains("no such table") {
+        Some(AdditiveMigration::TableAbsent)
+    } else {
+        None
+    }
+}
+
+/// Run one idempotent additive migration, swallowing **only** the
+/// duplicate-column and missing-table cases.
+///
+/// Before this existed, every `ALTER TABLE` on the boot path matched
+/// `Err(_)` and logged at `trace`, so a genuinely broken statement or an
+/// unwritable database was indistinguishable from a no-op re-run and the store
+/// came up silently missing a column.
+pub(crate) fn apply_additive_migration(
+    conn: &Connection,
+    sql: &str,
+    scope: &str,
+) -> anyhow::Result<AdditiveMigration> {
+    match conn.execute(sql, []) {
+        Ok(_) => {
+            tracing::debug!("[{scope}:init] additive migration applied: {sql}");
+            Ok(AdditiveMigration::Applied)
+        }
+        Err(e) => match classify_additive_migration_error(&e) {
+            Some(outcome @ AdditiveMigration::AlreadyPresent) => {
+                tracing::trace!("[{scope}:init] column already present, skipping: {sql}");
+                Ok(outcome)
+            }
+            Some(outcome @ AdditiveMigration::TableAbsent) => {
+                tracing::trace!("[{scope}:init] table not created yet, skipping: {sql}");
+                Ok(outcome)
+            }
+            Some(AdditiveMigration::Applied) => unreachable!("Applied is not an error outcome"),
+            None => {
+                tracing::error!("[{scope}:init] additive migration FAILED: {sql}: {e}");
+                Err(anyhow::Error::new(e)
+                    .context(format!("[{scope}:init] additive migration failed: {sql}")))
+            }
+        },
+    }
+}
+
 impl UnifiedMemory {
     /// Open (or create) the unified store rooted at `workspace_dir`.
     ///
@@ -167,12 +237,7 @@ impl UnifiedMemory {
             "ALTER TABLE vector_chunks ADD COLUMN model_signature TEXT",
             "ALTER TABLE vector_chunks ADD COLUMN dim INTEGER",
         ] {
-            match conn.execute(sql, []) {
-                Ok(_) => tracing::debug!("[vector_chunks:init] applied: {sql}"),
-                Err(e) => {
-                    tracing::trace!("[vector_chunks:init] skipped (probably already exists): {e}")
-                }
-            }
+            apply_additive_migration(&conn, sql, "vector_chunks")?;
         }
 
         // Backfill the `taint` column on existing `memory_docs` databases.
@@ -180,15 +245,11 @@ impl UnifiedMemory {
         // the ALTER so retrieval can carry the provenance signal up to the
         // subconscious gate. Idempotent: a duplicate-column error on
         // re-application is expected (logged at trace).
-        match conn.execute(
+        apply_additive_migration(
+            &conn,
             "ALTER TABLE memory_docs ADD COLUMN taint TEXT NOT NULL DEFAULT 'internal'",
-            [],
-        ) {
-            Ok(_) => tracing::debug!("[memory_docs:init] applied taint column migration"),
-            Err(e) => {
-                tracing::trace!("[memory_docs:init] taint column already present: {e}")
-            }
-        }
+            "memory_docs",
+        )?;
 
         // Create FTS5 episodic tables (episodic_log, episodic_fts, and their
         // triggers) so the Archivist can call episodic_insert immediately after
@@ -203,12 +264,7 @@ impl UnifiedMemory {
         // need the ALTER TABLEs. Idempotent: a duplicate-column error is
         // expected and logged at trace level.
         for sql in super::segments::SEGMENTS_MIGRATIONS_SQL {
-            match conn.execute(sql, []) {
-                Ok(_) => tracing::debug!("[segments:init] applied: {sql}"),
-                Err(e) => {
-                    tracing::trace!("[segments:init] skipped (probably already exists): {e}")
-                }
-            }
+            apply_additive_migration(&conn, sql, "segments")?;
         }
 
         // Event extraction tables.
@@ -223,12 +279,9 @@ impl UnifiedMemory {
         {
             use super::profile::PHASE3_COLUMNS_SQL;
             for sql in PHASE3_COLUMNS_SQL.iter() {
-                match conn.execute(sql, []) {
-                    Ok(_) => tracing::debug!("[profile:init] applied: {sql}"),
-                    Err(e) => {
-                        tracing::trace!("[profile:init] skipped (probably already exists): {e}")
-                    }
-                }
+                // `TableAbsent` is the expected fresh-install outcome here:
+                // these run *before* `PROFILE_INIT_SQL` creates `user_profile`.
+                apply_additive_migration(&conn, sql, "profile")?;
             }
         }
 
@@ -459,6 +512,80 @@ mod tests {
         );
         assert!(mem1.db_path().exists(), "mem1 db file must exist on disk");
         assert!(mem2.db_path().exists(), "mem2 db file must exist on disk");
+    }
+
+    // ── Additive-migration error narrowing ──────────────────────────────
+    //
+    // Before `apply_additive_migration` existed these four boot-path
+    // `ALTER TABLE`s matched `Err(_)` and logged at `trace`, so a genuinely
+    // failing statement was indistinguishable from "column already exists".
+
+    fn scratch_conn() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE t (a TEXT);").unwrap();
+        conn
+    }
+
+    #[test]
+    fn additive_migration_applies_a_new_column() {
+        let conn = scratch_conn();
+        assert_eq!(
+            apply_additive_migration(&conn, "ALTER TABLE t ADD COLUMN b TEXT", "test").unwrap(),
+            AdditiveMigration::Applied
+        );
+    }
+
+    #[test]
+    fn additive_migration_swallows_duplicate_column() {
+        let conn = scratch_conn();
+        apply_additive_migration(&conn, "ALTER TABLE t ADD COLUMN b TEXT", "test").unwrap();
+        assert_eq!(
+            apply_additive_migration(&conn, "ALTER TABLE t ADD COLUMN b TEXT", "test").unwrap(),
+            AdditiveMigration::AlreadyPresent
+        );
+    }
+
+    #[test]
+    fn additive_migration_swallows_missing_table() {
+        let conn = scratch_conn();
+        assert_eq!(
+            apply_additive_migration(&conn, "ALTER TABLE nope ADD COLUMN b TEXT", "test").unwrap(),
+            AdditiveMigration::TableAbsent
+        );
+    }
+
+    #[test]
+    fn additive_migration_surfaces_a_genuine_failure() {
+        let conn = scratch_conn();
+        // Not a duplicate column and not a missing table: a malformed
+        // statement. Swallowing this would leave the store silently missing a
+        // column that recall depends on, with only a trace-level breadcrumb.
+        let err = apply_additive_migration(&conn, "ALTER TABLE t ADD COLUMN", "test")
+            .expect_err("a real ALTER TABLE failure must surface, not be swallowed as idempotent");
+        let rendered = format!("{err:#}");
+        assert!(
+            rendered.contains("additive migration failed"),
+            "error must name the failing migration, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn additive_migration_surfaces_a_readonly_database() {
+        // A read-only DB is the real-world shape of this defect: every ALTER
+        // fails, the old code logged each at trace, and the store came up
+        // missing columns that recall depends on.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("ro.db");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch("CREATE TABLE t (a TEXT);").unwrap();
+        }
+        let conn =
+            Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+        assert!(
+            apply_additive_migration(&conn, "ALTER TABLE t ADD COLUMN b TEXT", "test").is_err(),
+            "a read-only database must fail the migration, not look idempotent"
+        );
     }
 
     #[test]

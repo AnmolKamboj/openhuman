@@ -380,6 +380,24 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "global::client_if_ready(",
         "same provider trait shape",
     ),
+    // ── Golden-workspace fixture seeder (test infrastructure) ──
+    //
+    // `memory::store::golden` is the engine behind the `memory_golden_fixture_e2e`
+    // schema gate. It is never reachable from the product: nothing outside
+    // `tests/` calls it, and it is `#[doc(hidden)]`. It must seed the episodic,
+    // segment, event and profile tiers, which have no guard-routed writer — the
+    // archivist and the learning cache reach them the same way, and those two
+    // are already allowlisted below/above for the same reason.
+    (
+        "src/openhuman/memory/store/golden.rs",
+        ".profile_conn(",
+        "fixture seeder: episodic/segment/event/profile tiers have no guarded writer",
+    ),
+    (
+        "src/openhuman/memory/store/golden.rs",
+        "global::client(",
+        "resolved only to reach profile_conn() for the fixture seed/read-back",
+    ),
     // ── The engine seam ──
     (
         "src/openhuman/memory/tinycortex/sync.rs",

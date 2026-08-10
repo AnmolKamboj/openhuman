@@ -109,6 +109,18 @@ is the only path" is not yet a true invariant.**
 | `agent/learning/tools.rs` | 1 |
 | `agent/learning/startup.rs` | 2 |
 | `memory/store/client_tests.rs` | 2 (test) |
+| `memory/store/golden.rs` | 2 (test infrastructure — see below) |
+
+`memory/store/golden.rs` is the seeder / read-back engine behind the
+`memory_golden_fixture_e2e` schema gate. It is `#[doc(hidden)]` and has no
+caller outside `tests/`, so it is not a product bypass. It needs
+`profile_conn()` for the same reason `agent/learning/*` does: the episodic,
+conversation-segment, event and `user_profile` tiers have no guard-routed
+writer, and a fixture that omitted them would leave the FTS5 shadow tables and
+six sync triggers unrepresented — exactly the schema the gate exists to pin.
+Its document / KV / graph writes and all of its read-back **do** go through
+`memory::ops`. If those four tiers ever gain a guarded writer, re-point this
+module and drop both entries.
 
 The brief named only the first two files. The other two were found by grep and
 are recorded here so M4c starts from the real set.
