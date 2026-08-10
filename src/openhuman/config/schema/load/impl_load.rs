@@ -712,7 +712,25 @@ impl Config {
             )
         })?;
 
-        if let Err(e) = fs::rename(&temp_path, &self.config_path).await {
+        let replace = fs::rename(&temp_path, &self.config_path).await;
+        // A concurrently-cleaning test or runtime can still remove the parent
+        // in the narrow window after the create_dir_all above. Retry the rename
+        // once after recreating it; the temp file lives alongside the target and
+        // remains available across that directory-entry race.
+        let replace = match replace {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                fs::create_dir_all(parent_dir).await.with_context(|| {
+                    format!(
+                        "Failed to recreate config directory for atomic replace retry: {}",
+                        parent_dir.display()
+                    )
+                })?;
+                fs::rename(&temp_path, &self.config_path).await
+            }
+            result => result,
+        };
+
+        if let Err(e) = replace {
             let _ = fs::remove_file(&temp_path).await;
             if had_existing_config && backup_path.exists() {
                 fs::copy(&backup_path, &self.config_path)
