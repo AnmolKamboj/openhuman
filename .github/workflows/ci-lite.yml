@@ -375,8 +375,25 @@ jobs:
         if: needs.changes.outputs['rust-core'] == 'true' || needs.changes.outputs['rust-tauri'] == 'true'
         run: bash scripts/check-linux-tls-dependencies.sh
 
-      - name: Run clippy (core crate)
+      - name: Run clippy (core crate, product feature set)
         if: needs.changes.outputs['rust-core'] == 'true'
+        # `--features` is load-bearing. `[features] default` is the CONTRIBUTOR
+        # set (see the comment above it in Cargo.toml) and omits voice, web3,
+        # documents, meet, contacts, inference and crash-reporting — so a bare
+        # `cargo clippy` no longer lints code that ships. Product set:
+        # scripts/ci/product-features.txt, asserted equal to the shell's
+        # forwarding list by check-feature-forwarding.mjs.
+        run: |
+          bash scripts/ci-cancel-aware.sh cargo clippy -p openhuman \
+            --features "$(bash scripts/ci/product-features.sh)" -- -D warnings
+
+      - name: Run clippy (core crate, contributor default set)
+        if: needs.changes.outputs['rust-core'] == 'true'
+        # The set a contributor's editor and pre-push hook actually compile. A
+        # lint that only fires with those gates OFF — an import left unused once
+        # a domain is compiled out, say — is invisible to the product lane above
+        # and would land red on every contributor's machine while CI stayed
+        # green. Cheap: this graph is ~356 packages against the product's ~567.
         run: bash scripts/ci-cancel-aware.sh cargo clippy -p openhuman -- -D warnings
 
       - name: Cache CEF binary distribution
@@ -440,6 +457,19 @@ jobs:
         # in #5021 alongside running the full gates-off suite; until it lands, this
         # lane checks the lib and RUNS the gate-contract lib tests below.
         run: bash scripts/ci-cancel-aware.sh cargo check --manifest-path Cargo.toml --no-default-features
+
+      - name: Check the gates that are in NEITHER the contributor nor the product set
+        # `tui` is the one gate that is default-OFF *and* deliberately not
+        # forwarded to the desktop shell (it is a terminal front-end; the app
+        # ships its own UI). That combination means nothing else in CI compiles
+        # it: the product lanes do not select it, the contributor lanes no
+        # longer default it on, and the gates-off check above turns it off.
+        #
+        # Without this step the ratatui front-end would rot silently — which is
+        # the same shape of failure as #4901, just pointed at a gate instead of
+        # at the shipped app. If a future gate lands in this same
+        # neither-set position, add it here.
+        run: bash scripts/ci-cancel-aware.sh cargo check --manifest-path Cargo.toml --no-default-features --features tui
 
       - name: Run the gate-contract tests with the default domain gates disabled
         # `cargo check` (even --all-targets) never RUNS tests, so a gated family that
