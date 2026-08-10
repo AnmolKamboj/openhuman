@@ -207,9 +207,12 @@ Consequences worth knowing before touching either seam:
   `tinydocs`' `DocumentSpec` re-exported under its historical name, with field
   names unchanged; `the_json_wire_shape_is_unchanged_by_the_extraction` pins
   that.
-- **`tinywallet` rejects an uppercase `0X` EVM prefix**, matching what
-  `ethers-core` accepted before the swap. Verified against the old code path
-  rather than assumed — do not "fix" it into leniency.
+- **`tinywallet` rejects an uppercase `0X` EVM prefix — and so did the code it
+  replaced.** The old path went through `ethers_core::types::Address`'s
+  `FromStr`, which is `fixed-hash`'s and strips only a lowercase `0x`
+  (`fixed-hash-0.8.0/src/hash.rs`, `input.strip_prefix("0x")`), so `0X…` failed
+  hex decoding there too. The behaviour is unchanged, verified against the old
+  code path rather than assumed — do not "fix" it into leniency.
 - **Bitcoin has two rules, not one.** `btc::validate` is the recipient rule;
   `btc::validate_sender` additionally requires P2WPKH. Using the first where
   the second belongs accepts an address that only fails later, at signing time.
