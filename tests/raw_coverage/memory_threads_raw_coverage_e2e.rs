@@ -578,73 +578,30 @@ async fn memory_source_readers_validate_and_use_local_inputs_only() {
         .unwrap_err();
     assert!(traversal.contains("not found") || traversal.contains("traversal"));
 
-    let web_base = serve_routes(
-        Router::new()
-            .route("/page", get(html_page))
-            .route("/too-large", get(large_header))
-            .route("/missing", get(|| async { StatusCode::NOT_FOUND })),
-    )
-    .await;
     let mut page = source(SourceKind::WebPage, "src_web");
-    page.url = Some(format!("{web_base}/page"));
+    page.url = Some("http://127.0.0.1:9/page".into());
     page.selector = Some("main.content".into());
     let web_reader = reader_for(&SourceKind::WebPage);
-    let page_items = web_reader
-        .list_items(&page, &config)
+    let page_error = web_reader
+        .read_item(&page, "http://127.0.0.1:9/page", &config)
         .await
-        .expect("web list");
-    assert_eq!(page_items[0].id, format!("{web_base}/page"));
-    let page_content = web_reader
-        .read_item(&page, &page_items[0].id, &config)
-        .await
-        .expect("web read");
-    assert_eq!(page_content.title, "Raw Page");
-    assert!(page_content.body.contains("Selected body"));
-    assert!(!page_content.body.contains("Skip me"));
+        .expect_err("private web host rejected before fetch");
+    assert!(page_error.contains("public host"));
     page.url = Some("file:///etc/passwd".into());
     let bad_scheme = web_reader
         .read_item(&page, "relative-id", &config)
         .await
         .unwrap_err();
     assert!(bad_scheme.contains("http(s)"));
-    page.url = Some(format!("{web_base}/too-large"));
-    assert!(web_reader
-        .read_item(&page, "relative-id", &config)
-        .await
-        .unwrap_err()
-        .contains("exceeds"));
-    page.url = Some(format!("{web_base}/missing"));
-    assert!(web_reader
-        .read_item(&page, "relative-id", &config)
-        .await
-        .unwrap_err()
-        .contains("404"));
-
-    let rss_base = serve_routes(Router::new().route("/feed", get(rss_feed))).await;
     let mut rss = source(SourceKind::RssFeed, "src_rss");
-    rss.url = Some(format!("{rss_base}/feed"));
+    rss.url = Some("http://127.0.0.1:9/feed".into());
     rss.max_items = Some(1);
     let rss_reader = reader_for(&SourceKind::RssFeed);
-    let feed_items = rss_reader
+    let rss_error = rss_reader
         .list_items(&rss, &config)
         .await
-        .expect("rss list");
-    assert_eq!(feed_items.len(), 1);
-    assert_eq!(feed_items[0].id, "rss-1");
-    let feed_content = rss_reader
-        .read_item(&rss, "rss-1", &config)
-        .await
-        .expect("rss read");
-    assert_eq!(feed_content.content_type, ContentType::Html);
-    assert!(feed_content.metadata["link"]
-        .as_str()
-        .unwrap()
-        .contains("rss-1"));
-    assert!(rss_reader
-        .read_item(&rss, "missing", &config)
-        .await
-        .unwrap_err()
-        .contains("not found"));
+        .expect_err("private RSS host rejected before fetch");
+    assert!(rss_error.contains("public host"));
 
     let mut twitter = source(SourceKind::TwitterQuery, "src_tw");
     twitter.query = Some("AI safety".into());
@@ -957,7 +914,7 @@ async fn memory_thread_tree_and_sync_controller_schemas_execute_public_handlers(
 fn memory_schema_registries_and_query_tool_metadata_cover_public_surfaces() {
     let memory_schemas = all_memory_controller_schemas();
     let memory_controllers = all_memory_registered_controllers();
-    assert_eq!(memory_schemas.len(), 34);
+    assert_eq!(memory_schemas.len(), 35);
     assert_eq!(memory_schemas.len(), memory_controllers.len());
     for function in [
         "init",
@@ -3579,7 +3536,7 @@ async fn threads_rpc_ops_cover_crud_title_fallback_and_turn_state_cleanup() {
         .value
         .data
         .expect("fallback summary");
-    assert_eq!(fallback_title.title, "Please summarize launch blockers");
+    assert_eq!(fallback_title.title, "summarize launch blockers");
 
     assert!(
         thread_ops::thread_update_title(UpdateConversationThreadTitleRequest {

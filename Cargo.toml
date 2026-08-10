@@ -221,7 +221,7 @@ hmac = "0.12"
 # distributions ship as .tar.xz, Windows as .zip. `xz2` with `static`
 # bundles liblzma so we don't need it as a system dependency.
 tar = "0.4"
-xz2 = { version = "0.1", features = ["static"] }
+xz2 = { version = "0.1", features = ["static"], optional = true }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 # gzip decoder for the Piper tar.gz binary releases on macOS / Linux. Already
 # pulled in transitively by zip's `deflate` feature; declared directly so
@@ -429,7 +429,7 @@ tokio = { version = "1", features = ["test-util"] }
 proptest = "1"
 
 [features]
-default = ["inference", "voice", "web3", "media", "documents", "meet", "skills", "flows", "mcp", "crash-reporting", "http-server", "channels", "tui", "medulla", "scheduler-gate", "file-logging", "contacts"]
+default = ["inference", "voice", "web3", "media", "documents", "meet", "skills", "flows", "mcp", "crash-reporting", "http-server", "channels", "tui", "medulla", "scheduler-gate", "file-logging", "contacts", "runtime-node"]
 # HTTP + Socket.IO server transport (#5048): the `/rpc` JSON-RPC endpoint and
 # its auth middleware/CORS layer (`core::jsonrpc`, `core::auth`), the `/v1`
 # OpenAI-compatible router (`inference::http`), the ad-hoc static-dir file
@@ -529,6 +529,32 @@ web3 = [
     "dep:ethers-signers",
     "dep:coins-bip39",
 ]
+
+# Managed Node.js runtime: `runtime::node` (download / verify / extract / install
+# a pinned toolchain), the `runtime::javascript` language slot over it,
+# `runtime::pool::node`, the `node_exec` / `npm_exec` agent tools, and the
+# `node_runtime` harness-init step. Default-ON. Slim builds opt out via
+# `--no-default-features --features "<list without runtime-node>"`, which drops
+# the exclusive `xz2` AND its static liblzma C build — the FIRST native
+# toolchain build this gating program removes (6 native -> 5).
+#
+# FACADE + STUB, not a leaf gate. `ShellTool` holds `Option<Arc<NodeBootstrap>>`
+# for managed-Node PATH injection and `tools/impl/system/shell.rs` is kernel, so
+# deleting the module would take the shell tool with it. `runtime/node/stub.rs`
+# carries the `NodeBootstrap` type surface; registration sites (`node_runtime_step`,
+# the `javascript` controllers, `node_exec`/`npm_exec`) are leaf-gated at their call
+# sites, because registration sites want absence.
+#
+# The generic native-tool dispatcher (`runtime::node::ops` / `runtime::node::types`)
+# is deliberately NOT gated: it backs both the gated `javascript.*` controllers and
+# the ungated `flows` `oh:` `NativeToolBackend`, so native flow tools keep working
+# when the managed Node runtime is compiled out.
+#
+# Off-state: `try_cached`/`probe_installed` return `None`, so the shell never
+# prepends a managed bin dir — identical to today's `node.enabled = false` path.
+# `tar` and `zip` are NOT shed: `tar` is shared with `inference` (install_piper)
+# and `runtime::python`, `zip` with `inference` and the document tools.
+runtime-node = ["dep:xz2"]
 
 # macOS Contacts seeding for the people domain: `memory::people::address_book`
 # reads CNContactStore to seed handles. Default-ON. Slim / headless builds opt

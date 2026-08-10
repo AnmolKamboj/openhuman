@@ -27,7 +27,7 @@ serde_json = "1"
 [dependencies]
 # Tauri core and plugins. Use upstream Tauri's native WebView runtime (Wry),
 # rather than the removed Chromium/CEF fork.
-tauri = { version = "2.10", default-features = false, features = [
+tauri = { version = "2.11", default-features = false, features = [
     "wry",
     "common-controls-v6",
     "devtools",
@@ -173,6 +173,7 @@ openhuman_core = { path = "../..", package = "openhuman", default-features = fal
     # comes back with nothing to attach — and the absence is silent.
     "file-logging",
     "contacts",
+    "runtime-node",
 ] }
 tinyjuice = { version = "0.2.1", default-features = false }
 

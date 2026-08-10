@@ -946,6 +946,31 @@ async fn wait_for_chat_completion_requests_len(expected_len: usize) -> Vec<Value
     with_chat_completion_requests(|requests| requests.clone())
 }
 
+async fn wait_for_chat_completion_request_with_message(message: &str) -> Value {
+    for _ in 0..100 {
+        if let Some(request) = with_chat_completion_requests(|requests| {
+            requests
+                .iter()
+                .find(|request| {
+                    request["body"]["messages"]
+                        .as_array()
+                        .is_some_and(|messages| {
+                            messages.iter().any(|entry| {
+                                entry["content"]
+                                    .as_str()
+                                    .is_some_and(|content| content.contains(message))
+                            })
+                        })
+                })
+                .cloned()
+        }) {
+            return request;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("timed out waiting for chat completion containing {message:?}");
+}
+
 async fn encrypt_test_mnemonic() -> String {
     let _keyring_backend_guard = EnvVarGuard::set("OPENHUMAN_KEYRING_BACKEND", "file");
     let config = openhuman_core::openhuman::config::load_config_with_timeout()
@@ -4921,29 +4946,13 @@ async fn json_rpc_web_chat_routing_cases_use_expected_backend_models_inner() {
             Some("chat_done")
         );
 
-        let mut captured_models: Vec<String> = Vec::new();
-        for _ in 0..50 {
-            captured_models = with_chat_completion_models(|models| models.clone());
-            if captured_models.iter().any(|m| m == expected_model) {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-
-        assert!(
-            captured_models.iter().any(|m| m == expected_model),
-            "case={model_override} expected={expected_model} captured={captured_models:?}"
+        let request =
+            wait_for_chat_completion_request_with_message(&format!("route case {idx}")).await;
+        assert_eq!(
+            request.get("model").and_then(Value::as_str),
+            Some(*expected_model),
+            "case={model_override} request={request:?}"
         );
-
-        if model_override.starts_with("hint:")
-            && *model_override != "hint:reaction"
-            && *expected_model != *model_override
-        {
-            assert!(
-                !captured_models.iter().any(|m| m == model_override),
-                "hint model should not pass through for case={model_override}: {captured_models:?}"
-            );
-        }
     }
 
     mock_join.abort();
@@ -5171,11 +5180,10 @@ async fn json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_
         with_chat_completion_requests(|requests| requests.clone())
     );
 
-    let requests = wait_for_chat_completion_requests_len(3).await;
-    let agentic_request = requests
-        .iter()
-        .find(|request| request.get("model").and_then(Value::as_str) == Some("agentic-v1"))
-        .unwrap_or_else(|| panic!("expected agentic-v1 backend provider call: {requests:?}"));
+    let agentic_request = wait_for_chat_completion_request_with_message(
+        "This turn should stay on the backend agentic route",
+    )
+    .await;
     assert_eq!(
         agentic_request.get("path").and_then(Value::as_str),
         Some("/openai/v1/chat/completions"),

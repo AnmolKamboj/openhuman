@@ -12,6 +12,7 @@ use std::time::Duration;
 use serde_json::Value;
 use tokio::sync::broadcast;
 
+#[allow(dead_code)]
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(35);
 
 #[derive(Clone, Debug)]
@@ -94,6 +95,7 @@ pub fn install_for_label(label: &str) -> Result<Arc<WebviewCdpTransport>, String
     ))
 }
 
+#[allow(dead_code)]
 pub fn install_for_webview(
     _registry: &CdpRegistry,
     webview: tauri::Webview<crate::AppRuntime>,

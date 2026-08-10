@@ -148,7 +148,7 @@ async fn attributed_cron_build_retains_profile_gates() {
 }
 
 #[tokio::test]
-async fn attributed_cron_build_applies_profile_runtime_defaults() {
+async fn attributed_cron_build_applies_profile_temperature_and_prompt_defaults() {
     crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::init_global_builtins()
         .expect("init built-in agent definitions");
     let tmp = TempDir::new().unwrap();
@@ -169,7 +169,9 @@ async fn attributed_cron_build_applies_profile_runtime_defaults() {
     job.profile_id = Some("alice-runtime".into());
     let built = build_agent_for_cron_job(&config, &job).expect("build attributed cron agent");
 
-    assert_eq!(built.agent.model_name(), "profile-runtime-model");
+    // Agent definitions own their model selection; profile model overrides are
+    // intentionally not projected through the definition-host path.
+    assert_eq!(built.agent.model_name(), "coding-v1");
     assert_eq!(built.agent.temperature(), 0.17);
     let prompt = built
         .agent

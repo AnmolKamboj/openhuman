@@ -11,12 +11,33 @@ use crate::openhuman::agent::harness::fork_context::current_parent;
 use crate::openhuman::agent::orchestration::running_subagents::{
     self, SubagentStatus, WaitError, WaitOutcome,
 };
-use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
+use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult, ToolTimeout};
 use async_trait::async_trait;
 use serde_json::json;
 
 const DEFAULT_TIMEOUT_SECS: u64 = 120;
-const MAX_TIMEOUT_SECS: u64 = 600;
+/// Ceiling on a single wait. Matches Codex's `wait_agent` maximum of one hour:
+/// a wait that is long is fine, because reaching it is a *successful* "still
+/// running" result the model can act on, not a failure.
+const MAX_TIMEOUT_SECS: u64 = 3600;
+
+/// The wait this call should perform, resolved identically for the harness
+/// deadline ([`WaitSubagentTool::timeout_policy`]) and the wait itself.
+///
+/// These two MUST agree. This tool is designed to be polled: on expiry it
+/// returns [`ToolResult::success`] saying the sub-agent is still running and
+/// inviting another call. That graceful path is only reachable if the tool
+/// out-lives its own wait — under the default [`ToolTimeout::Inherit`] the
+/// generic 120s per-tool-call deadline killed the *tool* first, turning a
+/// designed success into an `error` result. The repeated-failure breaker then
+/// classifies "timed out" as transient, retries the identical call 8 times and
+/// halts the turn — which is how a working coding sub-agent lost its work.
+fn requested_timeout_secs(args: &serde_json::Value) -> u64 {
+    args.get("timeout_secs")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(DEFAULT_TIMEOUT_SECS)
+        .clamp(1, MAX_TIMEOUT_SECS)
+}
 
 pub struct WaitSubagentTool;
 
@@ -41,8 +62,24 @@ impl Tool for WaitSubagentTool {
     fn description(&self) -> &str {
         "Block until an async sub-agent (started with spawn_async_subagent) \
          finishes, then return its final result. Optionally bound the wait with \
-         `timeout_secs` (default 120, max 600); on timeout it reports the \
-         sub-agent is still running and you can call wait_subagent again."
+         `timeout_secs` (default 120, max 3600); on timeout it reports the \
+         sub-agent is still running and you can call wait_subagent again. \
+         Reaching the timeout is a normal outcome, not a failure — prefer a \
+         long wait (minutes) for work like a build or a test suite rather than \
+         polling tightly."
+    }
+
+    /// Let the wait own its own deadline instead of inheriting the generic
+    /// per-tool-call one.
+    ///
+    /// Without this the harness kills the tool at the global `Inherit` timeout
+    /// (120s by default) *before* the wait can return its "still running"
+    /// success, so a legitimate long wait is reported as a tool failure. The
+    /// harness adds its own small grace on top of `Secs`, so the tool always
+    /// gets to finish and report first. Same reasoning as
+    /// `spawn_parallel_agents`, which opts out for the same class of bug.
+    fn timeout_policy(&self, args: &serde_json::Value) -> ToolTimeout {
+        ToolTimeout::Secs(requested_timeout_secs(args))
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -91,11 +128,7 @@ impl Tool for WaitSubagentTool {
             ));
         }
 
-        let timeout_secs = args
-            .get("timeout_secs")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(DEFAULT_TIMEOUT_SECS)
-            .clamp(1, MAX_TIMEOUT_SECS);
+        let timeout_secs = requested_timeout_secs(&args);
 
         let parent = match current_parent() {
             Some(parent) => parent,
@@ -410,5 +443,53 @@ mod tests {
         assert!(message.contains("\"agentId\":\"researcher\""));
         assert!(message.contains("\"timeout_tick\""));
         assert!(message.contains("\"timeout_secs\":1"));
+    }
+
+    /// The tool must own its deadline. Under the inherited per-tool-call
+    /// timeout the harness killed the wait before it could report "still
+    /// running", so a long-but-healthy sub-agent surfaced as a tool failure.
+    #[test]
+    fn timeout_policy_is_owned_not_inherited() {
+        let tool = WaitSubagentTool::new();
+        assert!(matches!(
+            tool.timeout_policy(&json!({})),
+            ToolTimeout::Secs(DEFAULT_TIMEOUT_SECS)
+        ));
+        assert!(matches!(
+            tool.timeout_policy(&json!({"timeout_secs": 1800})),
+            ToolTimeout::Secs(1800)
+        ));
+    }
+
+    /// The advertised wait and the harness deadline are resolved by one
+    /// function precisely so they cannot drift apart; if they ever did, the
+    /// shorter one silently wins and the graceful path is unreachable again.
+    #[test]
+    fn policy_and_wait_resolve_the_same_seconds() {
+        let tool = WaitSubagentTool::new();
+        for args in [
+            json!({}),
+            json!({"timeout_secs": 1}),
+            json!({"timeout_secs": 900}),
+            json!({"timeout_secs": 99_999}),
+            json!({"timeout_secs": 0}),
+        ] {
+            let ToolTimeout::Secs(policy) = tool.timeout_policy(&args) else {
+                panic!("wait_subagent must return an explicit Secs policy");
+            };
+            assert_eq!(policy, requested_timeout_secs(&args));
+        }
+    }
+
+    /// Out-of-range requests clamp rather than error, so a model asking for a
+    /// very long wait still gets the longest legal one.
+    #[test]
+    fn requested_timeout_clamps_into_range() {
+        assert_eq!(requested_timeout_secs(&json!({"timeout_secs": 0})), 1);
+        assert_eq!(
+            requested_timeout_secs(&json!({"timeout_secs": 99_999})),
+            MAX_TIMEOUT_SECS
+        );
+        assert_eq!(requested_timeout_secs(&json!({})), DEFAULT_TIMEOUT_SECS);
     }
 }

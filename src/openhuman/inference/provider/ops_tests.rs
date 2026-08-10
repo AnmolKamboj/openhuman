@@ -1331,7 +1331,6 @@ async fn api_error_monthly_quota_returns_message_via_demoted_branch() {
 /// the credentials subscriber can drive reauth.
 #[tokio::test]
 async fn publish_backend_session_expired_emits_sanitized_session_expired() {
-    use crate::core::bus::BUS;
     use crate::core::events::DomainEvent;
 
     crate::core::bus::init().await.expect("bus init");

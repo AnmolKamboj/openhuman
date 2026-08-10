@@ -707,10 +707,13 @@ fn all_tools_default_registry_contains_expected_baseline_surface() {
         "gitbooks_search",
         "gitbooks_get_page",
         "web_search_tool",
-        "node_exec",
-        "npm_exec",
         "image_info",
     ];
+    // Managed Node tools exist only when the runtime is compiled in — same
+    // shape as the `channels` conditional just below.
+    if cfg!(feature = "runtime-node") {
+        expected.extend(&["node_exec", "npm_exec"]);
+    }
     // WhatsApp tools are only registered when channels feature is on
     if cfg!(feature = "channels") {
         expected.extend(&[
@@ -1013,6 +1016,7 @@ fn all_tools_excludes_delegate_when_no_agents() {
 }
 
 #[test]
+#[cfg(feature = "runtime-node")]
 fn all_tools_registers_node_exec_when_node_enabled() {
     // Default NodeConfig has `enabled = true`, so both `node_exec` and
     // `npm_exec` must appear in the registry. Regression guard for the
@@ -2927,22 +2931,10 @@ const OPTIONAL_FAMILY_MEMORY_TOOLS: &[&str] = &[
     "goals_delete",
 ];
 
-/// Tools that must survive any driver: the mandatory families plus the
-/// host-owned surface that never touches the driver.
-const ALWAYS_PRESENT_MEMORY_TOOLS: &[&str] = &[
-    "memory_store",
-    "memory_recall",
-    "memory_forget",
-    "remember_preference",
-    "save_preference",
-    "update_memory_md",
-    "memory_store_kinds",
-    "memory_vector_search",
-    "memory_chunk_context",
-    "memory_hybrid_search",
-    "memory_store_raw_chunks",
-    "people_list",
-];
+/// Memory-family tools that remain available when a null driver deliberately
+/// disables every driver-backed capability.
+const ALWAYS_PRESENT_MEMORY_TOOLS: &[&str] =
+    &["update_memory_md", "memory_store_kinds", "people_list"];
 
 /// The ~4000-pre-boot-test default-open property, asserted once directly: with
 /// no ambient context at all the capability filter removes nothing.
@@ -3032,6 +3024,24 @@ async fn narrow_capabilities_do_not_narrow_the_domain_axis() {
         assert!(
             names.iter().any(|n| n == name),
             "a narrowed memory capability set must not remove `{name}`"
+        );
+    }
+}
+
+/// `node_exec` / `npm_exec` are absent when the managed Node runtime is
+/// compiled out — absent, not present-and-erroring, so the model is never shown
+/// a tool it cannot use.
+#[test]
+#[cfg(not(feature = "runtime-node"))]
+fn default_tools_omits_node_tools_when_runtime_node_off() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = integration_test_config(&tmp, "http://127.0.0.1:1");
+    let tools = integration_tools_for_config(&tmp, &cfg);
+    let names = tool_names(&tools);
+    for absent in ["node_exec", "npm_exec"] {
+        assert!(
+            !names.iter().any(|n| n == absent),
+            "`{absent}` must not be registered with runtime-node compiled out"
         );
     }
 }

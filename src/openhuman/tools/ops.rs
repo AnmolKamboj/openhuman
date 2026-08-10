@@ -117,7 +117,12 @@ pub fn all_tools_with_runtime(
     // NodeExecTool, and NpmExecTool all share the same memoised resolution
     // state. Disabled when `node.enabled = false` — in that case shell skips
     // PATH injection and node/npm tools are not registered.
-    let node_bootstrap: Option<Arc<NodeBootstrap>> = if root_config.node.enabled {
+    // `runtime-node` off => never construct a bootstrap: the stub resolves to
+    // nothing anyway, and this keeps the shell's PATH-injection branch dead
+    // rather than a silent per-invocation no-op.
+    let node_bootstrap: Option<Arc<NodeBootstrap>> = if cfg!(feature = "runtime-node")
+        && root_config.node.enabled
+    {
         tracing::debug!(
             version = %root_config.node.version,
             prefer_system = root_config.node.prefer_system,
@@ -1030,6 +1035,7 @@ pub fn all_tools_with_runtime(
     // Managed Node.js exec tools — gated on `root_config.node.enabled`.
     // Both share the same `NodeBootstrap` as ShellTool so the download +
     // extract + install pipeline runs at most once per session.
+    #[cfg(feature = "runtime-node")]
     if let Some(bootstrap) = node_bootstrap.as_ref() {
         tools.push(Box::new(NodeExecTool::new(
             security.clone(),

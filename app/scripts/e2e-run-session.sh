@@ -295,6 +295,36 @@ resolve_app_binary() {
 }
 
 APP_BIN="$(resolve_app_binary)"
+
+# Linux builds use Tauri's Wry/WebKit runtime, not CEF. Drive that native
+# webview through tauri-driver instead of waiting for a Chromium CDP endpoint.
+if [ "$OS" = "Linux" ] && [ "${E2E_USE_TAURI_DRIVER:-0}" = "1" ]; then
+  TAURI_DRIVER_PORT="${TAURI_DRIVER_PORT:-4444}"
+  TAURI_DRIVER_LOG="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/tauri-driver-${LOG_SUFFIX}.log"
+  echo "[runner] Starting tauri-driver on port $TAURI_DRIVER_PORT"
+  tauri-driver --port "$TAURI_DRIVER_PORT" --native-driver "${WEBKIT_WEBDRIVER:-/usr/bin/WebKitWebDriver}" \
+    > "$TAURI_DRIVER_LOG" 2>&1 &
+  APP_PID=$!
+  export TAURI_DRIVER_PORT
+  for i in $(seq 1 30); do
+    if curl -sf "http://127.0.0.1:$TAURI_DRIVER_PORT/status" >/dev/null 2>&1; then
+      break
+    fi
+    if ! kill -0 "$APP_PID" 2>/dev/null; then
+      cat "$TAURI_DRIVER_LOG" >&2 || true
+      exit 1
+    fi
+    sleep 1
+  done
+  if [ "${#SPEC_ARGS[@]}" -gt 0 ]; then
+    WDIO_SPEC_ARGS=()
+    for s in "${SPEC_ARGS[@]}"; do WDIO_SPEC_ARGS+=(--spec "$s"); done
+    pnpm exec wdio run test/wdio.conf.ts --maxInstances 1 "${WDIO_SPEC_ARGS[@]}"
+  else
+    pnpm exec wdio run test/wdio.conf.ts --maxInstances 1
+  fi
+  exit $?
+fi
 if [ -z "${APP_BIN:-}" ] || [ ! -x "$APP_BIN" ]; then
   echo "ERROR: built OpenHuman binary not found. Run 'pnpm test:e2e:build' first." >&2
   exit 1
@@ -339,7 +369,14 @@ fi
 # dist dir to LD_LIBRARY_PATH (Linux) / PATH (Windows). On macOS this is a
 # no-op — the .app bundle already self-resolves.
 # ------------------------------------------------------------------------------
-CEF_PATH="${CEF_PATH:-$HOME/Library/Caches/tauri-cef}"
+if [ -z "${CEF_PATH:-}" ]; then
+  case "$(uname -s)" in
+    Linux) CEF_PATH="$HOME/.cache/tauri-cef" ;;
+    Darwin) CEF_PATH="$HOME/Library/Caches/tauri-cef" ;;
+    MINGW*|MSYS*|CYGWIN*|Windows_NT) CEF_PATH="$HOME/AppData/Local/tauri-cef" ;;
+    *) CEF_PATH="$HOME/.cache/tauri-cef" ;;
+  esac
+fi
 
 # Pick exactly one CEF distribution per platform. If two cached versions
 # coexist (e.g. after a CEF upgrade) `head -1` silently picks an arbitrary
@@ -393,6 +430,9 @@ esac
 LOG_DIR="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 APP_LOG="$LOG_DIR/openhuman-e2e-app-${LOG_SUFFIX}.log"
 APP_ARGS=()
+# The CEF runtime reads this browser-process switch directly. Keep it on the
+# test runner invocation so Appium's debuggerAddress has a stable endpoint.
+APP_ARGS+=("--remote-debugging-port=${CEF_CDP_PORT}")
 # CEF/Chromium needs extra coaxing in headless / containerized Linux runs:
 #
 #   --no-sandbox            crbug.com/638180 — needed only when the runner is
@@ -643,8 +683,8 @@ if [ "${#SPEC_ARGS[@]}" -gt 0 ]; then
   for s in "${SPEC_ARGS[@]}"; do
     WDIO_SPEC_ARGS+=(--spec "$s")
   done
-  pnpm exec wdio run test/wdio.conf.ts "${WDIO_SPEC_ARGS[@]}"
+  pnpm exec wdio run test/wdio.conf.ts --maxInstances 1 "${WDIO_SPEC_ARGS[@]}"
 else
   echo "[runner] Running full E2E suite (single shared session)..."
-  pnpm exec wdio run test/wdio.conf.ts
+  pnpm exec wdio run test/wdio.conf.ts --maxInstances 1
 fi

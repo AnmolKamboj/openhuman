@@ -92,7 +92,7 @@ pub fn trace_budget(policy: &GuardPolicy, method: &str, dropped: usize, trimmed_
 ///
 /// Called from [`GuardPolicy::denied`](super::GuardPolicy::denied), so every
 /// deny path audits by construction rather than by each call site remembering
-/// to. `BUS.publish` is synchronous and a no-op before the bus is
+/// to. `publish_global` is synchronous and a no-op before the bus is
 /// initialised, so this is safe pre-boot with no `#[cfg(test)]` guard — the
 /// same property `binding::build` relies on.
 pub fn publish_guard_denied(policy: &GuardPolicy, method: &str, reason: &str) {
@@ -101,65 +101,11 @@ pub fn publish_guard_denied(policy: &GuardPolicy, method: &str, reason: &str) {
         policy.driver_id(),
         policy.class(),
     );
-    #[cfg(test)]
-    recorder::record(policy.driver_id(), method, reason);
     BUS.publish(DomainEvent::MemoryGuardDenied {
         driver_id: policy.driver_id().to_string(),
         method: method.to_string(),
         reason: reason.to_string(),
     });
-}
-
-/// Test-only observation seam for [`publish_guard_denied`].
-///
-/// The global [`BUS`] is a no-op until [`crate::core::bus::init`] runs, and
-/// standing one up per test attaches a broker to a runtime that is then torn
-/// down — see the runtime-affinity note on `core::bus`. So the deny path also
-/// appends here, and a test reads the entries for *its own* driver id rather
-/// than assuming it is alone in the process.
-#[cfg(test)]
-pub(crate) mod recorder {
-    use std::sync::Mutex;
-
-    /// `(driver_id, method, reason)` for every refusal this test process saw.
-    static DENIED: Mutex<Vec<(String, String, String)>> = Mutex::new(Vec::new());
-
-    pub(crate) fn record(driver_id: &str, method: &str, reason: &str) {
-        if let Ok(mut log) = DENIED.lock() {
-            log.push((
-                driver_id.to_string(),
-                method.to_string(),
-                reason.to_string(),
-            ));
-        }
-    }
-
-    /// How many refusals have been recorded so far, process-wide.
-    ///
-    /// Take this before driving the code under test and pass it to
-    /// [`denied_for_since`] — sibling tests run in parallel, reuse the same
-    /// driver ids, and must not see each other's rows.
-    pub(crate) fn watermark() -> usize {
-        DENIED.lock().map(|log| log.len()).unwrap_or(0)
-    }
-
-    /// Refusals for `driver_id` recorded at or after `watermark`.
-    /// Non-draining: the log is shared, so nothing may consume from it.
-    pub(crate) fn denied_for_since(
-        watermark: usize,
-        driver_id: &str,
-    ) -> Vec<(String, String, String)> {
-        DENIED
-            .lock()
-            .map(|log| {
-                log.iter()
-                    .skip(watermark)
-                    .filter(|(id, _, _)| id == driver_id)
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
 }
 
 /// A caller-supplied identifier in a form that is safe to log: an 8-hex-char

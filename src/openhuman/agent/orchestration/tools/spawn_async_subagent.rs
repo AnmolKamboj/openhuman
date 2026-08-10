@@ -533,7 +533,6 @@ impl Tool for SpawnAsyncSubagentTool {
             register_parent_thread_id.as_deref().unwrap_or("none")
         );
         let background_prompt = add_background_contract(&prompt);
-
         // The detached child starts on a fresh task, and a `tokio::task_local`
         // does not cross `tokio::spawn`. The parent's execution context and
         // chat thread are already re-installed inside the task for exactly that

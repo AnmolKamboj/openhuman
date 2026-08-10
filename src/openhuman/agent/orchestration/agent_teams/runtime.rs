@@ -155,15 +155,23 @@ pub async fn start_member_run(
     let mem = member_id.to_string();
     let task_for_loop = claimed.clone();
     let rid = run_id.clone();
+    // The member loop drives real agent work on a fresh task, and task-locals
+    // don't cross `tokio::spawn` — capture the caller's turn origin here so the
+    // worker keeps the label the approval gate needs. Inherit-only: no origin
+    // in scope means the worker stays unlabelled and fails closed as before.
+    let inherited_origin = crate::openhuman::agent::turn_origin::capture();
     tokio::spawn(async move {
-        run_member_loop(
-            &cfg,
-            &team,
-            &mem,
-            &agent_id,
-            task_for_loop,
-            &rid,
-            model_override,
+        crate::openhuman::agent::turn_origin::with_inherited_origin(
+            inherited_origin,
+            run_member_loop(
+                &cfg,
+                &team,
+                &mem,
+                &agent_id,
+                task_for_loop,
+                &rid,
+                model_override,
+            ),
         )
         .await;
     });

@@ -1,5 +1,4 @@
 use super::*;
-use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
 use crate::openhuman::agent::dispatcher::XmlToolDispatcher;
 use crate::openhuman::agent::error::AgentError;
@@ -206,51 +205,65 @@ fn sanitizers_and_tool_call_helpers_cover_fallback_paths() {
     assert_eq!(Agent::count_iterations(&history), 3);
 }
 
-#[tokio::test]
-async fn run_single_preserves_native_model_error_text() {
-    // Host-generated user-state errors remain typed and therefore retain the
-    // Sentry-suppression contract at their source.
-    let typed = anyhow!(AgentError::MaxIterationsExceeded { max: 8 });
-    assert!(matches!(
-        typed.downcast_ref::<AgentError>(),
-        Some(AgentError::MaxIterationsExceeded { max: 8 })
-    ));
-    assert_eq!(
-        Agent::sanitize_event_error_message(&typed),
-        "max_iterations_exceeded"
-    );
+#[test]
+fn run_single_preserves_native_model_error_text() {
+    std::thread::Builder::new()
+        .name("agent-runtime-error-test".into())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("test runtime")
+                .block_on(async {
+                    // Host-generated user-state errors remain typed and therefore retain the
+                    // Sentry-suppression contract at their source.
+                    let typed = anyhow!(AgentError::MaxIterationsExceeded { max: 8 });
+                    assert!(matches!(
+                        typed.downcast_ref::<AgentError>(),
+                        Some(AgentError::MaxIterationsExceeded { max: 8 })
+                    ));
+                    assert_eq!(
+                        Agent::sanitize_event_error_message(&typed),
+                        "max_iterations_exceeded"
+                    );
 
-    // A crate-native model error crosses the TinyAgents boundary as its
-    // provider-neutral error type rather than a downcastable host error. Its
-    // user-visible text must still remain intact.
-    crate::core::bus::init().await.expect("bus init");
+                    // A crate-native model error crosses the TinyAgents boundary as its
+                    // provider-neutral error type rather than a downcastable host error. Its
+                    // user-visible text must still remain intact.
+                    crate::core::bus::init().await.expect("bus init");
 
-    let err_provider: Arc<dyn ChatModel<()>> = Arc::new(PersistentErrModel {
-        kind: PersistentErrKind::MaxIterations { max: 8 },
-    });
-    let mut agent = make_agent(err_provider);
-    let err = agent
-        .run_single("hello")
-        .await
-        .expect_err("run_single should surface max-iter cap");
+                    let err_provider: Arc<dyn ChatModel<()>> = Arc::new(PersistentErrModel {
+                        kind: PersistentErrKind::MaxIterations { max: 8 },
+                    });
+                    let mut agent = make_agent(err_provider);
+                    let err = agent
+                        .run_single("hello")
+                        .await
+                        .expect_err("run_single should surface max-iter cap");
 
-    // The user-visible chat string MUST stay byte-identical — the UI
-    // (and `runtime_tool_calls.rs` channel test) reads this verbatim.
-    assert!(
-        err.to_string()
-            .contains("Agent exceeded maximum tool iterations"),
-        "canonical phrase missing: {err}"
-    );
+                    // The user-visible chat string MUST stay byte-identical — the UI
+                    // (and `runtime_tool_calls.rs` channel test) reads this verbatim.
+                    assert!(
+                        err.to_string()
+                            .contains("Agent exceeded maximum tool iterations"),
+                        "canonical phrase missing: {err}"
+                    );
 
-    assert!(
-        err.downcast_ref::<AgentError>().is_none(),
-        "model-boundary errors must not pretend to retain host types"
-    );
-    assert!(
-        Agent::sanitize_event_error_message(&err)
-            .contains("Agent exceeded maximum tool iterations"),
-        "native error text should survive sanitization: {err}"
-    );
+                    assert!(
+                        err.downcast_ref::<AgentError>().is_none(),
+                        "model-boundary errors must not pretend to retain host types"
+                    );
+                    assert!(
+                        Agent::sanitize_event_error_message(&err)
+                            .contains("Agent exceeded maximum tool iterations"),
+                        "native error text should survive sanitization: {err}"
+                    );
+                });
+        })
+        .expect("agent runtime test thread")
+        .join()
+        .expect("agent runtime test should not panic");
 }
 
 #[tokio::test]

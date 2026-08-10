@@ -5,7 +5,6 @@ use super::super::runtime::{
 };
 use super::super::{traits, Channel};
 use super::common::{use_real_agent_handler, NoopMemory, RecordingChannel, SlowModel};
-use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
 use crate::openhuman::agent::bus::{mock_agent_run_turn, AgentTurnRequest, AgentTurnResponse};
 use crate::openhuman::inference::provider;

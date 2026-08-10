@@ -74,6 +74,10 @@ permissions:
 env:
   # Consumed by scripts/ci-cancel-aware.sh's cancellation watchdog.
   GH_TOKEN: ${{ github.token }}
+  # Desktop E2E exercises the shipped app and does not execute skills. Avoid
+  # asynchronously provisioning the optional managed Node runtime during core
+  # startup, which can delay the ready signal past the harness timeout.
+  OPENHUMAN_NODE_ENABLED: "0"
 
 jobs:
   # Selected-spec gate for PR/push (full=false). The full-suite path lives in
@@ -227,18 +231,6 @@ jobs:
           cache-on-failure: true
           key: e2e-linux-unified
 
-      - name: Cache CEF binary distribution
-        uses: actions/cache@v6
-        with:
-          # cef-dll-sys downloads into $CEF_PATH; ensure-tauri-cli.sh +
-          # e2e-build.sh pin that to $HOME/Library/Caches/tauri-cef on
-          # every OS, so the cache key/path live there too.
-          path: |
-            ~/Library/Caches/tauri-cef
-          key: cef-x86_64-unknown-linux-gnu-v2-${{ hashFiles('app/src-tauri/Cargo.toml') }}
-          restore-keys: |
-            cef-x86_64-unknown-linux-gnu-v2-
-
       - name: Install JS dependencies
         run: bash scripts/ci-cancel-aware.sh pnpm install --frozen-lockfile
 
@@ -254,15 +246,13 @@ jobs:
         run: |
           # Stage everything the test shards need at the layout they expect
           # under a single directory, so the consumer can extract straight
-          # into the workspace + $HOME.
+          # into the workspace.
           STAGE="$(mktemp -d)"
           mkdir -p "$STAGE/repo/app/src-tauri/target/debug"
           mkdir -p "$STAGE/repo/app/dist"
-          mkdir -p "$STAGE/home/Library/Caches"
           cp -a app/src-tauri/target/debug/OpenHuman "$STAGE/repo/app/src-tauri/target/debug/"
           cp -a app/dist/. "$STAGE/repo/app/dist/"
-          cp -a "$HOME/Library/Caches/tauri-cef" "$STAGE/home/Library/Caches/tauri-cef"
-          tar -czf e2e-build-linux.tar.gz -C "$STAGE" repo home
+          tar -czf e2e-build-linux.tar.gz -C "$STAGE" repo
           ls -lh e2e-build-linux.tar.gz
 
       - name: Upload build artifact
@@ -334,25 +324,22 @@ jobs:
           name: e2e-build-linux-${{ github.run_id }}
           path: .
 
-      - name: Restore build artifact into workspace + $HOME
+      - name: Restore build artifact into workspace
         run: |
           tar -xzf e2e-build-linux.tar.gz
-          # The artifact contains: repo/{app/src-tauri/target/debug/OpenHuman, app/dist/...}
-          # and home/Library/Caches/tauri-cef/...
-          mkdir -p app/src-tauri/target/debug app/dist "$HOME/Library/Caches"
+          # The artifact contains: repo/{app/src-tauri/target/debug/OpenHuman, app/dist/...}.
+          mkdir -p app/src-tauri/target/debug app/dist
           cp -a repo/app/src-tauri/target/debug/OpenHuman app/src-tauri/target/debug/
           cp -a repo/app/dist/. app/dist/
-          cp -a home/Library/Caches/tauri-cef "$HOME/Library/Caches/"
-          rm -rf repo home e2e-build-linux.tar.gz
+          rm -rf repo e2e-build-linux.tar.gz
           chmod +x app/src-tauri/target/debug/OpenHuman
           ls -la app/src-tauri/target/debug/OpenHuman app/dist | head
-          ls -la "$HOME/Library/Caches/tauri-cef" | head
 
       - name: Run E2E shard (${{ matrix.shard.name }} — suites=${{ matrix.shard.suites }})
         env:
           E2E_BAIL_ON_FAILURE: ${{ vars.E2E_BAIL_ON_FAILURE || '' }}
+          E2E_USE_TAURI_DRIVER: "1"
         run: |
-          export CEF_PATH="$HOME/Library/Caches/tauri-cef"
           BAIL_FLAG=""
           if [[ "${E2E_BAIL_ON_FAILURE:-}" == "1" ]]; then
             BAIL_FLAG="--bail"
@@ -918,18 +905,6 @@ jobs:
           cache-on-failure: true
           key: e2e-windows-unified
 
-      - name: Cache CEF binary distribution
-        uses: actions/cache@v6
-        with:
-          # ensure-tauri-cli.sh + e2e-build.sh export
-          # CEF_PATH=$HOME/Library/Caches/tauri-cef regardless of OS; under Git
-          # Bash on Windows that resolves under the user profile.
-          path: |
-            ~/Library/Caches/tauri-cef
-          key: cef-x86_64-pc-windows-msvc-v2-${{ hashFiles('app/src-tauri/Cargo.toml') }}
-          restore-keys: |
-            cef-x86_64-pc-windows-msvc-v2-
-
       - name: Install JS dependencies
         run: bash scripts/ci-cancel-aware.sh pnpm install --frozen-lockfile
 
@@ -945,17 +920,14 @@ jobs:
       - name: Package build artifact
         shell: bash
         run: |
-          # Windows is NOT self-contained: the shard needs the .exe, the
-          # frontend dist, and the CEF runtime (exported via CEF_PATH at run
-          # time). Stage all three at the layout the shard restores into.
+          # Windows shards need the .exe and frontend dist at the layout they
+          # restore into.
           STAGE="$(mktemp -d)"
           mkdir -p "$STAGE/repo/app/src-tauri/target/debug"
           mkdir -p "$STAGE/repo/app/dist"
-          mkdir -p "$STAGE/home/Library/Caches"
           cp -a app/src-tauri/target/debug/OpenHuman.exe "$STAGE/repo/app/src-tauri/target/debug/"
           cp -a app/dist/. "$STAGE/repo/app/dist/"
-          cp -a "$HOME/Library/Caches/tauri-cef" "$STAGE/home/Library/Caches/tauri-cef"
-          tar -czf e2e-build-windows.tar.gz -C "$STAGE" repo home
+          tar -czf e2e-build-windows.tar.gz -C "$STAGE" repo
           ls -lh e2e-build-windows.tar.gz
 
       - name: Upload build artifact
@@ -1029,15 +1001,14 @@ jobs:
           name: e2e-build-windows-${{ github.run_id }}
           path: .
 
-      - name: Restore build artifact into workspace + $HOME
+      - name: Restore build artifact into workspace
         shell: bash
         run: |
           tar -xzf e2e-build-windows.tar.gz
-          mkdir -p app/src-tauri/target/debug app/dist "$HOME/Library/Caches"
+          mkdir -p app/src-tauri/target/debug app/dist
           cp -a repo/app/src-tauri/target/debug/OpenHuman.exe app/src-tauri/target/debug/
           cp -a repo/app/dist/. app/dist/
-          cp -a home/Library/Caches/tauri-cef "$HOME/Library/Caches/"
-          rm -rf repo home e2e-build-windows.tar.gz
+          rm -rf repo e2e-build-windows.tar.gz
           ls -la app/src-tauri/target/debug/OpenHuman.exe app/dist | head
 
       - name: Run E2E shard (${{ matrix.shard.name }} — suites=${{ matrix.shard.suites }})
@@ -1045,9 +1016,6 @@ jobs:
         env:
           E2E_BAIL_ON_FAILURE: ${{ vars.E2E_BAIL_ON_FAILURE || '' }}
         run: |
-          # e2e-build.sh + ensure-tauri-cli.sh always download CEF to
-          # $HOME/Library/Caches/tauri-cef regardless of OS.
-          export CEF_PATH="$HOME/Library/Caches/tauri-cef"
           BAIL_FLAG=""
           if [[ "${E2E_BAIL_ON_FAILURE:-}" == "1" ]]; then
             BAIL_FLAG="--bail"
