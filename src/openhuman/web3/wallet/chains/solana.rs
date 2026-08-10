@@ -12,11 +12,10 @@
 use base64::engine::{general_purpose::STANDARD as B64, Engine as _};
 use curve25519_dalek::edwards::CompressedEdwardsY;
 use ed25519_dalek::{Signer, SigningKey, SECRET_KEY_LENGTH};
-use hmac::{Hmac, Mac};
 use log::debug;
 use serde::Deserialize;
 use serde_json::json;
-use sha2::{Digest, Sha256, Sha512};
+use sha2::{Digest, Sha256};
 
 use crate::openhuman::config::rpc as config_rpc;
 
@@ -61,21 +60,22 @@ struct BlockhashValue {
     blockhash: String,
 }
 
+/// Validate a Solana address (a base58 ed25519 public key).
+///
+/// Delegates to the vendored [`tinywallet`] crate, which owns the address
+/// format; this wrapper keeps the `Result<_, String>` shape the rest of the
+/// domain speaks.
 pub fn validate_solana_address(addr: &str) -> Result<String, String> {
-    let trimmed = addr.trim();
-    if trimmed.is_empty() {
-        return Err("Solana address is empty".to_string());
-    }
-    let decoded = bs58::decode(trimmed)
-        .into_vec()
-        .map_err(|e| format!("invalid Solana base58 address '{trimmed}': {e}"))?;
-    if decoded.len() != 32 {
-        return Err(format!(
-            "invalid Solana address '{trimmed}': expected 32 bytes, got {}",
-            decoded.len()
-        ));
-    }
-    Ok(trimmed.to_string())
+    let result = tinywallet::address::solana::validate(addr).map_err(|e| e.to_string());
+    debug!(
+        "{LOG_PREFIX} validate_address result={}",
+        if result.is_ok() {
+            "accepted"
+        } else {
+            "rejected"
+        }
+    );
+    result
 }
 
 pub async fn native_balance(address: &str) -> Result<u128, String> {
@@ -89,67 +89,26 @@ pub async fn native_balance(address: &str) -> Result<u128, String> {
     Ok(result.value as u128)
 }
 
-/// SLIP-0010 ed25519 hardened-only derivation. Solana wallets standardize
-/// on `m/44'/501'/N'/0'` so we never need to support non-hardened indices.
-fn slip10_ed25519_derive(seed: &[u8], path: &[u32]) -> Result<[u8; 32], String> {
-    type HmacSha512 = Hmac<Sha512>;
-    let mut mac = HmacSha512::new_from_slice(b"ed25519 seed")
-        .map_err(|e| format!("HMAC init failed: {e}"))?;
-    mac.update(seed);
-    let i = mac.finalize().into_bytes();
-    let mut key = [0u8; 32];
-    let mut chain_code = [0u8; 32];
-    key.copy_from_slice(&i[..32]);
-    chain_code.copy_from_slice(&i[32..]);
-    for index in path {
-        let hardened = *index | 0x8000_0000;
-        let mut mac = HmacSha512::new_from_slice(&chain_code)
-            .map_err(|e| format!("HMAC init failed: {e}"))?;
-        mac.update(&[0u8]);
-        mac.update(&key);
-        mac.update(&hardened.to_be_bytes());
-        let i = mac.finalize().into_bytes();
-        key.copy_from_slice(&i[..32]);
-        chain_code.copy_from_slice(&i[32..]);
-    }
-    Ok(key)
-}
-
-fn parse_path(path: &str) -> Result<Vec<u32>, String> {
-    let trimmed = path.trim();
-    let mut iter = trimmed.split('/');
-    match iter.next() {
-        Some("m") => {}
-        _ => return Err(format!("Solana path '{path}' must start with 'm'")),
-    }
-    let mut out = Vec::new();
-    for seg in iter {
-        let stripped = seg
-            .strip_suffix('\'')
-            .ok_or_else(|| format!("Solana path '{path}' requires all-hardened segments"))?;
-        let v: u32 = stripped
-            .parse()
-            .map_err(|e| format!("Solana path '{path}' segment '{seg}': {e}"))?;
-        out.push(v);
-    }
-    if out.is_empty() {
-        return Err(format!("Solana path '{path}' has no segments"));
-    }
-    Ok(out)
-}
-
+/// Derive the Solana signing key for `derivation_path` from a BIP-39 mnemonic.
+///
+/// Delegates to the vendored [`tinywallet`] crate, which owns SLIP-0010
+/// ed25519 derivation. The hand-rolled HMAC walk and path parser that used to
+/// live here moved there wholesale — nothing about "derive an ed25519 key at a
+/// hardened path" is OpenHuman-specific. Custody stays here: the mnemonic
+/// arrives already decrypted from the keyring and `tinywallet` never sees a
+/// stored secret.
+///
+/// One behavioural note: `tinywallet` reports a non-hardened Solana path as
+/// its own error variant rather than folding it into a generic parse failure,
+/// because such a path is derivable-looking but underivable on ed25519 — and
+/// silently hardening it would return a different account than the path names.
 fn derive_solana_keypair(mnemonic: &str, derivation_path: &str) -> Result<SigningKey, String> {
-    use coins_bip39::{English, Mnemonic};
-    let mnemonic_obj: Mnemonic<English> = mnemonic
-        .trim()
-        .parse()
-        .map_err(|e| format!("invalid BIP39 mnemonic: {e}"))?;
-    let seed = mnemonic_obj
-        .to_seed(None)
-        .map_err(|e| format!("failed to derive BIP39 seed: {e}"))?;
-    let path = parse_path(derivation_path)?;
-    let secret = slip10_ed25519_derive(&seed, &path)?;
-    let bytes: [u8; SECRET_KEY_LENGTH] = secret;
+    let derived = tinywallet::key::derive(tinywallet::Chain::Solana, mnemonic, derivation_path)
+        .map_err(|e| e.to_string())?;
+    let bytes: [u8; SECRET_KEY_LENGTH] = derived
+        .secret_bytes()
+        .try_into()
+        .map_err(|_| "tinywallet returned an unexpected Solana key length".to_string())?;
     Ok(SigningKey::from_bytes(&bytes))
 }
 
@@ -703,10 +662,16 @@ mod tests {
     }
 
     #[test]
-    fn parse_path_requires_hardened_segments() {
-        assert!(parse_path("m/44'/501'/0'/0'").is_ok());
-        assert!(parse_path("m/44/501/0/0").is_err());
-        assert!(parse_path("m").is_err());
+    fn unhardened_paths_are_rejected() {
+        // Path parsing now lives in `tinywallet`, so this exercises the rule
+        // through the derivation entry point rather than a private helper.
+        const MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon \
+                                abandon abandon abandon abandon abandon about";
+        assert!(derive_solana_keypair(MNEMONIC, "m/44'/501'/0'/0'").is_ok());
+        // Non-hardened segments are underivable on ed25519, not merely
+        // unsupported — silently hardening them would yield a different account.
+        assert!(derive_solana_keypair(MNEMONIC, "m/44/501/0/0").is_err());
+        assert!(derive_solana_keypair(MNEMONIC, "m").is_err());
     }
 
     #[test]
