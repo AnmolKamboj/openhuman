@@ -41,9 +41,6 @@ pub mod proactive;
 pub mod providers;
 #[cfg(feature = "channels")]
 pub(crate) mod relay_runtime;
-/// Webview-account bridge for embedded provider webviews.
-#[cfg(feature = "channels")]
-pub mod webview_accounts;
 /// Read-only WhatsApp chat/message store fed by the desktop scanner (formerly
 /// `openhuman::whatsapp_data`).
 #[cfg(feature = "channels")]

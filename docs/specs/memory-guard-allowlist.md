@@ -108,42 +108,34 @@ changes anything here.
 | `core/cli_capability.rs` (`binding::for_workspace(`) | The CLI's capability gate (`kernel.md` §3.3's one exception to "degradation is absence"). Reads the driver id and advertised capability set only — the same two values `memory.provider_status` already returns over RPC — and never reaches memory content. No CLI subcommand except `run`/`serve` builds a `CoreContext`, so `CoreContext::memory()` resolves to nothing and there is no guard to route through. `core/memory_cli.rs` calls `bound_memory_driver_for` rather than binding itself. |
 | `core/subsystems_cli.rs` | The `openhuman subsystems` slot table. Delegates to `memory_subsystem_status` (which itself resolves the binding in `memory/ops/provider.rs`, already allowlisted above), so `subsystems_cli.rs` never touches `binding::for_workspace(` directly — the CLI's command arms go through `bound_memory_driver_for`. |
 
-### B. Profile / facet access — confined, still unguarded
+### B. Unguardable raw SQLite — `profile_conn()`, out of scope for M4
 
-`MemoryClient::profile_conn()` used to hand a raw
-`Arc<Mutex<rusqlite::Connection>>` to three domains outside the memory family,
-two of which wrote SQL inline at the call site. It is now
-`pub(in crate::openhuman::memory)` with a single caller — `profile_store()`,
-which wraps it in a typed `ProfileStore` (`memory/store/profile_store.rs`). Every
-SQL statement against `user_profile` is inside the memory family, and the
-compiler enforces that; `client_tests.rs::profile_conn_is_confined_to_the_memory_family`
-restates the rule in a form that names the offending file.
+No decorator can wrap an `Arc<Mutex<rusqlite::Connection>>`. These reach the
+profile / facet tables beneath all seven policy steps. **This is why "the guard
+is the only path" is not yet a true invariant.**
 
-**That is confinement, not policy.** The contract has no profile/facet
-capability family, so these reads and writes still run beneath all seven steps —
-no tier check, no source scope, no taint, no redaction, no budget, no audit
-event. **This is why "the guard is the only path" is still not a true
-invariant.** Closing it needs a fourteenth family in `tinycortex_api`, or a
-host-side half-measure where `ProfileStore` consults `GuardPolicy` directly —
-which would make a `readonly` tier start rejecting learning-cache rebuilds and
-composio identity persistence, a behaviour change with its own blast radius.
+| Path | Sites |
+| --- | --- |
+| `memory/sync/composio/providers/profile.rs` | 5 |
+| `agent/learning/schemas.rs` | 3 |
+| `agent/learning/tools.rs` | 1 |
+| `agent/learning/startup.rs` | 2 |
+| `memory/store/client_tests.rs` | 2 (test) |
+| `memory/store/golden.rs` | 2 (test infrastructure — see below) |
 
-The `.profile_store(` needle exists so the count does not vanish by rename: the
-number of unguarded profile call sites did not drop, only their shape changed.
+`memory/store/golden.rs` is the seeder / read-back engine behind the
+`memory_golden_fixture_e2e` schema gate. It is `#[doc(hidden)]` and has no
+caller outside `tests/`, so it is not a product bypass. It needs
+`profile_conn()` for the same reason `agent/learning/*` does: the episodic,
+conversation-segment, event and `user_profile` tiers have no guard-routed
+writer, and a fixture that omitted them would leave the FTS5 shadow tables and
+six sync triggers unrepresented — exactly the schema the gate exists to pin.
+Its document / KV / graph writes and all of its read-back **do** go through
+`memory::ops`. If those four tiers ever gain a guarded writer, re-point this
+module and drop both entries.
 
-| Path | Pattern | Sites |
-| --- | --- | --- |
-| `memory/store/client.rs` | `.profile_conn(` | 1 (the wrap site) |
-| `memory/sync/composio/providers/profile.rs` | `.profile_store(` | 4 |
-| `agent/learning/schemas.rs` | `.profile_store(` | 3 |
-| `agent/learning/tools.rs` | `.profile_store(` | 1 |
-| `agent/learning/startup.rs` | `.profile_store(` | 2 |
-
-A second write path into `user_profile` is **not** covered by either needle:
-`agent/harness/archivist/lifecycle.rs` calls `profile::profile_upsert` on a
-connection injected at construction. It has no production construction site
-today (only `archivist_tests.rs` and `test_constructors.rs` build one), so it is
-inert — but it is a fresh unlinted write path the moment anyone wires it up.
+The brief named only the first two files. The other two were found by grep and
+are recorded here so M4c starts from the real set.
 
 ### C. Needs a concrete engine type the contract does not expose
 

@@ -1,72 +1,41 @@
-//! Native Rust `.docx` generator, backed by the
-//! [`docx-rs`](https://crates.io/crates/docx-rs) crate (MIT). Pure CPU,
-//! no subprocess, no managed runtime — the document analogue of the
-//! `ppt-rs`-backed presentation [`engine`](super::super::presentation).
-//! Output is a byte buffer the caller writes to the artifact's
-//! `output_path`.
+//! Async wrapper around the vendored [`tinydocs`] `.docx` writer.
 //!
-//! ## Mapping `GenerateDocumentInput` → OOXML
+//! The OOXML synthesis itself lives in
+//! [`tinydocs::docx::generate`](https://github.com/tinyhumansai/tinydocs) —
+//! spec validation, the paragraph/heading/bullet mapping, and the zip pack.
+//! That call is **synchronous and CPU-bound by design**: `tinydocs` has no
+//! opinion about executors or deadlines, because only a host knows its own.
 //!
-//! The document is emitted as a linear paragraph stream:
+//! This module supplies exactly that missing policy, and nothing else:
 //!
-//! ```text
-//! title             → bold, large "Title"-styled paragraph
-//! author (opt)      → italic paragraph beneath the title
-//! per section:
-//!   heading (opt)   → bold "Heading1"-styled paragraph
-//!   paragraphs[]    → one normal paragraph each
-//!   bullets[]       → single-level `•` list (shared numbering id)
-//! ```
+//! 1. a `spawn_blocking` hop so a CPU-bound pack never stalls the agent
+//!    loop's executor, and
+//! 2. a `tokio::time::timeout` so a pathological input that slipped past
+//!    validation cannot wedge the loop indefinitely, and
+//! 3. the mapping from a crate error, a join failure, or an elapsed deadline
+//!    onto the agent-facing [`DocumentError`].
 //!
-//! Headings carry BOTH a style id (`Title` / `Heading1`, which Word maps
-//! to its built-in outline styles) AND an explicit bold+size run, so the
-//! visual hierarchy survives even if a reader ignores the style table.
-//! Empty / whitespace-only paragraphs and bullets are filtered so a
-//! trailing blank entry does not emit an empty run.
-//!
-//! ## Runtime
-//!
-//! `docx-rs` synthesis is synchronous and CPU-bound (well under 100 ms
-//! for the section cap). We still drive it through `spawn_blocking` so
-//! the async executor is not blocked, and wrap the call in a
-//! `tokio::time::timeout` so a runaway generation cannot wedge the agent
-//! loop — identical control-flow to the presentation engine.
+//! Control flow here is identical to the presentation engine's, so the two
+//! artifact producers keep failing in the same shapes.
 
 use std::time::Duration;
 
-use docx_rs::{
-    AbstractNumbering, Docx, IndentLevel, Level, LevelJc, LevelText, NumberFormat, Numbering,
-    NumberingId, Paragraph, Run, Start,
-};
 use tokio::task::JoinError;
 use tokio::time::{error::Elapsed, timeout};
 
 use super::types::{DocumentError, GenerateDocumentInput};
 
-/// Shared numbering id for the single-level bullet list. One abstract
-/// numbering + one concrete numbering is registered on the document and
-/// every bullet paragraph references it at indent level 0.
-const BULLET_NUMBERING_ID: usize = 1;
-
-/// Run font size for the document title, in OOXML half-points (28 pt).
-const TITLE_SIZE_HALF_PT: usize = 56;
-/// Run font size for a section heading, in half-points (16 pt).
-const HEADING_SIZE_HALF_PT: usize = 32;
-/// Run font size for the author byline, in half-points (12 pt).
-const AUTHOR_SIZE_HALF_PT: usize = 24;
-
-/// Run the synthesis. Returns the serialised `.docx` bytes ready to be
-/// written to the artifact path.
+/// Generate the `.docx` bytes for `input`, giving up after `deadline`.
 ///
-/// The `deadline` covers the entire blocking call (including the
-/// `spawn_blocking` thread acquisition). Hitting it surfaces as
+/// The `deadline` covers the entire blocking call, including `spawn_blocking`
+/// thread acquisition. Hitting it surfaces as
 /// [`DocumentError::GenerationTimeout`].
 pub(super) async fn generate(
     input: &GenerateDocumentInput,
     deadline: Duration,
 ) -> Result<Vec<u8>, DocumentError> {
-    // Clone the input across the blocking boundary — cheap relative to the
-    // synthesis, and keeps the blocking closure `'static`.
+    // Clone across the blocking boundary — cheap relative to the synthesis,
+    // and it keeps the blocking closure `'static`.
     let owned = input.clone();
     let started = std::time::Instant::now();
     let section_count = owned.sections.len();
@@ -81,9 +50,9 @@ pub(super) async fn generate(
         "[document:engine] generate:start"
     );
 
-    let join: Result<Result<Result<Vec<u8>, EngineFailure>, _>, Elapsed> = timeout(
+    let join: Result<Result<Result<Vec<u8>, tinydocs::Error>, _>, Elapsed> = timeout(
         deadline,
-        tokio::task::spawn_blocking(move || generate_blocking(&owned)),
+        tokio::task::spawn_blocking(move || tinydocs::docx::generate(&owned)),
     )
     .await;
 
@@ -112,8 +81,8 @@ pub(super) async fn generate(
             );
             Err(err)
         }
-        Ok(Ok(Err(engine_err))) => {
-            let err = map_engine_failure(engine_err);
+        Ok(Ok(Err(crate_err))) => {
+            let err = DocumentError::from(crate_err);
             tracing::warn!(
                 target: "document",
                 elapsed_ms,
@@ -136,118 +105,12 @@ pub(super) async fn generate(
     }
 }
 
-/// Blocking inner — runs on the `spawn_blocking` pool. Builds the whole
-/// `docx-rs` document from the input then serialises it into an in-memory
-/// zip buffer. Returns a dedicated [`EngineFailure`] so the async wrapper
-/// can distinguish a library error from a panic / cancellation.
-fn generate_blocking(input: &GenerateDocumentInput) -> Result<Vec<u8>, EngineFailure> {
-    let docx = build_document(input);
-
-    // `XMLDocx::pack` takes a `Write + Seek` writer by value; a
-    // `&mut Cursor<Vec<u8>>` satisfies both traits, so we can pack into an
-    // in-memory buffer and recover the bytes via `into_inner`.
-    let mut cursor = std::io::Cursor::new(Vec::<u8>::new());
-    docx.build()
-        .pack(&mut cursor)
-        .map_err(|err| EngineFailure::Library(format!("{err}")))?;
-    Ok(cursor.into_inner())
-}
-
-/// Pure transformation from our schema to a `docx-rs` [`Docx`]. Pulled
-/// out for unit-testability — the paragraph ordering + empty-filtering
-/// rules are load-bearing for the rendered document shape.
-fn build_document(input: &GenerateDocumentInput) -> Docx {
-    // Register the shared single-level bullet list once. `NumberFormat`
-    // "bullet" + a `•` level text renders an unordered list; every bullet
-    // paragraph binds to this numbering id at indent level 0.
-    let mut docx = Docx::new()
-        .add_abstract_numbering(
-            AbstractNumbering::new(BULLET_NUMBERING_ID).add_level(Level::new(
-                0,
-                Start::new(1),
-                NumberFormat::new("bullet"),
-                LevelText::new("•"),
-                LevelJc::new("left"),
-            )),
-        )
-        .add_numbering(Numbering::new(BULLET_NUMBERING_ID, BULLET_NUMBERING_ID));
-
-    // Title — bold + large, styled as the built-in "Title" outline style.
-    docx = docx.add_paragraph(
-        Paragraph::new().style("Title").add_run(
-            Run::new()
-                .add_text(input.title.trim())
-                .bold()
-                .size(TITLE_SIZE_HALF_PT),
-        ),
-    );
-
-    // Author byline — italic, if present and non-blank.
-    if let Some(author) = input.author.as_deref().filter(|a| !a.trim().is_empty()) {
-        docx = docx.add_paragraph(
-            Paragraph::new().add_run(
-                Run::new()
-                    .add_text(author.trim())
-                    .italic()
-                    .size(AUTHOR_SIZE_HALF_PT),
-            ),
-        );
-    }
-
-    for section in &input.sections {
-        if let Some(heading) = section.heading.as_deref().filter(|h| !h.trim().is_empty()) {
-            docx = docx.add_paragraph(
-                Paragraph::new().style("Heading1").add_run(
-                    Run::new()
-                        .add_text(heading.trim())
-                        .bold()
-                        .size(HEADING_SIZE_HALF_PT),
-                ),
-            );
-        }
-        for paragraph in &section.paragraphs {
-            let text = paragraph.trim();
-            if !text.is_empty() {
-                docx = docx.add_paragraph(Paragraph::new().add_run(Run::new().add_text(text)));
-            }
-        }
-        for bullet in &section.bullets {
-            let text = bullet.trim();
-            if !text.is_empty() {
-                docx = docx.add_paragraph(
-                    Paragraph::new()
-                        .add_run(Run::new().add_text(text))
-                        .numbering(NumberingId::new(BULLET_NUMBERING_ID), IndentLevel::new(0)),
-                );
-            }
-        }
-    }
-
-    docx
-}
-
-/// Internal failure shape used to keep the blocking-thread surface
-/// `Send`-clean (the underlying library error types are not guaranteed
-/// to be `Send + Sync + 'static`).
-#[derive(Debug)]
-enum EngineFailure {
-    Library(String),
-}
-
-fn map_engine_failure(failure: EngineFailure) -> DocumentError {
-    match failure {
-        EngineFailure::Library(msg) => DocumentError::GenerationFailed {
-            stderr_truncated: DocumentError::truncate_stderr(&msg),
-        },
-    }
-}
-
 fn map_join_error(err: JoinError) -> DocumentError {
-    // The outer `tokio::time::timeout` already routes the timeout case, so
-    // a `JoinError` here is a panic (docx-rs bug / OOM on the blocking
-    // pool) or a cancellation (runtime shutdown / explicit abort). Both
-    // surface as `GenerationFailed` with context preserved — mirrors the
-    // presentation engine so a "0s timeout" message is never fabricated.
+    // The outer `tokio::time::timeout` already routes the timeout case, so a
+    // `JoinError` here is a panic (library bug / OOM on the blocking pool) or
+    // a cancellation (runtime shutdown / explicit abort). Both surface as
+    // `GenerationFailed` with context preserved — mirrors the presentation
+    // engine so a "0s timeout" message is never fabricated.
     if err.is_panic() {
         DocumentError::GenerationFailed {
             stderr_truncated: DocumentError::truncate_stderr("document engine panicked"),
@@ -306,8 +169,9 @@ mod tests {
 
     #[tokio::test]
     async fn generate_round_trips_to_valid_docx() {
-        // End-to-end: build → docx-rs → byte buffer → re-open as zip →
-        // confirm the OOXML skeleton + that our text reached document.xml.
+        // End-to-end through the wrapper: build → tinydocs → byte buffer →
+        // re-open as zip → confirm the OOXML skeleton + that our text reached
+        // document.xml.
         let bytes = generate(&sample_input(), Duration::from_secs(30))
             .await
             .expect("generate should succeed");
@@ -373,6 +237,22 @@ mod tests {
         let doc = docx_entry_body(&bytes, "word/document.xml");
         assert!(doc.contains("real"));
         assert!(doc.contains("item"));
+    }
+
+    #[tokio::test]
+    async fn generate_surfaces_a_crate_validation_failure() {
+        // `tinydocs` re-validates inside `generate`, so a spec that never went
+        // through `validate_input` still fails structurally rather than
+        // producing a blank document.
+        let input = GenerateDocumentInput {
+            title: String::new(),
+            author: None,
+            sections: vec![],
+        };
+        match generate(&input, Duration::from_secs(30)).await {
+            Err(DocumentError::InvalidInput { field, .. }) => assert_eq!(field, "title"),
+            other => panic!("expected InvalidInput(title), got {other:?}"),
+        }
     }
 
     #[tokio::test]

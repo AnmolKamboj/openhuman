@@ -782,6 +782,10 @@ pub fn all_tools_with_runtime(
     // Memory diff — structured "what changed in the agent's world since a
     // checkpoint/last sync". Drives the subconscious tick's first stage and is
     // available to any agent that lists it. Unit struct, no runtime deps.
+    // Absent rather than erroring when `memory-git` is off: a registered tool
+    // that always fails is worse than no tool, because the model keeps
+    // choosing it and reporting the failure back to the user.
+    #[cfg(feature = "memory-git")]
     tools.push(Box::new(crate::openhuman::memory::diff::MemoryDiffTool));
 
     // Subconscious user-facing handoff — notify_user proactive delivery.

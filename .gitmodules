@@ -23,3 +23,9 @@
 	path = vendor/tinybus
 	url = https://github.com/tinyhumansai/tinybus.git
 	branch = main
+[submodule "vendor/tinywallet"]
+	path = vendor/tinywallet
+	url = https://github.com/tinyhumansai/tinywallet
+[submodule "vendor/tinydocs"]
+	path = vendor/tinydocs
+	url = https://github.com/tinyhumansai/tinydocs

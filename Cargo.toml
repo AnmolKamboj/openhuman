@@ -72,6 +72,60 @@ name = "library-profile"
 path = "src/bin/library_profile/main.rs"
 required-features = ["rss-bench"]
 
+# ── Integration tests that need a PRODUCT gate ──────────────────────────────
+#
+# `[features] default` is the contributor set and no longer turns on `voice`,
+# `web3`, `crash-reporting` or `inference`. These four `tests/` targets name
+# symbols that only exist behind those gates, so without a `required-features`
+# line a bare `cargo test` fails to COMPILE — not skip, fail — and the failure
+# is in a file the contributor did not touch.
+#
+# `required-features` makes cargo skip the target instead, which is the honest
+# outcome: the test exercises a domain that build does not contain. The CI
+# product lanes pass `--features "$(scripts/ci/product-features.sh)"`, so every
+# one of these still runs there, against the code that ships.
+#
+# Autodiscovery stays on for the other ~59 `tests/*.rs` targets; declaring a
+# target explicitly only opts THAT file out of it.
+#
+# This replaces the per-symbol `#[cfg]` cleanup tracked in #5021 for these four
+# files. #5021 is still the right fix for symbols named in the middle of an
+# otherwise gate-free target — required-features is the blunt instrument, and
+# it costs the whole target when the gate is off.
+[[test]]
+name = "observability_smoke"
+path = "tests/observability_smoke.rs"
+# The `is_*_event` Sentry filters are all `#[cfg(feature = "crash-reporting")]`.
+required-features = ["crash-reporting"]
+
+[[test]]
+name = "memory_artifacts_e2e"
+path = "tests/memory_artifacts_e2e.rs"
+# Opens the wiki ledger with `git2::Repository::open` and asserts on
+# `content::wiki_git` artifacts — both of which exist only behind this gate.
+required-features = ["memory-git"]
+
+[[test]]
+name = "x402_twit_sh_live"
+path = "tests/x402_twit_sh_live.rs"
+# `x402::tools::X402RequestTool` — the x402 domain is part of the web3 family.
+required-features = ["web3"]
+
+[[test]]
+name = "json_rpc_e2e"
+path = "tests/json_rpc_e2e.rs"
+# `voice::reply_speech::{test_seam, TEST_SEAM_ENV}` — the reply-speech seam
+# only exists in the real voice module, not the stub.
+required-features = ["voice"]
+
+[[test]]
+name = "raw_coverage_all"
+path = "tests/raw_coverage_all.rs"
+# The merged raw-coverage target spans ~76 former files, so it reaches the
+# widest surface of any single target: `lettre` (pulled in through the voice
+# gate's `tinychannels/email`) and the local inference download service.
+required-features = ["voice", "inference"]
+
 [lib]
 name = "openhuman_core"
 crate-type = ["rlib"]
@@ -136,12 +190,13 @@ tinyagents = { version = "2.1", features = ["sqlite"] }
 # aligned to the host pins (=0.40 / 0.21) so one bundled SQLite + one libgit2
 # link. The submodule intentionally tracks reviewed upstream main commits;
 # keep this semver requirement compatible with the vendored crate version.
+# `git-diff` and `wiki-git` are NOT here: they are pulled in by the
+# `memory-git` gate below, which is where the git2/libgit2-sys/libz-sys cohort
+# enters the graph. Everything else tinycortex needs is unconditional.
 tinycortex = { version = "0.1", features = [
-    "git-diff",
     "obsidian",
     "persona",
     "sync",
-    "wiki-git",
 ] }
 # The memory *contract* — value types, the thirteen capability families, the
 # `MemoryProvider` driver trait, and the null reference driver. A direct path
@@ -215,7 +270,7 @@ sha2 = "0.10"
 # Git-backed change ledger for the memory_diff module: snapshots are commits,
 # checkpoints are tags, read markers are refs, diffs are git tree diffs.
 # Vendored libgit2 (no system git dependency on end-user machines).
-git2 = { version = "0.21", default-features = false, features = ["vendored-libgit2"] }
+git2 = { version = "0.21", default-features = false, features = ["vendored-libgit2"], optional = true }
 hmac = "0.12"
 # Archive extraction for the Node.js runtime bootstrap. Unix Node
 # distributions ship as .tar.xz, Windows as .zip. `xz2` with `static`
@@ -337,13 +392,34 @@ crossterm = { version = "0.29", optional = true }
 # Terminal column-width measurement for the `tui` chat renderer
 # (`src/tui/render.rs`); only compiled behind `#[cfg(feature = "tui")]`.
 unicode-width = { version = "0.2", optional = true }
-# Native-Rust `.docx` writer for the `generate_document` tool (GH #4847).
-# Pure Rust (no subprocess / managed runtime), MIT-licensed, actively
-# maintained (2.8M downloads, last release 0.4.20 — Apr 2026). Mirrors the
-# `ppt-rs` presentation engine: synthesise bytes in-process, hand them to
-# the byte-agnostic artifact pipeline. `default-features` keeps the crate's
-# image support (unused here, but avoids a bespoke feature list drifting).
-docx-rs = { version = "0.4.20", optional = true }
+# TinyDocs — host-agnostic document synthesis. Owns the `.docx` spec types,
+# their size limits, the validation rules, and the OOXML writer (`docx-rs`
+# lives behind it now, not here). OpenHuman keeps only the host policy the
+# crate deliberately refuses to guess at: the artifact pipeline, the
+# `spawn_blocking` hop, and the generation deadline — see
+# `src/openhuman/tools/impl/document/`.
+#
+# Vendored as a path dependency like `tinyhumans-sdk`: the crate is not
+# published to crates.io, so there is no `[patch.crates-io]` entry for it.
+# After cloning: `git submodule update --init vendor/tinydocs`.
+#
+# Optional: exclusive to the default-ON `documents` feature.
+tinydocs = { path = "vendor/tinydocs", default-features = false, optional = true }
+
+# TinyWallet — host-agnostic multi-chain wallet primitives. Owns the address
+# formats themselves: parsing, validation, and the conversions between their
+# encodings for Bitcoin, EVM chains, Solana and Tron. Nothing about "is this a
+# well-formed Solana address" is OpenHuman-specific, so the rules live where
+# any host can reach them. What stays in `src/openhuman/web3/` is everything
+# the crate deliberately refuses to own: RPC endpoint resolution, transaction
+# assembly and broadcast, and key custody.
+#
+# Vendored as a path dependency like `tinyhumans-sdk`: the crate is not
+# published to crates.io, so there is no `[patch.crates-io]` entry for it.
+# After cloning: `git submodule update --init vendor/tinywallet`.
+#
+# Optional: exclusive to the default-ON `web3` feature.
+tinywallet = { path = "vendor/tinywallet", default-features = false, features = ["btc", "evm", "solana", "tron", "keccak", "key", "net", "asset", "client", "tx"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
 # Windows: tokio-tungstenite uses native-tls (schannel) so wss://
@@ -429,7 +505,33 @@ tokio = { version = "1", features = ["test-util"] }
 proptest = "1"
 
 [features]
-default = ["inference", "voice", "web3", "media", "documents", "meet", "skills", "flows", "mcp", "crash-reporting", "http-server", "channels", "tui", "medulla", "scheduler-gate", "file-logging", "contacts", "runtime-node"]
+# THE CONTRIBUTOR SET — not the product set.
+#
+# This list is what a bare `cargo check`, `cargo test` and rust-analyzer
+# compile. It is deliberately SMALLER than what the desktop app ships: the
+# product set lives in `scripts/ci/product-features.txt` and is forwarded
+# explicitly by `app/src-tauri/Cargo.toml`, with
+# `scripts/ci/check-feature-forwarding.mjs` asserting the two are equal in both
+# directions. Read that file's header before changing either list.
+#
+# Why the split: the gates left ON below cost almost nothing to compile, so
+# keeping them on means `cargo check` and rust-analyzer still typecheck nearly
+# all of the tree. The gates turned OFF are the ones that carry the graph —
+# web3's ethers/secp256k1 cohort, `documents`' zstd/bzip2 native builds,
+# `voice`+`inference`'s cpal/hound/lettre/arboard/enigo/rdev stack, `contacts`'
+# macOS objc2 cohort, `crash-reporting`'s sentry tree, and `tui`'s
+# ratatui/crossterm, and `runtime-node`'s xz2/liblzma. Turning them off takes a
+# bare `cargo check` from 540 packages / 7 native builds down to ~350 / 2, which
+# is the inner loop every contributor pays on every edit.
+#
+# THIS DOES NOT CHANGE WHAT SHIPS. The desktop shell has always set
+# `default-features = false` (#1061), so it never inherited this list to begin
+# with — that is exactly why the forwarding guard had to exist. What DOES
+# change is that a lane relying on default features no longer covers the
+# gated-off domains, so every CI lane that builds or tests "the product" now
+# passes `--features "$(scripts/ci/product-features.sh)"`. If you add a lane,
+# decide which of the two sets it is testing and say so.
+default = ["media", "skills", "flows", "mcp", "channels", "medulla", "http-server", "scheduler-gate", "file-logging"]
 # HTTP + Socket.IO server transport (#5048): the `/rpc` JSON-RPC endpoint and
 # its auth middleware/CORS layer (`core::jsonrpc`, `core::auth`), the `/v1`
 # OpenAI-compatible router (`inference::http`), the ad-hoc static-dir file
@@ -451,6 +553,29 @@ default = ["inference", "voice", "web3", "media", "documents", "meet", "skills",
 # domains construct them — so `pub mod socketio;` is UNGATED and only the
 # socketioxide/axum-touching bodies are gated. Likewise `inference::http::types`
 # and `EXTERNAL_OPENAI_COMPAT_PROVIDER` stay compiled for `core::auth`.
+# Git-backed memory diff: snapshots as commits, checkpoints as tags, read
+# markers as refs, diffs as git tree diffs (`openhuman::memory::diff`), plus the
+# git-backed wiki content format in `memory::store::content::wiki_git`.
+# Default-OFF, product-ON.
+#
+# The most expensive gate in the tree by native-build cost: it carries `git2`
+# with vendored libgit2, so turning it off drops `git2` + `libgit2-sys` +
+# `libz-sys` and takes the kernel profile from 5 native C builds to 3.
+#
+# TYPE CARVE-OUT (see AGENTS.md): `memory::diff::types` stays compiled in BOTH
+# builds. It re-exports tinycortex's `serde`-only diff wire types, which the
+# always-on subconscious memory profile renders into prompts; a stub copy would
+# be a second definition of one serde shape, free to drift. tinycortex makes the
+# same split — its `memory::diff::{types,source}` are ungated, and only the
+# git-touching `ledger`/`DiffEngine` half sits behind `git-diff`.
+#
+# Off-state: the `memory_diff` RPC namespace is unknown-method and absent from
+# `/schema`; the `memory_diff` agent tool is absent from the tool list; the
+# embedded driver stops advertising `Capability::Diff` and `as_diff()` returns
+# `None`; and the three `ops` entry points always-on code calls return a
+# build-fact error, so a post-sync snapshot or a subconscious diff is logged and
+# skipped rather than silently reported as "nothing changed".
+memory-git = ["dep:git2", "tinycortex/git-diff", "tinycortex/wiki-git"]
 http-server = ["dep:axum", "dep:socketioxide"]
 # Local audio-device access: the `cpal` capture stack behind voice recording
 # and the accessibility microphone-permission probe. Default-ON. Slim /
@@ -477,7 +602,7 @@ inference = ["dep:cpal"]
 # off, the two tools are absent from the tool list rather than degraded to an
 # error, and PDF ingest degrades the file to a reference instead of extracted
 # text (`agent::multimodal::extract_pdf_text`).
-documents = ["dep:pdf-extract", "dep:ppt-rs", "dep:docx-rs"]
+documents = ["dep:pdf-extract", "dep:ppt-rs", "dep:tinydocs", "tinydocs/docx"]
 # Voice + audio_toolkit domains: STT/TTS providers, the standalone dictation
 # server, always-on listening, and podcast audio generation/email delivery.
 # Default-ON — the desktop app always ships with voice. Slim / headless builds
@@ -528,6 +653,7 @@ web3 = [
     "dep:ethers-core",
     "dep:ethers-signers",
     "dep:coins-bip39",
+    "dep:tinywallet",
 ]
 
 # Managed Node.js runtime: `runtime::node` (download / verify / extract / install

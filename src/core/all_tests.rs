@@ -2443,3 +2443,47 @@ fn javascript_controllers_absent_when_feature_off() {
         "runtime-node OFF must not register the `javascript` namespace"
     );
 }
+
+// ---- memory-git gate -------------------------------------------------------
+
+/// `memory-git` ON: the git-backed diff surface is registered.
+#[cfg(feature = "memory-git")]
+#[test]
+fn memory_diff_controllers_registered_when_feature_on() {
+    let namespaces: Vec<&str> = all_controller_schemas()
+        .iter()
+        .map(|s| s.namespace)
+        .collect();
+    assert!(
+        namespaces.contains(&"memory_diff"),
+        "with the `memory-git` feature ON the `memory_diff` controllers must be registered"
+    );
+}
+
+/// `memory-git` OFF: `memory_diff` leaves no trace in the registry, while the
+/// rest of the memory surface stays.
+///
+/// This is the half that proves the gate does something. The stub's schema
+/// aggregators return empty vecs rather than always-erroring handlers, so the
+/// namespace must be genuinely unknown-method — not present-but-broken, which
+/// would still advertise itself on `/schema`.
+///
+/// `memory` is asserted present in the same test on purpose: the gate is
+/// supposed to remove the git ledger, not the memory domain. Splitting that
+/// into a separate test would let one pass while the other silently regressed.
+#[cfg(not(feature = "memory-git"))]
+#[test]
+fn memory_diff_controllers_absent_when_feature_off() {
+    let namespaces: Vec<&str> = all_controller_schemas()
+        .iter()
+        .map(|s| s.namespace)
+        .collect();
+    assert!(
+        !namespaces.contains(&"memory_diff"),
+        "with `memory-git` OFF the `memory_diff` controllers must not be registered, got: {namespaces:?}"
+    );
+    assert!(
+        namespaces.contains(&"memory"),
+        "the `memory-git` gate must remove the git ledger, not the memory domain"
+    );
+}

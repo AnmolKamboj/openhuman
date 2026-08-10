@@ -28,12 +28,46 @@
 //! - Named checkpoints for cross-source "what changed since X" queries
 //! - Agent tool for in-conversation diff queries
 
+//! ## The `memory-git` gate
+//!
+//! All of the above needs a git ledger, and libgit2 is one of the two most
+//! expensive native builds left in the graph — so the behaviour sits behind
+//! `memory-git` (default-OFF, product-ON), which also carries `git2` and
+//! tinycortex's `git-diff`/`wiki-git`. Off, it sheds `git2` + `libgit2-sys` +
+//! `libz-sys`, taking the kernel profile from 5 native builds to 3.
+//!
+//! **`types` stays ungated**, mirroring the carve-out on the tinycortex side:
+//! it re-exports `serde`-only wire types that always-on callers name. The
+//! subconscious memory profile renders `CrossSourceDiff` and `ChangeKind` into
+//! prompts, and duplicating those in a stub would be two definitions of one
+//! serde shape, free to drift apart.
+//!
+//! The three `ops` entry points always-on code calls are stubbed rather than
+//! `#[cfg]`'d at each call site, so `memory::sources::sync` and the
+//! subconscious profile need no feature awareness — a diff simply never
+//! materialises. Registration sites get the opposite treatment: the schema
+//! aggregators return empty vecs (the controllers become unknown-method) and
+//! `MemoryDiffTool` is `#[cfg]`'d out at its one registration site in
+//! `tools/ops.rs`, because a registered tool that always errors is worse than
+//! an absent one — the model would keep choosing it and reporting the failure.
+
+#[cfg(feature = "memory-git")]
 pub mod ops;
+#[cfg(feature = "memory-git")]
 pub mod rpc;
+#[cfg(feature = "memory-git")]
 pub mod schemas;
+#[cfg(feature = "memory-git")]
 pub mod source;
+#[cfg(feature = "memory-git")]
 pub mod tools;
 
+#[cfg(not(feature = "memory-git"))]
+mod stub;
+#[cfg(not(feature = "memory-git"))]
+pub use stub::{all_memory_diff_controller_schemas, all_memory_diff_registered_controllers, ops};
+
+#[cfg(feature = "memory-git")]
 pub use schemas::{
     all_controller_schemas as all_memory_diff_controller_schemas,
     all_registered_controllers as all_memory_diff_registered_controllers,
