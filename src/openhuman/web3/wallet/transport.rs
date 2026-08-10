@@ -30,12 +30,13 @@
 //! cost a duplicate transaction.
 
 use async_trait::async_trait;
+use log::debug;
 use serde_json::Value;
 use tinywallet::rpc::{NetworkId, Transport, TransportError, TransportResult};
 
 use super::defaults::{rpc_url_for_chain, rpc_url_for_evm_network, EvmNetwork};
 use super::ops::WalletChain;
-use super::rpc::{rest_get_text, rest_post_text, rpc_call_to};
+use super::rpc::{redact_rpc_url, rest_get_text, rest_post_text, rpc_call_to};
 
 /// Adapter over OpenHuman's wallet RPC layer.
 ///
@@ -58,9 +59,10 @@ fn resolve(network: NetworkId) -> Result<String, TransportError> {
         tinywallet::Chain::Evm => {
             // An EVM request names its EIP-155 chain id; resolving it here is
             // what keeps `tinywallet` free of OpenHuman's network enum.
-            let Some(chain_id) = network.evm_chain_id else {
-                return Ok(rpc_url_for_chain(WalletChain::Evm));
-            };
+            let chain_id = network.evm_chain_id.ok_or_else(|| TransportError::Rpc {
+                network,
+                message: "EVM requests require an EIP-155 chain id".to_string(),
+            })?;
             let evm = EvmNetwork::ALL
                 .iter()
                 .copied()
@@ -113,14 +115,34 @@ impl Transport for OpenHumanTransport {
         params: Value,
     ) -> TransportResult<Value> {
         let url = resolve(network)?;
-        rpc_call_to::<Value>(&url, method, params)
-            .await
-            .map_err(|e| classify(network, e))
+        debug!("[wallet:transport] json_rpc chain={} method={method} endpoint={}", network.chain, redact_rpc_url(&url));
+        match rpc_call_to::<Value>(&url, method, params).await {
+            Ok(value) => {
+                debug!("[wallet:transport] json_rpc chain={} method={method} outcome=success", network.chain);
+                Ok(value)
+            }
+            Err(message) => {
+                let error = classify(network, message);
+                debug!("[wallet:transport] json_rpc chain={} method={method} outcome={}", network.chain, if error.is_retryable() { "unreachable" } else { "rpc" });
+                Err(error)
+            }
+        }
     }
 
     async fn rest_get(&self, network: NetworkId, path: &str) -> TransportResult<String> {
         let url = join(&resolve(network)?, path);
-        rest_get_text(&url).await.map_err(|e| classify(network, e))
+        debug!("[wallet:transport] rest_get chain={} path={path} endpoint={}", network.chain, redact_rpc_url(&url));
+        match rest_get_text(&url).await {
+            Ok(value) => {
+                debug!("[wallet:transport] rest_get chain={} path={path} outcome=success", network.chain);
+                Ok(value)
+            }
+            Err(message) => {
+                let error = classify(network, message);
+                debug!("[wallet:transport] rest_get chain={} path={path} outcome={}", network.chain, if error.is_retryable() { "unreachable" } else { "rpc" });
+                Err(error)
+            }
+        }
     }
 
     async fn rest_post(
@@ -131,9 +153,18 @@ impl Transport for OpenHumanTransport {
         content_type: &str,
     ) -> TransportResult<String> {
         let url = join(&resolve(network)?, path);
-        rest_post_text(&url, &body, content_type)
-            .await
-            .map_err(|e| classify(network, e))
+        debug!("[wallet:transport] rest_post chain={} path={path} endpoint={}", network.chain, redact_rpc_url(&url));
+        match rest_post_text(&url, &body, content_type).await {
+            Ok(value) => {
+                debug!("[wallet:transport] rest_post chain={} path={path} outcome=success", network.chain);
+                Ok(value)
+            }
+            Err(message) => {
+                let error = classify(network, message);
+                debug!("[wallet:transport] rest_post chain={} path={path} outcome={}", network.chain, if error.is_retryable() { "unreachable" } else { "rpc" });
+                Err(error)
+            }
+        }
     }
 }
 
@@ -152,6 +183,12 @@ mod tests {
         // No endpoint is configured for it, so retrying elsewhere cannot help.
         let network = NetworkId::evm(999_999);
         let err = resolve(network).unwrap_err();
+        assert!(!err.is_retryable(), "{err}");
+    }
+
+    #[test]
+    fn an_evm_request_without_a_chain_id_is_authoritative_not_retryable() {
+        let err = resolve(NetworkId::chain(tinywallet::Chain::Evm)).unwrap_err();
         assert!(!err.is_retryable(), "{err}");
     }
 

@@ -71,7 +71,12 @@ pub fn estimated_btc_fee_sats() -> u64 {
 /// specific, so the rules live where any host can reach them; what stays here
 /// is the `Result<_, String>` shape the rest of this domain speaks.
 pub fn validate_btc_address(addr: &str) -> Result<String, String> {
-    tinywallet::address::btc::validate(addr).map_err(|e| e.to_string())
+    let result = tinywallet::address::btc::validate(addr).map_err(|e| e.to_string());
+    debug!(
+        "{LOG_PREFIX} validate_address role=recipient result={}",
+        if result.is_ok() { "accepted" } else { "rejected" }
+    );
+    result
 }
 
 /// Sender-side validation — must be P2WPKH because we only know how to
@@ -82,7 +87,12 @@ pub fn validate_btc_address(addr: &str) -> Result<String, String> {
 /// the recipient rule for a sender accepts an address that only fails later,
 /// at signing time.
 pub fn validate_btc_sender_address(addr: &str) -> Result<String, String> {
-    tinywallet::address::btc::validate_sender(addr).map_err(|e| e.to_string())
+    let result = tinywallet::address::btc::validate_sender(addr).map_err(|e| e.to_string());
+    debug!(
+        "{LOG_PREFIX} validate_address role=sender result={}",
+        if result.is_ok() { "accepted" } else { "rejected" }
+    );
+    result
 }
 
 use std::str::FromStr;
@@ -452,7 +462,7 @@ mod tests {
         // `tinywallet` reports a wrong-network address as a distinct condition
         // from a malformed one, so the message names the required network.
         assert!(
-            err.contains("not on mainnet") || err.contains("invalid"),
+            err.contains("not on mainnet"),
             "got: {err}"
         );
     }

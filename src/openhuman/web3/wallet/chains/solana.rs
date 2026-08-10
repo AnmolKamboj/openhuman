@@ -66,7 +66,12 @@ struct BlockhashValue {
 /// format; this wrapper keeps the `Result<_, String>` shape the rest of the
 /// domain speaks.
 pub fn validate_solana_address(addr: &str) -> Result<String, String> {
-    tinywallet::address::solana::validate(addr).map_err(|e| e.to_string())
+    let result = tinywallet::address::solana::validate(addr).map_err(|e| e.to_string());
+    debug!(
+        "{LOG_PREFIX} validate_address result={}",
+        if result.is_ok() { "accepted" } else { "rejected" }
+    );
+    result
 }
 
 pub async fn native_balance(address: &str) -> Result<u128, String> {

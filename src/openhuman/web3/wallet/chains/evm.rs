@@ -343,7 +343,12 @@ pub async fn lookup_tx(network: EvmNetwork, hash: &str) -> Result<TxLookupInfo, 
 /// accepted — prefixed, unprefixed, and any hex case, but not an uppercase
 /// `0X` prefix.
 pub fn validate_evm_address(addr: &str) -> Result<String, String> {
-    tinywallet::address::evm::validate(addr).map_err(|e| e.to_string())
+    let result = tinywallet::address::evm::validate(addr).map_err(|e| e.to_string());
+    debug!(
+        "{LOG_PREFIX} validate_address result={}",
+        if result.is_ok() { "accepted" } else { "rejected" }
+    );
+    result
 }
 
 #[cfg(test)]
@@ -538,4 +543,3 @@ mod tests {
         assert!(sent, "expected eth_sendRawTransaction call");
     }
 }
-

@@ -121,7 +121,46 @@ impl From<tinydocs::Error> for DocumentError {
 /// here lets the tool reject a bad call before allocating an artifact record,
 /// and the crate-side check keeps `generate` safe for any other caller.
 pub(super) fn validate_input(input: &GenerateDocumentInput) -> Result<(), DocumentError> {
-    input.validate().map_err(DocumentError::from)
+    let title_chars = input.title.chars().count();
+    let section_count = input.sections.len();
+    tracing::debug!(
+        target: "document",
+        title_chars,
+        section_count,
+        "[document:types] validating input"
+    );
+
+    let result = input.validate().map_err(DocumentError::from);
+    match &result {
+        Ok(()) => tracing::debug!(
+            target: "document",
+            title_chars,
+            section_count,
+            "[document:types] input accepted"
+        ),
+        Err(DocumentError::InvalidInput { .. }) => tracing::debug!(
+            target: "document",
+            title_chars,
+            section_count,
+            error_kind = "invalid_input",
+            "[document:types] input rejected"
+        ),
+        Err(DocumentError::GenerationFailed { .. }) => tracing::debug!(
+            target: "document",
+            title_chars,
+            section_count,
+            error_kind = "generation_failed",
+            "[document:types] input rejected"
+        ),
+        Err(DocumentError::GenerationTimeout { .. }) => tracing::debug!(
+            target: "document",
+            title_chars,
+            section_count,
+            error_kind = "generation_timeout",
+            "[document:types] input rejected"
+        ),
+    }
+    result
 }
 
 #[cfg(test)]

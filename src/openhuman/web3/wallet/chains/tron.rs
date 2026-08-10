@@ -33,7 +33,12 @@ const TRC20_FEE_LIMIT_SUN: u64 = 15_000_000;
 /// format; this wrapper keeps the `Result<_, String>` shape the rest of the
 /// domain speaks.
 pub fn validate_tron_address(addr: &str) -> Result<String, String> {
-    tinywallet::address::tron::validate(addr).map_err(|e| e.to_string())
+    let result = tinywallet::address::tron::validate(addr).map_err(|e| e.to_string());
+    debug!(
+        "{LOG_PREFIX} validate_address result={}",
+        if result.is_ok() { "accepted" } else { "rejected" }
+    );
+    result
 }
 
 /// Convert a base58check Tron address into the 42-hex-digit form the TronGrid
@@ -45,7 +50,12 @@ pub fn validate_tron_address(addr: &str) -> Result<String, String> {
 /// the wrong length used to produce a short hex string and fail further
 /// downstream at the API call.
 pub fn tron_address_to_hex(addr: &str) -> Result<String, String> {
-    tinywallet::address::tron::to_hex(addr).map_err(|e| e.to_string())
+    let result = tinywallet::address::tron::to_hex(addr).map_err(|e| e.to_string());
+    debug!(
+        "{LOG_PREFIX} address_to_hex result={}",
+        if result.is_ok() { "accepted" } else { "rejected" }
+    );
+    result
 }
 
 pub async fn native_balance(address: &str) -> Result<u128, String> {
@@ -648,6 +658,14 @@ mod tests {
         let h = tron_address_to_hex(addr).unwrap();
         assert!(h.starts_with("41"), "expected 0x41 prefix, got: {h}");
         assert_eq!(h.len(), 42); // 21 bytes * 2 hex chars
+    }
+
+    #[test]
+    fn tron_address_to_hex_rejects_a_wrong_length_decoded_address() {
+        // A valid Base58Check encoding with the Tron prefix but a 20-byte
+        // decoded payload must not be accepted as a 21-byte Tron address.
+        let short = bs58::encode([TRON_PREFIX; 20]).with_check().into_string();
+        assert!(tron_address_to_hex(&short).is_err());
     }
 
     #[test]

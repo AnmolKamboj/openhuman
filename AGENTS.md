@@ -207,8 +207,8 @@ Consequences worth knowing before touching either seam:
   `tinydocs`' `DocumentSpec` re-exported under its historical name, with field
   names unchanged; `the_json_wire_shape_is_unchanged_by_the_extraction` pins
   that.
-- **`tinywallet` rejects an uppercase `0X` EVM prefix — and so did the code it
-  replaced.** The old path went through `ethers_core::types::Address`'s
+- **`tinywallet` rejects an uppercase `0X` EVM prefix, matching the code it
+  replaced, which rejected that prefix too.** The old path went through `ethers_core::types::Address`'s
   `FromStr`, which is `fixed-hash`'s and strips only a lowercase `0x`
   (`fixed-hash-0.8.0/src/hash.rs`, `input.strip_prefix("0x")`), so `0X…` failed
   hex decoding there too. The behaviour is unchanged, verified against the old
