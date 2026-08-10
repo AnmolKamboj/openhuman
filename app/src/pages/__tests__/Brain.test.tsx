@@ -1,8 +1,14 @@
 import { act, screen, waitFor } from '@testing-library/react';
+import { useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../../test/test-utils';
 import Brain from '../Brain';
+
+/** Renders the live router pathname so redirect tests can assert the final route. */
+function LocationProbe() {
+  return <div data-testid="location-pathname">{useLocation().pathname}</div>;
+}
 
 const graphExportMock = vi.hoisted(() => vi.fn());
 // Controllable authenticated identity so we can simulate a logout→login cycle
@@ -11,6 +17,9 @@ const coreAuthRef = vi.hoisted(() => ({ current: 'user-A' as string | null }));
 // Captures navigate() calls so we can assert the legacy TinyPlace-orchestration
 // deep link bounces to the folded-in Orchestration sub-tab.
 const navigateSpy = vi.hoisted(() => vi.fn());
+// Fires on every OrchestrationView render, so a redirect test can prove the
+// gated surface never mounted (not merely that it left the DOM afterwards).
+const orchestrationRenderSpy = vi.hoisted(() => vi.fn());
 // Controllable tiny.place identity so we can render Brain as a holder (default)
 // or a confirmed non-holder hitting the gated `?tab=orchestration` deep link.
 const tinyplaceIdentityRef = vi.hoisted(() => ({
@@ -76,7 +85,12 @@ vi.mock('../../components/layout/ChipTabs', async () => {
 vi.mock('../../components/ui/BetaBanner', () => ({ default: () => null }));
 vi.mock('../../components/orchestration/OrchestrationView', async () => {
   const React = await import('react');
-  return { default: () => React.createElement('div', { 'data-testid': 'brain-orchestration' }) };
+  return {
+    default: () => {
+      orchestrationRenderSpy();
+      return React.createElement('div', { 'data-testid': 'brain-orchestration' });
+    },
+  };
 });
 
 vi.mock('../../components/intelligence/MemoryControls', () => ({ MemoryControls: () => null }));
@@ -228,10 +242,21 @@ describe('Brain page', () => {
     tinyplaceIdentityRef.current = { status: 'ready', hasIdentity: false };
     graphExportMock.mockResolvedValue(makeGraph(0));
     await act(async () => {
-      renderWithProviders(<Brain />, { initialEntries: ['/?tab=orchestration'] });
+      renderWithProviders(
+        <>
+          <Brain />
+          <LocationProbe />
+        </>,
+        { initialEntries: ['/?tab=orchestration'] }
+      );
     });
+    // Render-phase guard: OrchestrationView must never mount — asserting on the
+    // spy (not just final DOM) catches a regression that mounts then redirects
+    // from an effect.
+    expect(orchestrationRenderSpy).not.toHaveBeenCalled();
     expect(screen.queryByTestId('brain-orchestration')).not.toBeInTheDocument();
-    // Landed on the Brain welcome tab instead.
+    // Router landed on the Brain welcome tab.
+    expect(screen.getByTestId('location-pathname')).toHaveTextContent('/brain');
     expect(screen.getByTestId('brain-welcome')).toBeInTheDocument();
   });
 
