@@ -17,7 +17,7 @@ dead-string rot the ratchet exists to prevent.
 
 ## Scope
 
-The lint scans `src/` for twelve patterns, keyed on `(file, pattern)` so the
+The lint scans `src/` for thirteen patterns, keyed on `(file, pattern)` so the
 failure message names the needle that tripped:
 
 | Pattern | What it hands out |
@@ -25,7 +25,8 @@ failure message names the needle that tripped:
 | `active_memory_client(` | `MemoryClientRef` |
 | `global::client_if_ready(` / `global::client(` | `MemoryClientRef` |
 | `.memory_handle(` | raw `Arc<dyn Memory>` |
-| `.profile_conn(` | raw `Arc<Mutex<rusqlite::Connection>>` |
+| `.profile_conn(` | raw `Arc<Mutex<rusqlite::Connection>>` (one in-family site) |
+| `.profile_store(` | a typed `ProfileStore` — confined, but still unguarded |
 | `.get_document(` | `pub(crate)` read-one escape hatch |
 | `EmbeddedMemoryProvider::new(` / `NullMemoryProvider::new(` | a driver, built outside `binding::for_workspace` |
 | `MemoryClient::from_workspace_dir(` | a second engine on the same store |
@@ -61,6 +62,17 @@ store:
 | `kv_graph::kv_set` | `MemoryGraph::kv_put` | `client.kv_set(ns, key, &value)` |
 | `tool_memory::tool_rule_list` | `MemoryToolMemory::tool_rules` | `tool_memory_store(memory).list_rules(tool)` |
 | `tool_memory::tool_rule_delete` | `MemoryToolMemory::delete_tool_rule` | `tool_memory_store(memory).delete_rule(tool, id)` |
+
+Two **agent tools** followed the same route:
+
+| Tool | Contract method | Note |
+| --- | --- | --- |
+| `memory_tools_list` | `MemoryToolMemory::tool_rules` | 1:1 — same rules, same order, same serialization. |
+| `memory_tools_put` | `MemoryToolMemory::put_tool_rule` + `tool_rules` | The contract method returns unit while the tool answers with the *stored* rule, so the write is followed by a read-back on the id `ToolMemoryRule::new` generated before the write. Exact, not lossy: there is no server-assigned identity, and `tool_memory_namespace` normalises the caller's raw `tool_name` the same way the write did. A concurrent delete in that window errors rather than fabricating a rule. |
+
+`memory_tools_put` therefore now refuses under the `readonly` autonomy tier
+with `"memory guard: "`-prefixed text, and store-level validation errors arrive
+as `MemoryError::Invalid` rather than as a raw string. Both are intended.
 
 **Three deltas ride along, and they are the point of the milestone, not
 accidents:**
@@ -109,6 +121,18 @@ is the only path" is not yet a true invariant.**
 | `agent/learning/tools.rs` | 1 |
 | `agent/learning/startup.rs` | 2 |
 | `memory/store/client_tests.rs` | 2 (test) |
+| `memory/store/golden.rs` | 2 (test infrastructure — see below) |
+
+`memory/store/golden.rs` is the seeder / read-back engine behind the
+`memory_golden_fixture_e2e` schema gate. It is `#[doc(hidden)]` and has no
+caller outside `tests/`, so it is not a product bypass. It needs
+`profile_conn()` for the same reason `agent/learning/*` does: the episodic,
+conversation-segment, event and `user_profile` tiers have no guard-routed
+writer, and a fixture that omitted them would leave the FTS5 shadow tables and
+six sync triggers unrepresented — exactly the schema the gate exists to pin.
+Its document / KV / graph writes and all of its read-back **do** go through
+`memory::ops`. If those four tiers ever gain a guarded writer, re-point this
+module and drop both entries.
 
 The brief named only the first two files. The other two were found by grep and
 are recorded here so M4c starts from the real set.
@@ -121,7 +145,6 @@ are recorded here so M4c starts from the real set.
 | `agent/harness/session/builder/factory.rs` | `.memory_handle()` → `Arc<dyn Memory>`. |
 | `flows/tinyflows/memory_adapter.rs` | Returns `Arc<dyn Memory>` to satisfy a tinyflows engine trait. The contract has no `Arc<dyn Memory>` door. |
 | `flows/bus.rs` | `resolve_memory() -> Option<Arc<dyn Memory>>`, and carries a `#[cfg(test)] memory_override` seam a guard would bypass. |
-| `memory/tool_memory/tools/list.rs`, `tools/put.rs` | Agent tools building `ToolMemoryStore` from `memory_handle()`. Re-pointable in principle via `as_tool_memory()` — **deferred to M5**, which filters the tool surface by capability and would collide with a re-point made now. |
 | `memory/ops/tool_memory.rs` (`open_store`) | Still needed by the four handlers left on the client. Shrank; did not disappear. |
 
 ### D. No contract method exists, or the wire shape would change
@@ -145,14 +168,17 @@ module).
 
 ## Honest scorecard
 
-Four of the twenty-eight `active_memory_client()` call sites now route through
-the guard. Eleven non-test `profile_conn()` sites and twelve non-test
-`memory_handle()` sites still hand out raw handles. The defensible claim for M4
-is therefore:
+Six of the twenty-eight `active_memory_client()` call sites now route through
+the guard — four RPC handlers plus the `memory_tools_list` / `memory_tools_put`
+agent tools. Raw `profile_conn()` no longer leaves the memory family — but the ten
+profile/facet call sites it fed are still unguarded, now through a typed
+`ProfileStore`, and twelve non-test `memory_handle()` sites still hand out raw
+handles. The defensible claim is therefore:
 
 > Every memory RPC handler whose contract twin is a literal delegation now
 > routes through the guard, and every remaining bypass is enumerated here with
 > a reason and pinned by a drift guard.
 
 "Impossible to skip by construction" is **not** true until `memory_handle()`
-and `profile_conn()` are gone.
+is gone and the profile/facet tables have a capability family to be guarded
+against.

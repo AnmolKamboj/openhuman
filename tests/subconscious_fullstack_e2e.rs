@@ -366,7 +366,7 @@ async fn fullstack_session_runs_real_agent_and_persists() {
     );
 
     // Real reserved-thread persistence: the user turn + agent reply landed.
-    let msgs = openhuman_core::openhuman::memory::conversations::get_messages(
+    let msgs = tinycortex::memory::conversations::get_messages(
         h.workspace.clone(),
         "subconscious:orchestrator",
     )

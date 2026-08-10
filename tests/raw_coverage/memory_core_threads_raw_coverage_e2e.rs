@@ -23,9 +23,7 @@ use openhuman_core::openhuman::memory::{
     GenerateConversationThreadTitleRequest, UpdateConversationMessageRequest,
     UpdateConversationThreadLabelsRequest, UpdateConversationThreadTitleRequest,
 };
-use openhuman_core::openhuman::memory::conversations::{
-    ensure_thread, list_threads, CreateConversationThread,
-};
+use tinycortex::memory::conversations::{ensure_thread, list_threads, CreateConversationThread};
 use openhuman_core::openhuman::memory::store::chunks::store::{upsert_chunks, with_connection};
 use openhuman_core::openhuman::memory::store::chunks::types::{
     approx_token_count, chunk_id, Chunk, Metadata, SourceKind, SourceRef,

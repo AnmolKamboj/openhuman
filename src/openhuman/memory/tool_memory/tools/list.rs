@@ -1,11 +1,21 @@
 //! `memory_tools_list` — list every stored rule for a given tool.
+//!
+//! Routed through [`MemoryGuard`](crate::openhuman::memory::guard::MemoryGuard)
+//! rather than a raw `ToolMemoryStore`. `MemoryToolMemory::tool_rules` on the
+//! embedded driver is literally `tool_memory_store(self.memory()).list_rules(…)`,
+//! and the wire type matches by identity, not conversion:
+//! `memory::tool_memory::ToolMemoryRule` **is**
+//! `tinycortex_api::tool_memory::ToolMemoryRule`. So the re-point is exact —
+//! same rules, same order, same serialization — with `Capability::ToolMemory`
+//! admitted first.
 
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
+use tinycortex_api::provider::MemoryProvider;
 
-use crate::openhuman::memory::ops::helpers::active_memory_client;
-use crate::openhuman::memory::tool_memory::tool_memory_store;
+use crate::openhuman::memory::ops::guard::active_memory_guard;
+use crate::openhuman::memory::ops::tool_memory::NO_TOOL_MEMORY;
 use crate::openhuman::tools::traits::{Tool, ToolResult};
 
 pub struct MemoryToolsListTool;
@@ -45,14 +55,20 @@ impl Tool for MemoryToolsListTool {
         let parsed: Args = serde_json::from_value(args)
             .map_err(|e| anyhow::anyhow!("invalid arguments for memory_tools_list: {e}"))?;
         log::debug!("[tool][memory_tools] list tool_name={}", parsed.tool_name);
-        let client = active_memory_client()
+        let guard = active_memory_guard()
             .await
             .map_err(|e| anyhow::anyhow!("memory_tools_list: {e}"))?;
-        let store = tool_memory_store(client.memory_handle());
-        let rules = store
-            .list_rules(&parsed.tool_name)
+        let rules = guard
+            .as_tool_memory()
+            .ok_or_else(|| anyhow::anyhow!("memory_tools_list: {NO_TOOL_MEMORY}"))?
+            .tool_rules(&parsed.tool_name)
             .await
             .map_err(|e| anyhow::anyhow!("memory_tools_list: {e}"))?;
+        log::debug!(
+            "[tool][memory_tools] list via guard tool_name={} rules={}",
+            parsed.tool_name,
+            rules.len()
+        );
         let json = serde_json::to_string(&rules)?;
         Ok(ToolResult::success(json))
     }

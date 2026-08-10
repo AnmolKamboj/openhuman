@@ -68,7 +68,7 @@ Namespace `learning` (wired into `src/core/all.rs`; 11 controllers). Methods:
 | `learning.forget_facet` | Mark `Dropped` + `user_state = Forgotten` (blocks re-promotion). |
 | `learning.reset_cache` | Delete all `Auto` rows, preserve `Pinned`. |
 
-All handlers go through the memory client's `profile_conn()` and a `FacetCache`; `linkedin_enrichment` / `save_profile` load config via `config::rpc::load_config_with_timeout`.
+All handlers go through the memory client's `profile_store()` and a `FacetCache`; `linkedin_enrichment` / `save_profile` load config via `config::rpc::load_config_with_timeout`.
 
 ## Agent tools
 

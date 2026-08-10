@@ -14,20 +14,15 @@
 //! - **Automatically** — the reflection agent is fired (best-effort) when the
 //!   conversation context is summarized; see the archivist segment-close hook.
 //!
-//! Persistence + cap enforcement live in [`store`]; the file is stored state,
+//! Persistence + cap enforcement live in `tinycortex::memory::goals::store`;
+//! the file is stored state,
 //! not injected into the main system prompt.
 
 pub mod enrich;
 pub mod ops;
 mod schemas;
-pub mod store;
 pub mod tools;
 
 pub use enrich::{enrich_goals, spawn_enrich_goals, GOALS_AGENT_ID};
 pub use schemas::{all_memory_goals_controller_schemas, all_memory_goals_registered_controllers};
 pub use tools::{GoalsAddTool, GoalsDeleteTool, GoalsEditTool, GoalsListTool};
-// W7: goal item/doc types are the crate's (byte-identical `MEMORY_GOALS.md`
-// render/parse); the host `types.rs` engine was deleted. Consumers use only
-// `.items` / `.render()` / `.is_empty()` / `.len()`, all present on the crate
-// type, so re-exporting is transparent.
-pub use tinycortex::memory::goals::types::{GoalItem, GoalsDoc};

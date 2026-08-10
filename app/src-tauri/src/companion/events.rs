@@ -6,8 +6,7 @@
 //! Socket.IO seam for the native notch WKWebView. The session state machine lives
 //! deep below any `#[tauri::command]` boundary (it is driven from the
 //! pipeline), so we stash the `AppHandle` in a process-global `OnceLock`
-//! (mirroring `cdp::in_process::set_cef_app_handle`) and read it from the
-//! emit helper.
+//! and read it from the emit helper.
 
 use std::sync::OnceLock;
 

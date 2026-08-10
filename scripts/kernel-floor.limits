@@ -13,6 +13,38 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   302/279/2  2026-08-09  `memory-git` gate (-3 packages / -3 names / -2 NATIVE),
+#                      measured on top of the runtime-node entry below.
+#
+#                      *** THE SPEC TARGET IS REACHED. *** Two native builds
+#                      remain — `libsqlite3-sys` and `ring` — which is exactly
+#                      the goal set in docs/plans MIGRATION-PLAN G6 and named
+#                      at the bottom of this file's 2026-08-01 baseline entry.
+#                      From 418 names / 6 native at the start of the program.
+#
+#                      The largest native-build shed in the program: `git2`
+#                      with vendored libgit2 leaves the kernel profile, taking
+#                      `libgit2-sys` AND `libz-sys` with it. Two of the five
+#                      remaining native C builds, gone in one gate.
+#                      Required a tinycortex change first: `git-diff` gated the
+#                      WHOLE `memory::diff` module, so a libgit2-less host
+#                      could not even name a `CrossSourceDiff`. Its `types`
+#                      and `source` submodules are serde/std-only and are now
+#                      ungated there; only `ledger`/`ledger_helpers` (the two
+#                      that touch git2), the impls written against `Ledger`,
+#                      and `DiffEngine` sit behind the feature. OpenHuman
+#                      mirrors the split: `memory::diff::types` compiles in
+#                      both directions because the always-on subconscious
+#                      profile renders those types into prompts.
+#                      Off-state: `memory_diff` is unknown-method, the
+#                      `memory_diff` agent tool is absent, the embedded driver
+#                      drops `Capability::Diff` (and `as_diff()` returns
+#                      `None`, in lockstep — `audit_provider` fails on either
+#                      half alone), and the git wiki mirror of summary nodes is
+#                      skipped while the summaries themselves are still
+#                      written. Default (full-feature) profile moved 356 -> 353.
+#                      Verified with `scripts/assert-shed.sh flows git2
+#                      libgit2-sys libz-sys`.
 #   305/282/4  2026-08-09  runtime-node gate, measured on top of the
 #                      upstream/main merge below (307/284/5 -> 305/282/4).
 #                      `xz2` + its static liblzma C build are exclusive to
@@ -158,4 +190,4 @@
 #                      Native: aws-lc-sys libgit2-sys libsqlite3-sys libz-sys
 #                      lzma-sys ring. Target after gating is 222 names / 2 native
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
-flows:305:282:4
+flows:302:279:2

@@ -782,6 +782,10 @@ pub fn all_tools_with_runtime(
     // Memory diff — structured "what changed in the agent's world since a
     // checkpoint/last sync". Drives the subconscious tick's first stage and is
     // available to any agent that lists it. Unit struct, no runtime deps.
+    // Absent rather than erroring when `memory-git` is off: a registered tool
+    // that always fails is worse than no tool, because the model keeps
+    // choosing it and reporting the failure back to the user.
+    #[cfg(feature = "memory-git")]
     tools.push(Box::new(crate::openhuman::memory::diff::MemoryDiffTool));
 
     // Subconscious user-facing handoff — notify_user proactive delivery.
@@ -1556,7 +1560,7 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
 ///
 /// ## Honesty clause — three assignments run ahead of the plumbing
 ///
-/// `goals_*` is filesystem-backed today (`memory::goals::store`), not
+/// `goals_*` is filesystem-backed today (`tinycortex::memory::goals::store`), not
 /// `MemoryGoals`; `tool_stats` reads the legacy `Arc<dyn Memory>` plus
 /// `agent::learning::tool_tracker`, not `MemoryToolMemory`; `memory_diff` reads
 /// `memory::diff::ops`, not `MemoryDiff`. Filtering them on the driver's
