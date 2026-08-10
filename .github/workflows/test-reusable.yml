@@ -237,6 +237,10 @@ jobs:
     timeout-minutes: 60
     env:
       CARGO_INCREMENTAL: "0"
+      # Compiling every integration-test binary at once can exhaust the hosted
+      # Windows runner's paging file before the filtered secrets suite starts.
+      CARGO_BUILD_JOBS: "1"
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
