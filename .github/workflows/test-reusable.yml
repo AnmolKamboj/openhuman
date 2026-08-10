@@ -215,10 +215,10 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Init tinycortex submodule
+      - name: Init tinycortex and tinymemory submodules
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git submodule update --init --recursive vendor/tinycortex
+          git submodule update --init --recursive vendor/tinycortex vendor/tinymemory
 
       - name: Cache TinyCortex build artifacts
         uses: Swatinem/rust-cache@v2

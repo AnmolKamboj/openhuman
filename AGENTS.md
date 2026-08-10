@@ -175,6 +175,38 @@ Embedded provider webviews **must not** grow new JS injection. No new `.js` unde
 
 ## Rust core (`src/`)
 
+### Memory — `src/openhuman/memory/` over `tinymemory` and `tinycortex`
+
+The memory subsystem sits on two vendored crates with different jobs:
+
+- **[`tinycortex`](https://github.com/tinyhumansai/tinycortex)** (`vendor/tinycortex`) — the
+  **engine**: content store, chunks, vectors, summary trees, retrieval, scoring, the job model.
+  Reached through the seam at `src/openhuman/memory/tinycortex/`.
+- **[`tinymemory`](https://github.com/tinyhumansai/tinymemory)** (`vendor/tinymemory`) — the
+  **engine-neutral layer**: the contract, driver admission, the shared mandatory capability
+  families, and one adapter per engine. This is the layer a second engine (Supermemory, mem0, an
+  HTTP backend) would enter through. Path dependency, no `[patch.crates-io]` entry, so
+  `app/src-tauri/Cargo.toml` needs no `../../` twin.
+
+Today the host uses `tinymemory::registry` for driver admission and re-exports
+`TINYCORTEX_DRIVER_ID` from it, so the driver id has one definition. **The host's own contract is
+still `tinycortex-api`**, not `tinymemory-api`: the two are distinct crates describing the same
+values, and `tinymemory-tinycortex` converts between them at one seam. Do not mix the two type
+sets in host code — if a `tinymemory_api::` type appears outside `memory/driver/`, that is the
+boundary leaking. Plan and rationale:
+[`docs/specs/plan-memory.md`](docs/specs/plan-memory.md) (see the 2026-08-10 amendment).
+
+**Adding a memory engine** means an adapter crate in `tinymemory`, not a branch in host code. The
+contract's optional families default to absent, so an engine advertises only what it can actually
+answer — and `audit_provider` fails the bind if the advertised set and the reachable accessors
+disagree.
+
+**`admit` rules live in `tinymemory::registry`.** A built-in driver id's class is fixed and an
+explicit `class` line may only confirm it; an unknown id is refused rather than guessed; an
+external driver is fail-closed on trust. Only `class` and `trust_state` cross into the crate —
+never `credential_ref` or `endpoint` — so an operator-facing refusal structurally cannot carry a
+secret.
+
 ### Backend API access — `src/api/` over `tinyhumans-sdk`
 
 Calls to the TinyHumans cloud backend go through the vendored
