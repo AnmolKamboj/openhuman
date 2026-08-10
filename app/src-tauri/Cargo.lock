@@ -5263,6 +5263,9 @@ dependencies = [
  "tinyflows",
  "tinyhumans-sdk",
  "tinyjuice",
+ "tinymemory",
+ "tinymemory-api",
+ "tinymemory-tinycortex",
  "tinyplace",
  "tinywallet",
  "tokio",
@@ -8504,6 +8507,43 @@ dependencies = [
  "tokio",
  "unicode-segmentation",
  "unicode-width",
+]
+
+[[package]]
+name = "tinymemory"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "log",
+ "serde",
+ "serde_json",
+ "tinymemory-api",
+]
+
+[[package]]
+name = "tinymemory-api"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+ "uuid 1.23.1",
+]
+
+[[package]]
+name = "tinymemory-tinycortex"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "tinycortex",
+ "tinymemory",
+ "tinymemory-api",
 ]
 
 [[package]]

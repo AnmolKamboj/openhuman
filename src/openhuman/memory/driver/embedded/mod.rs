@@ -78,7 +78,15 @@ use crate::openhuman::memory::Memory;
 /// Matches the `[subsystems.memory] driver` default (`default_memory_driver`
 /// in `config::schema::subsystems`), so a default-configured host reports the
 /// same id from config and from the bound provider.
-pub const EMBEDDED_DRIVER_ID: &str = "tinycortex";
+///
+/// **Re-exported, not re-declared.** The same id is what
+/// [`tinymemory::registry`] reserves at [`DriverClass::Embedded`], and
+/// admission is decided there. Two independent string literals that must agree
+/// is precisely the kind of pair that silently stops agreeing: the day one is
+/// edited, `admit` would stop recognising this driver and every bind would fall
+/// back to the null placeholder — loudly in the logs, but with memory writes
+/// discarded for the whole run. One constant, one definition, no drift.
+pub use tinymemory::registry::TINYCORTEX_DRIVER_ID as EMBEDDED_DRIVER_ID;
 
 /// The families this driver advertises: **all thirteen**.
 ///

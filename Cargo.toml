@@ -208,6 +208,29 @@ tinycortex = { version = "0.1", features = [
 # the embedded engine. No `[patch.crates-io]` entry is needed: cargo unifies
 # this with the `path = "api"` dependency the engine crate already declares.
 tinycortex-api = { path = "vendor/tinycortex/api" }
+
+# tinymemory — the engine-neutral memory layer
+# (https://github.com/tinyhumansai/tinymemory). Owns the parts of the memory
+# subsystem that are true for *any* engine: the driver-admission rules
+# (`tinymemory::registry`) and the three mandatory capability families composed
+# over the `Memory` storage trait (`tinymemory::mandatory`). TinyCortex stays
+# the engine; this is the layer a second engine would enter through.
+#
+# Vendored as a git submodule under `vendor/` beside the other tiny* crates and
+# consumed by path: the crate is not published to crates.io, so there is no
+# `[patch.crates-io]` entry for it, and for the same reason
+# `app/src-tauri/Cargo.toml` needs no `../../` twin — an unpublished path
+# dependency resolves transitively through this manifest.
+#
+# `tinymemory-tinycortex` is the seam between TinyCortex's contract types and
+# TinyMemory's. It names `tinycortex` by version requirement, so the
+# `[patch.crates-io]` entry below unifies it onto *this* checkout's engine
+# rather than the one pinned inside the tinymemory submodule.
+#
+# After cloning: `git submodule update --init --recursive vendor/tinymemory`.
+tinymemory = { path = "vendor/tinymemory" }
+tinymemory-api = { path = "vendor/tinymemory/api" }
+tinymemory-tinycortex = { path = "vendor/tinymemory/adapters/tinycortex" }
 tinychannels = { version = "0.1", features = ["relay-websocket"] }
 # tinybus — the message bus. Owns what `src/core/event_bus/` used to: the typed
 # pub/sub surface (`EventBus`, `EventHandler`, `SubscriptionHandle`), the
