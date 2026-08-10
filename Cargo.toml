@@ -364,7 +364,7 @@ tinydocs = { path = "vendor/tinydocs", default-features = false, optional = true
 # After cloning: `git submodule update --init vendor/tinywallet`.
 #
 # Optional: exclusive to the default-ON `web3` feature.
-tinywallet = { path = "vendor/tinywallet", default-features = false, features = ["btc", "evm", "solana", "tron", "keccak", "key"], optional = true }
+tinywallet = { path = "vendor/tinywallet", default-features = false, features = ["btc", "evm", "solana", "tron", "keccak", "key", "net", "asset", "client", "tx"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
 # Windows: tokio-tungstenite uses native-tls (schannel) so wss://
