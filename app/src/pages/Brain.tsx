@@ -108,12 +108,13 @@ export default function Brain() {
   }, [location.search, navigate]);
 
   // #5424 — the Orchestration sub-tab is a tiny.place surface, hidden from users
-  // without an identity. If one lands on `?tab=orchestration` via a stale deep
-  // link, redirect to the Brain welcome tab once the identity check confirms
-  // they have none. This is a render-phase redirect (not a post-commit effect)
-  // so OrchestrationView never mounts for a confirmed non-holder — its RPCs and
-  // tiny.place surface must not fire even once. Holders and the in-flight
-  // `loading` window are left untouched.
+  // without an identity. If a *confirmed* non-holder lands on `?tab=orchestration`
+  // via a stale deep link, redirect to the Brain welcome tab. This is a
+  // render-phase redirect (not a post-commit effect), so once the check resolves
+  // to a non-holder OrchestrationView never mounts. While the check is still in
+  // flight we render optimistically — matching the AgentWorldShell route guard —
+  // so a holder (the common case) never sees a flash; the brief optimistic window
+  // for a stale non-holder link is the deliberate trade-off.
   const { status: tinyplaceStatus, hasIdentity: hasTinyplaceIdentity } = useTinyPlaceIdentity();
   const shouldRedirectFromOrchestration =
     activeTab === 'orchestration' && tinyplaceStatus === 'ready' && !hasTinyplaceIdentity;
