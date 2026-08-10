@@ -71,7 +71,7 @@ use crate::core::subsystem::{
     BoundDriver, DriverCapabilities, DriverClass, DriverHealth, SubsystemSlot,
 };
 use crate::openhuman::config::schema::{MemoryHooksConfig, MemorySubsystemConfig};
-use crate::openhuman::memory::driver::embedded::{EmbeddedMemoryProvider, EMBEDDED_DRIVER_ID};
+use crate::openhuman::memory::driver::embedded::EmbeddedMemoryProvider;
 use crate::openhuman::memory::guard::{GuardPolicy, MemoryGuard};
 
 /// Why a bind fell back to the placeholder driver.
