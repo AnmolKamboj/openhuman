@@ -1,0 +1,670 @@
+import debug from 'debug';
+import { type Socket } from 'socket.io-client';
+
+import { getCoreStateSnapshot } from '../lib/coreState/store';
+import { SocketIOMCPTransportImpl } from '../lib/mcp';
+import { ingestRuntimeErrorSignal } from '../lib/userErrors/report';
+import { store } from '../store';
+import {
+  appendBackendMeetTranscriptDelta,
+  setBackendMeetError,
+  setBackendMeetHarness,
+  setBackendMeetJoined,
+  setBackendMeetLeft,
+  setBackendMeetReply,
+  setBackendMeetTranscript,
+} from '../store/backendMeetSlice';
+import { upsertChannelConnection } from '../store/channelConnectionsSlice';
+import { setBackend } from '../store/connectivitySlice';
+import { resetForUser, setSocketIdForUser, setStatusForUser } from '../store/socketSlice';
+import type { ChannelAuthMode, ChannelConnectionStatus, ChannelType } from '../types/channels';
+import type { UserErrorScope } from '../types/userError';
+import { IS_DEV } from '../utils/config';
+import { createSafeLogData, sanitizeError } from '../utils/sanitize';
+import { getCoreRpcToken, getCoreRpcUrl } from './coreRpcClient';
+import { createCoreSocket } from './coreSocket';
+
+// Socket service logger using debug package
+// Enable logging by setting DEBUG=socket* in environment or localStorage
+const socketLog = debug('socket');
+const socketWarn = debug('socket:warn');
+const socketError = debug('socket:error');
+
+// Enable socket logging in development by default
+if (IS_DEV) {
+  debug.enable('socket*');
+}
+
+function coreSocketBaseFromRpcUrl(rpcUrl: string): string {
+  const trimmed = rpcUrl.trim().replace(/\/+$/, '');
+  return trimmed.endsWith('/rpc') ? trimmed.slice(0, -4) : trimmed;
+}
+
+/**
+ * Resolve the Socket.IO base URL from the user's stored RPC URL preference.
+ * Delegates to getCoreRpcUrl() so the stored preference (set on the Welcome
+ * screen) is always honoured — previously this called invoke('core_rpc_url')
+ * directly, which ignored the user's stored override.
+ */
+async function resolveCoreSocketBaseUrl(): Promise<string> {
+  const rpcUrl = await getCoreRpcUrl();
+  return coreSocketBaseFromRpcUrl(rpcUrl);
+}
+
+interface ChannelConnectionUpdatedEvent {
+  channel: ChannelType;
+  authMode: ChannelAuthMode;
+  status: ChannelConnectionStatus;
+  lastError?: string;
+  capabilities?: string[];
+}
+
+interface PendingSocketListener {
+  event: string;
+  callback: (...args: unknown[]) => void;
+  once: boolean;
+}
+
+function normalizeChannelConnectionUpdatePayload(
+  value: unknown
+): ChannelConnectionUpdatedEvent | null {
+  if (!value || typeof value !== 'object') return null;
+
+  const obj = value as Record<string, unknown>;
+  const channel = obj.channel;
+  const authMode = obj.authMode ?? obj.auth_mode;
+  const status = obj.status;
+  const lastError = obj.lastError ?? obj.last_error;
+  const capabilities = obj.capabilities;
+
+  const isKnownChannel = channel === 'telegram' || channel === 'discord' || channel === 'web';
+  const isKnownAuthMode =
+    authMode === 'managed_dm' ||
+    authMode === 'oauth' ||
+    authMode === 'bot_token' ||
+    authMode === 'api_key';
+  const isKnownStatus =
+    status === 'connected' ||
+    status === 'connecting' ||
+    status === 'disconnected' ||
+    status === 'error';
+
+  if (!isKnownChannel || !isKnownAuthMode || !isKnownStatus) {
+    return null;
+  }
+
+  return {
+    channel,
+    authMode,
+    status,
+    lastError: typeof lastError === 'string' ? lastError : undefined,
+    capabilities: Array.isArray(capabilities)
+      ? capabilities.filter((item): item is string => typeof item === 'string')
+      : undefined,
+  };
+}
+
+function getSocketUserId(): string {
+  return getCoreStateSnapshot().snapshot?.auth?.userId ?? '__pending__';
+}
+
+class SocketService {
+  private socket: Socket | null = null;
+  private token: string | null = null;
+  private mcpTransport: SocketIOMCPTransportImpl | null = null;
+  private pendingListeners: PendingSocketListener[] = [];
+  // Maps original caller callbacks → wrapped callbacks so off() can locate the
+  // exact function references that were registered with socket.io, scoped by event.
+  private listenerMap = new Map<
+    string,
+    Map<(...args: unknown[]) => void, Set<(...args: unknown[]) => void>>
+  >();
+
+  /**
+   * Connect to the socket server with authentication.
+   */
+  connect(token: string): void {
+    void this.connectAsync(token);
+  }
+
+  private async connectAsync(token: string): Promise<void> {
+    if (!token) return;
+
+    // Don't connect if already connected with the same token
+    if (this.socket?.connected && this.token === token) return;
+
+    // Disconnect existing connection if token changed or socket exists
+    if (this.socket) {
+      if (this.token !== token) {
+        this.disconnect();
+      } else if (this.socket.connected) {
+        return;
+      } else if (!this.socket.disconnected) {
+        // Socket is connecting, wait for it
+        return;
+      } else {
+        // Stale disconnected socket instance for the same token.
+        // Drop it so this connect attempt can create a fresh socket;
+        // otherwise the async stale-invocation guard below (`|| this.socket`)
+        // returns early and leaves connectivity stuck at "connecting".
+        this.socket = null;
+        this.mcpTransport = null;
+      }
+    }
+
+    this.token = token;
+    const uid = getSocketUserId();
+    store.dispatch(setStatusForUser({ userId: uid, status: 'connecting' }));
+    // Mirror backend Socket.IO state into the connectivity channel (#1527).
+    store.dispatch(setBackend({ value: 'connecting' }));
+
+    const backendUrl = await resolveCoreSocketBaseUrl();
+    // If another `connect(token)` raced in while the URL was resolving,
+    // a stale invocation will see `this.token` flipped to the newer JWT
+    // (or a fresh socket already attached) and must bail before its
+    // io(...) call stomps the newer connection. Same guard repeats
+    // after the core-token resolve below.
+    if (this.token !== token || this.socket) return;
+    socketLog('Connecting to core socket', { userId: uid, backendUrl });
+
+    // Ensure we're not connecting to the wrong URL (Vite dev HMR port guard).
+    // Reset the backend channel before returning so it doesn't stay stuck at
+    // 'connecting'. (addresses @coderabbitai on socketService.ts:154-163)
+    if (backendUrl.includes('localhost:1420') || backendUrl.includes(':1420')) {
+      store.dispatch(
+        setBackend({ value: 'disconnected', error: 'dev-server URL guard — not a real backend' })
+      );
+      return;
+    }
+
+    // The local core's Socket.IO handshake validates the per-process bearer
+    // exposed via `core_rpc_token` (Tauri IPC) / the cloud-mode picker. The
+    // session JWT rides alongside on the `auth` payload as `session` so a
+    // future handler can correlate the connection with the logged-in user.
+    const coreToken = await getCoreRpcToken();
+    if (this.token !== token || this.socket) return;
+
+    this.socket = createCoreSocket(backendUrl, {
+      coreToken,
+      authExtras: { session: token },
+      overrides: {
+        // A remote / tunnelled core (e.g. ~0.8s RTT) needs the socket.io
+        // handshake (~2.4s) to outlast the connect timeout — the prior 2s
+        // tripped first, flapping the socket and dropping streamed/approval
+        // events. 10s gives headroom while still surfacing a genuinely dead
+        // core reasonably fast; keep retrying rather than giving up after 5.
+        reconnectionDelay: 2000,
+        reconnectionAttempts: Infinity,
+        timeout: 10000,
+        upgrade: true,
+        query: {},
+      },
+    });
+
+    // Flush any listeners that were registered before the socket existed.
+    if (this.pendingListeners.length > 0) {
+      socketLog('Flushing pending listeners', { count: this.pendingListeners.length });
+      for (const { event, callback, once } of this.pendingListeners) {
+        if (once) {
+          this.socket.once(event, callback);
+        } else {
+          this.socket.on(event, callback);
+        }
+      }
+      this.pendingListeners = [];
+    }
+
+    this.socket.onAny((event, ...args) => {
+      const firstArg = args.length > 0 ? args[0] : undefined;
+      socketLog(
+        'Inbound event',
+        createSafeLogData({ event, argsCount: args.length, hasData: args.length > 0 }, firstArg)
+      );
+    });
+
+    // Initialize MCP transport for client→server MCP requests
+    this.mcpTransport = new SocketIOMCPTransportImpl(this.socket);
+
+    // Connection event handlers
+    this.socket.on('connect', () => {
+      const socketId = this.socket?.id || null;
+      const uid = getSocketUserId();
+      socketLog('Connected', { socketId, userId: uid });
+      store.dispatch(setStatusForUser({ userId: uid, status: 'connected' }));
+      store.dispatch(setSocketIdForUser({ userId: uid, socketId }));
+      store.dispatch(setBackend({ value: 'connected' }));
+
+      // Re-join the active thread's room so an in-flight turn's stream survives
+      // this (re)connection. Chat events are delivered to both the client_id
+      // room and a per-thread room (see socketio.rs `emit_web_channel_event`);
+      // because a reconnect produces a NEW client_id, the new socket must
+      // re-subscribe to the thread room to keep receiving the stream.
+      // With parallel inference several threads may be streaming at once, so
+      // re-subscribe to every active thread room (plus the selected thread) —
+      // not just a single "active" thread — to keep all in-flight streams alive.
+      const threadState = store.getState().thread;
+      const roomThreadIds = new Set<string>(Object.keys(threadState?.activeThreadIds ?? {}));
+      if (threadState?.selectedThreadId) {
+        roomThreadIds.add(threadState.selectedThreadId);
+      }
+      for (const threadId of roomThreadIds) {
+        this.socket?.emit('thread:subscribe', { thread_id: threadId });
+      }
+    });
+
+    this.socket.on('ready', () => {
+      const uid = getSocketUserId();
+      socketLog('Server ready - authentication successful', { userId: uid });
+    });
+
+    this.socket.on('error', (error: unknown) => {
+      const uid = getSocketUserId();
+      socketError('Server error', { userId: uid, error: sanitizeError(error) });
+    });
+
+    this.socket.on('disconnect', (reason: string) => {
+      const uid = getSocketUserId();
+      socketLog('Disconnected', { userId: uid, reason });
+      store.dispatch(setStatusForUser({ userId: uid, status: 'disconnected' }));
+      store.dispatch(setSocketIdForUser({ userId: uid, socketId: null }));
+      store.dispatch(setBackend({ value: 'disconnected', error: reason }));
+    });
+
+    this.socket.on('connect_error', (error: Error) => {
+      const uid = getSocketUserId();
+      socketError('Connection error', { userId: uid, error: sanitizeError(error) });
+      store.dispatch(setStatusForUser({ userId: uid, status: 'disconnected' }));
+      store.dispatch(
+        setBackend({
+          value: 'disconnected',
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+    });
+
+    const handleChannelConnectionUpdated = (data: unknown) => {
+      const payload = normalizeChannelConnectionUpdatePayload(data);
+      if (!payload) return;
+
+      store.dispatch(
+        upsertChannelConnection({
+          channel: payload.channel,
+          authMode: payload.authMode,
+          patch: {
+            status: payload.status,
+            lastError: payload.lastError,
+            ...(payload.capabilities !== undefined && { capabilities: payload.capabilities }),
+          },
+        })
+      );
+    };
+
+    this.socket.on('channel:connection-updated', handleChannelConnectionUpdated);
+    this.socket.on('channel_connection_updated', handleChannelConnectionUpdated);
+
+    // Core-side session expiry (401 from the OpenHuman backend or jsonrpc).
+    // The server has already published SessionExpired on its event bus,
+    // the credentials subscriber has cleared the JWT, and the scheduler
+    // gate is flipped to signed-out. All the UI needs to do is mirror
+    // that locally and route to onboarding. CoreStateProvider listens
+    // for the window event below and calls its own `clearSession`.
+    const handleSessionExpired = (data: unknown) => {
+      const source =
+        (data && typeof data === 'object' && 'source' in data && typeof data.source === 'string'
+          ? data.source
+          : undefined) ?? 'unknown';
+      socketLog('Session expired notification received', { source });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('openhuman:session-expired', { detail: { source } }));
+      }
+    };
+    this.socket.on('auth:session_expired', handleSessionExpired);
+    this.socket.on('auth_session_expired', handleSessionExpired);
+
+    // MCP setup agent: server-side `request_secret` blocks until the
+    // user submits a value. Dispatch a window event so a singleton React
+    // dialog can render a native input and POST back via
+    // openhuman.mcp_setup_submit_secret. Raw secret values never travel
+    // through the socket — only the opaque ref + safe display fields.
+    const handleSecretRequested = (data: unknown) => {
+      const obj = data as Record<string, unknown> | null;
+      if (!obj || typeof obj !== 'object') {
+        socketWarn('mcp_setup:secret_requested dropped — invalid payload');
+        return;
+      }
+      const refId = typeof obj.ref_id === 'string' ? obj.ref_id : null;
+      const keyName = typeof obj.key_name === 'string' ? obj.key_name : null;
+      const prompt = typeof obj.prompt === 'string' ? obj.prompt : '';
+      if (!refId || !keyName) {
+        socketWarn('mcp_setup:secret_requested missing ref_id or key_name');
+        return;
+      }
+      socketLog('mcp_setup:secret_requested', { refId, keyName });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('openhuman:mcp-setup-secret-requested', {
+            detail: { refId, keyName, prompt },
+          })
+        );
+      }
+    };
+    this.socket.on('mcp_setup:secret_requested', handleSecretRequested);
+    this.socket.on('mcp_setup_secret_requested', handleSecretRequested);
+
+    this.socket.on('memory:sync_stage', (data: unknown) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('openhuman:memory-sync-stage', { detail: data }));
+      }
+    });
+    this.socket.on('memory:tree_progress', (data: unknown) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('openhuman:memory-tree-progress', { detail: data }));
+      }
+    });
+    this.socket.on('memory:tree_completed', (data: unknown) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('openhuman:memory-tree-completed', { detail: data }));
+      }
+    });
+    this.socket.on('memory:build_progress', (data: unknown) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('openhuman:memory-build-progress', { detail: data }));
+      }
+    });
+
+    this.socket.on('channel:managed-dm-verified', data => {
+      const obj = data as Record<string, unknown> | null;
+      if (!obj || typeof obj !== 'object') return;
+      const token = typeof obj.token === 'string' ? obj.token : undefined;
+      const telegramUsername =
+        typeof obj.telegramUsername === 'string' ? obj.telegramUsername : undefined;
+      const chatId = typeof obj.chatId === 'number' ? obj.chatId : undefined;
+      if (!token) return;
+
+      socketLog('Managed DM verified', { tokenLength: token.length, telegramUsername, chatId });
+      store.dispatch(
+        upsertChannelConnection({
+          channel: 'telegram',
+          authMode: 'managed_dm',
+          patch: { status: 'connected', lastError: undefined, capabilities: ['dm'] },
+        })
+      );
+    });
+
+    // Permanent user-config / billing failures surfaced from background jobs
+    // (e.g. cron) — core broadcasts these to the "system" room as a
+    // metadata-only `user_error` event carrying a stable kind token in
+    // `error_type` (never a raw provider body). Routed through the same
+    // classifier the chat runtime uses so the UserErrorCenter renders them
+    // durably with a deep-link action, even though no chat thread is active.
+    // Producer: core cron scheduler `publish_cron_user_error` (#4165 /
+    // TAURI-RUST-HCK follow-up).
+    this.socket.on('user_error', (data: unknown) => {
+      const obj = data as Record<string, unknown> | null;
+      if (!obj) {
+        socketWarn('user_error dropped — empty payload');
+        return;
+      }
+      const errorType = typeof obj.error_type === 'string' ? obj.error_type : undefined;
+      const provider = typeof obj.error_provider === 'string' ? obj.error_provider : undefined;
+      const sourceDomain = typeof obj.error_source === 'string' ? obj.error_source : 'cron';
+      socketLog('user_error kind=%s source=%s', errorType ?? 'none', sourceDomain);
+      // Scope groups the entry in the panel and is part of its dedupe identity,
+      // so it must follow the producing domain. It was pinned to `cron` while
+      // the scheduler was the only producer; the memory embedder health gate
+      // (#5354) is the second. Unknown domains keep the historical `cron`
+      // default rather than widening the scope union from wire data.
+      const scope: UserErrorScope = sourceDomain === 'memory' ? 'memory' : 'cron';
+      // Metadata-only ingest: forward the stable kind token + scope ONLY, never
+      // a raw `message` body. The cron producer already omits it, but we drop
+      // any `obj.message` here too so a future/buggy broadcast can't leak raw
+      // provider text into the UI — classify() keys on `errorType` for this
+      // path. Locks the no-leak contract FE-side (CodeRabbit #4169).
+      ingestRuntimeErrorSignal(store.dispatch, { errorType, scope, sourceDomain, provider });
+    });
+
+    // Backend Meet bot events — forwarded from core's DomainEvent bus
+    this.socket.on('agent_meetings:joined', (data: unknown) => {
+      const obj = data as Record<string, unknown> | null;
+      const meetUrl = typeof obj?.meet_url === 'string' ? obj.meet_url : '';
+      const correlationId =
+        typeof obj?.correlation_id === 'string' ? obj.correlation_id : undefined;
+      socketLog(
+        'agent_meetings:joined meet_url_len=%d correlation_id=%s',
+        meetUrl.length,
+        correlationId ?? 'none'
+      );
+      store.dispatch(setBackendMeetJoined({ meetUrl, meetingId: correlationId }));
+    });
+    this.socket.on('agent_meetings:left', (data: unknown) => {
+      const obj = data as Record<string, unknown> | null;
+      const reason = typeof obj?.reason === 'string' ? obj.reason : 'unknown';
+      const correlationId =
+        typeof obj?.correlation_id === 'string' ? obj.correlation_id : undefined;
+      socketLog('agent_meetings:left reason=%s correlation_id=%s', reason, correlationId ?? 'none');
+      store.dispatch(setBackendMeetLeft({ reason, correlationId }));
+    });
+    this.socket.on('agent_meetings:reply', (data: unknown) => {
+      const obj = data as Record<string, unknown> | null;
+      if (!obj) return;
+      const correlationId = typeof obj.correlation_id === 'string' ? obj.correlation_id : undefined;
+      socketLog('agent_meetings:reply correlation_id=%s', correlationId ?? 'none');
+      store.dispatch(
+        setBackendMeetReply({
+          transcript: typeof obj.transcript === 'string' ? obj.transcript : '',
+          reply: typeof obj.reply === 'string' ? obj.reply : '',
+          emotion: typeof obj.emotion === 'string' ? obj.emotion : 'neutral',
+          correlationId,
+        })
+      );
+    });
+    this.socket.on('agent_meetings:harness', (data: unknown) => {
+      const obj = data as Record<string, unknown> | null;
+      if (!obj) return;
+      const correlationId = typeof obj.correlation_id === 'string' ? obj.correlation_id : undefined;
+      socketLog('agent_meetings:harness correlation_id=%s', correlationId ?? 'none');
+      store.dispatch(
+        setBackendMeetHarness({
+          transcript: typeof obj.transcript === 'string' ? obj.transcript : '',
+          instruction: typeof obj.instruction === 'string' ? obj.instruction : '',
+          emotion: typeof obj.emotion === 'string' ? obj.emotion : 'neutral',
+          correlationId,
+        })
+      );
+    });
+    this.socket.on('agent_meetings:transcript', (data: unknown) => {
+      const obj = data as Record<string, unknown> | null;
+      if (!obj) return;
+      const correlationId = typeof obj.correlation_id === 'string' ? obj.correlation_id : undefined;
+      socketLog('agent_meetings:transcript correlation_id=%s', correlationId ?? 'none');
+      store.dispatch(
+        setBackendMeetTranscript({
+          turns: Array.isArray(obj.turns) ? obj.turns : [],
+          duration_ms: typeof obj.duration_ms === 'number' ? obj.duration_ms : 0,
+          correlationId,
+        })
+      );
+    });
+    this.socket.on('agent_meetings:transcript_delta', (data: unknown) => {
+      const obj = data as Record<string, unknown> | null;
+      if (!obj) return;
+      const turn = obj.turn as Record<string, unknown> | null | undefined;
+      // Drop malformed deltas that carry no turn content.
+      if (!turn || typeof turn.role !== 'string' || typeof turn.content !== 'string') {
+        socketError('agent_meetings:transcript_delta dropped: missing/invalid turn');
+        return;
+      }
+      const correlationId = typeof obj.correlation_id === 'string' ? obj.correlation_id : undefined;
+      const index = typeof obj.index === 'number' ? obj.index : 0;
+      const isPartial = typeof obj.is_partial === 'boolean' ? obj.is_partial : false;
+      socketLog(
+        'agent_meetings:transcript_delta index=%d is_partial=%s correlation_id=%s',
+        index,
+        isPartial,
+        correlationId ?? 'none'
+      );
+      store.dispatch(
+        appendBackendMeetTranscriptDelta({
+          turn: { role: turn.role, content: turn.content },
+          index,
+          is_partial: isPartial,
+          correlationId,
+        })
+      );
+    });
+    this.socket.on('agent_meetings:error', (data: unknown) => {
+      const obj = data as Record<string, unknown> | null;
+      const error = typeof obj?.error === 'string' ? obj.error : 'Unknown error';
+      const correlationId =
+        typeof obj?.correlation_id === 'string' ? obj.correlation_id : undefined;
+      socketError('agent_meetings:error %s correlation_id=%s', error, correlationId ?? 'none');
+      store.dispatch(setBackendMeetError({ error, correlationId }));
+    });
+
+    this.socket.connect();
+  }
+
+  /**
+   * Disconnect from the socket server
+   */
+  disconnect(): void {
+    const uid = getSocketUserId();
+    if (this.socket) {
+      socketLog('Disconnecting', { userId: uid });
+      this.socket.disconnect();
+      this.socket = null;
+      store.dispatch(resetForUser({ userId: uid }));
+    }
+    this.token = null;
+    this.mcpTransport = null;
+    this.listenerMap.clear();
+    this.pendingListeners = [];
+  }
+
+  /**
+   * Get the current socket instance
+   */
+  getSocket(): Socket | null {
+    return this.socket;
+  }
+
+  /**
+   * Get the MCP transport for making client→server MCP requests
+   */
+  getMCPTransport(): SocketIOMCPTransportImpl | null {
+    return this.mcpTransport;
+  }
+
+  /**
+   * Check if socket is connected
+   */
+  isConnected(): boolean {
+    return this.socket?.connected || false;
+  }
+
+  /**
+   * Emit an event to the server
+   */
+  emit(event: string, data?: unknown): void {
+    if (this.socket?.connected) {
+      socketLog('Emitting event', createSafeLogData({ event }, data));
+      this.socket.emit(event, data);
+    } else {
+      socketWarn('Cannot emit event - socket not connected', { event });
+    }
+  }
+
+  /**
+   * Listen to an event from the server
+   */
+  on(event: string, callback: (...args: unknown[]) => void): void {
+    const wrappedCallback = (...args: unknown[]) => {
+      socketLog('Received event', { event, argsCount: args.length, hasData: args.length > 0 });
+      callback(...args);
+    };
+    // Track original→wrapped per event so the same callback can be used for
+    // multiple events without collisions.
+    const byEvent = this.listenerMap.get(event) ?? new Map();
+    const wrappedSet = byEvent.get(callback) ?? new Set();
+    wrappedSet.add(wrappedCallback);
+    byEvent.set(callback, wrappedSet);
+    this.listenerMap.set(event, byEvent);
+    if (this.socket) {
+      this.socket.on(event, wrappedCallback);
+    } else {
+      socketLog('Socket not ready, queuing listener', { event });
+      this.pendingListeners.push({ event, callback: wrappedCallback, once: false });
+    }
+  }
+
+  /**
+   * Remove an event listener
+   */
+  off(event: string, callback?: (...args: unknown[]) => void): void {
+    if (callback) {
+      const byEvent = this.listenerMap.get(event);
+      const wrappedSet = byEvent?.get(callback);
+      const wrappedCallbacks =
+        wrappedSet && wrappedSet.size > 0 ? Array.from(wrappedSet) : [callback];
+      const hadWrapped = !!wrappedSet && wrappedSet.size > 0;
+      byEvent?.delete(callback);
+      if (byEvent && byEvent.size === 0) {
+        this.listenerMap.delete(event);
+      }
+      socketLog('Removing listener', { event, hadWrappedVersion: hadWrapped });
+      for (const wrapped of wrappedCallbacks) {
+        if (this.socket) {
+          this.socket.off(event, wrapped);
+        }
+        // Also remove from the pending queue in case the socket isn't up yet.
+        this.pendingListeners = this.pendingListeners.filter(
+          p => !(p.event === event && p.callback === wrapped)
+        );
+      }
+    } else {
+      socketLog('Removing all listeners for event', { event });
+      this.socket?.off(event);
+      this.pendingListeners = this.pendingListeners.filter(p => p.event !== event);
+      this.listenerMap.delete(event);
+    }
+  }
+
+  /**
+   * Listen to an event once
+   */
+  once(event: string, callback: (...args: unknown[]) => void): void {
+    const wrappedCallback = (...args: unknown[]) => {
+      socketLog('Received event (once)', {
+        event,
+        argsCount: args.length,
+        hasData: args.length > 0,
+      });
+      try {
+        callback(...args);
+      } finally {
+        const byEvent = this.listenerMap.get(event);
+        const wrappedSet = byEvent?.get(callback);
+        wrappedSet?.delete(wrappedCallback);
+        if (wrappedSet && wrappedSet.size === 0) {
+          byEvent?.delete(callback);
+        }
+        if (byEvent && byEvent.size === 0) {
+          this.listenerMap.delete(event);
+        }
+      }
+    };
+    const byEvent = this.listenerMap.get(event) ?? new Map();
+    const wrappedSet = byEvent.get(callback) ?? new Set();
+    wrappedSet.add(wrappedCallback);
+    byEvent.set(callback, wrappedSet);
+    this.listenerMap.set(event, byEvent);
+    if (this.socket) {
+      this.socket.once(event, wrappedCallback);
+    } else {
+      socketLog('Socket not ready, queuing once listener', { event });
+      this.pendingListeners.push({ event, callback: wrappedCallback, once: true });
+    }
+  }
+}
+
+export const socketService = new SocketService();
