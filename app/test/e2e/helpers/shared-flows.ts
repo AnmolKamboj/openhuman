@@ -127,7 +127,7 @@ async function clickFirstMatch(candidates, timeout = 5_000) {
  * a first-class tab: it owns the dedicated mascot stage, while Chat carries the
  * same mascot docked on its composer. The earlier "Assistant"/"Activity"/"Alerts"
  * labels are gone. Only real tabs belong here; routes that redirect (e.g. /home,
- * /activity, /intelligence, /skills, /channels) are resolved through
+ * /activity, /intelligence, /skills, /channels, /webhooks) are resolved through
  * HASH_REDIRECTS below — they have no sidebar button.
  */
 const HASH_TO_SIDEBAR_LABEL = {
