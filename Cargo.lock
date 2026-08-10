@@ -4661,7 +4661,6 @@ dependencies = [
  "dhat",
  "directories",
  "dirs 5.0.1",
- "docx-rs",
  "dotenvy",
  "ed25519-dalek",
  "enigo",
@@ -4724,10 +4723,12 @@ dependencies = [
  "tinychannels",
  "tinycortex",
  "tinycortex-api",
+ "tinydocs",
  "tinyflows",
  "tinyhumans-sdk",
  "tinyjuice",
  "tinyplace",
+ "tinywallet",
  "tokio",
  "tokio-stream",
  "tokio-tungstenite 0.29.0",
@@ -7328,6 +7329,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tinydocs"
+version = "0.1.0"
+dependencies = [
+ "docx-rs",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "tinyflows"
 version = "0.6.0"
 dependencies = [
@@ -7442,6 +7452,25 @@ name = "tinyvec_macros"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
+
+[[package]]
+name = "tinywallet"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bitcoin",
+ "bs58",
+ "coins-bip39",
+ "ed25519-dalek",
+ "hex",
+ "hmac",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sha3",
+ "thiserror 2.0.18",
+ "zeroize",
+]
 
 [[package]]
 name = "tokio"

@@ -175,6 +175,51 @@ Embedded provider webviews **must not** grow new JS injection. No new `.js` unde
 
 ## Rust core (`src/`)
 
+### Extracted host-agnostic crates — `vendor/tinydocs`, `vendor/tinywallet`
+
+Two vendored crates own logic that used to live in this repo. Both are git
+submodules consumed by `path` (not published to crates.io, so no
+`[patch.crates-io]` entry — same shape as `tinyhumans-sdk`). After cloning:
+`git submodule update --init vendor/tinydocs vendor/tinywallet`.
+
+The split follows one rule, and it is worth stating because it decides where
+the *next* extraction goes: **a crate owns what is the same for every host; the
+host owns what depends on its own runtime, config, or threat model.** Both
+crates are therefore synchronous, I/O-free, and runtime-free.
+
+| Crate | Owns | OpenHuman keeps |
+| --- | --- | --- |
+| `tinydocs` | the `.docx` spec types, their size limits, validation, and OOXML synthesis (`docx-rs` sits behind it) | the artifact pipeline, the `spawn_blocking` hop, and the generation deadline — `src/openhuman/tools/impl/document/` |
+| `tinywallet` | the BTC / EVM / Solana / Tron address formats: parsing, validation, encoding conversions | RPC endpoint resolution, transaction assembly and broadcast, key custody — `src/openhuman/web3/` |
+
+Consequences worth knowing before touching either seam:
+
+- **`tinydocs::docx::generate` is synchronous on purpose.** A crate that
+  guessed at an executor or a deadline would be wrong for every host that
+  guessed differently, so `document/engine.rs` supplies exactly that policy and
+  nothing else. `DocumentError::GenerationTimeout` therefore has no `tinydocs`
+  equivalent and can only be produced host-side.
+- **`tinydocs::Error` is `#[non_exhaustive]`.** The `From` impl in
+  `document/types.rs` needs its catch-all arm; it degrades an unmapped variant
+  to `GenerationFailed` and logs, so a crate bump that adds a case worth
+  handling structurally shows up rather than being swallowed.
+- **The JSON tool schema did not change.** `GenerateDocumentInput` is
+  `tinydocs`' `DocumentSpec` re-exported under its historical name, with field
+  names unchanged; `the_json_wire_shape_is_unchanged_by_the_extraction` pins
+  that.
+- **`tinywallet` rejects an uppercase `0X` EVM prefix, matching the code it
+  replaced, which rejected that prefix too.** The old path went through `ethers_core::types::Address`'s
+  `FromStr`, which is `fixed-hash`'s and strips only a lowercase `0x`
+  (`fixed-hash-0.8.0/src/hash.rs`, `input.strip_prefix("0x")`), so `0X…` failed
+  hex decoding there too. The behaviour is unchanged, verified against the old
+  code path rather than assumed — do not "fix" it into leniency.
+- **Bitcoin has two rules, not one.** `btc::validate` is the recipient rule;
+  `btc::validate_sender` additionally requires P2WPKH. Using the first where
+  the second belongs accepts an address that only fails later, at signing time.
+- **Each crate's gates ride OpenHuman's existing ones**: `tinydocs` is
+  exclusive to `documents`, `tinywallet` to `web3`. Both are default-ON and
+  already forwarded to the desktop shell.
+
 ### Backend API access — `src/api/` over `tinyhumans-sdk`
 
 Calls to the TinyHumans cloud backend go through the vendored
