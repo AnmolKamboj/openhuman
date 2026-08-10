@@ -1,8 +1,8 @@
 /**
- * Unit tests for HumanPage's realtime voice overlay gate (#5399). The overlay
- * renders only when the build flag is on AND the persisted mascot voice mode is
- * `realtime`; the classic push-to-talk path is always present. Config is mocked
- * with the flag ON here (the global setup mock ships it OFF), and
+ * Unit test for HumanPage's realtime voice overlay (#5399). The realtime
+ * controls are now shown unconditionally on the Human tab — the former
+ * build-flag + persisted-voice-mode gate was removed so the "Start Voice Chat"
+ * control is always available — alongside the classic push-to-talk path.
  * RealtimeVoiceControls is stubbed so the ElevenLabs SDK never loads.
  */
 import { configureStore } from '@reduxjs/toolkit';
@@ -14,13 +14,6 @@ import chatRuntimeReducer from '../../store/chatRuntimeSlice';
 import mascotReducer, { setVoiceMode } from '../../store/mascotSlice';
 import threadReducer from '../../store/threadSlice';
 import HumanPage from './HumanPage';
-
-// Flip the realtime gate ON for this file (global setup ships it OFF). Spread
-// the real module so every other config export keeps its production value.
-vi.mock('../../utils/config', async () => {
-  const actual = await vi.importActual<typeof import('../../utils/config')>('../../utils/config');
-  return { ...actual, VOICE_MODE_FLAG_ENABLED: true };
-});
 
 // Stub the overlay so the ElevenLabs `ConversationProvider`/SDK never mounts —
 // this test only pins the render gate, not the controls (covered separately).
@@ -58,18 +51,20 @@ function renderWithVoiceMode(mode: 'classic' | 'realtime') {
   );
 }
 
-describe('HumanPage — realtime voice overlay gate', () => {
+describe('HumanPage — realtime voice overlay', () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
-  it('renders the realtime controls when voice mode is realtime and the flag is on', () => {
-    renderWithVoiceMode('realtime');
+  it('renders the realtime controls regardless of the persisted voice mode', () => {
+    // The gate was removed, so the controls appear even when the persisted mode
+    // is the classic default — the two paths now coexist on the Human tab.
+    renderWithVoiceMode('classic');
     expect(screen.getByTestId('realtime-voice-controls-stub')).toBeInTheDocument();
   });
 
-  it('hides the realtime controls when voice mode is classic', () => {
-    renderWithVoiceMode('classic');
-    expect(screen.queryByTestId('realtime-voice-controls-stub')).not.toBeInTheDocument();
+  it('still renders the realtime controls when the persisted mode is realtime', () => {
+    renderWithVoiceMode('realtime');
+    expect(screen.getByTestId('realtime-voice-controls-stub')).toBeInTheDocument();
   });
 });
