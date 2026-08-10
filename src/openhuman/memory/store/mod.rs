@@ -30,6 +30,7 @@ pub mod entities;
 pub mod kinds;
 pub mod kv;
 pub mod namespace_store;
+pub mod profile_store;
 pub mod retrieval;
 pub mod safety;
 pub mod tools;
@@ -63,6 +64,7 @@ pub use namespace_store::fts5;
 pub use namespace_store::profile;
 pub use namespace_store::segments;
 pub use namespace_store::UnifiedMemory;
+pub use profile_store::ProfileStore;
 pub use types::{
     GraphRelationRecord, MemoryItemKind, MemoryKvRecord, NamespaceDocumentInput,
     NamespaceMemoryHit, NamespaceQueryResult, NamespaceRetrievalContext, RetrievalScoreBreakdown,

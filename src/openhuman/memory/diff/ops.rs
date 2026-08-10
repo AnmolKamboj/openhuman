@@ -16,7 +16,7 @@ use crate::openhuman::memory::sources::types::MemorySourceEntry;
 use tinycortex::memory::diff::{DiffEngine, SourceDescriptor};
 
 use super::source::ChunkStoreItemSource;
-use super::types::*;
+use tinycortex::memory::diff::types::*;
 
 /// A crate [`SourceDescriptor`] from a host source entry.
 fn descriptor(source: &MemorySourceEntry) -> SourceDescriptor {

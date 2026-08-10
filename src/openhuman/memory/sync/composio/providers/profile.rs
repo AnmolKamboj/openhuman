@@ -21,8 +21,7 @@ use super::ProviderUserProfile;
 use crate::openhuman::agent::learning::candidate::{
     self as learning_candidate, CueFamily, EvidenceRef, FacetClass, LearningCandidate,
 };
-use crate::openhuman::memory::store::profile::{self, FacetType};
-use rusqlite::params;
+use crate::openhuman::memory::store::profile::FacetType;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -136,7 +135,7 @@ pub fn persist_provider_profile(profile: &ProviderUserProfile) -> usize {
         );
         return 0;
     };
-    let conn = client.profile_conn();
+    let store = client.profile_store();
 
     let now = now_secs();
     let toolkit = normalize_token(&profile.toolkit);
@@ -154,8 +153,7 @@ pub fn persist_provider_profile(profile: &ProviderUserProfile) -> usize {
         let key = format!("skill:{toolkit}:{identifier}:{}", kind.as_str());
         let facet_id = format!("skill-{toolkit}-{identifier}-{}", kind.as_str());
 
-        if let Err(e) = profile::profile_upsert(
-            &conn,
+        if let Err(e) = store.upsert_provider_facet(
             &facet_id,
             &FacetType::Workflow,
             &key,
@@ -284,8 +282,7 @@ pub fn load_connected_identities() -> Vec<ConnectedIdentity> {
         tracing::debug!("[composio:profile] load_connected_identities: memory client not ready");
         return Vec::new();
     };
-    let conn = client.profile_conn();
-    let facets = match profile::profile_facets_by_type(&conn, &FacetType::Workflow) {
+    let facets = match client.profile_store().facets_by_type(&FacetType::Workflow) {
         Ok(f) => f,
         Err(error) => {
             tracing::warn!(
@@ -338,20 +335,10 @@ pub fn is_self_identity(toolkit: &str, kind: IdentityKind, raw_value: &str) -> b
     let Some(client) = crate::openhuman::memory::global::client_if_ready() else {
         return false;
     };
-    let conn = client.profile_conn();
-    let conn = conn.lock();
-
     let key_pattern = format!("skill:{}:%:{}", normalize_token(toolkit), kind.as_str());
-    conn.query_row(
-        "SELECT 1 FROM user_profile
-          WHERE facet_type = 'skill'
-            AND key LIKE ?1
-            AND value = ?2
-          LIMIT 1",
-        params![key_pattern, canonical],
-        |_| Ok(()),
-    )
-    .is_ok()
+    client
+        .profile_store()
+        .skill_identity_matches(&key_pattern, &canonical)
 }
 
 /// Cross-toolkit variant — matches against every connected provider's
@@ -368,20 +355,10 @@ pub fn is_self_identity_any_toolkit(kind: IdentityKind, raw_value: &str) -> bool
     let Some(client) = crate::openhuman::memory::global::client_if_ready() else {
         return false;
     };
-    let conn = client.profile_conn();
-    let conn = conn.lock();
-
     let key_pattern = format!("skill:%:%:{}", kind.as_str());
-    conn.query_row(
-        "SELECT 1 FROM user_profile
-          WHERE facet_type = 'skill'
-            AND key LIKE ?1
-            AND value = ?2
-          LIMIT 1",
-        params![key_pattern, canonical],
-        |_| Ok(()),
-    )
-    .is_ok()
+    client
+        .profile_store()
+        .skill_identity_matches(&key_pattern, &canonical)
 }
 
 /// Render a compact section for prompt injection. Skips `user_id` (not
@@ -451,8 +428,8 @@ pub fn delete_connected_identity_facets(source: &str, identifier: &str) -> usize
         );
         return 0;
     };
-    let conn = client.profile_conn();
-    let Ok(facets) = profile::profile_facets_by_type(&conn, &FacetType::Workflow) else {
+    let store = client.profile_store();
+    let Ok(facets) = store.facets_by_type(&FacetType::Workflow) else {
         return 0;
     };
     let mut deleted = 0usize;
@@ -461,15 +438,9 @@ pub fn delete_connected_identity_facets(source: &str, identifier: &str) -> usize
             continue;
         };
         if s == source && i == identifier {
-            let conn_guard = conn.lock();
-            if conn_guard
-                .execute(
-                    "DELETE FROM user_profile WHERE facet_id = ?1",
-                    params![facet.facet_id],
-                )
-                .unwrap_or(0)
-                > 0
-            {
+            // Same swallow as before: a disconnect must not fail because one
+            // row was already gone.
+            if store.delete_by_facet_id(&facet.facet_id).unwrap_or(false) {
                 deleted += 1;
             }
         }
@@ -538,7 +509,7 @@ fn now_secs() -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openhuman::memory::store::profile::{profile_load_all, PROFILE_INIT_SQL};
+    use crate::openhuman::memory::store::profile::{self, profile_load_all, PROFILE_INIT_SQL};
     use parking_lot::Mutex;
     use rusqlite::Connection;
     use serde_json::json;

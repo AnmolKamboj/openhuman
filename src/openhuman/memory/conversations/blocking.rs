@@ -37,7 +37,7 @@ use std::path::PathBuf;
 
 use tinycortex::memory::conversations as store;
 
-use super::{
+use tinycortex::memory::conversations::{
     ConversationMessage, ConversationMessagePatch, ConversationPurgeStats, ConversationStore,
     ConversationThread, CreateConversationThread, CrossThreadHit,
 };

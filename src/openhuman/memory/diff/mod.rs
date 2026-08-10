@@ -17,8 +17,10 @@
 //! `tinycortex::memory::diff::DiffEngine` (a byte-identical port over the same
 //! `<workspace>/memory_diff/repo` git layout). This module is a thin host shim:
 //! [`ops`] async-wraps the engine, [`source`] supplies the chunk-store item
-//! seam (`DiffEngine`'s `SnapshotItemSource`), [`types`] re-exports the crate
-//! wire types, and [`rpc`]/[`schemas`]/[`tools`] keep the RPC + agent surface.
+//! seam (`DiffEngine`'s `SnapshotItemSource`), and [`rpc`]/[`schemas`]/[`tools`]
+//! keep the RPC + agent surface. The wire types are the crate's, named directly
+//! (`tinycortex::memory::diff::types`) rather than through a host re-export
+//! module.
 //!
 //! Features:
 //! - Per-source snapshots (auto after sync, or manual via RPC)
@@ -59,7 +61,6 @@ pub mod schemas;
 pub mod source;
 #[cfg(feature = "memory-git")]
 pub mod tools;
-pub mod types;
 
 #[cfg(not(feature = "memory-git"))]
 mod stub;
@@ -71,9 +72,8 @@ pub use schemas::{
     all_controller_schemas as all_memory_diff_controller_schemas,
     all_registered_controllers as all_memory_diff_registered_controllers,
 };
-#[cfg(feature = "memory-git")]
-pub use tools::MemoryDiffTool;
-pub use types::{
+pub use tinycortex::memory::diff::types::{
     ChangeKind, Checkpoint, CrossSourceDiff, DiffResult, DiffSummary, ItemChange, Snapshot,
     SnapshotTrigger,
 };
+pub use tools::MemoryDiffTool;

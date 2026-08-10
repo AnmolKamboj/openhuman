@@ -55,17 +55,30 @@ pub struct MemoryClient {
 }
 
 impl MemoryClient {
-    /// Returns a handle to the underlying SQLite connection for direct
-    /// profile-facet writes via
-    /// [`crate::openhuman::memory::store::namespace_store::profile::profile_upsert`].
+    /// Returns a handle to the underlying SQLite connection backing the
+    /// profile/facet tables.
     ///
-    /// Intentionally `pub(crate)` — external consumers should use the
-    /// higher-level `MemoryClient` API; this escape hatch exists so
-    /// in-crate subsystems (composio providers, archivist, learning
-    /// hooks) can write structured profile facets without an additional
-    /// round-trip through the ingestion queue.
-    pub(crate) fn profile_conn(&self) -> std::sync::Arc<parking_lot::Mutex<rusqlite::Connection>> {
+    /// Narrowed from `pub(crate)` to `pub(in crate::openhuman::memory)`: a raw
+    /// `Arc<Mutex<Connection>>` cannot be wrapped by any decorator, so no
+    /// caller outside the memory family may hold one. [`Self::profile_store`]
+    /// is the only door out, and every SQL statement against `user_profile`
+    /// now lives inside this family.
+    pub(in crate::openhuman::memory) fn profile_conn(
+        &self,
+    ) -> std::sync::Arc<parking_lot::Mutex<rusqlite::Connection>> {
         std::sync::Arc::clone(&self.inner.conn)
+    }
+
+    /// Typed access to the profile/facet tables.
+    ///
+    /// **Not guarded.** The profile tables have no capability family in the
+    /// thirteen-family `tinycortex_api` contract, so these reads and writes
+    /// still run beneath [`crate::openhuman::memory::guard::MemoryGuard`]'s
+    /// seven steps. What this buys is confinement, not policy: the SQL is in
+    /// the memory family and the compiler keeps it there.
+    pub(crate) fn profile_store(&self) -> crate::openhuman::memory::store::ProfileStore {
+        tracing::debug!("[memory::profile_store] handing out typed profile store");
+        crate::openhuman::memory::store::ProfileStore::from_conn(self.profile_conn())
     }
 
     /// Returns an `Arc<dyn Memory>` handle backed by the same

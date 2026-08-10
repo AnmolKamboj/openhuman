@@ -11,7 +11,7 @@ use crate::openhuman::config::rpc as config_rpc;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
 
 use super::ops;
-use super::types::*;
+use tinycortex::memory::diff::types::*;
 
 pub struct MemoryDiffTool;
 

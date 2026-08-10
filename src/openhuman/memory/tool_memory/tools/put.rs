@@ -1,13 +1,34 @@
 //! `memory_tools_put` — upsert a tool-scoped memory rule.
+//!
+//! Routed through [`MemoryGuard`](crate::openhuman::memory::guard::MemoryGuard).
+//! `MemoryToolMemory::put_tool_rule` delegates to the same
+//! `ToolMemoryStore::put_rule` this tool used to build by hand, with one
+//! asymmetry: the contract method returns unit while the store returns the
+//! *stored* rule (trim/lower-cased `tool_name`, `created_at` preserved on
+//! upsert, `updated_at` refreshed) — which is what this tool answers with. The
+//! asymmetry is recovered exactly by reading the rule back:
+//! `ToolMemoryRule::new` always generates the id before the write, so there is
+//! no server-assigned identity to lose, and `tool_memory_namespace` applies the
+//! same `trim().to_lowercase()` the write normalised into, so reading back with
+//! the caller's raw `tool_name` hits the same namespace.
+//!
+//! A concurrent delete between the write and the read-back yields no rule. That
+//! answers with an error, never a fabricated rule — absence, not a lie.
+//!
+//! **Behaviour change, deliberate:** the write now takes
+//! `SecurityPolicy::enforce_write_tier`, so the tool is refused under the
+//! `readonly` autonomy tier with `"memory guard: "`-prefixed text, and
+//! store-level validation errors arrive as `MemoryError::Invalid` rather than as
+//! a raw string.
 
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
+use tinycortex_api::provider::MemoryProvider;
 
-use crate::openhuman::memory::ops::helpers::active_memory_client;
-use crate::openhuman::memory::tool_memory::{
-    tool_memory_store, ToolMemoryPriority, ToolMemoryRule, ToolMemorySource,
-};
+use crate::openhuman::memory::ops::guard::active_memory_guard;
+use crate::openhuman::memory::ops::tool_memory::NO_TOOL_MEMORY;
+use crate::openhuman::memory::tool_memory::{ToolMemoryPriority, ToolMemoryRule, ToolMemorySource};
 use crate::openhuman::tools::traits::{Tool, ToolResult};
 
 pub struct MemoryToolsPutTool;
@@ -79,10 +100,12 @@ impl Tool for MemoryToolsPutTool {
             parsed.priority,
             parsed.tags.len()
         );
-        let client = active_memory_client()
+        let guard = active_memory_guard()
             .await
             .map_err(|e| anyhow::anyhow!("memory_tools_put: {e}"))?;
-        let store = tool_memory_store(client.memory_handle());
+        let family = guard
+            .as_tool_memory()
+            .ok_or_else(|| anyhow::anyhow!("memory_tools_put: {NO_TOOL_MEMORY}"))?;
         let mut rule = ToolMemoryRule::new(
             &parsed.tool_name,
             &parsed.rule,
@@ -90,10 +113,29 @@ impl Tool for MemoryToolsPutTool {
             ToolMemorySource::UserExplicit,
         );
         rule.tags = parsed.tags;
-        let stored = store
-            .put_rule(rule)
+        let rule_id = rule.id.clone();
+        let tool_name = rule.tool_name.clone();
+        family
+            .put_tool_rule(rule)
             .await
             .map_err(|e| anyhow::anyhow!("memory_tools_put: {e}"))?;
+        // `put_tool_rule` answers with unit; the tool's contract is the stored
+        // rule (normalised tool_name, preserved created_at, refreshed
+        // updated_at), so read it back by the id generated above.
+        let stored = family
+            .tool_rules(&tool_name)
+            .await
+            .map_err(|e| anyhow::anyhow!("memory_tools_put: {e}"))?
+            .into_iter()
+            .find(|r| r.id == rule_id)
+            .ok_or_else(|| {
+                anyhow::anyhow!("memory_tools_put: stored rule {rule_id} not found on read-back")
+            })?;
+        log::debug!(
+            "[tool][memory_tools] put via guard tool_name={} id={} read_back=ok",
+            stored.tool_name,
+            stored.id
+        );
         let json = serde_json::to_string(&stored)?;
         Ok(ToolResult::success(json))
     }
@@ -107,9 +149,27 @@ mod tests {
     use tempfile::TempDir;
 
     use crate::openhuman::config::{Config, TEST_ENV_LOCK};
-    use crate::openhuman::memory::tool_memory::tool_memory_store;
+    use crate::openhuman::memory::guard::policy::GUARD_DENIED_PREFIX;
+    use crate::openhuman::security::live_policy;
+    use crate::openhuman::security::policy::{AutonomyLevel, SecurityPolicy};
     use crate::openhuman::tools::traits::Tool;
     use serde_json::json;
+    use std::sync::Arc;
+
+    /// Install `autonomy` as the live policy for this test thread only. Same
+    /// shape `memory/guard/policy_tests.rs` uses; `#[tokio::test]`'s
+    /// current-thread runtime keeps the future on the installing thread.
+    fn scoped_tier(autonomy: AutonomyLevel) -> live_policy::TestPolicyGuard {
+        let dir = std::env::temp_dir();
+        live_policy::install_scoped(
+            Arc::new(SecurityPolicy {
+                autonomy,
+                ..SecurityPolicy::default()
+            }),
+            dir.clone(),
+            dir,
+        )
+    }
 
     struct WorkspaceEnvGuard {
         _lock: std::sync::MutexGuard<'static, ()>,
@@ -237,11 +297,15 @@ mod tests {
         assert_eq!(parsed["tags"], json!(["safety", "shell"]));
         assert!(parsed["id"].as_str().is_some());
 
-        let client = crate::openhuman::memory::ops::helpers::active_memory_client()
+        let guard = crate::openhuman::memory::ops::guard::active_memory_guard()
             .await
-            .expect("active memory client");
-        let store = tool_memory_store(client.memory_handle());
-        let rules = store.list_rules("bash").await.expect("list stored rules");
+            .expect("active memory guard");
+        let rules = guard
+            .as_tool_memory()
+            .expect("embedded driver advertises the tool_memory family")
+            .tool_rules("bash")
+            .await
+            .expect("list stored rules");
         let stored = rules
             .iter()
             .find(|rule| rule.rule == "Always dry-run dangerous commands first")
@@ -272,5 +336,95 @@ mod tests {
         let parsed: serde_json::Value =
             serde_json::from_str(&result.text()).expect("tool result should be json");
         assert_eq!(parsed["priority"], "normal");
+    }
+
+    /// The behavioural discriminator for the re-point: before it, the tool
+    /// wrote through an undecorated `MemoryClientRef` and no tier check ran, so
+    /// a `readonly` agent could still pin rules. Through the guard,
+    /// `admit_write` calls `enforce_write_tier` first.
+    #[tokio::test]
+    async fn execute_is_refused_under_the_readonly_tier() {
+        let _serial = crate::openhuman::memory::ops::GLOBAL_MEMORY_TEST_LOCK
+            .lock()
+            .await;
+        let tmp = TempDir::new().expect("tempdir");
+        let (_workspace, _cfg) = isolated_config(&tmp).await;
+        let _tier = scoped_tier(AutonomyLevel::ReadOnly);
+        let tool = MemoryToolsPutTool;
+        let err = tool
+            .execute(json!({
+                "tool_name": "bash",
+                "rule": "readonly agents must not pin rules"
+            }))
+            .await
+            .expect_err("the readonly tier must refuse a tool-memory write");
+        let message = err.to_string();
+        assert!(
+            message.contains(GUARD_DENIED_PREFIX),
+            "refusal must be attributable to the guard: {message}"
+        );
+    }
+
+    /// The paired positive case: the same call under `full` succeeds, so the
+    /// test above is proving the tier gate rather than a broken write path.
+    #[tokio::test]
+    async fn execute_succeeds_under_the_full_tier() {
+        let _serial = crate::openhuman::memory::ops::GLOBAL_MEMORY_TEST_LOCK
+            .lock()
+            .await;
+        let tmp = TempDir::new().expect("tempdir");
+        let (_workspace, _cfg) = isolated_config(&tmp).await;
+        let _tier = scoped_tier(AutonomyLevel::Full);
+        let tool = MemoryToolsPutTool;
+        let result = tool
+            .execute(json!({
+                "tool_name": "bash",
+                "rule": "full-tier agents may pin rules"
+            }))
+            .await
+            .expect("the full tier must admit a tool-memory write");
+        assert!(!result.is_error);
+    }
+
+    /// `memory_tools_put` and `memory_tools_list` must observe each other now
+    /// that both resolve through the guard rather than through their own
+    /// `ToolMemoryStore` handles.
+    #[tokio::test]
+    async fn guarded_put_and_guarded_list_share_the_store() {
+        let _serial = crate::openhuman::memory::ops::GLOBAL_MEMORY_TEST_LOCK
+            .lock()
+            .await;
+        let tmp = TempDir::new().expect("tempdir");
+        let (_workspace, _cfg) = isolated_config(&tmp).await;
+        let put = MemoryToolsPutTool;
+        let stored = put
+            .execute(json!({
+                "tool_name": "web_search",
+                "rule": "prefer primary sources",
+                "priority": "critical"
+            }))
+            .await
+            .expect("put should succeed");
+        let stored: serde_json::Value =
+            serde_json::from_str(&stored.text()).expect("put result should be json");
+        let stored_id = stored["id"].as_str().expect("stored id").to_string();
+
+        let list = super::super::list::MemoryToolsListTool;
+        let listed = list
+            .execute(json!({ "tool_name": "web_search" }))
+            .await
+            .expect("list should succeed");
+        let listed: serde_json::Value =
+            serde_json::from_str(&listed.text()).expect("list result should be json");
+        let ids: Vec<&str> = listed
+            .as_array()
+            .expect("list returns an array")
+            .iter()
+            .filter_map(|r| r["id"].as_str())
+            .collect();
+        assert!(
+            ids.contains(&stored_id.as_str()),
+            "the guarded list must observe the guarded put: {ids:?}"
+        );
     }
 }

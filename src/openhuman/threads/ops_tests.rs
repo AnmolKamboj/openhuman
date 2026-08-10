@@ -10,6 +10,7 @@ use crate::openhuman::threads::ThreadsError;
 use serde_json::{json, Value};
 use std::ffi::OsString;
 use std::path::Path;
+use tinycortex::memory::conversations as conversations_store;
 
 struct EnvVarGuard {
     key: &'static str,
@@ -360,7 +361,7 @@ async fn create_thread_with_title(_workspace: &tempfile::TempDir, thread_id: &st
         .await
         .expect("load config")
         .workspace_dir;
-    conversations::ensure_thread(
+    conversations_store::ensure_thread(
         dir,
         CreateConversationThread {
             id: thread_id.to_string(),
@@ -387,7 +388,7 @@ async fn generate_title_leaves_custom_title_unchanged() {
         .await
         .expect("load config")
         .workspace_dir;
-    conversations::append_message(
+    conversations_store::append_message(
         dir,
         thread_id,
         ConversationMessage {
@@ -452,7 +453,7 @@ async fn generate_title_falls_back_to_first_user_message_when_assistant_missing(
         .expect("load config")
         .workspace_dir;
     let user_message = "Please summarize the latest five email threads for me.";
-    conversations::append_message(
+    conversations_store::append_message(
         dir,
         thread_id,
         ConversationMessage {
