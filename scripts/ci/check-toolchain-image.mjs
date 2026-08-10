@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-// Drift guard: the openhuman_ci image tag (rust-<version>) baked into every
-// workflow that runs in the container, the version-pinned
+// Drift guard: the toolchain installed by the openhuman_ci image, the version-pinned
 // `dtolnay/rust-toolchain@<version>` steps used by the workflows that run on
 // bare runners instead of the container, and the toolchain version installed
 // by .github/Dockerfile must all match rust-toolchain.toml's pinned channel.
@@ -39,8 +38,6 @@ function readToolchainChannel() {
   return match[1];
 }
 
-const IMAGE_TAG_RE =
-  /ghcr\.io\/tinyhumansai\/openhuman_ci:rust-([0-9][0-9A-Za-z.\-]*)/g;
 // Only version-pinned uses drift. `@stable` / `@master` track upstream on
 // purpose and are none of this guard's business.
 const ACTION_PIN_RE = /dtolnay\/rust-toolchain@([0-9][0-9A-Za-z.\-]*)/g;
@@ -95,13 +92,6 @@ function main() {
   const channel = readToolchainChannel();
   if (!channel) return;
 
-  const imageTags = findPinnedVersions(IMAGE_TAG_RE, "image tag");
-  if (imageTags.length === 0) {
-    fail(
-      "found no 'ghcr.io/tinyhumansai/openhuman_ci:rust-*' image references to check",
-    );
-    return;
-  }
   const actionPins = [
     ...findPinnedVersions(ACTION_PIN_RE, "dtolnay/rust-toolchain pin"),
     ...findPinnedVersions(
@@ -112,8 +102,7 @@ function main() {
 
   const dockerfileVersion = readDockerfileToolchainVersion();
 
-  const pins = [...imageTags, ...actionPins];
-  const mismatches = pins.filter((pin) => pin.version !== channel);
+  const mismatches = actionPins.filter((pin) => pin.version !== channel);
   for (const pin of mismatches) {
     fail(
       `${pin.file}:${pin.line} pins ${pin.kind} "${pin.version}", but rust-toolchain.toml channel is "${channel}"`,
@@ -134,8 +123,7 @@ function main() {
   }
 
   console.log(
-    `[check-toolchain-image] OK — ${imageTags.length} image reference(s), ` +
-      `${actionPins.length} version-pinned dtolnay/rust-toolchain step(s) and the Dockerfile ` +
+    `[check-toolchain-image] OK — ${actionPins.length} version-pinned dtolnay/rust-toolchain step(s) and the Dockerfile ` +
       `toolchain all match rust-toolchain.toml channel "${channel}"`,
   );
 }

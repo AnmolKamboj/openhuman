@@ -721,7 +721,7 @@ mod tests {
     fn schemas_expose_expected_inputs_and_unknown_fallback() {
         let chat = schemas("chat");
         assert_eq!(chat.namespace, "agent");
-        assert_eq!(chat.inputs.len(), 4);
+        assert_eq!(chat.inputs.len(), 5);
         assert!(matches!(chat.inputs[1].ty, TypeSchema::Option(_)));
         assert!(chat
             .inputs

@@ -52,6 +52,7 @@ mod deep_link_ipc_windows;
 mod deep_link_registration_check;
 mod dictation_hotkeys;
 mod discord_scanner;
+#[cfg(any(test, feature = "e2e-test-support"))]
 mod fake_camera;
 mod file_logging;
 mod gmessages_scanner;
@@ -429,7 +430,9 @@ async fn restart_app(app: tauri::AppHandle<AppRuntime>) -> Result<(), String> {
 fn get_active_user_id() -> Result<Option<String>, String> {
     let root = openhuman_core::openhuman::config::default_root_openhuman_dir()
         .map_err(|err| format!("resolve active-user state directory: {err}"))?;
-    Ok(openhuman_core::openhuman::config::read_active_user_id(&root))
+    Ok(openhuman_core::openhuman::config::read_active_user_id(
+        &root,
+    ))
 }
 
 /// Information about an available shell-app update returned to the frontend.
@@ -2023,11 +2026,12 @@ fn can_register_single_instance_plugin() -> bool {
     true
 }
 
+#[cfg(any(test, feature = "e2e-test-support"))]
 type CefCommandLineArg = (&'static str, Option<&'static str>);
 
 /// Returns `true` when the process is running as root (UID 0) on Linux.
 /// Testable pure function; takes the uid directly.
-#[cfg(any(target_os = "linux", test))]
+#[cfg(any(test, feature = "e2e-test-support"))]
 fn linux_is_root_uid(uid: u32) -> bool {
     uid == 0
 }
@@ -2049,6 +2053,7 @@ fn linux_is_root_uid(uid: u32) -> bool {
 /// this control is explicit opt-in: `1` / `true` / `yes` / `on`
 /// (case-insensitive) enables the override, and anything else (including
 /// unset) preserves the default disable.
+#[cfg(any(test, feature = "e2e-test-support"))]
 fn cef_force_gpu_enabled(env_override: Option<&str>) -> bool {
     match env_override {
         Some(v) => {
@@ -2061,6 +2066,7 @@ fn cef_force_gpu_enabled(env_override: Option<&str>) -> bool {
 
 /// Emergency CEF startup escape hatch for driver/runtime combinations where
 /// CEF cannot initialize its GPU process before the app can render UI.
+#[cfg(any(test, feature = "e2e-test-support"))]
 fn cef_disable_gpu_enabled(env_override: Option<&str>) -> bool {
     match env_override {
         Some(v) => {
@@ -2081,6 +2087,7 @@ fn cef_disable_gpu_enabled(env_override: Option<&str>) -> bool {
 /// keeps page compositing on the CPU. Crucially this does **not** pass
 /// `--disable-gpu`, which would shut the GPU process down entirely — and with it
 /// the SwiftShader context that lets CEF start.
+#[cfg(any(test, feature = "e2e-test-support"))]
 fn push_swiftshader_software_gl(args: &mut Vec<CefCommandLineArg>) {
     args.push(("--use-gl", Some("angle")));
     args.push(("--use-angle", Some("swiftshader")));
@@ -2088,6 +2095,7 @@ fn push_swiftshader_software_gl(args: &mut Vec<CefCommandLineArg>) {
     args.push(("--disable-gpu-compositing", None));
 }
 
+#[cfg(any(test, feature = "e2e-test-support"))]
 fn append_platform_cef_gpu_workarounds(
     args: &mut Vec<CefCommandLineArg>,
     os: &str,
@@ -2212,6 +2220,7 @@ fn append_platform_cef_gpu_workarounds(
 /// Whether a CEF command-line flag is `--time-ticks-at-unix-epoch` (in any
 /// dash/casing form, with or without an inline `=<value>` suffix). See
 /// [`strip_time_ticks_at_unix_epoch`] for why we care.
+#[cfg(any(test, feature = "e2e-test-support"))]
 fn is_time_ticks_at_unix_epoch_flag(flag: &str) -> bool {
     let name = flag.trim_start_matches('-');
     // Chromium switches can carry their value inline (`--flag=value`); compare
@@ -2234,6 +2243,7 @@ fn is_time_ticks_at_unix_epoch_flag(flag: &str) -> bool {
 /// `RuntimeInitAttribute::CommandLineArgs` contributed elsewhere), so strip the
 /// flag from the final list as a guard and let Chromium compute the origin
 /// locally for each process.
+#[cfg(any(test, feature = "e2e-test-support"))]
 fn strip_time_ticks_at_unix_epoch(args: &mut Vec<CefCommandLineArg>) {
     args.retain(|(flag, value)| {
         if is_time_ticks_at_unix_epoch_flag(flag) {
@@ -2826,7 +2836,7 @@ pub fn run() {
     // rationale (and why the reverted #3793 SIGKILL is not reintroduced).
 
     let builder = {
-        #[cfg(any())]
+        #[cfg(feature = "e2e-test-support")]
         {
             // Bypass macOS Keychain. Without this, every embedded service that
             // touches password / cookie / encryption-key storage triggers a
@@ -2970,8 +2980,9 @@ pub fn run() {
             strip_time_ticks_at_unix_epoch(&mut args);
             let _ = args;
             tauri::Builder::<AppRuntime>::new()
-        };
+        }
 
+        #[cfg(not(feature = "e2e-test-support"))]
         tauri::Builder::<AppRuntime>::new()
     };
 

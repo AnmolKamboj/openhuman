@@ -842,7 +842,8 @@ async fn turn_xml_failures_checkpoint_policy_visibility_and_hooks_are_publicly_e
 
     let checkpoint = agent.turn("exercise failure branches").await.unwrap();
     assert!(
-        checkpoint.contains("Done so far") || checkpoint.contains("Need next"),
+        checkpoint.contains("Tool 'round17_ok' was denied by policy 'round17-deny'")
+            && checkpoint.contains("Different commands are all failing"),
         "fallback checkpoint should be deterministic, got {checkpoint}"
     );
     assert_eq!(ok_calls.load(Ordering::SeqCst), 0);
@@ -881,7 +882,8 @@ async fn turn_xml_failures_checkpoint_policy_visibility_and_hooks_are_publicly_e
     assert!(joined.contains("unknown tool `hidden_tool`"));
     assert!(joined.contains("semantic failure"));
     assert!(joined.contains("Error executing round17_boom"));
-    assert!(joined.contains("denied by policy 'round17-deny'"));
+    // Policy denials now terminate through the checkpoint path above instead
+    // of being replayed into a subsequent model request.
 
     let (_failing_tmp, failing_workspace) = workspace("provider-error");
     let provider_error = ScriptedModel::failing("provider offline");

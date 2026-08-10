@@ -1091,8 +1091,7 @@ fn configured_openhuman_jwt_slug_routes_to_managed_chat_model() {
 
 #[tokio::test]
 async fn openhuman_jwt_slug_discloses_pinned_model() {
-    use crate::core::bus::BUS;
-use crate::core::events::DomainEvent;
+    use crate::core::events::DomainEvent;
     use crate::openhuman::security::egress::{EgressDescriptor, EgressReason};
     use std::time::Duration;
 
@@ -1109,7 +1108,7 @@ use crate::core::events::DomainEvent;
         .expect("managed model should build");
 
     let sentinel = "egress-jwt-pinned-sentinel-end";
-    BUS.publish(DomainEvent::ExternalTransferPending {
+    crate::core::bus::BUS.publish(DomainEvent::ExternalTransferPending {
         descriptor: EgressDescriptor::network_fetch(sentinel),
         thread_id: None,
         client_id: None,
@@ -1141,7 +1140,7 @@ use crate::core::events::DomainEvent;
 #[tokio::test]
 async fn native_claude_turn_routes_disclose_pinned_models() {
     use crate::core::bus::BUS;
-use crate::core::events::DomainEvent;
+    use crate::core::events::DomainEvent;
     use crate::openhuman::security::egress::EgressDescriptor;
     use std::time::Duration;
 
@@ -1326,8 +1325,7 @@ fn crate_native_chat_model_factory_preserves_invalid_route_diagnostics() {
 /// Complements the isolated emit unit tests in `security::egress`.
 #[tokio::test]
 async fn from_string_external_provider_emits_egress_realpath() {
-    use crate::core::bus::BUS;
-use crate::core::events::DomainEvent;
+    use crate::core::events::DomainEvent;
     use crate::openhuman::security::egress::EgressReason;
 
     crate::core::bus::init().await.expect("bus init");
@@ -1350,7 +1348,7 @@ use crate::core::events::DomainEvent;
                 }
                 Some(_) => continue,
                 None => panic!("the bus closed before the expected event arrived"),
-}
+            }
         }
     })
     .await;
@@ -1369,7 +1367,7 @@ use crate::core::events::DomainEvent;
 #[tokio::test]
 async fn create_chat_model_managed_emits_exactly_one_egress_realpath() {
     use crate::core::bus::BUS;
-use crate::core::events::DomainEvent;
+    use crate::core::events::DomainEvent;
     use crate::openhuman::security::egress::{EgressDescriptor, EgressReason};
     use std::time::Duration;
 
@@ -1422,7 +1420,7 @@ use crate::core::events::DomainEvent;
 #[tokio::test]
 async fn create_chat_model_local_runtime_does_not_emit_egress_realpath() {
     use crate::core::bus::BUS;
-use crate::core::events::DomainEvent;
+    use crate::core::events::DomainEvent;
     use crate::openhuman::security::egress::EgressDescriptor;
     use std::time::Duration;
 

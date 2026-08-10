@@ -2,6 +2,9 @@ use super::*;
 use crate::openhuman::agent::hooks::{ToolCallRecord, TurnContext};
 use crate::openhuman::memory::chat::ChatPrompt;
 use crate::openhuman::memory::store::{events as ev, fts5, segments as seg};
+use std::sync::OnceLock;
+
+static TREE_INGEST_TEST_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 
 /// Runs `fut` with the memory chat provider pinned to a deterministic stub.
 ///
@@ -22,6 +25,11 @@ async fn with_stub_chat_provider<F, T>(fut: F) -> T
 where
     F: std::future::Future<Output = T>,
 {
+    // `test_override` is task-local, but tree ingest also builds shared
+    // runtime state. Keep these integration-style tests isolated from each
+    // other so a concurrent provider construction cannot escape the stub.
+    let lock = TREE_INGEST_TEST_LOCK.get_or_init(|| tokio::sync::Mutex::new(()));
+    let _guard = lock.lock().await;
     crate::openhuman::memory::chat::test_override::with_provider(
         Arc::new(crate::openhuman::memory::chat::StaticChatProvider::new(
             "{}",

@@ -587,9 +587,14 @@ mod tests {
         assert_eq!(required_capability("ingest"), Some(Capability::Ingest));
         assert_eq!(required_capability("graph"), Some(Capability::Graph));
         assert_eq!(required_capability("graph-query"), Some(Capability::Graph));
-        // Mandatory core/recall surface — a gate here could never fire.
+        // Core/recall share the Core gate so a null driver can remove the
+        // complete driver-backed memory surface.
         for sub in ["docs", "list", "query", "namespaces", "ns", "clear"] {
-            assert_eq!(required_capability(sub), None, "{sub} must stay ungated");
+            assert_eq!(
+                required_capability(sub),
+                Some(Capability::Core),
+                "{sub} must use Core"
+            );
         }
     }
 

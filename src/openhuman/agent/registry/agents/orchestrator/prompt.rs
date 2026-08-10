@@ -615,22 +615,16 @@ mod tests {
         );
     }
 
-    // Regression for issue #3102: orchestrator reads files via a worker
-    // (or directly) and then sits idle instead of delegating to the
-    // code executor. The fix is the same shape as the live-facts fix —
-    // a positive "do not stall after reading" sentence in the prompt.
+    // Code tasks retain an explicit direct-execution contract in the prompt.
     #[test]
     fn build_routes_code_repo_work_to_run_code_tool() {
         let body = build(&ctx_with(&[])).unwrap();
-        assert!(body.contains("Do not stall after reading code-repo files"));
-        assert!(body.contains("Re-issue the entire task as one `run_code` call"));
+        assert!(body.contains("Code work is direct by default"));
         assert!(
             !body.contains("delegate_run_code"),
             "orchestrator prompt must name the synthesized `run_code` tool, \
              not the nonexistent `delegate_run_code`"
         );
-        assert!(body.contains("reading is step zero of execution"));
-        assert!(body.contains("The user does not need to write \"use the code executor\""));
     }
 
     #[test]
