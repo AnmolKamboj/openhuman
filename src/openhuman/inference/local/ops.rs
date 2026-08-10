@@ -165,6 +165,14 @@ fn effective_agent_chat_origin() -> crate::openhuman::agent::turn_origin::AgentT
 /// the awaited future (see [`crate::agent_progress`]), it is attached to the
 /// agent built here, so an in-process embedder observes the turn's tool calls
 /// and deltas live instead of only its final string.
+///
+/// # Per-call inference route
+///
+/// `route` names an endpoint and bearer for this call alone. It is applied to
+/// `config` in memory before the agent is built — including before the `cwd`
+/// clone below, so a turn that is both rooted and routed gets both — and is
+/// never persisted. See
+/// [`ephemeral_route`](crate::openhuman::config::schema::ephemeral_route).
 pub async fn agent_chat(
     config: &mut Config,
     message: &str,
@@ -172,6 +180,7 @@ pub async fn agent_chat(
     temperature: Option<f64>,
     thread_id: Option<String>,
     cwd: Option<String>,
+    route: Option<crate::openhuman::config::schema::EphemeralRoute>,
 ) -> Result<RpcOutcome<String>, String> {
     enforce_user_prompt_or_reject(message, "local_ai.ops.agent_chat")?;
 
@@ -183,6 +192,12 @@ pub async fn agent_chat(
     }
     if let Some(temp) = temperature {
         config.default_temperature = temp;
+    }
+    // After the model override, because the route pins its roles to
+    // `"<slug>:<model>"` and the model it uses is the one this call resolved.
+    // Before the `cwd` clone below, so a rooted turn is routed too.
+    if let Some(route) = route {
+        crate::openhuman::config::schema::ephemeral_route::apply(config, route);
     }
     let turn_cwd = resolve_turn_cwd(cwd)?;
     let mut agent = match turn_cwd.as_ref() {
