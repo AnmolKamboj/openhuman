@@ -49,6 +49,14 @@
 //!   them here only if the host ever wires the standalone vector store onto a
 //!   workspace.
 //!
+//! **Superseded as the schema gate by `memory_golden_fixture_e2e`.** The table
+//! checks here are *subset* assertions over hardcoded name constants, so a
+//! rename in `namespace_store/init.rs` plus a matching edit to the constant
+//! below passes green, and indexes / triggers / columns / row data are not
+//! asserted at all. What still earns this file its place is
+//! [`assert_crate_kv_interop`] — a functional check no schema dump can replace.
+//! Treat the name constants as documentation, not as a gate.
+//!
 //! Run with: `cargo test --test memory_golden_parity_e2e`
 
 use std::collections::BTreeSet;
