@@ -866,7 +866,12 @@ fn build_registered_controllers() -> Vec<GroupedController> {
         Some(Capability::Sources),
         crate::openhuman::memory::sources::all_memory_sources_registered_controllers(),
     );
-    // Memory diff — snapshot-based change tracking for memory sources
+    // Memory diff — snapshot-based change tracking for memory sources.
+    // Gated on `memory-git`: with the feature off the diff controllers compile
+    // out (the stub returns none), so registering the capability + namespace
+    // would leave a stale `memory_diff` entry with no controllers behind it.
+    // The capability table in `tools/ops::capability_for` is gated in lockstep.
+    #[cfg(feature = "memory-git")]
     push_cap(
         &mut controllers,
         DomainGroup::Memory,

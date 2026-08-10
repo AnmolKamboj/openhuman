@@ -26,7 +26,7 @@
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::sources::types::MemorySourceEntry;
 
-use super::types::{Checkpoint, CrossSourceDiff, Snapshot};
+use tinycortex::memory::diff::types::{Checkpoint, CrossSourceDiff, Snapshot};
 
 /// The message every disabled entry point returns.
 ///

@@ -1602,6 +1602,10 @@ fn tool_capability(name: &str) -> Option<tinycortex_api::capabilities::Capabilit
         // Free-text search over the canonical *entity* index
         // (`memory::tree::retrieval::search::search_entities`).
         "memory_store_raw_search" => Capability::Entities,
+        // Gated on `memory-git` in lockstep with the capability registration in
+        // `core/all.rs`: with the feature off the diff tool + controllers compile
+        // out, so the table must not claim the `diff` capability gates anything.
+        #[cfg(feature = "memory-git")]
         "memory_diff" => Capability::Diff,
         "memory_doctor" => Capability::Maintenance,
         "tool_stats" => Capability::ToolMemory,
