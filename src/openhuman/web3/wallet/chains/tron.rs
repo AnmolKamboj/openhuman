@@ -36,7 +36,11 @@ pub fn validate_tron_address(addr: &str) -> Result<String, String> {
     let result = tinywallet::address::tron::validate(addr).map_err(|e| e.to_string());
     debug!(
         "{LOG_PREFIX} validate_address result={}",
-        if result.is_ok() { "accepted" } else { "rejected" }
+        if result.is_ok() {
+            "accepted"
+        } else {
+            "rejected"
+        }
     );
     result
 }
@@ -53,7 +57,11 @@ pub fn tron_address_to_hex(addr: &str) -> Result<String, String> {
     let result = tinywallet::address::tron::to_hex(addr).map_err(|e| e.to_string());
     debug!(
         "{LOG_PREFIX} address_to_hex result={}",
-        if result.is_ok() { "accepted" } else { "rejected" }
+        if result.is_ok() {
+            "accepted"
+        } else {
+            "rejected"
+        }
     );
     result
 }

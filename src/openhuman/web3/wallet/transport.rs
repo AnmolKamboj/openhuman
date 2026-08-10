@@ -88,7 +88,11 @@ fn resolve(network: NetworkId) -> Result<String, TransportError> {
 
 /// Join a base URL and a relative path without doubling the separator.
 fn join(base: &str, path: &str) -> String {
-    format!("{}/{}", base.trim_end_matches('/'), path.trim_start_matches('/'))
+    format!(
+        "{}/{}",
+        base.trim_end_matches('/'),
+        path.trim_start_matches('/')
+    )
 }
 
 /// Classify a flattened error string.
@@ -115,15 +119,30 @@ impl Transport for OpenHumanTransport {
         params: Value,
     ) -> TransportResult<Value> {
         let url = resolve(network)?;
-        debug!("[wallet:transport] json_rpc chain={} method={method} endpoint={}", network.chain, redact_rpc_url(&url));
+        debug!(
+            "[wallet:transport] json_rpc chain={} method={method} endpoint={}",
+            network.chain,
+            redact_rpc_url(&url)
+        );
         match rpc_call_to::<Value>(&url, method, params).await {
             Ok(value) => {
-                debug!("[wallet:transport] json_rpc chain={} method={method} outcome=success", network.chain);
+                debug!(
+                    "[wallet:transport] json_rpc chain={} method={method} outcome=success",
+                    network.chain
+                );
                 Ok(value)
             }
             Err(message) => {
                 let error = classify(network, message);
-                debug!("[wallet:transport] json_rpc chain={} method={method} outcome={}", network.chain, if error.is_retryable() { "unreachable" } else { "rpc" });
+                debug!(
+                    "[wallet:transport] json_rpc chain={} method={method} outcome={}",
+                    network.chain,
+                    if error.is_retryable() {
+                        "unreachable"
+                    } else {
+                        "rpc"
+                    }
+                );
                 Err(error)
             }
         }
@@ -131,15 +150,30 @@ impl Transport for OpenHumanTransport {
 
     async fn rest_get(&self, network: NetworkId, path: &str) -> TransportResult<String> {
         let url = join(&resolve(network)?, path);
-        debug!("[wallet:transport] rest_get chain={} path={path} endpoint={}", network.chain, redact_rpc_url(&url));
+        debug!(
+            "[wallet:transport] rest_get chain={} path={path} endpoint={}",
+            network.chain,
+            redact_rpc_url(&url)
+        );
         match rest_get_text(&url).await {
             Ok(value) => {
-                debug!("[wallet:transport] rest_get chain={} path={path} outcome=success", network.chain);
+                debug!(
+                    "[wallet:transport] rest_get chain={} path={path} outcome=success",
+                    network.chain
+                );
                 Ok(value)
             }
             Err(message) => {
                 let error = classify(network, message);
-                debug!("[wallet:transport] rest_get chain={} path={path} outcome={}", network.chain, if error.is_retryable() { "unreachable" } else { "rpc" });
+                debug!(
+                    "[wallet:transport] rest_get chain={} path={path} outcome={}",
+                    network.chain,
+                    if error.is_retryable() {
+                        "unreachable"
+                    } else {
+                        "rpc"
+                    }
+                );
                 Err(error)
             }
         }
@@ -153,15 +187,30 @@ impl Transport for OpenHumanTransport {
         content_type: &str,
     ) -> TransportResult<String> {
         let url = join(&resolve(network)?, path);
-        debug!("[wallet:transport] rest_post chain={} path={path} endpoint={}", network.chain, redact_rpc_url(&url));
+        debug!(
+            "[wallet:transport] rest_post chain={} path={path} endpoint={}",
+            network.chain,
+            redact_rpc_url(&url)
+        );
         match rest_post_text(&url, &body, content_type).await {
             Ok(value) => {
-                debug!("[wallet:transport] rest_post chain={} path={path} outcome=success", network.chain);
+                debug!(
+                    "[wallet:transport] rest_post chain={} path={path} outcome=success",
+                    network.chain
+                );
                 Ok(value)
             }
             Err(message) => {
                 let error = classify(network, message);
-                debug!("[wallet:transport] rest_post chain={} path={path} outcome={}", network.chain, if error.is_retryable() { "unreachable" } else { "rpc" });
+                debug!(
+                    "[wallet:transport] rest_post chain={} path={path} outcome={}",
+                    network.chain,
+                    if error.is_retryable() {
+                        "unreachable"
+                    } else {
+                        "rpc"
+                    }
+                );
                 Err(error)
             }
         }
@@ -217,12 +266,9 @@ mod tests {
         // transport failure may drive a failover.
         let network = NetworkId::chain(tinywallet::Chain::Btc);
         assert!(
-            classify(network, "wallet RPC transport failed for x: refused".into())
-                .is_retryable()
+            classify(network, "wallet RPC transport failed for x: refused".into()).is_retryable()
         );
-        assert!(
-            classify(network, "wallet RPC read body failed for x: eof".into()).is_retryable()
-        );
+        assert!(classify(network, "wallet RPC read body failed for x: eof".into()).is_retryable());
         assert!(
             !classify(network, "insufficient funds".into()).is_retryable(),
             "an authoritative answer must not be retried"

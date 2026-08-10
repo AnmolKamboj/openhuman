@@ -74,7 +74,11 @@ pub fn validate_btc_address(addr: &str) -> Result<String, String> {
     let result = tinywallet::address::btc::validate(addr).map_err(|e| e.to_string());
     debug!(
         "{LOG_PREFIX} validate_address role=recipient result={}",
-        if result.is_ok() { "accepted" } else { "rejected" }
+        if result.is_ok() {
+            "accepted"
+        } else {
+            "rejected"
+        }
     );
     result
 }
@@ -90,7 +94,11 @@ pub fn validate_btc_sender_address(addr: &str) -> Result<String, String> {
     let result = tinywallet::address::btc::validate_sender(addr).map_err(|e| e.to_string());
     debug!(
         "{LOG_PREFIX} validate_address role=sender result={}",
-        if result.is_ok() { "accepted" } else { "rejected" }
+        if result.is_ok() {
+            "accepted"
+        } else {
+            "rejected"
+        }
     );
     result
 }
@@ -461,10 +469,7 @@ mod tests {
                 .unwrap_err();
         // `tinywallet` reports a wrong-network address as a distinct condition
         // from a malformed one, so the message names the required network.
-        assert!(
-            err.contains("not on mainnet"),
-            "got: {err}"
-        );
+        assert!(err.contains("not on mainnet"), "got: {err}");
     }
 
     #[test]

@@ -91,9 +91,7 @@ impl From<tinydocs::Error> for DocumentError {
     /// structurally shows up in the logs.
     fn from(err: tinydocs::Error) -> Self {
         match err {
-            tinydocs::Error::InvalidInput { field, reason } => {
-                Self::InvalidInput { field, reason }
-            }
+            tinydocs::Error::InvalidInput { field, reason } => Self::InvalidInput { field, reason },
             tinydocs::Error::GenerationFailed { detail } => Self::GenerationFailed {
                 stderr_truncated: detail,
             },
