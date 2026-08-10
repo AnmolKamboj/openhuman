@@ -153,6 +153,7 @@ const HASH_REDIRECTS = {
   '/intelligence': '/settings/notifications',
   '/routines': '/settings/automations',
   '/workflows': '/settings/automations',
+  '/webhooks': '/settings/integrations',
 };
 
 /** Resolve a requested hash to where the router actually settles. */
