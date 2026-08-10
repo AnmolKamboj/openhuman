@@ -10,7 +10,7 @@ use std::str::FromStr;
 
 use ethers_core::types::transaction::eip2718::TypedTransaction;
 use ethers_core::types::{Address, Bytes, NameOrAddress, TransactionRequest, U256};
-use ethers_signers::{coins_bip39::English, MnemonicBuilder, Signer};
+use ethers_signers::{LocalWallet, Signer};
 use log::debug;
 use serde_json::json;
 
@@ -56,17 +56,18 @@ async fn sign_and_broadcast(
     )
     .await?
     .value;
-    let signer = MnemonicBuilder::<English>::default()
-        .phrase(mnemonic.as_str())
-        .derivation_path(&secret.derivation_path)
-        .map_err(|e| {
-            format!(
-                "invalid EVM derivation path '{}': {e}",
-                secret.derivation_path
-            )
-        })?
-        .build()
-        .map_err(|e| format!("failed to derive EVM signer from wallet secret: {e}"))?;
+    // Derivation is delegated to the vendored `tinywallet` crate, which owns
+    // BIP-32 secp256k1 for every chain; ethers is left holding only the
+    // signing itself. Custody is unchanged — the mnemonic is decrypted from
+    // the keyring above and handed over as a `&str` that is not retained.
+    let derived = tinywallet::key::derive(
+        tinywallet::Chain::Evm,
+        mnemonic.as_str(),
+        &secret.derivation_path,
+    )
+    .map_err(|e| e.to_string())?;
+    let signer = LocalWallet::from_bytes(derived.secret_bytes())
+        .map_err(|e| format!("failed to build EVM signer from the derived key: {e}"))?;
     let from = Address::from_str(from_address)
         .map_err(|e| format!("invalid stored EVM sender address '{from_address}': {e}"))?;
 
