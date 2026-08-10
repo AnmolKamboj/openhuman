@@ -6,18 +6,18 @@
 #   - `.github/workflows/release-staging.yml`    — pretest gate, all 3 OS, full suite.
 #   - `.github/workflows/release-production.yml` — pretest gate, all 3 OS, full suite.
 #
-# Recipe per OS (identical across platforms — see e2e-run-session.sh):
-#   1. Build the CEF app via `pnpm --filter openhuman-app test:e2e:build`.
-#   2. Install Appium 3.x + the `chromium` driver.
-#   3. Run `app/scripts/e2e-run-session.sh` which:
-#        - launches the built binary,
-#        - waits for CDP on :19222,
-#        - prunes the prewarm `about:blank` target,
-#        - downloads a chromedriver matching CEF's Chromium version,
-#        - starts Appium and runs WDIO against `wdio.conf.ts`.
+# Recipe (see e2e-run-session.sh):
+#   1. Build the app via `pnpm --filter openhuman-app test:e2e:build`.
+#   2. Run `app/scripts/e2e-run-session.sh` which:
+#        - starts tauri-driver and waits for its /status endpoint,
+#        - runs WDIO against `wdio.conf.ts`.
 #
 # Linux runs inside the project CI container under Xvfb (no native display).
-# macOS / Windows run on GitHub-hosted runners.
+# The Appium Chromium-driver backend used on macOS / Windows attached over
+# CEF's remote-debugging port and was removed in #5478 — CDP does not exist
+# under the Wry runtime. Those jobs cannot pass and need a native driver
+# (Appium Mac2 / WinAppDriver) before they are re-enabled. Tracked in #5485:
+# until it lands, macOS and Windows have no desktop E2E coverage at all.
 #
 # Caching: pnpm store, Swatinem rust-cache, and CEF runtime download
 # (~400MB) are cached on every job. The CEF cache key matches what
