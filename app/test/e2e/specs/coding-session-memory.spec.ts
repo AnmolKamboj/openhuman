@@ -1,9 +1,14 @@
-import { waitForApp } from '../helpers/app-helpers';
+import { waitForApp, waitForAuthBootstrap } from '../helpers/app-helpers';
+import { triggerAuthLoopbackBypass } from '../helpers/loopback-auth-helpers';
+import { resetApp } from '../helpers/reset-app';
 import { navigateViaHash } from '../helpers/shared-flows';
 
 describe('Coding-agent session memory', () => {
   before(async () => {
     await waitForApp();
+    await resetApp('e2e-coding-session-memory');
+    await triggerAuthLoopbackBypass('e2e-coding-session-memory');
+    await waitForAuthBootstrap();
     await navigateViaHash('/brain?tab=sources');
   });
 

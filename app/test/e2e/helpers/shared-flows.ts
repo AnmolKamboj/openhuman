@@ -631,7 +631,7 @@ async function waitForPostOnboardingHome(logPrefix, timeout = 20_000) {
         Boolean(
           await browser.execute(() => {
             const h = window.location.hash.replace(/\/$/, '');
-            return h === '#/home' || h === '#/chat';
+            return h === '#/home' || h === '#/chat' || h.startsWith('#/connections');
           })
         ),
       {
