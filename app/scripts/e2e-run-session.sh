@@ -683,8 +683,8 @@ if [ "${#SPEC_ARGS[@]}" -gt 0 ]; then
   for s in "${SPEC_ARGS[@]}"; do
     WDIO_SPEC_ARGS+=(--spec "$s")
   done
-  pnpm exec wdio run test/wdio.conf.ts "${WDIO_SPEC_ARGS[@]}"
+  pnpm exec wdio run test/wdio.conf.ts --maxInstances 1 "${WDIO_SPEC_ARGS[@]}"
 else
   echo "[runner] Running full E2E suite (single shared session)..."
-  pnpm exec wdio run test/wdio.conf.ts
+  pnpm exec wdio run test/wdio.conf.ts --maxInstances 1
 fi
