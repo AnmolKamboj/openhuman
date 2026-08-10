@@ -11,11 +11,23 @@ const coreAuthRef = vi.hoisted(() => ({ current: 'user-A' as string | null }));
 // Captures navigate() calls so we can assert the legacy TinyPlace-orchestration
 // deep link bounces to the folded-in Orchestration sub-tab.
 const navigateSpy = vi.hoisted(() => vi.fn());
+// Controllable tiny.place identity so we can render Brain as a holder (default)
+// or a confirmed non-holder hitting the gated `?tab=orchestration` deep link.
+const tinyplaceIdentityRef = vi.hoisted(() => ({
+  current: { status: 'ready', hasIdentity: true } as {
+    status: 'loading' | 'ready';
+    hasIdentity: boolean;
+  },
+}));
 
 vi.mock('react-router-dom', async importOriginal => {
   const actual = await importOriginal<typeof import('react-router-dom')>();
   return { ...actual, useNavigate: () => navigateSpy };
 });
+
+vi.mock('../../hooks/useTinyPlaceIdentity', () => ({
+  useTinyPlaceIdentity: () => tinyplaceIdentityRef.current,
+}));
 
 vi.mock('../../utils/tauriCommands', () => ({
   memoryTreeGraphExport: graphExportMock,
@@ -98,6 +110,7 @@ describe('Brain page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     coreAuthRef.current = 'user-A';
+    tinyplaceIdentityRef.current = { status: 'ready', hasIdentity: true };
   });
 
   afterEach(() => {
@@ -206,6 +219,32 @@ describe('Brain page', () => {
     // Folding Orchestration under Brain must not trigger the unrelated
     // memoryTreeGraphExport RPC that the standalone page never issued.
     expect(graphExportMock).not.toHaveBeenCalled();
+  });
+
+  it('redirects a confirmed non-holder away from ?tab=orchestration without mounting OrchestrationView', async () => {
+    // #5424 — the redirect is render-phase, so the gated tiny.place surface must
+    // never mount (not even for a single commit) once the identity check
+    // resolves to a non-holder.
+    tinyplaceIdentityRef.current = { status: 'ready', hasIdentity: false };
+    graphExportMock.mockResolvedValue(makeGraph(0));
+    await act(async () => {
+      renderWithProviders(<Brain />, { initialEntries: ['/?tab=orchestration'] });
+    });
+    expect(screen.queryByTestId('brain-orchestration')).not.toBeInTheDocument();
+    // Landed on the Brain welcome tab instead.
+    expect(screen.getByTestId('brain-welcome')).toBeInTheDocument();
+  });
+
+  it('keeps rendering OrchestrationView while the identity check is still loading', async () => {
+    // The in-flight window must not redirect — only a *confirmed* non-holder does.
+    tinyplaceIdentityRef.current = { status: 'loading', hasIdentity: false };
+    graphExportMock.mockResolvedValue(makeGraph(0));
+    await act(async () => {
+      renderWithProviders(<Brain />, { initialEntries: ['/?tab=orchestration'] });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('brain-orchestration')).toBeInTheDocument();
+    });
   });
 
   it('redirects the legacy tinyplace-orchestration deep link to the orchestration tab', async () => {

@@ -7593,7 +7593,7 @@ const en: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Your embedding budget is used up, so new content is no longer being added to memory. Set up local embeddings or add your own API key to resume.',
   'memoryBudget.cta': 'Set up embeddings',
-  'tinyplaceSunset.title': 'tiny.place is moving out of the app',
+  'tinyplaceSunset.title': 'Tiny Place is moving out of the app',
   'tinyplaceSunset.message':
     'To keep using tiny.place, visit tiny.place. It will be removed from the app after 31 August 2026.',
   'tinyplaceSunset.cta': 'Open tiny.place',

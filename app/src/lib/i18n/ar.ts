@@ -7034,7 +7034,7 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'انتهت ميزانية التضمينات لديك، لذلك لم يعد المحتوى الجديد يُضاف إلى الذاكرة. أعدّ تضمينات محلية أو أضف مفتاح API الخاص بك للمتابعة.',
   'memoryBudget.cta': 'إعداد التضمينات',
-  'tinyplaceSunset.title': 'ينتقل tiny.place خارج التطبيق',
+  'tinyplaceSunset.title': 'ينتقل Tiny Place خارج التطبيق',
   'tinyplaceSunset.message':
     'لمواصلة استخدام tiny.place، زر tiny.place. ستتم إزالته من التطبيق بعد 31 أغسطس 2026.',
   'tinyplaceSunset.cta': 'فتح tiny.place',

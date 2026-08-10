@@ -7269,7 +7269,7 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Бюджет эмбеддингов израсходован, поэтому новые данные больше не добавляются в память. Настройте локальные эмбеддинги или добавьте свой ключ API, чтобы продолжить.',
   'memoryBudget.cta': 'Настроить эмбеддинги',
-  'tinyplaceSunset.title': 'tiny.place уходит из приложения',
+  'tinyplaceSunset.title': 'Tiny Place уходит из приложения',
   'tinyplaceSunset.message':
     'Чтобы продолжить пользоваться tiny.place, откройте tiny.place. После 31 августа 2026 года он будет удалён из приложения.',
   'tinyplaceSunset.cta': 'Открыть tiny.place',

@@ -6,7 +6,7 @@
  * former top-level `/orchestration` tab — see {@link OrchestrationView}).
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import TinyPlaceSunsetNotice from '../agentworld/TinyPlaceSunsetNotice';
 import { CodingSessionsCard } from '../components/intelligence/CodingSessionsCard';
@@ -109,15 +109,14 @@ export default function Brain() {
 
   // #5424 — the Orchestration sub-tab is a tiny.place surface, hidden from users
   // without an identity. If one lands on `?tab=orchestration` via a stale deep
-  // link, send them to the Brain welcome tab once the identity check confirms
-  // they have none (holders and the in-flight window are left untouched).
+  // link, redirect to the Brain welcome tab once the identity check confirms
+  // they have none. This is a render-phase redirect (not a post-commit effect)
+  // so OrchestrationView never mounts for a confirmed non-holder — its RPCs and
+  // tiny.place surface must not fire even once. Holders and the in-flight
+  // `loading` window are left untouched.
   const { status: tinyplaceStatus, hasIdentity: hasTinyplaceIdentity } = useTinyPlaceIdentity();
-  useEffect(() => {
-    if (activeTab === 'orchestration' && tinyplaceStatus === 'ready' && !hasTinyplaceIdentity) {
-      console.debug('[brain] orchestration tab without tiny.place identity → welcome');
-      navigate('/brain', { replace: true });
-    }
-  }, [activeTab, tinyplaceStatus, hasTinyplaceIdentity, navigate]);
+  const shouldRedirectFromOrchestration =
+    activeTab === 'orchestration' && tinyplaceStatus === 'ready' && !hasTinyplaceIdentity;
 
   const [graph, setGraph] = useState<GraphExportResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -195,6 +194,10 @@ export default function Brain() {
   }, [mode, refreshKey, authUserId, activeTab]);
 
   const cardClass = 'rounded-lg border border-line bg-surface p-4';
+
+  if (shouldRedirectFromOrchestration) {
+    return <Navigate to="/brain" replace />;
+  }
 
   return (
     <div className="h-full">

@@ -7394,7 +7394,7 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Dein Embedding-Budget ist aufgebraucht, daher werden keine neuen Inhalte mehr ins Gedächtnis aufgenommen. Richte lokale Embeddings ein oder hinterlege deinen eigenen API-Schlüssel, um fortzufahren.',
   'memoryBudget.cta': 'Embeddings einrichten',
-  'tinyplaceSunset.title': 'tiny.place zieht aus der App aus',
+  'tinyplaceSunset.title': 'Tiny Place zieht aus der App aus',
   'tinyplaceSunset.message':
     'Um tiny.place weiter zu nutzen, besuche tiny.place. Nach dem 31. August 2026 wird es aus der App entfernt.',
   'tinyplaceSunset.cta': 'tiny.place öffnen',
