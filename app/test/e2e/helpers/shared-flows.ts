@@ -151,8 +151,7 @@ const HASH_REDIRECTS = {
   '/channels': '/connections',
   '/activity': '/settings/notifications',
   '/intelligence': '/settings/notifications',
-  '/routines': '/settings/automations',
-  '/workflows': '/settings/automations',
+  '/routines': '/flows',
   '/webhooks': '/settings/integrations',
 };
 
