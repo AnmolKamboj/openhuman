@@ -37,25 +37,6 @@ mod app_update;
 // (macOS/Windows/Linux): native Save-As dialog (rfd) + Downloads copy.
 mod artifact_commands;
 mod cdp;
-// macOS/Linux only: depends on the `nix` crate (a `cfg(unix)` dependency) and
-// resolves a platform cache path that is only defined for those targets. On
-// Windows it must not be compiled — see issue: Windows release build failed
-// with E0433 (`nix` unresolved) + E0425 (`cache_path` undefined).
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-mod cef_preflight;
-mod cef_profile;
-// Windows-only pre-CEF wait for a dying prior instance to release the cache
-// lock (Sentry TAURI-RUST-F). Compiled under `test` too so the pure decision
-// logic is unit-tested on any host; the Win32 glue is windows-only.
-#[cfg(any(target_os = "windows", test))]
-mod cef_singleton_wait;
-// macOS/Linux pre-CEF reap of a wedged prior instance that still holds the CEF
-// SingletonLock after an update relaunch (issue #4395, follow-up to #3605).
-// Marker-gated so it never reaps a healthy running instance. Compiled under
-// `test` too so the pure decision logic is unit-tested on any host; the
-// filesystem/signal glue is macOS/Linux-only.
-#[cfg(any(target_os = "macos", target_os = "linux", test))]
-mod cef_stale_reap;
 mod claude_code;
 mod companion;
 mod companion_commands;
@@ -71,6 +52,7 @@ mod deep_link_ipc_windows;
 mod deep_link_registration_check;
 mod dictation_hotkeys;
 mod discord_scanner;
+#[cfg(any(test, feature = "e2e-test-support"))]
 mod fake_camera;
 mod file_logging;
 mod gmessages_scanner;
@@ -128,8 +110,8 @@ use objc2::ClassType;
 #[cfg(target_os = "macos")]
 use objc2_app_kit::{NSPanel, NSWindowCollectionBehavior, NSWindowStyleMask};
 
-// CEF is the only runtime; alias kept so command handlers thread the runtime generic uniformly.
-pub(crate) type AppRuntime = tauri::Cef;
+// Use Tauri's upstream native WebView runtime on every desktop platform.
+pub(crate) type AppRuntime = tauri::Wry;
 
 static EARLY_TEARDOWN_RAN: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
@@ -442,18 +424,15 @@ async fn restart_app(app: tauri::AppHandle<AppRuntime>) -> Result<(), String> {
 /// a restart loop. The Rust core writes `active_user.toml` atomically as part
 /// of `auth_store_session`, so it's the only profile-independent source of
 /// truth available to the UI at boot. Reuses
-/// `cef_profile::default_root_openhuman_dir()` so the lookup honors
+/// `config::default_root_openhuman_dir()` so the lookup honors
 /// `OPENHUMAN_WORKSPACE` overrides used in test harnesses. (#900)
 #[tauri::command]
 fn get_active_user_id() -> Result<Option<String>, String> {
-    let dir = cef_profile::default_root_openhuman_dir()?;
-    Ok(cef_profile::read_active_user_id(&dir))
-}
-
-#[tauri::command]
-async fn schedule_cef_profile_purge(user_id: Option<String>) -> Result<String, String> {
-    let queued = cef_profile::queue_profile_purge_for_user(user_id.as_deref())?;
-    Ok(queued.display().to_string())
+    let root = openhuman_core::openhuman::config::default_root_openhuman_dir()
+        .map_err(|err| format!("resolve active-user state directory: {err}"))?;
+    Ok(openhuman_core::openhuman::config::read_active_user_id(
+        &root,
+    ))
 }
 
 /// Information about an available shell-app update returned to the frontend.
@@ -635,11 +614,6 @@ async fn apply_app_update(
 
     log::info!("[app-update] install complete — relaunching");
     let _ = app.emit("app-update:status", "restarting");
-
-    // Drop a post-update relaunch marker so the freshly launched process can
-    // safely reap this instance if it wedges instead of exiting (issue #4395).
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    cef_stale_reap::write_update_relaunch_marker();
 
     log::info!("[app-update] starting early teardown before restart");
     perform_early_teardown_async(&app).await;
@@ -857,7 +831,6 @@ async fn install_app_update(
     // Drop a post-update relaunch marker so the freshly launched process can
     // safely reap this instance if it wedges instead of exiting (issue #4395).
     #[cfg(any(target_os = "macos", target_os = "linux"))]
-    cef_stale_reap::write_update_relaunch_marker();
 
     log::info!("[app-update] starting early teardown before restart");
     perform_early_teardown_async(&app).await;
@@ -2053,11 +2026,12 @@ fn can_register_single_instance_plugin() -> bool {
     true
 }
 
+#[cfg(any(test, feature = "e2e-test-support"))]
 type CefCommandLineArg = (&'static str, Option<&'static str>);
 
 /// Returns `true` when the process is running as root (UID 0) on Linux.
 /// Testable pure function; takes the uid directly.
-#[cfg(any(target_os = "linux", test))]
+#[cfg(any(test, feature = "e2e-test-support"))]
 fn linux_is_root_uid(uid: u32) -> bool {
     uid == 0
 }
@@ -2079,6 +2053,7 @@ fn linux_is_root_uid(uid: u32) -> bool {
 /// this control is explicit opt-in: `1` / `true` / `yes` / `on`
 /// (case-insensitive) enables the override, and anything else (including
 /// unset) preserves the default disable.
+#[cfg(any(test, feature = "e2e-test-support"))]
 fn cef_force_gpu_enabled(env_override: Option<&str>) -> bool {
     match env_override {
         Some(v) => {
@@ -2091,6 +2066,7 @@ fn cef_force_gpu_enabled(env_override: Option<&str>) -> bool {
 
 /// Emergency CEF startup escape hatch for driver/runtime combinations where
 /// CEF cannot initialize its GPU process before the app can render UI.
+#[cfg(any(test, feature = "e2e-test-support"))]
 fn cef_disable_gpu_enabled(env_override: Option<&str>) -> bool {
     match env_override {
         Some(v) => {
@@ -2111,6 +2087,7 @@ fn cef_disable_gpu_enabled(env_override: Option<&str>) -> bool {
 /// keeps page compositing on the CPU. Crucially this does **not** pass
 /// `--disable-gpu`, which would shut the GPU process down entirely — and with it
 /// the SwiftShader context that lets CEF start.
+#[cfg(any(test, feature = "e2e-test-support"))]
 fn push_swiftshader_software_gl(args: &mut Vec<CefCommandLineArg>) {
     args.push(("--use-gl", Some("angle")));
     args.push(("--use-angle", Some("swiftshader")));
@@ -2118,6 +2095,7 @@ fn push_swiftshader_software_gl(args: &mut Vec<CefCommandLineArg>) {
     args.push(("--disable-gpu-compositing", None));
 }
 
+#[cfg(any(test, feature = "e2e-test-support"))]
 fn append_platform_cef_gpu_workarounds(
     args: &mut Vec<CefCommandLineArg>,
     os: &str,
@@ -2242,6 +2220,7 @@ fn append_platform_cef_gpu_workarounds(
 /// Whether a CEF command-line flag is `--time-ticks-at-unix-epoch` (in any
 /// dash/casing form, with or without an inline `=<value>` suffix). See
 /// [`strip_time_ticks_at_unix_epoch`] for why we care.
+#[cfg(any(test, feature = "e2e-test-support"))]
 fn is_time_ticks_at_unix_epoch_flag(flag: &str) -> bool {
     let name = flag.trim_start_matches('-');
     // Chromium switches can carry their value inline (`--flag=value`); compare
@@ -2264,6 +2243,7 @@ fn is_time_ticks_at_unix_epoch_flag(flag: &str) -> bool {
 /// `RuntimeInitAttribute::CommandLineArgs` contributed elsewhere), so strip the
 /// flag from the final list as a guard and let Chromium compute the origin
 /// locally for each process.
+#[cfg(any(test, feature = "e2e-test-support"))]
 fn strip_time_ticks_at_unix_epoch(args: &mut Vec<CefCommandLineArg>) {
     args.retain(|(flag, value)| {
         if is_time_ticks_at_unix_epoch_flag(flag) {
@@ -2773,27 +2753,7 @@ pub fn run() {
     #[cfg(windows)]
     let _deep_link_pipe_guard = deep_link_ipc_windows::bind_and_listen();
 
-    // CEF cache-lock preflight (macOS only): if another OpenHuman instance
-    // is already holding the CEF user-data-dir, the vendored
-    // `tauri-runtime-cef` panics inside `cef::initialize` with a Rust
-    // backtrace and no actionable message (issue #864). Catch the collision
-    // here and exit cleanly with a message that names the lock-holder PID
-    // and the workaround. Stale locks (PID dead) are removed and we
-    // continue, matching Chromium's own startup recovery.
-    match cef_profile::prepare_process_cache_path() {
-        Ok(path) => log::debug!("[cef-profile] startup cache path={}", path.display()),
-        Err(error) => {
-            log::error!(
-                "[cef-profile] failed to configure per-user CEF cache; refusing to start with shared/global cache: {error}"
-            );
-            std::process::exit(1);
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    process_recovery::reap_stale_openhuman_processes();
-
-    // ── Windows pre-CEF proactive stale-process reap (issues #3605, #3900) ─
+    // ── Windows proactive stale-process reap (issues #3605, #3900) ─────────
     // The Win32 mutex above already guaranteed we are the only *top-level*
     // GUI instance past that point — a concurrent secondary saw
     // `ERROR_ALREADY_EXISTS` and exited before reaching here. So a surviving
@@ -2836,8 +2796,6 @@ pub fn run() {
     // (bounded) for the prior instance to exit before proceeding; this never
     // suppresses a crash — it prevents `cef::initialize()` from running
     // against a locked cache. Analogous to the macOS reap above.
-    #[cfg(target_os = "windows")]
-    cef_singleton_wait::wait_for_cache_release();
 
     // ── Linux pre-CEF deep-link forwarding guard (issue #2359) ────────────
     // On Linux, a secondary instance with an openhuman:// URL in argv exits
@@ -2876,154 +2834,156 @@ pub fn run() {
     // Windows pre-CEF reap, gated on a staleness signal because these targets
     // have no early single-instance mutex. See `cef_stale_reap` for the safety
     // rationale (and why the reverted #3793 SIGKILL is not reintroduced).
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    cef_stale_reap::reap_stale_cef_lock_holder();
-
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    cef_preflight::wait_for_cache_release();
 
     let builder = {
-        // Bypass macOS Keychain. Without this, every embedded service that
-        // touches password / cookie / encryption-key storage triggers a
-        // "Allow access to your keychain?" prompt — WhatsApp Web hits it on
-        // every cold start, Chromium's own component-update store also does.
-        // `use-mock-keychain` swaps the Keychain backend for an in-process
-        // mock; `password-store=basic` is the equivalent for the password
-        // manager. Both are no-ops on Windows/Linux, so safe to always set.
-        //
-        // CDP attach goes through the in-process channel only — see
-        // `app/src-tauri/src/cdp/in_process.rs`. Production builds do
-        // not pass the legacy `--remote-debugging-port` flag: every
-        // scanner attaches via `Webview::send_dev_tools_message` and
-        // there is no remaining loopback DevTools listener. The E2E
-        // test-support build can opt into a loopback port below because
-        // the Appium Chromium harness still attaches through
-        // `debuggerAddress`.
-        //
-        // NOTE: flags must be prefixed with `--`. The runtime's
-        // `on_before_command_line_processing` dispatch (in
-        // `tauri-runtime-cef/src/cef_impl.rs`) routes value-less args that
-        // don't start with `-` to `append_argument` (positional) instead of
-        // `append_switch`, which means Chromium silently ignores them.
-        let mut args: Vec<CefCommandLineArg> = vec![
-            ("--use-mock-keychain", None),
-            ("--password-store", Some("basic")),
-            // Enable SharedArrayBuffer so embedded apps that need WebRTC
-            // audio worklets / Opus encoders (Slack Huddles, Meet
-            // real-time features, Discord voice) can actually initialise.
-            // Chromium gates SharedArrayBuffer behind cross-origin
-            // isolation by default; web apps embedded inside CEF rarely
-            // send COOP/COEP headers, so without this flag the feature
-            // silently disappears and huddle/call buttons no-op.
-            ("--enable-features", Some("SharedArrayBuffer")),
-            // Defeat Chromium's modern throttlers that ignore the
-            // legacy `--disable-background-timer-throttling` flag.
-            // Empirically with that flag *alone*, the producer in the
-            // (visible but non-key) main window still got pinned to
-            // 1Hz worker timers as soon as the off-screen Meet window
-            // opened. These three feature flags are the canonical
-            // additional knobs (Electron / Puppeteer use them).
-            (
-                "--disable-features",
-                Some(
-                    "IntensiveWakeUpThrottling,CalculateNativeWinOcclusion,\
-                     AutofillActorMode,GlicActorUi,LensOverlay",
-                ),
-            ),
-            // Allow autoplay (audio + video) without a prior user gesture.
-            // CEF inherits Chromium's default policy, which leaves an
-            // AudioContext suspended until the user interacts with the
-            // page; @remotion/player gates its rAF frame loop on
-            // AudioContext.state === 'running', so on a cold tab the
-            // mascot SVG paints frame 0 and freezes there until the user
-            // alt-tabs / clicks somewhere (which counts as a gesture and
-            // resumes the context — the "fast on revisit" symptom). With
-            // this flag the AudioContext starts in 'running' immediately
-            // and the mascot animates from first paint. We control every
-            // surface in this webview, so dropping the gesture gate is
-            // safe.
-            ("--autoplay-policy", Some("no-user-gesture-required")),
-            // Background-throttling defeaters. The MeetCallProducer
-            // pumps mascot frames at 24 fps from the *main* OpenHuman
-            // window, but as soon as the off-screen Meet webview opens
-            // (or the user clicks anywhere outside main), macOS demotes
-            // the renderer's priority and Chromium throttles its
-            // setInterval / worker timers / rAF down to ~1 Hz — the
-            // mascot stream collapses to 1 fps. Page-level workarounds
-            // (silent AudioContext, muted <audio>) are unreliable in
-            // CEF: AudioContext starts suspended pre-gesture; the muted
-            // <audio> trick depends on the renderer being polled at all.
-            // The canonical fix is the Chromium command-line flag set
-            // Electron / Puppeteer use for the same scenario.
-            //
-            // Process-wide is fine: every CEF webview we own is part of
-            // the agent flow (no idle low-priority background tabs we
-            // care about saving battery on).
-            ("--disable-background-timer-throttling", None),
-            ("--disable-renderer-backgrounding", None),
-            ("--disable-backgrounding-occluded-windows", None),
-        ];
-        // Mascot fake-camera: bake the SVG into a one-frame Y4M and
-        // point Chromium's fake-video-capture pipeline at it so any
-        // CEF webview that calls `getUserMedia({video:true})` sees the
-        // mascot as the agent's webcam. `--use-fake-ui-for-media-stream`
-        // auto-allows the permission prompt so Meet's join page doesn't
-        // get stuck behind it. The flags are process-level (affect every
-        // CEF webview), which is fine today: only the Meet call window
-        // intentionally requests a camera, and other webviews don't ask
-        // for one. The path string is leaked with `Box::leak` so its
-        // `&str` outlives the args vec we hand to `command_line_args`.
-        let fake_camera_arg: Option<&'static str> =
-            match fake_camera::ensure_mascot_y4m(&file_logging::resolve_data_dir()) {
-                Ok(path) => {
-                    let leaked: &'static str =
-                        Box::leak(path.to_string_lossy().into_owned().into_boxed_str());
-                    log::info!("[cef-startup] fake-camera y4m path={leaked}");
-                    Some(leaked)
-                }
-                Err(err) => {
-                    log::warn!(
-                        "[cef-startup] mascot fake-camera unavailable: {err} \
-                     (Meet will see no camera)"
-                    );
-                    None
-                }
-            };
-        if let Some(path) = fake_camera_arg {
-            // `--use-file-for-fake-video-capture` alone (CEF 146 / Chromium 128+)
-            // injects the Y4M as the video capture source without replacing the
-            // audio capture device. The old belt-and-suspenders flag
-            // `--use-fake-device-for-media-stream` is deliberately omitted here:
-            // it replaced ALL media capture devices — including audio — with fake
-            // ones, causing a sine-wave test tone (beeping) to be recorded instead
-            // of the real microphone whenever `getUserMedia({audio:true})` was
-            // called from the main app WebView (e.g. the mascot voice composer).
-            // `--use-fake-ui-for-media-stream` is kept so Meet's permission prompt
-            // is auto-granted without interrupting the join flow.
-            args.push(("--use-fake-ui-for-media-stream", None));
-            args.push(("--use-file-for-fake-video-capture", Some(path)));
-        }
         #[cfg(feature = "e2e-test-support")]
-        if std::env::var("OPENHUMAN_E2E_MODE").ok().as_deref() == Some("1") {
-            let port = std::env::var("CEF_CDP_PORT").unwrap_or_else(|_| "19222".to_string());
-            let leaked_port: &'static str = Box::leak(port.into_boxed_str());
-            log::info!("[cef-startup] e2e remote-debugging-port enabled port={leaked_port}");
-            args.push(("--remote-debugging-port", Some(leaked_port)));
+        {
+            // Bypass macOS Keychain. Without this, every embedded service that
+            // touches password / cookie / encryption-key storage triggers a
+            // "Allow access to your keychain?" prompt — WhatsApp Web hits it on
+            // every cold start, Chromium's own component-update store also does.
+            // `use-mock-keychain` swaps the Keychain backend for an in-process
+            // mock; `password-store=basic` is the equivalent for the password
+            // manager. Both are no-ops on Windows/Linux, so safe to always set.
+            //
+            // CDP attach goes through the in-process channel only — see
+            // `app/src-tauri/src/cdp/in_process.rs`. Production builds do
+            // not pass the legacy `--remote-debugging-port` flag: every
+            // scanner attaches via `Webview::send_dev_tools_message` and
+            // there is no remaining loopback DevTools listener. The E2E
+            // test-support build can opt into a loopback port below because
+            // the Appium Chromium harness still attaches through
+            // `debuggerAddress`.
+            //
+            // NOTE: flags must be prefixed with `--`. The runtime's
+            // `on_before_command_line_processing` dispatch (in
+            // `tauri-runtime-cef/src/cef_impl.rs`) routes value-less args that
+            // don't start with `-` to `append_argument` (positional) instead of
+            // `append_switch`, which means Chromium silently ignores them.
+            let mut args: Vec<CefCommandLineArg> = vec![
+                ("--use-mock-keychain", None),
+                ("--password-store", Some("basic")),
+                // Enable SharedArrayBuffer so embedded apps that need WebRTC
+                // audio worklets / Opus encoders (Slack Huddles, Meet
+                // real-time features, Discord voice) can actually initialise.
+                // Chromium gates SharedArrayBuffer behind cross-origin
+                // isolation by default; web apps embedded inside CEF rarely
+                // send COOP/COEP headers, so without this flag the feature
+                // silently disappears and huddle/call buttons no-op.
+                ("--enable-features", Some("SharedArrayBuffer")),
+                // Defeat Chromium's modern throttlers that ignore the
+                // legacy `--disable-background-timer-throttling` flag.
+                // Empirically with that flag *alone*, the producer in the
+                // (visible but non-key) main window still got pinned to
+                // 1Hz worker timers as soon as the off-screen Meet window
+                // opened. These three feature flags are the canonical
+                // additional knobs (Electron / Puppeteer use them).
+                (
+                    "--disable-features",
+                    Some(
+                        "IntensiveWakeUpThrottling,CalculateNativeWinOcclusion,\
+                     AutofillActorMode,GlicActorUi,LensOverlay",
+                    ),
+                ),
+                // Allow autoplay (audio + video) without a prior user gesture.
+                // CEF inherits Chromium's default policy, which leaves an
+                // AudioContext suspended until the user interacts with the
+                // page; @remotion/player gates its rAF frame loop on
+                // AudioContext.state === 'running', so on a cold tab the
+                // mascot SVG paints frame 0 and freezes there until the user
+                // alt-tabs / clicks somewhere (which counts as a gesture and
+                // resumes the context — the "fast on revisit" symptom). With
+                // this flag the AudioContext starts in 'running' immediately
+                // and the mascot animates from first paint. We control every
+                // surface in this webview, so dropping the gesture gate is
+                // safe.
+                ("--autoplay-policy", Some("no-user-gesture-required")),
+                // Background-throttling defeaters. The MeetCallProducer
+                // pumps mascot frames at 24 fps from the *main* OpenHuman
+                // window, but as soon as the off-screen Meet webview opens
+                // (or the user clicks anywhere outside main), macOS demotes
+                // the renderer's priority and Chromium throttles its
+                // setInterval / worker timers / rAF down to ~1 Hz — the
+                // mascot stream collapses to 1 fps. Page-level workarounds
+                // (silent AudioContext, muted <audio>) are unreliable in
+                // CEF: AudioContext starts suspended pre-gesture; the muted
+                // <audio> trick depends on the renderer being polled at all.
+                // The canonical fix is the Chromium command-line flag set
+                // Electron / Puppeteer use for the same scenario.
+                //
+                // Process-wide is fine: every CEF webview we own is part of
+                // the agent flow (no idle low-priority background tabs we
+                // care about saving battery on).
+                ("--disable-background-timer-throttling", None),
+                ("--disable-renderer-backgrounding", None),
+                ("--disable-backgrounding-occluded-windows", None),
+            ];
+            // Mascot fake-camera: bake the SVG into a one-frame Y4M and
+            // point Chromium's fake-video-capture pipeline at it so any
+            // CEF webview that calls `getUserMedia({video:true})` sees the
+            // mascot as the agent's webcam. `--use-fake-ui-for-media-stream`
+            // auto-allows the permission prompt so Meet's join page doesn't
+            // get stuck behind it. The flags are process-level (affect every
+            // CEF webview), which is fine today: only the Meet call window
+            // intentionally requests a camera, and other webviews don't ask
+            // for one. The path string is leaked with `Box::leak` so its
+            // `&str` outlives the args vec we hand to `command_line_args`.
+            let fake_camera_arg: Option<&'static str> =
+                match fake_camera::ensure_mascot_y4m(&file_logging::resolve_data_dir()) {
+                    Ok(path) => {
+                        let leaked: &'static str =
+                            Box::leak(path.to_string_lossy().into_owned().into_boxed_str());
+                        log::info!("[cef-startup] fake-camera y4m path={leaked}");
+                        Some(leaked)
+                    }
+                    Err(err) => {
+                        log::warn!(
+                            "[cef-startup] mascot fake-camera unavailable: {err} \
+                     (Meet will see no camera)"
+                        );
+                        None
+                    }
+                };
+            if let Some(path) = fake_camera_arg {
+                // `--use-file-for-fake-video-capture` alone (CEF 146 / Chromium 128+)
+                // injects the Y4M as the video capture source without replacing the
+                // audio capture device. The old belt-and-suspenders flag
+                // `--use-fake-device-for-media-stream` is deliberately omitted here:
+                // it replaced ALL media capture devices — including audio — with fake
+                // ones, causing a sine-wave test tone (beeping) to be recorded instead
+                // of the real microphone whenever `getUserMedia({audio:true})` was
+                // called from the main app WebView (e.g. the mascot voice composer).
+                // `--use-fake-ui-for-media-stream` is kept so Meet's permission prompt
+                // is auto-granted without interrupting the join flow.
+                args.push(("--use-fake-ui-for-media-stream", None));
+                args.push(("--use-file-for-fake-video-capture", Some(path)));
+            }
+            #[cfg(feature = "e2e-test-support")]
+            if std::env::var("OPENHUMAN_E2E_MODE").ok().as_deref() == Some("1") {
+                let port = std::env::var("CEF_CDP_PORT").unwrap_or_else(|_| "19222".to_string());
+                let leaked_port: &'static str = Box::leak(port.into_boxed_str());
+                log::info!("[cef-startup] e2e remote-debugging-port enabled port={leaked_port}");
+                args.push(("--remote-debugging-port", Some(leaked_port)));
+            }
+            let force_gpu_env = std::env::var("OPENHUMAN_FORCE_GPU").ok();
+            let disable_gpu_env = std::env::var("OPENHUMAN_DISABLE_GPU").ok();
+            append_platform_cef_gpu_workarounds(
+                &mut args,
+                std::env::consts::OS,
+                std::env::consts::ARCH,
+                force_gpu_env.as_deref(),
+                disable_gpu_env.as_deref(),
+            );
+            // #3554: never forward a `--time-ticks-at-unix-epoch` switch to CEF —
+            // a corrupt/negative value drives the renderer's clock decades off and
+            // shows a wrong "Current Date & Time". Let Chromium compute it.
+            strip_time_ticks_at_unix_epoch(&mut args);
+            let _ = args;
+            tauri::Builder::<AppRuntime>::new()
         }
-        let force_gpu_env = std::env::var("OPENHUMAN_FORCE_GPU").ok();
-        let disable_gpu_env = std::env::var("OPENHUMAN_DISABLE_GPU").ok();
-        append_platform_cef_gpu_workarounds(
-            &mut args,
-            std::env::consts::OS,
-            std::env::consts::ARCH,
-            force_gpu_env.as_deref(),
-            disable_gpu_env.as_deref(),
-        );
-        // #3554: never forward a `--time-ticks-at-unix-epoch` switch to CEF —
-        // a corrupt/negative value drives the renderer's clock decades off and
-        // shows a wrong "Current Date & Time". Let Chromium compute it.
-        strip_time_ticks_at_unix_epoch(&mut args);
-        tauri::Builder::<tauri::Cef>::new().command_line_args::<&str, &str>(args)
+
+        #[cfg(not(feature = "e2e-test-support"))]
+        tauri::Builder::<AppRuntime>::new()
     };
 
     #[cfg(target_os = "macos")]
@@ -3339,24 +3299,9 @@ pub fn run() {
                 core_process::CoreProcessHandle::new(core_process::default_core_port());
             std::env::set_var("OPENHUMAN_CORE_RPC_URL", core_handle.rpc_url());
 
-            // Expose the shared CEF cookies SQLite path to the core sidecar
-            // so `check_onboarding_status` can detect which webview
-            // providers (whatsapp, slack, telegram, …) already have a live
-            // session cookie. Best-effort — if we can't resolve the path
-            // the core treats every provider as logged_out.
-            if let Some(cache_dir) = cef_profile::configured_cache_path_from_env() {
-                let cookies_db = cache_dir.join("Default").join("Cookies");
-                log::debug!("[webview_accounts] exposing cookies DB path to core");
-                std::env::set_var("OPENHUMAN_CEF_COOKIES_DB", &cookies_db);
-            } else {
-                // Clear any inherited value so the core can't pick up a
-                // stale path from a previous run or the parent shell.
-                std::env::remove_var("OPENHUMAN_CEF_COOKIES_DB");
-                log::warn!(
-                    "[webview_accounts] could not resolve configured CEF cache dir — core \
-                     will report all webview providers as logged_out"
-                );
-            }
+            // Cookie databases are implementation-private in the native
+            // WebView runtime and are deliberately not exposed to the core.
+            std::env::remove_var("OPENHUMAN_CEF_COOKIES_DB");
 
             app.manage(core_handle.clone());
             // NOTE: the core is NOT auto-spawned here. The BootCheckGate UI
@@ -3862,7 +3807,6 @@ pub fn run() {
             app_quit,
             restart_app,
             get_active_user_id,
-            schedule_cef_profile_purge,
             register_dictation_hotkey,
             unregister_dictation_hotkey,
             register_ptt_hotkey,

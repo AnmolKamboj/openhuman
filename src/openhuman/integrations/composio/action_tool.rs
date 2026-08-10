@@ -304,8 +304,8 @@ impl Tool for ComposioActionTool {
 
         match res {
             Ok(resp) => {
-                crate::core::event_bus::publish_global(
-                    crate::core::event_bus::DomainEvent::ComposioActionExecuted {
+                crate::core::bus::BUS.publish(
+                    crate::core::events::DomainEvent::ComposioActionExecuted {
                         tool: self.action_name.clone(),
                         success: resp.successful,
                         error: resp.error.clone(),
@@ -336,8 +336,8 @@ impl Tool for ComposioActionTool {
                 Ok(ToolResult::success(body))
             }
             Err(e) => {
-                crate::core::event_bus::publish_global(
-                    crate::core::event_bus::DomainEvent::ComposioActionExecuted {
+                crate::core::bus::BUS.publish(
+                    crate::core::events::DomainEvent::ComposioActionExecuted {
                         tool: self.action_name.clone(),
                         success: false,
                         error: Some(e.to_string()),

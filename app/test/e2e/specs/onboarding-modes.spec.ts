@@ -127,6 +127,21 @@ async function resetOnboardingFlagAndReload(): Promise<void> {
   await triggerAuthDeepLinkBypass('e2e-onboarding-modes');
   await waitForAuthBootstrap(15_000);
   await dismissBootCheckGateIfVisible(8_000);
+  // Auth bootstrap restores the server-side onboarding snapshot, which can
+  // overwrite the pre-auth test flag. Apply the requested state once auth is
+  // settled, then reload so the onboarding gate consumes the new snapshot.
+  const postAuthRes = await callOpenhumanRpc<{ completed: boolean }>(
+    'openhuman.config_set_onboarding_completed',
+    { value: false }
+  );
+  if (!postAuthRes.ok) {
+    throw new Error(
+      `post-auth config.set_onboarding_completed failed: ${JSON.stringify(postAuthRes)}`
+    );
+  }
+  await browser.execute(() => window.location.reload());
+  await waitForAppReady(15_000);
+  await dismissBootCheckGateIfVisible(8_000);
   // Wait for the welcome step to mount before returning.
   const onWelcome = await waitForHash('#/onboarding', 15_000);
   if (!onWelcome) {

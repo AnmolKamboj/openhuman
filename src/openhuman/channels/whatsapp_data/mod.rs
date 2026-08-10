@@ -10,7 +10,7 @@
 //!   store reference this single definition so the two sides never drift.
 //! - [`tools`] — the three read-only agent tools. Their bodies dispatch over
 //!   the in-process native request bus
-//!   (`openhuman_core::core::event_bus::request_native_global`) keyed by
+//!   (`openhuman_core::core::bus::BUS.native().request`) keyed by
 //!   `whatsapp_data.list_chats` / `.list_messages` / `.search_messages`. The
 //!   shell registers the matching handlers at startup.
 //!

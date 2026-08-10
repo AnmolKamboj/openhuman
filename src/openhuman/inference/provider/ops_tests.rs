@@ -1331,10 +1331,13 @@ async fn api_error_monthly_quota_returns_message_via_demoted_branch() {
 /// the credentials subscriber can drive reauth.
 #[tokio::test]
 async fn publish_backend_session_expired_emits_sanitized_session_expired() {
-    use crate::core::event_bus::{global, init_global, DomainEvent};
+    use crate::core::events::DomainEvent;
 
-    init_global(1024);
-    let mut rx = global().expect("event bus initialized").raw_receiver();
+    crate::core::bus::init().await.expect("bus init");
+    let mut rx = crate::core::bus::BUS
+        .get()
+        .expect("event bus initialized")
+        .receiver();
 
     // `TEST_MARKER_A` makes this event distinguishable from the sibling
     // `chat_completions_backend_401_*` test's event on the shared global
@@ -1362,7 +1365,7 @@ async fn publish_backend_session_expired_emits_sanitized_session_expired() {
                 }
             }
             Ok(_) => continue,
-            Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => continue,
+            Err(tinybus::TryRecvError::Lagged(_)) => continue,
             Err(_) => break,
         }
     }

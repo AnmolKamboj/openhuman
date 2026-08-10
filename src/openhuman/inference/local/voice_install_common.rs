@@ -1,4 +1,4 @@
-//! Shared installer plumbing for the local voice stack (Whisper + Piper).
+//! Shared installer plumbing for the local voice stack (Piper TTS).
 //!
 //! Both installers need the same primitives:
 //!
@@ -14,7 +14,7 @@
 //!   same progress UI primitives without inventing a new event-bus channel.
 //!
 //! The Ollama installer fires-and-forgets a single PowerShell / sh block
-//! and lets the OS owner that process. For Whisper and Piper we need
+//! and lets the OS owner that process. For Piper we need
 //! finer-grained progress reporting (the GGML model file alone is up to
 //! 1.6 GB and users absolutely will need a percentage indicator) so the
 //! shared harness here streams the body chunks itself and updates a
@@ -42,9 +42,8 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(1800);
 const CHUNK_IDLE_TIMEOUT: Duration = Duration::from_secs(45);
 use tokio::io::AsyncWriteExt;
 
-/// Stable engine id for status tracking. The two installers register their
-/// progress under these keys; the status RPC reads them back.
-pub const ENGINE_WHISPER: &str = "whisper";
+/// Stable engine id for status tracking. The installer registers its progress
+/// under this key; the status RPC reads it back.
 pub const ENGINE_PIPER: &str = "piper";
 
 /// Lifecycle state for a voice-engine install. Mirrors the state machine
@@ -85,7 +84,7 @@ impl VoiceInstallState {
 /// Snapshot returned over JSON-RPC for one engine's installer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceInstallStatus {
-    /// Stable engine id (`"whisper"` / `"piper"`).
+    /// Stable engine id (today only `"piper"`).
     pub engine: String,
     /// Current state — see [`VoiceInstallState`].
     pub state: VoiceInstallState,
@@ -98,7 +97,7 @@ pub struct VoiceInstallStatus {
     /// chunked transfer encoding).
     pub total_bytes: Option<u64>,
     /// Free-text status line — what file we're downloading, what stage
-    /// we're at. Useful for the UI to show "Downloading whisper-cli…" vs
+    /// we're at. Useful for the UI to show "Downloading piper…" vs
     /// "Downloading ggml-large-v3-turbo.bin…".
     pub stage: Option<String>,
     /// Populated when `state == Error` — the user-facing failure reason.
@@ -137,7 +136,7 @@ pub fn read_status(engine: &str) -> VoiceInstallStatus {
 }
 
 /// Replace the snapshot for `engine`. Internal helper for the installer
-/// flow — exposed at module scope so install_whisper / install_piper can
+/// flow — exposed at module scope so install_piper can
 /// update progress without going through a public setter API.
 pub(crate) fn write_status(status: VoiceInstallStatus) {
     log::debug!(
@@ -491,8 +490,8 @@ mod tests {
     // Engine ids used by the slot tests below. The slot map is keyed by
     // `&'static str`, so we can't use uuid-suffixed names like the
     // status-table tests; we use these dedicated keys instead. Production
-    // engine ids (ENGINE_WHISPER / ENGINE_PIPER) are deliberately avoided
-    // so tests can't deadlock against a real install in another test.
+    // engine ids (ENGINE_PIPER) are deliberately avoided so tests can't
+    // deadlock against a real install in another test.
     const TEST_SLOT_ENGINE_A: &str = "__test_slot_engine_a__";
     const TEST_SLOT_ENGINE_B: &str = "__test_slot_engine_b__";
 
@@ -548,7 +547,7 @@ mod tests {
 
         let slot_a = try_acquire_install_slot(TEST_SLOT_ENGINE_A).expect("A acquire");
         // Holding the A slot must not block the B slot — installs for
-        // whisper and piper run independently.
+        // different engines run independently.
         let slot_b = try_acquire_install_slot(TEST_SLOT_ENGINE_B)
             .expect("B acquire must succeed independently");
         // Acquiring A again must still fail though.

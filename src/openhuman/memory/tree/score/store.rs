@@ -6,15 +6,12 @@ use anyhow::Result;
 use rusqlite::Transaction;
 
 use crate::openhuman::config::Config;
+use crate::openhuman::memory::tinycortex::engine_config;
 
 pub use tinycortex::memory::score::store::{EntityHit, ScoreRow};
 
-fn memory_config(config: &Config) -> tinycortex::memory::MemoryConfig {
-    crate::openhuman::memory::tinycortex::memory_config_from(config, config.workspace_dir.clone())
-}
-
 pub fn upsert_score(config: &Config, row: &ScoreRow) -> Result<()> {
-    tinycortex::memory::score::store::upsert_score(&memory_config(config), row)
+    tinycortex::memory::score::store::upsert_score(&engine_config(config), row)
 }
 
 pub(crate) fn upsert_score_tx(tx: &Transaction<'_>, row: &ScoreRow) -> Result<()> {
@@ -22,11 +19,11 @@ pub(crate) fn upsert_score_tx(tx: &Transaction<'_>, row: &ScoreRow) -> Result<()
 }
 
 pub fn get_score(config: &Config, chunk_id: &str) -> Result<Option<ScoreRow>> {
-    tinycortex::memory::score::store::get_score(&memory_config(config), chunk_id)
+    tinycortex::memory::score::store::get_score(&engine_config(config), chunk_id)
 }
 
 pub fn get_scores_batch(config: &Config, chunk_ids: &[String]) -> Result<HashMap<String, f32>> {
-    tinycortex::memory::score::store::get_scores_batch(&memory_config(config), chunk_ids)
+    tinycortex::memory::score::store::get_scores_batch(&engine_config(config), chunk_ids)
 }
 
 pub use crate::openhuman::memory::store::entities::{
@@ -137,5 +134,5 @@ fn to_store_entity(
 }
 
 pub fn count_scores(config: &Config) -> Result<u64> {
-    tinycortex::memory::score::store::count_scores(&memory_config(config))
+    tinycortex::memory::score::store::count_scores(&engine_config(config))
 }

@@ -1819,6 +1819,10 @@ fn provider_role_override_routes_hint_workloads() {
         "reasoning"
     );
     assert_eq!(
+        provider_role_for_model_override(Some("reasoning-v1")),
+        "reasoning"
+    );
+    assert_eq!(
         provider_role_for_model_override(Some("gpt-4.1-mini")),
         "chat"
     );

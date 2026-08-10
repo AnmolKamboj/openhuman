@@ -5,10 +5,8 @@ import { useT } from '../../../lib/i18n/I18nContext';
 import PttSettingsPanel from '../../../pages/settings/voice/PttSettingsPanel';
 import {
   installPiper,
-  installWhisper,
   piperInstallStatus,
   type VoiceInstallStatus,
-  whisperInstallStatus,
 } from '../../../services/api/voiceInstallApi';
 import {
   clearVoiceProviderKey,
@@ -70,10 +68,8 @@ const BUILTIN_VOICE_PROVIDER_META: Record<
   },
 };
 
-/** Local provider (Whisper/Piper) chip tone — no API key required. */
-const LOCAL_VOICE_PROVIDER_TONE: Record<'whisper' | 'piper', string> = {
-  whisper:
-    'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-700',
+/** Local provider (Piper) chip tone — no API key required. */
+const LOCAL_VOICE_PROVIDER_TONE: Record<'piper', string> = {
   piper:
     'bg-teal-50 text-teal-700 ring-teal-200 dark:bg-teal-900/30 dark:text-teal-300 dark:ring-teal-700',
 };
@@ -120,13 +116,10 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
   const [savedTtsProvider, setSavedTtsProvider] = useState<string>('');
   const [isSavingRouting, setIsSavingRouting] = useState(false);
   const [isUpdatingAlwaysOn, setIsUpdatingAlwaysOn] = useState(false);
-  const [sttModel, setSttModel] = useState<string>('');
   const [ttsVoice, setTtsVoice] = useState<string>('');
   const [elevenlabsVoiceId, setElevenlabsVoiceId] = useState<string>('JBFqnCBsd6RMkjVDRZzb');
   const [isSavingProviders, setIsSavingProviders] = useState(false);
-  const [whisperInstall, setWhisperInstall] = useState<VoiceInstallStatus | null>(null);
   const [piperInstall, setPiperInstall] = useState<VoiceInstallStatus | null>(null);
-  const [isInstallingWhisper, setIsInstallingWhisper] = useState(false);
   const [isInstallingPiper, setIsInstallingPiper] = useState(false);
   const [, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -169,23 +162,17 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
 
   const loadData = async (forceSettings = false) => {
     try {
-      const [settingsResponse, voiceResponse, whisperStatusResponse, piperStatusResponse] =
-        await Promise.all([
-          openhumanGetVoiceServerSettings(),
-          openhumanVoiceStatus(),
-          whisperInstallStatus().catch(err => {
-            // Status polls happen on a 2s loop; a single transient error
-            // shouldn't blow up the entire settings panel. Log + keep the
-            // previous snapshot.
-            log('[voice-install:whisper] status poll failed %o', err);
-            return null;
-          }),
-          piperInstallStatus().catch(err => {
-            log('[voice-install:piper] status poll failed %o', err);
-            return null;
-          }),
-        ]);
-      if (whisperStatusResponse) setWhisperInstall(whisperStatusResponse);
+      const [settingsResponse, voiceResponse, piperStatusResponse] = await Promise.all([
+        openhumanGetVoiceServerSettings(),
+        openhumanVoiceStatus(),
+        piperInstallStatus().catch(err => {
+          // Status polls happen on a 2s loop; a single transient error
+          // shouldn't blow up the entire settings panel. Log + keep the
+          // previous snapshot.
+          log('[voice-install:piper] status poll failed %o', err);
+          return null;
+        }),
+      ]);
       if (piperStatusResponse) setPiperInstall(piperStatusResponse);
       const currentSettings = settingsRef.current;
       const currentSavedSettings = savedSettingsRef.current;
@@ -198,10 +185,9 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
       }
       setSavedSettings(settingsResponse.result);
       setVoiceStatus(voiceResponse);
-      // Seed model/voice IDs from voice_status on first load only.
-      if (voiceResponse.stt_model_id) {
-        setSttModel(prev => prev || voiceResponse.stt_model_id);
-      }
+      // Seed the voice id from voice_status on first load only. There is no
+      // STT counterpart: the model id belongs to whichever hosted engine is
+      // selected and comes from its `voice_providers` entry.
       if (voiceResponse.tts_voice_id) {
         setTtsVoice(prev => prev || voiceResponse.tts_voice_id);
       }
@@ -217,7 +203,11 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
           const slugs = new Set(vs.voiceProviders.map(p => p.slug));
           const sttStr =
             vs.sttProvider.kind === 'cloud'
-              ? 'cloud'
+              ? // `cloud` is a routing sentinel: it delegates to the configured
+                // engine, which voice_status reports after resolving it. Seed the
+                // selector with that effective engine so Settings does not claim
+                // the backend proxy is in use when a hosted BYOK engine is.
+                voiceResponse.stt_engine || 'cloud'
               : vs.sttProvider.kind === 'local'
                 ? vs.sttProvider.engine
                 : slugs.has(vs.sttProvider.providerSlug)
@@ -238,10 +228,10 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
         })
         .catch(err => {
           log('[VoicePanel] voice settings load failed (expected on older cores) %o', err);
-          // Fallback: seed from legacy voice_status
-          if (voiceResponse.stt_provider) {
-            const seeded = voiceResponse.stt_provider === 'whisper' ? 'whisper' : 'cloud';
-            setSttProvider(prev => prev || seeded);
+          // Fallback: seed from voice_status, which already reports the
+          // resolved routing string for the selected STT engine.
+          if (voiceResponse.stt_engine) {
+            setSttProvider(prev => prev || voiceResponse.stt_engine);
           }
           if (voiceResponse.tts_provider) {
             const seeded = voiceResponse.tts_provider === 'piper' ? 'piper' : 'cloud';
@@ -261,51 +251,39 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
     void loadData(true);
   }, []);
 
-  const shouldPollWhisperInstall = whisperInstall?.state === 'installing';
   const shouldPollPiperInstall = piperInstall?.state === 'installing';
 
   useEffect(() => {
-    if (!shouldPollWhisperInstall && !shouldPollPiperInstall) return;
+    if (!shouldPollPiperInstall) return;
 
     let cancelled = false;
     let inFlight = false;
-    const pollInstallStatuses = async () => {
+    const pollInstallStatus = async () => {
       if (inFlight) return;
       inFlight = true;
       try {
-        const [nextWhisperStatus, nextPiperStatus] = await Promise.all([
-          shouldPollWhisperInstall
-            ? whisperInstallStatus().catch(err => {
-                log('[voice-install:whisper] status poll failed %o', err);
-                return null;
-              })
-            : Promise.resolve(null),
-          shouldPollPiperInstall
-            ? piperInstallStatus().catch(err => {
-                log('[voice-install:piper] status poll failed %o', err);
-                return null;
-              })
-            : Promise.resolve(null),
-        ]);
+        const nextPiperStatus = await piperInstallStatus().catch(err => {
+          log('[voice-install:piper] status poll failed %o', err);
+          return null;
+        });
 
         if (cancelled) return;
-        if (nextWhisperStatus) setWhisperInstall(nextWhisperStatus);
         if (nextPiperStatus) setPiperInstall(nextPiperStatus);
       } finally {
         inFlight = false;
       }
     };
 
-    void pollInstallStatuses();
+    void pollInstallStatus();
     const intervalId = window.setInterval(() => {
-      void pollInstallStatuses();
+      void pollInstallStatus();
     }, LOCAL_INSTALL_STATUS_POLL_MS);
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [shouldPollWhisperInstall, shouldPollPiperInstall]);
+  }, [shouldPollPiperInstall]);
 
   const persistProviders = async (
     update: Partial<VoiceProvidersSnapshot> & {
@@ -425,7 +403,12 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
           endpoint: BUILTIN_ENDPOINTS[slug] ?? '',
           auth_style: 'bearer',
           capability: meta?.capability ?? 'both',
-          stt_api_style: slug === 'deepgram' ? 'deepgram' : 'openai_audio',
+          stt_api_style:
+            slug === 'deepgram'
+              ? 'deepgram'
+              : slug === 'elevenlabs'
+                ? 'elevenlabs'
+                : 'openai_audio',
           tts_api_style: slug === 'elevenlabs' ? 'elevenlabs' : 'openai_audio',
           default_stt_model:
             slug === 'deepgram'
@@ -487,7 +470,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
   // Mascot voice picker moved to MascotPanel — see
   // `app/src/components/settings/panels/MascotPanel.tsx`. The voice id,
   // gender, and locale-default toggle all live in `mascotSlice`; this
-  // panel only handles Piper / Whisper / dictation now.
+  // panel only handles Piper / dictation now.
 
   /**
    * Map an install status snapshot to a button label. Single source of
@@ -497,7 +480,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
   const installButtonLabel = (
     status: VoiceInstallStatus | null,
     busy: boolean,
-    _engine: 'Whisper' | 'Piper'
+    _engine: 'Piper'
   ): string => {
     // Render based on the remote status — the install RPC is fire-and-forget,
     // so the local `busy` flag only covers the brief moment between click and
@@ -539,30 +522,6 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
     return 'text-content-muted';
   };
 
-  const handleInstallWhisper = async () => {
-    setIsInstallingWhisper(true);
-    setError(null);
-    setNotice(null);
-    try {
-      const force = whisperInstall?.state === 'installed';
-      log('[voice-install:whisper] install click force=%s', force);
-      const result = await installWhisper({ modelSize: sttModel || undefined, force });
-      setWhisperInstall(result);
-      setNotice(
-        result.state === 'installed'
-          ? t('voice.providers.whisperReady')
-          : `${t('voice.providers.whisperInstallStarted')} (${result.stage ?? t('voice.providers.queued')})`
-      );
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : t('voice.providers.failedToInstallWhisper');
-      setError(message);
-    } finally {
-      setIsInstallingWhisper(false);
-      await loadData(false);
-    }
-  };
-
   const handleInstallPiper = async () => {
     setIsInstallingPiper(true);
     setError(null);
@@ -587,20 +546,15 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
     }
   };
 
-  const whisperReady =
-    whisperInstall?.state !== 'installing' &&
-    (whisperInstall?.state === 'installed' || Boolean(voiceStatus?.stt_available));
   const piperReady =
     piperInstall?.state !== 'installing' &&
     (piperInstall?.state === 'installed' || Boolean(voiceStatus?.tts_available));
-  const pendingLocalProviderReady =
-    pendingKeySlug === 'whisper' ? whisperReady : pendingKeySlug === 'piper' ? piperReady : true;
+  const pendingLocalProviderReady = pendingKeySlug === 'piper' ? piperReady : true;
 
-  // A local engine must finish downloading before its Test button does
-  // anything useful — exercising an un-installed Whisper/Piper just errors
-  // out on a missing model/binary. Cloud + external providers carry no
-  // local artifact, so they are never gated here.
-  const sttTestBlockedByInstall = sttProvider === 'whisper' && !whisperReady;
+  // Piper must finish downloading before its Test button does anything useful
+  // — exercising an un-installed engine just errors out on a missing binary or
+  // voice file. STT has no local artifact at all now (every engine is a hosted
+  // HTTP call), so its Test button is never gated on an install.
   const ttsTestBlockedByInstall = ttsProvider === 'piper' && !piperReady;
 
   return (
@@ -671,54 +625,10 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                 </button>
               </div>
 
-              {/* Whisper — local STT, no API key required. Chip opens the
-                  install/enable modal (which calls voice_install_whisper and
-                  then voice_update_provider_settings on Enable). Toggling
-                  off routes STT back to the managed cloud provider. */}
-              {(() => {
-                const tone = LOCAL_VOICE_PROVIDER_TONE.whisper;
-                const enabled = sttProvider === 'whisper';
-                return (
-                  <div
-                    className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors ${tone}`}>
-                    <span>{t('voice.providers.chip.whisper')}</span>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={enabled}
-                      data-testid="voice-provider-chip-whisper"
-                      aria-label={
-                        enabled
-                          ? `${t('voice.providers.chip.disableProvider')} ${t('voice.providers.chip.whisper')}`
-                          : `${t('voice.providers.chip.enableProvider')} ${t('voice.providers.chip.whisper')}`
-                      }
-                      // Stay disabled for the full install window: the
-                      // local RPC kickoff (`isInstallingWhisper`) ends as
-                      // soon as the start call returns, but the install
-                      // itself continues until `voice_install_status`
-                      // reports `installed` / `error`. Combining both
-                      // signals prevents routing edits mid-install.
-                      disabled={isInstallingWhisper || whisperInstall?.state === 'installing'}
-                      onClick={() => {
-                        if (enabled) {
-                          onSttProviderChange('cloud');
-                        } else {
-                          setPendingKeySlug('whisper');
-                          setPendingKeyValue('');
-                        }
-                      }}
-                      className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${enabled ? 'bg-primary-500' : 'bg-surface-strong'}`}>
-                      <span
-                        aria-hidden
-                        className={`inline-block h-3 w-3 transform rounded-full bg-surface shadow transition-transform ${enabled ? 'translate-x-3.5' : 'translate-x-0.5'}`}
-                      />
-                    </button>
-                  </div>
-                );
-              })()}
-
-              {/* Piper — local TTS, no API key required. Same chip flow as
-                  Whisper above; targets the TTS routing slot. */}
+              {/* Piper — local TTS, no API key required. The chip opens the
+                  install/enable modal (which calls inference_install_piper and
+                  then voice_update_provider_settings on Enable). Toggling off
+                  routes TTS back to the managed cloud provider. */}
               {(() => {
                 const tone = LOCAL_VOICE_PROVIDER_TONE.piper;
                 const enabled = ttsProvider === 'piper';
@@ -736,7 +646,12 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                           ? `${t('voice.providers.chip.disableProvider')} ${t('voice.providers.chip.piper')}`
                           : `${t('voice.providers.chip.enableProvider')} ${t('voice.providers.chip.piper')}`
                       }
-                      // Same install-window guard as the Whisper chip.
+                      // Stay disabled for the full install window: the local
+                      // RPC kickoff (`isInstallingPiper`) ends as soon as the
+                      // start call returns, but the install itself continues
+                      // until the status RPC reports `installed` / `error`.
+                      // Combining both signals prevents routing edits
+                      // mid-install.
                       disabled={isInstallingPiper || piperInstall?.state === 'installing'}
                       onClick={() => {
                         if (enabled) {
@@ -831,42 +746,15 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
             }}
             data-testid="voice-provider-key-modal">
             <div className="w-full max-w-md rounded-2xl border border-line dark:border-line-strong bg-surface shadow-xl p-6 space-y-4">
-              {pendingKeySlug === 'whisper' || pendingKeySlug === 'piper' ? (
-                /* ── Local provider modal (Whisper / Piper) ──────────── */
+              {pendingKeySlug === 'piper' ? (
+                /* ── Local provider modal (Piper) ────────────────────── */
                 <>
                   <div>
                     <h3 className="text-base font-semibold text-content">
-                      {t('voice.modal.title')}{' '}
-                      {pendingKeySlug === 'whisper'
-                        ? t('voice.providers.chip.whisper')
-                        : t('voice.providers.chip.piper')}
+                      {t('voice.modal.title')} {t('voice.providers.chip.piper')}
                     </h3>
-                    <p className="text-xs text-content-muted mt-1">
-                      {pendingKeySlug === 'whisper'
-                        ? t('voice.modal.whisperDesc')
-                        : t('voice.modal.piperDesc')}
-                    </p>
+                    <p className="text-xs text-content-muted mt-1">{t('voice.modal.piperDesc')}</p>
                   </div>
-
-                  {pendingKeySlug === 'whisper' && (
-                    <label className="block space-y-1">
-                      <span className="text-xs font-medium text-content-muted dark:text-content-secondary">
-                        {t('voice.providers.whisperModel')}
-                      </span>
-                      <SettingsSelect
-                        value={sttModel || 'medium'}
-                        onChange={e => setSttModel(e.target.value)}
-                        className="w-full">
-                        <option value="tiny">{t('voice.providers.whisperModelTiny')}</option>
-                        <option value="base">{t('voice.providers.whisperModelBase')}</option>
-                        <option value="small">{t('voice.providers.whisperModelSmall')}</option>
-                        <option value="medium">{t('voice.providers.whisperModelMedium')}</option>
-                        <option value="whisper-large-v3-turbo">
-                          {t('voice.providers.whisperModelLargeTurbo')}
-                        </option>
-                      </SettingsSelect>
-                    </label>
-                  )}
 
                   {pendingKeySlug === 'piper' && (
                     <label className="block space-y-1">
@@ -892,23 +780,6 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                   )}
 
                   {/* Install status */}
-                  {pendingKeySlug === 'whisper' && (
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant={whisperReady ? 'secondary' : 'primary'}
-                        size="xs"
-                        onClick={() => void handleInstallWhisper()}
-                        disabled={isInstallingWhisper || whisperInstall?.state === 'installing'}>
-                        {installButtonLabel(whisperInstall, isInstallingWhisper, 'Whisper')}
-                      </Button>
-                      <span
-                        className={`text-[11px] ${installStatusClassName(whisperInstall, whisperReady)}`}>
-                        {installStatusText(whisperInstall, whisperReady)}
-                      </span>
-                    </div>
-                  )}
-
                   {pendingKeySlug === 'piper' && (
                     <div className="flex items-center gap-2">
                       <Button
@@ -943,13 +814,8 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                       size="xs"
                       onClick={() => {
                         if (!pendingLocalProviderReady) return;
-                        if (pendingKeySlug === 'whisper') {
-                          onSttProviderChange('whisper');
-                          if (sttModel) void persistProviders({ stt_model: sttModel });
-                        } else {
-                          onTtsProviderChange('piper');
-                          if (ttsVoice) void persistProviders({ tts_voice: ttsVoice });
-                        }
+                        onTtsProviderChange('piper');
+                        if (ttsVoice) void persistProviders({ tts_voice: ttsVoice });
                         setPendingKeySlug(null);
                         setKeyTestResult(null);
                       }}
@@ -1087,12 +953,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                       disabled={isSavingProviders}
                       onChange={e => onSttProviderChange(e.target.value)}
                       className="w-full">
-                      <option value="cloud">{t('voice.providers.cloudWhisperProxy')}</option>
-                      {/* Whisper only shown when enabled */}
-                      {(sttProvider === 'whisper' ||
-                        (voiceSettings?.voiceProviders ?? []).some(p => p.slug === 'whisper')) && (
-                        <option value="whisper">{t('voice.providers.localWhisper')}</option>
-                      )}
+                      <option value="cloud">{t('voice.providers.backendSttProxy')}</option>
                       {/* External providers that support STT */}
                       {sttExternalProviders.map(p => (
                         <option key={p.slug} value={p.slug}>
@@ -1108,10 +969,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                       variant="secondary"
                       size="xs"
                       data-testid="test-stt-button"
-                      disabled={isTestingStt || !sttProvider || sttTestBlockedByInstall}
-                      title={
-                        sttTestBlockedByInstall ? t('voice.providers.notInstalled') : undefined
-                      }
+                      disabled={isTestingStt || !sttProvider}
                       onClick={async () => {
                         setIsTestingStt(true);
                         setSttTestResult(null);
@@ -1140,34 +998,6 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                       </span>
                     )}
                   </div>
-
-                  {/* Whisper model picker — shown when Whisper is selected */}
-                  {sttProvider === 'whisper' && (
-                    <label className="block space-y-1">
-                      <span className="text-xs font-medium text-content-muted dark:text-content-secondary">
-                        {t('voice.providers.whisperModel')}
-                      </span>
-                      <SettingsSelect
-                        aria-label={t('voice.providers.whisperModelAria')}
-                        data-testid="stt-model-select"
-                        value={sttModel || 'medium'}
-                        disabled={isSavingProviders}
-                        onChange={e => {
-                          const nextModel = e.target.value;
-                          setSttModel(nextModel);
-                          void persistProviders({ stt_model: nextModel });
-                        }}
-                        className="w-full">
-                        <option value="tiny">{t('voice.providers.whisperModelTiny')}</option>
-                        <option value="base">{t('voice.providers.whisperModelBase')}</option>
-                        <option value="small">{t('voice.providers.whisperModelSmall')}</option>
-                        <option value="medium">{t('voice.providers.whisperModelMedium')}</option>
-                        <option value="whisper-large-v3-turbo">
-                          {t('voice.providers.whisperModelLargeTurbo')}
-                        </option>
-                      </SettingsSelect>
-                    </label>
-                  )}
                 </div>
 
                 {/* TTS routing */}

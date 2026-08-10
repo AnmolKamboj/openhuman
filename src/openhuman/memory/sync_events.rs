@@ -16,9 +16,10 @@ use std::sync::{Arc, OnceLock};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::core::event_bus::{
-    publish_global, subscribe_global, DomainEvent, EventHandler, SubscriptionHandle,
-};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 
 /// Why a sync run was requested.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,7 +87,7 @@ pub fn emit_sync_stage(
         connection_id,
         source_id
     );
-    publish_global(DomainEvent::MemorySyncStageChanged {
+    BUS.publish(DomainEvent::MemorySyncStageChanged {
         trigger: trigger.as_str().to_string(),
         stage: stage.as_str().to_string(),
         provider: provider.map(str::to_string),
@@ -133,7 +134,7 @@ pub fn register_sync_stage_bridge(config: &crate::openhuman::config::Config) {
     if MEMORY_SYNC_FRONTEND_HANDLE.get().is_some() {
         return;
     }
-    match subscribe_global(Arc::new(MemorySyncStageBridge)) {
+    match BUS.subscribe(Arc::new(MemorySyncStageBridge)) {
         Some(handle) => {
             let _ = MEMORY_SYNC_FRONTEND_HANDLE.set(handle);
             log::debug!("[event_bus] memory sync stage bridge registered");
@@ -149,7 +150,7 @@ pub fn register_sync_stage_bridge(config: &crate::openhuman::config::Config) {
     // inline — the backfill pass picks up all un-embedded chunks in large
     // batches (up to 1000 items per API call).
     if MEMORY_SYNC_EMBED_HANDLE.get().is_none() {
-        if let Some(handle) = subscribe_global(Arc::new(SyncCompleteEmbedTrigger {
+        if let Some(handle) = BUS.subscribe(Arc::new(SyncCompleteEmbedTrigger {
             config: config.clone(),
         })) {
             let _ = MEMORY_SYNC_EMBED_HANDLE.set(handle);
@@ -166,7 +167,7 @@ struct SyncCompleteEmbedTrigger {
 }
 
 #[async_trait]
-impl EventHandler for SyncCompleteEmbedTrigger {
+impl EventHandler<DomainEvent> for SyncCompleteEmbedTrigger {
     fn name(&self) -> &str {
         "memory::sync_complete_embed_trigger"
     }
@@ -188,7 +189,7 @@ impl EventHandler for SyncCompleteEmbedTrigger {
 struct MemorySyncStageBridge;
 
 #[async_trait]
-impl EventHandler for MemorySyncStageBridge {
+impl EventHandler<DomainEvent> for MemorySyncStageBridge {
     fn name(&self) -> &str {
         "memory::sync_stage_bridge"
     }
@@ -269,7 +270,7 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex, OnceLock};
 
-    use crate::core::event_bus::{self, init_global, subscribe_global};
+    use crate::core::bus::BUS;
 
     fn test_mutex() -> &'static std::sync::Mutex<()> {
         static LOCK: OnceLock<std::sync::Mutex<()>> = OnceLock::new();
@@ -282,7 +283,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl EventHandler for StageCollector {
+    impl EventHandler<DomainEvent> for StageCollector {
         fn name(&self) -> &str {
             "memory::sync::tests::stage_collector"
         }
@@ -303,11 +304,12 @@ mod tests {
         let _guard = test_mutex()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        init_global(event_bus::DEFAULT_CAPACITY);
+        crate::core::bus::init().await.expect("bus init");
 
         let collector = StageCollector::default();
-        let _subscription =
-            subscribe_global(Arc::new(collector.clone())).expect("event bus initialized");
+        let _subscription = BUS
+            .subscribe(Arc::new(collector.clone()))
+            .expect("event bus initialized");
 
         let bridge = MemorySyncStageBridge;
         bridge
@@ -342,11 +344,12 @@ mod tests {
         let _guard = test_mutex()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        init_global(event_bus::DEFAULT_CAPACITY);
+        crate::core::bus::init().await.expect("bus init");
 
         let collector = StageCollector::default();
-        let _subscription =
-            subscribe_global(Arc::new(collector.clone())).expect("event bus initialized");
+        let _subscription = BUS
+            .subscribe(Arc::new(collector.clone()))
+            .expect("event bus initialized");
 
         let bridge = MemorySyncStageBridge;
         bridge
@@ -433,11 +436,12 @@ mod tests {
         let _guard = test_mutex()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        init_global(event_bus::DEFAULT_CAPACITY);
+        crate::core::bus::init().await.expect("bus init");
 
         let collector = StageCollector::default();
-        let _subscription =
-            subscribe_global(Arc::new(collector.clone())).expect("event bus initialized");
+        let _subscription = BUS
+            .subscribe(Arc::new(collector.clone()))
+            .expect("event bus initialized");
 
         let bridge = MemorySyncStageBridge;
         bridge
@@ -481,11 +485,12 @@ mod tests {
         let _guard = test_mutex()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        init_global(event_bus::DEFAULT_CAPACITY);
+        crate::core::bus::init().await.expect("bus init");
 
         let collector = StageCollector::default();
-        let _subscription =
-            subscribe_global(Arc::new(collector.clone())).expect("event bus initialized");
+        let _subscription = BUS
+            .subscribe(Arc::new(collector.clone()))
+            .expect("event bus initialized");
 
         let bridge = MemorySyncStageBridge;
         // Non-memory-source sync (e.g. Slack channel sync) should have source_id=None
@@ -528,11 +533,12 @@ mod tests {
         let _guard = test_mutex()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        init_global(event_bus::DEFAULT_CAPACITY);
+        crate::core::bus::init().await.expect("bus init");
 
         let collector = StageCollector::default();
-        let _subscription =
-            subscribe_global(Arc::new(collector.clone())).expect("event bus initialized");
+        let _subscription = BUS
+            .subscribe(Arc::new(collector.clone()))
+            .expect("event bus initialized");
 
         let bridge = MemorySyncStageBridge;
         bridge
@@ -581,11 +587,12 @@ mod tests {
         let _guard = test_mutex()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        init_global(event_bus::DEFAULT_CAPACITY);
+        crate::core::bus::init().await.expect("bus init");
 
         let collector = StageCollector::default();
-        let _subscription =
-            subscribe_global(Arc::new(collector.clone())).expect("event bus initialized");
+        let _subscription = BUS
+            .subscribe(Arc::new(collector.clone()))
+            .expect("event bus initialized");
 
         let bridge = MemorySyncStageBridge;
         // Non-memory-source ingestion (plain document_id, no mem_src prefix)

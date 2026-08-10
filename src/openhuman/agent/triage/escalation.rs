@@ -384,7 +384,7 @@ async fn gate_linked_card_terminal(envelope: &TriggerEnvelope, decision: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::event_bus::{init_global, DomainEvent};
+    use crate::core::events::DomainEvent;
     use crate::openhuman::agent::harness::definition::AgentDefinitionRegistry;
     use serde_json::json;
     use tokio::time::{sleep, timeout, Duration};
@@ -495,7 +495,7 @@ mod tests {
     async fn apply_decision_drop_only_publishes_evaluated() {
         let _events_guard = test_events_guard().await;
         let envelope = envelope("esc-drop");
-        let _ = init_global(32);
+        crate::core::bus::init().await.expect("bus init");
         let collect = tokio::spawn(collect_trigger_events_until("esc-drop", |events| {
             events.iter().any(|event| {
                 matches!(
@@ -534,7 +534,7 @@ mod tests {
     async fn apply_decision_acknowledge_only_publishes_evaluated() {
         let _events_guard = test_events_guard().await;
         let envelope = envelope("esc-ack");
-        let _ = init_global(32);
+        crate::core::bus::init().await.expect("bus init");
         let collect = tokio::spawn(collect_trigger_events_until("esc-ack", |events| {
             events.iter().any(|event| {
                 matches!(
@@ -595,7 +595,7 @@ mod tests {
         use crate::openhuman::threads::todos::ops;
 
         let _events_guard = test_events_guard().await;
-        let _ = init_global(32);
+        crate::core::bus::init().await.expect("bus init");
         let (_dir, location, card_id) = seed_task_card().await;
 
         let envelope = envelope("esc-drop-card").with_task_card(card_id.clone(), location.clone());
@@ -623,7 +623,7 @@ mod tests {
         use crate::openhuman::threads::todos::ops;
 
         let _events_guard = test_events_guard().await;
-        let _ = init_global(32);
+        crate::core::bus::init().await.expect("bus init");
         let (_dir, location, card_id) = seed_task_card().await;
 
         let envelope = envelope("esc-ack-card").with_task_card(card_id.clone(), location.clone());
@@ -645,7 +645,7 @@ mod tests {
     async fn apply_decision_react_failure_publishes_failed_event() {
         let _events_guard = test_events_guard().await;
         let envelope = envelope("esc-react-fail");
-        let _ = init_global(32);
+        crate::core::bus::init().await.expect("bus init");
         let _ = AgentDefinitionRegistry::init_global_builtins();
         let missing_target = format!("missing-agent-{}", uuid::Uuid::new_v4());
         let collect = tokio::spawn(collect_trigger_events_until("esc-react-fail", |events| {
@@ -696,7 +696,7 @@ mod tests {
     async fn apply_decision_escalate_failure_publishes_failed_event() {
         let _events_guard = test_events_guard().await;
         let envelope = envelope("esc-escalate-fail");
-        let _ = init_global(32);
+        crate::core::bus::init().await.expect("bus init");
         let _ = AgentDefinitionRegistry::init_global_builtins();
         let missing_target = format!("missing-agent-{}", uuid::Uuid::new_v4());
         let collect = tokio::spawn(collect_trigger_events_until(

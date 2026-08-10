@@ -420,39 +420,35 @@ mod tests {
 
     /// An AgentId entry whose target carries a `delegate_name` override
     /// must surface that override as the synthesised tool name — the
-    /// orchestrator LLM sees `do_prediction_markets`, not
-    /// `delegate_markets_agent`. Mirrors the existing
-    /// `crypto_agent → do_crypto` precedent (#1397) for the new
-    /// `markets_agent → do_prediction_markets` slot from #2427.
+    /// orchestrator LLM sees the override, not the default
+    /// `delegate_<agent_id>` shape. Mirrors the existing
+    /// `crypto_agent → do_crypto` precedent (#1397).
     #[test]
-    fn markets_agent_subagent_synthesises_do_prediction_markets_delegate() {
+    fn subagent_with_delegate_name_override_synthesises_the_override_name() {
         let mut orch = def("orchestrator", "test", None);
-        orch.subagents = vec![SubagentEntry::AgentId("markets_agent".into())];
+        orch.subagents = vec![SubagentEntry::AgentId("custom_agent".into())];
         let mut reg = registry_with_targets();
         reg.insert(def(
-            "markets_agent",
-            "Prediction-market & event-contract trading specialist — drives Polymarket and Kalshi.",
-            Some("do_prediction_markets"),
+            "custom_agent",
+            "Specialist worker for a bespoke domain.",
+            Some("do_custom"),
         ));
         let tools = collect_orchestrator_tools(&orch, &reg, &[]);
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert_eq!(
             names,
-            vec!["do_prediction_markets"],
-            "markets_agent subagent entry must synthesise a tool named after its \
-             `delegate_name` override (`do_prediction_markets`), not the default \
-             `delegate_markets_agent`"
+            vec!["do_custom"],
+            "custom_agent subagent entry must synthesise a tool named after its \
+             `delegate_name` override (`do_custom`), not the default \
+             `delegate_custom_agent`"
         );
         // Description must come from the target's `when_to_use` blurb so
-        // the orchestrator's LLM has venue-specific routing signal.
-        let tool = tools
-            .iter()
-            .find(|t| t.name() == "do_prediction_markets")
-            .unwrap();
+        // the orchestrator's LLM has domain-specific routing signal.
+        let tool = tools.iter().find(|t| t.name() == "do_custom").unwrap();
         assert!(
-            tool.description().contains("Polymarket") || tool.description().contains("Kalshi"),
-            "synthesised tool description must surface the venue blurb so the LLM \
-            can route prediction-market intents to it"
+            tool.description().contains("bespoke domain"),
+            "synthesised tool description must surface the target's blurb so the LLM \
+            can route intents to it"
         );
     }
 

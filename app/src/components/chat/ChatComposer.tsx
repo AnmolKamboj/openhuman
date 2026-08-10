@@ -74,6 +74,13 @@ export interface ChatComposerProps {
    * Entries that render `null` contribute nothing.
    */
   headerSlots?: React.ReactNode[];
+  /**
+   * Optional node anchored to the input box itself (not to `headerSlots`) so it
+   * can stand on the box's top edge. The merged chat surface passes its mascot
+   * dock here; surfaces without a mascot (Workflow Copilot, embedded sidebars)
+   * omit it and render exactly as before.
+   */
+  mascotDock?: React.ReactNode;
 }
 
 /**
@@ -105,6 +112,7 @@ export default function ChatComposer({
   micEnabled = true,
   placeholder,
   headerSlots = [],
+  mascotDock,
 }: ChatComposerProps) {
   const { t } = useT();
   const [isDragging, setIsDragging] = useState(false);
@@ -221,6 +229,10 @@ export default function ChatComposer({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}>
+        {/* Anchored to the input box (not the header stack) so it stands on the
+            box's top edge regardless of whether follow-ups / the goal editor
+            are open above it. */}
+        {mascotDock}
         {/* Drag-and-drop overlay: shown while a file drag hovers the composer. */}
         {isDragging && (
           <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary-500 bg-surface/90 text-sm font-medium text-primary-600">

@@ -11,16 +11,16 @@
 //! - [`atomic`]  — tempfile+fsync+rename writes; SHA-256; `stage_summary`
 //! - [`read`]    — read + SHA-256 verification + `split_front_matter`; summary variants
 //! - [`tags`]    — `update_chunk_tags` + `update_summary_tags` + slugifiers
+//! - `obsidian` / `obsidian_registry` / `wiki_git` — on-disk content formats,
+//!   owned by TinyCortex and re-exported here (see the `pub use` below)
 
-pub mod obsidian;
-pub mod obsidian_registry;
 pub mod read;
 pub mod tags;
-pub mod wiki_git;
 
 pub use tinycortex::memory::chunks::StagedChunk;
 pub use tinycortex::memory::store::content::{
-    atomic, compose, paths, raw, stage_chunks, StagedSummary, SummaryComposeInput, SummaryTreeKind,
+    atomic, compose, obsidian, obsidian_registry, paths, raw, stage_chunks, wiki_git,
+    StagedSummary, SummaryComposeInput, SummaryTreeKind,
 };
 
 /// Update the `tags:` block in a summary's on-disk `.md` file after an

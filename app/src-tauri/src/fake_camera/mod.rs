@@ -39,6 +39,7 @@ const MASCOT_SVG: &str = include_str!("mascot.svg");
 /// can decide whether to skip the fake-camera flag and let the user
 /// see the default "no camera" path. We do **not** panic — a missing
 /// fake camera is degraded but not fatal.
+#[allow(dead_code)] // CEF startup is disabled; retained with its unit-tested helpers for a future supported camera path.
 pub fn ensure_mascot_y4m(data_dir: &Path) -> Result<PathBuf, String> {
     let cache_dir = data_dir.join("cache").join("fake_camera");
     fs::create_dir_all(&cache_dir).map_err(|e| format!("create cache dir: {e}"))?;

@@ -124,6 +124,17 @@ The one exception is the **CLI**, which keeps its subcommand arm and reports a *
 ("memory driver `supermemory` does not support tree summarisation") — same reasoning as the
 retained `mcp` and `tui` CLI arms.
 
+Implemented for memory at the CLI boundary. `core::cli_capability` resolves the bound driver
+directly — no CLI subcommand except `run`/`serve` builds a `CoreContext`, so the ambient
+`capability_allowed` gate would always default open — and `core::all::capability_for_parts` /
+`sole_capability_for_namespace` supply the **unfiltered** lookup that tells "no such command"
+apart from "gated", which every filtered lookup has already collapsed into one absence. Both CLI
+paths are covered: the generic `openhuman <namespace> <function>` dispatcher and the hand-written
+`openhuman memory <sub>` adapter. `core::dispatch` is deliberately untouched — it is the shared
+`/rpc` path, where the absence rule above still holds. A genuinely unknown command still reports
+unknown namespace / function / subcommand; collapsing the two would make real typos harder to
+diagnose.
+
 ### 3.4 Policy is kernel-side and non-bypassable
 
 Every subsystem call from product code goes through a kernel-owned **guard decorator**, never to
@@ -194,7 +205,7 @@ silent).
 > **Feature-forwarding gate applies.** Any new default-ON gate (e.g. `memory-embedded`) must be
 > added to `app/src-tauri/Cargo.toml`'s explicit feature list — the shell sets
 > `default-features = false`. `scripts/ci/check-feature-forwarding.mjs` enforces this; the `voice`
-> and `tokenjuice-treesitter` incidents are why.
+> incident is why.
 
 ---
 

@@ -1,4 +1,5 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
+import debug from 'debug';
 import { REHYDRATE } from 'redux-persist';
 
 import {
@@ -9,6 +10,8 @@ import type { MascotColor } from '../features/human/Mascot/mascotPalette';
 import type { Locale } from '../lib/i18n/types';
 import { MASCOT_VOICE_ID } from '../utils/config';
 import { resetUserScopedState } from './resetActions';
+
+const mascotLog = debug('mascot:slice');
 
 export const SUPPORTED_MASCOT_COLORS: readonly MascotColor[] = [
   'yellow',
@@ -233,7 +236,43 @@ interface MascotState {
   customPrimaryColor: string;
   customSecondaryColor: string;
   /**
-   * Which voice-chat implementation the Human tab uses (#5399). `classic` is
+   * Whether the chat surface's mascot is scaled up into its right-hand voice
+   * stage (`true`) or docked as the small figure standing on the composer
+   * (`false`). Persisted so the user's choice survives a reload — the merged
+   * chat/Human surface has no other memory of which mode they were in.
+   */
+  chatMascotExpanded: boolean;
+  /**
+   * Whether agent replies are spoken back through TTS with mascot lipsync.
+   *
+   * Previously ad-hoc `localStorage['human.speakReplies']`, duplicated in the
+   * Human page and the chat page's face-mode panel. Now one persisted source of
+   * truth (`AGENTS.md`: prefer Redux over ad-hoc localStorage); the legacy key
+   * is migrated once on rehydrate.
+   */
+  speakReplies: boolean;
+  /**
+   * Live mic state for the chat mascot: `true` while `MicComposer` is
+   * recording, which forces the `listening` pose.
+   *
+   * Deliberately NOT persisted — it is transient hardware state, and a `true`
+   * restored from localStorage would pin the mascot into a listening pose with
+   * no mic running.
+   */
+  chatMascotListening: boolean;
+  /**
+   * Whether the mascot appears on the chat composer at all.
+   *
+   * Dismissing it from the composer is a real preference, not a session quirk —
+   * someone who does not want a character on their message box should not have
+   * to re-dismiss it on every launch. Re-enabled from
+   * Settings → Appearance → Chat, which is why the dismiss dialog names that
+   * path: a hidden control the user cannot find again is a trap.
+   */
+  chatMascotDismissed: boolean;
+  /**
+   * Which voice-chat implementation the mascot's voice stage uses (#5399).
+   * `classic` is
    * today's turn-based record → transcribe → reply → TTS pipeline; `realtime`
    * is the streaming ElevenLabs Agents session. Defaults to `classic` and is
    * only togglable when `VOICE_MODE_FLAG_ENABLED` is on, so the realtime path
@@ -242,7 +281,7 @@ interface MascotState {
   voiceMode: VoiceMode;
 }
 
-/** Human-tab voice-chat implementation. */
+/** Voice-chat implementation used by the mascot's voice stage. */
 export type VoiceMode = 'classic' | 'realtime';
 
 const isVoiceMode = (value: unknown): value is VoiceMode =>
@@ -259,8 +298,49 @@ const initialState: MascotState = {
   customMascotGifUrl: null,
   customPrimaryColor: '#F7D145',
   customSecondaryColor: '#B23C05',
+  chatMascotExpanded: false,
+  speakReplies: true,
+  chatMascotListening: false,
+  chatMascotDismissed: false,
   voiceMode: 'classic',
 };
+
+/**
+ * localStorage key the speak-replies preference used before it moved into this
+ * slice. Exported for the migration test.
+ */
+export const LEGACY_SPEAK_REPLIES_KEY = 'human.speakReplies';
+
+/**
+ * Fold the pre-Redux `human.speakReplies` preference into the persisted mascot
+ * blob, then delete it.
+ *
+ * Runs as a redux-persist `migrate` hook — deliberately NOT inside the reducer.
+ * Reading and deleting a localStorage key is a side effect, and a reducer that
+ * performs one is not a pure function of `(state, action)`: replaying the action
+ * log (devtools time-travel) would take the other branch the second time,
+ * because the key is gone. `migrate` is the layer that is *allowed* to do this,
+ * and it runs before REHYDRATE, so the legacy value simply arrives in the
+ * payload and the reducer stays pure.
+ *
+ * The legacy value wins over the slice default on purpose: a user who turned TTS
+ * off before the merge must not have it silently turned back on.
+ */
+export function migrateLegacySpeakReplies(
+  persisted: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  let raw: string | null = null;
+  try {
+    raw = window.localStorage.getItem(LEGACY_SPEAK_REPLIES_KEY);
+    if (raw === null) return persisted;
+    window.localStorage.removeItem(LEGACY_SPEAK_REPLIES_KEY);
+  } catch {
+    // localStorage can throw in sandboxed / private contexts — nothing to do.
+    return persisted;
+  }
+  mascotLog('[mascot][migrate] speakReplies from legacy localStorage raw=%s', raw);
+  return { ...(persisted ?? {}), speakReplies: raw === '1' };
+}
 
 /**
  * Scrub a persisted / raw `mascotVoices` blob down to valid
@@ -414,6 +494,34 @@ const mascotSlice = createSlice({
     setCustomSecondaryColor(state, action: PayloadAction<string>) {
       state.customSecondaryColor = action.payload;
     },
+    setChatMascotExpanded(state, action: PayloadAction<boolean>) {
+      const next = Boolean(action.payload);
+      if (state.chatMascotExpanded === next) return;
+      state.chatMascotExpanded = next;
+      mascotLog('[mascot][chat-stage] expanded=%s', next);
+    },
+    setSpeakReplies(state, action: PayloadAction<boolean>) {
+      state.speakReplies = Boolean(action.payload);
+      mascotLog('[mascot][voice] speakReplies=%s', state.speakReplies);
+    },
+    setChatMascotDismissed(state, action: PayloadAction<boolean>) {
+      const next = Boolean(action.payload);
+      if (state.chatMascotDismissed === next) return;
+      state.chatMascotDismissed = next;
+      // Collapsing on dismiss keeps the two flags from disagreeing: a dismissed
+      // mascot that is still marked expanded would reopen its voice stage the
+      // moment it is restored, which is not what the user asked for.
+      if (next) state.chatMascotExpanded = false;
+      mascotLog('[mascot][chat-stage] dismissed=%s', next);
+    },
+    setChatMascotListening(state, action: PayloadAction<boolean>) {
+      const next = Boolean(action.payload);
+      // Guard the no-op: `MicComposer` reports its state on every transition and
+      // a same-value dispatch would re-render the mascot stage for nothing.
+      if (state.chatMascotListening === next) return;
+      state.chatMascotListening = next;
+      mascotLog('[mascot][voice] listening=%s', next);
+    },
     setVoiceMode(state, action: PayloadAction<VoiceMode>) {
       if (isVoiceMode(action.payload)) {
         state.voiceMode = action.payload;
@@ -439,6 +547,9 @@ const mascotSlice = createSlice({
           customMascotGifUrl?: unknown;
           customPrimaryColor?: unknown;
           customSecondaryColor?: unknown;
+          chatMascotExpanded?: unknown;
+          chatMascotDismissed?: unknown;
+          speakReplies?: unknown;
           voiceMode?: unknown;
         };
       };
@@ -501,6 +612,26 @@ const mascotSlice = createSlice({
       const rsc = rehydrateAction.payload?.customSecondaryColor;
       state.customSecondaryColor =
         typeof rsc === 'string' && rsc.length > 0 ? rsc : initialState.customSecondaryColor;
+      // Chat-mascot stage: absent in pre-merge blobs, so `false` (docked) is the
+      // right default — it matches a fresh install.
+      state.chatMascotExpanded =
+        typeof rehydrateAction.payload?.chatMascotExpanded === 'boolean'
+          ? rehydrateAction.payload.chatMascotExpanded
+          : initialState.chatMascotExpanded;
+      // `speakReplies` moved here from `localStorage['human.speakReplies']`. The
+      // legacy value, if any, was already folded into this payload by
+      // `migrateLegacySpeakReplies` (see the note there on why that cannot live
+      // in this reducer), so there is nothing to special-case.
+      state.speakReplies =
+        typeof rehydrateAction.payload?.speakReplies === 'boolean'
+          ? rehydrateAction.payload.speakReplies
+          : initialState.speakReplies;
+      state.chatMascotDismissed =
+        typeof rehydrateAction.payload?.chatMascotDismissed === 'boolean'
+          ? rehydrateAction.payload.chatMascotDismissed
+          : initialState.chatMascotDismissed;
+      // Never restored — see the field docs on `chatMascotListening`.
+      state.chatMascotListening = false;
       const restoredVoiceMode = rehydrateAction.payload?.voiceMode;
       state.voiceMode = isVoiceMode(restoredVoiceMode) ? restoredVoiceMode : 'classic';
     });
@@ -518,8 +649,29 @@ export const {
   setCustomMascotGifUrl,
   setCustomPrimaryColor,
   setCustomSecondaryColor,
+  setChatMascotExpanded,
+  setChatMascotDismissed,
+  setSpeakReplies,
+  setChatMascotListening,
   setVoiceMode,
 } = mascotSlice.actions;
+
+/**
+ * Whether the chat mascot is scaled up into its voice stage. Tolerates a
+ * pre-merge persisted slice (the field is simply absent there).
+ */
+export const selectChatMascotExpanded = (state: { mascot: MascotState }): boolean =>
+  state.mascot.chatMascotExpanded ?? false;
+
+export const selectSpeakReplies = (state: { mascot: MascotState }): boolean =>
+  state.mascot.speakReplies ?? true;
+
+export const selectChatMascotListening = (state: { mascot: MascotState }): boolean =>
+  state.mascot.chatMascotListening ?? false;
+
+/** Whether the user has dismissed the mascot from the composer. */
+export const selectChatMascotDismissed = (state: { mascot: MascotState }): boolean =>
+  state.mascot.chatMascotDismissed ?? false;
 
 export const selectMascotColor = (state: { mascot: MascotState }): MascotColor =>
   state.mascot.color;

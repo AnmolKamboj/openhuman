@@ -120,13 +120,15 @@ async function clickFirstMatch(candidates, timeout = 5_000) {
  * Appium Mac2 cannot run W3C Execute Script in WKWebView — use sidebar labels
  * instead.
  *
- * Current IA (bottom-tab bar, see app/src/config/navConfig.ts): the four tabs
- * are Chat, Human, Brain, Connections. Settings is reached via the gear icon in
- * the sidebar header. Home no longer has its own tab (it was merged into Chat in
- * Phase 6 — /home redirects to /chat via HASH_REDIRECTS below). The earlier
- * "Assistant"/"Activity"/"Alerts" labels are gone. Only real tabs belong here;
- * routes that redirect (e.g. /home, /activity, /intelligence, /skills, /channels)
- * are resolved through HASH_REDIRECTS below — they have no sidebar button.
+ * Current IA (bottom-tab bar, see app/src/config/navConfig.ts): the tabs are
+ * Chat, Human, Brain, Connections. Settings is reached via the gear icon in the
+ * sidebar header. Home no longer has its own tab (it was merged into Chat as the
+ * empty "new window" state — /home redirects via HASH_REDIRECTS below). Human is
+ * a first-class tab: it owns the dedicated mascot stage, while Chat carries the
+ * same mascot docked on its composer. The earlier "Assistant"/"Activity"/"Alerts"
+ * labels are gone. Only real tabs belong here; routes that redirect (e.g. /home,
+ * /activity, /intelligence, /skills, /channels) are resolved through
+ * HASH_REDIRECTS below — they have no sidebar button.
  */
 const HASH_TO_SIDEBAR_LABEL = {
   '/chat': 'Chat',
@@ -629,7 +631,7 @@ async function waitForPostOnboardingHome(logPrefix, timeout = 20_000) {
         Boolean(
           await browser.execute(() => {
             const h = window.location.hash.replace(/\/$/, '');
-            return h === '#/home' || h === '#/chat';
+            return !h.startsWith('#/onboarding');
           })
         ),
       {

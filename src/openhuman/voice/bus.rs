@@ -2,7 +2,9 @@
 //! event here lets downstream subscribers react without coupling to the
 //! channel-web flow.
 
-use crate::core::event_bus::{publish_global, DomainEvent, VoiceEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
+use crate::core::events::VoiceEvent;
 
 /// Publish a [`VoiceEvent::PttTranscriptCommitted`] event.
 pub fn publish_ptt_transcript_committed(
@@ -12,7 +14,7 @@ pub fn publish_ptt_transcript_committed(
     held_ms: u64,
     finalized_by_watchdog: bool,
 ) {
-    publish_global(DomainEvent::Voice(VoiceEvent::PttTranscriptCommitted {
+    BUS.publish(DomainEvent::Voice(VoiceEvent::PttTranscriptCommitted {
         thread_id,
         session_id,
         text_len,
@@ -24,9 +26,11 @@ pub fn publish_ptt_transcript_committed(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::event_bus::{init_global, subscribe_global, DomainEvent, EventHandler};
+    use crate::core::bus::BUS;
+    use crate::core::events::DomainEvent;
     use async_trait::async_trait;
     use std::sync::Arc;
+    use tinybus::EventHandler;
     use tokio::sync::Mutex as AsyncMutex;
 
     #[derive(Default)]
@@ -35,7 +39,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl EventHandler for Capture {
+    impl EventHandler<DomainEvent> for Capture {
         fn name(&self) -> &str {
             "voice::ptt_test_capture"
         }
@@ -54,10 +58,10 @@ mod tests {
     #[tokio::test]
     async fn publishing_a_ptt_commit_reaches_a_subscriber() {
         // Use the singleton (init is idempotent).
-        let _ = init_global(64);
+        crate::core::bus::init().await.expect("bus init");
         let capture = Capture::default();
         let events = capture.events.clone();
-        let _sub = subscribe_global(Arc::new(capture));
+        let _sub = BUS.subscribe(Arc::new(capture));
 
         publish_ptt_transcript_committed("thread-1".to_string(), 42, 17, 850, false);
 

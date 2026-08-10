@@ -8,7 +8,8 @@
 //! drive the model.
 
 use super::types::{Agent, AgentBuilder};
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::dispatcher::ParsedToolCall;
 use crate::openhuman::agent::error::AgentError;
 use crate::openhuman::agent::messages::ConversationMessage;
@@ -305,6 +306,32 @@ impl Agent {
         self.on_progress = tx;
     }
 
+    /// Bind this session's acting tools (shell / file / git) to `descriptor`'s
+    /// root as their default working directory.
+    ///
+    /// The post-build counterpart of
+    /// [`AgentBuilder::workspace_descriptor`](crate::openhuman::agent::AgentBuilder::workspace_descriptor),
+    /// for callers that construct the agent through
+    /// [`Agent::from_config`](crate::openhuman::agent::Agent::from_config) and
+    /// therefore never see the builder — notably the per-turn `cwd` of
+    /// [`agent_chat`](crate::openhuman::inference::local::ops::agent_chat).
+    ///
+    /// The descriptor is threaded onto the turn's run context, so it also
+    /// propagates to sub-agents spawned from this session (the same deliberate
+    /// isolation the per-profile descriptor has). `None` restores the shared
+    /// `action_dir` cwd.
+    ///
+    /// This only moves the *default* cwd: what the session may read and write is
+    /// still decided by its [`SecurityPolicy`](crate::openhuman::security::SecurityPolicy),
+    /// so a caller that wants tools rooted somewhere new must build the agent
+    /// from a config whose `action_dir` already permits it.
+    pub fn set_workspace_descriptor(
+        &mut self,
+        descriptor: Option<tinyagents::harness::workspace::WorkspaceDescriptor>,
+    ) {
+        self.workspace_descriptor = descriptor;
+    }
+
     /// Attach an active-run queue for mid-turn steering.
     pub fn set_run_queue(
         &mut self,
@@ -485,6 +512,14 @@ impl Agent {
     /// user message is appended later by [`Self::run_single`] / `turn`, so it is
     /// intentionally absent from the loaded prefix — no dedup is needed here (the
     /// on-disk transcript ends at the previous completed turn).
+    ///
+    /// Goes through the S4 seam like `try_load_session_transcript` (see its doc
+    /// comment for why the read is `read_session` and not
+    /// `ChatHistory::messages()`), via the locator's `root_for_thread` — the
+    /// lookup that resolves by `_meta.thread_id` across *root* transcripts
+    /// only. That disambiguation is why it is a locator method rather than
+    /// anything a stem-bound handle could offer: several transcripts share one
+    /// thread id (every sub-agent spawned within it does).
     pub fn seed_resume_from_thread_transcript(&mut self, thread_id: &str) -> bool {
         if !self.history.is_empty() || self.cached_transcript_messages.is_some() {
             log::debug!(
@@ -497,25 +532,12 @@ impl Agent {
         }
 
         // The thread's conversation belongs to the THREAD, not the active
-        // profile. Resolve via the cross-dir finder, which scans the shared
-        // `session_raw/` AND every profile-scoped `session_raw-<id>/` for this
-        // exact `thread_id` and returns the NEWEST match. So switching the active
-        // profile mid-thread (e.g. the Quick↔Reasoning toggle) continues the same
-        // conversation even when earlier turns were written under a different
-        // profile's subtree — a dedicated-memory personality, or a profile an
-        // earlier build wrongly scoped (#5351).
-        //
-        // Deliberately NOT own-dir-first (`in_dir(session_raw_subdir).or_else(…)`):
-        // that would let an *older* transcript in the agent's own dir shadow a
-        // *newer* one a sibling scoped dir holds for the same thread — dropping
-        // the most recent turns, and diverging from the transcript view + turn
-        // mirror, which both use this same newest-across-dirs resolver. The own
-        // dir is already included in the scan, so newest-wins is a superset.
-        // Keyed on `thread_id`, so it never bleeds an unrelated session across
-        // profiles; a blank id short-circuits to `None`.
-        let Some(path) =
-            super::transcript::find_root_transcript_for_thread(&self.workspace_dir, thread_id)
-        else {
+        // profile: the locator resolves cross-dir, newest-wins across the
+        // shared `session_raw/` and every profile-scoped `session_raw-<id>/`
+        // (#5351), so switching profile mid-thread continues the same
+        // conversation. See `FileTranscriptLocator::root_for_thread` for why
+        // this must not be own-dir-first.
+        let Some(handle) = self.session_locator().root_for_thread(thread_id) else {
             log::debug!(
                 "[web-channel] no root session_raw transcript for thread={thread_id} in any \
                  (shared or profile-scoped) session_raw dir — falling back to \
@@ -523,6 +545,7 @@ impl Agent {
             );
             return false;
         };
+        let path = handle.path().to_path_buf();
 
         log::info!(
             "[web-channel] cold-boot resume — loading full-fidelity transcript for \
@@ -530,8 +553,18 @@ impl Agent {
             path.display()
         );
 
-        match super::transcript::read_transcript(&path) {
-            Ok(session) => {
+        match handle.read_session() {
+            // `Ok(None)` (file vanished between discovery and read) folds into
+            // the same empty-transcript branch, so the prose-seeding fallback
+            // triggers identically.
+            Ok(None) => {
+                log::debug!(
+                    "[web-channel] root transcript for thread={thread_id} is empty — \
+                     falling back to prose seeding"
+                );
+                false
+            }
+            Ok(Some(session)) => {
                 if session.messages.is_empty() {
                     log::debug!(
                         "[web-channel] root transcript for thread={thread_id} is empty — \
@@ -777,7 +810,7 @@ impl Agent {
                     ("action", action_tag),
                 ],
             );
-            publish_global(DomainEvent::AgentError {
+            BUS.publish(DomainEvent::AgentError {
                 session_id: self.event_session_id().to_string(),
                 message: user_message.to_string(),
                 recoverable: true,
@@ -786,7 +819,7 @@ impl Agent {
         }
 
         let history_snapshot = self.history.clone();
-        publish_global(DomainEvent::AgentTurnStarted {
+        BUS.publish(DomainEvent::AgentTurnStarted {
             session_id: self.event_session_id().to_string(),
             channel: self.event_channel().to_string(),
         });
@@ -794,7 +827,7 @@ impl Agent {
         match self.turn(message).await {
             Ok(response) => {
                 let new_entries = Self::new_entries_for_turn(&history_snapshot, &self.history);
-                publish_global(DomainEvent::AgentTurnCompleted {
+                BUS.publish(DomainEvent::AgentTurnCompleted {
                     session_id: self.event_session_id().to_string(),
                     text_chars: response.chars().count(),
                     iterations: Self::count_iterations(new_entries),
@@ -847,7 +880,7 @@ impl Agent {
                         ],
                     );
                 }
-                publish_global(DomainEvent::AgentError {
+                BUS.publish(DomainEvent::AgentError {
                     session_id: self.event_session_id().to_string(),
                     message: sanitized_message,
                     recoverable: false,

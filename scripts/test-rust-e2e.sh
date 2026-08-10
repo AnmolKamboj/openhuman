@@ -141,7 +141,29 @@ if [ ! -x "$CARGO_BIN" ]; then
 fi
 
 echo "[rust-e2e] Running ${#SUITES[@]} suite(s) serially."
+
+run_json_rpc_e2e_suite() {
+  # JSON-RPC scenarios mutate process-global provider routes and runtime
+  # configuration. Run every case in a fresh test process so a provider set by
+  # one scenario cannot affect the routing assertions in another.
+  while IFS= read -r test_name; do
+    [ -n "$test_name" ] || continue
+    echo "[rust-e2e]   $CARGO_BIN test --manifest-path Cargo.toml --test json_rpc_e2e $test_name"
+    bash "$SCRIPT_DIR/ci-cancel-aware.sh" "$CARGO_BIN" test \
+      --manifest-path Cargo.toml --test json_rpc_e2e "$test_name" -- \
+      --exact --test-threads=1 "${EXTRA_ARGS[@]}"
+  done < <(
+    "$CARGO_BIN" test --manifest-path Cargo.toml --test json_rpc_e2e -- --list \
+      | sed -n 's/: test$//p'
+  )
+}
+
 for suite in "${SUITES[@]}"; do
+  if [ "$suite" = "json_rpc_e2e" ]; then
+    run_json_rpc_e2e_suite
+    continue
+  fi
+
   if [ "${#EXTRA_ARGS[@]}" -gt 0 ]; then
     echo "[rust-e2e]   $CARGO_BIN test --manifest-path Cargo.toml --test $suite -- ${EXTRA_ARGS[*]}"
     bash "$SCRIPT_DIR/ci-cancel-aware.sh" "$CARGO_BIN" test --manifest-path Cargo.toml --test "$suite" -- "${EXTRA_ARGS[@]}"

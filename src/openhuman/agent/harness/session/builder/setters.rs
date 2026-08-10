@@ -50,6 +50,7 @@ impl AgentBuilder {
             memory_subdir: None,
             session_raw_subdir: None,
             session_parent_prefix: None,
+            session_history_locator: None,
             omit_profile: None,
             omit_memory_md: None,
             payload_summarizer: None,
@@ -354,6 +355,24 @@ impl AgentBuilder {
         self
     }
 
+    /// Substitute the transcript backing store for this session.
+    ///
+    /// The one injection point for the S4 seam: the locator resolves both
+    /// resume reads (`latest_for_agent` / `root_for_thread`) **and** binds the
+    /// session's write handle (`open_stem`), so a fake supplied here takes the
+    /// whole turn path off the filesystem. Leave unset in production — `None`
+    /// resolves lazily to a
+    /// [`FileTranscriptLocator`][super::super::transcript_history::FileTranscriptLocator]
+    /// over the agent's current workspace, which is behaviourally identical to
+    /// the pre-S4 free-function calls.
+    pub(crate) fn with_session_history_locator(
+        mut self,
+        locator: std::sync::Arc<dyn super::super::transcript_history::SessionHistoryLocator>,
+    ) -> Self {
+        self.session_history_locator = Some(locator);
+        self
+    }
+
     /// Forward the target agent definition's `omit_profile` flag so
     /// [`Agent::build_system_prompt`] can decide whether to inject
     /// `PROFILE.md`. Only opt-in agents (welcome, orchestrator, the
@@ -467,10 +486,10 @@ impl AgentBuilder {
         );
 
         // A child agent inherits explicit profile and channel restrictions, but
-        // not the coordinator's own role-specific tool scope. For example, the
-        // orchestrator intentionally cannot call `file_write` directly while
-        // its code-executor specialist must be able to do so. Conflating those
-        // two surfaces silently stripped specialist tools (#5118 merge).
+        // not the primary agent's own role-specific tool scope. The Master Agent
+        // can write directly, while specialists may still need tools outside its
+        // intentionally compact default surface. Conflating those two surfaces
+        // silently strips specialist capabilities (#5118 merge).
         //
         // Build a second policy snapshot without the role visibility filter.
         // `tool_policy_session` marks both channel-blocked and role-hidden tools
@@ -614,6 +633,8 @@ impl AgentBuilder {
             memory_subdir,
             session_raw_subdir,
             session_transcript_path: None,
+            session_history: None,
+            session_history_locator: self.session_history_locator,
             persisted_transcript_messages: Vec::new(),
             session_key: {
                 let unix_ts = std::time::SystemTime::now()

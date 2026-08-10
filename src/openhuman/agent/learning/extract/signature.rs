@@ -22,10 +22,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 
-use crate::core::event_bus::{subscribe_global, DomainEvent, EventHandler, SubscriptionHandle};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::learning::candidate::{
     self, Buffer, CueFamily, EvidenceRef, FacetClass, LearningCandidate,
 };
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -475,7 +478,7 @@ impl EmailSignatureSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for EmailSignatureSubscriber {
+impl EventHandler<DomainEvent> for EmailSignatureSubscriber {
     fn name(&self) -> &str {
         "learning::extract::signature"
     }
@@ -538,17 +541,17 @@ impl EventHandler for EmailSignatureSubscriber {
 
 /// Register the email signature subscriber on the global event bus.
 ///
-/// Must be called at startup after [`crate::core::event_bus::init_global`].
+/// Must be called at startup after [`crate::core::bus::init`].
 /// The returned handle keeps the subscription alive — store it in a long-lived
 /// container (e.g. alongside other `SubscriptionHandle`s in startup).
 pub fn register_email_signature_subscriber() -> Option<SubscriptionHandle> {
-    subscribe_global(Arc::new(EmailSignatureSubscriber::new(candidate::global())))
+    BUS.subscribe(Arc::new(EmailSignatureSubscriber::new(candidate::global())))
 }
 
 /// Register the email signature subscriber with isolated test dependencies.
 #[cfg(test)]
 pub(crate) fn register_email_signature_subscriber_on(
-    bus: &crate::core::event_bus::EventBus,
+    bus: &tinybus::EventBus<crate::core::events::DomainEvent>,
     buffer: &'static Buffer,
 ) -> SubscriptionHandle {
     bus.subscribe(Arc::new(EmailSignatureSubscriber::new(buffer)))

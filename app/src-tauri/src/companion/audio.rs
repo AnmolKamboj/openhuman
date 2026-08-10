@@ -20,7 +20,7 @@ use log::{debug, info, warn};
 
 const LOG_PREFIX: &str = "[companion_audio]";
 
-/// Target sample rate for STT upload. Whisper works at 16 kHz mono.
+/// Target sample rate for STT upload. Every routed engine takes 16 kHz mono.
 pub const TARGET_SAMPLE_RATE: u32 = 16_000;
 
 /// A live microphone capture. Dropping without `stop()` still tears the stream
@@ -202,7 +202,7 @@ fn run_capture_thread(
 }
 
 /// Naive linear-interpolation resampler for mono `i16`. Adequate for speech STT
-/// upload; whisper is robust to modest resampling artefacts.
+/// upload; STT engines are robust to modest resampling artefacts.
 fn resample_linear(input: &[i16], from_rate: u32, to_rate: u32) -> Vec<i16> {
     if input.is_empty() || from_rate == 0 || to_rate == 0 {
         return Vec::new();

@@ -12,8 +12,8 @@
 //! in a shared section impl.
 
 use crate::openhuman::agent::context::prompt::{
-    render_datetime, render_tools, render_user_files, ConnectedIntegration, PromptContext,
-    ToolCallFormat,
+    render_datetime, render_tools, render_user_files, render_workspace, ConnectedIntegration,
+    PromptContext, ToolCallFormat,
 };
 use crate::openhuman::skills::ops_types::Workflow;
 use crate::openhuman::tools::orchestrator_tools::sanitise_slug;
@@ -74,13 +74,13 @@ pub fn build(ctx: &PromptContext<'_>) -> Result<String> {
         out.push_str("\n\n");
     }
 
-    // NOTE: the shared `## Workspace` section (render_workspace) is
-    // intentionally NOT rendered here. Its text is written around `pwd`
-    // and `shell` ("that is where shell runs"), and the orchestrator has
-    // no shell — teaching it invited calls to a tool outside its scope.
-    // The orchestrator's own prompt.md covers its read-only direct file
-    // surface (file_read/grep/glob/list) and defers every file
-    // modification to `run_code`.
+    // The Master Agent can execute coding work directly, so it needs the
+    // canonical action-root instructions before it receives the tool list.
+    let workspace = render_workspace(ctx)?;
+    if !workspace.trim().is_empty() {
+        out.push_str(workspace.trim_end());
+        out.push_str("\n\n");
+    }
 
     Ok(out)
 }
@@ -615,22 +615,16 @@ mod tests {
         );
     }
 
-    // Regression for issue #3102: orchestrator reads files via a worker
-    // (or directly) and then sits idle instead of delegating to the
-    // code executor. The fix is the same shape as the live-facts fix —
-    // a positive "do not stall after reading" sentence in the prompt.
+    // Code tasks retain an explicit direct-execution contract in the prompt.
     #[test]
     fn build_routes_code_repo_work_to_run_code_tool() {
         let body = build(&ctx_with(&[])).unwrap();
-        assert!(body.contains("Do not stall after reading code-repo files"));
-        assert!(body.contains("Re-issue the entire task as one `run_code` call"));
+        assert!(body.contains("Code work is direct by default"));
         assert!(
             !body.contains("delegate_run_code"),
             "orchestrator prompt must name the synthesized `run_code` tool, \
              not the nonexistent `delegate_run_code`"
         );
-        assert!(body.contains("reading is step zero of execution"));
-        assert!(body.contains("The user does not need to write \"use the code executor\""));
     }
 
     #[test]

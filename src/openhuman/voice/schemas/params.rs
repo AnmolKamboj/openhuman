@@ -8,7 +8,7 @@ pub(super) struct TranscribeParams {
     /// Optional conversation context for LLM post-processing.
     #[serde(default)]
     pub(super) context: Option<String>,
-    /// Skip LLM cleanup and return raw whisper output.
+    /// Skip LLM cleanup and return the raw engine output.
     #[serde(default)]
     pub(super) skip_cleanup: bool,
 }
@@ -21,7 +21,7 @@ pub(super) struct TranscribeBytesParams {
     /// Optional conversation context for LLM post-processing.
     #[serde(default)]
     pub(super) context: Option<String>,
-    /// Skip LLM cleanup and return raw whisper output.
+    /// Skip LLM cleanup and return the raw engine output.
     #[serde(default)]
     pub(super) skip_cleanup: bool,
 }
@@ -47,7 +47,7 @@ pub(super) struct CloudTranscribeParams {
 }
 
 /// Factory-dispatched STT request. The caller can either pin a provider
-/// explicitly (`"cloud"` / `"whisper"`) or let the controller resolve the
+/// explicitly (`"cloud"` / `"<slug>[:<model>]"`) or let the controller resolve the
 /// effective provider from `config.local_ai.stt_provider`. Keeps the
 /// existing `voice_cloud_transcribe` RPC intact for back-compat — older
 /// renderers still pin the cloud path directly.

@@ -28,9 +28,9 @@
 use std::path::Path;
 use std::sync::OnceLock;
 
-use crate::core::event_bus::SubscriptionHandle;
 use crate::openhuman::memory::global::client_if_ready;
 use crate::openhuman::memory::store::MemoryClientRef;
+use tinybus::SubscriptionHandle;
 
 static EMAIL_SIG_HANDLE: OnceLock<Option<SubscriptionHandle>> = OnceLock::new();
 
@@ -166,7 +166,7 @@ fn register_with_client(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::event_bus::{DomainEvent, EventBus};
+    use crate::core::events::DomainEvent;
     use crate::openhuman::agent::learning::candidate::Buffer;
     use crate::openhuman::agent::learning::extract::signature::{
         parse_signature, register_email_signature_subscriber_on,
@@ -226,7 +226,7 @@ mod tests {
 
     #[tokio::test]
     async fn register_with_client_registers_both_handles_when_ready() {
-        crate::core::event_bus::init_global(crate::core::event_bus::DEFAULT_CAPACITY);
+        crate::core::bus::init().await.expect("bus init");
         let (tmp, client) = test_client();
         let (trigger, renderer) = register_with_client(Some(client), tmp.path());
         assert!(
@@ -252,7 +252,7 @@ mod tests {
 
     #[tokio::test]
     async fn learning_subscriber_fires_with_no_channel_configured() {
-        let bus = EventBus::create(16);
+        let bus = crate::core::bus_testing::isolated_bus().await;
         let buffer: &'static Buffer = Box::leak(Box::new(Buffer::new(16)));
         let handle_cell = OnceLock::new();
         register_email_signature_once(&handle_cell, || {
@@ -278,7 +278,7 @@ mod tests {
 
     #[tokio::test]
     async fn register_learning_subscribers_is_idempotent() {
-        let bus = EventBus::create(16);
+        let bus = crate::core::bus_testing::isolated_bus().await;
         let buffer: &'static Buffer = Box::leak(Box::new(Buffer::new(16)));
         let handle_cell = OnceLock::new();
         register_email_signature_once(&handle_cell, || {

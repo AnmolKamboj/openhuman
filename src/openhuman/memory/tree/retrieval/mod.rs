@@ -32,6 +32,8 @@ pub mod types;
 mod benchmarks;
 #[cfg(test)]
 mod integration_tests;
+#[cfg(test)]
+mod source_scope_tests;
 
 pub use cover::cover_window;
 pub use drill_down::drill_down;

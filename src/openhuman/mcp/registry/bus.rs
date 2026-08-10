@@ -6,13 +6,14 @@
 
 use async_trait::async_trait;
 
-use crate::core::event_bus::{DomainEvent, EventHandler};
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
 
 /// Subscribes to `McpClient` domain events and emits structured log lines.
 pub struct McpClientEventSubscriber;
 
 #[async_trait]
-impl EventHandler for McpClientEventSubscriber {
+impl EventHandler<DomainEvent> for McpClientEventSubscriber {
     fn name(&self) -> &str {
         "mcp_client::lifecycle"
     }
@@ -78,10 +79,10 @@ impl EventHandler for McpClientEventSubscriber {
 /// Call this from wherever other domain subscribers are registered
 /// (e.g. alongside `CronDeliverySubscriber::new(...)` in core startup).
 pub fn init() {
-    use crate::core::event_bus::subscribe_global;
+    use crate::core::bus::BUS;
     use std::sync::Arc;
     let sub = Arc::new(McpClientEventSubscriber);
-    if subscribe_global(sub).is_none() {
+    if BUS.subscribe(sub).is_none() {
         tracing::warn!("[mcp-client] event bus not initialized; subscriber not registered");
     }
 }

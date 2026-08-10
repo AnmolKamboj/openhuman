@@ -7,7 +7,8 @@ use super::dispatch::{
     process_channel_message, process_channel_runtime_message, RuntimeChannelMessage,
 };
 pub use super::startup::test_support::resolve_yuanbao_app_secret_for_test;
-use crate::core::event_bus::{init_global, register_native_global, DomainEvent, DEFAULT_CAPACITY};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::bus::{AgentTurnRequest, AgentTurnResponse, AGENT_RUN_TURN_METHOD};
 use crate::openhuman::agent::messages::ChatMessage;
 use crate::openhuman::agent::progress::AgentProgress;
@@ -297,9 +298,7 @@ fn memory_entry(input: TestMemoryEntry) -> MemoryEntry {
 /// `start_channels`) so concurrent registrations cannot race in the same
 /// process.
 pub async fn lock_agent_handler() -> tokio::sync::MutexGuard<'static, ()> {
-    crate::core::event_bus::testing::BUS_HANDLER_LOCK
-        .lock()
-        .await
+    crate::core::bus_testing::BUS_HANDLER_LOCK.lock().await
 }
 
 pub async fn run_dispatch_harness(options: DispatchHarnessOptions) -> DispatchHarnessObservation {
@@ -310,7 +309,11 @@ pub async fn run_dispatch_harness(options: DispatchHarnessOptions) -> DispatchHa
     // observation capture) behind the shared agent-handler lock.
     let _harness_guard = lock_agent_handler().await;
 
-    let mut event_rx = init_global(DEFAULT_CAPACITY).raw_receiver();
+    crate::core::bus::init().await.expect("bus init");
+    let mut event_rx = crate::core::bus::BUS
+        .get()
+        .expect("bus initialised")
+        .receiver();
     let _ =
         crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::init_global_builtins(
         );
@@ -327,70 +330,71 @@ pub async fn run_dispatch_harness(options: DispatchHarnessOptions) -> DispatchHa
     let handler_error = options.handler_error.clone();
     let handler_delay = Duration::from_millis(options.handler_delay_ms);
 
-    register_native_global::<AgentTurnRequest, AgentTurnResponse, _, _>(AGENT_RUN_TURN_METHOD, {
-        let handler_roles = Arc::clone(&handler_roles);
-        let handler_text = Arc::clone(&handler_text);
-        let handler_provider = Arc::clone(&handler_provider);
-        let handler_channel = Arc::clone(&handler_channel);
-        let handler_progress = Arc::clone(&handler_progress);
-        move |req| {
+    BUS.native()
+        .register::<AgentTurnRequest, AgentTurnResponse, _, _>(AGENT_RUN_TURN_METHOD, {
             let handler_roles = Arc::clone(&handler_roles);
             let handler_text = Arc::clone(&handler_text);
             let handler_provider = Arc::clone(&handler_provider);
             let handler_channel = Arc::clone(&handler_channel);
             let handler_progress = Arc::clone(&handler_progress);
-            let response_text = response_text.clone();
-            let handler_error = handler_error.clone();
-            async move {
-                *handler_roles.lock().expect("roles lock") =
-                    req.history.iter().map(|msg| msg.role.clone()).collect();
-                *handler_text.lock().expect("text lock") = req
-                    .history
-                    .iter()
-                    .map(|msg| msg.content.as_str())
-                    .collect::<Vec<_>>()
-                    .join("\n---\n");
-                *handler_provider.lock().expect("provider lock") = req.provider_name;
-                *handler_channel.lock().expect("channel lock") = req.channel_name;
+            move |req| {
+                let handler_roles = Arc::clone(&handler_roles);
+                let handler_text = Arc::clone(&handler_text);
+                let handler_provider = Arc::clone(&handler_provider);
+                let handler_channel = Arc::clone(&handler_channel);
+                let handler_progress = Arc::clone(&handler_progress);
+                let response_text = response_text.clone();
+                let handler_error = handler_error.clone();
+                async move {
+                    *handler_roles.lock().expect("roles lock") =
+                        req.history.iter().map(|msg| msg.role.clone()).collect();
+                    *handler_text.lock().expect("text lock") = req
+                        .history
+                        .iter()
+                        .map(|msg| msg.content.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n---\n");
+                    *handler_provider.lock().expect("provider lock") = req.provider_name;
+                    *handler_channel.lock().expect("channel lock") = req.channel_name;
 
-                if let Some(tx) = req.on_progress {
-                    handler_progress.fetch_add(1, Ordering::SeqCst);
-                    let _ = tx.send(AgentProgress::TurnStarted).await;
-                    let _ = tx
-                        .send(AgentProgress::ThinkingDelta {
-                            delta: "thinking".to_string(),
-                            iteration: 1,
-                        })
-                        .await;
-                    let _ = tx
-                        .send(AgentProgress::TextDelta {
-                            delta: "partial ".to_string(),
-                            iteration: 1,
-                        })
-                        .await;
-                    let _ = tx
-                        .send(AgentProgress::ToolCallStarted {
-                            call_id: "call-1".to_string(),
-                            tool_name: "harness_tool".to_string(),
-                            arguments: serde_json::json!({}),
-                            iteration: 1,
-                            display_label: None,
-                            display_detail: None,
-                        })
-                        .await;
-                }
+                    if let Some(tx) = req.on_progress {
+                        handler_progress.fetch_add(1, Ordering::SeqCst);
+                        let _ = tx.send(AgentProgress::TurnStarted).await;
+                        let _ = tx
+                            .send(AgentProgress::ThinkingDelta {
+                                delta: "thinking".to_string(),
+                                iteration: 1,
+                            })
+                            .await;
+                        let _ = tx
+                            .send(AgentProgress::TextDelta {
+                                delta: "partial ".to_string(),
+                                iteration: 1,
+                            })
+                            .await;
+                        let _ = tx
+                            .send(AgentProgress::ToolCallStarted {
+                                call_id: "call-1".to_string(),
+                                tool_name: "harness_tool".to_string(),
+                                arguments: serde_json::json!({}),
+                                iteration: 1,
+                                display_label: None,
+                                display_detail: None,
+                            })
+                            .await;
+                    }
 
-                if !handler_delay.is_zero() {
-                    tokio::time::sleep(handler_delay).await;
-                }
+                    if !handler_delay.is_zero() {
+                        tokio::time::sleep(handler_delay).await;
+                    }
 
-                match handler_error {
-                    Some(message) => Err(message),
-                    None => Ok(AgentTurnResponse::new(response_text)),
+                    match handler_error {
+                        Some(message) => Err(message),
+                        None => Ok(AgentTurnResponse::new(response_text)),
+                    }
                 }
             }
-        }
-    });
+        });
 
     let state = Arc::new(HarnessState::default());
     let channel_impl = Arc::new(HarnessChannel {

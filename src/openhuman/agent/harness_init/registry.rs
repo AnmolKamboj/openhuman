@@ -16,7 +16,7 @@
 //!      launches only when `enabled_backends` is non-empty.
 //!   4. `node_runtime`   — managed Node.js (skills / MCP).
 //!
-//! Voice models (Whisper, Piper) and Ollama stay lazy/opt-in and are
+//! Voice models (Piper) and Ollama stay lazy/opt-in and are
 //! intentionally NOT registered here; they can be added later as steps.
 
 use std::future::Future;
@@ -62,6 +62,9 @@ pub fn all_steps() -> Vec<HarnessInitStep> {
         spacy_step(),
         kompress_step(),
         runtime_python_server_step(),
+        // Registration-site gate: no managed toolchain to provision when
+        // `runtime-node` is compiled out, so the step is absent.
+        #[cfg(feature = "runtime-node")]
         node_runtime_step(),
     ]
 }
@@ -232,6 +235,7 @@ async fn kompress_run(config: &Config) -> Result<(), String> {
         .map_err(|e| format!("{e:#}"))
 }
 
+#[cfg(feature = "runtime-node")]
 fn node_runtime_step() -> HarnessInitStep {
     HarnessInitStep {
         id: "node_runtime",
@@ -243,6 +247,7 @@ fn node_runtime_step() -> HarnessInitStep {
     }
 }
 
+#[cfg(feature = "runtime-node")]
 fn build_node_bootstrap(config: &Config) -> crate::openhuman::runtime::node::NodeBootstrap {
     crate::openhuman::runtime::node::NodeBootstrap::new(
         config.node.clone(),
@@ -251,6 +256,7 @@ fn build_node_bootstrap(config: &Config) -> crate::openhuman::runtime::node::Nod
     )
 }
 
+#[cfg(feature = "runtime-node")]
 async fn node_is_done(config: &Config) -> bool {
     if !config.node.enabled {
         return true;
@@ -264,6 +270,7 @@ async fn node_is_done(config: &Config) -> bool {
         .is_some()
 }
 
+#[cfg(feature = "runtime-node")]
 async fn node_run(config: &Config) -> Result<(), String> {
     if !config.node.enabled {
         return Ok(());
@@ -289,16 +296,20 @@ mod tests {
     fn all_steps_have_stable_ids_and_are_non_required() {
         let steps = all_steps();
         let ids: Vec<_> = steps.iter().map(|s| s.id).collect();
-        assert_eq!(
-            ids,
-            vec![
-                "python_runtime",
-                "spacy",
-                "kompress",
-                "runtime_python_server",
-                "node_runtime"
-            ]
-        );
+        let mut expected = vec![
+            "python_runtime",
+            "spacy",
+            "kompress",
+            "runtime_python_server",
+        ];
+        // `node_runtime` is a registration-site gate: it is absent (not
+        // dead-but-listed) when the managed Node runtime is compiled out. `cfg!`
+        // (not `#[cfg]`) keeps `expected` mutable-and-used in both builds — same
+        // idiom as `tools/ops_tests.rs`.
+        if cfg!(feature = "runtime-node") {
+            expected.push("node_runtime");
+        }
+        assert_eq!(ids, expected);
         assert!(steps.iter().all(|s| !s.required));
         assert!(steps.iter().all(|s| !s.label.is_empty()));
     }

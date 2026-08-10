@@ -4,10 +4,7 @@ use anyhow::Result;
 
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::store::trees::types::HotnessCounters;
-
-fn engine_config(config: &Config) -> tinycortex::memory::MemoryConfig {
-    crate::openhuman::memory::tinycortex::memory_config_from(config, config.workspace_dir.clone())
-}
+use crate::openhuman::memory::tinycortex::engine_config;
 
 pub fn get(config: &Config, entity_id: &str) -> Result<Option<HotnessCounters>> {
     tinycortex::memory::tree::store::hotness::get(&engine_config(config), entity_id)

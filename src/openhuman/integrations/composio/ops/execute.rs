@@ -28,8 +28,8 @@ pub async fn composio_execute(
 
     match result {
         Ok(resp) => {
-            crate::core::event_bus::publish_global(
-                crate::core::event_bus::DomainEvent::ComposioActionExecuted {
+            crate::core::bus::BUS.publish(
+                crate::core::events::DomainEvent::ComposioActionExecuted {
                     tool: tool.to_string(),
                     success: resp.successful,
                     error: resp.error.clone(),
@@ -43,8 +43,8 @@ pub async fn composio_execute(
             ))
         }
         Err(e) => {
-            crate::core::event_bus::publish_global(
-                crate::core::event_bus::DomainEvent::ComposioActionExecuted {
+            crate::core::bus::BUS.publish(
+                crate::core::events::DomainEvent::ComposioActionExecuted {
                     tool: tool.to_string(),
                     success: false,
                     error: Some(e.to_string()),

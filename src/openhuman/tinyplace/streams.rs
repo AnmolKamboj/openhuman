@@ -21,7 +21,8 @@ use std::collections::HashMap;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 
 const LOG_PREFIX: &str = "[tinyplace::streams]";
 
@@ -250,7 +251,7 @@ fn kind_to_str(kind: &StreamKind) -> &'static str {
 }
 
 fn publish_status(stream_id: &str, status: &'static str) {
-    publish_global(DomainEvent::TinyPlaceStreamStatusChanged {
+    BUS.publish(DomainEvent::TinyPlaceStreamStatusChanged {
         stream_id: stream_id.to_string(),
         status: status.to_string(),
     });
@@ -289,7 +290,7 @@ async fn recv_loop(
         match connection.recv().await {
             Some(Ok(value)) => {
                 log::trace!("{LOG_PREFIX} recv_loop stream_id={stream_id} message received");
-                publish_global(DomainEvent::TinyPlaceStreamMessage {
+                BUS.publish(DomainEvent::TinyPlaceStreamMessage {
                     stream_id: stream_id.clone(),
                     kind: kind_str.clone(),
                     message: value,

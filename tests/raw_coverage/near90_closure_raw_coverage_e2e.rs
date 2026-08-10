@@ -397,7 +397,7 @@ async fn round20_memory_sources_readers_and_sync_cover_error_edges_without_netwo
     let harness = setup("http://127.0.0.1:9");
     let config = harness.config().await;
 
-    let rss = openhuman_core::openhuman::memory::sources::readers::rss::RssReader;
+    let rss = openhuman_core::openhuman::memory::sources::readers::rss::RssReader::new();
     let mut missing_url = source_entry("rss-missing-url", SourceKind::RssFeed);
     assert_eq!(
         rss.list_items(&missing_url, &config)
@@ -406,27 +406,15 @@ async fn round20_memory_sources_readers_and_sync_cover_error_edges_without_netwo
         "rss source requires a url"
     );
 
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
-        .await
-        .expect("bind feed fixture");
-    let feed_url = format!("http://{}", listener.local_addr().expect("addr"));
-    let server = tokio::spawn(async move {
-        if let Ok((mut stream, _)) = listener.accept().await {
-            let mut req = [0_u8; 1024];
-            let _ = stream.read(&mut req).await;
-            let response =
-                "HTTP/1.1 200 OK\r\ncontent-type: text/xml\r\ncontent-length: 10\r\n\r\nnot-a-feed";
-            let _ = stream.write_all(response.as_bytes()).await;
-            let _ = stream.shutdown().await;
-        }
-    });
-    missing_url.url = Some(feed_url);
+    // The reader rejects loopback sources before attempting a network fetch.
+    // This supersedes the former parser-error fixture, which exercised an
+    // unsafe request path that no longer exists.
+    missing_url.url = Some("http://127.0.0.1:9/not-a-feed".to_string());
     let feed_err = rss
         .list_items(&missing_url, &config)
         .await
-        .expect_err("unrecognized feed rejected");
-    assert!(feed_err.contains("unrecognized feed format"));
-    let _ = server.await;
+        .expect_err("loopback feed rejected before fetching");
+    assert!(feed_err.contains("public host"), "unexpected RSS error: {feed_err}");
 
     // GitHub reader portion requires a real `gh` on PATH to shadow with our
     // fake. Skip on CI containers that lack `gh` — without it the reader

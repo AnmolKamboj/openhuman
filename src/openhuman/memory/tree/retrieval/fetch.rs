@@ -4,7 +4,7 @@ use crate::openhuman::config::Config;
 use crate::openhuman::memory::source_scope::chunk_source_allowed_in;
 use crate::openhuman::memory::source_scope::current_source_scope;
 use crate::openhuman::memory::store::chunks::store::get_chunks_batch;
-use crate::openhuman::memory::tree::retrieval::engine::config as engine_config;
+use crate::openhuman::memory::tinycortex::engine_config;
 use crate::openhuman::memory::tree::retrieval::types::RetrievalHit;
 
 pub use tinycortex::memory::retrieval::MAX_BATCH;

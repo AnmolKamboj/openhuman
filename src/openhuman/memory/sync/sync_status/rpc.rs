@@ -3,7 +3,7 @@
 use crate::openhuman::config::Config;
 use crate::rpc::RpcOutcome;
 
-use super::types::StatusListResponse;
+use tinycortex::memory::sync::StatusListResponse;
 
 pub async fn status_list_rpc(config: &Config) -> Result<RpcOutcome<StatusListResponse>, String> {
     tracing::debug!("[memory_sync_status][rpc] status_list via tinycortex");

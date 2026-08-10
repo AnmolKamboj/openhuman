@@ -41,7 +41,7 @@ static OLLAMA_HEALTH_REPORTED: AtomicBool = AtomicBool::new(false);
 /// Returns `true` on the firing call, `false` afterwards — callers use the
 /// return value only for logging context.
 ///
-/// [`EmbeddingModelUnhealthy`]: crate::core::event_bus::events::DomainEvent::EmbeddingModelUnhealthy
+/// [`EmbeddingModelUnhealthy`]: crate::core::events::DomainEvent::EmbeddingModelUnhealthy
 fn report_ollama_health_gate_once(base_url: &str, model: &str) -> bool {
     // Deliberately ABOVE the Sentry latch (#5354). `publish_web_channel_event`
     // is a `broadcast::send`: with no socket client attached yet it returns Err
@@ -98,7 +98,7 @@ fn report_ollama_health_gate_once(base_url: &str, model: &str) -> bool {
     log::debug!(
         "[memory::factory] publishing EmbeddingModelUnhealthy event: provider=ollama model={model} fallback=cloud"
     );
-    let event = crate::core::event_bus::DomainEvent::EmbeddingModelUnhealthy {
+    let event = crate::core::events::DomainEvent::EmbeddingModelUnhealthy {
         provider: "ollama".to_string(),
         model: model.to_string(),
         fallback_provider: "cloud".to_string(),
@@ -106,7 +106,7 @@ fn report_ollama_health_gate_once(base_url: &str, model: &str) -> bool {
     };
     // publish_global is infallible (drops the event when no receivers are
     // registered, which is fine for the health-gate use case).
-    crate::core::event_bus::publish_global(event);
+    crate::core::bus::BUS.publish(event);
 
     true
 }

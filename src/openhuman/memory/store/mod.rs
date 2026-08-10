@@ -29,7 +29,6 @@ pub mod tools;
 pub mod traits;
 pub mod trees;
 pub mod types;
-pub mod vectors;
 
 mod client;
 pub mod factories;

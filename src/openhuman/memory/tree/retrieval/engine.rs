@@ -1,12 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::openhuman::config::Config;
 use crate::openhuman::memory::tree::score::embed::Embedder as HostEmbedder;
-
-pub(super) fn config(config: &Config) -> tinycortex::memory::MemoryConfig {
-    crate::openhuman::memory::tinycortex::memory_config_from(config, config.workspace_dir.clone())
-}
 
 pub(super) struct EmbedderBridge<'a>(pub &'a dyn HostEmbedder);
 

@@ -4,7 +4,8 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use chrono::Duration;
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::store::content::wiki_git::{SummaryCommitBatch, SummaryCommitEntry};
 use crate::openhuman::memory::store::trees::types::{Buffer, SummaryNode, Tree};
@@ -54,7 +55,7 @@ struct Observer<'a> {
 
 impl tinycortex::memory::tree::SealObserver for Observer<'_> {
     fn progress(&self, tree: &Tree, step: &str, level: u32, item_count: Option<u32>) {
-        publish_global(DomainEvent::MemoryTreeBuildProgress {
+        BUS.publish(DomainEvent::MemoryTreeBuildProgress {
             phase: "seal".to_string(),
             step: step.to_string(),
             tree_scope: Some(tree.scope.clone()),

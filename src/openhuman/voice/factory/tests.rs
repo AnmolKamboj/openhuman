@@ -2,12 +2,11 @@
 
 use super::entry::{
     create_stt_provider, create_tts_provider, default_stt_provider, default_tts_provider,
-    resolve_tts_voice, DEFAULT_PIPER_VOICE, WHISPER_MODEL_PRESETS,
+    resolve_tts_voice, DEFAULT_PIPER_VOICE,
 };
 use super::helpers::{effective_stt_provider, effective_tts_provider, split_slug_model};
-use super::stt_providers::WhisperSttProvider;
-use super::traits::{SttProvider, TtsProvider};
 use crate::openhuman::config::schema::voice_providers::{SttApiStyle, VoiceCapability};
+use crate::openhuman::config::schema::SttEngine;
 use crate::openhuman::config::Config;
 
 fn cfg() -> Config {
@@ -21,17 +20,27 @@ fn stt_factory_cloud_branch() {
 }
 
 #[test]
-fn stt_factory_whisper_branch() {
-    let p = create_stt_provider("whisper", "whisper-large-v3-turbo", &cfg()).unwrap();
-    assert_eq!(p.name(), "whisper");
+fn stt_factory_backend_alias() {
+    let p = create_stt_provider("backend", "ignored", &cfg()).unwrap();
+    assert_eq!(p.name(), "cloud");
 }
 
+/// The bundled whisper.cpp engine is gone, so `"whisper"` is no longer a
+/// sentinel: it falls through to the slug lookup and errors by name. A silent
+/// remap to cloud would hide an unmigrated config instead of surfacing it.
 #[test]
-fn stt_factory_whisper_empty_model_uses_default() {
-    // Empty model → default whisper-large-v3-turbo; constructor must not
-    // reject an empty string with an opaque error.
-    let p = create_stt_provider("whisper", "", &cfg()).unwrap();
-    assert_eq!(p.name(), "whisper");
+fn stt_factory_removed_local_engine_errors_rather_than_falling_back() {
+    for removed in ["whisper", "local"] {
+        let err = create_stt_provider(removed, "", &cfg())
+            .err()
+            .unwrap_or_else(|| panic!("`{removed}` must not resolve to a provider"))
+            .to_string();
+        assert!(err.contains(removed), "error should name the string: {err}");
+        assert!(
+            err.contains("no voice provider"),
+            "should fall through to the slug lookup: {err}"
+        );
+    }
 }
 
 #[test]
@@ -83,6 +92,7 @@ fn stt_factory_bare_slug_resolves_with_registry() {
     );
     let p = create_stt_provider("openai", "", &config).unwrap();
     assert_eq!(p.name(), "external");
+    assert_eq!(p.configured_model(), Some("whisper-1"));
 }
 
 #[test]
@@ -341,40 +351,6 @@ fn tts_factory_stt_only_provider_rejects() {
 }
 
 #[test]
-fn whisper_presets_cover_full_size_ladder() {
-    // Sanity-check the installer surface: tiny→large-v3-turbo must all be
-    // exposed so the local-AI panel can render the size picker without
-    // hard-coding the list.
-    let ids: Vec<&str> = WHISPER_MODEL_PRESETS.iter().map(|(id, _)| *id).collect();
-    for expected in ["tiny", "base", "small", "medium", "large-v3-turbo"] {
-        assert!(
-            ids.contains(&expected),
-            "WHISPER_MODEL_PRESETS missing {expected}"
-        );
-    }
-}
-
-#[tokio::test]
-async fn whisper_provider_fails_clearly_when_binary_missing() {
-    // No WHISPER_BIN env, no model file — the provider must surface an
-    // actionable error rather than panic. Drive a small base64 payload
-    // so we never reach the actual transcription call.
-    let _guard = unset_env_guard("WHISPER_BIN");
-    let provider = WhisperSttProvider::new("whisper-large-v3-turbo");
-    let result = provider
-        .transcribe(&cfg(), "AAAA", Some("audio/wav"), None, None)
-        .await;
-    assert!(result.is_err(), "missing binary must error");
-    let msg = result.err().unwrap();
-    // Whatever the underlying message says, it must NOT be a serialize
-    // panic — i.e. we must have hit the binary-resolution branch.
-    assert!(
-        !msg.is_empty(),
-        "error message should be populated for diagnosis"
-    );
-}
-
-#[test]
 fn default_providers_return_cloud() {
     assert_eq!(default_stt_provider().name(), "cloud");
     assert_eq!(default_tts_provider().name(), "cloud");
@@ -403,7 +379,7 @@ fn split_slug_model_multiple_colons() {
 fn effective_stt_prefers_new_field() {
     let mut config = cfg();
     config.stt_provider = Some("deepgram:nova-2".into());
-    config.local_ai.stt_provider = "whisper".into();
+    config.local_ai.stt_provider = "openai".into();
     assert_eq!(effective_stt_provider(&config), "deepgram:nova-2");
 }
 
@@ -411,8 +387,8 @@ fn effective_stt_prefers_new_field() {
 fn effective_stt_falls_back_to_legacy() {
     let mut config = cfg();
     config.stt_provider = None;
-    config.local_ai.stt_provider = "whisper".into();
-    assert_eq!(effective_stt_provider(&config), "whisper");
+    config.local_ai.stt_provider = "deepgram:nova-2".into();
+    assert_eq!(effective_stt_provider(&config), "deepgram:nova-2");
 }
 
 #[test]
@@ -421,6 +397,43 @@ fn effective_stt_defaults_to_cloud() {
     config.stt_provider = None;
     config.local_ai.stt_provider = String::new();
     assert_eq!(effective_stt_provider(&config), "cloud");
+}
+
+/// `local_ai.stt_provider` has defaulted to the literal `"cloud"` since long
+/// before engines existed, so treating it as an explicit choice would make the
+/// engine picker a no-op for every existing workspace.
+#[test]
+fn effective_stt_engine_wins_over_default_cloud_routing_strings() {
+    let mut config = cfg();
+    config.voice_server.stt_engine = SttEngine::Openai;
+    config.stt_provider = None;
+    config.local_ai.stt_provider = "cloud".into();
+    assert_eq!(effective_stt_provider(&config), "openai");
+
+    config.stt_provider = Some("openhuman".into());
+    assert_eq!(effective_stt_provider(&config), "openai");
+}
+
+/// A specific provider still outranks the engine field — otherwise a user who
+/// pinned `deepgram:nova-2` would be silently moved onto the engine picker.
+#[test]
+fn effective_stt_explicit_slug_outranks_engine() {
+    let mut config = cfg();
+    config.voice_server.stt_engine = SttEngine::Elevenlabs;
+    config.stt_provider = Some("deepgram:nova-2".into());
+    assert_eq!(effective_stt_provider(&config), "deepgram:nova-2");
+}
+
+/// Removed local slugs are only rewritten by the config migration. A manually
+/// reintroduced value must reach the factory and fail by name rather than being
+/// silently routed to an engine the user did not select.
+#[test]
+fn effective_stt_unmigrated_local_value_is_not_a_sentinel() {
+    let mut config = cfg();
+    config.stt_provider = Some("whisper".into());
+    config.local_ai.stt_provider = "whisper".into();
+    config.voice_server.stt_engine = SttEngine::Elevenlabs;
+    assert_eq!(effective_stt_provider(&config), "whisper");
 }
 
 #[test]
@@ -443,26 +456,4 @@ fn effective_tts_falls_back_to_legacy() {
 fn effective_tts_defaults_to_cloud() {
     let config = cfg();
     assert_eq!(effective_tts_provider(&config), "cloud");
-}
-
-/// Drop guard that unsets an env var on construction and restores it on
-/// drop. Necessary because cargo runs tests in parallel and bare
-/// `remove_var` would leak across tests.
-fn unset_env_guard(key: &'static str) -> EnvUnsetGuard {
-    let prev = std::env::var_os(key);
-    std::env::remove_var(key);
-    EnvUnsetGuard { key, prev }
-}
-
-struct EnvUnsetGuard {
-    key: &'static str,
-    prev: Option<std::ffi::OsString>,
-}
-impl Drop for EnvUnsetGuard {
-    fn drop(&mut self) {
-        match &self.prev {
-            Some(v) => std::env::set_var(self.key, v),
-            None => std::env::remove_var(self.key),
-        }
-    }
 }

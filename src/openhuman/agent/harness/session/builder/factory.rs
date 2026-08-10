@@ -231,8 +231,16 @@ impl Agent {
         // The expression is extracted into [`derive_profile_workspace_descriptor`]
         // so the unit tests exercise the *same* code path rather than a
         // hand-copied mirror.
+        //
+        // When no profile binds one, an embedder may still have scoped a
+        // per-turn root (`agent::turn_workspace`) — a workflow node running
+        // this turn against the checkout it names. The profile's dedicated
+        // workspace wins where both exist: it is the stronger, persisted
+        // isolation boundary, and a profile that asked for its own home must
+        // not be relocated by an ambient host hint.
         let profile_workspace_descriptor =
-            derive_profile_workspace_descriptor(&config.action_dir, profile);
+            derive_profile_workspace_descriptor(&config.action_dir, profile)
+                .or_else(derive_turn_workspace_descriptor);
 
         let runtime: Arc<dyn host_runtime::RuntimeAdapter> = Arc::from(
             host_runtime::create_runtime(&config.runtime, config.shell.hide_window)?,
@@ -409,24 +417,36 @@ impl Agent {
         // #4249, 1c). `model_routes` translation and intelligent local/cloud
         // task hinting now live in the unified routing layer (router.rs) rather
         // than a per-session wrapper, so they are not re-wrapped here.
-        // Explicit `hint:<role>` and known-tier model strings route to the
-        // matching workload (so a subagent declaring `hint:reasoning` still
-        // gets the user's `reasoning_provider`). Everything else — including
-        // the orchestrator/lead, which has no specialised hint — falls
-        // through to the `chat` workload, so `config.chat_provider` (the
-        // "Chat" routing row, "Direct conversational back-and-forth") drives
-        // the user-facing chat turn.
+        // The Master Agent's definition selects the coding workload so the
+        // default user-facing turn has a model suitable for the direct
+        // inspect → edit → verify loop. Legacy/no-definition callers retain
+        // the configured chat default. Other specialised roles still select
+        // their model in the sub-agent runner.
         // Only the explicit `hint:<role>` form routes to a specialised
         // workload — legacy tier literals like `reasoning-v1` (which the
         // bootstrap historically pinned as `default_model` for everyone)
-        // fall through to `chat`. This is what makes
-        // `config.chat_provider` actually drive the orchestrator's chat
-        // turn for the install base; without it, every existing user's
-        // `default_model = "reasoning-v1"` would silently route the main
-        // chat to the `reasoning` workload regardless of their
-        // `chat_provider` selection. Subagents still set their own role
-        // through `ModelSpec::Hint(...)` in the subagent runner.
-        let provider_role = provider_role_for(agent_id, config.default_model.as_deref());
+        // fall through to `chat`. This preserves `config.chat_provider` for
+        // legacy callers. A built-in Master Agent has an explicit
+        // `hint:coding`, while existing pre-registry callers continue using
+        // `config.default_model` unchanged.
+        let master_model_hint = target_def.and_then(|def| {
+            if def.id == "orchestrator" {
+                match &def.model {
+                    crate::openhuman::agent::harness::definition::ModelSpec::Hint(hint) => {
+                        Some(format!("hint:{hint}"))
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        });
+        let provider_role = provider_role_for(
+            agent_id,
+            master_model_hint
+                .as_deref()
+                .or(config.default_model.as_deref()),
+        );
         // Retry/backoff is now owned by the crate `RetryPolicy` at the harness
         // model call (issue #4249, Phase 3a) — see `tinyagents::run_policy_for`.
         // The turn path therefore no longer wraps the resolved provider in
@@ -781,6 +801,8 @@ impl Agent {
             );
             None
         };
+
+        post_turn_hooks.extend(crate::openhuman::agent::hooks::embedder_post_turn_hooks());
 
         // Best-effort prewarm from the shared Composio cache. This avoids
         // building the session with a knowingly stale `&[]` integration view
@@ -1478,7 +1500,7 @@ mod provider_role_tests {
     use super::{resolve_dispatcher_kind, DispatcherKind};
 
     #[test]
-    fn orchestrator_defaults_to_chat() {
+    fn legacy_orchestrator_fallback_defaults_to_chat() {
         assert_eq!(provider_role_for("orchestrator", Some("chat-v1")), "chat");
         assert_eq!(provider_role_for("orchestrator", None), "chat");
         // A legacy heavy default_model tier still falls through to chat.
@@ -1497,6 +1519,10 @@ mod provider_role_tests {
         assert_eq!(
             provider_role_for("orchestrator", Some("hint:reasoning")),
             "reasoning"
+        );
+        assert_eq!(
+            provider_role_for("orchestrator", Some("hint:coding")),
+            "coding"
         );
         // The cloud tick: orchestrator agent_id + the subconscious hint.
         assert_eq!(
@@ -1614,6 +1640,45 @@ pub(crate) fn derive_profile_workspace_descriptor(
         tinyagents::harness::workspace::WorkspaceDescriptor::new(dir).with_policy_id(
             crate::openhuman::agent::profiles::workspace_policy_id(&profile_id),
         ),
+    )
+}
+
+/// Section D, embedder variant — the turn's workspace descriptor from the
+/// per-turn root an embedder scoped via
+/// [`turn_workspace::with_workspace`](crate::openhuman::agent::turn_workspace::with_workspace).
+///
+/// Returns a [`WorkspaceDescriptor`](tinyagents::harness::workspace::WorkspaceDescriptor)
+/// rooted at the scoped directory so this turn's acting tools (shell, file,
+/// git) resolve their default cwd there instead of the shared `action_dir`.
+/// `None` — every caller that scoped nothing — leaves the shared-`action_dir`
+/// behaviour byte-identical.
+///
+/// The root is only honoured when it is an existing directory: binding every
+/// acting tool to a cwd that does not exist would turn a host's stale path into
+/// an unexplained failure in each individual tool, and the shared `action_dir`
+/// is the better fallback (same reasoning as the profile variant's
+/// create-failure path).
+///
+/// The policy id is a fixed label rather than the path: it is surfaced in tool
+/// logs, and a host's checkout path is not something to spread through them.
+fn derive_turn_workspace_descriptor() -> Option<tinyagents::harness::workspace::WorkspaceDescriptor>
+{
+    let root = crate::openhuman::agent::turn_workspace::current()?;
+    if !root.is_dir() {
+        tracing::warn!(
+            root = %root.display(),
+            "[turn_workspace] scoped root is not an existing directory — \
+             falling back to the shared action_dir cwd for this turn"
+        );
+        return None;
+    }
+    tracing::debug!(
+        root = %root.display(),
+        "[turn_workspace] turn bound to the embedder's per-turn root as default cwd"
+    );
+    Some(
+        tinyagents::harness::workspace::WorkspaceDescriptor::new(root)
+            .with_policy_id("turn-workspace"),
     )
 }
 

@@ -9,9 +9,9 @@ use serde_json::{Map, Value};
 
 use crate::core::all::{ControllerFuture, RegisteredController};
 use crate::core::{ControllerSchema, FieldSchema, TypeSchema};
-use crate::openhuman::agent::session_db::run_ledger::WorkflowRunListRequest;
 use crate::openhuman::config::rpc as config_rpc;
 use crate::rpc::RpcOutcome;
+use tinyagents::session::run_ledger::WorkflowRunListRequest;
 
 /// Controller schemas exposed by the workflow-runs module.
 pub fn all_controller_schemas() -> Vec<ControllerSchema> {

@@ -46,6 +46,11 @@ import {
   GENERAL_TAB_VALUE,
   isThreadVisibleInTab,
 } from '../../features/conversations/utils/threadFilter';
+import {
+  ChatMascotDock,
+  useChatMascotOptional,
+  useChatMascotSendBinding,
+} from '../../features/human/chatMascot';
 import MicComposer from '../../features/human/MicComposer';
 import { useFlowApprovalRequests } from '../../hooks/useFlowApprovalRequests';
 import { useUsageState } from '../../hooks/useUsageState';
@@ -911,7 +916,8 @@ const Conversations = ({
         if (cancelled) return;
         if (!status.stt_available) {
           setVoiceStatus(
-            'Voice input needs a speech model to work. Go to Settings > Local AI Models to set it up.'
+            status.stt_error ??
+              'Voice input needs a working speech-to-text engine. Pick one in Settings > Voice.'
           );
         } else {
           setVoiceStatus('Ready — tap "Start Talking" to record.');
@@ -1419,7 +1425,7 @@ const Conversations = ({
     }
 
     setIsTranscribing(true);
-    setVoiceStatus('Transcribing with Whisper…');
+    setVoiceStatus('Transcribing…');
     try {
       const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
       const audioBytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
@@ -1448,14 +1454,14 @@ const Conversations = ({
       notifyOverlaySttState('error');
       const message = err instanceof Error ? err.message : String(err);
       const isSetupIssue =
-        message.includes('whisper') ||
+        message.includes('no voice provider') ||
         message.includes('binary not found') ||
-        message.includes('STT model');
+        message.includes('sign in first');
       setSendError(
         chatSendError(
           isSetupIssue ? 'stt_not_ready' : 'voice_transcription',
           isSetupIssue
-            ? 'Voice input needs a speech model. Go to Settings to download one.'
+            ? 'Voice input needs a working speech-to-text engine. Set one up in Settings > Voice.'
             : `Voice transcription failed: ${message}`
         )
       );
@@ -1737,6 +1743,28 @@ const Conversations = ({
       inferenceTurnLifecycleByThread[selectedThreadId] === 'started' ||
       inferenceTurnLifecycleByThread[selectedThreadId] === 'streaming')
   );
+
+  // ── Chat mascot ────────────────────────────────────────────────────────────
+  // `null` outside the merged chat surface (embedded sidebars, iOS, the Flows
+  // copilot), where no mascot exists and the dock is simply not rendered.
+  const chatMascot = useChatMascotOptional();
+  // Stable callbacks: the mascot stage subscribes to these, and
+  // `handleSendMessage` is re-created every render, so publishing it directly
+  // would wake the stage on every keystroke. The ref is already maintained for
+  // the dictation handler and always holds the latest send fn.
+  const mascotSubmit = useCallback((text: string) => handleSendMessageRef.current?.(text), []);
+  const mascotError = useCallback((message: string) => {
+    setSendError(chatSendError('voice_transcription', message));
+  }, []);
+  useChatMascotSendBinding(chatMascot, {
+    submit: mascotSubmit,
+    onError: mascotError,
+    // Same guard as the mic-cloud composer below: without `!selectedThreadId` a
+    // transcript spoken before a thread exists hits handleSendMessage's early
+    // return and is silently dropped — the user spoke into the void.
+    disabled: composerInteractionBlocked || isSending || !selectedThreadId,
+  });
+  const mascotDock = chatMascot ? <ChatMascotDock /> : undefined;
 
   // Live agent activity that must stay visible even before the thread's
   // message history has loaded: an in-flight turn, recorded tool steps, a
@@ -2266,7 +2294,10 @@ const Conversations = ({
         )}
 
         {composer === 'mic-cloud' ? (
-          <div className="flex flex-col items-center gap-3 py-1">
+          // `relative` so the mascot dock (absolute, `bottom-full`) anchors here
+          // — this branch renders no ChatComposer to hang it off.
+          <div className="relative flex flex-col items-center gap-3 py-1">
+            {mascotDock}
             <MicComposer
               // Without `!selectedThreadId`, a mic submit before a thread is
               // ready hits `handleSendMessage`'s early return and the
@@ -2317,6 +2348,7 @@ const Conversations = ({
                 ) : null,
                 <ThreadGoalEditorPanel key="thread-goal" ctl={threadGoal} />,
               ]}
+              mascotDock={mascotDock}
             />
           </>
         ) : (

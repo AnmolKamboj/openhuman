@@ -578,73 +578,30 @@ async fn memory_source_readers_validate_and_use_local_inputs_only() {
         .unwrap_err();
     assert!(traversal.contains("not found") || traversal.contains("traversal"));
 
-    let web_base = serve_routes(
-        Router::new()
-            .route("/page", get(html_page))
-            .route("/too-large", get(large_header))
-            .route("/missing", get(|| async { StatusCode::NOT_FOUND })),
-    )
-    .await;
     let mut page = source(SourceKind::WebPage, "src_web");
-    page.url = Some(format!("{web_base}/page"));
+    page.url = Some("http://127.0.0.1:9/page".into());
     page.selector = Some("main.content".into());
     let web_reader = reader_for(&SourceKind::WebPage);
-    let page_items = web_reader
-        .list_items(&page, &config)
+    let page_error = web_reader
+        .read_item(&page, "http://127.0.0.1:9/page", &config)
         .await
-        .expect("web list");
-    assert_eq!(page_items[0].id, format!("{web_base}/page"));
-    let page_content = web_reader
-        .read_item(&page, &page_items[0].id, &config)
-        .await
-        .expect("web read");
-    assert_eq!(page_content.title, "Raw Page");
-    assert!(page_content.body.contains("Selected body"));
-    assert!(!page_content.body.contains("Skip me"));
+        .expect_err("private web host rejected before fetch");
+    assert!(page_error.contains("public host"));
     page.url = Some("file:///etc/passwd".into());
     let bad_scheme = web_reader
         .read_item(&page, "relative-id", &config)
         .await
         .unwrap_err();
     assert!(bad_scheme.contains("http(s)"));
-    page.url = Some(format!("{web_base}/too-large"));
-    assert!(web_reader
-        .read_item(&page, "relative-id", &config)
-        .await
-        .unwrap_err()
-        .contains("exceeds"));
-    page.url = Some(format!("{web_base}/missing"));
-    assert!(web_reader
-        .read_item(&page, "relative-id", &config)
-        .await
-        .unwrap_err()
-        .contains("404"));
-
-    let rss_base = serve_routes(Router::new().route("/feed", get(rss_feed))).await;
     let mut rss = source(SourceKind::RssFeed, "src_rss");
-    rss.url = Some(format!("{rss_base}/feed"));
+    rss.url = Some("http://127.0.0.1:9/feed".into());
     rss.max_items = Some(1);
     let rss_reader = reader_for(&SourceKind::RssFeed);
-    let feed_items = rss_reader
+    let rss_error = rss_reader
         .list_items(&rss, &config)
         .await
-        .expect("rss list");
-    assert_eq!(feed_items.len(), 1);
-    assert_eq!(feed_items[0].id, "rss-1");
-    let feed_content = rss_reader
-        .read_item(&rss, "rss-1", &config)
-        .await
-        .expect("rss read");
-    assert_eq!(feed_content.content_type, ContentType::Html);
-    assert!(feed_content.metadata["link"]
-        .as_str()
-        .unwrap()
-        .contains("rss-1"));
-    assert!(rss_reader
-        .read_item(&rss, "missing", &config)
-        .await
-        .unwrap_err()
-        .contains("not found"));
+        .expect_err("private RSS host rejected before fetch");
+    assert!(rss_error.contains("public host"));
 
     let mut twitter = source(SourceKind::TwitterQuery, "src_tw");
     twitter.query = Some("AI safety".into());
@@ -957,7 +914,7 @@ async fn memory_thread_tree_and_sync_controller_schemas_execute_public_handlers(
 fn memory_schema_registries_and_query_tool_metadata_cover_public_surfaces() {
     let memory_schemas = all_memory_controller_schemas();
     let memory_controllers = all_memory_registered_controllers();
-    assert_eq!(memory_schemas.len(), 34);
+    assert_eq!(memory_schemas.len(), 35);
     assert_eq!(memory_schemas.len(), memory_controllers.len());
     for function in [
         "init",
@@ -2664,7 +2621,7 @@ async fn memory_source_sync_entrypoint_rejects_disabled_and_ingests_folder_items
 #[test]
 fn memory_tree_io_contract_types_round_trip_leaf_read_and_write_shapes() {
     let now = Utc.with_ymd_and_hms(2026, 5, 29, 16, 0, 0).unwrap();
-    let payload = openhuman_core::openhuman::memory::tree::io::TreeLeafPayload {
+    let payload = openhuman_core::openhuman::memory::tree::TreeLeafPayload {
         chunk_id: "chunk-contract-1".into(),
         token_count: 42,
         timestamp: now,
@@ -2677,12 +2634,12 @@ fn memory_tree_io_contract_types_round_trip_leaf_read_and_write_shapes() {
     assert_eq!(leaf_ref.chunk_id, payload.chunk_id);
     assert_eq!(leaf_ref.entities, payload.entities);
     let round_trip =
-        openhuman_core::openhuman::memory::tree::io::TreeLeafPayload::from(leaf_ref.clone());
+        openhuman_core::openhuman::memory::tree::TreeLeafPayload::from(leaf_ref.clone());
     assert_eq!(round_trip.content, payload.content);
     assert_eq!(round_trip.score, payload.score);
 
     let write_default_json = serde_json::to_value(
-        openhuman_core::openhuman::memory::tree::io::TreeWriteRequest {
+        openhuman_core::openhuman::memory::tree::TreeWriteRequest {
             tree_id: "tree-contract".into(),
             tree_kind: TreeKind::Source,
             leaf: round_trip.clone(),
@@ -2694,7 +2651,7 @@ fn memory_tree_io_contract_types_round_trip_leaf_read_and_write_shapes() {
     assert_eq!(write_default_json["label_strategy"], "inherit");
     assert_eq!(write_default_json["deferred"], false);
 
-    let decoded_write: openhuman_core::openhuman::memory::tree::io::TreeWriteRequest =
+    let decoded_write: openhuman_core::openhuman::memory::tree::TreeWriteRequest =
         serde_json::from_value(json!({
             "tree_id": "tree-contract",
             "tree_kind": "global",
@@ -2711,12 +2668,12 @@ fn memory_tree_io_contract_types_round_trip_leaf_read_and_write_shapes() {
     assert_eq!(decoded_write.tree_kind, TreeKind::Global);
     assert_eq!(
         decoded_write.label_strategy,
-        openhuman_core::openhuman::memory::tree::io::TreeLabelStrategy::Empty
+        openhuman_core::openhuman::memory::tree::TreeLabelStrategy::Empty
     );
     assert!(decoded_write.leaf.entities.is_empty());
     assert!(decoded_write.deferred);
 
-    let outcome = openhuman_core::openhuman::memory::tree::io::TreeWriteOutcome {
+    let outcome = openhuman_core::openhuman::memory::tree::TreeWriteOutcome {
         new_summary_ids: vec!["summary-1".into()],
         seal_pending: true,
     };
@@ -2724,7 +2681,7 @@ fn memory_tree_io_contract_types_round_trip_leaf_read_and_write_shapes() {
     assert_eq!(outcome_json["new_summary_ids"][0], "summary-1");
     assert_eq!(outcome_json["seal_pending"], true);
 
-    let read_request: openhuman_core::openhuman::memory::tree::io::TreeReadRequest =
+    let read_request: openhuman_core::openhuman::memory::tree::TreeReadRequest =
         serde_json::from_value(json!({
             "tree_id": "tree-contract",
             "max_depth": 2,
@@ -2736,14 +2693,14 @@ fn memory_tree_io_contract_types_round_trip_leaf_read_and_write_shapes() {
     assert_eq!(read_request.max_depth, 2);
     assert_eq!(read_request.limit, Some(3));
 
-    let hit = openhuman_core::openhuman::memory::tree::io::TreeReadHit {
+    let hit = openhuman_core::openhuman::memory::tree::TreeReadHit {
         node_id: "summary-1".into(),
         node_kind: "summary".into(),
         level: 1,
         content: "Summary text".into(),
         score: 0.42,
     };
-    let result = openhuman_core::openhuman::memory::tree::io::TreeReadResult {
+    let result = openhuman_core::openhuman::memory::tree::TreeReadResult {
         hits: vec![hit],
         total: 4,
         tree_id: "tree-contract".into(),
@@ -2763,7 +2720,7 @@ fn memory_tree_io_contract_types_round_trip_leaf_read_and_write_shapes() {
         created_at: now,
         last_sealed_at: None,
     };
-    let empty = openhuman_core::openhuman::memory::tree::io::TreeReadResult::empty(&tree);
+    let empty = openhuman_core::openhuman::memory::tree::TreeReadResult::empty(&tree);
     assert_eq!(empty.tree_id, "empty-tree");
     assert!(empty.hits.is_empty());
 }
@@ -3310,24 +3267,24 @@ fn memory_sync_profile_markdown_and_status_helpers_are_idempotent() {
 
     let now = 1_700_000_000_000_i64;
     assert_eq!(
-        openhuman_core::openhuman::memory::sync::sync_status::types::FreshnessLabel::from_age_ms(
+        openhuman_core::openhuman::memory::sync::sync_status::FreshnessLabel::from_age_ms(
             Some(now - 30_000),
             now
         ),
-        openhuman_core::openhuman::memory::sync::sync_status::types::FreshnessLabel::Active
+        openhuman_core::openhuman::memory::sync::sync_status::FreshnessLabel::Active
     );
     assert_eq!(
-        openhuman_core::openhuman::memory::sync::sync_status::types::FreshnessLabel::from_age_ms(
+        openhuman_core::openhuman::memory::sync::sync_status::FreshnessLabel::from_age_ms(
             Some(now - 30_001),
             now
         ),
-        openhuman_core::openhuman::memory::sync::sync_status::types::FreshnessLabel::Recent
+        openhuman_core::openhuman::memory::sync::sync_status::FreshnessLabel::Recent
     );
     assert_eq!(
-        openhuman_core::openhuman::memory::sync::sync_status::types::FreshnessLabel::from_age_ms(
+        openhuman_core::openhuman::memory::sync::sync_status::FreshnessLabel::from_age_ms(
             None, now
         ),
-        openhuman_core::openhuman::memory::sync::sync_status::types::FreshnessLabel::Idle
+        openhuman_core::openhuman::memory::sync::sync_status::FreshnessLabel::Idle
     );
 }
 
@@ -3579,7 +3536,7 @@ async fn threads_rpc_ops_cover_crud_title_fallback_and_turn_state_cleanup() {
         .value
         .data
         .expect("fallback summary");
-    assert_eq!(fallback_title.title, "Please summarize launch blockers");
+    assert_eq!(fallback_title.title, "summarize launch blockers");
 
     assert!(
         thread_ops::thread_update_title(UpdateConversationThreadTitleRequest {

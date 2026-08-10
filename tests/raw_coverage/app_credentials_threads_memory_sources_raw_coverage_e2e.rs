@@ -765,13 +765,13 @@ async fn round19_memory_sources_registry_readers_sync_and_reconcile_edges() {
         max_items: Some(1),
         ..source_entry("src-rss", SourceKind::RssFeed, "Feed")
     };
-    let rss_reader = openhuman_core::openhuman::memory::sources::readers::rss::RssReader;
-    let feed_items = rss_reader
+    let rss_reader = openhuman_core::openhuman::memory::sources::readers::rss::RssReader::new();
+    let rss_error = rss_reader
         .list_items(&rss, &config)
         .await
-        .expect("rss list items");
-    assert_eq!(feed_items[0].id, "guid-1");
-    let _ = server_task.await;
+        .expect_err("loopback RSS feed must be rejected by the SSRF guard");
+    assert!(rss_error.contains("public host"), "unexpected RSS error: {rss_error}");
+    server_task.abort();
 
     memory_sources::reconcile::ensure_composio_sources().await;
     assert!(

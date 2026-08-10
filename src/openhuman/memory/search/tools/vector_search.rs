@@ -15,9 +15,9 @@ use crate::openhuman::memory::store::chunks::store::{
     get_chunk_embeddings_for_signature_batch, list_chunks, ListChunksQuery,
 };
 use crate::openhuman::memory::store::chunks::types::SourceKind;
-use crate::openhuman::memory::store::vectors::cosine_similarity;
 use crate::openhuman::tools::traits::{Tool, ToolResult};
 use tinycortex::memory::retrieval::mmr::{mmr_select, MmrCandidate};
+use tinycortex::memory::store::vectors::cosine_similarity;
 
 pub struct MemoryVectorSearchTool;
 
