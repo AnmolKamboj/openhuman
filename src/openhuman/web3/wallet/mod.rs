@@ -34,6 +34,10 @@ mod execution;
 mod ops;
 #[cfg(feature = "web3")]
 pub(crate) mod rpc;
+
+/// The host side of `tinywallet`'s `Transport` seam — endpoint resolution,
+/// failover and redaction stay here, where the config lives.
+pub(crate) mod transport;
 #[cfg(feature = "web3")]
 mod schemas;
 #[cfg(feature = "web3")]
