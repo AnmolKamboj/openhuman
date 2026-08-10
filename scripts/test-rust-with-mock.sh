@@ -66,8 +66,18 @@ if [ -f "$HOME/.cargo/env" ]; then
   source "$HOME/.cargo/env"
 fi
 
+# `pnpm test:rust` is the "does the product still work" runner, so it selects
+# the product's gates rather than `[features] default`, which is the smaller
+# contributor set. Without them the four `required-features` integration
+# targets (json_rpc_e2e, raw_coverage_all, observability_smoke,
+# x402_twit_sh_live) are silently SKIPPED and the run still exits 0 — the same
+# trap `--features bin-tools` already guards for the `src/bin/` targets.
+# Source of truth: scripts/ci/product-features.txt.
+PRODUCT_FEATURES="$(bash "$REPO_ROOT/scripts/ci/product-features.sh")"
+
 cargo_test() {
-  cargo test --manifest-path Cargo.toml --workspace --features bin-tools "$@"
+  cargo test --manifest-path Cargo.toml --workspace \
+    --features "${PRODUCT_FEATURES},bin-tools" "$@"
 }
 
 integration_test_targets() {

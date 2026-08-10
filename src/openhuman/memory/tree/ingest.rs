@@ -1,8 +1,11 @@
 //! Product artifact hooks around tinycortex-owned direct summary ingestion.
 
-use anyhow::{Context, Result};
+#[cfg(feature = "memory-git")]
+use anyhow::Context;
+use anyhow::Result;
 
 use crate::openhuman::config::Config;
+#[cfg(feature = "memory-git")]
 use crate::openhuman::memory::store::content::wiki_git::{SummaryCommitBatch, SummaryCommitEntry};
 use crate::openhuman::memory::store::trees::types::Tree;
 use crate::openhuman::memory::tinycortex::{memory_config_from, HostSummariser};
@@ -34,6 +37,11 @@ pub async fn ingest_summary(
     )
     .await?;
 
+    // The git wiki mirror is a DERIVED view: `ingest_summary` above has already
+    // written the summary to disk, and this only records it in the git-backed
+    // mirror. Skipping it when `memory-git` is off loses the mirror, not the
+    // summary — so the call site is gated rather than stubbed.
+    #[cfg(feature = "memory-git")]
     crate::openhuman::memory::store::content::wiki_git::commit_summaries(
         &content_root,
         &SummaryCommitBatch {

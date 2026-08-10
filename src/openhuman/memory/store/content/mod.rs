@@ -18,9 +18,14 @@ pub mod read;
 pub mod tags;
 
 pub use tinycortex::memory::chunks::StagedChunk;
+/// The git-backed wiki content format. Re-exported only when `memory-git` is
+/// on: it lives behind tinycortex's `wiki-git` feature, which the gate carries
+/// along with `git-diff` and the libgit2 cohort.
+#[cfg(feature = "memory-git")]
+pub use tinycortex::memory::store::content::wiki_git;
 pub use tinycortex::memory::store::content::{
-    atomic, compose, obsidian, obsidian_registry, paths, raw, stage_chunks, wiki_git,
-    StagedSummary, SummaryComposeInput, SummaryTreeKind,
+    atomic, compose, obsidian, obsidian_registry, paths, raw, stage_chunks, StagedSummary,
+    SummaryComposeInput, SummaryTreeKind,
 };
 
 /// Update the `tags:` block in a summary's on-disk `.md` file after an

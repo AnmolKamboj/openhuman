@@ -18,53 +18,16 @@ impl UnifiedMemory {
     /// Insert or update a document by `(namespace, key)`. Writes the markdown
     /// sidecar, replaces vector chunks, and embeds them with the configured
     /// provider.
-    pub async fn upsert_document(&self, input: NamespaceDocumentInput) -> Result<String, String> {
-        if safety::has_likely_secret(&input.namespace) || safety::has_likely_secret(&input.key) {
-            log::warn!(
-                "[memory:safety] document write rejected due to secret-like namespace/key namespace_chars={} key_chars={}",
-                input.namespace.chars().count(),
-                input.key.chars().count()
-            );
-            return Err("document namespace/key cannot contain secrets".to_string());
-        }
-
-        // Canonicalize a PII-bearing key rather than rejecting the whole write
-        // (see #5164): rejection returned an `Err` on every attempt, and callers
-        // retry, so one such key produced an unthrottled error loop (3,055
-        // Sentry events from a single user).
-        //
-        // `canonical_document_key` is strict-gated so scanner-built identifiers
-        // (WhatsApp JIDs, `+1…` chat ids, timestamps) keep their identity — see
-        // its docs. The namespace is canonicalized by `sanitize_namespace`
-        // below, and the by-key read paths (`Memory::get` / `Memory::forget`)
-        // canonicalize through the same helper, so a rewritten identifier stays
-        // addressable instead of reading back as a missing row.
-        let input = {
-            let key = safety::canonical_document_key(&input.key);
-            if key != input.key {
-                log::info!(
-                    "[memory:safety] document write canonicalized PII-like key key_chars={}",
-                    input.key.chars().count()
-                );
-            }
-            NamespaceDocumentInput { key, ..input }
-        };
-
-        let sanitized = safety::sanitize_document_input(input);
-        let input = sanitized.value;
-        if sanitized.report.changed() {
-            log::warn!(
-                "[memory:safety] document write sanitized namespace_chars={} key_chars={} text_redactions={} key_redactions={} blocked_secret_hits={} depth_redactions={} pii_redactions={}",
-                input.namespace.chars().count(),
-                input.key.chars().count(),
-                sanitized.report.text_redactions,
-                sanitized.report.key_redactions,
-                sanitized.report.blocked_secret_hits,
-                sanitized.report.depth_redactions,
-                sanitized.report.pii_redactions
-            );
-        }
-
+    ///
+    /// **Takes already-sanitized input.** The host secret/PII write gate runs
+    /// in [`crate::openhuman::memory::store::write_gate`], which owns this
+    /// method's only call site; use `UnifiedMemory::upsert_document` instead
+    /// unless you are that gate. Calling this directly persists caller content
+    /// verbatim, credentials and all.
+    pub(crate) async fn upsert_document_presanitized(
+        &self,
+        input: NamespaceDocumentInput,
+    ) -> Result<String, String> {
         let namespace = Self::sanitize_namespace(&input.namespace);
         let key = input.key.trim().to_string();
         if key.is_empty() {
@@ -245,47 +208,14 @@ impl UnifiedMemory {
     /// or graph extraction. Suitable for high-frequency, low-value writes
     /// (e.g. transient sync checkpoints) where the full ingestion pipeline
     /// would be too expensive.
-    pub async fn upsert_document_metadata_only(
+    ///
+    /// **Takes already-sanitized input** — same contract as
+    /// [`Self::upsert_document_presanitized`]; go through
+    /// `UnifiedMemory::upsert_document_metadata_only` instead.
+    pub(crate) async fn upsert_document_metadata_only_presanitized(
         &self,
         input: NamespaceDocumentInput,
     ) -> Result<String, String> {
-        if safety::has_likely_secret(&input.namespace) || safety::has_likely_secret(&input.key) {
-            log::warn!(
-                "[memory:safety] metadata-only write rejected due to secret-like namespace/key namespace_chars={} key_chars={}",
-                input.namespace.chars().count(),
-                input.key.chars().count()
-            );
-            return Err("document namespace/key cannot contain secrets".to_string());
-        }
-
-        // Canonicalize a PII-bearing key rather than rejecting (see #5164, and
-        // the rationale on the `upsert_document` path above).
-        let input = {
-            let key = safety::canonical_document_key(&input.key);
-            if key != input.key {
-                log::info!(
-                    "[memory:safety] metadata-only write canonicalized PII-like key key_chars={}",
-                    input.key.chars().count()
-                );
-            }
-            NamespaceDocumentInput { key, ..input }
-        };
-
-        let sanitized = safety::sanitize_document_input(input);
-        let input = sanitized.value;
-        if sanitized.report.changed() {
-            log::warn!(
-                "[memory:safety] metadata-only write sanitized namespace_chars={} key_chars={} text_redactions={} key_redactions={} blocked_secret_hits={} depth_redactions={} pii_redactions={}",
-                input.namespace.chars().count(),
-                input.key.chars().count(),
-                sanitized.report.text_redactions,
-                sanitized.report.key_redactions,
-                sanitized.report.blocked_secret_hits,
-                sanitized.report.depth_redactions,
-                sanitized.report.pii_redactions
-            );
-        }
-
         let namespace = Self::sanitize_namespace(&input.namespace);
         let key = input.key.trim().to_string();
         if key.is_empty() {

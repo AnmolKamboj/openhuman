@@ -41,6 +41,7 @@
 //! becomes safe to gate on (M4).
 
 mod core_family;
+#[cfg(feature = "memory-git")]
 mod diff;
 mod documents;
 mod entities;
@@ -59,6 +60,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use tinycortex_api::capabilities::Capabilities;
+#[cfg(not(feature = "memory-git"))]
+use tinycortex_api::capabilities::Capability;
 use tinycortex_api::error::MemoryError;
 use tinycortex_api::health::MemoryHealth;
 use tinycortex_api::provider::MemoryProvider;
@@ -86,7 +89,19 @@ pub const EMBEDDED_DRIVER_ID: &str = "tinycortex";
 /// family added to the contract widens `all()` here and fails
 /// `audit_provider` until its accessor lands, which is the intended pressure.
 fn advertised_capabilities() -> Capabilities {
-    Capabilities::all()
+    // Without `memory-git` there is no git ledger, so the diff family has no
+    // implementation to reach. Dropping it here is not cosmetic: a provider
+    // that advertises a capability whose accessor returns `None` fails
+    // `audit_provider`, and callers are entitled to trust the advertised set
+    // rather than probing every accessor.
+    #[cfg(not(feature = "memory-git"))]
+    {
+        Capabilities::all().without(Capability::Diff)
+    }
+    #[cfg(feature = "memory-git")]
+    {
+        Capabilities::all()
+    }
 }
 
 /// The in-process tinycortex driver for one workspace.
@@ -289,8 +304,18 @@ impl MemoryProvider for EmbeddedMemoryProvider {
         Some(self)
     }
 
+    /// `None` without `memory-git`, in lockstep with
+    /// [`advertised_capabilities`] — `audit_provider` fails on either half
+    /// alone, which is exactly the check that keeps these two from drifting.
     fn as_diff(&self) -> Option<&dyn tinycortex_api::provider::MemoryDiff> {
-        Some(self)
+        #[cfg(not(feature = "memory-git"))]
+        {
+            None
+        }
+        #[cfg(feature = "memory-git")]
+        {
+            Some(self)
+        }
     }
 
     fn as_goals(&self) -> Option<&dyn tinycortex_api::provider::MemoryGoals> {

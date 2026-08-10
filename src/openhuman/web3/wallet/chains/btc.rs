@@ -8,7 +8,6 @@
 //! native segwit address.
 
 use bitcoin::absolute::LockTime;
-use bitcoin::bip32::{DerivationPath, Xpriv};
 use bitcoin::hashes::Hash;
 use bitcoin::key::{CompressedPublicKey, PrivateKey};
 use bitcoin::secp256k1::{Message, Secp256k1};
@@ -66,31 +65,42 @@ pub fn estimated_btc_fee_sats() -> u64 {
 /// Generic BTC address validation — any well-formed mainnet address is OK.
 /// Used for recipients (we don't care what address type they prefer; the
 /// `bitcoin` crate's script_pubkey() will encode P2WPKH/P2TR/P2SH correctly).
+///
+/// Delegates to the vendored [`tinywallet`] crate, which owns the address
+/// format itself. Nothing about parsing a Bitcoin address is OpenHuman-
+/// specific, so the rules live where any host can reach them; what stays here
+/// is the `Result<_, String>` shape the rest of this domain speaks.
 pub fn validate_btc_address(addr: &str) -> Result<String, String> {
-    let trimmed = addr.trim();
-    if trimmed.is_empty() {
-        return Err("BTC address is empty".to_string());
-    }
-    Address::from_str(trimmed)
-        .map_err(|e| format!("invalid BTC address '{trimmed}': {e}"))?
-        .require_network(Network::Bitcoin)
-        .map_err(|e| format!("BTC address '{trimmed}' is not mainnet: {e}"))?;
-    Ok(trimmed.to_string())
+    let result = tinywallet::address::btc::validate(addr).map_err(|e| e.to_string());
+    debug!(
+        "{LOG_PREFIX} validate_address role=recipient result={}",
+        if result.is_ok() {
+            "accepted"
+        } else {
+            "rejected"
+        }
+    );
+    result
 }
 
 /// Sender-side validation — must be P2WPKH because we only know how to
 /// derive + sign for native segwit (`bc1q…`). Recipients can be any type.
+///
+/// See [`validate_btc_address`] for why this delegates. `tinywallet` keeps the
+/// two rules as separate functions for the same reason this module does: using
+/// the recipient rule for a sender accepts an address that only fails later,
+/// at signing time.
 pub fn validate_btc_sender_address(addr: &str) -> Result<String, String> {
-    let trimmed = validate_btc_address(addr)?;
-    let parsed = Address::from_str(&trimmed)
-        .map_err(|e| format!("invalid BTC sender '{trimmed}': {e}"))?
-        .assume_checked();
-    if !parsed.script_pubkey().is_p2wpkh() {
-        return Err(format!(
-            "BTC sender '{trimmed}' is not P2WPKH (only bc1q… native segwit is supported for signing)"
-        ));
-    }
-    Ok(trimmed)
+    let result = tinywallet::address::btc::validate_sender(addr).map_err(|e| e.to_string());
+    debug!(
+        "{LOG_PREFIX} validate_address role=sender result={}",
+        if result.is_ok() {
+            "accepted"
+        } else {
+            "rejected"
+        }
+    );
+    result
 }
 
 use std::str::FromStr;
@@ -132,28 +142,21 @@ fn script_pubkey_for_addr(addr: &str) -> Result<ScriptBuf, String> {
     Ok(parsed.script_pubkey())
 }
 
-/// Derive a P2WPKH PrivateKey for `derivation_path` from a BIP39 mnemonic.
+/// Derive the P2WPKH signing key for `derivation_path` from a BIP-39 mnemonic.
+///
+/// Delegates to the vendored [`tinywallet`] crate, which owns BIP-32
+/// secp256k1 derivation. Custody stays here: the mnemonic is decrypted from
+/// the keyring by this crate and handed over as a `&str` that is not retained.
 fn derive_btc_private_key(
     mnemonic: &str,
     derivation_path: &str,
 ) -> Result<(PrivateKey, CompressedPublicKey), String> {
-    use coins_bip39::{English, Mnemonic};
-    let mnemonic: Mnemonic<English> = mnemonic
-        .trim()
-        .parse()
-        .map_err(|e| format!("invalid BIP39 mnemonic: {e}"))?;
-    let seed = mnemonic
-        .to_seed(None)
-        .map_err(|e| format!("failed to derive BIP39 seed: {e}"))?;
-    let xpriv = Xpriv::new_master(Network::Bitcoin, &seed)
-        .map_err(|e| format!("failed to derive BTC master key: {e}"))?;
+    let derived = tinywallet::key::derive(tinywallet::Chain::Btc, mnemonic, derivation_path)
+        .map_err(|e| e.to_string())?;
+    let secret = bitcoin::secp256k1::SecretKey::from_slice(derived.secret_bytes())
+        .map_err(|e| format!("tinywallet returned an unusable BTC key: {e}"))?;
     let secp = Secp256k1::signing_only();
-    let path = DerivationPath::from_str(derivation_path)
-        .map_err(|e| format!("invalid BTC derivation path '{derivation_path}': {e}"))?;
-    let derived = xpriv
-        .derive_priv(&secp, &path)
-        .map_err(|e| format!("failed to derive BTC child key: {e}"))?;
-    let private_key = PrivateKey::new(derived.private_key, Network::Bitcoin);
+    let private_key = PrivateKey::new(secret, Network::Bitcoin);
     let public_key = CompressedPublicKey::from_private_key(&secp, &private_key)
         .map_err(|e| format!("failed to derive BTC public key: {e}"))?;
     Ok((private_key, public_key))
@@ -464,10 +467,9 @@ mod tests {
         let err =
             validate_btc_address("tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3")
                 .unwrap_err();
-        assert!(
-            err.contains("not mainnet") || err.contains("invalid"),
-            "got: {err}"
-        );
+        // `tinywallet` reports a wrong-network address as a distinct condition
+        // from a malformed one, so the message names the required network.
+        assert!(err.contains("not on mainnet"), "got: {err}");
     }
 
     #[test]
@@ -479,7 +481,11 @@ mod tests {
         assert_eq!(validate_btc_address(p2tr).unwrap(), p2tr);
         // Sender validation must reject it.
         let err = validate_btc_sender_address(p2tr).unwrap_err();
-        assert!(err.contains("not P2WPKH"), "got: {err}");
+        assert!(err.contains("P2WPKH"), "got: {err}");
+        assert!(
+            err.contains("not supported as a sender"),
+            "the message should name the role that failed: {err}"
+        );
     }
 
     #[test]

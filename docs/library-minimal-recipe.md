@@ -37,19 +37,29 @@ There is **no** `library-minimal` meta-feature in `Cargo.toml`, on purpose — s
 
 ## Keep / drop table
 
-`default = ["voice","web3","media","meet","skills","flows","mcp","desktop-automation","tui"]`
+The single `default` list this session was written against no longer exists.
+There are two sets now (AGENTS.md, "Compile-time domain gates"): **Contrib** is
+`[features] default`, what a bare `cargo check` compiles; **Product** is
+`scripts/ci/product-features.txt`, what the desktop app ships. Both columns
+below are current. `desktop-automation` has since been removed from the tree
+altogether, hence the dashes; `tui` is in neither set.
 
-| Gate | Default | Decision | Why | Deps shed |
-| --- | :---: | :---: | --- | --- |
-| `skills` | ON | **KEEP** | python/js `SKILL.md` execution is a stated opencompany use case | none (surface/prompt/startup only) |
-| `flows` | ON | **KEEP** | saved-workflow (`flows_create`+`flows_run`) runs are a stated use case | — (adds `tinyflows`, `jaq-*`, `rhai`; see cost note) |
-| `voice` | ON | **DROP** | STT/TTS/dictation/podcast — a headless host does no audio I/O | `hound`, `lettre` |
-| `web3` | ON | **DROP** | crypto wallet / swap / x402 machine payments — not an opencompany path | `bitcoin`, `curve25519-dalek` |
-| `media` | ON | **DROP** | `media_generate_*` image/video tools — surface-only | none (backend-proxied) |
-| `meet` | ON | **DROP** | Google-Meet join/live-STT/TTS bot — no headless use | none |
-| `mcp` | ON | **DROP** | MCP stdio/HTTP server + Smithery registry (~20k LOC, ~19 tools) — a library host is not an MCP host | none (hand-rolled over tokio/reqwest/axum) |
-| `desktop-automation` | ON | **DROP** | AX / `computer` tool family drives a **local desktop UI** — meaningless headless | `uiautomation` |
-| `tui` | ON | **DROP** | `openhuman tui`/`chat` terminal UI — no terminal in a library host | `ratatui`, `crossterm`, `unicode-width` |
+Note how much of this recipe the contributor set already gives you for free —
+`voice`, `web3`, `meet` and `tui` are default-OFF today. The Decision column
+still records what a **library host** wants, which is the thing this document
+is actually for.
+
+| Gate | Contrib | Product | Decision | Why | Deps shed |
+| --- | :---: | :---: | :---: | --- | --- |
+| `skills` | ON | ON | **KEEP** | python/js `SKILL.md` execution is a stated opencompany use case | none (surface/prompt/startup only) |
+| `flows` | ON | ON | **KEEP** | saved-workflow (`flows_create`+`flows_run`) runs are a stated use case | — (adds `tinyflows`, `jaq-*`, `rhai`; see cost note) |
+| `voice` | OFF | ON | **DROP** | STT/TTS/dictation/podcast — a headless host does no audio I/O | `hound`, `lettre` |
+| `web3` | OFF | ON | **DROP** | crypto wallet / swap / x402 machine payments — not an opencompany path | `bitcoin`, `curve25519-dalek` |
+| `media` | ON | ON | **DROP** | `media_generate_*` image/video tools — surface-only | none (backend-proxied) |
+| `meet` | OFF | ON | **DROP** | Google-Meet join/live-STT/TTS bot — no headless use | none |
+| `mcp` | ON | ON | **DROP** | MCP stdio/HTTP server + Smithery registry (~20k LOC, ~19 tools) — a library host is not an MCP host | none (hand-rolled over tokio/reqwest/axum) |
+| `desktop-automation` | — | — | **DROP** | AX / `computer` tool family drives a **local desktop UI** — meaningless headless | `uiautomation` |
+| `tui` | OFF | — | **DROP** | `openhuman tui`/`chat` terminal UI — no terminal in a library host | `ratatui`, `crossterm`, `unicode-width` |
 
 **Non-default optional features** (`sandbox-landlock`, `sandbox-bubblewrap`,
 `peripheral-rpi`, `browser-native`/`fantoccini`, `landlock`, `whatsapp-web`,
