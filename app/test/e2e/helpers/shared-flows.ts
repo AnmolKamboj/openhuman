@@ -157,6 +157,11 @@ const HASH_REDIRECTS = {
   '/settings/screen-intelligence': '/settings',
   '/settings/screen-awareness-debug': '/settings',
   '/settings/mascot': '/settings/personality#face',
+  '/settings/composio-triggers': '/connections?tab=composio-key',
+  '/settings/autonomy': '/settings/agent-access',
+  '/settings/composio-routing': '/connections?tab=composio-key',
+  '/settings/agent-chat': '/connections?tab=llm#agent-chat',
+  '/settings/local-model-debug': '/connections?tab=llm#local-model',
 };
 
 /** Resolve a requested hash to where the router actually settles. */
