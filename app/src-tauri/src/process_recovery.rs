@@ -11,7 +11,6 @@ pub(crate) struct ProcessInfo {
 #[cfg(target_os = "macos")]
 mod imp {
     use std::collections::{HashMap, HashSet};
-    use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::Duration;
 

@@ -465,7 +465,7 @@ mod tests {
     #[test]
     fn validate_btc_address_rejects_testnet() {
         let err =
-            validate_btc_address("tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3qccfmv3")
+            validate_btc_address("tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx")
                 .unwrap_err();
         // `tinywallet` reports a wrong-network address as a distinct condition
         // from a malformed one, so the message names the required network.

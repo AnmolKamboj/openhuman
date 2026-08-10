@@ -1,7 +1,7 @@
 import { waitForApp, waitForAuthBootstrap } from '../helpers/app-helpers';
 import { triggerAuthDeepLinkBypass } from '../helpers/deep-link-helpers';
 import { resetApp } from '../helpers/reset-app';
-import { navigateViaHash } from '../helpers/shared-flows';
+import { navigateViaHash, waitForHomePage } from '../helpers/shared-flows';
 import { startMockServer, stopMockServer } from '../mock-server';
 
 describe('Coding-agent session memory', () => {
@@ -11,6 +11,10 @@ describe('Coding-agent session memory', () => {
     await resetApp('e2e-coding-session-memory');
     await triggerAuthDeepLinkBypass('e2e-coding-session-memory');
     await waitForAuthBootstrap();
+    // Auth bootstrap finishes before the post-login redirect to Chat settles.
+    // Waiting for that redirect prevents it from racing and overwriting the
+    // Sources route below (the failure artifact otherwise shows Chat).
+    await waitForHomePage();
     await navigateViaHash('/brain?tab=sources');
   });
 

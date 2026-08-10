@@ -206,6 +206,19 @@ jobs:
                 echo "[test-reusable] raw coverage module: ${module}"
                 bash scripts/ci-cancel-aware.sh cargo test -p openhuman --features "${FEATURES}" --test "${target}" -- "${module}::" --test-threads=1
               done < <(raw_coverage_modules)
+            elif [ "${target}" = "json_rpc_e2e" ]; then
+              # JSON-RPC E2E cases change process-global provider routes and
+              # environment. A single parallel libtest process lets one case
+              # leak its route into another; run each case in a fresh process,
+              # matching scripts/test-rust-with-mock.sh and test-rust-e2e.sh.
+              while IFS= read -r test_name; do
+                [ -n "${test_name}" ] || continue
+                echo "[test-reusable] JSON-RPC E2E test: ${test_name}"
+                bash scripts/ci-cancel-aware.sh cargo test -p openhuman --test "${target}" "${test_name}" -- --exact --test-threads=1
+              done < <(
+                cargo test -p openhuman --test "${target}" -- --list \
+                  | sed -n 's/: test$//p'
+              )
             else
               bash scripts/ci-cancel-aware.sh cargo test -p openhuman --features "${FEATURES}" --test "${target}"
             fi
