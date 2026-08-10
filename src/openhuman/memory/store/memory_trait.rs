@@ -65,87 +65,32 @@ fn memory_category_from_stored(raw: &str) -> MemoryCategory {
     })
 }
 
-#[async_trait]
-impl Memory for UnifiedMemory {
-    fn name(&self) -> &str {
-        "namespace"
-    }
-
-    async fn store(
-        &self,
-        namespace: &str,
-        key: &str,
-        content: &str,
-        category: MemoryCategory,
-        session_id: Option<&str>,
-    ) -> anyhow::Result<()> {
-        // The default `store` entry point is user-driven; ingest paths
-        // come in via `store_with_taint`.
-        self.store_with_taint(
-            namespace,
-            key,
-            content,
-            category,
-            session_id,
-            MemoryTaint::Internal,
-        )
-        .await
-    }
-
-    async fn store_with_taint(
-        &self,
-        namespace: &str,
-        key: &str,
-        content: &str,
-        category: MemoryCategory,
-        session_id: Option<&str>,
-        taint: MemoryTaint,
-    ) -> anyhow::Result<()> {
-        let ns = if namespace.trim().is_empty() {
-            GLOBAL_NAMESPACE.to_string()
-        } else {
-            namespace.to_string()
-        };
-        self.upsert_document(NamespaceDocumentInput {
-            namespace: ns,
-            key: key.to_string(),
-            title: key.to_string(),
-            content: content.to_string(),
-            source_type: "chat".to_string(),
-            priority: "medium".to_string(),
-            tags: Vec::new(),
-            metadata: json!({}),
-            category: category.to_string(),
-            session_id: session_id.map(str::to_string),
-            document_id: None,
-            taint,
-        })
-        .await
-        .map(|_| ())
-        .map_err(anyhow::Error::msg)
-    }
-
-    async fn recall(
+impl UnifiedMemory {
+    /// Ranked recall with the same-session self-echo exclusion supplied
+    /// **explicitly** by the caller.
+    ///
+    /// This is the engine body: given a query, a limit, [`RecallOpts`], and an
+    /// optional session id to exclude, it produces the ranked result. It reads
+    /// no ambient host state, so it is driveable from a test, a CLI, or a
+    /// future embedding host without an agent harness in the picture.
+    ///
+    /// `exclude_session_id` drops documents tagged with that session before
+    /// ranking (not after), so `limit` is never consumed by rows the caller
+    /// asked not to see. `None` applies no exclusion at all.
+    ///
+    /// The host policy that decides *what* to exclude lives in
+    /// [`crate::openhuman::memory::store::recall_policy`]; the [`Memory::recall`]
+    /// impl below is the thin adapter that joins the two.
+    pub async fn recall_excluding_session(
         &self,
         query: &str,
         limit: usize,
         opts: RecallOpts<'_>,
+        exclude_session_id: Option<&str>,
     ) -> anyhow::Result<Vec<MemoryEntry>> {
         let namespace = normalize_namespace(opts.namespace);
 
-        // Self-echo guard (agent-agnostic): when this recall runs inside a
-        // live chat turn, the harness has an ambient "current thread" id
-        // (set by the web channel around `agent.run_single`, see
-        // `tinyagents::thread_context`) and the turn's own user
-        // message was just auto-saved as a `[conversation]` document tagged
-        // with that same id (`agent::harness::session::turn::core`). Exclude
-        // it here so the agent's own on-demand `memory_recall` never surfaces
-        // the very request that triggered it. Outside a chat turn (cron,
-        // CLI, tests, standalone) the ambient id is `None` and this is a
-        // no-op — behavior is byte-for-byte unchanged.
-        let exclude_session_id =
-            crate::openhuman::agent::tinyagents::thread_context::current_thread_id();
-        if let Some(ref excluded) = exclude_session_id {
+        if let Some(excluded) = exclude_session_id {
             tracing::debug!(
                 "[memory-trait] recall applying same-session exclusion namespace={namespace} \
                  exclude_session_id={excluded}"
@@ -156,7 +101,7 @@ impl Memory for UnifiedMemory {
                 namespace,
                 query,
                 limit as u32,
-                exclude_session_id.as_deref(),
+                exclude_session_id,
             )
             .await
             .map_err(anyhow::Error::msg)?;
@@ -318,6 +263,83 @@ impl Memory for UnifiedMemory {
         }
 
         Ok(out)
+    }
+}
+
+#[async_trait]
+impl Memory for UnifiedMemory {
+    fn name(&self) -> &str {
+        "namespace"
+    }
+
+    async fn store(
+        &self,
+        namespace: &str,
+        key: &str,
+        content: &str,
+        category: MemoryCategory,
+        session_id: Option<&str>,
+    ) -> anyhow::Result<()> {
+        // The default `store` entry point is user-driven; ingest paths
+        // come in via `store_with_taint`.
+        self.store_with_taint(
+            namespace,
+            key,
+            content,
+            category,
+            session_id,
+            MemoryTaint::Internal,
+        )
+        .await
+    }
+
+    async fn store_with_taint(
+        &self,
+        namespace: &str,
+        key: &str,
+        content: &str,
+        category: MemoryCategory,
+        session_id: Option<&str>,
+        taint: MemoryTaint,
+    ) -> anyhow::Result<()> {
+        let ns = if namespace.trim().is_empty() {
+            GLOBAL_NAMESPACE.to_string()
+        } else {
+            namespace.to_string()
+        };
+        self.upsert_document(NamespaceDocumentInput {
+            namespace: ns,
+            key: key.to_string(),
+            title: key.to_string(),
+            content: content.to_string(),
+            source_type: "chat".to_string(),
+            priority: "medium".to_string(),
+            tags: Vec::new(),
+            metadata: json!({}),
+            category: category.to_string(),
+            session_id: session_id.map(str::to_string),
+            document_id: None,
+            taint,
+        })
+        .await
+        .map(|_| ())
+        .map_err(anyhow::Error::msg)
+    }
+
+    async fn recall(
+        &self,
+        query: &str,
+        limit: usize,
+        opts: RecallOpts<'_>,
+    ) -> anyhow::Result<Vec<MemoryEntry>> {
+        // Host policy seam: the exclusion the engine applies is resolved
+        // here, at the trait adapter, and handed down as a parameter. The
+        // engine itself (`recall_excluding_session`) reads no ambient state.
+        // See `store::recall_policy` for why the resolution is still ambient
+        // and what would let it be pushed further up.
+        let exclude_session_id = super::recall_policy::current_self_echo_exclusion();
+        self.recall_excluding_session(query, limit, opts, exclude_session_id.as_deref())
+            .await
     }
 
     async fn recall_relevant_by_vector(
@@ -1015,6 +1037,104 @@ mod tests {
             entries.iter().any(|e| e.key == "user_msg:current-turn"),
             "with no ambient thread scope, recall must return the document exactly as before \
              this fix, got {entries:#?}"
+        );
+    }
+
+    // ── The engine takes the exclusion as a parameter (H0, piece 1) ──────
+    //
+    // `recall_excluding_session` is the policy-free engine body: it must honour
+    // an exclusion handed to it with **no ambient turn scope active**, and
+    // apply none when handed `None`. Together these pin that the exclusion
+    // travels as an argument rather than being re-derived from a task-local
+    // inside the storage layer — the property that lets the engine move into a
+    // persistence crate without dragging the chat-turn concept along.
+
+    async fn seed_self_echo_fixture(mem: &UnifiedMemory) {
+        mem.store(
+            "global",
+            "user_msg:current-turn",
+            "Please look up Jordan Rivera's chat platform user ID for me.",
+            MemoryCategory::Conversation,
+            Some("thread-current"),
+        )
+        .await
+        .unwrap();
+        mem.store(
+            "global",
+            "fact:jordan-rivera-platform-id",
+            "Jordan Rivera's chat platform user ID is U0000042.",
+            MemoryCategory::Conversation,
+            Some("thread-other"),
+        )
+        .await
+        .unwrap();
+    }
+
+    fn self_echo_opts() -> RecallOpts<'static> {
+        RecallOpts {
+            namespace: Some("global"),
+            min_score: Some(0.0),
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn recall_excluding_session_applies_an_explicit_exclusion_with_no_ambient_scope() {
+        let (_tmp, mem) = fresh_mem();
+        seed_self_echo_fixture(&mem).await;
+
+        // Deliberately NOT wrapped in `with_thread_id`: if the engine were
+        // still reading the ambient task-local rather than the argument, the
+        // exclusion below would have no effect and the first assert fails.
+        let entries = mem
+            .recall_excluding_session(
+                "Jordan Rivera chat platform user ID",
+                10,
+                self_echo_opts(),
+                Some("thread-current"),
+            )
+            .await
+            .unwrap();
+
+        assert!(
+            !entries.iter().any(|e| e.key == "user_msg:current-turn"),
+            "an explicitly passed exclusion must drop that session's own document even with no \
+             ambient turn scope, got {entries:#?}"
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|e| e.key == "fact:jordan-rivera-platform-id"),
+            "a document from a different session must survive the exclusion, got {entries:#?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn recall_excluding_session_with_none_excludes_nothing() {
+        let (_tmp, mem) = fresh_mem();
+        seed_self_echo_fixture(&mem).await;
+
+        // Inside an ambient turn scope, yet passed `None`: the engine must
+        // honour the argument, not the task-local.
+        let entries = crate::openhuman::agent::tinyagents::thread_context::with_thread_id(
+            "thread-current",
+            async {
+                mem.recall_excluding_session(
+                    "Jordan Rivera chat platform user ID",
+                    10,
+                    self_echo_opts(),
+                    None,
+                )
+                .await
+                .unwrap()
+            },
+        )
+        .await;
+
+        assert!(
+            entries.iter().any(|e| e.key == "user_msg:current-turn"),
+            "`None` must exclude nothing — the engine must not re-derive an exclusion from the \
+             ambient turn scope, got {entries:#?}"
         );
     }
 }

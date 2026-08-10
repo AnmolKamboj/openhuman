@@ -9,9 +9,12 @@ use crate::rpc::RpcOutcome;
 
 /// Params for `agent.chat` and `agent.chat_simple`.
 ///
-/// Kept byte-identical to the copy in
+/// A near-copy of the params in
 /// [`crate::openhuman::inference::local::schemas`], which backs the
-/// `inference.agent_chat*` namespace over the same ops.
+/// `inference.agent_chat*` namespace over the same ops. That surface carries
+/// two fields this one does not — a per-call `inference_url` + `api_key` —
+/// because `agent.chat` describes a turn on the account's own configured
+/// inference.
 #[derive(Debug, Deserialize)]
 struct AgentChatParams {
     message: String,
@@ -237,6 +240,11 @@ fn handle_chat(params: Map<String, Value>) -> ControllerFuture {
                 p.temperature,
                 p.thread_id,
                 p.cwd,
+                // `openhuman.agent_chat` describes a turn on the account's own
+                // configured inference. A caller that wants this one turn
+                // somewhere else says so through `inference_agent_chat`, which
+                // takes the endpoint and bearer as parameters.
+                None,
             )
             .await?,
         )

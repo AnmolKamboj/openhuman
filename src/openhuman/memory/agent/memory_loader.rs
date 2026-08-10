@@ -929,7 +929,7 @@ mod tests {
     /// actually run.
     #[tokio::test]
     async fn loader_surfaces_jsonl_primary_path_with_workspace_dir() {
-        use crate::openhuman::memory::conversations::{
+        use tinycortex::memory::conversations::{
             ConversationMessage, ConversationStore, CreateConversationThread,
         };
 

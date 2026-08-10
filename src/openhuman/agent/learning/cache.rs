@@ -4,36 +4,33 @@
 //! The stability detector uses this to persist the result of each rebuild cycle.
 //! Prompt sections use [`FacetCache::list_active`] to read the ambient cache.
 
-use parking_lot::Mutex;
-use rusqlite::Connection;
-use std::sync::Arc;
-
 use crate::openhuman::agent::learning::candidate::FacetClass;
-use crate::openhuman::memory::store::profile::{self, ProfileFacet, UserState};
+use crate::openhuman::memory::store::profile::{ProfileFacet, UserState};
+use crate::openhuman::memory::store::ProfileStore;
 
 /// Thin wrapper around the `user_profile` table.
 ///
-/// All methods delegate to the standalone helpers in
-/// `memory_store::namespace_store::profile`. This type exists so callers
-/// (stability detector, prompt sections, RPCs) share a single typed
-/// entry-point that can be constructed from any `Arc<Mutex<Connection>>`.
+/// A learning-side newtype over [`ProfileStore`], which owns the SQL. This
+/// type exists because the class↔key vocabulary below (`FacetClass`) is agent
+/// domain knowledge that must not move into the memory family; everything
+/// else forwards straight to the store.
 pub struct FacetCache {
-    conn: Arc<Mutex<Connection>>,
+    store: ProfileStore,
 }
 
 impl FacetCache {
-    pub fn new(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
+    pub fn new(store: ProfileStore) -> Self {
+        Self { store }
     }
 
     /// List all facets with `state = 'active'`, ordered by stability descending.
     pub fn list_active(&self) -> anyhow::Result<Vec<ProfileFacet>> {
-        profile::profile_select_active(&self.conn)
+        self.store.list_active()
     }
 
     /// List all facets (all states), ordered by stability descending.
     pub fn list_all(&self) -> anyhow::Result<Vec<ProfileFacet>> {
-        profile::profile_select_all(&self.conn)
+        self.store.list_all()
     }
 
     /// List active facets belonging to a specific class.
@@ -50,31 +47,31 @@ impl FacetCache {
 
     /// Fetch a single facet by its full key (e.g. `"style/verbosity"`).
     pub fn get(&self, key: &str) -> anyhow::Result<Option<ProfileFacet>> {
-        profile::profile_get_by_key(&self.conn, key)
+        self.store.get(key)
     }
 
     /// Upsert a fully-formed facet row (rebuild path).
     pub fn upsert(&self, facet: &ProfileFacet) -> anyhow::Result<()> {
-        profile::profile_upsert_full(&self.conn, facet)
+        self.store.upsert_full(facet)
     }
 
     /// Override the `user_state` of a facet.
     ///
     /// Returns `Ok(true)` if a row was found and updated.
     pub fn set_user_state(&self, key: &str, user_state: UserState) -> anyhow::Result<bool> {
-        profile::profile_set_user_state(&self.conn, key, user_state)
+        self.store.set_user_state(key, user_state)
     }
 
     /// Delete a facet by key. Returns `true` if a row was removed.
     pub fn delete(&self, key: &str) -> anyhow::Result<bool> {
-        profile::profile_delete_by_key(&self.conn, key)
+        self.store.delete(key)
     }
 
     /// Delete all `Dropped`-state facets whose stability is below `threshold`.
     ///
     /// Pinned facets are never deleted. Returns the number of rows removed.
     pub fn drop_below_threshold(&self, threshold: f64) -> anyhow::Result<usize> {
-        profile::profile_delete_below_threshold(&self.conn, threshold)
+        self.store.drop_below_threshold(threshold)
     }
 }
 

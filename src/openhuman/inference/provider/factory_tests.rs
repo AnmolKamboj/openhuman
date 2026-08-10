@@ -1616,3 +1616,86 @@ fn cloud_fallback_roles_match_the_roles_provider_for_role_actually_falls_back() 
         );
     }
 }
+
+// ── Per-call inference route ────────────────────────────────────────────────
+//
+// These close the loop between `ephemeral_route::apply` and the two resolution
+// steps that have to honour it for a routed turn to reach the caller's
+// endpoint. Both are read from `Config`, so they are exercised without a
+// network or a booted core.
+
+/// A config carrying a resolved model, as `agent_chat` leaves it after applying
+/// `model_override` and before building the agent.
+fn routed_config(endpoint: &str, api_key: &str, model: &str) -> Config {
+    use crate::openhuman::config::schema::ephemeral_route::{apply, EphemeralRoute};
+    let mut config = Config {
+        default_model: Some(model.to_string()),
+        ..Config::default()
+    };
+    apply(
+        &mut config,
+        EphemeralRoute {
+            endpoint: endpoint.to_string(),
+            api_key: api_key.to_string(),
+        },
+    );
+    config
+}
+
+#[test]
+fn a_routed_turn_resolves_its_roles_to_the_callers_endpoint() {
+    use crate::openhuman::config::schema::EPHEMERAL_ROUTE_SLUG;
+    let config = routed_config(
+        "http://127.0.0.1:41234/openai",
+        "mdl-token",
+        "anthropic/claude-sonnet-4",
+    );
+    let expected = format!("{EPHEMERAL_ROUTE_SLUG}:anthropic/claude-sonnet-4");
+    for role in ["chat", "reasoning", "coding", "agentic"] {
+        assert_eq!(
+            provider_for_role(role, &config),
+            expected,
+            "role '{role}' must resolve to the per-call route"
+        );
+    }
+}
+
+#[test]
+fn a_routed_turn_authenticates_with_the_callers_bearer() {
+    use crate::openhuman::config::schema::EPHEMERAL_ROUTE_SLUG;
+    let config = routed_config("http://127.0.0.1:41234/openai", "mdl-token", "x/y");
+    // Read straight off the config: there is no auth profile on disk for a slug
+    // that exists only in this in-memory copy, so the stored-profile lookup
+    // would come back empty and the turn would 401 several layers later.
+    assert_eq!(
+        lookup_key_for_slug(EPHEMERAL_ROUTE_SLUG, &config).expect("resolves"),
+        "mdl-token"
+    );
+}
+
+#[test]
+fn the_routes_bearer_is_not_offered_to_any_other_slug() {
+    // The containment that makes reusing one config field safe: a background
+    // role that fell through to some other cloud slug must not be handed the
+    // caller's credential.
+    let config = routed_config("http://127.0.0.1:41234/openai", "mdl-token", "x/y");
+    for slug in ["openrouter", "anthropic", "openai"] {
+        let key = lookup_key_for_slug(slug, &config).expect("resolves");
+        assert_ne!(key, "mdl-token", "slug '{slug}' must not see the route key");
+    }
+}
+
+#[test]
+fn the_route_resolves_to_a_provider_the_factory_can_build() {
+    // `resolve_cloud_slug` is where a missing `cloud_providers` entry or an
+    // empty model turns into an error. Building the model proves the entry
+    // `apply` registered is complete enough to be used, not merely present.
+    let config = routed_config("http://127.0.0.1:41234/openai", "mdl-token", "x/y");
+    let (_, model_id) = create_test_chat_model_from_string(
+        "coding",
+        &provider_for_role("coding", &config),
+        &config,
+    )
+    .expect("the per-call route builds a chat model");
+    assert_eq!(model_id, "x/y");
+}

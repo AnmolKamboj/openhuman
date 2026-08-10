@@ -48,10 +48,10 @@ use tinycortex_api::provider::types::{ChangeKind, DiffReport, SnapshotRef, Sourc
 use tinycortex_api::provider::MemoryDiff;
 
 use crate::openhuman::memory::diff::ops;
-use crate::openhuman::memory::diff::types::{
+use crate::openhuman::memory::sources::registry;
+use tinycortex::memory::diff::types::{
     ChangeKind as EngineChangeKind, DiffResult, ItemChange, Snapshot, SnapshotTrigger,
 };
-use crate::openhuman::memory::sources::registry;
 
 use super::{host_error, EmbeddedMemoryProvider};
 

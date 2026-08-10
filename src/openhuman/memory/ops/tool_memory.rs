@@ -116,7 +116,10 @@ pub async fn tool_rule_get(
 /// A driver that does not advertise `Capability::ToolMemory` returns `None`
 /// from `as_tool_memory()`; the embedded driver always advertises it, so this
 /// is reachable only under a null / fallback binding.
-const NO_TOOL_MEMORY: &str = "memory driver does not support the tool_memory family";
+///
+/// Shared with the `memory_tools_list` / `memory_tools_put` agent tools, which
+/// route through the same family.
+pub(crate) const NO_TOOL_MEMORY: &str = "memory driver does not support the tool_memory family";
 
 /// List every tool-scoped rule for a tool.
 ///
