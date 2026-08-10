@@ -36,7 +36,6 @@ mod app_update;
 // Artifact export commands (#2779, #3162) — both cross-platform
 // (macOS/Windows/Linux): native Save-As dialog (rfd) + Downloads copy.
 mod artifact_commands;
-mod cdp;
 mod claude_code;
 mod companion;
 mod companion_commands;
@@ -2693,14 +2692,9 @@ pub fn run() {
             // mock; `password-store=basic` is the equivalent for the password
             // manager. Both are no-ops on Windows/Linux, so safe to always set.
             //
-            // CDP attach goes through the in-process channel only — see
-            // `app/src-tauri/src/cdp/in_process.rs`. Production builds do
-            // not pass the legacy `--remote-debugging-port` flag: every
-            // scanner attaches via `Webview::send_dev_tools_message` and
-            // there is no remaining loopback DevTools listener. The E2E
-            // test-support build can opt into a loopback port below because
-            // the Appium Chromium harness still attaches through
-            // `debuggerAddress`.
+            // No DevTools/CDP port is opened in any build. The CDP layer and
+            // the Appium `debuggerAddress` harness that used it were removed in
+            // #5478 — CDP does not exist under the Wry runtime.
             //
             // NOTE: flags must be prefixed with `--`. The runtime's
             // `on_before_command_line_processing` dispatch (in
@@ -2765,13 +2759,6 @@ pub fn run() {
                 ("--disable-renderer-backgrounding", None),
                 ("--disable-backgrounding-occluded-windows", None),
             ];
-            #[cfg(feature = "e2e-test-support")]
-            if std::env::var("OPENHUMAN_E2E_MODE").ok().as_deref() == Some("1") {
-                let port = std::env::var("CEF_CDP_PORT").unwrap_or_else(|_| "19222".to_string());
-                let leaked_port: &'static str = Box::leak(port.into_boxed_str());
-                log::info!("[cef-startup] e2e remote-debugging-port enabled port={leaked_port}");
-                args.push(("--remote-debugging-port", Some(leaked_port)));
-            }
             let force_gpu_env = std::env::var("OPENHUMAN_FORCE_GPU").ok();
             let disable_gpu_env = std::env::var("OPENHUMAN_DISABLE_GPU").ok();
             append_platform_cef_gpu_workarounds(
@@ -2882,17 +2869,11 @@ pub fn run() {
         .manage(companion_commands::CompanionHotkeyState(
             std::sync::Mutex::new(Vec::new()),
         ))
-        .manage(cdp::CdpRegistry::default())
         .manage(notification_settings::NotificationSettingsState::new())
         .manage(PendingAppUpdateState::default());
     let builder = builder.manage(std::sync::Arc::new(imessage_scanner::ScannerRegistry::new()));
     builder
         .setup(move |app| {
-            // Vestigial CDP wiring. `set_cef_app_handle` is a no-op and the
-            // registry is never written — every CDP consumer is gone as of
-            // #5478 PR 2. Both lines, and the module, are removed in PR 3.
-            cdp::set_cef_app_handle(app.handle().clone());
-
             // Install the app handle for the desktop companion so its session
             // state machine can emit `companion://state_changed` events.
             companion::setup(app.handle());

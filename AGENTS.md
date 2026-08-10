@@ -169,9 +169,15 @@ The CDP-driven provider scanners (`discord_scanner`, `slack_scanner`, `telegram_
 
 IPC commands (authoritative list: `generate_handler!` in `app/src-tauri/src/lib.rs`): `core_rpc::relay_http_rpc`, `core_rpc_url`, `core_rpc_token`, `start_core_process`/`restart_core_process`, update commands (`check_app_update`, `apply_core_update`, …), window commands (`activate_main_window`, `mascot_window_*`, `notch_window_*`), `workspace_paths::*`, `artifact_commands::*`, hotkeys (dictation/PTT/companion), `native_notifications::*`, `mcp_commands::*`, `loopback_oauth::*`.
 
-### CEF child webviews — no new JS injection
+### Child webviews — no new JS injection
 
-Embedded provider webviews **must not** grow new JS injection. No new `.js` under `webview_accounts/`, no new `build_init_script`/`RUNTIME_JS` blocks, no CDP `Page.addScriptToEvaluateOnNewDocument`. New behavior lives in CEF handlers, CDP from scanner modules, or Rust-side IPC hooks. Legacy injection (gmail, linkedin, google-meet) is grandfathered but should shrink. Audit new Tauri plugins for `js_init_script` calls.
+Child webviews **must not** grow new JS injection. No new `build_init_script` / `RUNTIME_JS` blocks, and no new injected `.js` assets. **New behavior lives in Rust-side IPC hooks.**
+
+That is now the only destination. The rule previously offered three — "CEF handlers, CDP from scanner modules, or Rust-side IPC hooks" — and #5478 removed the first two: there are no CEF handlers (the runtime is Wry as of #5456) and no scanner modules or CDP layer. The surfaces the rule was written to protect (the embedded provider webviews) are gone with them, so today it governs the webviews the shell still owns.
+
+**This is a narrowing, not a licence.** Losing two destinations does not make injection into the remaining webviews acceptable; it means the one sanctioned route is Rust-side IPC. If a future feature genuinely needs page-side script — the plausible candidate is re-serving WhatsApp / WeChat / Google Messages via Wry's `eval`, noted as out of scope in #5478 — that is a **deliberate decision to take first**, not something to read into this paragraph.
+
+Audit new Tauri plugins for `js_init_script` calls.
 
 ---
 
