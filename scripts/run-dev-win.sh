@@ -550,7 +550,8 @@ fi
 
 export PATH="$PATH_PREFIX:$PATH"
 
-"$PNPM_EXE" tauri:ensure
+# tauri:ensure removed: upstream deleted the script when the vendored
+# CEF-aware cargo-tauri was dropped in favor of stock Tauri + Wry.
 "$PNPM_EXE" core:stage
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -567,33 +568,8 @@ export PATH="$PATH_PREFIX:$PATH"
 # Developer-Mode privileges. `cp -ru` only copies entries newer than the
 # destination, so subsequent dev runs are essentially free.
 # ─────────────────────────────────────────────────────────────────────────────
-if [[ -n "${CEF_RUNTIME_PATH:-}" && -f "$CEF_RUNTIME_PATH/libcef.dll" ]]; then
-  # The dev OpenHuman.exe is produced by the *Tauri shell* crate
-  # (app/src-tauri/Cargo.toml), not the root core crate. When
-  # CARGO_TARGET_DIR is set both workspaces share it; when unset, the
-  # Tauri shell builds into app/src-tauri/target while the root crate
-  # builds into target/. Stage CEF next to where OpenHuman.exe will
-  # actually live so Windows' DLL search order finds libcef.dll
-  # regardless of how the exe is launched (terminal, OAuth deep-link,
-  # double-click, etc).
-  if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
-    CEF_STAGE_DIR="$(to_unix_path "$CARGO_TARGET_DIR" 2>/dev/null || printf '%s' "$CARGO_TARGET_DIR")/debug"
-  else
-    CEF_STAGE_DIR="$REPO_ROOT/app/src-tauri/target/debug"
-  fi
-  mkdir -p "$CEF_STAGE_DIR"
-  if [[ ! -f "$CEF_STAGE_DIR/libcef.dll" \
-        || "$CEF_RUNTIME_PATH/libcef.dll" -nt "$CEF_STAGE_DIR/libcef.dll" ]]; then
-    echo "[run-dev-win] staging CEF runtime → $CEF_STAGE_DIR (first run only — copies ~270MB)"
-    cp -ru "$CEF_RUNTIME_PATH"/. "$CEF_STAGE_DIR/"
-    echo "[run-dev-win] CEF runtime staged"
-  else
-    echo "[run-dev-win] CEF runtime already staged at $CEF_STAGE_DIR (libcef.dll up to date)"
-  fi
-else
-  echo "[run-dev-win] WARNING: CEF_RUNTIME_PATH not set or libcef.dll missing — the dev exe will fail to load" >&2
-  echo "[run-dev-win] expected: $CEF_PATH/<version>/cef_windows_x86_64/libcef.dll" >&2
-fi
+# CEF staging removed: upstream replaced the CEF runtime with stock Wry
+# (the Tauri shell no longer links libcef), so there is nothing to stage.
 
 # Use the vendored tauri-cef CLI (via the pnpm tauri script) so the
 # CEF runtime is correctly bundled. APPLE_SIGNING_IDENTITY is macOS-only
@@ -639,12 +615,8 @@ fi
 # "'pnpm' is not recognized". Direct cargo-tauri.exe invocation with
 # absolute paths in the .bat wrapper makes the env block size irrelevant:
 # beforeDevCommand no longer needs PATH at all.
-CARGO_TAURI_EXE="$REPO_ROOT/.cache/cargo-install/bin/cargo-tauri.exe"
-if [[ ! -x "$CARGO_TAURI_EXE" ]]; then
-  echo "[run-dev-win] cargo-tauri.exe not found at $CARGO_TAURI_EXE" >&2
-  echo "[run-dev-win] tauri:ensure should have installed it. Aborting." >&2
-  exit 1
-fi
+# Vendored CEF-aware cargo-tauri removed upstream; use the stock Tauri CLI
+# from node_modules via pnpm ("tauri" script in app/package.json).
 
 # Build a tauri.conf.json `-c` JSON merge that:
 #  - pins `beforeDevCommand` to the absolute pnpm path so cargo-tauri's
@@ -711,4 +683,4 @@ fi
 CONFIG_OVERRIDE+="}}"
 
 echo "[run-dev-win] tauri config override: $CONFIG_OVERRIDE"
-"$CARGO_TAURI_EXE" dev -c "$CONFIG_OVERRIDE"
+"$PNPM_EXE" tauri dev -c "$CONFIG_OVERRIDE"
