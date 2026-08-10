@@ -51,8 +51,6 @@ mod deep_link_ipc_windows;
 // developer host covers them.
 mod deep_link_registration_check;
 mod dictation_hotkeys;
-#[cfg(any(test, feature = "e2e-test-support"))]
-mod fake_camera;
 mod file_logging;
 mod imessage_scanner;
 mod local_data_reset;
@@ -60,10 +58,6 @@ mod loopback_oauth;
 #[cfg(target_os = "macos")]
 mod mascot_native_window;
 mod mcp_commands;
-mod meet_audio;
-mod meet_call;
-mod meet_scanner;
-mod meet_video;
 mod native_notifications;
 #[cfg(target_os = "macos")]
 mod notch_window;
@@ -2771,46 +2765,6 @@ pub fn run() {
                 ("--disable-renderer-backgrounding", None),
                 ("--disable-backgrounding-occluded-windows", None),
             ];
-            // Mascot fake-camera: bake the SVG into a one-frame Y4M and
-            // point Chromium's fake-video-capture pipeline at it so any
-            // CEF webview that calls `getUserMedia({video:true})` sees the
-            // mascot as the agent's webcam. `--use-fake-ui-for-media-stream`
-            // auto-allows the permission prompt so Meet's join page doesn't
-            // get stuck behind it. The flags are process-level (affect every
-            // CEF webview), which is fine today: only the Meet call window
-            // intentionally requests a camera, and other webviews don't ask
-            // for one. The path string is leaked with `Box::leak` so its
-            // `&str` outlives the args vec we hand to `command_line_args`.
-            let fake_camera_arg: Option<&'static str> =
-                match fake_camera::ensure_mascot_y4m(&file_logging::resolve_data_dir()) {
-                    Ok(path) => {
-                        let leaked: &'static str =
-                            Box::leak(path.to_string_lossy().into_owned().into_boxed_str());
-                        log::info!("[cef-startup] fake-camera y4m path={leaked}");
-                        Some(leaked)
-                    }
-                    Err(err) => {
-                        log::warn!(
-                            "[cef-startup] mascot fake-camera unavailable: {err} \
-                     (Meet will see no camera)"
-                        );
-                        None
-                    }
-                };
-            if let Some(path) = fake_camera_arg {
-                // `--use-file-for-fake-video-capture` alone (CEF 146 / Chromium 128+)
-                // injects the Y4M as the video capture source without replacing the
-                // audio capture device. The old belt-and-suspenders flag
-                // `--use-fake-device-for-media-stream` is deliberately omitted here:
-                // it replaced ALL media capture devices — including audio — with fake
-                // ones, causing a sine-wave test tone (beeping) to be recorded instead
-                // of the real microphone whenever `getUserMedia({audio:true})` was
-                // called from the main app WebView (e.g. the mascot voice composer).
-                // `--use-fake-ui-for-media-stream` is kept so Meet's permission prompt
-                // is auto-granted without interrupting the join flow.
-                args.push(("--use-fake-ui-for-media-stream", None));
-                args.push(("--use-file-for-fake-video-capture", Some(path)));
-            }
             #[cfg(feature = "e2e-test-support")]
             if std::env::var("OPENHUMAN_E2E_MODE").ok().as_deref() == Some("1") {
                 let port = std::env::var("CEF_CDP_PORT").unwrap_or_else(|_| "19222".to_string());
@@ -2932,15 +2886,11 @@ pub fn run() {
         .manage(notification_settings::NotificationSettingsState::new())
         .manage(PendingAppUpdateState::default());
     let builder = builder.manage(std::sync::Arc::new(imessage_scanner::ScannerRegistry::new()));
-    let builder = builder.manage(meet_call::MeetCallState::new());
-    let builder = builder.manage(meet_audio::MeetAudioState::new());
-    let builder = builder.manage(meet_video::frame_bus::MeetVideoFrameBusState::new());
     builder
         .setup(move |app| {
-            // Stash the typed CEF `AppHandle` for the in-process CDP
-            // transport. Lets `cdp::install_for_account` reach the
-            // concrete `Webview<Cef>` (which `send_dev_tools_message`
-            // requires) from generic `<R: Runtime>` call sites.
+            // Vestigial CDP wiring. `set_cef_app_handle` is a no-op and the
+            // registry is never written — every CDP consumer is gone as of
+            // #5478 PR 2. Both lines, and the module, are removed in PR 3.
             cdp::set_cef_app_handle(app.handle().clone());
 
             // Install the app handle for the desktop companion so its session
@@ -3317,55 +3267,6 @@ pub fn run() {
             // Linux with "GTK has not been initialized".
             log::info!("[tray] deferring tray setup to RunEvent::Ready");
 
-            // Dev helper: OPENHUMAN_DEV_AUTO_MEET_CALL=<https://meet.google.com/...>
-            // auto-spawns a meet-call window at startup so the camera +
-            // audio bridges + frame-bus + producer pipeline can be
-            // exercised end-to-end without manual UI clicks. Pair with
-            // `tail -F ~/.openhuman/logs/openhuman.<date>.log` to see
-            // the periodic [meet-camera] bridge stats logged by the
-            // diagnostics poller in meet_video::inject.
-            if let Ok(meet_url) = std::env::var("OPENHUMAN_DEV_AUTO_MEET_CALL") {
-                let meet_url = meet_url.trim().to_string();
-                if !meet_url.is_empty() {
-                    let app_handle = app.handle().clone();
-                    tauri::async_runtime::spawn(async move {
-                        // Wait for the main window + core to be ready.
-                        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-                        let state = app_handle.state::<meet_call::MeetCallState>();
-                        let request_id = format!(
-                            "dev-auto-{}",
-                            std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .map(|d| d.as_secs())
-                                .unwrap_or(0)
-                        );
-                        let args = meet_call::OpenWindowArgs {
-                            request_id: request_id.clone(),
-                            meet_url: meet_url.clone(),
-                            display_name: "OpenHuman Dev".to_string(),
-                            // Dev-auto launch has no real user identity — the
-                            // wake gate will fail-closed (no wakes fire) which
-                            // is the safe posture for an automated harness.
-                            owner_display_name: String::new(),
-                            // No mascot config on the dev-auto path → single
-                            // default voice (issue #4277).
-                            primary_voice_id: None,
-                            secondary_voice_id: None,
-                        };
-                        match meet_call::meet_call_open_window(app_handle.clone(), state, args)
-                            .await
-                        {
-                            Ok(label) => log::info!(
-                                "[dev-auto-meet] spawned label={label} request_id={request_id} url={meet_url}"
-                            ),
-                            Err(e) => log::error!(
-                                "[dev-auto-meet] failed: {e} (url={meet_url})"
-                            ),
-                        }
-                    });
-                }
-            }
-
             #[cfg(target_os = "macos")]
             {
                 use std::sync::Arc;
@@ -3437,8 +3338,6 @@ pub fn run() {
             workspace_paths::reveal_workspace_path,
             workspace_paths::preview_workspace_text,
             workspace_paths::resolve_workspace_absolute_path,
-            meet_call::meet_call_open_window,
-            meet_call::meet_call_close_window,
             companion_commands::register_companion_hotkey,
             companion_commands::unregister_companion_hotkey,
             companion_commands::companion_activate,

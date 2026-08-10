@@ -20,4 +20,4 @@ pub mod in_process;
 pub mod target;
 
 pub use conn::CdpConn;
-pub use in_process::{install_for_label, set_cef_app_handle, CdpRegistry};
+pub use in_process::{set_cef_app_handle, CdpRegistry};
