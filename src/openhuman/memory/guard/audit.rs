@@ -30,7 +30,8 @@
 
 use tinycortex_api::capabilities::Capability;
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::memory::util::redact::redact;
 
 use super::policy::GuardPolicy;
@@ -100,7 +101,7 @@ pub fn publish_guard_denied(policy: &GuardPolicy, method: &str, reason: &str) {
         policy.driver_id(),
         policy.class(),
     );
-    publish_global(DomainEvent::MemoryGuardDenied {
+    BUS.publish(DomainEvent::MemoryGuardDenied {
         driver_id: policy.driver_id().to_string(),
         method: method.to_string(),
         reason: reason.to_string(),
