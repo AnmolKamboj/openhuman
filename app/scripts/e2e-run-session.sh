@@ -319,9 +319,9 @@ if [ "$OS" = "Linux" ] && [ "${E2E_USE_TAURI_DRIVER:-0}" = "1" ]; then
   if [ "${#SPEC_ARGS[@]}" -gt 0 ]; then
     WDIO_SPEC_ARGS=()
     for s in "${SPEC_ARGS[@]}"; do WDIO_SPEC_ARGS+=(--spec "$s"); done
-    pnpm exec wdio run test/wdio.conf.ts "${WDIO_SPEC_ARGS[@]}"
+    pnpm exec wdio run test/wdio.conf.ts --maxInstances 1 "${WDIO_SPEC_ARGS[@]}"
   else
-    pnpm exec wdio run test/wdio.conf.ts
+    pnpm exec wdio run test/wdio.conf.ts --maxInstances 1
   fi
   exit $?
 fi
