@@ -63,6 +63,10 @@ use tinycortex_api::null::{NullMemoryProvider, NULL_DRIVER_ID};
 use tinycortex_api::provider::MemoryProvider;
 use tinycortex_api::CONTRACT_VERSION;
 
+use tinymemory::registry::{
+    ConfigLabels, DriverClass as ContractDriverClass, DriverEntry, DriverRegistry,
+};
+
 use crate::core::subsystem::{
     BoundDriver, DriverCapabilities, DriverClass, DriverHealth, SubsystemSlot,
 };
