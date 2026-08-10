@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -261,6 +262,44 @@ test('the real product file and the real shell list are equal', () => {
   assert.deepEqual(result.missing, [], 'product gates the shell does not forward');
   assert.deepEqual(result.unexpected, [], 'gates the shell forwards that the product omits');
   assert.deepEqual(result.unknown, [], 'product gates that are not real core gates');
+});
+
+test('the shell helper reports an empty gate list instead of dying silently', () => {
+  // Regression. The helper filters comments with `grep -v`, which exits 1 when
+  // it selects nothing; under `set -e` that aborted the script INSIDE the
+  // command substitution, so a comments-only file exited 1 with no output at
+  // all and the explicit diagnostic below it was unreachable. A CI lane would
+  // have seen a bare failure with nothing naming the cause.
+  const tmp = join(tmpdir(), `product-features-empty-${process.pid}.txt`);
+  writeFileSync(tmp, '# only a comment\n\n   \n');
+  try {
+    const result = spawnSync(
+      'bash',
+      [resolve(REPO_ROOT, 'scripts/ci/product-features.sh'), tmp],
+      { encoding: 'utf8' }
+    );
+    assert.equal(result.status, 2, 'an empty gate list must exit 2, not 1');
+    assert.match(result.stderr, /empty gate list/);
+    assert.equal(result.stdout.trim(), '', 'nothing may be emitted for an empty list');
+  } finally {
+    rmSync(tmp, { force: true });
+  }
+});
+
+test('the shell helper parses a fixture the same way the JS parser does', () => {
+  const tmp = join(tmpdir(), `product-features-fixture-${process.pid}.txt`);
+  writeFileSync(tmp, '# heading\n\nvoice\n  media  # trailing comment\n\nweb3\n');
+  try {
+    const out = execFileSync(
+      'bash',
+      [resolve(REPO_ROOT, 'scripts/ci/product-features.sh'), tmp],
+      { encoding: 'utf8' }
+    ).trim();
+    assert.equal(out, 'voice,media,web3');
+    assert.deepEqual(out.split(','), parseProductFeatures(readFileSync(tmp, 'utf8')));
+  } finally {
+    rmSync(tmp, { force: true });
+  }
 });
 
 test('the shell script and the JS parser agree on the product set', () => {

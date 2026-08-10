@@ -355,8 +355,8 @@ Per-domain Cargo features drop whole domains **at compile time** (smaller binary
 
 | Set | Where it lives | What it is |
 | --- | --- | --- |
-| **Contributor** | `[features] default` in `Cargo.toml` | What a bare `cargo check`, `cargo test` and rust-analyzer compile. 9 cheap gates. ~356 packages / 5 native builds. |
-| **Product** | `scripts/ci/product-features.txt` | What the shipped desktop app has. 15 gates. ~567 packages / 7 native builds. |
+| **Contributor** | `[features] default` in `Cargo.toml` | What a bare `cargo check`, `cargo test` and rust-analyzer compile. 9 cheap gates. **353 packages / 3 native builds** (`libsqlite3-sys`, `lzma-sys`, `ring`). |
+| **Product** | `scripts/ci/product-features.txt` | What the shipped desktop app has. 16 gates. **540 packages / 7 native builds** (adds `bzip2-sys`, `libgit2-sys`, `libz-sys`, `zstd-sys`). |
 
 `default` used to be the product set, which made the inner loop pay for the whole product on every edit — web3's ethers/secp256k1 cohort, `documents`' zstd/bzip2 native builds, the cpal/hound/arboard/enigo/rdev stack behind `voice`+`inference`, `contacts`' macOS objc2 cohort, `crash-reporting`'s sentry tree, `tui`'s ratatui. Those are default-OFF now. **This did not change what ships**: the shell has set `default-features = false` since #1061 and never inherited `default` anyway.
 
@@ -385,17 +385,26 @@ unconditional today (`git2`/vendored-libgit2, `rusqlite`/bundled, and
 landed that way had a number moved in CI when they did.
 
 ```bash
-scripts/kernel-floor.sh flows        # CI Linux: 312 packages / 285 names / 6 native
+scripts/kernel-floor.sh flows        # CI Linux: 304 packages / 281 names / 3 native
 scripts/kernel-floor.sh flows --json
 scripts/check-kernel-floor.sh        # the CI ratchet (Rust Feature-Gate Smoke lane)
 scripts/dep-sim.py --cut-nothing     # calibration: must equal kernel-floor.sh
 scripts/dep-sim.py --cut arboard,enigo,rdev   # project a cohort before doing it
 ```
 
-**CI Linux baseline 2026-08-02: 312 packages / 285 unique names / 6 native builds**
-(`aws-lc-sys`, `libgit2-sys`, `libsqlite3-sys`, `libz-sys`, `lzma-sys`, `ring`).
-On macOS the same target-specific graph currently resolves to 319 packages / 292
-names / 6 native builds; the CI ratchet is intentionally calibrated on Linux.
+**CI Linux baseline 2026-08-09: 302 packages / 279 unique names / 2 native
+builds** (`libsqlite3-sys`, `ring`). **This is the target** — MIGRATION-PLAN G6
+set 2 native builds as the goal, and the profile is there, down from 418 names
+/ 6 native when the program started. The four that left: `aws-lc-sys` (the
+tinychannels rustls pin), `lzma-sys` (the `runtime-node` gate), and
+`libgit2-sys` + `libz-sys` together (the `memory-git` gate). The macOS graph
+resolves a few packages higher because of target-specific edges; the CI ratchet
+is intentionally calibrated on Linux.
+
+Reaching the target does not retire the ratchet — it is what stops the floor
+growing back, and an unmeasured floor grows. `libsqlite3-sys` and `ring` are
+both load-bearing (the memory store and TLS), so this is the floor, not a
+waypoint.
 Limits live in `scripts/kernel-floor.limits`; the ratchet fails on growth **and** on
 a shed that was not written back, since an unratcheted improvement grows back
 unnoticed.
@@ -428,6 +437,7 @@ Two columns because there are two sets (see above): **Contrib** is `[features] d
 | `mcp` | ON | ON | `openhuman::mcp::server` (the `openhuman mcp` stdio/HTTP server), `openhuman::mcp::registry` (dynamic Smithery installs — `mcp_clients` RPC namespace, SQLite, boot spawn, supervisor, OAuth), `openhuman::mcp::audit` (write-audit log), and the static config-declared server set in `openhuman::mcp::config_servers`. ~19 agent tools, ~20k LOC | **none** (see scope note) |
 | `tui` | OFF | — | `openhuman::tui` — the tabbed ratatui/crossterm CLI UI (Logs, Chat, Config, Settings), auto-opened by bare `openhuman` on interactive non-container hosts and forced with `openhuman tui` (alias `chat`). Runs the core in-process. No controllers, no agent tools. **Intentionally NOT forwarded to the desktop shell** (allowlisted in `check-feature-forwarding.mjs`). | `ratatui`, `crossterm` |
 | `channels` | ON | ON | `openhuman::channels` (external-messaging providers — Telegram/Discord/Slack/Signal/WhatsApp/iMessage/IRC/… — plus the channel runtime, controllers, host, proactive messaging + inbound dispatch) and the `channels::webview_accounts` / `webview_apis` / `webview_notifications` / `channels::whatsapp_data` webview-bridge domains (incl. the 3 `whatsapp_data_*` agent tools). **Carve-outs `channels::{traits, cli}` stay ungated.** | **28** via `tinychannels/{email,lark}` — the crate itself stays (load-bearing), its two heavy providers do not |
+| `memory-git` | OFF | ON | `openhuman::memory::diff` (git-backed snapshots/checkpoints/read markers, the `memory_diff` RPC namespace + agent tool) and the git wiki mirror in `memory::store::content::wiki_git`. **Type carve-out**: `memory::diff::types` compiles in BOTH builds — the always-on subconscious memory profile renders `CrossSourceDiff`/`ChangeKind` into prompts, and tinycortex makes the matching split (its `memory::diff::{types,source}` are ungated, only the `Ledger`/`DiffEngine` half sits behind `git-diff`). Off ⇒ `memory_diff` is unknown-method, the tool is absent, the embedded driver drops `Capability::Diff` **and** `as_diff()` returns `None` in lockstep (`audit_provider` fails on either half alone), and summary nodes are still written to disk but not mirrored into git. | **3**: `git2`, `libgit2-sys`, `libz-sys` — two of the five native C builds in the kernel profile, the largest native shed in the program |
 | `contacts` | OFF | ON | `memory::people::address_book`'s macOS CNContactStore reader — the address-book seeding path for the people domain. Leaf gate over a **pre-existing** off-state: the module already shipped a non-macOS `imp` stub returning an empty contact list, so the gate only widens that stub's cfg. `read`/`read_with`/`AddressBookError`/`SystemContactsSource` and the whole `people` RPC surface stay compiled in every build; off ⇒ a refresh seeds nothing instead of failing. | **6** on macOS (`objc2`, `objc2-foundation`, `objc2-contacts`, `block2` + 2 transitive). **No-op on Linux/Windows** — never in those graphs, so the kernel-floor ratchet does not move. Verify cross-target: `cargo tree --target aarch64-apple-darwin -e normal -i objc2-contacts --no-default-features` (294 → 288 packages). |
 | `runtime-node` | OFF | ON | `runtime::node` (download / verify / extract / install a pinned Node.js toolchain), the `runtime::javascript` language slot, `runtime::pool::node`, the `node_exec` / `npm_exec` agent tools, and the `node_runtime` harness-init step. **Facade + stub** — `ShellTool` holds `Option<Arc<NodeBootstrap>>` and `shell.rs` is kernel, so the module cannot simply vanish; `runtime/node/stub.rs` carries the `NodeBootstrap` type surface while registration sites are leaf-gated. **The generic native-tool dispatcher (`runtime::node::ops` / `runtime::node::types`) is NOT gated** — it backs both the gated `javascript.*` controllers and the ungated `flows` `oh:` `NativeToolBackend`, so native flow tools (`memory_search`, file, shell, …) keep working when the managed Node runtime is off. Off ⇒ `try_cached`/`probe_installed` return `None` and the shell never prepends a managed bin dir, identical to today's `node.enabled = false` path. | **`xz2` + its static liblzma C build.** First gate to remove a NATIVE toolchain build: `lzma-sys` leaves the list, 6 → 5. `tar`/`zip` are NOT shed — shared with `inference` (install_piper), `runtime::python`, and the document tools. |
 

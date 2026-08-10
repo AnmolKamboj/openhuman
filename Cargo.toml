@@ -99,6 +99,13 @@ path = "tests/observability_smoke.rs"
 required-features = ["crash-reporting"]
 
 [[test]]
+name = "memory_artifacts_e2e"
+path = "tests/memory_artifacts_e2e.rs"
+# Opens the wiki ledger with `git2::Repository::open` and asserts on
+# `content::wiki_git` artifacts — both of which exist only behind this gate.
+required-features = ["memory-git"]
+
+[[test]]
 name = "x402_twit_sh_live"
 path = "tests/x402_twit_sh_live.rs"
 # `x402::tools::X402RequestTool` — the x402 domain is part of the web3 family.
@@ -183,12 +190,13 @@ tinyagents = { version = "2.1", features = ["sqlite"] }
 # aligned to the host pins (=0.40 / 0.21) so one bundled SQLite + one libgit2
 # link. The submodule intentionally tracks reviewed upstream main commits;
 # keep this semver requirement compatible with the vendored crate version.
+# `git-diff` and `wiki-git` are NOT here: they are pulled in by the
+# `memory-git` gate below, which is where the git2/libgit2-sys/libz-sys cohort
+# enters the graph. Everything else tinycortex needs is unconditional.
 tinycortex = { version = "0.1", features = [
-    "git-diff",
     "obsidian",
     "persona",
     "sync",
-    "wiki-git",
 ] }
 # The memory *contract* — value types, the thirteen capability families, the
 # `MemoryProvider` driver trait, and the null reference driver. A direct path
@@ -262,7 +270,7 @@ sha2 = "0.10"
 # Git-backed change ledger for the memory_diff module: snapshots are commits,
 # checkpoints are tags, read markers are refs, diffs are git tree diffs.
 # Vendored libgit2 (no system git dependency on end-user machines).
-git2 = { version = "0.21", default-features = false, features = ["vendored-libgit2"] }
+git2 = { version = "0.21", default-features = false, features = ["vendored-libgit2"], optional = true }
 hmac = "0.12"
 # Archive extraction for the Node.js runtime bootstrap. Unix Node
 # distributions ship as .tar.xz, Windows as .zip. `xz2` with `static`
@@ -524,6 +532,29 @@ default = ["media", "skills", "flows", "mcp", "channels", "medulla", "http-serve
 # domains construct them — so `pub mod socketio;` is UNGATED and only the
 # socketioxide/axum-touching bodies are gated. Likewise `inference::http::types`
 # and `EXTERNAL_OPENAI_COMPAT_PROVIDER` stay compiled for `core::auth`.
+# Git-backed memory diff: snapshots as commits, checkpoints as tags, read
+# markers as refs, diffs as git tree diffs (`openhuman::memory::diff`), plus the
+# git-backed wiki content format in `memory::store::content::wiki_git`.
+# Default-OFF, product-ON.
+#
+# The most expensive gate in the tree by native-build cost: it carries `git2`
+# with vendored libgit2, so turning it off drops `git2` + `libgit2-sys` +
+# `libz-sys` and takes the kernel profile from 5 native C builds to 3.
+#
+# TYPE CARVE-OUT (see AGENTS.md): `memory::diff::types` stays compiled in BOTH
+# builds. It re-exports tinycortex's `serde`-only diff wire types, which the
+# always-on subconscious memory profile renders into prompts; a stub copy would
+# be a second definition of one serde shape, free to drift. tinycortex makes the
+# same split — its `memory::diff::{types,source}` are ungated, and only the
+# git-touching `ledger`/`DiffEngine` half sits behind `git-diff`.
+#
+# Off-state: the `memory_diff` RPC namespace is unknown-method and absent from
+# `/schema`; the `memory_diff` agent tool is absent from the tool list; the
+# embedded driver stops advertising `Capability::Diff` and `as_diff()` returns
+# `None`; and the three `ops` entry points always-on code calls return a
+# build-fact error, so a post-sync snapshot or a subconscious diff is logged and
+# skipped rather than silently reported as "nothing changed".
+memory-git = ["dep:git2", "tinycortex/git-diff", "tinycortex/wiki-git"]
 http-server = ["dep:axum", "dep:socketioxide"]
 # Local audio-device access: the `cpal` capture stack behind voice recording
 # and the accessibility microphone-permission probe. Default-ON. Slim /

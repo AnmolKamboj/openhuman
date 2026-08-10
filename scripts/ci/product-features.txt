@@ -83,3 +83,7 @@ contacts
 # release) and the JavaScript language surface on top of it. Carries `xz2` and
 # its static liblzma C build.
 runtime-node
+
+# Git-backed memory diff (snapshots/checkpoints/read markers) and the git wiki
+# mirror of summary nodes. Carries git2 + vendored libgit2.
+memory-git
