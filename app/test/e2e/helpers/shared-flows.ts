@@ -146,6 +146,7 @@ const HASH_TO_SIDEBAR_LABEL = {
  */
 const HASH_REDIRECTS = {
   '/home': '/chat',
+  '/accounts': '/chat',
   '/skills': '/connections',
   '/channels': '/connections',
   '/activity': '/settings/notifications',
