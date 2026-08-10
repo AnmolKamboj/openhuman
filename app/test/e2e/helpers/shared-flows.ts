@@ -162,6 +162,9 @@ const HASH_REDIRECTS = {
   '/settings/composio-routing': '/connections?tab=composio-key',
   '/settings/agent-chat': '/connections?tab=llm#agent-chat',
   '/settings/local-model-debug': '/connections?tab=llm#local-model',
+  '/settings/llm': '/connections?tab=llm',
+  '/settings/voice': '/connections?tab=voice',
+  '/settings/search': '/connections?tab=search',
 };
 
 /** Resolve a requested hash to where the router actually settles. */
