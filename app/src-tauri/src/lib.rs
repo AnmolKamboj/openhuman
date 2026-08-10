@@ -51,11 +51,9 @@ mod deep_link_ipc_windows;
 // developer host covers them.
 mod deep_link_registration_check;
 mod dictation_hotkeys;
-mod discord_scanner;
 #[cfg(any(test, feature = "e2e-test-support"))]
 mod fake_camera;
 mod file_logging;
-mod gmessages_scanner;
 mod imessage_scanner;
 mod local_data_reset;
 mod loopback_oauth;
@@ -76,14 +74,9 @@ mod ptt_hotkeys;
 mod ptt_overlay;
 #[cfg(target_os = "windows")]
 mod reset_reboot_schedule;
-mod slack_scanner;
 mod stderr_panic_hook;
-mod telegram_scanner;
-mod webview_accounts;
 mod webview_apis;
-mod wechat_scanner;
 mod whatsapp_data;
-mod whatsapp_scanner;
 mod window_state;
 mod workspace_paths;
 
@@ -1647,153 +1640,23 @@ fn setup_tray(app: &AppHandle<AppRuntime>) -> tauri::Result<()> {
     Ok(())
 }
 
-const CEF_PREWARM_LABEL: &str = "cef-prewarm";
-
-/// Decide whether to spawn the CEF cold-start prewarm webview.
-///
-/// Testable pure function — callers pass the relevant env values directly.
-///
-/// Decision matrix:
-/// - `env_override` = `Some("0"|"false"|"no"|"off")` → disabled (explicit)
-/// - `env_override` = `Some(<other non-empty string>)` → enabled (explicit opt-in;
-///   overrides even the Wayland guard so ops can re-enable if CEF subprocess
-///   X handling improves)
-/// - `env_override` = `None` (env var unset, default path):
-///   - `wayland_display_set` = `true` → **disabled** — auto-guard against the
-///     fatal `X_ConfigureWindow BadWindow` crash that fires in CEF render
-///     subprocesses on Wayland/XWayland sessions (issue #2463). The main-process
-///     silent X error handler (`install_silent_x_error_handler`) does not reach
-///     CEF subprocesses; until subprocess-level coverage is available, skipping
-///     the prewarm child webview is the safest mitigation.
-///   - `wayland_display_set` = `false` → enabled
-fn cef_prewarm_enabled(env_override: Option<&str>, wayland_display_set: bool) -> bool {
-    if let Some(v) = env_override {
-        let v = v.trim().to_ascii_lowercase();
-        return !(v == "0" || v == "false" || v == "no" || v == "off");
-    }
-    !wayland_display_set
-}
-
-/// Spawn a hidden 1×1 child webview at `about:blank` on the main window so
-/// CEF's child-webview render path is hot before the user clicks an
-/// account. The first `webview_account_open` then skips the cold
-/// renderer-process spinup. Idempotent — bails if the prewarm webview
-/// already exists.
-fn spawn_cef_prewarm(app: &AppHandle<AppRuntime>) -> Result<(), String> {
-    use tauri::webview::WebviewBuilder;
-    use tauri::WebviewUrl;
-
-    if app.get_webview(CEF_PREWARM_LABEL).is_some() {
-        return Ok(());
-    }
-    let parent = app
-        .get_window("main")
-        .ok_or_else(|| "main window not found".to_string())?;
-    let url: tauri::Url = "about:blank"
-        .parse()
-        .map_err(|e| format!("about:blank parse: {e}"))?;
-    let builder = WebviewBuilder::new(CEF_PREWARM_LABEL, WebviewUrl::External(url));
-    parent
-        .add_child(
-            builder,
-            tauri::LogicalPosition::new(-20000.0, -20000.0),
-            tauri::LogicalSize::new(1.0, 1.0),
-        )
-        .map_err(|e| format!("add_child failed: {e}"))?;
-    log::info!("[cef-prewarm] hidden warmup webview spawned");
-    Ok(())
-}
-
-/// Drop the prewarm webview if still alive. Called from `RunEvent::Exit`
-/// so its CEF browser is torn down before `cef::shutdown()` runs.
-fn teardown_cef_prewarm<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    let Some(wv) = app.get_webview(CEF_PREWARM_LABEL) else {
-        return Err("no prewarm webview".into());
-    };
-    wv.close().map_err(|e| e.to_string())?;
-    log::info!("[cef-prewarm] teardown ok");
-    Ok(())
-}
-
-const CEF_CLOSE_FIXED_YIELD: std::time::Duration = std::time::Duration::from_millis(20);
-const CEF_CLOSE_POLL_BUDGET: std::time::Duration = std::time::Duration::from_millis(300);
-const CEF_CLOSE_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(20);
-
-fn close_early_cef_webviews<R: tauri::Runtime>(app: &AppHandle<R>) -> Vec<String> {
-    let mut closed_labels = Vec::new();
-    if teardown_cef_prewarm(app).is_ok() {
-        closed_labels.push(CEF_PREWARM_LABEL.to_string());
-    }
-    if let Some(state) = app.try_state::<webview_accounts::WebviewAccountsState>() {
-        closed_labels.extend(state.shutdown_all(app));
-    }
-    closed_labels
-}
-
 fn shutdown_imessage_scanner<R: tauri::Runtime>(app: &AppHandle<R>) {
     if let Some(registry) = app.try_state::<std::sync::Arc<imessage_scanner::ScannerRegistry>>() {
         registry.inner().shutdown();
     }
 }
 
-fn pending_cef_webview_labels<R: tauri::Runtime>(
-    app: &AppHandle<R>,
-    labels: &[String],
-) -> Vec<String> {
-    let mut seen = std::collections::HashSet::new();
-    labels
-        .iter()
-        .filter(|label| seen.insert((*label).clone()))
-        .filter(|label| app.get_webview(label.as_str()).is_some())
-        .cloned()
-        .collect()
-}
-
-async fn wait_for_cef_webviews_to_close_async<R: tauri::Runtime>(
-    app: &AppHandle<R>,
-    labels: &[String],
-) {
-    if labels.is_empty() {
-        return;
-    }
-    log::info!(
-        "[app] waiting for CEF webview close requests labels={:?}",
-        labels
-    );
-    tokio::time::sleep(CEF_CLOSE_FIXED_YIELD).await;
-    let start = std::time::Instant::now();
-    let mut pending = pending_cef_webview_labels(app, labels);
-    while !pending.is_empty() && start.elapsed() < CEF_CLOSE_POLL_BUDGET {
-        tokio::time::sleep(CEF_CLOSE_POLL_INTERVAL).await;
-        pending = pending_cef_webview_labels(app, labels);
-    }
-    if pending.is_empty() {
-        log::info!(
-            "[app] CEF webview close poll drained labels={:?} elapsed_ms={}",
-            labels,
-            start.elapsed().as_millis()
-        );
-    } else {
-        log::info!(
-            "[app] CEF webview close poll still pending labels={:?} elapsed_ms={} (will continue in runtime shutdown)",
-            pending,
-            start.elapsed().as_millis()
-        );
-    }
-}
-
-/// Shared early teardown logic before CEF's shutdown to prevent races and zombie processes.
+/// Shared early teardown logic run before the runtime shuts down, to prevent
+/// races and zombie processes.
 ///
 /// Synchronous entry used from `RunEvent::ExitRequested` and tray quit. We intentionally
-/// **do not** poll here with `std::thread::sleep` — that would block the Tauri / CEF main
-/// event loop and prevent close messages from being processed. Close requests are issued
-/// in [`close_early_cef_webviews`]; the exit pump drains them. Use
-/// [`perform_early_teardown_async`] when an async caller can await
-/// [`wait_for_cef_webviews_to_close_async`] without starving the UI loop.
+/// **do not** poll here with `std::thread::sleep` — that would block the Tauri main
+/// event loop and prevent close messages from being processed. Use
+/// [`perform_early_teardown_async`] when an async caller can await without
+/// starving the UI loop.
 fn perform_early_teardown_sync(app_handle: &AppHandle<AppRuntime>) {
     log::info!("[app] perform_early_teardown_sync — early teardown");
 
-    let closed_labels = close_early_cef_webviews(app_handle);
     shutdown_imessage_scanner(app_handle);
 
     webview_apis::server::stop();
@@ -1805,13 +1668,6 @@ fn perform_early_teardown_sync(app_handle: &AppHandle<AppRuntime>) {
         tauri::async_runtime::block_on(async move {
             core.send_terminate_signal().await;
         });
-    }
-
-    if !closed_labels.is_empty() {
-        log::info!(
-            "[app] sync early teardown: close requested for labels={:?} — skipping main-thread poll so the event loop can drain CEF",
-            closed_labels
-        );
     }
 
     log::info!("[app] perform_early_teardown_sync — early teardown complete");
@@ -1829,12 +1685,12 @@ fn perform_early_teardown_sync_once(app_handle: &AppHandle<AppRuntime>, reason: 
     perform_early_teardown_sync(app_handle);
 }
 
-/// Shared early teardown logic before CEF's shutdown to prevent races and zombie processes.
+/// Shared early teardown logic run before the runtime shuts down, to prevent
+/// races and zombie processes.
 /// Asynchronous version to be called from async Tauri commands (e.g. `restart_app`, updates).
 async fn perform_early_teardown_async(app_handle: &AppHandle<AppRuntime>) {
     log::info!("[app] perform_early_teardown_async — early teardown");
 
-    let closed_labels = close_early_cef_webviews(app_handle);
     shutdown_imessage_scanner(app_handle);
 
     webview_apis::server::stop();
@@ -1843,8 +1699,6 @@ async fn perform_early_teardown_async(app_handle: &AppHandle<AppRuntime>) {
         let core = core.inner().clone();
         core.send_terminate_signal().await;
     }
-
-    wait_for_cef_webviews_to_close_async(app_handle, &closed_labels).await;
 
     log::info!("[app] perform_early_teardown_async — early teardown complete");
 }
@@ -2049,8 +1903,7 @@ fn linux_is_root_uid(uid: u32) -> bool {
 /// driver passthrough, Fedora, etc.) can opt back into hardware
 /// acceleration by setting `OPENHUMAN_FORCE_GPU=1`.
 ///
-/// Uses the same recognized truthy tokens as [`cef_prewarm_enabled`], but
-/// this control is explicit opt-in: `1` / `true` / `yes` / `on`
+/// This control is explicit opt-in: `1` / `true` / `yes` / `on`
 /// (case-insensitive) enables the override, and anything else (including
 /// unset) preserves the default disable.
 #[cfg(any(test, feature = "e2e-test-support"))]
@@ -3050,14 +2903,11 @@ pub fn run() {
         // Explicitly disable `open_js_links_on_click`: tauri-plugin-opener
         // defaults to injecting `init-iife.js` into *every* webview — a
         // global click listener that invokes `plugin:opener|open_url` via
-        // HTTP-IPC. That violates our "no JS injection into CEF child
+        // HTTP-IPC. That violates our "no JS injection into child
         // webviews" rule (see CLAUDE.md) and also fails in practice
-        // because third-party origins (web.telegram.org, linkedin, …)
-        // trip Tauri's Origin header check and return 500. External link
-        // handling for `acct_*` webviews runs natively via
-        // `on_navigation` / `on_new_window` in webview_accounts/mod.rs;
-        // the main window uses `openUrl()` from `utils/openUrl.ts` when
-        // it needs to hand off a URL.
+        // because third-party origins trip Tauri's Origin header check
+        // and return 500. The main window uses `openUrl()` from
+        // `utils/openUrl.ts` when it needs to hand off a URL.
         .plugin(
             tauri_plugin_opener::Builder::default()
                 .open_js_links_on_click(false)
@@ -3078,19 +2928,10 @@ pub fn run() {
         .manage(companion_commands::CompanionHotkeyState(
             std::sync::Mutex::new(Vec::new()),
         ))
-        .manage(webview_accounts::WebviewAccountsState::default())
         .manage(cdp::CdpRegistry::default())
         .manage(notification_settings::NotificationSettingsState::new())
         .manage(PendingAppUpdateState::default());
     let builder = builder.manage(std::sync::Arc::new(imessage_scanner::ScannerRegistry::new()));
-    let builder = builder.manage(std::sync::Arc::new(
-        gmessages_scanner::ScannerRegistry::new(),
-    ));
-    let builder = builder.manage(whatsapp_scanner::ScannerRegistry::new());
-    let builder = builder.manage(slack_scanner::ScannerRegistry::new());
-    let builder = builder.manage(discord_scanner::ScannerRegistry::new());
-    let builder = builder.manage(telegram_scanner::ScannerRegistry::new());
-    let builder = builder.manage(wechat_scanner::ScannerRegistry::new());
     let builder = builder.manage(meet_call::MeetCallState::new());
     let builder = builder.manage(meet_audio::MeetAudioState::new());
     let builder = builder.manage(meet_video::frame_bus::MeetVideoFrameBusState::new());
@@ -3476,238 +3317,6 @@ pub fn run() {
             // Linux with "GTK has not been initialized".
             log::info!("[tray] deferring tray setup to RunEvent::Ready");
 
-            // CEF cold-start warmup. Spawns a 1×1 hidden child webview on
-            // the main window at `about:blank` so CEF's render-process /
-            // compositor for child webviews is hot before the user clicks
-            // an account — first cold open of a real provider drops from
-            // "spin up renderer + navigate" to just "navigate".
-            //
-            // Earlier builds had this disabled because of a "blank webview
-            // on first onboarding open" report; we now park the warmup at
-            // a far off-screen position and never reveal it (matching the
-            // 1×1-on-screen pattern used for cold account spawns), and
-            // tear it down in the shutdown sequence below. Disable at
-            // runtime with `OPENHUMAN_CEF_PREWARM=0` if it regresses.
-            {
-                #[cfg(target_os = "linux")]
-                let wayland_display_set = has_non_empty_env("WAYLAND_DISPLAY");
-                #[cfg(not(target_os = "linux"))]
-                let wayland_display_set = false;
-                let env_override = std::env::var("OPENHUMAN_CEF_PREWARM").ok();
-                if cef_prewarm_enabled(env_override.as_deref(), wayland_display_set) {
-                    let app_handle = app.handle().clone();
-                    tauri::async_runtime::spawn(async move {
-                        // Defer one tick so the main window finishes its
-                        // first paint before we attach a sibling webview.
-                        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-                        if let Err(e) = spawn_cef_prewarm(&app_handle) {
-                            log::warn!("[cef-prewarm] failed (non-fatal): {e}");
-                        }
-                    });
-                } else if wayland_display_set && env_override.is_none() {
-                    log::info!(
-                        "[cef-prewarm] auto-disabled: WAYLAND_DISPLAY is set (Wayland/XWayland \
-                         session) — prevents X_ConfigureWindow BadWindow crash in CEF \
-                         subprocesses (issue #2463); set OPENHUMAN_CEF_PREWARM=1 to override"
-                    );
-                } else {
-                    log::info!("[cef-prewarm] disabled via OPENHUMAN_CEF_PREWARM");
-                }
-            }
-
-            // Dev convenience: if OPENHUMAN_DEV_AUTO_WHATSAPP=<account-id>
-            // is set, spawn that account's webview at startup so the
-            // CDP/IndexedDB scanner can iterate without manual UI clicks.
-            // The same account-id reuses the persistent data dir, so a
-            // previously-logged-in WhatsApp session stays logged in.
-            if let Ok(account_id) = std::env::var("OPENHUMAN_DEV_AUTO_WHATSAPP") {
-                let account_id = account_id.trim().to_string();
-                if !account_id.is_empty() {
-                    let app_handle = app.handle().clone();
-                    tauri::async_runtime::spawn(async move {
-                        // Wait for the window to be fully ready.
-                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                        let state = app_handle.state::<webview_accounts::WebviewAccountsState>();
-                        let args = webview_accounts::OpenArgs {
-                            account_id: account_id.clone(),
-                            provider: "whatsapp".to_string(),
-                            url: None,
-                            bounds: Some(webview_accounts::Bounds {
-                                x: 100.0,
-                                y: 100.0,
-                                width: 900.0,
-                                height: 700.0,
-                            }),
-                            prewarm: false,
-                        };
-                        match webview_accounts::webview_account_open(
-                            app_handle.clone(),
-                            state,
-                            args,
-                        )
-                        .await
-                        {
-                            Ok(label) => log::info!(
-                                "[dev-auto-whatsapp] spawned label={} account={}",
-                                label,
-                                account_id
-                            ),
-                            Err(e) => log::error!(
-                                "[dev-auto-whatsapp] failed: {} (account={})",
-                                e,
-                                account_id
-                            ),
-                        }
-                    });
-                }
-            }
-
-            // Same dev helper, Slack flavour. OPENHUMAN_DEV_AUTO_SLACK=<uuid>
-            // opens the Slack account webview on startup so the CDP scanner
-            // can iterate without manual UI clicks.
-            if let Ok(account_id) = std::env::var("OPENHUMAN_DEV_AUTO_SLACK") {
-                let account_id = account_id.trim().to_string();
-                if !account_id.is_empty() {
-                    let app_handle = app.handle().clone();
-                    tauri::async_runtime::spawn(async move {
-                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                        let state = app_handle.state::<webview_accounts::WebviewAccountsState>();
-                        let args = webview_accounts::OpenArgs {
-                            account_id: account_id.clone(),
-                            provider: "slack".to_string(),
-                            url: None,
-                            bounds: Some(webview_accounts::Bounds {
-                                x: 100.0,
-                                y: 100.0,
-                                width: 900.0,
-                                height: 700.0,
-                            }),
-                            prewarm: false,
-                        };
-                        match webview_accounts::webview_account_open(
-                            app_handle.clone(),
-                            state,
-                            args,
-                        )
-                        .await
-                        {
-                            Ok(label) => log::info!(
-                                "[dev-auto-slack] spawned label={} account={}",
-                                label,
-                                account_id
-                            ),
-                            Err(e) => log::error!(
-                                "[dev-auto-slack] failed: {} (account={})",
-                                e,
-                                account_id
-                            ),
-                        }
-                    });
-                }
-            }
-
-            // Same dev helper, Telegram flavour. OPENHUMAN_DEV_AUTO_TELEGRAM=<uuid>
-            // opens the Telegram Web K account webview on startup so the CDP
-            // scanner can iterate without manual UI clicks.
-            if let Ok(account_id) = std::env::var("OPENHUMAN_DEV_AUTO_TELEGRAM") {
-                let account_id = account_id.trim().to_string();
-                if !account_id.is_empty() {
-                    let app_handle = app.handle().clone();
-                    tauri::async_runtime::spawn(async move {
-                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                        let state = app_handle.state::<webview_accounts::WebviewAccountsState>();
-                        let args = webview_accounts::OpenArgs {
-                            account_id: account_id.clone(),
-                            provider: "telegram".to_string(),
-                            url: None,
-                            bounds: Some(webview_accounts::Bounds {
-                                x: 100.0,
-                                y: 100.0,
-                                width: 900.0,
-                                height: 700.0,
-                            }),
-                            prewarm: false,
-                        };
-                        match webview_accounts::webview_account_open(
-                            app_handle.clone(),
-                            state,
-                            args,
-                        )
-                        .await
-                        {
-                            Ok(label) => log::info!(
-                                "[dev-auto-telegram] spawned label={} account={}",
-                                label,
-                                account_id
-                            ),
-                            Err(e) => log::error!(
-                                "[dev-auto-telegram] failed: {} (account={})",
-                                e,
-                                account_id
-                            ),
-                        }
-                    });
-                }
-            }
-            // Same dev helper, Google Meet flavour.
-            // OPENHUMAN_DEV_AUTO_GOOGLE_MEET=<uuid> opens the gmeet account
-            // webview at startup so the caption-capture recipe runs
-            // without manual UI clicks. Use in combination with:
-            //   tail -F /tmp/oh-cef.log | grep -E --line-buffered \
-            //     "\[gmeet\]|memory_doc_ingest|orchestrator"
-            // to verify captions flow → transcript persist → thread handoff.
-            if let Ok(account_id) = std::env::var("OPENHUMAN_DEV_AUTO_GOOGLE_MEET") {
-                let account_id = account_id.trim().to_string();
-                if !account_id.is_empty() {
-                    let app_handle = app.handle().clone();
-                    tauri::async_runtime::spawn(async move {
-                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                        let state = app_handle.state::<webview_accounts::WebviewAccountsState>();
-                        // Dev mode: size the child webview to the parent
-                        // window's inner bounds so Meet controls (CC toggle,
-                        // mic/cam, leave) are reachable without overflowing.
-                        let (w, h) = app_handle
-                            .get_webview_window("main")
-                            .and_then(|main| {
-                                let scale = main.scale_factor().unwrap_or(1.0);
-                                main.inner_size()
-                                    .ok()
-                                    .map(|s| ((s.width as f64) / scale, (s.height as f64) / scale))
-                            })
-                            .unwrap_or((1100.0, 780.0));
-                        let args = webview_accounts::OpenArgs {
-                            account_id: account_id.clone(),
-                            provider: "google-meet".to_string(),
-                            url: None,
-                            bounds: Some(webview_accounts::Bounds {
-                                x: 0.0,
-                                y: 0.0,
-                                width: w,
-                                height: h,
-                            }),
-                            prewarm: false,
-                        };
-                        match webview_accounts::webview_account_open(
-                            app_handle.clone(),
-                            state,
-                            args,
-                        )
-                        .await
-                        {
-                            Ok(label) => log::info!(
-                                "[dev-auto-gmeet] spawned label={} account={}",
-                                label,
-                                account_id
-                            ),
-                            Err(e) => log::error!(
-                                "[dev-auto-gmeet] failed: {} (account={})",
-                                e,
-                                account_id
-                            ),
-                        }
-                    });
-                }
-            }
             // Dev helper: OPENHUMAN_DEV_AUTO_MEET_CALL=<https://meet.google.com/...>
             // auto-spawns a meet-call window at startup so the camera +
             // audio bridges + frame-bus + producer pipeline can be
@@ -3812,21 +3421,6 @@ pub fn run() {
             register_ptt_hotkey,
             unregister_ptt_hotkey,
             ptt_overlay::show_ptt_overlay,
-            webview_accounts::webview_account_open,
-            webview_accounts::webview_account_prewarm,
-            webview_accounts::webview_account_close,
-            webview_accounts::webview_account_purge,
-            webview_accounts::webview_account_bounds,
-            webview_accounts::webview_account_reveal,
-            webview_accounts::webview_account_hide,
-            webview_accounts::webview_account_show,
-            webview_accounts::webview_recipe_event,
-            webview_accounts::webview_notification_permission_state,
-            webview_accounts::webview_notification_permission_request,
-            webview_accounts::webview_notification_set_dnd,
-            webview_accounts::webview_notification_mute_account,
-            webview_accounts::webview_notification_get_bypass_prefs,
-            webview_accounts::webview_set_focused_account,
             notification_settings::notification_settings_get,
             notification_settings::notification_settings_set,
             native_notifications::notification_permission_state,

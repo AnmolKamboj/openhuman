@@ -298,8 +298,7 @@ pub async fn stop<R: Runtime>(
 }
 
 /// Minimal JSON-RPC helper used by both this module and the speak pump
-/// loop. Mirrors the call shape used by other shell scanners (see
-/// `telegram_scanner::mod.rs`).
+/// loop.
 pub(crate) async fn rpc_call(
     method: &str,
     params: serde_json::Value,
