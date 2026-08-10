@@ -152,7 +152,11 @@ const HASH_REDIRECTS = {
   '/activity': '/settings/notifications',
   '/intelligence': '/settings/notifications',
   '/routines': '/flows',
-  '/webhooks': '/settings/integrations',
+  '/webhooks': '/connections',
+  '/settings/features': '/settings',
+  '/settings/screen-intelligence': '/settings',
+  '/settings/screen-awareness-debug': '/settings',
+  '/settings/mascot': '/settings/personality#face',
 };
 
 /** Resolve a requested hash to where the router actually settles. */
