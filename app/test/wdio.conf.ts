@@ -1,0 +1,241 @@
+import type { Options } from '@wdio/types';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+import { captureFailureArtifacts } from './e2e/helpers/artifacts';
+
+/**
+ * Unified WDIO config — single Appium Chromium-driver session that attaches
+ * to the running CEF app over its remote-debugging port (CDP).
+ *
+ * One automation backend on every platform:
+ *
+ *   macOS / Linux / Windows  →  Appium Chromium driver  →  CEF :19222
+ *
+ * The runner script (`scripts/e2e-run-session.sh`) is responsible for:
+ *   1. Launching the built CEF app binary.
+ *   2. Waiting until `http://127.0.0.1:19222/json/version` responds (CDP up).
+ *   3. Starting Appium with the `chromium` driver installed.
+ *   4. Invoking `wdio` against this config.
+ *
+ * WDIO creates ONE session per worker. With `maxInstances: 1` and no
+ * cross-spec teardown, all specs run sequentially in the same session,
+ * against the same app process — no restart cost between spec files.
+ * Tests are intentionally order-dependent: state from spec N flows into
+ * spec N+1. Each spec is responsible for any reset it requires.
+ */
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = path.resolve(configDir, '..');
+const tsconfigE2ePath = path.join(projectRoot, 'test', 'tsconfig.e2e.json');
+const testSpecsPath = path.join(projectRoot, 'test', 'e2e', 'specs', '**', '*.spec.ts');
+
+const APPIUM_PORT = parseInt(process.env.APPIUM_PORT || '4723', 10);
+const EDGE_DRIVER_PORT = parseInt(process.env.EDGE_DRIVER_PORT || '9515', 10);
+const CEF_CDP_HOST = process.env.CEF_CDP_HOST || '127.0.0.1';
+const CEF_CDP_PORT = parseInt(process.env.CEF_CDP_PORT || '19222', 10);
+const isWindows = process.platform === 'win32';
+
+function linuxAppPath(): string {
+  const candidate = path.join(projectRoot, 'src-tauri', 'target', 'debug', 'OpenHuman');
+  if (fs.existsSync(candidate)) return candidate;
+  return candidate;
+}
+
+// Admin base for the shared mock backend. The runner exports BACKEND_URL to
+// the mock; fall back to the E2E_MOCK_PORT default the runner scripts use.
+const MOCK_ADMIN_BASE =
+  process.env.BACKEND_URL || `http://127.0.0.1:${process.env.E2E_MOCK_PORT || 18473}`;
+
+// The mock backend carries module-level mutable state (conversations, cron
+// jobs, webhook triggers, request log, socket sessions). Specs run in ONE
+// ordered session and historically only reset it when a spec *remembered* to
+// call `/__admin/reset` in its own hook — so a spec that failed before its
+// reset poisoned the next spec file. Reset once at the start of every spec
+// file, unconditionally, so no spec can leak mock state into the next one.
+// Guarded by file path so nested `describe` blocks inside a file don't wipe
+// state mid-file (specs still build up state across their own `it`s).
+let lastResetSpecFile: string | null = null;
+
+async function resetMockBackendOncePerSpecFile(specFile: string | undefined): Promise<void> {
+  if (!specFile || specFile === lastResetSpecFile) return;
+  lastResetSpecFile = specFile;
+  try {
+    const res = await fetch(`${MOCK_ADMIN_BASE}/__admin/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    if (!res.ok) {
+      console.warn(`[wdio] mock /__admin/reset returned ${res.status} for ${specFile}`);
+    }
+  } catch (err) {
+    // Best-effort: some lanes run specs that don't stand up the mock backend.
+    // Never fail the run on an unreachable mock — just record it.
+    console.warn(`[wdio] mock /__admin/reset skipped for ${specFile}: ${(err as Error).message}`);
+  }
+}
+
+// appium-chromium-driver advertises support for platformName ∈ {windows, mac, linux}
+// (not "chromium" — that's only the automationName). Pick the actual OS so the
+// capability negotiation succeeds.
+function platformNameForHost(): 'mac' | 'linux' | 'windows' {
+  if (process.platform === 'darwin') return 'mac';
+  if (process.platform === 'win32') return 'windows';
+  return 'linux';
+}
+
+export const config: Options.Testrunner & Record<string, unknown> = {
+  runner: 'local',
+  hostname: '127.0.0.1',
+  port:
+    process.platform === 'linux'
+      ? parseInt(process.env.TAURI_DRIVER_PORT || '4444', 10)
+      : isWindows
+        ? EDGE_DRIVER_PORT
+        : APPIUM_PORT,
+  path: '/',
+  specs: [testSpecsPath],
+  rootDir: projectRoot,
+  // Single session — Tauri+CEF is one app instance.
+  maxInstances: 1,
+  capabilities:
+    process.platform === 'linux'
+      ? [
+          {
+            'tauri:options': { application: linuxAppPath() },
+            // WDIO's per-capability ceiling is required by the Tauri driver.
+            // Without it, the runner can schedule one WebKit session per spec
+            // despite the global maxInstances: 1, causing simultaneous app
+            // resets and cascading startup timeouts.
+            'wdio:maxInstances': 1,
+          },
+        ]
+      : isWindows
+        ? [
+            {
+              // EdgeDriver selects WebView2 automation from the standard
+              // browserName capability, not an ms:edgeOptions entry.
+              browserName: 'webview2',
+              'wdio:maxInstances': 1,
+              // WebView2 reports itself as Edge over CDP. EdgeDriver, unlike
+              // ChromeDriver, recognises that browser brand and can attach to
+              // the already-running webview without launching a new browser.
+              'ms:edgeOptions': { debuggerAddress: `${CEF_CDP_HOST}:${CEF_CDP_PORT}` },
+            },
+          ]
+        : [
+            {
+              platformName: platformNameForHost(),
+              'wdio:maxInstances': 1,
+              'appium:automationName': 'Chromium',
+              // Provider specs can spend long stretches polling mock backends between
+              // visible browser operations. Keep Appium from expiring the Chromium
+              // session mid-spec and surfacing that as teardown DELETE failures.
+              'appium:newCommandTimeout': 300,
+              // The runner downloads a chromedriver whose major matches CEF's
+              // bundled Chromium and exports its path here. If unset, Appium falls
+              // back to its bundled chromedriver — which usually drifts ahead of
+              // CEF and produces a "ChromeDriver only supports Chrome version N"
+              // session-creation error.
+              //
+              // Appium chromium driver names this capability `executable` (see
+              // appium-chromium-driver/build/lib/desired-caps.js), not the more
+              // common Chrome-driver name `chromedriverExecutable`.
+              ...(process.env.E2E_CHROMEDRIVER_PATH
+                ? { 'appium:executable': process.env.E2E_CHROMEDRIVER_PATH }
+                : {}),
+              'goog:chromeOptions': {
+                // Attach to the already-running CEF process. chromedriver will not
+                // try to launch its own Chrome — it picks the first page target
+                // exposed at this address (which is the main OpenHuman webview).
+                debuggerAddress: `${CEF_CDP_HOST}:${CEF_CDP_PORT}`,
+              },
+            },
+          ],
+  logLevel: 'warn',
+  // `bail` is the number of failing specs to tolerate before WDIO stops the
+  // run. `--bail` on e2e-run-all-flows.sh sets E2E_BAIL_ON_FAILURE=1 so we
+  // flip this to 1 (= stop after the first failed spec).
+  bail: process.env.E2E_BAIL_ON_FAILURE === '1' ? 1 : 0,
+  // Retry a failed spec file once (unless bailing) to absorb transient
+  // shared-session flakiness — cold-start warmups and `resetApp` bring-up
+  // races that sit right at the Mocha hook budget. Deterministic failures
+  // still fail on the retry; this only rescues the genuinely-flaky ones.
+  specFileRetries: process.env.E2E_BAIL_ON_FAILURE === '1' ? 0 : 1,
+  specFileRetriesDeferred: true,
+  waitforTimeout: 10_000,
+  connectionRetryTimeout: 120_000,
+  connectionRetryCount: 3,
+  framework: 'mocha',
+  reporters: ['spec'],
+  mochaOpts: {
+    ui: 'bdd',
+    // Under the native Linux driver, a reset after a tool-heavy spec can wait
+    // behind WebKit and core cleanup long enough to exceed one minute. Keep
+    // the historical two-minute suite budget; individual polling helpers
+    // still keep their own short, diagnostic timeouts.
+    timeout: 120_000,
+  },
+  autoCompileOpts: { tsNodeOpts: { project: tsconfigE2ePath } },
+  /**
+   * After the chromedriver session attaches, switch the active window to
+   * the main OpenHuman app webview.
+   *
+   * CEF exposes multiple CDP page targets:
+   *   - `about:blank`  — the CEF prewarm hot-loaded child-webview slot
+   *                     (see CEF_PREWARM_LABEL in src-tauri/src/lib.rs).
+   *   - `OpenHuman` @ `http://tauri.localhost/#/` — the main React app.
+   *
+   * `debuggerAddress` makes chromedriver attach to the *first* page target,
+   * which is `about:blank`. Without this switch, every spec ends up looking
+   * at an empty document. We pick the first window whose URL contains
+   * `tauri.localhost`, falling back to the first non-`about:blank`.
+   */
+  before: async function () {
+    // EdgeDriver's WebView2 session already targets the application renderer.
+    // Its window-handle list also contains a synthetic blank document, so the
+    // generic CDP-target selection below can switch a healthy session away
+    // from the app on Windows.
+    if (isWindows) return;
+
+    const handles = await browser.getWindowHandles();
+    let target: string | null = null;
+    for (const handle of handles) {
+      await browser.switchToWindow(handle);
+      const url = await browser.getUrl();
+      if (url.includes('tauri.localhost')) {
+        target = handle;
+        break;
+      }
+    }
+    if (!target) {
+      for (const handle of handles) {
+        await browser.switchToWindow(handle);
+        const url = await browser.getUrl();
+        if (!url.startsWith('about:')) {
+          target = handle;
+          break;
+        }
+      }
+    }
+    if (target) {
+      await browser.switchToWindow(target);
+    }
+  },
+  beforeSuite: async function (suite: { file?: string }) {
+    // Fires once per Mocha suite. The per-file guard makes the reset run only
+    // for the first suite encountered in each spec file.
+    await resetMockBackendOncePerSpecFile(suite?.file);
+  },
+  afterTest: async function (
+    test: { title: string; parent?: string },
+    _context: unknown,
+    result: { passed: boolean; error?: Error }
+  ) {
+    if (result.passed) return;
+    const name = [test.parent, test.title].filter(Boolean).join(' ').trim() || test.title;
+    await captureFailureArtifacts(name);
+  },
+};
