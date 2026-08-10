@@ -218,39 +218,46 @@ pub fn unbound_default_capabilities() -> Capabilities {
     Capabilities::all()
 }
 
-/// The class a built-in driver id is *fixed* to, or `None` for any other id.
+/// The registry of driver ids whose class this host fixes.
 ///
-/// Both built-in ids name one specific implementation, so this is the authority
-/// for their class in every path — the implicit one below and the explicit
-/// `class = …` line in [`admit`], which may only confirm what this returns.
-pub(crate) fn reserved_class(id: &str) -> Option<DriverClass> {
-    match id {
-        NULL_DRIVER_ID => Some(DriverClass::Null),
-        EMBEDDED_DRIVER_ID => Some(DriverClass::Embedded),
-        _ => None,
-    }
+/// [`DriverRegistry::builtin`] already reserves `null` and `tinycortex`, which
+/// are exactly this host's two built-in ids — so the builtin set is used as-is
+/// rather than re-declared. A host bundling an adapter the crate does not know
+/// about would add it here with `with_reserved`.
+fn registry() -> DriverRegistry {
+    DriverRegistry::builtin()
 }
 
-/// The class a driver id implies when nothing says otherwise. Only the two
-/// built-in ids admit: the embedded default and the null placeholder. Anything
-/// else — a typo, or an external backend that forgot its `drivers.<id>` entry —
-/// is refused so the fallback machinery surfaces the mistake in status instead
-/// of mislabelling the bound engine.
+/// The config-path spellings quoted back to the operator in refusal messages.
 ///
-/// `context` names which part of the config was missing; the refusal echoes it
-/// so the operator knows whether to add an entry or a `class` line.
-fn implicit_class(
-    id: &str,
-    refuse: &impl Fn(&str) -> FallbackReason,
-    context: &str,
-) -> Result<(String, DriverClass), FallbackReason> {
-    if let Some(class) = reserved_class(id) {
-        Ok((id.to_string(), class))
-    } else {
-        Err(refuse(&format!(
-            "unknown driver id \"{id}\": {context}, and the id is neither the \
-             embedded default nor \"null\""
-        )))
+/// The crate does not know what this host's config file looks like; these are
+/// the blocks an operator would actually edit.
+const CONFIG_LABELS: ConfigLabels<'static> = ConfigLabels {
+    section: "[subsystems.memory]",
+    drivers: "[subsystems.memory.drivers]",
+    driver_entry: "[subsystems.memory.drivers.<id>]",
+};
+
+/// The class a built-in driver id is *fixed* to, or `None` for any other id.
+///
+/// Both built-in ids name one specific implementation, so the registry is the
+/// authority for their class in every path — the implicit one and the explicit
+/// `class = …` line, which may only confirm what this returns.
+pub(crate) fn reserved_class(id: &str) -> Option<DriverClass> {
+    registry().reserved_class(id).map(from_contract_class)
+}
+
+/// The contract's driver class in the kernel's generic vocabulary.
+///
+/// A total three-arm match, which is why both enums were shaped one-for-one.
+/// The kernel's own enum is deliberately not replaced by the contract's: it is
+/// shared with the subsystems that come after memory, which must not inherit
+/// their vocabulary from a *memory* crate.
+fn from_contract_class(class: ContractDriverClass) -> DriverClass {
+    match class {
+        ContractDriverClass::Embedded => DriverClass::Embedded,
+        ContractDriverClass::External => DriverClass::External,
+        ContractDriverClass::Null => DriverClass::Null,
     }
 }
 
@@ -259,6 +266,20 @@ fn implicit_class(
 /// Pure — no I/O, no globals — so the fail-closed trust rule is unit-testable
 /// without booting anything.
 ///
+/// The rules themselves live in [`tinymemory::registry`], because they are the
+/// one part of binding with the same correct answer for every host: a built-in
+/// id's class is fixed and an explicit `class` line may only confirm it, an
+/// unknown id is refused rather than guessed, and an external driver is
+/// fail-closed on trust. This function is the projection from *this* host's
+/// config shape onto that decision, and the conversion back into the kernel's
+/// generic driver vocabulary.
+///
+/// Note what is deliberately **not** passed to the crate: only the `class` and
+/// `trust_state` of the driver entry cross, never `credential_ref` or
+/// `endpoint`. A refusal message is operator-facing and logged, so the narrow
+/// projection is what makes "no secret can appear in a refusal" structural
+/// rather than a rule someone has to remember.
+///
 /// # Errors
 ///
 /// Returns the [`FallbackReason`] to record and publish when the configured
@@ -266,79 +287,13 @@ fn implicit_class(
 /// requires the subsystem stay bound, loudly.
 pub fn admit(cfg: &MemorySubsystemConfig) -> Result<(String, DriverClass), FallbackReason> {
     let id = cfg.driver.trim();
-    if id.is_empty() {
-        return Err(FallbackReason {
-            configured_driver: String::new(),
-            reason: "[subsystems.memory] driver is empty".to_string(),
-        });
-    }
+    let entry = cfg.drivers.get(id).map(|entry| DriverEntry {
+        class: entry.class.as_deref(),
+        trust_state: entry.trust_state.as_str(),
+    });
 
-    let refuse = |reason: &str| FallbackReason {
-        configured_driver: id.to_string(),
-        reason: reason.to_string(),
-    };
-
-    // A driver needs no `[subsystems.memory.drivers.<id>]` entry: the embedded
-    // default's options still live in the existing `[memory]` blocks. But only
-    // the two built-in ids are implicitly admitted — anything else is a typo or
-    // an external backend that forgot its entry, and admitting it would silently
-    // run TinyCortex under an invented driver id (kernel.md §3.1, one driver per
-    // slot, named truthfully). Refuse it so the fallback machinery surfaces the
-    // mistake in status instead of mislabelling the bound engine.
-    let Some(entry) = cfg.drivers.get(id) else {
-        return implicit_class(id, &refuse, "no [subsystems.memory.drivers.<id>] entry");
-    };
-
-    let (admitted_id, class) = match entry.class.as_deref() {
-        // An entry that names no class still cannot admit an arbitrary id: the
-        // embedded default is the only non-null id that implies Embedded.
-        None => implicit_class(
-            id,
-            &refuse,
-            "[subsystems.memory.drivers.<id>] has no class line",
-        )?,
-        Some(raw) => {
-            let class = DriverClass::parse(raw).map_err(|e| refuse(&e))?;
-            // The two built-in ids name a *fixed* implementation, so an
-            // explicit `class` line may confirm it but never override it.
-            // Without this, `driver = "null"` plus
-            // `[subsystems.memory.drivers.null] class = "embedded"` would build
-            // `EmbeddedMemoryProvider`, advertise all thirteen families and
-            // persist memory under the id documented as `/dev/null`; the
-            // inverse would label a store-nothing provider `tinycortex`. Either
-            // way the bound engine is mislabelled, which is exactly what the
-            // implicit-class refusal above exists to prevent (kernel.md §3.1 —
-            // one driver per slot, named truthfully).
-            if let Some(fixed) = reserved_class(id) {
-                if class != fixed {
-                    return Err(refuse(&format!(
-                        "driver id \"{id}\" is built in and is always class \
-                         \"{}\"; remove the conflicting class = \"{raw}\" line",
-                        fixed.as_str()
-                    )));
-                }
-            }
-            (id.to_string(), class)
-        }
-    };
-
-    if class == DriverClass::External {
-        // kernel.md §3.4: fail-closed. Trust must be explicitly raised before
-        // an out-of-process driver is allowed to answer for memory.
-        if entry.trust_state != "trusted" {
-            return Err(refuse(
-                "external driver is untrusted: set trust_state = \"trusted\" \
-                 under [subsystems.memory.drivers] to allow this binding",
-            ));
-        }
-        // Distinct reason string from the trust refusal above, so the trust
-        // test cannot pass for the wrong reason.
-        return Err(refuse(
-            "external driver transport is not implemented yet (the http adapter lands in M4)",
-        ));
-    }
-
-    Ok((admitted_id, class))
+    let admission = registry().admit(&cfg.driver, entry, CONFIG_LABELS)?;
+    Ok((admission.id, from_contract_class(admission.class)))
 }
 
 /// Build the binding for a workspace. Infallible by design: an inadmissible
