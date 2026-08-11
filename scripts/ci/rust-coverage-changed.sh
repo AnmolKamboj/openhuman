@@ -139,8 +139,8 @@ run_full() {
   mkdir -p target "${CARGO_LLVM_COV_TARGET_DIR}"
   shopt -s nullglob
   for profile in "${profile_dir}"/*.profraw; do
-    cp "${profile}" "target/$(basename "${profile}")"
-    cp "${profile}" "${CARGO_LLVM_COV_TARGET_DIR}/$(basename "${profile}")"
+    [ "${profile}" = "target/$(basename "${profile}")" ] || cp "${profile}" "target/$(basename "${profile}")"
+    [ "${profile}" = "${CARGO_LLVM_COV_TARGET_DIR}/$(basename "${profile}")" ] || cp "${profile}" "${CARGO_LLVM_COV_TARGET_DIR}/$(basename "${profile}")"
   done
   shopt -u nullglob
   log "merging coverage into ${OUT}"
@@ -153,10 +153,11 @@ run_full() {
 # profile on that mount. `show-env` is cargo-llvm-cov's supported mode for
 # instrumenting ordinary Cargo test commands; override only its profile output
 # after it has configured the compiler wrapper.
-profile_dir="${LLVM_PROFILE_DIR:-/tmp/openhuman-core-profraw}"
-rm -rf "${profile_dir}"
-mkdir -p "${profile_dir}"
 eval "$(cargo llvm-cov show-env --sh)"
+# Keep profiles where cargo-llvm-cov itself reports from. This avoids relying
+# on bind-mounted temporary paths that the report subprocess cannot observe.
+profile_dir="${LLVM_PROFILE_DIR:-${CARGO_LLVM_COV_TARGET_DIR}}"
+mkdir -p "${profile_dir}"
 export LLVM_PROFILE_FILE="${profile_dir}/core-%p-%m.profraw"
 
 if [ "${FULL}" = "true" ]; then
