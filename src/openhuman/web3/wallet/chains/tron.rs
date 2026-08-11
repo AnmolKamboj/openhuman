@@ -97,6 +97,19 @@ enum TronTransferVerification {
     Trc20 { parameter_hex: String },
 }
 
+#[derive(Debug)]
+enum ProtoValue<'a> {
+    Varint(u64),
+    Bytes(&'a [u8]),
+    Other,
+}
+
+#[derive(Debug)]
+struct ProtoField<'a> {
+    number: u64,
+    value: ProtoValue<'a>,
+}
+
 fn tron_transaction_spec(
     raw_tx: &CreateTransactionResponse,
     expected_to: String,
@@ -109,31 +122,44 @@ fn tron_transaction_spec(
 
     let raw = hex::decode(raw_tx.raw_data_hex.trim())
         .map_err(|error| format!("invalid Tron raw_data_hex: {error}"))?;
-    let recipient = hex::decode(tron_address_to_hex(&expected_to)?)
+    let expected_recipient = hex::decode(tron_address_to_hex(&expected_to)?)
         .map_err(|error| format!("invalid Tron recipient encoding: {error}"))?;
-    if !raw
-        .windows(recipient.len())
-        .any(|window| window == recipient)
-    {
-        return Err("Tron node transaction does not pay the requested recipient".to_string());
-    }
-
-    let (field, expected) = match transfer {
+    let contract = parse_single_tron_contract(&raw)?;
+    match transfer {
         TronTransferVerification::Native { amount_sun } => {
-            let mut encoded = vec![0x18]; // TransferContract.amount, protobuf field 3.
-            encoded.extend(encode_protobuf_varint(*amount_sun));
-            ("amount", encoded)
+            if contract.kind != 1 || !contract.type_url.ends_with(".TransferContract") {
+                return Err("Tron node transaction is not a native transfer".to_string());
+            }
+            let payload = parse_proto_fields(contract.payload)?;
+            let recipient = one_bytes(&payload, 2, "TransferContract.to_address")?;
+            let amount = one_varint(&payload, 3, "TransferContract.amount")?;
+            if recipient != expected_recipient {
+                return Err(
+                    "Tron node transaction does not pay the requested recipient".to_string(),
+                );
+            }
+            if amount != *amount_sun {
+                return Err("Tron node transaction has a different native amount".to_string());
+            }
         }
-        TronTransferVerification::Trc20 { parameter_hex } => (
-            "TRC20 transfer parameter",
-            hex::decode(parameter_hex)
-                .map_err(|error| format!("invalid TRC20 parameter: {error}"))?,
-        ),
-    };
-    if expected.is_empty() || !raw.windows(expected.len()).any(|window| window == expected) {
-        return Err(format!(
-            "Tron node transaction does not contain the requested {field}"
-        ));
+        TronTransferVerification::Trc20 { parameter_hex } => {
+            if contract.kind != 31 || !contract.type_url.ends_with(".TriggerSmartContract") {
+                return Err("Tron node transaction is not a smart-contract trigger".to_string());
+            }
+            let payload = parse_proto_fields(contract.payload)?;
+            let recipient = one_bytes(&payload, 2, "TriggerSmartContract.contract_address")?;
+            if recipient != expected_recipient {
+                return Err("Tron node transaction targets a different contract".to_string());
+            }
+            let parameter = hex::decode(parameter_hex)
+                .map_err(|error| format!("invalid TRC20 parameter: {error}"))?;
+            let mut expected_data = hex::decode("a9059cbb").expect("fixed selector is valid hex");
+            expected_data.extend(parameter);
+            let data = one_bytes(&payload, 4, "TriggerSmartContract.data")?;
+            if data != expected_data {
+                return Err("Tron node transaction has different TRC20 transfer data".to_string());
+            }
+        }
     }
 
     Ok(tinywallet::wire::TransactionSpec::Tron {
