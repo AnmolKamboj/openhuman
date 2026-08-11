@@ -796,7 +796,7 @@ jobs:
           rm -rf "$profile_dir"
           mkdir -p "$profile_dir"
           export LLVM_PROFILE_FILE="$profile_dir/tauri-%p-%m.profraw"
-          bash scripts/ci-cancel-aware.sh cargo llvm-cov --manifest-path app/src-tauri/Cargo.toml --no-clean --no-report
+          bash scripts/ci-cancel-aware.sh cargo llvm-cov --manifest-path app/src-tauri/Cargo.toml --no-report
           shopt -s nullglob
           profiles=("$profile_dir"/*.profraw)
           test "${#profiles[@]}" -gt 0
