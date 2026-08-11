@@ -6,15 +6,15 @@ use openhuman_core::openhuman::agent::dispatcher::NativeToolDispatcher;
 use openhuman_core::openhuman::agent::harness::run_queue::RunQueue;
 use openhuman_core::openhuman::agent::harness::session::Agent;
 use openhuman_core::openhuman::agent::host_runtime::NativeRuntime;
+use openhuman_core::openhuman::agent::tinyagents::thread_context::with_thread_id;
 use openhuman_core::openhuman::config::AgentConfig;
 use openhuman_core::openhuman::memory::{
     Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts,
 };
-use openhuman_core::openhuman::monitor::tools::{
+use openhuman_core::openhuman::security::{AuditLogger, AutonomyLevel, SecurityPolicy};
+use openhuman_core::openhuman::subconscious::monitors::tools::{
     MonitorListTool, MonitorReadTool, MonitorStopTool, MonitorTool,
 };
-use openhuman_core::openhuman::security::{AuditLogger, AutonomyLevel, SecurityPolicy};
-use openhuman_core::openhuman::tinyagents::thread_context::with_thread_id;
 use openhuman_core::openhuman::tools::Tool;
 use parking_lot::Mutex;
 use serde_json::json;
@@ -207,6 +207,7 @@ fn tool_response(id: &str, name: &str, arguments: serde_json::Value) -> ModelRes
         raw: None,
         resolved_model: None,
         continue_turn: None,
+        served_from_cache: false,
     }
 }
 
@@ -253,12 +254,21 @@ fn monitor_tools(workspace: &Path, autonomy: AutonomyLevel) -> Vec<Box<dyn Tool>
     ]
 }
 
+fn monitor_scope(workspace: &Path) -> String {
+    let name = workspace
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("temporary monitor workspace name");
+    format!("monitor-e2e-{name}")
+}
+
 fn build_agent(
     workspace: &Path,
     provider: Arc<ScriptedModel>,
     tools: Vec<Box<dyn Tool>>,
     max_tool_iterations: usize,
 ) -> Agent {
+    let scope = monitor_scope(workspace);
     let mut agent = Agent::builder()
         .chat_model(provider)
         .tools(tools)
@@ -274,7 +284,7 @@ fn build_agent(
         .workspace_dir(workspace.to_path_buf())
         .workflows(Vec::new())
         .auto_save(false)
-        .event_context("monitor-e2e-session", "monitor-e2e-channel")
+        .event_context(scope, "monitor-e2e-channel")
         .agent_definition_name("orchestrator")
         .omit_profile(true)
         .omit_memory_md(true)
@@ -298,7 +308,7 @@ async fn run_monitor_turn(
         max_tool_iterations,
     );
     agent.set_run_queue(Some(RunQueue::new()));
-    with_thread_id("monitor-agent-e2e-thread", async move {
+    with_thread_id(monitor_scope(tmp.path()), async move {
         agent
             .turn("Start a background monitor and react when it reports.")
             .await

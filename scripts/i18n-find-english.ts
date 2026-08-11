@@ -93,6 +93,8 @@ const INTENTIONAL_ENGLISH = new Set([
   "settings.sandbox.backend.landlock",
   "settings.search.allowedSitesPlaceholder",
   "settings.search.engineBraveLabel",
+  "flows.nodeSummary.agent.withPrompt", // "“{prompt}” · {model}" — quoted prompt + model id; only the quote glyph varies per locale, no prose to translate
+  "flows.nodeSummary.http.withUrl", // "{method} {url}" — HTTP method + URL are literal, untranslatable data
   "settings.taskSources.name",
   "skills.create.allowedToolsPlaceholder",
   "skills.create.optional",
@@ -107,8 +109,6 @@ const INTENTIONAL_ENGLISH = new Set([
   "vault.excludesPlaceholder",
   "vault.syncSummaryDuration",
   "voice.providers.chip.piper",
-  "voice.providers.chip.whisper",
-  "voice.providers.whisperModelBase",
   "walkthrough.tooltip.stepCounter",
   "workflows.create.optional",
   "workspace.obsidianConfigDirPlaceholder",

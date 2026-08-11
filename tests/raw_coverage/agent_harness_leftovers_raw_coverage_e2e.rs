@@ -8,7 +8,7 @@ use openhuman_core::openhuman::agent::harness::{
     ParentExecutionContext, PromptSource, SandboxMode, SubagentRunOptions, ToolScope,
 };
 use openhuman_core::openhuman::config::AgentConfig;
-use openhuman_core::openhuman::context::prompt::{
+use openhuman_core::openhuman::agent::context::prompt::{
     render_ambient_environment, render_subagent_system_prompt, render_tools, render_user_files,
     ConnectedIntegration, CuratedMemoryPromptSnapshot, LearnedContextData, NamespaceSummary,
     PersonalityRosterEntry, PromptContext, PromptTool, SubagentRenderOptions, SystemPromptBuilder,
@@ -17,7 +17,7 @@ use openhuman_core::openhuman::context::prompt::{
 use openhuman_core::openhuman::memory::{
     Memory, MemoryCategory, MemoryEntry, NamespaceSummary as MemoryNamespaceSummary, RecallOpts,
 };
-use openhuman_core::openhuman::tokenjuice::AgentTokenjuiceCompression;
+use openhuman_core::openhuman::inference::tokenjuice::AgentTokenjuiceCompression;
 use openhuman_core::openhuman::tools::{PermissionLevel, Tool, ToolContent, ToolResult};
 use parking_lot::Mutex;
 use serde_json::json;
@@ -248,6 +248,7 @@ fn tool_response(id: &str, name: &str, arguments: serde_json::Value) -> ModelRes
         raw: None,
         resolved_model: None,
         continue_turn: None,
+            served_from_cache: false,
     }
 }
 
@@ -363,7 +364,7 @@ fn parent_context(workspace: PathBuf, provider: Arc<ScriptedModel>) -> ParentExe
         ]
         .into_iter()
         .collect(),
-        turn_model_source: openhuman_core::openhuman::tinyagents::TurnModelSource::from_model(
+        turn_model_source: openhuman_core::openhuman::agent::tinyagents::TurnModelSource::from_model(
             provider,
         ),
         all_tools: Arc::new(tools),

@@ -24,7 +24,7 @@ The orchestrator spawns specialized sub-agents (up to 3 levels deep), reuses com
 
 ## 3. Workflows you can see
 
-[Workflows](workflows.md) lift orchestration out of the chat: the agent *proposes* a typed graph of triggers, agents, tools and conditions; you review it on a canvas and save it. Runs are durable, approval-gated, and fully inspectable step-by-step, powered by open-source [tinyflows](https://github.com/tinyhumansai/tinyflows).
+[Workflows](workflows.md) lift orchestration out of the chat: the agent _proposes_ a typed graph of triggers, agents, tools and conditions; you review it on a canvas and save it. Runs are durable, approval-gated, and fully inspectable step-by-step, powered by open-source [tinyflows](https://github.com/tinyhumansai/tinyflows).
 
 ## 4. An always-on split brain
 
@@ -40,20 +40,20 @@ Because the transport is plain Signal-encrypted messaging, the other side doesn'
 
 The direction we're building toward: **Rhai-backed language workflows**. These are agents that express orchestration as small programs in a sandboxed REPL, rather than a fixed graph, so control flow itself becomes something the model writes, inspects, and repairs. The graph engine, checkpointing, and trust model above are the substrate for it.
 
-***
+---
 
 ## Why this differentiates
 
-| | Single-agent harnesses (Claude Code, OpenClaw, Hermes) | OpenHuman |
-| --- | --- | --- |
-| Execution model | One loop, one context | Compiled graphs, conditional routing, checkpoint/resume |
-| Parallelism | Manual / plugin | Native sub-agent fleets, map-reduce fan-out, worker reuse |
-| Automation | Scripts & cron | Visual, durable, approval-gated workflows |
-| Always-on | None | Split-brain reflex + reasoning core, subconscious steering |
-| Agent-to-agent | None | Signal-encrypted sessions, consent-based pairing, x402 payments |
+|                 | Single-agent harnesses (Claude Code, OpenClaw, Hermes) | OpenHuman                                                       |
+| --------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
+| Execution model | One loop, one context                                  | Compiled graphs, conditional routing, checkpoint/resume         |
+| Parallelism     | Manual / plugin                                        | Native sub-agent fleets, map-reduce fan-out, worker reuse       |
+| Automation      | Scripts & cron                                         | Visual, durable, approval-gated workflows                       |
+| Always-on       | None                                                   | Split-brain reflex + reasoning core, subconscious steering      |
+| Agent-to-agent  | None                                                   | Signal-encrypted sessions, consent-based pairing, x402 payments |
 
 ## See also
 
-* [Workflows](workflows.md) · [Subconscious Loop](subconscious.md) · [tiny.place Agent Economy](tinyplace.md)
-* [Agent Harness](../developing/architecture/agent-harness.md): the developer deep-dive on graphs, breakers, journals.
-* [Agent Coordination tools](native-tools/agent-coordination.md): the user-facing spawn/delegate surface.
+- [Workflows](workflows.md) · [Subconscious Loop](subconscious.md) · [tiny.place Agent Economy](tinyplace.md)
+- [Agent Harness](../developing/architecture/agent-harness.md): the developer deep-dive on graphs, breakers, journals.
+- [Agent Coordination tools](native-tools/agent-coordination.md): the user-facing spawn/delegate surface.

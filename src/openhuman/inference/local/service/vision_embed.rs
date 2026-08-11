@@ -53,22 +53,22 @@ impl LocalAiService {
         }
         self.bootstrap(config).await;
 
-        // Resolve through `resolve_vision_model_choice` rather than
+        // Resolve through `resolve_vision_model_id` rather than
         // `effective_vision_model_id`: the latter returns an empty string when
-        // no vision model is configured, which used to be handed straight to
+        // there is no usable vision model, which used to be handed straight to
         // `ensure_ollama_model_available` and became a nameless `POST
         // /api/pull` retried three times before failing opaquely (#5146).
         // The resolver guarantees a non-empty, vision-capable id or a message
         // that says what to configure.
-        // NOTE: this Err arm is defence in depth, not a reachable branch here.
-        // `resolve_vision_model_choice` fails only when no vision model is
-        // configured, and that same condition makes `vision_mode_for_config`
-        // report `Disabled` (a blank `vision_model_id` cannot match any
-        // vision-enabled preset, so the tier resolves to `Custom` -> Disabled),
-        // which returns above. The empty case is covered directly in
-        // `model_ids::tests::resolve_vision_model_id_errors_when_unconfigured`.
-        let choice = match model_ids::resolve_vision_model_choice(config) {
-            Ok(choice) => choice,
+        //
+        // Since #5146 P1 it also refuses a *chat-only* configured model instead
+        // of substituting one. That arm IS reachable: `vision_mode_for_config`
+        // only checks the tier, so a user on a vision-enabled tier who points
+        // `vision_model_id` at their chat model reaches here and now gets told
+        // exactly that, rather than having a 1.7 GB substitute pulled behind
+        // their back.
+        let vision_model = match model_ids::resolve_vision_model_id(config) {
+            Ok(model) => model,
             Err(error) => {
                 self.status.lock().vision_state = "missing".to_string();
                 tracing::warn!(
@@ -79,25 +79,9 @@ impl LocalAiService {
                 return Err(error);
             }
         };
-        let vision_model = choice.model;
-        // A capability substitution means we are about to talk about a model the
-        // user never named. Carry that into the error text so "pull moondream"
-        // cannot read as a non-sequitur to someone who configured gemma3.
-        let substitution_note = choice
-            .replaced
-            .as_deref()
-            .map(|configured| {
-                format!(
-                    " Your configured `{configured}` cannot accept images, so OpenHuman \
-                     selected `{vision_model}` instead; set `local_ai.vision_model_id` to \
-                     a vision-capable model to choose your own."
-                )
-            })
-            .unwrap_or_default();
         tracing::debug!(
             target: "local_ai::vision",
             model = %vision_model,
-            substituted_for = ?choice.replaced,
             "[local_ai:vision] resolved vision-capable model"
         );
 
@@ -111,14 +95,16 @@ impl LocalAiService {
             tracing::warn!(
                 target: "local_ai::vision",
                 model = %vision_model,
-                substituted_for = ?choice.replaced,
                 %error,
                 "[local_ai:vision] vision model unavailable"
             );
+            // `vision_model` is now always the model the user configured, so
+            // "pull it" can no longer name a model they never chose — the
+            // substitution note this used to carry has no case left to cover.
             return Err(format!(
                 "local vision model `{vision_model}` is not available: {error}. \
                  Pull it with `ollama pull {vision_model}`, or route the vision \
-                 workload to a cloud provider with `vision_provider`.{substitution_note}"
+                 workload to a cloud provider with `vision_provider`."
             ));
         }
 
@@ -127,12 +113,20 @@ impl LocalAiService {
             .filter_map(|reference| multimodal::extract_ollama_image_payload(reference))
             .collect();
         if images.is_empty() {
-            return Err("no valid image payloads were provided".to_string());
+            // #5146 P6: the most common cause is a caller passing a filesystem
+            // path. Say what this parameter actually takes rather than leaving
+            // the caller to discover it from Ollama's "illegal base64 data".
+            return Err(format!(
+                "none of the {} supplied image reference(s) carried a usable image payload. \
+                 `image_refs` takes a `data:image/...;base64,<data>` URI or a bare base64 \
+                 string — a filesystem path is not read from disk here.",
+                image_refs.len()
+            ));
         }
 
         // Vision generation is background LLM-bound work; gate it through
         // the scheduler's global LLM permit.
-        let _gate_permit = crate::openhuman::scheduler_gate::wait_for_capacity().await;
+        let _gate_permit = crate::openhuman::cron::scheduler_gate::wait_for_capacity().await;
 
         let body = OllamaGenerateRequest {
             model: vision_model,
@@ -237,7 +231,7 @@ impl LocalAiService {
         // Embeds are bge-m3 calls (8K context, ~1.3 GB resident) — the
         // single concurrent embed that has historically crashed the
         // user's laptop when stacked with other Ollama work. Gate it.
-        let _gate_permit = crate::openhuman::scheduler_gate::wait_for_capacity().await;
+        let _gate_permit = crate::openhuman::cron::scheduler_gate::wait_for_capacity().await;
 
         let embed_base = ollama_base_url_from_config(config);
         let dimensions = embedding_dimensions(&embedding_model);
@@ -476,50 +470,6 @@ mod tests {
         );
     }
 
-    /// A chat-only model configured for vision must never be the model that
-    /// receives the images.
-    ///
-    /// Ollama accepts an `images` array against a text-only model, discards it,
-    /// and answers from the prompt alone, so passing `gemma3n` through would
-    /// return a fabricated description rather than an error.
-    #[tokio::test]
-    async fn vision_prompt_never_routes_images_at_a_chat_only_model() {
-        let _guard = crate::openhuman::inference::inference_test_guard();
-
-        let base = spawn_mock(mock_ollama_echoing_requested_model(
-            "moondream:1.8b-v2-q4_K_S",
-        ))
-        .await;
-        unsafe {
-            std::env::set_var("OPENHUMAN_OLLAMA_BASE_URL", &base);
-        }
-
-        let mut config = enabled_config();
-        // Text-only on Ollama, despite sharing a prefix with multimodal gemma3.
-        config.local_ai.vision_model_id = "gemma3n:e4b-it-q8_0".to_string();
-        let service = ready_service(&config);
-
-        let result = service
-            .vision_prompt(
-                &config,
-                "describe",
-                &["data:image/png;base64,QUJD".to_string()],
-                None,
-            )
-            .await;
-
-        unsafe {
-            std::env::remove_var("OPENHUMAN_OLLAMA_BASE_URL");
-        }
-
-        let model_used = result.expect("vision prompt should succeed");
-        assert_ne!(
-            model_used, "gemma3n:e4b-it-q8_0",
-            "images must never be sent to a chat-only model"
-        );
-        assert_eq!(model_used, "moondream:1.8b-v2-q4_K_S");
-    }
-
     /// A configured-but-unpullable vision model must report a vision problem
     /// naming the model and the `ollama pull` that fixes it.
     #[tokio::test]
@@ -573,24 +523,32 @@ mod tests {
         assert_eq!(service.status.lock().vision_state, "missing");
     }
 
-    /// greptile #5253: when the capability guard swaps a chat-only model for a
-    /// vision-capable default, an unavailable-model error must say so. Without
-    /// this the user is told to `ollama pull moondream:…` having configured
-    /// `gemma3n:…`, with nothing connecting the two.
+    /// #5146 P1: a chat-only `vision_model_id` must fail *before* any network
+    /// work, naming the configured model — no substitution, and above all no
+    /// pull of a model the user never chose.
+    ///
+    /// The mock deliberately offers a working `/api/pull`. If the request ever
+    /// reaches it, the substitution is back and this test fails on the assert
+    /// that no pull was attempted rather than on a transport error.
     #[tokio::test]
-    async fn unavailable_error_explains_a_capability_substitution() {
+    async fn chat_only_vision_model_errors_without_substituting_or_pulling() {
         use axum::routing::get;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
         let _guard = crate::openhuman::inference::inference_test_guard();
 
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let pull_counter = pulls.clone();
         let app = Router::new()
             .route("/api/tags", get(|| async { Json(json!({ "models": [] })) }))
             .route(
                 "/api/pull",
-                post(|| async {
-                    (
-                        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                        "pull refused",
-                    )
+                post(move || {
+                    let pulls = pull_counter.clone();
+                    async move {
+                        pulls.fetch_add(1, Ordering::SeqCst);
+                        Json(json!({ "status": "success" }))
+                    }
                 }),
             );
         let base = spawn_mock(app).await;
@@ -599,7 +557,6 @@ mod tests {
         }
 
         let mut config = enabled_config();
-        // Chat-only: the guard substitutes the vision-capable default.
         config.local_ai.vision_model_id = "gemma3n:e4b-it-q8_0".to_string();
         let service = ready_service(&config);
 
@@ -611,7 +568,7 @@ mod tests {
                 None,
             )
             .await
-            .expect_err("an unpullable substituted model must fail");
+            .expect_err("a chat-only vision model must fail");
 
         unsafe {
             std::env::remove_var("OPENHUMAN_OLLAMA_BASE_URL");
@@ -622,12 +579,77 @@ mod tests {
             "error must name the model the user actually configured: {err}"
         );
         assert!(
-            err.contains("cannot accept images"),
-            "error must explain why it was replaced: {err}"
+            err.contains("not vision-capable"),
+            "error must explain what is wrong with it: {err}"
+        );
+        // The suggestion list legitimately contains `DEFAULT_LOW_VISION_MODEL`,
+        // so its mere presence proves nothing. What must not happen is the
+        // message presenting it as the model that *ran*; the `pulls` and
+        // `vision_state` assertions below pin that nothing was fetched behind
+        // the user's back.
+        assert!(
+            err.contains("for example"),
+            "a vision-capable model must be offered as an example to choose, never as a \
+             substitute that was already applied: {err}"
+        );
+        assert_eq!(
+            pulls.load(Ordering::SeqCst),
+            0,
+            "no model may be downloaded for a vision request the user misconfigured"
+        );
+        assert_eq!(service.status.lock().vision_state, "missing");
+    }
+
+    /// #5146 P6: a reference that is not base64 (a filesystem path is the
+    /// common case) must produce a message about what `image_refs` accepts,
+    /// not Ollama's `illegal base64 data at input byte 19`.
+    #[tokio::test]
+    async fn non_base64_image_reference_is_rejected_with_guidance() {
+        use axum::routing::get;
+        let _guard = crate::openhuman::inference::inference_test_guard();
+
+        // The payload check runs *after* model availability, so the model must
+        // read as already installed or this would dial a real Ollama.
+        let app = Router::new().route(
+            "/api/tags",
+            get(|| async {
+                Json(json!({
+                    "models": [
+                        { "name": "llava:7b", "modified_at": "", "size": 0u64, "digest": "a" }
+                    ]
+                }))
+            }),
+        );
+        let base = spawn_mock(app).await;
+        unsafe {
+            std::env::set_var("OPENHUMAN_OLLAMA_BASE_URL", &base);
+        }
+
+        let mut config = enabled_config();
+        config.local_ai.vision_model_id = "llava:7b".to_string();
+        let service = ready_service(&config);
+
+        let err = service
+            .vision_prompt(
+                &config,
+                "describe",
+                &["/tmp/vision-test.png".to_string()],
+                None,
+            )
+            .await
+            .expect_err("a filesystem path is not an image payload");
+
+        unsafe {
+            std::env::remove_var("OPENHUMAN_OLLAMA_BASE_URL");
+        }
+
+        assert!(
+            err.contains("base64"),
+            "error must say what the parameter accepts: {err}"
         );
         assert!(
-            err.contains(crate::openhuman::inference::model_ids::DEFAULT_OLLAMA_VISION_MODEL),
-            "error must name the substitute it is asking the user to pull: {err}"
+            err.contains("filesystem path"),
+            "error must name the mistake the caller actually made: {err}"
         );
     }
 }

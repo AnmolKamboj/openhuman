@@ -36,10 +36,10 @@ use crate::openhuman::agent::task_dispatcher::{dispatch_card, DispatchOutcome};
 use crate::openhuman::agent::tools::RunWorkflowTool;
 use crate::openhuman::config::{MultimodalConfig, MultimodalFileConfig};
 use crate::openhuman::inference::provider::factory::test_provider_override;
-use crate::openhuman::skill_runtime::{await_run_outcome, spawn_workflow_run_background};
+use crate::openhuman::skills::runtime::{await_run_outcome, spawn_workflow_run_background};
 use crate::openhuman::skills::schemas::resolve_workspace_dir;
-use crate::openhuman::todos::ops as board_ops;
-use crate::openhuman::todos::ops::{BoardLocation, CardPatch};
+use crate::openhuman::threads::todos::ops as board_ops;
+use crate::openhuman::threads::todos::ops::{BoardLocation, CardPatch};
 use crate::openhuman::tools::traits::Tool;
 use tinyagents::harness::message::AssistantMessage;
 use tinyagents::harness::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
@@ -108,6 +108,7 @@ fn tool_call_resp(id: &str, name: &str, args: serde_json::Value) -> ModelRespons
         raw: None,
         resolved_model: None,
         continue_turn: None,
+        served_from_cache: false,
     }
 }
 
@@ -231,7 +232,9 @@ async fn orchestrator_runs_workflow_tool_and_gets_inner_result() {
     let mut history = vec![ChatMessage::user("Triage my inbox.")];
 
     let result = run_channel_turn_via_graph(
-        crate::openhuman::tinyagents::TurnModelSource::from_model_with_profile(model, profile),
+        crate::openhuman::agent::tinyagents::TurnModelSource::from_model_with_profile(
+            model, profile,
+        ),
         &mut history,
         tools,
         vec![],

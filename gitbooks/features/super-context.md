@@ -11,7 +11,7 @@ A fresh chat shouldn't start cold. **SuperContext** makes the agent gather relev
 
 Most agents start a conversation blank and only fetch context if the model decides to call a "look things up" tool. That adds a round-trip, costs tokens, and depends on the model choosing well. SuperContext flips it: the harness itself prepares context up front, deterministically, so the very first reply already knows the relevant memories, files, and connected data.
 
-***
+---
 
 ## How it works
 
@@ -46,27 +46,27 @@ Because the scout is **read-only**, it can never take an action on a fresh threa
 
 The scout runs on the **`burst` tier** (`hint = "burst"` → `burst-v1` on the managed backend), a cheap, high-throughput, non-reasoning model. The sweep is a latency-tolerant pre-flight pass, so raw throughput on a fast model is a better fit than the pricier agentic/reasoning tiers. See [Automatic Model Routing](model-routing/README.md).
 
-***
+---
 
 ## Safety and robustness
 
 The scout returns its findings wrapped in `[context_bundle] … [/context_bundle]` tags. Only the bracketed envelope is ever injected. Any surrounding prose the model emits ("sure, here's what I found…") is stripped out. If the bundle is missing, malformed (unterminated, reversed, or duplicated tags), or empty, the turn proceeds **gracefully without augmentation** rather than injecting garbage. A cold start is always preferable to a broken one.
 
-***
+---
 
 ## Turning it on or off
 
 SuperContext is **on by default**.
 
-* **From the composer.** A **Super Context** toggle appears below the chat input on a fresh thread. The flag is read when a thread is constructed, so toggling it affects **newly started threads**, not the one you're already in.
-* **Config.** `context.super_context_enabled` (boolean, default `true`).
-* **Environment.** `OPENHUMAN_SUPER_CONTEXT` (or `OPENHUMAN_CONTEXT_SUPER_CONTEXT_ENABLED`).
-* **RPC.** `get_super_context_enabled()` reads the flag; `set_super_context_enabled(value)` sets and persists it.
+- **From the composer.** A **Super Context** toggle appears below the chat input on a fresh thread. The flag is read when a thread is constructed, so toggling it affects **newly started threads**, not the one you're already in.
+- **Config.** `context.super_context_enabled` (boolean, default `true`).
+- **Environment.** `OPENHUMAN_SUPER_CONTEXT` (or `OPENHUMAN_CONTEXT_SUPER_CONTEXT_ENABLED`).
+- **RPC.** `get_super_context_enabled()` reads the flag; `set_super_context_enabled(value)` sets and persists it.
 
-***
+---
 
 ## See also
 
-* [Memory Tree](obsidian-wiki/memory-tree.md): the primary source the scout reads from.
-* [Auto-fetch from Integrations](obsidian-wiki/auto-fetch.md): keeps that source fresh between conversations.
-* [Subconscious Loop](subconscious.md): the other side of "keeps thinking when you've stopped typing."
+- [Memory Tree](obsidian-wiki/memory-tree.md): the primary source the scout reads from.
+- [Auto-fetch from Integrations](obsidian-wiki/auto-fetch.md): keeps that source fresh between conversations.
+- [Subconscious Loop](subconscious.md): the other side of "keeps thinking when you've stopped typing."

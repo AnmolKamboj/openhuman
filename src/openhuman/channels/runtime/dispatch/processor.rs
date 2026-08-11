@@ -10,9 +10,8 @@
 //! * [`run_message_dispatch_loop`] — bounded-concurrency worker loop that feeds
 //!   messages into [`process_channel_message`].
 
-use crate::core::event_bus::{
-    publish_global, request_native_global, DomainEvent, NativeRequestError,
-};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::bus::{AgentTurnRequest, AgentTurnResponse, AGENT_RUN_TURN_METHOD};
 use crate::openhuman::agent::messages::ChatMessage;
 use crate::openhuman::agent::progress::AgentProgress;
@@ -30,6 +29,7 @@ use crate::openhuman::inference::provider;
 use crate::openhuman::util::truncate_with_ellipsis;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tinybus::NativeRequestError;
 use tokio_util::sync::CancellationToken;
 
 use super::helpers::{
@@ -79,8 +79,8 @@ impl From<traits::ChannelMessage> for RuntimeChannelMessage {
 /// follow-up PR; surfacing approvals there without a subscriber would
 /// just TTL-deny every parked call, which is worse than the status quo.
 ///
-/// [`ApprovalChatContext`]: crate::openhuman::approval::ApprovalChatContext
-/// [`ApprovalGate`]: crate::openhuman::approval::ApprovalGate
+/// [`ApprovalChatContext`]: crate::openhuman::security::approval::ApprovalChatContext
+/// [`ApprovalGate`]: crate::openhuman::security::approval::ApprovalGate
 pub(crate) fn channel_has_approval_surface(channel: &str) -> bool {
     channel == TELEGRAM_APPROVAL_CLIENT_ID
 }
@@ -92,16 +92,17 @@ pub(crate) fn channel_has_approval_surface(channel: &str) -> bool {
 /// user is redirecting). Mirrors the web channel intercept at
 /// `web_chat/`.
 ///
-/// [`ApprovalGate::decide`]: crate::openhuman::approval::ApprovalGate::decide
+/// [`ApprovalGate::decide`]: crate::openhuman::security::approval::ApprovalGate::decide
 async fn try_route_approval_reply(msg: &traits::ChannelMessage) -> bool {
-    let Some(gate) = crate::openhuman::approval::ApprovalGate::try_global() else {
+    let Some(gate) = crate::openhuman::security::approval::ApprovalGate::try_global() else {
         return false;
     };
     let thread_id = conversation_history_key(msg);
     let Some(request_id) = gate.pending_for_thread(&thread_id) else {
         return false;
     };
-    let Some(decision) = crate::openhuman::approval::parse_approval_reply(&msg.content) else {
+    let Some(decision) = crate::openhuman::security::approval::parse_approval_reply(&msg.content)
+    else {
         return false;
     };
     match gate.decide(&request_id, decision) {
@@ -162,7 +163,7 @@ pub(crate) async fn process_channel_runtime_message(
         truncate_with_ellipsis(&msg.content, 80)
     );
 
-    publish_global(DomainEvent::ChannelMessageReceived {
+    BUS.publish(DomainEvent::ChannelMessageReceived {
         channel: msg.channel.clone(),
         message_id: msg.id.clone(),
         sender: msg.sender.clone(),
@@ -470,7 +471,7 @@ pub(crate) async fn process_channel_runtime_message(
         // `config`) stay on an injected model source.
         turn_model_source: match &ctx.config {
             Some(cfg) => {
-                crate::openhuman::tinyagents::TurnModelSource::new_crate_native_from_string(
+                crate::openhuman::agent::tinyagents::TurnModelSource::new_crate_native_from_string(
                     "chat",
                     route.provider.clone(),
                     cfg.clone(),
@@ -518,26 +519,24 @@ pub(crate) async fn process_channel_runtime_message(
         "[channels::dispatch] dispatching {AGENT_RUN_TURN_METHOD} via native bus"
     );
     let agent_call = async {
-        request_native_global::<AgentTurnRequest, AgentTurnResponse>(
-            AGENT_RUN_TURN_METHOD,
-            turn_request,
-        )
-        .await
-        .map_err(|err| match err {
-            // Unwrap handler-returned errors so the underlying
-            // message (e.g. "Agent exceeded maximum tool iterations")
-            // flows through without being wrapped in bus-transport
-            // layer prose. The error-formatting path downstream
-            // treats this `anyhow::Error` the same way it did before
-            // the bus migration.
-            NativeRequestError::HandlerFailed { message, .. } => {
-                anyhow::anyhow!(message)
-            }
-            // Bus-level errors (UnregisteredHandler / TypeMismatch /
-            // NotInitialized) surface with their full Display so
-            // startup wiring bugs are immediately obvious in logs.
-            other => anyhow::anyhow!("[agent.run_turn dispatch] {other}"),
-        })
+        BUS.native()
+            .request::<AgentTurnRequest, AgentTurnResponse>(AGENT_RUN_TURN_METHOD, turn_request)
+            .await
+            .map_err(|err| match err {
+                // Unwrap handler-returned errors so the underlying
+                // message (e.g. "Agent exceeded maximum tool iterations")
+                // flows through without being wrapped in bus-transport
+                // layer prose. The error-formatting path downstream
+                // treats this `anyhow::Error` the same way it did before
+                // the bus migration.
+                NativeRequestError::HandlerFailed { message, .. } => {
+                    anyhow::anyhow!(message)
+                }
+                // Bus-level errors (UnregisteredHandler / TypeMismatch /
+                // NotInitialized) surface with their full Display so
+                // startup wiring bugs are immediately obvious in logs.
+                other => anyhow::anyhow!("[agent.run_turn dispatch] {other}"),
+            })
     };
     // Sub-issue 2 of #3098: scope the agent turn in an `ApprovalChatContext`
     // for channels that have a registered approval surface — currently
@@ -549,11 +548,11 @@ pub(crate) async fn process_channel_runtime_message(
     // until each gets its own approval surface in a follow-up PR.
     let llm_result = tokio::time::timeout(Duration::from_secs(ctx.message_timeout_secs), async {
         if channel_has_approval_surface(&msg.channel) {
-            let approval_ctx = crate::openhuman::approval::ApprovalChatContext {
+            let approval_ctx = crate::openhuman::security::approval::ApprovalChatContext {
                 thread_id: history_key.clone(),
                 client_id: msg.channel.clone(),
             };
-            crate::openhuman::approval::APPROVAL_CHAT_CONTEXT
+            crate::openhuman::security::approval::APPROVAL_CHAT_CONTEXT
                 .scope(approval_ctx, agent_call)
                 .await
         } else {
@@ -668,7 +667,7 @@ pub(crate) async fn process_channel_runtime_message(
                     }
                 }
 
-                publish_global(DomainEvent::ChannelMessageProcessed {
+                BUS.publish(DomainEvent::ChannelMessageProcessed {
                     channel: msg.channel.clone(),
                     message_id: msg.id.clone(),
                     sender: msg.sender.clone(),
@@ -809,7 +808,7 @@ pub(crate) async fn process_channel_runtime_message(
         }
     };
 
-    publish_global(DomainEvent::ChannelMessageProcessed {
+    BUS.publish(DomainEvent::ChannelMessageProcessed {
         channel: msg.channel.clone(),
         message_id: msg.id.clone(),
         sender: msg.sender.clone(),

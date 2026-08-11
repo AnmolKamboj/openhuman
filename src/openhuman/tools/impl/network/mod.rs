@@ -1,4 +1,3 @@
-mod clob_auth;
 mod curl;
 mod gitbooks;
 mod gmail_unsubscribe;
@@ -6,13 +5,12 @@ mod http_request;
 // Leaf-gated: the only consumers of these two are the `#[cfg(feature = "mcp")]`
 // blocks in `tools/ops.rs`, so no stub is needed — nothing names them when the
 // feature is off. (`gitbooks` is deliberately NOT gated: it dials `McpHttpClient`
-// but is a docs tool, not MCP-subsystem code. See `mcp_client`'s split facade.)
+// but is a docs tool, not MCP-subsystem code. See the `mcp` family's split
+// facade.)
 #[cfg(feature = "mcp")]
 mod mcp;
 #[cfg(feature = "mcp")]
 mod mcp_setup;
-mod polymarket;
-mod polymarket_orders;
 mod url_guard;
 mod web_fetch;
 
@@ -27,7 +25,6 @@ pub use mcp_setup::{
     McpSetupGetTool, McpSetupInstallAndConnectTool, McpSetupRequestSecretTool, McpSetupSearchTool,
     McpSetupTestConnectionTool,
 };
-pub use polymarket::PolymarketTool;
 pub use web_fetch::WebFetchTool;
 
 /// Shared test helper for the network tools' local-only enforcement tests

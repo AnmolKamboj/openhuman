@@ -56,6 +56,7 @@ impl ChatModel<()> for MockCalendarModel {
                 raw: None,
                 resolved_model: None,
                 continue_turn: None,
+                served_from_cache: false,
             })
         } else {
             // End the loop
@@ -158,9 +159,8 @@ async fn test_integrations_agent_has_current_date_context() -> Result<()> {
     let parent = openhuman_core::openhuman::agent::harness::ParentExecutionContext {
         agent_definition_id: "orchestrator".into(),
         allowed_subagent_ids: ["integrations_agent".to_string()].into_iter().collect(),
-        turn_model_source: openhuman_core::openhuman::tinyagents::TurnModelSource::from_model(
-            model,
-        ),
+        turn_model_source:
+            openhuman_core::openhuman::agent::tinyagents::TurnModelSource::from_model(model),
         all_tools: Arc::new(vec![Box::new(MockCalendarTool)]),
         all_tool_specs: Arc::new(vec![MockCalendarTool.spec()]),
         visible_tool_names: std::collections::HashSet::new(),
@@ -176,7 +176,8 @@ async fn test_integrations_agent_has_current_date_context() -> Result<()> {
         session_id: "test-session".into(),
         channel: "test".into(),
         connected_integrations: vec![],
-        tool_call_format: openhuman_core::openhuman::context::prompt::ToolCallFormat::PFormat,
+        tool_call_format:
+            openhuman_core::openhuman::agent::context::prompt::ToolCallFormat::PFormat,
         session_key: "0_test".into(),
         session_parent_prefix: None,
         on_progress: None,

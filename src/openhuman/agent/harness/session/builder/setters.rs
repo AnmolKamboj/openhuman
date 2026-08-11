@@ -4,13 +4,13 @@
 //! required fields are present and assembles the final [`Agent`].
 
 use super::{dedup_visible_tool_specs, visible_tool_specs_for_policy};
+use crate::openhuman::agent::context::ContextManager;
 use crate::openhuman::agent::harness::session::types::{Agent, AgentBuilder};
 use crate::openhuman::agent::harness::TriggerMemoryAgent;
-use crate::openhuman::agent_memory::memory_loader::DefaultMemoryLoader;
-use crate::openhuman::agent_tool_policy::ToolPolicyEngine;
 use crate::openhuman::config::ContextConfig;
-use crate::openhuman::context::ContextManager;
+use crate::openhuman::memory::agent::memory_loader::DefaultMemoryLoader;
 use crate::openhuman::memory::Memory;
+use crate::openhuman::tools::agent_policy::ToolPolicyEngine;
 use crate::openhuman::tools::{Tool, ToolSpec};
 use anyhow::Result;
 use std::sync::Arc;
@@ -50,11 +50,13 @@ impl AgentBuilder {
             memory_subdir: None,
             session_raw_subdir: None,
             session_parent_prefix: None,
+            session_history_locator: None,
             omit_profile: None,
             omit_memory_md: None,
             payload_summarizer: None,
             trigger_memory_agent: None,
-            tokenjuice_compression: crate::openhuman::tokenjuice::AgentTokenjuiceCompression::Full,
+            tokenjuice_compression:
+                crate::openhuman::inference::tokenjuice::AgentTokenjuiceCompression::Full,
             tool_policy: None,
             archivist_hook: None,
         }
@@ -64,9 +66,8 @@ impl AgentBuilder {
     /// injection seam for tests and embedders; no legacy `Provider` adapter is
     /// constructed.
     pub fn chat_model(mut self, model: Arc<dyn tinyagents::harness::model::ChatModel<()>>) -> Self {
-        self.turn_model_source = Some(crate::openhuman::tinyagents::TurnModelSource::from_model(
-            model,
-        ));
+        self.turn_model_source =
+            Some(crate::openhuman::agent::tinyagents::TurnModelSource::from_model(model));
         self
     }
 
@@ -82,8 +83,9 @@ impl AgentBuilder {
         role: impl Into<String>,
         config: Arc<crate::openhuman::config::Config>,
     ) -> Self {
-        self.turn_model_source =
-            Some(crate::openhuman::tinyagents::TurnModelSource::new_crate_native(role, config));
+        self.turn_model_source = Some(
+            crate::openhuman::agent::tinyagents::TurnModelSource::new_crate_native(role, config),
+        );
         self
     }
 
@@ -125,7 +127,7 @@ impl AgentBuilder {
     /// Sets the system prompt builder for the agent.
     pub fn prompt_builder(
         mut self,
-        prompt_builder: crate::openhuman::context::prompt::SystemPromptBuilder,
+        prompt_builder: crate::openhuman::agent::context::prompt::SystemPromptBuilder,
     ) -> Self {
         self.prompt_builder = Some(prompt_builder);
         self
@@ -143,7 +145,7 @@ impl AgentBuilder {
     /// Sets the memory loader for the agent.
     pub fn memory_loader(
         mut self,
-        memory_loader: Box<dyn crate::openhuman::agent_memory::memory_loader::MemoryLoader>,
+        memory_loader: Box<dyn crate::openhuman::memory::agent::memory_loader::MemoryLoader>,
     ) -> Self {
         self.memory_loader = Some(memory_loader);
         self
@@ -353,6 +355,24 @@ impl AgentBuilder {
         self
     }
 
+    /// Substitute the transcript backing store for this session.
+    ///
+    /// The one injection point for the S4 seam: the locator resolves both
+    /// resume reads (`latest_for_agent` / `root_for_thread`) **and** binds the
+    /// session's write handle (`open_stem`), so a fake supplied here takes the
+    /// whole turn path off the filesystem. Leave unset in production — `None`
+    /// resolves lazily to a
+    /// [`FileTranscriptLocator`][super::super::transcript_history::FileTranscriptLocator]
+    /// over the agent's current workspace, which is behaviourally identical to
+    /// the pre-S4 free-function calls.
+    pub(crate) fn with_session_history_locator(
+        mut self,
+        locator: std::sync::Arc<dyn super::super::transcript_history::SessionHistoryLocator>,
+    ) -> Self {
+        self.session_history_locator = Some(locator);
+        self
+    }
+
     /// Forward the target agent definition's `omit_profile` flag so
     /// [`Agent::build_system_prompt`] can decide whether to inject
     /// `PROFILE.md`. Only opt-in agents (welcome, orchestrator, the
@@ -372,13 +392,15 @@ impl AgentBuilder {
 
     /// Wire an oversized-tool-result summarizer into the agent. The live
     /// TinyAgents turn path passes it to `ToolOutputMiddleware`, which calls
-    /// [`crate::openhuman::tinyagents::payload_summarizer::PayloadSummarizer::maybe_summarize_in_parent`]
+    /// [`crate::openhuman::agent::tinyagents::payload_summarizer::PayloadSummarizer::maybe_summarize_in_parent`]
     /// on successful tool output and replaces the raw payload with the
     /// compressed summary on success. Currently set only for the orchestrator
     /// session by [`Agent::build_session_agent_inner`].
     pub fn payload_summarizer(
         mut self,
-        summarizer: Arc<dyn crate::openhuman::tinyagents::payload_summarizer::PayloadSummarizer>,
+        summarizer: Arc<
+            dyn crate::openhuman::agent::tinyagents::payload_summarizer::PayloadSummarizer,
+        >,
     ) -> Self {
         self.payload_summarizer = Some(summarizer);
         self
@@ -423,7 +445,7 @@ impl AgentBuilder {
     /// Set the per-agent TokenJuice tool-output compression profile.
     pub fn tokenjuice_compression(
         mut self,
-        profile: crate::openhuman::tokenjuice::AgentTokenjuiceCompression,
+        profile: crate::openhuman::inference::tokenjuice::AgentTokenjuiceCompression,
     ) -> Self {
         self.tokenjuice_compression = profile;
         self
@@ -464,10 +486,10 @@ impl AgentBuilder {
         );
 
         // A child agent inherits explicit profile and channel restrictions, but
-        // not the coordinator's own role-specific tool scope. For example, the
-        // orchestrator intentionally cannot call `file_write` directly while
-        // its code-executor specialist must be able to do so. Conflating those
-        // two surfaces silently stripped specialist tools (#5118 merge).
+        // not the primary agent's own role-specific tool scope. The Master Agent
+        // can write directly, while specialists may still need tools outside its
+        // intentionally compact default surface. Conflating those two surfaces
+        // silently strips specialist capabilities (#5118 merge).
         //
         // Build a second policy snapshot without the role visibility filter.
         // `tool_policy_session` marks both channel-blocked and role-hidden tools
@@ -530,9 +552,9 @@ impl AgentBuilder {
             .turn_model_source
             .ok_or_else(|| anyhow::anyhow!("provider is required"))?;
 
-        let prompt_builder = self
-            .prompt_builder
-            .unwrap_or_else(crate::openhuman::context::prompt::SystemPromptBuilder::with_defaults);
+        let prompt_builder = self.prompt_builder.unwrap_or_else(
+            crate::openhuman::agent::context::prompt::SystemPromptBuilder::with_defaults,
+        );
 
         let model_name = self
             .model_name
@@ -611,6 +633,8 @@ impl AgentBuilder {
             memory_subdir,
             session_raw_subdir,
             session_transcript_path: None,
+            session_history: None,
+            session_history_locator: self.session_history_locator,
             persisted_transcript_messages: Vec::new(),
             session_key: {
                 let unix_ts = std::time::SystemTime::now()
@@ -636,7 +660,7 @@ impl AgentBuilder {
             run_queue: None,
             connected_integrations: Vec::new(),
             connected_integrations_initialized: false,
-            integration_runtime_config: None,
+            runtime_config: None,
             // Default to `true` (omit) so legacy / custom agents built
             // without a definition stay lean. Opt-in agents thread their
             // `omit_profile = false` through the builder.

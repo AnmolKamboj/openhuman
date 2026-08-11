@@ -107,8 +107,19 @@ pub const UNKNOWN_METHOD_PREFIX: &str = "unknown method: ";
 /// and never will be (issue #3567): `rpc.discover` (JSON-RPC service
 /// discovery), `list_methods`, liveness `status`, `auth.status`, `config/get`.
 /// This also covers retired feature calls from older clients when no safe
-/// canonical handler exists (#3565: `openhuman.memory_tree_create_namespace`,
-/// #5157: `openhuman.harness_init_status`).
+/// canonical handler exists (#3565: `openhuman.memory_tree_create_namespace`).
+///
+/// `openhuman.harness_init_status` (#5157) is in the list for a *different*
+/// reason and must not be read as retired — it is a **live, registered**
+/// method (`harness_init::all_harness_init_registered_controllers`, tagged
+/// `DomainGroup::Platform`). It only misses when the caller and the running
+/// core disagree about the surface: an older core behind a newer UI bundle, a
+/// runtime `DomainSet` without `Platform` (e.g. `DomainSet::harness()`), or a
+/// slim feature build. Those are legitimate configurations, not core defects,
+/// so the miss stays debug-only — but do **not** delete the controller on the
+/// strength of this entry. `harness_init_status_is_registered_in_a_full_build`
+/// below pins that the method really is served, so a genuine regression fails
+/// a test instead of being silently swallowed by this allow-list.
 ///
 /// Each miss previously produced recurring Sentry events with zero user
 /// impact. The transport layer keeps these debug-only (never captured). The
@@ -259,6 +270,38 @@ fn type_name(value: &Value) -> &'static str {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::ffi::OsString;
+
+    /// Holds the shared config-env lock while an RPC handler reads the active
+    /// workspace. The controller path loads and may initialize config, so it
+    /// cannot safely share another test's transient workspace.
+    struct WorkspaceEnvGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        previous: Option<OsString>,
+    }
+
+    impl WorkspaceEnvGuard {
+        fn set(path: &std::path::Path) -> Self {
+            let lock = crate::openhuman::config::TEST_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let previous = std::env::var_os("OPENHUMAN_WORKSPACE");
+            std::env::set_var("OPENHUMAN_WORKSPACE", path);
+            Self {
+                _lock: lock,
+                previous,
+            }
+        }
+    }
+
+    impl Drop for WorkspaceEnvGuard {
+        fn drop(&mut self) {
+            match self.previous.take() {
+                Some(value) => std::env::set_var("OPENHUMAN_WORKSPACE", value),
+                None => std::env::remove_var("OPENHUMAN_WORKSPACE"),
+            }
+        }
+    }
 
     fn test_state() -> AppState {
         AppState {
@@ -324,6 +367,8 @@ mod tests {
     async fn dispatch_delegates_to_tier2_for_domain_method() {
         // Tier 2 dispatcher handles `openhuman.security_policy_info`, so
         // it must succeed and return a policy object.
+        let workspace = tempfile::tempdir().expect("temporary workspace");
+        let _workspace_env = WorkspaceEnvGuard::set(workspace.path());
         let out = dispatch(test_state(), "openhuman.security_policy_info", json!({}))
             .await
             .expect("security_policy_info should route via tier 2");
@@ -395,7 +440,29 @@ mod tests {
         assert!(!is_known_probe_method(""));
     }
 
+    /// `openhuman.harness_init_status` is allow-listed as a debug-only miss so
+    /// client/core surface skew stops paging Sentry (#5157) — but it is a
+    /// **live** method, not a retired one. That allow-list entry means a
+    /// genuine regression (controller dropped from the registry) would go
+    /// completely silent: no error, no warn, no Sentry event. This test is the
+    /// replacement signal — if the method stops being served in a full build,
+    /// this fails instead of the regression shipping unnoticed.
+    #[test]
+    fn harness_init_status_is_registered_in_a_full_build() {
+        let served: Vec<String> = crate::core::all::all_controller_schemas()
+            .iter()
+            .map(crate::core::all::rpc_method_name)
+            .collect();
+        assert!(
+            served.iter().any(|m| m == "openhuman.harness_init_status"),
+            "harness_init_status must remain a registered controller — it is \
+             allow-listed in KNOWN_PROBE_METHODS for client/core skew only, so \
+             losing the real handler would be silently swallowed"
+        );
+    }
+
     #[tokio::test]
+    #[cfg(feature = "channels")]
     async fn dispatch_dotted_channel_list_aliases_route_to_registry() {
         for method in ["channels.list", "openhuman.channels.list"] {
             let out = dispatch(test_state(), method, json!({}))
@@ -434,17 +501,14 @@ mod tests {
 
     #[tokio::test]
     async fn dispatch_legacy_alias_routes_to_registry() {
-        // openhuman.get_analytics_settings should rewrite to openhuman.config_get_analytics_settings.
-        // This is a read-only call and should succeed if the registry is wired up.
-        let out = dispatch(test_state(), "openhuman.get_analytics_settings", json!({}))
-            .await
-            .expect("openhuman.get_analytics_settings should be rewritten and succeed");
-
-        // The registry-wrapped payload has a "result" field.
+        // This alias targets a controller registered in the domain registry.
+        // Do not invoke it here: its implementation can persist default config,
+        // which makes this routing test depend on a filesystem workspace.
+        let method =
+            crate::core::legacy_aliases::resolve_legacy("openhuman.get_analytics_settings");
         assert!(
-            out.get("enabled").is_some() || out.get("result").is_some(),
-            "Payload should have 'enabled' or 'result', got: {}",
-            out
+            crate::core::all::schema_for_rpc_method(method).is_some(),
+            "legacy alias must resolve to a registered controller: {method}"
         );
     }
 }

@@ -1,6 +1,6 @@
+use crate::openhuman::agent::profiles::{AgentProfile, DEFAULT_PROFILE_ID};
 use crate::openhuman::agent::Agent;
 use crate::openhuman::config::Config;
-use crate::openhuman::profiles::{AgentProfile, DEFAULT_PROFILE_ID};
 use serde_json::json;
 
 use super::types::SessionCacheFingerprint;
@@ -36,7 +36,7 @@ pub(crate) fn provider_role_for_model_override(model_override: Option<&str>) -> 
         Some("hint:agentic") | Some("agentic-v1") => "agentic",
         Some("hint:coding") | Some("coding-v1") => "coding",
         Some("hint:summarization") | Some("summarization-v1") => "summarization",
-        Some("hint:reasoning") => "reasoning",
+        Some("hint:reasoning") | Some("reasoning-v1") => "reasoning",
         _ => "chat",
     }
 }
@@ -184,7 +184,7 @@ pub(super) fn build_session_fingerprint(
         model_registry_signature: model_registry_signature(config),
         // Any change to the resolved profile record or its canonical on-disk
         // SOUL/MEMORY files forces a session-agent rebuild — see the field doc.
-        profile_signature: crate::openhuman::profiles::profile_session_signature(
+        profile_signature: crate::openhuman::agent::profiles::profile_session_signature(
             &config.workspace_dir,
             profile,
         ),

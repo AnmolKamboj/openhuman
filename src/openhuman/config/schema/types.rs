@@ -48,7 +48,7 @@ pub struct ModelRegistryEntry {
     /// with [`Self::cost_per_1m_output`]) to estimate request cost when the
     /// provider doesn't echo an authoritative `charged_amount_usd`. `0.0` means
     /// "unknown" — callers fall back to the tier/catalog estimate. Pre-filled
-    /// for known vendor models from [`crate::openhuman::cost::catalog`].
+    /// for known vendor models from [`crate::openhuman::platform::cost::catalog`].
     #[serde(default)]
     pub cost_per_1m_input: f64,
     /// Cached-prefix prompt rate, USD per million cached input tokens (KV-cache
@@ -61,7 +61,7 @@ pub struct ModelRegistryEntry {
     /// Maximum context window in tokens (published max input). `0` means
     /// "unknown". Providers differ widely (128K–1M+); callers use this to
     /// budget prompts, trigger compaction, and route work. Pre-filled for known
-    /// vendor models from [`crate::openhuman::cost::catalog`].
+    /// vendor models from [`crate::openhuman::platform::cost::catalog`].
     #[serde(default)]
     pub context_window: u32,
     #[serde(default)]
@@ -94,8 +94,16 @@ pub struct Config {
     pub action_dir_override: Option<PathBuf>,
     #[serde(skip)]
     pub config_path: PathBuf,
+    /// Runtime only — `true` when this config was produced by the loader's
+    /// corruption-recovery path: the on-disk `config.toml` was unreadable
+    /// (non-UTF-8) or unparseable, so it was renamed to `.corrupted.<ts>` and the
+    /// config was reset to defaults (or restored from `.bak`). Never persisted and
+    /// recomputed on every load. Read once at boot by `bootstrap_core_runtime` to
+    /// raise a user-visible "settings were reset" notice (#5167).
+    #[serde(skip)]
+    pub recovered_from_corruption: bool,
     /// Workspace data-schema version. Bumped each time a one-shot data
-    /// migration under [`crate::openhuman::migrations`] runs successfully.
+    /// migration under [`crate::openhuman::config::migrations`] runs successfully.
     /// `#[serde(default)]` so existing `config.toml` files (which predate
     /// the field) load as version `0` and pick up pending migrations on
     /// the first launch of the new build.
@@ -160,12 +168,12 @@ pub struct Config {
     /// Background-AI scheduler gate — throttles memory-tree digests,
     /// embeddings, and other LLM-bound background work based on power
     /// state, CPU pressure, and deployment mode. See
-    /// [`crate::openhuman::scheduler_gate`].
+    /// [`crate::openhuman::cron::scheduler_gate`].
     #[serde(default)]
     pub scheduler_gate: SchedulerGateConfig,
 
     /// tiny.place harness session-DM ingest layer. See
-    /// [`crate::openhuman::orchestration`].
+    /// [`crate::openhuman::hosted::orchestration`].
     #[serde(default)]
     pub orchestration: OrchestrationConfig,
 
@@ -211,7 +219,7 @@ pub struct Config {
     /// Global context management configuration — budget thresholds,
     /// summarization trigger, microcompact/autocompact toggles, and the
     /// session-memory extraction cadence. Consumed by
-    /// [`crate::openhuman::context::ContextManager`].
+    /// [`crate::openhuman::agent::context::ContextManager`].
     #[serde(default)]
     pub context: ContextConfig,
 
@@ -235,7 +243,7 @@ pub struct Config {
 
     /// Task-sources domain defaults — master switch + new-source
     /// defaults. Per-source records live in the domain's SQLite store.
-    /// See [`crate::openhuman::task_sources`].
+    /// See [`crate::openhuman::integrations::task_sources`].
     #[serde(default)]
     pub task_sources: TaskSourcesConfig,
 
@@ -254,6 +262,14 @@ pub struct Config {
 
     #[serde(default)]
     pub storage: StorageConfig,
+
+    /// `[subsystems.*]` — the uniform cross-subsystem driver-binding config
+    /// (kernel.md §3.6 / plan-memory.md §4.5). Currently only `subsystems.memory` is
+    /// populated; nothing reads this yet (zero behaviour change). The
+    /// existing `[memory]`, `[memory_tree]`, `[[memory_sources]]` blocks
+    /// above are unaffected.
+    #[serde(default)]
+    pub subsystems: SubsystemsConfig,
 
     #[serde(default)]
     pub composio: ComposioConfig,
@@ -275,6 +291,12 @@ pub struct Config {
 
     #[serde(default)]
     pub mcp_client: McpClientConfig,
+
+    /// Loadable native modules — whether they load, whether this host may fetch
+    /// them, and where a developer's own build lives. The loadable *set* is
+    /// compiled in, not configured: see `openhuman::modules::registry`.
+    #[serde(default)]
+    pub modules: super::ModulesConfig,
 
     /// Trust metadata for external capability providers. Empty by default so
     /// existing installations keep the same tool-discovery behavior.
@@ -311,12 +333,12 @@ pub struct Config {
     /// describes a data connector (Composio OAuth, local folder, GitHub
     /// repo, RSS feed, Twitter query, web page) that feeds memory.
     #[serde(default)]
-    pub memory_sources: Vec<crate::openhuman::memory_sources::types::MemorySourceEntry>,
+    pub memory_sources: Vec<crate::openhuman::memory::sources::types::MemorySourceEntry>,
 
     /// User-facing agent registry — shipped default agents plus user-authored
     /// custom agents and persisted enable/disable/tool-policy overrides.
     #[serde(default)]
-    pub agent_registry: crate::openhuman::agent_registry::types::AgentRegistryConfig,
+    pub agent_registry: crate::openhuman::agent::registry::types::AgentRegistryConfig,
 
     #[serde(default)]
     pub agents: HashMap<String, DelegateAgentConfig>,
@@ -355,6 +377,17 @@ pub struct Config {
     /// When `None`, the factory falls back to the OpenHuman entry.
     #[serde(default)]
     pub primary_cloud: Option<String>,
+
+    /// Runtime only — where this one call's inference goes, when the caller
+    /// named an endpoint and bearer for it.
+    ///
+    /// `#[serde(skip)]` is the whole point: a per-call route must not be able to
+    /// reach `config.toml` and repoint the account's inference for good. See
+    /// [`ephemeral_route`](crate::openhuman::config::schema::ephemeral_route)
+    /// for how it is installed and which roles it governs.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub ephemeral_route: Option<crate::openhuman::config::schema::ephemeral_route::EphemeralRoute>,
 
     /// Provider string for direct conversational chat (simple back-and-forth).
     #[serde(default)]
@@ -425,19 +458,20 @@ pub struct Config {
     // Provider-string grammar (consumed by `voice::factory`):
     //
     //   "cloud" / "openhuman"  → OpenHuman backend proxy (STT or TTS)
-    //   "whisper"              → local Whisper (STT only)
     //   "piper"                → local Piper (TTS only)
     //   "<slug>:<model>"       → voice_providers entry matched by slug
     //
     // When `stt_provider` / `tts_provider` are `None`, the factory falls
-    // back to `local_ai.stt_provider` / `local_ai.tts_provider` (legacy),
-    // then to `"cloud"`.
+    // back to `local_ai.stt_provider` / `local_ai.tts_provider` (legacy).
+    // For STT the final fallback is `voice_server.stt_engine`; for TTS it is
+    // `"cloud"`.
     /// Registered voice providers (STT/TTS). Analogous to `cloud_providers`
     /// for LLM inference.
     #[serde(default)]
     pub voice_providers: Vec<crate::openhuman::config::schema::voice_providers::VoiceProviderCreds>,
 
-    /// STT routing string. Grammar: `"cloud"` | `"whisper"` | `"<slug>:<model>"`.
+    /// STT routing string. Grammar: `"cloud"` | `"<slug>:<model>"`.
+    /// `"cloud"` (or unset) defers to `voice_server.stt_engine`.
     #[serde(default)]
     pub stt_provider: Option<String>,
 
@@ -736,10 +770,12 @@ impl Default for Config {
             action_dir: crate::openhuman::config::default_action_dir(),
             action_dir_override: None,
             config_path: openhuman_dir.join("config.toml"),
+            recovered_from_corruption: false,
             schema_version: 0,
             api_url: None,
             api_key: None,
             inference_url: None,
+            ephemeral_route: None,
             default_model: Some(DEFAULT_MODEL.to_string()),
             default_temperature: DEFAULT_TEMPERATURE,
             output_language: None,
@@ -771,6 +807,7 @@ impl Default for Config {
             memory: MemoryConfig::default(),
             memory_tree: MemoryTreeConfig::default(),
             storage: StorageConfig::default(),
+            subsystems: SubsystemsConfig::default(),
             composio: ComposioConfig::default(),
             secrets: SecretsConfig::default(),
             browser: BrowserConfig::default(),
@@ -778,6 +815,7 @@ impl Default for Config {
             curl: CurlConfig::default(),
             gitbooks: GitbooksConfig::default(),
             mcp_client: McpClientConfig::default(),
+            modules: super::ModulesConfig::default(),
             capability_providers: Vec::new(),
             multimodal: MultimodalConfig::default(),
             multimodal_files: MultimodalFileConfig::default(),
@@ -788,7 +826,8 @@ impl Default for Config {
             proxy: ProxyConfig::default(),
             cost: CostConfig::default(),
             memory_sources: Vec::new(),
-            agent_registry: crate::openhuman::agent_registry::types::AgentRegistryConfig::default(),
+            agent_registry: crate::openhuman::agent::registry::types::AgentRegistryConfig::default(
+            ),
             agents: HashMap::new(),
             local_ai: LocalAiConfig::default(),
             claude_agent_sdk: ClaudeAgentSdkConfig::default(),

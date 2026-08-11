@@ -22,7 +22,7 @@
 use chrono::{TimeZone, Utc};
 use openhuman_core::openhuman::config::Config;
 use openhuman_core::openhuman::memory::ingest_pipeline::{ingest_chat, ingest_email};
-use openhuman_core::openhuman::memory_queue::drain_until_idle;
+use openhuman_core::openhuman::memory::queue::drain_until_idle;
 use openhuman_core::openhuman::tools::{
     MemoryTreeFetchLeavesTool, MemoryTreeSearchEntitiesTool, Tool,
 };
@@ -159,7 +159,7 @@ fn alice_phoenix_thread() -> EmailThread {
 /// most turns don't need a deep tree walk).
 #[test]
 fn orchestrator_reaches_memory_agent_on_demand() {
-    let toml = include_str!("../src/openhuman/agent_registry/agents/orchestrator/agent.toml");
+    let toml = include_str!("../src/openhuman/agent/registry/agents/orchestrator/agent.toml");
     // Eager pre-fetch must be gone.
     assert!(
         !toml
@@ -177,7 +177,7 @@ fn orchestrator_reaches_memory_agent_on_demand() {
     );
     // The orchestrator reaches the memory agent through delegation, not the
     // direct `call_memory_agent` tool (that tool is forbidden on the
-    // orchestrator — see loader::tests::orchestrator_has_chat_hint_and_named_tools).
+    // orchestrator — see loader::tests::master_agent_has_coding_hint_and_named_tools).
     let has_call_memory_agent = toml
         .lines()
         .map(str::trim)
@@ -396,9 +396,9 @@ async fn fetch_leaves_hydrates_source_ref_for_cited_chunks() {
     let _ws_guard = set_workspace_env(&tmp);
 
     // List the ingested chunks directly to get leaf chunk ids with their refs.
-    let chunks = openhuman_core::openhuman::memory_store::chunks::store::list_chunks(
+    let chunks = openhuman_core::openhuman::memory::store::chunks::store::list_chunks(
         &cfg,
-        &openhuman_core::openhuman::memory_store::chunks::store::ListChunksQuery::default(),
+        &openhuman_core::openhuman::memory::store::chunks::store::ListChunksQuery::default(),
     )
     .expect("list_chunks must not error");
 

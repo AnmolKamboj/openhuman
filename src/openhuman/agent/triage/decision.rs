@@ -3,7 +3,7 @@
 //! local model is likely to produce.
 //!
 //! The contract is described in
-//! `src/openhuman/agent_registry/agents/trigger_triage/prompt.md` — the triage
+//! `src/openhuman/agent/registry/agents/trigger_triage/prompt.md` — the triage
 //! agent must end its reply with a JSON object of the form:
 //!
 //! ```json
@@ -44,7 +44,7 @@ pub enum TriageAction {
 
 impl TriageAction {
     /// Short stable string used in log prefixes and the
-    /// [`crate::core::event_bus::DomainEvent::TriggerEvaluated::decision`]
+    /// [`crate::core::events::DomainEvent::TriggerEvaluated::decision`]
     /// field. Intentionally distinct from the `Debug` impl so we can
     /// change the enum representation without breaking dashboards.
     pub fn as_str(&self) -> &'static str {

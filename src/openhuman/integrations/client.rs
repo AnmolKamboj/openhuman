@@ -69,7 +69,7 @@ fn reject_backend_webhook_path(method: &str, path: &str) -> anyhow::Result<()> {
 /// that JWT is expired / revoked / rotated server-side — see the identical
 /// envelope pinned in `inference/provider/config_rejection.rs` and the socket
 /// reconnect loop's `"Invalid token"` handling in
-/// `openhuman::socket::ws_loop`. A *third-party* integration's auth failure
+/// `openhuman::platform::socket::ws_loop`. A *third-party* integration's auth failure
 /// never reaches this arm:
 ///
 /// - **Composio backend mode** (the default that routes through this client):
@@ -151,7 +151,7 @@ fn handle_session_jwt_unauthorized(method: &str, path: &str, url: &str, detail: 
     // is already free of secrets (it names the path + sanitized backend
     // `error` detail), but re-scrub for defense-in-depth before it reaches the
     // subscriber's logs.
-    crate::core::event_bus::publish_global(crate::core::event_bus::DomainEvent::SessionExpired {
+    crate::core::bus::BUS.publish(crate::core::events::DomainEvent::SessionExpired {
         source: format!("integrations.{method}:{path}"),
         reason: crate::openhuman::inference::provider::ops::sanitize_api_error(&message),
     });
@@ -326,11 +326,17 @@ impl IntegrationClient {
         // to fix up the input so the regression is observable in logs.
         let backend_url = sanitize_backend_url(&backend_url);
 
-        // Platform-appropriate TLS backend — see [`crate::openhuman::tls`].
+        // Platform-appropriate TLS backend — see [`crate::openhuman::util::tls`].
         // Windows uses schannel (native-tls) to honor the OS cert store;
         // macOS / Linux keep rustls which avoids the OpenSSL runtime dep and
         // has historically been more reliable on staging TLS handshakes.
-        let http_client = crate::openhuman::tls::tls_client_builder()
+        //
+        // `/agent-integrations/*` is backend traffic like any other, so it
+        // carries the same product identity as `BackendOAuthClient`. The SDK
+        // merges its own default headers into every request, so `http_client`
+        // needs nothing beyond `with_default_headers` below.
+        let product_headers = crate::api::product::product_identity_headers();
+        let http_client = crate::openhuman::util::tls::tls_client_builder()
             .http1_only()
             .timeout(Duration::from_secs(60))
             .connect_timeout(Duration::from_secs(15))
@@ -338,8 +344,23 @@ impl IntegrationClient {
             .expect("failed to build integration HTTP client");
         let sdk = TinyHumansClient::new(&backend_url)
             .with_token(Some(auth_token.clone()))
-            .with_http_client(http_client.clone());
-        let download_client = crate::openhuman::tls::tls_client_builder()
+            .with_http_client(http_client.clone())
+            .with_default_headers(product_headers);
+        // `download_client` deliberately does NOT carry the product identity.
+        // Its one caller (`get_bytes`) fetches
+        // `/agent-integrations/file-storage/files/{id}/download`, which answers
+        // a 302 to a presigned S3 URL. reqwest follows redirects by default and
+        // strips only *sensitive* headers (Authorization, Cookie, …) when the
+        // host changes — a custom header like `x-sdk-name` survives the hop, so
+        // tagging this transport would disclose the product identity to the
+        // storage provider. Attaching it per-request would not help: redirected
+        // requests carry the original request headers too.
+        //
+        // The lost attribution is deliberate and cheap: the header cannot be
+        // scoped to the first hop without hand-rolling redirect following, and
+        // any session that downloads a file has already made SDK-path calls that
+        // are tagged.
+        let download_client = crate::openhuman::util::tls::tls_client_builder()
             .http1_only()
             .timeout(Duration::from_secs(15 * 60))
             .connect_timeout(Duration::from_secs(15))
@@ -361,7 +382,7 @@ impl IntegrationClient {
             return Ok(());
         }
         if let Some(config) = &self.budget_config {
-            if crate::openhuman::team::managed_tool_budget_exhausted(config).await {
+            if crate::openhuman::hosted::team::managed_tool_budget_exhausted(config).await {
                 anyhow::bail!(
                     "Managed cloud tools are disabled because your OpenHuman AI credits are exhausted. Add credits or route the task to user-supplied providers."
                 );

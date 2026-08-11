@@ -24,8 +24,8 @@ const en: TranslationMap = {
   'skills.recallCalendar.description': 'Auto-join Google Meet calls via Recall.ai',
   // Navigation
   'nav.home': 'Home',
-  'nav.human': 'Human',
   'nav.chat': 'Chat',
+  'nav.human': 'Human',
   'nav.assistant': 'Assistant',
 
   // Assistant surface: face mode toggle (Phase 6)
@@ -232,10 +232,29 @@ const en: TranslationMap = {
   'agentWorld.ledger.loadMore': 'Load more',
   'agentWorld.ledger.loadingMore': 'Loading more…',
   'agentWorld.ledger.loadMoreError': 'Could not load more transactions. Try again.',
+  'agentWorld.ledger.filterAsset': 'Asset',
+  'agentWorld.ledger.filterAllAssets': 'All assets',
+  'agentWorld.ledger.direction': 'Direction',
+  'agentWorld.ledger.directionAll': 'All',
+  'agentWorld.ledger.directionIn': 'In',
+  'agentWorld.ledger.directionOut': 'Out',
+  'agentWorld.ledger.copyTxId': 'Copy transaction ID',
+  'agentWorld.ledger.copied': 'Copied',
+  'agentWorld.ledger.noMatch': 'No transactions match these filters.',
+  'agentWorld.ledger.noMatchHint': 'Try widening or clearing the filters.',
   'agentWorld.jobs': 'Jobs',
   'agentWorld.bounties': 'Bounties',
   'agentWorld.explore': 'Explore',
   'agentWorld.directory': 'Directory',
+  'agentWorld.directory.empty': 'No agents found',
+  'agentWorld.directory.emptyHint': 'No agents are registered in the directory yet.',
+  'agentWorld.directory.searchLabel': 'Search agents',
+  'agentWorld.directory.searchPlaceholder': 'Search agents by handle or name',
+  'agentWorld.directory.noResults': 'No agents match your search.',
+  'agentWorld.directory.noResultsHint': 'Try a different handle or name.',
+  'agentWorld.directory.loadMore': 'Load more',
+  'agentWorld.directory.loadingMore': 'Loading…',
+  'agentWorld.directory.loadMoreError': "Couldn't load more agents.",
   'agentWorld.directory.profile.verified': 'Verified',
   'agentWorld.directory.profile.joined': 'Joined',
   'agentWorld.directory.profile.noBio': 'No bio yet.',
@@ -1191,6 +1210,9 @@ const en: TranslationMap = {
   'memoryTree.status.statusError': 'Error',
   'memoryTree.status.statusIdle': 'Idle',
   'memoryTree.status.statusDegraded': 'Degraded',
+  // #5324: a spent embedding budget is a distinct state from a generic error —
+  // memory is paused, not broken, and the fix is the user's to make.
+  'memoryTree.status.statusBudgetExhausted': 'Paused: embedding budget reached',
   'memoryTree.status.never': 'Never',
   // #002: degraded badges + typed remediation strings. The Rust core sends a
   // `remediation_key` (one of memory.health.remediation.*) which the status
@@ -1224,6 +1246,11 @@ const en: TranslationMap = {
     'Memory processing encountered an issue. Check Connections → API keys for configuration.',
   'memoryTree.status.fetchError': "Couldn't fetch Memory Tree status",
   'memoryTree.status.retry': 'Retry',
+  'memoryTree.status.retryFailed': 'Retry failed jobs',
+  'memoryTree.status.retryFailedBusy': 'Retrying...',
+  'memoryTree.status.retryFailedDone': 'Failed jobs requeued',
+  'memoryTree.status.retryFailedCount': 'Jobs queued to run again: {count}.',
+  'memoryTree.status.retryFailedError': 'Could not requeue the failed jobs',
   'memoryTree.status.toggleFailed': "Couldn't toggle auto-sync",
   // Relative-time buckets surfaced by the last-sync tile. `{count}` is
   // replaced client-side at the call site (the runtime `t()` does not
@@ -2476,9 +2503,6 @@ const en: TranslationMap = {
   'voice.failedToSaveSettings': 'Failed to save voice settings',
   'voice.failedToStartServer': 'Failed to start voice server',
   'voice.failedToStopServer': 'Failed to stop voice server',
-  'voice.sttDisabledPrefix':
-    'Voice dictation is disabled until the local STT model is downloaded. Use the',
-  'voice.sttDisabledSuffix': 'section above to install Whisper.',
   'voice.debug.failedToLoadVoiceDebugData': 'Failed to load voice debug data',
   'voice.debug.settingsSaved': 'Debug settings saved.',
   'voice.debug.failedToSaveSettings': 'Failed to save voice settings',
@@ -2513,34 +2537,29 @@ const en: TranslationMap = {
   'voice.providers.repair': 'Repair',
   'voice.providers.retryLocally': 'Retry locally',
   'voice.providers.installLocally': 'Install locally',
-  'voice.providers.whisperReady': 'Whisper is ready.',
-  'voice.providers.whisperInstallStarted': 'Whisper install started',
   'voice.providers.queued': 'queued',
-  'voice.providers.failedToInstallWhisper': 'Failed to install Whisper',
   'voice.providers.piperReady': 'Piper is ready.',
   'voice.providers.piperInstallStarted': 'Piper install started',
   'voice.providers.failedToInstallPiper': 'Failed to install Piper',
+  'voice.mode.title': 'Voice mode',
+  'voice.mode.desc': 'Choose how the assistant talks in the Human tab.',
+  'voice.mode.realtime': 'Realtime voice (beta)',
+  'voice.mode.realtimeDesc': 'Stream a live conversation instead of taking turns.',
+  'voice.mode.start': 'Start voice chat',
+  'voice.mode.stop': 'End voice chat',
+  'voice.mode.connecting': 'Connecting…',
+  'voice.mode.listening': 'Listening',
+  'voice.mode.speaking': 'Speaking',
   'voice.providers.title': 'Voice Providers',
   'voice.providers.desc':
-    'Choose where transcription and synthesis run. Use the Install locally buttons to download the binaries and models into your workspace. Local providers can be saved before the install finishes: no manual WHISPER_BIN or PIPER_BIN setup required.',
+    'Choose which hosted engine transcribes your speech and where synthesis runs. Speech-to-text always runs in the cloud; only text-to-speech has a local option (Piper), installed with the Install locally button. No manual PIPER_BIN setup required.',
   'voice.providers.sttProvider': 'Speech-to-Text Provider',
   'voice.providers.sttProviderAria': 'STT provider',
-  'voice.providers.cloudWhisperProxy': 'OpenHuman (Managed)',
-  'voice.providers.localWhisper': 'Local Whisper',
+  'voice.providers.backendSttProxy': 'OpenHuman (Managed)',
   'voice.providers.installRequired': ' (install required)',
-  'voice.providers.whisperInstalledTitle': 'Whisper is installed. Click to reinstall.',
-  'voice.providers.whisperDownloadTitle':
-    'Download whisper.cpp and the GGML model into your workspace.',
   'voice.providers.installed': 'Installed',
   'voice.providers.installFailed': 'Install failed',
   'voice.providers.notInstalled': 'Not installed',
-  'voice.providers.whisperModel': 'Whisper Model',
-  'voice.providers.whisperModelAria': 'Whisper model',
-  'voice.providers.whisperModelTiny': 'Tiny (39 MB, fastest)',
-  'voice.providers.whisperModelBase': 'Base (74 MB)',
-  'voice.providers.whisperModelSmall': 'Small (244 MB)',
-  'voice.providers.whisperModelMedium': 'Medium (769 MB, recommended)',
-  'voice.providers.whisperModelLargeTurbo': 'Large v3 Turbo (1.5 GB, best accuracy)',
   'voice.providers.ttsProvider': 'Text-to-Speech Provider',
   'voice.providers.ttsProviderAria': 'TTS provider',
   'voice.providers.cloudElevenLabsProxy': 'OpenHuman (Managed)',
@@ -2573,9 +2592,6 @@ const en: TranslationMap = {
   // Voice provider chips (new chip-toggle UI)
   'voice.providers.chip.cloud': 'OpenHuman (Managed)',
   'voice.providers.chip.cloudAria': 'OpenHuman managed provider is always enabled',
-  'voice.providers.chip.whisper': 'Whisper (Local)',
-  'voice.providers.chip.enableWhisper': 'Enable local Whisper STT',
-  'voice.providers.chip.disableWhisper': 'Disable local Whisper STT',
   'voice.providers.chip.piper': 'Piper (Local)',
   'voice.providers.chip.enablePiper': 'Enable local Piper TTS',
   'voice.providers.chip.disablePiper': 'Disable local Piper TTS',
@@ -2593,8 +2609,6 @@ const en: TranslationMap = {
   'voice.modal.testing': 'Testing…',
   'voice.modal.saveAndEnable': 'Save & Enable',
   'voice.modal.enable': 'Enable',
-  'voice.modal.whisperDesc':
-    'Choose a model size and install the Whisper binary and GGML model into your workspace. Larger models are more accurate but slower.',
   'voice.modal.piperDesc':
     'Choose a voice and install the Piper binary and ONNX model into your workspace. Piper runs fully offline with low latency.',
 
@@ -2844,6 +2858,18 @@ const en: TranslationMap = {
   'chat.playingVoiceReply': 'Playing voice reply',
   'chat.voiceHint': 'Use the mic to speak',
   'chat.micUnavailable': 'Microphone unavailable',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Talk to your assistant',
+  'chat.mascot.collapse': 'Back to the chat',
+  'chat.mascot.speakReplies': 'Speak replies out loud',
+  'chat.mascot.speakRepliesHint':
+    'Replies are read aloud while the mascot is open. Turn this off to keep the conversation silent.',
+  'chat.mascot.dismiss': 'Hide Tiny',
+  'chat.mascot.dismissTitle': 'Hide Tiny?',
+  'chat.mascot.dismissBody':
+    "No hard feelings if you'd rather have the message box to yourself. You can bring Tiny back any time from Settings › Appearance › Chat.",
+  'chat.mascot.dismissConfirm': 'Hide Tiny',
+  'chat.mascot.dismissCancel': 'Keep Tiny',
   'chat.turn': 'turn',
   'chat.turns': 'turns',
   'chat.openWorkerThread': 'Open worker thread',
@@ -3574,14 +3600,6 @@ const en: TranslationMap = {
   'accounts.respondQueue.pending': 'Pending',
   'accounts.respondQueue.show': 'Show respond queue',
   'accounts.respondQueue.title': 'Respond queue',
-  'accounts.webviewHost.almostReady': 'Almost ready...',
-  'accounts.webviewHost.loadTimeout': 'Webview load timeout',
-  'accounts.webviewHost.loading': 'Loading {providerName}...',
-  'accounts.webviewHost.loadingAccount': 'Loading account',
-  'accounts.webviewHost.restoringSession': 'Restoring session...',
-  'accounts.webviewHost.retryLoading': 'Retry loading',
-  'accounts.webviewHost.takingLonger': '{providerName} is taking longer than expected.',
-  'accounts.webviewHost.timeoutHint': 'Timeout hint',
   'app.connectionBadge.composio': 'Composio',
   'app.connectionBadge.messaging': 'Messaging',
   'app.connectionIndicator.connected': 'Connected',
@@ -4768,6 +4786,52 @@ const en: TranslationMap = {
   'flows.nodeKind.sub_workflow': 'Sub-workflow',
   'flows.nodeKind.memory': 'Memory',
   'flows.nodeKind.dedup': 'Dedup',
+  'flows.nodeKind.loop': 'Loop',
+
+  // ── describeNode (F-M3): the dynamic per-node card summary text shown on
+  // every canvas node (`FlowNodeComponent`) and in the config drawer header.
+  'flows.nodeSummary.trigger.manual': 'Runs on demand',
+  'flows.nodeSummary.trigger.webhook': 'Runs on an incoming webhook',
+  'flows.nodeSummary.trigger.appEventOn': 'On {parts}',
+  'flows.nodeSummary.trigger.appEvent': 'Runs on an app event',
+  'flows.nodeSummary.trigger.unknownKind': 'Trigger: {kind}',
+  'flows.nodeSummary.agent.defaultModel': 'default model',
+  'flows.nodeSummary.agent.withPrompt': '“{prompt}” · {model}',
+  'flows.nodeSummary.agent.default': 'Asks the {model}',
+  'flows.nodeSummary.toolCall.runsNative': 'Runs {name}',
+  'flows.nodeSummary.toolCall.pickNative': 'Runs an OpenHuman tool (pick one)',
+  'flows.nodeSummary.toolCall.runs': 'Runs {slug}',
+  'flows.nodeSummary.toolCall.pick': 'Runs an app action (pick one)',
+  'flows.nodeSummary.http.withUrl': '{method} {url}',
+  'flows.nodeSummary.http.noUrl': '{method} request (set a URL)',
+  'flows.nodeSummary.code.runs': 'Runs {lang} code',
+  'flows.nodeSummary.condition.withField': 'If {field} → true / false',
+  'flows.nodeSummary.condition.default': 'Branches to true / false',
+  'flows.nodeSummary.switch.byExpr': 'Routes by {expr}',
+  'flows.nodeSummary.switch.byExprWithRoutes': 'Routes by {expr} ({count} routes)',
+  'flows.nodeSummary.switch.byValue': 'Routes by a value',
+  'flows.nodeSummary.switch.byValueWithRoutes': 'Routes by a value ({count} routes)',
+  'flows.nodeSummary.merge': 'Merges parallel branches',
+  'flows.nodeSummary.splitOut.withPath': 'Splits each {path}',
+  'flows.nodeSummary.splitOut.default': 'Splits a list into items',
+  'flows.nodeSummary.transform.default': 'Reshapes each item',
+  'flows.nodeSummary.transform.setFieldsSingular': 'Sets {n} field on each item',
+  'flows.nodeSummary.transform.setFieldsPlural': 'Sets {n} fields on each item',
+  'flows.nodeSummary.outputParser': 'Parses the previous output',
+  'flows.nodeSummary.subWorkflow': 'Runs a nested workflow',
+  'flows.nodeSummary.memory.flavourWith': 'Reads the "{flavour}" flavour',
+  'flows.nodeSummary.memory.flavour': 'Reads a memory flavour',
+  'flows.nodeSummary.memory.people': 'Looks up people memory',
+  'flows.nodeSummary.memory.remember': 'Remembers a value in this workflow',
+  'flows.nodeSummary.memory.forget': 'Forgets a value from this workflow',
+  'flows.nodeSummary.memory.searchScoped': 'Searches memory ({scope})',
+  'flows.nodeSummary.memory.search': 'Searches memory',
+  'flows.nodeSummary.memory.recallScoped': 'Recalls memory ({scope})',
+  'flows.nodeSummary.memory.recall': 'Recalls memory',
+  'flows.nodeSummary.dedup.withKey': 'Skips items already seen by {key}',
+  'flows.nodeSummary.dedup.default': 'Skips items already processed',
+  'flows.nodeSummary.loop.upTo': 'Repeats up to {max} times',
+  'flows.nodeSummary.loop.whileCondition': 'Repeats up to {max} times while {condition}',
 
   // ── Editable Workflow Canvas (issue B5b.2 / Phase 3a): the node palette
   // and editor toolbar layered on top of the read-only canvas above.
@@ -4860,6 +4924,32 @@ const en: TranslationMap = {
   'flows.nodeConfig.trigger.scheduleDays': 'On days (optional: leave empty for every day)',
   'flows.nodeConfig.trigger.scheduleAdvanced': 'Advanced (edit cron)',
   'flows.nodeConfig.trigger.scheduleSimple': 'Back to simple schedule',
+  // ── describeCron / describeEveryMs / describeSchedule (F-M3): the live
+  // plain-language schedule summary shown in `ScheduleField` and the
+  // read-only trigger-node summary for `every`/`at` schedules.
+  'flows.cron.customSchedule': 'Custom schedule ({expr})',
+  'flows.cron.noScheduleSet': 'No schedule set',
+  'flows.cron.weekdays': 'weekdays',
+  'flows.cron.weekends': 'weekends',
+  'flows.cron.everyMinute': 'Every minute',
+  'flows.cron.everyMinuteOnDays': 'Every minute on {days}',
+  'flows.cron.everyNMinutes': 'Every {n} minutes',
+  'flows.cron.everyNMinutesOnDays': 'Every {n} minutes on {days}',
+  'flows.cron.everyHour': 'Every hour',
+  'flows.cron.everyHourOnDays': 'Every hour on {days}',
+  'flows.cron.everyNHours': 'Every {n} hours',
+  'flows.cron.everyNHoursOnDays': 'Every {n} hours on {days}',
+  'flows.cron.everyDayAtTime': 'Every day at {time}',
+  'flows.cron.atTimeOnDays': 'At {time} on {days}',
+  'flows.cron.invalidInterval': 'Invalid interval',
+  'flows.cron.dailyEvery24h': 'Daily (every 24h)',
+  'flows.cron.everyNDays': 'Every {n} days',
+  'flows.cron.everyNHoursShort': 'Every {n}h',
+  'flows.cron.everyNMinutesShort': 'Every {n}m',
+  'flows.cron.everySecond': 'Every second',
+  'flows.cron.everyNSeconds': 'Every {n}s',
+  'flows.cron.onceAtRaw': 'Once at {at}',
+  'flows.cron.onceAt': 'Once at {at}',
   'flows.nodeConfig.trigger.toolkitLabel': 'App',
   'flows.nodeConfig.trigger.triggerSlugLabel': 'Trigger',
   'flows.nodeConfig.trigger.pickApp': 'Pick a connected app first.',
@@ -4955,6 +5045,20 @@ const en: TranslationMap = {
   'flows.nodeConfig.dedup.keyLabel': 'Key',
   'flows.nodeConfig.dedup.keyHint':
     'A stable per-item id expression, e.g. =item.id. Items with a key already seen are skipped.',
+
+  // `loop` node: a bounded loop head. Emits on `body` until its cap or
+  // condition says stop, then on `done`.
+  'flows.nodeConfig.loop.maxIterationsLabel': 'Max iterations',
+  'flows.nodeConfig.loop.maxIterationsHint':
+    'How many times the body may run before the loop stops. Always finite.',
+  'flows.nodeConfig.loop.onExceededLabel': 'When the cap is reached',
+  'flows.nodeConfig.loop.onExceededHint':
+    "Fail the run, or stop looping and continue through the done port with the last pass's items.",
+  'flows.nodeConfig.loop.onExceeded_error': 'Fail the run',
+  'flows.nodeConfig.loop.onExceeded_continue': 'Continue with partial results',
+  'flows.nodeConfig.loop.conditionLabel': 'Continue while',
+  'flows.nodeConfig.loop.conditionHint':
+    'Optional. While this resolves truthy the loop continues; the first falsey result exits through the done port.',
 
   // Phase 4a "New workflow" chooser + Phase 4c templates gallery. The chooser
   // offers scratch / template / describe; the gallery lists the curated
@@ -6326,15 +6430,23 @@ const en: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Hide agent thinking',
   'settings.appearance.hideAgentInsightsDesc':
     'Collapse the live step-by-step agent timeline in chat. A blinking “Processing” link still lets you open the full run.',
+  'settings.appearance.showChatMascot': 'Show Tiny on the message box',
+  'settings.appearance.showChatMascotDesc':
+    'Keep the mascot standing on the composer. Hidden, the chat is text only until you turn this back on.',
   'settings.mascot.active': 'Active',
   'settings.mascot.characterDesc': 'Choose your OpenHuman character.',
   'settings.mascot.characterDraft': 'Draft',
   'settings.mascot.characterHeading': 'Character',
   'settings.mascot.customGifError':
-    'Enter an HTTPS .gif URL, loopback HTTP .gif URL, file:// .gif URL, or local .gif path.',
-  'settings.mascot.customGifHeading': 'Custom GIF avatar',
-  'settings.mascot.customGifLabel': 'Custom GIF avatar URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Enter an HTTPS, file://, or local image URL (PNG, GIF, JPEG, WebP, or BMP), or upload a file.',
+  'settings.mascot.customGifHeading': 'Custom image avatar',
+  'settings.mascot.customGifLabel': 'Custom image avatar URL',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Upload image',
+  'settings.mascot.customGifInvalidType':
+    'Unsupported file type. Upload a PNG, GIF, JPEG, WebP, or BMP image.',
+  'settings.mascot.customGifTooLarge': 'Image is too large. Upload a file up to 1.5 MB.',
+  'settings.mascot.customGifReadError': 'Could not read that image. Please try another file.',
   'settings.mascot.characterPreview': 'Preview',
   'settings.mascot.characterStates': 'states',
   'settings.mascot.characterVisemes': 'visemes',
@@ -6442,7 +6554,7 @@ const en: TranslationMap = {
   'settings.persona.templates.family.desc': 'Warm, friendly, safe for all ages',
   'settings.persona.appearanceHeading': 'Avatar & Voice',
   'settings.persona.appearanceDesc':
-    'Mascot color, custom GIF avatar, and reply voice are configured in Mascot settings.',
+    'Mascot color, custom image avatar, and reply voice are configured in Mascot settings.',
   'settings.persona.openMascotSettings': 'Open Mascot settings',
   'settings.memoryWindow.balanced.badge': 'Recommended',
   'settings.memoryWindow.balanced.hint':
@@ -6784,7 +6896,7 @@ const en: TranslationMap = {
   'skills.setup.voice.stepSuccess': 'Ready to go',
   'skills.setup.voice.sttNotReady': 'Speech-to-text model not ready',
   'skills.setup.voice.sttNotReadyDesc':
-    'Voice Intelligence requires a local Whisper model for transcription. Download it from the Local Model settings.',
+    'Voice Intelligence needs a working speech-to-text engine. Pick one under Settings › Voice.',
   'skills.setup.voice.sttReady': 'Speech-to-text model ready',
   'skills.setup.voice.sttReturnHint': 'The speech-to-text model is loading. Come back in a moment.',
   'skills.setup.voice.title': 'Voice Intelligence',
@@ -7444,6 +7556,7 @@ const en: TranslationMap = {
   'userErrors.dismiss': 'Dismiss',
   'userErrors.action.openBilling': 'Open billing',
   'userErrors.action.openProviderSettings': 'Provider settings',
+  'userErrors.action.openEmbeddingsSettings': 'Set up embeddings',
   'userErrors.budgetExceeded.title': 'Managed budget reached',
   'userErrors.budgetExceeded.body':
     'Your managed AI budget is used up. Add budget or change your plan to continue.',
@@ -7453,13 +7566,37 @@ const en: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'API key required',
   'userErrors.apiKeyMissing.body':
     'Your AI provider has no API key set. Add one in provider settings to continue.',
+  'userErrors.memoryBudgetExhausted.title': 'Memory has stopped growing',
+  'userErrors.memoryBudgetExhausted.body':
+    'Your embedding budget is used up, so new content is no longer being added to memory. Set up local embeddings or add your own API key to resume.',
+  'userErrors.localModelUnavailable.title': 'Local model unavailable',
+  'userErrors.localModelUnavailable.body':
+    'Ollama is not reachable at the configured endpoint, or the required model is not installed there. Start Ollama and pull the model at that endpoint, or switch this workload to a cloud provider.',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Scheduled job',
+  'userErrors.scope.workspace': 'Workspace',
+  'userErrors.scope.memory': 'Memory',
+
+  // Memory embedding budget banners (#5324)
+  'memoryBudget.approachingTitle': 'Memory is approaching its embedding limit',
+  'memoryBudget.approachingMessage':
+    "You've used {pct}% of your embedding budget. Set up local embeddings or add your own API key to keep building memory without interruption.",
+  'memoryBudget.exhaustedTitle': 'Memory has stopped growing',
+  'memoryBudget.exhaustedMessage':
+    'Your embedding budget is used up, so new content is no longer being added to memory. Set up local embeddings or add your own API key to resume.',
+  'memoryBudget.cta': 'Set up embeddings',
   'memorySources.codingSessions.title': 'Coding-agent sessions',
   'memorySources.codingSessions.description':
     'Turn your Codex and Claude Code decisions and corrections into private persona memory.',
-  'memorySources.codingSessions.ingest': 'Ingest new sessions',
-  'memorySources.codingSessions.ingesting': 'Ingesting…',
+  'memorySources.codingSessions.importAll': 'Import all sessions',
+  'memorySources.codingSessions.draining': 'Importing… pass {passes}',
+  'memorySources.codingSessions.stop': 'Stop',
+  'memorySources.codingSessions.progress':
+    '{processed} sessions imported · {observations} observations',
+  'memorySources.codingSessions.remaining': 'about {remaining} left',
+  'memorySources.codingSessions.stopped': 'Import paused',
+  'memorySources.codingSessions.stoppedMessage':
+    'Imported {processed} sessions. Run import again to continue the remaining {remaining}.',
   'memorySources.codingSessions.claude': 'Claude Code',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} sessions · {evidence} human turns',
@@ -7471,9 +7608,10 @@ const en: TranslationMap = {
     '{processed} sessions produced {observations} persona observations.',
   'memorySources.codingSessions.partialFailure':
     '{failed} sessions failed while {processed} were processed. Run ingestion again to retry them.',
-  'memorySources.codingSessions.moreRemaining':
-    'The session batch limit was reached. Run ingestion again to continue importing your history.',
   'memorySources.codingSessions.failed': 'Coding-session ingestion failed',
+  'notifications.configRecovered.title': 'Settings file recovered',
+  'notifications.configRecovered.body':
+    'Your settings file could not be read, so it was restored from a backup or reset to defaults. The unreadable file was kept with a ".corrupted" suffix in case you need it.',
 };
 
 export default en;

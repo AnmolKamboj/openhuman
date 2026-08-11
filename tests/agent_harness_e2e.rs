@@ -742,7 +742,7 @@ async fn multi_turn_state_persistence_inner() {
 // ─── Task 3: Subagent delegation happy path ───────────────────────────────────
 //
 // Tool surface (src/openhuman/tools/orchestrator_tools.rs,
-//   src/openhuman/agent_registry/agents/researcher/agent.toml):
+//   src/openhuman/agent/registry/agents/researcher/agent.toml):
 //   - researcher has `delegate_name = "research"`, so the orchestrator LLM sees a
 //     tool named "research" synthesised by collect_orchestrator_tools.
 //   - The tool takes { "prompt": string, ... } per ArchetypeDelegationTool schema.
@@ -865,8 +865,8 @@ async fn subagent_delegation_happy_path_inner() {
 
 // ─── Super context: harness-driven context-scout happy path ───────────────────
 //
-// Tool surface (src/openhuman/agent_orchestration/tools/agent_prepare_context.rs,
-//   src/openhuman/agent_registry/agents/context_scout/agent.toml):
+// Tool surface (src/openhuman/agent/orchestration/tools/agent_prepare_context.rs,
+//   src/openhuman/agent/registry/agents/context_scout/agent.toml):
 //   - First-turn context prep is harness-driven, not orchestrator-scoped. The
 //     harness runs the read-only `context_scout` before the orchestrator's first
 //     LLM call and injects the scout's `[context_bundle]` into the user message.
@@ -1065,7 +1065,7 @@ async fn super_context_happy_path_inner() {
 //
 // Exercises the ask_user_clarification path via scheduler_agent
 // (delegate_name = "schedule_task"), which has `ask_user_clarification` in its
-// [tools] named list (src/openhuman/agent_registry/agents/scheduler_agent/agent.toml:22).
+// [tools] named list (src/openhuman/agent/registry/agents/scheduler_agent/agent.toml:22).
 //
 // Architecture note — why the full spawn_subagent→[SUBAGENT_AWAITING_USER] path
 // is not exercised here:
@@ -1110,7 +1110,7 @@ async fn super_context_happy_path_inner() {
 ///
 /// The full spawn_subagent → [SUBAGENT_AWAITING_USER] → continue_subagent path
 /// requires adding spawn_subagent to the orchestrator's named tools
-/// (src/openhuman/agent_registry/agents/orchestrator/agent.toml) — a src/ change
+/// (src/openhuman/agent/registry/agents/orchestrator/agent.toml) — a src/ change
 /// outside the scope of this test file.
 #[test]
 fn subagent_clarification_flow() {
@@ -1306,14 +1306,14 @@ async fn subagent_clarification_flow_inner() {
 // per-intercept via `effective_ttl()`. Tests set it before `send_web_chat` and
 // restore it on drop via EnvVarGuard.
 
-fn ensure_approval_gate() {
-    use openhuman_core::core::event_bus;
-    use openhuman_core::openhuman::approval::ApprovalGate;
+async fn ensure_approval_gate() {
+    use openhuman_core::openhuman::security::approval::ApprovalGate;
 
-    // The global event bus must be initialized before registering subscribers.
-    // `build_core_http_router` does NOT call `bootstrap_core_runtime`, so the bus
-    // is not initialized by boot_stack. Initialize it here (idempotent: OnceLock).
-    event_bus::init_global(event_bus::DEFAULT_CAPACITY);
+    // The global bus must be initialized before registering subscribers.
+    // `build_core_http_router` does NOT call `bootstrap_core_runtime`, so the
+    // bus is not initialized by boot_stack. Standing it up is async now — it
+    // connects to a broker — which is why this helper is too. Idempotent.
+    openhuman_core::core::bus::init().await.expect("bus init");
 
     let mut cfg: openhuman_core::openhuman::config::Config = toml::from_str(
         r#"api_url = "http://127.0.0.1:1"
@@ -1363,7 +1363,7 @@ encrypt = false
 /// drops (end of the first test), the task is cancelled and all subsequent tests in the
 /// same binary lose the bridge silently. This per-test helper avoids the issue by
 /// registering a fresh subscription on each test's own runtime.
-fn register_approval_bridge() -> Option<openhuman_core::core::event_bus::SubscriptionHandle> {
+fn register_approval_bridge() -> Option<tinybus::SubscriptionHandle> {
     openhuman_core::openhuman::web_chat::fresh_approval_surface_subscription()
 }
 
@@ -1394,8 +1394,8 @@ fn approval_gate_installed_after_ensure() {
 
 async fn approval_gate_installed_after_ensure_inner() {
     let _lock = env_lock();
-    use openhuman_core::openhuman::approval::ApprovalGate;
-    ensure_approval_gate();
+    use openhuman_core::openhuman::security::approval::ApprovalGate;
+    ensure_approval_gate().await;
     assert!(
         ApprovalGate::try_global().is_some(),
         "ApprovalGate::try_global() must return Some after ensure_approval_gate()"
@@ -1433,7 +1433,7 @@ fn approval_gate_approve_flow() {
 async fn approval_gate_approve_flow_inner() {
     let _lock = env_lock();
     let _ttl = EnvVarGuard::set("OPENHUMAN_APPROVAL_TTL_SECS", "120");
-    ensure_approval_gate();
+    ensure_approval_gate().await;
     // Register a fresh approval bridge on the current runtime. Each approval test needs
     // its own per-runtime bridge so the background task does not die when a previous
     // test's runtime drops (see register_approval_bridge docstring for details).
@@ -1549,7 +1549,7 @@ fn approval_gate_deny_flow() {
 async fn approval_gate_deny_flow_inner() {
     let _lock = env_lock();
     let _ttl = EnvVarGuard::set("OPENHUMAN_APPROVAL_TTL_SECS", "120");
-    ensure_approval_gate();
+    ensure_approval_gate().await;
     let _approval_bridge = register_approval_bridge();
     // Same delegation chain as approve_flow: orchestrator → run_code → code_executor
     // → file_write. After denial, code_executor receives the denial marker from the
@@ -1637,7 +1637,7 @@ async fn approval_gate_deny_flow_inner() {
 //
 // Architecture: The approval gate fires for file_write inside a subagent context
 // only when the subagent run carries a WebChat turn origin. `dispatch_subagent`
-// (src/openhuman/agent_orchestration/tools/dispatch.rs) invokes `run_subagent`
+// (src/openhuman/agent/orchestration/tools/dispatch.rs) invokes `run_subagent`
 // which runs the subagent's tool loop inside the SAME task that the orchestrator's
 // WebChat turn started in. Because `APPROVAL_CHAT_CONTEXT` and `turn_origin` are
 // tokio task-locals (not thread-locals), and `run_subagent` does NOT re-scope them,
@@ -1645,7 +1645,7 @@ async fn approval_gate_deny_flow_inner() {
 // Therefore file_write inside a ArchetypeDelegationTool subagent CAN trigger the
 // approval gate and publish approval_request events.
 //
-// code_executor has delegate_name = "run_code" (src/openhuman/agent_registry/
+// code_executor has delegate_name = "run_code" (src/openhuman/agent/registry/
 // agents/code_executor/agent.toml:3). The orchestrator synthesizes a `run_code`
 // delegation tool from this. code_executor has file_write in its tool surface.
 // The researcher agent does NOT have file_write.
@@ -1672,7 +1672,7 @@ fn subagent_with_approval_gate() {
 async fn subagent_with_approval_gate_inner() {
     let _lock = env_lock();
     let _ttl = EnvVarGuard::set("OPENHUMAN_APPROVAL_TTL_SECS", "120");
-    ensure_approval_gate();
+    ensure_approval_gate().await;
     let _approval_bridge = register_approval_bridge();
     reset_script(vec![
         // request[0]: Orchestrator delegates to code_executor via run_code.
@@ -1714,7 +1714,7 @@ async fn subagent_with_approval_gate_inner() {
     // The approval gate fires because the subagent inherits the orchestrator's
     // WebChat task-local origin (turn_origin + APPROVAL_CHAT_CONTEXT are not
     // re-scoped by dispatch_subagent/run_subagent — src/openhuman/agent/harness/
-    // subagent_runner/ and src/openhuman/agent_orchestration/tools/dispatch.rs).
+    // subagent_runner/ and src/openhuman/agent/orchestration/tools/dispatch.rs).
     // If approval_request never fires within 120s, the event JSON is dumped.
     let approval = wait_for_event(&mut events, "approval_request", Duration::from_secs(120)).await;
     let request_id = approval
@@ -1799,7 +1799,7 @@ async fn approval_gate_timeout_inner() {
     let _lock = env_lock();
     // 2-second TTL via OPENHUMAN_APPROVAL_TTL_SECS → effective_ttl() in gate.rs.
     let _ttl = EnvVarGuard::set("OPENHUMAN_APPROVAL_TTL_SECS", "2");
-    ensure_approval_gate();
+    ensure_approval_gate().await;
     let _approval_bridge = register_approval_bridge();
     // Same delegation chain as approve/deny: orchestrator → run_code → code_executor
     // → file_write. The gate parks and TTL-denies after 2 seconds. code_executor
@@ -2383,10 +2383,10 @@ mod streaming_support {
     use async_trait::async_trait;
     use openhuman_core::openhuman::agent::dispatcher::NativeToolDispatcher;
     use openhuman_core::openhuman::agent::Agent;
-    use openhuman_core::openhuman::agent_memory::memory_loader::MemoryLoader;
     use openhuman_core::openhuman::config::{AgentConfig, ContextConfig, MemoryConfig};
+    use openhuman_core::openhuman::memory::agent::memory_loader::MemoryLoader;
+    use openhuman_core::openhuman::memory::store as memory_store;
     use openhuman_core::openhuman::memory::Memory;
-    use openhuman_core::openhuman::memory_store;
     use openhuman_core::openhuman::tools::traits::ToolCallOptions;
     use openhuman_core::openhuman::tools::{
         PermissionLevel, Tool, ToolContent, ToolResult, ToolScope as RuntimeToolScope,
@@ -2476,6 +2476,7 @@ mod streaming_support {
             raw: None,
             resolved_model: None,
             continue_turn: None,
+            served_from_cache: false,
         }
     }
 

@@ -8,7 +8,7 @@ use openhuman_core::openhuman::agent::harness::{
     ToolScope,
 };
 use openhuman_core::openhuman::config::AgentConfig;
-use openhuman_core::openhuman::context::prompt::{
+use openhuman_core::openhuman::agent::context::prompt::{
     render_ambient_environment, render_subagent_system_prompt, render_tools, render_user_files,
     ConnectedIntegration, CuratedMemoryPromptSnapshot, LearnedContextData, NamespaceSummary,
     PromptContext, PromptTool, SubagentRenderOptions, SystemPromptBuilder, ToolCallFormat,
@@ -17,7 +17,7 @@ use openhuman_core::openhuman::context::prompt::{
 use openhuman_core::openhuman::memory::{
     Memory, MemoryCategory, MemoryEntry, NamespaceSummary as MemoryNamespaceSummary, RecallOpts,
 };
-use openhuman_core::openhuman::tokenjuice::AgentTokenjuiceCompression;
+use openhuman_core::openhuman::inference::tokenjuice::AgentTokenjuiceCompression;
 use openhuman_core::openhuman::tools::{PermissionLevel, Tool, ToolResult};
 use parking_lot::Mutex;
 use serde_json::json;
@@ -229,6 +229,7 @@ fn tool_response(name: &str, arguments: serde_json::Value) -> ModelResponse {
         raw: None,
         resolved_model: None,
         continue_turn: None,
+            served_from_cache: false,
     }
 }
 
@@ -283,7 +284,7 @@ fn parent(workspace: PathBuf, model: Arc<ScriptedModel>) -> ParentExecutionConte
         ]
         .into_iter()
         .collect(),
-        turn_model_source: openhuman_core::openhuman::tinyagents::TurnModelSource::from_model(
+        turn_model_source: openhuman_core::openhuman::agent::tinyagents::TurnModelSource::from_model(
             model,
         ),
         all_tools: Arc::new(tools),
@@ -377,7 +378,7 @@ fn prompt_sections_render_files_identity_memory_tools_and_ambient_blocks() -> Re
     let rendered = SystemPromptBuilder::with_defaults()
         .insert_section_before(
             "user_memory",
-            Box::new(openhuman_core::openhuman::context::prompt::UserReflectionsSection),
+            Box::new(openhuman_core::openhuman::agent::context::prompt::UserReflectionsSection),
         )
         .build(&ctx)?;
 

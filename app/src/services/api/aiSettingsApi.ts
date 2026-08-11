@@ -507,8 +507,35 @@ export type ProviderVerificationReason =
 export function classifyProviderVerificationFailure(raw: string): ProviderVerificationReason {
   const haystack = raw.trim().toLowerCase();
 
+  // Network / gateway / proxy rejections are about the CONNECTION, not the key.
+  // They must NOT reach the `auth` branch, or the add-time flow would delete a
+  // valid key over a corporate proxy, WAF, or 407 challenge (#5341) — the exact
+  // failure class this change exists to preserve keys through. Checked first so
+  // `authentication` in "407 Proxy Authentication Required" and a WAF/Cloudflare
+  // "403 Forbidden" classify as `unknown` (non-destructive), not `auth`.
   if (
-    haystack.includes('401') ||
+    /\b407\b/.test(haystack) ||
+    haystack.includes('proxy') ||
+    haystack.includes('cloudflare') ||
+    haystack.includes('bad gateway') ||
+    haystack.includes('gateway timeout')
+  ) {
+    return 'unknown';
+  }
+
+  // Rejected credential (revoked / invalid / no-permission key). A 403 counts
+  // only when it co-occurs with credential wording — a bare 403 from an
+  // unidentified intermediary is not proof the key itself is bad. Word
+  // boundaries keep `401`/`403` from matching ids like `1403` / `4032`.
+  const is403Credential =
+    /\b403\b/.test(haystack) &&
+    (haystack.includes('forbidden') ||
+      haystack.includes('key') ||
+      haystack.includes('credential') ||
+      haystack.includes('permission'));
+  if (
+    /\b401\b/.test(haystack) ||
+    is403Credential ||
     haystack.includes('invalid api key') ||
     haystack.includes('invalid_api_key') ||
     haystack.includes('incorrect api key') ||

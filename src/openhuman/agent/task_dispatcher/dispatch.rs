@@ -3,8 +3,8 @@
 use crate::openhuman::agent::task_board::{TaskBoardCard, TaskCardStatus};
 use crate::openhuman::agent::task_session;
 use crate::openhuman::config::Config;
-use crate::openhuman::todos::ops::{self, BoardLocation, CardPatch};
-use crate::openhuman::todos::runs;
+use crate::openhuman::threads::todos::ops::{self, BoardLocation, CardPatch};
+use crate::openhuman::threads::todos::runs;
 
 use super::executor::{resolve_executor, run_autonomous};
 use super::poller::requires_plan_approval;
@@ -54,8 +54,8 @@ pub async fn dispatch_card(
         {
             Ok(_parked) => {
                 if let Some(thread_id) = location.thread_id() {
-                    crate::core::event_bus::publish_global(
-                        crate::core::event_bus::DomainEvent::TaskPlanAwaitingApproval {
+                    crate::core::bus::BUS.publish(
+                        crate::core::events::DomainEvent::TaskPlanAwaitingApproval {
                             card_id: card_id.clone(),
                             thread_id: thread_id.to_string(),
                         },

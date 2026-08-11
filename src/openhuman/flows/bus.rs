@@ -10,7 +10,7 @@
 //! `flows::ops::flows_set_enabled` to bind/unbind a flow's automatic
 //! dispatch on enable/disable.
 
-use crate::core::event_bus::{DomainEvent, EventHandler};
+use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
 use crate::openhuman::flows::store;
 use crate::openhuman::flows::{flow_namespace, Flow, FlowRun};
@@ -19,6 +19,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
+use tinybus::EventHandler;
 use tinyflows::model::{NodeKind, TriggerKind};
 use tinyflows::nodes::control_flow::dedup as dedup_node;
 
@@ -38,6 +39,27 @@ pub(crate) fn extract_trigger_kind(flow: &Flow) -> Option<TriggerKind> {
 /// for `app_event`, …).
 pub(crate) fn extract_trigger_config(flow: &Flow) -> Option<&Value> {
     Some(&flow.graph.trigger()?.config)
+}
+
+/// Values an author pinned on the trigger node for *unattended* runs, read from
+/// the trigger's `config.inputs` object.
+///
+/// A schedule tick or an inbound app event has no operator to prompt, so a flow
+/// with declared inputs would otherwise be undispatchable. Pinning values in the
+/// trigger config is how such a flow states, at author time, what an automatic
+/// run should use. Values are passed through literally — this is configuration,
+/// not an expression scope, and there is no run in flight to resolve one
+/// against.
+///
+/// Returns an empty map when the trigger declares none, in which case a required
+/// input with no default fails in `prepare_flow_run` before any run row exists,
+/// and the reason is logged and visible in the run digest.
+fn pinned_trigger_inputs(flow: &Flow) -> serde_json::Map<String, Value> {
+    extract_trigger_config(flow)
+        .and_then(|cfg| cfg.get("inputs"))
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default()
 }
 
 /// True when `flow` is an enabled `app_event` flow bound to the given
@@ -122,9 +144,11 @@ impl FlowTriggerSubscriber {
             tracing::debug!(target: "flows", %flow_id, "[flows] schedule tick for flow whose trigger is no longer `schedule` — ignoring");
             return;
         }
+        let inputs = pinned_trigger_inputs(&flow);
         self.spawn_run(
             flow_id.to_string(),
             Value::Null,
+            inputs,
             crate::openhuman::flows::FlowRunTrigger::Schedule,
         );
     }
@@ -134,21 +158,28 @@ impl FlowTriggerSubscriber {
     /// dispatches each match with the event payload as the run input
     /// (seeded into `run.trigger`, per the node-catalog contract).
     async fn handle_app_event(&self, toolkit: &str, trigger_slug: &str, payload: &Value) {
-        let flows = match store::list_enabled_flows(&self.config) {
-            Ok(flows) => flows,
+        let (flows, skipped) = match store::list_enabled_flows(&self.config) {
+            Ok(result) => result,
             Err(e) => {
                 tracing::warn!(target: "flows", %toolkit, %trigger_slug, error = %e, "[flows] failed to list enabled flows for app_event dispatch");
                 return;
             }
         };
+        if skipped > 0 {
+            // R-M4: one corrupt/unmigratable flow row must not blackhole
+            // app_event dispatch for every other enabled flow.
+            tracing::warn!(target: "flows", %toolkit, %trigger_slug, skipped, "[flows] handle_app_event: skipped corrupt/unmigratable flow rows while matching trigger");
+        }
 
         let mut matched = 0usize;
         for flow in flows {
             if matches_app_event(&flow, toolkit, trigger_slug) {
                 matched += 1;
+                let inputs = pinned_trigger_inputs(&flow);
                 self.spawn_run(
                     flow.id.clone(),
                     payload.clone(),
+                    inputs,
                     crate::openhuman::flows::FlowRunTrigger::AppEvent,
                 );
             }
@@ -168,6 +199,7 @@ impl FlowTriggerSubscriber {
         &self,
         flow_id: String,
         input: Value,
+        inputs: serde_json::Map<String, Value>,
         trigger: crate::openhuman::flows::FlowRunTrigger,
     ) {
         let Some(guard) = self.try_acquire_dispatch(&flow_id) else {
@@ -181,7 +213,9 @@ impl FlowTriggerSubscriber {
             // on panic) by `InFlightGuard`.
             let _guard = guard;
             tracing::info!(target: "flows", %flow_id, "[flows] trigger fired — starting run");
-            match crate::openhuman::flows::ops::flows_run(&config, &flow_id, input, trigger).await {
+            match crate::openhuman::flows::ops::flows_run(&config, &flow_id, input, inputs, trigger)
+                .await
+            {
                 Ok(_) => {
                     tracing::info!(target: "flows", %flow_id, "[flows] trigger-driven run finished")
                 }
@@ -213,7 +247,7 @@ impl Drop for InFlightGuard {
 }
 
 #[async_trait]
-impl EventHandler for FlowTriggerSubscriber {
+impl EventHandler<DomainEvent> for FlowTriggerSubscriber {
     fn name(&self) -> &str {
         "flows::trigger"
     }
@@ -415,7 +449,7 @@ impl FlowRunDigestSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for FlowRunDigestSubscriber {
+impl EventHandler<DomainEvent> for FlowRunDigestSubscriber {
     fn name(&self) -> &str {
         "flows::digest"
     }
@@ -500,7 +534,7 @@ fn render_run_digest(flow_name: &str, run: &FlowRun) -> String {
 ///
 /// Reuses the exact same per-flow `StateStore` namespace
 /// (`"flow:<flow_id>"`, see `tinyflows::caps::build_capabilities` in
-/// `src/openhuman/tinyflows/caps.rs`) the engine's `FlowStateStore` hands the
+/// `src/openhuman/flows/tinyflows/caps.rs`) the engine's `FlowStateStore` hands the
 /// `dedup` node during the run — that collision with the node's own keys is
 /// the entire point.
 ///
@@ -784,7 +818,7 @@ impl DedupCommitSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for DedupCommitSubscriber {
+impl EventHandler<DomainEvent> for DedupCommitSubscriber {
     fn name(&self) -> &str {
         "flows::dedup_commit"
     }
@@ -850,9 +884,9 @@ fn store_key_set(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openhuman::embeddings::NoopEmbedding;
     use crate::openhuman::flows::Flow;
-    use crate::openhuman::memory_store::UnifiedMemory;
+    use crate::openhuman::inference::embeddings::NoopEmbedding;
+    use crate::openhuman::memory::store::UnifiedMemory;
     use serde_json::json;
     use tinyflows::model::{Node, NodeKind, WorkflowGraph};
 
@@ -938,6 +972,48 @@ mod tests {
             last_status: None,
             require_approval: false,
         }
+    }
+
+    #[test]
+    fn pinned_trigger_inputs_reads_values_an_author_fixed_for_unattended_runs() {
+        let flow = flow_with_trigger_config(
+            "f1",
+            true,
+            json!({
+                "trigger_kind": "schedule",
+                "schedule": "0 9 * * *",
+                "inputs": { "repo": "acme/api", "depth": 3 }
+            }),
+        );
+        let inputs = pinned_trigger_inputs(&flow);
+        assert_eq!(inputs["repo"], json!("acme/api"));
+        assert_eq!(inputs["depth"], json!(3));
+    }
+
+    #[test]
+    fn pinned_trigger_inputs_is_empty_when_unset_or_malformed() {
+        // Empty, not an error: a flow declaring no inputs (the overwhelming
+        // majority) must keep dispatching on a tick exactly as before, and a
+        // malformed value is caught downstream by `prepare_flow_run`, which
+        // reports it against the flow's actual declarations.
+        for cfg in [
+            json!({ "trigger_kind": "schedule" }),
+            json!({ "trigger_kind": "schedule", "inputs": null }),
+            json!({ "trigger_kind": "schedule", "inputs": ["repo"] }),
+        ] {
+            let flow = flow_with_trigger_config("f1", true, cfg.clone());
+            assert!(
+                pinned_trigger_inputs(&flow).is_empty(),
+                "expected no pinned inputs for {cfg}"
+            );
+        }
+    }
+
+    #[test]
+    fn pinned_trigger_inputs_is_empty_for_a_graph_with_no_trigger() {
+        let mut flow = flow_with_trigger_config("f1", true, json!({ "trigger_kind": "schedule" }));
+        flow.graph.nodes.clear();
+        assert!(pinned_trigger_inputs(&flow).is_empty());
     }
 
     #[test]
@@ -1039,8 +1115,10 @@ mod tests {
         // `list_enabled_flows` must not surface the disabled flow at all —
         // proves the subscriber's dispatch source already excludes it,
         // rather than asserting on a spawned background task's side effect.
-        let enabled = crate::openhuman::flows::store::list_enabled_flows(&config).unwrap();
+        let (enabled, skipped) =
+            crate::openhuman::flows::store::list_enabled_flows(&config).unwrap();
         assert!(enabled.is_empty());
+        assert_eq!(skipped, 0);
     }
 
     #[tokio::test]
@@ -1146,6 +1224,7 @@ mod tests {
             &[],
             &[],
             Some("boom"),
+            None,
         )
         .unwrap();
 
@@ -1190,6 +1269,7 @@ mod tests {
             "2026-01-01T00:05:00Z",
             &[],
             &[],
+            None,
             None,
         )
         .unwrap();
@@ -1241,6 +1321,7 @@ mod tests {
             &[step],
             &[],
             None,
+            None,
         )
         .unwrap();
 
@@ -1287,6 +1368,7 @@ mod tests {
             "2026-01-01T00:05:00Z",
             &[],
             &[],
+            None,
             None,
         )
         .unwrap();
@@ -1336,6 +1418,7 @@ mod tests {
             }],
             pending_approvals: Vec::new(),
             error: None,
+            graph_hash: None,
         };
         let digest = render_run_digest("My Flow", &run);
         assert!(digest.contains("My Flow"));
@@ -1348,7 +1431,7 @@ mod tests {
 
     fn dedup_state_namespace(flow_id: &str) -> String {
         // MUST match `tinyflows::build_capabilities`'s `state_namespace`
-        // (`src/openhuman/tinyflows/caps.rs`) — this test asserts the
+        // (`src/openhuman/flows/tinyflows/caps.rs`) — this test asserts the
         // subscriber collides with the SAME keys the engine's `dedup` node
         // itself reads/writes, not just "some" namespace.
         format!("flow:{flow_id}")

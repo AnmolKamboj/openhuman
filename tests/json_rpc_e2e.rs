@@ -21,8 +21,8 @@ use tinyagents::harness::model::ModelRequest;
 
 use openhuman_core::core::auth::{init_rpc_token, CORE_TOKEN_ENV_VAR};
 use openhuman_core::core::jsonrpc::build_core_http_router;
-use openhuman_core::openhuman::connectivity::rpc::pick_listen_port;
-use openhuman_core::openhuman::memory_tree::all_memory_tree_registered_controllers;
+use openhuman_core::openhuman::memory::tree::all_memory_tree_registered_controllers;
+use openhuman_core::openhuman::platform::connectivity::rpc::pick_listen_port;
 
 const TEST_RPC_TOKEN: &str = "json-rpc-e2e-local-token";
 static JSON_RPC_AUTH_INIT: OnceLock<()> = OnceLock::new();
@@ -946,13 +946,38 @@ async fn wait_for_chat_completion_requests_len(expected_len: usize) -> Vec<Value
     with_chat_completion_requests(|requests| requests.clone())
 }
 
+async fn wait_for_chat_completion_request_with_message(message: &str) -> Value {
+    for _ in 0..100 {
+        if let Some(request) = with_chat_completion_requests(|requests| {
+            requests
+                .iter()
+                .find(|request| {
+                    request["body"]["messages"]
+                        .as_array()
+                        .is_some_and(|messages| {
+                            messages.iter().any(|entry| {
+                                entry["content"]
+                                    .as_str()
+                                    .is_some_and(|content| content.contains(message))
+                            })
+                        })
+                })
+                .cloned()
+        }) {
+            return request;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("timed out waiting for chat completion containing {message:?}");
+}
+
 async fn encrypt_test_mnemonic() -> String {
     let _keyring_backend_guard = EnvVarGuard::set("OPENHUMAN_KEYRING_BACKEND", "file");
     let config = openhuman_core::openhuman::config::load_config_with_timeout()
         .await
         .expect("load config for encrypted test mnemonic");
-    openhuman_core::openhuman::keyring::init_workspace(&config.workspace_dir);
-    openhuman_core::openhuman::encryption::rpc::encrypt_secret(
+    openhuman_core::openhuman::security::keyring::init_workspace(&config.workspace_dir);
+    openhuman_core::openhuman::security::encryption::rpc::encrypt_secret(
         &config,
         "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
     )
@@ -3092,9 +3117,10 @@ async fn json_rpc_thread_generate_title_falls_back_when_provider_path_is_unavail
         .expect("generated title");
 
     assert_ne!(generated_title, original_title);
-    assert!(
-        generated_title.contains("Please summarize the latest five email threads for"),
-        "fallback title should be derived from the first user message: {generated_title}"
+    assert_eq!(
+        generated_title,
+        "summarize latest five",
+        "fallback title should be the 3-word shape derived from the first user message (filler stripped), got: {generated_title}"
     );
 
     let captured_models = with_chat_completion_models(|models| models.clone());
@@ -3338,15 +3364,15 @@ async fn json_rpc_run_ledger_lifecycle() {
         .await
         .expect("load config");
 
-    openhuman_core::openhuman::session_db::run_ledger::upsert_agent_run(
-        &config,
-        openhuman_core::openhuman::session_db::run_ledger::AgentRunUpsert {
+    tinyagents::session::run_ledger::upsert_agent_run(
+        &config.workspace_dir,
+        tinyagents::session::run_ledger::AgentRunUpsert {
             id: "sub-run-1".to_string(),
-            kind: openhuman_core::openhuman::session_db::run_ledger::AgentRunKind::WorkerThread,
+            kind: tinyagents::session::run_ledger::AgentRunKind::WorkerThread,
             parent_run_id: Some("req-run-1".to_string()),
             parent_thread_id: Some("thread-run-1".to_string()),
             agent_id: Some("researcher".to_string()),
-            status: openhuman_core::openhuman::session_db::run_ledger::AgentRunStatus::AwaitingUser,
+            status: tinyagents::session::run_ledger::AgentRunStatus::AwaitingUser,
             prompt_ref: Some("thread:worker-1:message:seed".to_string()),
             worker_thread_id: Some("worker-1".to_string()),
             task_board_id: Some("thread-run-1".to_string()),
@@ -3365,9 +3391,9 @@ async fn json_rpc_run_ledger_lifecycle() {
     )
     .expect("seed run");
 
-    openhuman_core::openhuman::session_db::run_ledger::append_run_event(
-        &config,
-        openhuman_core::openhuman::session_db::run_ledger::RunEventAppend {
+    tinyagents::session::run_ledger::append_run_event(
+        &config.workspace_dir,
+        tinyagents::session::run_ledger::RunEventAppend {
             run_id: "sub-run-1".to_string(),
             event_type: "subagent_awaiting_user".to_string(),
             payload: json!({ "question": "Which repo should I inspect?" }),
@@ -3457,7 +3483,7 @@ async fn json_rpc_agent_work_list_groups_runs_by_bucket() {
         .await
         .expect("load config");
 
-    use openhuman_core::openhuman::session_db::run_ledger::{
+    use tinyagents::session::run_ledger::{
         upsert_agent_run, AgentRunKind, AgentRunStatus, AgentRunUpsert,
     };
     let seed = |id: &str, status: AgentRunStatus| AgentRunUpsert {
@@ -3480,10 +3506,26 @@ async fn json_rpc_agent_work_list_groups_runs_by_bucket() {
         completed_at: None,
     };
     // Two awaiting-user (needs_input), one running (working), one completed.
-    upsert_agent_run(&config, seed("work-a", AgentRunStatus::AwaitingUser)).expect("seed a");
-    upsert_agent_run(&config, seed("work-b", AgentRunStatus::AwaitingUser)).expect("seed b");
-    upsert_agent_run(&config, seed("work-c", AgentRunStatus::Running)).expect("seed c");
-    upsert_agent_run(&config, seed("work-d", AgentRunStatus::Completed)).expect("seed d");
+    upsert_agent_run(
+        &config.workspace_dir,
+        seed("work-a", AgentRunStatus::AwaitingUser),
+    )
+    .expect("seed a");
+    upsert_agent_run(
+        &config.workspace_dir,
+        seed("work-b", AgentRunStatus::AwaitingUser),
+    )
+    .expect("seed b");
+    upsert_agent_run(
+        &config.workspace_dir,
+        seed("work-c", AgentRunStatus::Running),
+    )
+    .expect("seed c");
+    upsert_agent_run(
+        &config.workspace_dir,
+        seed("work-d", AgentRunStatus::Completed),
+    )
+    .expect("seed d");
 
     let list = post_json_rpc(&rpc_base, 9131, "openhuman.agent_work_list", json!({})).await;
     let outer = assert_no_jsonrpc_error(&list, "agent_work_list");
@@ -3572,16 +3614,16 @@ async fn json_rpc_workflow_run_definitions_and_runs_roundtrip() {
     );
 
     // Seed a durable workflow run, then list + get it.
-    openhuman_core::openhuman::session_db::run_ledger::upsert_workflow_run(
-        &config,
-        openhuman_core::openhuman::session_db::run_ledger::WorkflowRunUpsert {
+    tinyagents::session::run_ledger::upsert_workflow_run(
+        &config.workspace_dir,
+        tinyagents::session::run_ledger::WorkflowRunUpsert {
             id: "wf-run-1".to_string(),
             definition_id: "parallel_research_cross_check".to_string(),
             parent_thread_id: Some("thread-wf-1".to_string()),
             input: json!({ "question": "test" }),
             phase_states: json!({ "decompose": "completed" }),
             child_run_ids: vec!["child-1".to_string()],
-            status: openhuman_core::openhuman::session_db::run_ledger::WorkflowRunStatus::Running,
+            status: tinyagents::session::run_ledger::WorkflowRunStatus::Running,
             summary: None,
             started_at: None,
             completed_at: None,
@@ -3771,17 +3813,17 @@ async fn json_rpc_agent_team_coordination_roundtrip() {
 
     // Mark A done directly via the run ledger, then B claims fine.
     let task_a =
-        openhuman_core::openhuman::session_db::run_ledger::get_agent_team_task(&config, &task_a_id)
+        tinyagents::session::run_ledger::get_agent_team_task(&config.workspace_dir, &task_a_id)
             .expect("get task A")
             .expect("task A present");
-    openhuman_core::openhuman::session_db::run_ledger::upsert_agent_team_task(
-        &config,
-        openhuman_core::openhuman::session_db::run_ledger::AgentTeamTaskUpsert {
+    tinyagents::session::run_ledger::upsert_agent_team_task(
+        &config.workspace_dir,
+        tinyagents::session::run_ledger::AgentTeamTaskUpsert {
             id: task_a.id.clone(),
             team_id: task_a.team_id.clone(),
             title: task_a.title.clone(),
             objective: task_a.objective.clone(),
-            status: openhuman_core::openhuman::session_db::run_ledger::AgentTeamTaskStatus::Done,
+            status: tinyagents::session::run_ledger::AgentTeamTaskStatus::Done,
             owner_member_id: task_a.owner_member_id.clone(),
             depends_on: task_a.depends_on.clone(),
             gate_status: Some(task_a.gate_status.clone()),
@@ -4829,7 +4871,12 @@ async fn json_rpc_web_chat_routing_cases_use_expected_backend_models_inner() {
     let openhuman_home = home.join(".openhuman");
 
     let _home_guard = EnvVarGuard::set_to_path("HOME", home);
-    let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
+    // Keep this router on its own fixture even if a previous test's server
+    // still has an active-user marker while it winds down.
+    let _workspace_guard = EnvVarGuard::set_to_path(
+        "OPENHUMAN_WORKSPACE",
+        &openhuman_home.join("users").join("routing-e2e-user"),
+    );
     let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
     let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
 
@@ -4837,7 +4884,7 @@ async fn json_rpc_web_chat_routing_cases_use_expected_backend_models_inner() {
     let mock_origin = format!("http://{}", mock_addr);
 
     write_min_config_with_local_ai_disabled(&openhuman_home, &mock_origin);
-    let user_scoped_dir = openhuman_home.join("users").join("e2e-user");
+    let user_scoped_dir = openhuman_home.join("users").join("routing-e2e-user");
     write_min_config_with_local_ai_disabled(&user_scoped_dir, &mock_origin);
 
     let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
@@ -4850,7 +4897,7 @@ async fn json_rpc_web_chat_routing_cases_use_expected_backend_models_inner() {
         "openhuman.auth_store_session",
         json!({
             "token": "e2e-test-jwt",
-            "user_id": "e2e-user"
+            "user_id": "routing-e2e-user"
         }),
     )
     .await;
@@ -4904,29 +4951,13 @@ async fn json_rpc_web_chat_routing_cases_use_expected_backend_models_inner() {
             Some("chat_done")
         );
 
-        let mut captured_models: Vec<String> = Vec::new();
-        for _ in 0..50 {
-            captured_models = with_chat_completion_models(|models| models.clone());
-            if captured_models.iter().any(|m| m == expected_model) {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-
-        assert!(
-            captured_models.iter().any(|m| m == expected_model),
-            "case={model_override} expected={expected_model} captured={captured_models:?}"
+        let request =
+            wait_for_chat_completion_request_with_message(&format!("route case {idx}")).await;
+        assert_eq!(
+            request.get("model").and_then(Value::as_str),
+            Some(*expected_model),
+            "case={model_override} request={request:?}"
         );
-
-        if model_override.starts_with("hint:")
-            && *model_override != "hint:reaction"
-            && *expected_model != *model_override
-        {
-            assert!(
-                !captured_models.iter().any(|m| m == model_override),
-                "hint model should not pass through for case={model_override}: {captured_models:?}"
-            );
-        }
     }
 
     mock_join.abort();
@@ -4949,7 +4980,14 @@ async fn json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_
     let openhuman_home = home.join(".openhuman");
 
     let _home_guard = EnvVarGuard::set_to_path("HOME", home);
-    let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
+    // Keep this router on its own fixture even if a previous test's server
+    // still has an active-user marker while it winds down.
+    let _workspace_guard = EnvVarGuard::set_to_path(
+        "OPENHUMAN_WORKSPACE",
+        &openhuman_home
+            .join("users")
+            .join("custom-provider-e2e-user"),
+    );
     let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
     let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
 
@@ -4957,7 +4995,9 @@ async fn json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_
     let mock_origin = format!("http://{}", mock_addr);
 
     write_min_config_with_local_ai_disabled(&openhuman_home, &mock_origin);
-    let user_scoped_dir = openhuman_home.join("users").join("e2e-user");
+    let user_scoped_dir = openhuman_home
+        .join("users")
+        .join("custom-provider-e2e-user");
     write_min_config_with_local_ai_disabled(&user_scoped_dir, &mock_origin);
 
     let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
@@ -4970,7 +5010,7 @@ async fn json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_
         "openhuman.auth_store_session",
         json!({
             "token": "e2e-test-jwt",
-            "user_id": "e2e-user"
+            "user_id": "custom-provider-e2e-user"
         }),
     )
     .await;
@@ -5154,11 +5194,10 @@ async fn json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_
         with_chat_completion_requests(|requests| requests.clone())
     );
 
-    let requests = wait_for_chat_completion_requests_len(3).await;
-    let agentic_request = requests
-        .iter()
-        .find(|request| request.get("model").and_then(Value::as_str) == Some("agentic-v1"))
-        .unwrap_or_else(|| panic!("expected agentic-v1 backend provider call: {requests:?}"));
+    let agentic_request = wait_for_chat_completion_request_with_message(
+        "This turn should stay on the backend agentic route",
+    )
+    .await;
     assert_eq!(
         agentic_request.get("path").and_then(Value::as_str),
         Some("/openai/v1/chat/completions"),
@@ -8138,7 +8177,6 @@ async fn voice_status_returns_availability() {
     let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
     let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
     let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
-    let _whisper_guard = EnvVarGuard::unset("WHISPER_BIN");
     let _piper_guard = EnvVarGuard::unset("PIPER_BIN");
 
     let (mock_addr, mock_join) = serve_on_ephemeral(mock_upstream_router()).await;
@@ -8154,7 +8192,10 @@ async fn voice_status_returns_availability() {
     let status = post_json_rpc(&rpc_base, 1, "openhuman.voice_status", json!({})).await;
     let result = assert_no_jsonrpc_error(&status, "voice_status");
 
-    // Without whisper/piper installed in the test env, both should be unavailable
+    // Without piper installed in the test env, TTS should be unavailable. STT
+    // is a different story since the whisper.cpp engine was deleted: it is a
+    // hosted call now, and the default `backend` engine always resolves, so it
+    // reports available with nothing installed locally.
     assert!(
         result.get("stt_available").is_some(),
         "expected stt_available field: {result}"
@@ -8172,11 +8213,13 @@ async fn voice_status_returns_availability() {
         "expected tts_voice_id field: {result}"
     );
 
-    // Verify that without binaries, availability is false
+    // Hosted STT: the default engine is routable with no local install, so
+    // this is now true. It asserted `false` while a whisper.cpp binary was
+    // required.
     assert_eq!(
         result.get("stt_available").and_then(Value::as_bool),
-        Some(false),
-        "stt should be unavailable without whisper binary"
+        Some(true),
+        "hosted stt should be available with no local binaries"
     );
     assert_eq!(
         result.get("tts_available").and_then(Value::as_bool),
@@ -9314,8 +9357,15 @@ async fn json_rpc_meet_join_call_validates_and_returns_request_id() {
 /// 250 ms-budget poll to see it, and stop_session returns sane
 /// counters. STT / TTS adapters are stubbed in PR1 so this stays
 /// network-free.
-#[tokio::test]
-async fn json_rpc_meet_agent_session_lifecycle() {
+#[test]
+fn json_rpc_meet_agent_session_lifecycle() {
+    run_json_rpc_e2e_on_agent_stack(
+        "json_rpc_meet_agent_session_lifecycle",
+        json_rpc_meet_agent_session_lifecycle_inner,
+    );
+}
+
+async fn json_rpc_meet_agent_session_lifecycle_inner() {
     use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 
     let _env_lock = json_rpc_e2e_env_lock();
@@ -9490,14 +9540,14 @@ async fn json_rpc_meet_agent_session_lifecycle() {
 /// 3. Tool metadata (names/descriptions) is intact.
 #[tokio::test(flavor = "multi_thread")]
 async fn whatsapp_data_agent_tools_e2e_1341() {
-    use openhuman_core::core::event_bus::register_native_global;
+    use openhuman_core::core::bus::BUS;
+    use openhuman_core::openhuman::channels::whatsapp_data::methods;
+    use openhuman_core::openhuman::channels::whatsapp_data::types::{
+        ListChatsRequest, ListMessagesRequest, SearchMessagesRequest, WhatsAppChat, WhatsAppMessage,
+    };
     use openhuman_core::openhuman::tools::traits::Tool;
     use openhuman_core::openhuman::tools::{
         WhatsAppDataListChatsTool, WhatsAppDataListMessagesTool, WhatsAppDataSearchMessagesTool,
-    };
-    use openhuman_core::openhuman::whatsapp_data::methods;
-    use openhuman_core::openhuman::whatsapp_data::types::{
-        ListChatsRequest, ListMessagesRequest, SearchMessagesRequest, WhatsAppChat, WhatsAppMessage,
     };
 
     fn sample_chat(chat_id: &str) -> WhatsAppChat {
@@ -9527,24 +9577,27 @@ async fn whatsapp_data_agent_tools_e2e_1341() {
     }
 
     // Stand in for the shell store: register canned native handlers.
-    register_native_global::<ListChatsRequest, Vec<WhatsAppChat>, _, _>(
-        methods::LIST_CHATS,
-        |_req| async move { Ok(vec![sample_chat("alice@c.us"), sample_chat("team@g.us")]) },
-    );
-    register_native_global::<ListMessagesRequest, Vec<WhatsAppMessage>, _, _>(
-        methods::LIST_MESSAGES,
-        |_req| async move { Ok(vec![sample_msg("Send the umbrella report by Friday")]) },
-    );
-    register_native_global::<SearchMessagesRequest, Vec<WhatsAppMessage>, _, _>(
-        methods::SEARCH_MESSAGES,
-        |req| async move {
-            if req.query.to_lowercase().contains("umbrella") {
-                Ok(vec![sample_msg("Send the umbrella report by Friday")])
-            } else {
-                Ok(vec![])
-            }
-        },
-    );
+    BUS.native()
+        .register::<ListChatsRequest, Vec<WhatsAppChat>, _, _>(
+            methods::LIST_CHATS,
+            |_req| async move { Ok(vec![sample_chat("alice@c.us"), sample_chat("team@g.us")]) },
+        );
+    BUS.native()
+        .register::<ListMessagesRequest, Vec<WhatsAppMessage>, _, _>(
+            methods::LIST_MESSAGES,
+            |_req| async move { Ok(vec![sample_msg("Send the umbrella report by Friday")]) },
+        );
+    BUS.native()
+        .register::<SearchMessagesRequest, Vec<WhatsAppMessage>, _, _>(
+            methods::SEARCH_MESSAGES,
+            |req| async move {
+                if req.query.to_lowercase().contains("umbrella") {
+                    Ok(vec![sample_msg("Send the umbrella report by Friday")])
+                } else {
+                    Ok(vec![])
+                }
+            },
+        );
 
     fn parse_tool_output(result: openhuman_core::openhuman::skills::types::ToolResult) -> Value {
         assert!(!result.is_error, "tool returned error: {result:?}");
@@ -9810,7 +9863,7 @@ async fn mcp_clients_install_connect_tool_call_happy_path() {
     let seed_config = openhuman_core::openhuman::config::load_config_with_timeout()
         .await
         .expect("load config for cache seed");
-    openhuman_core::openhuman::mcp_registry::store::set_cached(
+    openhuman_core::openhuman::mcp::registry::store::set_cached(
         &seed_config,
         &format!("smithery:detail:{qualified_name}"),
         &detail.to_string(),
@@ -9998,7 +10051,7 @@ async fn mcp_clients_set_enabled_smoke() {
     let seed_config = openhuman_core::openhuman::config::load_config_with_timeout()
         .await
         .expect("load config for cache seed");
-    openhuman_core::openhuman::mcp_registry::store::set_cached(
+    openhuman_core::openhuman::mcp::registry::store::set_cached(
         &seed_config,
         &format!("smithery:detail:{qualified_name}"),
         &detail.to_string(),
@@ -10111,7 +10164,7 @@ async fn mcp_clients_install_idempotent_refresh_and_canonical_dedup() {
     let seed_config = openhuman_core::openhuman::config::load_config_with_timeout()
         .await
         .expect("load config for cache seed");
-    openhuman_core::openhuman::mcp_registry::store::set_cached(
+    openhuman_core::openhuman::mcp::registry::store::set_cached(
         &seed_config,
         &format!("smithery:detail:{qualified_name}"),
         &detail.to_string(),
@@ -10946,8 +10999,8 @@ async fn json_rpc_config_agent_timeout_settings_roundtrip() {
 
     // Restore the process-global timeout so later tests in this binary don't
     // inherit the 300s value set above (the AtomicU64 is per-process, not per-test).
-    openhuman_core::openhuman::tool_timeout::set_tool_timeout_secs(
-        openhuman_core::openhuman::tool_timeout::DEFAULT_TIMEOUT_SECS,
+    openhuman_core::openhuman::tools::timeout::set_tool_timeout_secs(
+        openhuman_core::openhuman::tools::timeout::DEFAULT_TIMEOUT_SECS,
     );
 
     mock_join.abort();
@@ -11214,7 +11267,7 @@ async fn json_rpc_task_sources_crud_and_status() {
 /// without a live Composio connection.
 mod task_sources_stub {
     use async_trait::async_trait;
-    use openhuman_core::openhuman::memory_sync::composio::providers::{
+    use openhuman_core::openhuman::memory::sync::composio::providers::{
         ComposioProvider, NormalizedTask, ProviderContext, ProviderUserProfile, TaskFetchFilter,
     };
 
@@ -11276,7 +11329,7 @@ async fn json_rpc_task_sources_fetch_pipeline_e2e() {
 
     // Register the stub github provider BEFORE serving so the fetch RPC
     // resolves it from the global registry.
-    openhuman_core::openhuman::memory_sync::composio::providers::register_provider(Arc::new(
+    openhuman_core::openhuman::memory::sync::composio::providers::register_provider(Arc::new(
         task_sources_stub::StubGithubProvider {
             tasks: vec![
                 task_sources_stub::task("101", "Fix flaky test", "2025-01-01T00:00:00Z"),
@@ -11397,7 +11450,7 @@ async fn json_rpc_task_sources_fetch_pipeline_e2e() {
     // Restore the global provider registry so the stub "github" provider
     // does not leak into other tests in this binary (re-registers the
     // real built-in providers).
-    openhuman_core::openhuman::memory_sync::composio::providers::init_default_providers();
+    openhuman_core::openhuman::memory::sync::composio::providers::init_default_providers();
 
     rpc_join.abort();
 }
@@ -11794,6 +11847,125 @@ async fn json_rpc_flows_lifecycle_round_trip() {
             .expect("flows array")
             .is_empty(),
         "no flows after delete"
+    );
+
+    api_join.abort();
+    rpc_join.abort();
+}
+
+/// JSON-RPC E2E for `flows.run_detached` (PR E / F-M1, F-M2): unlike
+/// `flows_run`, which blocks the RPC caller until the run reaches a terminal
+/// status, `flows_run_detached` must register the run and return
+/// `{run_id, status: "running", detached: true}` immediately — the run row
+/// must already be readable via `flows_get_run` the instant this call
+/// returns, and only *later* (via polling here, `flow:run_progress` /
+/// `useFlowRunPoller` in the UI) does it settle to a terminal status. This is
+/// the RPC-layer counterpart to the direct-API tests
+/// `flows_run_detached_returns_running_run_id_and_inserts_row` /
+/// `flows_run_detached_registers_the_run_before_returning_its_id` in
+/// `src/openhuman/flows/ops_tests.rs` — same contract, exercised through the
+/// `openhuman.flows_run_detached` controller (schema + handler wiring), not
+/// just the `ops::flows_run_detached` fn directly.
+#[cfg(feature = "flows")]
+#[tokio::test]
+async fn json_rpc_flows_run_detached_returns_before_run_completes() {
+    let _env_lock = json_rpc_e2e_env_lock();
+    let (rpc_base, _tmp, api_join, rpc_join, _guards) = boot_flows_rpc_env().await;
+
+    // 1. Create a trivial, immediately-completable flow.
+    let create = post_json_rpc(
+        &rpc_base,
+        9401,
+        "openhuman.flows_create",
+        json!({
+            "name": "Detached Demo",
+            "graph": {
+                "name": "Detached Demo",
+                "nodes": [{ "id": "t", "kind": "trigger", "name": "Trigger" }],
+                "edges": []
+            }
+        }),
+    )
+    .await;
+    let flow = peel_logs_envelope(assert_no_jsonrpc_error(&create, "flows_create"));
+    let flow_id = flow
+        .get("id")
+        .and_then(Value::as_str)
+        .expect("flow id in create result")
+        .to_string();
+
+    // 2. `flows_run_detached` must hand back a non-terminal "running" payload
+    //    right away, not the completed-run payload `flows_run` returns.
+    let run = post_json_rpc(
+        &rpc_base,
+        9402,
+        "openhuman.flows_run_detached",
+        json!({ "id": flow_id }),
+    )
+    .await;
+    let run_out = peel_logs_envelope(assert_no_jsonrpc_error(&run, "flows_run_detached"));
+    assert_eq!(
+        run_out.get("status").and_then(Value::as_str),
+        Some("running"),
+        "run_detached must report 'running' immediately, not await a terminal status: {run_out:?}"
+    );
+    assert_eq!(run_out.get("detached").and_then(Value::as_bool), Some(true));
+    assert_eq!(
+        run_out.get("flow_id").and_then(Value::as_str),
+        Some(flow_id.as_str())
+    );
+    let run_id = run_out
+        .get("run_id")
+        .and_then(Value::as_str)
+        .expect("run_id in run_detached result")
+        .to_string();
+
+    // 3. The run row must already exist — registered + inserted synchronously
+    //    before `flows_run_detached` returned, not from inside the spawned
+    //    background task (which may not be polled for a while).
+    let get_run = post_json_rpc(
+        &rpc_base,
+        9403,
+        "openhuman.flows_get_run",
+        json!({ "run_id": run_id }),
+    )
+    .await;
+    let run_row = peel_logs_envelope(assert_no_jsonrpc_error(&get_run, "flows_get_run"));
+    assert_eq!(
+        run_row.get("id").and_then(Value::as_str),
+        Some(run_id.as_str())
+    );
+
+    // 4. The background task eventually settles the row to a terminal status
+    //    on its own — this is the completion signal the UI's poller /
+    //    `flow:run_progress` subscription relies on instead of the RPC return.
+    let mut terminal_status: Option<String> = None;
+    for _ in 0..50 {
+        let get_run = post_json_rpc(
+            &rpc_base,
+            9404,
+            "openhuman.flows_get_run",
+            json!({ "run_id": run_id }),
+        )
+        .await;
+        let run_row = peel_logs_envelope(assert_no_jsonrpc_error(&get_run, "flows_get_run"));
+        let status = run_row
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        if status != "running" {
+            terminal_status = Some(status);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(
+        matches!(
+            terminal_status.as_deref(),
+            Some("completed") | Some("completed_with_warnings")
+        ),
+        "the detached run must settle to a terminal status on its own, got: {terminal_status:?}"
     );
 
     api_join.abort();
@@ -12667,9 +12839,13 @@ async fn json_rpc_flows_list_connections_aggregates_secret_free() {
         .await
         .expect("load config to seed http_cred");
     const SECRET: &str = "sk_live_flows_list_connections_seed";
-    openhuman_core::openhuman::credentials::HttpCredentialsStore::from_config(&seed_config)
-        .upsert(&openhuman_core::openhuman::credentials::HttpCredential::bearer("stripe", SECRET))
-        .expect("seed http_cred");
+    openhuman_core::openhuman::security::credentials::HttpCredentialsStore::from_config(
+        &seed_config,
+    )
+    .upsert(
+        &openhuman_core::openhuman::security::credentials::HttpCredential::bearer("stripe", SECRET),
+    )
+    .expect("seed http_cred");
 
     let resp = post_json_rpc(
         &rpc_base,

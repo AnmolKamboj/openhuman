@@ -46,6 +46,11 @@ import {
   GENERAL_TAB_VALUE,
   isThreadVisibleInTab,
 } from '../../features/conversations/utils/threadFilter';
+import {
+  ChatMascotDock,
+  useChatMascotOptional,
+  useChatMascotSendBinding,
+} from '../../features/human/chatMascot';
 import MicComposer from '../../features/human/MicComposer';
 import { useFlowApprovalRequests } from '../../hooks/useFlowApprovalRequests';
 import { useUsageState } from '../../hooks/useUsageState';
@@ -86,16 +91,19 @@ import {
   fetchAndHydrateTurnState,
   hydrateThreadUsage,
   markThreadSendPending,
+  type ProcessingTranscriptItem,
   type QueuedFollowup,
   registerParallelRequest,
   setTaskBoardForThread,
   setToolTimelineForThread,
+  type ToolTimelineEntry,
 } from '../../store/chatRuntimeSlice';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { selectSocketStatus } from '../../store/socketSelectors';
 import {
   addInferenceResponse,
   addMessageLocal,
+  clearCreateThreadError,
   clearThreadInferenceActive,
   createNewThread,
   deleteThread,
@@ -161,6 +169,13 @@ const EMPTY_ACTIVE_THREADS: Record<string, true> = {};
 // the same identity when the slice field is absent (narrow test stores).
 const EMPTY_QUEUED_FOLLOWUPS: Record<string, QueuedFollowup[]> = {};
 
+// Stable empty live tool-timeline / processing-transcript for the selected
+// thread. A fresh `[]` here took a new identity every render, invalidating the
+// `backgroundProcesses` memo below on each pass and adding avoidable re-render
+// churn to the chat's hot path (#5162).
+const EMPTY_TOOL_TIMELINE: ToolTimelineEntry[] = [];
+const EMPTY_PROCESSING: ProcessingTranscriptItem[] = [];
+
 export function isComposerInteractionBlocked(args: {
   /** Whether the *currently selected* thread has an in-flight inference turn. */
   selectedThreadActive: boolean;
@@ -203,6 +218,30 @@ export function formatThreadLoadError(err: unknown): string {
     if (typeof message === 'string') return message;
   }
   return String(err);
+}
+
+/**
+ * What the error strip above the composer renders: this turn's send failure if
+ * there is one, otherwise a thread-create failure recorded by `threadSlice`.
+ *
+ * A create that blew the 30 s RPC budget used to have no surface at all — the
+ * shell's "New chat" / Home actions caught the rejection and dropped it, so the
+ * button just did nothing, and a call site that forgot to catch turned the same
+ * failure into `UnhandledRejection: … threads_create_new timed out after
+ * 30000ms` (#5156). Routing the slice-recorded failure through the existing
+ * banner gives every create path one visible outcome. Exported so the precedence
+ * rule is unit-testable without mounting the page.
+ */
+export function deriveChatErrorBanner(
+  sendError: ChatSendError | null,
+  createThreadError: string | null,
+  createThreadFailedMessage: string
+): ChatSendError | null {
+  if (sendError) return sendError;
+  if (createThreadError) {
+    return chatSendError('create_thread_failed', createThreadFailedMessage);
+  }
+  return null;
 }
 
 const Conversations = ({
@@ -264,6 +303,12 @@ const Conversations = ({
   const selectedLabel = GENERAL_TAB_VALUE;
   const [threadSearch, setThreadSearch] = useState('');
   const [sendError, setSendError] = useState<ChatSendError | null>(null);
+  // Recorded by the slice for *every* create path (#5156) — including the shell's
+  // "New chat" button and the home-nav shortcut, which have no UI of their own —
+  // so a failed create always has somewhere to show up.
+  // Optional-chain + default, same as `activeThreadIds` below: narrow test
+  // stores predate this field.
+  const createThreadError = useAppSelector(state => state.thread.createThreadError ?? null);
   const [attachError, setAttachError] = useState<ChatSendError | null>(null);
   const [sendAdvisory, setSendAdvisory] = useState<string | null>(null);
   // Refs mirroring error/advisory state for effects that read them without
@@ -271,6 +316,13 @@ const Conversations = ({
   // that contributes to "Maximum update depth exceeded" (TAURI-REACT-2G).
   const sendErrorRef = useRef(sendError);
   sendErrorRef.current = sendError;
+  const createThreadErrorRef = useRef(createThreadError);
+  createThreadErrorRef.current = createThreadError;
+  const displayedSendError = deriveChatErrorBanner(
+    sendError,
+    createThreadError,
+    t('chat.createThreadFailed')
+  );
   const sendAdvisoryRef = useRef(sendAdvisory);
   sendAdvisoryRef.current = sendAdvisory;
   const [openRouterStatus, setOpenRouterStatus] = useState<'idle' | 'saving' | 'error'>('idle');
@@ -731,6 +783,11 @@ const Conversations = ({
     if (sendErrorRef.current && inputValue.length > 0) {
       setSendError(null);
     }
+    // The store-recorded create failure (#5156) dismisses on the same signal:
+    // the user is composing, so they have seen it.
+    if (createThreadErrorRef.current && inputValue.length > 0) {
+      dispatch(clearCreateThreadError());
+    }
     if (sendAdvisoryRef.current && inputValue.length > 0) {
       setSendAdvisory(null);
     }
@@ -859,7 +916,8 @@ const Conversations = ({
         if (cancelled) return;
         if (!status.stt_available) {
           setVoiceStatus(
-            'Voice input needs a speech model to work. Go to Settings > Local AI Models to set it up.'
+            status.stt_error ??
+              'Voice input needs a working speech-to-text engine. Pick one in Settings > Voice.'
           );
         } else {
           setVoiceStatus('Ready — tap "Start Talking" to record.');
@@ -1367,7 +1425,7 @@ const Conversations = ({
     }
 
     setIsTranscribing(true);
-    setVoiceStatus('Transcribing with Whisper…');
+    setVoiceStatus('Transcribing…');
     try {
       const blob = new Blob(chunks, { type: mimeType || 'audio/webm' });
       const audioBytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
@@ -1396,14 +1454,14 @@ const Conversations = ({
       notifyOverlaySttState('error');
       const message = err instanceof Error ? err.message : String(err);
       const isSetupIssue =
-        message.includes('whisper') ||
+        message.includes('no voice provider') ||
         message.includes('binary not found') ||
-        message.includes('STT model');
+        message.includes('sign in first');
       setSendError(
         chatSendError(
           isSetupIssue ? 'stt_not_ready' : 'voice_transcription',
           isSetupIssue
-            ? 'Voice input needs a speech model. Go to Settings to download one.'
+            ? 'Voice input needs a working speech-to-text engine. Set one up in Settings > Voice.'
             : `Voice transcription failed: ${message}`
         )
       );
@@ -1594,11 +1652,11 @@ const Conversations = ({
   // the global `selectedThreadId`. What remains here is what the header badge
   // and the composer footer still need directly.
   const selectedThreadToolTimeline = selectedThreadId
-    ? (toolTimelineByThread[selectedThreadId] ?? [])
-    : [];
+    ? (toolTimelineByThread[selectedThreadId] ?? EMPTY_TOOL_TIMELINE)
+    : EMPTY_TOOL_TIMELINE;
   const selectedThreadProcessing = selectedThreadId
-    ? (processingByThread[selectedThreadId] ?? [])
-    : [];
+    ? (processingByThread[selectedThreadId] ?? EMPTY_PROCESSING)
+    : EMPTY_PROCESSING;
   // Detached background sub-agents (mode === 'async') spawned in this thread.
   // Kept here (in addition to ChatThreadView's own copy) because the header's
   // background-processes badge needs the count/status without reaching into
@@ -1686,6 +1744,28 @@ const Conversations = ({
       inferenceTurnLifecycleByThread[selectedThreadId] === 'streaming')
   );
 
+  // ── Chat mascot ────────────────────────────────────────────────────────────
+  // `null` outside the merged chat surface (embedded sidebars, iOS, the Flows
+  // copilot), where no mascot exists and the dock is simply not rendered.
+  const chatMascot = useChatMascotOptional();
+  // Stable callbacks: the mascot stage subscribes to these, and
+  // `handleSendMessage` is re-created every render, so publishing it directly
+  // would wake the stage on every keystroke. The ref is already maintained for
+  // the dictation handler and always holds the latest send fn.
+  const mascotSubmit = useCallback((text: string) => handleSendMessageRef.current?.(text), []);
+  const mascotError = useCallback((message: string) => {
+    setSendError(chatSendError('voice_transcription', message));
+  }, []);
+  useChatMascotSendBinding(chatMascot, {
+    submit: mascotSubmit,
+    onError: mascotError,
+    // Same guard as the mic-cloud composer below: without `!selectedThreadId` a
+    // transcript spoken before a thread exists hits handleSendMessage's early
+    // return and is silently dropped — the user spoke into the void.
+    disabled: composerInteractionBlocked || isSending || !selectedThreadId,
+  });
+  const mascotDock = chatMascot ? <ChatMascotDock /> : undefined;
+
   // Live agent activity that must stay visible even before the thread's
   // message history has loaded: an in-flight turn, recorded tool steps, a
   // processing transcript, or streamed prose. Without this, switching to a
@@ -1745,7 +1825,13 @@ const Conversations = ({
     if (!el) return;
     const measure = () => {
       const next = Math.round(el.getBoundingClientRect().height);
-      if (next > 0) setComposerFooterHeight(next);
+      if (next <= 0) return;
+      // Skip no-op updates. This observer watches the footer that *contains* the
+      // composer, while `composerFooterHeight` feeds the message list's bottom
+      // padding — so re-rendering on an unchanged measurement lets a sub-pixel
+      // rounding oscillation cascade into React's nested-update limit
+      // ("Maximum update depth exceeded", #5162 / TAURI-REACT-2G).
+      setComposerFooterHeight(prev => (prev === next ? prev : next));
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -2008,16 +2094,18 @@ const Conversations = ({
           </div>
         )}
 
-        {sendError && (
+        {displayedSendError && (
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-coral-500" data-chat-send-error-code={sendError.code}>
-              {sendError.message}
+            <p
+              className="text-xs text-coral-500"
+              data-chat-send-error-code={displayedSendError.code}>
+              {displayedSendError.message}
             </p>
             <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-              {(sendError.code === 'stt_not_ready' ||
-                sendError.code === 'voice_transcription' ||
-                sendError.code === 'tts_not_ready' ||
-                sendError.code === 'voice_synthesis') && (
+              {(displayedSendError.code === 'stt_not_ready' ||
+                displayedSendError.code === 'voice_transcription' ||
+                displayedSendError.code === 'tts_not_ready' ||
+                displayedSendError.code === 'voice_synthesis') && (
                 <button
                   type="button"
                   data-analytics-id="chat-send-error-setup"
@@ -2035,7 +2123,10 @@ const Conversations = ({
               <button
                 type="button"
                 data-analytics-id="chat-send-error-dismiss"
-                onClick={() => setSendError(null)}
+                onClick={() => {
+                  setSendError(null);
+                  dispatch(clearCreateThreadError());
+                }}
                 className="text-xs text-content-muted hover:text-content-secondary dark:text-neutral-200 dark:hover:text-neutral-200 transition-colors">
                 {t('common.dismiss')}
               </button>
@@ -2203,7 +2294,10 @@ const Conversations = ({
         )}
 
         {composer === 'mic-cloud' ? (
-          <div className="flex flex-col items-center gap-3 py-1">
+          // `relative` so the mascot dock (absolute, `bottom-full`) anchors here
+          // — this branch renders no ChatComposer to hang it off.
+          <div className="relative flex flex-col items-center gap-3 py-1">
+            {mascotDock}
             <MicComposer
               // Without `!selectedThreadId`, a mic submit before a thread is
               // ready hits `handleSendMessage`'s early return and the
@@ -2254,6 +2348,7 @@ const Conversations = ({
                 ) : null,
                 <ThreadGoalEditorPanel key="thread-goal" ctl={threadGoal} />,
               ]}
+              mascotDock={mascotDock}
             />
           </>
         ) : (

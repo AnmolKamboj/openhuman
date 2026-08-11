@@ -4,8 +4,8 @@
 //! bus — they are fire-and-forget hooks for future ingestion subscribers.
 
 use crate::openhuman::config::rpc as config_rpc;
-use crate::openhuman::memory::sync::{emit_sync_stage, MemorySyncStage, MemorySyncTrigger};
-use crate::openhuman::memory_sync::composio;
+use crate::openhuman::memory::sync::composio;
+use crate::openhuman::memory::sync_events::{emit_sync_stage, MemorySyncStage, MemorySyncTrigger};
 use crate::rpc::RpcOutcome;
 
 /// Parameters for `memory_sync_channel`.
@@ -61,11 +61,9 @@ pub async fn memory_sync_channel(
 ) -> Result<RpcOutcome<SyncChannelResult>, String> {
     // `channel_id` is a user/context identifier — keep it out of normal logs.
     tracing::info!("[memory.sync] memory_sync_channel: entry");
-    crate::core::event_bus::publish_global(
-        crate::core::event_bus::DomainEvent::MemorySyncRequested {
-            channel_id: Some(params.channel_id.clone()),
-        },
-    );
+    crate::core::bus::BUS.publish(crate::core::events::DomainEvent::MemorySyncRequested {
+        channel_id: Some(params.channel_id.clone()),
+    });
     emit_sync_stage(
         MemorySyncTrigger::Manual,
         MemorySyncStage::Requested,
@@ -97,9 +95,8 @@ pub async fn memory_sync_channel(
 /// ingestion subscribers.
 pub async fn memory_sync_all() -> Result<RpcOutcome<SyncAllResult>, String> {
     tracing::info!("[memory.sync] memory_sync_all: entry");
-    crate::core::event_bus::publish_global(
-        crate::core::event_bus::DomainEvent::MemorySyncRequested { channel_id: None },
-    );
+    crate::core::bus::BUS
+        .publish(crate::core::events::DomainEvent::MemorySyncRequested { channel_id: None });
     emit_sync_stage(
         MemorySyncTrigger::Manual,
         MemorySyncStage::Requested,
@@ -165,7 +162,7 @@ async fn spawn_manual_sync(requested_connection: Option<String>) -> Result<(), S
                 None, // provider-level composio sync — not a memory-source row
             );
 
-            match crate::openhuman::tinycortex::run_composio_connection(
+            match crate::openhuman::memory::tinycortex::run_composio_connection(
                 &target.toolkit,
                 &target.connection_id,
                 &config,
@@ -242,14 +239,16 @@ mod tests {
     use tokio::sync::mpsc;
     use tokio::time::{timeout, Duration};
 
-    use crate::core::event_bus::{self, DomainEvent, EventHandler};
+    use crate::core::bus::BUS;
+    use crate::core::events::DomainEvent;
+    use tinybus::EventHandler;
 
     fn test_mutex() -> &'static std::sync::Mutex<()> {
         static LOCK: OnceLock<std::sync::Mutex<()>> = OnceLock::new();
         LOCK.get_or_init(|| std::sync::Mutex::new(()))
     }
 
-    fn ensure_memory_client() -> crate::openhuman::memory_store::MemoryClientRef {
+    fn ensure_memory_client() -> crate::openhuman::memory::store::MemoryClientRef {
         crate::openhuman::memory::ops::ensure_shared_memory_client();
         crate::openhuman::memory::global::client().expect("memory client")
     }
@@ -259,7 +258,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl EventHandler for ChannelCapture {
+    impl EventHandler<DomainEvent> for ChannelCapture {
         fn name(&self) -> &str {
             "memory::ops::sync::tests::capture"
         }
@@ -316,9 +315,10 @@ mod tests {
         let _guard = test_mutex()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        event_bus::init_global(event_bus::DEFAULT_CAPACITY);
+        let _ = crate::core::bus::init().await;
         let (tx, mut rx) = mpsc::unbounded_channel();
-        let _subscription = event_bus::subscribe_global(Arc::new(ChannelCapture { tx }))
+        let _subscription = BUS
+            .subscribe(Arc::new(ChannelCapture { tx }))
             .expect("global bus should be initialized");
 
         let outcome = memory_sync_channel(SyncChannelParams {
@@ -344,9 +344,10 @@ mod tests {
         let _guard = test_mutex()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        event_bus::init_global(event_bus::DEFAULT_CAPACITY);
+        let _ = crate::core::bus::init().await;
         let (tx, mut rx) = mpsc::unbounded_channel();
-        let _subscription = event_bus::subscribe_global(Arc::new(ChannelCapture { tx }))
+        let _subscription = BUS
+            .subscribe(Arc::new(ChannelCapture { tx }))
             .expect("global bus should be initialized");
 
         let outcome = memory_sync_all().await.expect("memory_sync_all");

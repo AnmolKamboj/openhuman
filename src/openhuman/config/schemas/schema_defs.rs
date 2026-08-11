@@ -773,7 +773,7 @@ pub fn schemas(function: &str) -> ControllerSchema {
                 FieldSchema {
                     name: "custom_dictionary",
                     ty: TypeSchema::Option(Box::new(TypeSchema::Json)),
-                    comment: "Custom vocabulary words to bias whisper toward.",
+                    comment: "Custom vocabulary words to bias the STT engine toward.",
                     required: false,
                 },
                 optional_bool(
@@ -783,6 +783,10 @@ pub fn schemas(function: &str) -> ControllerSchema {
                 optional_string(
                     "wake_word",
                     "Always-on wake word; utterances must contain it (default 'Hey Tiny').",
+                ),
+                optional_string(
+                    "stt_engine",
+                    "Hosted speech-to-text engine: backend, elevenlabs, or openai.",
                 ),
             ],
             outputs: vec![json_output("snapshot", "Updated config snapshot.")],

@@ -20,8 +20,8 @@ use serde_json::{json, Value};
 use tempfile::{tempdir, TempDir};
 
 use openhuman_core::core::all::RegisteredController;
-use openhuman_core::core::event_bus::testing::BUS_HANDLER_LOCK;
-use openhuman_core::core::event_bus::{register_native_global, request_native_global};
+use openhuman_core::core::bus_testing::BUS_HANDLER_LOCK;
+use openhuman_core::core::bus::BUS;
 use openhuman_core::openhuman::agent::bus::{
     register_agent_handlers, AgentTurnRequest, AgentTurnResponse, AGENT_RUN_TURN_METHOD,
 };
@@ -100,10 +100,10 @@ use openhuman_core::openhuman::agent::Agent;
 use openhuman_core::openhuman::agent::{
     all_agent_controller_schemas, all_agent_registered_controllers,
 };
-use openhuman_core::openhuman::agent_memory::memory_loader::{
+use openhuman_core::openhuman::memory::agent::memory_loader::{
     collect_recall_citations, DefaultMemoryLoader, MemoryLoader, CROSS_CHAT_HEADER,
 };
-use openhuman_core::openhuman::agent_registry::agents::BUILTINS;
+use openhuman_core::openhuman::agent::registry::agents::BUILTINS;
 use openhuman_core::openhuman::config::schema::cloud_providers::{
     AuthStyle as CloudAuthStyle, CloudProviderCreds,
 };
@@ -112,8 +112,8 @@ use openhuman_core::openhuman::config::{
     Config, DelegateAgentConfig, DockerRuntimeConfig, MultimodalConfig, MultimodalFileConfig,
     RuntimeConfig,
 };
-use openhuman_core::openhuman::credentials::profiles::{AuthProfile, TokenSet};
-use openhuman_core::openhuman::credentials::{AuthService, APP_SESSION_PROVIDER};
+use openhuman_core::openhuman::security::credentials::profiles::{AuthProfile, TokenSet};
+use openhuman_core::openhuman::security::credentials::{AuthService, APP_SESSION_PROVIDER};
 use openhuman_core::openhuman::inference::context_window_for_model;
 use openhuman_core::openhuman::inference::local::{
     global as local_ai_global, model_artifact_path, try_global as local_ai_try_global,
@@ -156,21 +156,21 @@ use openhuman_core::openhuman::inference::{
     DeviceProfile,
 };
 use openhuman_core::openhuman::memory::{Memory, MemoryCategory, MemoryEntry, RecallOpts};
-use openhuman_core::openhuman::profiles::{
+use openhuman_core::openhuman::agent::profiles::{
     all_profiles_controller_schemas, all_profiles_registered_controllers,
 };
-use openhuman_core::openhuman::profiles::{
+use openhuman_core::openhuman::agent::profiles::{
     filter_integrations, memory_subdir_for_suffix, memory_tree_subdir_for_suffix,
     resolve_personality_memory_md, resolve_personality_soul, session_raw_subdir_for_suffix,
     HasToolkit, PersonalityContext,
 };
-use openhuman_core::openhuman::profiles::{
+use openhuman_core::openhuman::agent::profiles::{
     AgentProfile, AgentProfileStore, AgentProfilesState, DEFAULT_PROFILE_ID,
 };
 use openhuman_core::openhuman::security::SecurityPolicy;
-use openhuman_core::openhuman::tinyagents::thread_context::{current_thread_id, with_thread_id};
-use openhuman_core::openhuman::todos::ops::BoardLocation;
-use openhuman_core::openhuman::tokenjuice::AgentTokenjuiceCompression;
+use openhuman_core::openhuman::agent::tinyagents::thread_context::{current_thread_id, with_thread_id};
+use openhuman_core::openhuman::threads::todos::ops::BoardLocation;
+use openhuman_core::openhuman::inference::tokenjuice::AgentTokenjuiceCompression;
 use openhuman_core::openhuman::tools::{Tool, ToolResult, ToolSpec};
 use tinyagents::harness::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
 
@@ -2489,10 +2489,10 @@ async fn agent_triage_evaluator_covers_native_dispatch_decision_and_deferred_pat
     AgentDefinitionRegistry::init_global_builtins().expect("init builtins");
 
     register_agent_handlers();
-    let blocked = match request_native_global::<AgentTurnRequest, AgentTurnResponse>(
+    let blocked = match BUS.native().request::<AgentTurnRequest, AgentTurnResponse>(
         AGENT_RUN_TURN_METHOD,
         AgentTurnRequest {
-            turn_model_source: openhuman_core::openhuman::tinyagents::TurnModelSource::from_model(
+            turn_model_source: openhuman_core::openhuman::agent::tinyagents::TurnModelSource::from_model(
                 Arc::new(EchoModel),
             ),
             history: vec![ChatMessage::user(
@@ -2524,7 +2524,7 @@ async fn agent_triage_evaluator_covers_native_dispatch_decision_and_deferred_pat
         .to_string()
         .contains("Prompt blocked by security policy"));
 
-    register_native_global::<AgentTurnRequest, AgentTurnResponse, _, _>(
+    BUS.native().register::<AgentTurnRequest, AgentTurnResponse, _, _>(
         AGENT_RUN_TURN_METHOD,
         |req| async move {
             assert_eq!(req.channel_name, "triage");
@@ -2540,7 +2540,7 @@ async fn agent_triage_evaluator_covers_native_dispatch_decision_and_deferred_pat
         },
     );
     let cloud = ResolvedProvider {
-        turn_model_source: openhuman_core::openhuman::tinyagents::TurnModelSource::from_model(
+        turn_model_source: openhuman_core::openhuman::agent::tinyagents::TurnModelSource::from_model(
             Arc::new(EchoModel),
         ),
         provider_name: "cloud-mock".into(),
@@ -2562,13 +2562,13 @@ async fn agent_triage_evaluator_covers_native_dispatch_decision_and_deferred_pat
     assert_eq!(decision.resolution_path.as_str(), "cloud");
     assert!(!decision.used_local);
 
-    register_native_global::<AgentTurnRequest, AgentTurnResponse, _, _>(
+    BUS.native().register::<AgentTurnRequest, AgentTurnResponse, _, _>(
         AGENT_RUN_TURN_METHOD,
         |_req| async move { Err("budget exceeded: add credits before retrying".into()) },
     );
     let deferred = run_triage_with_arms(
         ResolvedProvider {
-            turn_model_source: openhuman_core::openhuman::tinyagents::TurnModelSource::from_model(
+            turn_model_source: openhuman_core::openhuman::agent::tinyagents::TurnModelSource::from_model(
                 Arc::new(EchoModel),
             ),
             provider_name: "cloud-mock".into(),
@@ -2593,7 +2593,7 @@ async fn agent_triage_evaluator_covers_native_dispatch_decision_and_deferred_pat
 
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_handler = Arc::clone(&attempts);
-    register_native_global::<AgentTurnRequest, AgentTurnResponse, _, _>(
+    BUS.native().register::<AgentTurnRequest, AgentTurnResponse, _, _>(
         AGENT_RUN_TURN_METHOD,
         move |_req| {
             let attempts_for_handler = Arc::clone(&attempts_for_handler);
@@ -2610,7 +2610,7 @@ async fn agent_triage_evaluator_covers_native_dispatch_decision_and_deferred_pat
     );
     let fallback = run_triage_with_arms(
         ResolvedProvider {
-            turn_model_source: openhuman_core::openhuman::tinyagents::TurnModelSource::from_model(
+            turn_model_source: openhuman_core::openhuman::agent::tinyagents::TurnModelSource::from_model(
                 Arc::new(EchoModel),
             ),
             provider_name: "cloud-mock".into(),
@@ -2618,7 +2618,7 @@ async fn agent_triage_evaluator_covers_native_dispatch_decision_and_deferred_pat
             used_local: false,
         },
         Some(ResolvedProvider {
-            turn_model_source: openhuman_core::openhuman::tinyagents::TurnModelSource::from_model(
+            turn_model_source: openhuman_core::openhuman::agent::tinyagents::TurnModelSource::from_model(
                 Arc::new(EchoModel),
             ),
             provider_name: "local-mock".into(),
@@ -2714,14 +2714,8 @@ async fn inference_local_controllers_and_presets_cover_public_paths() {
     .expect("download progress");
     assert!(downloads.is_object());
 
-    let whisper_status = call(
-        controller(&local_registered, "whisper_install_status"),
-        json!({}),
-    )
-    .await
-    .expect("whisper install status");
-    assert_eq!(whisper_status.pointer("/engine"), Some(&json!("whisper")));
-
+    // `whisper_install_status` was deleted with the bundled whisper.cpp
+    // engine; piper is the only install-status controller left.
     let piper_status = call(
         controller(&local_registered, "piper_install_status"),
         json!({}),
@@ -3717,8 +3711,8 @@ fn inference_openai_oauth_store_covers_persist_lookup_and_empty_profiles() {
     AuthService::from_config(&config)
         .load_profiles()
         .expect("profiles load before upsert");
-    openhuman_core::openhuman::credentials::profiles::AuthProfilesStore::new(
-        &openhuman_core::openhuman::credentials::state_dir_from_config(&config),
+    openhuman_core::openhuman::security::credentials::profiles::AuthProfilesStore::new(
+        &openhuman_core::openhuman::security::credentials::state_dir_from_config(&config),
         config.secrets.encrypt,
     )
     .upsert_profile(profile.clone(), true)
@@ -3757,8 +3751,8 @@ fn inference_openai_oauth_store_covers_persist_lookup_and_empty_profiles() {
             scope: None,
         },
     );
-    openhuman_core::openhuman::credentials::profiles::AuthProfilesStore::new(
-        &openhuman_core::openhuman::credentials::state_dir_from_config(&config),
+    openhuman_core::openhuman::security::credentials::profiles::AuthProfilesStore::new(
+        &openhuman_core::openhuman::security::credentials::state_dir_from_config(&config),
         config.secrets.encrypt,
     )
     .upsert_profile(blank, true)

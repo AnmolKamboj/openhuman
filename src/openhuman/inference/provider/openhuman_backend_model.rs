@@ -37,8 +37,8 @@ use tinyagents::{Result as TaResult, TinyAgentsError};
 
 use super::ProviderRuntimeOptions;
 use crate::api::config::effective_api_url;
-use crate::openhuman::credentials::{AuthService, APP_SESSION_PROVIDER};
-use crate::openhuman::tinyagents::thread_context;
+use crate::openhuman::agent::tinyagents::thread_context;
+use crate::openhuman::security::credentials::{AuthService, APP_SESSION_PROVIDER};
 
 pub const PROVIDER_LABEL: &str = "OpenHuman";
 
@@ -106,7 +106,7 @@ impl OpenHumanBackendModel {
     }
 
     fn resolve_bearer(&self) -> anyhow::Result<String> {
-        if crate::openhuman::scheduler_gate::is_signed_out() {
+        if crate::openhuman::cron::scheduler_gate::is_signed_out() {
             anyhow::bail!(
                 "SESSION_EXPIRED: backend session not active — sign in to resume LLM work"
             );
@@ -355,7 +355,7 @@ fn project_managed_usage(mut response: ModelResponse) -> ModelResponse {
         }
     }
 
-    response.raw = crate::openhuman::tinyagents::model::merge_openhuman_usage_meta(
+    response.raw = crate::openhuman::agent::tinyagents::model::merge_openhuman_usage_meta(
         response.raw,
         charged_amount_usd,
         context_window,
@@ -390,16 +390,14 @@ fn maybe_publish_session_expired(err: &TinyAgentsError, operation: &str) {
         if pe.provider.as_str() == "OpenHuman" && matches!(pe.status, Some(401 | 403)) {
             let reason =
                 crate::openhuman::inference::provider::ops::sanitize_api_error(&pe.message);
-            crate::core::event_bus::publish_global(
-                crate::core::event_bus::DomainEvent::SessionExpired {
-                    source: format!(
-                        "openhuman_backend_model.{}({})",
-                        operation,
-                        pe.status.unwrap_or(0)
-                    ),
-                    reason,
-                },
-            );
+            crate::core::bus::BUS.publish(crate::core::events::DomainEvent::SessionExpired {
+                source: format!(
+                    "openhuman_backend_model.{}({})",
+                    operation,
+                    pe.status.unwrap_or(0)
+                ),
+                reason,
+            });
         }
     }
 }
@@ -503,7 +501,7 @@ mod tests {
     /// tokens, and context window — exactly as the legacy legacy model-adapter path did.
     #[test]
     fn project_managed_usage_recovers_charged_and_cached() {
-        use crate::openhuman::tinyagents::model::usage_info_from_response;
+        use crate::openhuman::agent::tinyagents::model::usage_info_from_response;
         use tinyagents::harness::message::AssistantMessage;
         use tinyagents::harness::usage::Usage;
 
@@ -529,6 +527,7 @@ mod tests {
             raw: Some(raw),
             resolved_model: None,
             continue_turn: None,
+            served_from_cache: false,
         };
 
         let projected = project_managed_usage(response);
@@ -548,7 +547,7 @@ mod tests {
     /// charged USD — so non-managed/billing-free responses aren't fabricated.
     #[test]
     fn project_managed_usage_is_noop_without_envelope() {
-        use crate::openhuman::tinyagents::model::usage_info_from_response;
+        use crate::openhuman::agent::tinyagents::model::usage_info_from_response;
         use tinyagents::harness::message::AssistantMessage;
         use tinyagents::harness::usage::Usage;
 
@@ -569,6 +568,7 @@ mod tests {
             raw: Some(serde_json::json!({ "id": "resp_1" })),
             resolved_model: None,
             continue_turn: None,
+            served_from_cache: false,
         };
 
         let projected = project_managed_usage(response);
@@ -595,6 +595,7 @@ mod tests {
             code: Some("BAD_REQUEST".to_string()),
             message: "API key not configured for provider".to_string(),
             retryable: false,
+            retry_after_ms: None,
             raw: None,
         };
         assert!(is_provider_not_configured_error(&err));
@@ -612,6 +613,7 @@ mod tests {
             code: Some("BAD_REQUEST".to_string()),
             message: "invalid request: messages must not be empty".to_string(),
             retryable: false,
+            retry_after_ms: None,
             raw: None,
         };
         assert!(!is_provider_not_configured_error(&err));
@@ -630,6 +632,7 @@ mod tests {
             code: Some("BAD_REQUEST".to_string()),
             message: "credentials not configured for provider 'anthropic'".to_string(),
             retryable: false,
+            retry_after_ms: None,
             raw: None,
         };
         assert!(is_provider_not_configured_error(&err));
@@ -651,6 +654,7 @@ mod tests {
             code: Some("BAD_REQUEST".to_string()),
             message: "webhook target not configured".to_string(),
             retryable: false,
+            retry_after_ms: None,
             raw: None,
         };
         assert!(!is_provider_not_configured_error(&err));
@@ -665,13 +669,14 @@ mod tests {
             code: None,
             message: "API key not configured for provider".to_string(),
             retryable: false,
+            retry_after_ms: None,
             raw: None,
         };
         assert!(!is_provider_not_configured_error(&err));
     }
 
     fn seed_app_session(dir: &std::path::Path) {
-        use crate::openhuman::credentials::{
+        use crate::openhuman::security::credentials::{
             AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
         };
         AuthService::new(dir, false)

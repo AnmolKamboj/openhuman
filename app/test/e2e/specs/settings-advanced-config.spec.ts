@@ -188,7 +188,18 @@ describe('Settings - Advanced Config', function () {
     await clickLabelContaining('Direct (bring your own API key)');
     const apiKeyInput = await browser.$('#composio-api-key');
     await apiKeyInput.waitForExist({ timeout: 10_000 });
-    await apiKeyInput.setValue('ck_live_e2e_composio_key');
+    await browser.execute(() => {
+      const input = document.querySelector<HTMLInputElement>('#composio-api-key');
+      if (!input) return;
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        'value'
+      )?.set;
+      if (setter) setter.call(input, 'ck_live_e2e_composio_key');
+      else input.value = 'ck_live_e2e_composio_key';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
     await clickText('Save', 10_000);
     if (await textExists('I understand, switch to Direct')) {
       await clickText('I understand, switch to Direct', 10_000);

@@ -121,9 +121,9 @@ const AppRoutes = ({ location }: AppRoutesProps = {}) => {
           (the chat's empty "new window" state is the former Home greeting). */}
       <Route path="/home" element={<Navigate to="/chat" replace />} />
 
-      {/* Human — first-class destination again (restored after the IA Phase 6
-          merge into Assistant). Renders the Human/mascot surface. iOS serves
-          /human via AppRoutesIOS. */}
+      {/* Human — the dedicated full-bleed mascot stage. The chat surface carries
+          the same mascot docked on its composer; both read one set of mascot
+          preferences from `mascotSlice`, so they cannot drift apart. */}
       <Route
         path="/human"
         element={
@@ -238,6 +238,9 @@ const AppRoutes = ({ location }: AppRoutesProps = {}) => {
           </ProtectedRoute>
         }
       />
+
+      {/* Preserve links to the retired standalone accounts view. */}
+      <Route path="/accounts" element={<Navigate to="/chat" replace />} />
 
       {/* Back-compat: /channels was an orphaned standalone page; it now
           redirects to the unified Connections page on the Messaging tab. */}

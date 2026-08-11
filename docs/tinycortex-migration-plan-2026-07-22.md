@@ -15,7 +15,7 @@ stays the row-level ledger but its anchors are stale — see §2).
 delete the in-tree duplicates and staging code, migrate/retire the affected
 tests, and clean up every dangling doc/code reference.
 **Method:** fresh four-way audit — (1) the crate surface, (2) the core memory
-domains, (3) the periphery + the `src/openhuman/tinycortex/` seam, (4) the
+domains, (3) the periphery + the `src/openhuman/memory/tinycortex/` seam, (4) the
 docs/tests/git history — against the working tree at `main` (`5b8a9f269`,
 2026-07-22).
 
@@ -143,7 +143,7 @@ these are context, not deletion blockers): `memory::` 166 files,
 `memory_store::` 132, `memory_tree::` 67, `memory_queue::` 18,
 `memory_tools::` 11, `memory_search::` 3.
 
-### 4.2 The seam — `src/openhuman/tinycortex/` (11 files, ~3.2k LOC)
+### 4.2 The seam — `src/openhuman/memory/tinycortex/` (11 files, ~3.2k LOC)
 
 `config.rs`, `embeddings.rs`, `chat.rs`, `summariser.rs`, `ingest.rs`,
 `seal.rs`, `sync.rs` (679), `queue_driver.rs` (1,007), `persona.rs` (446),
@@ -304,7 +304,7 @@ orchestration/product glue; D4 rows CLOSED; no duplicated provider parsing.
 Two host clusters now duplicate `tinyagents::harness::embeddings` (post-#58:
 openai/cohere/voyage/ollama/cloud + rate-limit/retry-after):
 
-1. `src/openhuman/embeddings/` adapters (`openai/voyage/cohere/ollama/
+1. `src/openhuman/inference/embeddings/` adapters (`openai/voyage/cohere/ollama/
    cloud_adapter.rs`, `provider_trait.rs`) → construct crate
    `EmbeddingModel`s directly; host keeps `rpc.rs` (1,479), `schemas.rs`,
    `catalog.rs`, `factory.rs` (config/BYOK selection, #4056 dimension
@@ -345,9 +345,9 @@ re-export except deliberate facades recorded in the spec.
 - Full suite: `scripts/test-rust-with-mock.sh` (incl. the 15
   `raw_coverage/memory_*` modules), vendor suite
   `cargo test --manifest-path vendor/tinycortex/Cargo.toml --features
-  git-diff,sync,persona`, slim disabled build (`--no-default-features
-  --features tokenjuice-treesitter` — memory domains are ungated but the
-  standing repo rule applies), `pnpm rust:check`.
+  git-diff,sync,persona`, slim disabled build (`--no-default-features`
+  — memory domains are ungated but the standing repo rule applies),
+  `pnpm rust:check`.
 - Drift ledger: D4 CLOSED; new rows for every WP-1/WP-2 deletion; the spec's
   §2 deletion-ledger skeleton filled in with actuals.
 - Docs: the five tinycortex docs + `src/openhuman/memory*/README.md` files +
@@ -363,7 +363,7 @@ re-export except deliberate facades recorded in the spec.
 | WP-2 | The live default path was already TinyCortex-backed. D4 is CLOSED; dead Gmail duplicate removed; remaining provider task/profile projections explicitly classified as product policy. Provider tests pass (301). |
 | WP-3 | Concrete provider transports deduplicated into TinyAgents. The memory tree now uses a thin `ProviderEmbedder`; Ollama's 8k context/batch and missing-model guidance moved upstream before the host client was deleted. TinyAgents embedding tests pass (38); host library check passes. |
 | WP-4 | Archivist, search scoring/MMR, tool-memory type/store, tree-tool, jobs-alias, and unused seam type facades retired. Direct crate imports are canonical. Seam production code is 2,229 LOC (below the 2.5k exit target). |
-| WP-5 | Local focused validation is recorded above; the slim `--no-default-features --features tokenjuice-treesitter` build also passes. [CI Full run 29925645209](https://github.com/senamakel/openhuman/actions/runs/29925645209) is green: core quality and full tests, TinyCortex, Tauri, frontend, mock-backend Rust E2E, Playwright, three desktop builds, every launched desktop shard, and the final gate. Two first-attempt Linux jobs ended without uploaded logs; rerunning only failed jobs passed the Linux build, Rust integration suite, and all eight Linux shards. |
+| WP-5 | Local focused validation is recorded above; the slim `--no-default-features` build also passes. [CI Full run 29925645209](https://github.com/senamakel/openhuman/actions/runs/29925645209) is green: core quality and full tests, TinyCortex, Tauri, frontend, mock-backend Rust E2E, Playwright, three desktop builds, every launched desktop shard, and the final gate. Two first-attempt Linux jobs ended without uploaded logs; rerunning only failed jobs passed the Linux build, Rust integration suite, and all eight Linux shards. |
 
 ---
 
@@ -413,5 +413,5 @@ re-export except deliberate facades recorded in the spec.
 | `memory/` (orchestration/RPC/tools/tree-policy) | STAYS |
 | `memory_sources/` | STAYS (product registry over crate readers) |
 | `agent_memory/`, `subconscious/`, `learning/` | STAYS (consumers, no duplication) |
-| Seam `src/openhuman/tinycortex/` | STAYS, shrinks; fix stale module docs (WP-0), thin `queue_driver.rs` (WP-4) |
+| Seam `src/openhuman/memory/tinycortex/` | STAYS, shrinks; fix stale module docs (WP-0), thin `queue_driver.rs` (WP-4) |
 | Golden-parity harness | FINISH or DESCOPE by decision (WP-0); `MemoryTaint`/format pins KEEP |

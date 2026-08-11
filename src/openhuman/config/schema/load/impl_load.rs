@@ -402,6 +402,10 @@ impl Config {
             config.config_path = config_path.clone();
             config.workspace_dir = workspace_dir;
             config.action_dir = resolve_action_dir(&config.action_dir_override);
+            // Runtime-only signal consumed once at boot to raise a user-visible
+            // "settings were reset" notice (#5167). Set before env overrides so a
+            // later override can never mask that recovery happened.
+            config.recovered_from_corruption = config_was_corrupted;
             migrate_legacy_inference_url(&mut config);
             migrate_cloud_provider_slugs(&mut config);
             config.apply_env_overrides_from(env);
@@ -462,7 +466,7 @@ impl Config {
                 recovered = config_was_corrupted,
                 "Config loaded"
             );
-            crate::openhuman::migrations::run_pending(&mut config).await;
+            crate::openhuman::config::migrations::run_pending(&mut config).await;
             let migrated_legacy_secrets = decrypt_config_secrets(&mut config, &openhuman_dir)?;
             if migrated_legacy_secrets {
                 // One-time forced migration: a legacy `enc:` (XOR) secret was
@@ -483,7 +487,7 @@ impl Config {
                 config_path: config_path.clone(),
                 workspace_dir,
                 action_dir: default_action_dir(),
-                schema_version: crate::openhuman::migrations::CURRENT_SCHEMA_VERSION,
+                schema_version: crate::openhuman::config::migrations::CURRENT_SCHEMA_VERSION,
                 ..Default::default()
             };
             config.save().await?;
@@ -503,7 +507,7 @@ impl Config {
                 initialized = true,
                 "Config loaded"
             );
-            crate::openhuman::migrations::run_pending(&mut config).await;
+            crate::openhuman::config::migrations::run_pending(&mut config).await;
             Ok(config)
         }
     }
@@ -593,6 +597,7 @@ impl Config {
         config.config_path = config_path;
         config.workspace_dir = workspace_dir;
         config.action_dir = resolve_action_dir(&config.action_dir_override);
+        config.recovered_from_corruption = config_was_corrupted;
         migrate_legacy_inference_url(&mut config);
         migrate_cloud_provider_slugs(&mut config);
         config.apply_env_overrides_from(&ProcessEnvWithoutWorkspace);
@@ -604,7 +609,7 @@ impl Config {
             );
         }
 
-        crate::openhuman::migrations::run_pending(&mut config).await;
+        crate::openhuman::config::migrations::run_pending(&mut config).await;
         Ok(config)
     }
 
@@ -697,7 +702,35 @@ impl Config {
             })?;
         }
 
-        if let Err(e) = fs::rename(&temp_path, &self.config_path).await {
+        // Parallel test/runtime cleanup can remove an otherwise valid config
+        // directory after the temporary file is written. Recreate it directly
+        // before the rename so the atomic replacement retains its guarantee.
+        fs::create_dir_all(parent_dir).await.with_context(|| {
+            format!(
+                "Failed to recreate config directory before atomic replace: {}",
+                parent_dir.display()
+            )
+        })?;
+
+        let replace = fs::rename(&temp_path, &self.config_path).await;
+        // A concurrently-cleaning test or runtime can still remove the parent
+        // in the narrow window after the create_dir_all above. Retry the rename
+        // once after recreating it; the temp file lives alongside the target and
+        // remains available across that directory-entry race.
+        let replace = match replace {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                fs::create_dir_all(parent_dir).await.with_context(|| {
+                    format!(
+                        "Failed to recreate config directory for atomic replace retry: {}",
+                        parent_dir.display()
+                    )
+                })?;
+                fs::rename(&temp_path, &self.config_path).await
+            }
+            result => result,
+        };
+
+        if let Err(e) = replace {
             let _ = fs::remove_file(&temp_path).await;
             if had_existing_config && backup_path.exists() {
                 fs::copy(&backup_path, &self.config_path)

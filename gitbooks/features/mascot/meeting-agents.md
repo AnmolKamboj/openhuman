@@ -18,7 +18,7 @@ It is not a notetaker. A notetaker sits silently and produces a transcript. A me
 
 The mascot joins the meeting through an embedded webview, the same way a person joins from their browser. There is a name, a face, and a tile in the grid. Other participants see and hear it the way they'd see and hear any other attendee - no calendar bot, no dial-in number, no "this meeting is being recorded by …" banner.
 
-Under the hood the meeting brain lives in `src/openhuman/meet_agent/brain.rs`, and the webview side is the same CEF child window OpenHuman uses for other embedded providers.
+Under the hood the meeting brain lives in `src/openhuman/meet/agent/brain/`, and the webview side is the same CEF child window OpenHuman uses for other embedded providers.
 
 ### 2. It listens to everyone in the room
 
@@ -73,9 +73,9 @@ The result, in practice, is that participants stop treating it like a bot and st
 
 Everything meeting-related lives on one redesigned page (**Intelligence → Meetings**):
 
-* **Join any platform.** A composer with platform chips (Google Meet / Zoom / Teams / Webex) where the URL placeholder adapts per platform and "Your name" auto-fills from your connected account. Tick *active mode* and the bot answers when addressed (the wake phrase is derived as `Hey {your agent's name}`); leave it off for listen-only.
-* **Live transcript, during the call.** Transcript turns stream into the app in real time while the meeting is running. The in-progress line renders greyed until finalized, then the authoritative final transcript takes over when the call ends.
-* **Meeting history, master-detail.** Recent calls (up to 200) sit in a rail; select one for the full detail: platform, participants, duration, an AI **summary** with headline, key points and an action-item checklist, and the complete **transcript**.
+- **Join any platform.** A composer with platform chips (Google Meet / Zoom / Teams / Webex) where the URL placeholder adapts per platform and "Your name" auto-fills from your connected account. Tick _active mode_ and the bot answers when addressed (the wake phrase is derived as `Hey {your agent's name}`); leave it off for listen-only.
+- **Live transcript, during the call.** Transcript turns stream into the app in real time while the meeting is running. The in-progress line renders greyed until finalized, then the authoritative final transcript takes over when the call ends.
+- **Meeting history, master-detail.** Recent calls (up to 200) sit in a rail; select one for the full detail: platform, participants, duration, an AI **summary** with headline, key points and an action-item checklist, and the complete **transcript**.
 
 ## Calendar auto-join
 
@@ -87,9 +87,9 @@ Auto-join is policy-driven: **ask each time / always / never**, globally and **p
 
 The wake-word gate is owner-scoped and deliberately conservative:
 
-* Only the configured **call owner** (or people the owner has allowlisted) can wake the bot into a tool-backed turn. Non-owners get a greeting or a polite refusal.
-* The owner can grant someone mid-call just by saying "allow" / "go ahead" / "let them in" (a 2-minute pending window).
-* With no owner configured, **no wake ever fires**. The bot also never wakes on its own TTS echo, and heavy per-speaker dedup and cooldowns absorb caption re-emits.
+- Only the configured **call owner** (or people the owner has allowlisted) can wake the bot into a tool-backed turn. Non-owners get a greeting or a polite refusal.
+- The owner can grant someone mid-call just by saying "allow" / "go ahead" / "let them in" (a 2-minute pending window).
+- With no owner configured, **no wake ever fires**. The bot also never wakes on its own TTS echo, and heavy per-speaker dedup and cooldowns absorb caption re-emits.
 
 ## Setup, controls, privacy
 
@@ -103,7 +103,7 @@ The wake-word gate is owner-scoped and deliberately conservative:
 
 Curious how this is wired up:
 
-- Brain - `src/openhuman/meet_agent/brain.rs` (LLM turns, speak/no-speak decisions, tool calls).
+- Brain - `src/openhuman/meet/agent/brain/` (LLM turns, speak/no-speak decisions, tool calls).
 - Voice plumbing - `src/openhuman/voice/` (STT in, TTS out, hallucination filter, postprocess). See [Native Voice](../native-tools/voice.md).
 - Mascot canvas as outbound camera - `app/src/features/meet/MascotFrameProducer.tsx` and the Tauri-side `mascot_native_window.rs` window.
 - Embedded Meet webview - see [Chromium Embedded Framework](../../developing/cef.md). The Meet child webview ships with **zero injected JavaScript**; everything host-side runs natively via CDP.

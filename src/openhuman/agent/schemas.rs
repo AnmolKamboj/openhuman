@@ -7,12 +7,24 @@ use crate::core::{ControllerSchema, FieldSchema, TypeSchema};
 use crate::openhuman::config::rpc as config_rpc;
 use crate::rpc::RpcOutcome;
 
+/// Params for `agent.chat` and `agent.chat_simple`.
+///
+/// A near-copy of the params in
+/// [`crate::openhuman::inference::local::schemas`], which backs the
+/// `inference.agent_chat*` namespace over the same ops. That surface carries
+/// two fields this one does not — a per-call `inference_url` + `api_key` —
+/// because `agent.chat` describes a turn on the account's own configured
+/// inference.
 #[derive(Debug, Deserialize)]
 struct AgentChatParams {
     message: String,
     model_override: Option<String>,
     temperature: Option<f64>,
     thread_id: Option<String>,
+    /// Optional per-turn working directory for the agent's filesystem / shell
+    /// tools. Absent or empty keeps the configured `action_dir`. Ignored by the
+    /// `*_simple` variant, which runs a bare provider call with no tools.
+    cwd: Option<String>,
 }
 
 pub fn all_controller_schemas() -> Vec<ControllerSchema> {
@@ -83,6 +95,12 @@ pub fn schemas(function: &str) -> ControllerSchema {
                 optional_string(
                     "thread_id",
                     "Optional backend thread id for cache grouping and inference logs.",
+                ),
+                optional_string(
+                    "cwd",
+                    "Optional working directory for this turn: the agent's file and shell \
+                     tools are rooted here, so relative paths resolve inside it. Must be an \
+                     existing directory. Omit (or pass empty) to use the configured action_dir.",
                 ),
             ],
             outputs: vec![json_output("response", "Agent response payload.")],
@@ -221,6 +239,12 @@ fn handle_chat(params: Map<String, Value>) -> ControllerFuture {
                 p.model_override,
                 p.temperature,
                 p.thread_id,
+                p.cwd,
+                // `openhuman.agent_chat` describes a turn on the account's own
+                // configured inference. A caller that wants this one turn
+                // somewhere else says so through `inference_agent_chat`, which
+                // takes the endpoint and bearer as parameters.
+                None,
             )
             .await?,
         )
@@ -415,8 +439,8 @@ fn handle_triage_evaluate(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_graph_topologies(_params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async {
-        let reports = crate::openhuman::tinyagents::all_graph_topologies();
-        let agents = crate::openhuman::agent_registry::agents::load_builtins()
+        let reports = crate::openhuman::agent::tinyagents::all_graph_topologies();
+        let agents = crate::openhuman::agent::registry::agents::load_builtins()
             .map_err(|e| format!("loading built-in agent graph resolutions: {e}"))?
             .into_iter()
             .map(|def| {
@@ -490,7 +514,7 @@ fn handle_graph_topologies(_params: Map<String, Value>) -> ControllerFuture {
 /// (cloud/BYOK) rows are skipped — those are owned by the priced catalog layers.
 fn local_catalog_models_from_config(
     config: &crate::openhuman::config::Config,
-) -> Vec<crate::openhuman::cost::catalog::LocalCatalogModel> {
+) -> Vec<crate::openhuman::platform::cost::catalog::LocalCatalogModel> {
     use crate::openhuman::inference::local::profile::{
         profile_for_kind, LocalProviderKind, ToolSupport,
     };
@@ -506,13 +530,15 @@ fn local_catalog_models_from_config(
             } else {
                 profile.default_context_window
             };
-            Some(crate::openhuman::cost::catalog::LocalCatalogModel {
-                provider: entry.provider.clone(),
-                model_id: entry.id.clone(),
-                context_window,
-                tool_calling: matches!(profile.tool_support, ToolSupport::Native),
-                streaming: profile.supports_streaming,
-            })
+            Some(
+                crate::openhuman::platform::cost::catalog::LocalCatalogModel {
+                    provider: entry.provider.clone(),
+                    model_id: entry.id.clone(),
+                    context_window,
+                    tool_calling: matches!(profile.tool_support, ToolSupport::Native),
+                    streaming: profile.supports_streaming,
+                },
+            )
         })
         .collect()
 }
@@ -538,7 +564,8 @@ fn handle_registry_snapshot(_params: Map<String, Value>) -> ControllerFuture {
                 Vec::new()
             }
         };
-        let catalog = crate::openhuman::cost::catalog::unified_model_catalog(&local_models);
+        let catalog =
+            crate::openhuman::platform::cost::catalog::unified_model_catalog(&local_models);
         let model_count = catalog.models.len();
         for entry in catalog.models {
             let mut meta = ComponentMetadata::new(entry.model_id.clone(), ComponentKind::Model)
@@ -561,7 +588,7 @@ fn handle_registry_snapshot(_params: Map<String, Value>) -> ControllerFuture {
         }
 
         // ── Graphs: structure-only topology reports ─────────────────────────
-        let reports = crate::openhuman::tinyagents::all_graph_topologies();
+        let reports = crate::openhuman::agent::tinyagents::all_graph_topologies();
         let graph_count = reports.len();
         for report in &reports {
             let mut meta = ComponentMetadata::new(report.name, ComponentKind::Graph)
@@ -573,7 +600,7 @@ fn handle_registry_snapshot(_params: Map<String, Value>) -> ControllerFuture {
         }
 
         // ── Agents: built-in archetypes ─────────────────────────────────────
-        let agent_defs = crate::openhuman::agent_registry::agents::load_builtins()
+        let agent_defs = crate::openhuman::agent::registry::agents::load_builtins()
             .map_err(|e| format!("loading built-in agents for registry snapshot: {e}"))?;
         let agent_count = agent_defs.len();
         for def in &agent_defs {
@@ -702,7 +729,7 @@ mod tests {
     fn schemas_expose_expected_inputs_and_unknown_fallback() {
         let chat = schemas("chat");
         assert_eq!(chat.namespace, "agent");
-        assert_eq!(chat.inputs.len(), 4);
+        assert_eq!(chat.inputs.len(), 5);
         assert!(matches!(chat.inputs[1].ty, TypeSchema::Option(_)));
         assert!(chat
             .inputs

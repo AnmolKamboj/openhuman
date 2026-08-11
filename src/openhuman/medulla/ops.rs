@@ -278,6 +278,16 @@ mod tests {
         }
     }
 
+    /// Clearing every base-URL env var no longer produces `MedullaNoBaseUrl`.
+    ///
+    /// Since #5245 `resolve::base_url` falls back to
+    /// `effective_backend_api_url`, which ends at the compiled-in
+    /// `DEFAULT_API_BASE_URL` — so it never returns `None` and the
+    /// `NoBaseUrl` arm is unreachable. "No backend configured" stopped being a
+    /// state the product can be in; the unconfigured state that remains is
+    /// "signed out", which is what this now pins. The env isolation is kept
+    /// because it is what proves the fallback, rather than an override, is
+    /// answering.
     #[test]
     fn not_configured_encodes_an_expected_user_state_envelope() {
         let tmp = tempfile::tempdir().unwrap();

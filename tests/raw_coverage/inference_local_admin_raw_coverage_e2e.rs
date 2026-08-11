@@ -20,7 +20,7 @@ use openhuman_core::openhuman::config::schema::cloud_providers::{
     AuthStyle as CloudAuthStyle, CloudProviderCreds,
 };
 use openhuman_core::openhuman::config::Config;
-use openhuman_core::openhuman::credentials::{AuthService, DEFAULT_AUTH_PROFILE_NAME};
+use openhuman_core::openhuman::security::credentials::{AuthService, DEFAULT_AUTH_PROFILE_NAME};
 use openhuman_core::openhuman::inference::local::ops::{
     local_ai_chat, local_ai_download_asset, local_ai_downloads_progress, local_ai_should_react,
     LocalAiChatMessage,
@@ -141,7 +141,6 @@ async fn local_admin_covers_assets_diagnostics_downloads_and_ops_errors() {
     assert_eq!(assets.chat.state, "missing");
     assert_eq!(assets.vision.state, "missing");
     assert_eq!(assets.embedding.state, "ready");
-    assert_eq!(assets.stt.state, "missing");
     assert_eq!(assets.tts.state, "ondemand");
 
     let unknown = service
@@ -149,12 +148,6 @@ async fn local_admin_covers_assets_diagnostics_downloads_and_ops_errors() {
         .await
         .expect_err("unknown asset");
     assert!(unknown.contains("Unknown capability"));
-
-    let stt_missing_url = service
-        .download_asset(&config, "stt")
-        .await
-        .expect_err("stt without url");
-    assert!(stt_missing_url.contains("no local_ai.stt_download_url"));
 
     let after_tts = service
         .download_asset(&config, "tts")

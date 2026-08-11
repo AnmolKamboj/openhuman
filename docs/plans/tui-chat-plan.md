@@ -22,7 +22,7 @@ gated behind a Cargo feature `tui`.
      `#[cfg(not(feature = "tui"))] mod stub;` exposing the same `run_from_cli`.
    - `stub.rs` `run_from_cli` bails with
      `"tui feature disabled at compile time … rebuild with --features tui"`
-     (mirror `src/openhuman/mcp_server/stub.rs:42`).
+     (mirror `src/openhuman/mcp/server/stub.rs:42`).
    - No controllers, no agent tools, no `all.rs` changes (leaf client, like `flows`'
      philosophy: absence, not degraded registration — but here the only outside
      touch-point is the CLI arm, which uses the stub for a build-fact error).
@@ -76,9 +76,9 @@ gated behind a Cargo feature `tui`.
   (assert error contains "tui feature disabled" and NOT "unknown namespace").
 - Builds (Apple Silicon: prefix `GGML_NATIVE=OFF`):
   - `cargo check --manifest-path Cargo.toml`
-  - `cargo check --no-default-features --features tokenjuice-treesitter` (disabled build)
+  - `cargo check --no-default-features` (disabled build)
   - `cargo test --lib core::cli` and the tui module tests, both feature directions:
-    `cargo test --lib --no-default-features --features tokenjuice-treesitter core::`
+    `cargo test --lib --no-default-features core::`
 - `node scripts/ci/check-feature-forwarding.mjs` passes with the allowlist entry.
 - `cargo fmt` clean.
 
@@ -86,7 +86,7 @@ gated behind a Cargo feature `tui`.
 
 - AGENTS.md: add `tui` row to the feature table + a short gate section
   (leaf-ish gate, sheds `ratatui`+`crossterm`, intentionally not forwarded to desktop).
-- `src/openhuman/about_app/`: add user-facing feature entry for the terminal chat UI.
+- `src/openhuman/platform/about_app/`: add user-facing feature entry for the terminal chat UI.
 
 ## Non-goals (v1)
 

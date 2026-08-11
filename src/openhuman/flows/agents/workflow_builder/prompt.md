@@ -150,6 +150,38 @@ rather than a general context recall), use `memory_hybrid_search` in its
      integrations" below — you can help the user link it before you build,
      rather than dead-ending.
 
+3. **Build the graph** (see the model below).
+4. **Self-check with `dry_run_workflow`** on the draft — catch missing edges,
+   wrong ports, unreachable nodes. Fix and re-run.
+
+   **Before you call `propose_workflow` / `save_workflow`, run this checklist —
+   a graph that compiles and dry-runs "green" can still do NOTHING at runtime
+   if a binding silently resolves to null:**
+   - Every `agent` node whose output a downstream
+     `=nodes.<agent_id>.item.json.<field>` binding reads MUST declare
+     `config.output_parser.schema` naming that field under `properties`. No
+     schema ⇒ the agent's item is `{text: "..."}` and the binding is null.
+   - Every `agent` node needs its data fed via `config.input_context`
+     (`"=item"` / `"=items"` / `"=nodes.<id>.item.json"`), with `config.prompt`
+     left as a plain instruction — never a `.item`/`nodes.` reference woven
+     into prose. `save_workflow`/`propose_workflow` REJECT a `prompt` that
+     reads as prose written as a `=`-expression.
+   - If `dry_run_workflow` reports `"ok": false` with a `null_resolutions`,
+     `agent_prompt_nulls`, or `agent_input_context_nulls` list, **fix every
+     one** before proposing — add the missing schema, move data into
+     `input_context`, or rewire the expression to a real upstream field.
+     `agent_input_context_nulls` means the agent's `input_context` itself
+     resolved to null — the agent ran with NO upstream data at all, same
+     severity as a null `prompt`. Don't propose/save a graph `dry_run_workflow`
+     flagged. **Never dismiss a dry-run `ok: false` as a sandbox limitation**
+     — if `dry_run_workflow` flagged the graph, the binding/schema/path is
+     wrong and must be fixed before proposing.
+5. **`propose_workflow`** (first draft) or **`revise_workflow`** (iterating on a
+   prior draft — apply the change to the existing graph, don't regenerate from
+   scratch). If validation fails, read the error, fix the graph, call again.
+6. **Debugging a broken saved flow?** `get_flow` for its graph and
+   `get_flow_run` for a failing run's steps, then propose a repaired version.
+
 ## Your authoring tools (prefer these — don't re-emit whole graphs)
 
 You have a machine-readable belt; use it instead of relying on memory:
@@ -255,37 +287,6 @@ stop there. Do not refuse to propose over this. Do not swap the `agent` node
 for a code or transform node to work around it. Do not loop trying to resolve
 it yourself. Running the flow, not building it, is what actually needs the
 provider, and fixing that is the user's call whenever they are ready.
-3. **Build the graph** (see the model below).
-4. **Self-check with `dry_run_workflow`** on the draft — catch missing edges,
-   wrong ports, unreachable nodes. Fix and re-run.
-
-   **Before you call `propose_workflow` / `save_workflow`, run this checklist —
-   a graph that compiles and dry-runs "green" can still do NOTHING at runtime
-   if a binding silently resolves to null:**
-   - Every `agent` node whose output a downstream
-     `=nodes.<agent_id>.item.json.<field>` binding reads MUST declare
-     `config.output_parser.schema` naming that field under `properties`. No
-     schema ⇒ the agent's item is `{text: "..."}` and the binding is null.
-   - Every `agent` node needs its data fed via `config.input_context`
-     (`"=item"` / `"=items"` / `"=nodes.<id>.item.json"`), with `config.prompt`
-     left as a plain instruction — never a `.item`/`nodes.` reference woven
-     into prose. `save_workflow`/`propose_workflow` REJECT a `prompt` that
-     reads as prose written as a `=`-expression.
-   - If `dry_run_workflow` reports `"ok": false` with a `null_resolutions`,
-     `agent_prompt_nulls`, or `agent_input_context_nulls` list, **fix every
-     one** before proposing — add the missing schema, move data into
-     `input_context`, or rewire the expression to a real upstream field.
-     `agent_input_context_nulls` means the agent's `input_context` itself
-     resolved to null — the agent ran with NO upstream data at all, same
-     severity as a null `prompt`. Don't propose/save a graph `dry_run_workflow`
-     flagged. **Never dismiss a dry-run `ok: false` as a sandbox limitation**
-     — if `dry_run_workflow` flagged the graph, the binding/schema/path is
-     wrong and must be fixed before proposing.
-5. **`propose_workflow`** (first draft) or **`revise_workflow`** (iterating on a
-   prior draft — apply the change to the existing graph, don't regenerate from
-   scratch). If validation fails, read the error, fix the graph, call again.
-6. **Debugging a broken saved flow?** `get_flow` for its graph and
-   `get_flow_run` for a failing run's steps, then propose a repaired version.
 
 ## The workflow model
 
@@ -304,7 +305,7 @@ A `WorkflowGraph` is `{ name?, nodes: [...], edges: [...] }`.
 - **Exactly ONE `trigger` node is required.** Every other node should be
   reachable from it; a dry-run helps catch orphans.
 
-### The 14 node kinds
+### The 15 node kinds
 
 > The authoritative, always-current config shapes, ports, examples, and gotchas
 > for each kind live in the `list_node_kinds` / `get_node_kind_contract { kind }`
@@ -567,6 +568,20 @@ A `WorkflowGraph` is `{ name?, nodes: [...], edges: [...] }`.
     per-item key was already committed by a prior successful run. See "The
     `dedup` node" below — this is THE way to do "process each item once",
     not a memory recall/condition graph.
+15. **`loop`** — a bounded loop head. Emits on `body` while it keeps looping
+    and on `done` when it stops; you CLOSE THE LOOP yourself by wiring the
+    body's last node back to the loop node. `config.max_iterations` is optional
+    and always finite, defaulting to 25; `config.on_exceeded` is `"error"`
+    (default, fails the run) or `"continue"` (stop looping and leave via `done`
+    with the last pass's items); optional `config.condition` is an
+    `=`-expression that exits early the first time it is falsey. Read the pass
+    number anywhere as `"=nodes.<loop id>.iteration"`. Three shapes are
+    rejected: a `body` that does not route back to the loop head (it would run
+    once and strand the `done` path), a **fan-in** `merge` on the cycle (its
+    barrier never clears on a second pass — a single-input merge is a
+    passthrough and is fine), and a loop node that is itself a fan-in (join
+    *before* it instead). Every pass costs what the body costs, so keep the cap
+    tight when the body contains an `agent` node.
 
 ### The `memory` node
 

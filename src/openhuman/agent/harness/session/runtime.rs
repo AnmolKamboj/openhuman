@@ -8,16 +8,17 @@
 //! drive the model.
 
 use super::types::{Agent, AgentBuilder};
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::dispatcher::ParsedToolCall;
 use crate::openhuman::agent::error::AgentError;
 use crate::openhuman::agent::messages::ConversationMessage;
-use crate::openhuman::agent_tool_policy::ToolPolicyEngine;
 use crate::openhuman::inference::provider::{self, ToolCall};
 use crate::openhuman::memory::Memory;
-use crate::openhuman::prompt_injection::{
+use crate::openhuman::security::prompt_injection::{
     enforce_prompt_input, PromptEnforcementAction, PromptEnforcementContext,
 };
+use crate::openhuman::tools::agent_policy::ToolPolicyEngine;
 use crate::openhuman::tools::{Tool, ToolSpec};
 use crate::openhuman::util::truncate_with_ellipsis;
 use anyhow::Result;
@@ -62,7 +63,7 @@ impl Agent {
     /// parent-context builder to share the parent's provider instance with
     /// spawned sub-agents (so they share connection pools, retry budgets, and
     /// rate-limit state) — issue #4249, Phase 3 / Motion A.
-    pub fn turn_model_source(&self) -> crate::openhuman::tinyagents::TurnModelSource {
+    pub fn turn_model_source(&self) -> crate::openhuman::agent::tinyagents::TurnModelSource {
         self.turn_model_source.clone()
     }
 
@@ -106,6 +107,66 @@ impl Agent {
         Arc::clone(&self.memory)
     }
 
+    /// The full host [`Config`](crate::openhuman::config::Config) this session
+    /// was built with, when it was built through the factory.
+    ///
+    /// `None` on the bare-builder path (`AgentBuilder` without
+    /// `AgentFactory`), which is used by tests and by callers assembling a
+    /// session by hand. Every capability adapter that needs host config treats
+    /// `None` as "not available" rather than loading one itself — see
+    /// [`Self::host_capabilities_available`].
+    pub fn runtime_config(&self) -> Option<Arc<crate::openhuman::config::Config>> {
+        self.runtime_config.clone()
+    }
+
+    /// Whether the config-dependent capability adapters can be built from this
+    /// session.
+    ///
+    /// Four of the ten host capabilities (`BudgetGate`, `ContextComposer`,
+    /// `ModelResolver`, and the policy half of `SecurityGate`) need a full
+    /// `Config`, which only the factory path supplies. This is the one-line
+    /// check a caller uses before reaching for them, so "this session cannot
+    /// answer that" stays distinguishable from "the capability failed" — the
+    /// same absence-versus-failure rule the traits themselves are built on.
+    pub fn host_capabilities_available(&self) -> bool {
+        self.runtime_config.is_some()
+    }
+
+    /// OpenHuman's [`AgentMemory`](tinyagents::harness::host::AgentMemory)
+    /// capability over this session's memory backend.
+    ///
+    /// Built on demand rather than stored: it is a thin adapter over an `Arc`
+    /// the session already holds, so constructing one is a refcount bump, and
+    /// storing it would create a second handle that could drift from
+    /// `self.memory` if the backend were ever swapped.
+    pub fn host_agent_memory(
+        &self,
+    ) -> crate::openhuman::agent::tinyagents::host::OpenHumanAgentMemory {
+        crate::openhuman::agent::tinyagents::host::OpenHumanAgentMemory::new(self.memory_arc())
+    }
+
+    /// OpenHuman's [`ExperienceStore`](tinyagents::harness::host::ExperienceStore)
+    /// capability, scoped to this session's agent profile.
+    ///
+    /// Writes go to this session's own `memory`; recall additionally consults
+    /// `shared_experience_memory` when the session was given one.
+    ///
+    /// That asymmetry mirrors the live turn path in `session/turn/core.rs`. For
+    /// a dedicated-profile session `memory` is the profile-local store and
+    /// `shared_experience_memory` is the global one holding unstamped records
+    /// from pre-profile builds — so reading both is what keeps old experience
+    /// reachable, while writing only to the profile-local store is what keeps
+    /// new records inside the profile subtree.
+    pub fn host_experience_store(
+        &self,
+    ) -> crate::openhuman::agent::tinyagents::host::OpenHumanExperienceStore {
+        crate::openhuman::agent::tinyagents::host::OpenHumanExperienceStore::with_profile(
+            self.memory_arc(),
+            self.active_profile_id.clone(),
+        )
+        .with_shared_recall_memory(self.shared_experience_memory.clone())
+    }
+
     /// The agent's working directory.
     pub fn workspace_dir(&self) -> &std::path::Path {
         &self.workspace_dir
@@ -130,7 +191,7 @@ impl Agent {
     /// Active Composio integrations fetched at session start.
     pub fn connected_integrations(
         &self,
-    ) -> &[crate::openhuman::context::prompt::ConnectedIntegration] {
+    ) -> &[crate::openhuman::agent::context::prompt::ConnectedIntegration] {
         &self.connected_integrations
     }
 
@@ -153,12 +214,14 @@ impl Agent {
     /// fetch result when the agent was built outside the normal turn loop).
     pub fn set_connected_integrations(
         &mut self,
-        integrations: Vec<crate::openhuman::context::prompt::ConnectedIntegration>,
+        integrations: Vec<crate::openhuman::agent::context::prompt::ConnectedIntegration>,
     ) {
         self.connected_integrations = integrations;
         self.connected_integrations_initialized = true;
         self.last_seen_integrations_hash =
-            crate::openhuman::composio::connected_set_hash(&self.connected_integrations);
+            crate::openhuman::integrations::composio::connected_set_hash(
+                &self.connected_integrations,
+            );
     }
 
     /// The agent's runtime config snapshot.
@@ -241,6 +304,32 @@ impl Agent {
         tx: Option<tokio::sync::mpsc::Sender<crate::openhuman::agent::progress::AgentProgress>>,
     ) {
         self.on_progress = tx;
+    }
+
+    /// Bind this session's acting tools (shell / file / git) to `descriptor`'s
+    /// root as their default working directory.
+    ///
+    /// The post-build counterpart of
+    /// [`AgentBuilder::workspace_descriptor`](crate::openhuman::agent::AgentBuilder::workspace_descriptor),
+    /// for callers that construct the agent through
+    /// [`Agent::from_config`](crate::openhuman::agent::Agent::from_config) and
+    /// therefore never see the builder — notably the per-turn `cwd` of
+    /// [`agent_chat`](crate::openhuman::inference::local::ops::agent_chat).
+    ///
+    /// The descriptor is threaded onto the turn's run context, so it also
+    /// propagates to sub-agents spawned from this session (the same deliberate
+    /// isolation the per-profile descriptor has). `None` restores the shared
+    /// `action_dir` cwd.
+    ///
+    /// This only moves the *default* cwd: what the session may read and write is
+    /// still decided by its [`SecurityPolicy`](crate::openhuman::security::SecurityPolicy),
+    /// so a caller that wants tools rooted somewhere new must build the agent
+    /// from a config whose `action_dir` already permits it.
+    pub fn set_workspace_descriptor(
+        &mut self,
+        descriptor: Option<tinyagents::harness::workspace::WorkspaceDescriptor>,
+    ) {
+        self.workspace_descriptor = descriptor;
     }
 
     /// Attach an active-run queue for mid-turn steering.
@@ -423,6 +512,14 @@ impl Agent {
     /// user message is appended later by [`Self::run_single`] / `turn`, so it is
     /// intentionally absent from the loaded prefix — no dedup is needed here (the
     /// on-disk transcript ends at the previous completed turn).
+    ///
+    /// Goes through the S4 seam like `try_load_session_transcript` (see its doc
+    /// comment for why the read is `read_session` and not
+    /// `ChatHistory::messages()`), via the locator's `root_for_thread` — the
+    /// lookup that resolves by `_meta.thread_id` across *root* transcripts
+    /// only. That disambiguation is why it is a locator method rather than
+    /// anything a stem-bound handle could offer: several transcripts share one
+    /// thread id (every sub-agent spawned within it does).
     pub fn seed_resume_from_thread_transcript(&mut self, thread_id: &str) -> bool {
         if !self.history.is_empty() || self.cached_transcript_messages.is_some() {
             log::debug!(
@@ -434,16 +531,21 @@ impl Agent {
             return false;
         }
 
-        let session_raw_dir = self.workspace_dir.join(&self.session_raw_subdir);
-        let Some(path) =
-            super::transcript::find_root_transcript_for_thread_in_dir(&session_raw_dir, thread_id)
-        else {
+        // The thread's conversation belongs to the THREAD, not the active
+        // profile: the locator resolves cross-dir, newest-wins across the
+        // shared `session_raw/` and every profile-scoped `session_raw-<id>/`
+        // (#5351), so switching profile mid-thread continues the same
+        // conversation. See `FileTranscriptLocator::root_for_thread` for why
+        // this must not be own-dir-first.
+        let Some(handle) = self.session_locator().root_for_thread(thread_id) else {
             log::debug!(
-                "[web-channel] no root session_raw transcript for thread={thread_id} — \
-                 falling back to conversation-log prose seeding"
+                "[web-channel] no root session_raw transcript for thread={thread_id} in any \
+                 (shared or profile-scoped) session_raw dir — falling back to \
+                 conversation-log prose seeding"
             );
             return false;
         };
+        let path = handle.path().to_path_buf();
 
         log::info!(
             "[web-channel] cold-boot resume — loading full-fidelity transcript for \
@@ -451,8 +553,18 @@ impl Agent {
             path.display()
         );
 
-        match super::transcript::read_transcript(&path) {
-            Ok(session) => {
+        match handle.read_session() {
+            // `Ok(None)` (file vanished between discovery and read) folds into
+            // the same empty-transcript branch, so the prose-seeding fallback
+            // triggers identically.
+            Ok(None) => {
+                log::debug!(
+                    "[web-channel] root transcript for thread={thread_id} is empty — \
+                     falling back to prose seeding"
+                );
+                false
+            }
+            Ok(Some(session)) => {
                 if session.messages.is_empty() {
                     log::debug!(
                         "[web-channel] root transcript for thread={thread_id} is empty — \
@@ -497,7 +609,7 @@ impl Agent {
     /// Drain and return memory citations collected for the latest completed turn.
     pub fn take_last_turn_citations(
         &mut self,
-    ) -> Vec<crate::openhuman::agent_memory::memory_loader::MemoryCitation> {
+    ) -> Vec<crate::openhuman::memory::agent::memory_loader::MemoryCitation> {
         std::mem::take(&mut self.last_turn_citations)
     }
 
@@ -698,7 +810,7 @@ impl Agent {
                     ("action", action_tag),
                 ],
             );
-            publish_global(DomainEvent::AgentError {
+            BUS.publish(DomainEvent::AgentError {
                 session_id: self.event_session_id().to_string(),
                 message: user_message.to_string(),
                 recoverable: true,
@@ -707,7 +819,7 @@ impl Agent {
         }
 
         let history_snapshot = self.history.clone();
-        publish_global(DomainEvent::AgentTurnStarted {
+        BUS.publish(DomainEvent::AgentTurnStarted {
             session_id: self.event_session_id().to_string(),
             channel: self.event_channel().to_string(),
         });
@@ -715,7 +827,7 @@ impl Agent {
         match self.turn(message).await {
             Ok(response) => {
                 let new_entries = Self::new_entries_for_turn(&history_snapshot, &self.history);
-                publish_global(DomainEvent::AgentTurnCompleted {
+                BUS.publish(DomainEvent::AgentTurnCompleted {
                     session_id: self.event_session_id().to_string(),
                     text_chars: response.chars().count(),
                     iterations: Self::count_iterations(new_entries),
@@ -768,7 +880,7 @@ impl Agent {
                         ],
                     );
                 }
-                publish_global(DomainEvent::AgentError {
+                BUS.publish(DomainEvent::AgentError {
                     session_id: self.event_session_id().to_string(),
                     message: sanitized_message,
                     recoverable: false,

@@ -69,12 +69,12 @@ async fn resolve_cron_profile_present_and_deleted_fallback() {
     );
 
     // Seed the profile → it now resolves.
-    let mut profile = crate::openhuman::profiles::store::built_in_default_profile();
+    let mut profile = crate::openhuman::agent::profiles::store::built_in_default_profile();
     profile.id = "alice".into();
     profile.name = "Alice".into();
     profile.built_in = false;
     profile.is_master = false;
-    crate::openhuman::profiles::store::AgentProfileStore::new(config.workspace_dir.clone())
+    crate::openhuman::agent::profiles::store::AgentProfileStore::new(config.workspace_dir.clone())
         .upsert(profile)
         .expect("seed profile");
     let resolved = resolve_cron_profile(&config, &job)
@@ -94,12 +94,12 @@ async fn existing_profile_agent_build_failure_does_not_fall_back_profile_less() 
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp).await;
 
-    let mut profile = crate::openhuman::profiles::store::built_in_default_profile();
+    let mut profile = crate::openhuman::agent::profiles::store::built_in_default_profile();
     profile.id = "alice".into();
     profile.agent_id = "removed-agent-definition".into();
     profile.built_in = false;
     profile.is_master = false;
-    crate::openhuman::profiles::store::AgentProfileStore::new(config.workspace_dir.clone())
+    crate::openhuman::agent::profiles::store::AgentProfileStore::new(config.workspace_dir.clone())
         .upsert(profile)
         .expect("seed profile");
 
@@ -122,12 +122,12 @@ async fn attributed_cron_build_retains_profile_gates() {
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp).await;
 
-    let mut profile = crate::openhuman::profiles::store::built_in_default_profile();
+    let mut profile = crate::openhuman::agent::profiles::store::built_in_default_profile();
     profile.id = "alice".into();
     profile.built_in = false;
     profile.allowed_tools = Some(vec!["file_read".into()]);
     profile.memory_sources = Some(vec!["slack:#eng".into()]);
-    crate::openhuman::profiles::store::AgentProfileStore::new(config.workspace_dir.clone())
+    crate::openhuman::agent::profiles::store::AgentProfileStore::new(config.workspace_dir.clone())
         .upsert(profile)
         .expect("seed profile");
 
@@ -148,19 +148,19 @@ async fn attributed_cron_build_retains_profile_gates() {
 }
 
 #[tokio::test]
-async fn attributed_cron_build_applies_profile_runtime_defaults() {
+async fn attributed_cron_build_applies_profile_temperature_and_prompt_defaults() {
     crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::init_global_builtins()
         .expect("init built-in agent definitions");
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp).await;
 
-    let mut profile = crate::openhuman::profiles::store::built_in_default_profile();
+    let mut profile = crate::openhuman::agent::profiles::store::built_in_default_profile();
     profile.id = "alice-runtime".into();
     profile.built_in = false;
     profile.model_override = Some("profile-runtime-model".into());
     profile.temperature = Some(0.17);
     profile.system_prompt_suffix = Some("CRON_PROFILE_SUFFIX_SENTINEL".into());
-    crate::openhuman::profiles::store::AgentProfileStore::new(config.workspace_dir.clone())
+    crate::openhuman::agent::profiles::store::AgentProfileStore::new(config.workspace_dir.clone())
         .upsert(profile)
         .expect("seed profile");
 
@@ -169,6 +169,7 @@ async fn attributed_cron_build_applies_profile_runtime_defaults() {
     job.profile_id = Some("alice-runtime".into());
     let built = build_agent_for_cron_job(&config, &job).expect("build attributed cron agent");
 
+    // Explicit profile model selection must win over the built-in agent hint.
     assert_eq!(built.agent.model_name(), "profile-runtime-model");
     assert_eq!(built.agent.temperature(), 0.17);
     let prompt = built
@@ -184,7 +185,7 @@ fn cron_job_model_override_wins_over_profile_model() {
         default_model: Some("config-model".into()),
         ..Config::default()
     };
-    let mut profile = crate::openhuman::profiles::store::built_in_default_profile();
+    let mut profile = crate::openhuman::agent::profiles::store::built_in_default_profile();
     profile.model_override = Some("profile-model".into());
     profile.temperature = Some(0.23);
     let mut job = test_job("");
@@ -241,7 +242,8 @@ async fn push_cron_alert_deduplicates_repeated_morning_briefing_failures() {
     push_cron_alert(&config, &job, AGENT_JOB_USER_FAILURE_MESSAGE);
 
     let items =
-        crate::openhuman::notifications::store::list(&config, 10, 0, Some("cron"), None).unwrap();
+        crate::openhuman::desktop::notifications::store::list(&config, 10, 0, Some("cron"), None)
+            .unwrap();
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].body, MORNING_BRIEFING_FAILURE_NOTIFICATION);
 }
@@ -267,7 +269,8 @@ async fn deliver_if_configured_alerts_no_delivery_failure() {
         .unwrap();
 
     let items =
-        crate::openhuman::notifications::store::list(&config, 10, 0, Some("cron"), None).unwrap();
+        crate::openhuman::desktop::notifications::store::list(&config, 10, 0, Some("cron"), None)
+            .unwrap();
     assert_eq!(
         items.len(),
         1,
@@ -294,7 +297,8 @@ async fn deliver_if_configured_does_not_alert_successful_empty_no_delivery() {
         .unwrap();
 
     let items =
-        crate::openhuman::notifications::store::list(&config, 10, 0, Some("cron"), None).unwrap();
+        crate::openhuman::desktop::notifications::store::list(&config, 10, 0, Some("cron"), None)
+            .unwrap();
     assert!(
         items.is_empty(),
         "a successful empty run must not spam the alerts tab"
@@ -1197,11 +1201,12 @@ async fn deliver_if_configured_skips_non_announce_mode() {
 
 #[tokio::test]
 async fn deliver_if_configured_publishes_event_for_announce_mode() {
-    use crate::core::event_bus::{DomainEvent, EventHandler};
+    use crate::core::events::DomainEvent;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use tinybus::EventHandler;
 
     // Create an isolated bus for this test.
-    let bus = crate::core::event_bus::EventBus::create(16);
+    let bus = crate::core::bus_testing::isolated_bus().await;
 
     let received = Arc::new(AtomicUsize::new(0));
     let received_clone = Arc::clone(&received);
@@ -1209,7 +1214,7 @@ async fn deliver_if_configured_publishes_event_for_announce_mode() {
     struct Counter(Arc<AtomicUsize>);
 
     #[async_trait::async_trait]
-    impl EventHandler for Counter {
+    impl EventHandler<DomainEvent> for Counter {
         fn name(&self) -> &str {
             "test::counter"
         }
@@ -1736,11 +1741,11 @@ fn classify_agent_anyhow_does_not_leak_when_downcast_succeeds() {
 /// last-writer-wins map that any parallel test can flip.
 #[tokio::test]
 async fn scheduler_tick_once_publishes_health_recovery_signal_on_empty_queue() {
-    use crate::core::event_bus::{
-        init_global, subscribe_global, DomainEvent, EventHandler, DEFAULT_CAPACITY,
-    };
+    use crate::core::bus::BUS;
+    use crate::core::events::DomainEvent;
     use async_trait::async_trait;
     use std::sync::Mutex as StdMutex;
+    use tinybus::EventHandler;
 
     #[derive(Default)]
     struct HealthEventCollector {
@@ -1748,7 +1753,7 @@ async fn scheduler_tick_once_publishes_health_recovery_signal_on_empty_queue() {
     }
 
     #[async_trait]
-    impl EventHandler for HealthEventCollector {
+    impl EventHandler<DomainEvent> for HealthEventCollector {
         fn name(&self) -> &str {
             "test::scheduler::tick_once::collector"
         }
@@ -1773,12 +1778,12 @@ async fn scheduler_tick_once_publishes_health_recovery_signal_on_empty_queue() {
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp).await;
 
-    init_global(DEFAULT_CAPACITY);
+    crate::core::bus::init().await.expect("bus init");
     let events: Arc<StdMutex<Vec<(String, bool)>>> = Arc::new(StdMutex::new(Vec::new()));
     let collector = Arc::new(HealthEventCollector {
         events: Arc::clone(&events),
     });
-    let _handle = subscribe_global(collector).expect("bus subscriber installed");
+    let _handle = BUS.subscribe(collector).expect("bus subscriber installed");
 
     let security = Arc::new(SecurityPolicy::from_config(
         &config.autonomy,
@@ -1937,7 +1942,7 @@ fn proactive_job() -> CronJob {
 }
 
 async fn cron_alerts(config: &Config) -> usize {
-    crate::openhuman::notifications::store::list(config, 10, 0, Some("cron"), None)
+    crate::openhuman::desktop::notifications::store::list(config, 10, 0, Some("cron"), None)
         .unwrap()
         .len()
 }
@@ -1966,7 +1971,8 @@ async fn deliver_if_configured_empty_failure_alerts_with_fallback_body() {
         .await
         .is_ok());
     let items =
-        crate::openhuman::notifications::store::list(&config, 10, 0, Some("cron"), None).unwrap();
+        crate::openhuman::desktop::notifications::store::list(&config, 10, 0, Some("cron"), None)
+            .unwrap();
     assert_eq!(items.len(), 1);
     assert!(items[0].body.contains("failed without output"));
 }

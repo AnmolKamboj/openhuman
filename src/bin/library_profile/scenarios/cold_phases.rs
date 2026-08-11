@@ -5,11 +5,11 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use openhuman_core::core::event_bus::init_global;
+use openhuman_core::core::bus::init as init_global;
 use openhuman_core::openhuman::agent::harness::AgentDefinitionRegistry;
 use openhuman_core::openhuman::agent::Agent;
 use openhuman_core::openhuman::inference::provider::factory::test_provider_override;
-use openhuman_core::openhuman::memory_store::MemoryClient;
+use openhuman_core::openhuman::memory::store::MemoryClient;
 
 use crate::harness::{fixture, measure, ProfileResult};
 use crate::mock::PlainTextMock;
@@ -27,7 +27,7 @@ pub async fn run() -> Result<ProfileResult> {
         rec.checkpoint("config-parse")?;
 
         // b. event-bus (plus agent-handler registration so turns can run).
-        let _ = init_global(256);
+        crate::core::bus::init().await.expect("bus init");
         openhuman_core::openhuman::agent::bus::register_agent_handlers();
         rec.checkpoint("event-bus")?;
 
@@ -37,7 +37,8 @@ pub async fn run() -> Result<ProfileResult> {
 
         // d. detectors — force the lazy PII + prompt-injection statics.
         let _ = openhuman_core::openhuman::security::pii::scan("");
-        let _ = openhuman_core::openhuman::prompt_injection::scan_tool_definition("x", "");
+        let _ =
+            openhuman_core::openhuman::security::prompt_injection::scan_tool_definition("x", "");
         rec.checkpoint("detectors")?;
 
         // e. memory-store — build and hold a unified-memory client until teardown.

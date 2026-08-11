@@ -22,7 +22,7 @@ use openhuman_core::openhuman::config::schema::cloud_providers::{
     AuthStyle as CloudAuthStyle, CloudProviderCreds,
 };
 use openhuman_core::openhuman::config::Config;
-use openhuman_core::openhuman::credentials::{
+use openhuman_core::openhuman::security::credentials::{
     AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
 };
 use openhuman_core::openhuman::inference::local::LocalAiService;
@@ -347,7 +347,6 @@ async fn local_admin_covers_diagnostics_errors_assets_status_and_shutdown_with_f
     assert!(assets.ollama_available);
     assert_eq!(assets.chat.state, "missing");
     assert_eq!(assets.embedding.state, "missing");
-    assert_ne!(assets.stt.state, "ready");
     assert_ne!(assets.tts.state, "ready");
 
     let child = tokio::process::Command::new("/bin/sh")

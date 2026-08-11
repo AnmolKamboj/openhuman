@@ -11,12 +11,12 @@ use openhuman_core::openhuman::agent::harness::{
 };
 use openhuman_core::openhuman::agent::hooks::{PostTurnHook, ToolCallRecord, TurnContext};
 use openhuman_core::openhuman::config::AgentConfig;
-use openhuman_core::openhuman::context::prompt::ToolCallFormat;
+use openhuman_core::openhuman::agent::context::prompt::ToolCallFormat;
 use openhuman_core::openhuman::memory::{
     Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts,
 };
-use openhuman_core::openhuman::memory_store::{events, fts5, profile, segments};
-use openhuman_core::openhuman::tokenjuice::AgentTokenjuiceCompression;
+use openhuman_core::openhuman::memory::store::{events, fts5, profile, segments};
+use openhuman_core::openhuman::inference::tokenjuice::AgentTokenjuiceCompression;
 use openhuman_core::openhuman::tools::{PermissionLevel, Tool, ToolResult};
 use parking_lot::Mutex;
 use rusqlite::Connection;
@@ -217,6 +217,7 @@ fn tool_response(name: &str, arguments: serde_json::Value) -> ModelResponse {
         raw: None,
         resolved_model: None,
         continue_turn: None,
+            served_from_cache: false,
     }
 }
 
@@ -267,7 +268,7 @@ fn parent_context(workspace: &Path, model: Arc<ScriptedModel>) -> ParentExecutio
         ]
         .into_iter()
         .collect(),
-        turn_model_source: openhuman_core::openhuman::tinyagents::TurnModelSource::from_model(
+        turn_model_source: openhuman_core::openhuman::agent::tinyagents::TurnModelSource::from_model(
             model,
         ),
         all_tools: Arc::new(tools),

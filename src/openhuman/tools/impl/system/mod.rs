@@ -18,6 +18,7 @@ mod update_apply;
 mod update_check;
 mod workspace_state;
 
+use crate::openhuman::security::policy::{TrustedAccess, TrustedRoot};
 use crate::openhuman::security::SecurityPolicy;
 use std::path::Path;
 use tinyagents::harness::tool::ToolExecutionContext;
@@ -41,6 +42,29 @@ pub use update_apply::UpdateApplyTool;
 pub use update_check::UpdateCheckTool;
 pub use workspace_state::WorkspaceStateTool;
 
+/// Clone `security` and scope it to the run's workspace descriptor, if any.
+///
+/// The process-tool counterpart of
+/// [`super::filesystem::security_for_tool_context`], and it must stay in step
+/// with it: the descriptor's root becomes both the relative-path resolution
+/// root (`action_dir`) **and** a `ReadWrite` trusted root. The grant is the
+/// load-bearing half — `action_dir` only decides where a relative path lands,
+/// while the allow/deny decision reads `workspace_dir` + `trusted_roots`
+/// (`SecurityPolicy::is_resolved_path_allowed_for`). Granting it in the
+/// filesystem copy alone would let an agent read and edit a checkout it could
+/// not then build, test, or commit, because `shell`, `python_exec`,
+/// `node_exec`, and `npm_exec` all resolve their paths through here.
+///
+/// The grant is *additive and per-call*: it is pushed onto a clone, so nothing
+/// process-global is mutated and concurrent turns cannot race each other. It
+/// cannot widen the hard invariants either — `is_always_forbidden` and
+/// `is_workspace_internal_path` are both evaluated *before* any trusted-root
+/// shortcut. Cross-profile command scanning
+/// ([`check_cross_profile_command`]) is unaffected and still applies.
+///
+/// The root always originates from trusted in-process code (the session
+/// builder, the sub-agent runner, or the `cwd` RPC parameter) — never from
+/// model-supplied text.
 pub(super) fn security_for_tool_context(
     security: &SecurityPolicy,
     context: Option<&ToolExecutionContext>,
@@ -52,9 +76,13 @@ pub(super) fn security_for_tool_context(
             tool,
             workspace_root = %workspace.root.display(),
             policy_id = %workspace.policy_id,
-            "[tools:system] using TinyAgents workspace descriptor as action dir"
+            "[tools:system] granting TinyAgents workspace descriptor as action dir + trusted root"
         );
         scoped.action_dir = workspace.root.clone();
+        scoped.trusted_roots.push(TrustedRoot {
+            path: workspace.root.to_string_lossy().to_string(),
+            access: TrustedAccess::ReadWrite,
+        });
     }
     scoped
 }
@@ -76,14 +104,16 @@ pub(super) fn check_cross_profile_command(
     // accept a syntactically in-profile directory that is actually a symlink
     // into a sibling; once spawned there, npm lifecycle hooks or a shell can
     // mutate that sibling without mentioning its path in the command.
-    let other_id = match crate::openhuman::profiles::classify_cross_profile_target(
+    let other_id = match crate::openhuman::agent::profiles::classify_cross_profile_target(
         &guard.action_dir,
         &guard.profile_id,
         cwd,
     ) {
-        crate::openhuman::profiles::CrossProfileDecision::Block { other_id } => Some(other_id),
-        crate::openhuman::profiles::CrossProfileDecision::Allow => {
-            crate::openhuman::profiles::scan_command_for_cross_profile(
+        crate::openhuman::agent::profiles::CrossProfileDecision::Block { other_id } => {
+            Some(other_id)
+        }
+        crate::openhuman::agent::profiles::CrossProfileDecision::Allow => {
+            crate::openhuman::agent::profiles::scan_command_for_cross_profile(
                 command,
                 cwd,
                 &guard.action_dir,
@@ -101,7 +131,7 @@ pub(super) fn check_cross_profile_command(
         other_profile = %other_id,
         "[profiles] cross-profile process command blocked"
     );
-    if other_id == crate::openhuman::profiles::PROFILES_ROOT_SENTINEL {
+    if other_id == crate::openhuman::agent::profiles::PROFILES_ROOT_SENTINEL {
         Err(format!(
             "{} Cross-profile access blocked: profile '{}' may not modify the shared profiles \
              root. Stay within your own profile directory; do not retry this command.",

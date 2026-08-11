@@ -1,5 +1,5 @@
 use super::*;
-use crate::core::event_bus::{DomainEvent, EventHandler};
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::messages::ChatMessage;
 use crate::openhuman::channels::context::{
     ChannelRuntimeContext, RouteSelectionMap, TurnModelSourceCacheMap,
@@ -12,6 +12,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use tinybus::EventHandler;
 
 struct DummyMemory;
 
@@ -122,9 +123,9 @@ fn runtime_context(workspace_dir: PathBuf) -> ChannelRuntimeContext {
         ]));
     ChannelRuntimeContext {
         channels_by_name: Arc::new(HashMap::new()),
-        turn_model_source: Some(crate::openhuman::tinyagents::TurnModelSource::from_model(
-            model,
-        )),
+        turn_model_source: Some(
+            crate::openhuman::agent::tinyagents::TurnModelSource::from_model(model),
+        ),
         default_provider: Arc::new("openai".into()),
         memory: Arc::new(DummyMemory),
         tools_registry: Arc::new(vec![Box::new(DummyTool) as Box<dyn Tool>]),

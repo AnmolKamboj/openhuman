@@ -30,18 +30,18 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use tinydocs::spec::ImageFormat;
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use crate::openhuman::artifacts::{
+use crate::openhuman::agent::artifacts::{
     create_artifact, fail_artifact, finalize_artifact, read_artifact_bytes, ArtifactKind,
 };
 use crate::openhuman::security::SecurityPolicy;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
 
 mod engine;
-mod image_util;
 mod types;
 
 #[cfg(test)]
@@ -248,7 +248,7 @@ impl Tool for PresentationTool {
         // Retry can re-dispatch this exact spec deterministically (#3162).
         // Best-effort: a write failure only forfeits future regeneration,
         // it must not abort an otherwise-successful generation.
-        if let Err(err) = crate::openhuman::artifacts::store::save_artifact_args(
+        if let Err(err) = crate::openhuman::agent::artifacts::store::save_artifact_args(
             &self.workspace_dir,
             &meta.id,
             &args,
@@ -429,11 +429,17 @@ impl PresentationTool {
             ));
         }
 
-        let format = image_util::sniff_format(&bytes).ok_or_else(|| {
+        // Identification and measurement live in `tinydocs::spec::image`, which
+        // is ungated: a host resolving image bytes has to do this to build a
+        // spec, and it must not need the writer to do it. One implementation
+        // also means the host and the module cannot disagree about what is
+        // embeddable.
+        let format = ImageFormat::sniff(&bytes).ok_or_else(|| {
             "unsupported image type (only PNG and JPEG are embeddable)".to_string()
         })?;
 
-        let (width_px, height_px) = image_util::pixel_dimensions(&bytes, format)
+        let (width_px, height_px) = format
+            .dimensions(&bytes)
             .ok_or_else(|| format!("could not read {format} dimensions (corrupt header?)"))?;
 
         Ok(ResolvedSlideImage {

@@ -12,14 +12,14 @@ use openhuman_core::openhuman::agent::tool_policy::{
     ToolPolicy, ToolPolicyDecision, ToolPolicyRequest,
 };
 use openhuman_core::openhuman::agent::Agent;
-use openhuman_core::openhuman::agent_memory::memory_loader::MemoryLoader;
+use openhuman_core::openhuman::memory::agent::memory_loader::MemoryLoader;
 use openhuman_core::openhuman::config::{AgentConfig, ContextConfig, MemoryConfig};
 use openhuman_core::openhuman::agent::messages::ConversationMessage;
 use openhuman_core::openhuman::memory::{
     Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts,
 };
-use openhuman_core::openhuman::memory_store;
-use openhuman_core::openhuman::tokenjuice::AgentTokenjuiceCompression;
+use openhuman_core::openhuman::memory::store as memory_store;
+use openhuman_core::openhuman::inference::tokenjuice::AgentTokenjuiceCompression;
 use openhuman_core::openhuman::tools::traits::ToolCallOptions;
 use openhuman_core::openhuman::tools::{
     PermissionLevel, Tool, ToolContent, ToolResult, ToolScope as RuntimeToolScope,
@@ -497,6 +497,7 @@ fn reasoning_text_response(text: &str, reasoning: &str, usage: Usage) -> ModelRe
         raw: None,
         resolved_model: None,
         continue_turn: None,
+            served_from_cache: false,
     }
 }
 
@@ -517,6 +518,7 @@ fn tool_response(id: &str, name: &str, args: serde_json::Value) -> ModelResponse
         raw: None,
         resolved_model: None,
         continue_turn: None,
+            served_from_cache: false,
     }
 }
 
@@ -840,7 +842,8 @@ async fn turn_xml_failures_checkpoint_policy_visibility_and_hooks_are_publicly_e
 
     let checkpoint = agent.turn("exercise failure branches").await.unwrap();
     assert!(
-        checkpoint.contains("Done so far") || checkpoint.contains("Need next"),
+        checkpoint.contains("Tool 'round17_ok' was denied by policy 'round17-deny'")
+            && checkpoint.contains("Different commands are all failing"),
         "fallback checkpoint should be deterministic, got {checkpoint}"
     );
     assert_eq!(ok_calls.load(Ordering::SeqCst), 0);
@@ -879,7 +882,8 @@ async fn turn_xml_failures_checkpoint_policy_visibility_and_hooks_are_publicly_e
     assert!(joined.contains("unknown tool `hidden_tool`"));
     assert!(joined.contains("semantic failure"));
     assert!(joined.contains("Error executing round17_boom"));
-    assert!(joined.contains("denied by policy 'round17-deny'"));
+    // Policy denials now terminate through the checkpoint path above instead
+    // of being replayed into a subsequent model request.
 
     let (_failing_tmp, failing_workspace) = workspace("provider-error");
     let provider_error = ScriptedModel::failing("provider offline");
@@ -950,7 +954,7 @@ async fn subagent_runner_parent_context_filters_tools_caps_output_and_reports_er
         ]
         .into_iter()
         .collect(),
-        turn_model_source: openhuman_core::openhuman::tinyagents::TurnModelSource::from_model(
+        turn_model_source: openhuman_core::openhuman::agent::tinyagents::TurnModelSource::from_model(
             provider.clone(),
         ),
         all_tools: Arc::new(all_tools),
@@ -971,7 +975,7 @@ async fn subagent_runner_parent_context_filters_tools_caps_output_and_reports_er
         session_id: "round17-parent-session".to_string(),
         channel: "round17-parent-channel".to_string(),
         connected_integrations: Vec::new(),
-        tool_call_format: openhuman_core::openhuman::context::prompt::ToolCallFormat::Json,
+        tool_call_format: openhuman_core::openhuman::agent::context::prompt::ToolCallFormat::Json,
         session_key: "123_parent".to_string(),
         session_parent_prefix: Some("root_ancestor".to_string()),
         on_progress: None,
@@ -1028,7 +1032,7 @@ async fn subagent_runner_parent_context_filters_tools_caps_output_and_reports_er
             && message.text().contains("delegate this")));
 
     let error_parent = ParentExecutionContext {
-        turn_model_source: openhuman_core::openhuman::tinyagents::TurnModelSource::from_model(
+        turn_model_source: openhuman_core::openhuman::agent::tinyagents::TurnModelSource::from_model(
             ScriptedModel::failing("subagent provider offline"),
         ),
         ..parent

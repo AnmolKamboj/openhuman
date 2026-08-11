@@ -14,13 +14,13 @@
 
 // Exercises the gated `mcp_registry` surface, so the whole suite is compiled
 // only when the `mcp` feature is on — otherwise the slim build's
-// `cargo test --no-default-features --features tokenjuice-treesitter --tests`
+// `cargo test --no-default-features --tests`
 // fails to compile against the removed APIs (#4799).
 #![cfg(feature = "mcp")]
 
 use openhuman_core::openhuman::config::Config;
-use openhuman_core::openhuman::mcp_registry::types::{CommandKind, InstalledServer, Transport};
-use openhuman_core::openhuman::mcp_registry::{connections, ops, store};
+use openhuman_core::openhuman::mcp::registry::types::{CommandKind, InstalledServer, Transport};
+use openhuman_core::openhuman::mcp::registry::{connections, ops, store};
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 

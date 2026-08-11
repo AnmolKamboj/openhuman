@@ -6,7 +6,7 @@
 //! [`run_channel_turn_via_graph`](crate::openhuman::agent::harness::run_channel_turn_via_graph)
 //! (issue #4249; the legacy `run_tool_call_loop` was removed).
 //!
-//! Consumers call it via [`crate::core::event_bus::request_native_global`]
+//! Consumers call it via [`crate::core::bus::BUS.native().request`]
 //! with an [`AgentTurnRequest`] and receive an [`AgentTurnResponse`]. The
 //! point is to keep the request payload as **owned Rust types** (including
 //! trait objects and streaming channels) so no serialization happens and
@@ -20,22 +20,22 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use crate::core::event_bus::register_native_global;
+use crate::core::bus::BUS;
 use crate::openhuman::agent::messages::ChatMessage;
 use crate::openhuman::agent::progress::AgentProgress;
+use crate::openhuman::agent::tinyagents::{
+    current_resolved_provider_route, with_resolved_provider_route_scope,
+};
 use crate::openhuman::agent::turn_origin::{self, AgentTurnOrigin};
 use crate::openhuman::config::MultimodalConfig;
-use crate::openhuman::prompt_injection::{
+use crate::openhuman::security::prompt_injection::{
     enforce_prompt_input, PromptEnforcementAction, PromptEnforcementContext,
-};
-use crate::openhuman::tinyagents::{
-    current_resolved_provider_route, with_resolved_provider_route_scope,
 };
 use crate::openhuman::tools::Tool;
 
 use super::harness::definition::{AgentDefinitionRegistry, SandboxMode};
 use super::harness::{run_channel_turn_via_graph, with_current_sandbox_mode};
-use crate::openhuman::file_state::with_file_state_agent_id;
+use crate::openhuman::agent::file_state::with_file_state_agent_id;
 
 /// Method name used to dispatch an agentic turn through the native bus.
 pub const AGENT_RUN_TURN_METHOD: &str = "agent.run_turn";
@@ -51,7 +51,7 @@ pub struct AgentTurnRequest {
     /// crate `ChatModel` set (issue #4249, Phase 3 / Motion A). Replaces the raw
     /// `Arc<dyn Provider>`: the bus/harness path names crate model types only,
     /// and the `Provider` stays confined to the inference factory + seam.
-    pub turn_model_source: crate::openhuman::tinyagents::TurnModelSource,
+    pub turn_model_source: crate::openhuman::agent::tinyagents::TurnModelSource,
 
     /// Full conversation history including system prompt and the incoming
     /// user message. The handler mutates an internal clone of this during
@@ -373,9 +373,8 @@ async fn handle_agent_run_turn_on_large_stack(
 /// allowing any part of the system to request an agentic turn without
 /// depending directly on the agent harness.
 pub fn register_agent_handlers() {
-    register_native_global::<AgentTurnRequest, AgentTurnResponse, _, _>(
-        AGENT_RUN_TURN_METHOD,
-        |req| {
+    BUS.native()
+        .register::<AgentTurnRequest, AgentTurnResponse, _, _>(AGENT_RUN_TURN_METHOD, |req| {
             #[cfg(test)]
             {
                 handle_agent_run_turn_on_large_stack(req)
@@ -384,8 +383,7 @@ pub fn register_agent_handlers() {
             {
                 handle_agent_run_turn(req)
             }
-        },
-    );
+        });
     tracing::debug!("[agent::bus] registered native handler `{AGENT_RUN_TURN_METHOD}`");
 }
 
@@ -404,7 +402,7 @@ pub fn register_agent_handlers() {
 /// This is the canonical entry point for any test that wants to verify
 /// dispatch routed through the bus OR inject a canned agent response
 /// without spinning up `run_tool_call_loop`. The returned guard holds
-/// [`crate::core::event_bus::testing::BUS_HANDLER_LOCK`] so other
+/// [`crate::core::bus_testing::BUS_HANDLER_LOCK`] so other
 /// dispatch tests will block until this one finishes.
 ///
 /// # Example
@@ -434,20 +432,16 @@ pub fn register_agent_handlers() {
 /// }
 /// ```
 #[cfg(test)]
-pub async fn mock_agent_run_turn<F, Fut>(
-    handler: F,
-) -> crate::core::event_bus::testing::MockBusGuard
+pub async fn mock_agent_run_turn<F, Fut>(handler: F) -> crate::core::bus_testing::MockBusGuard
 where
     F: Fn(AgentTurnRequest) -> Fut + Send + Sync + 'static,
     Fut: std::future::Future<Output = Result<AgentTurnResponse, String>> + Send + 'static,
 {
-    crate::core::event_bus::testing::mock_bus_stub::<
-        AgentTurnRequest,
-        AgentTurnResponse,
-        F,
-        Fut,
-        _,
-    >(AGENT_RUN_TURN_METHOD, handler, || register_agent_handlers())
+    crate::core::bus_testing::mock_bus_stub::<AgentTurnRequest, AgentTurnResponse, F, Fut, _>(
+        AGENT_RUN_TURN_METHOD,
+        handler,
+        || register_agent_handlers(),
+    )
     .await
 }
 
@@ -461,9 +455,7 @@ where
 /// handler with a stub, use [`mock_agent_run_turn`] instead.
 #[cfg(test)]
 pub async fn use_real_agent_handler() -> tokio::sync::MutexGuard<'static, ()> {
-    let guard = crate::core::event_bus::testing::BUS_HANDLER_LOCK
-        .lock()
-        .await;
+    let guard = crate::core::bus_testing::BUS_HANDLER_LOCK.lock().await;
     register_agent_handlers();
     guard
 }
@@ -471,7 +463,7 @@ pub async fn use_real_agent_handler() -> tokio::sync::MutexGuard<'static, ()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::event_bus::NativeRegistry;
+    use tinybus::NativeRegistry;
 
     /// Build a canonical test request. The bus handler is always stubbed
     /// in these tests, so the provider trait object is never actually
@@ -480,7 +472,9 @@ mod tests {
         let model: Arc<dyn tinyagents::harness::model::ChatModel<()>> =
             Arc::new(tinyagents::harness::testkit::ScriptedModel::new(Vec::new()));
         AgentTurnRequest {
-            turn_model_source: crate::openhuman::tinyagents::TurnModelSource::from_model(model),
+            turn_model_source: crate::openhuman::agent::tinyagents::TurnModelSource::from_model(
+                model,
+            ),
             history: vec![
                 ChatMessage::system("you are a test bot"),
                 ChatMessage::user("hello"),
@@ -578,7 +572,7 @@ mod tests {
         // other test that installs a handler override (e.g. the channel
         // dispatch integration tests in `runtime_dispatch.rs`).
         register_agent_handlers();
-        let registry = crate::core::event_bus::native_registry()
+        let registry = Some(crate::core::bus::BUS.native())
             .expect("native registry should be initialized after register_agent_handlers");
         assert!(
             registry.is_registered(AGENT_RUN_TURN_METHOD),

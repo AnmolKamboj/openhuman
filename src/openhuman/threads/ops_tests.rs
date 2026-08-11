@@ -10,6 +10,7 @@ use crate::openhuman::threads::ThreadsError;
 use serde_json::{json, Value};
 use std::ffi::OsString;
 use std::path::Path;
+use tinycortex::memory::conversations as conversations_store;
 
 struct EnvVarGuard {
     key: &'static str,
@@ -75,15 +76,15 @@ fn build_title_prompt_renders_user_and_assistant_sections_in_order() {
     let prompt = build_title_prompt("hi there", "hello back");
     assert_eq!(
         prompt,
-        "First user message:\nhi there\n\nAssistant reply:\nhello back\n\nReturn the best thread title."
+        "First user message:\nhi there\n\nAssistant reply:\nhello back\n\nReturn the best thread name."
     );
 }
 
 // NOTE: the sanitize_generated_title / title_from_user_message copies were
 // removed here (plan.md §2.1) — threads/title.rs (the owning module) already
-// covers these functions with equivalent cases (quotes/punct trimming, first
-// non-empty line, empty→None, internal-whitespace collapse, char-safe 80-char
-// truncation incl. multibyte, and the fallback-title cases).
+// covers these functions with equivalent cases (title shaping, filler removal,
+// first non-empty line, empty→None, and the char-safe length ceiling incl.
+// multibyte input).
 
 // ── is_auto_generated_thread_title ────────────────────────────
 
@@ -281,11 +282,11 @@ fn record_to_message_preserves_null_extra_metadata() {
 
 #[test]
 fn title_system_prompt_constrains_model_output_shape() {
-    // The system prompt is shipped verbatim to the provider. Locking
-    // in the trailing "no trailing punctuation" clause catches
-    // accidental edits that would let the model emit trailing periods
-    // that `sanitize_generated_title` would then silently strip.
-    assert!(THREAD_TITLE_SYSTEM_PROMPT.contains("under 8 words"));
+    // The system prompt is shipped verbatim to the provider. Locking in the
+    // length clause catches accidental edits that would let the model emit a
+    // sentence-shaped title that `sanitize_generated_title` would then have to
+    // rewrite silently.
+    assert!(THREAD_TITLE_SYSTEM_PROMPT.contains("at most 3 words"));
     assert!(THREAD_TITLE_SYSTEM_PROMPT.contains("No quotes"));
     assert!(THREAD_TITLE_SYSTEM_PROMPT.contains("No markdown"));
 }
@@ -360,7 +361,7 @@ async fn create_thread_with_title(_workspace: &tempfile::TempDir, thread_id: &st
         .await
         .expect("load config")
         .workspace_dir;
-    conversations::ensure_thread(
+    conversations_store::ensure_thread(
         dir,
         CreateConversationThread {
             id: thread_id.to_string(),
@@ -387,7 +388,7 @@ async fn generate_title_leaves_custom_title_unchanged() {
         .await
         .expect("load config")
         .workspace_dir;
-    conversations::append_message(
+    conversations_store::append_message(
         dir,
         thread_id,
         ConversationMessage {
@@ -452,7 +453,7 @@ async fn generate_title_falls_back_to_first_user_message_when_assistant_missing(
         .expect("load config")
         .workspace_dir;
     let user_message = "Please summarize the latest five email threads for me.";
-    conversations::append_message(
+    conversations_store::append_message(
         dir,
         thread_id,
         ConversationMessage {
@@ -499,7 +500,7 @@ async fn thread_delete_removes_persisted_turn_state_snapshot() {
 
     // Queue a finished background sub-agent result for this thread; deleting the
     // thread must discard it so it's never delivered into a dead thread.
-    use crate::openhuman::agent_orchestration::background_completions as bg;
+    use crate::openhuman::agent::orchestration::background_completions as bg;
     bg::record_completion(
         "sess-del",
         "sub-del-1",
@@ -557,7 +558,7 @@ async fn threads_purge_removes_valid_and_corrupted_turn_state_files() {
 
     // Queue background sub-agent results across sessions; a full purge must wipe
     // them all since no parent thread survives.
-    use crate::openhuman::agent_orchestration::background_completions as bg;
+    use crate::openhuman::agent::orchestration::background_completions as bg;
     bg::record_completion(
         "sess-p1",
         "sub-p1",
@@ -704,4 +705,57 @@ async fn thread_update_title_returns_error_for_missing_thread() {
         err.contains("update title"),
         "error must describe the update-title failure, got: {err}"
     );
+}
+
+/// Review follow-up on #5282: moving the conversation store onto the blocking
+/// pool put an `.await` between a destructive store mutation and the cleanup
+/// that has to follow it (web-session invalidation, sub-agent cancellation,
+/// turn-snapshot deletion).
+///
+/// `spawn_blocking` work is never cancelled by dropping its `JoinHandle`, so a
+/// caller that goes away in that window — client disconnect, RPC timeout —
+/// used to leave the thread deleted from the store while every one of those
+/// cleanup steps was skipped. `run_to_completion` owns the mutation *and* the
+/// cleanup in one spawned task, so the tail runs regardless of the caller.
+#[tokio::test]
+async fn run_to_completion_runs_the_tail_after_the_caller_is_dropped() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    let tail_ran = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&tail_ran);
+    let (release, parked) = tokio::sync::oneshot::channel::<()>();
+
+    let mut call = Box::pin(run_to_completion("test_destructive_op", async move {
+        // Stands in for the blocking store mutation still in progress.
+        let _ = parked.await;
+        // Stands in for the cleanup that must never be skipped.
+        flag.store(true, Ordering::SeqCst);
+        Ok::<(), String>(())
+    }));
+
+    // Poll once so the inner task is spawned, then abandon the caller — exactly
+    // what dropping the RPC future does.
+    tokio::select! {
+        biased;
+        _ = &mut call => panic!("the inner task should still be parked"),
+        _ = tokio::task::yield_now() => {}
+    }
+    drop(call);
+
+    assert!(
+        !tail_ran.load(Ordering::SeqCst),
+        "the tail must not have run before the mutation completed"
+    );
+
+    // The store mutation finishes after the caller is already gone.
+    release.send(()).expect("release the parked task");
+
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while !tail_ran.load(Ordering::SeqCst) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("cleanup must still run after the caller's future was dropped");
 }
