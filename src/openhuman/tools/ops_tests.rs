@@ -2766,7 +2766,10 @@ const REPRESENTATIVE: &[(&str, crate::core::all::DomainGroup)] = {
 /// Families with no agent tools of their own.
 const TOOL_LESS: &[crate::core::all::DomainGroup] = {
     use crate::core::all::DomainGroup as G;
-    &[G::Config, G::Security, G::Meet, G::Medulla]
+    // `Modules` is the loader, not a capability: a loaded module's own surface
+    // is reached through whichever domain calls it (documents go through the
+    // document tools), so the family itself owns no agent tool.
+    &[G::Config, G::Security, G::Meet, G::Medulla, G::Modules]
 };
 
 // ---- tool_capability() drift guard (M5.3) ----------------------------------
