@@ -1779,6 +1779,11 @@ fn memory_capability_map_has_no_stale_entries() {
         .collect();
 
     for (ns, _) in MEMORY_NAMESPACE_CAPABILITY {
+        // `memory_diff` only registers when `memory-git` is compiled in; no CI
+        // lane enables it, so it would otherwise read as a stale table entry.
+        if *ns == "memory_diff" && !cfg!(feature = "memory-git") {
+            continue;
+        }
         assert!(
             live.iter().any(|(n, _)| n == ns),
             "MEMORY_NAMESPACE_CAPABILITY names `{ns}`, which registers no Memory controller"
@@ -1815,10 +1820,14 @@ fn every_capability_family_is_accounted_for_in_the_rpc_surface() {
             | Capability::Documents
             | Capability::Tree
             | Capability::Graph
-            | Capability::Diff
             | Capability::Goals
             | Capability::ToolMemory
             | Capability::Sources => true,
+            // `memory_diff`'s RPC surface only exists when `memory-git` is
+            // compiled in (see `memory::diff::stub` for the feature-off arm) —
+            // no CI lane enables it, so the live registry legitimately gates
+            // nothing here in every job that runs this test.
+            Capability::Diff => cfg!(feature = "memory-git"),
             // `Core` gates the combined core + recall controller partition so
             // a null driver removes the entire driver-backed surface. Recall
             // is represented by that same partition; Portability is RPC-less.
@@ -1955,13 +1964,19 @@ async fn memory_families_registered_when_capabilities_advertised() {
         "tree_summarizer",
         "memory_sync",
         "memory_sources",
-        "memory_diff",
         "slack_memory",
         "people",
     ] {
         assert!(
             ns.contains(present),
             "`{present}` must be present under a full-capability driver"
+        );
+    }
+    // `memory_diff` only registers when `memory-git` is compiled in.
+    if cfg!(feature = "memory-git") {
+        assert!(
+            ns.contains("memory_diff"),
+            "`memory_diff` must be present under a full-capability driver when `memory-git` is on"
         );
     }
     for present in [
@@ -2399,10 +2414,14 @@ fn sole_capability_for_namespace_reports_a_single_family_namespace() {
         sole_capability_for_namespace("memory_tree"),
         Some(Capability::Tree)
     );
-    assert_eq!(
-        sole_capability_for_namespace("memory_diff"),
-        Some(Capability::Diff)
-    );
+    // `memory_diff` only registers (and so only has a sole capability) when
+    // `memory-git` is compiled in.
+    if cfg!(feature = "memory-git") {
+        assert_eq!(
+            sole_capability_for_namespace("memory_diff"),
+            Some(Capability::Diff)
+        );
+    }
 }
 
 #[test]

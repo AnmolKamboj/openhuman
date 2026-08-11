@@ -407,8 +407,15 @@ fn unknown_function_in_a_live_namespace_still_reports_unknown_function() {
 #[test]
 fn default_build_leaves_the_generic_namespace_path_unchanged() {
     let grouped = grouped_schemas();
-    for ns in ["memory", "memory_tree", "memory_diff", "memory_goals"] {
+    for ns in ["memory", "memory_tree", "memory_goals"] {
         assert!(grouped.contains_key(ns), "`{ns}` must still be listed");
+    }
+    // `memory_diff` only registers when `memory-git` is compiled in.
+    if cfg!(feature = "memory-git") {
+        assert!(
+            grouped.contains_key("memory_diff"),
+            "`memory_diff` must still be listed when `memory-git` is on"
+        );
     }
 }
 
