@@ -311,12 +311,12 @@ pub fn list(config: &Config) -> Vec<ModuleStatus> {
 /// Status of one module.
 fn status_of(config: &Config, record: &ModuleRecord) -> ModuleStatus {
     let (state, detail) = match cached_resolution(record.id) {
-        Some(Resolution::Ready) => (ModuleState::Ready, None),
-        Some(Resolution::Failed(reason)) => (ModuleState::Failed, Some(reason)),
-        None if !config.modules.enabled => (
+        _ if !config.modules.enabled => (
             ModuleState::Unsupported,
             Some("modules are disabled in configuration".to_string()),
         ),
+        Some(Resolution::Ready) => (ModuleState::Ready, None),
+        Some(Resolution::Failed(reason)) => (ModuleState::Failed, Some(reason)),
         None => {
             let supported = platform::host_candidates()
                 .iter()
