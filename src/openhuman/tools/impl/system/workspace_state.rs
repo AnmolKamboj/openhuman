@@ -170,6 +170,37 @@ const ALLOWED_REPO_CONFIG: &[&str] = &[
     "pull.rebase",
     "push.default",
     "init.defaultbranch",
+    // Inert settings ordinary repositories carry that the first draft refused,
+    // making the tool useless on a large class of real workspaces. Each is a
+    // value git *interprets*; none names a program git runs.
+    "core.autocrlf",
+    "core.eol",
+    "core.untrackedcache",
+    "core.longpaths",
+    "core.fscache",
+    "core.hidedotfiles",
+    "core.sparsecheckout",
+    "core.sparsecheckoutcone",
+    "commit.gpgsign",
+    "tag.gpgsign",
+    "remote.tagopt",
+    "remote.prune",
+    "remote.partialclonefilter",
+    "remote.promisor",
+    "branch.vscodemerge",
+    "gc.auto",
+    "fetch.prune",
+    // SHA-256 repositories and worktree-scoped config. Only these two
+    // `extensions.*` keys — the namespace as a whole is where git puts
+    // repository-format switches, and a blanket allow would admit whatever it
+    // adds next.
+    "extensions.objectformat",
+    "extensions.worktreeconfig",
+    // `filter.<driver>.required` is a boolean. The driver's actual programs —
+    // `clean`, `smudge`, `process` — are NOT here and must not be; see the LFS
+    // note on `NEUTRALISED_CONFIG`.
+    "filter.required",
+    "lfs.repositoryformatversion",
 ];
 
 /// Command-valued keys cleared on the command line as a second layer.
@@ -182,6 +213,20 @@ const ALLOWED_REPO_CONFIG: &[&str] = &[
 /// means "nowhere", and `git status` / `git log` run no hooks anyway. An
 /// unrecognised `core.hookspath` is refused by [`ALLOWED_REPO_CONFIG`], which
 /// is the layer that is supposed to catch it.
+///
+/// ## Two keys that look inert and are not
+///
+/// **`credential.helper` is command-valued.** A value beginning `!` is run as a
+/// shell command, so it belongs nowhere near [`ALLOWED_REPO_CONFIG`] despite
+/// reading like a mere preference. It is refused, and a repository that sets it
+/// gets the refusal.
+///
+/// **A `git lfs install` clone is refused, deliberately.** `filter.lfs.clean`,
+/// `.smudge` and `.process` each name a program, so an LFS working copy cannot
+/// be read by this tool. That is the fail-closed answer and it is the intended
+/// one — the alternative is running whatever a `.git/config` in an
+/// agent-writable directory nominates as a filter driver. Only
+/// `filter.<driver>.required`, a boolean, is allowed.
 const NEUTRALISED_CONFIG: &[&str] = &[
     "core.fsmonitor=",
     "core.sshCommand=",
@@ -273,6 +318,14 @@ async fn repo_config_is_inert(dir: &std::path::Path) -> anyhow::Result<Option<St
 
 async fn run_git(dir: &std::path::Path, args: &[&str]) -> anyhow::Result<String> {
     if let Some(key) = repo_config_is_inert(dir).await? {
+        // The refusal is otherwise only visible folded into the tool's own
+        // output, which is not greppable when an operator is asking why a
+        // workspace stopped reporting. Correlation fields: the directory and
+        // the key that caused it.
+        tracing::debug!(
+            "[workspace_state] refusing to run git: dir={}, disallowed_config_key={key}",
+            dir.display()
+        );
         anyhow::bail!(
             "refusing to run git in {}: its repository config sets `{key}`, which is \
              not on the allowlist of configuration this tool will run under. \
@@ -390,11 +443,27 @@ mod tests {
     }
 
     fn git_init(dir: &TempDir) {
-        std::process::Command::new("git")
+        // `.status().unwrap()` only unwraps the *spawn*: a non-zero exit would
+        // pass silently here and surface later as a confusing assertion about
+        // status output. Match `plant_fsmonitor_hook`, which already checks.
+        let ok = std::process::Command::new("git")
             .args(["init", "-q", "."])
             .current_dir(dir.path())
             .status()
-            .unwrap();
+            .unwrap()
+            .success();
+        assert!(ok, "git init failed in the test workspace");
+    }
+
+    /// Set a repository config key with `git config`, asserting it took.
+    fn set_config(dir: &TempDir, key: &str, value: &str) {
+        let ok = std::process::Command::new("git")
+            .args(["config", key, value])
+            .current_dir(dir.path())
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok, "failed to set {key} in the test workspace");
     }
 
     /// Issue #459. The workspace this tool reads is the same directory the
@@ -444,6 +513,70 @@ mod tests {
         assert!(
             !out.contains("not on the allowlist"),
             "`git init`'s own config must not trip the allowlist, got: {out}"
+        );
+    }
+
+    /// The first draft of the allowlist refused any repository carrying an
+    /// ordinary setting like `core.autocrlf`, which is most of them on Windows
+    /// and many elsewhere — the tool would have reported nothing useful for a
+    /// large class of real workspaces. Raised by CodeRabbit on the PR.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_inert_setting_an_ordinary_repository_carries_is_allowed() {
+        let tmp = TempDir::new().unwrap();
+        git_init(&tmp);
+        set_config(&tmp, "core.autocrlf", "input");
+        set_config(&tmp, "gc.auto", "0");
+        set_config(&tmp, "remote.origin.prune", "true");
+        std::fs::write(tmp.path().join("tracked.txt"), "hi").unwrap();
+
+        let out = make_tool(&tmp).execute(json!({})).await.unwrap().output();
+
+        assert!(
+            out.contains("tracked.txt"),
+            "an ordinary repository must still report status, got: {out}"
+        );
+        assert!(!out.contains("not on the allowlist"), "got: {out}");
+    }
+
+    /// The other half of the same question, and the answer is the opposite one.
+    /// `filter.lfs.clean` names a program, so an LFS working copy is refused —
+    /// fail-closed, and **intended** rather than an oversight. Pinned so that
+    /// widening the allowlist for ergonomics cannot quietly admit it.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_lfs_clone_is_refused_because_its_filter_names_a_program() {
+        let tmp = TempDir::new().unwrap();
+        git_init(&tmp);
+        // What `git lfs install` writes. `required` is inert and allowed; the
+        // three programs are not.
+        set_config(&tmp, "filter.lfs.required", "true");
+        set_config(&tmp, "filter.lfs.clean", "git-lfs clean -- %f");
+
+        let out = make_tool(&tmp).execute(json!({})).await.unwrap().output();
+
+        assert!(
+            out.contains("filter.lfs.clean"),
+            "the refusal must name the key that caused it, got: {out}"
+        );
+    }
+
+    /// `credential.helper` reads like a preference and is command-valued: a
+    /// value beginning `!` is run as a shell command. CodeRabbit's review
+    /// listed it among the inert keys to allow; it is not one, and allowlisting
+    /// it would have reopened the hole this PR closes.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn credential_helper_is_refused_despite_looking_like_a_preference() {
+        let tmp = TempDir::new().unwrap();
+        git_init(&tmp);
+        set_config(&tmp, "credential.helper", "!echo pwned");
+
+        let out = make_tool(&tmp).execute(json!({})).await.unwrap().output();
+
+        assert!(
+            out.contains("credential.helper"),
+            "a command-valued key must be refused however inert it reads, got: {out}"
         );
     }
 
