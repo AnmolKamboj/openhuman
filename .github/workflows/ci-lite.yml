@@ -794,7 +794,7 @@ jobs:
           # while it later searches `target/llvm-cov-target`, leaving a fully
           # passing test run with nothing to merge.
           export LLVM_PROFILE_FILE="${GITHUB_WORKSPACE}/app/src-tauri/target/llvm-cov-target/tauri-%p-%m.profraw"
-          bash scripts/ci-cancel-aware.sh cargo llvm-cov --manifest-path app/src-tauri/Cargo.toml --lcov --output-path lcov-tauri.info
+          bash scripts/ci-cancel-aware.sh cargo llvm-cov --manifest-path app/src-tauri/Cargo.toml --no-clean --lcov --output-path lcov-tauri.info
         env:
           # Serialize codegen/link to cap peak memory + disk during the
           # instrumented Tauri-shell link (SIGBUS otherwise). Mirrors
