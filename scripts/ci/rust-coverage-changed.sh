@@ -51,15 +51,9 @@ llvm_cov() {
       return
       ;;
   esac
-  # `show-env` below installs llvm-cov's supported instrumentation wrapper.
-  # Run Cargo directly so our container-local LLVM_PROFILE_FILE is preserved;
-  # invoking `cargo llvm-cov` for every target overwrites that variable with a
-  # workspace-mounted path before spawning the test binary.
-  local args=()
-  for arg in "$@"; do
-    [ "${arg}" = "--no-report" ] || args+=("${arg}")
-  done
-  bash scripts/ci-cancel-aware.sh cargo test --features "${PRODUCT_FEATURES}" "${args[@]}"
+  # Let cargo-llvm-cov own its instrumentation lifecycle for test invocations.
+  # The explicit LLVM_PROFILE_FILE below keeps raw profiles in the report tree.
+  bash scripts/ci-cancel-aware.sh cargo llvm-cov "$@" --features "${PRODUCT_FEATURES}"
 }
 
 integration_test_targets() {
