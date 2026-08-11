@@ -26,6 +26,19 @@
 //!
 //! Everything here is created once and lives for the process. There is no
 //! shutdown path because there is nothing a shutdown could reclaim.
+//!
+//! # The runtime that gets here first owns the bus
+//!
+//! The broker and the connection are tokio tasks, so they belong to whichever
+//! runtime calls [`runtime`] first. In the core that is the one runtime the
+//! process has, and the question never arises.
+//!
+//! It arises in tests. Two `#[tokio::test]` functions each build their own
+//! runtime, and the second one to call a loaded module finds a broker whose tasks
+//! died with the first runtime — the call does not fail, it hangs until whatever
+//! deadline is above it fires. Any test that drives a real module therefore has
+//! to be the only one in its process, which is why the module-backed tool tests
+//! are `#[ignore]`d rather than merely gated on an artifact being present.
 
 use std::sync::OnceLock;
 
@@ -92,11 +105,25 @@ pub async fn runtime() -> tinybus::Result<&'static ModuleRuntime> {
     // module cannot be reloaded without a restart.
     broker.spawn(transport.clone());
 
-    // Strict admission. tinybus otherwise only warns when a module's toolchain
-    // differs from the host's, and a rustc mismatch across a `cdylib` boundary
-    // is the kind of thing that works until it corrupts something. A refusal at
-    // load time is a clear message; the alternative is a field-only crash.
-    let host = ModuleHost::new(broker).strict(true);
+    // Permissive admission, which is tinybus's default, and the choice is
+    // deliberate rather than inherited.
+    //
+    // Strict mode additionally refuses a module whose rustc version string
+    // differs from the host's. That sounds like the safer setting and is the
+    // wrong one here: released artifacts are built by CI on whatever toolchain
+    // that runner had, and this crate pins its own. Turning strict on was tried
+    // first and refused the real published artifact outright — `module
+    // libtinydocs_module.so refused: rustc version does not match in strict
+    // mode` — which would have meant the feature never worked in the field
+    // while every local build looked fine.
+    //
+    // Everything that protects the address space is still enforced in permissive
+    // mode: the ABI revision, the descriptor layout, the target triple, pointer
+    // width, endianness, feature bits, and the refusal of a panic=abort module.
+    // Only the toolchain string is relaxed, and it is reported rather than
+    // ignored. If a rustc mismatch ever does break a module, the failure is a
+    // refusal or a fault at load time, not silent corruption.
+    let host = ModuleHost::new(broker);
     let connection = Connection::connect(transport.connect().await?).await?;
 
     let runtime = ModuleRuntime { host, connection };

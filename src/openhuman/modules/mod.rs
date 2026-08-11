@@ -27,6 +27,7 @@
 //! # Layout
 //!
 //! - [`registry`] — the compiled-in set of loadable modules and their digests.
+//! - [`documents`] — the host half of the `tinydocs` module's three operations.
 //! - [`platform`] — which published artifact belongs to this host.
 //! - [`host`] — the module broker, connection and loader.
 //! - [`ops`] — resolving, loading, and reporting status.
@@ -34,6 +35,7 @@
 //! - [`boot`] — what happens at startup.
 
 pub mod boot;
+pub mod documents;
 pub mod host;
 pub mod ops;
 pub mod platform;
