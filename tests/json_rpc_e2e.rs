@@ -9343,8 +9343,15 @@ async fn json_rpc_meet_join_call_validates_and_returns_request_id() {
 /// 250 ms-budget poll to see it, and stop_session returns sane
 /// counters. STT / TTS adapters are stubbed in PR1 so this stays
 /// network-free.
-#[tokio::test]
-async fn json_rpc_meet_agent_session_lifecycle() {
+#[test]
+fn json_rpc_meet_agent_session_lifecycle() {
+    run_json_rpc_e2e_on_agent_stack(
+        "json_rpc_meet_agent_session_lifecycle",
+        json_rpc_meet_agent_session_lifecycle_inner,
+    );
+}
+
+async fn json_rpc_meet_agent_session_lifecycle_inner() {
     use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 
     let _env_lock = json_rpc_e2e_env_lock();
