@@ -302,6 +302,25 @@ function guessCategory(slug: string, name: string): SkillCategory {
  * `"crm"`, `"developer-tools"`), so we match on substrings and return the
  * first hit. Returns `undefined` when nothing matches so the caller can
  * fall back to the slug/name keyword heuristic.
+ *
+ * ## This function has a twin. Edit both.
+ *
+ * The other copy is `mapComposioCategory` in
+ * `frontend/src/lib/composio-catalog.ts` in **tinyhumansai/opencompany**,
+ * where the operator console buckets the same Composio catalog off the same
+ * free-form strings (opencompany#600). Nothing mechanical detects a
+ * divergence: edit one and both consoles keep looking correct in isolation
+ * while bucketing the same provider differently.
+ *
+ * The branch **order** is as load-bearing as the substrings — both copies
+ * return on the first hit, so an entry carrying several categories depends on
+ * Chat → Social → Productivity → Platform. Reordering here alone is the
+ * subtlest way the two can drift.
+ *
+ * There is no shared package to hoist this into, so the guard is social and
+ * deliberately cheap: this notice, the matching one on the OpenCompany side,
+ * and that repository's `mapComposioCategory keeps the buckets its OpenHuman
+ * twin produces` test, which pins the table case-by-case.
  */
 function mapComposioCategory(categories?: string[]): SkillCategory | undefined {
   if (!categories || categories.length === 0) return undefined;
