@@ -651,6 +651,51 @@ mod tests {
         broadcast_calls: Arc<parking_lot::Mutex<Vec<Value>>>,
     }
 
+    fn push_varint_field(out: &mut Vec<u8>, number: u64, value: u64) {
+        out.extend(encode_protobuf_varint(number << 3));
+        out.extend(encode_protobuf_varint(value));
+    }
+
+    fn push_bytes_field(out: &mut Vec<u8>, number: u64, value: &[u8]) {
+        out.extend(encode_protobuf_varint((number << 3) | 2));
+        out.extend(encode_protobuf_varint(value.len() as u64));
+        out.extend(value);
+    }
+
+    fn tron_raw_contract(kind: u64, type_name: &str, payload: &[u8]) -> String {
+        let mut any = Vec::new();
+        push_bytes_field(
+            &mut any,
+            1,
+            format!("type.googleapis.com/protocol.{type_name}").as_bytes(),
+        );
+        push_bytes_field(&mut any, 2, payload);
+
+        let mut contract = Vec::new();
+        push_varint_field(&mut contract, 1, kind);
+        push_bytes_field(&mut contract, 2, &any);
+
+        let mut raw = Vec::new();
+        push_bytes_field(&mut raw, 11, &contract);
+        hex::encode(raw)
+    }
+
+    fn native_raw(recipient_hex: &str, amount: u64) -> String {
+        let mut payload = Vec::new();
+        push_bytes_field(&mut payload, 2, &hex::decode(recipient_hex).unwrap());
+        push_varint_field(&mut payload, 3, amount);
+        tron_raw_contract(1, "TransferContract", &payload)
+    }
+
+    fn trc20_raw(contract_hex: &str, parameter_hex: &str) -> String {
+        let mut payload = Vec::new();
+        push_bytes_field(&mut payload, 2, &hex::decode(contract_hex).unwrap());
+        let mut data = hex::decode("a9059cbb").unwrap();
+        data.extend(hex::decode(parameter_hex).unwrap());
+        push_bytes_field(&mut payload, 4, &data);
+        tron_raw_contract(31, "TriggerSmartContract", &payload)
+    }
+
     async fn start_tron_mock(record: TronMockRecord) -> std::net::SocketAddr {
         let create = record.create_calls.clone();
         let trigger = record.trigger_calls.clone();
@@ -663,10 +708,7 @@ mod tests {
                     async move {
                         let recipient = payload["to_address"].as_str().unwrap();
                         let amount = payload["amount"].as_u64().unwrap();
-                        let raw = format!(
-                            "0a{recipient}18{}ff",
-                            hex::encode(encode_protobuf_varint(amount))
-                        );
+                        let raw = native_raw(recipient, amount);
                         let txid = recompute_tron_txid(&raw).unwrap();
                         create.lock().push(payload);
                         axum::Json(json!({
@@ -684,7 +726,7 @@ mod tests {
                     async move {
                         let contract = payload["contract_address"].as_str().unwrap();
                         let parameter = payload["parameter"].as_str().unwrap();
-                        let raw = format!("0a{contract}ff{parameter}ee");
+                        let raw = trc20_raw(contract, parameter);
                         let txid = recompute_tron_txid(&raw).unwrap();
                         trigger.lock().push(payload);
                         axum::Json(json!({
@@ -725,10 +767,7 @@ mod tests {
         let recipient_hex = tron_address_to_hex(recipient).unwrap();
         let contract_hex = tron_address_to_hex(contract).unwrap();
 
-        let native_raw = format!(
-            "aa{recipient_hex}18{}bb",
-            hex::encode(encode_protobuf_varint(1_000_000))
-        );
+        let native_raw = native_raw(&recipient_hex, 1_000_000);
         let native_txid = recompute_tron_txid(&native_raw).unwrap();
         let native_tx = CreateTransactionResponse {
             tx_id: native_txid.clone(),
@@ -753,7 +792,7 @@ mod tests {
         );
 
         let parameter = "01".repeat(64);
-        let token_raw = format!("aa{contract_hex}bb{parameter}cc");
+        let token_raw = trc20_raw(&contract_hex, &parameter);
         let token_txid = recompute_tron_txid(&token_raw).unwrap();
         let token_tx = CreateTransactionResponse {
             tx_id: token_txid.clone(),
@@ -946,10 +985,7 @@ mod tests {
                 post(|axum::Json(payload): axum::Json<Value>| async move {
                     let recipient = payload["to_address"].as_str().unwrap();
                     let amount = payload["amount"].as_u64().unwrap();
-                    let raw = format!(
-                        "0a{recipient}18{}ff",
-                        hex::encode(encode_protobuf_varint(amount))
-                    );
+                    let raw = native_raw(recipient, amount);
                     let txid = recompute_tron_txid(&raw).unwrap();
                     axum::Json(json!({
                         "txID": txid,
