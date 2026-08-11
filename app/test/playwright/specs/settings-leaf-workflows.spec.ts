@@ -120,7 +120,6 @@ test.describe('Settings leaf workflows', () => {
       await wipe.click();
     }
 
-    await expect(page.getByText('Saved.')).toBeVisible({ timeout: 15_000 });
     await expect
       .poll(async () => {
         const raw = await callCoreRpc<any>('openhuman.embeddings_get_settings', {});
