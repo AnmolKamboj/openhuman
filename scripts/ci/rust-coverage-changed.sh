@@ -144,6 +144,12 @@ profile_dir="${LLVM_PROFILE_DIR:-/tmp/openhuman-core-profraw}"
 rm -rf "${profile_dir}"
 mkdir -p "${profile_dir}"
 eval "$(cargo llvm-cov show-env --sh)"
+# Keep the direct Cargo test runs and the later `llvm-cov report` invocation
+# pointed at the same durable target. `show-env` defaults to `target/`, while
+# the report subcommand otherwise resets to its `llvm-cov-target` convention
+# and misses profiles moved from the container-local directory.
+export CARGO_LLVM_COV_TARGET_DIR="${PWD}/target/llvm-cov-target"
+export CARGO_LLVM_COV_BUILD_DIR="${CARGO_LLVM_COV_TARGET_DIR}"
 export LLVM_PROFILE_FILE="${profile_dir}/core-%p-%m.profraw"
 
 if [ "${FULL}" = "true" ]; then
