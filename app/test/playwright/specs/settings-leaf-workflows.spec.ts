@@ -105,9 +105,7 @@ test.describe('Settings leaf workflows', () => {
     await page.getByRole('radio', { name: /Custom/i }).click();
 
     await expect(page.getByRole('heading', { name: /Set up/i })).toBeVisible();
-    await page
-      .getByPlaceholder('https://your-endpoint.com/v1')
-      .fill(customEndpoint);
+    await page.getByPlaceholder('https://your-endpoint.com/v1').fill(customEndpoint);
     // Use a `text-embedding-3-*` model so the save-time verification probe sends
     // `dimensions: 64` — the mock backend (scripts/mock-api) echoes that length,
     // so the live test embed verifies and the config can be persisted.
