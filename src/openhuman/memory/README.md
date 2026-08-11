@@ -5,7 +5,7 @@ extracted into [`tinymemory-core`](../../../vendor/tinymemory/): the
 SQLite/vector store, the markdown summary tree, the provider sync pipelines,
 ingestion, recall/query/search, the ingest queue, conversations, people,
 goals and the tool-memory rules. That crate names no OpenHuman type — see
-[its README](../../../vendor/tinymemory/core/README.md) for the extracted
+[its README](../../../vendor/tinymemory/README.md) for the extracted
 side of this split.
 
 What stays here, per that split:
