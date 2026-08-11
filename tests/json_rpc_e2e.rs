@@ -6432,11 +6432,7 @@ async fn mock_tron_trigger(
         2,
         &hex::decode(payload["contract_address"].as_str().unwrap()).unwrap(),
     );
-    mock_tron_varint_field(
-        &mut contract,
-        3,
-        payload["call_value"].as_u64().unwrap(),
-    );
+    mock_tron_varint_field(&mut contract, 3, payload["call_value"].as_u64().unwrap());
     let mut data = hex::decode("a9059cbb").unwrap();
     data.extend(hex::decode(payload["parameter"].as_str().unwrap()).unwrap());
     mock_tron_bytes_field(&mut contract, 4, &data);
