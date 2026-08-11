@@ -9,6 +9,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { WorkflowGraph } from '../../lib/flows/types';
 import type { Flow } from '../../services/api/flowsApi';
 import type { WorkflowProposal } from '../../store/chatRuntimeSlice';
 import FlowCanvasPage, {
