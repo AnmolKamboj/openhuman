@@ -103,6 +103,10 @@ Any test that drives a real module must therefore be the only one in its process
 The module-backed tool tests are `#[ignore]`d for that reason, not merely because
 they need an artifact. Run them one at a time:
 
+Linux, where the artifact is a `.so`. On macOS the built library is
+`libtinydocs_module.dylib` and on Windows `tinydocs_module.dll`; substitute the
+filename, and use the platform's own temporary directory rather than `/tmp`.
+
 ```sh
 cargo build --release --package tinydocs-module \
   --manifest-path vendor/tinydocs/Cargo.toml

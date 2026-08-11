@@ -160,10 +160,12 @@ async fn execute_happy_path_returns_artifact_metadata() {
         .await
         .expect("execute returns Ok");
 
+    // `text()` is empty for a Json-only result, so it would report nothing on
+    // failure. Render the blocks themselves.
     assert!(
         !result.is_error,
-        "happy path should not be flagged as error: {}",
-        result.text()
+        "happy path should not be flagged as error: {:?}",
+        result.content
     );
 
     let payload = match result.content.first().expect("at least one content block") {

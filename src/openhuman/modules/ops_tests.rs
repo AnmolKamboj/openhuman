@@ -99,10 +99,20 @@ async fn an_unknown_module_is_refused_by_name() {
 
 #[test]
 fn the_install_directory_is_namespaced_under_openhuman() {
+    // Two arms where the first implies the second would make this vacuous, so
+    // assert the components: artifacts land under an `openhuman` directory, in a
+    // `modules` subdirectory, and never at the root of a shared cache.
     let dir = install_dir(&offline_config()).expect("an install directory is always resolvable");
     assert!(
-        dir.ends_with("openhuman/modules") || dir.ends_with("modules"),
-        "unexpected install directory: {}",
+        dir.ends_with("modules"),
+        "install directory does not end in `modules`: {}",
+        dir.display()
+    );
+    assert!(
+        dir.parent()
+            .and_then(|parent| parent.file_name())
+            .is_some_and(|name| name == "openhuman"),
+        "install directory is not namespaced under `openhuman`: {}",
         dir.display()
     );
 }

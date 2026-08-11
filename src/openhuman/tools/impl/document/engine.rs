@@ -34,6 +34,30 @@ pub(super) async fn generate(
     input: &GenerateDocumentInput,
     deadline: Duration,
 ) -> Result<Vec<u8>, DocumentError> {
+    let config = match crate::openhuman::config::Config::load_or_init().await {
+        Ok(config) => config,
+        Err(error) => {
+            return Err(DocumentError::GenerationFailed {
+                stderr_truncated: DocumentError::truncate_stderr(&format!(
+                    "config unavailable: {error}"
+                )),
+            });
+        }
+    };
+    generate_with(&config, input, deadline).await
+}
+
+/// [`generate`], against a caller-supplied config.
+///
+/// Split out so a test can drive the whole path without `load_or_init`, which
+/// reads — and on a fresh machine writes — the real user config directory. A
+/// unit test that touches it depends on whatever is on the developer's box and
+/// can leave a config file behind.
+async fn generate_with(
+    config: &crate::openhuman::config::Config,
+    input: &GenerateDocumentInput,
+    deadline: Duration,
+) -> Result<Vec<u8>, DocumentError> {
     // Clone across the blocking boundary — cheap relative to the synthesis,
     // and it keeps the blocking closure `'static`.
     let owned = input.clone();
@@ -50,26 +74,15 @@ pub(super) async fn generate(
         "[document:engine] generate:start"
     );
 
-    let config = match crate::openhuman::config::Config::load_or_init().await {
-        Ok(config) => config,
-        Err(error) => {
-            return Err(DocumentError::GenerationFailed {
-                stderr_truncated: DocumentError::truncate_stderr(&format!(
-                    "config unavailable: {error}"
-                )),
-            });
-        }
-    };
-
     // Loaded before the clock starts. A first use may download and verify the
     // artifact, and a deadline meant for generation should not be spent on that
     // — otherwise the first document a user ever asks for is the one that times
     // out. Cached after the first call, so this is free from then on.
-    if let Err(error) = documents::ensure_ready(&config).await {
+    if let Err(error) = documents::ensure_ready(config).await {
         return Err(DocumentError::from(error));
     }
 
-    let call = timeout(deadline, documents::generate_docx(&config, &owned)).await;
+    let call = timeout(deadline, documents::generate_docx(config, &owned)).await;
 
     let elapsed_ms = started.elapsed().as_millis() as u64;
     match call {
@@ -152,29 +165,47 @@ mod tests {
         body
     }
 
+    /// A config with modules turned off, so nothing leaves this process.
+    ///
+    /// The test drives `generate_with` rather than `generate` deliberately:
+    /// `generate` calls `Config::load_or_init`, which reads — and on a fresh
+    /// machine writes — the real user config directory, so its behaviour would
+    /// depend on whatever is on the box running the test and it could leave a
+    /// file behind. Supplying the config also makes the outcome deterministic:
+    /// with modules disabled the only reachable error is `ModuleUnavailable`.
+    fn isolated_config() -> crate::openhuman::config::Config {
+        let mut config = crate::openhuman::config::Config::default();
+        config.modules.enabled = false;
+        config.modules.allow_download = false;
+        config
+    }
+
     #[tokio::test]
-    async fn generate_yields_clean_structured_result_under_zero_deadline() {
-        // Contract under an impossibly-short deadline: `generate` must surface a
-        // clean, structured outcome — never a panic or a half-written buffer.
-        //
-        // Which outcome we get is inherently racy and must NOT be pinned: the
-        // near-zero timeout usually elapses first, the module may be absent on
-        // this host, the call may fail, and a trivial input can even finish
-        // before the timer fires. Asserting one exact variant made this flake
-        // under coverage instrumentation. We assert the real invariant: any Ok
-        // is a non-empty buffer, any Err is one of the documented structured
-        // variants, and nothing panics.
-        match generate(&sample_input(), Duration::ZERO).await {
+    async fn generate_reports_a_structured_outcome_when_no_module_is_available() {
+        // Contract: with no module reachable, `generate` surfaces a clean,
+        // structured outcome — never a panic, never a half-written buffer, and
+        // never a hang waiting on a bus nobody is serving.
+        match generate_with(&isolated_config(), &sample_input(), Duration::from_secs(30)).await {
+            Err(DocumentError::ModuleUnavailable { .. }) => {}
+            other => panic!("expected ModuleUnavailable with modules disabled, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_zero_deadline_never_panics_or_yields_a_partial_buffer() {
+        // Which outcome arrives is inherently racy and must NOT be pinned: the
+        // near-zero timeout usually elapses first, but the disabled-module check
+        // runs ahead of the clock. Assert the invariant instead — any Ok is a
+        // non-empty buffer, any Err is one of the documented variants.
+        match generate_with(&isolated_config(), &sample_input(), Duration::ZERO).await {
             Ok(bytes) => assert!(!bytes.is_empty(), "a completed docx must be non-empty"),
             Err(DocumentError::GenerationTimeout { timeout_secs }) => {
                 assert_eq!(timeout_secs, 0, "zero deadline reports 0 seconds");
             }
-            Err(DocumentError::GenerationFailed { .. }) => {
-                // The call failed before the timer fired — still clean.
-            }
-            Err(DocumentError::ModuleUnavailable { .. }) => {
-                // No module on this host, which is the ordinary case in a unit
-                // test. Still a structured outcome, which is what is under test.
+            Err(
+                DocumentError::GenerationFailed { .. } | DocumentError::ModuleUnavailable { .. },
+            ) => {
+                // Failed or refused before the timer fired — still clean.
             }
             Err(other) => panic!("unexpected error variant under a zero deadline: {other:?}"),
         }

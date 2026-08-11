@@ -145,8 +145,17 @@ pub fn is_started() -> bool {
 mod tests {
     use super::{is_started, runtime};
 
+    /// Everything that touches the process-global module runtime, in one test.
+    ///
+    /// One test and not several, on purpose: `runtime()` is a process-global
+    /// started by whichever tokio runtime reaches it first, and each
+    /// `#[tokio::test]` builds its own. A second test function would find a
+    /// broker whose tasks died with the runtime that spawned it, and its call
+    /// would hang until something above it timed out rather than failing — the
+    /// same affinity hazard the module spec documents for the module-backed tool
+    /// tests. Splitting these up would reintroduce it.
     #[tokio::test]
-    async fn the_runtime_is_a_singleton() {
+    async fn the_module_bus_is_a_singleton_and_serves_proxies() {
         let first = runtime().await.expect("runtime should start");
         assert!(is_started());
         let second = runtime().await.expect("runtime should be reused");
@@ -154,15 +163,11 @@ mod tests {
             std::ptr::eq(first, second),
             "runtime() handed out two different runtimes"
         );
-    }
 
-    #[tokio::test]
-    async fn a_proxy_for_an_unloaded_module_is_constructible_but_unanswered() {
         // Building a proxy is a local operation — it validates names and nothing
         // else. Nothing has claimed the name, so the call fails rather than
         // hanging, which is what makes `ensure_loaded` worth having.
-        let runtime = runtime().await.expect("runtime should start");
-        let proxy = runtime
+        let proxy = first
             .proxy(
                 "ai.tinyhumans.tinydocs.Documents",
                 "/ai/tinyhumans/tinydocs/Documents",
@@ -170,11 +175,8 @@ mod tests {
             .expect("registry names should be well formed");
         let result: tinybus::Result<serde_json::Value> = proxy.call("GenerateDocx", ()).await;
         assert!(result.is_err(), "an unloaded module should not answer");
-    }
 
-    #[tokio::test]
-    async fn a_malformed_name_is_rejected_locally() {
-        let runtime = runtime().await.expect("runtime should start");
-        assert!(runtime.proxy("not a bus name", "/nope").is_err());
+        // A name that cannot be a bus name is refused without reaching the bus.
+        assert!(first.proxy("not a bus name", "/nope").is_err());
     }
 }

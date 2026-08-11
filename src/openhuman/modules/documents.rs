@@ -42,6 +42,16 @@ const MODULE_ID: &str = "tinydocs";
 /// the JSON envelope around it.
 const READ_CHUNK: u64 = 1024 * 1024;
 
+/// Largest document this host will assemble from a module.
+///
+/// Matches the module's own per-output cap, and is enforced here anyway. A
+/// declared length is a number a module sent us: trusting it for a
+/// `Vec::with_capacity` turns a wrong or hostile value into an allocation
+/// failure, which aborts the process rather than returning an error. The rest of
+/// `read_all` already treats the declared length as possibly wrong; this applies
+/// the same distrust to the allocation.
+const MAX_DOCUMENT_BYTES: u64 = 64 * 1024 * 1024;
+
 /// Why a document call did not produce bytes.
 ///
 /// Three variants rather than one string because the three tools that call this
@@ -256,8 +266,17 @@ async fn read_all(
     proxy: &tinybus::Proxy,
     handle: &OutputRef,
 ) -> Result<Vec<u8>, DocumentCallError> {
-    let capacity = usize::try_from(handle.total_bytes).unwrap_or_default();
-    let mut out = Vec::with_capacity(capacity);
+    if handle.total_bytes > MAX_DOCUMENT_BYTES {
+        return Err(DocumentCallError::Failed(format!(
+            "the module declared a {}-byte document, over the {MAX_DOCUMENT_BYTES}-byte limit",
+            handle.total_bytes
+        )));
+    }
+    // Reserve against the declared length only once it is known to be sane, and
+    // still only up to one chunk beyond what has arrived — the loop grows the
+    // buffer as real bytes land rather than trusting the number up front.
+    let capacity = usize::try_from(handle.total_bytes).unwrap_or(0);
+    let mut out = Vec::with_capacity(capacity.min(MAX_DOCUMENT_BYTES as usize));
     while (out.len() as u64) < handle.total_bytes {
         let encoded: String = proxy
             .call(

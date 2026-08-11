@@ -87,7 +87,12 @@ pub fn candidates_for(os: &str, arch: &str, glibc: Option<(u32, u32)>) -> Vec<St
 }
 
 /// The host's glibc version, or `None` if it is not glibc.
-#[cfg(target_os = "linux")]
+///
+/// Gated on `target_env = "gnu"`, not merely on Linux: musl does not provide
+/// this symbol, so a musl build would fail to *link* rather than fall through to
+/// the `None` below. That fallback is what makes a musl host report "no
+/// artifact for this platform" instead of downloading one it cannot load.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
 fn glibc_version() -> Option<(u32, u32)> {
     // `gnu_get_libc_version` is the only reliable answer — parsing `ldd
     // --version` means spawning a process and reading localised output, and
@@ -111,8 +116,11 @@ fn glibc_version() -> Option<(u32, u32)> {
     parse_glibc_version(version)
 }
 
-/// Off Linux there is no glibc question to answer.
-#[cfg(not(target_os = "linux"))]
+/// Every other target: not glibc, so there is no version to report.
+///
+/// Covers musl and every non-Linux host. Both want the same answer — `None`,
+/// which `candidates_for` turns into an empty candidate list.
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
 fn glibc_version() -> Option<(u32, u32)> {
     None
 }

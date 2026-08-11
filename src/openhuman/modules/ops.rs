@@ -119,22 +119,31 @@ async fn resolve(config: &Config, record: &'static ModuleRecord) -> Result<(), S
     // An override points at a developer's own build. Checked before the pinned
     // release so a module can be iterated on against a live core.
     if let Some(path) = local_override(config, record.id) {
-        return load_local(runtime, &path, record.id);
+        return blocking(move || load_local(runtime, &path, record.id)).await;
     }
 
     // An artifact already extracted into the install directory by an earlier run.
     if let Some(path) = installed_artifact(config, record) {
-        return load_local(runtime, &path, record.id);
+        return blocking(move || load_local(runtime, &path, record.id)).await;
     }
 
     // The search path tinybus itself honours, including OPENHUMAN_MODULE_PATH.
     // A refused search-path artifact is ordinary — most directories hold
     // nothing, and tinybus reports each refusal with a sanitised reason — so the
     // errors are dropped here and only a match on the bus name counts.
-    for info in runtime.host().load_search_paths().into_iter().flatten() {
-        if info.manifest.bus_name.as_str() == record.bus_name {
-            return Ok(());
-        }
+    let bus_name = record.bus_name;
+    let found_on_search_path = tokio::task::spawn_blocking(move || {
+        runtime
+            .host()
+            .load_search_paths()
+            .into_iter()
+            .flatten()
+            .any(|info| info.manifest.bus_name.as_str() == bus_name)
+    })
+    .await
+    .unwrap_or(false);
+    if found_on_search_path {
+        return Ok(());
     }
 
     if !config.modules.allow_download {
@@ -144,7 +153,29 @@ async fn resolve(config: &Config, record: &'static ModuleRecord) -> Result<(), S
             record.id
         ));
     }
-    download(runtime, record)
+
+    // Off the runtime worker. `load_github_release` fetches over the network,
+    // hashes the archive, extracts it and `dlopen`s the result — all
+    // synchronously. Left inline it would stall every other task sharing this
+    // worker for the length of a download on whatever link the user has.
+    blocking(move || download(runtime, record)).await
+}
+
+/// Run a blocking module operation on the blocking pool.
+///
+/// A panic in the loader is reported rather than propagated: it would otherwise
+/// take down whichever task happened to be awaiting the load.
+async fn blocking<F>(work: F) -> Result<(), String>
+where
+    F: FnOnce() -> Result<(), String> + Send + 'static,
+{
+    match tokio::task::spawn_blocking(work).await {
+        Ok(result) => result,
+        Err(err) => Err(format!(
+            "the module loader did not finish: {err}. This is terminal for the running \
+             process; restart the app to try again"
+        )),
+    }
 }
 
 /// Download, verify, and load the pinned release artifact for this host.
