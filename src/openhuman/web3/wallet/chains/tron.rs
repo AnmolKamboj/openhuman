@@ -456,7 +456,26 @@ pub async fn execute_tron_quote(mut quote: PreparedTransaction) -> Result<Execut
     // rechecks the locally recomputed txid and recipient; the host additionally
     // binds the native amount or full TRC20 parameter.
     let public_key = compressed_public_key(&sk)?;
-    let transaction = tron_transaction_spec(&raw_tx, verified_recipient, &transfer)?;
+    let transfer_kind = match &transfer {
+        TronTransferVerification::Native { .. } => "native",
+        TronTransferVerification::Trc20 { .. } => "trc20",
+    };
+    let transaction = match tron_transaction_spec(&raw_tx, verified_recipient, &transfer) {
+        Ok(transaction) => {
+            debug!(
+                "{LOG_PREFIX} validation=accepted quote_id={} txid={} kind={transfer_kind}",
+                quote.quote_id, raw_tx.tx_id
+            );
+            transaction
+        }
+        Err(error) => {
+            debug!(
+                "{LOG_PREFIX} validation=rejected quote_id={} txid={} kind={transfer_kind} reason={error}",
+                quote.quote_id, raw_tx.tx_id
+            );
+            return Err(error);
+        }
+    };
     let signed = crate::openhuman::modules::wallet::sign_transaction(
         &config,
         &transaction,
@@ -823,7 +842,7 @@ mod tests {
             &TronTransferVerification::Native { amount_sun: 2 },
         )
         .unwrap_err()
-        .contains("requested amount"));
+        .contains("different native amount"));
         assert!(tron_transaction_spec(
             &token_tx,
             contract.to_string(),
@@ -832,7 +851,29 @@ mod tests {
             },
         )
         .unwrap_err()
-        .contains("TRC20 transfer parameter"));
+        .contains("different TRC20 transfer data"));
+
+        // A matching value hidden in an unrelated raw-data field must not
+        // satisfy validation when the selected contract pays something else.
+        let mut spoofed_raw = hex::decode(native_raw(&contract_hex, 2)).unwrap();
+        let mut decoy = hex::decode(&recipient_hex).unwrap();
+        decoy.extend(encode_protobuf_varint(1_000_000));
+        push_bytes_field(&mut spoofed_raw, 10, &decoy);
+        let spoofed_raw = hex::encode(spoofed_raw);
+        let spoofed_tx = CreateTransactionResponse {
+            tx_id: recompute_tron_txid(&spoofed_raw).unwrap(),
+            raw_data: json!({}),
+            raw_data_hex: spoofed_raw,
+        };
+        assert!(tron_transaction_spec(
+            &spoofed_tx,
+            recipient.to_string(),
+            &TronTransferVerification::Native {
+                amount_sun: 1_000_000,
+            },
+        )
+        .unwrap_err()
+        .contains("requested recipient"));
     }
 
     // Drives the real wallet module, so it must be the only such test in its
