@@ -733,13 +733,34 @@ mod tests {
         tron_raw_contract(1, "TransferContract", &payload)
     }
 
-    fn trc20_raw(contract_hex: &str, parameter_hex: &str) -> String {
+    fn trc20_raw_with_values(
+        contract_hex: &str,
+        parameter_hex: &str,
+        call_value: Option<u64>,
+        fee_limit: Option<u64>,
+    ) -> String {
         let mut payload = Vec::new();
         push_bytes_field(&mut payload, 2, &hex::decode(contract_hex).unwrap());
+        if let Some(call_value) = call_value {
+            push_varint_field(&mut payload, 3, call_value);
+        }
         let mut data = hex::decode("a9059cbb").unwrap();
         data.extend(hex::decode(parameter_hex).unwrap());
         push_bytes_field(&mut payload, 4, &data);
-        tron_raw_contract(31, "TriggerSmartContract", &payload)
+        let mut raw = hex::decode(tron_raw_contract(31, "TriggerSmartContract", &payload)).unwrap();
+        if let Some(fee_limit) = fee_limit {
+            push_varint_field(&mut raw, 18, fee_limit);
+        }
+        hex::encode(raw)
+    }
+
+    fn trc20_raw(contract_hex: &str, parameter_hex: &str) -> String {
+        trc20_raw_with_values(
+            contract_hex,
+            parameter_hex,
+            Some(0),
+            Some(TRC20_FEE_LIMIT_SUN),
+        )
     }
 
     async fn start_tron_mock(record: TronMockRecord) -> std::net::SocketAddr {
@@ -879,6 +900,42 @@ mod tests {
         )
         .unwrap_err()
         .contains("different TRC20 transfer data"));
+
+        for (raw_data_hex, expected_error) in [
+            (
+                trc20_raw_with_values(
+                    &contract_hex,
+                    &parameter,
+                    Some(1),
+                    Some(TRC20_FEE_LIMIT_SUN),
+                ),
+                "non-zero TRC20 call_value",
+            ),
+            (
+                trc20_raw_with_values(
+                    &contract_hex,
+                    &parameter,
+                    Some(0),
+                    Some(TRC20_FEE_LIMIT_SUN + 1),
+                ),
+                "different fee_limit",
+            ),
+        ] {
+            let altered_tx = CreateTransactionResponse {
+                tx_id: recompute_tron_txid(&raw_data_hex).unwrap(),
+                raw_data: json!({}),
+                raw_data_hex,
+            };
+            assert!(tron_transaction_spec(
+                &altered_tx,
+                contract.to_string(),
+                &TronTransferVerification::Trc20 {
+                    parameter_hex: parameter.clone(),
+                },
+            )
+            .unwrap_err()
+            .contains(expected_error));
+        }
 
         // A matching value hidden in an unrelated raw-data field must not
         // satisfy validation when the selected contract pays something else.
