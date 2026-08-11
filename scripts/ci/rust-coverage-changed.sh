@@ -130,6 +130,18 @@ run_full() {
     log "running full-suite integration target: ${target}"
     run_integration_target "${target}"
   done < <(integration_test_targets)
+  # `cargo llvm-cov report` looks in the workspace target directory even
+  # though the instrumented `cargo test` commands write raw profiles to the
+  # container-safe directory above.  Materialise them at both locations before
+  # reporting; this full-suite path returns early and must not rely on the
+  # scoped-run footer below.
+  local profile
+  shopt -s nullglob
+  for profile in "${profile_dir}"/*.profraw; do
+    cp "${profile}" "target/$(basename "${profile}")"
+    cp "${profile}" "${CARGO_LLVM_COV_TARGET_DIR}/$(basename "${profile}")"
+  done
+  shopt -u nullglob
   log "merging coverage into ${OUT}"
   llvm_cov report --lcov --output-path "${OUT}"
   exit 0
