@@ -29,7 +29,6 @@ mod tests {
         assert!(provider.name().contains("inference:"));
     }
 
-
     #[test]
     fn build_chat_runtime_defaults_to_openhuman_resolved_model() {
         // These assert the *real* seam implementations, so they need them
@@ -43,7 +42,6 @@ mod tests {
         // `cloud_llm_model` is consumed (it isn't; see the test below).
         assert_eq!(model, DEFAULT_CLOUD_LLM_MODEL);
     }
-
 
     #[test]
     fn build_chat_runtime_ignores_cloud_llm_model_on_managed() {
@@ -63,7 +61,6 @@ mod tests {
         assert_eq!(model, DEFAULT_CLOUD_LLM_MODEL);
     }
 
-
     #[test]
     fn build_provider_returns_inference_wrapper_when_local_memory_is_configured() {
         // These assert the *real* seam implementations, so they need them
@@ -79,7 +76,6 @@ mod tests {
         assert!(provider.name().contains("qwen2.5:0.5b"));
     }
 
-
     #[test]
     fn build_chat_runtime_preserves_local_memory_model() {
         // These assert the *real* seam implementations, so they need them
@@ -92,7 +88,6 @@ mod tests {
         assert_eq!(model, "qwen2.5:0.5b");
     }
 
-
     /// #1574 invariant: a config-derived `active_embedding_signature` MUST be
     /// byte-identical to the live provider's `.signature()` for the same
     /// (provider, model, dims). Drift here silently splits one embedding space
@@ -104,9 +99,12 @@ mod tests {
         crate::openhuman::memory::host_impls::install_for_tests();
         for local in [None, Some("nomic-embed-text:latest"), Some("bge-m3")] {
             let mem = MemoryConfig::default();
-            let (provider, model, dims) = tinymemory_core::store::effective_embedding_settings(&mem, local);
-            let live = crate::openhuman::inference::embeddings::create_embedding_provider(&provider, &model, dims)
-                .expect("provider builds for test triple");
+            let (provider, model, dims) =
+                tinymemory_core::store::effective_embedding_settings(&mem, local);
+            let live = crate::openhuman::inference::embeddings::create_embedding_provider(
+                &provider, &model, dims,
+            )
+            .expect("provider builds for test triple");
             assert_eq!(
                 tinymemory_core::store::active_embedding_signature(&mem, local),
                 live.signature(),
@@ -114,7 +112,6 @@ mod tests {
             );
         }
     }
-
 
     /// #002 FR-007 / Gray review: the doctor's `summary_tree` stage must mirror
     /// `summarizer_available` exactly. With local AI off and no cloud opt-in
@@ -152,7 +149,6 @@ mod tests {
             tree.note
         );
     }
-
 
     #[tokio::test]
     async fn provider_context_execute_resolves_via_factory_at_call_time() {

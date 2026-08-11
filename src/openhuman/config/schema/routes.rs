@@ -13,4 +13,3 @@ pub struct ModelRouteConfig {
 /// the memory store's embedder factory reads it. See
 /// [`tinymemory_api::host::EmbeddingRouteConfig`].
 pub use tinymemory_api::host::EmbeddingRouteConfig;
-

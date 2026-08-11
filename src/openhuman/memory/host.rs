@@ -340,7 +340,9 @@ fn into_domain_event(event: MemoryEvent) -> Option<DomainEvent> {
         MemoryEvent::ComposioIntegrationsChanged { toolkits } => {
             DomainEvent::ComposioIntegrationsChanged { toolkits }
         }
-        MemoryEvent::SyncRequested { channel_id } => DomainEvent::MemorySyncRequested { channel_id },
+        MemoryEvent::SyncRequested { channel_id } => {
+            DomainEvent::MemorySyncRequested { channel_id }
+        }
         // Goes to the durable UserErrorCenter over the web channel, not the bus.
         MemoryEvent::LocalModelUnavailable { origin } => {
             crate::openhuman::memory::tree::health::user_error::

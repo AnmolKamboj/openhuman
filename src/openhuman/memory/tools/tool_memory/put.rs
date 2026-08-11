@@ -28,8 +28,8 @@ use tinycortex_api::provider::MemoryProvider;
 
 use crate::openhuman::memory::ops::guard::active_memory_guard;
 use crate::openhuman::memory::ops::tool_memory::NO_TOOL_MEMORY;
-use tinymemory_core::tool_memory::{ToolMemoryPriority, ToolMemoryRule, ToolMemorySource};
 use crate::openhuman::tools::traits::{Tool, ToolResult};
+use tinymemory_core::tool_memory::{ToolMemoryPriority, ToolMemoryRule, ToolMemorySource};
 
 pub struct MemoryToolsPutTool;
 
@@ -149,7 +149,7 @@ mod tests {
     use tempfile::TempDir;
 
     use crate::openhuman::config::Config;
-use crate::openhuman::config::{TEST_ENV_LOCK};
+    use crate::openhuman::config::TEST_ENV_LOCK;
     use crate::openhuman::memory::guard::policy::GUARD_DENIED_PREFIX;
     use crate::openhuman::security::live_policy;
     use crate::openhuman::security::policy::{AutonomyLevel, SecurityPolicy};

@@ -403,9 +403,9 @@ pub struct PipelineStatusResponse {
 pub async fn pipeline_status_rpc(
     config: &Config,
 ) -> Result<RpcOutcome<PipelineStatusResponse>, String> {
-    use tinymemory_api::host::SchedulerGateMode;
     use crate::openhuman::memory::queue::store as queue_store;
     use crate::openhuman::memory::queue::types::JobStatus;
+    use tinymemory_api::host::SchedulerGateMode;
 
     log::debug!("[memory-tree][rpc] pipeline_status: entry");
 
@@ -1454,8 +1454,8 @@ mod tests {
     /// counters.
     #[test]
     fn derive_pipeline_status_precedence_matches_spec() {
-        use tinymemory_api::host::SchedulerGateMode;
         use crate::openhuman::memory::tree::health::{DegradedState, FailureCode, PipelineFailure};
+        use tinymemory_api::host::SchedulerGateMode;
 
         let healthy = DegradedState::default();
         let recall_degraded = DegradedState {
@@ -1645,8 +1645,8 @@ mod tests {
     /// healthy. Pins the threshold boundary and the full precedence chain.
     #[test]
     fn stalled_queue_degrades_instead_of_reading_healthy() {
-        use tinymemory_api::host::SchedulerGateMode;
         use crate::openhuman::memory::tree::health::{DegradedState, FailureCode, PipelineFailure};
+        use tinymemory_api::host::SchedulerGateMode;
 
         let healthy = DegradedState::default();
         let stalled = Some(QUEUE_STALL_THRESHOLD_MS);

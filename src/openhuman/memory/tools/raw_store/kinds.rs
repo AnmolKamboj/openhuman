@@ -4,8 +4,8 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use tinymemory_core::store::MemoryKind;
 use crate::openhuman::tools::traits::{Tool, ToolResult};
+use tinymemory_core::store::MemoryKind;
 
 pub struct MemoryStoreKindsTool;
 

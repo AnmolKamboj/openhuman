@@ -97,7 +97,10 @@ impl EmbeddingHost for OpenHumanEmbeddingHost {
         Ok(Box::new(
             crate::openhuman::inference::embeddings::cloud::OpenHumanCloudEmbedding::new(
                 None,
-                self.config.config_path.parent().map(std::path::PathBuf::from),
+                self.config
+                    .config_path
+                    .parent()
+                    .map(std::path::PathBuf::from),
                 self.config.secrets.encrypt,
                 model,
                 dims,
@@ -185,7 +188,10 @@ pub struct OpenHumanComposioHost {
 
 #[async_trait]
 impl ComposioHost for OpenHumanComposioHost {
-    async fn list_connections(&self, config: &SeamConfig) -> Result<Vec<ComposioConnection>, String> {
+    async fn list_connections(
+        &self,
+        config: &SeamConfig,
+    ) -> Result<Vec<ComposioConnection>, String> {
         use crate::openhuman::integrations::composio::client::{
             create_composio_client, direct_list_connections, ComposioClientKind,
         };
@@ -289,7 +295,11 @@ pub struct OpenHumanNlpHost;
 
 #[async_trait]
 impl NlpHost for OpenHumanNlpHost {
-    async fn extract_spacy(&self, config: &SeamConfig, text: &str) -> Result<SpacyResponse, String> {
+    async fn extract_spacy(
+        &self,
+        config: &SeamConfig,
+        text: &str,
+    ) -> Result<SpacyResponse, String> {
         let config = live_config(config).await?;
         crate::openhuman::runtime::python_server::extract_spacy(&config, text)
             .await

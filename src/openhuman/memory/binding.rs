@@ -70,10 +70,10 @@ use tinymemory::registry::{
 use crate::core::subsystem::{
     BoundDriver, DriverCapabilities, DriverClass, DriverHealth, SubsystemSlot,
 };
-use tinymemory_api::host::MemoryHooksConfig;
-use tinymemory_api::host::MemorySubsystemConfig;
 use crate::openhuman::memory::driver::embedded::EmbeddedMemoryProvider;
 use crate::openhuman::memory::guard::{GuardPolicy, MemoryGuard};
+use tinymemory_api::host::MemoryHooksConfig;
+use tinymemory_api::host::MemorySubsystemConfig;
 
 /// Why a bind fell back to the placeholder driver.
 ///
@@ -126,7 +126,7 @@ impl MemoryBinding {
     /// backed by a *compiler*-enforced boundary: even if `MemoryBinding` grows
     /// another reachable path, no module outside `openhuman::memory` can name
     /// this accessor at all.
-    pub(in crate) fn unguarded_provider(&self) -> &Arc<dyn MemoryProvider> {
+    pub(crate) fn unguarded_provider(&self) -> &Arc<dyn MemoryProvider> {
         &self.provider
     }
 

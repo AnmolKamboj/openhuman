@@ -2,11 +2,11 @@ use crate::openhuman::agent::messages::ChatMessage;
 use crate::openhuman::tools::ToolSpec;
 use serde::{Deserialize, Serialize};
 
+use std::fmt::Write;
 /// Token usage returned by a provider. Defined in the contract crate because
 /// the extracted memory subsystem threads it out of summarisation runs; every
 /// existing `inference::provider::UsageInfo` path keeps naming this one type.
 pub use tinymemory_api::host::UsageInfo;
-use std::fmt::Write;
 
 /// A tool call requested by the LLM.
 #[derive(Debug, Clone, Serialize, Deserialize)]

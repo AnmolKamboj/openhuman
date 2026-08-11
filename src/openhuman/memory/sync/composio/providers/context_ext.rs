@@ -45,16 +45,19 @@ impl ProviderContextExt for ProviderContext {
         //
         // Anchored to the snapshot's config_path (not OPENHUMAN_WORKSPACE) for
         // the same isolation reason as the core's `execute`.
-        let live_config = config_rpc::reload_config_from_paths(self.config.config_path(), self.config.workspace_dir())
-            .await
-            .map_err(|e| {
-                tracing::warn!(
-                    toolkit = %self.toolkit,
-                    error = %e,
-                    "[composio:provider_context] backend_client: reload_config failed"
-                );
-                anyhow!("composio provider_context.backend_client: failed to reload live config: {e}")
-            })?;
+        let live_config = config_rpc::reload_config_from_paths(
+            self.config.config_path(),
+            self.config.workspace_dir(),
+        )
+        .await
+        .map_err(|e| {
+            tracing::warn!(
+                toolkit = %self.toolkit,
+                error = %e,
+                "[composio:provider_context] backend_client: reload_config failed"
+            );
+            anyhow!("composio provider_context.backend_client: failed to reload live config: {e}")
+        })?;
         match create_composio_client(&live_config)? {
             ComposioClientKind::Backend(client) => Ok(client),
             ComposioClientKind::Direct(_) => Err(anyhow!(

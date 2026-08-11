@@ -12,7 +12,7 @@ use std::ffi::OsString;
 use tempfile::TempDir;
 
 use crate::openhuman::config::Config;
-use crate::openhuman::config::{TEST_ENV_LOCK};
+use crate::openhuman::config::TEST_ENV_LOCK;
 
 pub(crate) struct WorkspaceEnvGuard {
     _lock: std::sync::MutexGuard<'static, ()>,

@@ -16,12 +16,12 @@ use std::sync::Arc;
 
 // `binding.rs` reaches these through its own `use` statements; a sibling test
 // module only inherits its `pub` items, so they are named again here.
+use crate::core::subsystem::{DriverHealth, SubsystemSlot};
 use tinycortex_api::capabilities::Capabilities;
 use tinycortex_api::health::MemoryHealth;
 use tinycortex_api::null::{NullMemoryProvider, NULL_DRIVER_ID};
 use tinycortex_api::provider::MemoryProvider;
 use tinycortex_api::CONTRACT_VERSION;
-use crate::core::subsystem::{DriverHealth, SubsystemSlot};
 
 // Imported here rather than re-exported from `binding.rs`: since admission
 // moved to `tinymemory::registry`, the production module no longer names this

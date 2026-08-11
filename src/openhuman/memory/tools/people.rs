@@ -17,9 +17,9 @@ use serde_json::json;
 
 use crate::core::runtime::context::CoreContext;
 use crate::openhuman::memory::people::rpc;
+use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
 use tinymemory_core::people::store::PeopleStore;
 use tinymemory_core::people::types::{Handle, Interaction, PersonId};
-use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
 
 /// Acquire the people store for the current runtime context.
 fn people_store() -> anyhow::Result<std::sync::Arc<PeopleStore>> {

@@ -59,7 +59,6 @@ pub struct SpacyRuntime {
 /// extractor consumes them. See [`tinymemory_api::host::SpacyResponse`].
 pub use tinymemory_api::host::{SpacyEntity, SpacyResponse};
 
-
 pub async fn extract(config: &Config, text: &str) -> Result<SpacyResponse> {
     super::server::request_spacy_extract(config, text).await
 }

@@ -89,33 +89,39 @@ mod tests {
     #[tokio::test]
     async fn handles_hour_completed_without_panic() {
         let sub = TreeSummarizerEventSubscriber::new();
-        sub.handle(&crate::core::events::DomainEvent::TreeSummarizerHourCompleted {
-            namespace: "test".into(),
-            node_id: "2024/03/15/14".into(),
-            token_count: 500,
-        })
+        sub.handle(
+            &crate::core::events::DomainEvent::TreeSummarizerHourCompleted {
+                namespace: "test".into(),
+                node_id: "2024/03/15/14".into(),
+                token_count: 500,
+            },
+        )
         .await;
     }
 
     #[tokio::test]
     async fn handles_propagated_without_panic() {
         let sub = TreeSummarizerEventSubscriber::new();
-        sub.handle(&crate::core::events::DomainEvent::TreeSummarizerPropagated {
-            namespace: "test".into(),
-            node_id: "2024/03/15".into(),
-            level: "day".into(),
-            token_count: 1500,
-        })
+        sub.handle(
+            &crate::core::events::DomainEvent::TreeSummarizerPropagated {
+                namespace: "test".into(),
+                node_id: "2024/03/15".into(),
+                level: "day".into(),
+                token_count: 1500,
+            },
+        )
         .await;
     }
 
     #[tokio::test]
     async fn handles_rebuild_without_panic() {
         let sub = TreeSummarizerEventSubscriber::new();
-        sub.handle(&crate::core::events::DomainEvent::TreeSummarizerRebuildCompleted {
-            namespace: "test".into(),
-            total_nodes: 42,
-        })
+        sub.handle(
+            &crate::core::events::DomainEvent::TreeSummarizerRebuildCompleted {
+                namespace: "test".into(),
+                total_nodes: 42,
+            },
+        )
         .await;
     }
 

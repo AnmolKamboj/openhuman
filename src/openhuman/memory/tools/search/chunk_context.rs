@@ -10,8 +10,8 @@ use serde_json::json;
 use std::fmt::Write;
 
 use crate::openhuman::config::rpc as config_rpc;
-use tinymemory_core::store::chunks::store::{get_chunk, list_chunks, ListChunksQuery};
 use crate::openhuman::tools::traits::{Tool, ToolResult};
+use tinymemory_core::store::chunks::store::{get_chunk, list_chunks, ListChunksQuery};
 
 pub struct MemoryChunkContextTool;
 
@@ -91,10 +91,7 @@ impl Tool for MemoryChunkContextTool {
         // Per-profile memory-source gate: if the target chunk belongs to a
         // source the active profile didn't allow, surface nothing (its window
         // shares the same source). Non-source chunks always pass.
-        if !tinymemory_core::source_scope::chunk_source_allowed(
-            &target.metadata.tags,
-            &source_id,
-        ) {
+        if !tinymemory_core::source_scope::chunk_source_allowed(&target.metadata.tags, &source_id) {
             return Ok(ToolResult::success(
                 "Chunk is from a memory source not available to the active agent profile.",
             ));

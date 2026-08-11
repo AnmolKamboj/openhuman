@@ -11,9 +11,9 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::openhuman::config::rpc as config_rpc;
+use crate::openhuman::tools::traits::{Tool, ToolResult};
 use tinymemory_core::tree::retrieval::search::search_entities;
 use tinymemory_core::tree::score::extract::EntityKind;
-use crate::openhuman::tools::traits::{Tool, ToolResult};
 
 pub struct MemoryStoreRawSearchTool;
 
@@ -111,7 +111,7 @@ mod tests {
     use tempfile::TempDir;
 
     use crate::openhuman::config::Config;
-use crate::openhuman::config::{TEST_ENV_LOCK};
+    use crate::openhuman::config::TEST_ENV_LOCK;
     use crate::openhuman::tools::traits::Tool;
     use serde_json::json;
 

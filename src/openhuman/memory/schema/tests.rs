@@ -1,6 +1,6 @@
 use super::definitions::NAMESPACE;
-use super::{all_controller_schemas, all_registered_controllers, schemas};
 use super::*;
+use super::{all_controller_schemas, all_registered_controllers, schemas};
 
 #[test]
 fn all_controller_schemas_and_registered_controllers_stay_in_sync() {

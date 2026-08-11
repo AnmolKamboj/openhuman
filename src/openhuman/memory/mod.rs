@@ -29,8 +29,8 @@ pub mod driver;
 pub mod guard;
 pub mod host;
 pub mod host_impls;
-pub mod sync_events_bridge;
 pub mod ops;
+pub mod sync_events_bridge;
 // The consolidated `memory_query` agent tool and its six retrieval modes. Came
 // back from `tinymemory-core` with the rest of the agent tools — it is a `Tool`
 // impl end to end, and the engine crate cannot name that trait.
@@ -48,12 +48,12 @@ pub mod diff;
 pub mod goals;
 pub mod people;
 pub mod schema;
+pub mod sources;
 /// The golden-fixture seeder. Public so `tests/memory_golden_fixture_e2e.rs`
 /// can drive it; it walks the RPC handlers, which is why it stayed host-side.
 pub mod store_golden;
-pub mod tool_memory;
-pub mod sources;
 pub mod sync;
+pub mod tool_memory;
 pub mod tree;
 
 #[cfg(test)]
@@ -72,10 +72,10 @@ mod tree_e2e_tests;
 // `pub use … as …` rather than `pub mod` — these are other crates' modules now.
 // Every one of these was a `pub mod` here before the extraction.
 pub use tinymemory_core::{
-    chat, chat_host, composio_host, embedding_adapter, embedding_host, events, global,
-    ingest_pipeline, ingestion, learning_candidate, nlp_host, observability, preferences, queue, remember, rpc_models,
-    config_loader, scheduler_gate, search, source_scope, store, sync_events, test_env_lock, thread_context, tinycortex, traits,
-    tree_policy, tree_source, util,
+    chat, chat_host, composio_host, config_loader, embedding_adapter, embedding_host, events,
+    global, ingest_pipeline, ingestion, learning_candidate, nlp_host, observability, preferences,
+    queue, remember, rpc_models, scheduler_gate, search, source_scope, store, sync_events,
+    test_env_lock, thread_context, tinycortex, traits, tree_policy, tree_source, util,
 };
 
 pub use ingestion::{

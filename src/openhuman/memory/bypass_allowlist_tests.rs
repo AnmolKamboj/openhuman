@@ -460,7 +460,11 @@ fn scan() -> BTreeSet<(String, String)> {
     // would quietly drop them from the tally — which would read as "the
     // bypasses were cleaned up" rather than "they moved out of view".
     collect_rs_files(
-        &root.join("vendor").join("tinymemory").join("core").join("src"),
+        &root
+            .join("vendor")
+            .join("tinymemory")
+            .join("core")
+            .join("src"),
         &mut files,
     );
 

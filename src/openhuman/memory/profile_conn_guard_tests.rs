@@ -56,4 +56,3 @@ fn profile_conn_is_confined_to_the_memory_family() {
          user_profile belongs inside the memory family."
     );
 }
-

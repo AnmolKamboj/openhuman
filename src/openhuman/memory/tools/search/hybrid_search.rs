@@ -12,10 +12,10 @@ use std::sync::Arc;
 
 use crate::openhuman::config::rpc as config_rpc;
 use crate::openhuman::inference::embeddings::{provider_from_config, EmbeddingProvider};
-use tinymemory_core::store::types::MemoryItemKind;
-use tinymemory_core::store::UnifiedMemory;
 use crate::openhuman::tools::traits::{Tool, ToolResult};
 use tinycortex::memory::WeightProfile;
+use tinymemory_core::store::types::MemoryItemKind;
+use tinymemory_core::store::UnifiedMemory;
 
 pub struct MemoryHybridSearchTool;
 

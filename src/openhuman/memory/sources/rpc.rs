@@ -1,13 +1,13 @@
 //! RPC handler implementations for memory sources.
 
 // `to_arc` / the config accessors are `MemoryHostConfig` trait methods.
-use tinymemory_api::host::MemoryHostConfig;
 use crate::openhuman::config::rpc as config_rpc;
+use crate::openhuman::memory::sources::apply_kind_defaults;
 use crate::openhuman::memory::sources::readers;
 use crate::openhuman::memory::sources::registry::{self, MemorySourcePatch};
 use crate::openhuman::memory::sources::types::{MemorySourceEntry, SourceKind};
-use crate::openhuman::memory::sources::apply_kind_defaults;
 use crate::rpc::RpcOutcome;
+use tinymemory_api::host::MemoryHostConfig;
 
 #[derive(Debug, serde::Serialize)]
 pub struct CodingSessionStatusResponse {
@@ -269,7 +269,6 @@ pub async fn add_rpc(req: AddRequest) -> Result<RpcOutcome<AddResponse>, String>
     let source = registry::add_source(entry).await?;
     Ok(RpcOutcome::new(AddResponse { source }, vec![]))
 }
-
 
 // ── Update ──
 

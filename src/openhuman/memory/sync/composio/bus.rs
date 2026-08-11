@@ -57,10 +57,10 @@ use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
 use crate::openhuman::agent::triage::{apply_decision, run_triage, TriageOutcome, TriggerEnvelope};
 use crate::openhuman::config::rpc as config_rpc;
-use tinymemory_api::host::COMPOSIO_MODE_DIRECT;
 use crate::openhuman::integrations::composio::trigger_history;
 use tinybus::EventHandler;
 use tinybus::SubscriptionHandle;
+use tinymemory_api::host::COMPOSIO_MODE_DIRECT;
 
 use super::providers::{get_provider, ProviderContext};
 use crate::openhuman::integrations::composio::client::ComposioClient;
@@ -590,12 +590,11 @@ impl EventHandler<DomainEvent> for ComposioConnectionCreatedSubscriber {
                     // terms: the context snapshot was taken at hook-entry and
                     // the OAuth completion we are reacting to may have written
                     // credentials since.
-                    let live_config = match crate::openhuman::config::rpc::
-                        reload_config_from_paths(
-                            ctx.config.config_path(),
-                            ctx.config.workspace_dir(),
-                        )
-                        .await
+                    let live_config = match crate::openhuman::config::rpc::reload_config_from_paths(
+                        ctx.config.config_path(),
+                        ctx.config.workspace_dir(),
+                    )
+                    .await
                     {
                         Ok(cfg) => cfg,
                         Err(e) => {

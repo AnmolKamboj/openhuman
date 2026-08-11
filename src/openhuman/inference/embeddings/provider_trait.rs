@@ -17,7 +17,5 @@
 //! builds Ollama models directly and has to wrap them. `tinymemory-core` is the
 //! one crate that can name both sides.
 
-
 pub use tinymemory_api::host::{format_embedding_signature, EmbeddingProvider};
 pub use tinymemory_core::embedding_adapter::TinyAgentsEmbeddingProvider;
-
