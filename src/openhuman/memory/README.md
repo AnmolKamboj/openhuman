@@ -1,12 +1,17 @@
 # memory
 
 Host layer over the memory stack. The substance of the memory subsystem was
-extracted into [`tinymemory-core`](../../../vendor/tinymemory/): the
+extracted into [`tinymemory-core`](https://github.com/tinyhumansai/tinymemory): the
 SQLite/vector store, the markdown summary tree, the provider sync pipelines,
 ingestion, recall/query/search, the ingest queue, conversations, people,
 goals and the tool-memory rules. That crate names no OpenHuman type — see
-[its README](../../../vendor/tinymemory/README.md) for the extracted
+[its README](https://github.com/tinyhumansai/tinymemory#readme) for the extracted
 side of this split.
+
+Links to the extracted crate point at GitHub rather than into
+`vendor/tinymemory/`: CI checks out this repository without submodule
+contents, so a relative link into that directory resolves to nothing on the
+runner and fails the link check.
 
 What stays here, per that split:
 
@@ -51,7 +56,7 @@ tinymemory_core::<domain>::*;` plus the handler/schema modules that name
 
 ## What lives in the extracted crate (for reference)
 
-See [`vendor/tinymemory/core/src/`](../../../vendor/tinymemory/core/src/) for
+See [`vendor/tinymemory/core/src/`](https://github.com/tinyhumansai/tinymemory/tree/main/core/src) for
 the storage primitives (`store/`), ingestion queue (`ingestion/`), sync
 lifecycle types (`sync_events.rs`), remember classification (`remember.rs`),
 ingest orchestration (`ingest_pipeline.rs`), the `Memory`/`MemoryEntry`/etc.
