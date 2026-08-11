@@ -2790,6 +2790,7 @@ const MEMORY_TOOL_CAPABILITIES: &[(&str, tinycortex_api::capabilities::Capabilit
         ("memory_tree", C::Tree),
         ("memory_flavour", C::Tree),
         ("memory_store_raw_search", C::Entities),
+        #[cfg(feature = "memory-git")]
         ("memory_diff", C::Diff),
         ("memory_doctor", C::Maintenance),
         ("tool_stats", C::ToolMemory),
@@ -2926,6 +2927,7 @@ const OPTIONAL_FAMILY_MEMORY_TOOLS: &[&str] = &[
     "memory_tree",
     "memory_flavour",
     "memory_store_raw_search",
+    #[cfg(feature = "memory-git")]
     "memory_diff",
     "memory_doctor",
     "goals_list",
@@ -2979,6 +2981,19 @@ async fn memory_tools_all_present_under_the_embedded_driver() {
             "`{name}` must survive the embedded driver; got: {names:?}"
         );
     }
+}
+
+/// The git-backed diff tool must not advertise an implementation that cannot
+/// run when the `memory-git` feature is compiled out.
+#[cfg(not(feature = "memory-git"))]
+#[test]
+fn memory_diff_tool_is_absent_when_memory_git_is_disabled() {
+    let tmp = TempDir::new().unwrap();
+    let names = tool_names(&expansion_tools_for(&tmp));
+    assert!(
+        !names.iter().any(|name| name == "memory_diff"),
+        "memory_diff must be absent when the memory-git feature is disabled; got: {names:?}"
+    );
 }
 
 /// The half that proves the filter removes anything.

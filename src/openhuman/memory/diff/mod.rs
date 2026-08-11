@@ -61,6 +61,7 @@ pub mod schemas;
 pub mod source;
 #[cfg(feature = "memory-git")]
 pub mod tools;
+pub mod types;
 
 #[cfg(not(feature = "memory-git"))]
 mod stub;
@@ -72,9 +73,9 @@ pub use schemas::{
     all_controller_schemas as all_memory_diff_controller_schemas,
     all_registered_controllers as all_memory_diff_registered_controllers,
 };
-pub use tinycortex::memory::diff::types::{
+#[cfg(feature = "memory-git")]
+pub use tools::MemoryDiffTool;
+pub use types::{
     ChangeKind, Checkpoint, CrossSourceDiff, DiffResult, DiffSummary, ItemChange, Snapshot,
     SnapshotTrigger,
 };
-#[cfg(feature = "memory-git")]
-pub use tools::MemoryDiffTool;

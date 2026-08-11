@@ -4871,7 +4871,12 @@ async fn json_rpc_web_chat_routing_cases_use_expected_backend_models_inner() {
     let openhuman_home = home.join(".openhuman");
 
     let _home_guard = EnvVarGuard::set_to_path("HOME", home);
-    let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
+    // Keep this router on its own fixture even if a previous test's server
+    // still has an active-user marker while it winds down.
+    let _workspace_guard = EnvVarGuard::set_to_path(
+        "OPENHUMAN_WORKSPACE",
+        &openhuman_home.join("users").join("routing-e2e-user"),
+    );
     let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
     let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
 
@@ -4879,7 +4884,7 @@ async fn json_rpc_web_chat_routing_cases_use_expected_backend_models_inner() {
     let mock_origin = format!("http://{}", mock_addr);
 
     write_min_config_with_local_ai_disabled(&openhuman_home, &mock_origin);
-    let user_scoped_dir = openhuman_home.join("users").join("e2e-user");
+    let user_scoped_dir = openhuman_home.join("users").join("routing-e2e-user");
     write_min_config_with_local_ai_disabled(&user_scoped_dir, &mock_origin);
 
     let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
@@ -4892,7 +4897,7 @@ async fn json_rpc_web_chat_routing_cases_use_expected_backend_models_inner() {
         "openhuman.auth_store_session",
         json!({
             "token": "e2e-test-jwt",
-            "user_id": "e2e-user"
+            "user_id": "routing-e2e-user"
         }),
     )
     .await;
@@ -4975,7 +4980,14 @@ async fn json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_
     let openhuman_home = home.join(".openhuman");
 
     let _home_guard = EnvVarGuard::set_to_path("HOME", home);
-    let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
+    // Keep this router on its own fixture even if a previous test's server
+    // still has an active-user marker while it winds down.
+    let _workspace_guard = EnvVarGuard::set_to_path(
+        "OPENHUMAN_WORKSPACE",
+        &openhuman_home
+            .join("users")
+            .join("custom-provider-e2e-user"),
+    );
     let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
     let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
 
@@ -4983,7 +4995,9 @@ async fn json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_
     let mock_origin = format!("http://{}", mock_addr);
 
     write_min_config_with_local_ai_disabled(&openhuman_home, &mock_origin);
-    let user_scoped_dir = openhuman_home.join("users").join("e2e-user");
+    let user_scoped_dir = openhuman_home
+        .join("users")
+        .join("custom-provider-e2e-user");
     write_min_config_with_local_ai_disabled(&user_scoped_dir, &mock_origin);
 
     let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
@@ -4996,7 +5010,7 @@ async fn json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_
         "openhuman.auth_store_session",
         json!({
             "token": "e2e-test-jwt",
-            "user_id": "e2e-user"
+            "user_id": "custom-provider-e2e-user"
         }),
     )
     .await;
@@ -9343,8 +9357,15 @@ async fn json_rpc_meet_join_call_validates_and_returns_request_id() {
 /// 250 ms-budget poll to see it, and stop_session returns sane
 /// counters. STT / TTS adapters are stubbed in PR1 so this stays
 /// network-free.
-#[tokio::test]
-async fn json_rpc_meet_agent_session_lifecycle() {
+#[test]
+fn json_rpc_meet_agent_session_lifecycle() {
+    run_json_rpc_e2e_on_agent_stack(
+        "json_rpc_meet_agent_session_lifecycle",
+        json_rpc_meet_agent_session_lifecycle_inner,
+    );
+}
+
+async fn json_rpc_meet_agent_session_lifecycle_inner() {
     use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 
     let _env_lock = json_rpc_e2e_env_lock();

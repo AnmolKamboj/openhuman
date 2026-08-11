@@ -1703,6 +1703,7 @@ const MEMORY_NAMESPACE_CAPABILITY: &[(&str, Option<Capability>)] = &[
     ("slack_memory", Some(Capability::Sources)),
     ("memory_sync", Some(Capability::Sources)),
     ("memory_sources", Some(Capability::Sources)),
+    #[cfg(feature = "memory-git")]
     ("memory_diff", Some(Capability::Diff)),
 ];
 
@@ -1848,10 +1849,13 @@ fn every_capability_family_is_accounted_for_in_the_rpc_surface() {
             | Capability::Documents
             | Capability::Tree
             | Capability::Graph
-            | Capability::Diff
             | Capability::Goals
             | Capability::ToolMemory
             | Capability::Sources => true,
+            #[cfg(feature = "memory-git")]
+            Capability::Diff => true,
+            #[cfg(not(feature = "memory-git"))]
+            Capability::Diff => false,
             // `Core` gates the combined core + recall controller partition so
             // a null driver removes the entire driver-backed surface. Recall
             // is represented by that same partition; Portability is RPC-less.
@@ -1988,6 +1992,7 @@ async fn memory_families_registered_when_capabilities_advertised() {
         "tree_summarizer",
         "memory_sync",
         "memory_sources",
+        #[cfg(feature = "memory-git")]
         "memory_diff",
         "slack_memory",
         "people",
@@ -2432,6 +2437,7 @@ fn sole_capability_for_namespace_reports_a_single_family_namespace() {
         sole_capability_for_namespace("memory_tree"),
         Some(Capability::Tree)
     );
+    #[cfg(feature = "memory-git")]
     assert_eq!(
         sole_capability_for_namespace("memory_diff"),
         Some(Capability::Diff)
