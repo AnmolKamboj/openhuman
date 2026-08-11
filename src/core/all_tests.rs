@@ -1507,6 +1507,10 @@ fn every_domain_group_is_accounted_for_in_store_init_plan() {
         DomainGroup::Desktop,
         DomainGroup::Hosted,
         DomainGroup::Relay,
+        // The registry is a compiled-in `const` table and the loaded-module set
+        // lives in tinybus's own `ModuleHost`, so there is nothing for
+        // `init_stores` to stand up.
+        DomainGroup::Modules,
         DomainGroup::Platform,
     ];
 
@@ -1565,6 +1569,9 @@ fn every_domain_group_is_accounted_for_in_subscriber_plan() {
         DomainGroup::Runtimes,
         DomainGroup::Hosted,
         DomainGroup::Relay,
+        // Modules run on their own in-process broker, so they cannot publish a
+        // `DomainEvent` and there is nothing on the core bus to subscribe to.
+        DomainGroup::Modules,
     ];
 
     for g in DomainGroup::ALL {

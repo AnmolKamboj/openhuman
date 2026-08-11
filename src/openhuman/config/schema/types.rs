@@ -292,6 +292,12 @@ pub struct Config {
     #[serde(default)]
     pub mcp_client: McpClientConfig,
 
+    /// Loadable native modules — whether they load, whether this host may fetch
+    /// them, and where a developer's own build lives. The loadable *set* is
+    /// compiled in, not configured: see `openhuman::modules::registry`.
+    #[serde(default)]
+    pub modules: super::ModulesConfig,
+
     /// Trust metadata for external capability providers. Empty by default so
     /// existing installations keep the same tool-discovery behavior.
     #[serde(default)]
@@ -809,6 +815,7 @@ impl Default for Config {
             curl: CurlConfig::default(),
             gitbooks: GitbooksConfig::default(),
             mcp_client: McpClientConfig::default(),
+            modules: super::ModulesConfig::default(),
             capability_providers: Vec::new(),
             multimodal: MultimodalConfig::default(),
             multimodal_files: MultimodalFileConfig::default(),
