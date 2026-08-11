@@ -264,7 +264,7 @@ async fn tx_status_rejects_empty_hash() {
 // "connection closed". Verified passing in isolation:
 //
 //   cargo test -p openhuman --lib --features "$(bash scripts/ci/product-features.sh)" \
-//     execute_prepared_broadcasts_native_evm_transaction -- --test-threads=1
+//     execute_prepared_broadcasts_native_evm_transaction -- --ignored --test-threads=1
 //
 // Same constraint tinydocs documents for its module-backed tool tests.
 #[ignore = "drives the loaded wallet module; must run alone in its process"]
@@ -312,7 +312,7 @@ async fn execute_prepared_broadcasts_native_evm_transaction() {
 // "connection closed". Verified passing in isolation:
 //
 //   cargo test -p openhuman --lib --features "$(bash scripts/ci/product-features.sh)" \
-//     execute_prepared_broadcasts_erc20_transfer_using_default_token_catalog -- --test-threads=1
+//     execute_prepared_broadcasts_erc20_transfer_using_default_token_catalog -- --ignored --test-threads=1
 //
 // Same constraint tinydocs documents for its module-backed tool tests.
 #[ignore = "drives the loaded wallet module; must run alone in its process"]
@@ -364,7 +364,7 @@ async fn execute_prepared_broadcasts_erc20_transfer_using_default_token_catalog(
 // "connection closed". Verified passing in isolation:
 //
 //   cargo test -p openhuman --lib --features "$(bash scripts/ci/product-features.sh)" \
-//     execute_prepared_broadcasts_native_evm_on_base_with_chain_id_8453 -- --test-threads=1
+//     execute_prepared_broadcasts_native_evm_on_base_with_chain_id_8453 -- --ignored --test-threads=1
 //
 // Same constraint tinydocs documents for its module-backed tool tests.
 #[ignore = "drives the loaded wallet module; must run alone in its process"]

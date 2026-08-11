@@ -664,7 +664,7 @@ mod tests {
     // "connection closed". Verified passing in isolation:
     //
     //   cargo test -p openhuman --lib --features "$(bash scripts/ci/product-features.sh)" \
-    //     execute_tron_quote_signs_and_broadcasts_native_transfer -- --test-threads=1
+    //     execute_tron_quote_signs_and_broadcasts_native_transfer -- --ignored --test-threads=1
     //
     // Same constraint tinydocs documents for its module-backed tool tests.
     #[ignore = "drives the loaded wallet module; must run alone in its process"]
@@ -727,7 +727,7 @@ mod tests {
     // "connection closed". Verified passing in isolation:
     //
     //   cargo test -p openhuman --lib --features "$(bash scripts/ci/product-features.sh)" \
-    //     execute_tron_quote_signs_and_broadcasts_trc20_transfer -- --test-threads=1
+    //     execute_tron_quote_signs_and_broadcasts_trc20_transfer -- --ignored --test-threads=1
     //
     // Same constraint tinydocs documents for its module-backed tool tests.
     #[ignore = "drives the loaded wallet module; must run alone in its process"]
@@ -789,7 +789,7 @@ mod tests {
     // "connection closed". Verified passing in isolation:
     //
     //   cargo test -p openhuman --lib --features "$(bash scripts/ci/product-features.sh)" \
-    //     execute_tron_quote_surfaces_node_rejection -- --test-threads=1
+    //     execute_tron_quote_surfaces_node_rejection -- --ignored --test-threads=1
     //
     // Same constraint tinydocs documents for its module-backed tool tests.
     #[ignore = "drives the loaded wallet module; must run alone in its process"]

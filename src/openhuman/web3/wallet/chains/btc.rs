@@ -501,7 +501,7 @@ mod tests {
     // "connection closed". Verified passing in isolation:
     //
     //   cargo test -p openhuman --lib --features "$(bash scripts/ci/product-features.sh)" \
-    //     execute_btc_quote_builds_psbt_signs_and_broadcasts -- --test-threads=1
+    //     execute_btc_quote_builds_psbt_signs_and_broadcasts -- --ignored --test-threads=1
     //
     // Same constraint tinydocs documents for its module-backed tool tests.
     #[ignore = "drives the loaded wallet module; must run alone in its process"]
