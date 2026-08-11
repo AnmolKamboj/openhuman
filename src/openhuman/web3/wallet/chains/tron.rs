@@ -214,7 +214,7 @@ fn parse_single_tron_contract(raw: &[u8]) -> Result<ParsedTronContract<'_>, Stri
 }
 
 fn one_bytes<'a>(
-    fields: &'a [ProtoField<'a>],
+    fields: &[ProtoField<'a>],
     number: u64,
     name: &str,
 ) -> Result<&'a [u8], String> {
