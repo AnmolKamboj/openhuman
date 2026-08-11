@@ -152,17 +152,12 @@ fn tron_transaction_spec(
             if recipient != expected_recipient {
                 return Err("Tron node transaction targets a different contract".to_string());
             }
-            let call_value = optional_varint(
-                &payload,
-                3,
-                "TriggerSmartContract.call_value",
-            )?
-            .unwrap_or(0);
+            let call_value =
+                optional_varint(&payload, 3, "TriggerSmartContract.call_value")?.unwrap_or(0);
             if call_value != 0 {
                 return Err("Tron node transaction has non-zero TRC20 call_value".to_string());
             }
-            if let Some(fee_limit) =
-                optional_varint(&raw_fields, 18, "Transaction.raw.fee_limit")?
+            if let Some(fee_limit) = optional_varint(&raw_fields, 18, "Transaction.raw.fee_limit")?
             {
                 if fee_limit != TRC20_FEE_LIMIT_SUN {
                     return Err("Tron node transaction has a different fee_limit".to_string());
@@ -248,8 +243,7 @@ fn one_bytes<'a>(fields: &[ProtoField<'a>], number: u64, name: &str) -> Result<&
 }
 
 fn one_varint(fields: &[ProtoField<'_>], number: u64, name: &str) -> Result<u64, String> {
-    optional_varint(fields, number, name)?
-        .ok_or_else(|| format!("Tron protobuf is missing {name}"))
+    optional_varint(fields, number, name)?.ok_or_else(|| format!("Tron protobuf is missing {name}"))
 }
 
 fn optional_varint(
