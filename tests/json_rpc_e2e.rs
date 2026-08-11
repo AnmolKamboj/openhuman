@@ -1176,14 +1176,7 @@ async fn json_rpc_config_update_browser_settings_persists_backend() {
     let openhuman_home = home.join(".openhuman");
 
     let _home_guard = EnvVarGuard::set_to_path("HOME", home);
-    // Pin this server to its fixture rather than relying on HOME. The config
-    // resolver follows the process-wide active-user marker after auth, and
-    // another integration test can leave that marker pointing at its own
-    // temporary workspace while its server is winding down.
-    let _workspace_guard = EnvVarGuard::set_to_path(
-        "OPENHUMAN_WORKSPACE",
-        &openhuman_home.join("users").join("e2e-user"),
-    );
+    let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
     let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
     let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
 
@@ -1542,12 +1535,7 @@ async fn json_rpc_agent_registry_manages_defaults_and_custom_agents() {
     let openhuman_home = home.join(".openhuman");
 
     let _home_guard = EnvVarGuard::set_to_path("HOME", home);
-    // See the routing-cases test: use this test's user fixture explicitly so
-    // no prior server's active-user marker can select a stale model profile.
-    let _workspace_guard = EnvVarGuard::set_to_path(
-        "OPENHUMAN_WORKSPACE",
-        &openhuman_home.join("users").join("e2e-user"),
-    );
+    let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
     let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
     let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
 
