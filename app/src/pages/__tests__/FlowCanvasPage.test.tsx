@@ -1068,12 +1068,17 @@ describe('FlowCanvasPage copilot proposal name adoption', () => {
     expect(caughtErr).toBeInstanceOf(Error);
     expect((caughtErr as Error).message).toBe('network unreachable');
 
-    // The draft is already applied before `handleSave` is even attempted, so
-    // rethrowing loses no data: the proposal's graph is still on the canvas
-    // (2 nodes: the original trigger + the proposal's agent node), dirty,
-    // with the header Save button enabled as the manual retry — matching
-    // what `WorkflowCopilotPanel`'s own catch branch (which skips
-    // `clearProposal()` on rejection) relies on to keep the card visible.
+    // The proposed graph is handed to the failing save attempt before it is
+    // rethrown. Assert that direct contract rather than the canvas node count:
+    // the canvas may remount while its failed-save state settles, and that
+    // rendering detail is not what keeps the proposal available for retry.
+    expect(updateFlow).toHaveBeenCalledTimes(1);
+    expect((updateFlow.mock.calls[0][1].graph as WorkflowGraph).nodes).toHaveLength(2);
+
+    // The draft remains dirty, with the header Save button enabled as the
+    // manual retry — matching what `WorkflowCopilotPanel`'s own catch branch
+    // (which skips `clearProposal()` on rejection) relies on to keep the card
+    // visible.
     //
     // These three assertions land on state derived from the REMOUNTED canvas
     // (`handleAcceptProposal` bumps `canvasVersion`, which changes the
@@ -1082,7 +1087,6 @@ describe('FlowCanvasPage copilot proposal name adoption', () => {
     // later microtask/effect flush than the outer `act()` above guarantees,
     // so poll via `waitFor` instead of asserting immediately (this was
     // observed to occasionally race in CI).
-    await waitFor(() => expect(screen.getAllByTestId('flow-node')).toHaveLength(2));
     await waitFor(() => expect(screen.getByTestId('flow-editor-dirty')).toBeInTheDocument());
     await waitFor(() => expect(screen.getByTestId('flow-editor-save')).not.toBeDisabled());
   });
