@@ -124,7 +124,8 @@ fn tron_transaction_spec(
         .map_err(|error| format!("invalid Tron raw_data_hex: {error}"))?;
     let expected_recipient = hex::decode(tron_address_to_hex(&expected_to)?)
         .map_err(|error| format!("invalid Tron recipient encoding: {error}"))?;
-    let contract = parse_single_tron_contract(&raw)?;
+    let raw_fields = parse_proto_fields(&raw)?;
+    let contract = parse_single_tron_contract(&raw_fields)?;
     match transfer {
         TronTransferVerification::Native { amount_sun } => {
             if contract.kind != 1 || !contract.type_url.ends_with(".TransferContract") {
@@ -150,6 +151,22 @@ fn tron_transaction_spec(
             let recipient = one_bytes(&payload, 2, "TriggerSmartContract.contract_address")?;
             if recipient != expected_recipient {
                 return Err("Tron node transaction targets a different contract".to_string());
+            }
+            let call_value = optional_varint(
+                &payload,
+                3,
+                "TriggerSmartContract.call_value",
+            )?
+            .unwrap_or(0);
+            if call_value != 0 {
+                return Err("Tron node transaction has non-zero TRC20 call_value".to_string());
+            }
+            if let Some(fee_limit) =
+                optional_varint(&raw_fields, 18, "Transaction.raw.fee_limit")?
+            {
+                if fee_limit != TRC20_FEE_LIMIT_SUN {
+                    return Err("Tron node transaction has a different fee_limit".to_string());
+                }
             }
             let parameter = hex::decode(parameter_hex)
                 .map_err(|error| format!("invalid TRC20 parameter: {error}"))?;
@@ -196,9 +213,10 @@ struct ParsedTronContract<'a> {
     payload: &'a [u8],
 }
 
-fn parse_single_tron_contract(raw: &[u8]) -> Result<ParsedTronContract<'_>, String> {
-    let raw_fields = parse_proto_fields(raw)?;
-    let contract_bytes = one_bytes(&raw_fields, 11, "Transaction.raw.contract")?;
+fn parse_single_tron_contract<'a>(
+    raw_fields: &[ProtoField<'a>],
+) -> Result<ParsedTronContract<'a>, String> {
+    let contract_bytes = one_bytes(raw_fields, 11, "Transaction.raw.contract")?;
     let contract_fields = parse_proto_fields(contract_bytes)?;
     let kind = one_varint(&contract_fields, 1, "Transaction.Contract.type")?;
     let any_bytes = one_bytes(&contract_fields, 2, "Transaction.Contract.parameter")?;
@@ -230,15 +248,24 @@ fn one_bytes<'a>(fields: &[ProtoField<'a>], number: u64, name: &str) -> Result<&
 }
 
 fn one_varint(fields: &[ProtoField<'_>], number: u64, name: &str) -> Result<u64, String> {
+    optional_varint(fields, number, name)?
+        .ok_or_else(|| format!("Tron protobuf is missing {name}"))
+}
+
+fn optional_varint(
+    fields: &[ProtoField<'_>],
+    number: u64,
+    name: &str,
+) -> Result<Option<u64>, String> {
     let mut matches = fields.iter().filter(|field| field.number == number);
     let Some(field) = matches.next() else {
-        return Err(format!("Tron protobuf is missing {name}"));
+        return Ok(None);
     };
     if matches.next().is_some() {
         return Err(format!("Tron protobuf repeats singular field {name}"));
     }
     match field.value {
-        ProtoValue::Varint(value) => Ok(value),
+        ProtoValue::Varint(value) => Ok(Some(value)),
         _ => Err(format!(
             "Tron protobuf field {name} has the wrong wire type"
         )),
