@@ -94,6 +94,9 @@ test.describe('Settings leaf workflows', () => {
   test('embeddings custom endpoint setup writes provider, model, and dimensions', async ({
     page,
   }) => {
+    const mockPort = process.env.E2E_MOCK_PORT || '18473';
+    const customEndpoint = `http://127.0.0.1:${mockPort}/openai/v1`;
+
     await openSettings(page, 'pw-settings-embeddings', '/settings/embeddings');
 
     // Panel title dropped in the PanelPage migration; the provider radios confirm
@@ -104,7 +107,7 @@ test.describe('Settings leaf workflows', () => {
     await expect(page.getByRole('heading', { name: /Set up/i })).toBeVisible();
     await page
       .getByPlaceholder('https://your-endpoint.com/v1')
-      .fill('http://127.0.0.1:18473/openai/v1');
+      .fill(customEndpoint);
     // Use a `text-embedding-3-*` model so the save-time verification probe sends
     // `dimensions: 64` — the mock backend (scripts/mock-api) echoes that length,
     // so the live test embed verifies and the config can be persisted.
@@ -132,7 +135,7 @@ test.describe('Settings leaf workflows', () => {
         };
       })
       .toEqual({
-        provider: 'custom:http://127.0.0.1:18473/openai/v1',
+        provider: `custom:${customEndpoint}`,
         model: 'text-embedding-3-small',
         dimensions: 64,
       });
