@@ -788,11 +788,11 @@ jobs:
 
       - name: Run cargo llvm-cov for Tauri shell
         run: |
-          # Write raw profiles to the container's local filesystem first. On
-          # hosted container jobs the workspace bind mount can accept the test
-          # binary but silently fail LLVM's profile writer. Move the completed
-          # profiles into llvm-cov's target before reporting.
-          profile_dir="/tmp/openhuman-tauri-profraw"
+          # Write raw profiles to the container's in-memory filesystem first.
+          # Both the workspace bind mount and the container overlay have
+          # dropped LLVM profile writes on hosted container jobs. /dev/shm is
+          # container-local and these raw counter files are only a few MiB.
+          profile_dir="/dev/shm/openhuman-tauri-profraw-${GITHUB_RUN_ID}"
           rm -rf "$profile_dir"
           mkdir -p "$profile_dir"
           # Source cargo-llvm-cov's instrumentation environment, then override
