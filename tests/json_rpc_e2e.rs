@@ -15,6 +15,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures_util::StreamExt;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 use tinyagents::harness::message::Message;
 use tinyagents::harness::model::ModelRequest;
@@ -5830,6 +5831,7 @@ async fn json_rpc_wallet_setup_round_trips_status() {
 /// #1396 — wallet execution surface: balances/supported_assets/chain_status
 /// read tools, prepare_transfer + execute_prepared write boundary.
 #[tokio::test]
+#[ignore = "drives the loaded wallet module; run alone with an installed tinywallet artifact"]
 async fn json_rpc_wallet_execution_surface_round_trips() {
     let _env_lock = json_rpc_e2e_env_lock();
     let tmp = tempdir().expect("tempdir");
@@ -6341,31 +6343,107 @@ struct MockTronState {
     broadcast_hits: Arc<Mutex<u32>>,
 }
 
-async fn mock_tron_create(State(state): State<MockTronState>, Json(_): Json<Value>) -> Json<Value> {
+fn mock_tron_push_varint(out: &mut Vec<u8>, mut value: u64) {
+    while value >= 0x80 {
+        out.push((value as u8) | 0x80);
+        value >>= 7;
+    }
+    out.push(value as u8);
+}
+
+fn mock_tron_varint_field(out: &mut Vec<u8>, number: u64, value: u64) {
+    mock_tron_push_varint(out, number << 3);
+    mock_tron_push_varint(out, value);
+}
+
+fn mock_tron_bytes_field(out: &mut Vec<u8>, number: u64, value: &[u8]) {
+    mock_tron_push_varint(out, (number << 3) | 2);
+    mock_tron_push_varint(out, value.len() as u64);
+    out.extend_from_slice(value);
+}
+
+fn mock_tron_raw_contract(kind: u64, type_name: &str, payload: &[u8]) -> Vec<u8> {
+    let mut any = Vec::new();
+    mock_tron_bytes_field(
+        &mut any,
+        1,
+        format!("type.googleapis.com/protocol.{type_name}").as_bytes(),
+    );
+    mock_tron_bytes_field(&mut any, 2, payload);
+
+    let mut contract = Vec::new();
+    mock_tron_varint_field(&mut contract, 1, kind);
+    mock_tron_bytes_field(&mut contract, 2, &any);
+
+    let mut raw = Vec::new();
+    mock_tron_bytes_field(&mut raw, 11, &contract);
+    raw
+}
+
+fn mock_tron_transaction(raw: Vec<u8>) -> Value {
+    json!({
+        "txID": hex::encode(Sha256::digest(&raw)),
+        "raw_data": {"contract": []},
+        "raw_data_hex": hex::encode(raw),
+    })
+}
+
+async fn mock_tron_create(
+    State(state): State<MockTronState>,
+    Json(payload): Json<Value>,
+) -> Json<Value> {
     if let Ok(mut g) = state.create_hits.lock() {
         *g += 1;
     }
-    Json(json!({
-        "txID": "cd".repeat(32),
-        "raw_data": {"contract": []},
-        "raw_data_hex": "0a02ab1d2208deadbeef00deadbe40c89efd8a82325802",
-    }))
+    let mut contract = Vec::new();
+    mock_tron_bytes_field(
+        &mut contract,
+        1,
+        &hex::decode(payload["owner_address"].as_str().unwrap()).unwrap(),
+    );
+    mock_tron_bytes_field(
+        &mut contract,
+        2,
+        &hex::decode(payload["to_address"].as_str().unwrap()).unwrap(),
+    );
+    mock_tron_varint_field(&mut contract, 3, payload["amount"].as_u64().unwrap());
+    Json(mock_tron_transaction(mock_tron_raw_contract(
+        1,
+        "TransferContract",
+        &contract,
+    )))
 }
 
 async fn mock_tron_trigger(
     State(state): State<MockTronState>,
-    Json(_): Json<Value>,
+    Json(payload): Json<Value>,
 ) -> Json<Value> {
     if let Ok(mut g) = state.trigger_hits.lock() {
         *g += 1;
     }
-    Json(json!({
-        "transaction": {
-            "txID": "cd".repeat(32),
-            "raw_data": {"contract": []},
-            "raw_data_hex": "0a02ab1d2208deadbeef00deadbe40c89efd8a82325802",
-        }
-    }))
+    let mut contract = Vec::new();
+    mock_tron_bytes_field(
+        &mut contract,
+        1,
+        &hex::decode(payload["owner_address"].as_str().unwrap()).unwrap(),
+    );
+    mock_tron_bytes_field(
+        &mut contract,
+        2,
+        &hex::decode(payload["contract_address"].as_str().unwrap()).unwrap(),
+    );
+    mock_tron_varint_field(
+        &mut contract,
+        3,
+        payload["call_value"].as_u64().unwrap(),
+    );
+    let mut data = hex::decode("a9059cbb").unwrap();
+    data.extend(hex::decode(payload["parameter"].as_str().unwrap()).unwrap());
+    mock_tron_bytes_field(&mut contract, 4, &data);
+
+    let mut raw = mock_tron_raw_contract(31, "TriggerSmartContract", &contract);
+    mock_tron_varint_field(&mut raw, 18, payload["fee_limit"].as_u64().unwrap());
+    Json(json!({"transaction": mock_tron_transaction(raw)}))
 }
 
 async fn mock_tron_broadcast(
@@ -6415,6 +6493,7 @@ async fn wallet_setup_via_rpc(rpc_base: &str, encrypted_mnemonic: &str) {
 /// `evmNetwork: base_mainnet` routes signing + broadcast to the Base RPC
 /// override and *not* the Ethereum default.
 #[tokio::test]
+#[ignore = "drives the loaded wallet module; run alone with an installed tinywallet artifact"]
 async fn json_rpc_wallet_evm_base_network_prepare_execute_round_trips() {
     let _env_lock = json_rpc_e2e_env_lock();
     let tmp = tempdir().expect("tempdir");
@@ -6499,6 +6578,7 @@ async fn json_rpc_wallet_evm_base_network_prepare_execute_round_trips() {
 
 /// BTC: P2WPKH native segwit transfer end-to-end through controllers.
 #[tokio::test]
+#[ignore = "drives the loaded wallet module; run alone with an installed tinywallet artifact"]
 async fn json_rpc_wallet_btc_prepare_execute_round_trips() {
     let _env_lock = json_rpc_e2e_env_lock();
     let tmp = tempdir().expect("tempdir");
@@ -6660,6 +6740,7 @@ async fn json_rpc_wallet_solana_prepare_execute_round_trips() {
 
 /// Tron: native TRX transfer end-to-end through controllers.
 #[tokio::test]
+#[ignore = "drives the loaded wallet module; run alone with an installed tinywallet artifact"]
 async fn json_rpc_wallet_tron_prepare_execute_round_trips() {
     let _env_lock = json_rpc_e2e_env_lock();
     let tmp = tempdir().expect("tempdir");
@@ -6748,6 +6829,7 @@ async fn json_rpc_wallet_tron_prepare_execute_round_trips() {
 
 /// Tron TRC20 lifecycle — verifies the triggersmartcontract path is used.
 #[tokio::test]
+#[ignore = "drives the loaded wallet module; run alone with an installed tinywallet artifact"]
 async fn json_rpc_wallet_tron_trc20_prepare_execute_round_trips() {
     let _env_lock = json_rpc_e2e_env_lock();
     let tmp = tempdir().expect("tempdir");
