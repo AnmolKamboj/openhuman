@@ -795,7 +795,9 @@ jobs:
           profile_dir="/tmp/openhuman-tauri-profraw"
           rm -rf "$profile_dir"
           mkdir -p "$profile_dir"
-          export LLVM_PROFILE_FILE="$profile_dir/tauri-%p-%m.profraw"
+          # cargo-llvm-cov owns LLVM_PROFILE_FILE and overwrites a caller value.
+          # Its supported target-dir override places the generated profiles here.
+          export CARGO_LLVM_COV_TARGET_DIR="$profile_dir"
           bash scripts/ci-cancel-aware.sh cargo llvm-cov --manifest-path app/src-tauri/Cargo.toml --no-report
           shopt -s nullglob
           profiles=("$profile_dir"/*.profraw)
