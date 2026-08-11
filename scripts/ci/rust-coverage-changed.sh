@@ -101,6 +101,12 @@ run_integration_target() {
       log "running raw coverage module: ${module}"
       llvm_cov --no-report --no-fail-fast -p openhuman --test "${target}" -- "${module}::" --test-threads=1
     done < <(raw_coverage_modules)
+  elif [ "${target}" = "json_rpc_e2e" ]; then
+    # This target exercises process-global runtime/config state. Its tests take
+    # an environment lock, but background agent tasks can outlive an individual
+    # case briefly; keeping libtest serial prevents a successor from observing
+    # that teardown window.
+    llvm_cov --no-report --no-fail-fast -p openhuman --test "${target}" -- --test-threads=1
   else
     llvm_cov --no-report --no-fail-fast -p openhuman --test "${target}"
   fi

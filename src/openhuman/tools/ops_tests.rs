@@ -2799,7 +2799,10 @@ const REPRESENTATIVE: &[(&str, crate::core::all::DomainGroup)] = {
 /// Families with no agent tools of their own.
 const TOOL_LESS: &[crate::core::all::DomainGroup] = {
     use crate::core::all::DomainGroup as G;
-    &[G::Config, G::Security, G::Meet, G::Medulla]
+    // `Modules` is the loader, not a capability: a loaded module's own surface
+    // is reached through whichever domain calls it (documents go through the
+    // document tools), so the family itself owns no agent tool.
+    &[G::Config, G::Security, G::Meet, G::Medulla, G::Modules]
 };
 
 // ---- tool_capability() drift guard (M5.3) ----------------------------------
@@ -2820,6 +2823,7 @@ const MEMORY_TOOL_CAPABILITIES: &[(&str, tinycortex_api::capabilities::Capabilit
         ("memory_tree", C::Tree),
         ("memory_flavour", C::Tree),
         ("memory_store_raw_search", C::Entities),
+        #[cfg(feature = "memory-git")]
         ("memory_diff", C::Diff),
         ("memory_doctor", C::Maintenance),
         ("tool_stats", C::ToolMemory),
@@ -3027,6 +3031,19 @@ async fn memory_tools_all_present_under_the_embedded_driver() {
             "`memory_diff` must survive the embedded driver when `memory-git` is on; got: {names:?}"
         );
     }
+}
+
+/// The git-backed diff tool must not advertise an implementation that cannot
+/// run when the `memory-git` feature is compiled out.
+#[cfg(not(feature = "memory-git"))]
+#[test]
+fn memory_diff_tool_is_absent_when_memory_git_is_disabled() {
+    let tmp = TempDir::new().unwrap();
+    let names = tool_names(&expansion_tools_for(&tmp));
+    assert!(
+        !names.iter().any(|name| name == "memory_diff"),
+        "memory_diff must be absent when the memory-git feature is disabled; got: {names:?}"
+    );
 }
 
 /// The half that proves the filter removes anything.
