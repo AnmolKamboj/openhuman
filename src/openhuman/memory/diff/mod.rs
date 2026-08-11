@@ -76,4 +76,5 @@ pub use tinycortex::memory::diff::types::{
     ChangeKind, Checkpoint, CrossSourceDiff, DiffResult, DiffSummary, ItemChange, Snapshot,
     SnapshotTrigger,
 };
+#[cfg(feature = "memory-git")]
 pub use tools::MemoryDiffTool;
