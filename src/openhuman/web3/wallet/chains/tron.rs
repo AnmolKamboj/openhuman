@@ -8,6 +8,7 @@
 use log::debug;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
 use crate::openhuman::config::rpc as config_rpc;
 
@@ -101,8 +102,7 @@ fn tron_transaction_spec(
     expected_to: String,
     transfer: &TronTransferVerification,
 ) -> Result<tinywallet::wire::TransactionSpec, String> {
-    let recomputed_txid = tinywallet::tx::tron::recompute_txid(&raw_tx.raw_data_hex)
-        .map_err(|error| format!("invalid Tron raw_data_hex: {error}"))?;
+    let recomputed_txid = recompute_tron_txid(&raw_tx.raw_data_hex)?;
     if !recomputed_txid.eq_ignore_ascii_case(raw_tx.tx_id.trim()) {
         return Err("Tron node txID does not match sha256(raw_data)".to_string());
     }
@@ -130,11 +130,7 @@ fn tron_transaction_spec(
                 .map_err(|error| format!("invalid TRC20 parameter: {error}"))?,
         ),
     };
-    if expected.is_empty()
-        || !raw
-            .windows(expected.len())
-            .any(|window| window == expected)
-    {
+    if expected.is_empty() || !raw.windows(expected.len()).any(|window| window == expected) {
         return Err(format!(
             "Tron node transaction does not contain the requested {field}"
         ));
@@ -160,6 +156,12 @@ fn encode_protobuf_varint(mut value: u64) -> Vec<u8> {
             return encoded;
         }
     }
+}
+
+fn recompute_tron_txid(raw_data_hex: &str) -> Result<String, String> {
+    let raw = hex::decode(raw_data_hex.trim())
+        .map_err(|error| format!("invalid Tron raw_data_hex: {error}"))?;
+    Ok(hex::encode(Sha256::digest(raw)))
 }
 
 /// Derive the Tron signing key and its base58check address.
@@ -526,7 +528,7 @@ mod tests {
                             "0a{recipient}18{}ff",
                             hex::encode(encode_protobuf_varint(amount))
                         );
-                        let txid = tinywallet::tx::tron::recompute_txid(&raw).unwrap();
+                        let txid = recompute_tron_txid(&raw).unwrap();
                         create.lock().push(payload);
                         axum::Json(json!({
                             "txID": txid,
@@ -544,7 +546,7 @@ mod tests {
                         let contract = payload["contract_address"].as_str().unwrap();
                         let parameter = payload["parameter"].as_str().unwrap();
                         let raw = format!("0a{contract}ff{parameter}ee");
-                        let txid = tinywallet::tx::tron::recompute_txid(&raw).unwrap();
+                        let txid = recompute_tron_txid(&raw).unwrap();
                         trigger.lock().push(payload);
                         axum::Json(json!({
                             "transaction": {
@@ -584,8 +586,11 @@ mod tests {
         let recipient_hex = tron_address_to_hex(recipient).unwrap();
         let contract_hex = tron_address_to_hex(contract).unwrap();
 
-        let native_raw = format!("aa{recipient_hex}18{}bb", hex::encode(encode_protobuf_varint(1_000_000)));
-        let native_txid = tinywallet::tx::tron::recompute_txid(&native_raw).unwrap();
+        let native_raw = format!(
+            "aa{recipient_hex}18{}bb",
+            hex::encode(encode_protobuf_varint(1_000_000))
+        );
+        let native_txid = recompute_tron_txid(&native_raw).unwrap();
         let native_tx = CreateTransactionResponse {
             tx_id: native_txid.clone(),
             raw_data: json!({}),
@@ -610,7 +615,7 @@ mod tests {
 
         let parameter = "01".repeat(64);
         let token_raw = format!("aa{contract_hex}bb{parameter}cc");
-        let token_txid = tinywallet::tx::tron::recompute_txid(&token_raw).unwrap();
+        let token_txid = recompute_tron_txid(&token_raw).unwrap();
         let token_tx = CreateTransactionResponse {
             tx_id: token_txid.clone(),
             raw_data: json!({}),
@@ -806,7 +811,7 @@ mod tests {
                         "0a{recipient}18{}ff",
                         hex::encode(encode_protobuf_varint(amount))
                     );
-                    let txid = tinywallet::tx::tron::recompute_txid(&raw).unwrap();
+                    let txid = recompute_tron_txid(&raw).unwrap();
                     axum::Json(json!({
                         "txID": txid,
                         "raw_data": {"contract": []},
