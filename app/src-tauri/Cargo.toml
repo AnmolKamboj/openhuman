@@ -27,7 +27,7 @@ serde_json = "1"
 [dependencies]
 # Tauri core and plugins. Use upstream Tauri's native WebView runtime (Wry),
 # rather than the removed Chromium/CEF fork.
-tauri = { version = "2.10", default-features = false, features = [
+tauri = { version = "2.11", default-features = false, features = [
     "wry",
     "common-controls-v6",
     "devtools",
@@ -174,6 +174,10 @@ openhuman_core = { path = "../..", package = "openhuman", default-features = fal
     "file-logging",
     "contacts",
     "runtime-node",
+    # Without this the memory_diff RPC namespace is unknown-method in the
+    # shipped app, the memory_diff agent tool is absent, and the embedded
+    # driver stops advertising Capability::Diff — the product keeps all three.
+    "memory-git",
 ] }
 tinyjuice = { version = "0.2.1", default-features = false }
 

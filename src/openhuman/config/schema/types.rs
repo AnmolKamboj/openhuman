@@ -372,6 +372,17 @@ pub struct Config {
     #[serde(default)]
     pub primary_cloud: Option<String>,
 
+    /// Runtime only — where this one call's inference goes, when the caller
+    /// named an endpoint and bearer for it.
+    ///
+    /// `#[serde(skip)]` is the whole point: a per-call route must not be able to
+    /// reach `config.toml` and repoint the account's inference for good. See
+    /// [`ephemeral_route`](crate::openhuman::config::schema::ephemeral_route)
+    /// for how it is installed and which roles it governs.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub ephemeral_route: Option<crate::openhuman::config::schema::ephemeral_route::EphemeralRoute>,
+
     /// Provider string for direct conversational chat (simple back-and-forth).
     #[serde(default)]
     pub chat_provider: Option<String>,
@@ -758,6 +769,7 @@ impl Default for Config {
             api_url: None,
             api_key: None,
             inference_url: None,
+            ephemeral_route: None,
             default_model: Some(DEFAULT_MODEL.to_string()),
             default_temperature: DEFAULT_TEMPERATURE,
             output_language: None,

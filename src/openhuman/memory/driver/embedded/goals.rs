@@ -9,12 +9,12 @@
 //! ever forks the type, this file should stop compiling here rather than
 //! somewhere confusing.
 //!
-//! ## Both directions go through the host store, not the engine
+//! ## Both directions go through the engine store
 //!
-//! `store::load` / `store::save` are the host's own thin wrappers over the
-//! engine's goals store. They own the on-disk location
-//! (`<workspace>/MEMORY_GOALS.md`) and the item/character caps, and going
-//! through them keeps this driver from being a second place that knows either.
+//! `store::load` / `store::save` are `tinycortex::memory::goals::store`. They
+//! own the on-disk location (`<workspace>/MEMORY_GOALS.md`) and the
+//! item/character caps, and going through them keeps this driver from being a
+//! second place that knows either.
 //!
 //! ## `set_goals` takes ownership; `save` needs `&mut`
 //!
@@ -27,20 +27,19 @@
 //! ## Why nothing maps to [`MemoryError::Invalid`]
 //!
 //! The contract reserves `Invalid` for "a document the driver refuses (e.g.
-//! over its own item cap)". The engine *does* have those rejections, but
-//! `goals::store` flattens every engine error to `String` via `to_string()`, so
-//! by the time it reaches this file nothing is machine-readable. String-matching
-//! the message to recover the class would be worse than the honest
-//! [`MemoryError::Other`]: it would silently reclassify on any wording change.
-//! Making this typed needs `goals/store.rs` to stop flattening, which is a host
-//! change outside this step.
+//! over its own item cap)". The engine *does* have those rejections, and now
+//! that the host shim is gone they arrive here as a typed
+//! `tinycortex::memory::error::MemoryError`. This file still flattens them with
+//! `to_string()` into [`MemoryError::Other`], because the facade collapse is a
+//! pure relocation; mapping engine `Invalid`/`NotFound` onto the contract's
+//! variants is a behaviour change and is tracked separately.
 
 use async_trait::async_trait;
 use tinycortex_api::error::MemoryError;
 use tinycortex_api::goals::GoalsDoc;
 use tinycortex_api::provider::MemoryGoals;
 
-use crate::openhuman::memory::goals::store;
+use tinycortex::memory::goals::store;
 
 use super::{host_error, EmbeddedMemoryProvider};
 
@@ -54,9 +53,7 @@ impl MemoryGoals for EmbeddedMemoryProvider {
         // A missing `MEMORY_GOALS.md` maps to an empty document inside
         // `store::load`, so the contract's "no goals is not NotFound" rule
         // holds without anything here.
-        store::load(self.workspace_dir())
-            .await
-            .map_err(|error| host_error("goals", error))
+        store::load(self.workspace_dir()).map_err(|error| host_error("goals", error.to_string()))
     }
 
     async fn set_goals(&self, goals: GoalsDoc) -> Result<(), MemoryError> {
@@ -67,8 +64,7 @@ impl MemoryGoals for EmbeddedMemoryProvider {
             doc.items.len()
         );
         store::save(self.workspace_dir(), &mut doc)
-            .await
-            .map_err(|error| host_error("set_goals", error))
+            .map_err(|error| host_error("set_goals", error.to_string()))
     }
 }
 

@@ -41,11 +41,11 @@ use async_trait::async_trait;
 
 use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
-use tinybus::EventHandler;
-use tinybus::SubscriptionHandle;
 use crate::openhuman::agent::learning::cache::FacetCache;
 use crate::openhuman::integrations::composio::providers::profile_md::replace_managed_block;
 use crate::openhuman::memory::store::profile::UserState;
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 
 // ── Class → block metadata ────────────────────────────────────────────────────
 
@@ -227,7 +227,9 @@ mod tests {
     use tempfile::TempDir;
 
     fn make_cache(conn: Arc<Mutex<Connection>>) -> Arc<FacetCache> {
-        Arc::new(FacetCache::new(conn))
+        Arc::new(FacetCache::new(
+            crate::openhuman::memory::store::ProfileStore::for_tests(conn),
+        ))
     }
 
     fn insert_facet(

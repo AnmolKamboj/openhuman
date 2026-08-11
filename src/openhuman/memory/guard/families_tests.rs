@@ -164,7 +164,7 @@ async fn guard_fills_query_source_scope_from_the_task_local() {
 }
 
 #[tokio::test]
-async fn guard_explicit_scope_argument_wins_over_the_ambient_one() {
+async fn guard_explicit_scope_is_intersected_with_the_ambient_one() {
     let (driver, guard) = guarded(embedded_policy());
     let explicit = SourceScope::new(["gmail:me"]);
     with_source_scope(Some(vec!["slack:#eng".into()]), async {
@@ -178,8 +178,8 @@ async fn guard_explicit_scope_argument_wins_over_the_ambient_one() {
     .await;
     assert_eq!(
         driver.only_call().content.as_deref(),
-        Some("gmail:me"),
-        "a caller that computed a narrower scope must not be widened back"
+        Some(""),
+        "a request outside the ambient allowlist must fail closed"
     );
 }
 

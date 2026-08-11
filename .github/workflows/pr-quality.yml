@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     container:
-      image: ghcr.io/tinyhumansai/openhuman_ci:rust-1.96.1
+      image: ghcr.io/tinyhumansai/openhuman_ci:latest
     continue-on-error: true
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'docs') && !contains(github.event.pull_request.labels.*.name, 'chore') }}
     steps:
@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     container:
-      image: ghcr.io/tinyhumansai/openhuman_ci:rust-1.96.1
+      image: ghcr.io/tinyhumansai/openhuman_ci:latest
     continue-on-error: true
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'docs') && !contains(github.event.pull_request.labels.*.name, 'chore') }}
     steps:

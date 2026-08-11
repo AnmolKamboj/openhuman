@@ -11,8 +11,8 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use serde_json::json;
 
-use super::store;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
+use tinycortex::memory::goals::store;
 
 /// `goals_list` — read the current long-term goals list.
 pub struct GoalsListTool {
@@ -47,7 +47,7 @@ impl Tool for GoalsListTool {
 
     async fn execute(&self, _args: serde_json::Value) -> anyhow::Result<ToolResult> {
         log::debug!("[memory_goals] tool=goals_list");
-        let doc = match store::load(&self.workspace_dir).await {
+        let doc = match store::load(&self.workspace_dir).map_err(|e| e.to_string()) {
             Ok(doc) => doc,
             Err(e) => return Ok(ToolResult::error(e)),
         };
@@ -96,7 +96,7 @@ impl Tool for GoalsAddTool {
             return Ok(ToolResult::error("Missing 'text' parameter"));
         };
         log::debug!("[memory_goals] tool=goals_add");
-        match store::add(&self.workspace_dir, text).await {
+        match store::add(&self.workspace_dir, text).map_err(|e| e.to_string()) {
             Ok((id, _)) => Ok(ToolResult::success(format!("Added goal '{id}'."))),
             Err(e) => Ok(ToolResult::error(e)),
         }
@@ -148,7 +148,7 @@ impl Tool for GoalsEditTool {
             return Ok(ToolResult::error("Missing 'text' parameter"));
         };
         log::debug!("[memory_goals] tool=goals_edit id={id}");
-        match store::edit(&self.workspace_dir, id, text).await {
+        match store::edit(&self.workspace_dir, id, text).map_err(|e| e.to_string()) {
             Ok(_) => Ok(ToolResult::success(format!("Edited goal '{id}'."))),
             Err(e) => Ok(ToolResult::error(e)),
         }
@@ -196,7 +196,7 @@ impl Tool for GoalsDeleteTool {
             return Ok(ToolResult::error("Missing 'id' parameter"));
         };
         log::debug!("[memory_goals] tool=goals_delete id={id}");
-        match store::delete(&self.workspace_dir, id).await {
+        match store::delete(&self.workspace_dir, id).map_err(|e| e.to_string()) {
             Ok(_) => Ok(ToolResult::success(format!("Deleted goal '{id}'."))),
             Err(e) => Ok(ToolResult::error(e)),
         }

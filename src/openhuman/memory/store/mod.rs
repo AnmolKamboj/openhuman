@@ -16,6 +16,13 @@
 //! - `client`: High-level client interface for interacting with the memory system.
 //! - `factories`: Factory functions for creating and initializing memory instances.
 //! - `memory_trait`: Defines the `Memory` trait that all implementations must satisfy.
+//! - `recall_policy`: Host *product* policy for recall (the same-session
+//!   self-echo guard). Deliberately outside `namespace_store` so the storage
+//!   engine takes its exclusions as parameters instead of reading agent-harness
+//!   task-locals.
+//! - `write_gate`: Host secret/PII policy for document writes. Also outside
+//!   `namespace_store`, for the same reason: the driver persists
+//!   already-sanitized input rather than deciding what a secret is.
 
 pub mod chunks;
 pub mod content;
@@ -23,6 +30,7 @@ pub mod entities;
 pub mod kinds;
 pub mod kv;
 pub mod namespace_store;
+pub mod profile_store;
 pub mod retrieval;
 pub mod safety;
 pub mod tools;
@@ -32,7 +40,16 @@ pub mod types;
 
 mod client;
 pub mod factories;
+/// Golden-workspace fixture seeding / read-back / schema-manifest capture.
+///
+/// Public only so `tests/memory_golden_fixture_e2e.rs` can drive it; it needs
+/// `pub(crate)` reach (`MemoryClient::profile_conn`, the tree seal helpers)
+/// that an integration test does not have. Not part of the product API.
+#[doc(hidden)]
+pub mod golden;
 mod memory_trait;
+mod recall_policy;
+mod write_gate;
 
 pub use kinds::MemoryKind;
 pub use traits::{ObsidianFile, ObsidianRepresentable, VectorEmbeddable};
@@ -47,6 +64,7 @@ pub use namespace_store::fts5;
 pub use namespace_store::profile;
 pub use namespace_store::segments;
 pub use namespace_store::UnifiedMemory;
+pub use profile_store::ProfileStore;
 pub use types::{
     GraphRelationRecord, MemoryItemKind, MemoryKvRecord, NamespaceDocumentInput,
     NamespaceMemoryHit, NamespaceQueryResult, NamespaceRetrievalContext, RetrievalScoreBreakdown,

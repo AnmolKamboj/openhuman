@@ -28,9 +28,9 @@
 use std::path::Path;
 use std::sync::OnceLock;
 
-use tinybus::SubscriptionHandle;
 use crate::openhuman::memory::global::client_if_ready;
 use crate::openhuman::memory::store::MemoryClientRef;
+use tinybus::SubscriptionHandle;
 
 static EMAIL_SIG_HANDLE: OnceLock<Option<SubscriptionHandle>> = OnceLock::new();
 
@@ -118,7 +118,7 @@ fn register_with_client(
         use crate::openhuman::agent::learning::scheduler::register_event_trigger;
         use crate::openhuman::agent::learning::StabilityDetector;
         use std::sync::Arc;
-        let cache = FacetCache::new(client.profile_conn());
+        let cache = FacetCache::new(client.profile_store());
         let detector = Arc::new(StabilityDetector::new(cache));
         // Also spawn the periodic rebuild loop (30-minute cadence).
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
@@ -148,7 +148,7 @@ fn register_with_client(
         use crate::openhuman::agent::learning::cache::FacetCache;
         use crate::openhuman::agent::learning::ProfileMdRenderer;
         use std::sync::Arc;
-        let cache = Arc::new(FacetCache::new(client.profile_conn()));
+        let cache = Arc::new(FacetCache::new(client.profile_store()));
         let renderer = Arc::new(ProfileMdRenderer::new(cache, workspace_dir.to_path_buf()));
         let handle = ProfileMdRenderer::subscribe(renderer);
         if handle.is_some() {
@@ -167,7 +167,6 @@ fn register_with_client(
 mod tests {
     use super::*;
     use crate::core::events::DomainEvent;
-use tinybus::EventBus;
     use crate::openhuman::agent::learning::candidate::Buffer;
     use crate::openhuman::agent::learning::extract::signature::{
         parse_signature, register_email_signature_subscriber_on,
@@ -176,6 +175,7 @@ use tinybus::EventBus;
     use std::sync::Arc;
     use std::time::Duration;
     use tempfile::TempDir;
+    use tinybus::EventBus;
 
     /// Build a real `MemoryClient` against a fresh temp workspace. The temp dir
     /// is returned so callers keep it alive for the client's lifetime.

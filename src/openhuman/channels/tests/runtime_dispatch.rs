@@ -5,7 +5,6 @@ use super::super::runtime::{
 };
 use super::super::{traits, Channel};
 use super::common::{use_real_agent_handler, NoopMemory, RecordingChannel, SlowModel};
-use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
 use crate::openhuman::agent::bus::{mock_agent_run_turn, AgentTurnRequest, AgentTurnResponse};
 use crate::openhuman::inference::provider;
@@ -352,7 +351,8 @@ async fn dispatch_routes_through_agent_run_turn_bus_handler() {
 #[tokio::test]
 async fn channel_processed_event_records_resolved_agent_route() {
     crate::core::bus::init().await.expect("bus init");
-    let mut events = crate::core::bus::BUS.get()
+    let mut events = crate::core::bus::BUS
+        .get()
         .expect("event bus should be initialized")
         .receiver();
 

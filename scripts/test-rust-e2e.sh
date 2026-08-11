@@ -47,6 +47,12 @@ ALL_E2E_SUITES=(
   mcp_registry_e2e
   mcp_setup_e2e
   memory_artifacts_e2e
+  # Golden-workspace schema gates. These are the guard against a memory-store
+  # schema change stranding an existing user workspace, so they belong in every
+  # run of this suite — they were previously listed nowhere in .github/ or
+  # scripts/ and therefore never executed.
+  memory_golden_fixture_e2e
+  memory_golden_parity_e2e
   memory_graph_sync_e2e
   memory_roundtrip_e2e
   memory_sources_e2e
@@ -141,7 +147,29 @@ if [ ! -x "$CARGO_BIN" ]; then
 fi
 
 echo "[rust-e2e] Running ${#SUITES[@]} suite(s) serially."
+
+run_json_rpc_e2e_suite() {
+  # JSON-RPC scenarios mutate process-global provider routes and runtime
+  # configuration. Run every case in a fresh test process so a provider set by
+  # one scenario cannot affect the routing assertions in another.
+  while IFS= read -r test_name; do
+    [ -n "$test_name" ] || continue
+    echo "[rust-e2e]   $CARGO_BIN test --manifest-path Cargo.toml --test json_rpc_e2e $test_name"
+    bash "$SCRIPT_DIR/ci-cancel-aware.sh" "$CARGO_BIN" test \
+      --manifest-path Cargo.toml --test json_rpc_e2e "$test_name" -- \
+      --exact --test-threads=1 "${EXTRA_ARGS[@]}"
+  done < <(
+    "$CARGO_BIN" test --manifest-path Cargo.toml --test json_rpc_e2e -- --list \
+      | sed -n 's/: test$//p'
+  )
+}
+
 for suite in "${SUITES[@]}"; do
+  if [ "$suite" = "json_rpc_e2e" ]; then
+    run_json_rpc_e2e_suite
+    continue
+  fi
+
   if [ "${#EXTRA_ARGS[@]}" -gt 0 ]; then
     echo "[rust-e2e]   $CARGO_BIN test --manifest-path Cargo.toml --test $suite -- ${EXTRA_ARGS[*]}"
     bash "$SCRIPT_DIR/ci-cancel-aware.sh" "$CARGO_BIN" test --manifest-path Cargo.toml --test "$suite" -- "${EXTRA_ARGS[@]}"

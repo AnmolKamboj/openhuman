@@ -7,6 +7,7 @@ use chrono::Duration;
 use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
+#[cfg(feature = "memory-git")]
 use crate::openhuman::memory::store::content::wiki_git::{SummaryCommitBatch, SummaryCommitEntry};
 use crate::openhuman::memory::store::trees::types::{Buffer, SummaryNode, Tree};
 use crate::openhuman::memory::tree::score::embed::{
@@ -65,6 +66,24 @@ impl tinycortex::memory::tree::SealObserver for Observer<'_> {
         });
     }
 
+    /// Record a sealed summary in the git wiki mirror.
+    ///
+    /// A no-op without `memory-git`: the summary's own content file is written
+    /// by the caller either way, and this only mirrors it into the git ledger.
+    /// Returning `Ok(())` is therefore accurate rather than lenient — nothing
+    /// the caller depends on failed to happen.
+    #[cfg(not(feature = "memory-git"))]
+    fn summary_committed(
+        &self,
+        _tree: &Tree,
+        _node: &SummaryNode,
+        _content_path: &str,
+        _reason: &str,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    #[cfg(feature = "memory-git")]
     fn summary_committed(
         &self,
         tree: &Tree,
