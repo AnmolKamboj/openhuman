@@ -44,7 +44,6 @@ pub use crate::openhuman::integrations::tools::*;
 #[cfg(feature = "mcp")]
 pub use crate::openhuman::mcp::registry::tools::*;
 pub use crate::openhuman::memory::agent::tools::*;
-pub use crate::openhuman::memory::search::*;
 #[cfg(feature = "memory-git")]
 pub use crate::openhuman::memory::tools::diff::*;
 pub use crate::openhuman::memory::tools::goals::*;

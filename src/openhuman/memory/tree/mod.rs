@@ -9,6 +9,10 @@ pub use tinymemory_core::tree::*;
 
 pub mod health;
 pub mod retrieval;
+// `tree::tree` mirrors `tinymemory_core::tree::tree` — the wrapper has to keep
+// the extracted crate's path shape so every historical `memory::tree::tree::…`
+// reference still resolves. Renaming it here would break that for a lint.
+#[allow(clippy::module_inception)]
 pub mod tree;
 pub mod tree_runtime;
 
