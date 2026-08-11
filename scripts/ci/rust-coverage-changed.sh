@@ -136,6 +136,7 @@ run_full() {
   # reporting; this full-suite path returns early and must not rely on the
   # scoped-run footer below.
   local profile
+  mkdir -p target "${CARGO_LLVM_COV_TARGET_DIR}"
   shopt -s nullglob
   for profile in "${profile_dir}"/*.profraw; do
     cp "${profile}" "target/$(basename "${profile}")"
