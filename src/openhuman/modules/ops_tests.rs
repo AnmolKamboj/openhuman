@@ -39,24 +39,24 @@ fn list_reports_every_registry_entry() {
 }
 
 #[test]
-fn a_module_reports_a_coherent_state() {
-    // The full suite runs in one process and another test may have loaded a
-    // module already. The process-global resolution cache intentionally cannot
-    // be reset because tinybus cannot unload a library, so Ready is valid here.
+fn module_statuses_remain_well_formed_after_other_tests_load_modules() {
+    // Resolution is intentionally process-global. The full suite runs tests in
+    // parallel, so another test may have loaded a module before this assertion
+    // observes it. Verify the status contract without assuming test order.
     for status in list(&offline_config()) {
-        assert!(
-            matches!(
-                status.state,
-                ModuleState::Available | ModuleState::Unsupported | ModuleState::Ready
-            ),
-            "{} reported unexpected state {:?}",
-            status.id,
-            status.state
-        );
-        if matches!(status.state, ModuleState::Unsupported) {
+        if matches!(status.state, ModuleState::Unsupported | ModuleState::Failed) {
             assert!(
                 status.detail.is_some(),
-                "an unsupported module must say why"
+                "{} must explain its {:?} state",
+                status.id,
+                status.state
+            );
+        } else {
+            assert!(
+                status.detail.is_none(),
+                "{} unexpectedly has detail for {:?}",
+                status.id,
+                status.state
             );
         }
     }
