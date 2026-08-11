@@ -135,7 +135,7 @@ fn tron_transaction_spec(
             let amount = one_varint(&payload, 3, "TransferContract.amount")?;
             if recipient != expected_recipient {
                 return Err(
-                    "Tron node transaction does not pay the requested recipient".to_string(),
+                    "Tron node transaction does not pay the requested recipient".to_string()
                 );
             }
             if amount != *amount_sun {
@@ -227,7 +227,9 @@ fn one_bytes<'a>(
     }
     match field.value {
         ProtoValue::Bytes(value) => Ok(value),
-        _ => Err(format!("Tron protobuf field {name} has the wrong wire type")),
+        _ => Err(format!(
+            "Tron protobuf field {name} has the wrong wire type"
+        )),
     }
 }
 
@@ -241,7 +243,9 @@ fn one_varint(fields: &[ProtoField<'_>], number: u64, name: &str) -> Result<u64,
     }
     match field.value {
         ProtoValue::Varint(value) => Ok(value),
-        _ => Err(format!("Tron protobuf field {name} has the wrong wire type")),
+        _ => Err(format!(
+            "Tron protobuf field {name} has the wrong wire type"
+        )),
     }
 }
 
@@ -786,12 +790,12 @@ mod tests {
         let recipient_hex = tron_address_to_hex(recipient).unwrap();
         let contract_hex = tron_address_to_hex(contract).unwrap();
 
-        let native_raw = native_raw(&recipient_hex, 1_000_000);
-        let native_txid = recompute_tron_txid(&native_raw).unwrap();
+        let native_raw_hex = native_raw(&recipient_hex, 1_000_000);
+        let native_txid = recompute_tron_txid(&native_raw_hex).unwrap();
         let native_tx = CreateTransactionResponse {
             tx_id: native_txid.clone(),
             raw_data: json!({}),
-            raw_data_hex: native_raw.clone(),
+            raw_data_hex: native_raw_hex.clone(),
         };
         let native = tron_transaction_spec(
             &native_tx,
@@ -804,7 +808,7 @@ mod tests {
         assert_eq!(
             native,
             tinywallet::wire::TransactionSpec::Tron {
-                raw_data_hex: native_raw,
+                raw_data_hex: native_raw_hex,
                 expected_to: recipient.to_string(),
                 expected_txid: native_txid,
             }
