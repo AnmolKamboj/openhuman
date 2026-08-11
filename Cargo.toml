@@ -388,13 +388,10 @@ fs2 = "0.4"
 # only by `openhuman::scheduler_gate::signals` to decide when to throttle
 # background LLM work on laptops.
 starship-battery = { version = "0.10", optional = true }
-ethers-core = { version = "2.0.14", default-features = false, optional = true }
-ethers-signers = { version = "2.0.14", default-features = false, optional = true }
 # Multi-chain wallet signing.
 # - bitcoin: P2WPKH PSBT build/sign/broadcast (includes secp256k1).
 # - ed25519-dalek: Solana transaction signing.
 # - bs58: Solana base58 addresses + Tron base58check addresses.
-bitcoin = { version = "0.32", default-features = false, features = ["std", "secp-recovery", "rand-std"], optional = true }
 ed25519-dalek = { version = "2", default-features = false, features = ["std", "rand_core"] }
 bs58 = { version = "0.5", default-features = false, features = ["std", "check"] }
 # Shared BIP-39 mnemonic → seed for non-EVM chains (BTC P2WPKH derivation,
@@ -455,7 +452,17 @@ tinydocs = { path = "vendor/tinydocs", default-features = false, optional = true
 # After cloning: `git submodule update --init vendor/tinywallet`.
 #
 # Optional: exclusive to the default-ON `web3` feature.
-tinywallet = { path = "vendor/tinywallet", default-features = false, features = ["btc", "evm", "solana", "tron", "keccak", "key", "net", "asset", "client", "tx"], optional = true }
+# Taken WITHOUT `tx` or `client`, which is the whole point: those are the only
+# gates that pull the `bitcoin` crate and its native secp256k1 build, and
+# transaction building now happens in the loaded `tinywallet` module instead.
+# What stays is address validation, key derivation, the `Transport` seam, the
+# wire contract, EIP-712 hashing and ERC-20 calldata — none of which needs a
+# chain library.
+tinywallet = { path = "vendor/tinywallet", default-features = false, features = ["btc", "evm", "solana", "tron", "keccak", "key", "net", "wire", "eip712", "abi", "x402"], optional = true }
+# secp256k1 signing over the digests the wallet module hands back. Pure Rust,
+# and already in the graph beneath `coins-bip32` (which derives the key being
+# used), so naming it directly costs nothing and is what lets `bitcoin` go.
+k256 = { version = "0.13", default-features = false, features = ["std", "ecdsa"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
 # Windows: tokio-tungstenite uses native-tls (schannel) so wss://
@@ -708,10 +715,8 @@ voice = [
 # to do with the wallet. Measured: excluding them costs 0, because tinyplace
 # pulls them in regardless.
 web3 = [
-    "dep:bitcoin",
+    "dep:k256",
     "dep:curve25519-dalek",
-    "dep:ethers-core",
-    "dep:ethers-signers",
     "dep:coins-bip39",
     "dep:tinywallet",
 ]

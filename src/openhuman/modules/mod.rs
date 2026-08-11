@@ -28,6 +28,8 @@
 //!
 //! - [`registry`] — the compiled-in set of loadable modules and their digests.
 //! - [`documents`] — the host half of the `tinydocs` module's three operations.
+//! - [`wallet`] — the host half of the `tinywallet` module, which builds and
+//!   assembles transactions while the signing key stays in this process.
 //! - [`platform`] — which published artifact belongs to this host.
 //! - [`host`] — the module broker, connection and loader.
 //! - [`ops`] — resolving, loading, and reporting status.
@@ -35,6 +37,7 @@
 //! - [`boot`] — what happens at startup.
 
 pub mod boot;
+#[cfg(feature = "documents")]
 pub mod documents;
 pub mod host;
 pub mod ops;
@@ -42,6 +45,8 @@ pub mod platform;
 pub mod registry;
 pub mod schemas;
 pub mod types;
+#[cfg(feature = "web3")]
+pub mod wallet;
 
 pub use ops::ensure_loaded;
 pub use schemas::{all_controller_schemas, all_registered_controllers};
