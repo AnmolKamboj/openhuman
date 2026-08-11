@@ -799,6 +799,10 @@ jobs:
           # the raw-profile path before invoking Cargo directly. Calling
           # `cargo llvm-cov` here would overwrite LLVM_PROFILE_FILE again.
           export CARGO_TARGET_DIR="$PWD/app/src-tauri/target/llvm-cov-target"
+          # Do not chain the runner's sccache wrapper underneath llvm-cov.
+          # Its shared cache can return objects compiled without coverage,
+          # yielding a passing test binary that never writes a raw profile.
+          unset RUSTC_WRAPPER
           eval "$(cargo llvm-cov show-env --manifest-path app/src-tauri/Cargo.toml --sh)"
           export LLVM_PROFILE_FILE="$profile_dir/tauri-%p-%m.profraw"
           bash scripts/ci-cancel-aware.sh cargo test --manifest-path app/src-tauri/Cargo.toml
