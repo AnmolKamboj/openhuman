@@ -795,14 +795,17 @@ jobs:
           profile_dir="/tmp/openhuman-tauri-profraw"
           rm -rf "$profile_dir"
           mkdir -p "$profile_dir"
-          # cargo-llvm-cov owns LLVM_PROFILE_FILE and overwrites a caller value.
-          # Override its generated filename while keeping build output in target/.
-          export LLVM_PROFILE_FILE_NAME="$profile_dir/tauri-%p-%m.profraw"
-          bash scripts/ci-cancel-aware.sh cargo llvm-cov --manifest-path app/src-tauri/Cargo.toml --no-report
+          # Source cargo-llvm-cov's instrumentation environment, then override
+          # the raw-profile path before invoking Cargo directly. Calling
+          # `cargo llvm-cov` here would overwrite LLVM_PROFILE_FILE again.
+          export CARGO_TARGET_DIR="$PWD/app/src-tauri/target/llvm-cov-target"
+          eval "$(cargo llvm-cov show-env --manifest-path app/src-tauri/Cargo.toml --sh)"
+          export LLVM_PROFILE_FILE="$profile_dir/tauri-%p-%m.profraw"
+          bash scripts/ci-cancel-aware.sh cargo test --manifest-path app/src-tauri/Cargo.toml
           shopt -s nullglob
           profiles=("$profile_dir"/*.profraw)
           test "${#profiles[@]}" -gt 0
-          mv "${profiles[@]}" app/src-tauri/target/llvm-cov-target/
+          mv "${profiles[@]}" "$CARGO_TARGET_DIR/"
           bash scripts/ci-cancel-aware.sh cargo llvm-cov report --manifest-path app/src-tauri/Cargo.toml --lcov --output-path lcov-tauri.info
         env:
           # Serialize codegen/link to cap peak memory + disk during the
