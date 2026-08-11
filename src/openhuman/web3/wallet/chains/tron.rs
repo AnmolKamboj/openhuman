@@ -190,6 +190,119 @@ fn recompute_tron_txid(raw_data_hex: &str) -> Result<String, String> {
     Ok(hex::encode(Sha256::digest(raw)))
 }
 
+struct ParsedTronContract<'a> {
+    kind: u64,
+    type_url: &'a str,
+    payload: &'a [u8],
+}
+
+fn parse_single_tron_contract(raw: &[u8]) -> Result<ParsedTronContract<'_>, String> {
+    let raw_fields = parse_proto_fields(raw)?;
+    let contract_bytes = one_bytes(&raw_fields, 11, "Transaction.raw.contract")?;
+    let contract_fields = parse_proto_fields(contract_bytes)?;
+    let kind = one_varint(&contract_fields, 1, "Transaction.Contract.type")?;
+    let any_bytes = one_bytes(&contract_fields, 2, "Transaction.Contract.parameter")?;
+    let any_fields = parse_proto_fields(any_bytes)?;
+    let type_url = std::str::from_utf8(one_bytes(&any_fields, 1, "Any.type_url")?)
+        .map_err(|_| "Tron contract type_url is not UTF-8".to_string())?;
+    let payload = one_bytes(&any_fields, 2, "Any.value")?;
+    Ok(ParsedTronContract {
+        kind,
+        type_url,
+        payload,
+    })
+}
+
+fn one_bytes<'a>(
+    fields: &'a [ProtoField<'a>],
+    number: u64,
+    name: &str,
+) -> Result<&'a [u8], String> {
+    let mut matches = fields.iter().filter(|field| field.number == number);
+    let Some(field) = matches.next() else {
+        return Err(format!("Tron protobuf is missing {name}"));
+    };
+    if matches.next().is_some() {
+        return Err(format!("Tron protobuf repeats singular field {name}"));
+    }
+    match field.value {
+        ProtoValue::Bytes(value) => Ok(value),
+        _ => Err(format!("Tron protobuf field {name} has the wrong wire type")),
+    }
+}
+
+fn one_varint(fields: &[ProtoField<'_>], number: u64, name: &str) -> Result<u64, String> {
+    let mut matches = fields.iter().filter(|field| field.number == number);
+    let Some(field) = matches.next() else {
+        return Err(format!("Tron protobuf is missing {name}"));
+    };
+    if matches.next().is_some() {
+        return Err(format!("Tron protobuf repeats singular field {name}"));
+    }
+    match field.value {
+        ProtoValue::Varint(value) => Ok(value),
+        _ => Err(format!("Tron protobuf field {name} has the wrong wire type")),
+    }
+}
+
+fn parse_proto_fields(mut input: &[u8]) -> Result<Vec<ProtoField<'_>>, String> {
+    let mut fields = Vec::new();
+    while !input.is_empty() {
+        let key = take_varint(&mut input)?;
+        let number = key >> 3;
+        if number == 0 {
+            return Err("Tron protobuf contains field zero".to_string());
+        }
+        let value = match key & 0x07 {
+            0 => ProtoValue::Varint(take_varint(&mut input)?),
+            1 => {
+                take_exact(&mut input, 8)?;
+                ProtoValue::Other
+            }
+            2 => {
+                let length = usize::try_from(take_varint(&mut input)?)
+                    .map_err(|_| "Tron protobuf field length is too large".to_string())?;
+                ProtoValue::Bytes(take_exact(&mut input, length)?)
+            }
+            5 => {
+                take_exact(&mut input, 4)?;
+                ProtoValue::Other
+            }
+            wire => return Err(format!("unsupported Tron protobuf wire type {wire}")),
+        };
+        fields.push(ProtoField { number, value });
+    }
+    Ok(fields)
+}
+
+fn take_varint(input: &mut &[u8]) -> Result<u64, String> {
+    let mut value = 0u64;
+    for shift in (0..=63).step_by(7) {
+        let (&byte, rest) = input
+            .split_first()
+            .ok_or_else(|| "truncated Tron protobuf varint".to_string())?;
+        *input = rest;
+        let part = u64::from(byte & 0x7f);
+        if shift == 63 && part > 1 {
+            return Err("Tron protobuf varint overflows u64".to_string());
+        }
+        value |= part << shift;
+        if byte & 0x80 == 0 {
+            return Ok(value);
+        }
+    }
+    Err("Tron protobuf varint is too long".to_string())
+}
+
+fn take_exact<'a>(input: &mut &'a [u8], length: usize) -> Result<&'a [u8], String> {
+    if input.len() < length {
+        return Err("truncated Tron protobuf field".to_string());
+    }
+    let (value, rest) = input.split_at(length);
+    *input = rest;
+    Ok(value)
+}
+
 /// Derive the Tron signing key and its base58check address.
 ///
 /// Delegates to the vendored [`tinywallet`] crate, which owns BIP-32
