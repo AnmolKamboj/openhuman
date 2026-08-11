@@ -1125,6 +1125,32 @@ fn meet_controllers_registered_when_feature_on() {
     }
 }
 
+/// The `modules` namespace registers when the `modules` feature is on.
+#[cfg(feature = "modules")]
+#[test]
+fn modules_controllers_registered_when_feature_on() {
+    assert_eq!(
+        group_for_namespace("modules"),
+        Some(DomainGroup::Modules),
+        "`modules` must register under DomainGroup::Modules when the feature is on"
+    );
+}
+
+/// The `modules` namespace is absent when the `modules` feature is off.
+///
+/// The half that proves the gate. It matters more than the usual both-ways pair,
+/// because what this feature compiles in is a `dlopen` loader: a build that opted
+/// out must have no way to reach one, not a loader that merely refuses.
+#[cfg(not(feature = "modules"))]
+#[test]
+fn modules_controllers_absent_when_feature_off() {
+    assert_eq!(
+        group_for_namespace("modules"),
+        None,
+        "`modules` must leave no trace in the registry when the feature is off"
+    );
+}
+
 /// No Meet namespace registers when the `meet` feature is off (#4800).
 ///
 /// This is the half that proves the gate: with `meet` compiled out the three

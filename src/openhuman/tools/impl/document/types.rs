@@ -22,7 +22,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::openhuman::modules::documents::DocumentCallError;
 
-pub use tinydocs::docx::{
+// Reached through `spec`, not `docx`: this build carries the contract and not
+// the writer, so the gated `docx` module is not compiled here at all. The types
+// are the same ones the module validates against, which is the whole reason
+// `spec` is separable.
+pub use tinydocs::spec::document::{
     DocumentSpec as GenerateDocumentInput, MAX_BULLETS_PER_SECTION, MAX_PARAGRAPHS_PER_SECTION,
     MAX_PARAGRAPH_CHARS, MAX_SECTIONS, MAX_TEXT_CHARS,
 };
@@ -33,7 +37,7 @@ pub use tinydocs::docx::{
 // is private, so the re-export reads as unused to the compiler — hence the
 // explicit allow rather than dropping a name callers legitimately need.
 #[allow(unused_imports)]
-pub use tinydocs::docx::DocumentSection;
+pub use tinydocs::spec::DocumentSection;
 
 /// Tool output returned via [`crate::openhuman::tools::traits::ToolResult`]
 /// as the JSON `data` field.

@@ -1102,6 +1102,7 @@ fn build_internal_only_controllers() -> Vec<GroupedController> {
     // from that load, and it cannot name an artifact — the loadable set is
     // compiled into `modules::registry`, so this namespace can start a module
     // the build already trusts and nothing else.
+    #[cfg(feature = "modules")]
     push(
         &mut controllers,
         DomainGroup::Modules,
