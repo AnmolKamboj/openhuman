@@ -7224,12 +7224,18 @@ name = "tinybus"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "flate2",
  "serde",
  "serde_json",
+ "tar",
+ "tempfile",
  "thiserror 2.0.18",
  "tinybus-macros",
  "tokio",
+ "toml 0.8.23",
  "tracing",
+ "ureq",
+ "zip 2.4.2",
 ]
 
 [[package]]
@@ -7333,7 +7339,7 @@ dependencies = [
 
 [[package]]
 name = "tinydocs"
-version = "0.1.0"
+version = "0.1.11"
 dependencies = [
  "docx-rs",
  "serde",
@@ -8083,6 +8089,7 @@ checksum = "dea7109cdcd5864d4eeb1b58a1648dc9bf520360d7af16ec26d0a9354bafcfc0"
 dependencies = [
  "base64 0.22.1",
  "cookie_store",
+ "flate2",
  "log",
  "percent-encoding",
  "rustls",

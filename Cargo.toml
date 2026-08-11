@@ -246,7 +246,15 @@ tinychannels = { version = "0.1", features = ["relay-websocket"] }
 # `uds` is on so the kernel can join a broker that out-of-process integrations
 # are already attached to (`core::bus::init_over_socket`). `cli` is not: the
 # `tinybus` binary is a developer tool, not something the kernel links.
-tinybus = { path = "vendor/tinybus/crates/tinybus", default-features = false, features = ["macros", "uds"] }
+#
+# `modules` is on for the dynamic module host in `openhuman::modules` — the
+# loader that admits a compiled `cdylib` (ABI descriptor, manifest, dependency
+# and SHA-256 gates) so a codec can live outside this binary. It costs **zero
+# new crates**: it wants `ureq`, `flate2`, `tar`, `zip`, `tempfile` and `toml`,
+# and every one is already in our lock via the runtime installers and the
+# config stack. See `src/openhuman/modules/` for what a loaded module is
+# trusted with.
+tinybus = { path = "vendor/tinybus/crates/tinybus", default-features = false, features = ["macros", "uds", "modules"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_repr = "0.1"
