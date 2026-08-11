@@ -130,19 +130,13 @@ run_full() {
     log "running full-suite integration target: ${target}"
     run_integration_target "${target}"
   done < <(integration_test_targets)
-  # `cargo llvm-cov report` looks in the workspace target directory even
-  # though the instrumented `cargo test` commands write raw profiles to the
-  # container-safe directory above.  Materialise them at both locations before
-  # reporting; this full-suite path returns early and must not rely on the
-  # scoped-run footer below.
-  local profile
-  mkdir -p target "${CARGO_LLVM_COV_TARGET_DIR}"
+  # Profiles are written directly to cargo-llvm-cov's report directory (see
+  # the `LLVM_PROFILE_FILE` setup below). The full-suite path returns early,
+  # so still assert that the tests emitted profiles before reporting.
   shopt -s nullglob
-  for profile in "${profile_dir}"/*.profraw; do
-    [ "${profile}" = "target/$(basename "${profile}")" ] || cp "${profile}" "target/$(basename "${profile}")"
-    [ "${profile}" = "${CARGO_LLVM_COV_TARGET_DIR}/$(basename "${profile}")" ] || cp "${profile}" "${CARGO_LLVM_COV_TARGET_DIR}/$(basename "${profile}")"
-  done
+  local profiles=("${profile_dir}"/*.profraw)
   shopt -u nullglob
+  test "${#profiles[@]}" -gt 0
   log "merging coverage into ${OUT}"
   llvm_cov report --lcov --output-path "${OUT}"
   exit 0
@@ -317,20 +311,6 @@ fi
 shopt -s nullglob
 profiles=("${profile_dir}"/*.profraw)
 test "${#profiles[@]}" -gt 0
-mkdir -p "${CARGO_LLVM_COV_TARGET_DIR}"
-# Copy rather than rename across the container/workspace boundary. Some hosted
-# container mounts acknowledge a cross-filesystem rename yet leave the report
-# process unable to observe the destination. Support both llvm-cov target
-# conventions: `show-env` uses the ordinary target root, whereas the report
-# command may select `llvm-cov-target`.
-for profile in "${profiles[@]}"; do
-  name="$(basename "${profile}")"
-  cp "${profile}" "${CARGO_LLVM_COV_TARGET_DIR}/${name}"
-  test -f "${CARGO_LLVM_COV_TARGET_DIR}/${name}"
-  mkdir -p target/llvm-cov-target
-  cp "${profile}" "target/llvm-cov-target/${name}"
-  test -f "target/llvm-cov-target/${name}"
-done
 
 log "merging coverage into ${OUT}"
 llvm_cov report --lcov --output-path "${OUT}"
