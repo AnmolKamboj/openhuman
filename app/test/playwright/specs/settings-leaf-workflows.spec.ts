@@ -113,8 +113,12 @@ test.describe('Settings leaf workflows', () => {
     await page.getByRole('button', { name: 'Save & switch' }).click();
 
     const wipe = page.getByRole('button', { name: 'Wipe & apply' });
-    await expect(wipe).toBeVisible({ timeout: 15_000 });
-    await wipe.click();
+    // A fresh workspace needs no destructive confirmation. A reused E2E
+    // workspace may already have vectors, in which case the core correctly
+    // asks before replacing them. Both paths must persist the chosen config.
+    if (await wipe.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await wipe.click();
+    }
 
     await expect(page.getByText('Saved.')).toBeVisible({ timeout: 15_000 });
     await expect
