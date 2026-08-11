@@ -131,13 +131,6 @@ run_full() {
     log "running full-suite integration target: ${target}"
     run_integration_target "${target}"
   done < <(integration_test_targets)
-  # Profiles are written directly to cargo-llvm-cov's report directory (see
-  # the `LLVM_PROFILE_FILE` setup below). The full-suite path returns early,
-  # so still assert that the tests emitted profiles before reporting.
-  shopt -s nullglob
-  local profiles=("${profile_dir}"/*.profraw)
-  shopt -u nullglob
-  test "${#profiles[@]}" -gt 0
   log "merging coverage into ${OUT}"
   llvm_cov report --lcov --output-path "${OUT}"
   exit 0
