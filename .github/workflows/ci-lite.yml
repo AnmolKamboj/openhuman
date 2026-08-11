@@ -788,16 +788,20 @@ jobs:
 
       - name: Run cargo llvm-cov for Tauri shell
         run: |
-          # Keep the runtime's raw profiles beside llvm-cov's instrumented
-          # target. With a manifest below the repository root, llvm-cov 0.8.7
-          # can infer the regular `target/` directory for LLVM_PROFILE_FILE
-          # while it later searches `target/llvm-cov-target`, leaving a fully
-          # passing test run with nothing to merge.
-          # Container jobs mount the checkout at /__w while GITHUB_WORKSPACE
-          # may retain the host path.  Use the actual working directory so
-          # instrumented test processes can create their raw profiles.
-          export LLVM_PROFILE_FILE="$PWD/app/src-tauri/target/llvm-cov-target/tauri-%p-%m.profraw"
-          bash scripts/ci-cancel-aware.sh cargo llvm-cov --manifest-path app/src-tauri/Cargo.toml --no-clean --lcov --output-path lcov-tauri.info
+          # Write raw profiles to the container's local filesystem first. On
+          # hosted container jobs the workspace bind mount can accept the test
+          # binary but silently fail LLVM's profile writer. Move the completed
+          # profiles into llvm-cov's target before reporting.
+          profile_dir="${RUNNER_TEMP:-/tmp}/openhuman-tauri-profraw"
+          rm -rf "$profile_dir"
+          mkdir -p "$profile_dir"
+          export LLVM_PROFILE_FILE="$profile_dir/tauri-%p-%m.profraw"
+          bash scripts/ci-cancel-aware.sh cargo llvm-cov --manifest-path app/src-tauri/Cargo.toml --no-clean --no-report
+          shopt -s nullglob
+          profiles=("$profile_dir"/*.profraw)
+          test "${#profiles[@]}" -gt 0
+          mv "${profiles[@]}" app/src-tauri/target/llvm-cov-target/
+          bash scripts/ci-cancel-aware.sh cargo llvm-cov report --manifest-path app/src-tauri/Cargo.toml --lcov --output-path lcov-tauri.info
         env:
           # Serialize codegen/link to cap peak memory + disk during the
           # instrumented Tauri-shell link (SIGBUS otherwise). Mirrors
