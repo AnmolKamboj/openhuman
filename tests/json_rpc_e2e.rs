@@ -4984,7 +4984,9 @@ async fn json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_
     // still has an active-user marker while it winds down.
     let _workspace_guard = EnvVarGuard::set_to_path(
         "OPENHUMAN_WORKSPACE",
-        &openhuman_home.join("users").join("custom-provider-e2e-user"),
+        &openhuman_home
+            .join("users")
+            .join("custom-provider-e2e-user"),
     );
     let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
     let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
@@ -4993,7 +4995,9 @@ async fn json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_
     let mock_origin = format!("http://{}", mock_addr);
 
     write_min_config_with_local_ai_disabled(&openhuman_home, &mock_origin);
-    let user_scoped_dir = openhuman_home.join("users").join("custom-provider-e2e-user");
+    let user_scoped_dir = openhuman_home
+        .join("users")
+        .join("custom-provider-e2e-user");
     write_min_config_with_local_ai_disabled(&user_scoped_dir, &mock_origin);
 
     let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;

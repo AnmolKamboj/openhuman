@@ -429,21 +429,24 @@ impl Agent {
         // legacy callers. A built-in Master Agent has an explicit
         // `hint:coding`, while existing pre-registry callers continue using
         // `config.default_model` unchanged.
-        let master_model_hint = config.default_model.is_none().then(|| {
-            target_def.and_then(|def| {
-                if def.id == "orchestrator" {
-                    match &def.model {
-                        crate::openhuman::agent::harness::definition::ModelSpec::Hint(hint) => {
-                            Some(format!("hint:{hint}"))
+        let master_model_hint = config
+            .default_model
+            .is_none()
+            .then(|| {
+                target_def.and_then(|def| {
+                    if def.id == "orchestrator" {
+                        match &def.model {
+                            crate::openhuman::agent::harness::definition::ModelSpec::Hint(hint) => {
+                                Some(format!("hint:{hint}"))
+                            }
+                            _ => None,
                         }
-                        _ => None,
+                    } else {
+                        None
                     }
-                } else {
-                    None
-                }
+                })
             })
-        })
-        .flatten();
+            .flatten();
         let provider_role = provider_role_for(
             agent_id,
             master_model_hint
