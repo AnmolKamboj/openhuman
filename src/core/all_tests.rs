@@ -1813,6 +1813,11 @@ fn memory_capability_map_has_no_stale_entries() {
         .collect();
 
     for (ns, _) in MEMORY_NAMESPACE_CAPABILITY {
+        // `memory_diff` only registers when `memory-git` is compiled in; no CI
+        // lane enables it, so it would otherwise read as a stale table entry.
+        if *ns == "memory_diff" && !cfg!(feature = "memory-git") {
+            continue;
+        }
         assert!(
             live.iter().any(|(n, _)| n == ns),
             "MEMORY_NAMESPACE_CAPABILITY names `{ns}`, which registers no Memory controller"
@@ -1992,14 +1997,19 @@ async fn memory_families_registered_when_capabilities_advertised() {
         "tree_summarizer",
         "memory_sync",
         "memory_sources",
-        #[cfg(feature = "memory-git")]
-        "memory_diff",
         "slack_memory",
         "people",
     ] {
         assert!(
             ns.contains(present),
             "`{present}` must be present under a full-capability driver"
+        );
+    }
+    // `memory_diff` only registers when `memory-git` is compiled in.
+    if cfg!(feature = "memory-git") {
+        assert!(
+            ns.contains("memory_diff"),
+            "`memory_diff` must be present under a full-capability driver when `memory-git` is on"
         );
     }
     for present in [

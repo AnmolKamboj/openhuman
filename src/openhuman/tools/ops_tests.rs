@@ -24,6 +24,9 @@ fn test_memory(tmp: &TempDir) -> Arc<dyn Memory> {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
+    // The embedding seam fails loudly when unwired; before the memory
+    // extraction this was a direct call and needed no setup.
+    crate::openhuman::memory::host_impls::install_for_tests();
     Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap())
 }
 
@@ -117,6 +120,8 @@ fn all_tools_includes_spawn_subagent() {
     // in `agent::harness::subagent_runner` becomes unreachable.
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
+    // The embedding seam fails loudly when unwired — see `test_memory`.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
@@ -237,6 +242,8 @@ fn whatsapp_data_tools_absent_when_channels_off() {
 fn all_tools_includes_spawn_async_subagent() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
+    // The embedding seam fails loudly when unwired — see `test_memory`.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
@@ -274,6 +281,8 @@ fn all_tools_includes_spawn_async_subagent() {
 fn all_tools_includes_spawn_parallel_agents() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
+    // The embedding seam fails loudly when unwired — see `test_memory`.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
@@ -315,6 +324,10 @@ fn all_tools_always_registers_curl() {
     // off agents that aren't allowed to modify the workspace.
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
+    // The embedding seam fails loudly when unwired — see `test_memory`. This
+    // test doesn't use that helper (it needs the `Arc<dyn Memory>` alongside
+    // its own config setup below), so it installs the seams directly.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
@@ -452,6 +465,8 @@ fn document_tools_absent_when_feature_off() {
 fn all_tools_registers_gitbooks_when_enabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
+    // The embedding seam fails loudly when unwired — see `test_memory`.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
@@ -568,6 +583,8 @@ fn all_tools_omits_mcp_tools_when_gate_off() {
 fn all_tools_skips_gitbooks_when_disabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
+    // The embedding seam fails loudly when unwired — see `test_memory`.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
@@ -605,6 +622,8 @@ fn all_tools_skips_gitbooks_when_disabled() {
 fn all_tools_includes_current_time() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
+    // The embedding seam fails loudly when unwired — see `test_memory`.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
@@ -762,6 +781,8 @@ fn all_tools_default_registry_has_no_duplicate_tool_names() {
 fn all_tools_excludes_browser_when_disabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
+    // The embedding seam fails loudly when unwired — see `test_memory`.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
@@ -826,6 +847,8 @@ fn browser_allowed_domains_shares_fetch_list_minus_wildcard() {
 fn all_tools_includes_browser_when_enabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
+    // The embedding seam fails loudly when unwired — see `test_memory`.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
@@ -948,6 +971,8 @@ fn tool_spec_serde() {
 fn all_tools_includes_delegate_when_agents_configured() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
+    // The embedding seam fails loudly when unwired — see `test_memory`.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
@@ -989,6 +1014,8 @@ fn all_tools_includes_delegate_when_agents_configured() {
 fn all_tools_excludes_delegate_when_no_agents() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
+    // The embedding seam fails loudly when unwired — see `test_memory`.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
@@ -1024,6 +1051,8 @@ fn all_tools_registers_node_exec_when_node_enabled() {
     // lose both tools.
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
+    // The embedding seam fails loudly when unwired — see `test_memory`.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
@@ -1063,6 +1092,8 @@ fn all_tools_registers_python_exec_when_python_enabled() {
     // appear in the registry (routes inline code through the runtime pool, #5106).
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
+    // The embedding seam fails loudly when unwired — see `test_memory`.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
@@ -1096,6 +1127,8 @@ fn all_tools_registers_python_exec_when_python_enabled() {
 fn all_tools_excludes_node_exec_when_node_disabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
+    // The embedding seam fails loudly when unwired — see `test_memory`.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
@@ -2888,8 +2921,9 @@ fn memory_capability_table_names_are_real() {
         .chain(MEMORY_TOOLS_NOT_DRIVER_BACKED.iter().copied())
         // `tool_stats` is registered only when `learning.tool_tracking_enabled`,
         // so it is config-dependent and asserted by the function-level guard
-        // above instead.
-        .filter(|n| *n != "tool_stats")
+        // above instead. `memory_diff` is registered only when the
+        // `memory-git` feature is compiled in; no CI lane enables it.
+        .filter(|n| *n != "tool_stats" && (*n != "memory_diff" || cfg!(feature = "memory-git")))
     {
         assert!(
             names.iter().any(|n| n == name),
@@ -2923,12 +2957,16 @@ fn null_driver_memory_cfg() -> crate::openhuman::config::schema::MemorySubsystem
 
 /// The optional-family tools that must vanish under a driver advertising
 /// nothing optional.
+///
+/// `memory_diff` is deliberately NOT in this list even though it is one of
+/// these optional-family tools: it only registers at all when the
+/// `memory-git` feature is compiled in (no CI lane enables it), so its
+/// presence is asserted separately, conditioned on that feature, rather than
+/// unconditionally here.
 const OPTIONAL_FAMILY_MEMORY_TOOLS: &[&str] = &[
     "memory_tree",
     "memory_flavour",
     "memory_store_raw_search",
-    #[cfg(feature = "memory-git")]
-    "memory_diff",
     "memory_doctor",
     "goals_list",
     "goals_add",
@@ -2956,6 +2994,12 @@ fn memory_tools_all_present_with_no_ambient_context() {
             "`{name}` must be present with no ambient context; got: {names:?}"
         );
     }
+    if cfg!(feature = "memory-git") {
+        assert!(
+            names.iter().any(|n| n == "memory_diff"),
+            "`memory_diff` must be present with no ambient context when `memory-git` is on; got: {names:?}"
+        );
+    }
 }
 
 /// Under the default (`driver = "tinycortex"`) binding the embedded driver
@@ -2979,6 +3023,12 @@ async fn memory_tools_all_present_under_the_embedded_driver() {
         assert!(
             names.iter().any(|n| n == name),
             "`{name}` must survive the embedded driver; got: {names:?}"
+        );
+    }
+    if cfg!(feature = "memory-git") {
+        assert!(
+            names.iter().any(|n| n == "memory_diff"),
+            "`memory_diff` must survive the embedded driver when `memory-git` is on; got: {names:?}"
         );
     }
 }
@@ -3016,6 +3066,12 @@ async fn optional_family_memory_tools_absent_under_the_null_driver() {
             "`{absent}` must be ABSENT under the null driver; got: {names:?}"
         );
     }
+    // Absent either way: the null driver disables it (when `memory-git` is
+    // on) or the feature gate already dropped it entirely (when it's off).
+    assert!(
+        !names.iter().any(|n| n == "memory_diff"),
+        "`memory_diff` must be ABSENT under the null driver; got: {names:?}"
+    );
     for present in ALWAYS_PRESENT_MEMORY_TOOLS {
         assert!(
             names.iter().any(|n| n == present),
