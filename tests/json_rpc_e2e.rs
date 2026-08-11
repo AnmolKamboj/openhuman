@@ -4871,7 +4871,12 @@ async fn json_rpc_web_chat_routing_cases_use_expected_backend_models_inner() {
     let openhuman_home = home.join(".openhuman");
 
     let _home_guard = EnvVarGuard::set_to_path("HOME", home);
-    let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
+    // Keep this router on its own fixture even if a previous test's server
+    // still has an active-user marker while it winds down.
+    let _workspace_guard = EnvVarGuard::set_to_path(
+        "OPENHUMAN_WORKSPACE",
+        &openhuman_home.join("users").join("e2e-user"),
+    );
     let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
     let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
 
@@ -4975,7 +4980,12 @@ async fn json_rpc_web_chat_custom_chat_provider_uses_stored_key_and_rebuilds_on_
     let openhuman_home = home.join(".openhuman");
 
     let _home_guard = EnvVarGuard::set_to_path("HOME", home);
-    let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
+    // Keep this router on its own fixture even if a previous test's server
+    // still has an active-user marker while it winds down.
+    let _workspace_guard = EnvVarGuard::set_to_path(
+        "OPENHUMAN_WORKSPACE",
+        &openhuman_home.join("users").join("e2e-user"),
+    );
     let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
     let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
 
