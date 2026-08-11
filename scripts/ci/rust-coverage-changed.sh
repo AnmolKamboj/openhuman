@@ -144,12 +144,6 @@ profile_dir="${LLVM_PROFILE_DIR:-/tmp/openhuman-core-profraw}"
 rm -rf "${profile_dir}"
 mkdir -p "${profile_dir}"
 eval "$(cargo llvm-cov show-env --sh)"
-# Keep the direct Cargo test runs and the later `llvm-cov report` invocation
-# pointed at the same durable target. `show-env` defaults to `target/`, while
-# the report subcommand otherwise resets to its `llvm-cov-target` convention
-# and misses profiles moved from the container-local directory.
-export CARGO_LLVM_COV_TARGET_DIR="${PWD}/target/llvm-cov-target"
-export CARGO_LLVM_COV_BUILD_DIR="${CARGO_LLVM_COV_TARGET_DIR}"
 export LLVM_PROFILE_FILE="${profile_dir}/core-%p-%m.profraw"
 
 if [ "${FULL}" = "true" ]; then
@@ -310,7 +304,19 @@ shopt -s nullglob
 profiles=("${profile_dir}"/*.profraw)
 test "${#profiles[@]}" -gt 0
 mkdir -p "${CARGO_LLVM_COV_TARGET_DIR}"
-mv "${profiles[@]}" "${CARGO_LLVM_COV_TARGET_DIR}/"
+# Copy rather than rename across the container/workspace boundary. Some hosted
+# container mounts acknowledge a cross-filesystem rename yet leave the report
+# process unable to observe the destination. Support both llvm-cov target
+# conventions: `show-env` uses the ordinary target root, whereas the report
+# command may select `llvm-cov-target`.
+for profile in "${profiles[@]}"; do
+  name="$(basename "${profile}")"
+  cp "${profile}" "${CARGO_LLVM_COV_TARGET_DIR}/${name}"
+  test -f "${CARGO_LLVM_COV_TARGET_DIR}/${name}"
+  mkdir -p target/llvm-cov-target
+  cp "${profile}" "target/llvm-cov-target/${name}"
+  test -f "target/llvm-cov-target/${name}"
+done
 
 log "merging coverage into ${OUT}"
 llvm_cov report --lcov --output-path "${OUT}"
