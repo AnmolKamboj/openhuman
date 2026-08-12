@@ -33,8 +33,6 @@ const HumanPage = () => {
   const speakReplies = useAppSelector(selectSpeakReplies);
 
   const { face, visemeCode } = useHumanMascot({ speakReplies });
-  // Realtime voice controls are always shown — no settings/flag gate.
-  const realtimeEnabled = true;
   const mascotColor = useAppSelector(selectMascotColor);
   const customPrimary = useAppSelector(selectCustomPrimaryColor);
   const customSecondary = useAppSelector(selectCustomSecondaryColor);
@@ -99,14 +97,11 @@ const HumanPage = () => {
         </div>
       </div>
 
-      {/* Realtime voice-chat controls (#5399) — additive overlay shown only when
-          the flag + realtime mode are on; the classic push-to-talk path below
-          is untouched. */}
-      {realtimeEnabled && (
-        <div className="absolute bottom-8 left-0 right-[436px] z-10 flex justify-center">
-          <RealtimeVoiceControls />
-        </div>
-      )}
+      {/* Realtime voice-chat controls (#5399) — always shown; the classic
+          push-to-talk path below is untouched. */}
+      <div className="absolute bottom-8 left-0 right-[436px] z-10 flex justify-center">
+        <RealtimeVoiceControls />
+      </div>
 
       <label className="absolute top-4 left-4 z-10 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface/80 backdrop-blur-sm border border-line-strong text-xs text-content-secondary shadow-soft cursor-pointer select-none">
         <input

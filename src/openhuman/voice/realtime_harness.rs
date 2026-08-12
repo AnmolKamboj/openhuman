@@ -303,7 +303,12 @@ pub async fn handle_voice_harness_turn(correlation_id: String, messages: Vec<Val
             }
         }
         Ok(Err(_recv)) => {
-            // Sender dropped without a value (task aborted). End cleanly.
+            // Sender dropped without a value (task aborted or panicked). A silent
+            // turn with no spoken text and no chat delivery is hard to trace, so
+            // log with the correlation id before ending cleanly.
+            warn!(
+                "[voice-harness] turn task ended without a result (panicked or aborted) correlation={correlation_id}"
+            );
             emit_event(
                 "voice:harness:done",
                 json!({ "correlationId": correlation_id }),
