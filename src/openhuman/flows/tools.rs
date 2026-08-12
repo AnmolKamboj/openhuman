@@ -496,6 +496,11 @@ fn config_hint(node: &Node) -> Option<String> {
             .and_then(Value::as_str)
             .map(str::to_string)
             .or_else(|| Some("javascript".to_string())),
+        NodeKind::Shell => cfg
+            .get("script_path")
+            .and_then(Value::as_str)
+            .map(|path| truncate_hint(&format!("script: {path}")))
+            .or_else(|| cfg.get("source").and_then(Value::as_str).map(truncate_hint)),
         NodeKind::Condition => cfg
             .get("field")
             .and_then(Value::as_str)
