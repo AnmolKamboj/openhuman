@@ -35,6 +35,42 @@ pub async fn coding_session_status_rpc() -> Result<RpcOutcome<CodingSessionStatu
     ))
 }
 
+/// Wall-clock ceiling for one `ingest_coding_sessions` RPC, sized to the number
+/// of sessions the caller asked to backfill.
+///
+/// The previous formula (`120 + N*30`) assumed **one LLM call per session**.
+/// That premise is false: TinyCortex's persona pipeline splits an oversized
+/// session into windows (`WINDOW_CHARS`-sized chunks of evidence) and issues one
+/// LLM call *per window*, so a multi-window session drives several sequential
+/// calls. A dense backfill therefore blew the old budget — 15 sessions hit the
+/// exact 570 s ceiling (`120 + 15*30`) and were killed mid-flight.
+///
+/// So the per-session allowance is sized for *multiple* windows, not one call:
+/// `PER_SESSION_SECS` budgets for up to roughly four sequential LLM calls at the
+/// provider's own per-call timeout, which comfortably covers the windowing
+/// observed in practice while still bounding the RPC. `max_sessions` is
+/// untrusted (it comes straight off the request), so the multiplier is capped at
+/// `MAX_SESSIONS_FOR_BUDGET` before scaling — an inflated value cannot turn the
+/// ceiling into an effectively-infinite wait.
+///
+/// This is a *ceiling to catch a wedged run*, not a latency target: a healthy
+/// backfill finishes far inside it, and the pipeline's own run budget bounds
+/// real cost. Over-provisioning here only delays the kill of a genuine hang.
+fn ingest_budget(max_sessions: usize) -> std::time::Duration {
+    /// Fixed overhead allowance (config load, discovery, process warm-up) added
+    /// on top of the per-session budget.
+    const BASE_SECS: u64 = 120;
+    /// Per-session allowance, sized for several sequential per-window LLM calls
+    /// rather than the single call the old formula assumed.
+    const PER_SESSION_SECS: u64 = 120;
+    /// Cap on the untrusted `max_sessions` multiplier so a hostile/garbage value
+    /// can't inflate the ceiling without bound.
+    const MAX_SESSIONS_FOR_BUDGET: usize = 1_000;
+
+    let sessions = max_sessions.min(MAX_SESSIONS_FOR_BUDGET) as u64;
+    std::time::Duration::from_secs(BASE_SECS + sessions * PER_SESSION_SECS)
+}
+
 pub async fn ingest_coding_sessions_rpc(
     req: crate::openhuman::memory::tinycortex::CodingSessionIngestRequest,
 ) -> Result<RpcOutcome<crate::openhuman::memory::tinycortex::CodingSessionIngestResponse>, String> {
@@ -49,12 +85,9 @@ pub async fn ingest_coding_sessions_rpc(
     let runtime = tokio::runtime::Handle::current();
     // Wall-clock ceiling so a stalled provider call or a wedged session step
     // can't keep the RPC (and its blocking worker) waiting indefinitely (#4863
-    // review). Scale to the requested budget — each session drives at most one
-    // LLM call — so a large backfill isn't killed mid-flight while a genuine
-    // infinite hang still terminates. `max_sessions` is untrusted, so cap the
-    // multiplier before computing the budget.
-    let ingest_timeout =
-        std::time::Duration::from_secs(120 + (req.max_sessions.min(1_000) as u64) * 30);
+    // review), sized to the requested backfill so a legitimate large run isn't
+    // killed mid-flight while a genuine infinite hang still terminates.
+    let ingest_timeout = ingest_budget(req.max_sessions);
     let response = tokio::task::spawn_blocking(move || {
         runtime.block_on(async move {
             tokio::time::timeout(
@@ -930,5 +963,38 @@ mod supported_toolkits_tests {
             toolkits, sorted,
             "toolkits should be sorted and de-duplicated"
         );
+    }
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    /// The formula is `120 + min(N, 1000) * 120` seconds.
+    #[test]
+    fn budget_scales_per_session_for_multiple_windows() {
+        // Zero sessions → base overhead only.
+        assert_eq!(ingest_budget(0).as_secs(), 120);
+        // One session carries a full per-session (multi-window) allowance.
+        assert_eq!(ingest_budget(1).as_secs(), 120 + 120);
+        // The 15-session backfill that used to die at the old 570s ceiling now
+        // gets 1920s — proof the per-session allowance was raised to cover
+        // multi-window sessions (old formula: 120 + 15*30 = 570).
+        assert_eq!(ingest_budget(15).as_secs(), 120 + 15 * 120);
+        assert!(
+            ingest_budget(15) > std::time::Duration::from_secs(570),
+            "the multi-window budget must exceed the old flat 570s ceiling"
+        );
+    }
+
+    /// `max_sessions` is untrusted, so the multiplier is capped at 1000 — an
+    /// inflated request cannot turn the ceiling into an unbounded wait.
+    #[test]
+    fn budget_caps_untrusted_max_sessions() {
+        let at_cap = ingest_budget(1_000).as_secs();
+        assert_eq!(at_cap, 120 + 1_000 * 120);
+        // Anything above the cap yields the same ceiling as the cap.
+        assert_eq!(ingest_budget(usize::MAX).as_secs(), at_cap);
+        assert_eq!(ingest_budget(5_000).as_secs(), at_cap);
     }
 }
