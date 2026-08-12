@@ -21,7 +21,12 @@ case "$1" in
       mkdir -p "$(dirname "$LINK")"
       # Manage only our own symlink; never clobber a real file a user placed here.
       if [ -L "$LINK" ] || [ ! -e "$LINK" ]; then
-        ln -sf "$TARGET" "$LINK"
+        # Remove our own symlink first, then recreate it. `ln -sf` would FOLLOW a
+        # symlink that already points at a directory and create the launcher
+        # *inside* that directory (CWE-59) rather than replacing the link; `rm -f`
+        # deletes the symlink itself, so the fresh `ln -s` always lands at $LINK.
+        rm -f "$LINK"
+        ln -s "$TARGET" "$LINK"
       fi
     fi
     ;;

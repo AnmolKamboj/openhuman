@@ -71,4 +71,16 @@ sh "$POSTINST" configure
 sh "$POSTRM" purge
 [ -f "$OPENHUMAN_DEB_SYMLINK" ] || fail "postrm deleted a user's real file"
 
+# 3f. A pre-existing symlink at the link path that points to a DIRECTORY must be
+# replaced in place — never followed. `ln -sf` would create the launcher inside
+# that directory (CWE-59); postinst must land the link at $LINK and write
+# nothing into the target directory.
+rm -f "$OPENHUMAN_DEB_SYMLINK"
+DECOY_DIR="$SANDBOX/decoy-dir"
+mkdir -p "$DECOY_DIR"
+ln -s "$DECOY_DIR" "$OPENHUMAN_DEB_SYMLINK"
+sh "$POSTINST" configure
+[ -e "$DECOY_DIR/$(basename "$OPENHUMAN_DEB_BINARY")" ] && fail "postinst followed a symlink and wrote inside the target directory (CWE-59)"
+[ "$(readlink "$OPENHUMAN_DEB_SYMLINK")" = "$OPENHUMAN_DEB_BINARY" ] || fail "postinst did not replace the directory symlink with the launcher link"
+
 echo "PASS: deb maintainer scripts create/remove the openHuman symlink safely"
