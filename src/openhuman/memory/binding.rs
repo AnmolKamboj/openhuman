@@ -355,7 +355,7 @@ fn build(workspace_dir: &Path, cfg: &MemorySubsystemConfig) -> MemoryBinding {
                         workspace_dir.display(),
                         driver_id,
                     );
-                    Arc::new(NullMemoryProvider::new())
+                    Arc::new(NullMemoryProvider::new()) as Arc<dyn MemoryProvider>
                 }
             };
             // The configured trust state for the driver that actually bound.
