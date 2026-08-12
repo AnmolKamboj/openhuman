@@ -308,18 +308,27 @@ pub fn admit(cfg: &MemorySubsystemConfig) -> Result<(String, DriverClass), Fallb
 fn build(workspace_dir: &Path, cfg: &MemorySubsystemConfig) -> MemoryBinding {
     match admit(cfg) {
         Ok((driver_id, class)) => {
-            let provider: Arc<dyn MemoryProvider> = match class {
+            // Both the provider *and* the class it should be reported under. The
+            // two can differ: a build without the `modules` feature admits the
+            // module class but can only bind a placeholder, and reporting the
+            // admitted class there would advertise a module-backed driver with a
+            // null behind it — a live surface with no store, which is exactly
+            // what status output exists to make visible.
+            let (provider, class): (Arc<dyn MemoryProvider>, DriverClass) = match class {
                 // Construction is deliberately sync and I/O-free: this runs on
                 // `CoreContext::memory_binding`, which ~4000 pre-boot tests
                 // call with no tokio runtime. The driver resolves its client on
                 // first use — see `driver::embedded`'s module docs.
-                DriverClass::Embedded => {
-                    Arc::new(EmbeddedMemoryProvider::new(workspace_dir, cfg.hooks))
-                }
-                DriverClass::Null => Arc::new(NullMemoryProvider::new()),
+                DriverClass::Embedded => (
+                    Arc::new(EmbeddedMemoryProvider::new(workspace_dir, cfg.hooks)),
+                    DriverClass::Embedded,
+                ),
+                DriverClass::Null => (Arc::new(NullMemoryProvider::new()), DriverClass::Null),
                 // Unreachable: `admit` refuses every external driver above, so
                 // this arm cannot bind a transport that does not exist yet.
-                DriverClass::External => Arc::new(NullMemoryProvider::new()),
+                // Reported as `Null`, for the same reason as the arm below: what
+                // bound is a placeholder, and status must say so.
+                DriverClass::External => (Arc::new(NullMemoryProvider::new()), DriverClass::Null),
                 // This function builds an `Arc<dyn tinycortex_api::provider::
                 // MemoryProvider>`, while `modules::memory::ModuleMemoryProvider`
                 // implements `tinymemory_api::provider::MemoryProvider`. Those are
@@ -339,12 +348,15 @@ fn build(workspace_dir: &Path, cfg: &MemorySubsystemConfig) -> MemoryBinding {
                 // same placeholder every other inadmissible driver gets, logged
                 // loudly rather than silently — kernel.md §3.7.
                 #[cfg(feature = "modules")]
-                DriverClass::Module => Arc::new(
-                    crate::openhuman::memory::driver::module_adapter::TinyMemoryContractAdapter::new(
-                        Arc::new(
-                            crate::openhuman::modules::memory::ModuleMemoryProvider::from_boot_policy(),
+                DriverClass::Module => (
+                    Arc::new(
+                        crate::openhuman::memory::driver::module_adapter::TinyMemoryContractAdapter::new(
+                            Arc::new(
+                                crate::openhuman::modules::memory::ModuleMemoryProvider::from_boot_policy(),
+                            ),
                         ),
                     ),
+                    DriverClass::Module,
                 ),
                 #[cfg(not(feature = "modules"))]
                 DriverClass::Module => {
@@ -355,7 +367,7 @@ fn build(workspace_dir: &Path, cfg: &MemorySubsystemConfig) -> MemoryBinding {
                         workspace_dir.display(),
                         driver_id,
                     );
-                    Arc::new(NullMemoryProvider::new())
+                    (Arc::new(NullMemoryProvider::new()), DriverClass::Null)
                 }
             };
             // The configured trust state for the driver that actually bound.
