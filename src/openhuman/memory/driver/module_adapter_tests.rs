@@ -47,6 +47,58 @@ fn an_export_page_survives_the_crossing_with_its_cursor() {
 }
 
 #[test]
+fn an_export_record_survives_the_crossing_with_its_payload_and_taint() {
+    // `taint` and `payload` are exactly the fields a silent drop would corrupt
+    // worst: a dropped taint would let externally-sourced content re-enter as
+    // internal-trust, and a dropped payload would import an empty record.
+    let record = tinycortex_api::provider::types::ExportRecord {
+        kind: "entry".to_string(),
+        id: "entry-7".to_string(),
+        namespace: Some("work".to_string()),
+        taint: tinycortex_api::types::MemoryTaint::ExternalSync,
+        payload: serde_json::json!({"key": "value", "n": 3}),
+    };
+    let crossed: tinymemory_api::provider::types::ExportRecord =
+        cross(&record, "export record").expect("cross");
+    let back: tinycortex_api::provider::types::ExportRecord =
+        cross(&crossed, "export record").expect("cross back");
+    assert_eq!(back, record, "export record lost a field crossing contracts");
+}
+
+#[test]
+fn an_import_outcome_survives_the_crossing_with_its_counts_and_errors() {
+    // `errors` is operator-facing diagnosis; a dropped value here would leave
+    // a non-zero `failed` count with nothing to explain it.
+    let outcome = tinycortex_api::provider::types::ImportOutcome {
+        imported: 4,
+        skipped: 2,
+        failed: 1,
+        errors: vec!["record 'x' rejected: bad payload".to_string()],
+    };
+    let crossed: tinymemory_api::provider::types::ImportOutcome =
+        cross(&outcome, "import outcome").expect("cross");
+    let back: tinycortex_api::provider::types::ImportOutcome =
+        cross(&crossed, "import outcome").expect("cross back");
+    assert_eq!(
+        back, outcome,
+        "import outcome lost a field crossing contracts"
+    );
+}
+
+#[test]
+fn a_source_scope_survives_the_crossing_with_every_allowed_source() {
+    // An empty scope is fail-closed (denies all source-attributed content, per
+    // the type's own docs), so losing an entry here would silently widen what
+    // a recall call is allowed to see.
+    let scope = tinycortex_api::provider::types::SourceScope::new(["src-a", "src-b"]);
+    let crossed: tinymemory_api::provider::types::SourceScope =
+        cross(&scope, "source scope").expect("cross");
+    let back: tinycortex_api::provider::types::SourceScope =
+        cross(&crossed, "source scope").expect("cross back");
+    assert_eq!(back, scope, "source scope lost an entry crossing contracts");
+}
+
+#[test]
 fn capabilities_cross_as_family_names_not_bit_layouts() {
     // Both sides serialize a capability set as a JSON array of family names, so
     // the crossing is over stable wire strings. If it went over the bitset an
