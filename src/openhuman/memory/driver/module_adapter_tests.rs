@@ -11,12 +11,15 @@ fn round_trip_preserves_every_field() {
     //
     // Each case is populated with non-default values in every field it has, so a
     // dropped field shows up as an inequality rather than as two defaults that
-    // happen to match.
+    // happen to match. `..Default::default()` is deliberately not used here:
+    // a field left on its default would round-trip back to that same default
+    // even if the crossing dropped it, silently passing.
     let opts = tinycortex_api::recall::OwnedRecallOpts {
         namespace: Some("work".to_string()),
         category: Some(tinycortex_api::types::MemoryCategory::Core),
         session_id: Some("session-9".to_string()),
-        ..Default::default()
+        min_score: Some(0.42),
+        cross_session: true,
     };
     let crossed: tinymemory_api::recall::OwnedRecallOpts =
         cross(&opts, "recall options").expect("recall options cross");
