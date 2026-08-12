@@ -37,6 +37,7 @@
 
 use std::path::Path;
 use std::process::Command;
+use std::sync::{Arc, OnceLock};
 
 use chrono::Utc;
 use tempfile::TempDir;
@@ -58,9 +59,28 @@ use openhuman_core::openhuman::memory::tree_source::get_or_create_source_tree;
 
 // ── Shared harness ────────────────────────────────────────────────────────
 
+static MEMORY_SEAMS_INIT: OnceLock<()> = OnceLock::new();
+
+fn ensure_memory_seams() {
+    MEMORY_SEAMS_INIT.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("memory-sync-pipeline-e2e-seams".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(Arc::new(
+                    Config::default(),
+                ));
+            })
+            .expect("spawn memory sync pipeline seam installer")
+            .join()
+            .expect("memory sync pipeline seam installer panicked");
+    });
+}
+
 /// Build a `Config` rooted at a temp workspace with no LLM provider and no
 /// embedder, so every test runs fully offline and deterministically.
 fn test_config(tmp: &TempDir) -> Config {
+    ensure_memory_seams();
     let workspace_dir = tmp.path().join("workspace");
     std::fs::create_dir_all(&workspace_dir).expect("create workspace dir");
     let mut cfg = Config {
@@ -335,6 +355,7 @@ async fn rebuild_tree_from_raw_builds_from_disk() {
 
 #[tokio::test]
 async fn sync_source_second_concurrent_call_is_noop_and_audits() {
+    ensure_memory_seams();
     let tmp = TempDir::new().unwrap();
     let cfg = test_config(&tmp);
 
@@ -370,7 +391,7 @@ async fn sync_source_second_concurrent_call_is_noop_and_audits() {
     };
 
     // First call kicks off the background task and returns Ok immediately.
-    sync_source(source.clone(), cfg.clone())
+    sync_source(source.clone(), Arc::new(cfg.clone()))
         .await
         .expect("first sync_source should return Ok");
 
@@ -383,7 +404,7 @@ async fn sync_source_second_concurrent_call_is_noop_and_audits() {
     let mut handles = Vec::new();
     for _ in 0..5 {
         let s = source.clone();
-        let c = cfg.clone();
+        let c = Arc::new(cfg.clone());
         handles.push(tokio::spawn(async move { sync_source(s, c).await }));
     }
     for h in handles {
@@ -396,7 +417,9 @@ async fn sync_source_second_concurrent_call_is_noop_and_audits() {
     // Disabled sources are rejected outright (separate guard, same fn).
     let mut disabled = source.clone();
     disabled.enabled = false;
-    let err = sync_source(disabled, cfg.clone()).await.unwrap_err();
+    let err = sync_source(disabled, Arc::new(cfg.clone()))
+        .await
+        .unwrap_err();
     assert!(
         err.contains("disabled"),
         "disabled source should be rejected, got: {err}"
