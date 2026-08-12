@@ -11,7 +11,7 @@
 //! Run with: `cargo test --test memory_roundtrip_e2e`
 
 use std::path::Path;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use tempfile::tempdir;
 
@@ -52,12 +52,31 @@ impl Drop for EnvVarGuard {
 
 /// Serialises tests: `HOME` + `OPENHUMAN_WORKSPACE` are process-global.
 static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static MEMORY_SEAMS_INIT: OnceLock<()> = OnceLock::new();
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-    ENV_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("env lock poisoned")
+    match ENV_LOCK.get_or_init(|| Mutex::new(())).lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+/// This integration target calls memory operations without constructing a core
+/// runtime, so it supplies the seams that normal startup installs first.
+fn ensure_memory_seams() {
+    MEMORY_SEAMS_INIT.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("memory-roundtrip-seams".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(Arc::new(
+                    openhuman_core::openhuman::config::Config::default(),
+                ));
+            })
+            .expect("spawn memory roundtrip seam installer")
+            .join()
+            .expect("memory roundtrip seam installer panicked");
+    });
 }
 
 const NS: &str = "memory-roundtrip-e2e-773";
@@ -107,6 +126,7 @@ fn recall_context_request() -> RecallContextRequest {
 #[tokio::test]
 async fn doc_put_then_recall_memories_returns_canary() {
     let _lock = env_lock();
+    ensure_memory_seams();
     let tmp = tempdir().expect("tempdir");
     let _home = EnvVarGuard::set_to_path("HOME", tmp.path());
     let workspace_path = tmp.path().join("workspace");
@@ -137,6 +157,7 @@ async fn doc_put_then_recall_memories_returns_canary() {
 #[tokio::test]
 async fn doc_put_then_recall_context_renders_llm_context_message() {
     let _lock = env_lock();
+    ensure_memory_seams();
     let tmp = tempdir().expect("tempdir");
     let _home = EnvVarGuard::set_to_path("HOME", tmp.path());
     let workspace_path = tmp.path().join("workspace");
@@ -172,6 +193,7 @@ async fn doc_put_then_recall_context_renders_llm_context_message() {
 #[tokio::test]
 async fn doc_put_with_multibyte_at_body_preview_boundary_does_not_panic() {
     let _lock = env_lock();
+    ensure_memory_seams();
     let tmp = tempdir().expect("tempdir");
     let _home = EnvVarGuard::set_to_path("HOME", tmp.path());
     let workspace_path = tmp.path().join("workspace");
@@ -230,6 +252,7 @@ async fn doc_put_with_multibyte_at_body_preview_boundary_does_not_panic() {
 #[tokio::test]
 async fn clear_namespace_removes_canary_from_recall() {
     let _lock = env_lock();
+    ensure_memory_seams();
     let tmp = tempdir().expect("tempdir");
     let _home = EnvVarGuard::set_to_path("HOME", tmp.path());
     let workspace_path = tmp.path().join("workspace");

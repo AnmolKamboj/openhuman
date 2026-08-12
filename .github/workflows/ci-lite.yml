@@ -515,7 +515,7 @@ jobs:
         #
         # This asserts the calibration still holds. If it fails, every
         # projection built on the simulator is suspect until it is fixed.
-        run: python3 scripts/dep-sim.py --cut-nothing --expect-names 282
+        run: python3 scripts/dep-sim.py --cut-nothing --expect-names 284
 
       - name: Guard — new feature-gated test modules must be acknowledged
         # Self-maintaining coverage: the set of source files that #[cfg]-gate a test on
@@ -539,7 +539,6 @@ jobs:
           openhuman/agent/harness/subagent_runner/tool_prep.rs
           openhuman/agent/registry/agents/loader.rs
           openhuman/config/migrations/retire_local_whisper_stt_tests.rs
-          openhuman/memory/people/address_book.rs
           openhuman/mcp/server/resources.rs
           openhuman/platform/socket/event_handlers.rs
           openhuman/platform/socket/ops.rs
@@ -788,29 +787,14 @@ jobs:
 
       - name: Run cargo llvm-cov for Tauri shell
         run: |
-          # Write raw profiles to the container's in-memory filesystem first.
-          # Both the workspace bind mount and the container overlay have
-          # dropped LLVM profile writes on hosted container jobs. /dev/shm is
-          # container-local and these raw counter files are only a few MiB.
-          profile_dir="/dev/shm/openhuman-tauri-profraw-${GITHUB_RUN_ID}"
-          rm -rf "$profile_dir"
-          mkdir -p "$profile_dir"
-          # Source cargo-llvm-cov's instrumentation environment, then override
-          # the raw-profile path before invoking Cargo directly. Calling
-          # `cargo llvm-cov` here would overwrite LLVM_PROFILE_FILE again.
-          export CARGO_TARGET_DIR="$PWD/app/src-tauri/target/llvm-cov-target"
-          # Do not chain the runner's sccache wrapper underneath llvm-cov.
-          # Its shared cache can return objects compiled without coverage,
-          # yielding a passing test binary that never writes a raw profile.
-          unset RUSTC_WRAPPER
-          eval "$(cargo llvm-cov show-env --manifest-path app/src-tauri/Cargo.toml --sh)"
-          export LLVM_PROFILE_FILE="$profile_dir/tauri-%p-%m.profraw"
-          bash scripts/ci-cancel-aware.sh cargo test --manifest-path app/src-tauri/Cargo.toml
-          shopt -s nullglob
-          profiles=("$profile_dir"/*.profraw)
-          test "${#profiles[@]}" -gt 0
-          mv "${profiles[@]}" "$CARGO_TARGET_DIR/"
-          bash scripts/ci-cancel-aware.sh cargo llvm-cov report --manifest-path app/src-tauri/Cargo.toml --lcov --output-path lcov-tauri.info
+          # The container's Cargo configuration installs sccache as its rustc
+          # wrapper. Use llvm-cov's RustFLAGS mode so that wrapper cannot
+          # replace its instrumentation wrapper and silently drop .profraw
+          # output after otherwise-passing tests.
+          # The job-level linker flag must also be cleared: llvm-cov sets the
+          # same variable with `-C instrument-coverage` for this invocation.
+          unset RUSTFLAGS
+          bash scripts/ci-cancel-aware.sh cargo llvm-cov --no-rustc-wrapper --manifest-path app/src-tauri/Cargo.toml --lcov --output-path lcov-tauri.info
         env:
           # Serialize codegen/link to cap peak memory + disk during the
           # instrumented Tauri-shell link (SIGBUS otherwise). Mirrors

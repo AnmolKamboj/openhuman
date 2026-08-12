@@ -118,11 +118,15 @@ use openhuman_core::openhuman::memory::sync::sync_status::{
     rpc as memory_sync_status_rpc, schemas as memory_sync_status_schemas,
 };
 use tinycortex::memory::sync::{SyncOutcome as PipelineSyncOutcome, SyncPipelineKind};
-use openhuman_core::openhuman::memory::tool_memory::tools::{MemoryToolsListTool, MemoryToolsPutTool};
+use openhuman_core::openhuman::memory::tools::tool_memory::{
+    MemoryToolsListTool, MemoryToolsPutTool,
+};
 use openhuman_core::openhuman::memory::tool_memory::{
-    render_tool_memory_rules, tool_memory_namespace, tool_memory_store, ToolMemoryPriority,
-    ToolMemoryRule, ToolMemoryRulesSection, ToolMemorySource, TOOL_MEMORY_HEADING,
-    TOOL_MEMORY_PROMPT_CAP,
+    tool_memory_namespace, tool_memory_store, ToolMemoryPriority, ToolMemoryRule,
+    ToolMemorySource, TOOL_MEMORY_PROMPT_CAP,
+};
+use openhuman_core::openhuman::memory::tool_memory::prompt::{
+    render_tool_memory_rules, ToolMemoryRulesSection, TOOL_MEMORY_HEADING,
 };
 use openhuman_core::openhuman::memory::tree::score::embed::Embedder;
 use openhuman_core::openhuman::memory::tree::score::extract::{
@@ -192,6 +196,19 @@ impl Drop for EnvVarGuard {
 }
 
 static ENV_LOCK: &OnceLock<Mutex<()>> = &crate::SHARED_ENV_LOCK;
+fn ensure_memory_seams() {
+    std::thread::Builder::new()
+        .name("raw-coverage-memory-seams".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| {
+            openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(Arc::new(
+                Config::default(),
+            ));
+        })
+        .expect("spawn raw coverage memory seam installer")
+        .join()
+        .expect("raw coverage memory seam installer panicked");
+}
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     ENV_LOCK
@@ -201,6 +218,7 @@ fn env_lock() -> std::sync::MutexGuard<'static, ()> {
 }
 
 fn config_in(tmp: &TempDir) -> Config {
+    ensure_memory_seams();
     let mut config = Config::default();
     config.workspace_dir = tmp.path().to_path_buf();
     config
@@ -2566,6 +2584,7 @@ async fn memory_queue_and_tool_memory_public_stores_cover_persistence_edges() {
 
 #[tokio::test]
 async fn memory_source_sync_entrypoint_rejects_disabled_and_ingests_folder_items() {
+    let _lock = env_lock();
     let tmp = TempDir::new().expect("tempdir");
     let config = config_in(&tmp);
     std::fs::write(
@@ -2577,7 +2596,7 @@ async fn memory_source_sync_entrypoint_rejects_disabled_and_ingests_folder_items
     let mut disabled = source(SourceKind::Folder, "src_disabled");
     disabled.path = Some(tmp.path().to_string_lossy().to_string());
     disabled.enabled = false;
-    assert!(sync_source(disabled, config.clone())
+    assert!(sync_source(disabled, Arc::new(config.clone()))
         .await
         .unwrap_err()
         .contains("disabled"));
@@ -2585,7 +2604,7 @@ async fn memory_source_sync_entrypoint_rejects_disabled_and_ingests_folder_items
     let mut folder = source(SourceKind::Folder, "src_sync");
     folder.path = Some(tmp.path().to_string_lossy().to_string());
     folder.glob = Some("sync-note.md".into());
-    sync_source(folder, config.clone())
+    sync_source(folder, Arc::new(config.clone()))
         .await
         .expect("queue folder sync");
 
@@ -2612,7 +2631,7 @@ async fn memory_source_sync_entrypoint_rejects_disabled_and_ingests_folder_items
 
     let mut twitter = source(SourceKind::TwitterQuery, "src_twitter_sync");
     twitter.query = Some("openhuman".into());
-    sync_source(twitter, config)
+    sync_source(twitter, Arc::new(config))
         .await
         .expect("twitter placeholder queues and reports failure asynchronously");
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -2964,6 +2983,7 @@ async fn memory_sync_provider_trait_defaults_and_connection_hook_are_determinist
     // global, so under parallel execution this test could otherwise observe an
     // unready client and see 0 instead of 1. Bind the global to this test's
     // workspace up front so the assertion is independent of execution order.
+    ensure_memory_seams();
     openhuman_core::openhuman::memory::global::init(tmp.path().to_path_buf())
         .expect("init global memory client");
     let ctx = ProviderContext {
@@ -3957,6 +3977,7 @@ async fn memory_ops_public_handlers_cover_document_file_kv_graph_and_envelopes()
 
 async fn memory_ops_public_handlers_cover_document_file_kv_graph_and_envelopes_body() {
     let _lock = env_lock();
+    ensure_memory_seams();
     let tmp = TempDir::new().expect("tempdir");
     let _workspace = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", tmp.path());
 
