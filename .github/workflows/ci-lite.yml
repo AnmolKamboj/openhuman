@@ -791,6 +791,9 @@ jobs:
           # wrapper. Use llvm-cov's RustFLAGS mode so that wrapper cannot
           # replace its instrumentation wrapper and silently drop .profraw
           # output after otherwise-passing tests.
+          # The job-level linker flag must also be cleared: llvm-cov sets the
+          # same variable with `-C instrument-coverage` for this invocation.
+          unset RUSTFLAGS
           bash scripts/ci-cancel-aware.sh cargo llvm-cov --no-rustc-wrapper --manifest-path app/src-tauri/Cargo.toml --lcov --output-path lcov-tauri.info
         env:
           # Serialize codegen/link to cap peak memory + disk during the

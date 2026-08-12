@@ -42,6 +42,12 @@ log() { echo "[ci][rust-cov-changed] $*"; }
 # scripts/ci/product-features.txt.
 PRODUCT_FEATURES="$(bash scripts/ci/product-features.sh)"
 
+# The CI job normally supplies a linker-only RUSTFLAGS value. cargo-llvm-cov
+# owns this variable while it compiles coverage-instrumented crates; preserving
+# the outer value suppresses its `-C instrument-coverage` flag and leaves an
+# otherwise successful test run with no .profraw data to report.
+unset RUSTFLAGS
+
 llvm_cov() {
   # `clean` and `report` are cargo-llvm-cov subcommands that take no feature
   # selection; passing --features to them is an error.
