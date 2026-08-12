@@ -21,7 +21,8 @@
 #                      dependency generation selected by that upstream bump;
 #                      native builds remain unchanged at 2. Verified with
 #                      `scripts/kernel-floor.sh flows` and `cargo tree
-#                      --duplicates --no-default-features --features flows`.
+#                      --duplicates --no-default-features --features flows`;
+#                      the removal-simulator baseline is updated in lockstep.
 #   305/282/2  2026-08-10  tinymemory engine-neutral memory layer (+3 packages
 #                      / +3 names). `tinymemory`, `tinymemory-api`, and
 #                      `tinymemory-tinycortex` are deliberate always-on
