@@ -106,22 +106,44 @@ impl OpenHumanBackendModel {
     }
 
     fn resolve_bearer(&self) -> anyhow::Result<String> {
+        use crate::openhuman::security::credentials::session_support::{
+            classify_session_token, SessionTokenCheck,
+        };
+
         if crate::openhuman::cron::scheduler_gate::is_signed_out() {
             anyhow::bail!(
                 "SESSION_EXPIRED: backend session not active — sign in to resume LLM work"
             );
         }
         let auth = AuthService::new(&self.state_dir(), self.options.secrets_encrypt);
-        if let Some(token) = auth
-            .get_provider_bearer_token(
-                APP_SESSION_PROVIDER,
-                self.options.auth_profile_override.as_deref(),
-            )?
-            .filter(|token| !token.trim().is_empty())
-        {
-            return Ok(token);
+        let profile = auth.get_profile(
+            APP_SESSION_PROVIDER,
+            self.options.auth_profile_override.as_deref(),
+        )?;
+
+        // #5503: precheck the recorded JWT `exp` BEFORE building a request, the
+        // same way `require_live_session_token` guards the backend REST callers.
+        // Managed inference used to fire a doomed request on an expired-but-
+        // stored token and let the 401 come back — but an expired session can
+        // also surface upstream as a misleading "model unavailable", which is a
+        // core symptom of #5503 (all tiers "die" over a long session). Failing
+        // fast as `session_expired` routes the user to re-auth instead. Offline
+        // / local sessions (`is_local_session_token`) and `exp`-less tokens
+        // carry no recorded expiry, so `classify_session_token` returns `Live`
+        // for them — their behaviour is unchanged and the post-call 401 net
+        // still covers a server-side revocation.
+        match classify_session_token(profile.as_ref(), chrono::Utc::now()) {
+            SessionTokenCheck::Live(token) => Ok(token),
+            SessionTokenCheck::Expired => {
+                maybe_publish_local_session_expiry();
+                anyhow::bail!(
+                    "SESSION_EXPIRED: backend session token expired locally — re-authentication required"
+                )
+            }
+            SessionTokenCheck::Absent => {
+                anyhow::bail!("No backend session: store a JWT via auth (app-session)")
+            }
         }
-        anyhow::bail!("No backend session: store a JWT via auth (app-session)")
     }
 
     fn base_url(&self) -> String {
@@ -381,6 +403,27 @@ fn with_thread_id(mut request: ModelRequest) -> ModelRequest {
     request
 }
 
+/// Publish a `SessionExpired` event when the local `exp` precheck in
+/// [`resolve_bearer`](OpenHumanBackendModel::resolve_bearer) rejects an expired
+/// managed session token before a request is ever sent — mirroring
+/// [`require_live_session_token`](crate::openhuman::security::credentials::session_support::require_live_session_token)'s
+/// pre-flight publish so the credentials subscriber clears state and the UI
+/// re-auths exactly as it would on a real backend 401. Deduped via the
+/// scheduler gate so N parallel managed turns in one tick don't emit N events.
+fn maybe_publish_local_session_expiry() {
+    if crate::openhuman::cron::scheduler_gate::is_signed_out() {
+        return;
+    }
+    log::warn!(
+        "[providers][openhuman-backend] managed session token expired locally — \
+         publishing SessionExpired before any inference request"
+    );
+    crate::core::bus::BUS.publish(crate::core::events::DomainEvent::SessionExpired {
+        source: "openhuman_backend_model.resolve_bearer".to_string(),
+        reason: "backend session token expired locally — re-authentication required".to_string(),
+    });
+}
+
 /// Publish a `SessionExpired` event when the backend rejects a crate-native
 /// model call with `401`/`403` Unauthorized — mirroring the check in
 /// [`CrateBackedProvider::invoke`](super::CrateBackedProvider) which the
@@ -402,6 +445,36 @@ fn maybe_publish_session_expired(err: &TinyAgentsError, operation: &str) {
     }
 }
 
+/// Log the raw upstream failure at the managed inference dispatch boundary
+/// (#5503, part d). The managed unavailability path used to surface the true
+/// backend cause only after the web-chat error classifier had already collapsed
+/// it to a user-facing bucket, so an operator investigating "all tiers died
+/// over hours" had no record of what the backend actually returned. This is the
+/// one place every managed `invoke`/`stream` failure passes through, so it's
+/// where the diagnostic belongs. Structured fields (`status`/`code`/`provider`/
+/// `retryable`) are low-cardinality; the message is secret-scrubbed and capped
+/// by [`sanitize_api_error`] before it's logged — no tokens, no full PII.
+fn log_managed_dispatch_error(err: &TinyAgentsError, operation: &str) {
+    match err {
+        TinyAgentsError::Provider(pe) => {
+            log::warn!(
+                "[providers][openhuman-backend] managed {operation} failed: status={:?} code={:?} provider={} retryable={} detail={}",
+                pe.status,
+                pe.code,
+                pe.provider,
+                pe.retryable,
+                crate::openhuman::inference::provider::ops::sanitize_api_error(&pe.message),
+            );
+        }
+        other => {
+            log::warn!(
+                "[providers][openhuman-backend] managed {operation} failed (non-provider error): {}",
+                crate::openhuman::inference::provider::ops::sanitize_api_error(&other.to_string()),
+            );
+        }
+    }
+}
+
 #[async_trait]
 impl ChatModel<()> for OpenHumanBackendModel {
     fn profile(&self) -> Option<&ModelProfile> {
@@ -413,6 +486,7 @@ impl ChatModel<()> for OpenHumanBackendModel {
         let response = match model.invoke(state, with_thread_id(request)).await {
             Ok(response) => response,
             Err(e) => {
+                log_managed_dispatch_error(&e, "invoke");
                 maybe_publish_session_expired(&e, "invoke");
                 return Err(e);
             }
@@ -432,6 +506,7 @@ impl ChatModel<()> for OpenHumanBackendModel {
         match model.stream(state, with_thread_id(request)).await {
             Ok(stream) => Ok(stream),
             Err(e) => {
+                log_managed_dispatch_error(&e, "stream");
                 maybe_publish_session_expired(&e, "stream");
                 Err(e)
             }
@@ -690,6 +765,27 @@ mod tests {
             .expect("seed app-session token");
     }
 
+    /// Seed an app-session profile whose recorded `exp` metadata is `expires_at`
+    /// (RFC3339) so the `resolve_bearer` local-expiry precheck (#5503, part e)
+    /// can be exercised without a live backend.
+    fn seed_app_session_with_expiry(dir: &std::path::Path, expires_at: &str) {
+        use crate::openhuman::security::credentials::{
+            session_support::SESSION_EXPIRES_AT_META, AuthService, APP_SESSION_PROVIDER,
+            DEFAULT_AUTH_PROFILE_NAME,
+        };
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert(SESSION_EXPIRES_AT_META.to_string(), expires_at.to_string());
+        AuthService::new(dir, false)
+            .store_provider_token(
+                APP_SESSION_PROVIDER,
+                DEFAULT_AUTH_PROFILE_NAME,
+                "test.session.jwt",
+                metadata,
+                true,
+            )
+            .expect("seed app-session token with expiry");
+    }
+
     fn backend_pointed_at(addr: &str, dir: &std::path::Path) -> OpenHumanBackendModel {
         OpenHumanBackendModel::new(
             Some(&format!("http://{addr}")),
@@ -818,5 +914,65 @@ mod tests {
             started.elapsed() < Duration::from_secs(7),
             "probe must return around the 5s timeout, not wait for the slow handler"
         );
+    }
+
+    // ── resolve_bearer local-expiry precheck (#5503, part e) ───────────────
+
+    #[test]
+    fn resolve_bearer_fast_fails_session_expired_on_expired_token() {
+        // An app-session JWT whose recorded `exp` is in the past must fail the
+        // precheck as a `SESSION_EXPIRED` sentinel BEFORE any request is built —
+        // so the web-chat classifier routes it to `session_expired` (actionable
+        // re-auth) instead of a doomed request that can surface as a misleading
+        // "model unavailable" (#5503). No backend is stood up: a correct
+        // precheck never reaches the network.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let past = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+        seed_app_session_with_expiry(tmp.path(), &past);
+        let backend = backend_pointed_at("127.0.0.1:9", tmp.path());
+
+        let err = backend
+            .resolve_bearer()
+            .expect_err("an expired managed JWT must fast-fail the precheck");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("SESSION_EXPIRED"),
+            "must carry the SESSION_EXPIRED sentinel the classifier keys on: {msg}"
+        );
+        assert!(
+            crate::core::observability::is_session_expired_message(&msg),
+            "must classify as session-expiry, not model-unavailable: {msg}"
+        );
+    }
+
+    #[test]
+    fn resolve_bearer_returns_token_when_expiry_in_future() {
+        // A recorded `exp` comfortably in the future resolves normally — the
+        // precheck only rejects the past-expiry case.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let future = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+        seed_app_session_with_expiry(tmp.path(), &future);
+        let backend = backend_pointed_at("127.0.0.1:9", tmp.path());
+
+        let token = backend
+            .resolve_bearer()
+            .expect("a live (future-exp) managed JWT must resolve");
+        assert_eq!(token, "test.session.jwt");
+    }
+
+    #[test]
+    fn resolve_bearer_returns_token_for_exp_less_offline_session() {
+        // Offline / local sessions record no `exp`, so the precheck falls
+        // through to presence-only and their behaviour is unchanged (the
+        // post-call 401 net still covers a server-side revocation). Guards the
+        // #5503 precheck against breaking the offline path.
+        let tmp = tempfile::TempDir::new().unwrap();
+        seed_app_session(tmp.path());
+        let backend = backend_pointed_at("127.0.0.1:9", tmp.path());
+
+        let token = backend
+            .resolve_bearer()
+            .expect("an exp-less offline session must resolve (presence-only)");
+        assert_eq!(token, "test.session.jwt");
     }
 }
