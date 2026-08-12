@@ -57,21 +57,7 @@ pub async fn load_declared_modules(config: &Config) {
         if record.load != LoadPolicy::Eager {
             continue;
         }
-        // TinyMemory is eager only for a host that actually selected the
-        // module-backed memory driver. Its `LoadPolicy::Eager` records why
-        // *if* selected — a bound memory driver's capabilities must be known
-        // at bind time, not discovered on first recall — but eager-loading it
-        // for every `modules.enabled` host would mean a host on the (default)
-        // `Embedded` driver pays a startup download and native `dlopen` for a
-        // module it never binds. `admit` is the same pure, side-effect-free
-        // check `memory::binding::build` itself uses, so this can never
-        // disagree with what actually gets bound.
-        if record.id == super::memory::MODULE_ID
-            && !matches!(
-                crate::openhuman::memory::binding::admit(&config.subsystems.memory),
-                Ok((_, crate::core::subsystem::DriverClass::Module))
-            )
-        {
+        if !should_eager_load(record, config) {
             log::debug!(
                 "[modules] eager module '{}' skipped: the memory driver is not module-backed",
                 record.id
