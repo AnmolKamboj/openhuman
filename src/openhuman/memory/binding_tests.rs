@@ -636,3 +636,37 @@ fn the_embedded_driver_never_disables_memory() {
     let binding = for_workspace(dir.path(), &MemorySubsystemConfig::default()).expect("binds");
     assert!(!binding.disables_memory());
 }
+
+// A build that admits the module class but cannot construct a module-backed
+// provider must not *report* the module class. `bind_provider` receives the
+// class that status, `modules.status` and the boot log all read, so passing the
+// admitted class while binding a placeholder advertises a live module-backed
+// surface with a null store behind it — the one failure this codebase's drift
+// guards exist to prevent, and the shape a reviewer caught here.
+
+#[cfg(not(feature = "modules"))]
+#[test]
+fn a_module_driver_reports_the_null_class_when_the_feature_is_off() {
+    let cfg = cfg_with_class("tinymemory", "module");
+    let binding = super::build(std::path::Path::new("/tmp/openhuman-binding-test"), &cfg);
+    assert_eq!(
+        binding.class(),
+        crate::core::subsystem::DriverClass::Null,
+        "a placeholder must not be reported as module-backed"
+    );
+}
+
+#[cfg(feature = "modules")]
+#[test]
+fn a_module_driver_reports_the_module_class_when_the_feature_is_on() {
+    // The other direction, so the arm above cannot be "fixed" by making every
+    // module binding report Null. Construction stays I/O-free, so this needs no
+    // runtime and loads nothing.
+    let cfg = cfg_with_class("tinymemory", "module");
+    let binding = super::build(std::path::Path::new("/tmp/openhuman-binding-test"), &cfg);
+    assert_eq!(
+        binding.class(),
+        crate::core::subsystem::DriverClass::Module,
+        "a real module binding must report the module class"
+    );
+}
