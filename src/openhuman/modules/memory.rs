@@ -275,7 +275,7 @@ impl MemoryCore for ModuleMemoryProvider {
     ) -> Result<(), MemoryError> {
         // No log line carries `namespace`, `key` or `content`: all three are user
         // memory content.
-        self.proxy()
+        self.proxy("store")
             .await?
             .call::<()>(
                 "Store",
@@ -293,7 +293,7 @@ impl MemoryCore for ModuleMemoryProvider {
     }
 
     async fn get(&self, namespace: &str, key: &str) -> Result<Option<MemoryEntry>, MemoryError> {
-        self.proxy()
+        self.proxy("get")
             .await?
             .call("Get", (namespace, key))
             .await
@@ -301,7 +301,7 @@ impl MemoryCore for ModuleMemoryProvider {
     }
 
     async fn forget(&self, namespace: &str, key: &str) -> Result<bool, MemoryError> {
-        self.proxy()
+        self.proxy("forget")
             .await?
             .call("Forget", (namespace, key))
             .await
@@ -314,7 +314,7 @@ impl MemoryCore for ModuleMemoryProvider {
         category: Option<&MemoryCategory>,
         session_id: Option<&str>,
     ) -> Result<Vec<MemoryEntry>, MemoryError> {
-        self.proxy()
+        self.proxy("list")
             .await?
             .call(
                 "List",
@@ -329,7 +329,7 @@ impl MemoryCore for ModuleMemoryProvider {
     }
 
     async fn namespaces(&self) -> Result<Vec<NamespaceSummary>, MemoryError> {
-        self.proxy()
+        self.proxy("namespaces")
             .await?
             .call("Namespaces", ())
             .await
@@ -349,7 +349,7 @@ impl MemoryRecall for ModuleMemoryProvider {
         // `scope` crosses as a value because the driver must apply it as a query
         // predicate internally; narrowing the result here instead would let the
         // module spend its `limit` on entries the caller may not see.
-        self.proxy()
+        self.proxy("recall")
             .await?
             .call("Recall", (query, limit, opts, scope.cloned()))
             .await
@@ -364,7 +364,7 @@ impl MemoryPortability for ModuleMemoryProvider {
         cursor: Option<&str>,
         limit: usize,
     ) -> Result<ExportPage, MemoryError> {
-        self.proxy()
+        self.proxy("export_page")
             .await?
             .call("ExportPage", (cursor.map(str::to_string), limit))
             .await
@@ -375,7 +375,7 @@ impl MemoryPortability for ModuleMemoryProvider {
         &self,
         records: Vec<ExportRecord>,
     ) -> Result<ImportOutcome, MemoryError> {
-        self.proxy()
+        self.proxy("import_records")
             .await?
             .call("ImportRecords", (records,))
             .await
