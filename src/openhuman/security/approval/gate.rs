@@ -673,9 +673,45 @@ impl ApprovalGate {
 
         // Chat context (thread/client id) for routing the yes/no reply — set by
         // the web channel around the agent run; absent for non-chat callers.
+        //
+        // Fallback (#5499): when the task-local is absent but the turn is
+        // `WebChat`, route via the thread/client the origin itself carries. The
+        // web channel scopes `APPROVAL_CHAT_CONTEXT` and builds the `WebChat`
+        // origin from the *same* thread_id/client_id (`web_chat::start_chat`),
+        // so the two are identical whenever both are present. They diverge only
+        // when a turn is carried across a `tokio::spawn` boundary that
+        // propagates the origin but not the approval context — most importantly
+        // an async-delegated sub-agent (`spawn_async_subagent`, reached when the
+        // orchestrator routes "remind me…" to `scheduler_agent`): the origin
+        // travels but this task-local does not. Without the fallback the gate
+        // parks with `thread_id: None`, the web-channel surface drops the
+        // `ApprovalRequested` event ("thread/client absent — NOT surfacing"),
+        // and the park silently TTL-denies — so a `cron_add` scheduled from a
+        // chat turn never completes.
         let chat_ctx = APPROVAL_CHAT_CONTEXT.try_with(|c| c.clone()).ok();
-        let chat_thread_id = chat_ctx.as_ref().map(|c| c.thread_id.clone());
-        let chat_client_id = chat_ctx.as_ref().map(|c| c.client_id.clone());
+        let origin_chat_route = match &origin {
+            AgentTurnOrigin::WebChat {
+                thread_id,
+                client_id,
+                ..
+            } => Some((thread_id.clone(), client_id.clone())),
+            _ => None,
+        };
+        if chat_ctx.is_none() && origin_chat_route.is_some() {
+            tracing::debug!(
+                tool = tool_name,
+                "[approval::gate] APPROVAL_CHAT_CONTEXT absent on a WebChat turn — routing the \
+                 approval via the origin's thread/client (async-delegated sub-agent path, #5499)"
+            );
+        }
+        let chat_thread_id = chat_ctx
+            .as_ref()
+            .map(|c| c.thread_id.clone())
+            .or_else(|| origin_chat_route.as_ref().map(|(t, _)| t.clone()));
+        let chat_client_id = chat_ctx
+            .as_ref()
+            .map(|c| c.client_id.clone())
+            .or_else(|| origin_chat_route.as_ref().map(|(_, c)| c.clone()));
 
         // In-call meeting context — set by agent_meetings::in_call around a
         // live-meeting orchestrator turn. Enables the spoken approval
@@ -833,9 +869,14 @@ impl ApprovalGate {
                 return (
                     GateOutcome::Deny {
                         reason: format!(
-                            "{POLICY_DENIED_MARKER} Tool '{tool_name}' rejected: agent turn has \
-                             no origin label. Refusing external_effect tool from unlabelled call \
-                             site."
+                            "{POLICY_DENIED_MARKER} Tool '{tool_name}' can't run from this turn: \
+                             it needs your approval, but the turn reached the security gate with \
+                             no origin label — the internal marker identifying which surface (chat, \
+                             channel, or automation) the request came from — so there is nowhere to \
+                             show you the approval prompt. This is an internal wiring gap, not a \
+                             permission you can grant, and restarting the app won't change it. \
+                             Please retry the action from a normal chat message; if it keeps \
+                             happening, report it and mention the tool name '{tool_name}'."
                         ),
                     },
                     None,
@@ -2155,7 +2196,16 @@ mod tests {
             .await;
 
         match outcome {
-            GateOutcome::Deny { reason } => assert!(reason.contains("no origin label")),
+            GateOutcome::Deny { reason } => {
+                // Keep the internal "no origin label" signal…
+                assert!(reason.contains("no origin label"));
+                // …but the message must also be actionable for the user (#5499
+                // AC2): tell them what to do rather than dump a raw policy line.
+                assert!(
+                    reason.contains("retry") && reason.contains("internal wiring gap"),
+                    "Unknown-origin denial must be actionable, got: {reason}"
+                );
+            }
             other => panic!("expected deny, got {other:?}"),
         }
     }
@@ -2397,6 +2447,62 @@ mod tests {
 
         // Mapping is cleared once intercept returns.
         assert!(gate.pending_for_thread("thread-42").is_none());
+    }
+
+    /// Regression for #5499: an async-delegated sub-agent carries the `WebChat`
+    /// origin across the `tokio::spawn` boundary (`spawn_async_subagent` calls
+    /// `turn_origin::propagate`) but NOT the `APPROVAL_CHAT_CONTEXT` task-local.
+    /// Before the origin-routing fallback the gate parked with `thread_id:
+    /// None`, the web-channel surface dropped the `ApprovalRequested` event
+    /// ("thread/client absent — NOT surfacing"), and the park silently
+    /// TTL-denied — so a `cron_add` the user asked for in chat never completed.
+    /// The gate must instead route the park via the thread/client the `WebChat`
+    /// origin already carries, so the card can surface and be approved.
+    #[tokio::test]
+    async fn webchat_origin_routes_park_when_approval_chat_context_absent() {
+        let (gate, _dir) = test_gate();
+        let gate = Arc::new(gate);
+
+        // WebChat origin scoped, but NO `APPROVAL_CHAT_CONTEXT` — exactly the
+        // async sub-agent spawn state (origin propagated, approval context not).
+        let g = gate.clone();
+        let origin = AgentTurnOrigin::WebChat {
+            thread_id: "thread-async".into(),
+            client_id: "client-async".into(),
+            request_id: Some("req-async".into()),
+        };
+        let handle = tokio::spawn(async move {
+            turn_origin::with_origin(
+                origin,
+                g.intercept("cron_add", "schedule daily reminder", serde_json::json!({})),
+            )
+            .await
+        });
+
+        // The park must be routable via the origin's thread even though the
+        // approval task-local was never scoped. `thread_to_request` is inserted
+        // only when `chat_thread_id` is `Some`, so this mapping appearing proves
+        // the origin fallback supplied it.
+        let mut tries = 0;
+        let request_id = loop {
+            if let Some(r) = gate.pending_for_thread("thread-async") {
+                break r;
+            }
+            tries += 1;
+            assert!(
+                tries < 50,
+                "park must be routable via the WebChat origin's thread when \
+                 APPROVAL_CHAT_CONTEXT is absent (#5499)"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        };
+
+        // A decision on that mapped request resolves the park (the card can
+        // surface and be approved), instead of silently TTL-denying.
+        gate.decide(&request_id, ApprovalDecision::ApproveOnce)
+            .unwrap();
+        assert!(matches!(handle.await.unwrap(), GateOutcome::Allow));
+        assert!(gate.pending_for_thread("thread-async").is_none());
     }
 
     #[tokio::test]
