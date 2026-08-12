@@ -237,7 +237,7 @@ impl MemoryProvider for ModuleMemoryProvider {
         // An unreachable module is a *health* answer, not an error: that is the
         // question this method exists to answer, and returning `Down` is how
         // status output shows an unsupported platform or a refused artifact.
-        match self.proxy().await {
+        match self.proxy("health").await {
             Ok(proxy) => proxy
                 .call::<MemoryHealth>("Health", ())
                 .await
@@ -254,7 +254,7 @@ impl MemoryProvider for ModuleMemoryProvider {
         if self.verified.get().is_none() {
             return Ok(());
         }
-        let proxy = self.proxy().await?;
+        let proxy = self.proxy("shutdown").await?;
         proxy
             .call::<()>("Shutdown", ())
             .await
