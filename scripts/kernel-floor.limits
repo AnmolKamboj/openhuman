@@ -13,6 +13,18 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   307/284/2  2026-08-12  tinymemory-core + its `ureq` HTTP client chain
+#                      (+2 packages / +2 names) became always-on via the
+#                      `add tinymemory-core dependency and patch tinycortex-api`
+#                      change (6bf080266), which wired the crate into
+#                      `openhuman_core` on the always-on memory path but did not
+#                      update this ratchet — so `main` failed the Feature-Gate
+#                      Smoke lane. tinymemory-core is the concrete memory/
+#                      embedding core the always-on memory families consume; its
+#                      `ureq` client rides with it. This reconciles the ratchet
+#                      to the dependency graph already on `main` (no new deps are
+#                      introduced here). Verified via CI (Linux resolves 307/284;
+#                      macOS resolves 308/285 per the documented target skew).
 #   305/282/2  2026-08-10  tinymemory engine-neutral memory layer (+3 packages
 #                      / +3 names). `tinymemory`, `tinymemory-api`, and
 #                      `tinymemory-tinycortex` are deliberate always-on
@@ -229,4 +241,4 @@
 #                      Native: aws-lc-sys libgit2-sys libsqlite3-sys libz-sys
 #                      lzma-sys ring. Target after gating is 222 names / 2 native
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
-flows:305:282:2
+flows:307:284:2
