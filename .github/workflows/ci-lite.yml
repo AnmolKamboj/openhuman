@@ -539,7 +539,6 @@ jobs:
           openhuman/agent/harness/subagent_runner/tool_prep.rs
           openhuman/agent/registry/agents/loader.rs
           openhuman/config/migrations/retire_local_whisper_stt_tests.rs
-          openhuman/memory/people/address_book.rs
           openhuman/mcp/server/resources.rs
           openhuman/platform/socket/event_handlers.rs
           openhuman/platform/socket/ops.rs
