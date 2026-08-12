@@ -789,31 +789,10 @@ jobs:
 
       - name: Run cargo llvm-cov for Tauri shell
         run: |
-          # Write raw profiles to the container's in-memory filesystem first.
-          # Both the workspace bind mount and the container overlay have
-          # dropped LLVM profile writes on hosted container jobs. /dev/shm is
-          # container-local and these raw counter files are only a few MiB.
-          profile_dir="/dev/shm/openhuman-tauri-profraw-${GITHUB_RUN_ID}"
-          rm -rf "$profile_dir"
-          mkdir -p "$profile_dir"
-          # Source cargo-llvm-cov's instrumentation environment, then override
-          # the raw-profile path before invoking Cargo directly. Calling
-          # `cargo llvm-cov` here would overwrite LLVM_PROFILE_FILE again.
           export CARGO_TARGET_DIR="$PWD/app/src-tauri/target/llvm-cov-target"
-          # Do not chain the runner's sccache wrapper underneath llvm-cov.
-          # Its shared cache can return objects compiled without coverage,
-          # yielding a passing test binary that never writes a raw profile.
-          unset RUSTC_WRAPPER
-          eval "$(cargo llvm-cov show-env --manifest-path app/src-tauri/Cargo.toml --sh)"
-          # An empty Cargo config override falls back to the repository's
-          # sccache setting. Replace it explicitly with llvm-cov's wrapper.
-          export CARGO_BUILD_RUSTC_WRAPPER="$RUSTC_WRAPPER"
-          export LLVM_PROFILE_FILE="$profile_dir/tauri-%p-%m.profraw"
-          bash scripts/ci-cancel-aware.sh cargo test --manifest-path app/src-tauri/Cargo.toml
-          shopt -s nullglob
-          profiles=("$profile_dir"/*.profraw)
-          test "${#profiles[@]}" -gt 0
-          mv "${profiles[@]}" "$CARGO_TARGET_DIR/"
+          # Let cargo-llvm-cov manage instrumentation and profile collection;
+          # this native mode cannot be bypassed by a configured sccache wrapper.
+          bash scripts/ci-cancel-aware.sh cargo llvm-cov --no-report --manifest-path app/src-tauri/Cargo.toml
           bash scripts/ci-cancel-aware.sh cargo llvm-cov report --manifest-path app/src-tauri/Cargo.toml --lcov --output-path lcov-tauri.info
         env:
           # Serialize codegen/link to cap peak memory + disk during the
