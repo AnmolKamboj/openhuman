@@ -146,8 +146,11 @@ run_full() {
 # compiled without coverage instrumentation, which lets tests pass but leaves
 # no `.profraw` data for the report step.
 unset RUSTC_WRAPPER
-export CARGO_BUILD_RUSTC_WRAPPER=""
 eval "$(cargo llvm-cov show-env --sh)"
+# Cargo's repository config has a `build.rustc-wrapper` entry. An empty
+# environment override is treated as absent, so it falls back to sccache;
+# explicitly replace it with cargo-llvm-cov's instrumentation wrapper.
+export CARGO_BUILD_RUSTC_WRAPPER="${RUSTC_WRAPPER}"
 # Keep profiles where cargo-llvm-cov itself reports from. This avoids relying
 # on bind-mounted temporary paths that the report subprocess cannot observe.
 profile_dir="${LLVM_PROFILE_DIR:-${CARGO_LLVM_COV_TARGET_DIR}}"
