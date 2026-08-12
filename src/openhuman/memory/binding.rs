@@ -254,7 +254,7 @@ pub(crate) fn reserved_class(id: &str) -> Option<DriverClass> {
 
 /// The contract's driver class in the kernel's generic vocabulary.
 ///
-/// A total three-arm match, which is why both enums were shaped one-for-one.
+/// A total match, which is why both enums were shaped one-for-one.
 /// The kernel's own enum is deliberately not replaced by the contract's: it is
 /// shared with the subsystems that come after memory, which must not inherit
 /// their vocabulary from a *memory* crate.
@@ -262,6 +262,7 @@ fn from_contract_class(class: ContractDriverClass) -> DriverClass {
     match class {
         ContractDriverClass::Embedded => DriverClass::Embedded,
         ContractDriverClass::External => DriverClass::External,
+        ContractDriverClass::Module => DriverClass::Module,
         ContractDriverClass::Null => DriverClass::Null,
     }
 }
@@ -307,18 +308,67 @@ pub fn admit(cfg: &MemorySubsystemConfig) -> Result<(String, DriverClass), Fallb
 fn build(workspace_dir: &Path, cfg: &MemorySubsystemConfig) -> MemoryBinding {
     match admit(cfg) {
         Ok((driver_id, class)) => {
-            let provider: Arc<dyn MemoryProvider> = match class {
+            // Both the provider *and* the class it should be reported under. The
+            // two can differ: a build without the `modules` feature admits the
+            // module class but can only bind a placeholder, and reporting the
+            // admitted class there would advertise a module-backed driver with a
+            // null behind it — a live surface with no store, which is exactly
+            // what status output exists to make visible.
+            let (provider, class): (Arc<dyn MemoryProvider>, DriverClass) = match class {
                 // Construction is deliberately sync and I/O-free: this runs on
                 // `CoreContext::memory_binding`, which ~4000 pre-boot tests
                 // call with no tokio runtime. The driver resolves its client on
                 // first use — see `driver::embedded`'s module docs.
-                DriverClass::Embedded => {
-                    Arc::new(EmbeddedMemoryProvider::new(workspace_dir, cfg.hooks))
-                }
-                DriverClass::Null => Arc::new(NullMemoryProvider::new()),
+                DriverClass::Embedded => (
+                    Arc::new(EmbeddedMemoryProvider::new(workspace_dir, cfg.hooks)),
+                    DriverClass::Embedded,
+                ),
+                DriverClass::Null => (Arc::new(NullMemoryProvider::new()), DriverClass::Null),
                 // Unreachable: `admit` refuses every external driver above, so
                 // this arm cannot bind a transport that does not exist yet.
-                DriverClass::External => Arc::new(NullMemoryProvider::new()),
+                // Reported as `Null`, for the same reason as the arm below: what
+                // bound is a placeholder, and status must say so.
+                DriverClass::External => (Arc::new(NullMemoryProvider::new()), DriverClass::Null),
+                // This function builds an `Arc<dyn tinycortex_api::provider::
+                // MemoryProvider>`, while `modules::memory::ModuleMemoryProvider`
+                // implements `tinymemory_api::provider::MemoryProvider`. Those are
+                // two different traits from two different crates.
+                // `TinyMemoryContractAdapter` is the bridge: it wraps the module
+                // provider and implements the tinycortex-side trait by converting
+                // each call across the seam (see its module docs for why most
+                // conversions destructure exhaustively while a few cross by serde
+                // round trip). It is a temporary bridge — it exists to be deleted
+                // once the binding itself migrates onto the tinymemory contract,
+                // at which point `ModuleMemoryProvider` binds directly here.
+                //
+                // Gated on the `modules` feature because the concrete provider
+                // type lives behind it (unlike the adapter above, which is
+                // generic and feature-independent). A build without `modules`
+                // cannot load the module driver at all, so it falls back to the
+                // same placeholder every other inadmissible driver gets, logged
+                // loudly rather than silently — kernel.md §3.7.
+                #[cfg(feature = "modules")]
+                DriverClass::Module => (
+                    Arc::new(
+                        crate::openhuman::memory::driver::module_adapter::TinyMemoryContractAdapter::new(
+                            Arc::new(
+                                crate::openhuman::modules::memory::ModuleMemoryProvider::from_boot_policy(),
+                            ),
+                        ),
+                    ),
+                    DriverClass::Module,
+                ),
+                #[cfg(not(feature = "modules"))]
+                DriverClass::Module => {
+                    log::warn!(
+                        "[memory:binding] workspace={} configured driver='{}' resolves to the \
+                         module class, but this build was compiled without the `modules` \
+                         feature; falling back to the null placeholder",
+                        workspace_dir.display(),
+                        driver_id,
+                    );
+                    (Arc::new(NullMemoryProvider::new()), DriverClass::Null)
+                }
             };
             // The configured trust state for the driver that actually bound.
             // Absent `[subsystems.memory.drivers.<id>]` entry ⇒ the fail-closed

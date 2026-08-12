@@ -173,8 +173,96 @@ const TINYWALLET: ModuleRecord = ModuleRecord {
     load: LoadPolicy::Lazy,
 };
 
+/// The memory engine, served as a driver.
+///
+/// # The digests below came from the release, not from a local build
+///
+/// Every `sha256` here was copied verbatim from
+/// `v0.3.0`'s `checksum.toml`. Recomputing one from a local
+/// build would pin whatever this machine happened to produce, which defeats the
+/// point: tinybus fetches the release's own manifest, compares it with this
+/// value, hashes the download, and only then extracts. Pinning here is the half
+/// of that check which is auditable offline, and the half that makes a release
+/// re-cut under the same tag stop matching rather than silently replacing what
+/// runs in-process.
+///
+/// If these ever need to change, take the new values from the release. Do not
+/// run `sha256sum` on `target/release/`.
+const TINYMEMORY: ModuleRecord = ModuleRecord {
+    id: "tinymemory",
+    description: "Local memory engine: store, ranked recall, and portable export",
+    bus_name: "ai.tinyhumans.tinymemory.Memory",
+    object_path: "/ai/tinyhumans/tinymemory/Memory",
+    version: "0.3.0",
+    release_url: "https://github.com/tinyhumansai/tinymemory/releases/tag/v0.3.0",
+    assets: &[
+        PlatformAsset {
+            host_key: "ubuntu-24.04-x86_64",
+            archive: "tinymemory-module-0.3.0-ubuntu-24.04-x86_64.tar.gz",
+            sha256: "c0406030c7cc09b386bc6040ab29dbafe6dd4f428db9623819c567b4c71afb5a",
+        },
+        PlatformAsset {
+            host_key: "ubuntu-24.04-arm64",
+            archive: "tinymemory-module-0.3.0-ubuntu-24.04-arm64.tar.gz",
+            sha256: "c4e165b68887874acba691dd6a103feea8d0acb401a1d8d00c073bc27404d08f",
+        },
+        PlatformAsset {
+            host_key: "ubuntu-22.04-x86_64",
+            archive: "tinymemory-module-0.3.0-ubuntu-22.04-x86_64.tar.gz",
+            sha256: "e3ac3eb98997bd25b02bdb71c3d565b2e42a89fa4b7f6369758b3ec6a684c857",
+        },
+        PlatformAsset {
+            host_key: "ubuntu-22.04-arm64",
+            archive: "tinymemory-module-0.3.0-ubuntu-22.04-arm64.tar.gz",
+            sha256: "bf06c9540bed6f2c1b95c57f324fd6a33a33bc10a2a7deaddd36fbafc7d02c40",
+        },
+        PlatformAsset {
+            host_key: "macos-26-arm64",
+            archive: "tinymemory-module-0.3.0-macos-26-arm64.tar.gz",
+            sha256: "2d4266d1430c7fa9ec3e609785d534a0fe84a4a1d00ae9fbb151c82c32eccf19",
+        },
+        PlatformAsset {
+            host_key: "macos-26-x86_64",
+            archive: "tinymemory-module-0.3.0-macos-26-x86_64.tar.gz",
+            sha256: "11b63f0492a9c365ebecfc2e7e433cd133b58e0e727322868b6ef3e6edbd8b4b",
+        },
+        PlatformAsset {
+            host_key: "macos-15-arm64",
+            archive: "tinymemory-module-0.3.0-macos-15-arm64.tar.gz",
+            sha256: "7a39d272aa29148ef652727bbc05d67c361c4d706a7d89a5dedab192bbb75642",
+        },
+        PlatformAsset {
+            host_key: "macos-15-x86_64",
+            archive: "tinymemory-module-0.3.0-macos-15-x86_64.tar.gz",
+            sha256: "0c7eba4e64009eec8e1ae19bfc9b5859136ebf6bc6cb7efa7510a61da42f4456",
+        },
+        PlatformAsset {
+            host_key: "windows-2025-x86_64",
+            archive: "tinymemory-module-0.3.0-windows-2025-x86_64.zip",
+            sha256: "4e55458bc79e1c504d1224afb70edd8404fe8ee3bf0f5e2d44bb258cae79fe05",
+        },
+        PlatformAsset {
+            host_key: "windows-2022-x86_64",
+            archive: "tinymemory-module-0.3.0-windows-2022-x86_64.zip",
+            sha256: "608354bf847ee32f90fa6f76c918c20441be9ec09544338867512dbf49b4685d",
+        },
+        PlatformAsset {
+            host_key: "windows-11-arm64",
+            archive: "tinymemory-module-0.3.0-windows-11-arm64.zip",
+            sha256: "b7b55d5a473d43053e791eb94116e9e88fc3533b8a7325c45dad832018f02766",
+        },
+    ],
+    // Eager, unlike the two codecs above. A codec that is never asked for should
+    // not be paid for, but a memory driver's absence changes what the kernel
+    // offers rather than merely delaying it: capabilities are read at bind time
+    // and the RPC surface and agent-tool list are filtered from them. Resolving
+    // that during a user's first recall would mean the first recall is the one
+    // that behaves differently.
+    load: LoadPolicy::Eager,
+};
+
 /// Every module this build can load.
-pub const ALL: &[ModuleRecord] = &[TINYDOCS, TINYWALLET];
+pub const ALL: &[ModuleRecord] = &[TINYDOCS, TINYWALLET, TINYMEMORY];
 
 /// The record for `id`, if this build knows it.
 #[must_use]
@@ -329,6 +417,25 @@ mod tests {
             ("windows", "aarch64", None),
         ];
         for record in ALL {
+            // A record with no assets at all is a module whose release has not
+            // been cut yet. It is exempt from the per-host check — there is
+            // nothing to be missing — but only if it is on this list, so an
+            // *accidentally* asset-less record still fails here rather than
+            // silently becoming unsupported on every platform.
+            //
+            // Digests must be copied verbatim from the release `checksum.toml`,
+            // so shipping placeholder assets to satisfy this test would be worse
+            // than the exemption.
+            if record.assets.is_empty() {
+                assert!(
+                    PENDING_RELEASE.contains(&record.id),
+                    "{} publishes no assets and is not a known pre-release module; \
+                     either add its assets (digests copied from the release \
+                     checksum.toml) or add it to PENDING_RELEASE with a reason",
+                    record.id
+                );
+                continue;
+            }
             for (os, arch, glibc) in hosts {
                 for key in candidates_for(os, arch, glibc) {
                     assert!(
@@ -340,6 +447,19 @@ mod tests {
             }
         }
     }
+
+    /// Modules registered before their first release exists.
+    ///
+    /// Being here means `modules.status` reports `Unsupported` on every platform
+    /// and `ensure_loaded` refuses, which is the correct behaviour for an artifact
+    /// that cannot be verified because it has not been published. Removing an
+    /// entry is the last step of a module port.
+    ///
+    /// Empty today: every registered module has a release. Kept rather than
+    /// deleted because the exemption it grants is what lets the check above stay
+    /// strict — an accidentally asset-less record must fail, and it can only be
+    /// told apart from a deliberate one by a list like this.
+    const PENDING_RELEASE: &[&str] = &[];
 
     #[test]
     fn find_resolves_known_ids_only() {

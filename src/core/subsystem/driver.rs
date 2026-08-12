@@ -46,6 +46,28 @@ pub enum DriverClass {
     /// An out-of-process backend reached through a transport adapter over a
     /// documented wire contract.
     External,
+    /// A loadable native module: a `cdylib` admitted through tinybus's ABI,
+    /// manifest and digest gates and reached over the in-process module bus.
+    ///
+    /// Neither of the two classes above fits, and the difference is the policy
+    /// this class gates:
+    ///
+    /// - not [`Self::Embedded`], because the code is **not compiled into this
+    ///   binary**. It is downloaded, verified against a digest pinned in
+    ///   `modules::registry`, and `dlopen`ed. Whether it is present at all is a
+    ///   runtime fact, so a capability set derived from it can be empty on a
+    ///   platform no artifact is published for.
+    /// - not [`Self::External`], because there is **no egress and no process
+    ///   boundary**. It shares this address space, these privileges and this
+    ///   crash domain, so the trust checks that make sense for a remote backend
+    ///   (endpoint allowlisting, TLS, credential scoping) are neither applicable
+    ///   nor sufficient. What protects the host is admission, not isolation.
+    ///
+    /// Treating a module as `External` would apply egress policy to something
+    /// that makes no network calls while implying an isolation the loader does
+    /// not provide; treating it as `Embedded` would claim a compile-time
+    /// guarantee that a downloaded artifact does not have.
+    Module,
     /// A stub advertising zero capabilities — what a compiled-out or
     /// unconfigured subsystem binds to.
     Null,
@@ -53,9 +75,10 @@ pub enum DriverClass {
 
 impl DriverClass {
     /// Every class, in declaration order.
-    pub const ALL: [DriverClass; 3] = [
+    pub const ALL: [DriverClass; 4] = [
         DriverClass::Embedded,
         DriverClass::External,
+        DriverClass::Module,
         DriverClass::Null,
     ];
 
@@ -69,6 +92,7 @@ impl DriverClass {
         match self {
             Self::Embedded => "embedded",
             Self::External => "external",
+            Self::Module => "module",
             Self::Null => "null",
         }
     }
