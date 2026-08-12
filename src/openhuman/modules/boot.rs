@@ -86,7 +86,7 @@ pub async fn load_declared_modules(config: &Config) {
 /// [`crate::openhuman::memory::binding::admit`] is the same pure,
 /// side-effect-free check `memory::binding::build` itself uses to decide what
 /// actually gets bound, so this can never disagree with the real binding.
-fn should_eager_load(record: &registry::ModuleRecord, config: &Config) -> bool {
+fn should_eager_load(record: &super::types::ModuleRecord, config: &Config) -> bool {
     if record.id != super::memory::MODULE_ID {
         return true;
     }
