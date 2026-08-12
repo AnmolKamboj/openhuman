@@ -62,7 +62,10 @@ fn an_export_record_survives_the_crossing_with_its_payload_and_taint() {
         cross(&record, "export record").expect("cross");
     let back: tinycortex_api::provider::types::ExportRecord =
         cross(&crossed, "export record").expect("cross back");
-    assert_eq!(back, record, "export record lost a field crossing contracts");
+    assert_eq!(
+        back, record,
+        "export record lost a field crossing contracts"
+    );
 }
 
 #[test]
