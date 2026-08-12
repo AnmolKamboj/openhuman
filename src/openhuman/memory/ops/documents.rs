@@ -10,10 +10,10 @@ use crate::openhuman::memory::api::types::NamespaceDocumentInput;
 use crate::openhuman::memory::store::NamespaceRetrievalContext;
 use crate::openhuman::memory::{
     ApiEnvelope, DeleteDocumentRequest, DeleteDocumentResponse, EmptyRequest, ListDocumentsRequest,
-    ListDocumentsResponse, ListNamespacesResponse, MemoryIngestionConfig, MemoryIngestionRequest,
-    MemoryIngestionResult, MemoryInitRequest, MemoryInitResponse, MemoryRecallItem, PaginationMeta,
-    QueryNamespaceRequest, QueryNamespaceResponse, RecallContextRequest, RecallContextResponse,
-    RecallMemoriesRequest, RecallMemoriesResponse,
+    ListDocumentsResponse, ListNamespacesResponse, MemoryIngestionConfig, MemoryIngestionResult,
+    MemoryInitRequest, MemoryInitResponse, MemoryRecallItem, PaginationMeta, QueryNamespaceRequest,
+    QueryNamespaceResponse, RecallContextRequest, RecallContextResponse, RecallMemoriesRequest,
+    RecallMemoriesResponse,
 };
 use crate::rpc::RpcOutcome;
 
@@ -229,26 +229,48 @@ pub async fn doc_put(params: PutDocParams) -> Result<RpcOutcome<PutDocResult>, S
 pub async fn doc_ingest(
     params: IngestDocParams,
 ) -> Result<RpcOutcome<MemoryIngestionResult>, String> {
-    let client = active_memory_client().await?;
-    let result = client
-        .ingest_doc(MemoryIngestionRequest {
-            document: tinycortex::memory::NamespaceDocumentInput {
-                namespace: params.namespace,
-                key: params.key,
-                title: params.title,
-                content: params.content,
-                source_type: params.source_type,
-                priority: params.priority,
-                tags: params.tags,
-                metadata: params.metadata,
-                category: params.category,
-                session_id: params.session_id,
-                document_id: params.document_id,
-                taint: tinycortex::memory::MemoryTaint::Internal,
-            },
-            config: params.config.unwrap_or_default(),
+    let guard = active_memory_guard().await?;
+    let documents = guard
+        .as_documents()
+        .ok_or_else(|| "memory driver does not support the documents family".to_string())?;
+    let namespace = params.namespace;
+    let tags = params.tags;
+    let document_id = documents
+        .put_document(NamespaceDocumentInput {
+            namespace: namespace.clone(),
+            key: params.key,
+            title: params.title,
+            content: params.content,
+            source_type: params.source_type,
+            priority: params.priority,
+            tags: tags.clone(),
+            metadata: params.metadata,
+            category: params.category,
+            session_id: params.session_id,
+            document_id: params.document_id,
+            taint: crate::openhuman::memory::api::types::MemoryTaint::Internal,
         })
-        .await?;
+        .await
+        .map_err(|error| error.to_string())?;
+    // Chunking and graph extraction are driver-owned behind `put_document`.
+    // The historical RPC response exposed the embedded engine's synchronous
+    // extraction details, which a module boundary cannot observe. Preserve the
+    // wire shape while reporting only the facts the host actually knows.
+    let _driver_owned_config = params.config;
+    let result = MemoryIngestionResult {
+        document_id,
+        namespace,
+        model_name: "driver-managed".to_string(),
+        extraction_mode: "driver-managed".to_string(),
+        chunk_count: 0,
+        entity_count: 0,
+        relation_count: 0,
+        preference_count: 0,
+        decision_count: 0,
+        tags,
+        entities: Vec::new(),
+        relations: Vec::new(),
+    };
     let msg = format!(
         "ingested document — {} entities, {} relations, {} chunks",
         result.entity_count, result.relation_count, result.chunk_count,
