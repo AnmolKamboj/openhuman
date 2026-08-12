@@ -783,15 +783,13 @@ jobs:
         # cargo's fingerprints do not distinguish a previously restored
         # non-instrumented test executable, which then runs successfully but
         # produces no .profraw file for cargo-llvm-cov to merge.
-        run: |
-          export CARGO_TARGET_DIR="$PWD/app/src-tauri/target/llvm-cov-target"
-          cargo llvm-cov clean --manifest-path app/src-tauri/Cargo.toml
+        run: cargo llvm-cov clean --manifest-path app/src-tauri/Cargo.toml
 
       - name: Run cargo llvm-cov for Tauri shell
         run: |
-          export CARGO_TARGET_DIR="$PWD/app/src-tauri/target/llvm-cov-target"
           # Let cargo-llvm-cov manage instrumentation and profile collection;
-          # this native mode cannot be bypassed by a configured sccache wrapper.
+          # this native mode cannot be bypassed by a configured sccache wrapper
+          # or redirected away from its own report target.
           bash scripts/ci-cancel-aware.sh cargo llvm-cov --no-report --manifest-path app/src-tauri/Cargo.toml
           bash scripts/ci-cancel-aware.sh cargo llvm-cov report --manifest-path app/src-tauri/Cargo.toml --lcov --output-path lcov-tauri.info
         env:
