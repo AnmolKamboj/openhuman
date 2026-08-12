@@ -73,10 +73,79 @@ pub async fn load_declared_modules(config: &Config) {
     }
 }
 
+/// Whether `record` should be loaded eagerly at boot, given `config`.
+///
+/// Every `LoadPolicy::Eager` record is eager unconditionally, except
+/// TinyMemory: it is eager only when this host's memory subsystem actually
+/// selected the module-backed driver. Eager-loading it for every
+/// `modules.enabled` host — regardless of which memory driver is bound —
+/// would mean a host on the (default) `Embedded` driver pays a startup
+/// download and native `dlopen` for a module it never binds, breaking the
+/// module driver's opt-in contract.
+///
+/// [`crate::openhuman::memory::binding::admit`] is the same pure,
+/// side-effect-free check `memory::binding::build` itself uses to decide what
+/// actually gets bound, so this can never disagree with the real binding.
+fn should_eager_load(record: &registry::ModuleRecord, config: &Config) -> bool {
+    if record.id != super::memory::MODULE_ID {
+        return true;
+    }
+    matches!(
+        crate::openhuman::memory::binding::admit(&config.subsystems.memory),
+        Ok((_, crate::core::subsystem::DriverClass::Module))
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use super::load_declared_modules;
+    use super::{load_declared_modules, should_eager_load};
     use crate::openhuman::config::Config;
+
+    #[test]
+    fn tinymemory_is_not_eager_when_the_memory_driver_is_embedded() {
+        // The default config binds the embedded driver, so the module-backed
+        // TinyMemory record must not be treated as eager — otherwise every
+        // host with `modules.enabled` would pay a boot-time download for a
+        // driver it never binds.
+        let config = Config::default();
+        let record = super::registry::find(super::super::memory::MODULE_ID)
+            .expect("tinymemory is a registered module");
+        assert!(!should_eager_load(record, &config));
+    }
+
+    #[test]
+    fn tinymemory_is_eager_when_the_memory_driver_is_module_backed() {
+        let mut config = Config::default();
+        config.subsystems.memory.driver = "tinymemory".to_string();
+        config.subsystems.memory.drivers.insert(
+            "tinymemory".to_string(),
+            tinymemory_api::host::MemoryDriverConfig {
+                class: Some("module".to_string()),
+                ..Default::default()
+            },
+        );
+        let record = super::registry::find(super::super::memory::MODULE_ID)
+            .expect("tinymemory is a registered module");
+        assert!(should_eager_load(record, &config));
+    }
+
+    #[test]
+    fn other_eager_records_are_unconditional() {
+        // Non-memory eager records (today, none — but the rule must not
+        // silently start gating an unrelated module the moment one is added
+        // and marked `Eager`) are unaffected by the memory driver selection.
+        let config = Config::default();
+        for record in super::registry::ALL {
+            if record.id == super::super::memory::MODULE_ID {
+                continue;
+            }
+            assert!(
+                should_eager_load(record, &config),
+                "record '{}' should be unconditionally eager-eligible",
+                record.id
+            );
+        }
+    }
 
     #[tokio::test]
     async fn boot_is_a_no_op_when_modules_are_disabled() {
