@@ -320,28 +320,25 @@ fn build(workspace_dir: &Path, cfg: &MemorySubsystemConfig) -> MemoryBinding {
                 // Unreachable: `admit` refuses every external driver above, so
                 // this arm cannot bind a transport that does not exist yet.
                 DriverClass::External => Arc::new(NullMemoryProvider::new()),
-                // Selectable in config now (`class = "module"` parses), but it
-                // cannot bind yet, and the reason is a contract mismatch rather
-                // than missing plumbing.
-                //
                 // This function builds an `Arc<dyn tinycortex_api::provider::
                 // MemoryProvider>`, while `modules::memory::ModuleMemoryProvider`
                 // implements `tinymemory_api::provider::MemoryProvider`. Those are
-                // two different traits from two different crates. OpenHuman's
-                // migration onto the tinymemory contract is partial — most of the
-                // tree still names `tinycortex_api` — so the module driver cannot
-                // be handed to this slot until the memory binding itself moves
-                // over.
+                // two different traits from two different crates.
+                // `TinyMemoryContractAdapter` is the bridge: it wraps the module
+                // provider and implements the tinycortex-side trait by converting
+                // each call across the seam (see its module docs for why most
+                // conversions destructure exhaustively while a few cross by serde
+                // round trip). It is a temporary bridge — it exists to be deleted
+                // once the binding itself migrates onto the tinymemory contract,
+                // at which point `ModuleMemoryProvider` binds directly here.
                 //
-                // Implementing the tinycortex trait *as well* was considered and
-                // rejected: the module's wire types are the tinymemory ones, so a
-                // second impl would need a full type conversion layer at exactly
-                // the seam the one-method-per-method design exists to avoid, and
-                // it would have to be deleted again when the binding migrates.
-                //
-                // Everything else is ready: the provider, its 14 tests, the
-                // registry record, and the class itself. What remains is the
-                // binding's own contract migration, which is a separate change.
+                // Gated on the `modules` feature because the concrete provider
+                // type lives behind it (unlike the adapter above, which is
+                // generic and feature-independent). A build without `modules`
+                // cannot load the module driver at all, so it falls back to the
+                // same placeholder every other inadmissible driver gets, logged
+                // loudly rather than silently — kernel.md §3.7.
+                #[cfg(feature = "modules")]
                 DriverClass::Module => Arc::new(
                     crate::openhuman::memory::driver::module_adapter::TinyMemoryContractAdapter::new(
                         Arc::new(
@@ -349,6 +346,17 @@ fn build(workspace_dir: &Path, cfg: &MemorySubsystemConfig) -> MemoryBinding {
                         ),
                     ),
                 ),
+                #[cfg(not(feature = "modules"))]
+                DriverClass::Module => {
+                    log::warn!(
+                        "[memory:binding] workspace={} configured driver='{}' resolves to the \
+                         module class, but this build was compiled without the `modules` \
+                         feature; falling back to the null placeholder",
+                        workspace_dir.display(),
+                        driver_id,
+                    );
+                    Arc::new(NullMemoryProvider::new())
+                }
             };
             // The configured trust state for the driver that actually bound.
             // Absent `[subsystems.memory.drivers.<id>]` entry ⇒ the fail-closed
