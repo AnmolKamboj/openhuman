@@ -790,8 +790,7 @@ jobs:
           # Let cargo-llvm-cov manage instrumentation and profile collection;
           # this native mode cannot be bypassed by a configured sccache wrapper
           # or redirected away from its own report target.
-          bash scripts/ci-cancel-aware.sh cargo llvm-cov --no-report --manifest-path app/src-tauri/Cargo.toml
-          bash scripts/ci-cancel-aware.sh cargo llvm-cov report --manifest-path app/src-tauri/Cargo.toml --lcov --output-path lcov-tauri.info
+          bash scripts/ci-cancel-aware.sh cargo llvm-cov --manifest-path app/src-tauri/Cargo.toml --lcov --output-path lcov-tauri.info
         env:
           # Serialize codegen/link to cap peak memory + disk during the
           # instrumented Tauri-shell link (SIGBUS otherwise). Mirrors
