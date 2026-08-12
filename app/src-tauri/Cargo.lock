@@ -7771,13 +7771,13 @@ dependencies = [
 
 [[package]]
 name = "tinyflows"
-version = "0.6.1"
+version = "0.6.0"
 dependencies = [
  "async-trait",
  "axum",
  "futures-timer",
  "futures-util",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "jaq-core",
  "jaq-json",
  "jaq-std",
