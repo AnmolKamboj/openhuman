@@ -152,7 +152,15 @@ impl ModuleMemoryProvider {
     }
 
     /// Ensure the module is serving, and hand back a proxy for its object.
-    async fn proxy(&self) -> Result<tinybus::Proxy, MemoryError> {
+    ///
+    /// `operation` identifies the forwarded call (e.g. `"store"`, `"recall"`)
+    /// for the diagnostic below. Never `namespace`, `key`, `content`, or any
+    /// record value — those are user memory content, not correlation fields.
+    async fn proxy(&self, operation: &str) -> Result<tinybus::Proxy, MemoryError> {
+        log::debug!(
+            "[modules:memory] driver_id={} operation={operation} resolving module proxy",
+            self.driver_id,
+        );
         let config = self.config.as_ref().or_else(|| policy()).ok_or_else(|| {
             MemoryError::Other(anyhow::anyhow!(
                 "the module host policy was never published, so module '{MODULE_ID}' \
