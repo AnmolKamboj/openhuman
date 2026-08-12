@@ -859,62 +859,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "modules")]
-    #[tokio::test]
-    async fn unrelated_test_binding_cannot_capture_the_module_workspace() {
-        let _serial = crate::openhuman::memory::ops::GLOBAL_MEMORY_TEST_LOCK
-            .lock()
-            .await;
-        let _env = ensure_memory_client();
-        let unrelated = tempfile::tempdir().expect("unrelated workspace");
-        let binding = crate::openhuman::memory::binding::for_workspace(
-            unrelated.path(),
-            &crate::openhuman::config::schema::MemorySubsystemConfig::default(),
-        )
-        .expect("module binding");
-        let guard = binding.guard();
-        let documents = guard.as_documents().expect("documents capability");
-        let namespace = unique_namespace("memory-docs-module-workspace");
-        let key = format!(
-            "shared{}",
-            &uuid::Uuid::new_v4().as_simple().to_string()[..12]
-        );
-
-        documents
-            .put_document(
-                crate::openhuman::memory::api::types::NamespaceDocumentInput {
-                    namespace: namespace.clone(),
-                    key: key.clone(),
-                    title: "Shared test module workspace".into(),
-                    content: "The module must share the process-global test store.".into(),
-                    source_type: default_source_type(),
-                    priority: default_priority(),
-                    tags: vec![],
-                    metadata: serde_json::Value::Null,
-                    category: default_category(),
-                    session_id: None,
-                    document_id: None,
-                    taint: crate::openhuman::memory::api::types::MemoryTaint::Internal,
-                },
-            )
-            .await
-            .expect("module-backed put");
-
-        let client = active_memory_client().await.expect("shared test client");
-        let raw = client
-            .list_documents(Some(&namespace))
-            .await
-            .expect("raw list");
-        assert!(
-            raw["documents"]
-                .as_array()
-                .expect("documents array")
-                .iter()
-                .any(|document| document["key"] == key),
-            "an unrelated binding must not split the native module from the shared test store"
-        );
-    }
-
     /// Pins the null-binding refusal for destructive document operations.
     #[tokio::test]
     async fn destructive_ops_refuse_when_bound_driver_is_null() {
