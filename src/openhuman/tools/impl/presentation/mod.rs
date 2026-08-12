@@ -67,6 +67,11 @@ pub const TOOL_NAME: &str = "generate_presentation";
 /// One-shot `.pptx` generator. See module docs for the request flow.
 pub struct PresentationTool {
     workspace_dir: PathBuf,
+    /// Existing host config when the caller already owns the authoritative
+    /// runtime snapshot. Keeping this optional preserves the ordinary agent
+    /// constructor while avoiding a process-global config reload during
+    /// artifact regeneration.
+    config: Option<crate::openhuman::config::Config>,
     /// Security policy used to validate agent-supplied `File` image paths
     /// before any filesystem read — an image path must pass the same
     /// `validate_path` checks (allowed-location, symlink-escape, forbidden
@@ -82,6 +87,20 @@ impl PresentationTool {
     pub fn new(workspace_dir: PathBuf, security: Arc<SecurityPolicy>) -> Self {
         Self {
             workspace_dir,
+            config: None,
+            security,
+        }
+    }
+
+    /// Construct the tool with an authoritative host config snapshot.
+    pub(crate) fn with_config(
+        workspace_dir: PathBuf,
+        security: Arc<SecurityPolicy>,
+        config: crate::openhuman::config::Config,
+    ) -> Self {
+        Self {
+            workspace_dir,
+            config: Some(config),
             security,
         }
     }
@@ -263,7 +282,14 @@ impl Tool for PresentationTool {
             );
         }
 
-        let bytes = match engine::generate(&input, &resolved_images, GENERATION_TIMEOUT).await {
+        let bytes = match engine::generate(
+            &input,
+            &resolved_images,
+            GENERATION_TIMEOUT,
+            self.config.as_ref(),
+        )
+        .await
+        {
             Ok(bytes) => bytes,
             Err(err) => {
                 let _ = fail_artifact(&self.workspace_dir, &meta.id, &err.to_string()).await;

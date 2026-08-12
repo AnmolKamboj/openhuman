@@ -39,6 +39,7 @@ pub(super) async fn generate(
     input: &GeneratePresentationInput,
     images: &[Vec<ResolvedSlideImage>],
     deadline: Duration,
+    config: Option<&crate::openhuman::config::Config>,
 ) -> Result<Vec<u8>, PresentationError> {
     let (deck, payload) = build_request(input, images);
     let started = std::time::Instant::now();
@@ -55,15 +56,22 @@ pub(super) async fn generate(
         "[presentation:engine] generate:start"
     );
 
-    let config = match crate::openhuman::config::Config::load_or_init().await {
-        Ok(config) => config,
-        Err(error) => {
-            return Err(PresentationError::GenerationFailed {
-                exit_code: -1,
-                stderr_truncated: PresentationError::truncate_stderr(&format!(
-                    "config unavailable: {error}"
-                )),
-            });
+    let loaded_config;
+    let config = match config {
+        Some(config) => config,
+        None => {
+            loaded_config = match crate::openhuman::config::Config::load_or_init().await {
+                Ok(config) => config,
+                Err(error) => {
+                    return Err(PresentationError::GenerationFailed {
+                        exit_code: -1,
+                        stderr_truncated: PresentationError::truncate_stderr(&format!(
+                            "config unavailable: {error}"
+                        )),
+                    });
+                }
+            };
+            &loaded_config
         }
     };
 
@@ -71,11 +79,11 @@ pub(super) async fn generate(
     // artifact, and a deadline meant for generation should not be spent on that
     // — otherwise the first document a user ever asks for is the one that times
     // out. Cached after the first call, so this is free from then on.
-    if let Err(error) = documents::ensure_ready(&config).await {
+    if let Err(error) = documents::ensure_ready(config).await {
         return Err(PresentationError::from(error));
     }
 
-    let call = timeout(deadline, documents::generate_pptx(&config, &deck, &payload)).await;
+    let call = timeout(deadline, documents::generate_pptx(config, &deck, &payload)).await;
 
     let elapsed_ms = started.elapsed().as_millis() as u64;
     match call {
