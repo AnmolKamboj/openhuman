@@ -274,7 +274,10 @@ async fn regenerate_reruns_producer_and_reuses_id() {
     let value = outcome.into_cli_compatible_json().unwrap();
     assert_eq!(value["artifact_id"], meta.id);
     assert_eq!(value["regenerated"], true);
-    assert_eq!(value["is_error"], false);
+    assert_eq!(
+        value["is_error"], false,
+        "regeneration unexpectedly returned a tool error: {value}"
+    );
 
     // Same id reused in place; the re-run drove it to Ready.
     let got = get_artifact(tmp.path(), &meta.id).await.unwrap();
