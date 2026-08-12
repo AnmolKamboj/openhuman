@@ -535,12 +535,17 @@ fn deliver_voice_result_to_chat(correlation_id: &str, reply: String, allow_speak
     }
 }
 
-/// Deliver a short failure notice to the voice chat thread when a deferred turn
-/// errors after the spoken turn already closed. Because the spoken preface may
-/// have told the user their answer would land in chat, a silent failure would
-/// leave them waiting on a message that never comes — this makes the promised
-/// message always appear. Delivered as a normal assistant message (not spoken)
-/// on the same `proactive:voice` surface as a successful deferred answer.
+/// Deliver a short "couldn't complete" notice to the voice chat thread for a
+/// deferred turn that produced no answer the user can see — either it errored,
+/// or it completed past the ack deadline with empty text (on this path
+/// `run_single`'s returned text is the sole answer channel: the orchestrator
+/// folds any tool/subagent output into its final reply, so an empty reply means
+/// nothing was produced for the user, not that the answer went elsewhere).
+/// Because the spoken preface may have told the user their answer would land in
+/// chat, staying silent would leave them waiting on a message that never comes —
+/// this makes the promised message always appear. Delivered as a normal
+/// assistant message (not spoken) on the same `proactive:voice` surface as a
+/// successful deferred answer.
 fn deliver_voice_failure_to_chat(correlation_id: &str) {
     info!(
         "[voice-harness] delivering deferred failure notice to chat correlation={correlation_id}"
