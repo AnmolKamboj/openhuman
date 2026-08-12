@@ -1,0 +1,250 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import { callCoreRpc } from '../../../services/coreRpcClient';
+import {
+  hasUsableStarts,
+  normalizeVisemeTimeline,
+  prepareForSpeech,
+  proceduralVisemes,
+  synthesizeSpeech,
+  visemesFromAlignment,
+} from './ttsClient';
+
+vi.mock('../../../services/coreRpcClient', () => ({ callCoreRpc: vi.fn() }));
+
+describe('synthesizeSpeech (core RPC)', () => {
+  it('routes through openhuman.voice_reply_synthesize and forwards options', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockResolvedValueOnce({
+      audio_base64: 'AAA=',
+      audio_mime: 'audio/mpeg',
+      visemes: [{ viseme: 'aa', start_ms: 0, end_ms: 100 }],
+    });
+    const r = await synthesizeSpeech('hello', { voiceId: 'v1', modelId: 'm1' });
+    expect(mock).toHaveBeenCalledWith({
+      method: 'openhuman.voice_reply_synthesize',
+      params: { text: 'hello.', voice_id: 'v1', model_id: 'm1' },
+    });
+    expect(r.audio_base64).toBe('AAA=');
+    expect(r.visemes).toHaveLength(1);
+  });
+
+  it('falls back to the configured mascot voice + multilingual model when no overrides are given', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockResolvedValueOnce({ audio_base64: 'BBB=', audio_mime: 'audio/mpeg', visemes: [] });
+    await synthesizeSpeech('hi');
+    expect(mock).toHaveBeenCalledWith({
+      method: 'openhuman.voice_reply_synthesize',
+      params: { text: 'hi.', voice_id: 'JBFqnCBsd6RMkjVDRZzb', model_id: 'eleven_multilingual_v2' },
+    });
+  });
+
+  it('propagates RPC errors so the caller can degrade cleanly', async () => {
+    const mock = callCoreRpc as ReturnType<typeof vi.fn>;
+    mock.mockRejectedValueOnce(new Error('voice unavailable'));
+    await expect(synthesizeSpeech('hi')).rejects.toThrow('voice unavailable');
+  });
+});
+
+describe('prepareForSpeech', () => {
+  it('inserts an ellipsis pause between paragraphs so the voice beats between thoughts', () => {
+    expect(prepareForSpeech('First thought.\n\nSecond thought.')).toBe(
+      'First thought. ... Second thought.'
+    );
+  });
+
+  it('strips markdown emphasis, headings, lists, and quotes', () => {
+    const md = '# Title\n\n- one\n- two\n\n**bold** and _italic_ and `code`.';
+    const out = prepareForSpeech(md);
+    expect(out).not.toMatch(/[#*_`-]/);
+    expect(out).toContain('bold and italic and code.');
+    expect(out).toContain('one');
+    expect(out).toContain('two');
+  });
+
+  it('drops fenced code blocks and replaces bare URLs with a stand-in', () => {
+    const md = 'See ```js\nconst x = 1;\n``` and visit https://example.com for more.';
+    const out = prepareForSpeech(md);
+    expect(out).not.toContain('const x');
+    expect(out).not.toContain('https://');
+    expect(out).toContain('a link');
+  });
+
+  it('keeps the label of a markdown link and discards the URL', () => {
+    expect(prepareForSpeech('See [the docs](https://example.com).')).toBe('See the docs.');
+  });
+
+  it('appends a terminator when the message ends mid-thought', () => {
+    expect(prepareForSpeech('hello there')).toBe('hello there.');
+    // Already terminated → leave it.
+    expect(prepareForSpeech('hello there!')).toBe('hello there!');
+    expect(prepareForSpeech('hello there?')).toBe('hello there?');
+  });
+
+  it('treats a single newline as a soft wrap, not a pause', () => {
+    expect(prepareForSpeech('one line\nstill the same sentence.')).toBe(
+      'one line still the same sentence.'
+    );
+  });
+});
+
+describe('visemesFromAlignment', () => {
+  it('returns empty for empty input', () => {
+    expect(visemesFromAlignment([])).toEqual([]);
+  });
+
+  it('buckets alignment chars into ~80ms windows', () => {
+    const alignment = [
+      { char: 'h', start_ms: 0, end_ms: 30 },
+      { char: 'e', start_ms: 30, end_ms: 60 },
+      { char: 'l', start_ms: 90, end_ms: 120 },
+      { char: 'o', start_ms: 200, end_ms: 240 },
+    ];
+    const frames = visemesFromAlignment(alignment);
+    expect(frames.length).toBeGreaterThan(0);
+    const last = frames[frames.length - 1];
+    expect(last.viseme).toBe('O');
+  });
+
+  it.each([
+    ['a', 'aa'],
+    ['e', 'E'],
+    ['i', 'I'],
+    ['y', 'I'],
+    ['o', 'O'],
+    ['u', 'U'],
+    ['w', 'U'],
+    ['m', 'PP'],
+    ['b', 'PP'],
+    ['p', 'PP'],
+    ['f', 'FF'],
+    ['v', 'FF'],
+    ['s', 'SS'],
+    ['z', 'SS'],
+    ['r', 'RR'],
+    ['n', 'nn'],
+    ['l', 'DD'],
+    ['d', 'DD'],
+    ['t', 'DD'],
+    ['k', 'kk'],
+    ['g', 'kk'],
+    ['h', 'CH'],
+    ['c', 'CH'],
+    ['j', 'CH'],
+    ['x', 'sil'],
+  ])('maps trailing letter %s in a window to %s', (ch, code) => {
+    // Each char goes into its own 80ms+ window so the bucket flushes per char.
+    const alignment = [
+      { char: 'a', start_ms: 0, end_ms: 40 },
+      { char: ch, start_ms: 100, end_ms: 140 },
+    ];
+    const frames = visemesFromAlignment(alignment);
+    expect(frames[frames.length - 1].viseme).toBe(code);
+  });
+});
+
+describe('proceduralVisemes', () => {
+  it('returns empty for empty / whitespace-only text', () => {
+    expect(proceduralVisemes('', 1000)).toEqual([]);
+    expect(proceduralVisemes('   ', 1000)).toEqual([]);
+  });
+
+  it('distributes frames monotonically across the audio duration', () => {
+    const frames = proceduralVisemes('hello', 1000);
+    expect(frames.length).toBe(5);
+    expect(frames[0].start_ms).toBe(0);
+    for (let i = 1; i < frames.length; i++) {
+      expect(frames[i].start_ms).toBeGreaterThanOrEqual(frames[i - 1].start_ms);
+      expect(frames[i].end_ms).toBeGreaterThan(frames[i].start_ms);
+    }
+  });
+
+  it('maps spaces to silence so word breaks read as pauses', () => {
+    const frames = proceduralVisemes('a b', 600);
+    const codes = frames.map(f => f.viseme);
+    expect(codes).toEqual(['aa', 'sil', 'PP']);
+  });
+
+  it('estimates a duration when none is supplied so the mouth still moves', () => {
+    const frames = proceduralVisemes('hi', 0);
+    expect(frames.length).toBe(2);
+    expect(frames[0].end_ms).toBeGreaterThan(frames[0].start_ms);
+  });
+
+  it('clamps per-frame duration when audio is unusually long or short', () => {
+    const long = proceduralVisemes('a', 60_000);
+    expect(long[0].end_ms - long[0].start_ms).toBeLessThanOrEqual(160);
+    const short = proceduralVisemes('abcdefghij', 100);
+    // 100ms / 10 chars = 10ms which is below the floor — frames must still be
+    // visible (≥60ms) even if that overshoots the audio.
+    expect(short[0].end_ms - short[0].start_ms).toBeGreaterThanOrEqual(60);
+  });
+});
+
+describe('hasUsableStarts', () => {
+  it('is true for a spread-out, mostly-distinct timeline', () => {
+    expect(
+      hasUsableStarts([
+        { viseme: 'aa', start_ms: 0, end_ms: 100 },
+        { viseme: 'PP', start_ms: 100, end_ms: 200 },
+        { viseme: 'E', start_ms: 200, end_ms: 300 },
+      ])
+    ).toBe(true);
+  });
+
+  it('is false when every start collapses to zero (degenerate backend timing)', () => {
+    expect(
+      hasUsableStarts([
+        { viseme: 'aa', start_ms: 0, end_ms: 80 },
+        { viseme: 'PP', start_ms: 0, end_ms: 80 },
+        { viseme: 'E', start_ms: 0, end_ms: 80 },
+      ])
+    ).toBe(false);
+  });
+
+  it('is false for fewer than two frames', () => {
+    expect(hasUsableStarts([{ viseme: 'aa', start_ms: 10, end_ms: 90 }])).toBe(false);
+    expect(hasUsableStarts([])).toBe(false);
+  });
+});
+
+describe('normalizeVisemeTimeline', () => {
+  it('preserves a real timeline and keeps gaps as pauses', () => {
+    // Real per-frame timing spanning the clip, with a gap 450→900 (a pause).
+    const track = [
+      { viseme: 'aa', start_ms: 0, end_ms: 450 },
+      { viseme: 'PP', start_ms: 900, end_ms: 1000 },
+    ];
+    const out = normalizeVisemeTimeline(track, 1000);
+    // First frame keeps its real end (450) — the gap to 900 stays a pause.
+    expect(out[0]).toEqual({ viseme: 'aa', start_ms: 0, end_ms: 450 });
+    expect(out[1].start_ms).toBe(900);
+  });
+
+  it('clamps an overrunning end to the next cue start', () => {
+    const track = [
+      { viseme: 'aa', start_ms: 0, end_ms: 9999 }, // overruns next
+      { viseme: 'PP', start_ms: 600, end_ms: 1000 },
+    ];
+    const out = normalizeVisemeTimeline(track, 1000);
+    expect(out[0].end_ms).toBe(600);
+  });
+
+  it('evenly distributes the sequence when timestamps are degenerate', () => {
+    // All-zero starts → unusable → spread evenly across the audio duration.
+    const track = [
+      { viseme: 'aa', start_ms: 0, end_ms: 80 },
+      { viseme: 'PP', start_ms: 0, end_ms: 80 },
+      { viseme: 'E', start_ms: 0, end_ms: 80 },
+      { viseme: 'oh', start_ms: 0, end_ms: 80 },
+    ];
+    const out = normalizeVisemeTimeline(track, 1000);
+    expect(out.map(f => f.viseme)).toEqual(['aa', 'PP', 'E', 'oh']);
+    expect(out[0]).toEqual({ viseme: 'aa', start_ms: 0, end_ms: 250 });
+    expect(out[3]).toEqual({ viseme: 'oh', start_ms: 750, end_ms: 1000 });
+  });
+
+  it('returns empty frames untouched', () => {
+    expect(normalizeVisemeTimeline([], 1000)).toEqual([]);
+  });
+});
