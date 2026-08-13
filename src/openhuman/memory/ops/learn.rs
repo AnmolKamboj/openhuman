@@ -2,9 +2,10 @@
 
 use std::collections::BTreeSet;
 
+use crate::openhuman::memory::api::provider::MemoryProvider;
 use crate::rpc::RpcOutcome;
 
-use super::helpers::active_memory_client;
+use super::guard::active_memory_guard;
 
 /// Per-namespace outcome for `memory_learn_all`.
 #[derive(Debug, serde::Serialize)]
@@ -45,8 +46,14 @@ pub async fn memory_learn_all(
     );
 
     // Resolve the target namespace list.
-    let client = active_memory_client().await?;
-    let all_ns = client.list_namespaces().await?;
+    let guard = active_memory_guard().await?;
+    let documents = guard
+        .as_documents()
+        .ok_or_else(|| "memory driver does not support the documents family".to_string())?;
+    let all_ns = documents
+        .list_namespaces()
+        .await
+        .map_err(|error| error.to_string())?;
     tracing::debug!("[memory.learn] available namespaces: {:?}", all_ns);
 
     let target_ns: Vec<String> = match &params.namespaces {

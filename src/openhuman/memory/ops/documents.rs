@@ -331,22 +331,38 @@ pub async fn clear_namespace(
 
 /// Queries a namespace for contextual information based on a natural language string.
 pub async fn context_query(params: QueryNamespaceParams) -> Result<RpcOutcome<String>, String> {
-    let client = active_memory_client().await?;
-    let result = client
-        .query_namespace(&params.namespace, &params.query, params.limit.unwrap_or(10))
-        .await?;
-    Ok(RpcOutcome::single_log(result, "memory context queried"))
+    let guard = active_memory_guard().await?;
+    let documents = guard
+        .as_documents()
+        .ok_or_else(|| "memory driver does not support the documents family".to_string())?;
+    let result = documents
+        .query_documents(
+            &params.namespace,
+            &params.query,
+            params.limit.unwrap_or(10) as usize,
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(RpcOutcome::single_log(
+        result.context_text,
+        "memory context queried",
+    ))
 }
 
 /// Recalls contextual information from a namespace without a specific query.
 pub async fn context_recall(
     params: RecallNamespaceParams,
 ) -> Result<RpcOutcome<Option<String>>, String> {
-    let client = active_memory_client().await?;
-    let result = client
-        .recall_namespace(&params.namespace, params.limit.unwrap_or(10))
-        .await?;
-    Ok(RpcOutcome::single_log(result, "memory context recalled"))
+    let guard = active_memory_guard().await?;
+    let documents = guard
+        .as_documents()
+        .ok_or_else(|| "memory driver does not support the documents family".to_string())?;
+    let result = documents
+        .recall_documents(&params.namespace, params.limit.unwrap_or(10) as usize)
+        .await
+        .map_err(|error| error.to_string())?;
+    let context = (!result.context_text.is_empty()).then_some(result.context_text);
+    Ok(RpcOutcome::single_log(context, "memory context recalled"))
 }
 
 // ---------------------------------------------------------------------------

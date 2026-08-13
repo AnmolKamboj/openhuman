@@ -306,6 +306,20 @@ impl MemoryDocuments for GuardedDocuments {
             .query_documents(namespace, &query, limit)
             .await
     }
+
+    async fn recall_documents(
+        &self,
+        namespace: &str,
+        limit: usize,
+    ) -> Result<NamespaceRetrievalContext, MemoryError> {
+        self.policy.admit_read(
+            Capability::Documents,
+            "documents.recall_documents",
+            namespace,
+            false,
+        )?;
+        self.family()?.recall_documents(namespace, limit).await
+    }
 }
 
 // ── Tree ─────────────────────────────────────────────────────────────────────

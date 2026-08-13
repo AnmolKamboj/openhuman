@@ -18,6 +18,7 @@
 
 use async_trait::async_trait;
 
+use crate::openhuman::memory::api::capabilities::Capability;
 use crate::openhuman::memory::api::chunks::Chunk;
 use crate::openhuman::memory::api::error::MemoryError;
 use crate::openhuman::memory::api::provider::types::{IngestItem, IngestOutcome, SourceScope};
@@ -122,6 +123,25 @@ pub trait MemoryDocuments: Send + Sync {
         query: &str,
         limit: usize,
     ) -> Result<NamespaceRetrievalContext, MemoryError>;
+
+    /// Recall the highest-ranked context from a namespace without a query.
+    ///
+    /// This is a distinct engine operation rather than a query with an empty
+    /// string: query-less recall applies the namespace's freshness and
+    /// priority ranking without introducing a synthetic search term.
+    ///
+    /// # Errors
+    ///
+    /// [`MemoryError::Unsupported`] when a provider predating this optional
+    /// operation does not implement it, otherwise backend failures. An empty
+    /// namespace returns empty context.
+    async fn recall_documents(
+        &self,
+        _namespace: &str,
+        _limit: usize,
+    ) -> Result<NamespaceRetrievalContext, MemoryError> {
+        Err(MemoryError::unsupported(Capability::Documents))
+    }
 }
 
 /// The time-ordered summary tree: buffered leaves rolled up into hour → day →

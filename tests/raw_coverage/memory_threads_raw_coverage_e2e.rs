@@ -3989,6 +3989,12 @@ async fn memory_ops_public_handlers_cover_document_file_kv_graph_and_envelopes_b
     ensure_memory_seams();
     let tmp = TempDir::new().expect("tempdir");
     let _workspace = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", tmp.path());
+    #[cfg(feature = "modules")]
+    {
+        let mut config = Config::default();
+        config.workspace_dir = tmp.path().to_path_buf();
+        openhuman_core::openhuman::modules::memory::set_modules_policy(Arc::new(config));
+    }
 
     let init = openhuman_core::openhuman::memory::ops::memory_init(MemoryInitRequest {
         jwt_token: Some("ignored-token".into()),

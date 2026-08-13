@@ -384,6 +384,20 @@ impl MemoryDocuments for RecordingProvider {
             hits: vec![],
         })
     }
+
+    async fn recall_documents(
+        &self,
+        namespace: &str,
+        _limit: usize,
+    ) -> Result<NamespaceRetrievalContext, MemoryError> {
+        self.record(Call::plain("documents.recall_documents"));
+        Ok(NamespaceRetrievalContext {
+            namespace: namespace.to_string(),
+            query: None,
+            context_text: String::new(),
+            hits: vec![],
+        })
+    }
 }
 
 #[async_trait]

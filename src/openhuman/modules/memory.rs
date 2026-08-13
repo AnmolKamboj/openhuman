@@ -504,6 +504,18 @@ impl MemoryDocuments for ModuleMemoryProvider {
             (namespace, query, limit)
         )
     }
+    async fn recall_documents(
+        &self,
+        namespace: &str,
+        limit: usize,
+    ) -> Result<NamespaceRetrievalContext, MemoryError> {
+        module_call!(
+            self,
+            "recall_documents",
+            "RecallDocuments",
+            (namespace, limit)
+        )
+    }
 }
 
 #[async_trait]
