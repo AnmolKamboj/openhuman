@@ -140,6 +140,14 @@ pub async fn compact_output_with_policy(
             return content;
         }
     };
+    #[cfg(test)]
+    let config = if std::env::var_os("TINYJUICE_TEST_MODULE").is_some() {
+        // The released-module regression must not inherit an operator's
+        // persisted compression thresholds or disabled router flags.
+        crate::openhuman::config::Config::default()
+    } else {
+        config
+    };
     if let Err(error) = install_from_config(&config).await {
         log::debug!("[tokenjuice] module configuration failed, passing through: {error}");
         return content;
