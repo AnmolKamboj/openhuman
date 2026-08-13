@@ -12,7 +12,6 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-
 import { describe, expect, it } from 'vitest';
 
 import { READBACK_PREFIX } from './useRealtimeVoiceSession';
@@ -30,7 +29,8 @@ function findHarness(): string {
     const candidate = resolve(dir, HARNESS_RELATIVE);
     if (existsSync(candidate)) return candidate;
     const parent = dirname(dir);
-    if (parent === dir) throw new Error(`could not locate ${HARNESS_RELATIVE} above ${process.cwd()}`);
+    if (parent === dir)
+      throw new Error(`could not locate ${HARNESS_RELATIVE} above ${process.cwd()}`);
     dir = parent;
   }
 }
