@@ -188,11 +188,19 @@ async fn scoped_reads_see_only_their_own_namespace() {
     assert_eq!(at_root.state, json!("root"));
 }
 
-/// The partial-failure ledger. `put_writes` is keyed rather than appended, so
-/// a retried superstep must overwrite its own writes instead of accumulating
-/// duplicates — otherwise a resumed run folds the same emission twice.
+/// The partial-failure ledger, and its replace-vs-ignore rule — the thing in
+/// this file most likely to be got subtly wrong, because both halves look like
+/// "write it again".
+///
+/// A **data** write (`idx >= 0`) is append-once: a superstep that is retried
+/// after a partial failure re-emits what it already emitted, and taking the
+/// second copy would fold the same emission twice on resume. A
+/// **control-plane** write (`idx < 0`, e.g. a resume value) legitimately
+/// changes on a retry and must upsert. Both are pushed into SQL as two
+/// conflict clauses rather than a read-then-write, so they stay correct under
+/// concurrent writers.
 #[tokio::test]
-async fn pending_writes_are_idempotent_per_task_and_index() {
+async fn data_writes_are_append_once_and_control_plane_writes_upsert() {
     let store = SqliteCheckpointer::<serde_json::Value>::in_memory().unwrap();
     store
         .put(checkpoint("t1", "cp-1", None, 1, json!({})))
@@ -204,6 +212,7 @@ async fn pending_writes_are_idempotent_per_task_and_index() {
         namespace: Vec::new(),
     };
 
+    // Data write, then the same (task_id, idx) again: the first value stands.
     store
         .put_writes(
             &config,
@@ -211,7 +220,6 @@ async fn pending_writes_are_idempotent_per_task_and_index() {
         )
         .await
         .unwrap();
-    // Same (task_id, idx): an overwrite, not a second row.
     store
         .put_writes(
             &config,
@@ -222,7 +230,33 @@ async fn pending_writes_are_idempotent_per_task_and_index() {
 
     let writes = store.get_writes(&config).await.unwrap();
     assert_eq!(writes.len(), 1, "a re-run task must not duplicate its write");
-    assert_eq!(writes[0].payload, json!("second"));
+    assert_eq!(
+        writes[0].payload,
+        json!("first"),
+        "a data write is append-once — a retry must not overwrite what already landed"
+    );
+
+    // Control-plane write at the reserved resume index: the newest value wins.
+    let resume = |payload| {
+        PendingWrite::data(
+            "n1",
+            "task-a",
+            tinyflows::graph::checkpoint::WRITES_IDX_RESUME,
+            "__resume__",
+            payload,
+        )
+    };
+    store.put_writes(&config, &[resume(json!("old"))]).await.unwrap();
+    store.put_writes(&config, &[resume(json!("new"))]).await.unwrap();
+
+    let writes = store.get_writes(&config).await.unwrap();
+    let control: Vec<_> = writes.iter().filter(|w| w.is_control_plane()).collect();
+    assert_eq!(control.len(), 1, "control-plane writes are keyed, not appended");
+    assert_eq!(
+        control[0].payload,
+        json!("new"),
+        "a control-plane write must upsert — a resume value changes on a retry"
+    );
 }
 
 /// Deleting a thread is how a flow's history is dropped when the flow is
