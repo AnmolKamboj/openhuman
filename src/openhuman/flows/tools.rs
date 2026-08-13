@@ -144,7 +144,8 @@ impl Tool for ProposeWorkflowTool {
                                             "trigger", "agent", "tool_call", "http_request",
                                             "code", "shell", "condition", "switch", "merge", "split_out",
                                             "transform", "output_parser", "sub_workflow", "memory",
-                                            "dedup", "loop"
+                                            "dedup", "loop", "spawn", "gate", "scatter", "gather",
+                                            "void"
                                         ]
                                     },
                                     "name": { "type": "string", "description": "Human-readable node name." },
