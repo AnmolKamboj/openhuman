@@ -159,6 +159,10 @@ pub(crate) fn map_n8n_workflow(value: &Value) -> Result<N8nImportResult, String>
         // parameterized through trigger/node config — so an import declares
         // none. The author adds them afterwards if the flow needs them.
         inputs: Vec::new(),
+        // Likewise no agents: an n8n workflow has no equivalent declaration, so
+        // an import brings none across. Added when `tinyflows` grew the field;
+        // the alternative would be inventing agents the source never described.
+        agents: Vec::new(),
         nodes,
         edges,
     };

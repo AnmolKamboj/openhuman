@@ -17,7 +17,7 @@ mod agent;
 mod autonomy;
 mod capability_providers;
 mod channels;
-mod cli_overrides;
+pub mod cli_overrides;
 mod context;
 mod dashboard;
 mod defaults;
