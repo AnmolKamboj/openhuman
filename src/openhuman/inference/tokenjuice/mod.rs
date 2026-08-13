@@ -91,6 +91,7 @@ pub(super) async fn proxy(
     let config = {
         let mut test_config = config.clone();
         if let Some(path) = std::env::var_os("TINYJUICE_TEST_MODULE") {
+            test_config.modules.enabled = true;
             test_config
                 .modules
                 .overrides
