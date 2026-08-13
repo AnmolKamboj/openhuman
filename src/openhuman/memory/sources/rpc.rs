@@ -36,39 +36,53 @@ pub async fn coding_session_status_rpc() -> Result<RpcOutcome<CodingSessionStatu
 }
 
 /// Wall-clock ceiling for one `ingest_coding_sessions` RPC, sized to the number
-/// of sessions the caller asked to backfill.
+/// of sessions the caller asked to backfill and hard-capped at the ceiling the
+/// frontend can actually wait for.
 ///
-/// The previous formula (`120 + N*30`) assumed **one LLM call per session**.
+/// The original formula (`120 + N*30`) assumed **one LLM call per session**.
 /// That premise is false: TinyCortex's persona pipeline splits an oversized
 /// session into windows (`WINDOW_CHARS`-sized chunks of evidence) and issues one
 /// LLM call *per window*, so a multi-window session drives several sequential
 /// calls. A dense backfill therefore blew the old budget — 15 sessions hit the
 /// exact 570 s ceiling (`120 + 15*30`) and were killed mid-flight.
 ///
-/// So the per-session allowance is sized for *multiple* windows, not one call:
-/// `PER_SESSION_SECS` budgets for up to roughly four sequential LLM calls at the
-/// provider's own per-call timeout, which comfortably covers the windowing
-/// observed in practice while still bounding the RPC. `max_sessions` is
-/// untrusted (it comes straight off the request), so the multiplier is capped at
-/// `MAX_SESSIONS_FOR_BUDGET` before scaling — an inflated value cannot turn the
-/// ceiling into an effectively-infinite wait.
+/// The per-session allowance is therefore sized for *multiple* windows, not one
+/// call: `PER_SESSION_SECS` budgets ~3 sequential per-window LLM calls at the
+/// windows' observed 20–45 s span (#5509). It is a deliberate flat estimate, not
+/// a per-session window count.
 ///
-/// This is a *ceiling to catch a wedged run*, not a latency target: a healthy
-/// backfill finishes far inside it, and the pipeline's own run budget bounds
-/// real cost. Over-provisioning here only delays the kill of a genuine hang.
+/// The result is hard-capped at `HARD_CAP_SECS` for two reasons that are really
+/// one. First, this is the true reachable ceiling: the frontend RPC client
+/// clamps every per-call timeout to `PER_CALL_TIMEOUT_MAX_MS = 600 s`
+/// (`app/src/services/coreRpcClient.ts`), so a server budget above that can never
+/// be observed — the client aborts first. Second, that cap also bounds the
+/// blocking-pool worker this budget guards: `max_sessions` is untrusted (an
+/// advertised programmatic RPC, `platform/about_app/catalog_data.rs`), and
+/// without the cap a caller passing 1000 would pin a thread for ~33 h. Capping
+/// the resulting `Duration` — not the multiplier — makes both true at once.
+///
+/// Because a single pass is bounded, large histories drain across repeated passes
+/// (client `drainCodingSessions`); the per-pass batch is sized so `BASE + N*PER`
+/// stays under the cap for the UI's `CODING_SESSION_BATCH_MAX`, keeping the
+/// server budget the *tighter* of the two so it returns a clean structured
+/// timeout before the client's fetch aborts. This is a *ceiling to catch a wedged
+/// run*, not a latency target.
 fn ingest_budget(max_sessions: usize) -> std::time::Duration {
     /// Fixed overhead allowance (config load, discovery, process warm-up) added
     /// on top of the per-session budget.
     const BASE_SECS: u64 = 120;
-    /// Per-session allowance, sized for several sequential per-window LLM calls
-    /// rather than the single call the old formula assumed.
-    const PER_SESSION_SECS: u64 = 120;
-    /// Cap on the untrusted `max_sessions` multiplier so a hostile/garbage value
-    /// can't inflate the ceiling without bound.
-    const MAX_SESSIONS_FOR_BUDGET: usize = 1_000;
+    /// Per-session allowance, sized for ~3 sequential per-window LLM calls at the
+    /// 20–45 s/window span observed in #5509 rather than the single call the old
+    /// formula assumed.
+    const PER_SESSION_SECS: u64 = 90;
+    /// Hard ceiling on the whole budget. Mirrors the frontend's
+    /// `PER_CALL_TIMEOUT_MAX_MS` (600 s) — a larger budget is unreachable because
+    /// the client aborts first — and bounds the blocking worker against an
+    /// untrusted `max_sessions`.
+    const HARD_CAP_SECS: u64 = 600;
 
-    let sessions = max_sessions.min(MAX_SESSIONS_FOR_BUDGET) as u64;
-    std::time::Duration::from_secs(BASE_SECS + sessions * PER_SESSION_SECS)
+    let scaled = BASE_SECS.saturating_add((max_sessions as u64).saturating_mul(PER_SESSION_SECS));
+    std::time::Duration::from_secs(scaled.min(HARD_CAP_SECS))
 }
 
 pub async fn ingest_coding_sessions_rpc(
@@ -970,31 +984,61 @@ mod supported_toolkits_tests {
 mod budget_tests {
     use super::*;
 
-    /// The formula is `120 + min(N, 1000) * 120` seconds.
+    /// The frontend's `CODING_SESSION_BATCH_MAX` (`app/src/services/memorySourcesService.ts`).
+    /// Mirrored here so the cross-wire invariant below is checkable Rust-side; the
+    /// two must move together.
+    const CLIENT_BATCH_MAX: usize = 5;
+    /// The frontend's `PER_CALL_TIMEOUT_MAX_MS` (`app/src/services/coreRpcClient.ts`),
+    /// in seconds — the ceiling the client can actually wait for.
+    const CLIENT_HARD_CAP_SECS: u64 = 600;
+    /// The frontend's `CODING_SESSION_RPC_GRACE_MS`, in seconds.
+    const CLIENT_GRACE_SECS: u64 = 15;
+
+    /// The formula is `min(120 + N * 90, 600)` seconds.
     #[test]
     fn budget_scales_per_session_for_multiple_windows() {
         // Zero sessions → base overhead only.
         assert_eq!(ingest_budget(0).as_secs(), 120);
         // One session carries a full per-session (multi-window) allowance.
-        assert_eq!(ingest_budget(1).as_secs(), 120 + 120);
-        // The 15-session backfill that used to die at the old 570s ceiling now
-        // gets 1920s — proof the per-session allowance was raised to cover
-        // multi-window sessions (old formula: 120 + 15*30 = 570).
-        assert_eq!(ingest_budget(15).as_secs(), 120 + 15 * 120);
-        assert!(
-            ingest_budget(15) > std::time::Duration::from_secs(570),
-            "the multi-window budget must exceed the old flat 570s ceiling"
-        );
+        assert_eq!(ingest_budget(1).as_secs(), 120 + 90);
+        // The UI batch (5 sessions) gets 570s — sized so a pass fits under the
+        // 600s reachable ceiling while a 15-session backlog drains across passes.
+        assert_eq!(ingest_budget(CLIENT_BATCH_MAX).as_secs(), 120 + 5 * 90);
     }
 
-    /// `max_sessions` is untrusted, so the multiplier is capped at 1000 — an
-    /// inflated request cannot turn the ceiling into an unbounded wait.
+    /// The budget is hard-capped at the reachable ceiling (600s), so an untrusted
+    /// `max_sessions` cannot pin the blocking worker beyond it — and cannot
+    /// overflow.
     #[test]
-    fn budget_caps_untrusted_max_sessions() {
-        let at_cap = ingest_budget(1_000).as_secs();
-        assert_eq!(at_cap, 120 + 1_000 * 120);
-        // Anything above the cap yields the same ceiling as the cap.
-        assert_eq!(ingest_budget(usize::MAX).as_secs(), at_cap);
-        assert_eq!(ingest_budget(5_000).as_secs(), at_cap);
+    fn budget_is_capped_at_the_reachable_ceiling() {
+        assert_eq!(ingest_budget(1_000).as_secs(), CLIENT_HARD_CAP_SECS);
+        // Anything at or above the cap yields exactly the ceiling, no overflow.
+        assert_eq!(ingest_budget(usize::MAX).as_secs(), CLIENT_HARD_CAP_SECS);
+        assert_eq!(ingest_budget(5_000).as_secs(), CLIENT_HARD_CAP_SECS);
+    }
+
+    /// The invariant #5509 actually needs, pinned across the wire: for the UI's
+    /// batch size the server budget must (a) stay under the client's hard cap so
+    /// the pass is reachable, and (b) be the *tighter* of the two — i.e. below the
+    /// client's own timeout for the same batch — so the server returns a clean
+    /// structured timeout before the client's fetch aborts. This is the guard
+    /// that would have caught the server-only fix moving the ceiling from 570s to
+    /// an unreachable 1920s.
+    #[test]
+    fn server_budget_is_reachable_and_tighter_than_the_client() {
+        let server = ingest_budget(CLIENT_BATCH_MAX).as_secs();
+        let client = 120 + (CLIENT_BATCH_MAX as u64) * 90 + CLIENT_GRACE_SECS;
+        assert!(
+            server <= CLIENT_HARD_CAP_SECS,
+            "server budget {server}s must be reachable (<= {CLIENT_HARD_CAP_SECS}s client cap)"
+        );
+        assert!(
+            client <= CLIENT_HARD_CAP_SECS,
+            "client budget {client}s must stay under its own {CLIENT_HARD_CAP_SECS}s clamp"
+        );
+        assert!(
+            server < client,
+            "server budget {server}s must fire before the client's {client}s abort"
+        );
     }
 }
