@@ -171,7 +171,12 @@ async fn handle_key(
     }
 
     if ui.overlay.is_some() {
-        return handle_overlay_key(key, runtime, client_id, state, ui).await;
+        let previous_kind = ui.overlay.as_ref().map(|overlay| overlay.kind);
+        let should_quit = handle_overlay_key(key, runtime, client_id, state, ui).await;
+        if previous_kind != Some(OverlayKind::PlanReview) && ui.overlay.is_none() {
+            present_pending_plan_review(ui);
+        }
+        return should_quit;
     }
 
     if !ui.is_editing() {
@@ -722,6 +727,27 @@ fn text_row(id: &str, label: &str, detail: &str) -> OverlayRow {
     }
 }
 
+fn plan_review_overlay(review: &PendingPlanReview) -> Overlay {
+    let mut overlay = Overlay::new(OverlayKind::PlanReview, "Plan review");
+    overlay.rows = review
+        .steps
+        .iter()
+        .enumerate()
+        .map(|(index, step)| text_row(&index.to_string(), &format!("{}. {step}", index + 1), ""))
+        .collect();
+    overlay
+        .rows
+        .insert(0, text_row("summary", &review.summary, ""));
+    overlay.status = "a approve · r reject · e request revision · Esc leaves pending".into();
+    overlay
+}
+
+fn present_pending_plan_review(ui: &mut UiState) {
+    if let Some(review) = ui.pending_plan_review.as_ref() {
+        ui.overlay = Some(plan_review_overlay(review));
+    }
+}
+
 async fn open_rpc_overlay(
     runtime: &Arc<CoreRuntime>,
     ui: &mut UiState,
@@ -1226,22 +1252,14 @@ fn handle_web_event(ev: &WebChannelEvent, state: &mut TranscriptState, ui: &mut 
                     .unwrap_or_else(|| "Review the proposed plan".into()),
                 steps,
             };
-            let mut overlay = Overlay::new(OverlayKind::PlanReview, "Plan review");
-            overlay.rows = review
-                .steps
-                .iter()
-                .enumerate()
-                .map(|(index, step)| {
-                    text_row(&index.to_string(), &format!("{}. {step}", index + 1), "")
-                })
-                .collect();
-            overlay
-                .rows
-                .insert(0, text_row("summary", &review.summary, ""));
-            overlay.status =
-                "a approve · r reject · e request revision · Esc leaves pending".into();
+            let preserves_typed_input = ui
+                .overlay
+                .as_ref()
+                .is_some_and(|overlay| overlay.input.is_some());
             ui.pending_plan_review = Some(review);
-            ui.overlay = Some(overlay);
+            if !preserves_typed_input {
+                present_pending_plan_review(ui);
+            }
         }
         "task_board_updated" => ui.queue_status = "task board updated".into(),
         _ => state.apply_event(ev),
@@ -1449,5 +1467,47 @@ mod tests {
             Some("draft title")
         );
         assert_eq!(ui.pending_approvals.len(), 1);
+    }
+
+    #[test]
+    fn inbound_plan_review_waits_for_typed_overlay_to_close() {
+        let mut state = TranscriptState::new("client");
+        state.set_thread("thread");
+        let mut ui = UiState::new("thread".into(), "client".into());
+        let mut overlay = Overlay::new(OverlayKind::Rename, "Rename");
+        overlay.input = Some("draft title".into());
+        ui.overlay = Some(overlay);
+        handle_web_event(
+            &WebChannelEvent {
+                event: "plan_review_request".into(),
+                client_id: "client".into(),
+                thread_id: "thread".into(),
+                request_id: "review-1".into(),
+                message: Some("Review this plan".into()),
+                args: Some(json!({"steps": ["Inspect", "Implement"]})),
+                ..Default::default()
+            },
+            &mut state,
+            &mut ui,
+        );
+        assert_eq!(
+            ui.overlay
+                .as_ref()
+                .and_then(|overlay| overlay.input.as_deref()),
+            Some("draft title")
+        );
+
+        ui.overlay = None;
+        present_pending_plan_review(&mut ui);
+        assert_eq!(
+            ui.overlay.as_ref().map(|overlay| overlay.kind),
+            Some(OverlayKind::PlanReview)
+        );
+        assert_eq!(
+            ui.pending_plan_review
+                .as_ref()
+                .map(|review| review.request_id.as_str()),
+            Some("review-1")
+        );
     }
 }
