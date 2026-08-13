@@ -13,6 +13,7 @@
 //! audit-trail path rather than running with trusted-CLI semantics.
 
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
@@ -31,11 +32,40 @@ const TURN_TIMEOUT_SECS: u64 = 90;
 /// the result off to chat. The cloud voice session cancels a turn with no spoken
 /// token in ~11-12s, and a slow tool action (email/calendar summary can be
 /// 20-30s of Composio round-trips) will never fit that window. Once this elapses
-/// we close the voice turn cleanly — the spoken acknowledgement has already
-/// streamed — and let the orchestrator finish in the background, delivering its
-/// answer into the user's in-app chat. Sits comfortably under the provider's
-/// cancel deadline so `done` always beats the cut.
+/// we close the voice turn cleanly — the caller has heard the relay's spoken
+/// filler and is told the answer is still coming (see VOICE_HANDOFF_LINE) — and
+/// let the orchestrator finish in the background,
+/// delivering its answer into the user's in-app chat and, while the call is
+/// still up, reading it aloud. Sits under the provider's cancel deadline so
+/// `done` always beats the cut.
 const VOICE_ACK_DEADLINE_SECS: u64 = 8;
+
+/// Spoken when the ack deadline closes a turn that never produced text of its
+/// own, so the caller is told the answer is still coming instead of being left on
+/// a trail of filler.
+///
+/// The preface the voice directive asks the model for cannot be relied on to
+/// arrive inside the window: building the per-turn orchestrator (config load,
+/// tool registry, integration catalogue) and running memory recall takes seconds
+/// before the first model token is even requested, and the model's first round is
+/// often a tool call carrying no text at all. Measured against staging, the first
+/// streamable token landed ~10.6s into a turn whose whole budget is 8s — so every
+/// slow turn ended on the relay's ellipsis padding and nothing else, which sounds
+/// like the assistant losing the thread rather than working on an answer.
+///
+/// Both delivery paths honour the promise: the answer is posted to chat and,
+/// while the call is still up, read aloud.
+const VOICE_HANDOFF_LINE: &str = "I'll have that for you in a moment. ";
+
+/// Sent for a turn we have nothing to say to.
+///
+/// A turn that ends with no spoken content at all is not a valid answer to the
+/// cloud session: it ends the whole call with `custom_llm_error: LLM Cascade
+/// Error: Brain returned no response` (confirmed live — three recognition
+/// artefacts answered with empty turns killed a working call). So even "nothing
+/// to say" has to say something, and the least intrusive something is an ellipsis
+/// pause, which the provider voices as a beat of silence rather than words.
+const VOICE_SILENT_REPLY: &str = "… ";
 
 /// Voice-scoped transcript namespace. Building a fresh orchestrator per turn
 /// would otherwise resume the *chat* orchestrator's latest transcript by name,
@@ -205,6 +235,52 @@ pub async fn handle_voice_harness_turn(correlation_id: String, messages: Vec<Val
         return;
     }
 
+    // A read-back turn hands us the very text it wants spoken. Running an
+    // orchestrator turn to echo it costs a full agent build, memory recall and a
+    // model round-trip — far more than the turn budget allows — so the caller
+    // hears filler instead of the answer they are waiting for. Current backends
+    // answer these at the relay and never wake us; an older one still relays them,
+    // so answer from the prompt here too.
+    if let Some(payload) = readback_payload(&prompt) {
+        info!(
+            "[voice-harness] read-back answered from the prompt correlation={correlation_id} chars={}",
+            payload.chars().count()
+        );
+        // Always speak something, even for an empty payload — see VOICE_SILENT_REPLY.
+        emit_event(
+            "voice:harness:delta",
+            json!({ "correlationId": correlation_id,
+                    "text": if payload.is_empty() { VOICE_SILENT_REPLY } else { payload } }),
+        )
+        .await;
+        emit_event(
+            "voice:harness:done",
+            json!({ "correlationId": correlation_id }),
+        )
+        .await;
+        return;
+    }
+
+    // Speech recognition turns a pause during a filler-heavy turn into a "..."
+    // user message, and the provider relays it as a real turn. Building an
+    // orchestrator for it burns a concurrency slot and a model round-trip to
+    // answer nothing — and its empty reply surfaced in chat as a failure notice
+    // the user never asked for.
+    if is_content_free(&prompt) {
+        info!("[voice-harness] ignoring content-free turn correlation={correlation_id} prompt={prompt:?}");
+        emit_event(
+            "voice:harness:delta",
+            json!({ "correlationId": correlation_id, "text": VOICE_SILENT_REPLY }),
+        )
+        .await;
+        emit_event(
+            "voice:harness:done",
+            json!({ "correlationId": correlation_id }),
+        )
+        .await;
+        return;
+    }
+
     // Deduplicate a re-delivered turn (relay retry) before doing any work. Owned
     // so it can move into the background continuation and track the real turn.
     let Some(in_flight) = InFlightGuard::claim(&correlation_id) else {
@@ -212,23 +288,16 @@ pub async fn handle_voice_harness_turn(correlation_id: String, messages: Vec<Val
         return;
     };
 
-    // Bound concurrent heavy agent turns; excess turns queue here. Owned so it is
-    // held for the REAL turn lifetime (including any background tail), not just the
-    // shortened spoken ack — which also caps the retry storm when the provider
-    // re-sends a turn it thinks stalled.
-    let permit = match VOICE_TURN_LIMITER.clone().acquire_owned().await {
-        Ok(permit) => permit,
-        Err(_) => {
-            emit_error(&correlation_id, "voice turn limiter unavailable").await;
-            return;
-        }
-    };
-
     // Stream the reply token-by-token: the orchestrator emits `TextDelta` as it
     // generates, and `forward_reply_deltas` relays each as a `voice:harness:delta`
-    // so the spoken acknowledgement leaves the desktop immediately.
+    // so the reply leaves the desktop as it is produced.
+    let streamed = Arc::new(AtomicBool::new(false));
     let (progress_tx, progress_rx) = tokio::sync::mpsc::channel::<AgentProgress>(256);
-    let forwarder = tokio::spawn(forward_reply_deltas(progress_rx, correlation_id.clone()));
+    let forwarder = tokio::spawn(forward_reply_deltas(
+        progress_rx,
+        correlation_id.clone(),
+        streamed.clone(),
+    ));
 
     // Run the turn on a detached task so it can outlive the spoken ack. A slow
     // delegation keeps working after we close the voice turn and delivers its
@@ -240,7 +309,22 @@ pub async fn handle_voice_harness_turn(correlation_id: String, messages: Vec<Val
     let turn_prompt = prompt;
     tokio::spawn(async move {
         let _in_flight = in_flight;
-        let _permit = permit;
+        // Bound concurrent heavy agent turns; excess turns queue HERE, inside the
+        // detached task, never in front of the ack deadline below. Acquiring in the
+        // foreground meant a turn queued behind slower ones started no clock and
+        // emitted no `done` at all, and the provider ended the whole session over
+        // it. Held for the REAL turn lifetime (including any background tail), so
+        // it still caps a retry storm.
+        let _permit = match VOICE_TURN_LIMITER.clone().acquire_owned().await {
+            Ok(permit) => permit,
+            Err(_) => {
+                warn!("[voice-harness] turn limiter unavailable correlation={turn_cid}");
+                if is_answerable_prompt(&turn_prompt) {
+                    deliver_voice_failure_to_chat(&turn_cid);
+                }
+                return;
+            }
+        };
         let outcome = run_voice_turn(&turn_cid, &turn_messages, &turn_prompt, progress_tx).await;
         // Hand the result to the foreground. If it already deferred (dropped the
         // receiver at the ack deadline), the send fails and we deliver the reply
@@ -263,9 +347,14 @@ pub async fn handle_voice_harness_turn(correlation_id: String, messages: Vec<Val
                     // The spoken turn already closed with `done` and the preface may
                     // have promised a chat follow-up, so a silent failure would leave
                     // the user waiting for a message that never arrives. Post a brief
-                    // failure notice to the same thread.
+                    // failure notice to the same thread — but only for a turn whose
+                    // answer the user is actually waiting on. A read-back or a
+                    // recognition artefact has nothing to deliver, and a notice for
+                    // one reads as the assistant failing a request nobody made.
                     warn!("[voice-harness] deferred turn failed correlation={turn_cid}: {err}");
-                    deliver_voice_failure_to_chat(&turn_cid);
+                    if is_answerable_prompt(&turn_prompt) {
+                        deliver_voice_failure_to_chat(&turn_cid);
+                    }
                 }
             }
         }
@@ -281,14 +370,19 @@ pub async fn handle_voice_harness_turn(correlation_id: String, messages: Vec<Val
             match outcome {
                 Ok(reply) => {
                     if !streamed_any {
+                        // A turn that produced no text still has to say something, or
+                        // the provider ends the call (see VOICE_SILENT_REPLY).
                         let spoken = reply.trim();
-                        if !spoken.is_empty() {
-                            emit_event(
-                                "voice:harness:delta",
-                                json!({ "correlationId": correlation_id, "text": spoken }),
-                            )
-                            .await;
-                        }
+                        let spoken = if spoken.is_empty() {
+                            VOICE_SILENT_REPLY
+                        } else {
+                            spoken
+                        };
+                        emit_event(
+                            "voice:harness:delta",
+                            json!({ "correlationId": correlation_id, "text": spoken }),
+                        )
+                        .await;
                     }
                     emit_event(
                         "voice:harness:done",
@@ -309,6 +403,15 @@ pub async fn handle_voice_harness_turn(correlation_id: String, messages: Vec<Val
             warn!(
                 "[voice-harness] turn task ended without a result (panicked or aborted) correlation={correlation_id}"
             );
+            // Closing on nothing at all would end the whole call (see
+            // VOICE_SILENT_REPLY), so a lost turn still ends with a spoken beat.
+            if !streamed.load(Ordering::SeqCst) {
+                emit_event(
+                    "voice:harness:delta",
+                    json!({ "correlationId": correlation_id, "text": VOICE_SILENT_REPLY }),
+                )
+                .await;
+            }
             emit_event(
                 "voice:harness:done",
                 json!({ "correlationId": correlation_id }),
@@ -316,13 +419,24 @@ pub async fn handle_voice_harness_turn(correlation_id: String, messages: Vec<Val
             .await;
         }
         Err(_deadline) => {
-            // Still running (a slow tool action). The spoken ack has streamed, so
-            // close the voice turn cleanly; the detached task keeps going and
-            // delivers its answer into the user's chat. `timeout` consumed
-            // `result_rx`, so the task's send fails and takes the chat-delivery
-            // path. The forwarder is left running to keep draining progress — any
-            // late deltas reach a settled relay turn and are dropped harmlessly.
+            // Still running (a slow tool action). Close the voice turn cleanly; the
+            // detached task keeps going and delivers its answer into the user's
+            // chat. `timeout` consumed `result_rx`, so the task's send fails and
+            // takes the chat-delivery path. The forwarder is left running to keep
+            // draining progress — any late deltas reach a settled relay turn and
+            // are dropped harmlessly.
             info!("[voice-harness] ack deadline reached, handing off to chat correlation={correlation_id}");
+            // If the turn never said anything of its own, the caller has heard only
+            // the relay's filler. Ending there sounds like the assistant lost the
+            // thread, so say the answer is still coming — it is, on both delivery
+            // paths (chat, and read aloud while the call is up).
+            if !streamed.load(Ordering::SeqCst) {
+                emit_event(
+                    "voice:harness:delta",
+                    json!({ "correlationId": correlation_id, "text": VOICE_HANDOFF_LINE }),
+                )
+                .await;
+            }
             emit_event(
                 "voice:harness:done",
                 json!({ "correlationId": correlation_id }),
@@ -342,6 +456,7 @@ pub async fn handle_voice_harness_turn(correlation_id: String, messages: Vec<Val
 async fn forward_reply_deltas(
     mut progress_rx: tokio::sync::mpsc::Receiver<AgentProgress>,
     correlation_id: String,
+    streamed: Arc<AtomicBool>,
 ) -> bool {
     let mut streamed_any = false;
     while let Some(progress) = progress_rx.recv().await {
@@ -354,6 +469,9 @@ async fn forward_reply_deltas(
             continue;
         }
         streamed_any = true;
+        // Published for the ack + handoff decisions, which need to know whether the
+        // orchestrator is talking *while* the turn is still open.
+        streamed.store(true, Ordering::SeqCst);
         emit_event(
             "voice:harness:delta",
             json!({ "correlationId": correlation_id, "text": text }),
@@ -372,6 +490,29 @@ fn spoken_delta(progress: &AgentProgress) -> Option<&str> {
         AgentProgress::TextDelta { delta, .. } => Some(delta),
         _ => None,
     }
+}
+
+/// The answer a read-back turn is asking to have spoken, or `None` for an
+/// ordinary turn. Leading whitespace is tolerated because the renderer joins the
+/// prefix and payload with a blank line. Pure + unit-tested.
+fn readback_payload(prompt: &str) -> Option<&str> {
+    let trimmed = prompt.trim_start();
+    trimmed.strip_prefix(VOICE_READBACK_PREFIX).map(str::trim)
+}
+
+/// Whether a prompt carries nothing to answer. Speech recognition emits `"..."`
+/// (and similar punctuation-only artefacts) for a pause, and the provider relays
+/// those as real turns. Anything with a letter or a digit in it — in any script —
+/// is a genuine prompt. Pure + unit-tested.
+fn is_content_free(prompt: &str) -> bool {
+    !prompt.chars().any(char::is_alphanumeric)
+}
+
+/// Whether the user is waiting on this turn's answer, and so should be told when
+/// it fails. False for a read-back (its answer is already in chat) and for a
+/// recognition artefact (nothing was asked). Pure + unit-tested.
+fn is_answerable_prompt(prompt: &str) -> bool {
+    !is_content_free(prompt) && should_arm_speak_back(prompt)
 }
 
 /// Whether a completed voice turn should arm speak-back — i.e. push its deferred
@@ -710,5 +851,62 @@ mod tests {
         assert!(!should_arm_speak_back(&format!(
             "   \n{VOICE_READBACK_PREFIX} trailing payload"
         )));
+    }
+
+    #[test]
+    fn read_back_payload_is_the_text_to_speak() {
+        assert_eq!(
+            readback_payload(&format!(
+                "{VOICE_READBACK_PREFIX}\n\nHere is your inbox summary."
+            )),
+            Some("Here is your inbox summary.")
+        );
+        // The renderer may prepend whitespace; the payload must survive it intact.
+        assert_eq!(
+            readback_payload(&format!(
+                "  \n{VOICE_READBACK_PREFIX} two things need attention"
+            )),
+            Some("two things need attention")
+        );
+        // A prefix with nothing behind it is still a read-back — it just has
+        // nothing to say, and must not be relayed as a question.
+        assert_eq!(readback_payload(VOICE_READBACK_PREFIX), Some(""));
+    }
+
+    #[test]
+    fn ordinary_prompts_are_not_read_backs() {
+        assert_eq!(readback_payload("summarize my emails"), None);
+        assert_eq!(readback_payload("please read my emails to me"), None);
+    }
+
+    #[test]
+    fn recognition_artefacts_are_content_free() {
+        // What the provider actually relayed for a pause during a filler-heavy
+        // turn, plus the shapes next to it.
+        assert!(is_content_free("..."));
+        assert!(is_content_free("…"));
+        assert!(is_content_free(" ? "));
+        assert!(is_content_free("-"));
+    }
+
+    #[test]
+    fn real_questions_are_not_content_free() {
+        assert!(!is_content_free("summarize my emails"));
+        // A single digit is a real answer to "how many?" — and scripts other than
+        // Latin must never be mistaken for punctuation.
+        assert!(!is_content_free("3"));
+        assert!(!is_content_free("मेरे ईमेल पढ़ो"));
+        assert!(!is_content_free("总结我的邮件"));
+    }
+
+    #[test]
+    fn failure_notice_is_limited_to_turns_the_user_is_waiting_on() {
+        assert!(is_answerable_prompt("summarize my emails"));
+        // A read-back's answer is already in chat; a notice would report a failure
+        // for a request the user never made.
+        assert!(!is_answerable_prompt(&format!(
+            "{VOICE_READBACK_PREFIX}\n\nHere is your inbox summary."
+        )));
+        assert!(!is_answerable_prompt("..."));
     }
 }

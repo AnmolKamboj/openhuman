@@ -49,6 +49,10 @@ export function useRealtimeVoiceSession(opts?: { voiceId?: string }): RealtimeVo
   // Tracks whether a session is live so the unmount teardown only ends a real
   // session, and so the cleanup closure isn't tied to a stale `state`.
   const liveRef = useRef(false);
+  // Answers already read aloud in THIS call, so a redelivered result is not
+  // spoken twice. Scoped per call: asking the same question again in a later
+  // session should of course be answered again.
+  const spokenRef = useRef<Set<string>>(new Set());
 
   const conversation = useConversation({
     onConnect: () => {
@@ -83,6 +87,7 @@ export function useRealtimeVoiceSession(opts?: { voiceId?: string }): RealtimeVo
     startingRef.current = true;
     setError(null);
     setState('connecting');
+    spokenRef.current.clear();
     log('start: requesting signed url');
     try {
       const { signedUrl, userToken } = await fetchVoiceAgentSignedUrl();
@@ -148,6 +153,15 @@ export function useRealtimeVoiceSession(opts?: { voiceId?: string }): RealtimeVo
       if (!liveRef.current) return; // call already ended — the chat copy stands alone
       const text = (payload as { full_response?: string } | undefined)?.full_response?.trim();
       if (!text) return;
+      // Each read-back is a real turn the agent has to speak, so a repeat is not
+      // merely redundant: it queues behind the first and pushes the session
+      // towards the provider's per-turn ceiling. Redelivery of the same answer
+      // (a retried turn, a reconnect) must therefore be spoken once.
+      if (spokenRef.current.has(text)) {
+        log('speak-back: already read this answer aloud — skipping');
+        return;
+      }
+      spokenRef.current.add(text);
       log('speak-back: reading deferred result aloud (%d chars)', text.length);
       conversationRef.current.sendUserMessage(`${READBACK_PREFIX}\n\n${text}`);
     };

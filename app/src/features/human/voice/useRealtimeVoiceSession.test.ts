@@ -173,6 +173,31 @@ describe('useRealtimeVoiceSession', () => {
     expect(sendUserMessage.mock.calls[0][0]).toContain('Please read the following');
   });
 
+  // Each read-back is a real agent turn, so a repeat queues behind the first and
+  // pushes the call towards the provider's per-turn ceiling.
+  it('reads a redelivered answer aloud only once per call', async () => {
+    mockFetch.mockResolvedValue({ signedUrl: 'wss://x', agentId: 'a1', userToken: 'tok-1' });
+    const { result } = renderHook(() => useRealtimeVoiceSession());
+    await act(async () => {
+      await result.current.start();
+    });
+    act(() => captured?.onConnect());
+    act(() => socketHandlers['voice_speak']?.({ full_response: 'Your inbox summary.' }));
+    act(() => socketHandlers['voice_speak']?.({ full_response: 'Your inbox summary.' }));
+    act(() => socketHandlers['voice_speak']?.({ full_response: 'A different answer.' }));
+    expect(sendUserMessage).toHaveBeenCalledTimes(2);
+
+    // A later call is a fresh conversation: the same answer may legitimately be
+    // asked for and spoken again.
+    act(() => captured?.onDisconnect());
+    await act(async () => {
+      await result.current.start();
+    });
+    act(() => captured?.onConnect());
+    act(() => socketHandlers['voice_speak']?.({ full_response: 'Your inbox summary.' }));
+    expect(sendUserMessage).toHaveBeenCalledTimes(3);
+  });
+
   it('ignores voice_speak when no call is live', () => {
     renderHook(() => useRealtimeVoiceSession()); // never connected → liveRef stays false
     act(() => socketHandlers['voice_speak']?.({ full_response: 'ignored' }));
