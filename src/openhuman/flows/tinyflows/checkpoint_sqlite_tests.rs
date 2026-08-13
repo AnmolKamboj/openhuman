@@ -67,6 +67,10 @@ async fn reads_a_database_written_by_the_previous_backend() {
     let tmp = TempDir::new().unwrap();
     let db = tmp.path().join("checkpoints.db");
 
+    // Fully qualified: the two `Checkpointer` traits share a method set, so
+    // importing both here would make every call in this file ambiguous.
+    use tinyagents::Checkpointer as LegacyCheckpointer;
+
     let old = tinyagents::graph::SqliteCheckpointer::<serde_json::Value>::open(&db).unwrap();
     let written = tinyagents::graph::Checkpoint {
         thread_id: "flow:f1:run-a".to_string(),
@@ -83,7 +87,7 @@ async fn reads_a_database_written_by_the_previous_backend() {
         barrier_arrivals: Vec::new(),
         metadata: json!({ "source": "loop", "step": 3 }),
     };
-    old.put(written).await.unwrap();
+    LegacyCheckpointer::put(&old, written).await.unwrap();
     drop(old);
 
     let new = SqliteCheckpointer::<serde_json::Value>::open(&db).unwrap();
