@@ -240,9 +240,11 @@ impl TranscriptState {
                     .or(ev.output.as_deref())
                     .map(truncate_line)
                     .unwrap_or_default();
-                let suffix = (!detail.is_empty())
-                    .then(|| format!(" — {detail}"))
-                    .unwrap_or_default();
+                let suffix = if detail.is_empty() {
+                    String::new()
+                } else {
+                    format!(" — {detail}")
+                };
                 self.entries.push(Entry::new(
                     EntryKind::Tool,
                     format!("artifact · {status}{suffix}"),
