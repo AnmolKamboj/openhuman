@@ -13,6 +13,18 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   308/284/2  2026-08-13  tinyflows' host-stack advance (PR #5537) moved its
+#                      direct HTTP client from reqwest 0.12 to 0.13 while the
+#                      rest of the kernel still uses 0.12. That creates one
+#                      additional resolved package but no new crate name or
+#                      native build. The submodule advance landed without the
+#                      matching root lockfile/schema compatibility updates, so
+#                      current main cannot build the flows profile until the
+#                      0.13 package and WorkflowGraph::agents initialization
+#                      are recorded. Keep both versions for compatibility now;
+#                      unifying the HTTP-client major is tracked in #5539.
+#                      Measured with `scripts/kernel-floor.sh flows --json`:
+#                      308 packages / 284 names / 2 native builds.
 #   307/284/2  2026-08-12  tinymemory-core + its `ureq` HTTP client chain
 #                      (+2 packages / +2 names) became always-on via the
 #                      `add tinymemory-core dependency and patch tinycortex-api`
@@ -243,4 +255,4 @@
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
 # 307/284  2026-08-12  Re-baseline after the upstream lockfile resolution;
 #                      `flows` remains at two native packages.
-flows:307:284:2
+flows:308:284:2
