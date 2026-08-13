@@ -605,10 +605,12 @@ fn config_hint(node: &Node) -> Option<String> {
                 .get("path")
                 .and_then(Value::as_str)
                 .map_or_else(|| "input items".to_string(), |p| format!("path: {p}"));
-            Some(truncate_hint(&match cfg.get("lanes").and_then(Value::as_u64) {
-                Some(lanes) => format!("{over} · {lanes} lanes"),
-                None => over,
-            }))
+            Some(truncate_hint(
+                &match cfg.get("lanes").and_then(Value::as_u64) {
+                    Some(lanes) => format!("{over} · {lanes} lanes"),
+                    None => over,
+                },
+            ))
         }
         // A void takes no config, and "discards its input" is what the kind
         // already says on the timeline.

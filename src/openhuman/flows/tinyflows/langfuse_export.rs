@@ -499,7 +499,10 @@ mod tests {
         // `#[serde(rename)]`, say) still fails here rather than producing a
         // batch full of empty spans.
         let first = &converted[0];
-        assert_eq!(first.thread_id.as_ref().map(|t| t.as_str()), Some(thread_id));
+        assert_eq!(
+            first.thread_id.as_ref().map(|t| t.as_str()),
+            Some(thread_id)
+        );
         assert_eq!(first.run_id.as_str(), "run-9");
         assert_eq!(first.graph_id.as_str(), "workflow");
         assert_eq!(first.offset, 0);

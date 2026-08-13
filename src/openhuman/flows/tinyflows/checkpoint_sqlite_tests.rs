@@ -223,13 +223,23 @@ async fn data_writes_are_append_once_and_control_plane_writes_upsert() {
     store
         .put_writes(
             &config,
-            &[PendingWrite::data("n1", "task-a", 0, "out", json!("second"))],
+            &[PendingWrite::data(
+                "n1",
+                "task-a",
+                0,
+                "out",
+                json!("second"),
+            )],
         )
         .await
         .unwrap();
 
     let writes = store.get_writes(&config).await.unwrap();
-    assert_eq!(writes.len(), 1, "a re-run task must not duplicate its write");
+    assert_eq!(
+        writes.len(),
+        1,
+        "a re-run task must not duplicate its write"
+    );
     assert_eq!(
         writes[0].payload,
         json!("first"),
@@ -246,12 +256,22 @@ async fn data_writes_are_append_once_and_control_plane_writes_upsert() {
             payload,
         )
     };
-    store.put_writes(&config, &[resume(json!("old"))]).await.unwrap();
-    store.put_writes(&config, &[resume(json!("new"))]).await.unwrap();
+    store
+        .put_writes(&config, &[resume(json!("old"))])
+        .await
+        .unwrap();
+    store
+        .put_writes(&config, &[resume(json!("new"))])
+        .await
+        .unwrap();
 
     let writes = store.get_writes(&config).await.unwrap();
     let control: Vec<_> = writes.iter().filter(|w| w.is_control_plane()).collect();
-    assert_eq!(control.len(), 1, "control-plane writes are keyed, not appended");
+    assert_eq!(
+        control.len(),
+        1,
+        "control-plane writes are keyed, not appended"
+    );
     assert_eq!(
         control[0].payload,
         json!("new"),
@@ -314,7 +334,13 @@ async fn clones_share_one_in_memory_database() {
     let store = SqliteCheckpointer::<serde_json::Value>::in_memory().unwrap();
     let clone = store.clone();
     store
-        .put(checkpoint("t1", "cp-1", None, 1, json!("written via original")))
+        .put(checkpoint(
+            "t1",
+            "cp-1",
+            None,
+            1,
+            json!("written via original"),
+        ))
         .await
         .unwrap();
 

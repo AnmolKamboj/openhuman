@@ -19,9 +19,9 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use rusqlite::{Connection, OptionalExtension, params};
-use serde::Serialize;
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 use tinyflows::graph::checkpoint::merge_writes;
 use tinyflows::graph::error::{GraphError, Result};
@@ -233,9 +233,7 @@ where
                 serde_json::to_string(&checkpoint).map_err(|e| sqlite_err("encode record", e))?;
 
             let conn = conn.lock().map_err(|_| {
-                GraphError::Checkpoint(
-                    "sqlite checkpointer: connection lock poisoned".to_string(),
-                )
+                GraphError::Checkpoint("sqlite checkpointer: connection lock poisoned".to_string())
             })?;
             conn.execute(
                 "INSERT INTO checkpoints (
