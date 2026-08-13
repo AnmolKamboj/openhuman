@@ -10,6 +10,7 @@ import {
   selectSpeakReplies,
   setSpeakReplies,
 } from '../../store/mascotSlice';
+import { HUMAN_VOICE_REALTIME_ENABLED, HUMAN_VOICE_SHOW_BOTH } from '../../utils/config';
 import Conversations from '../conversations/Conversations';
 import {
   CustomGifMascot,
@@ -21,6 +22,7 @@ import {
 import { useMascotManifest } from './Mascot/manifest/useMascotManifest';
 import RealtimeVoiceControls from './RealtimeVoiceControls';
 import { useHumanMascot } from './useHumanMascot';
+import { resolveHumanVoiceEntry } from './voiceEntry';
 
 const HumanPage = () => {
   const { t } = useT();
@@ -49,6 +51,14 @@ const HumanPage = () => {
     [mascotColor, customSecondary, palette]
   );
 
+  // Which voice control the chat card offers. Build-flag driven (#5399): the
+  // realtime "Start voice chat" control takes the slot the push-to-talk mic used
+  // to own, so the tab has one voice affordance rather than two competing ones.
+  const voiceEntry = resolveHumanVoiceEntry({
+    realtimeEnabled: HUMAN_VOICE_REALTIME_ENABLED,
+    showBoth: HUMAN_VOICE_SHOW_BOTH,
+  });
+
   // The mascot drives a ~60fps lipsync re-render while the agent is speaking
   // (useHumanMascot forces a frame each rAF tick). Conversations is a heavy
   // subtree, so co-rendering it here would reconcile the whole chat tree every
@@ -56,9 +66,19 @@ const HumanPage = () => {
   // locked during TTS playback (#5357). Its props are constant, so hold a stable
   // element: React short-circuits reconciliation of an unchanged child, keeping
   // the per-frame mascot re-render off the chat tree and the UI responsive.
+  // `voiceEntry` is build-time constant, so it cannot invalidate this memo at
+  // runtime — it is in the deps only to keep the dependency honest.
   const chatPanel = useMemo(
-    () => <Conversations variant="sidebar" composer="mic-cloud" projectThreadList />,
-    []
+    () => (
+      <Conversations
+        variant="sidebar"
+        composer="mic-cloud"
+        voiceChatControl={voiceEntry === 'push-to-talk' ? null : <RealtimeVoiceControls />}
+        showMicComposer={voiceEntry !== 'realtime'}
+        projectThreadList
+      />
+    ),
+    [voiceEntry]
   );
 
   return (
@@ -95,12 +115,6 @@ const HumanPage = () => {
             />
           )}
         </div>
-      </div>
-
-      {/* Realtime voice-chat controls (#5399) — always shown; the classic
-          push-to-talk path below is untouched. */}
-      <div className="absolute bottom-8 left-0 right-[436px] z-10 flex justify-center">
-        <RealtimeVoiceControls />
       </div>
 
       <label className="absolute top-4 left-4 z-10 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface/80 backdrop-blur-sm border border-line-strong text-xs text-content-secondary shadow-soft cursor-pointer select-none">

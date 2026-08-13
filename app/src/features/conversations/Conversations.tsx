@@ -1,6 +1,6 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
 import debugFactory from 'debug';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { type ChatSendError, chatSendError } from '../../chat/chatSendError';
@@ -150,6 +150,19 @@ interface ConversationsProps {
    */
   composer?: 'text' | 'mic-cloud';
   /**
+   * Voice-chat control rendered in the `mic-cloud` composer slot, above the mic
+   * button. Passed in as a node rather than imported here so this component
+   * keeps no dependency on the realtime voice stack (and the ElevenLabs SDK
+   * stays out of every consumer's module graph). Ignored outside `mic-cloud`.
+   */
+  voiceChatControl?: ReactNode;
+  /**
+   * Whether the `mic-cloud` slot renders the push-to-talk mic composer. Default
+   * `true` — set `false` alongside {@link ConversationsProps.voiceChatControl}
+   * to replace tap-and-speak with the realtime control rather than stack them.
+   */
+  showMicComposer?: boolean;
+  /**
    * Project the thread list into the root sidebar's dynamic region even in the
    * `sidebar` variant. Page variant always projects it; this lets an embedded
    * instance (e.g. the Human page's right-rail chat) surface the user's threads
@@ -247,6 +260,8 @@ export function deriveChatErrorBanner(
 const Conversations = ({
   variant = 'page',
   composer: composerProp = 'text',
+  voiceChatControl = null,
+  showMicComposer = true,
   projectThreadList = false,
 }: ConversationsProps = {}) => {
   const [composerOverride, setComposerOverride] = useState<'mic-cloud' | 'text' | null>(null);
@@ -2298,16 +2313,19 @@ const Conversations = ({
           // — this branch renders no ChatComposer to hang it off.
           <div className="relative flex flex-col items-center gap-3 py-1">
             {mascotDock}
-            <MicComposer
-              // Without `!selectedThreadId`, a mic submit before a thread is
-              // ready hits `handleSendMessage`'s early return and the
-              // transcript is silently dropped — the user spoke into the void.
-              disabled={composerInteractionBlocked || isSending || !selectedThreadId}
-              onSubmit={text => handleSendMessage(text)}
-              onError={message => setSendError(chatSendError('voice_transcription', message))}
-              showDeviceSelector
-              onSwitchToText={() => setComposerOverride('text')}
-            />
+            {voiceChatControl}
+            {showMicComposer && (
+              <MicComposer
+                // Without `!selectedThreadId`, a mic submit before a thread is
+                // ready hits `handleSendMessage`'s early return and the
+                // transcript is silently dropped — the user spoke into the void.
+                disabled={composerInteractionBlocked || isSending || !selectedThreadId}
+                onSubmit={text => handleSendMessage(text)}
+                onError={message => setSendError(chatSendError('voice_transcription', message))}
+                showDeviceSelector
+                onSwitchToText={() => setComposerOverride('text')}
+              />
+            )}
           </div>
         ) : inputMode === 'text' ? (
           <>
