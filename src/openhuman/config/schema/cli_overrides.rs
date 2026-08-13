@@ -53,9 +53,9 @@ fn apply_overrides(config: &mut Config, overrides: &CliInferenceOverrides) {
     let (requested_key, embedded_model) = split_provider_route(requested_provider);
     let provider_key = resolve_provider_key(config, requested_key);
 
-    let current_model = if overrides.provider.is_none() {
-        split_provider_route(current_chat).1
-    } else if resolve_provider_key(config, split_provider_route(current_chat).0) == provider_key {
+    let current_model = if overrides.provider.is_none()
+        || resolve_provider_key(config, split_provider_route(current_chat).0) == provider_key
+    {
         split_provider_route(current_chat).1
     } else {
         None
