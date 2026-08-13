@@ -91,8 +91,9 @@ fn message_never_contains_a_credential_or_endpoint() {
     assert!(msg.starts_with(CAPABILITY_UNAVAILABLE_PREFIX), "{msg}");
 }
 
-#[test]
-fn bound_driver_probe_reports_the_default_module_driver() {
+#[cfg(feature = "modules")]
+#[tokio::test]
+async fn bound_driver_probe_reports_the_default_module_driver() {
     let cfg = MemorySubsystemConfig::default();
     let binding = binding_for("default", cfg.clone());
     assert_eq!(
