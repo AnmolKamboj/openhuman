@@ -10,3 +10,4 @@
 //! would be meaningless.
 
 pub mod embedded;
+pub mod module_adapter;

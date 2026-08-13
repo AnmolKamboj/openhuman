@@ -40,6 +40,7 @@ pub mod boot;
 #[cfg(feature = "documents")]
 pub mod documents;
 pub mod host;
+pub mod memory;
 pub mod ops;
 pub mod platform;
 pub mod registry;

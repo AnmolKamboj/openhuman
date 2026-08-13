@@ -7,7 +7,7 @@
 //! Run with: `cargo test --test memory_sources_e2e`
 
 use std::path::Path;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use axum::http::header::AUTHORIZATION;
@@ -20,6 +20,7 @@ use openhuman_core::core::jsonrpc::build_core_http_router;
 const TEST_RPC_TOKEN: &str = "memory-sources-e2e-token";
 static AUTH_INIT: OnceLock<()> = OnceLock::new();
 static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static MEMORY_SEAMS_INIT: OnceLock<()> = OnceLock::new();
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     let mutex = ENV_LOCK.get_or_init(|| Mutex::new(()));
@@ -34,6 +35,24 @@ fn ensure_rpc_auth() {
         unsafe { std::env::set_var(CORE_TOKEN_ENV_VAR, TEST_RPC_TOKEN) };
         let token_dir = std::env::temp_dir().join("openhuman-memory-sources-e2e-auth");
         init_rpc_token(&token_dir).expect("init rpc auth");
+    });
+}
+
+/// The transport-only JSON-RPC router does not create a core runtime context,
+/// so memory-backed routes need their host seams installed explicitly.
+fn ensure_memory_seams() {
+    MEMORY_SEAMS_INIT.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("memory-sources-e2e-seams".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(Arc::new(
+                    openhuman_core::openhuman::config::Config::default(),
+                ));
+            })
+            .expect("spawn memory sources seam installer")
+            .join()
+            .expect("memory sources seam installer panicked");
     });
 }
 
@@ -85,6 +104,7 @@ embedding_strict = false
 }
 
 async fn serve() -> (String, tokio::task::JoinHandle<Result<(), std::io::Error>>) {
+    ensure_memory_seams();
     ensure_rpc_auth();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await

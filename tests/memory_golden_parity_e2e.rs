@@ -61,7 +61,7 @@
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use tempfile::tempdir;
 
@@ -101,12 +101,31 @@ impl Drop for EnvVarGuard {
 
 /// Serialises tests: `HOME` + `OPENHUMAN_WORKSPACE` are process-global.
 static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static MEMORY_SEAMS_INIT: OnceLock<()> = OnceLock::new();
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     ENV_LOCK
         .get_or_init(|| Mutex::new(()))
         .lock()
         .expect("env lock poisoned")
+}
+
+/// This target calls the memory operations directly rather than through a core
+/// runtime, so install the host seams that normal startup wires first.
+fn ensure_memory_seams() {
+    MEMORY_SEAMS_INIT.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("memory-golden-parity-seams".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(Arc::new(
+                    Config::default(),
+                ));
+            })
+            .expect("spawn golden parity memory seam installer")
+            .join()
+            .expect("golden parity memory seam installer panicked");
+    });
 }
 
 // ── Expected schema tiers (authoritative names from the two engines) ─────────
@@ -370,6 +389,7 @@ async fn init_and_scan(ns: &str, workspace: &Path) -> BTreeSet<String> {
 #[tokio::test]
 async fn golden_workspace_composes_substrate_and_unified_tiers() {
     let _lock = env_lock();
+    ensure_memory_seams();
     let tmp = tempdir().expect("tempdir");
     let _home = EnvVarGuard::set_to_path("HOME", tmp.path());
     let workspace = tmp.path().join("workspace");
