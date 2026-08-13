@@ -102,16 +102,26 @@ describe('HumanPage — voice entry point', () => {
     expect(screen.queryByTestId('realtime-voice-controls-stub')).not.toBeInTheDocument();
   });
 
-  it('shows both controls when the show-both flag is on', async () => {
+  // Comparison mode keeps the two paths apart: the realtime control floats over
+  // the mascot stage (outside the card), tap-and-speak stays in the card.
+  it('shows both controls when the show-both flag is on, and not stacked', async () => {
     flags.showBoth = true;
     await renderPage();
     expect(screen.getByTestId('realtime-voice-controls-stub')).toBeInTheDocument();
     expect(screen.getByTestId('mic-composer-stub')).toBeInTheDocument();
+    // The card's slot stays empty — the realtime control is rendered outside it.
+    expect(
+      screen.getByTestId('conversations-stub').querySelector('[data-testid$="voice-controls-stub"]')
+    ).toBeNull();
   });
 
-  // The old layout floated the control over the mascot stage, which left the tab
-  // with two competing voice affordances. It now lives only in the chat card.
-  it('renders the realtime control exactly once — no floating duplicate', async () => {
+  // Whichever mode is on, exactly one realtime control exists: the single-control
+  // modes put it in the card, comparison mode floats it — never both at once.
+  it.each([
+    ['realtime', { realtimeEnabled: true, showBoth: false }],
+    ['both', { realtimeEnabled: true, showBoth: true }],
+  ])('renders the realtime control exactly once in %s mode', async (_label, next) => {
+    Object.assign(flags, next);
     await renderPage();
     expect(screen.getAllByTestId('realtime-voice-controls-stub')).toHaveLength(1);
   });

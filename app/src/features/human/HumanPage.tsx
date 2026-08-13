@@ -51,9 +51,12 @@ const HumanPage = () => {
     [mascotColor, customSecondary, palette]
   );
 
-  // Which voice control the chat card offers. Build-flag driven (#5399): the
-  // realtime "Start voice chat" control takes the slot the push-to-talk mic used
-  // to own, so the tab has one voice affordance rather than two competing ones.
+  // Which voice control the tab offers. Build-flag driven (#5399). In the
+  // single-control modes the realtime button takes the slot the push-to-talk mic
+  // used to own, so the tab has one voice affordance rather than two competing
+  // ones. `both` keeps them apart instead of stacking them — the realtime button
+  // floats over the mascot stage where it used to live, the card keeps
+  // tap-and-speak — so the two paths stay visually distinct while being compared.
   const voiceEntry = resolveHumanVoiceEntry({
     realtimeEnabled: HUMAN_VOICE_REALTIME_ENABLED,
     showBoth: HUMAN_VOICE_SHOW_BOTH,
@@ -73,7 +76,7 @@ const HumanPage = () => {
       <Conversations
         variant="sidebar"
         composer="mic-cloud"
-        voiceChatControl={voiceEntry === 'push-to-talk' ? null : <RealtimeVoiceControls />}
+        voiceChatControl={voiceEntry === 'realtime' ? <RealtimeVoiceControls /> : null}
         showMicComposer={voiceEntry !== 'realtime'}
         projectThreadList
       />
@@ -116,6 +119,15 @@ const HumanPage = () => {
           )}
         </div>
       </div>
+
+      {/* Comparison mode only: the realtime control keeps its own place over the
+          mascot stage, so it reads as a separate path from the card's
+          tap-and-speak rather than a second button stacked on it. */}
+      {voiceEntry === 'both' && (
+        <div className="absolute bottom-8 left-0 right-[436px] z-10 flex justify-center">
+          <RealtimeVoiceControls />
+        </div>
+      )}
 
       <label className="absolute top-4 left-4 z-10 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface/80 backdrop-blur-sm border border-line-strong text-xs text-content-secondary shadow-soft cursor-pointer select-none">
         <input
