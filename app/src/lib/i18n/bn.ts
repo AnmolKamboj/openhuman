@@ -1039,6 +1039,7 @@ const messages: TranslationMap = {
   'nav.routines': 'Routines',
   'chat.newThread': 'নতুন থ্রেড',
   'chat.newConversation': 'নতুন কথোপকথন',
+  'chat.conversationsHeading': 'কথোপকথন',
   'chat.newWindowWelcome1': 'স্বাগতম, {name} 👋',
   'chat.newWindowWelcome2': 'চলুন শুরু করি, {name} 🧑‍🍳.',
   'chat.newWindowWelcome3': 'মনোযোগ দেওয়ার সময় 🧘🏻',
@@ -3323,14 +3324,6 @@ const messages: TranslationMap = {
   'accounts.respondQueue.pending': 'মুলতুবি',
   'accounts.respondQueue.show': 'প্রতিক্রিয়া সারি দেখান',
   'accounts.respondQueue.title': 'রেসপন্ড কিউ',
-  'accounts.webviewHost.almostReady': 'প্রায় প্রস্তুত...',
-  'accounts.webviewHost.loadTimeout': 'Webview লোড টাইমআউট',
-  'accounts.webviewHost.loading': '{providerName} লোড হচ্ছে...',
-  'accounts.webviewHost.loadingAccount': 'অ্যাকাউন্ট লোড হচ্ছে',
-  'accounts.webviewHost.restoringSession': 'সেশন পুনরুদ্ধার হচ্ছে...',
-  'accounts.webviewHost.retryLoading': 'লোড আবার চেষ্টা করুন',
-  'accounts.webviewHost.takingLonger': '{providerName} প্রত্যাশার চেয়ে বেশি সময় নিচ্ছে।',
-  'accounts.webviewHost.timeoutHint': 'টাইমআউট হিন্ট',
   'app.connectionBadge.composio': 'Composio',
   'app.connectionBadge.messaging': 'মেসেজিং',
   'app.connectionIndicator.connected': 'OpenHuman AI-এ সংযুক্ত 🚀',
@@ -7190,6 +7183,10 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'আপনার এমবেডিং বাজেট শেষ, তাই নতুন কনটেন্ট আর মেমরিতে যুক্ত হচ্ছে না। আবার শুরু করতে লোকাল এমবেডিং সেট আপ করুন বা নিজের API কী যোগ করুন।',
   'memoryBudget.cta': 'এমবেডিং সেট আপ করুন',
+  'tinyplaceSunset.title': 'Tiny Place অ্যাপ থেকে সরে যাচ্ছে',
+  'tinyplaceSunset.message':
+    'tiny.place ব্যবহার চালিয়ে যেতে tiny.place-এ যান। ৩১ আগস্ট ২০২৬-এর পর এটি অ্যাপ থেকে সরিয়ে ফেলা হবে।',
+  'tinyplaceSunset.cta': 'tiny.place খুলুন',
   'userErrors.scope.memory': 'মেমরি',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'পরিমাণ',

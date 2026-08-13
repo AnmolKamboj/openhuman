@@ -9,12 +9,15 @@ pub use cloud_providers::{
     generate_provider_id, is_slug_reserved, migrate_legacy_fields, AuthStyle, CloudProviderCreds,
     CloudProviderType,
 };
+pub mod ephemeral_route;
+pub use ephemeral_route::{EphemeralRoute, EPHEMERAL_ROUTE_SLUG};
 pub mod subconscious;
 pub use subconscious::{MedullaLocalConfig, SubconsciousConfig, SubconsciousEngine};
 mod agent;
 mod autonomy;
 mod capability_providers;
 mod channels;
+mod cli_overrides;
 mod context;
 mod dashboard;
 mod defaults;
@@ -40,6 +43,7 @@ pub mod claude_agent_sdk;
 pub use claude_agent_sdk::ClaudeAgentSdkConfig;
 mod local_ai;
 mod meet;
+mod modules;
 mod node;
 mod observability;
 mod orchestration;
@@ -69,6 +73,7 @@ pub use channels::{
     ResourceLimitsConfig, SandboxBackend, SandboxConfig, SecurityConfig, SignalConfig, SlackConfig,
     StreamMode, TelegramConfig, WebhookConfig, WhatsAppConfig, YuanbaoConfig,
 };
+pub(crate) use cli_overrides::set_cli_inference_overrides;
 pub use context::ContextConfig;
 pub use dashboard::{DashboardConfig, DiagramViewerConfig, EventStreamConfig, ModelHealthConfig};
 pub use dictation::{DictationActivationMode, DictationConfig};
@@ -77,6 +82,7 @@ pub use identity_cost::{CostConfig, ModelPricing};
 pub use learning::{LearningConfig, ReflectionSource};
 pub use local_ai::{LocalAiConfig, LocalAiUsage};
 pub use meet::{AutoJoinPolicy, AutoSummarizePolicy, CalendarProvider, MeetConfig};
+pub use modules::{ModuleOverride, ModulesConfig};
 pub use node::NodeConfig;
 pub use observability::{AgentTracingBackend, AgentTracingConfig, ObservabilityConfig};
 pub use orchestration::{

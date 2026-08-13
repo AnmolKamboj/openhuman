@@ -522,9 +522,8 @@ async fn scenario_notify_user_delivers_and_persists() {
     );
 
     // 2) The message landed in the reserved user-facing thread.
-    let persisted =
-        openhuman_core::openhuman::memory::conversations::get_messages(workspace, USER_THREAD_ID)
-            .expect("read user thread");
+    let persisted = tinycortex::memory::conversations::get_messages(workspace, USER_THREAD_ID)
+        .expect("read user thread");
     assert!(
         persisted
             .iter()
@@ -539,7 +538,7 @@ async fn scenario_notify_user_delivers_and_persists() {
 
 #[test]
 fn scenario_reserved_threads_are_distinct_and_persist() {
-    use openhuman_core::openhuman::memory::conversations::{
+    use tinycortex::memory::conversations::{
         append_message, ensure_thread, get_messages, ConversationMessage, CreateConversationThread,
     };
 

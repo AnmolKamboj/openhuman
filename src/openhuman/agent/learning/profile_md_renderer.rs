@@ -227,7 +227,9 @@ mod tests {
     use tempfile::TempDir;
 
     fn make_cache(conn: Arc<Mutex<Connection>>) -> Arc<FacetCache> {
-        Arc::new(FacetCache::new(conn))
+        Arc::new(FacetCache::new(
+            crate::openhuman::memory::store::ProfileStore::for_tests(conn),
+        ))
     }
 
     fn insert_facet(

@@ -1019,6 +1019,7 @@ const messages: TranslationMap = {
   'nav.routines': 'Routines',
   'chat.newThread': 'محادثة جديدة',
   'chat.newConversation': 'محادثة جديدة',
+  'chat.conversationsHeading': 'المحادثات',
   'chat.newWindowWelcome1': 'مرحبًا، {name} 👋',
   'chat.newWindowWelcome2': 'لنبدأ العمل، {name} 🧑‍🍳.',
   'chat.newWindowWelcome3': 'حان وقت التركيز 🧘🏻',
@@ -3252,14 +3253,6 @@ const messages: TranslationMap = {
   'accounts.respondQueue.pending': 'معلّق',
   'accounts.respondQueue.show': 'إظهار قائمة الردود',
   'accounts.respondQueue.title': 'قائمة الردود',
-  'accounts.webviewHost.almostReady': 'على وشك الجهوزية...',
-  'accounts.webviewHost.loadTimeout': 'انتهت مهلة تحميل العرض',
-  'accounts.webviewHost.loading': 'جارٍ تحميل {providerName}...',
-  'accounts.webviewHost.loadingAccount': 'جارٍ تحميل الحساب',
-  'accounts.webviewHost.restoringSession': 'جارٍ استعادة الجلسة...',
-  'accounts.webviewHost.retryLoading': 'إعادة محاولة التحميل',
-  'accounts.webviewHost.takingLonger': '{providerName} يستغرق وقتًا أطول من المتوقع.',
-  'accounts.webviewHost.timeoutHint': 'تلميح انتهاء المهلة',
   'app.connectionBadge.composio': 'Composio',
   'app.connectionBadge.messaging': 'المراسلة',
   'app.connectionIndicator.connected': 'متصل بـ OpenHuman AI 🚀',
@@ -7034,6 +7027,10 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'انتهت ميزانية التضمينات لديك، لذلك لم يعد المحتوى الجديد يُضاف إلى الذاكرة. أعدّ تضمينات محلية أو أضف مفتاح API الخاص بك للمتابعة.',
   'memoryBudget.cta': 'إعداد التضمينات',
+  'tinyplaceSunset.title': 'ينتقل Tiny Place خارج التطبيق',
+  'tinyplaceSunset.message':
+    'لمواصلة استخدام tiny.place، زر tiny.place. ستتم إزالته من التطبيق بعد 31 أغسطس 2026.',
+  'tinyplaceSunset.cta': 'فتح tiny.place',
   'userErrors.scope.memory': 'الذاكرة',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'المبلغ',

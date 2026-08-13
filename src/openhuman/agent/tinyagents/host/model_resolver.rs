@@ -42,6 +42,26 @@
 //!    `TurnModelSource` / `TurnModels` in `super::super` — a *bundle*, not one
 //!    `Arc<dyn ChatModel>`, so it does not fit this signature. See the
 //!    `TODO(phase4)` on [`OpenHumanModelResolver::base_model_for_role`].
+//!
+//! 4. **`ModelResolveRequest::model_pin` is not honoured yet.** The field
+//!    exists now (`tinyagents#89`, which this resolver's `-v1` suffix test was
+//!    written against while the pin had nowhere to go), so a definition's exact
+//!    model id finally has a route here rather than being smuggled through
+//!    `role`. It is deliberately still unread, for two reasons:
+//!
+//!    * **Nothing constructs a `ModelResolveRequest` yet.** The crate does not
+//!      emit one and this resolver is not repointed, so honouring the pin today
+//!      would be code with no producer and no test that could fail honestly.
+//!    * **There is no build-by-exact-id seam to honour it with.**
+//!      `create_chat_model_with_model_id` takes a *role*, not a model id, so
+//!      honouring a pin means adding that path in
+//!      `inference::provider::factory` and deciding what happens when the
+//!      pinned id is not configured — a real design question, not plumbing.
+//!
+//!    When it is wired: the pin is **advisory**. The host decides whether it
+//!    can be honoured, because the runtime has no view of credentials or
+//!    provider health. Validate the id against configured providers and fall
+//!    back to role routing with a warning; never pass it through blind.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

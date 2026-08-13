@@ -46,23 +46,26 @@ Contribute & Star us on GitHub: https://github.com/tinyhumansai/openhuman
 pub fn run_from_cli_args(args: &[String]) -> Result<()> {
     load_dotenv_for_cli()?;
 
+    let launch = parse_launch_options(args)?;
+    crate::openhuman::config::set_cli_inference_overrides(
+        launch.provider.as_deref(),
+        launch.model.as_deref(),
+    );
+
     let host = crate::core::types::HostKind::detect_standalone();
-    if args == ["--tui"]
+    if launch.args == ["--tui"]
         || should_auto_launch_tui(
-            args,
+            &launch.args,
             std::io::stdin().is_terminal(),
             std::io::stdout().is_terminal(),
             host,
             cfg!(feature = "tui"),
-        )
+        ) && !launch.no_tui
     {
         return run_tui_from_cli(&[]);
     }
 
-    // `--no-tui` is a global opt-out, not a synthetic subcommand. Strip it
-    // before normal dispatch so `openhuman --no-tui --help` and
-    // `openhuman --no-tui run ...` retain their ordinary CLI meaning.
-    let args = strip_no_tui(args);
+    let args = launch.args;
     // Print the welcome banner to stderr to keep stdout clean for JSON output.
     // `mcp`/`mcp-server` speak JSON-RPC on stdout; `tui`/`chat` own the whole
     // terminal (alternate screen + raw mode) — a banner on either would corrupt
@@ -111,6 +114,74 @@ pub fn run_from_cli_args(args: &[String]) -> Result<()> {
     }
 }
 
+#[derive(Debug, Default, PartialEq, Eq)]
+struct CliLaunchOptions {
+    args: Vec<String>,
+    model: Option<String>,
+    provider: Option<String>,
+    no_tui: bool,
+}
+
+/// Parse launch-wide flags before the subcommand, matching the familiar
+/// `openhuman [global options] [command]` shape. Model/provider values are
+/// transient process overrides; they never rewrite the user's config file.
+fn parse_launch_options(args: &[String]) -> Result<CliLaunchOptions> {
+    let mut parsed = CliLaunchOptions::default();
+    let mut i = 0usize;
+
+    while i < args.len() {
+        let arg = args[i].as_str();
+        let (target, inline_value) = match arg {
+            "--model" | "--model-id" | "-m" => (Some("model"), None),
+            "--provider" | "--provider-id" | "-p" => (Some("provider"), None),
+            "--no-tui" => {
+                parsed.no_tui = true;
+                i += 1;
+                continue;
+            }
+            _ if arg.starts_with("--model=") => (Some("model"), arg.split_once('=').map(|v| v.1)),
+            _ if arg.starts_with("--model-id=") => {
+                (Some("model"), arg.split_once('=').map(|v| v.1))
+            }
+            _ if arg.starts_with("--provider=") => {
+                (Some("provider"), arg.split_once('=').map(|v| v.1))
+            }
+            _ if arg.starts_with("--provider-id=") => {
+                (Some("provider"), arg.split_once('=').map(|v| v.1))
+            }
+            _ => break,
+        };
+
+        let value = match inline_value {
+            Some(value) => value,
+            None => {
+                i += 1;
+                let value = args
+                    .get(i)
+                    .map(String::as_str)
+                    .ok_or_else(|| anyhow::anyhow!("missing value for {arg}"))?;
+                if value.starts_with('-') {
+                    return Err(anyhow::anyhow!("missing value for {arg}"));
+                }
+                value
+            }
+        };
+        let value = value.trim();
+        if value.is_empty() {
+            return Err(anyhow::anyhow!("empty value for {arg}"));
+        }
+        match target {
+            Some("model") => parsed.model = Some(value.to_string()),
+            Some("provider") => parsed.provider = Some(value.to_string()),
+            _ => unreachable!("launch option target is fixed above"),
+        }
+        i += 1;
+    }
+
+    parsed.args = args[i..].to_vec();
+    Ok(parsed)
+}
+
 #[cfg(feature = "tui")]
 fn run_tui_from_cli(args: &[String]) -> Result<()> {
     crate::tui::run_from_cli(args)
@@ -139,14 +210,6 @@ fn should_auto_launch_tui(
         && stdout_is_terminal
         && host == crate::core::types::HostKind::Cli
         && tui_compiled
-}
-
-fn strip_no_tui(args: &[String]) -> &[String] {
-    if args.first().map(String::as_str) == Some("--no-tui") {
-        &args[1..]
-    } else {
-        args
-    }
 }
 
 /// Handles the `sentry-test` subcommand used to verify Sentry wiring end-to-end.
@@ -657,7 +720,7 @@ fn grouped_schemas() -> BTreeMap<String, Vec<ControllerSchema>> {
 fn print_general_help(grouped: &BTreeMap<String, Vec<ControllerSchema>>) {
     println!("OpenHuman core CLI\n");
     println!("Usage:");
-    println!("  openhuman [--no-tui]                    (tabbed terminal UI on interactive hosts)");
+    println!("  openhuman [OPTIONS]                     (tabbed terminal UI on interactive hosts)");
     println!("  openhuman run [--host <addr>] [--port <u16>] [--jsonrpc-only] [--verbose]");
     println!("  openhuman call --method <name> [--params '<json>']");
     println!(
@@ -672,6 +735,11 @@ fn print_general_help(grouped: &BTreeMap<String, Vec<ControllerSchema>>) {
     println!("  openhuman tree-summarizer <subcommand> [options]  (summary tree CLI)");
     println!("  openhuman sentry-test [--message <text>] [--panic]  (verify Sentry wiring)");
     println!("  openhuman <namespace> <function> [--param value ...]\n");
+    println!("Global options (place before the command):");
+    println!("  -m, --model <id>       Override the model for this CLI session");
+    println!("  -p, --provider <id>    Override the provider id or slug for this CLI session");
+    println!("      --no-tui           Do not auto-open the terminal UI");
+    println!("                        (aliases: --model-id, --provider-id)\n");
     println!("Available namespaces:");
     for namespace in grouped.keys() {
         let description = all::namespace_description(namespace.as_str())

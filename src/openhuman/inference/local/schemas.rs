@@ -14,9 +14,11 @@ use crate::rpc::RpcOutcome;
 
 /// Params for `inference.agent_chat` and `inference.agent_chat_simple`.
 ///
-/// Kept byte-identical to the copy in
-/// [`crate::openhuman::agent::schemas`], which backs the `agent.chat` /
-/// `agent.chat_simple` namespace over the same ops.
+/// A near-copy of the params in [`crate::openhuman::agent::schemas`], which
+/// backs the `agent.chat` / `agent.chat_simple` namespace over the same ops.
+/// The two diverge in one field: only this surface accepts a per-call
+/// `inference_url` + `api_key`, because `agent.chat` describes a turn on the
+/// account's own configured inference.
 #[derive(Debug, Deserialize)]
 struct AgentChatParams {
     message: String,
@@ -27,6 +29,15 @@ struct AgentChatParams {
     /// tools. Absent or empty keeps the configured `action_dir`. Ignored by the
     /// `*_simple` variant, which runs a bare provider call with no tools.
     cwd: Option<String>,
+    /// OpenAI-compatible endpoint this one call should run against. Paired with
+    /// `api_key`; either alone is ignored. See
+    /// [`ephemeral_route`](crate::openhuman::config::schema::ephemeral_route).
+    #[serde(default)]
+    inference_url: Option<String>,
+    /// Bearer for `inference_url`. Never persisted and never handed to any
+    /// other provider.
+    #[serde(default)]
+    api_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -146,6 +157,16 @@ pub fn schemas(function: &str) -> ControllerSchema {
                     "Optional working directory for this turn: the agent's file and shell \
                      tools are rooted here, so relative paths resolve inside it. Must be an \
                      existing directory. Omit (or pass empty) to use the configured action_dir.",
+                ),
+                optional_string(
+                    "inference_url",
+                    "Optional OpenAI-compatible endpoint for this call only. \
+                     Requires api_key; never persisted.",
+                ),
+                optional_string(
+                    "api_key",
+                    "Bearer for inference_url. Scoped to this call and to that \
+                     endpoint alone.",
                 ),
             ],
             outputs: vec![json_output("response", "Agent response payload.")],
@@ -275,6 +296,10 @@ fn handle_agent_chat(params: Map<String, Value>) -> ControllerFuture {
                 p.temperature,
                 p.thread_id,
                 p.cwd,
+                crate::openhuman::config::schema::EphemeralRoute::from_params(
+                    p.inference_url,
+                    p.api_key,
+                ),
             )
             .await?,
         )

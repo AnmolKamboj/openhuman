@@ -1066,6 +1066,7 @@ const messages: TranslationMap = {
   'nav.routines': 'Routines',
   'chat.newThread': 'Nuovo thread',
   'chat.newConversation': 'Nuova conversazione',
+  'chat.conversationsHeading': 'Conversazioni',
   'chat.newWindowWelcome1': 'Benvenuto, {name} 👋',
   'chat.newWindowWelcome2': 'Mettiamoci al lavoro, {name} 🧑‍🍳.',
   'chat.newWindowWelcome3': 'È ora di concentrarsi 🧘🏻',
@@ -3381,14 +3382,6 @@ const messages: TranslationMap = {
   'accounts.respondQueue.pending': 'In attesa',
   'accounts.respondQueue.show': 'Mostra coda di risposta',
   'accounts.respondQueue.title': 'Coda di risposta',
-  'accounts.webviewHost.almostReady': 'Quasi pronto...',
-  'accounts.webviewHost.loadTimeout': 'Timeout caricamento webview',
-  'accounts.webviewHost.loading': 'Caricamento di {providerName}...',
-  'accounts.webviewHost.loadingAccount': 'Caricamento account',
-  'accounts.webviewHost.restoringSession': 'Ripristino sessione...',
-  'accounts.webviewHost.retryLoading': 'Riprova caricamento',
-  'accounts.webviewHost.takingLonger': '{providerName} sta impiegando più tempo del previsto.',
-  'accounts.webviewHost.timeoutHint': 'Suggerimento timeout',
   'app.connectionBadge.composio': 'Composio',
   'app.connectionBadge.messaging': 'Messaggistica',
   'app.connectionIndicator.connected': 'Connesso a OpenHuman AI 🚀',
@@ -7324,6 +7317,10 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Il tuo budget di embedding è esaurito, quindi i nuovi contenuti non vengono più aggiunti alla memoria. Configura embedding locali o aggiungi la tua chiave API per riprendere.',
   'memoryBudget.cta': 'Configura gli embedding',
+  'tinyplaceSunset.title': 'Tiny Place esce dall’app',
+  'tinyplaceSunset.message':
+    'Per continuare a usare tiny.place, vai su tiny.place. Verrà rimosso dall’app dopo il 31 agosto 2026.',
+  'tinyplaceSunset.cta': 'Apri tiny.place',
   'userErrors.scope.memory': 'Memoria',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Importo',

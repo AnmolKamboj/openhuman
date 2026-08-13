@@ -66,14 +66,18 @@ export default function TwoPaneNav({
                       data-testid={`two-pane-nav-${item.value}`}
                       aria-current={active ? 'page' : undefined}
                       onClick={() => onSelect(item.value)}
-                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors ${
+                      // Same row spec as SidebarNav / SettingsSidebar /
+                      // ThreadList: 15px, medium by default and semibold when
+                      // selected, with an alpha fill that lifts against both the
+                      // translucent chrome and an opaque pane.
+                      className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[14px] transition-colors ${
                         active
-                          ? 'bg-surface-subtle font-medium text-content'
-                          : 'text-content-secondary hover:bg-surface-hover hover:text-content'
+                          ? 'bg-surface/70 font-semibold text-content'
+                          : 'text-content-muted hover:bg-surface/40 hover:text-content-secondary'
                       }`}>
                       <span
                         className={`shrink-0 ${
-                          active ? 'text-primary-600 dark:text-primary-400' : 'text-content-faint'
+                          active ? 'text-content-secondary' : 'text-content-faint'
                         }`}>
                         {item.icon ?? null}
                       </span>

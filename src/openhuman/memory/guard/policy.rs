@@ -35,10 +35,10 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use tinycortex_api::capabilities::Capability;
-use tinycortex_api::error::MemoryError;
-use tinycortex_api::provider::types::SourceScope;
-use tinycortex_api::types::MemoryTaint;
+use crate::openhuman::memory::api::capabilities::Capability;
+use crate::openhuman::memory::api::error::MemoryError;
+use crate::openhuman::memory::api::provider::types::SourceScope;
+use crate::openhuman::memory::api::types::MemoryTaint;
 
 use crate::core::subsystem::DriverClass;
 use crate::openhuman::config::schema::MemoryHooksConfig;
@@ -344,7 +344,9 @@ impl GuardPolicy {
     /// same time as the class check that selects it.
     pub fn redact_outbound<'a>(&self, content: &'a str) -> Cow<'a, str> {
         match self.class {
-            DriverClass::Embedded | DriverClass::Null => Cow::Borrowed(content),
+            DriverClass::Embedded | DriverClass::Module | DriverClass::Null => {
+                Cow::Borrowed(content)
+            }
             DriverClass::External => {
                 Cow::Owned(crate::openhuman::memory::store::safety::sanitize_text(content).value)
             }
@@ -356,7 +358,7 @@ impl GuardPolicy {
     /// unmodified pass-through for embedded and null drivers.
     pub fn redact_outbound_json(&self, value: serde_json::Value) -> serde_json::Value {
         match self.class {
-            DriverClass::Embedded | DriverClass::Null => value,
+            DriverClass::Embedded | DriverClass::Module | DriverClass::Null => value,
             DriverClass::External => {
                 crate::openhuman::memory::store::safety::sanitize_json(&value).value
             }

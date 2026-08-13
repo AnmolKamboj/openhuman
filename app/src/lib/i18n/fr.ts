@@ -1076,6 +1076,7 @@ const messages: TranslationMap = {
   'nav.routines': 'Routines',
   'chat.newThread': 'Nouveau fil',
   'chat.newConversation': 'Nouvelle conversation',
+  'chat.conversationsHeading': 'Conversations',
   'chat.newWindowWelcome1': 'Bienvenue, {name} 👋',
   'chat.newWindowWelcome2': 'On y va, {name} 🧑‍🍳.',
   'chat.newWindowWelcome3': 'Place à la concentration 🧘🏻',
@@ -3407,14 +3408,6 @@ const messages: TranslationMap = {
   'accounts.respondQueue.pending': 'En attente',
   'accounts.respondQueue.show': 'Afficher la file de réponses',
   'accounts.respondQueue.title': 'File de réponses',
-  'accounts.webviewHost.almostReady': 'Presque prêt…',
-  'accounts.webviewHost.loadTimeout': 'Délai de chargement de la webview dépassé',
-  'accounts.webviewHost.loading': 'Chargement de {providerName}…',
-  'accounts.webviewHost.loadingAccount': 'Chargement du compte',
-  'accounts.webviewHost.restoringSession': 'Restauration de la session…',
-  'accounts.webviewHost.retryLoading': 'Réessayer le chargement',
-  'accounts.webviewHost.takingLonger': '{providerName} prend plus de temps que prévu.',
-  'accounts.webviewHost.timeoutHint': "Indice de délai d'attente",
   'app.connectionBadge.composio': 'Composio',
   'app.connectionBadge.messaging': 'Messagerie',
   'app.connectionIndicator.connected': 'Connecté à OpenHuman AI 🚀',
@@ -7372,6 +7365,10 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     "Votre budget d'embeddings est épuisé, les nouveaux contenus ne sont donc plus ajoutés à la mémoire. Configurez des embeddings locaux ou ajoutez votre propre clé API pour reprendre.",
   'memoryBudget.cta': 'Configurer les embeddings',
+  'tinyplaceSunset.title': 'Tiny Place quitte l’application',
+  'tinyplaceSunset.message':
+    'Pour continuer à utiliser tiny.place, rendez-vous sur tiny.place. Il sera retiré de l’application après le 31 août 2026.',
+  'tinyplaceSunset.cta': 'Ouvrir tiny.place',
   'userErrors.scope.memory': 'Mémoire',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Montant',

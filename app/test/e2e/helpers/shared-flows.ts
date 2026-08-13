@@ -127,7 +127,7 @@ async function clickFirstMatch(candidates, timeout = 5_000) {
  * a first-class tab: it owns the dedicated mascot stage, while Chat carries the
  * same mascot docked on its composer. The earlier "Assistant"/"Activity"/"Alerts"
  * labels are gone. Only real tabs belong here; routes that redirect (e.g. /home,
- * /activity, /intelligence, /skills, /channels) are resolved through
+ * /activity, /intelligence, /skills, /channels, /webhooks) are resolved through
  * HASH_REDIRECTS below — they have no sidebar button.
  */
 const HASH_TO_SIDEBAR_LABEL = {
@@ -146,12 +146,26 @@ const HASH_TO_SIDEBAR_LABEL = {
  */
 const HASH_REDIRECTS = {
   '/home': '/chat',
+  '/accounts': '/chat',
   '/skills': '/connections',
-  '/channels': '/connections',
+  '/channels': '/connections?tab=messaging',
   '/activity': '/settings/notifications',
   '/intelligence': '/settings/notifications',
-  '/routines': '/settings/automations',
-  '/workflows': '/settings/automations',
+  '/routines': '/flows',
+  '/webhooks': '/connections',
+  '/settings/features': '/settings',
+  '/settings/screen-intelligence': '/settings',
+  '/settings/screen-awareness-debug': '/settings',
+  '/settings/mascot': '/settings/personality#face',
+  '/settings/composio-triggers': '/connections?tab=composio-key',
+  '/settings/autonomy': '/settings/agent-access',
+  '/settings/composio-routing': '/connections?tab=composio-key',
+  '/settings/agent-chat': '/connections?tab=llm#agent-chat',
+  '/settings/local-model-debug': '/connections?tab=llm#local-model',
+  '/settings/llm': '/connections?tab=llm',
+  '/settings/voice': '/connections?tab=voice',
+  '/settings/search': '/connections?tab=search',
+  '/agent-world': '/agent-world/welcome',
 };
 
 /** Resolve a requested hash to where the router actually settles. */
@@ -190,10 +204,10 @@ async function waitForHashRouteReady(hash, options = {}) {
   // the TwoPanelLayout shell keeps a persistent sidebar whose text dominates the
   // first 500 chars of root.innerText, so that signature is identical across all
   // settings sub-panels and the heuristic never fires. Instead we key off
-  // readyState + the resolved hash (and a route-ready selector when known),
-  // tolerating redirects to unmapped targets by accepting a stabilised hash.
-  let lastHash = null;
-  let stableCount = 0;
+  // readyState + the resolved hash (and a route-ready selector when known).
+  // A stable but unrelated hash is not evidence of navigation: accepting one
+  // masks failed route changes (for example, a test continuing on /chat after
+  // asking to open /brain?tab=sources).
   await browser.waitUntil(
     async () => {
       const res = await browser.execute(
@@ -214,16 +228,9 @@ async function waitForHashRouteReady(hash, options = {}) {
       // target panel rendered — accept it regardless of the hash, since routes
       // can redirect to a different hash (e.g. /settings/memory-data → /brain).
       if (res.hasSelector) return true;
-      // Otherwise accept the resolved target hash, or — for redirects to an
-      // unmapped target — once the hash has stabilised for ~500ms.
-      const cur = res.current;
-      if (cur === expected) return true;
-      if (cur && cur === lastHash) stableCount += 1;
-      else {
-        stableCount = 0;
-        lastHash = cur;
-      }
-      return stableCount >= 2;
+      // Otherwise require the resolved target hash. Redirects are accounted
+      // for above when computing `expected`.
+      return res.current === expected;
     },
     {
       timeout,

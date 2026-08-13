@@ -1125,6 +1125,32 @@ fn meet_controllers_registered_when_feature_on() {
     }
 }
 
+/// The `modules` namespace registers when the `modules` feature is on.
+#[cfg(feature = "modules")]
+#[test]
+fn modules_controllers_registered_when_feature_on() {
+    assert_eq!(
+        group_for_namespace("modules"),
+        Some(DomainGroup::Modules),
+        "`modules` must register under DomainGroup::Modules when the feature is on"
+    );
+}
+
+/// The `modules` namespace is absent when the `modules` feature is off.
+///
+/// The half that proves the gate. It matters more than the usual both-ways pair,
+/// because what this feature compiles in is a `dlopen` loader: a build that opted
+/// out must have no way to reach one, not a loader that merely refuses.
+#[cfg(not(feature = "modules"))]
+#[test]
+fn modules_controllers_absent_when_feature_off() {
+    assert_eq!(
+        group_for_namespace("modules"),
+        None,
+        "`modules` must leave no trace in the registry when the feature is off"
+    );
+}
+
 /// No Meet namespace registers when the `meet` feature is off (#4800).
 ///
 /// This is the half that proves the gate: with `meet` compiled out the three
@@ -1507,6 +1533,10 @@ fn every_domain_group_is_accounted_for_in_store_init_plan() {
         DomainGroup::Desktop,
         DomainGroup::Hosted,
         DomainGroup::Relay,
+        // The registry is a compiled-in `const` table and the loaded-module set
+        // lives in tinybus's own `ModuleHost`, so there is nothing for
+        // `init_stores` to stand up.
+        DomainGroup::Modules,
         DomainGroup::Platform,
     ];
 
@@ -1565,6 +1595,9 @@ fn every_domain_group_is_accounted_for_in_subscriber_plan() {
         DomainGroup::Runtimes,
         DomainGroup::Hosted,
         DomainGroup::Relay,
+        // Modules run on their own in-process broker, so they cannot publish a
+        // `DomainEvent` and there is nothing on the core bus to subscribe to.
+        DomainGroup::Modules,
     ];
 
     for g in DomainGroup::ALL {
@@ -1625,7 +1658,7 @@ fn memory_controllers_form_one_contiguous_run_in_aggregator_order() {
 // present and failing, because a registered-but-failing method teaches a model
 // the capability exists and makes it retry.
 
-use tinycortex_api::capabilities::Capability;
+use crate::openhuman::memory::api::capabilities::Capability;
 
 /// A workspace path unique to one test.
 ///
@@ -1670,6 +1703,7 @@ const MEMORY_NAMESPACE_CAPABILITY: &[(&str, Option<Capability>)] = &[
     ("slack_memory", Some(Capability::Sources)),
     ("memory_sync", Some(Capability::Sources)),
     ("memory_sources", Some(Capability::Sources)),
+    #[cfg(feature = "memory-git")]
     ("memory_diff", Some(Capability::Diff)),
 ];
 
@@ -1779,6 +1813,11 @@ fn memory_capability_map_has_no_stale_entries() {
         .collect();
 
     for (ns, _) in MEMORY_NAMESPACE_CAPABILITY {
+        // `memory_diff` only registers when `memory-git` is compiled in; no CI
+        // lane enables it, so it would otherwise read as a stale table entry.
+        if *ns == "memory_diff" && !cfg!(feature = "memory-git") {
+            continue;
+        }
         assert!(
             live.iter().any(|(n, _)| n == ns),
             "MEMORY_NAMESPACE_CAPABILITY names `{ns}`, which registers no Memory controller"
@@ -1815,10 +1854,13 @@ fn every_capability_family_is_accounted_for_in_the_rpc_surface() {
             | Capability::Documents
             | Capability::Tree
             | Capability::Graph
-            | Capability::Diff
             | Capability::Goals
             | Capability::ToolMemory
             | Capability::Sources => true,
+            #[cfg(feature = "memory-git")]
+            Capability::Diff => true,
+            #[cfg(not(feature = "memory-git"))]
+            Capability::Diff => false,
             // `Core` gates the combined core + recall controller partition so
             // a null driver removes the entire driver-backed surface. Recall
             // is represented by that same partition; Portability is RPC-less.
@@ -1941,8 +1983,9 @@ async fn visible_under(
 }
 
 #[tokio::test]
+#[cfg(feature = "modules")]
 async fn memory_families_registered_when_capabilities_advertised() {
-    // The embedded `tinycortex` driver (the default config) advertises
+    // The TinyMemory module driver advertises
     // `Capabilities::all()`, so every gated family is present. Scoped rather
     // than unscoped so this proves a BOUND driver's set, not the unbound
     // default-open fallback.
@@ -1955,13 +1998,19 @@ async fn memory_families_registered_when_capabilities_advertised() {
         "tree_summarizer",
         "memory_sync",
         "memory_sources",
-        "memory_diff",
         "slack_memory",
         "people",
     ] {
         assert!(
             ns.contains(present),
             "`{present}` must be present under a full-capability driver"
+        );
+    }
+    // `memory_diff` only registers when `memory-git` is compiled in.
+    if cfg!(feature = "memory-git") {
+        assert!(
+            ns.contains("memory_diff"),
+            "`memory_diff` must be present under a full-capability driver when `memory-git` is on"
         );
     }
     for present in [
@@ -2399,6 +2448,7 @@ fn sole_capability_for_namespace_reports_a_single_family_namespace() {
         sole_capability_for_namespace("memory_tree"),
         Some(Capability::Tree)
     );
+    #[cfg(feature = "memory-git")]
     assert_eq!(
         sole_capability_for_namespace("memory_diff"),
         Some(Capability::Diff)
@@ -2441,5 +2491,49 @@ fn javascript_controllers_absent_when_feature_off() {
     assert!(
         !ns.contains(&"javascript"),
         "runtime-node OFF must not register the `javascript` namespace"
+    );
+}
+
+// ---- memory-git gate -------------------------------------------------------
+
+/// `memory-git` ON: the git-backed diff surface is registered.
+#[cfg(feature = "memory-git")]
+#[test]
+fn memory_diff_controllers_registered_when_feature_on() {
+    let namespaces: Vec<&str> = all_controller_schemas()
+        .iter()
+        .map(|s| s.namespace)
+        .collect();
+    assert!(
+        namespaces.contains(&"memory_diff"),
+        "with the `memory-git` feature ON the `memory_diff` controllers must be registered"
+    );
+}
+
+/// `memory-git` OFF: `memory_diff` leaves no trace in the registry, while the
+/// rest of the memory surface stays.
+///
+/// This is the half that proves the gate does something. The stub's schema
+/// aggregators return empty vecs rather than always-erroring handlers, so the
+/// namespace must be genuinely unknown-method — not present-but-broken, which
+/// would still advertise itself on `/schema`.
+///
+/// `memory` is asserted present in the same test on purpose: the gate is
+/// supposed to remove the git ledger, not the memory domain. Splitting that
+/// into a separate test would let one pass while the other silently regressed.
+#[cfg(not(feature = "memory-git"))]
+#[test]
+fn memory_diff_controllers_absent_when_feature_off() {
+    let namespaces: Vec<&str> = all_controller_schemas()
+        .iter()
+        .map(|s| s.namespace)
+        .collect();
+    assert!(
+        !namespaces.contains(&"memory_diff"),
+        "with `memory-git` OFF the `memory_diff` controllers must not be registered, got: {namespaces:?}"
+    );
+    assert!(
+        namespaces.contains(&"memory"),
+        "the `memory-git` gate must remove the git ledger, not the memory domain"
     );
 }

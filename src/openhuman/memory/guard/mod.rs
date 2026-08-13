@@ -3,7 +3,7 @@
 //!
 //! ## The shape, and why it is this shape
 //!
-//! The guard implements [`MemoryProvider`](tinycortex_api::provider::MemoryProvider)
+//! The guard implements [`MemoryProvider`](crate::openhuman::memory::api::provider::MemoryProvider)
 //! over an `Arc<dyn MemoryProvider>`. That makes it *transparent* — a caller
 //! writes the same code against the guard as against the driver — and it makes
 //! the guard *unskippable by construction* for anyone holding it, because there
@@ -58,15 +58,30 @@
 //!
 //! ## Honesty clause: "the guard is the only path" is NOT yet true
 //!
-//! [`MemoryClient::profile_conn`](crate::openhuman::memory::store::MemoryClient::profile_conn)
-//! hands out a raw `Arc<Mutex<rusqlite::Connection>>`. No decorator can wrap a
-//! SQLite connection, so those callers reach the profile/facet tables beneath
-//! every one of the seven steps above. It is explicitly out of scope for M4a
-//! and must be closed before the invariant may be claimed. Current production
-//! callers:
+//! `MemoryClient::profile_conn` no longer leaves the memory family: it is
+//! `pub(in crate::openhuman::memory)` with one caller,
+//! [`MemoryClient::profile_store`](crate::openhuman::memory::store::MemoryClient::profile_store),
+//! which wraps it in a typed
+//! [`ProfileStore`](crate::openhuman::memory::store::ProfileStore). Every SQL
+//! statement against `user_profile` is now inside the family, and the compiler
+//! enforces that.
+//!
+//! **That is confinement, not policy.** The contract has no profile/facet
+//! capability family, so `ProfileStore`'s reads and writes still run beneath
+//! every one of the seven steps above — no tier check, no source scope, no
+//! taint, no redaction, no budget, no audit. Closing *that* needs a fourteenth
+//! family in `tinycortex_api`, or a host-side half-measure where `ProfileStore`
+//! consults [`policy::GuardPolicy`] directly (which would make a `readonly`
+//! tier start rejecting learning-cache rebuilds — a behaviour change, not a
+//! refactor). Current unguarded profile callers:
 //!
 //! - `memory/sync/composio/providers/profile.rs`
 //! - `agent/learning/{tools,startup,schemas}.rs`
+//!
+//! A second, independent write path into `user_profile` exists and is *not*
+//! covered by the `.profile_store(` needle: `agent/harness/archivist/lifecycle.rs`
+//! calls `profile::profile_upsert` on a connection injected at construction.
+//! It has no production construction site today.
 //!
 //! `MemoryClient::memory_handle()` is already `pub(crate)`; do not widen it.
 

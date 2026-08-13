@@ -239,6 +239,9 @@ const AppRoutes = ({ location }: AppRoutesProps = {}) => {
         }
       />
 
+      {/* Preserve links to the retired standalone accounts view. */}
+      <Route path="/accounts" element={<Navigate to="/chat" replace />} />
+
       {/* Back-compat: /channels was an orphaned standalone page; it now
           redirects to the unified Connections page on the Messaging tab. */}
       <Route path="/channels" element={<Navigate to="/connections?tab=messaging" replace />} />
