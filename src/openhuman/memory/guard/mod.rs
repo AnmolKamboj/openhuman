@@ -3,7 +3,7 @@
 //!
 //! ## The shape, and why it is this shape
 //!
-//! The guard implements [`MemoryProvider`](tinycortex_api::provider::MemoryProvider)
+//! The guard implements [`MemoryProvider`](crate::openhuman::memory::api::provider::MemoryProvider)
 //! over an `Arc<dyn MemoryProvider>`. That makes it *transparent* — a caller
 //! writes the same code against the guard as against the driver — and it makes
 //! the guard *unskippable by construction* for anyone holding it, because there

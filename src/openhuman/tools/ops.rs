@@ -1568,8 +1568,8 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
 /// about what the *model is told exists*, and the later re-point onto
 /// `MemoryGuard` must not change the advertised surface. Assigning them `None`
 /// to dodge the mismatch would bake the wrong contract in.
-fn tool_capability(name: &str) -> Option<tinycortex_api::capabilities::Capability> {
-    use tinycortex_api::capabilities::Capability;
+fn tool_capability(name: &str) -> Option<crate::openhuman::memory::api::capabilities::Capability> {
+    use crate::openhuman::memory::api::capabilities::Capability;
 
     // Not driver-backed. Each entry is an argued exception, not a fallthrough.
     if name == "update_memory_md"          // writes the workspace `MEMORY.md` file directly

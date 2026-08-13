@@ -21,7 +21,7 @@ use super::{parse_params, to_json};
 // ---------------------------------------------------------------------------
 //
 // This file is ONE RPC family by directory layout but THREE capability families
-// by contract (`tinycortex_api::capabilities::Capability`), so M5.2 partitions
+// by contract (`crate::openhuman::memory::api::capabilities::Capability`), so M5.2 partitions
 // it rather than tagging the whole file with a single capability:
 //
 //   * core/recall — `Capability::Core` + `Capability::Recall`, both MANDATORY.
