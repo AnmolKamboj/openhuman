@@ -547,6 +547,46 @@ fn config_hint(node: &Node) -> Option<String> {
                 None => format!("max {max}"),
             })
         }
+        // What was started is the one thing worth seeing at a glance; which
+        // gate collects it is an edge, and the timeline already shows edges.
+        NodeKind::Spawn => {
+            let target = cfg.get("target").and_then(Value::as_str).unwrap_or("?");
+            let what = cfg
+                .get("slug")
+                .and_then(Value::as_str)
+                .or_else(|| cfg.get("name").and_then(Value::as_str));
+            Some(truncate_hint(&match what {
+                Some(what) => format!("{target}: {what}"),
+                None => target.to_string(),
+            }))
+        }
+        // A gate and a gather both wait, and the release policy is the whole
+        // question — `any` versus `all` is the difference between a run that
+        // proceeds on one result and one that blocks on the slowest.
+        NodeKind::Gate | NodeKind::Gather => {
+            let release = cfg
+                .get("release")
+                .and_then(Value::as_str)
+                .unwrap_or("all")
+                .to_string();
+            Some(match cfg.get("n").and_then(Value::as_u64) {
+                Some(n) => format!("{release} ({n})"),
+                None => release,
+            })
+        }
+        NodeKind::Scatter => {
+            let over = cfg
+                .get("path")
+                .and_then(Value::as_str)
+                .map_or_else(|| "input items".to_string(), |p| format!("path: {p}"));
+            Some(truncate_hint(&match cfg.get("lanes").and_then(Value::as_u64) {
+                Some(lanes) => format!("{over} · {lanes} lanes"),
+                None => over,
+            }))
+        }
+        // A void takes no config, and "discards its input" is what the kind
+        // already says on the timeline.
+        NodeKind::Void => None,
         NodeKind::Merge | NodeKind::OutputParser | NodeKind::Trigger => None,
     }
 }
