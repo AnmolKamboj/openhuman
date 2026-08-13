@@ -7287,6 +7287,10 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Twój budżet osadzeń został wyczerpany, więc nowe treści nie są już dodawane do pamięci. Skonfiguruj lokalne osadzenia lub dodaj własny klucz API, aby wznowić.',
   'memoryBudget.cta': 'Skonfiguruj osadzenia',
+  'tinyplaceSunset.title': 'Tiny Place znika z aplikacji',
+  'tinyplaceSunset.message':
+    'Aby dalej korzystać z tiny.place, wejdź na tiny.place. Po 31 sierpnia 2026 r. zostanie usunięty z aplikacji.',
+  'tinyplaceSunset.cta': 'Otwórz tiny.place',
   'userErrors.scope.memory': 'Pamięć',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Kwota',

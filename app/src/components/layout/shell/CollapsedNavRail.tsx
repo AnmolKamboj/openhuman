@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { NAV_TABS, type NavTab } from '../../../config/navConfig';
+import { type NavTab } from '../../../config/navConfig';
+import { useNavTabs } from '../../../hooks/useNavTabs';
 import { registry } from '../../../lib/commands/registry';
 import { useT } from '../../../lib/i18n/I18nContext';
 import { trackEvent } from '../../../services/analytics';
@@ -36,7 +37,11 @@ export default function CollapsedNavRail() {
   const handleHome = useHomeNav();
   const unreadCount = useAppSelector(state => selectUnreadCount(state.notifications.items));
 
-  const tabs = useMemo(() => NAV_TABS.map(tab => ({ ...tab, label: t(tab.labelKey) })), [t]);
+  const navTabs = useNavTabs();
+  const tabs = useMemo(
+    () => navTabs.map(tab => ({ ...tab, label: t(tab.labelKey) })),
+    [navTabs, t]
+  );
   const activeTab = tabs.find(tab => matchActive(tab.path, location.pathname));
 
   const handleClick = (tab: NavTab, active: boolean) => {

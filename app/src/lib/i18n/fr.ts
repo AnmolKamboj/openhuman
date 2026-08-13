@@ -7364,6 +7364,10 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     "Votre budget d'embeddings est épuisé, les nouveaux contenus ne sont donc plus ajoutés à la mémoire. Configurez des embeddings locaux ou ajoutez votre propre clé API pour reprendre.",
   'memoryBudget.cta': 'Configurer les embeddings',
+  'tinyplaceSunset.title': 'Tiny Place quitte l’application',
+  'tinyplaceSunset.message':
+    'Pour continuer à utiliser tiny.place, rendez-vous sur tiny.place. Il sera retiré de l’application après le 31 août 2026.',
+  'tinyplaceSunset.cta': 'Ouvrir tiny.place',
   'userErrors.scope.memory': 'Mémoire',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Montant',

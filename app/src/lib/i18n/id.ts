@@ -7220,6 +7220,10 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Anggaran embedding Anda sudah habis, sehingga konten baru tidak lagi ditambahkan ke memori. Siapkan embedding lokal atau tambahkan kunci API Anda sendiri untuk melanjutkan.',
   'memoryBudget.cta': 'Siapkan embedding',
+  'tinyplaceSunset.title': 'Tiny Place keluar dari aplikasi',
+  'tinyplaceSunset.message':
+    'Untuk terus memakai tiny.place, kunjungi tiny.place. Fitur ini akan dihapus dari aplikasi setelah 31 Agustus 2026.',
+  'tinyplaceSunset.cta': 'Buka tiny.place',
   'userErrors.scope.memory': 'Memori',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Jumlah',

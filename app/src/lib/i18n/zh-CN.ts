@@ -6798,6 +6798,10 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     '你的嵌入额度已用尽，新内容不会再加入记忆。设置本地嵌入或添加你自己的 API 密钥即可恢复。',
   'memoryBudget.cta': '设置嵌入',
+  'tinyplaceSunset.title': 'Tiny Place 即将移出应用',
+  'tinyplaceSunset.message':
+    '若要继续使用 tiny.place，请前往 tiny.place。2026 年 8 月 31 日后它将从应用中移除。',
+  'tinyplaceSunset.cta': '打开 tiny.place',
   'userErrors.scope.memory': '记忆',
   // Agent World：Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': '金额',
