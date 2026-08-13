@@ -4584,9 +4584,18 @@ async fn inference_gate_reports_signed_out_for_dynamic_agent_ref_only_graph() {
 
     let errors = validate_inference_readiness(&config, &g).await;
     assert!(
-        err.contains("agent_ref") && err.contains("must be a literal"),
-        "{err}"
+        !errors.is_empty(),
+        "a signed-out session must still be reported even though the only agent node's \
+         agent_ref is dynamic: {errors:?}"
     );
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.to_ascii_lowercase().contains("signed out")),
+        "{errors:?}"
+    );
+    // `SignedOutTestGuard` restores the prior flag on drop at the end of this
+    // scope — no other test observes this override.
 }
 
 #[tokio::test]
