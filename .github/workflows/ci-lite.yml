@@ -552,6 +552,7 @@ jobs:
           openhuman/web3/wallet/primitives/address/test.rs
           openhuman/web3/wallet/stub.rs
           openhuman/web3/x402/stub.rs
+          tui/runner.rs
           EOF
           )
           ACTUAL=$(grep -rlE '#\[cfg\((not\()?feature = "(voice|media|web3|meet|mcp|skills|flows|channels|contacts)"|#\[cfg\((not\()?all\([^]]*feature = "contacts"' src --include='*.rs' \
