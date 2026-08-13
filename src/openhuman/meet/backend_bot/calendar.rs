@@ -22,15 +22,16 @@ use std::sync::OnceLock;
 
 use async_trait::async_trait;
 
-use crate::core::event_bus::{
-    publish_global, subscribe_global, DomainEvent, EventHandler, SubscriptionHandle,
-};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::config::rpc as config_rpc;
 use crate::openhuman::desktop::app_state::peek_cached_current_user_identity;
 use crate::openhuman::desktop::notifications::bus::publish_core_notification;
 use crate::openhuman::desktop::notifications::types::{
     CoreNotificationAction, CoreNotificationCategory, CoreNotificationEvent,
 };
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 
 use super::store;
 use super::types::{AutoJoinSource, MeetingSession, MeetingSessionStatus};
@@ -42,7 +43,7 @@ pub fn register_meet_calendar_subscriber() {
     if MEET_CALENDAR_HANDLE.get().is_some() {
         return;
     }
-    match subscribe_global(std::sync::Arc::new(MeetCalendarSubscriber)) {
+    match BUS.subscribe(std::sync::Arc::new(MeetCalendarSubscriber)) {
         Some(handle) => {
             let _ = MEET_CALENDAR_HANDLE.set(handle);
             tracing::debug!("[event_bus] meet calendar subscriber registered");
@@ -59,7 +60,7 @@ pub fn register_meet_calendar_subscriber() {
 struct MeetCalendarSubscriber;
 
 #[async_trait]
-impl EventHandler for MeetCalendarSubscriber {
+impl EventHandler<DomainEvent> for MeetCalendarSubscriber {
     fn name(&self) -> &str {
         "agent_meetings::calendar"
     }
@@ -353,7 +354,7 @@ pub async fn handle_calendar_meeting_candidate(
             // so no persisted session for the action handler to resolve), and
             // returning `true` would suppress every notification surface —
             // silently "delivering" the meeting with nothing the user can act on.
-            publish_global(DomainEvent::MeetAutoJoinPrompt {
+            BUS.publish(DomainEvent::MeetAutoJoinPrompt {
                 meet_url,
                 event_title,
             });
@@ -476,7 +477,7 @@ pub async fn handle_calendar_meeting_candidate(
             // Auto-join transparency: announce the triggered join so
             // downstream consumers (UI banner, thread bus) can react
             // (issue #3507 contract event).
-            publish_global(DomainEvent::MeetingAutoJoinTriggered {
+            BUS.publish(DomainEvent::MeetingAutoJoinTriggered {
                 meeting_id: correlation_id.clone(),
                 meet_url: meet_url.clone(),
                 listen_only,
@@ -543,7 +544,7 @@ pub async fn handle_calendar_meeting_candidate(
                     error = %e,
                     "[meet:calendar] session create failed; falling back to plain reminder without actionable buttons"
                 );
-                publish_global(DomainEvent::MeetAutoJoinPrompt {
+                BUS.publish(DomainEvent::MeetAutoJoinPrompt {
                     meet_url,
                     event_title,
                 });
@@ -551,7 +552,7 @@ pub async fn handle_calendar_meeting_candidate(
             }
 
             // Announce the new Pending session (issue #3507 contract event).
-            publish_global(DomainEvent::MeetingSessionCreated {
+            BUS.publish(DomainEvent::MeetingSessionCreated {
                 meeting_id: meeting_id.clone(),
                 meet_url: meet_url.clone(),
                 title: event_title.clone(),
@@ -588,7 +589,7 @@ pub async fn handle_calendar_meeting_candidate(
             });
 
             // Legacy prompt event kept for existing consumers.
-            publish_global(DomainEvent::MeetAutoJoinPrompt {
+            BUS.publish(DomainEvent::MeetAutoJoinPrompt {
                 meet_url,
                 event_title,
             });

@@ -1,10 +1,10 @@
 use crate::openhuman::config::rpc as config_rpc;
 use crate::openhuman::memory::query::backend;
-use crate::openhuman::memory::store::chunks::types::SourceKind;
 use crate::openhuman::memory::tree::retrieval::rpc::QuerySourceRequest;
 use crate::openhuman::tools::traits::{Tool, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
+use tinymemory_core::store::chunks::types::SourceKind;
 
 pub struct MemoryTreeQuerySourceTool;
 
@@ -57,9 +57,9 @@ impl Tool for MemoryTreeQuerySourceTool {
         log::debug!("[tool][memory_tree] query_source invoked");
         let req: QuerySourceRequest = serde_json::from_value(args)
             .map_err(|e| anyhow::anyhow!("invalid arguments for memory_tree_query_source: {e}"))?;
-        let cfg = config_rpc::load_config_with_timeout()
-            .await
-            .map_err(|e| anyhow::anyhow!("memory_tree_query_source: load config failed: {e}"))?;
+        // Validate arguments before touching config/disk — `SourceKind::parse`
+        // is pure, so a bad `source_kind` must fail with the parse error
+        // regardless of workspace state.
         let source_kind = match req.source_kind.as_deref() {
             Some(s) => Some(
                 SourceKind::parse(s)
@@ -67,6 +67,9 @@ impl Tool for MemoryTreeQuerySourceTool {
             ),
             None => None,
         };
+        let cfg = config_rpc::load_config_with_timeout()
+            .await
+            .map_err(|e| anyhow::anyhow!("memory_tree_query_source: load config failed: {e}"))?;
         let resp = match req.source_id.as_deref() {
             Some(source_id) => {
                 backend::query_source_scope(
@@ -106,7 +109,8 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use crate::openhuman::config::{Config, TEST_ENV_LOCK};
+    use crate::openhuman::config::Config;
+    use crate::openhuman::config::TEST_ENV_LOCK;
     use crate::openhuman::tools::traits::Tool;
     use serde_json::json;
 
@@ -164,7 +168,11 @@ mod tests {
             }))
             .await
             .expect_err("invalid source kind should fail");
-        assert!(err.to_string().contains("memory_tree_query_source:"));
+        let msg = err.to_string();
+        assert!(
+            msg.contains("memory_tree_query_source:") && !msg.contains("load config failed"),
+            "expected a source-kind parse error, got: {msg}"
+        );
     }
 
     #[tokio::test]
@@ -205,7 +213,7 @@ mod tests {
         assert_eq!(parsed["hits"], json!([]));
         assert_eq!(parsed["total"], json!(0));
 
-        let direct = crate::openhuman::memory::tree::retrieval::source::query_source(
+        let direct = tinymemory_core::tree::retrieval::source::query_source(
             &cfg,
             None,
             Some(SourceKind::Document),

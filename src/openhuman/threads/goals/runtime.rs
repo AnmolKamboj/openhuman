@@ -23,7 +23,8 @@ use async_trait::async_trait;
 
 use super::store;
 use super::{ThreadGoal, ThreadGoalStatus};
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::stop_hooks::{StopDecision, StopHook, TurnState};
 use crate::openhuman::agent::tinyagents::thread_context::current_thread_id;
 
@@ -48,7 +49,7 @@ pub async fn resume_for_current_thread(workspace_dir: &Path) -> Option<Option<Th
     match store::resume(workspace_dir, &thread_id).await {
         Ok(goal) => {
             if goal.status.is_active() {
-                publish_global(DomainEvent::ThreadGoalUpdated {
+                BUS.publish(DomainEvent::ThreadGoalUpdated {
                     thread_id: goal.thread_id.clone(),
                     goal_id: goal.goal_id.clone(),
                     status: goal.status.as_str().to_string(),
@@ -72,7 +73,7 @@ pub async fn pause_for_current_thread(workspace_dir: &Path) {
     match store::pause(workspace_dir, &thread_id).await {
         Ok(goal) => {
             if matches!(goal.status, ThreadGoalStatus::Paused) {
-                publish_global(DomainEvent::ThreadGoalUpdated {
+                BUS.publish(DomainEvent::ThreadGoalUpdated {
                     thread_id: goal.thread_id.clone(),
                     goal_id: goal.goal_id.clone(),
                     status: goal.status.as_str().to_string(),
@@ -159,7 +160,7 @@ pub async fn account_turn_against_goal(workspace_dir: &Path, input: u64, output:
                 "[thread_goals] accounted turn usage (+{delta} tok, +{secs}s)"
             );
             if updated.status != prev_status {
-                publish_global(DomainEvent::ThreadGoalUpdated {
+                BUS.publish(DomainEvent::ThreadGoalUpdated {
                     thread_id: updated.thread_id.clone(),
                     goal_id: updated.goal_id.clone(),
                     status: updated.status.as_str().to_string(),

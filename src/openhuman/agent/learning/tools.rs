@@ -30,7 +30,7 @@ use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
 fn get_cache() -> anyhow::Result<FacetCache> {
     let client = crate::openhuman::memory::global::client_if_ready()
         .ok_or_else(|| anyhow::anyhow!("memory client not ready"))?;
-    Ok(FacetCache::new(client.profile_conn()))
+    Ok(FacetCache::new(client.profile_store()))
 }
 
 /// Compose the full facet key from a class string + key suffix.

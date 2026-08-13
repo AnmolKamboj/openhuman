@@ -155,10 +155,6 @@ const LEGACY_ALIASES: &[(&str, &str)] = &[
         "openhuman.inference_install_piper",
     ),
     (
-        "openhuman.local_ai_install_whisper",
-        "openhuman.inference_install_whisper",
-    ),
-    (
         "openhuman.local_ai_piper_install_status",
         "openhuman.inference_piper_install_status",
     ),
@@ -195,10 +191,6 @@ const LEGACY_ALIASES: &[(&str, &str)] = &[
         "openhuman.inference_transcribe_bytes",
     ),
     ("openhuman.local_ai_tts", "openhuman.inference_tts"),
-    (
-        "openhuman.local_ai_whisper_install_status",
-        "openhuman.inference_whisper_install_status",
-    ),
     (
         "openhuman.providers_list_models",
         "openhuman.inference_list_models",

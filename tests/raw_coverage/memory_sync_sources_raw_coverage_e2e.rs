@@ -8,8 +8,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
-use axum::extract::Request;
-use axum::response::IntoResponse;
 use axum::routing::any;
 use axum::{Json, Router};
 use serde_json::{json, Value};
@@ -42,6 +40,23 @@ use openhuman_core::openhuman::memory::sync::composio::{
 };
 
 static ENV_LOCK: &OnceLock<Mutex<()>> = &crate::SHARED_ENV_LOCK;
+static MEMORY_SEAMS_INIT: OnceLock<()> = OnceLock::new();
+
+fn ensure_memory_seams() {
+    MEMORY_SEAMS_INIT.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("memory-sync-sources-raw-coverage-seams".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
+                    Arc::new(Config::default()),
+                );
+            })
+            .expect("spawn memory sync source seam installer")
+            .join()
+            .expect("memory sync source seam installer panicked");
+    });
+}
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     ENV_LOCK
@@ -83,6 +98,7 @@ impl Drop for EnvGuard {
 }
 
 fn config_in(tmp: &TempDir) -> Config {
+    ensure_memory_seams();
     let mut config = Config {
         config_path: tmp.path().join("config.toml"),
         workspace_dir: tmp.path().join("workspace"),
@@ -281,104 +297,23 @@ async fn remove_composio_source_by_connection_id_prunes_on_disconnect_and_surviv
 }
 
 #[tokio::test]
-async fn rss_reader_lists_reads_and_reports_feed_errors_from_loopback() {
+async fn rss_reader_rejects_private_hosts_before_fetching() {
     let _guard = env_lock();
     let tmp = TempDir::new().expect("tempdir");
     let config = config_in(&tmp);
-    let rss_xml = r#"<?xml version="1.0"?>
-    <rss version="2.0"><channel>
-      <item>
-        <title>First &amp; useful</title>
-        <link>https://example.test/first</link>
-        <description><![CDATA[<p>HTML body &amp; details</p>]]></description>
-        <pubDate>Fri, 29 May 2026 10:00:00 GMT</pubDate>
-      </item>
-      <item>
-        <title>Second</title>
-        <guid>guid-second</guid>
-        <description>Plain &lt;encoded&gt; body</description>
-      </item>
-    </channel></rss>"#;
-    let atom_xml = r#"<?xml version="1.0"?>
-    <feed><entry>
-      <title>Atom item</title>
-      <id>urn:round15:atom</id>
-      <summary>Atom summary</summary>
-      <link href="https://example.test/atom" />
-      <updated>2026-05-29T12:00:00Z</updated>
-    </entry></feed>"#;
-    let router = Router::new().route(
-        "/{feed}",
-        any(move |req: Request| {
-            let rss_xml = rss_xml.to_string();
-            let atom_xml = atom_xml.to_string();
-            async move {
-                match req.uri().path() {
-                    "/rss" => (
-                        [(axum::http::header::CONTENT_TYPE, "application/rss+xml")],
-                        rss_xml,
-                    )
-                        .into_response(),
-                    "/atom" => (
-                        [(axum::http::header::CONTENT_TYPE, "application/atom+xml")],
-                        atom_xml,
-                    )
-                        .into_response(),
-                    "/broken" => (axum::http::StatusCode::BAD_GATEWAY, "bad feed").into_response(),
-                    _ => (axum::http::StatusCode::NOT_FOUND, "missing").into_response(),
-                }
-            }
-        }),
-    );
-    let (base, server) = loopback_router(router).await;
 
-    let reader = openhuman_core::openhuman::memory::sources::readers::rss::RssReader;
+    let reader = openhuman_core::openhuman::memory::sources::readers::rss::RssReader::new();
     let mut entry = source(SourceKind::RssFeed, "rss-round15");
-    entry.url = Some(format!("{base}/rss"));
-    entry.max_items = Some(1);
+    entry.url = Some("http://127.0.0.1:9/rss".to_string());
 
-    let items = reader.list_items(&entry, &config).await.expect("list rss");
-    assert_eq!(items.len(), 1);
-    assert_eq!(items[0].title, "First & useful");
-
-    let content = reader
-        .read_item(&entry, "https://example.test/first", &config)
+    let error = reader
+        .list_items(&entry, &config)
         .await
-        .expect("read rss item");
-    assert_eq!(content.id, "https://example.test/first");
-    assert_eq!(
-        content.content_type,
-        openhuman_core::openhuman::memory::sources::ContentType::Html
+        .expect_err("private RSS host rejected before fetch");
+    assert!(
+        error.contains("public host"),
+        "private RSS hosts must be rejected before fetching: {error}"
     );
-    assert!(content.body.contains("HTML body"));
-
-    let mut atom = entry.clone();
-    atom.url = Some(format!("{base}/atom"));
-    let atom_content = reader
-        .read_item(&atom, "urn:round15:atom", &config)
-        .await
-        .expect("read atom item");
-    assert_eq!(atom_content.title, "Atom item");
-    assert_eq!(
-        atom_content.metadata.get("link").and_then(Value::as_str),
-        Some("https://example.test/atom")
-    );
-
-    let missing = reader
-        .read_item(&atom, "missing", &config)
-        .await
-        .expect_err("missing atom item");
-    assert!(missing.contains("not found"));
-
-    let mut broken = entry;
-    broken.url = Some(format!("{base}/broken"));
-    let err = reader
-        .list_items(&broken, &config)
-        .await
-        .expect_err("http status error");
-    assert!(err.contains("502"));
-
-    server.abort();
 }
 
 #[tokio::test]
@@ -610,19 +545,19 @@ fn composio_provider_registry_and_bus_subscribers_expose_stable_metadata() {
     let connection = ComposioConnectionCreatedSubscriber::new();
     let config_changed = ComposioConfigChangedSubscriber::new();
     assert_eq!(
-        openhuman_core::core::event_bus::EventHandler::name(&trigger),
+        tinybus::EventHandler::name(&trigger),
         "composio::trigger"
     );
     assert_eq!(
-        openhuman_core::core::event_bus::EventHandler::domains(&trigger),
+        tinybus::EventHandler::domains(&trigger),
         Some(&["composio"][..])
     );
     assert_eq!(
-        openhuman_core::core::event_bus::EventHandler::name(&connection),
+        tinybus::EventHandler::name(&connection),
         "composio::connection_created"
     );
     assert_eq!(
-        openhuman_core::core::event_bus::EventHandler::name(&config_changed),
+        tinybus::EventHandler::name(&config_changed),
         "composio::config_changed"
     );
 

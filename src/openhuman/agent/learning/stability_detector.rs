@@ -33,8 +33,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::core::event_bus;
-use crate::core::event_bus::DomainEvent;
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::learning::cache::FacetCache;
 use crate::openhuman::agent::learning::candidate::{
     self, CueFamily, FacetClass, LearningCandidate,
@@ -388,7 +388,7 @@ impl StabilityDetector {
         );
 
         // Step 8 — publish CacheRebuilt event.
-        event_bus::publish_global(DomainEvent::CacheRebuilt {
+        BUS.publish(DomainEvent::CacheRebuilt {
             added,
             evicted,
             kept,
@@ -586,7 +586,9 @@ mod tests {
     fn make_detector() -> StabilityDetector {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(PROFILE_INIT_SQL).unwrap();
-        let cache = FacetCache::new(Arc::new(Mutex::new(conn)));
+        let cache = FacetCache::new(crate::openhuman::memory::store::ProfileStore::for_tests(
+            Arc::new(Mutex::new(conn)),
+        ));
         // Use a private buffer so tests don't interfere with the global singleton.
         let buffer: &'static Buffer = Box::leak(Box::new(Buffer::new(256)));
         StabilityDetector { cache, buffer }

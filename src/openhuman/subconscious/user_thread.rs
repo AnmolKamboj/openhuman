@@ -18,9 +18,10 @@ use async_trait::async_trait;
 use serde_json::json;
 use tracing::{info, warn};
 
-use crate::core::event_bus::{publish_global, DomainEvent};
-use crate::openhuman::memory::conversations::ConversationMessage;
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolCategory, ToolResult, ToolScope};
+use tinycortex::memory::conversations::ConversationMessage;
 
 /// Reserved conversation thread for agent↔user communication, distinct from
 /// the orchestrator's internal reasoning thread.
@@ -47,15 +48,13 @@ pub fn notify_user(workspace_dir: std::path::PathBuf, message: &str, subject: Op
     // `append_message` requires the thread to exist; create the reserved
     // user-facing thread lazily (idempotent).
     super::session::ensure_reserved_thread(&workspace_dir, USER_THREAD_ID, "Subconscious → You");
-    if let Err(err) = crate::openhuman::memory::conversations::append_message(
-        workspace_dir,
-        USER_THREAD_ID,
-        record,
-    ) {
+    if let Err(err) =
+        tinycortex::memory::conversations::append_message(workspace_dir, USER_THREAD_ID, record)
+    {
         warn!("[subconscious::user_thread] persist notify_user message failed: {err}");
     }
 
-    publish_global(DomainEvent::ProactiveMessageRequested {
+    BUS.publish(DomainEvent::ProactiveMessageRequested {
         source: SUBCONSCIOUS_PROACTIVE_SOURCE.to_string(),
         message: message.to_string(),
         job_name: subject.map(|s| s.to_string()),

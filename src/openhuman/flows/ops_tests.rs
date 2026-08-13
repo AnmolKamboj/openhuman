@@ -1588,6 +1588,7 @@ async fn flows_delete_clears_flow_memory_namespace() {
 
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
+    crate::openhuman::memory::host_impls::install_for_tests();
 
     // A directly-constructed `MemoryClient`, injected via `flows_delete_impl`
     // below, instead of `memory::global` — that singleton is a single
@@ -2954,11 +2955,11 @@ async fn flows_run_does_not_notify_when_run_completes_without_pending_approvals(
 /// of waiting for the (up to 610s) blocking RPC to resolve.
 #[tokio::test]
 async fn flows_run_publishes_flow_run_started_with_flow_and_run_id() {
-    use crate::core::event_bus::{
-        init_global, subscribe_global, DomainEvent, EventHandler, DEFAULT_CAPACITY,
-    };
+    use crate::core::bus::BUS;
+    use crate::core::events::DomainEvent;
     use async_trait::async_trait;
     use std::sync::Mutex as StdMutex;
+    use tinybus::EventHandler;
 
     #[derive(Default)]
     struct Collector {
@@ -2966,7 +2967,7 @@ async fn flows_run_publishes_flow_run_started_with_flow_and_run_id() {
     }
 
     #[async_trait]
-    impl EventHandler for Collector {
+    impl EventHandler<DomainEvent> for Collector {
         fn name(&self) -> &str {
             "test::flows::ops::flow_run_started_collector"
         }
@@ -2983,12 +2984,12 @@ async fn flows_run_publishes_flow_run_started_with_flow_and_run_id() {
         }
     }
 
-    init_global(DEFAULT_CAPACITY);
+    crate::core::bus::init().await.expect("bus init");
     let events: Arc<StdMutex<Vec<(String, String)>>> = Arc::new(StdMutex::new(Vec::new()));
     let collector = Arc::new(Collector {
         events: Arc::clone(&events),
     });
-    let _handle = subscribe_global(collector).expect("bus subscriber installed");
+    let _handle = BUS.subscribe(collector).expect("bus subscriber installed");
 
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
@@ -3042,11 +3043,11 @@ async fn flows_run_publishes_flow_run_started_with_flow_and_run_id() {
 /// carrying the final `"completed"` status, not `"pending_approval"`.
 #[tokio::test]
 async fn flows_run_finished_event_skips_pending_approval_and_fires_once_on_resume() {
-    use crate::core::event_bus::{
-        init_global, subscribe_global, DomainEvent, EventHandler, DEFAULT_CAPACITY,
-    };
+    use crate::core::bus::BUS;
+    use crate::core::events::DomainEvent;
     use async_trait::async_trait;
     use std::sync::Mutex as StdMutex;
+    use tinybus::EventHandler;
 
     #[derive(Default)]
     struct Collector {
@@ -3054,7 +3055,7 @@ async fn flows_run_finished_event_skips_pending_approval_and_fires_once_on_resum
     }
 
     #[async_trait]
-    impl EventHandler for Collector {
+    impl EventHandler<DomainEvent> for Collector {
         fn name(&self) -> &str {
             "test::flows::ops::flow_run_finished_pending_approval_collector"
         }
@@ -3076,12 +3077,12 @@ async fn flows_run_finished_event_skips_pending_approval_and_fires_once_on_resum
         }
     }
 
-    init_global(DEFAULT_CAPACITY);
+    crate::core::bus::init().await.expect("bus init");
     let events: Arc<StdMutex<Vec<(String, String, String)>>> = Arc::new(StdMutex::new(Vec::new()));
     let collector = Arc::new(Collector {
         events: Arc::clone(&events),
     });
-    let _handle = subscribe_global(collector).expect("bus subscriber installed");
+    let _handle = BUS.subscribe(collector).expect("bus subscriber installed");
 
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);

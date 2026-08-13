@@ -1,4 +1,4 @@
-use crate::core::event_bus::request_native_global;
+use crate::core::bus::BUS;
 use crate::openhuman::channels::whatsapp_data::methods;
 use crate::openhuman::channels::whatsapp_data::tools::{is_handler_absent, UNAVAILABLE_NOTE};
 use crate::openhuman::channels::whatsapp_data::types::{SearchMessagesRequest, WhatsAppMessage};
@@ -69,7 +69,7 @@ impl Tool for WhatsAppDataSearchMessagesTool {
             req.query.len(),
         );
         let messages: Vec<WhatsAppMessage> =
-            match request_native_global(methods::SEARCH_MESSAGES, req).await {
+            match BUS.native().request(methods::SEARCH_MESSAGES, req).await {
                 Ok(messages) => messages,
                 Err(e) if is_handler_absent(&e) => {
                     log::debug!(

@@ -298,12 +298,10 @@ pub async fn invoke_method(state: AppState, method: &str, params: Value) -> Resu
             // `scheduler_gate::set_signed_out(false)`. Duplicating that check
             // here would pull a domain concern into the transport layer and would
             // add an extra config-load round-trip on every 401.
-            crate::core::event_bus::publish_global(
-                crate::core::event_bus::DomainEvent::SessionExpired {
-                    source: format!("jsonrpc.invoke_method:{method}"),
-                    reason: sanitized_reason,
-                },
-            );
+            crate::core::bus::BUS.publish(crate::core::events::DomainEvent::SessionExpired {
+                source: format!("jsonrpc.invoke_method:{method}"),
+                reason: sanitized_reason,
+            });
         } else if is_unconfirmed_unauthorized_error(msg) {
             log::info!(
                 "[jsonrpc] unconfirmed unauthorized error for method='{}' (not session expiry) — leaving session intact: {}",
@@ -1631,7 +1629,7 @@ async fn domain_events_handler(headers: axum::http::HeaderMap) -> Response {
             .into_response();
     }
 
-    let bus = match crate::core::event_bus::global() {
+    let bus = match crate::core::bus::BUS.get() {
         Some(bus) => bus,
         None => {
             log::warn!("[events/domain] event bus not initialized");
@@ -1654,26 +1652,32 @@ async fn domain_events_handler(headers: axum::http::HeaderMap) -> Response {
         .unwrap_or_default(),
     );
 
-    let rx = bus.raw_receiver();
-    let event_stream = tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(
-        |item| -> Option<Result<Event, std::convert::Infallible>> {
-            let event = match item {
-                Ok(ev) => ev,
-                Err(_) => return None,
-            };
-            let domain = event.domain().to_string();
-            let event_name = event.variant_name();
-            let agent = event.agent_hint().unwrap_or("").to_string();
-            let data = json!({
-                "domain": domain,
-                "event": event_name,
-                "agent": agent,
-                "timestamp": chrono::Utc::now().format("%H:%M:%S").to_string(),
-            });
-            let data_str = serde_json::to_string(&data).ok()?;
-            Some(Ok(Event::default().event(domain).data(data_str)))
-        },
-    );
+    // `BroadcastStream` wraps a raw `broadcast::Receiver`; tinybus hands back a
+    // decoding receiver instead, so the stream is built by unfolding it. Lag is
+    // already handled inside `recv`, which is why there is no error arm to
+    // filter out any more.
+    let event_stream = futures::stream::unfold(bus.receiver(), |mut rx| async move {
+        rx.recv()
+            .await
+            .map(|event| (Ok::<_, std::convert::Infallible>(event), rx))
+    })
+    .filter_map(|item| -> Option<Result<Event, std::convert::Infallible>> {
+        let event = match item {
+            Ok(ev) => ev,
+            Err(_) => return None,
+        };
+        let domain = event.domain().to_string();
+        let event_name = event.variant_name();
+        let agent = event.agent_hint().unwrap_or("").to_string();
+        let data = json!({
+            "domain": domain,
+            "event": event_name,
+            "agent": agent,
+            "timestamp": chrono::Utc::now().format("%H:%M:%S").to_string(),
+        });
+        let data_str = serde_json::to_string(&data).ok()?;
+        Some(Ok(Event::default().event(domain).data(data_str)))
+    });
 
     let config_stream =
         futures::stream::once(async move { Ok::<_, std::convert::Infallible>(config_event) });
@@ -2090,7 +2094,7 @@ fn register_domain_subscribers(
         // Register the SessionExpired handler before any subscribers that might
         // publish 401-derived events, so the very first 401 is routed through
         // `clear_session` + the scheduler-gate override.
-        if let Some(handle) = crate::core::event_bus::subscribe_global(Arc::new(
+        if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
             crate::openhuman::security::credentials::bus::SessionExpiredSubscriber::new(),
         )) {
             std::mem::forget(handle);
@@ -2121,7 +2125,7 @@ fn register_domain_subscribers(
     // composio + task-sources (Integrations), and device tunnel (Security).
     if plan.skills {
         if group_first_time(DomainGroup::Skills) {
-            if let Some(handle) = crate::core::event_bus::subscribe_global(Arc::new(
+            if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
                 crate::openhuman::skills::webhooks::bus::WebhookRequestSubscriber::new(),
             )) {
                 std::mem::forget(handle);
@@ -2200,7 +2204,7 @@ fn register_domain_subscribers(
     #[cfg(feature = "channels")]
     if plan.channels {
         if group_first_time(DomainGroup::Channels) {
-            if let Some(handle) = crate::core::event_bus::subscribe_global(Arc::new(
+            if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
                 crate::openhuman::channels::bus::ChannelInboundSubscriber::new(),
             )) {
                 std::mem::forget(handle);
@@ -2234,7 +2238,7 @@ fn register_domain_subscribers(
     #[cfg(feature = "flows")]
     if plan.flows {
         if group_first_time(DomainGroup::Flows) {
-            if let Some(handle) = crate::core::event_bus::subscribe_global(Arc::new(
+            if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
                 crate::openhuman::flows::bus::FlowTriggerSubscriber::new(Arc::new(config.clone())),
             )) {
                 std::mem::forget(handle);
@@ -2251,7 +2255,7 @@ fn register_domain_subscribers(
             // block as the trigger subscriber above — that guard only returns
             // `true` once per process, so a second, separate call here would
             // never register.
-            if let Some(handle) = crate::core::event_bus::subscribe_global(Arc::new(
+            if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
                 crate::openhuman::flows::bus::FlowRunDigestSubscriber::new(Arc::new(
                     config.clone(),
                 )),
@@ -2273,7 +2277,7 @@ fn register_domain_subscribers(
             // two flows subscribers above — see the digest subscriber's
             // comment just above for why a second `group_first_time` guard
             // here would be redundant.
-            if let Some(handle) = crate::core::event_bus::subscribe_global(Arc::new(
+            if let Some(handle) = crate::core::bus::BUS.subscribe(Arc::new(
                 crate::openhuman::flows::bus::DedupCommitSubscriber::new(Arc::new(config.clone())),
             )) {
                 std::mem::forget(handle);
@@ -2297,7 +2301,7 @@ fn register_domain_subscribers(
             crate::openhuman::memory::conversations::register_conversation_persistence_subscriber(
                 workspace_dir.clone(),
             );
-            crate::openhuman::memory::sync_events::register_sync_stage_bridge(&config);
+            crate::openhuman::memory::sync_events_bridge::register_sync_stage_bridge(&config);
         }
     } else {
         log::debug!(
@@ -2394,7 +2398,7 @@ pub async fn bootstrap_core_runtime(
 
     // --- Event bus bootstrap ---
     // Ensure the global event bus is initialized (no-op if already done by start_channels).
-    crate::core::event_bus::init_global(crate::core::event_bus::DEFAULT_CAPACITY);
+    crate::core::bus::init().await.expect("bus init");
     let agent_enabled = domains.allows(crate::core::all::DomainGroup::Agent);
     if agent_enabled {
         crate::openhuman::agent::file_state::init_global();
@@ -2441,7 +2445,7 @@ pub async fn bootstrap_core_runtime(
     // the finalizer never settled it. Stamp such rows `interrupted` so they stop
     // rendering as perpetual "running" timeline entries on thread reopen.
     if agent_enabled {
-        match crate::openhuman::agent::session_db::run_ledger::interrupt_orphaned_agent_runs(&cfg) {
+        match tinyagents::session::run_ledger::interrupt_orphaned_agent_runs(&cfg.workspace_dir) {
             Ok(0) => {}
             Ok(count) => log::info!("[runtime] settled {count} orphaned agent run(s) on startup"),
             Err(err) => log::warn!("[runtime] failed to settle orphaned agent runs: {err}"),
@@ -2604,8 +2608,8 @@ pub async fn bootstrap_core_runtime(
              gate is always on for the Tauri host (host={})",
             host_kind.tag()
         );
-        crate::core::event_bus::publish_global(
-            crate::core::event_bus::DomainEvent::ApprovalGateOverrideIgnored {
+        crate::core::bus::BUS.publish(
+            crate::core::events::DomainEvent::ApprovalGateOverrideIgnored {
                 host: host_kind.tag().to_string(),
             },
         );
@@ -2652,12 +2656,10 @@ pub async fn bootstrap_core_runtime(
              Prompt-class external-effect tool calls run unprompted",
             host_kind.tag()
         );
-        crate::core::event_bus::publish_global(
-            crate::core::event_bus::DomainEvent::ApprovalGateDisabled {
-                host: host_kind.tag().to_string(),
-                reason: "env-override".to_string(),
-            },
-        );
+        crate::core::bus::BUS.publish(crate::core::events::DomainEvent::ApprovalGateDisabled {
+            host: host_kind.tag().to_string(),
+            reason: "env-override".to_string(),
+        });
     }
     // Artifact surface bridges DomainEvent::ArtifactReady/Failed onto the web
     // channel ("Files in this chat" panel + ArtifactCard updates). This is

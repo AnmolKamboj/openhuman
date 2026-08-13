@@ -5,7 +5,7 @@ use super::super::runtime::{
 };
 use super::super::{traits, Channel};
 use super::common::{use_real_agent_handler, NoopMemory, RecordingChannel, SlowModel};
-use crate::core::event_bus::{init_global, DomainEvent, DEFAULT_CAPACITY};
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::bus::{mock_agent_run_turn, AgentTurnRequest, AgentTurnResponse};
 use crate::openhuman::inference::provider;
 use std::collections::HashMap;
@@ -350,10 +350,11 @@ async fn dispatch_routes_through_agent_run_turn_bus_handler() {
 
 #[tokio::test]
 async fn channel_processed_event_records_resolved_agent_route() {
-    init_global(DEFAULT_CAPACITY);
-    let mut events = crate::core::event_bus::global()
+    crate::core::bus::init().await.expect("bus init");
+    let mut events = crate::core::bus::BUS
+        .get()
         .expect("event bus should be initialized")
-        .raw_receiver();
+        .receiver();
 
     let _bus_guard = mock_agent_run_turn(move |_req| async move {
         Ok(AgentTurnResponse::with_resolved_route(
@@ -421,13 +422,7 @@ async fn channel_processed_event_records_resolved_agent_route() {
         let event = tokio::time::timeout(Duration::from_millis(200), events.recv())
             .await
             .expect("ChannelMessageProcessed event should be published");
-        let event = match event {
-            Ok(event) => event,
-            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                panic!("event receiver should stay open")
-            }
-        };
+        let event = event.expect("the bus closed before the expected event arrived");
 
         if let DomainEvent::ChannelMessageProcessed {
             message_id,

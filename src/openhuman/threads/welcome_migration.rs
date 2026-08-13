@@ -18,8 +18,8 @@
 use std::fs;
 use std::path::Path;
 
-use crate::openhuman::memory::conversations;
 use serde_json::{json, Value};
+use tinycortex::memory::conversations;
 
 const MIGRATION_MARKER: &str = "state/migrations/welcome_to_orchestrator_v1.done";
 const WELCOME_THREAD_LABEL: &str = "onboarding";
@@ -398,10 +398,10 @@ fn write_marker(marker: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openhuman::memory::conversations::{
+    use tempfile::TempDir;
+    use tinycortex::memory::conversations::{
         ensure_thread, list_threads, CreateConversationThread,
     };
-    use tempfile::TempDir;
 
     fn make_thread(id: &str, labels: Vec<String>) -> CreateConversationThread {
         CreateConversationThread {

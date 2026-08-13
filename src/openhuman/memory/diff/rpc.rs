@@ -9,7 +9,7 @@ use crate::rpc::RpcOutcome;
 use tinycortex::memory::diff::Ledger;
 
 use super::ops;
-use super::types::*;
+use tinycortex::memory::diff::types::*;
 
 // ── Request / Response types ──────────────────────────────────────────
 
@@ -163,17 +163,9 @@ pub async fn list_snapshots_rpc(
         req.source_id, req.limit
     );
     let config = config_rpc::load_config_with_timeout().await?;
-    let workspace_dir = config.workspace_dir.clone();
     let limit = req.limit.unwrap_or(50) as u32;
-    let source_id = req.source_id;
 
-    let snapshots = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<Snapshot>> {
-        let ledger = Ledger::open(&workspace_dir)?;
-        ledger.list_snapshots(source_id.as_deref(), limit)
-    })
-    .await
-    .map_err(|e| format!("list_snapshots join: {e}"))?
-    .map_err(|e: anyhow::Error| format!("list_snapshots: {e:#}"))?;
+    let snapshots = ops::list_snapshots(&config, req.source_id.as_deref(), limit).await?;
 
     debug!(
         "[memory_diff][rpc] list_snapshots returned {} snapshots",

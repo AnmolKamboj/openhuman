@@ -9,11 +9,13 @@ use async_trait::async_trait;
 use chrono::Utc;
 use serde_json::json;
 
-use crate::core::event_bus::{DomainEvent, EventHandler, SubscriptionHandle};
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 use tinychannels::context::conversation_history_key;
 use tinychannels::ChannelMessage;
 
-use super::{
+use tinycortex::memory::conversations::{
     append_message, ensure_thread, get_messages, ConversationMessage, CreateConversationThread,
 };
 
@@ -42,9 +44,9 @@ pub fn register_conversation_persistence_subscriber(workspace_dir: PathBuf) {
         return;
     }
 
-    match crate::core::event_bus::subscribe_global(Arc::new(
-        ConversationPersistenceSubscriber::new_shared(Arc::clone(workspace)),
-    )) {
+    match crate::core::bus::BUS.subscribe(Arc::new(ConversationPersistenceSubscriber::new_shared(
+        Arc::clone(workspace),
+    ))) {
         Some(handle) => {
             let _ = CONVERSATION_PERSISTENCE_HANDLE.set(handle);
         }
@@ -80,7 +82,7 @@ impl ConversationPersistenceSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for ConversationPersistenceSubscriber {
+impl EventHandler<DomainEvent> for ConversationPersistenceSubscriber {
     fn name(&self) -> &str {
         "memory::conversations::persistence"
     }
@@ -414,12 +416,16 @@ mod tests {
             })
             .await;
 
-        let threads = super::super::list_threads(temp.path().to_path_buf()).expect("threads");
+        let threads = tinycortex::memory::conversations::list_threads(temp.path().to_path_buf())
+            .expect("threads");
         assert_eq!(threads.len(), 1);
         assert_eq!(threads[0].id, "channel:slack_alice_general_thread:thread-1");
 
-        let messages = super::super::get_messages(temp.path().to_path_buf(), &threads[0].id)
-            .expect("messages");
+        let messages = tinycortex::memory::conversations::get_messages(
+            temp.path().to_path_buf(),
+            &threads[0].id,
+        )
+        .expect("messages");
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].id, "user:m1");
         assert_eq!(messages[0].sender, "user");
@@ -465,7 +471,8 @@ mod tests {
             })
             .await;
 
-        let threads = super::super::list_threads(temp.path().to_path_buf()).expect("threads");
+        let threads = tinycortex::memory::conversations::list_threads(temp.path().to_path_buf())
+            .expect("threads");
         assert_eq!(threads.len(), 1);
         assert_eq!(threads[0].id, "channel:telegram_alice_chat-1");
     }
@@ -489,9 +496,11 @@ mod tests {
         subscriber.handle(&event).await;
         subscriber.handle(&event).await;
 
-        let messages =
-            super::super::get_messages(temp.path().to_path_buf(), "channel:discord_alice_room-1")
-                .expect("messages");
+        let messages = tinycortex::memory::conversations::get_messages(
+            temp.path().to_path_buf(),
+            "channel:discord_alice_room-1",
+        )
+        .expect("messages");
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].id, "user:m1");
     }
@@ -544,9 +553,11 @@ mod tests {
             })
             .await;
 
-        let messages =
-            super::super::get_messages(temp.path().to_path_buf(), "channel:slack_bob_dev")
-                .expect("messages");
+        let messages = tinycortex::memory::conversations::get_messages(
+            temp.path().to_path_buf(),
+            "channel:slack_bob_dev",
+        )
+        .expect("messages");
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].id, "user:m1");
     }
@@ -573,7 +584,8 @@ mod tests {
             .await;
 
         // No thread should have been created in temp (the subscriber's workspace).
-        let threads = super::super::list_threads(temp.path().to_path_buf()).expect("threads");
+        let threads = tinycortex::memory::conversations::list_threads(temp.path().to_path_buf())
+            .expect("threads");
         assert!(
             threads.is_empty(),
             "stale-workspace event must not create a thread"
@@ -618,9 +630,11 @@ mod tests {
             })
             .await;
 
-        let messages =
-            super::super::get_messages(temp.path().to_path_buf(), "channel:slack_alice_general")
-                .expect("messages");
+        let messages = tinycortex::memory::conversations::get_messages(
+            temp.path().to_path_buf(),
+            "channel:slack_alice_general",
+        )
+        .expect("messages");
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[1].id, "assistant:m1");
     }
@@ -666,9 +680,11 @@ mod tests {
             })
             .await;
 
-        let messages =
-            super::super::get_messages(temp.path().to_path_buf(), "channel:slack_alice_general")
-                .expect("messages");
+        let messages = tinycortex::memory::conversations::get_messages(
+            temp.path().to_path_buf(),
+            "channel:slack_alice_general",
+        )
+        .expect("messages");
         // Only the user turn should be present; the stale processed event must be dropped.
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].id, "user:m1");
@@ -736,7 +752,7 @@ mod tests {
             })
             .await;
 
-        let messages = super::super::get_messages(
+        let messages = tinycortex::memory::conversations::get_messages(
             workspace_a.path().to_path_buf(),
             "channel:telegram_alice_chat-1",
         )
@@ -776,7 +792,8 @@ mod tests {
                 .await;
         }
 
-        let threads = super::super::list_threads(temp.path().to_path_buf()).expect("threads");
+        let threads = tinycortex::memory::conversations::list_threads(temp.path().to_path_buf())
+            .expect("threads");
         assert!(
             threads.is_empty(),
             "no events from wrong workspaces should create a thread"
@@ -819,9 +836,11 @@ mod tests {
             })
             .await;
 
-        let messages =
-            super::super::get_messages(temp.path().to_path_buf(), "channel:slack_alice_general")
-                .expect("messages");
+        let messages = tinycortex::memory::conversations::get_messages(
+            temp.path().to_path_buf(),
+            "channel:slack_alice_general",
+        )
+        .expect("messages");
         assert_eq!(
             messages.len(),
             1,

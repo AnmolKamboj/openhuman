@@ -2,7 +2,7 @@
 //!
 //! The read-only projection in [`super::ops`] shows what background agent work
 //! is in flight; these verbs let a reviewer *act* on a single row. Each verb is
-//! a durable transition on the run ledger (`session_db::run_ledger`):
+//! a durable transition on the run ledger (`tinyagents::session::run_ledger`):
 //!
 //! - **stop** — cancel a non-terminal run (→ `cancelled`).
 //! - **retry** — re-queue a finished-with-error run (`failed` / `cancelled` /
@@ -23,16 +23,16 @@
 //! unit-tested without a database, mirroring [`super::ops::build_view`].
 //!
 //! [`AgentOrchestrationSession`]: crate::openhuman::agent::orchestration::ops::AgentOrchestrationSession
-//! [`transition_agent_run_status`]: crate::openhuman::agent::session_db::run_ledger::transition_agent_run_status
+//! [`transition_agent_run_status`]: tinyagents::session::run_ledger::transition_agent_run_status
 
 use chrono::{DateTime, Utc};
 use serde_json::json;
 use thiserror::Error;
 
-use crate::openhuman::agent::session_db::run_ledger::{
+use crate::openhuman::config::Config;
+use tinyagents::session::run_ledger::{
     append_run_event, get_agent_run, transition_agent_run_status, AgentRunStatus, RunEventAppend,
 };
-use crate::openhuman::config::Config;
 
 use super::ops::project_row;
 use super::types::AgentWorkRow;
@@ -99,6 +99,18 @@ pub enum ControlError {
     /// A durable run-ledger read/write failed.
     #[error(transparent)]
     Storage(#[from] anyhow::Error),
+}
+
+/// Lets `?` carry a run-ledger failure straight into [`ControlError`].
+///
+/// The ledger lives in `tinyagents` and speaks `TinyAgentsError`, while this
+/// module's callers speak `anyhow`. Without this the `#[from] anyhow::Error`
+/// variant does not apply, because `TinyAgentsError` is a distinct type — so
+/// every ledger call in this file would need its own `map_err`.
+impl From<tinyagents::TinyAgentsError> for ControlError {
+    fn from(err: tinyagents::TinyAgentsError) -> Self {
+        Self::Storage(err.into())
+    }
 }
 
 /// The durable status a verb moves a run to, plus the event type to record.
@@ -205,7 +217,7 @@ pub fn apply_control(
         return Err(ControlError::MessageRequired(verb.as_str()));
     }
 
-    let run = get_agent_run(config, run_id)?
+    let run = get_agent_run(&config.workspace_dir, run_id)?
         .ok_or_else(|| ControlError::RunNotFound(run_id.to_string()))?;
     let from_status = run.status;
     let plan = plan_transition(from_status, verb)?;
@@ -222,7 +234,7 @@ pub fn apply_control(
     };
 
     let updated = transition_agent_run_status(
-        config,
+        &config.workspace_dir,
         run_id,
         plan.target_status,
         next_error.as_deref(),
@@ -232,7 +244,7 @@ pub fn apply_control(
 
     // Record the action on the run's durable timeline.
     append_run_event(
-        config,
+        &config.workspace_dir,
         RunEventAppend {
             run_id: run_id.to_string(),
             event_type: plan.event_type.to_string(),
@@ -259,11 +271,11 @@ pub fn apply_control(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openhuman::agent::session_db::run_ledger::{
-        list_recent_run_events, upsert_agent_run, AgentRunKind, AgentRunUpsert, RunEventListRequest,
-    };
     use serde_json::json;
     use tempfile::TempDir;
+    use tinyagents::session::run_ledger::{
+        list_recent_run_events, upsert_agent_run, AgentRunKind, AgentRunUpsert, RunEventListRequest,
+    };
 
     fn test_config(dir: &TempDir) -> Config {
         let mut config = Config::default();
@@ -274,7 +286,7 @@ mod tests {
 
     fn seed_run(config: &Config, id: &str, status: AgentRunStatus) {
         upsert_agent_run(
-            config,
+            &config.workspace_dir,
             AgentRunUpsert {
                 id: id.to_string(),
                 kind: AgentRunKind::Subagent,
@@ -426,7 +438,7 @@ mod tests {
         assert_eq!(row.error.as_deref(), Some("manual"));
 
         let events = list_recent_run_events(
-            &config,
+            &config.workspace_dir,
             &RunEventListRequest {
                 run_id: "run-1".into(),
                 after_sequence: None,
@@ -480,7 +492,9 @@ mod tests {
             apply_control(&config, "run-1", ControlVerb::Continue, Some("   "), None).unwrap_err();
         assert!(matches!(err, ControlError::MessageRequired("continue")));
         // Status untouched.
-        let run = get_agent_run(&config, "run-1").unwrap().unwrap();
+        let run = get_agent_run(&config.workspace_dir, "run-1")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.status, AgentRunStatus::AwaitingUser);
     }
 
@@ -501,7 +515,7 @@ mod tests {
         assert_eq!(row.status, "completed");
 
         let events = list_recent_run_events(
-            &config,
+            &config.workspace_dir,
             &RunEventListRequest {
                 run_id: "run-1".into(),
                 after_sequence: None,

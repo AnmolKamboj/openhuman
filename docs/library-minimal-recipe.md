@@ -19,8 +19,9 @@ GGML_NATIVE=OFF cargo build --release \
   --no-default-features --features "skills,flows"
 ```
 
-- `GGML_NATIVE=OFF` is the Apple-Silicon dev workaround for whisper-rs/llama; on
-  the x86-64 Linux target it is unnecessary (the always-on whisper build uses the
+- `GGML_NATIVE=OFF` was the Apple-Silicon dev workaround for whisper-rs/llama.
+  With whisper deleted it only matters for llama; on the x86-64 Linux target it
+  is unnecessary anyway (the historical always-on whisper build used the
   AVX path). Keep it in the command for macOS developers.
 - To build the profiling harness against the same recipe, add the dev-only
   `rss-bench` feature and the two bench bins:
@@ -36,35 +37,35 @@ There is **no** `library-minimal` meta-feature in `Cargo.toml`, on purpose — s
 
 ## Keep / drop table
 
-`default = ["tokenjuice-treesitter","voice","web3","media","meet","skills","flows","mcp","desktop-automation","tui"]`
+The single `default` list this session was written against no longer exists.
+There are two sets now (AGENTS.md, "Compile-time domain gates"): **Contrib** is
+`[features] default`, what a bare `cargo check` compiles; **Product** is
+`scripts/ci/product-features.txt`, what the desktop app ships. Both columns
+below are current. `desktop-automation` has since been removed from the tree
+altogether, hence the dashes; `tui` is in neither set.
 
-| Gate | Default | Decision | Why | Deps shed |
-| --- | :---: | :---: | --- | --- |
-| `skills` | ON | **KEEP** | python/js `SKILL.md` execution is a stated opencompany use case | none (surface/prompt/startup only) |
-| `flows` | ON | **KEEP** | saved-workflow (`flows_create`+`flows_run`) runs are a stated use case | — (adds `tinyflows`, `jaq-*`, `rhai`; see cost note) |
-| `tokenjuice-treesitter` | ON | **DROP** | AST-aware code compression → gracefully falls back to the brace-depth heuristic. Functional, only compression *quality* degrades. | tree-sitter Rust/TS/Python grammars + their C build |
-| `voice` | ON | **DROP** | STT/TTS/dictation/podcast — a headless host does no audio I/O | `hound`, `lettre` |
-| `web3` | ON | **DROP** | crypto wallet / swap / x402 machine payments — not an opencompany path | `bitcoin`, `curve25519-dalek` |
-| `media` | ON | **DROP** | `media_generate_*` image/video tools — surface-only | none (backend-proxied) |
-| `meet` | ON | **DROP** | Google-Meet join/live-STT/TTS bot — no headless use | none |
-| `mcp` | ON | **DROP** | MCP stdio/HTTP server + Smithery registry (~20k LOC, ~19 tools) — a library host is not an MCP host | none (hand-rolled over tokio/reqwest/axum) |
-| `desktop-automation` | ON | **DROP** | AX / `computer` tool family drives a **local desktop UI** — meaningless headless | `uiautomation` |
-| `tui` | ON | **DROP** | `openhuman tui`/`chat` terminal UI — no terminal in a library host | `ratatui`, `crossterm`, `unicode-width` |
+Note how much of this recipe the contributor set already gives you for free —
+`voice`, `web3`, `meet` and `tui` are default-OFF today. The Decision column
+still records what a **library host** wants, which is the thing this document
+is actually for.
+
+| Gate | Contrib | Product | Decision | Why | Deps shed |
+| --- | :---: | :---: | :---: | --- | --- |
+| `skills` | ON | ON | **KEEP** | python/js `SKILL.md` execution is a stated opencompany use case | none (surface/prompt/startup only) |
+| `flows` | ON | ON | **KEEP** | saved-workflow (`flows_create`+`flows_run`) runs are a stated use case | — (adds `tinyflows`, `jaq-*`, `rhai`; see cost note) |
+| `voice` | OFF | ON | **DROP** | STT/TTS/dictation/podcast — a headless host does no audio I/O | `hound`, `lettre` |
+| `web3` | OFF | ON | **DROP** | crypto wallet / swap / x402 machine payments — not an opencompany path | `bitcoin`, `curve25519-dalek` |
+| `media` | ON | ON | **DROP** | `media_generate_*` image/video tools — surface-only | none (backend-proxied) |
+| `meet` | OFF | ON | **DROP** | Google-Meet join/live-STT/TTS bot — no headless use | none |
+| `mcp` | ON | ON | **DROP** | MCP stdio/HTTP server + Smithery registry (~20k LOC, ~19 tools) — a library host is not an MCP host | none (hand-rolled over tokio/reqwest/axum) |
+| `desktop-automation` | — | — | **DROP** | AX / `computer` tool family drives a **local desktop UI** — meaningless headless | `uiautomation` |
+| `tui` | OFF | — | **DROP** | `openhuman tui`/`chat` terminal UI — no terminal in a library host | `ratatui`, `crossterm`, `unicode-width` |
 
 **Non-default optional features** (`sandbox-landlock`, `sandbox-bubblewrap`,
 `peripheral-rpi`, `browser-native`/`fantoccini`, `landlock`, `whatsapp-web`,
 `e2e-test-support`, `rss-bench`, `rss-bench-dhat`) are all default-OFF, so a
 `--no-default-features` build never links them unless explicitly added. None are
 needed for opencompany; `rss-bench`/`rss-bench-dhat` are dev/benchmark-only.
-
-### On `tokenjuice-treesitter`
-
-This is the one judgment call. Dropping it removes the largest *native C build*
-in the domain gates (three tree-sitter grammars) and shrinks the binary, at the
-cost of coarser code-context compression (brace-depth heuristic instead of AST).
-For a memory/binary-minimal library host it is dropped here. **If token budget
-per agent turn matters more than binary size, add `tokenjuice-treesitter` back**
-— it sheds no runtime behavior beyond compression fidelity.
 
 ## Measured results
 
@@ -133,8 +134,8 @@ build-fact error:
   voice` returns "voice disabled".
 - **web3:** wallet / web3 / x402 controllers unregistered; swap/bridge/dapp agent
   tools absent; the x402 402-retry path returns unpaid; tinyplace on-chain
-  payments + Polymarket *writes* degrade to graceful "wallet disabled" errors
-  (tinyplace comms + ed25519 signing are unaffected).
+  payments degrade to graceful "wallet disabled" errors (tinyplace comms +
+  ed25519 signing are unaffected).
 - **media:** `media_generate_*` agent tools absent.
 - **meet:** meet controllers unregistered; live Meet bot / STT-LLM-TTS loop absent.
 - **mcp:** `mcp_server` / `mcp_registry` (`mcp_clients` namespace) / `mcp_audit`
@@ -146,8 +147,6 @@ build-fact error:
   / `desktop_companion` domains + the `computer` tool family (`ax_interact`,
   `automate`, mouse/keyboard) absent.
 - **tui:** `openhuman tui` / `chat` returns "tui feature disabled at compile time".
-- **tokenjuice-treesitter:** code compression falls back to the brace-depth
-  heuristic — degraded fidelity, not absent.
 
 Everything the opencompany use cases need remains: the agent harness + turn
 runner, subagent delegation (`spawn_parallel_agents`), the full memory stack
@@ -201,19 +200,16 @@ Largest remaining always-on costs a headless library host does not need. These
 are **not implemented here** — they require new gates/refactors — listed for
 prioritization.
 
-1. **`inference` gate → shed `whisper-rs` + `whisper-rs-sys` (+ `cpal`/`coreaudio`).**
-   `whisper-rs-sys` statically links the whisper.cpp + GGML C++ inference library
-   — the single largest always-on *native* chunk in the binary and the reason for
-   the `GGML_NATIVE=OFF` build dance. `cargo tree` confirms `whisper-rs 0.16` is a
-   **direct always-on dependency of `openhuman`** (not gated by `voice`, per the
-   AGENTS.md scope note), pulling `whisper-rs-sys 0.15`; `cpal 0.15` + `coreaudio`
-   ride alongside for audio capture. A headless library host does no local STT, so
-   an `inference` gate would shed all of this — the biggest remaining binary +
-   native-build win by far. Bonus: `cpal` is shared only with `accessibility`,
-   which `desktop-automation` (already dropped here) owns — so with this recipe,
-   `cpal` becomes sheddable the moment the inference gate lands.
-   *(No `llama`/`candle`/`tokenizers`/`onnx` crates appear in the recipe's tree, so
-   the local-LLM path is either already optional or absent — whisper is the target.)*
+1. ~~**`inference` gate → shed `whisper-rs` + `whisper-rs-sys` (+ `cpal`/`coreaudio`).**~~
+   **DONE, and better than proposed.** The bundled whisper.cpp STT engine was not
+   gated — it was **deleted**. `whisper-rs` / `whisper-rs-sys` (and the
+   `[patch.crates-io] whisper-rs-sys` fork entries in both Cargo worlds) are gone
+   from every build, not just the slim one, and with them the whisper.cpp + GGML
+   C++ static link that was the reason for the `GGML_NATIVE=OFF` build dance.
+   Speech-to-text is a hosted call now, with the engine chosen by
+   `voice_server.stt_engine` (see the AGENTS.md scope note). The `inference`
+   feature survives with a narrower job: it gates `cpal` alone, which is what a
+   headless library host wanted shed anyway.
 
 2. **Split `rhai` out of the `flows` gate.** `flows` is the most expensive domain
    we *keep* (+12.7 MiB, dominated by `rhai 1.25` — a full scripting engine).

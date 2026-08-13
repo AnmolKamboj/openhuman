@@ -1,5 +1,5 @@
 use super::*;
-use crate::core::event_bus::{global, init_global, DomainEvent};
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::dispatcher::XmlToolDispatcher;
 use crate::openhuman::agent::error::AgentError;
 use crate::openhuman::agent::messages::ChatMessage;
@@ -100,6 +100,9 @@ impl ChatModel<()> for PersistentErrModel {
 }
 
 fn make_agent(model: Arc<dyn ChatModel<()>>) -> Agent {
+    // The embedding seam fails loudly when unwired; before the memory
+    // extraction this was a direct call and needed no setup.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let workspace = tempfile::TempDir::new().expect("temp workspace");
     let workspace_path = workspace.path().to_path_buf();
     std::mem::forget(workspace);
@@ -205,65 +208,82 @@ fn sanitizers_and_tool_call_helpers_cover_fallback_paths() {
     assert_eq!(Agent::count_iterations(&history), 3);
 }
 
-#[tokio::test]
-async fn run_single_preserves_native_model_error_text() {
-    // Host-generated user-state errors remain typed and therefore retain the
-    // Sentry-suppression contract at their source.
-    let typed = anyhow!(AgentError::MaxIterationsExceeded { max: 8 });
-    assert!(matches!(
-        typed.downcast_ref::<AgentError>(),
-        Some(AgentError::MaxIterationsExceeded { max: 8 })
-    ));
-    assert_eq!(
-        Agent::sanitize_event_error_message(&typed),
-        "max_iterations_exceeded"
-    );
+#[test]
+fn run_single_preserves_native_model_error_text() {
+    std::thread::Builder::new()
+        .name("agent-runtime-error-test".into())
+        .stack_size(32 * 1024 * 1024)
+        .spawn(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("test runtime")
+                .block_on(async {
+                    // Host-generated user-state errors remain typed and therefore retain the
+                    // Sentry-suppression contract at their source.
+                    let typed = anyhow!(AgentError::MaxIterationsExceeded { max: 8 });
+                    assert!(matches!(
+                        typed.downcast_ref::<AgentError>(),
+                        Some(AgentError::MaxIterationsExceeded { max: 8 })
+                    ));
+                    assert_eq!(
+                        Agent::sanitize_event_error_message(&typed),
+                        "max_iterations_exceeded"
+                    );
 
-    // A crate-native model error crosses the TinyAgents boundary as its
-    // provider-neutral error type rather than a downcastable host error. Its
-    // user-visible text must still remain intact.
-    let _ = init_global(64);
+                    // A crate-native model error crosses the TinyAgents boundary as its
+                    // provider-neutral error type rather than a downcastable host error. Its
+                    // user-visible text must still remain intact.
+                    crate::core::bus::init().await.expect("bus init");
 
-    let err_provider: Arc<dyn ChatModel<()>> = Arc::new(PersistentErrModel {
-        kind: PersistentErrKind::MaxIterations { max: 8 },
-    });
-    let mut agent = make_agent(err_provider);
-    let err = agent
-        .run_single("hello")
-        .await
-        .expect_err("run_single should surface max-iter cap");
+                    let err_provider: Arc<dyn ChatModel<()>> = Arc::new(PersistentErrModel {
+                        kind: PersistentErrKind::MaxIterations { max: 8 },
+                    });
+                    let mut agent = make_agent(err_provider);
+                    let err = agent
+                        .run_single("hello")
+                        .await
+                        .expect_err("run_single should surface max-iter cap");
 
-    // The user-visible chat string MUST stay byte-identical — the UI
-    // (and `runtime_tool_calls.rs` channel test) reads this verbatim.
-    assert!(
-        err.to_string()
-            .contains("Agent exceeded maximum tool iterations"),
-        "canonical phrase missing: {err}"
-    );
+                    // The user-visible chat string MUST stay byte-identical — the UI
+                    // (and `runtime_tool_calls.rs` channel test) reads this verbatim.
+                    assert!(
+                        err.to_string()
+                            .contains("Agent exceeded maximum tool iterations"),
+                        "canonical phrase missing: {err}"
+                    );
 
-    assert!(
-        err.downcast_ref::<AgentError>().is_none(),
-        "model-boundary errors must not pretend to retain host types"
-    );
-    assert!(
-        Agent::sanitize_event_error_message(&err)
-            .contains("Agent exceeded maximum tool iterations"),
-        "native error text should survive sanitization: {err}"
-    );
+                    assert!(
+                        err.downcast_ref::<AgentError>().is_none(),
+                        "model-boundary errors must not pretend to retain host types"
+                    );
+                    assert!(
+                        Agent::sanitize_event_error_message(&err)
+                            .contains("Agent exceeded maximum tool iterations"),
+                        "native error text should survive sanitization: {err}"
+                    );
+                });
+        })
+        .expect("agent runtime test thread")
+        .join()
+        .expect("agent runtime test should not panic");
 }
 
 #[tokio::test]
 async fn run_single_publishes_completed_and_error_events() {
-    let _ = init_global(64);
+    crate::core::bus::init().await.expect("bus init");
     let events = Arc::new(AsyncMutex::new(Vec::<DomainEvent>::new()));
     let events_handler = Arc::clone(&events);
-    let _handle = global().unwrap().on("runtime-events-test", move |event| {
-        let events = Arc::clone(&events_handler);
-        let cloned = event.clone();
-        Box::pin(async move {
-            events.lock().await.push(cloned);
-        })
-    });
+    let _handle = crate::core::bus::BUS
+        .get()
+        .unwrap()
+        .on("runtime-events-test", move |event| {
+            let events = Arc::clone(&events_handler);
+            let cloned = event.clone();
+            Box::pin(async move {
+                events.lock().await.push(cloned);
+            })
+        });
 
     let ok_provider: Arc<dyn ChatModel<()>> = Arc::new(StaticModel {
         response: Mutex::new(Some(Ok(ChatResponse {

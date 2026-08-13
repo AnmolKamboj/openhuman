@@ -5,17 +5,20 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::openhuman::memory::store::{NamespaceDocumentInput, NamespaceRetrievalContext};
+use crate::openhuman::memory::api::provider::MemoryProvider;
+use crate::openhuman::memory::api::types::NamespaceDocumentInput;
+use crate::openhuman::memory::store::NamespaceRetrievalContext;
 use crate::openhuman::memory::{
     ApiEnvelope, DeleteDocumentRequest, DeleteDocumentResponse, EmptyRequest, ListDocumentsRequest,
-    ListDocumentsResponse, ListNamespacesResponse, MemoryIngestionConfig, MemoryIngestionRequest,
-    MemoryIngestionResult, MemoryInitRequest, MemoryInitResponse, MemoryRecallItem, PaginationMeta,
-    QueryNamespaceRequest, QueryNamespaceResponse, RecallContextRequest, RecallContextResponse,
-    RecallMemoriesRequest, RecallMemoriesResponse,
+    ListDocumentsResponse, ListNamespacesResponse, MemoryIngestionConfig, MemoryIngestionResult,
+    MemoryInitRequest, MemoryInitResponse, MemoryRecallItem, PaginationMeta, QueryNamespaceRequest,
+    QueryNamespaceResponse, RecallContextRequest, RecallContextResponse, RecallMemoriesRequest,
+    RecallMemoriesResponse,
 };
 use crate::rpc::RpcOutcome;
 
 use super::envelope::{envelope, error_envelope, memory_counts};
+use super::guard::active_memory_guard;
 use super::helpers::{
     active_memory_client, build_retrieval_context, current_workspace_dir,
     filter_hits_by_document_ids, format_llm_context_message, maybe_retrieval_context,
@@ -162,8 +165,14 @@ pub struct PutDocResult {
 
 /// Lists all namespaces in the memory system.
 pub async fn namespace_list() -> Result<RpcOutcome<Vec<String>>, String> {
-    let client = active_memory_client().await?;
-    let namespaces = client.list_namespaces().await?;
+    let guard = active_memory_guard().await?;
+    let documents = guard
+        .as_documents()
+        .ok_or_else(|| "memory driver does not support the documents family".to_string())?;
+    let namespaces = documents
+        .list_namespaces()
+        .await
+        .map_err(|error| error.to_string())?;
     Ok(RpcOutcome::single_log(
         namespaces,
         "memory namespaces listed",
@@ -171,10 +180,27 @@ pub async fn namespace_list() -> Result<RpcOutcome<Vec<String>>, String> {
 }
 
 /// Upserts a document into a namespace.
+///
+/// Routed through [`MemoryGuard`](crate::openhuman::memory::guard::MemoryGuard).
+/// `MemoryDocuments::put_document` on the embedded driver is
+/// `client.put_doc(input)` — deliberately the full pipeline, not the
+/// `put_doc_light` shortcut — so the store, the input type and the background
+/// graph-extraction enqueue are all unchanged. What the guard adds: the tier
+/// check, redaction (a byte-identical pass-through for an embedded driver), and
+/// taint stamping.
+///
+/// The `taint: Internal` literal below stays: the contract says the *caller*
+/// supplies provenance and the driver never assigns it. `GuardPolicy::stamp_taint`
+/// is a monotone raise over that value — it can promote this write to
+/// `ExternalSync` when the turn runs under a source scope, but it can never
+/// launder an `ExternalSync` caller down to `Internal`.
 pub async fn doc_put(params: PutDocParams) -> Result<RpcOutcome<PutDocResult>, String> {
-    let client = active_memory_client().await?;
-    let document_id = client
-        .put_doc(NamespaceDocumentInput {
+    let guard = active_memory_guard().await?;
+    let documents = guard
+        .as_documents()
+        .ok_or_else(|| "memory driver does not support the documents family".to_string())?;
+    let document_id = documents
+        .put_document(NamespaceDocumentInput {
             namespace: params.namespace,
             key: params.key,
             title: params.title,
@@ -189,9 +215,10 @@ pub async fn doc_put(params: PutDocParams) -> Result<RpcOutcome<PutDocResult>, S
             // RPC-driven doc puts come from the user / agent — Internal.
             // External-sync ingest paths bypass this RPC and call
             // `store_skill_sync` directly with their own taint label.
-            taint: crate::openhuman::memory::MemoryTaint::Internal,
+            taint: crate::openhuman::memory::api::types::MemoryTaint::Internal,
         })
-        .await?;
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(RpcOutcome::single_log(
         PutDocResult { document_id },
         "memory document upserted",
@@ -202,26 +229,48 @@ pub async fn doc_put(params: PutDocParams) -> Result<RpcOutcome<PutDocResult>, S
 pub async fn doc_ingest(
     params: IngestDocParams,
 ) -> Result<RpcOutcome<MemoryIngestionResult>, String> {
-    let client = active_memory_client().await?;
-    let result = client
-        .ingest_doc(MemoryIngestionRequest {
-            document: NamespaceDocumentInput {
-                namespace: params.namespace,
-                key: params.key,
-                title: params.title,
-                content: params.content,
-                source_type: params.source_type,
-                priority: params.priority,
-                tags: params.tags,
-                metadata: params.metadata,
-                category: params.category,
-                session_id: params.session_id,
-                document_id: params.document_id,
-                taint: crate::openhuman::memory::MemoryTaint::Internal,
-            },
-            config: params.config.unwrap_or_default(),
+    let guard = active_memory_guard().await?;
+    let documents = guard
+        .as_documents()
+        .ok_or_else(|| "memory driver does not support the documents family".to_string())?;
+    let namespace = params.namespace;
+    let tags = params.tags;
+    let document_id = documents
+        .put_document(NamespaceDocumentInput {
+            namespace: namespace.clone(),
+            key: params.key,
+            title: params.title,
+            content: params.content,
+            source_type: params.source_type,
+            priority: params.priority,
+            tags: tags.clone(),
+            metadata: params.metadata,
+            category: params.category,
+            session_id: params.session_id,
+            document_id: params.document_id,
+            taint: crate::openhuman::memory::api::types::MemoryTaint::Internal,
         })
-        .await?;
+        .await
+        .map_err(|error| error.to_string())?;
+    // Chunking and graph extraction are driver-owned behind `put_document`.
+    // The historical RPC response exposed the embedded engine's synchronous
+    // extraction details, which a module boundary cannot observe. Preserve the
+    // wire shape while reporting only the facts the host actually knows.
+    let _driver_owned_config = params.config;
+    let result = MemoryIngestionResult {
+        document_id,
+        namespace,
+        model_name: "driver-managed".to_string(),
+        extraction_mode: "driver-managed".to_string(),
+        chunk_count: 0,
+        entity_count: 0,
+        relation_count: 0,
+        preference_count: 0,
+        decision_count: 0,
+        tags,
+        entities: Vec::new(),
+        relations: Vec::new(),
+    };
     let msg = format!(
         "ingested document — {} entities, {} relations, {} chunks",
         result.entity_count, result.relation_count, result.chunk_count,
@@ -233,19 +282,27 @@ pub async fn doc_ingest(
 pub async fn doc_list(
     params: Option<NamespaceOnlyParams>,
 ) -> Result<RpcOutcome<serde_json::Value>, String> {
-    let client = active_memory_client().await?;
-    let docs = client
-        .list_documents(params.as_ref().map(|v| v.namespace.as_str()))
-        .await?;
+    let guard = active_memory_guard().await?;
+    let documents = guard
+        .as_documents()
+        .ok_or_else(|| "memory driver does not support the documents family".to_string())?;
+    let docs = documents
+        .list_documents(params.as_ref().map(|value| value.namespace.as_str()))
+        .await
+        .map_err(|error| error.to_string())?;
     Ok(RpcOutcome::single_log(docs, "memory documents listed"))
 }
 
 /// Deletes a document from a namespace.
 pub async fn doc_delete(params: DeleteDocParams) -> Result<RpcOutcome<serde_json::Value>, String> {
-    let client = active_memory_client().await?;
-    let result = client
+    let guard = active_memory_guard().await?;
+    let documents = guard
+        .as_documents()
+        .ok_or_else(|| "memory driver does not support the documents family".to_string())?;
+    let result = documents
         .delete_document(&params.namespace, &params.document_id)
-        .await?;
+        .await
+        .map_err(|error| error.to_string())?;
     Ok(RpcOutcome::single_log(result, "memory document deleted"))
 }
 
@@ -253,9 +310,15 @@ pub async fn doc_delete(params: DeleteDocParams) -> Result<RpcOutcome<serde_json
 pub async fn clear_namespace(
     params: ClearNamespaceParams,
 ) -> Result<RpcOutcome<ClearNamespaceResult>, String> {
-    let client = active_memory_client().await?;
+    let guard = active_memory_guard().await?;
+    let documents = guard
+        .as_documents()
+        .ok_or_else(|| "memory driver does not support the documents family".to_string())?;
     log::debug!("[memory] clear_namespace RPC invoked");
-    client.clear_namespace(&params.namespace).await?;
+    documents
+        .clear_namespace(&params.namespace)
+        .await
+        .map_err(|error| error.to_string())?;
     let msg = "memory namespace cleared".to_string();
     Ok(RpcOutcome::single_log(
         ClearNamespaceResult {
@@ -268,22 +331,38 @@ pub async fn clear_namespace(
 
 /// Queries a namespace for contextual information based on a natural language string.
 pub async fn context_query(params: QueryNamespaceParams) -> Result<RpcOutcome<String>, String> {
-    let client = active_memory_client().await?;
-    let result = client
-        .query_namespace(&params.namespace, &params.query, params.limit.unwrap_or(10))
-        .await?;
-    Ok(RpcOutcome::single_log(result, "memory context queried"))
+    let guard = active_memory_guard().await?;
+    let documents = guard
+        .as_documents()
+        .ok_or_else(|| "memory driver does not support the documents family".to_string())?;
+    let result = documents
+        .query_documents(
+            &params.namespace,
+            &params.query,
+            params.limit.unwrap_or(10) as usize,
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(RpcOutcome::single_log(
+        result.context_text,
+        "memory context queried",
+    ))
 }
 
 /// Recalls contextual information from a namespace without a specific query.
 pub async fn context_recall(
     params: RecallNamespaceParams,
 ) -> Result<RpcOutcome<Option<String>>, String> {
-    let client = active_memory_client().await?;
-    let result = client
-        .recall_namespace(&params.namespace, params.limit.unwrap_or(10))
-        .await?;
-    Ok(RpcOutcome::single_log(result, "memory context recalled"))
+    let guard = active_memory_guard().await?;
+    let documents = guard
+        .as_documents()
+        .ok_or_else(|| "memory driver does not support the documents family".to_string())?;
+    let result = documents
+        .recall_documents(&params.namespace, params.limit.unwrap_or(10) as usize)
+        .await
+        .map_err(|error| error.to_string())?;
+    let context = (!result.context_text.is_empty()).then_some(result.context_text);
+    Ok(RpcOutcome::single_log(context, "memory context recalled"))
 }
 
 // ---------------------------------------------------------------------------
@@ -317,8 +396,14 @@ pub async fn memory_init(
 pub async fn memory_list_documents(
     request: ListDocumentsRequest,
 ) -> Result<RpcOutcome<ApiEnvelope<ListDocumentsResponse>>, String> {
-    let client = active_memory_client().await?;
-    let raw = client.list_documents(request.namespace.as_deref()).await?;
+    let guard = active_memory_guard().await?;
+    let documents = guard
+        .as_documents()
+        .ok_or_else(|| "memory driver does not support the documents family".to_string())?;
+    let raw = documents
+        .list_documents(request.namespace.as_deref())
+        .await
+        .map_err(|error| error.to_string())?;
     let documents = parse_memory_document_summaries(raw)?;
     let count = documents.len();
     Ok(envelope(
@@ -340,8 +425,14 @@ pub async fn memory_list_documents(
 pub async fn memory_list_namespaces(
     _request: EmptyRequest,
 ) -> Result<RpcOutcome<ApiEnvelope<ListNamespacesResponse>>, String> {
-    let client = active_memory_client().await?;
-    let namespaces = client.list_namespaces().await?;
+    let guard = active_memory_guard().await?;
+    let documents = guard
+        .as_documents()
+        .ok_or_else(|| "memory driver does not support the documents family".to_string())?;
+    let namespaces = documents
+        .list_namespaces()
+        .await
+        .map_err(|error| error.to_string())?;
     let count = namespaces.len();
     Ok(envelope(
         ListNamespacesResponse { namespaces, count },
@@ -354,10 +445,14 @@ pub async fn memory_list_namespaces(
 pub async fn memory_delete_document(
     request: DeleteDocumentRequest,
 ) -> Result<RpcOutcome<ApiEnvelope<DeleteDocumentResponse>>, String> {
-    let client = active_memory_client().await?;
-    let raw = client
+    let guard = active_memory_guard().await?;
+    let documents = guard
+        .as_documents()
+        .ok_or_else(|| "memory driver does not support the documents family".to_string())?;
+    let raw = documents
         .delete_document(&request.namespace, &request.document_id)
-        .await?;
+        .await
+        .map_err(|error| error.to_string())?;
     let parsed: RawDeleteDocumentResult =
         serde_json::from_value(raw).map_err(|e| format!("decode delete document result: {e}"))?;
     Ok(envelope(
@@ -754,5 +849,104 @@ mod tests {
         .expect("memory_list_documents after clear");
         let after_data = listed_after.value.data.expect("after clear data");
         assert_eq!(after_data.count, 0);
+    }
+
+    /// Same store property as `kv_set_through_the_guard_…`: the guarded
+    /// `doc_put` must be readable through the module-backed memory API, not
+    /// merely by the sibling handler.
+    ///
+    /// The taint half of this re-point is not asserted here because no read
+    /// path in `MemoryClient` projects the stored taint column back out.
+    /// `GuardPolicy::stamp_taint`'s monotone-raise behaviour is pinned in
+    /// `memory::guard::policy_tests` instead.
+    #[tokio::test]
+    async fn doc_put_through_the_guard_is_visible_to_the_memory_api() {
+        let _serial = crate::openhuman::memory::ops::GLOBAL_MEMORY_TEST_LOCK
+            .lock()
+            .await;
+        let _env = ensure_memory_client();
+        let namespace = unique_namespace("memory-docs-guard");
+        let key = format!(
+            "guarded{}",
+            &uuid::Uuid::new_v4().as_simple().to_string()[..12]
+        );
+
+        let put = doc_put(sample_put(
+            namespace.clone(),
+            key.clone(),
+            "Guarded write",
+            "This document was written through the memory guard.",
+        ))
+        .await
+        .expect("guarded doc_put");
+        assert!(!put.value.document_id.is_empty());
+
+        let guard = active_memory_guard().await.expect("guard");
+        let documents = guard.inner().as_documents().expect("documents family");
+        let raw = documents
+            .list_documents(Some(namespace.as_str()))
+            .await
+            .expect("module-backed list_documents");
+        let docs = raw
+            .get("documents")
+            .and_then(|v| v.as_array())
+            .expect("documents array");
+        assert!(
+            docs.iter().any(|doc| doc["key"] == key),
+            "the module-backed memory API must see the guarded write"
+        );
+    }
+
+    /// Pins the null-binding refusal for destructive document operations.
+    #[tokio::test]
+    async fn destructive_ops_refuse_when_bound_driver_is_null() {
+        let _serial = crate::openhuman::memory::ops::GLOBAL_MEMORY_TEST_LOCK
+            .lock()
+            .await;
+        let _env = ensure_memory_client();
+        let workspace = tempfile::tempdir().unwrap();
+        let null_cfg = crate::openhuman::config::schema::MemorySubsystemConfig {
+            driver: "null".into(),
+            ..Default::default()
+        };
+        let ctx = crate::core::runtime::context::CoreContext::for_test(
+            crate::core::runtime::DomainSet::full(),
+            Some(workspace.path().to_path_buf()),
+            Some(null_cfg),
+        );
+        crate::core::runtime::context::CoreContext::scope(ctx, async {
+            let err = clear_namespace(ClearNamespaceParams {
+                namespace: unique_namespace("null-driver"),
+            })
+            .await
+            .expect_err("clear_namespace must refuse under a null binding");
+            assert!(
+                err.contains("does not support the documents family"),
+                "refusal must explain the binding: {err}"
+            );
+
+            let err = doc_delete(DeleteDocParams {
+                namespace: unique_namespace("null-driver"),
+                document_id: "any".into(),
+            })
+            .await
+            .expect_err("doc_delete must refuse under a null binding");
+            assert!(
+                err.contains("does not support the documents family"),
+                "refusal must explain the binding: {err}"
+            );
+
+            let err = memory_delete_document(DeleteDocumentRequest {
+                namespace: unique_namespace("null-driver"),
+                document_id: "any".into(),
+            })
+            .await
+            .expect_err("memory_delete_document must refuse under a null binding");
+            assert!(
+                err.contains("does not support the documents family"),
+                "refusal must explain the binding: {err}"
+            );
+        })
+        .await;
     }
 }

@@ -339,6 +339,9 @@ impl PostTurnHook for RecordingHook {
 }
 
 fn make_agent(visible_tool_names: Option<HashSet<String>>) -> Agent {
+    // The embedding seam fails loudly when unwired; before the memory
+    // extraction this was a direct call and needed no setup.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let workspace = tempfile::TempDir::new().expect("temp workspace");
     let workspace_path = workspace.path().to_path_buf();
     std::mem::forget(workspace);
@@ -575,7 +578,7 @@ fn collect_tree_root_summaries_maps_namespace_body_and_timestamp() {
     // store tuple into the `NamespaceSummary` the prompt renderer stamps.
     use crate::openhuman::config::Config;
     use crate::openhuman::memory::tree::tree_runtime::store::write_node;
-    use crate::openhuman::memory::tree::tree_runtime::types::{
+    use tinycortex::memory::tree::runtime::{
         derive_parent_id, estimate_tokens, level_from_node_id, TreeNode,
     };
 
@@ -616,7 +619,7 @@ fn collect_tree_root_summaries_maps_namespace_body_and_timestamp() {
 fn collect_tree_root_summaries_reads_only_profile_memory_subtree() {
     use crate::openhuman::config::Config;
     use crate::openhuman::memory::tree::tree_runtime::store::write_node;
-    use crate::openhuman::memory::tree::tree_runtime::types::{
+    use tinycortex::memory::tree::runtime::{
         derive_parent_id, estimate_tokens, level_from_node_id, TreeNode,
     };
 
@@ -930,6 +933,9 @@ async fn turn_runs_full_tool_cycle_with_context_and_hooks() {
 
 #[tokio::test]
 async fn turn_triggers_configured_memory_agent_before_parent_prompt() {
+    // The embedding seam fails loudly when unwired; before the memory
+    // extraction this was a direct call and needed no setup.
+    crate::openhuman::memory::host_impls::install_for_tests();
     crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::init_global_builtins()
         .expect("built-in agent definitions should load");
     assert!(

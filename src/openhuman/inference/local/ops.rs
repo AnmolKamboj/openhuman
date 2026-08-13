@@ -72,6 +72,68 @@ fn enforce_user_prompt_or_reject(prompt: &str, source: &'static str) -> Result<(
     }
 }
 
+/// Resolve the per-turn `cwd` parameter into the directory the turn's tools
+/// should be rooted at.
+///
+/// `None` / empty / whitespace-only collapses to `None`, which keeps the turn on
+/// the configured `action_dir` exactly as before. A present value must name an
+/// existing directory: rooting an agent at a path that does not exist would give
+/// it a cwd every shell and file call fails against, so this rejects loudly
+/// instead. The path is canonicalized so symlinked and `..`-containing inputs
+/// compare equal to the paths the security policy derives from it.
+fn resolve_turn_cwd(cwd: Option<String>) -> Result<Option<std::path::PathBuf>, String> {
+    let Some(raw) = cwd else { return Ok(None) };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let path = std::path::Path::new(trimmed);
+    let canonical = std::fs::canonicalize(path)
+        .map_err(|e| format!("cwd '{trimmed}' is not accessible: {e}"))?;
+    if !canonical.is_dir() {
+        return Err(format!("cwd '{trimmed}' is not a directory"));
+    }
+    Ok(Some(canonical))
+}
+
+/// Grant `root` as a `ReadWrite` trusted root on a per-turn config clone.
+///
+/// Setting `action_dir` alone only moves where a *relative* path resolves; the
+/// allow/deny decision reads `workspace_dir` + `trusted_roots`, so without this
+/// grant an absolute path in `root` is refused by `workspace_only` and a
+/// relative one is refused as "escapes workspace". Idempotent: an entry the
+/// user already configured for the same path is left untouched so a `Read`-only
+/// grant is not silently widened by the presence of a `cwd`.
+///
+/// Only ever called on a *clone* of the config, on the `cwd`-present branch —
+/// the no-`cwd` path is untouched, and nothing process-global is mutated.
+fn grant_turn_cwd(config: &mut Config, root: &std::path::Path) {
+    let path = root.to_string_lossy().to_string();
+    if config.autonomy.trusted_roots.iter().any(|r| r.path == path) {
+        return;
+    }
+    config
+        .autonomy
+        .trusted_roots
+        .push(crate::openhuman::security::TrustedRoot {
+            path,
+            access: crate::openhuman::security::TrustedAccess::ReadWrite,
+        });
+}
+
+/// The origin label [`agent_chat`] scopes around its turn.
+///
+/// An ambient origin — scoped by an in-process embedder around its
+/// `invoke("openhuman.inference_agent_chat", …)` — is the caller's own,
+/// deliberate trust statement about the turn and is kept. Absent one, the
+/// historical [`AgentTurnOrigin::Cli`] label applies: this RPC is reached by
+/// trusted clients (desktop UI, operator CLI), and leaving it unlabelled would
+/// fail the approval gate closed on every external-effect tool.
+fn effective_agent_chat_origin() -> crate::openhuman::agent::turn_origin::AgentTurnOrigin {
+    crate::openhuman::agent::turn_origin::current()
+        .unwrap_or(crate::openhuman::agent::turn_origin::AgentTurnOrigin::Cli)
+}
+
 /// Executes a single chat turn with an AI agent.
 ///
 /// This function initializes an agent from the provided configuration and
@@ -83,12 +145,42 @@ fn enforce_user_prompt_or_reject(prompt: &str, source: &'static str) -> Result<(
 /// * `message` - The user message to process.
 /// * `model_override` - Optional model name to use for this call.
 /// * `temperature` - Optional sampling temperature override.
+/// * `cwd` - Optional per-turn working directory. When present and non-empty the
+///   agent's filesystem / shell tools are rooted there for this turn only: a
+///   relative path resolves inside it and an absolute path under it is
+///   permitted. Absent or empty behaves exactly as before (the configured
+///   `action_dir`). The override is applied to a *clone* of the config, so it
+///   never leaks into concurrent turns the way a process-global would.
+///
+/// # Errors
+///
+/// Returns an error when the prompt is rejected by the injection guard, when
+/// `cwd` names something that is not an accessible directory, or when building
+/// or running the agent fails.
+///
+/// # Progress
+///
+/// If the caller scoped a
+/// [`ProgressSink`](crate::openhuman::agent::progress_sink::ProgressSink) around
+/// the awaited future (see [`crate::agent_progress`]), it is attached to the
+/// agent built here, so an in-process embedder observes the turn's tool calls
+/// and deltas live instead of only its final string.
+///
+/// # Per-call inference route
+///
+/// `route` names an endpoint and bearer for this call alone. It is applied to
+/// `config` in memory before the agent is built — including before the `cwd`
+/// clone below, so a turn that is both rooted and routed gets both — and is
+/// never persisted. See
+/// [`ephemeral_route`](crate::openhuman::config::schema::ephemeral_route).
 pub async fn agent_chat(
     config: &mut Config,
     message: &str,
     model_override: Option<String>,
     temperature: Option<f64>,
     thread_id: Option<String>,
+    cwd: Option<String>,
+    route: Option<crate::openhuman::config::schema::EphemeralRoute>,
 ) -> Result<RpcOutcome<String>, String> {
     enforce_user_prompt_or_reject(message, "local_ai.ops.agent_chat")?;
 
@@ -101,12 +193,59 @@ pub async fn agent_chat(
     if let Some(temp) = temperature {
         config.default_temperature = temp;
     }
-    let mut agent = Agent::from_config(config).map_err(|e| e.to_string())?;
+    // After the model override, because the route pins its roles to
+    // `"<slug>:<model>"` and the model it uses is the one this call resolved.
+    // Before the `cwd` clone below, so a rooted turn is routed too.
+    if let Some(route) = route {
+        crate::openhuman::config::schema::ephemeral_route::apply(config, route);
+    }
+    let turn_cwd = resolve_turn_cwd(cwd)?;
+    let mut agent = match turn_cwd.as_ref() {
+        // Per-turn root. Building from a config clone whose `action_dir` is the
+        // requested directory is what makes this a *turn-scoped* override: the
+        // session's `SecurityPolicy`, its tool registry and the builder's
+        // `action_dir` are all derived from that one field, so they agree, and
+        // nothing process-global is mutated (unlike `live_policy::set_action_dir`,
+        // which would race concurrent turns).
+        Some(root) => {
+            let mut scoped = config.clone();
+            scoped.action_dir = root.clone();
+            // `action_dir` alone is inert for access control — grant the same
+            // root so the turn's tools may actually read and write in it.
+            grant_turn_cwd(&mut scoped, root);
+            log::debug!(
+                "[inference] agent_chat rooting turn tools at cwd={}",
+                root.display()
+            );
+            let mut agent = Agent::from_config(&scoped).map_err(|e| e.to_string())?;
+            // Also thread it as the turn's workspace descriptor so acting tools
+            // that read `ToolExecutionContext::workspace` (shell) resolve their
+            // default cwd here, and so spawned sub-agents inherit the same root.
+            agent.set_workspace_descriptor(Some(
+                tinyagents::harness::workspace::WorkspaceDescriptor::new(root.clone()),
+            ));
+            agent
+        }
+        None => Agent::from_config(config).map_err(|e| e.to_string())?,
+    };
+    // Live progress for in-process embedders. `Agent::from_config` never
+    // attaches a sink itself, so there is nothing to clobber here; callers that
+    // set one explicitly (web chat, platform socket, flows, skills) hold their
+    // own `Agent` and never reach this path — where both could apply, the
+    // explicitly-set sink wins because it is applied to the agent it owns.
+    if let Some(tx) = crate::openhuman::agent::progress_sink::current_progress_sink() {
+        agent.set_on_progress(Some(tx));
+    }
     // Direct `agent_chat` RPC — invoked by trusted clients (desktop UI,
     // operator CLI). Label as CLI so the approval gate doesn't fail
-    // closed on an unlabelled call site.
+    // closed on an unlabelled call site — *unless* the caller already scoped a
+    // more specific origin around this dispatch, which an in-process embedder
+    // can do (a workflow node labels its turn `TrustedAutomation::Workflow`).
+    // Overwriting that with `Cli` would silently discard the caller's own
+    // trust statement and hand every such turn the blanket CLI allowance
+    // instead of the narrower one it asked for.
     let run = crate::openhuman::agent::turn_origin::with_origin(
-        crate::openhuman::agent::turn_origin::AgentTurnOrigin::Cli,
+        effective_agent_chat_origin(),
         agent.run_single(message),
     );
     let response = match thread_id.as_deref() {

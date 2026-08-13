@@ -25,7 +25,7 @@ use crate::openhuman::agent::orchestration::parent_context::with_root_parent;
 use crate::openhuman::agent::turn_origin::TrustedAutomationSource;
 use crate::openhuman::config::schema::SubconsciousMode;
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::diff::types::CrossSourceDiff;
+use tinycortex::memory::diff::types::CrossSourceDiff;
 
 /// Per-tool-call timeout injected into the decision agent config.
 const TOOL_CALL_TIMEOUT_SECS: u64 = 5 * 60;
@@ -459,9 +459,9 @@ pub(crate) fn render_world_diff(diff: &CrossSourceDiff) -> String {
         ));
         for change in source.changes.iter().take(MAX_ITEMS_PER_SOURCE) {
             let verb = match change.kind {
-                crate::openhuman::memory::diff::types::ChangeKind::Added => "added",
-                crate::openhuman::memory::diff::types::ChangeKind::Removed => "removed",
-                crate::openhuman::memory::diff::types::ChangeKind::Modified => "modified",
+                tinycortex::memory::diff::types::ChangeKind::Added => "added",
+                tinycortex::memory::diff::types::ChangeKind::Removed => "removed",
+                tinycortex::memory::diff::types::ChangeKind::Modified => "modified",
             };
             let label = if change.title.trim().is_empty() {
                 change.item_id.as_str()

@@ -352,6 +352,7 @@ fn tool_response(value: &str) -> ModelResponse {
         raw: None,
         resolved_model: None,
         continue_turn: None,
+            served_from_cache: false,
     }
 }
 

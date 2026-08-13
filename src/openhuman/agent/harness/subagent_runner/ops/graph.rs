@@ -734,7 +734,7 @@ fn persist_failed_run(
     }
 }
 
-/// Append a worker-thread [`StoredMessage`](crate::openhuman::memory::conversations::ConversationMessage)
+/// Append a worker-thread [`StoredMessage`](tinycortex::memory::conversations::ConversationMessage)
 /// with the restored legacy [`SubagentObserver`] metadata (#4466): `scope`,
 /// `agent_id`, `task_id`, plus the per-message `iteration`, `final`, `mode`, and
 /// (for assistant tool rounds / tool results) `tool_calls` / `tool_call_id` /
@@ -750,9 +750,7 @@ fn append_worker_message(
     sender: &str,
     metadata: serde_json::Value,
 ) {
-    use crate::openhuman::memory::conversations::{
-        append_message, ConversationMessage as StoredMessage,
-    };
+    use tinycortex::memory::conversations::{append_message, ConversationMessage as StoredMessage};
     let mut extra = serde_json::json!({
         "scope": "worker_thread",
         "agent_id": agent_id,
@@ -1038,6 +1036,7 @@ mod tests {
             raw: None,
             resolved_model: None,
             continue_turn: None,
+            served_from_cache: false,
         }
     }
 

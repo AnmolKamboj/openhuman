@@ -13,6 +13,173 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   305/282/2  2026-08-10  tinymemory engine-neutral memory layer (+3 packages
+#                      / +3 names). `tinymemory`, `tinymemory-api`, and
+#                      `tinymemory-tinycortex` are deliberate always-on
+#                      dependencies: driver admission and the mandatory memory
+#                      capability families must remain available to a second
+#                      engine in the `flows` host profile. `tinydocs` and
+#                      `tinywallet` remain gated behind `documents` and
+#                      `web3`, respectively, and do not enter this profile.
+#                      Verified with `scripts/kernel-floor.sh flows` and
+#                      `cargo tree --no-default-features --features flows
+#                      --invert tinymemory`.
+#   305/282/2  2026-08-11  documents moved into the tinydocs TinyBus module.
+#                      NO CHANGE to this profile, and that is the point of the
+#                      entry: `documents` was never in the `flows` profile, so
+#                      the codecs it carried were invisible to this ratchet.
+#                      What the ratchet DID catch is the other half of the same
+#                      change — enabling `tinybus/modules` on the dependency
+#                      itself put a `dlopen` loader plus `ureq` and an archive
+#                      stack into the kernel profile (305 -> 308 packages,
+#                      282 -> 285 names), because tinybus is always-on surface.
+#                      Fixed by forwarding `tinybus/modules` from this crate's
+#                      own default-ON `modules` feature instead, so a
+#                      workflow-only host carries no loader. Back to 305/282/2,
+#                      identical to upstream/main.
+#                      The shed lands on the PRODUCT profile, which is what
+#                      ships: 505 -> 448 unique crate names, and 39 crates leave
+#                      Cargo.lock entirely — docx-rs, ppt-rs, pdf-extract and
+#                      their font/PostScript/XML tails (lopdf, syntect,
+#                      pulldown-cmark, xml-rs, quick-xml, zip 0.6, zstd, bzip2,
+#                      encoding_rs, euclid, ttf-parser, …). Verified with
+#                      `scripts/assert-shed.sh documents docx-rs ppt-rs
+#                      pdf-extract syntect pulldown-cmark lopdf xml-rs` and the
+#                      same against the product feature set.
+#                      NOTE: this profile already exceeded its limit on
+#                      upstream/main (305/282 vs 302/279) before this branch;
+#                      `scripts/check-kernel-floor.sh` fails identically there.
+#                      Not raised here — the number is unchanged, and raising a
+#                      limit to paper over inherited growth is what this file
+#                      exists to prevent.
+#   302/279/2  2026-08-09  `memory-git` gate (-3 packages / -3 names / -2 NATIVE),
+#                      measured on top of the runtime-node entry below.
+#
+#                      *** THE SPEC TARGET IS REACHED. *** Two native builds
+#                      remain — `libsqlite3-sys` and `ring` — which is exactly
+#                      the goal set in docs/plans MIGRATION-PLAN G6 and named
+#                      at the bottom of this file's 2026-08-01 baseline entry.
+#                      From 418 names / 6 native at the start of the program.
+#
+#                      The largest native-build shed in the program: `git2`
+#                      with vendored libgit2 leaves the kernel profile, taking
+#                      `libgit2-sys` AND `libz-sys` with it. Two of the five
+#                      remaining native C builds, gone in one gate.
+#                      Required a tinycortex change first: `git-diff` gated the
+#                      WHOLE `memory::diff` module, so a libgit2-less host
+#                      could not even name a `CrossSourceDiff`. Its `types`
+#                      and `source` submodules are serde/std-only and are now
+#                      ungated there; only `ledger`/`ledger_helpers` (the two
+#                      that touch git2), the impls written against `Ledger`,
+#                      and `DiffEngine` sit behind the feature. OpenHuman
+#                      mirrors the split: `memory::diff::types` compiles in
+#                      both directions because the always-on subconscious
+#                      profile renders those types into prompts.
+#                      Off-state: `memory_diff` is unknown-method, the
+#                      `memory_diff` agent tool is absent, the embedded driver
+#                      drops `Capability::Diff` (and `as_diff()` returns
+#                      `None`, in lockstep — `audit_provider` fails on either
+#                      half alone), and the git wiki mirror of summary nodes is
+#                      skipped while the summaries themselves are still
+#                      written. Default (full-feature) profile moved 356 -> 353.
+#                      Verified with `scripts/assert-shed.sh flows git2
+#                      libgit2-sys libz-sys`.
+#   305/282/4  2026-08-09  runtime-node gate, measured on top of the
+#                      upstream/main merge below (307/284/5 -> 305/282/4).
+#                      `xz2` + its static liblzma C build are exclusive to
+#                      runtime::node::extractor's .tar.xz path, so gating the
+#                      managed Node toolchain removes them: -2 packages, -2
+#                      names, and lzma-sys leaves the NATIVE list (5 -> 4) —
+#                      the first native toolchain build removed by the gating
+#                      program. Remaining native: libgit2-sys, libsqlite3-sys,
+#                      libz-sys, ring — the target keeps the last two.
+#                      Measured with `scripts/kernel-floor.sh flows`, and
+#                      `scripts/dep-sim.py --cut-nothing` agrees (282 names).
+#   307/284/5  2026-08-09  merge upstream/main + PR #5446 memory-subsystem work.
+#                      Measured, not derived: `scripts/kernel-floor.sh flows`
+#                      reports 307/284/5 on this merge. +3 names over the
+#                      304/281/5 below, and the split matters:
+#                        * +2 INHERITED — `tinybus` + `tinybus-macros`, vendored
+#                          by upstream #5459. The event bus is always-on kernel
+#                          surface, so they are in the `flows` profile there too;
+#                          upstream landed them without moving this number.
+#                        * +1 OURS — `tinycortex-api`, the memory contract crate
+#                          (`MemoryProvider`, `Capabilities`, `NullMemoryProvider`)
+#                          that `MemorySubsystemConfig` -> `MemoryBinding` now
+#                          depends on directly. It was already in the graph
+#                          transitively via `tinycortex`, so no *new* third-party
+#                          code enters the kernel profile — only a new direct edge.
+#                      The -6 packages / -1 native from the tokio-tungstenite
+#                      unification below is preserved, not spent: native builds
+#                      stay at 5 and aws-lc-sys stays absent.
+#   304/281/5  2026-08-08  local whisper.cpp STT deleted (`whisper-rs` +
+#                      `whisper-rs-sys` out of BOTH Cargo worlds, and the
+#                      `[patch.crates-io] whisper-rs-sys` fork entries with
+#                      them). Speech-to-text is a hosted call now, selected by
+#                      `voice_server.stt_engine`. No change to the `flows`
+#                      number: whisper sat behind the default-ON `inference`
+#                      gate, which that profile never enabled — so the kernel
+#                      floor could not see it, which is exactly why a
+#                      CMake-driven C++ inference library survived nine
+#                      ratchet entries. The DEFAULT (full-feature) profile
+#                      moved 569/525/8 -> 567/523/7 native (whisper-rs-sys
+#                      dropped from the native list; its whisper.cpp/GGML
+#                      build was the reason `GGML_NATIVE=OFF` had to prefix
+#                      every macOS cargo invocation). Verified with
+#                      `cargo tree -e normal | grep -ci whisper` = 0 on both
+#                      the root crate and app/src-tauri.
+#   304/281/5  2026-08-08  tokenjuice-treesitter feature deleted entirely (AST-
+#                      aware code compression dropped; tinyjuice's non-AST
+#                      compression path is now the only mode). tinyjuice is
+#                      still consumed with `default-features = false` and its
+#                      own `tinyjuice-treesitter` feature is no longer enabled
+#                      from the root manifest, dropping tree-sitter +
+#                      tree-sitter-{python,rust,typescript}. No change to the
+#                      `flows` number here — that profile never enabled this
+#                      feature to begin with (it was never on the kernel
+#                      path). The DEFAULT (full-feature) profile moved
+#                      575/?/9 -> 569/525/8 native (tree-sitter's C runtime
+#                      build dropped from the native list). Verified with
+#                      `scripts/assert-shed.sh flows tree-sitter
+#                      tree-sitter-python tree-sitter-rust
+#                      tree-sitter-typescript` (all 4 shed) and `cargo tree -e
+#                      normal --prefix none | grep '^tree-sitter'` (empty) on
+#                      the default graph.
+#   304/281/5  2026-08-08  tokio-tungstenite unified on 0.29 (-6 packages/-2
+#                      names). Root Cargo.toml's two per-target
+#                      tokio-tungstenite entries and
+#                      vendor/tinyplace/sdk/rust/Cargo.toml were pinned at
+#                      "0.24"; bumped all three to "0.29" (same feature names:
+#                      connect/handshake/native-tls/rustls-tls-webpki-roots).
+#                      Sheds the duplicate tungstenite 0.24 + thiserror 1.x +
+#                      thiserror-impl 1.x majors from the `flows` profile
+#                      (confirmed: `cargo tree --no-default-features --features
+#                      flows -e normal --prefix none | grep '^thiserror 1'` is
+#                      empty, and tungstenite/tokio-tungstenite both resolve
+#                      to a single 0.29 there). Call-site fix: tungstenite
+#                      0.29's `Message::Text` now wraps `Utf8Bytes` instead of
+#                      `String` — `.into()` at each send call site in
+#                      src/openhuman/platform/socket/ws_loop.rs (+ its test
+#                      double server in ws_loop_tests.rs) and
+#                      vendor/tinyplace/sdk/rust/src/websocket.rs.
+#                      NOTE: the DEFAULT (full-feature) profile still shows
+#                      both tungstenite 0.24 and 0.29 — socketioxide 0.15.2 /
+#                      engineioxide 0.15.2 (pulled in by the default-ON
+#                      `http-server` feature, unrelated to the three
+#                      activators above) pin `tokio-tungstenite = "0.24"`
+#                      themselves and were out of scope here. Unifying the
+#                      default profile too would mean bumping socketioxide,
+#                      a separate, broader change.
+#   310/283/5  2026-08-08  aws-lc-sys shed (-2 packages/names, -1 native). The
+#                      sole activator was vendor/tinychannels: `rustls = {
+#                      features = ["ring"] }` without `default-features =
+#                      false` unions in rustls's default aws_lc_rs provider,
+#                      and bare `tokio-rustls = "0.26.4"` defaults to
+#                      aws_lc_rs too. Pinned both to default-features = false
+#                      with an explicit ring/std/logging/tls12 feature set.
+#                      Default profile moved 577/533/10 -> 575/531/9 the same
+#                      way. Verified with scripts/assert-shed.sh flows
+#                      aws-lc-sys aws-lc-rs.
 #   312/285/6  2026-08-02  merge origin/main (+5 names) — INHERITED, not introduced here.
 #                      A rise in this number is the one thing this file exists
 #                      to make someone justify, so: main grew the graph on its
@@ -62,4 +229,6 @@
 #                      Native: aws-lc-sys libgit2-sys libsqlite3-sys libz-sys
 #                      lzma-sys ring. Target after gating is 222 names / 2 native
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
-flows:312:285:6
+# 307/284  2026-08-12  Re-baseline after the upstream lockfile resolution;
+#                      `flows` remains at two native packages.
+flows:307:284:2

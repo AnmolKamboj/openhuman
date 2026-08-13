@@ -116,6 +116,21 @@ embedding_strict = false
 async fn setup() -> Harness {
     ensure_rpc_auth();
 
+    // Memory-source RPC handlers invoke the extracted tinymemory host seams
+    // from background work. Production startup installs these before building
+    // the router; mirror that wiring in this standalone transport harness.
+    std::thread::Builder::new()
+        .name("worker-c-memory-seams".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| {
+            openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(Arc::new(
+                openhuman_core::openhuman::config::Config::default(),
+            ));
+        })
+        .expect("spawn worker-c memory seam installer")
+        .join()
+        .expect("worker-c memory seam installer panicked");
+
     let tmp = tempdir().expect("tempdir");
     let home = tmp.path();
     write_config(&home.join(".openhuman"));
@@ -1174,21 +1189,9 @@ async fn memory_sources_folder_web_and_rss_readers_sync_through_rpc() {
         json!({ "source_id": web_id, "item_id": web_item_id }),
     )
     .await;
-    let web_content = payload(&web_read, "memory_sources_read_item web")
-        .get("content")
-        .expect("web content");
-    assert_eq!(
-        web_content.get("title").and_then(Value::as_str),
-        Some("Worker C page")
-    );
-    let web_body = web_content
-        .get("body")
-        .and_then(Value::as_str)
-        .expect("web body");
-    assert!(web_body.contains("Selected coverage article"));
     assert!(
-        !web_body.contains("Navigation text"),
-        "selector extraction should not include nav text: {web_body}"
+        error_message(&web_read, "memory_sources_read_item web").contains("public host"),
+        "loopback web source must be rejected before fetching: {web_read}"
     );
 
     let rss = rpc(
@@ -1216,58 +1219,9 @@ async fn memory_sources_folder_web_and_rss_readers_sync_through_rpc() {
         json!({ "source_id": rss_id }),
     )
     .await;
-    let rss_items_payload = payload(&rss_items, "memory_sources_list_items rss")
-        .get("items")
-        .and_then(Value::as_array)
-        .expect("rss items");
-    assert_eq!(
-        rss_items_payload.len(),
-        1,
-        "max_items should limit RSS list"
-    );
-    assert_eq!(
-        rss_items_payload[0].get("id").and_then(Value::as_str),
-        Some("rss-worker-c-1")
-    );
-
-    let rss_read = rpc(
-        &harness.rpc_base,
-        309,
-        "openhuman.memory_sources_read_item",
-        json!({ "source_id": rss_id, "item_id": "rss-worker-c-1" }),
-    )
-    .await;
-    let rss_content = payload(&rss_read, "memory_sources_read_item rss")
-        .get("content")
-        .expect("rss content");
-    assert_eq!(
-        rss_content.get("title").and_then(Value::as_str),
-        Some("RSS first item")
-    );
-    assert!(rss_content
-        .get("body")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .contains("RSS body & decoded entity"));
-    assert_eq!(
-        rss_content
-            .pointer("/metadata/link")
-            .and_then(Value::as_str),
-        Some("https://example.test/rss/1")
-    );
-
-    let sync = rpc(
-        &harness.rpc_base,
-        310,
-        "openhuman.memory_sources_sync",
-        json!({ "source_id": rss_id }),
-    )
-    .await;
-    assert_eq!(
-        payload(&sync, "memory_sources_sync rss")
-            .get("requested")
-            .and_then(Value::as_bool),
-        Some(true)
+    assert!(
+        error_message(&rss_items, "memory_sources_list_items rss").contains("public host"),
+        "loopback RSS source must be rejected before fetching: {rss_items}"
     );
 
     fixture_join.abort();

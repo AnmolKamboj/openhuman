@@ -287,6 +287,111 @@ fn client_for(base: String) -> IntegrationClient {
     IntegrationClient::new(base, "test-token".into())
 }
 
+/// The `x-sdk-name` each of `IntegrationClient`'s two transports sent.
+///
+/// The verb methods go out through the SDK and are tagged. `get_bytes` drives
+/// the separate `download_client`, which deliberately is NOT tagged: it follows
+/// a 302 to presigned S3 storage, and reqwest preserves non-sensitive headers
+/// across a cross-host redirect, so tagging it would hand the product identity
+/// to the storage provider. Two independent transports with deliberately
+/// opposite expectations, so both are asserted.
+struct ProductIdentitySeen {
+    sdk: Option<String>,
+    download: Option<String>,
+}
+
+async fn product_identity_seen_by_backend(identity: Option<&str>) -> ProductIdentitySeen {
+    use crate::api::product::{
+        reset_product_identity_for_test, set_product_identity, ProductIdentity,
+        PRODUCT_IDENTITY_HEADER,
+    };
+
+    fn sink_header(sink: &Arc<std::sync::Mutex<Option<String>>>, headers: &axum::http::HeaderMap) {
+        *sink.lock().unwrap() = headers
+            .get(PRODUCT_IDENTITY_HEADER)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+    }
+
+    let sdk_seen: Arc<std::sync::Mutex<Option<String>>> = Arc::new(std::sync::Mutex::new(None));
+    let download_seen: Arc<std::sync::Mutex<Option<String>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    let sdk_sink = sdk_seen.clone();
+    let download_sink = download_seen.clone();
+
+    let app = Router::new()
+        .route(
+            "/agent-integrations/composio/execute",
+            post(move |headers: axum::http::HeaderMap| {
+                let sink = sdk_sink.clone();
+                async move {
+                    sink_header(&sink, &headers);
+                    Json(json!({ "success": true, "data": {} })).into_response()
+                }
+            }),
+        )
+        .route(
+            "/agent-integrations/file-storage/files/f1/download",
+            get(move |headers: axum::http::HeaderMap| {
+                let sink = download_sink.clone();
+                async move {
+                    sink_header(&sink, &headers);
+                    "file-bytes".into_response()
+                }
+            }),
+        );
+    let base = start_mock_backend(app).await;
+
+    reset_product_identity_for_test();
+    if let Some(identity) = identity {
+        set_product_identity(ProductIdentity::new(identity).unwrap());
+    }
+
+    let client = client_for(base);
+    let sdk_result = client
+        .post::<serde_json::Value>("/agent-integrations/composio/execute", &json!({}))
+        .await;
+    let download_result = client
+        .get_bytes("/agent-integrations/file-storage/files/f1/download")
+        .await;
+
+    reset_product_identity_for_test();
+    sdk_result.expect("mock backend returns a success envelope");
+    download_result.expect("mock backend returns file bytes");
+
+    let sdk = sdk_seen.lock().unwrap().clone();
+    let download = download_seen.lock().unwrap().clone();
+    ProductIdentitySeen { sdk, download }
+}
+
+#[tokio::test]
+async fn integration_requests_carry_the_default_product_identity() {
+    let _guard = crate::api::product::product_identity_test_lock();
+    let seen = product_identity_seen_by_backend(None).await;
+    let expected = Some(crate::api::product::DEFAULT_PRODUCT_IDENTITY);
+    assert_eq!(
+        seen.sdk.as_deref(),
+        expected,
+        "agent-integration traffic must be attributed like every other backend call"
+    );
+    assert_eq!(
+        seen.download.as_deref(),
+        None,
+        "the download transport must stay untagged — it follows a 302 to presigned \
+         storage and reqwest keeps non-sensitive headers across the cross-host hop"
+    );
+}
+
+#[tokio::test]
+async fn integration_requests_carry_an_overridden_product_identity() {
+    let _guard = crate::api::product::product_identity_test_lock();
+    let seen = product_identity_seen_by_backend(Some("opencompany")).await;
+    assert_eq!(seen.sdk.as_deref(), Some("opencompany"));
+    // An override must not leak to storage either — same redirect reasoning as
+    // the default case above.
+    assert_eq!(seen.download.as_deref(), None);
+}
+
 #[tokio::test]
 async fn post_400_propagates_backend_error_envelope_message() {
     // Mirror the real backend BadRequestError shape from

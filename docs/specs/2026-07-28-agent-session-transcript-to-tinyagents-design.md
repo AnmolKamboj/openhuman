@@ -288,7 +288,13 @@ rollups, path resolution) stay on the concrete type, reached directly by the 24
 consumers that need them.
 
 - **On-disk change:** none. **Migration risk:** none.
-- **Removes:** ~400 LOC of parallel abstraction, plus the conceptual duplicate.
+- **Removes:** ~15 LOC — the duplicated path-resolution block in
+  `persist_session_transcript`. **Adds** ~90 for the read + locator seam
+  (S2–S4 as a whole: +782 / −0). Option A buys a single documented,
+  *substitutable* seam, not a line reduction. The original "~400 LOC of parallel
+  abstraction" figure was measured and refuted — see
+  [Where "~400 LOC" came from](#where-400-loc-came-from-and-why-it-is-struck)
+  — and it contradicted this option's own **Weakness** bullet two lines below.
 - **Cost:** low. Reversible.
 - **Weakness:** the crate trait is only used on the narrow runtime path; most of
   `transcript.rs` stays. Honest framing: this fixes *"two abstractions"*, not
@@ -383,12 +389,184 @@ byte-identity assertion against the pre-change reader passes.
 
 ### S4 — Route the harness through the trait
 
-The turn path takes `Arc<dyn ChatHistory>` instead of calling transcript free
+The turn path takes `Arc<dyn SessionHistory>` instead of calling transcript free
 functions. The 24 consumers that need display records, usage rollups, or path
 resolution keep using the concrete type — that is correct, not debt.
 
 **Exit:** `agent_harness_e2e` + `scripts/test-rust-with-mock.sh` green;
 `threads/transcript_view` projection output unchanged (golden test).
+
+#### Landed as `SessionHistory: ChatHistory`, not `ChatHistory` — and why
+
+S4's two halves as originally written contradict each other. `ChatHistory`
+(`vendor/tinyagents/src/harness/memory/types.rs`) has four methods, each
+carrying only a `thread_id: &str` plus `Message` / `Vec<Message>`. The turn
+path's write carries three things none of them can express:
+
+- **`request_id`**, stamped on every line. Drives `DisplayItem::TurnBoundary`
+  and the `(request_id, ts)` root-turn segments that anchor every
+  `DisplayItem::Subagent` in `threads/transcript_view/project.rs`.
+- **`turn_usage`**, attributed to the turn's last assistant row. Carries
+  `model`, `iteration`, `ts`, `reasoning_content` and the native `tool_calls`.
+  The projection reads **every** `DisplayItem::ToolCall` off
+  `turn_usage.tool_calls`, so losing it deletes the tool rows outright (each
+  following `role:"tool"` line then falls to the orphan branch), along with
+  `Reasoning`, `AssistantMessage.{model,iteration}` and `interim`.
+- **`TranscriptMeta`'s cumulative fields** — `turn_count` plus the four
+  token/cost rollups `read_thread_usage_summary` reports. The turn path computes
+  these fresh each turn; the trait path can only re-read the file's existing
+  `_meta`, which would freeze them at the previous turn's values.
+
+A literal `Arc<dyn ChatHistory>` write would therefore have failed S4's own exit
+criterion while looking complete. The criterion wins: what landed is
+`pub(crate) trait SessionHistory: ChatHistory`, declared in
+`agent/harness/session/transcript_history.rs`, whose single `append_turn` method
+forwards the same six arguments `append_transcript_turn` already takes. The
+indirection is real, `ChatHistory` stays in the bound so S2/S3 are not orphaned,
+and the on-disk bytes are unchanged by construction —
+`append_turn_is_byte_identical_to_the_free_function` writes one turn both ways
+and compares the files byte for byte.
+
+The **read** path does not cross `ChatHistory` either, and that half is settled
+for the same shape of reason: `ChatHistory::messages()` returns `Vec<Message>`,
+and converting back with `message_to_chat_message` flattens
+`Assistant.tool_calls` into plain text — exactly what
+`bound_cached_transcript_messages`' TAURI-RUST-7 trailing strip inspects, and
+what native providers reject with `400 assistant message with 'tool_calls' must
+be followed by tool messages`. (A round-trip probe confirmed the loss set:
+assistant `tool_calls`, plus `openhuman_turn_usage` `extra_metadata` and
+`AssistantMessage.id`, both inert here. The tool-failure marker is *not* in it —
+that is a write-side/display-side field `read_transcript` never re-emits.)
+
+An earlier revision of this section concluded from that the read must stay on
+the concrete free functions. That conclusion was wrong, and the reasoning behind
+it rested on a premise that is false of the type as it stands:
+`SessionTranscriptHistory` is bound to a resolved `PathBuf`, not to a stem — its
+two constructors merely *resolve* one — so a discovered path can be bound
+verbatim. What landed instead:
+
+- **`SessionTranscriptRead { path(); read_session() -> Option<SessionTranscript> }`**,
+  a second supertrait of `SessionHistory`. `read_session` is the same
+  `read_transcript` call the free-function readers made, returning the same
+  struct, so losslessness is *structural*: nothing crosses `Message`, and
+  compaction replay, `interrupted: true` partial skipping and the `_meta` header
+  `maybe_shadow_read_session_store` needs all survive by construction. Split
+  from `SessionHistory` rather than added to it because a discovered transcript
+  can still be a legacy `.md` file, and handing read results out as
+  `Arc<dyn SessionTranscriptRead>` makes appending JSONL into one impossible by
+  construction rather than by convention.
+- **`SessionTranscriptHistory::opened_at(path, seed_meta)`**, which stores the
+  discovered path verbatim. It deliberately bypasses
+  `resolve_keyed_transcript_path_in_dir`, which `create_dir_all`s and forces a
+  `.jsonl` extension — that would mangle the legacy `.md` case and create stray
+  directories on a pure read.
+- **`SessionHistoryLocator`** (`latest_for_agent` / `root_for_thread` /
+  `open_stem`), with `FileTranscriptLocator` as the default. Discovery *is* the
+  thing `ChatHistory` cannot express — it is `thread_id`-keyed and returns
+  messages, never a location — so it belongs on an OpenHuman-side object.
+  Leaving it as free functions was what kept the read half on the filesystem no
+  matter what handle was injected.
+
+**The injection point now exists**, which is what makes the `Arc<dyn …>`
+non-decorative. `AgentBuilder::with_session_history_locator` sets
+`Agent::session_history_locator`; `Agent::session_locator()` resolves `None`
+*lazily* into a `FileTranscriptLocator` over the **current** `workspace_dir` /
+`session_raw_subdir` (never frozen at build time — callers reassign
+`workspace_dir` after `build()`, and a captured locator would silently keep
+reading the old directory). One injected object now covers both resume reads
+*and* the session's own write handle, and
+`fake_locator_substitutes_the_whole_turn_path` drives all three through a fake
+and asserts nothing is written under the workspace.
+
+`persist_session_transcript`'s own path resolution went with it:
+`session_transcript_path` is now simply the bound handle's `path()`, so the two
+can no longer drift.
+
+**Widening `ChatHistory` upstream is REJECTED, not deferred.** S0's rationale
+notes this question has already been re-opened twice, so the finding is recorded
+here to stop a third round: the crate's `Usage` has no `cost_usd` /
+`context_window`; `TranscriptMeta` is a cumulative *file header*, not turn
+provenance; and the per-message tool-failure `extra_metadata` that
+`message_to_chat_message` drops is untouchable by any turn-level record. You
+would pay a tinyagents release and still need a `serde_json::Value` escape
+hatch — for a trait that has no consumer inside the vendored crate outside
+`harness/memory/`.
+
+One live defect was fixed on the way in: the handle resolved its path through
+`resolve_keyed_transcript_path`, which hardcodes `{workspace}/session_raw/`. A
+dedicated-memory profile's sessions live in `session_raw-<id>/`, so wiring the
+handle into the turn path as-written would have silently cross-written profile
+sessions into the shared profile's directory. `new_in_dir` takes the raw dir
+explicitly and is what the turn path uses.
+
+Deliberately **not** relocated: `persisted_transcript_messages` and
+`session_transcript_path` stay on `Agent`. The former is the in-memory diff
+cache the append-only writer needs; substituting the handle's disk re-read is
+lossy against `common_prefix_len` (`read_transcript` lifts `failure` /
+`failure_detail` out of `extra_metadata` and hoists turn-usage to top-level line
+fields), so the writer would emit a full compaction record every turn. The
+latter is what `maybe_dual_write_session_store` needs a concrete `&Path` for.
+
+Also deliberately kept: the `impl ChatHistory for SessionTranscriptHistory` from
+S3 still has **no production caller** after S4 — reads go through
+`read_session`, writes through `append_turn`. It is not deleted, because it is
+the crate-side seam Option A exists to establish and it supplies the
+`Send + Sync + 'static` bounds the shared handle needs. The trigger that would
+delete it is an explicit decision to drop `ChatHistory` from the
+`SessionHistory` bound, which frees `transcript_history.rs`'s
+`read`/`persisted`/`meta_for_write`/`write_logical_set`/`impl ChatHistory` plus
+most of its test module (~570 lines together). That is the only ~400-scale
+removal S4 can actually make — and it removes abstraction this work itself
+added, which is not what Option A was promising. Recorded so a future audit
+finds the decision rather than re-deriving it.
+
+#### Where "~400 LOC" came from, and why it is struck
+
+§4 Option A originally claimed it "Removes: ~400 LOC of parallel abstraction".
+The figure has no derivation anywhere in this document or its parent, and it is
+not achievable. Its arithmetic origin is recoverable: §2.1's in-scope table
+totals **2,475** LOC at this document's base commit (`transcript.rs` 1,997 +
+`turn_checkpoint.rs` 105 + `migration.rs` 373). Option B's "~2,100 host LOC" is
+exactly 1,997 + 105. The residual is **373 ≈ "~400" = `migration.rs`** — which
+§5 S1 and `docs/tinyagents-full-migration-plan/99-deletion-ledger.md:33` both
+resolve as HOST-OWNED, no deletion. Under Option A the §2.1 table loses **zero**
+lines.
+
+Every other candidate was checked and refuted:
+
+- **No host trait duplicates `ChatHistory`.** The only other match in `src/` is
+  a `MemorySource::ChatHistory` *enum variant* in `memory/remember.rs`.
+  `memory/store/memory_trait.rs` is the long-term semantic `Memory` trait — a
+  different concern with a different shape.
+- **`ShortTermMemory`'s `trim` is an empty hook slot**
+  (`vendor/tinyagents/src/harness/memory/types.rs`), so there is no crate-side
+  policy for the host to be parallel to. The host side is 104 LOC of
+  provider-400 defences (`trim_history`, `bound_cached_transcript_messages`)
+  with no crate analogue — not duplicated, not deletable.
+- **`agent/context/`'s reducer was already deleted under #4249**, before this
+  document was written (`context/manager.rs`: "Live history reduction/
+  summarization moved to the tinyagents graph"). What remains is prompt
+  assembly + stats.
+
+#### The one genuine parallel abstraction, and why S4/S5 cannot remove it
+
+The #4249 JSONL↔store mirror **is** a second session-persistence implementation,
+over crate `Store`/`AppendStore` rather than `ChatHistory`: `session_import/
+live.rs` (353), `Agent::maybe_shadow_read_session_store` /
+`maybe_dual_write_session_store` (119), the `StoreRegistry` registration in
+`agent/tinyagents/mod.rs`, two `AgentConfig` flags, and
+`config/migrations/enable_session_shadow_reads.rs` — ~565 prod LOC. It is the
+closest thing in the tree to "~400 LOC of parallel abstraction".
+
+It is out of scope here for two reasons. It is #4249's own 04.1/04.2 program,
+gated on that issue's Phase-2 parity soak (#5396, which flipped
+`session_shadow_reads` default-ON with a config migration); and its terminus —
+serving reads from the store — points the opposite way from this branch's
+non-negotiable zero-on-disk-change constraint. **It is also not S5's soak:** S5
+compares free-function reads against trait reads, an entirely different
+comparison. Track it as a #4249 phase-3 item ("retire the JSONL↔store dual path
+once the Phase-2 parity soak declares parity") with a deletion-ledger row naming
+the six sites above.
 
 ### S5 — Shadow soak, then remove the parallel path
 
@@ -488,7 +666,7 @@ Recorded so a later audit does not re-litigate:
 | In scope | `transcript.rs` (1,997), `turn_checkpoint.rs` (105), `migration.rs` (373) — ≤ 2 host imports each |
 | Key finding | the crate already ships `harness::memory::ChatHistory` + `harness::store` stream API; OpenHuman has a **second implementation**, not a missing home |
 | Key constraint | crate `ChatHistory` cannot express compaction records, interrupted partials, or dual read paths — a naive impl corrupts model context |
-| Recommendation | **Option A** — host backend behind the crate trait; ~400 LOC, zero on-disk change, reversible |
+| Recommendation | **Option A** — host backend behind the crate trait; zero on-disk change, reversible. Ledger is ≈ **−15 / +90 LOC** (S2–S4 overall +782 / −0), *not* the "~400 LOC removed" originally claimed — see §5 S4, [Where "~400 LOC" came from](#where-400-loc-came-from-and-why-it-is-struck) |
 | Escalation | **Option B** (upstream `JsonlChatHistory`, ~2,100 LOC) only as a deliberate crate-roadmap decision |
 | `builder/factory.rs` re-check (§3.5.1) | stays — builds `Agent` (40+ fields of product session state), not `AgentHarness` (6 fields of execution config); one real carve-out: dispatcher selection duplicates crate `with_native_tool_calling` |
 | `turn/core.rs` re-check (§3.5.2) | stays — the engine left in WP-3; residue is product enrichment. ~150 LOC of message-list helpers are upstreamable |

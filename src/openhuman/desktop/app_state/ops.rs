@@ -345,6 +345,14 @@ fn build_client() -> Result<Client, String> {
         .http1_only()
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(10))
+        // `GET /auth/me` is backend traffic like any other, so it carries the
+        // product identity. This client is hand-rolled rather than obtained
+        // from `BackendOAuthClient`, so it inherits nothing from that path's
+        // default headers — see [`crate::api::product`]. Set here rather than
+        // at the one call site because every user of this builder is
+        // backend-bound by construction (`resolve_base` resolves the backend
+        // API URL and nothing else).
+        .default_headers(crate::api::product::product_identity_headers())
         .build()
         .map_err(|e| format!("failed to build HTTP client: {e}"))
 }
@@ -503,7 +511,7 @@ async fn activate_revalidated_user_dir(user_id: &str) -> Result<Config, String> 
     );
     if previous_active.is_none() {
         let pre_ws = crate::openhuman::config::pre_login_user_dir(&root_dir).join("workspace");
-        if let Err(error) = crate::openhuman::memory::conversations::purge_threads(pre_ws) {
+        if let Err(error) = tinycortex::memory::conversations::purge_threads(pre_ws) {
             debug!(
                 "{LOG_PREFIX} pre-login conversation purge skipped after pending session revalidation: {error}"
             );
@@ -526,8 +534,9 @@ async fn finish_revalidated_user_activation(
             "{LOG_PREFIX} failed to bind memory client after pending session revalidation: {error}"
         );
     }
-    if let Err(error) = crate::core::runtime::context::CoreContext::rebind_default_workspace_dir(
+    if let Err(error) = crate::core::runtime::context::CoreContext::rebind_default_workspace(
         &target_config.workspace_dir,
+        target_config.subsystems.memory.clone(),
     ) {
         warn!("{LOG_PREFIX} failed to rebind core context after pending session revalidation: {error}");
     }

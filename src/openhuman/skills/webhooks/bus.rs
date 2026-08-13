@@ -5,13 +5,15 @@
 //! echo target), waits for the response, and emits it back through the socket.
 //! This decouples the socket module from webhook routing logic.
 
-use crate::core::event_bus::{publish_global, DomainEvent, EventHandler};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::platform::socket::global_socket_manager;
 use crate::openhuman::skills::webhooks::WebhookResponseData;
 use async_trait::async_trait;
 use serde_json::json;
 use std::collections::HashMap;
 use std::time::Instant;
+use tinybus::EventHandler;
 
 /// Base64-encode a string (for webhook response bodies).
 fn base64_encode(input: &str) -> String {
@@ -42,7 +44,7 @@ impl WebhookRequestSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for WebhookRequestSubscriber {
+impl EventHandler<DomainEvent> for WebhookRequestSubscriber {
     fn name(&self) -> &str {
         "webhook::request_handler"
     }
@@ -233,7 +235,7 @@ impl EventHandler for WebhookRequestSubscriber {
 
         // Publish notification events.
         if let Some(ref sid) = resolved_skill_id {
-            publish_global(DomainEvent::WebhookReceived {
+            BUS.publish(DomainEvent::WebhookReceived {
                 tunnel_id: tunnel_uuid.clone(),
                 skill_id: sid.clone(),
                 method: method.clone(),
@@ -241,7 +243,7 @@ impl EventHandler for WebhookRequestSubscriber {
                 correlation_id: correlation_id.clone(),
             });
         }
-        publish_global(DomainEvent::WebhookProcessed {
+        BUS.publish(DomainEvent::WebhookProcessed {
             tunnel_id: tunnel_uuid.clone(),
             skill_id: resolved_skill_id.clone().unwrap_or_default(),
             method: method.clone(),

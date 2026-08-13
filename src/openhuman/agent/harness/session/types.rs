@@ -167,6 +167,39 @@ pub struct Agent {
     /// Set on first write, reused for subsequent **appends** within the
     /// same session.
     pub(super) session_transcript_path: Option<PathBuf>,
+    /// The transcript-write seam for this session, bound to the same file as
+    /// `session_transcript_path` on first write.
+    ///
+    /// This is the S4 indirection: the turn path appends through
+    /// [`SessionHistory::append_turn`][super::transcript_history::SessionHistory::append_turn]
+    /// rather than calling the format's free function directly.
+    ///
+    /// It is `Arc<dyn …>` rather than the concrete handle so the turn loop is
+    /// written against the seam instead of the implementation. It is now
+    /// genuinely substitutable: the handle is produced by
+    /// [`SessionHistoryLocator::open_stem`][super::transcript_history::SessionHistoryLocator::open_stem]
+    /// on the locator in `session_history_locator`, so injecting a locator
+    /// replaces this session's writes as well as both of its resume reads.
+    ///
+    /// `session_transcript_path` stays alongside it rather than being folded
+    /// into the handle: the dual-write mirror needs the concrete `&Path` for
+    /// `file_stem()`, and several tests assert on it directly.
+    pub(super) session_history:
+        Option<std::sync::Arc<dyn super::transcript_history::SessionHistory>>,
+    /// Injected transcript locator, or `None` to use real files.
+    ///
+    /// The single injection point for the whole transcript seam: it resolves
+    /// both resume reads (`latest_for_agent`, `root_for_thread`) and binds this
+    /// session's write handle (`open_stem`). `None` is the production default
+    /// and is resolved *lazily* by
+    /// [`Agent::session_locator`][Self::session_locator] into a
+    /// [`FileTranscriptLocator`][super::transcript_history::FileTranscriptLocator]
+    /// over the **current** `workspace_dir` / `session_raw_subdir` — never
+    /// captured at build time, because callers (tests especially) reassign
+    /// `workspace_dir` after `build()` and a frozen locator would silently keep
+    /// reading the old directory.
+    pub(super) session_history_locator:
+        Option<std::sync::Arc<dyn super::transcript_history::SessionHistoryLocator>>,
     /// The logical message set most recently persisted to
     /// `session_transcript_path`, tracked in memory so the append-only writer
     /// can diff each turn's messages against it (pure extension → append tail;
@@ -274,13 +307,13 @@ pub struct Agent {
     /// Drained before each provider dispatch so a connection that flips to
     /// ACTIVE mid-turn can refresh the delegation schema in the same thread.
     pub(super) composio_integrations_rx:
-        Option<tokio::sync::broadcast::Receiver<crate::core::event_bus::DomainEvent>>,
+        Option<tinybus::events::EventReceiver<crate::core::events::DomainEvent>>,
     /// Lazily-armed global-bus receiver for [`DomainEvent::WorkflowsChanged`]
     /// (skill install / uninstall / create). Drained at each turn boundary so
     /// `refresh_workflows` only re-scans disk when the installed set actually
     /// changed — no per-turn filesystem walk on the steady-state hot path.
     pub(super) skill_events_rx:
-        Option<tokio::sync::broadcast::Receiver<crate::core::event_bus::DomainEvent>>,
+        Option<tinybus::events::EventReceiver<crate::core::events::DomainEvent>>,
     /// Toolkit slugs already surfaced to the model as freshly-connected
     /// this session. Seeded at turn 1 with the startup connected set, then
     /// extended whenever a mid-session connect is announced — so each new
@@ -426,6 +459,12 @@ pub struct AgentBuilder {
     /// flat in `session_raw/DDMMYYYY/{session_key}.jsonl`. Populated
     /// by the sub-agent runner so nested delegations produce a tree.
     pub(super) session_parent_prefix: Option<String>,
+    /// Forwarded to [`Agent::session_history_locator`]. `None` (default) means
+    /// real files; set it with
+    /// [`with_session_history_locator`][super::builder::AgentBuilder::with_session_history_locator]
+    /// to substitute the transcript backing store for the whole turn path.
+    pub(super) session_history_locator:
+        Option<std::sync::Arc<dyn super::transcript_history::SessionHistoryLocator>>,
     /// Forwarded to [`Agent::omit_profile`] at `build()` time. Mirrors the
     /// target definition's `omit_profile` flag; `None` means "fall back
     /// to the safe default" (omit).

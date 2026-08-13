@@ -1,10 +1,10 @@
 use crate::openhuman::config::rpc as config_rpc;
-use crate::openhuman::memory::store::chunks::types::SourceKind;
-use crate::openhuman::memory::tree::retrieval::cover::cover_window;
 use crate::openhuman::memory::tree::retrieval::rpc::CoverWindowRequest;
 use crate::openhuman::tools::traits::{Tool, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
+use tinymemory_core::store::chunks::types::SourceKind;
+use tinymemory_core::tree::retrieval::cover::cover_window;
 
 /// Agent-facing wrapper for the windowed minimum-cover retrieval. Returns the
 /// smallest set of nodes (summaries + raw chunks) covering all memory in
@@ -71,9 +71,9 @@ impl Tool for MemoryTreeCoverWindowTool {
             req.source_kind.is_some(),
             req.limit.is_some()
         );
-        let cfg = config_rpc::load_config_with_timeout()
-            .await
-            .map_err(|e| anyhow::anyhow!("memory_tree_cover_window: load config failed: {e}"))?;
+        // Validate arguments before touching config/disk — `SourceKind::parse`
+        // is pure, so a bad `source_kind` must fail with the parse error
+        // regardless of workspace state.
         let source_kind = match req.source_kind.as_deref() {
             Some(s) => {
                 log::trace!("[tool][memory_tree] cover_window parse_source_kind");
@@ -84,6 +84,9 @@ impl Tool for MemoryTreeCoverWindowTool {
             }
             None => None,
         };
+        let cfg = config_rpc::load_config_with_timeout()
+            .await
+            .map_err(|e| anyhow::anyhow!("memory_tree_cover_window: load config failed: {e}"))?;
         log::trace!(
             "[tool][memory_tree] cover_window dispatch limit={}",
             req.limit.unwrap_or(0)
@@ -139,6 +142,10 @@ mod tests {
             .execute(json!({ "since_ms": 0, "until_ms": 1, "source_kind": "not-real" }))
             .await
             .expect_err("invalid source kind should fail");
-        assert!(err.to_string().contains("memory_tree_cover_window:"));
+        let msg = err.to_string();
+        assert!(
+            msg.contains("memory_tree_cover_window:") && !msg.contains("load config failed"),
+            "expected a source-kind parse error, got: {msg}"
+        );
     }
 }

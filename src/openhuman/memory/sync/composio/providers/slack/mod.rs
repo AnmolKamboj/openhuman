@@ -1,18 +1,14 @@
-//! Composio-backed Slack provider.
+//! Host layer over [`tinymemory_core::sync::composio::providers::slack`].
 //!
-//! The provider is wired into the periodic-sync scheduler (see
-//! [`super::registry::init_default_providers`]) and fires
-//! `SLACK_LIST_CONVERSATIONS` + `SLACK_FETCH_CONVERSATION_HISTORY`
-//! against the user's Composio-authorized Slack connection. The reusable
-//! synchronization and ingestion engine is owned by tinycortex.
+//! The domain itself lives in the extracted crate; what stays here is its
+//! JSON-RPC surface — handlers and controller schemas name OpenHuman's
+//! `RpcOutcome` and `ControllerSchema`, which the engine crate cannot see.
+//! The glob re-export keeps every historical `memory::sync::composio::providers::slack::…` path resolving.
 
-pub mod post_process;
+pub use tinymemory_core::sync::composio::providers::slack::*;
+
 pub mod rpc;
 pub mod schemas;
-pub mod types;
 
-mod provider;
-
-pub use provider::{run_backfill_via_search, SlackProvider, BACKFILL_DAYS};
-pub use schemas::{all_slack_memory_controller_schemas, all_slack_memory_registered_controllers};
-pub use types::{SlackChannel, SlackMessage};
+// The controller aggregators this domain's RPC surface defines.
+pub use schemas::*;

@@ -1,6 +1,6 @@
 [package]
 name = "OpenHuman"
-version = "0.63.6"
+version = "0.63.7"
 description = "OpenHuman - AI-powered Super Assistant"
 authors = ["OpenHuman"]
 edition = "2021"
@@ -25,16 +25,10 @@ tauri-build = { version = "2", features = [] }
 serde_json = "1"
 
 [dependencies]
-# Tauri core and plugins.
-#
-# The only supported runtime is CEF (Chromium Embedded Framework) via
-# `tauri-runtime-cef` — CI builds, release installers, and local `cargo tauri
-# dev` all run against CEF. The `[patch.crates-io]` block at the bottom of this
-# file pins every tauri crate and plugin to the `feat/cef` branch on github so
-# CEF symbols are in scope, and `cef-dll-sys`'s build script auto-downloads the
-# Chromium runtime for the current target on first build.
-tauri = { version = "2.10", default-features = false, features = [
-    "cef",
+# Tauri core and plugins. Use upstream Tauri's native WebView runtime (Wry),
+# rather than the removed Chromium/CEF fork.
+tauri = { version = "2.11", default-features = false, features = [
+    "wry",
     "common-controls-v6",
     "devtools",
     "macos-private-api",
@@ -44,7 +38,7 @@ tauri = { version = "2.10", default-features = false, features = [
 ] }
 tauri-plugin-deep-link = "2.0.0"
 tauri-plugin-global-shortcut = "2"
-tauri-plugin-notification = { path = "vendor/tauri-plugin-notification" }
+tauri-plugin-notification = "2"
 tauri-plugin-opener = "2"
 # Prevents a second launch from racing into CEF init and hitting the
 # `cef::initialize(...) != 1` cache-lock panic seen in production
@@ -126,14 +120,6 @@ uuid = { version = "1", features = ["v4"] }
 # system codecs needed.
 resvg = { version = "0.45", default-features = false, features = ["text", "system-fonts"] }
 tiny-skia = "0.11"
-# CEF + tauri-runtime-cef dependencies (always required).
-# `tauri-runtime-cef::notification::register` is how we hook native Web
-# Notification interception per webview, and `cef::Browser` is what we downcast
-# from the boxed handle returned by `Webview::with_webview`. tauri-runtime-cef
-# isn't published to crates.io — we vendor the whole tauri fork as a submodule
-# at `vendor/tauri-cef` and reference the crate by path.
-tauri-runtime-cef = { path = "vendor/tauri-cef/crates/tauri-runtime-cef" }
-cef = { version = "=146.4.1", default-features = false }
 
 # Core domain logic, embedded in-process so the core's HTTP/JSON-RPC server
 # runs as a tokio task inside the Tauri host. Avoids the orphan-sidecar class
@@ -161,22 +147,16 @@ cef = { version = "=146.4.1", default-features = false }
 #   the pre-gate desktop tool surface.
 # - `web3` — keeps the wallet/web3/x402 domains and their agent tools in the
 #   desktop build while allowing slim builds to omit the crypto-only deps.
-# - `tokenjuice-treesitter` — forwards `tinyjuice/tinyjuice-treesitter`, which
-#   pulls the tree-sitter Rust/TS/Python grammars. Without it TokenJuice falls
-#   back to the brace-depth heuristic, so the desktop app compresses code worse
-#   than intended. This failed *soft* (no error, no Sentry signal) and had never
-#   once been forwarded since the gate was added in #4123 (#4918).
-#
 # `scripts/ci/check-feature-forwarding.mjs` fails CI when this list drifts from
 # the core's `[features] default` (#4919) — do not hand-maintain it from memory.
 openhuman_core = { path = "../..", package = "openhuman", default-features = false, features = [
     "channels",
     "media",
-    "tokenjuice-treesitter",
     "inference",
     "voice",
     "web3",
     "documents",
+    "modules",
     "flows",
     "meet",
     "skills",
@@ -193,11 +173,12 @@ openhuman_core = { path = "../..", package = "openhuman", default-features = fal
     # The packaged app's only durable log. Without this, a support request
     # comes back with nothing to attach — and the absence is silent.
     "file-logging",
-    # Polymarket read + trading tools. Implies `web3`, which is already
-    # forwarded — but the checker does literal set membership with no
-    # transitive resolution, so this needs its own line.
-    "prediction-markets",
     "contacts",
+    "runtime-node",
+    # Without this the memory_diff RPC namespace is unknown-method in the
+    # shipped app, the memory_diff agent tool is absent, and the embedded
+    # driver stops advertising Capability::Diff — the product keeps all three.
+    "memory-git",
 ] }
 tinyjuice = { version = "0.2.1", default-features = false }
 
@@ -269,11 +250,6 @@ sandbox-bubblewrap = []
 e2e-test-support = ["openhuman_core/e2e-test-support"]
 
 [patch.crates-io]
-# `cargo tauri build` resolves dependencies from this manifest, so the
-# workspace-level whisper-rs-sys patch is not applied here. The fork forces
-# whisper.cpp to use MSVC's static runtime (/MT), matching CEF and avoiding
-# LNK2038/LNK1169 CRT conflicts on Windows.
-whisper-rs-sys = { git = "https://github.com/tinyhumansai/whisper-rs-sys.git", branch = "main" }
 # Keep reqwest defaults disabled in this independent Cargo world too. Without
 # this patch, the registry release reintroduces native-tls/OpenSSL on Linux.
 motosan-ai-oauth = { path = "../../vendor/motosan-ai-oauth" }
@@ -286,36 +262,15 @@ tinyagents = { path = "../../vendor/tinyagents" }
 # publishing.
 tinyflows = { path = "../../vendor/tinyflows" }
 tinycortex = { path = "../../vendor/tinycortex" }
+# `tinymemory-core` (pulled in transitively through `openhuman_core`) names
+# `tinycortex-api` by version requirement, same as the root Cargo world —
+# patch it onto the same checkout here too, or this independent Cargo world
+# tries to resolve it from crates.io and fails (it was never published).
+tinycortex-api = { path = "../../vendor/tinycortex/api" }
 tinyjuice = { path = "../../vendor/tinyjuice" }
 tinychannels = { path = "../../vendor/tinychannels" }
 tinyplace = { path = "../../vendor/tinyplace/sdk/rust" }
 
-# CEF support lives on the `feat/cef` branch of tauri-apps/tauri. We carry our
-# own fork at tinyhumansai/tauri-cef on `feat/cef-notification-intercept` which
-# adds native Web Notifications interception — `tauri-runtime-cef::notification`
-# (browser-process callback registry) plus `cef-helper` patching `window.Notification`
-# and `ServiceWorkerRegistration.prototype.showNotification` from the renderer
-# side. The fork is vendored as a git submodule at `vendor/tauri-cef`; the
-# submodule's recorded commit is the pin.
-#
-# Plugins still patch from upstream tauri-apps/plugins-workspace@feat/cef — the
-# fork is tauri-only.
-tauri = { path = "vendor/tauri-cef/crates/tauri" }
-tauri-build = { path = "vendor/tauri-cef/crates/tauri-build" }
-tauri-utils = { path = "vendor/tauri-cef/crates/tauri-utils" }
-tauri-macros = { path = "vendor/tauri-cef/crates/tauri-macros" }
-tauri-runtime = { path = "vendor/tauri-cef/crates/tauri-runtime" }
-tauri-runtime-wry = { path = "vendor/tauri-cef/crates/tauri-runtime-wry" }
-tauri-plugin = { path = "vendor/tauri-cef/crates/tauri-plugin" }
-
-# Pinned to a specific commit on plugins-workspace@feat/cef so fresh
-# dependency resolution (without Cargo.lock) is reproducible and doesn't
-# silently drift when upstream pushes to the branch.
-tauri-plugin-opener = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "c6561ab6b4f9e7f650d4fc8c53fd8acc9b65b9b2" }
-tauri-plugin-deep-link = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "c6561ab6b4f9e7f650d4fc8c53fd8acc9b65b9b2" }
-tauri-plugin-global-shortcut = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "c6561ab6b4f9e7f650d4fc8c53fd8acc9b65b9b2" }
-tauri-plugin-single-instance = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "c6561ab6b4f9e7f650d4fc8c53fd8acc9b65b9b2" }
-tauri-plugin-notification = { path = "vendor/tauri-plugin-notification" }
 
 [dev-dependencies]
 # `test-util` enables `#[tokio::test(start_paused = true)]` for the

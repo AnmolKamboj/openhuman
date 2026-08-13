@@ -49,12 +49,28 @@ tokio::task_local! {
 /// [`CoreContext::scope`]s read isolated state — the Phase 3 exit criterion.
 pub struct CoreContext {
     host_kind: HostKind,
-    workspace_dir: RwLock<Option<std::path::PathBuf>>,
+    /// The workspace and its memory-driver configuration form one binding
+    /// input. They must be read and updated together: a caller that observes a
+    /// new workspace with the previous user's memory config could cache a
+    /// permanently incorrect memory binding for that workspace.
+    workspace_binding: RwLock<WorkspaceBinding>,
     /// Which domain families are live for this context (#4796). The registry
     /// filters its controller/schema/dispatch surface by this set via
     /// [`CoreContext::current`] → [`CoreContext::domains`]. `full()` for the
     /// desktop shell / standalone CLI (byte-identical to pre-#4796).
     domains: crate::core::runtime::DomainSet,
+}
+
+/// The complete input to a workspace-scoped memory binding.
+///
+/// This is deliberately one value behind one lock. `MemoryBinding` caches by
+/// this pair, so splitting either its read or update would let concurrent RPC
+/// traffic associate a workspace with another user's driver, hooks, or trust
+/// policy. The config is captured at build time so
+/// [`CoreContext::memory_binding`] stays synchronous and I/O-free.
+struct WorkspaceBinding {
+    workspace_dir: Option<std::path::PathBuf>,
+    memory_subsystem: crate::openhuman::config::schema::MemorySubsystemConfig,
 }
 
 impl CoreContext {
@@ -145,11 +161,18 @@ impl CoreContext {
         //    background jobs start later, from CoreRuntime::serve(), after bind
         //    succeeds.
         let runtime_config = config.clone();
+        let memory_subsystem = config
+            .as_ref()
+            .map(|cfg| cfg.subsystems.memory.clone())
+            .unwrap_or_default();
         crate::core::jsonrpc::bootstrap_core_runtime(host_kind, config, domains).await;
 
         let ctx = Arc::new(CoreContext {
             host_kind,
-            workspace_dir: RwLock::new(workspace_dir),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir,
+                memory_subsystem,
+            }),
             domains,
         });
 
@@ -174,9 +197,10 @@ impl CoreContext {
 
     /// The resolved per-user workspace directory this context is bound to.
     pub fn workspace_dir(&self) -> Result<std::path::PathBuf, String> {
-        self.workspace_dir
+        self.workspace_binding
             .read()
             .map_err(|e| format!("workspace unavailable: context lock poisoned: {e}"))?
+            .workspace_dir
             .clone()
             .ok_or_else(|| {
                 "workspace unavailable: Config::load_or_init failed during core boot; \
@@ -196,6 +220,108 @@ impl CoreContext {
     ) -> Result<Arc<crate::openhuman::memory::people::store::PeopleStore>, String> {
         let workspace_dir = self.workspace_dir()?;
         crate::openhuman::memory::people::store::for_workspace(&workspace_dir)
+    }
+
+    /// The bound memory driver for this context's workspace — the memory
+    /// subsystem's binding seam (`docs/specs/kernel.md` §3.1). Deliberately the
+    /// same shape as [`CoreContext::people`]: two contexts over different
+    /// workspaces get isolated bindings, one context always gets the same
+    /// cached binding, and an active-user switch that goes through
+    /// [`CoreContext::rebind_default_workspace`] automatically resolves the
+    /// new workspace's binding — including its `[subsystems.memory]` config,
+    /// which the rebind carries along with the workspace dir.
+    ///
+    /// That last property is why there is **no** explicit "rebind the memory
+    /// driver" call at the login / logout / revalidation sites the way
+    /// `memory::global::init` needs one: the accessor keys on the workspace
+    /// dir and the subsystem config, both of which those sites already re-point.
+    ///
+    /// It also structurally supersedes `memory::global`'s
+    /// clear-on-failed-rebind guard. There is no shared slot that could keep
+    /// pointing at the previous workspace, so a failed bind for workspace B
+    /// cannot hand back workspace A's driver. Pinned by
+    /// `failed_bind_never_returns_previous_workspace_binding`.
+    pub fn memory_binding(
+        &self,
+    ) -> Result<Arc<crate::openhuman::memory::binding::MemoryBinding>, String> {
+        let binding = self
+            .workspace_binding
+            .read()
+            .map_err(|e| format!("[core-context] workspace binding lock poisoned: {e}"))?;
+        let workspace_dir = binding.workspace_dir.clone();
+        let memory_subsystem = binding.memory_subsystem.clone();
+        drop(binding);
+        let workspace_dir = workspace_dir.ok_or_else(|| {
+            "workspace unavailable: Config::load_or_init failed during core boot; \
+             fix config.toml or OPENHUMAN_WORKSPACE and restart"
+                .to_string()
+        })?;
+        crate::openhuman::memory::binding::for_workspace(&workspace_dir, &memory_subsystem)
+    }
+
+    /// The bound driver's advertised capability set. Cheap (a `Copy` bitset
+    /// read off the cached binding), infallible, and **OPEN by default**: when
+    /// no workspace is bound, or the binding cannot be resolved, this returns
+    /// the full set.
+    ///
+    /// That default mirrors `core::all::group_allowed`, which returns `true`
+    /// with no ambient context. Roughly 4000 unit tests run pre-boot with no
+    /// bound driver; a deny-by-default here would turn every memory test red at
+    /// once. Denying is only ever correct once a driver has actually answered
+    /// `capabilities()`.
+    ///
+    /// One case answers **closed**: a deliberate `[subsystems.memory] driver =
+    /// "null"` returns the empty set, not the null driver's mandatory three.
+    /// The driver honestly advertises those three — `subsystems_status` still
+    /// reports them — but an operator who bound `/dev/null` asked for the whole
+    /// memory surface to be gone, and leaving the mandatory families registered
+    /// would keep `memory_store` / `memory_recall` / `memory.list_documents`
+    /// answering off the embedded store the guarded re-point has not yet
+    /// covered. See [`MemoryBinding::disables_memory`](crate::openhuman::memory::binding::MemoryBinding::disables_memory).
+    pub fn memory_capabilities(&self) -> crate::openhuman::memory::api::capabilities::Capabilities {
+        self.memory_binding()
+            .map(|binding| {
+                if binding.disables_memory() {
+                    crate::openhuman::memory::api::capabilities::Capabilities::default()
+                } else {
+                    binding.capabilities()
+                }
+            })
+            .unwrap_or_else(|_| crate::openhuman::memory::binding::unbound_default_capabilities())
+    }
+
+    /// The **guarded** memory driver for this context's workspace — the handle
+    /// product code should hold (`docs/specs/kernel.md` §3.4).
+    ///
+    /// The guard implements the same `MemoryProvider` contract as the driver it
+    /// wraps, so it is a drop-in for a caller that already speaks the contract,
+    /// and its family accessors hand back guarded handles rather than the raw
+    /// driver's — which is what makes the policy unskippable for anyone holding
+    /// it.
+    ///
+    /// [`Self::memory_binding`] still exists and still exposes the bare
+    /// provider. That is deliberate and narrow: the one production caller is
+    /// the health probe in `memory::ops::provider`, and a liveness probe is not
+    /// product code — routing it through the guard would let an autonomy tier
+    /// break status output. New call sites use this accessor.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::memory_binding`]: only when the workspace dir cannot be
+    /// resolved or the binding cache lock is poisoned.
+    pub fn memory(&self) -> Result<Arc<crate::openhuman::memory::guard::MemoryGuard>, String> {
+        Ok(self.memory_binding()?.guard())
+    }
+
+    /// The capability set for the current dispatch, or the open default when
+    /// there is no context at all. This is the direct analogue of
+    /// `core::all::group_allowed` and is the function a future capability
+    /// registration filter calls.
+    pub fn current_memory_capabilities() -> crate::openhuman::memory::api::capabilities::Capabilities
+    {
+        Self::current()
+            .map(|ctx| ctx.memory_capabilities())
+            .unwrap_or_else(crate::openhuman::memory::binding::unbound_default_capabilities)
     }
 
     /// The context for the current dispatch: the one scoped by
@@ -218,11 +344,18 @@ impl CoreContext {
     }
 
     /// Rebind the process default context to the current active user's
-    /// workspace. Desktop login and pending-session revalidation can switch the
-    /// active workspace after boot without rebuilding the core. Scoped
-    /// multi-tenant dispatch is unaffected because tenant contexts are passed to
-    /// [`CoreContext::scope`] explicitly and are not the process default.
-    pub fn rebind_default_workspace_dir(workspace_dir: &std::path::Path) -> Result<(), String> {
+    /// workspace **and** that user's `[subsystems.memory]` config. Desktop
+    /// login, logout, and pending-session revalidation can switch the active
+    /// workspace after boot without rebuilding the core; every call site
+    /// already holds the target `Config`, so passing the config here keeps the
+    /// bound driver (and its hooks / trust settings) from silently carrying
+    /// over from the previous user. Scoped multi-tenant dispatch is unaffected
+    /// because tenant contexts are passed to [`CoreContext::scope`] explicitly
+    /// and are not the process default.
+    pub fn rebind_default_workspace(
+        workspace_dir: &std::path::Path,
+        memory_subsystem: crate::openhuman::config::schema::MemorySubsystemConfig,
+    ) -> Result<(), String> {
         let Some(ctx) = DEFAULT_CONTEXT.get() else {
             log::debug!(
                 "[core-context] default context not initialized; skipped workspace rebind to {}",
@@ -230,26 +363,36 @@ impl CoreContext {
             );
             return Ok(());
         };
-        ctx.rebind_workspace_dir(workspace_dir)
+        ctx.rebind_workspace(workspace_dir, memory_subsystem)
     }
 
-    fn rebind_workspace_dir(&self, workspace_dir: &std::path::Path) -> Result<(), String> {
-        let mut guard = self
-            .workspace_dir
+    fn rebind_workspace(
+        &self,
+        workspace_dir: &std::path::Path,
+        memory_subsystem: crate::openhuman::config::schema::MemorySubsystemConfig,
+    ) -> Result<(), String> {
+        let mut binding = self
+            .workspace_binding
             .write()
-            .map_err(|e| format!("workspace rebind failed: context lock poisoned: {e}"))?;
-        if guard.as_deref() == Some(workspace_dir) {
+            .map_err(|e| format!("workspace rebind failed: binding lock poisoned: {e}"))?;
+        if binding.workspace_dir.as_deref() == Some(workspace_dir)
+            && binding.memory_subsystem == memory_subsystem
+        {
             log::debug!(
-                "[core-context] workspace already bound to {}",
+                "[core-context] workspace {} already bound with the current subsystem config",
                 workspace_dir.display()
             );
             return Ok(());
         }
         log::info!(
-            "[core-context] rebound default workspace to {}",
-            workspace_dir.display()
+            "[core-context] rebound default workspace to {} with memory subsystem driver='{}'",
+            workspace_dir.display(),
+            memory_subsystem.driver
         );
-        *guard = Some(workspace_dir.to_path_buf());
+        *binding = WorkspaceBinding {
+            workspace_dir: Some(workspace_dir.to_path_buf()),
+            memory_subsystem,
+        };
         Ok(())
     }
 
@@ -265,14 +408,26 @@ impl CoreContext {
     /// cross-module tests (e.g. `core::all`'s registry filter) can exercise the
     /// ambient DomainSet gate without going through the full [`CoreContext::init`]
     /// boot sequence.
+    ///
+    /// `memory_subsystem` is the seam the capability tests need: pass `None`
+    /// for the default (`driver = "tinycortex"`, no driver table), or an
+    /// explicit config to exercise the fallback / trust paths without a boot.
+    /// It takes the *config* rather than a `Capabilities` value on purpose —
+    /// injecting a capability set directly would let a test assert a set no
+    /// driver could have advertised, bypassing the very `admit` +
+    /// `capabilities()` path that has to be proven.
     #[cfg(test)]
     pub(crate) fn for_test(
         domains: crate::core::runtime::DomainSet,
         workspace_dir: Option<std::path::PathBuf>,
+        memory_subsystem: Option<crate::openhuman::config::schema::MemorySubsystemConfig>,
     ) -> Arc<CoreContext> {
         Arc::new(CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(workspace_dir),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir,
+                memory_subsystem: memory_subsystem.unwrap_or_default(),
+            }),
             domains,
         })
     }
@@ -353,6 +508,20 @@ pub async fn init_stores(
         domains,
     );
     if plan.memory {
+        // The extracted memory subsystem reaches back into this crate through
+        // process-global seams. They must be installed BEFORE the first memory
+        // call: the embedding, chat, Composio and config seams fail loudly when
+        // unwired rather than degrading, because a quiet degrade would write
+        // vectors into the wrong embedding space or make a sync run look empty
+        // instead of broken.
+        crate::openhuman::memory::host_impls::install_memory_host_seams(Arc::new(cfg.clone()));
+        // Publish the config a module-backed memory driver should load
+        // against, before the binding below can construct one. Boot-only and
+        // idempotent (first call wins) — see `modules::memory::set_modules_policy`
+        // for why this must be a process-global rather than threaded through
+        // `MemoryBinding::for_workspace`.
+        #[cfg(feature = "modules")]
+        crate::openhuman::modules::memory::set_modules_policy(Arc::new(cfg.clone()));
         match crate::openhuman::memory::global::init(cfg.workspace_dir.clone()) {
             Ok(_) => log::info!(
                 "[boot] memory::global initialized (workspace={})",
@@ -360,8 +529,33 @@ pub async fn init_stores(
             ),
             Err(e) => log::warn!("[boot] memory::global init failed: {e}"),
         }
+        // Bind the memory driver for this workspace (kernel.md §3.1), on the
+        // same `plan.memory` gate as the store above — the binding is part of
+        // the memory domain's init, not a separate gate. Warmed here rather
+        // than lazily so a bad `[subsystems.memory]` is loud at boot instead of
+        // at the first recall. Infallible by design: an inadmissible driver
+        // falls back, publishes `MemoryDriverBindFailed`, and records why.
+        match crate::openhuman::memory::binding::for_workspace(
+            &cfg.workspace_dir,
+            &cfg.subsystems.memory,
+        ) {
+            Ok(binding) => log::info!(
+                "[boot] memory driver bound: id={} class={} capabilities=[{}] fallback={:?}",
+                binding.driver_id(),
+                binding.class(),
+                binding
+                    .capabilities()
+                    .iter()
+                    .map(|c| c.as_str())
+                    .collect::<Vec<_>>()
+                    .join(","),
+                binding.fallback().map(|f| f.reason.as_str()),
+            ),
+            Err(e) => log::warn!("[boot] memory driver bind failed: {e}"),
+        }
     } else {
         log::debug!("[boot] memory::global init SKIPPED — Memory domain disabled");
+        log::debug!("[boot] memory driver bind SKIPPED — Memory domain disabled");
     }
     // Install the on-disk image-attachment sidecar dir so inbound
     // image markers persist under <workspace>/attachments/ instead
@@ -433,7 +627,10 @@ mod tests {
     fn ctx(dir: &str) -> Arc<CoreContext> {
         Arc::new(CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(Some(PathBuf::from(dir))),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(PathBuf::from(dir)),
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
         })
     }
@@ -518,7 +715,7 @@ mod tests {
         // The ambient `current().domains()` must reflect the scoped context's
         // DomainSet — this is the seam the registry filter reads (#4796).
         let harness = crate::core::runtime::DomainSet::harness();
-        let ctx = CoreContext::for_test(harness, Some(PathBuf::from("/tmp/ctx-domains")));
+        let ctx = CoreContext::for_test(harness, Some(PathBuf::from("/tmp/ctx-domains")), None);
         let seen =
             CoreContext::scope(ctx, async { CoreContext::current().map(|c| c.domains()) }).await;
         assert_eq!(seen, Some(harness));
@@ -555,12 +752,18 @@ mod tests {
         let dir_b = tempfile::tempdir().unwrap();
         let a = Arc::new(CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(Some(dir_a.path().to_path_buf())),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_a.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
         });
         let b = Arc::new(CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(Some(dir_b.path().to_path_buf())),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_b.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
         });
 
@@ -580,12 +783,15 @@ mod tests {
         let dir_b = tempfile::tempdir().unwrap();
         let ctx = CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(Some(dir_a.path().to_path_buf())),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_a.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
         };
 
         let store_a = ctx.people().expect("open people store for workspace A");
-        ctx.rebind_workspace_dir(dir_b.path())
+        ctx.rebind_workspace(dir_b.path(), Default::default())
             .expect("rebind context workspace");
 
         assert_eq!(ctx.workspace_dir().unwrap(), dir_b.path());
@@ -601,12 +807,18 @@ mod tests {
         let dir_b = tempfile::tempdir().unwrap();
         let a = Arc::new(CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(Some(dir_a.path().to_path_buf())),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_a.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
         });
         let b = Arc::new(CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(Some(dir_b.path().to_path_buf())),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_b.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
         });
 
@@ -653,7 +865,10 @@ mod tests {
     fn degraded_context_rejects_workspace_bound_stores() {
         let ctx = CoreContext {
             host_kind: HostKind::Cli,
-            workspace_dir: RwLock::new(None),
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: None,
+                memory_subsystem: Default::default(),
+            }),
             domains: crate::core::runtime::DomainSet::full(),
         };
 
@@ -664,6 +879,209 @@ mod tests {
         assert!(
             err.contains("workspace unavailable"),
             "unexpected error: {err}"
+        );
+    }
+
+    // ---- memory driver binding (M2b) ----------------------------------------
+
+    fn untrusted_external_memory_cfg() -> crate::openhuman::config::schema::MemorySubsystemConfig {
+        use crate::openhuman::config::schema::{MemoryDriverConfig, MemorySubsystemConfig};
+        let mut cfg = MemorySubsystemConfig {
+            driver: "supermemory".into(),
+            ..Default::default()
+        };
+        cfg.drivers.insert(
+            "supermemory".into(),
+            MemoryDriverConfig {
+                class: Some("external".into()),
+                ..Default::default()
+            },
+        );
+        cfg
+    }
+
+    /// Same proof as `people_store_is_isolated_per_context_workspace`, one layer
+    /// up: the memory binding is per-workspace, not per-process.
+    #[test]
+    fn memory_binding_is_isolated_per_context_workspace() {
+        let dir_a = tempfile::tempdir().unwrap();
+        let dir_b = tempfile::tempdir().unwrap();
+        let a = Arc::new(CoreContext {
+            host_kind: HostKind::Cli,
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_a.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
+            domains: crate::core::runtime::DomainSet::full(),
+        });
+        let b = Arc::new(CoreContext {
+            host_kind: HostKind::Cli,
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_b.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
+            domains: crate::core::runtime::DomainSet::full(),
+        });
+
+        let bind_a = a.memory_binding().expect("bind workspace A");
+        let bind_b = b.memory_binding().expect("bind workspace B");
+        assert!(!Arc::ptr_eq(&bind_a, &bind_b));
+
+        let bind_a_again = a.memory_binding().expect("re-resolve workspace A");
+        assert!(Arc::ptr_eq(&bind_a, &bind_a_again));
+    }
+
+    /// The per-workspace rebinding requirement, proven without any explicit
+    /// "rebind memory" call: switching the active user re-points
+    /// `workspace_dir`, and the accessor keys on that.
+    #[test]
+    fn rebind_workspace_updates_context_memory_binding() {
+        let dir_a = tempfile::tempdir().unwrap();
+        let dir_b = tempfile::tempdir().unwrap();
+        let ctx = CoreContext {
+            host_kind: HostKind::Cli,
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_a.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
+            domains: crate::core::runtime::DomainSet::full(),
+        };
+
+        let bind_a = ctx.memory_binding().expect("bind workspace A");
+        ctx.rebind_workspace(dir_b.path(), Default::default())
+            .expect("rebind context workspace");
+
+        assert_eq!(ctx.workspace_dir().unwrap(), dir_b.path());
+        let bind_b = ctx.memory_binding().expect("bind workspace B");
+        assert!(!Arc::ptr_eq(&bind_a, &bind_b));
+    }
+
+    /// The subsystem-config refresh half of the rebind requirement: a rebind
+    /// that passes a `[subsystems.memory] driver = "null"` config must make the
+    /// accessor report the null driver, not the default embedded one captured
+    /// before the user switch.
+    #[test]
+    fn rebind_workspace_refreshes_memory_subsystem_config() {
+        let dir_a = tempfile::tempdir().unwrap();
+        let ctx = CoreContext {
+            host_kind: HostKind::Cli,
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_a.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
+            domains: crate::core::runtime::DomainSet::full(),
+        };
+
+        let bind_a = ctx.memory_binding().expect("bind workspace A");
+        let expected = if cfg!(feature = "modules") {
+            crate::core::subsystem::DriverClass::Module
+        } else {
+            crate::core::subsystem::DriverClass::Null
+        };
+        assert_eq!(bind_a.class(), expected);
+
+        let null_cfg = crate::openhuman::config::schema::MemorySubsystemConfig {
+            driver: "null".to_string(),
+            ..Default::default()
+        };
+        // This is the dangerous case: changing only the memory config for an
+        // already-bound workspace must replace the complete snapshot, so the
+        // binding cache sees the new (workspace, config) pair.
+        ctx.rebind_workspace(dir_a.path(), null_cfg)
+            .expect("rebind context subsystem config");
+
+        let bind_b = ctx.memory_binding().expect("bind workspace B");
+        assert_eq!(bind_b.class(), crate::core::subsystem::DriverClass::Null);
+    }
+
+    /// `memory::global`'s clear-on-failed-rebind property, preserved
+    /// structurally: a workspace whose configured driver is refused resolves to
+    /// the fallback, never to another workspace's driver.
+    #[test]
+    fn failed_bind_never_returns_previous_workspace_binding() {
+        let dir_a = tempfile::tempdir().unwrap();
+        let dir_b = tempfile::tempdir().unwrap();
+        let a = CoreContext {
+            host_kind: HostKind::Cli,
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_a.path().to_path_buf()),
+                memory_subsystem: Default::default(),
+            }),
+            domains: crate::core::runtime::DomainSet::full(),
+        };
+        let b = CoreContext {
+            host_kind: HostKind::Cli,
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(dir_b.path().to_path_buf()),
+                memory_subsystem: untrusted_external_memory_cfg(),
+            }),
+            domains: crate::core::runtime::DomainSet::full(),
+        };
+
+        let bind_a = a.memory_binding().expect("bind workspace A");
+        assert_eq!(bind_a.driver_id(), "tinymemory");
+        assert!(bind_a.fallback().is_none());
+
+        let bind_b = b.memory_binding().expect("workspace B falls back");
+        assert_eq!(
+            bind_b.driver_id(),
+            "null",
+            "a refused driver must fall back, not inherit another workspace's"
+        );
+        let fallback = bind_b.fallback().expect("fallback provenance recorded");
+        assert_eq!(fallback.configured_driver, "supermemory");
+        assert!(!Arc::ptr_eq(&bind_a, &bind_b));
+    }
+
+    /// The single most important default in this step: no binding ⇒ the FULL
+    /// capability set, mirroring `core::all::group_allowed` with no context.
+    #[test]
+    fn memory_capabilities_defaults_open_without_a_workspace() {
+        let ctx = CoreContext {
+            host_kind: HostKind::Cli,
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: None,
+                memory_subsystem: Default::default(),
+            }),
+            domains: crate::core::runtime::DomainSet::full(),
+        };
+        assert!(ctx.memory_binding().is_err(), "no workspace ⇒ no binding");
+        assert_eq!(
+            ctx.memory_capabilities(),
+            crate::openhuman::memory::api::capabilities::Capabilities::all(),
+            "a context with no binding must not deny any capability"
+        );
+    }
+
+    /// The no-context arm of `current_memory_capabilities`. Asserted through
+    /// the value the fallback branch yields rather than by calling it with an
+    /// empty `DEFAULT_CONTEXT`: that global is process-wide and another test in
+    /// the same binary may have set it, which would make a bare
+    /// `assert_eq!(current_memory_capabilities(), all())` order-dependently
+    /// flaky.
+    #[test]
+    fn current_memory_capabilities_defaults_open_without_a_context() {
+        assert_eq!(
+            crate::openhuman::memory::binding::unbound_default_capabilities(),
+            crate::openhuman::memory::api::capabilities::Capabilities::all()
+        );
+        // And when a context *is* ambient, the call resolves through it rather
+        // than erroring.
+        let ctx = CoreContext::for_test(crate::core::runtime::DomainSet::full(), None, None);
+        assert_eq!(
+            ctx.memory_capabilities(),
+            crate::openhuman::memory::api::capabilities::Capabilities::all()
+        );
+    }
+
+    /// The DomainSet axis and the capability axis are independent (kernel.md
+    /// §3.7's three axes): a narrowed `DomainSet` must not narrow capabilities.
+    #[test]
+    fn capabilities_are_open_under_a_harness_domain_set() {
+        let ctx = CoreContext::for_test(crate::core::runtime::DomainSet::harness(), None, None);
+        assert_eq!(
+            ctx.memory_capabilities(),
+            crate::openhuman::memory::api::capabilities::Capabilities::all()
         );
     }
 }

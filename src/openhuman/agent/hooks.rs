@@ -8,6 +8,40 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+/// Post-turn hooks supplied by a process embedding OpenHuman.
+static EMBEDDER_POST_TURN_HOOKS: std::sync::LazyLock<std::sync::Mutex<Vec<Arc<dyn PostTurnHook>>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
+
+/// Register a hook that is copied into subsequently-created agent sessions.
+pub fn register_embedder_post_turn_hook(hook: Arc<dyn PostTurnHook>) {
+    EMBEDDER_POST_TURN_HOOKS
+        .lock()
+        .expect("embedder post-turn hooks poisoned")
+        .push(hook);
+}
+
+/// Replace an embedder post-turn hook by name, or remove it when absent.
+///
+/// This prevents a host that rebuilds its core from retaining callbacks from a
+/// previous configuration in the process-global registry.
+pub fn replace_embedder_post_turn_hook(name: &str, hook: Option<Arc<dyn PostTurnHook>>) {
+    let mut hooks = EMBEDDER_POST_TURN_HOOKS
+        .lock()
+        .expect("embedder post-turn hooks poisoned");
+    hooks.retain(|registered| registered.name() != name);
+    if let Some(hook) = hook {
+        hooks.push(hook);
+    }
+}
+
+/// Snapshot hooks supplied by the embedding host.
+pub fn embedder_post_turn_hooks() -> Vec<Arc<dyn PostTurnHook>> {
+    EMBEDDER_POST_TURN_HOOKS
+        .lock()
+        .expect("embedder post-turn hooks poisoned")
+        .clone()
+}
+
 /// Snapshot of a completed agent turn, passed to every registered hook.
 ///
 /// This struct captures the full state of the interaction after the LLM has
@@ -93,6 +127,77 @@ pub trait PostTurnHook: Send + Sync {
     /// Called after the agent produces a final response.
     /// Errors are logged but do not propagate to the caller.
     async fn on_turn_complete(&self, ctx: &TurnContext) -> anyhow::Result<()>;
+}
+
+/// The two tool lifecycle moments OpenHuman exposes to embedding hosts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ToolHookEvent {
+    /// Immediately before the selected tool executes.
+    PreToolUse,
+    /// After the tool returns its final normalized outcome.
+    PostToolUse,
+}
+
+/// Safe metadata supplied to an embedding host's tool hook.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolHookContext {
+    /// The lifecycle moment that raised this notification.
+    pub event: ToolHookEvent,
+    /// The provider call id for correlating pre- and post-hook records.
+    pub call_id: String,
+    /// The registered tool name.
+    pub tool_name: String,
+    /// Arguments after OpenHuman's recovery/normalization middleware.
+    pub arguments: serde_json::Value,
+    /// Whether a completed tool succeeded; absent before execution.
+    pub success: Option<bool>,
+    /// Final tool runtime in milliseconds; absent before execution.
+    pub duration_ms: Option<u64>,
+}
+
+/// Embedder callback around every harness tool execution.
+#[async_trait]
+pub trait ToolHook: Send + Sync {
+    /// Human-readable hook identifier for diagnostics.
+    fn name(&self) -> &str;
+    /// Run before a tool. Returning an error vetoes that tool call.
+    async fn before_tool(&self, context: &ToolHookContext) -> anyhow::Result<()>;
+    /// Observe a completed tool. Errors are logged and never change its result.
+    async fn after_tool(&self, context: &ToolHookContext) -> anyhow::Result<()>;
+}
+
+/// Tool hooks supplied by an embedding host.
+static EMBEDDER_TOOL_HOOKS: std::sync::LazyLock<std::sync::Mutex<Vec<Arc<dyn ToolHook>>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
+
+/// Register a tool hook for subsequently-created harnesses.
+pub fn register_embedder_tool_hook(hook: Arc<dyn ToolHook>) {
+    EMBEDDER_TOOL_HOOKS
+        .lock()
+        .expect("embedder tool hooks poisoned")
+        .push(hook);
+}
+
+/// Replace an embedder tool hook by name, or remove it when absent.
+///
+/// This prevents a host that rebuilds its core from retaining callbacks from a
+/// previous configuration in the process-global registry.
+pub fn replace_embedder_tool_hook(name: &str, hook: Option<Arc<dyn ToolHook>>) {
+    let mut hooks = EMBEDDER_TOOL_HOOKS
+        .lock()
+        .expect("embedder tool hooks poisoned");
+    hooks.retain(|registered| registered.name() != name);
+    if let Some(hook) = hook {
+        hooks.push(hook);
+    }
+}
+
+/// Snapshot tool hooks supplied by the embedding host.
+pub fn embedder_tool_hooks() -> Vec<Arc<dyn ToolHook>> {
+    EMBEDDER_TOOL_HOOKS
+        .lock()
+        .expect("embedder tool hooks poisoned")
+        .clone()
 }
 
 #[cfg(test)]

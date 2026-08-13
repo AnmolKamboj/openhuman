@@ -20,9 +20,8 @@ use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use tempfile::TempDir;
 
-use crate::core::event_bus::{
-    init_global as init_event_bus, subscribe_global, DomainEvent, EventHandler, SubscriptionHandle,
-};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::ingest_pipeline::ingest_chat;
 use crate::openhuman::memory::queue::{
@@ -35,6 +34,8 @@ use crate::openhuman::memory::store::trees::{store as tree_store, types::TreeKin
 use crate::openhuman::memory::sync_events::{emit_sync_stage, MemorySyncStage, MemorySyncTrigger};
 use crate::openhuman::memory::tree::retrieval::{query_source, search_entities};
 use crate::openhuman::memory::tree::score::store::lookup_entity;
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 use tinycortex::memory::ingest::canonicalize::chat::{ChatBatch, ChatMessage};
 
 // ── helpers ─────────────────────────────────────────────────────────────
@@ -49,8 +50,9 @@ fn test_config() -> (TempDir, Config) {
     (tmp, cfg)
 }
 
-fn ensure_event_bus() {
-    let _ = init_event_bus(256);
+async fn ensure_event_bus() {
+    // Standing the bus up is async now — it connects to a broker. Idempotent.
+    crate::core::bus::init().await.expect("bus init");
 }
 
 #[derive(Clone)]
@@ -66,7 +68,7 @@ impl EventCollector {
     }
 
     fn subscribe(self) -> (Self, Option<SubscriptionHandle>) {
-        let handle = subscribe_global(Arc::new(self.clone()));
+        let handle = BUS.subscribe(Arc::new(self.clone()));
         (self, handle)
     }
 
@@ -78,10 +80,27 @@ impl EventCollector {
             .filter(|e| pred(e))
             .count()
     }
+
+    /// Wait until at least `want` events match, or fail on a deadline.
+    ///
+    /// A single `yield_now` used to be enough when the bus was a channel and
+    /// the handler ran inline on the subscriber task. On tinybus an event
+    /// crosses two task hops — the subscriber loop, then the isolated handler
+    /// task — so a batch of twenty needs to be waited for rather than assumed.
+    async fn wait_for<F: Fn(&DomainEvent) -> bool>(&self, want: usize, pred: F) -> usize {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let seen = self.count_by(&pred);
+            if seen >= want || tokio::time::Instant::now() > deadline {
+                return seen;
+            }
+            tokio::task::yield_now().await;
+        }
+    }
 }
 
 #[async_trait]
-impl EventHandler for EventCollector {
+impl EventHandler<DomainEvent> for EventCollector {
     fn name(&self) -> &str {
         "test::event_collector"
     }
@@ -142,7 +161,7 @@ fn mk_batch(source: &str, label: &str, seq: u32, body: &str, base_ts: i64) -> Ch
 #[tokio::test]
 async fn single_batch_sync_to_tree() {
     let (_tmp, cfg) = test_config();
-    ensure_event_bus();
+    ensure_event_bus().await;
 
     let (collector, _handle) = EventCollector::new().subscribe();
 
@@ -236,7 +255,7 @@ async fn single_batch_sync_to_tree() {
 #[tokio::test]
 async fn multi_batch_volume_builds_full_tree() {
     let (_tmp, cfg) = test_config();
-    ensure_event_bus();
+    ensure_event_bus().await;
 
     let (collector, _handle) = EventCollector::new().subscribe();
 
@@ -267,12 +286,13 @@ async fn multi_batch_volume_builds_full_tree() {
     let total_chunks = count_chunks(&cfg).unwrap();
     assert!(total_chunks >= 20, "got {total_chunks}");
 
-    tokio::task::yield_now().await;
-    let canonicalized = collector.count_by(|e| {
-        matches!(e, DomainEvent::DocumentCanonicalized { source_id: sid, .. }
-            if sid == "gmail:alice-volume")
-    });
-    assert!(canonicalized >= 20);
+    let canonicalized = collector
+        .wait_for(20, |e| {
+            matches!(e, DomainEvent::DocumentCanonicalized { source_id: sid, .. }
+                if sid == "gmail:alice-volume")
+        })
+        .await;
+    assert!(canonicalized >= 20, "got {canonicalized}");
 
     // A parallel test can briefly hold the process-global LLM gate, causing
     // the seal job to defer. Keep draining until that deferred work becomes

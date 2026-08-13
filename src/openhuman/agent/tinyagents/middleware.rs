@@ -1478,6 +1478,101 @@ pub(crate) struct ToolOutcomeCaptureMiddleware {
     failure_map: super::observability::ToolFailureMap,
 }
 
+/// Delivers tool lifecycle events to hooks installed by an embedding host.
+pub(crate) struct EmbedderToolHooksMiddleware {
+    hooks: Vec<std::sync::Arc<dyn crate::openhuman::agent::hooks::ToolHook>>,
+    /// Normalized pre-call arguments keyed by provider `call_id`, so the
+    /// `PostToolUse` context can hand an embedding host the same arguments its
+    /// `PreToolUse` hook saw. The crate's `ToolResult` does not carry the
+    /// original call arguments, so without this cache every post-use event would
+    /// report `Null` and an auditing/correlating host could not match inputs to
+    /// outcomes.
+    arguments_by_call_id: std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
+}
+
+impl EmbedderToolHooksMiddleware {
+    pub(crate) fn new(
+        hooks: Vec<std::sync::Arc<dyn crate::openhuman::agent::hooks::ToolHook>>,
+    ) -> Self {
+        Self {
+            hooks,
+            arguments_by_call_id: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl Middleware<()> for EmbedderToolHooksMiddleware {
+    fn name(&self) -> &str {
+        "embedder_tool_hooks"
+    }
+
+    async fn before_tool(
+        &self,
+        _ctx: &mut RunContext<()>,
+        _state: &(),
+        call: &mut TaToolCall,
+    ) -> TaResult<()> {
+        let context = crate::openhuman::agent::hooks::ToolHookContext {
+            event: crate::openhuman::agent::hooks::ToolHookEvent::PreToolUse,
+            call_id: call.id.clone(),
+            tool_name: call.name.clone(),
+            arguments: call.arguments.clone(),
+            success: None,
+            duration_ms: None,
+        };
+        for hook in &self.hooks {
+            hook.before_tool(&context).await.map_err(|error| {
+                tinyagents::error::TinyAgentsError::Tool(format!(
+                    "tool hook '{}' denied {}: {error:#}",
+                    hook.name(),
+                    context.tool_name
+                ))
+            })?;
+        }
+        // Cache the (already-recovered) arguments only once every hook approved
+        // the call: a vetoed call never reaches `after_tool`, so storing it here
+        // would leak a cache entry for the turn.
+        self.arguments_by_call_id
+            .lock()
+            .expect("embedder tool-hook arguments poisoned")
+            .insert(call.id.clone(), call.arguments.clone());
+        Ok(())
+    }
+
+    async fn after_tool(
+        &self,
+        _ctx: &mut RunContext<()>,
+        _state: &(),
+        result: &mut TaToolResult,
+    ) -> TaResult<()> {
+        let arguments = self
+            .arguments_by_call_id
+            .lock()
+            .expect("embedder tool-hook arguments poisoned")
+            .remove(&result.call_id)
+            .unwrap_or(serde_json::Value::Null);
+        let context = crate::openhuman::agent::hooks::ToolHookContext {
+            event: crate::openhuman::agent::hooks::ToolHookEvent::PostToolUse,
+            call_id: result.call_id.clone(),
+            tool_name: result.name.clone(),
+            arguments,
+            success: Some(result.error.is_none()),
+            duration_ms: Some(result.elapsed_ms),
+        };
+        for hook in &self.hooks {
+            if let Err(error) = hook.after_tool(&context).await {
+                tracing::warn!(
+                    hook = hook.name(),
+                    tool = context.tool_name,
+                    "embedder post-tool hook failed: {error:#}"
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
 impl ToolOutcomeCaptureMiddleware {
     pub(crate) fn new(
         sink: super::ToolOutcomeSink,
@@ -2351,6 +2446,18 @@ impl Middleware<()> for RepeatedToolFailureMiddleware {
                         | crate::openhuman::tools::status::ToolFailureClass::ModelConnection
                 ));
         if recoverable {
+            // A poll tool's contract is the identical repeat (see
+            // [`is_repeat_call_exempt`]), and the thing it repeats on is a
+            // *timeout* — which lands here as a recoverable failure. Counting
+            // those toward the identical-argument headroom halts exactly the
+            // loop the tool is documented to ask for: a sub-agent that outlives
+            // eight wait windows killed the turn, discarding work it had already
+            // done. `RepeatProgressMiddleware` already honours this exemption on
+            // the success side; the failure ladder must agree, or the exemption
+            // only holds while the wait happens to return early.
+            if is_repeat_call_exempt(&result.name) {
+                return Ok(());
+            }
             if let Some(summary) = self.record_recoverable(&result.name, &arg_fp, &failure_text) {
                 tracing::warn!(
                     tool = %result.name,
@@ -4279,6 +4386,7 @@ mod tests {
             raw: None,
             resolved_model: None,
             continue_turn: None,
+            served_from_cache: false,
         }
     }
 
@@ -4529,5 +4637,158 @@ mod tests {
             "a second unsynced write should flag index drift: {}",
             second.content
         );
+    }
+
+    // ── EmbedderToolHooksMiddleware ──────────────────────────────────────────
+
+    /// Records lifecycle notifications for a test hook, optionally vetoing every
+    /// pre-tool call so the veto path can be exercised.
+    struct RecordingToolHook {
+        name: &'static str,
+        pre: std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>,
+        post: std::sync::Arc<
+            std::sync::Mutex<Vec<(String, serde_json::Value, Option<bool>, Option<u64>)>>,
+        >,
+        veto: bool,
+    }
+
+    #[async_trait]
+    impl crate::openhuman::agent::hooks::ToolHook for RecordingToolHook {
+        fn name(&self) -> &str {
+            self.name
+        }
+        async fn before_tool(
+            &self,
+            context: &crate::openhuman::agent::hooks::ToolHookContext,
+        ) -> anyhow::Result<()> {
+            self.pre
+                .lock()
+                .unwrap()
+                .push((context.tool_name.clone(), context.arguments.clone()));
+            if self.veto {
+                anyhow::bail!("vetoed by test hook");
+            }
+            Ok(())
+        }
+        async fn after_tool(
+            &self,
+            context: &crate::openhuman::agent::hooks::ToolHookContext,
+        ) -> anyhow::Result<()> {
+            self.post.lock().unwrap().push((
+                context.tool_name.clone(),
+                context.arguments.clone(),
+                context.success,
+                context.duration_ms,
+            ));
+            Ok(())
+        }
+    }
+
+    fn embedder_hook_mw(
+        pre: std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>,
+        post: std::sync::Arc<
+            std::sync::Mutex<Vec<(String, serde_json::Value, Option<bool>, Option<u64>)>>,
+        >,
+        veto: bool,
+    ) -> EmbedderToolHooksMiddleware {
+        EmbedderToolHooksMiddleware::new(vec![std::sync::Arc::new(RecordingToolHook {
+            name: "recording",
+            pre,
+            post,
+            veto,
+        })])
+    }
+
+    #[tokio::test]
+    async fn embedder_tool_hooks_post_use_replays_the_normalized_pre_call_arguments() {
+        let pre = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let post = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mw = embedder_hook_mw(pre.clone(), post.clone(), false);
+
+        let mut call = TaToolCall {
+            id: "call-1".into(),
+            name: "lookup".into(),
+            arguments: json!({"id": 42}),
+            invalid: None,
+        };
+        mw.before_tool(&mut ctx(), &(), &mut call).await.unwrap();
+
+        let mut result = TaToolResult {
+            call_id: "call-1".into(),
+            name: "lookup".into(),
+            content: "found".into(),
+            raw: None,
+            error: None,
+            elapsed_ms: 7,
+        };
+        mw.after_tool(&mut ctx(), &(), &mut result).await.unwrap();
+
+        assert_eq!(pre.lock().unwrap().len(), 1, "one pre-use notification");
+        let post = post.lock().unwrap();
+        assert_eq!(post.len(), 1, "one post-use notification");
+        let (tool, arguments, success, duration) = &post[0];
+        assert_eq!(tool, "lookup");
+        assert_eq!(
+            *arguments,
+            json!({"id": 42}),
+            "post-use context must preserve the normalized pre-call arguments, not Null"
+        );
+        assert_eq!(*success, Some(true));
+        assert_eq!(*duration, Some(7));
+    }
+
+    #[tokio::test]
+    async fn embedder_tool_hooks_veto_denies_the_call_and_skips_post_use() {
+        let pre = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let post = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mw = embedder_hook_mw(pre.clone(), post.clone(), true);
+
+        let mut call = TaToolCall {
+            id: "call-2".into(),
+            name: "rm".into(),
+            arguments: json!({"path": "/"}),
+            invalid: None,
+        };
+        let error = mw
+            .before_tool(&mut ctx(), &(), &mut call)
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("vetoed"),
+            "veto must surface as a tool error: {error}"
+        );
+        // The call was vetoed — no post-use event, and no cache entry leaks.
+        assert_eq!(pre.lock().unwrap().len(), 1, "pre-use hook still observed");
+        assert!(
+            post.lock().unwrap().is_empty(),
+            "no post-use for a vetoed call"
+        );
+        assert!(
+            mw.arguments_by_call_id.lock().unwrap().is_empty(),
+            "a vetoed call must not leave a cached argument entry"
+        );
+    }
+
+    #[tokio::test]
+    async fn embedder_tool_hooks_post_use_without_pre_call_falls_back_to_null() {
+        let pre = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let post = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mw = embedder_hook_mw(pre.clone(), post.clone(), false);
+
+        // A result with no matching `before_tool` (defensive path) must not panic
+        // and falls back to `Null`, the pre-fix behaviour.
+        let mut result = TaToolResult {
+            call_id: "orphan".into(),
+            name: "lookup".into(),
+            content: "found".into(),
+            raw: None,
+            error: None,
+            elapsed_ms: 3,
+        };
+        mw.after_tool(&mut ctx(), &(), &mut result).await.unwrap();
+        let post = post.lock().unwrap();
+        assert_eq!(post.len(), 1);
+        assert_eq!(post[0].1, serde_json::Value::Null);
+        assert_eq!(post[0].2, Some(true));
     }
 }

@@ -390,16 +390,14 @@ fn maybe_publish_session_expired(err: &TinyAgentsError, operation: &str) {
         if pe.provider.as_str() == "OpenHuman" && matches!(pe.status, Some(401 | 403)) {
             let reason =
                 crate::openhuman::inference::provider::ops::sanitize_api_error(&pe.message);
-            crate::core::event_bus::publish_global(
-                crate::core::event_bus::DomainEvent::SessionExpired {
-                    source: format!(
-                        "openhuman_backend_model.{}({})",
-                        operation,
-                        pe.status.unwrap_or(0)
-                    ),
-                    reason,
-                },
-            );
+            crate::core::bus::BUS.publish(crate::core::events::DomainEvent::SessionExpired {
+                source: format!(
+                    "openhuman_backend_model.{}({})",
+                    operation,
+                    pe.status.unwrap_or(0)
+                ),
+                reason,
+            });
         }
     }
 }
@@ -529,6 +527,7 @@ mod tests {
             raw: Some(raw),
             resolved_model: None,
             continue_turn: None,
+            served_from_cache: false,
         };
 
         let projected = project_managed_usage(response);
@@ -569,6 +568,7 @@ mod tests {
             raw: Some(serde_json::json!({ "id": "resp_1" })),
             resolved_model: None,
             continue_turn: None,
+            served_from_cache: false,
         };
 
         let projected = project_managed_usage(response);
@@ -595,6 +595,7 @@ mod tests {
             code: Some("BAD_REQUEST".to_string()),
             message: "API key not configured for provider".to_string(),
             retryable: false,
+            retry_after_ms: None,
             raw: None,
         };
         assert!(is_provider_not_configured_error(&err));
@@ -612,6 +613,7 @@ mod tests {
             code: Some("BAD_REQUEST".to_string()),
             message: "invalid request: messages must not be empty".to_string(),
             retryable: false,
+            retry_after_ms: None,
             raw: None,
         };
         assert!(!is_provider_not_configured_error(&err));
@@ -630,6 +632,7 @@ mod tests {
             code: Some("BAD_REQUEST".to_string()),
             message: "credentials not configured for provider 'anthropic'".to_string(),
             retryable: false,
+            retry_after_ms: None,
             raw: None,
         };
         assert!(is_provider_not_configured_error(&err));
@@ -651,6 +654,7 @@ mod tests {
             code: Some("BAD_REQUEST".to_string()),
             message: "webhook target not configured".to_string(),
             retryable: false,
+            retry_after_ms: None,
             raw: None,
         };
         assert!(!is_provider_not_configured_error(&err));
@@ -665,6 +669,7 @@ mod tests {
             code: None,
             message: "API key not configured for provider".to_string(),
             retryable: false,
+            retry_after_ms: None,
             raw: None,
         };
         assert!(!is_provider_not_configured_error(&err));

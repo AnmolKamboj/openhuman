@@ -19,7 +19,8 @@ use serde_json::{json, Value};
 use tempfile::{tempdir, TempDir};
 
 use openhuman_core::core::auth::{init_rpc_token, CORE_TOKEN_ENV_VAR};
-use openhuman_core::core::event_bus::{DomainEvent, EventHandler};
+use openhuman_core::core::events::DomainEvent;
+use tinybus::EventHandler;
 use openhuman_core::core::jsonrpc::build_core_http_router;
 use openhuman_core::core::socketio::WebChannelEvent;
 use openhuman_core::openhuman::agent::harness::definition::{

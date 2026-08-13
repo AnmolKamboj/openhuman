@@ -37,7 +37,8 @@ use std::time::Duration;
 use parking_lot::Mutex;
 use tokio::sync::oneshot;
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::turn_origin::{self, AgentTurnOrigin, TrustedAutomationSource};
 use crate::openhuman::config::Config;
 use crate::openhuman::security::POLICY_DENIED_MARKER;
@@ -942,7 +943,7 @@ impl ApprovalGate {
             client_id = chat_client_id.as_deref().unwrap_or("<none>"),
             "[approval::gate] publishing ApprovalRequested (surface fires only if thread_id+client_id are both set)"
         );
-        publish_global(DomainEvent::ApprovalRequested {
+        BUS.publish(DomainEvent::ApprovalRequested {
             request_id: request_id.clone(),
             tool_name: tool_name.to_string(),
             action_summary: action_summary.to_string(),
@@ -972,7 +973,7 @@ impl ApprovalGate {
                 tool = tool_name,
                 "[approval::gate] flow-origin park — surfacing flow_approval_request + notification"
             );
-            publish_global(DomainEvent::FlowApprovalRequested {
+            BUS.publish(DomainEvent::FlowApprovalRequested {
                 request_id: request_id.clone(),
                 flow_id: flow_id.clone(),
                 run_id: run_id.clone(),
@@ -985,7 +986,7 @@ impl ApprovalGate {
         // Voice channel (issue #3513): tell the meeting bus to speak the
         // approval prompt into the call.
         if let Some(ic) = in_call_ctx.as_ref() {
-            publish_global(DomainEvent::InCallApprovalRequested {
+            BUS.publish(DomainEvent::InCallApprovalRequested {
                 request_id: request_id.clone(),
                 tool_name: tool_name.to_string(),
                 action_summary: action_summary.to_string(),
@@ -1226,7 +1227,7 @@ impl ApprovalGate {
             if let Some(tx) = self.take_waiter(request_id) {
                 let _ = tx.send(decision);
             }
-            publish_global(DomainEvent::ApprovalDecided {
+            BUS.publish(DomainEvent::ApprovalDecided {
                 request_id: row.request_id.clone(),
                 tool_name: row.tool_name.clone(),
                 decision: decision.as_str().to_string(),
@@ -3294,10 +3295,11 @@ mod tests {
         // surfaces fire instead — the `flow_approval_request` DomainEvent
         // (bridged to a broadcast Socket.IO event by `core::socketio`) and
         // the `flow-gate-approval` CoreNotification with its three actions.
-        crate::core::event_bus::init_global(crate::core::event_bus::DEFAULT_CAPACITY);
-        let mut event_rx = crate::core::event_bus::global()
+        crate::core::bus::init().await.expect("bus init");
+        let mut event_rx = crate::core::bus::BUS
+            .get()
             .expect("event bus initialized above")
-            .raw_receiver();
+            .receiver();
         let mut notif_rx =
             crate::openhuman::desktop::notifications::bus::subscribe_core_notifications();
 
@@ -3353,23 +3355,20 @@ mod tests {
     /// filter by flow id, not just by variant, and tolerate both unrelated
     /// events and broadcast lag rather than returning the first match.
     async fn find_flow_approval_requested(
-        rx: &mut tokio::sync::broadcast::Receiver<crate::core::event_bus::DomainEvent>,
+        rx: &mut tinybus::events::EventReceiver<crate::core::events::DomainEvent>,
         expected_flow_id: &str,
     ) -> (String, String, String) {
         loop {
             match rx.recv().await {
-                Ok(crate::core::event_bus::DomainEvent::FlowApprovalRequested {
+                Some(crate::core::events::DomainEvent::FlowApprovalRequested {
                     request_id,
                     flow_id,
                     run_id,
                     tool_name,
                     ..
                 }) if flow_id == expected_flow_id => return (request_id, run_id, tool_name),
-                Ok(_) => continue,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                    panic!("event bus closed before FlowApprovalRequested arrived")
-                }
+                Some(_) => continue,
+                None => panic!("the bus closed before the expected event arrived"),
             }
         }
     }
@@ -3389,10 +3388,7 @@ mod tests {
             match rx.recv().await {
                 Ok(event) if event.id == expected_id => return event,
                 Ok(_) => continue,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                    panic!("notification bus closed before the flow-gate-approval notification arrived")
-                }
+                Err(err) => panic!("the notification bus closed before the approval: {err}"),
             }
         }
     }

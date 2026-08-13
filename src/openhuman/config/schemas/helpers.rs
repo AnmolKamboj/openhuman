@@ -202,6 +202,7 @@ pub(super) struct VoiceServerSettingsUpdate {
     pub(super) custom_dictionary: Option<Vec<String>>,
     pub(super) always_on_enabled: Option<bool>,
     pub(super) wake_word: Option<String>,
+    pub(super) stt_engine: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

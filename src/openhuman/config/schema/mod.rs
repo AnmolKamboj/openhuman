@@ -9,6 +9,8 @@ pub use cloud_providers::{
     generate_provider_id, is_slug_reserved, migrate_legacy_fields, AuthStyle, CloudProviderCreds,
     CloudProviderType,
 };
+pub mod ephemeral_route;
+pub use ephemeral_route::{EphemeralRoute, EPHEMERAL_ROUTE_SLUG};
 pub mod subconscious;
 pub use subconscious::{MedullaLocalConfig, SubconsciousConfig, SubconsciousEngine};
 mod agent;
@@ -40,6 +42,7 @@ pub mod claude_agent_sdk;
 pub use claude_agent_sdk::ClaudeAgentSdkConfig;
 mod local_ai;
 mod meet;
+mod modules;
 mod node;
 mod observability;
 mod orchestration;
@@ -51,6 +54,7 @@ mod runtime_pool;
 mod runtime_python;
 mod scheduler_gate;
 mod storage_memory;
+mod subsystems;
 mod task_sources;
 mod tokenjuice;
 mod tools;
@@ -76,6 +80,7 @@ pub use identity_cost::{CostConfig, ModelPricing};
 pub use learning::{LearningConfig, ReflectionSource};
 pub use local_ai::{LocalAiConfig, LocalAiUsage};
 pub use meet::{AutoJoinPolicy, AutoSummarizePolicy, CalendarProvider, MeetConfig};
+pub use modules::{ModuleOverride, ModulesConfig};
 pub use node::NodeConfig;
 pub use observability::{AgentTracingBackend, AgentTracingConfig, ObservabilityConfig};
 pub use orchestration::{
@@ -99,20 +104,23 @@ pub use storage_memory::{
     LlmBackend, MemoryConfig, MemoryTreeConfig, StorageConfig, StorageProviderConfig,
     StorageProviderSection, DEFAULT_CLOUD_LLM_MODEL,
 };
+pub use subsystems::{
+    MemoryDriverConfig, MemoryHooksConfig, MemorySubsystemConfig, SubsystemsConfig,
+};
 pub use task_sources::TaskSourcesConfig;
 pub use tokenjuice::TokenjuiceConfig;
 pub use tools::{
     BrowserComputerUseConfig, BrowserConfig, ComposioConfig, CurlConfig, GitbooksConfig,
     HttpHeader, HttpRequestConfig, IntegrationToggle, IntegrationsConfig, McpAuthConfig,
     McpClientConfig, McpClientIdentityConfig, McpServerConfig, MultimodalConfig,
-    MultimodalFileConfig, PolymarketClobCredentials, PolymarketConfig, SearchConfig, SearchEngine,
-    SearchEngineCredentials, SearxngConfig, SecretsConfig, SeltzConfig, WebSearchConfig,
-    COMPOSIO_MODE_BACKEND, COMPOSIO_MODE_DIRECT, SEARCH_ENGINE_BRAVE, SEARCH_ENGINE_DISABLED,
-    SEARCH_ENGINE_EXA, SEARCH_ENGINE_MANAGED, SEARCH_ENGINE_PARALLEL, SEARCH_ENGINE_QUERIT,
+    MultimodalFileConfig, SearchConfig, SearchEngine, SearchEngineCredentials, SearxngConfig,
+    SecretsConfig, SeltzConfig, WebSearchConfig, COMPOSIO_MODE_BACKEND, COMPOSIO_MODE_DIRECT,
+    SEARCH_ENGINE_BRAVE, SEARCH_ENGINE_DISABLED, SEARCH_ENGINE_EXA, SEARCH_ENGINE_MANAGED,
+    SEARCH_ENGINE_PARALLEL, SEARCH_ENGINE_QUERIT,
 };
 pub use update::{UpdateConfig, UpdateRestartStrategy};
 mod voice_server;
-pub use voice_server::{VoiceActivationMode, VoiceServerConfig};
+pub use voice_server::{SttEngine, VoiceActivationMode, VoiceServerConfig};
 pub mod voice_providers;
 pub use voice_providers::{
     generate_voice_provider_id, is_voice_slug_reserved, BuiltinVoiceProvider, SttApiStyle,

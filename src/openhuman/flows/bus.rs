@@ -10,7 +10,7 @@
 //! `flows::ops::flows_set_enabled` to bind/unbind a flow's automatic
 //! dispatch on enable/disable.
 
-use crate::core::event_bus::{DomainEvent, EventHandler};
+use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
 use crate::openhuman::flows::store;
 use crate::openhuman::flows::{flow_namespace, Flow, FlowRun};
@@ -19,6 +19,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
+use tinybus::EventHandler;
 use tinyflows::model::{NodeKind, TriggerKind};
 use tinyflows::nodes::control_flow::dedup as dedup_node;
 
@@ -246,7 +247,7 @@ impl Drop for InFlightGuard {
 }
 
 #[async_trait]
-impl EventHandler for FlowTriggerSubscriber {
+impl EventHandler<DomainEvent> for FlowTriggerSubscriber {
     fn name(&self) -> &str {
         "flows::trigger"
     }
@@ -448,7 +449,7 @@ impl FlowRunDigestSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for FlowRunDigestSubscriber {
+impl EventHandler<DomainEvent> for FlowRunDigestSubscriber {
     fn name(&self) -> &str {
         "flows::digest"
     }
@@ -817,7 +818,7 @@ impl DedupCommitSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for DedupCommitSubscriber {
+impl EventHandler<DomainEvent> for DedupCommitSubscriber {
     fn name(&self) -> &str {
         "flows::dedup_commit"
     }

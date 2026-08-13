@@ -74,7 +74,8 @@ impl Transcriber for VoiceTranscriber {
             "{LOG_PREFIX} transcribe provider={provider} bytes_b64={}",
             request.audio_base64.len()
         );
-        // Empty model → factory substitutes DEFAULT_WHISPER_MODEL.
+        // Empty model lets a configured external provider use its registry
+        // default; the cloud provider resolves its own backend default.
         let stt = crate::openhuman::voice::create_stt_provider(&provider, "", &self.config)?;
         let outcome = stt
             .transcribe(
@@ -216,7 +217,7 @@ impl ConversationStore for ConversationHistoryStore {
         session_key: &str,
         limit: usize,
     ) -> anyhow::Result<Vec<ConversationMessage>> {
-        let messages = crate::openhuman::memory::conversations::get_messages(
+        let messages = tinycortex::memory::conversations::get_messages(
             self.workspace_dir.clone(),
             session_key,
         )
@@ -235,9 +236,9 @@ impl ConversationStore for ConversationHistoryStore {
     async fn append(&self, session_key: &str, message: ConversationMessage) -> anyhow::Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
         // `append_message` requires the thread to exist; create-or-noop first.
-        crate::openhuman::memory::conversations::ensure_thread(
+        tinycortex::memory::conversations::ensure_thread(
             self.workspace_dir.clone(),
-            crate::openhuman::memory::conversations::CreateConversationThread {
+            tinycortex::memory::conversations::CreateConversationThread {
                 id: session_key.to_string(),
                 title: session_key.to_string(),
                 created_at: now.clone(),
@@ -247,7 +248,7 @@ impl ConversationStore for ConversationHistoryStore {
             },
         )
         .map_err(|e| anyhow::anyhow!(e))?;
-        let stored = crate::openhuman::memory::conversations::ConversationMessage {
+        let stored = tinycortex::memory::conversations::ConversationMessage {
             id: uuid::Uuid::new_v4().to_string(),
             content: message.content,
             message_type: message.role.clone(),
@@ -255,7 +256,7 @@ impl ConversationStore for ConversationHistoryStore {
             sender: message.role,
             created_at: now,
         };
-        crate::openhuman::memory::conversations::append_message(
+        tinycortex::memory::conversations::append_message(
             self.workspace_dir.clone(),
             session_key,
             stored,
@@ -355,7 +356,8 @@ impl EventSink for OpenHumanEventSink {
                 crate::openhuman::web_chat::publish_web_channel_event(event);
             }
             "channel" => {
-                use crate::core::event_bus::{publish_global, DomainEvent};
+                use crate::core::bus::BUS;
+                use crate::core::events::DomainEvent;
                 let event = match kind {
                     "reaction_received" => DomainEvent::ChannelReactionReceived {
                         channel: json_str(&payload, "channel"),
@@ -377,7 +379,7 @@ impl EventSink for OpenHumanEventSink {
                         return Ok(());
                     }
                 };
-                publish_global(event);
+                BUS.publish(event);
             }
             other => tracing::warn!("{LOG_PREFIX} unmapped event domain: {other}"),
         }

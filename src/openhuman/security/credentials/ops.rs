@@ -19,7 +19,7 @@ use crate::openhuman::config::{
     default_root_openhuman_dir, pre_login_user_dir, read_active_user_id, user_openhuman_dir,
     write_active_user_id,
 };
-use crate::openhuman::memory::conversations;
+use tinycortex::memory::conversations;
 
 const AUTH_ME_STORE_RETRY_DELAY: Duration = Duration::from_millis(150);
 const AUTH_ME_STORE_TRANSIENT_STATUSES: &[u16] = &[408, 429, 500, 502, 503, 504, 520];
@@ -51,13 +51,13 @@ pub async fn start_login_gated_services(config: &Config) {
     // constraint is voice-server → standalone-dictation-listener (they contend
     // for the single rdev global listener on macOS). Previously each was
     // `.await`ed in series, so their cold-start costs SUMMED: the local-AI
-    // bootstrap (Ollama/whisper/embeddings) + the Windows WASAPI microphone init
+    // bootstrap (Ollama/embeddings) + the Windows WASAPI microphone init
     // (a synchronous readiness handshake in `always_on::spawn_capture_thread`) +
     // the hosted-client network sync stacked into the ~10s stall users hit
     // before hotkeys/commands were usable — worst on Windows (#3490). Worse,
     // the hotkey/command registration (steps 2–3) sat
     // *after* the local-AI bootstrap in the series, so commands could not
-    // register until Ollama/whisper finished warming.
+    // register until Ollama finished warming.
     //
     // Run them concurrently on independent tasks instead: readiness is bounded
     // by the slowest single service rather than their sum, and command
@@ -85,7 +85,7 @@ pub async fn start_login_gated_services(config: &Config) {
     // the specific stage rather than an anonymous "a service failed".
     let mut tasks: Vec<(&'static str, tokio::task::JoinHandle<()>)> = Vec::new();
 
-    // 1. Local AI (Ollama, whisper, embeddings) — the heaviest single warm-up,
+    // 1. Local AI (Ollama, embeddings) — the heaviest single warm-up,
     //    so keeping it off the critical path for the others is the biggest win.
     {
         let config = config.clone();
@@ -555,8 +555,9 @@ async fn store_session_inner(
             logs.push(format!("memory client bind warning: {e}"));
         }
     }
-    match crate::core::runtime::context::CoreContext::rebind_default_workspace_dir(
+    match crate::core::runtime::context::CoreContext::rebind_default_workspace(
         &effective_config.workspace_dir,
+        effective_config.subsystems.memory.clone(),
     ) {
         Ok(_) => logs.push(format!(
             "core context bound to workspace {}",
@@ -811,9 +812,10 @@ pub async fn clear_session(config: &Config) -> Result<RpcOutcome<serde_json::Val
             if let Err(error) = crate::openhuman::memory::global::init(workspace.clone()) {
                 tracing::warn!(%error, "failed to rebind memory after logout");
             }
-            if let Err(error) =
-                crate::core::runtime::context::CoreContext::rebind_default_workspace_dir(&workspace)
-            {
+            if let Err(error) = crate::core::runtime::context::CoreContext::rebind_default_workspace(
+                &workspace,
+                signed_out_config.subsystems.memory.clone(),
+            ) {
                 tracing::warn!(%error, "failed to rebind core context after logout");
             }
             if let Err(error) =
