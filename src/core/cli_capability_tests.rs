@@ -92,10 +92,13 @@ fn message_never_contains_a_credential_or_endpoint() {
 }
 
 #[test]
-fn bound_driver_probe_reports_the_default_embedded_driver() {
+fn bound_driver_probe_reports_the_default_module_driver() {
     let cfg = MemorySubsystemConfig::default();
     let binding = binding_for("default", cfg.clone());
-    assert_eq!(binding.driver_id(), cfg.driver);
+    assert_eq!(
+        binding.driver_id(),
+        crate::openhuman::memory::binding::MODULE_ID
+    );
     assert_eq!(binding.capabilities(), Capabilities::all());
 }
 

@@ -39,8 +39,8 @@ async fn falls_back_to_the_globally_bound_workspace_when_there_is_no_context() {
 /// handler routed through it still reports the embedded driver in status and
 /// spans.
 #[tokio::test]
-async fn guards_the_embedded_driver_and_keeps_its_identity() {
-    use tinycortex_api::provider::MemoryProvider;
+async fn guards_the_module_driver_and_keeps_its_identity() {
+    use crate::openhuman::memory::api::provider::MemoryProvider;
 
     let _serial = crate::openhuman::memory::ops::GLOBAL_MEMORY_TEST_LOCK
         .lock()
@@ -50,7 +50,7 @@ async fn guards_the_embedded_driver_and_keeps_its_identity() {
     let guard = active_memory_guard().await.expect("guard resolves");
     assert_eq!(
         guard.driver_id(),
-        crate::openhuman::memory::driver::embedded::EMBEDDED_DRIVER_ID
+        crate::openhuman::memory::binding::MODULE_ID
     );
     assert!(guard.as_documents().is_some());
     assert!(guard.as_graph().is_some());

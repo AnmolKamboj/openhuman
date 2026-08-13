@@ -39,6 +39,7 @@ use crate::openhuman::security::SecurityPolicy;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
 
 mod engine;
+pub(crate) mod format;
 mod types;
 
 #[cfg(test)]

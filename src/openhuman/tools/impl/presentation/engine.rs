@@ -1,7 +1,7 @@
 //! Async wrapper around the `tinydocs` module's `.pptx` writer.
 //!
 //! The synthesis itself — the slide mapping, the single-column image layout, the
-//! EMU geometry — lives in `tinydocs::pptx` and runs inside the loaded module.
+//! EMU geometry — lives in `crate::openhuman::tools::implementations::document::format::pptx` and runs inside the loaded module.
 //! What is left here is the policy only a host can supply:
 //!
 //! 1. a deadline, because the module holds no opinion about how long a caller
@@ -24,7 +24,9 @@
 
 use std::time::Duration;
 
-use tinydocs::spec::{WirePresentationSpec, WireSlideImage, WireSlideSpec};
+use crate::openhuman::tools::implementations::document::format::spec::{
+    WirePresentationSpec, WireSlideImage, WireSlideSpec,
+};
 use tokio::time::timeout;
 
 use super::types::{GeneratePresentationInput, PresentationError, ResolvedSlideImage};
@@ -39,6 +41,7 @@ pub(super) async fn generate(
     input: &GeneratePresentationInput,
     images: &[Vec<ResolvedSlideImage>],
     deadline: Duration,
+    config: Option<&crate::openhuman::config::Config>,
 ) -> Result<Vec<u8>, PresentationError> {
     let (deck, payload) = build_request(input, images);
     let started = std::time::Instant::now();
@@ -55,15 +58,22 @@ pub(super) async fn generate(
         "[presentation:engine] generate:start"
     );
 
-    let config = match crate::openhuman::config::Config::load_or_init().await {
-        Ok(config) => config,
-        Err(error) => {
-            return Err(PresentationError::GenerationFailed {
-                exit_code: -1,
-                stderr_truncated: PresentationError::truncate_stderr(&format!(
-                    "config unavailable: {error}"
-                )),
-            });
+    let loaded_config;
+    let config = match config {
+        Some(config) => config,
+        None => {
+            loaded_config = match crate::openhuman::config::Config::load_or_init().await {
+                Ok(config) => config,
+                Err(error) => {
+                    return Err(PresentationError::GenerationFailed {
+                        exit_code: -1,
+                        stderr_truncated: PresentationError::truncate_stderr(&format!(
+                            "config unavailable: {error}"
+                        )),
+                    });
+                }
+            };
+            &loaded_config
         }
     };
 
@@ -71,11 +81,11 @@ pub(super) async fn generate(
     // artifact, and a deadline meant for generation should not be spent on that
     // — otherwise the first document a user ever asks for is the one that times
     // out. Cached after the first call, so this is free from then on.
-    if let Err(error) = documents::ensure_ready(&config).await {
+    if let Err(error) = documents::ensure_ready(config).await {
         return Err(PresentationError::from(error));
     }
 
-    let call = timeout(deadline, documents::generate_pptx(&config, &deck, &payload)).await;
+    let call = timeout(deadline, documents::generate_pptx(config, &deck, &payload)).await;
 
     let elapsed_ms = started.elapsed().as_millis() as u64;
     match call {
@@ -164,7 +174,7 @@ mod tests {
     //! What is left to test on this side of the bus.
     //!
     //! The deck shape, the image layout and the OOXML container are tested in
-    //! `tinydocs::pptx`, where the code now lives — reproducing them here would
+    //! `crate::openhuman::tools::implementations::document::format::pptx`, where the code now lives — reproducing them here would
     //! assert the same behaviour twice and drift the moment one copy changed.
     //!
     //! What only exists here is [`build_request`]: the deck and the concatenated
@@ -196,7 +206,8 @@ mod tests {
     fn resolved(bytes: &[u8], caption: Option<&str>) -> ResolvedSlideImage {
         ResolvedSlideImage {
             bytes: bytes.to_vec(),
-            format: tinydocs::spec::ImageFormat::Png,
+            format:
+                crate::openhuman::tools::implementations::document::format::spec::ImageFormat::Png,
             width_px: 4,
             height_px: 4,
             caption: caption.map(str::to_string),

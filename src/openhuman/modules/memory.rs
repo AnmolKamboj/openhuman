@@ -11,7 +11,7 @@
 //! roughly four thousand pre-boot tests invoke with no tokio runtime at all. So
 //! [`ModuleMemoryProvider::new`] cannot load the module, cannot dial the bus, and
 //! cannot await anything. It stores its configuration and resolves on first use,
-//! the same contract `driver::embedded` follows.
+//! the same lazy-loading contract used by the module host.
 //!
 //! That has one consequence worth stating plainly, because it looks like a
 //! shortcut and is not:
@@ -21,14 +21,11 @@
 //! `MemoryProvider::capabilities` is a **synchronous** method, and the module can
 //! only answer it over the bus. It therefore cannot be asked here.
 //!
-//! It does not need to be. The module serves exactly the mandatory three —
-//! `tinymemory-tinycortex` advertises Core, Recall and Portability because the
-//! optional families need a host's configuration, embedding compute and job
-//! queue — and that is a property of the artifact's *source*, fixed at the
-//! version the registry pins, not something to discover at runtime. So this
-//! returns [`Capabilities::mandatory`], and [`ModuleMemoryProvider::verify`]
-//! cross-checks it against the module's own answer on first use and logs loudly
-//! on disagreement.
+//! It does not need to be. The TinyMemory module serves the complete shared API,
+//! and that is a property of the artifact's *source*, fixed at the version the
+//! registry pins, not something to discover at runtime. So this returns
+//! [`Capabilities::all`], and [`ModuleMemoryProvider::verify`] cross-checks it
+//! against the module's own answer on first use and logs loudly on disagreement.
 //!
 //! Guessing high would be the dangerous direction: the kernel filters its RPC
 //! surface and agent-tool assembly from this set, so an overstated capability
@@ -37,23 +34,36 @@
 //!
 //! # Errors round-trip through the shared table
 //!
-//! `tinymemory_api::wire` maps a `MemoryError` to a `(name, message)` pair and
+//! `crate::openhuman::memory::api::wire` maps a `MemoryError` to a `(name, message)` pair and
 //! back, and **both ends use it**. Reimplementing the mapping here is what would
 //! let a `PathEscape` arrive as an `Invalid`, silently reclassifying a sandbox
 //! escape as a caller mistake.
 
 use std::sync::Arc;
 
+use crate::openhuman::memory::api::capabilities::Capabilities;
+use crate::openhuman::memory::api::chunks::Chunk;
+use crate::openhuman::memory::api::error::MemoryError;
+use crate::openhuman::memory::api::goals::GoalsDoc;
+use crate::openhuman::memory::api::health::MemoryHealth;
+use crate::openhuman::memory::api::provider::types::{
+    DiffReport, EntityHit, ExportPage, ExportRecord, ImportOutcome, IngestItem, IngestOutcome,
+    MaintenanceReport, SnapshotRef, SourceItem, SourceScope,
+};
+use crate::openhuman::memory::api::provider::{
+    MemoryCore, MemoryDiff, MemoryDocuments, MemoryEntities, MemoryGoals, MemoryGraph,
+    MemoryIngest, MemoryMaintenance, MemoryPortability, MemoryProvider, MemoryRecall,
+    MemorySourceSink, MemoryToolMemory, MemoryTree,
+};
+use crate::openhuman::memory::api::recall::OwnedRecallOpts;
+use crate::openhuman::memory::api::tool_memory::ToolMemoryRule;
+use crate::openhuman::memory::api::tree::{IngestRequest, QueryResult, TreeStatus};
+use crate::openhuman::memory::api::types::{
+    GraphRelationRecord, MemoryCategory, MemoryEntry, MemoryKvRecord, MemoryTaint,
+    NamespaceDocumentInput, NamespaceRetrievalContext, NamespaceSummary, StoredMemoryDocument,
+};
+use crate::openhuman::memory::api::wire;
 use async_trait::async_trait;
-use tinymemory_api::capabilities::Capabilities;
-use tinymemory_api::error::MemoryError;
-use tinymemory_api::health::MemoryHealth;
-use tinymemory_api::provider::mandatory::{MemoryCore, MemoryPortability, MemoryRecall};
-use tinymemory_api::provider::types::{ExportPage, ExportRecord, ImportOutcome, SourceScope};
-use tinymemory_api::provider::MemoryProvider;
-use tinymemory_api::recall::OwnedRecallOpts;
-use tinymemory_api::types::{MemoryCategory, MemoryEntry, MemoryTaint, NamespaceSummary};
-use tinymemory_api::wire;
 
 use super::{host, ops, registry};
 use crate::openhuman::config::Config;
@@ -95,7 +105,7 @@ pub fn set_modules_policy(config: Arc<Config>) {
 }
 
 /// The published policy, if boot supplied one.
-fn policy() -> Option<&'static Arc<Config>> {
+pub(crate) fn policy() -> Option<&'static Arc<Config>> {
     MODULES_POLICY.get()
 }
 
@@ -176,6 +186,13 @@ impl ModuleMemoryProvider {
         let runtime = host::runtime().await.map_err(|error| {
             MemoryError::Other(anyhow::anyhow!("the module bus is not running: {error}"))
         })?;
+        super::memory_host::install(runtime.connection(), Arc::clone(config))
+            .await
+            .map_err(|error| {
+                MemoryError::Other(anyhow::anyhow!(
+                    "the memory module host callbacks are unavailable: {error}"
+                ))
+            })?;
         let proxy = runtime
             .proxy(record.bus_name, record.object_path)
             .map_err(|error| MemoryError::Other(anyhow::anyhow!(error.to_string())))?;
@@ -187,18 +204,16 @@ impl ModuleMemoryProvider {
     /// Cross-check the module's advertised capabilities against what this build
     /// assumes, once per process.
     ///
-    /// Logged rather than fatal. A module that advertises *more* than the
-    /// mandatory three is not dangerous — the kernel simply will not use the
-    /// extra families, because it filtered its surface from the static set — but
-    /// it does mean the registry pin and the artifact have diverged, which is
-    /// worth seeing. A module advertising *less* is the real problem, and says so.
+    /// Logged rather than fatal. Any mismatch means the registry pin and the
+    /// artifact have diverged; advertising less is the dangerous direction,
+    /// because the host assembled its full memory surface from this static set.
     async fn verify(&self, proxy: &tinybus::Proxy) {
         if self.verified.get().is_some() {
             return;
         }
         match proxy.call::<Capabilities>("Capabilities", ()).await {
             Ok(actual) => {
-                let assumed = Capabilities::mandatory();
+                let assumed = Capabilities::all();
                 if actual != assumed {
                     log::warn!(
                         "[modules:memory] the module advertises {actual:?} but this build \
@@ -228,9 +243,9 @@ impl MemoryProvider for ModuleMemoryProvider {
         &self.driver_id
     }
 
-    /// The mandatory three. See the module docs on why this is static.
+    /// Every family is implemented by the pinned compiled module.
     fn capabilities(&self) -> Capabilities {
-        Capabilities::mandatory()
+        Capabilities::all()
     }
 
     async fn health(&self) -> MemoryHealth {
@@ -259,6 +274,37 @@ impl MemoryProvider for ModuleMemoryProvider {
             .call::<()>("Shutdown", ())
             .await
             .map_err(|error| from_bus(&error))
+    }
+
+    fn as_ingest(&self) -> Option<&dyn MemoryIngest> {
+        Some(self)
+    }
+    fn as_documents(&self) -> Option<&dyn MemoryDocuments> {
+        Some(self)
+    }
+    fn as_tree(&self) -> Option<&dyn MemoryTree> {
+        Some(self)
+    }
+    fn as_entities(&self) -> Option<&dyn MemoryEntities> {
+        Some(self)
+    }
+    fn as_graph(&self) -> Option<&dyn MemoryGraph> {
+        Some(self)
+    }
+    fn as_diff(&self) -> Option<&dyn MemoryDiff> {
+        Some(self)
+    }
+    fn as_goals(&self) -> Option<&dyn MemoryGoals> {
+        Some(self)
+    }
+    fn as_tool_memory(&self) -> Option<&dyn MemoryToolMemory> {
+        Some(self)
+    }
+    fn as_sources(&self) -> Option<&dyn MemorySourceSink> {
+        Some(self)
+    }
+    fn as_maintenance(&self) -> Option<&dyn MemoryMaintenance> {
+        Some(self)
     }
 }
 
@@ -380,6 +426,335 @@ impl MemoryPortability for ModuleMemoryProvider {
             .call("ImportRecords", (records,))
             .await
             .map_err(|error| from_bus(&error))
+    }
+}
+
+macro_rules! module_call {
+    ($self:expr, $operation:literal, $method:literal, $args:expr) => {
+        $self
+            .proxy($operation)
+            .await?
+            .call($method, $args)
+            .await
+            .map_err(|error| from_bus(&error))
+    };
+}
+
+#[async_trait]
+impl MemoryIngest for ModuleMemoryProvider {
+    async fn ingest_document(&self, item: IngestItem) -> Result<IngestOutcome, MemoryError> {
+        module_call!(self, "ingest_document", "IngestDocument", (item,))
+    }
+    async fn ingest_chat(&self, messages: Vec<IngestItem>) -> Result<IngestOutcome, MemoryError> {
+        module_call!(self, "ingest_chat", "IngestChat", (messages,))
+    }
+}
+
+#[async_trait]
+impl MemoryDocuments for ModuleMemoryProvider {
+    async fn put_document(&self, input: NamespaceDocumentInput) -> Result<String, MemoryError> {
+        module_call!(self, "put_document", "PutDocument", (input,))
+    }
+    async fn get_document(
+        &self,
+        namespace: &str,
+        key: &str,
+    ) -> Result<Option<StoredMemoryDocument>, MemoryError> {
+        module_call!(self, "get_document", "GetDocument", (namespace, key))
+    }
+    async fn list_documents(
+        &self,
+        namespace: Option<&str>,
+    ) -> Result<serde_json::Value, MemoryError> {
+        module_call!(
+            self,
+            "list_documents",
+            "ListDocuments",
+            (namespace.map(str::to_string),)
+        )
+    }
+    async fn list_namespaces(&self) -> Result<Vec<String>, MemoryError> {
+        module_call!(self, "list_namespaces", "ListNamespaces", ())
+    }
+    async fn delete_document(
+        &self,
+        namespace: &str,
+        document_id: &str,
+    ) -> Result<serde_json::Value, MemoryError> {
+        module_call!(
+            self,
+            "delete_document",
+            "DeleteDocument",
+            (namespace, document_id)
+        )
+    }
+    async fn clear_namespace(&self, namespace: &str) -> Result<(), MemoryError> {
+        module_call!(self, "clear_namespace", "ClearNamespace", (namespace,))
+    }
+    async fn query_documents(
+        &self,
+        namespace: &str,
+        query: &str,
+        limit: usize,
+    ) -> Result<NamespaceRetrievalContext, MemoryError> {
+        module_call!(
+            self,
+            "query_documents",
+            "QueryDocuments",
+            (namespace, query, limit)
+        )
+    }
+    async fn recall_documents(
+        &self,
+        namespace: &str,
+        limit: usize,
+    ) -> Result<NamespaceRetrievalContext, MemoryError> {
+        module_call!(
+            self,
+            "recall_documents",
+            "RecallDocuments",
+            (namespace, limit)
+        )
+    }
+}
+
+#[async_trait]
+impl MemoryTree for ModuleMemoryProvider {
+    async fn append(&self, request: IngestRequest) -> Result<(), MemoryError> {
+        module_call!(self, "append", "Append", (request,))
+    }
+    async fn query_source(
+        &self,
+        namespace: &str,
+        source_id: &str,
+        limit: usize,
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<Chunk>, MemoryError> {
+        module_call!(
+            self,
+            "query_source",
+            "QuerySource",
+            (namespace, source_id, limit, scope.cloned())
+        )
+    }
+    async fn drill_down(&self, namespace: &str, node_id: &str) -> Result<QueryResult, MemoryError> {
+        module_call!(self, "drill_down", "DrillDown", (namespace, node_id))
+    }
+    async fn seal(&self, namespace: &str) -> Result<TreeStatus, MemoryError> {
+        module_call!(self, "seal", "Seal", (namespace,))
+    }
+    async fn cascade(&self, namespace: &str) -> Result<TreeStatus, MemoryError> {
+        module_call!(self, "cascade", "Cascade", (namespace,))
+    }
+}
+
+#[async_trait]
+impl MemoryEntities for ModuleMemoryProvider {
+    async fn entities(
+        &self,
+        namespace: &str,
+        query: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<EntityHit>, MemoryError> {
+        module_call!(
+            self,
+            "entities",
+            "Entities",
+            (namespace, query.map(str::to_string), limit)
+        )
+    }
+    async fn entity_edges(
+        &self,
+        namespace: &str,
+        entity_id: &str,
+        limit: usize,
+    ) -> Result<Vec<GraphRelationRecord>, MemoryError> {
+        module_call!(
+            self,
+            "entity_edges",
+            "EntityEdges",
+            (namespace, entity_id, limit)
+        )
+    }
+    async fn touch_entities(
+        &self,
+        namespace: &str,
+        entity_ids: &[String],
+    ) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "touch_entities",
+            "TouchEntities",
+            (namespace, entity_ids.to_vec())
+        )
+    }
+}
+
+#[async_trait]
+impl MemoryGraph for ModuleMemoryProvider {
+    async fn kv_get(
+        &self,
+        namespace: Option<&str>,
+        key: &str,
+    ) -> Result<Option<MemoryKvRecord>, MemoryError> {
+        module_call!(
+            self,
+            "kv_get",
+            "KvGet",
+            (namespace.map(str::to_string), key)
+        )
+    }
+    async fn kv_put(
+        &self,
+        namespace: Option<&str>,
+        key: &str,
+        value: serde_json::Value,
+    ) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "kv_put",
+            "KvPut",
+            (namespace.map(str::to_string), key, value)
+        )
+    }
+    async fn kv_delete(&self, namespace: Option<&str>, key: &str) -> Result<bool, MemoryError> {
+        module_call!(
+            self,
+            "kv_delete",
+            "KvDelete",
+            (namespace.map(str::to_string), key)
+        )
+    }
+    async fn kv_list(
+        &self,
+        namespace: Option<&str>,
+        prefix: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<MemoryKvRecord>, MemoryError> {
+        module_call!(
+            self,
+            "kv_list",
+            "KvList",
+            (
+                namespace.map(str::to_string),
+                prefix.map(str::to_string),
+                limit
+            )
+        )
+    }
+    async fn relations(
+        &self,
+        namespace: Option<&str>,
+        subject: Option<&str>,
+        predicate: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<GraphRelationRecord>, MemoryError> {
+        module_call!(
+            self,
+            "relations",
+            "Relations",
+            (
+                namespace.map(str::to_string),
+                subject.map(str::to_string),
+                predicate.map(str::to_string),
+                limit
+            )
+        )
+    }
+    async fn put_relation(&self, relation: GraphRelationRecord) -> Result<(), MemoryError> {
+        module_call!(self, "put_relation", "PutRelation", (relation,))
+    }
+}
+
+#[async_trait]
+impl MemoryDiff for ModuleMemoryProvider {
+    async fn capture_snapshot(&self, source_id: &str) -> Result<SnapshotRef, MemoryError> {
+        module_call!(self, "capture_snapshot", "CaptureSnapshot", (source_id,))
+    }
+    async fn snapshots(
+        &self,
+        source_id: &str,
+        limit: usize,
+    ) -> Result<Vec<SnapshotRef>, MemoryError> {
+        module_call!(self, "snapshots", "Snapshots", (source_id, limit))
+    }
+    async fn diff(
+        &self,
+        source_id: &str,
+        from: Option<&str>,
+        to: &str,
+    ) -> Result<DiffReport, MemoryError> {
+        module_call!(
+            self,
+            "diff",
+            "Diff",
+            (source_id, from.map(str::to_string), to)
+        )
+    }
+}
+
+#[async_trait]
+impl MemoryGoals for ModuleMemoryProvider {
+    async fn goals(&self) -> Result<GoalsDoc, MemoryError> {
+        module_call!(self, "goals", "Goals", ())
+    }
+    async fn set_goals(&self, goals: GoalsDoc) -> Result<(), MemoryError> {
+        module_call!(self, "set_goals", "SetGoals", (goals,))
+    }
+}
+
+#[async_trait]
+impl MemoryToolMemory for ModuleMemoryProvider {
+    async fn tool_rules(&self, tool_name: &str) -> Result<Vec<ToolMemoryRule>, MemoryError> {
+        module_call!(self, "tool_rules", "ToolRules", (tool_name,))
+    }
+    async fn put_tool_rule(&self, rule: ToolMemoryRule) -> Result<(), MemoryError> {
+        module_call!(self, "put_tool_rule", "PutToolRule", (rule,))
+    }
+    async fn delete_tool_rule(&self, tool_name: &str, rule_id: &str) -> Result<bool, MemoryError> {
+        module_call!(
+            self,
+            "delete_tool_rule",
+            "DeleteToolRule",
+            (tool_name, rule_id)
+        )
+    }
+}
+
+#[async_trait]
+impl MemorySourceSink for ModuleMemoryProvider {
+    async fn accept_source_items(
+        &self,
+        source_id: &str,
+        source_kind: &str,
+        items: Vec<SourceItem>,
+        taint: MemoryTaint,
+    ) -> Result<IngestOutcome, MemoryError> {
+        module_call!(
+            self,
+            "accept_source_items",
+            "AcceptSourceItems",
+            (source_id, source_kind, items, taint)
+        )
+    }
+    async fn forget_source(&self, source_id: &str) -> Result<u64, MemoryError> {
+        module_call!(self, "forget_source", "ForgetSource", (source_id,))
+    }
+}
+
+#[async_trait]
+impl MemoryMaintenance for ModuleMemoryProvider {
+    async fn reembed(&self) -> Result<MaintenanceReport, MemoryError> {
+        module_call!(self, "reembed", "Reembed", ())
+    }
+    async fn compact(&self) -> Result<MaintenanceReport, MemoryError> {
+        module_call!(self, "compact", "Compact", ())
+    }
+    async fn consolidate(&self) -> Result<MaintenanceReport, MemoryError> {
+        module_call!(self, "consolidate", "Consolidate", ())
+    }
+    async fn doctor(&self) -> Result<MaintenanceReport, MemoryError> {
+        module_call!(self, "doctor", "Doctor", ())
     }
 }
 

@@ -33,9 +33,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use super::{tool_memory_store, ToolMemoryPriority, ToolMemorySource, ToolMemoryStore};
+use super::{tool_memory_store, ToolMemoryStore};
 use crate::openhuman::agent::hooks::{PostTurnHook, ToolCallRecord, TurnContext};
 use crate::openhuman::memory::Memory;
+use tinycortex::memory::tool_memory::{ToolMemoryPriority, ToolMemorySource};
 
 /// Maximum length (chars) of the captured rule body — keeps malformed or
 /// runaway input from bloating the namespace.
@@ -460,7 +461,9 @@ mod tests {
         let mut flat: Vec<_> = prompt.into_values().flatten().collect();
         flat.sort_by(|a, b| b.priority.cmp(&a.priority));
         let rendered =
-            crate::openhuman::memory::tool_memory::prompt::render_tool_memory_rules(&flat);
+            crate::openhuman::memory::tool_memory::prompt::ToolMemoryRulesSection::new(flat)
+                .rendered()
+                .to_string();
         assert!(rendered.contains("Never email Sarah"));
         assert!(rendered.contains("**[critical]**"));
     }
