@@ -526,6 +526,13 @@ async fn boot_stack_with_super_context(super_context_enabled: bool) -> Stack {
         super_context_enabled,
     );
 
+    // The transport-only router does not create a Core runtime context. Install
+    // the explicit tinymemory host seams before handlers service memory-backed
+    // agent turns, matching normal startup wiring.
+    openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(std::sync::Arc::new(
+        openhuman_core::openhuman::config::Config::default(),
+    ));
+
     let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
     let rpc_base = format!("http://{rpc_addr}");
     tokio::time::sleep(Duration::from_millis(100)).await;
