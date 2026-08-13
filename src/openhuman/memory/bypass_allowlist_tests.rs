@@ -106,10 +106,6 @@ const BYPASS_PATTERNS: &[(&str, &str)] = &[
         "pub(crate) read-one escape hatch, driver-only by contract",
     ),
     (
-        "EmbeddedMemoryProvider::new(",
-        "direct driver construction — must go through binding::for_workspace",
-    ),
-    (
         "NullMemoryProvider::new(",
         "direct driver construction — must go through binding::for_workspace",
     ),
@@ -230,11 +226,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "carries a #[cfg(test)] memory_override seam the guard would bypass",
     ),
     (
-        "src/openhuman/flows/ops.rs",
-        "active_memory_client(",
-        "clear_namespace has no contract method; plus a memory_client_override test seam",
-    ),
-    (
         "src/openhuman/flows/tinyflows/memory_adapter.rs",
         ".memory_handle(",
         "returns Arc<dyn Memory> to satisfy a tinyflows engine trait",
@@ -258,28 +249,8 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     // ── The driver and the binding: guarding these would be a cycle ──
     (
         "src/openhuman/memory/binding.rs",
-        "EmbeddedMemoryProvider::new(",
-        "this is the construction path the lint protects",
-    ),
-    (
-        "src/openhuman/memory/binding.rs",
         "NullMemoryProvider::new(",
         "this is the construction path the lint protects (fail-closed fallback)",
-    ),
-    (
-        "src/openhuman/memory/driver/embedded/documents.rs",
-        ".get_document(",
-        "this IS the driver — the escape hatch exists for exactly this call",
-    ),
-    (
-        "src/openhuman/memory/driver/embedded/mod.rs",
-        ".memory_handle(",
-        "this IS the driver; it owns the engine handle by definition",
-    ),
-    (
-        "src/openhuman/memory/driver/embedded/mod.rs",
-        "EmbeddedMemoryProvider::new(",
-        "the driver's own constructor",
     ),
     (
         "vendor/tinymemory/core/src/global.rs",
@@ -313,16 +284,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "same definition site",
     ),
     (
-        "src/openhuman/memory/ops/kv_graph.rs",
-        "active_memory_client(",
-        "kv_get/kv_delete/graph_* have no contract twin or a lossy conversion",
-    ),
-    (
-        "src/openhuman/memory/ops/learn.rs",
-        "active_memory_client(",
-        "list_namespaces() -> Vec<String> vs the contract's Vec<NamespaceSummary>",
-    ),
-    (
         "src/openhuman/memory/ops/learn.rs",
         "global::client(",
         "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",
@@ -351,16 +312,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "src/openhuman/memory/ops/sync.rs",
         "global::client(",
         "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",
-    ),
-    (
-        "src/openhuman/memory/ops/tool_memory.rs",
-        ".memory_handle(",
-        "open_store() still serves the four handlers with no contract twin",
-    ),
-    (
-        "src/openhuman/memory/ops/tool_memory.rs",
-        "active_memory_client(",
-        "tool_rule_put/get/*_json/*_for_prompt have no contract equivalent",
     ),
     (
         "vendor/tinymemory/core/src/store/client.rs",

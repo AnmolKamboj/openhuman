@@ -1,18 +1,14 @@
-//! Async wrapper around the vendored [`tinydocs`] `.docx` writer.
+//! Async host policy around the document module's `.docx` writer.
 //!
-//! The OOXML synthesis itself lives in
-//! [`tinydocs::docx::generate`](https://github.com/tinyhumansai/tinydocs) —
-//! spec validation, the paragraph/heading/bullet mapping, and the zip pack.
-//! That call is **synchronous and CPU-bound by design**: `tinydocs` has no
-//! opinion about executors or deadlines, because only a host knows its own.
+//! The host keeps the typed contract and validation; OOXML synthesis runs in
+//! the loadable document module. This wrapper owns the caller's deadline and
+//! maps bus failures onto the agent-facing [`DocumentError`].
 //!
 //! This module supplies exactly that missing policy, and nothing else:
 //!
-//! 1. a `spawn_blocking` hop so a CPU-bound pack never stalls the agent
-//!    loop's executor, and
-//! 2. a `tokio::time::timeout` so a pathological input that slipped past
+//! 1. a `tokio::time::timeout` so a pathological input that slipped past
 //!    validation cannot wedge the loop indefinitely, and
-//! 3. the mapping from a crate error, a join failure, or an elapsed deadline
+//! 2. the mapping from a bus error or elapsed deadline
 //!    onto the agent-facing [`DocumentError`].
 //!
 //! Control flow here is identical to the presentation engine's, so the two
@@ -213,7 +209,7 @@ mod tests {
 
     // The OOXML round trips that used to live here — container shape, which
     // text reaches document.xml, blank filtering — moved with the writer into
-    // `tinydocs::docx`, which tests them against the bytes it produces. Asserting
+    // the TinyDocs module, which tests them against the bytes it produces. Asserting
     // them again through a bus call would test the same behaviour twice and
     // drift the moment one copy changed.
 

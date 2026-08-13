@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
+use openhuman_core::openhuman::config::Config;
 use openhuman_core::openhuman::config::rpc as config_rpc;
 use openhuman_core::openhuman::memory::sources::readers::SourceReader;
 use openhuman_core::openhuman::memory::sources::{
@@ -9,6 +10,23 @@ use openhuman_core::openhuman::memory::sources::{
 use tempfile::{Builder, TempDir};
 
 static ENV_LOCK: &OnceLock<Mutex<()>> = &crate::SHARED_ENV_LOCK;
+static MEMORY_SEAMS_INIT: OnceLock<()> = OnceLock::new();
+
+fn ensure_memory_seams() {
+    MEMORY_SEAMS_INIT.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("round23-memory-source-seams".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
+                    Arc::new(Config::default()),
+                );
+            })
+            .expect("spawn round23 memory source seam installer")
+            .join()
+            .expect("round23 memory source seam installer panicked");
+    });
+}
 
 struct EnvGuard {
     key: &'static str,
@@ -144,6 +162,7 @@ fn source_entry(id: &str, kind: SourceKind) -> MemorySourceEntry {
 #[tokio::test]
 async fn round23_memory_sources_status_registry_and_readers_cover_remaining_edges() {
     let _lock = env_lock();
+    ensure_memory_seams();
     let harness = setup();
     let config = harness.config().await;
 

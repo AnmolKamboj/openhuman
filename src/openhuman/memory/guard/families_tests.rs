@@ -1,10 +1,10 @@
 //! The wrapped-accessor property — the reason this milestone exists — plus
 //! step 2, which lives on `GuardedTree::query_source`.
 
-use tinycortex_api::provider::types::SourceScope;
-use tinycortex_api::provider::{MemoryProvider, MemoryTree};
-use tinycortex_api::tree::IngestRequest;
-use tinycortex_api::types::MemoryTaint;
+use crate::openhuman::memory::api::provider::types::SourceScope;
+use crate::openhuman::memory::api::provider::{MemoryProvider, MemoryTree};
+use crate::openhuman::memory::api::tree::IngestRequest;
+use crate::openhuman::memory::api::types::MemoryTaint;
 
 use crate::openhuman::memory::guard::test_support::{
     document, embedded_policy, external_policy, guarded,
