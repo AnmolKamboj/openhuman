@@ -24,6 +24,7 @@ use crate::openhuman::config::Config;
 /// unavailable, and the feature says so at the point of use. Taking the core
 /// down because an optional codec is missing would be a worse trade.
 pub async fn load_declared_modules(config: &Config) {
+    super::memory::set_modules_policy(std::sync::Arc::new(config.clone()));
     if !config.modules.enabled {
         log::debug!("[modules] boot load skipped: modules are disabled in configuration");
         return;
@@ -102,28 +103,20 @@ mod tests {
     use crate::openhuman::config::Config;
 
     #[test]
-    fn tinymemory_is_not_eager_when_the_memory_driver_is_embedded() {
-        // The default config binds the embedded driver, so the module-backed
-        // TinyMemory record must not be treated as eager — otherwise every
-        // host with `modules.enabled` would pay a boot-time download for a
-        // driver it never binds.
-        let config = Config::default();
+    fn tinymemory_is_not_eager_when_memory_is_disabled() {
+        let mut config = Config::default();
+        config.subsystems.memory.driver = "null".to_string();
         let record = super::registry::find(super::super::memory::MODULE_ID)
             .expect("tinymemory is a registered module");
         assert!(!should_eager_load(record, &config));
     }
 
     #[test]
-    fn tinymemory_is_eager_when_the_memory_driver_is_module_backed() {
+    fn tinymemory_is_eager_for_the_default_module_driver() {
         let mut config = Config::default();
-        config.subsystems.memory.driver = "tinymemory".to_string();
-        config.subsystems.memory.drivers.insert(
-            "tinymemory".to_string(),
-            tinymemory_api::host::MemoryDriverConfig {
-                class: Some("module".to_string()),
-                ..Default::default()
-            },
-        );
+        // The legacy persisted id aliases to the TinyMemory module until the
+        // shared API changes its default string.
+        config.subsystems.memory.driver = "tinycortex".to_string();
         let record = super::registry::find(super::super::memory::MODULE_ID)
             .expect("tinymemory is a registered module");
         assert!(should_eager_load(record, &config));

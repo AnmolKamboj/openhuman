@@ -923,6 +923,16 @@ impl Agent {
 
         let mut agent_context_prepared_sources: Vec<harness::AgentContextPreparedSource> =
             Vec::new();
+        // Triggered memory-agent recall runs on EVERY channel, voice included:
+        // dropping it on voice would strip the user's remembered context
+        // (preferences, people, prior facts) from spoken answers — a real quality
+        // loss the transcript alone can't replace. Recall adds a few seconds of
+        // embedding + retrieval before the first model token, but on realtime
+        // voice that latency is already covered end-to-end: the backend relay
+        // streams an audible keepalive filler from t=0 so the cloud session never
+        // sees a silent stall, and the desktop's ~8s ack-defer closes the spoken
+        // turn and finishes in the background if the work runs long. So the recall
+        // path is byte-for-byte identical across voice and chat.
         let (enriched, memory_agent_context_injected) = self
             .inject_triggered_memory_agent_context(user_message, enriched, &parent_context)
             .await;

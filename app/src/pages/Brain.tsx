@@ -6,8 +6,9 @@
  * former top-level `/orchestration` tab — see {@link OrchestrationView}).
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
+import TinyPlaceSunsetNotice from '../agentworld/TinyPlaceSunsetNotice';
 import { CodingSessionsCard } from '../components/intelligence/CodingSessionsCard';
 import GoalsPanel from '../components/intelligence/GoalsPanel';
 import IntelligenceSubconsciousTab from '../components/intelligence/IntelligenceSubconsciousTab';
@@ -18,7 +19,6 @@ import { MemoryTreeStatusPanel } from '../components/intelligence/MemoryTreeStat
 import SubconsciousTriggersPanel from '../components/intelligence/SubconsciousTriggersPanel';
 import { SyncAuditPanel } from '../components/intelligence/SyncAuditPanel';
 import { ToastContainer } from '../components/intelligence/Toast';
-import PageSectionHeader from '../components/layout/PageSectionHeader';
 import PageWelcome from '../components/layout/PageWelcome';
 import PanelPage from '../components/layout/PanelPage';
 import { SidebarContent } from '../components/layout/shell/SidebarSlot';
@@ -26,6 +26,7 @@ import TwoPaneNav from '../components/layout/TwoPaneNav';
 import OrchestrationView from '../components/orchestration/OrchestrationView';
 import BetaBanner from '../components/ui/BetaBanner';
 import { useSubconscious } from '../hooks/useSubconscious';
+import { useTinyPlaceIdentity } from '../hooks/useTinyPlaceIdentity';
 import { useT } from '../lib/i18n/I18nContext';
 import { useCoreState } from '../providers/CoreStateProvider';
 import type { ToastNotification } from '../types/intelligence';
@@ -105,6 +106,18 @@ export default function Brain() {
     }
   }, [location.search, navigate]);
 
+  // #5424 — the Orchestration sub-tab is a tiny.place surface, hidden from users
+  // without an identity. If a *confirmed* non-holder lands on `?tab=orchestration`
+  // via a stale deep link, redirect to the Brain welcome tab. This is a
+  // render-phase redirect (not a post-commit effect), so once the check resolves
+  // to a non-holder OrchestrationView never mounts. While the check is still in
+  // flight we render optimistically — matching the AgentWorldShell route guard —
+  // so a holder (the common case) never sees a flash; the brief optimistic window
+  // for a stale non-holder link is the deliberate trade-off.
+  const { status: tinyplaceStatus, hasIdentity: hasTinyplaceIdentity } = useTinyPlaceIdentity();
+  const shouldRedirectFromOrchestration =
+    activeTab === 'orchestration' && tinyplaceStatus === 'ready' && !hasTinyplaceIdentity;
+
   const [graph, setGraph] = useState<GraphExportResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<GraphMode>('tree');
@@ -182,6 +195,10 @@ export default function Brain() {
 
   const cardClass = 'rounded-lg border border-line bg-surface p-4';
 
+  if (shouldRedirectFromOrchestration) {
+    return <Navigate to="/brain" replace />;
+  }
+
   return (
     <div className="h-full">
       {/* The Brain navigation lives in the root app sidebar's dynamic region. */}
@@ -232,15 +249,20 @@ export default function Brain() {
                       'M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z'
                     ),
                   },
-                  {
-                    // TinyPlace multi-agent orchestration, folded back under
-                    // Brain from the former top-level `/orchestration` tab.
-                    value: 'orchestration',
-                    label: t('brain.tabs.orchestration'),
-                    icon: navIcon(
-                      'M12 7v3m0 0l-5.5 6M12 10l5.5 6M12 5a2 2 0 100 0M5 19a2 2 0 100 0M19 19a2 2 0 100 0'
-                    ),
-                  },
+                  // TinyPlace multi-agent orchestration, folded back under Brain
+                  // from the former top-level `/orchestration` tab. Hidden from
+                  // users without a tiny.place identity (#5424).
+                  ...(hasTinyplaceIdentity
+                    ? [
+                        {
+                          value: 'orchestration',
+                          label: t('brain.tabs.orchestration'),
+                          icon: navIcon(
+                            'M12 7v3m0 0l-5.5 6M12 10l5.5 6M12 5a2 2 0 100 0M5 19a2 2 0 100 0M19 19a2 2 0 100 0'
+                          ),
+                        },
+                      ]
+                    : []),
                 ],
               },
             ]}
@@ -251,11 +273,18 @@ export default function Brain() {
         // Full-bleed: OrchestrationView renders its own chip nav + surfaces
         // (chat, graph, task board), which need the full content width — so it
         // sits outside the shared max-w scaffold the other tabs use.
-        <div className="h-full">
-          <OrchestrationView />
+        <div className="flex h-full flex-col">
+          <TinyPlaceSunsetNotice />
+          <div className="min-h-0 flex-1">
+            <OrchestrationView />
+          </div>
         </div>
       ) : (
-        <div className="mx-auto h-full w-full max-w-5xl">
+        // Full width on purpose: the header band has to run edge to edge across
+        // the content card, so the width cap cannot live above it. Each tab's
+        // body carries its own `mx-auto max-w-3xl`, which is what the old
+        // `max-w-5xl` here was really constraining.
+        <div className="h-full w-full">
           {activeTab === 'welcome' ? (
             <PageWelcome
               testId="brain-welcome"
@@ -303,20 +332,18 @@ export default function Brain() {
             />
           ) : (
             /* All tabs share the standard scaffold: a single scrolling body,
-            all custom controls live inside it. Each tab opens with the canonical
-            header card (title + one-line description), aligned to the content. */
-            <PanelPage contentClassName="p-4">
+            all custom controls live inside it. The title/description go through
+            PanelPage so every page opens with the same flush header band, rather
+            than a bordered card floating in the content column. */
+            <PanelPage
+              contentClassName="p-4"
+              title={t(
+                BRAIN_HEADERS[activeTab as Exclude<BrainTab, 'welcome' | 'orchestration'>].titleKey
+              )}
+              description={t(
+                BRAIN_HEADERS[activeTab as Exclude<BrainTab, 'welcome' | 'orchestration'>].descKey
+              )}>
               <div className="mx-auto max-w-3xl space-y-5">
-                <PageSectionHeader
-                  title={t(
-                    BRAIN_HEADERS[activeTab as Exclude<BrainTab, 'welcome' | 'orchestration'>]
-                      .titleKey
-                  )}
-                  description={t(
-                    BRAIN_HEADERS[activeTab as Exclude<BrainTab, 'welcome' | 'orchestration'>]
-                      .descKey
-                  )}
-                />
                 {activeTab === 'graph' && (
                   <div className="space-y-5 animate-fade-up">
                     <MemoryControls

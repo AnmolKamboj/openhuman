@@ -61,14 +61,29 @@
 //!   the parent's iterations, and a child's `Finished` would tell the progress
 //!   bridge the whole request had completed while other runs were still
 //!   emitting.
-//! * **No `ToolCallCompleted` is ever emitted, and none can be.** The crate's
-//!   `ProgressEvent` has five variants and none of them reports a tool
-//!   *finishing* — there is no success flag, no output, no duration anywhere in
-//!   the coarse stream. `AgentProgress::ToolCallCompleted` requires all three.
-//!   Synthesising one would mean asserting `success: true` for a tool that may
-//!   have failed, which corrupts the timeline and the trace exporter rather than
-//!   merely leaving them incomplete. So tool rows stay `running` until the
-//!   crate grows a completion event; see the `TODO(phase4)` below.
+//! * **`ToolCallCompleted` is emitted from `ProgressEvent::ToolCallFinished`.**
+//!   This previously read "none is ever emitted, and none can be": the crate's
+//!   stream had no tool-completion milestone, so a row opened by `ToolCall`
+//!   could never be closed truthfully, and synthesising one would have asserted
+//!   `success: true` for a tool that may have failed — corrupting the timeline
+//!   and the trace exporter rather than merely leaving them incomplete. That
+//!   gap was filed as `tinyagents#88` and is now closed.
+//!
+//!   Two of the three fields `AgentProgress::ToolCallCompleted` needs still do
+//!   not travel on the closing event — the tool *name* and the *duration* — so
+//!   both are captured when the call opens (`RunState::open_calls`) and
+//!   recovered on close. The recorded iteration is used rather than the live
+//!   counter, because model output between a call and its result advances the
+//!   round and would otherwise file the tool under the wrong one.
+//!
+//!   A close with no matching open call is **dropped, not emitted**: without
+//!   the opening record there is no honest tool name or duration to report, and
+//!   the original reasoning still applies — a missing row is recoverable, a
+//!   fabricated one is not.
+//!
+//!   `arguments` stays `None`. The crate emits arguments on neither event, so
+//!   there is nothing to backfill the span input with, and `None` says "not
+//!   captured" rather than "there were none".
 //! * **`ProgressEvent::Error` has no `AgentProgress` counterpart.** The host
 //!   enum models a turn's failure through the turn's own `Err` return (which
 //!   `web_chat::ops` renders as `chat_error`), not through a progress event.
@@ -86,6 +101,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::time::Instant;
 
 use async_trait::async_trait;
 use tokio::sync::mpsc::error::TrySendError;
@@ -103,7 +119,10 @@ use crate::openhuman::agent::progress::AgentProgress;
 const LIFECYCLE_SEND_GRACE: std::time::Duration = std::time::Duration::from_millis(50);
 
 /// Iteration bookkeeping for one run.
-#[derive(Debug, Default, Clone, Copy)]
+// No longer `Copy`: `open_calls` owns per-call state, so the struct is moved or
+// borrowed rather than duplicated. It is only ever touched through the `runs()`
+// mutex guard, which never needed a copy.
+#[derive(Debug, Default, Clone)]
 struct RunState {
     /// Model iterations observed so far, 0 before the first tool call.
     rounds: u32,
@@ -112,6 +131,26 @@ struct RunState {
     /// A model can request several tools in one response, and the runtime emits
     /// one event per tool — so consecutive calls are one iteration, not several.
     in_tool_batch: bool,
+    /// Tool calls opened but not yet closed, keyed by call id.
+    ///
+    /// `ProgressEvent::ToolCallFinished` carries neither the tool name nor a
+    /// duration, so both are captured when the call *opens* and recovered here.
+    /// Keyed by call id rather than kept as a single slot because a model can
+    /// request several tools in one response and they close in any order.
+    open_calls: HashMap<String, OpenToolCall>,
+}
+
+/// What the opening `ToolCall` knew and the closing event does not.
+#[derive(Debug, Clone)]
+struct OpenToolCall {
+    tool_name: String,
+    started_at: Instant,
+    /// Iteration the call was attributed to when it opened.
+    ///
+    /// Recorded rather than re-read at completion: model output between the
+    /// call and its result advances the counter, so reading it late would
+    /// report the tool under the wrong round.
+    iteration: u32,
 }
 
 /// Forwards crate progress into an OpenHuman [`AgentProgress`] channel.
@@ -372,6 +411,18 @@ impl ProgressSink for OpenHumanProgressSink {
                     tool,
                     iteration,
                 );
+                // Remember what the closing event will not carry: the tool name,
+                // a start instant, and the round this call belongs to.
+                if let Some(state) = self.runs().get_mut(run.as_str()) {
+                    state.open_calls.insert(
+                        call.as_str().to_string(),
+                        OpenToolCall {
+                            tool_name: tool.clone(),
+                            started_at: Instant::now(),
+                            iteration,
+                        },
+                    );
+                }
                 self.forward_lifecycle(AgentProgress::ToolCallStarted {
                     call_id: call.as_str().to_string(),
                     tool_name: tool,
@@ -392,6 +443,71 @@ impl ProgressSink for OpenHumanProgressSink {
                     // once the sink is constructed with a registry handle.
                     display_label: None,
                     display_detail: None,
+                })
+                .await;
+            }
+
+            ProgressEvent::ToolCallFinished {
+                run,
+                call,
+                success,
+                output,
+            } => {
+                // The tool name / duration / round come from the opening
+                // `ToolCall`; the crate's event carries none of them.
+                let opened = self
+                    .runs()
+                    .get_mut(run.as_str())
+                    .and_then(|state| state.open_calls.remove(call.as_str()));
+                let Some(opened) = opened else {
+                    // No matching open call: the run was torn down, or a close
+                    // arrived twice. Emitting anyway would invent a tool name
+                    // and a duration, so this is dropped and logged instead —
+                    // a missing row is recoverable, a fabricated one is not.
+                    log::debug!(
+                        "[tinyagents][progress] tool_call_finished with no open call \
+                         run={run} call={call} success={success}; dropping"
+                    );
+                    return;
+                };
+
+                let elapsed_ms = opened.started_at.elapsed().as_millis() as u64;
+                log::debug!(
+                    "[tinyagents][progress] tool_call_finished run={} call={} tool={} \
+                     success={} elapsed_ms={} output_chars={}",
+                    run,
+                    call,
+                    opened.tool_name,
+                    success,
+                    elapsed_ms,
+                    output.chars().count(),
+                );
+
+                // Classified only on failure, from the tool's own output — the
+                // same text `tools::status::classify` sees on the legacy path,
+                // so the timeline renders an identical cause/next-action.
+                // `timed_out: false` because the coarse stream does not
+                // distinguish a timeout from any other failure; claiming one
+                // would put a specific, wrong cause in front of a user.
+                let failure = if success {
+                    None
+                } else {
+                    Some(crate::openhuman::tools::status::classify(&output, false))
+                };
+
+                self.forward_lifecycle(AgentProgress::ToolCallCompleted {
+                    call_id: call.as_str().to_string(),
+                    tool_name: opened.tool_name,
+                    success,
+                    output_chars: output.chars().count(),
+                    output,
+                    // The crate emits no arguments on either event, so there is
+                    // nothing to backfill the span input with. `None` says
+                    // "not captured", which is what actually happened.
+                    arguments: None,
+                    elapsed_ms,
+                    iteration: opened.iteration,
+                    failure,
                 })
                 .await;
             }
@@ -489,9 +605,140 @@ mod tests {
         }
     }
 
+    fn tool_call_finished(success: bool, output: &str) -> ProgressEvent {
+        ProgressEvent::ToolCallFinished {
+            run: run(),
+            call: CallId::new("call-1"),
+            success,
+            output: output.to_string(),
+        }
+    }
+
     fn sink(capacity: usize) -> (OpenHumanProgressSink, mpsc::Receiver<AgentProgress>) {
         let (tx, rx) = mpsc::channel(capacity);
         (OpenHumanProgressSink::new(tx), rx)
+    }
+
+    /// Drains and returns the first `ToolCallCompleted`, panicking if none
+    /// arrives — a silently-absent completion is exactly the #88 bug.
+    fn drain_completion(
+        rx: &mut mpsc::Receiver<AgentProgress>,
+    ) -> (String, bool, usize, String, u64, u32, bool) {
+        while let Ok(ev) = rx.try_recv() {
+            if let AgentProgress::ToolCallCompleted {
+                tool_name,
+                success,
+                output_chars,
+                output,
+                elapsed_ms,
+                iteration,
+                failure,
+                ..
+            } = ev
+            {
+                return (
+                    tool_name,
+                    success,
+                    output_chars,
+                    output,
+                    elapsed_ms,
+                    iteration,
+                    failure.is_some(),
+                );
+            }
+        }
+        panic!("no ToolCallCompleted was forwarded");
+    }
+
+    #[tokio::test]
+    async fn a_finished_tool_call_closes_the_row_it_opened() {
+        // The #88 payoff: a row opened by `ToolCall` must be closable. Before
+        // the crate carried a completion milestone this could not be emitted at
+        // all, and every timeline entry stayed `running` forever.
+        let (sink, mut rx) = sink(16);
+        sink.emit(tool_call("search")).await;
+        sink.emit(tool_call_finished(true, "results")).await;
+
+        let (tool_name, success, output_chars, output, _elapsed, iteration, has_failure) =
+            drain_completion(&mut rx);
+        // The tool name does not travel on the closing event; it is recovered
+        // from the opening one.
+        assert_eq!(tool_name, "search");
+        assert!(success);
+        assert_eq!(output, "results");
+        assert_eq!(output_chars, "results".chars().count());
+        assert_eq!(iteration, 1);
+        assert!(!has_failure, "a success carries no failure classification");
+    }
+
+    #[tokio::test]
+    async fn a_failed_tool_reports_failure_and_carries_a_classification() {
+        // The specific corruption #88 warned about: defaulting `success: true`
+        // would mark a failed tool successful in both the timeline and the
+        // trace exporter.
+        let (sink, mut rx) = sink(16);
+        sink.emit(tool_call("search")).await;
+        sink.emit(tool_call_finished(false, "connection refused"))
+            .await;
+
+        let (_tool, success, _chars, output, _elapsed, _iter, has_failure) =
+            drain_completion(&mut rx);
+        assert!(!success, "a failed tool must not report success");
+        assert_eq!(output, "connection refused");
+        assert!(
+            has_failure,
+            "a failure must carry a classification for the timeline"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_completion_is_filed_under_the_round_its_call_opened_in() {
+        // Model output between a call and its result advances the round, so
+        // reading the live counter at completion would file the tool under the
+        // wrong iteration.
+        let (sink, mut rx) = sink(16);
+        sink.emit(tool_call("search")).await;
+        sink.emit(ProgressEvent::Token {
+            run: run(),
+            text: "thinking".to_string(),
+        })
+        .await;
+        sink.emit(tool_call_finished(true, "ok")).await;
+
+        let (_tool, _success, _chars, _output, _elapsed, iteration, _has_failure) =
+            drain_completion(&mut rx);
+        assert_eq!(iteration, 1, "the call opened in round 1");
+    }
+
+    #[tokio::test]
+    async fn an_unmatched_completion_is_dropped_rather_than_invented() {
+        // With no opening record there is no honest tool name or duration. A
+        // missing row is recoverable; a fabricated one is not.
+        let (sink, mut rx) = sink(16);
+        sink.emit(started()).await;
+        let _ = rx.try_recv();
+        sink.emit(tool_call_finished(true, "orphan")).await;
+
+        assert!(
+            rx.try_recv().is_err(),
+            "a completion with no open call must not be forwarded"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_completion_is_emitted_only_once_per_call() {
+        // The open-call record is removed on close, so a duplicate close (a
+        // retry, or a re-delivered event) cannot produce a second row.
+        let (sink, mut rx) = sink(16);
+        sink.emit(tool_call("search")).await;
+        sink.emit(tool_call_finished(true, "ok")).await;
+        let _ = drain_completion(&mut rx);
+
+        sink.emit(tool_call_finished(true, "ok")).await;
+        assert!(
+            rx.try_recv().is_err(),
+            "a duplicate completion must not open a second row"
+        );
     }
 
     #[tokio::test]

@@ -51,21 +51,21 @@ async fn sign_and_broadcast(
     )
     .await?
     .value;
-    // Derivation stays here, and so does the key. `tinywallet::key` owns BIP-32
+    // Derivation stays here, and so does the key. `crate::openhuman::web3::wallet::primitives::key` owns BIP-32
     // for every chain; what changed is that the *signing* no longer happens in
     // this binary either — the transaction is encoded by the loaded wallet
     // module, which hands back a digest for this process to sign. Custody is
     // unchanged: the mnemonic is decrypted from the keyring above, handed over
     // as a `&str` that is not retained, and never crosses the bus.
-    let derived = tinywallet::key::derive(
-        tinywallet::Chain::Evm,
+    let derived = crate::openhuman::web3::wallet::primitives::key::derive(
+        crate::openhuman::web3::wallet::primitives::Chain::Evm,
         mnemonic.as_str(),
         &secret.derivation_path,
     )
     .map_err(|e| e.to_string())?;
     let public_key = compressed_public_key(derived.secret_bytes())?;
 
-    let to = tinywallet::address::evm::validate(to)
+    let to = crate::openhuman::web3::wallet::primitives::address::evm::validate(to)
         .map_err(|e| format!("invalid EVM target address '{to}': {e}"))?;
 
     let chain_id_hex: String = rpc_call_to(&rpc_url, "eth_chainId", json!([])).await?;
@@ -107,7 +107,7 @@ async fn sign_and_broadcast(
     let gas_limit = u64::try_from(hex_to_u128(&gas_hex)?)
         .map_err(|_| format!("EVM RPC reported an implausible gas limit '{gas_hex}'"))?;
 
-    let transaction = tinywallet::wire::TransactionSpec::Evm {
+    let transaction = crate::openhuman::web3::wallet::primitives::wire::TransactionSpec::Evm {
         to,
         value_wei: value.to_string(),
         data_hex: tx_data.unwrap_or_default(),
@@ -143,9 +143,8 @@ pub async fn execute_evm_quote(mut quote: PreparedTransaction) -> Result<Executi
     let (tx_to, tx_value, tx_data) = match quote.kind {
         // A native transfer pays the recipient directly and carries no data.
         PreparedKind::NativeTransfer => (
-            tinywallet::address::evm::validate(&quote.to_address).map_err(|e| {
-                format!("invalid EVM recipient address '{}': {e}", quote.to_address)
-            })?,
+            crate::openhuman::web3::wallet::primitives::address::evm::validate(&quote.to_address)
+                .map_err(|e| format!("invalid EVM recipient address '{}': {e}", quote.to_address))?,
             quote.amount_raw.clone(),
             None,
         ),
@@ -158,7 +157,7 @@ pub async fn execute_evm_quote(mut quote: PreparedTransaction) -> Result<Executi
                 .ok_or_else(|| "prepared token transfer is missing token_address".to_string())?;
             let calldata = encode_erc20_transfer(&quote.to_address, &quote.amount_raw)?;
             (
-                tinywallet::address::evm::validate(token)
+                crate::openhuman::web3::wallet::primitives::address::evm::validate(token)
                     .map_err(|e| format!("invalid ERC20 token contract address '{token}': {e}"))?,
                 "0".to_string(),
                 Some(calldata),
@@ -348,7 +347,8 @@ pub async fn lookup_tx(network: EvmNetwork, hash: &str) -> Result<TxLookupInfo, 
 /// accepted — prefixed, unprefixed, and any hex case, but not an uppercase
 /// `0X` prefix.
 pub fn validate_evm_address(addr: &str) -> Result<String, String> {
-    let result = tinywallet::address::evm::validate(addr).map_err(|e| e.to_string());
+    let result = crate::openhuman::web3::wallet::primitives::address::evm::validate(addr)
+        .map_err(|e| e.to_string());
     debug!(
         "{LOG_PREFIX} validate_address result={}",
         if result.is_ok() {

@@ -112,15 +112,24 @@ fn env_lock() -> std::sync::MutexGuard<'static, ()> {
 
 /// This target calls the memory operations directly rather than through a core
 /// runtime, so install the host seams that normal startup wires first.
-fn ensure_memory_seams() {
+fn ensure_memory_seams(workspace: &Path) {
     MEMORY_SEAMS_INIT.get_or_init(|| {
+        let workspace = workspace.to_path_buf();
         std::thread::Builder::new()
             .name("memory-golden-parity-seams".to_string())
             .stack_size(8 * 1024 * 1024)
-            .spawn(|| {
-                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(Arc::new(
-                    Config::default(),
-                ));
+            .spawn(move || {
+                let config = Arc::new(Config {
+                    workspace_dir: workspace.clone(),
+                    action_dir: workspace.clone(),
+                    config_path: workspace.join("config.toml"),
+                    ..Config::default()
+                });
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
+                    config.clone(),
+                );
+                #[cfg(feature = "modules")]
+                openhuman_core::openhuman::modules::memory::set_modules_policy(config);
             })
             .expect("spawn golden parity memory seam installer")
             .join()
@@ -389,12 +398,12 @@ async fn init_and_scan(ns: &str, workspace: &Path) -> BTreeSet<String> {
 #[tokio::test]
 async fn golden_workspace_composes_substrate_and_unified_tiers() {
     let _lock = env_lock();
-    ensure_memory_seams();
     let tmp = tempdir().expect("tempdir");
     let _home = EnvVarGuard::set_to_path("HOME", tmp.path());
     let workspace = tmp.path().join("workspace");
     std::fs::create_dir_all(&workspace).expect("mkdir workspace");
     let _ws = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", &workspace);
+    ensure_memory_seams(&workspace);
 
     let tables = init_and_scan("golden-parity-e2e", &workspace).await;
 

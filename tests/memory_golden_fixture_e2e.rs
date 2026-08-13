@@ -133,15 +133,24 @@ fn env_lock() -> std::sync::MutexGuard<'static, ()> {
 /// This integration target binds the transport-independent global memory
 /// client directly, so it must provide the same host seams that normal core
 /// startup installs before opening memory stores.
-fn ensure_memory_seams() {
+fn ensure_memory_seams(workspace: &Path) {
     MEMORY_SEAMS_INIT.get_or_init(|| {
+        let workspace = workspace.to_path_buf();
         std::thread::Builder::new()
             .name("memory-golden-fixture-seams".to_string())
             .stack_size(8 * 1024 * 1024)
-            .spawn(|| {
-                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(Arc::new(
-                    openhuman_core::openhuman::config::Config::default(),
-                ));
+            .spawn(move || {
+                let config = Arc::new(openhuman_core::openhuman::config::Config {
+                    workspace_dir: workspace.clone(),
+                    action_dir: workspace.clone(),
+                    config_path: workspace.join("config.toml"),
+                    ..openhuman_core::openhuman::config::Config::default()
+                });
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
+                    config.clone(),
+                );
+                #[cfg(feature = "modules")]
+                openhuman_core::openhuman::modules::memory::set_modules_policy(config);
             })
             .expect("spawn golden fixture memory seam installer")
             .join()
@@ -263,12 +272,12 @@ async fn fresh_workspace_schema_matches_the_committed_manifest() {
 #[tokio::test]
 async fn golden_fixture_rows_read_back_and_schema_is_stable_after_reopen() {
     let _lock = env_lock();
-    ensure_memory_seams();
     let tmp = tempdir().expect("tempdir");
     let _home = EnvVarGuard::set_to_path("HOME", tmp.path());
     let workspace = tmp.path().join("workspace");
     copy_fixture_to(&workspace);
     let _ws = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", &workspace);
+    ensure_memory_seams(&workspace);
 
     let before = golden::schema_manifest(&workspace).expect("dump schema before open");
 
@@ -402,11 +411,11 @@ fn run_second_process_readback(workspace: &Path) {
 #[tokio::test]
 #[ignore = "spawned as a child process by golden_fixture_rows_read_back_and_schema_is_stable_after_reopen"]
 async fn second_process_readback() {
-    ensure_memory_seams();
     let Ok(workspace) = std::env::var(SECOND_PROCESS_WS_ENV) else {
         panic!("{SECOND_PROCESS_WS_ENV} not set — this test is spawned, not run directly");
     };
     let workspace = PathBuf::from(workspace);
+    ensure_memory_seams(&workspace);
     eprintln!("[golden-fixture][child] reopening {}", workspace.display());
 
     openhuman_core::openhuman::memory::global::init(workspace.clone())
@@ -459,12 +468,12 @@ fn prune_non_db_files(dir: &Path) {
 #[ignore = "regenerates the committed golden fixture; run via scripts/regen-memory-golden-fixture.sh"]
 async fn regenerate_golden_fixture() {
     let _lock = env_lock();
-    ensure_memory_seams();
     let tmp = tempdir().expect("tempdir");
     let _home = EnvVarGuard::set_to_path("HOME", tmp.path());
     let staging = tmp.path().join("workspace");
     std::fs::create_dir_all(&staging).expect("create staging workspace");
     let _ws = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", &staging);
+    ensure_memory_seams(&staging);
 
     openhuman_core::openhuman::memory::global::init(staging.clone())
         .expect("bind global memory client to the staging workspace");

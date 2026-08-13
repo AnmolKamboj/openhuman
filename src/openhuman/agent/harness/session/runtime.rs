@@ -178,6 +178,16 @@ impl Agent {
         &self.model_name
     }
 
+    /// Override the base model this session runs its top-level turns on. Set
+    /// once before running: per-turn classification is disabled (the main agent
+    /// is pinned to its configured model for KV-cache stability — see the model
+    /// pin in `turn/core.rs`), so this sticks for the session and is not flipped
+    /// mid-conversation. The realtime voice harness uses it to pin a fast,
+    /// non-thinking model within the provider's response-time ceiling.
+    pub fn set_model_name(&mut self, model_name: impl Into<String>) {
+        self.model_name = model_name.into();
+    }
+
     /// The agent's currently-configured temperature.
     pub fn temperature(&self) -> f64 {
         self.temperature

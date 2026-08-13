@@ -222,21 +222,25 @@ export interface CodingSessionIngestResult {
   pack_path?: string | null;
 }
 
-// A single ingest RPC is bounded so it stays under the core RPC client's
-// ten-minute ceiling: 120s + 15 * 30s + 15s ≈ 585s. This is a per-call bound,
-// not a per-run one — large histories drain across repeated bounded passes via
-// `drainCodingSessions`, driven by the response `budget_hit` flag. Raising this
-// to the backend's 1,000-session max would blow the RPC timeout on the first
-// call, so the cap stays and the loop does the scaling.
-const CODING_SESSION_BATCH_MAX = 15;
+// A single ingest RPC is bounded so it fits under the core RPC client's hard
+// per-call ceiling (`PER_CALL_TIMEOUT_MAX_MS` = 600s in `coreRpcClient.ts`, which
+// clamps every override — a larger request timeout is silently unreachable).
+// The bound mirrors the core's `ingest_budget` (`memory/sources/rpc.rs`): the
+// server sizes the same call at `120s + N*90s` and the client adds a 15s grace
+// so the server's structured timeout fires first. Each multi-window session
+// drives several sequential LLM calls (~90s/session), so the batch is kept small
+// (`120s + 5*90s + 15s = 585s < 600s`) and large histories drain across repeated
+// bounded passes via `drainCodingSessions`, driven by the response `budget_hit`
+// flag — never by widening a single call past the reachable ceiling.
+const CODING_SESSION_BATCH_MAX = 5;
 const CODING_SESSION_BASE_TIMEOUT_MS = 120_000;
-const CODING_SESSION_PER_SESSION_TIMEOUT_MS = 30_000;
+const CODING_SESSION_PER_SESSION_TIMEOUT_MS = 90_000;
 const CODING_SESSION_RPC_GRACE_MS = 15_000;
 // Hard safety cap on drain passes so a stuck backlog can never spin forever.
-// Sized well above the largest realistic history: at 15 sessions/pass this
-// covers ~30k sessions in a single run, so the target ~7,800-file case drains
-// fully rather than exiting capped. The `moreRemaining` flag still lets the UI
-// report an honest "paused" state if the cap is ever reached.
+// Sized well above the largest realistic history: at 5 sessions/pass this covers
+// ~10k sessions in a single run, so the target ~7,800-file case drains fully
+// rather than exiting capped. The `moreRemaining` flag still lets the UI report
+// an honest "paused" state if the cap is ever reached.
 const CODING_SESSION_MAX_DRAIN_PASSES = 2000;
 
 export async function getCodingSessionStatus(): Promise<CodingSessionSourceStatus[]> {

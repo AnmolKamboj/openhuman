@@ -2808,8 +2808,11 @@ const TOOL_LESS: &[crate::core::all::DomainGroup] = {
 // ---- tool_capability() drift guard (M5.3) ----------------------------------
 
 /// Driver-backed memory tools and the capability each requires.
-const MEMORY_TOOL_CAPABILITIES: &[(&str, tinycortex_api::capabilities::Capability)] = {
-    use tinycortex_api::capabilities::Capability as C;
+const MEMORY_TOOL_CAPABILITIES: &[(
+    &str,
+    crate::openhuman::memory::api::capabilities::Capability,
+)] = {
+    use crate::openhuman::memory::api::capabilities::Capability as C;
     &[
         ("memory_store", C::Core),
         ("memory_forget", C::Core),
@@ -2896,7 +2899,7 @@ fn every_memory_tool_has_an_explicit_capability_or_is_core() {
 /// (the never-filtered bucket). Synthetic names matching only the prefix.
 #[test]
 fn no_prefix_family_memory_tool_silently_defaults_to_uncapped() {
-    use tinycortex_api::capabilities::Capability;
+    use crate::openhuman::memory::api::capabilities::Capability;
     for (name, want) in [
         ("goals_new_thing", Capability::Goals),
         ("memory_tree_new_thing", Capability::Tree),
@@ -3002,10 +3005,11 @@ fn memory_tools_all_present_with_no_ambient_context() {
     }
 }
 
-/// Under the default (`driver = "tinycortex"`) binding the embedded driver
+/// Under the default binding the TinyMemory module
 /// advertises all thirteen families, so the list is byte-identical to today.
 #[tokio::test]
-async fn memory_tools_all_present_under_the_embedded_driver() {
+#[cfg(feature = "modules")]
+async fn memory_tools_all_present_under_the_module_driver() {
     use crate::core::runtime::context::CoreContext;
     use crate::core::runtime::DomainSet;
 
@@ -3022,13 +3026,13 @@ async fn memory_tools_all_present_under_the_embedded_driver() {
     {
         assert!(
             names.iter().any(|n| n == name),
-            "`{name}` must survive the embedded driver; got: {names:?}"
+            "`{name}` must survive the module driver; got: {names:?}"
         );
     }
     if cfg!(feature = "memory-git") {
         assert!(
             names.iter().any(|n| n == "memory_diff"),
-            "`memory_diff` must survive the embedded driver when `memory-git` is on; got: {names:?}"
+            "`memory_diff` must survive the module driver when `memory-git` is on; got: {names:?}"
         );
     }
 }

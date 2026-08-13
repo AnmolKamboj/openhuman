@@ -98,6 +98,11 @@ pub struct Config {
     pub action_dir_override: Option<PathBuf>,
     #[serde(skip)]
     pub config_path: PathBuf,
+    /// Per-load snapshot used to remove standalone CLI inference overrides
+    /// from a saved clone. Runtime-only and never serialized.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub(crate) cli_inference_snapshot: Option<super::cli_overrides::AppliedInferenceOverride>,
     /// Runtime only — `true` when this config was produced by the loader's
     /// corruption-recovery path: the on-disk `config.toml` was unreadable
     /// (non-UTF-8) or unparseable, so it was renamed to `.corrupted.<ts>` and the
@@ -774,6 +779,7 @@ impl Default for Config {
             action_dir: crate::openhuman::config::default_action_dir(),
             action_dir_override: None,
             config_path: openhuman_dir.join("config.toml"),
+            cli_inference_snapshot: None,
             recovered_from_corruption: false,
             schema_version: 0,
             api_url: None,

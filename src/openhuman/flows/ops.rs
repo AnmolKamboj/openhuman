@@ -23,6 +23,7 @@ use crate::openhuman::flows::types::{
     FlowConnection, FlowRunStep, FlowRunTrigger, FlowSuggestion, SuggestionStatus,
 };
 use crate::openhuman::flows::{flow_namespace, Flow, FlowRun};
+use crate::openhuman::memory::api::provider::MemoryProvider;
 use crate::openhuman::memory::store::MemoryClientRef;
 use crate::openhuman::security::approval::{
     ApprovalChatContext, FlowRunContext, APPROVAL_CHAT_CONTEXT, APPROVAL_COPILOT_STREAM_CONTEXT,
@@ -4199,19 +4200,25 @@ async fn flows_delete_impl(
     // entries or run digests behind. Never fails the delete itself: the flow
     // row is already gone by this point regardless of what happens here.
     let memory_namespace = flow_namespace(id);
-    let client_result = match memory_client_override {
-        Some(client) => Ok(client),
-        None => crate::openhuman::memory::ops::helpers::active_memory_client().await,
+    let clear_result = if let Some(client) = memory_client_override {
+        client
+            .clear_namespace(&memory_namespace)
+            .await
+            .map_err(|error| error.to_string())
+    } else {
+        match crate::openhuman::memory::ops::guard::active_memory_guard().await {
+            Ok(guard) => match guard.as_documents() {
+                Some(documents) => documents
+                    .clear_namespace(&memory_namespace)
+                    .await
+                    .map_err(|error| error.to_string()),
+                None => Err("memory driver does not support the documents family".to_string()),
+            },
+            Err(error) => Err(error),
+        }
     };
-    match client_result {
-        Ok(client) => {
-            if let Err(e) = client.clear_namespace(&memory_namespace).await {
-                tracing::warn!(target: "flows", flow_id = %id, namespace = %memory_namespace, error = %e, "[flows] flows_delete: failed to clear flow memory namespace");
-            }
-        }
-        Err(e) => {
-            tracing::warn!(target: "flows", flow_id = %id, namespace = %memory_namespace, error = %e, "[flows] flows_delete: memory client unavailable — could not clear flow memory namespace");
-        }
+    if let Err(error) = clear_result {
+        tracing::warn!(target: "flows", flow_id = %id, namespace = %memory_namespace, %error, "[flows] flows_delete: failed to clear flow memory namespace");
     }
 
     publish_flow_changed(id, "deleted", "system");

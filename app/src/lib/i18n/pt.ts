@@ -1060,6 +1060,7 @@ const messages: TranslationMap = {
   'nav.routines': 'Routines',
   'chat.newThread': 'Nova conversa',
   'chat.newConversation': 'Nova conversa',
+  'chat.conversationsHeading': 'Conversas',
   'chat.newWindowWelcome1': 'Bem-vindo, {name} 👋',
   'chat.newWindowWelcome2': 'Mãos à obra, {name} 🧑‍🍳.',
   'chat.newWindowWelcome3': 'Hora de focar 🧘🏻',
@@ -7300,6 +7301,10 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Seu orçamento de embeddings acabou, então novos conteúdos não estão mais sendo adicionados à memória. Configure embeddings locais ou adicione sua própria chave de API para retomar.',
   'memoryBudget.cta': 'Configurar embeddings',
+  'tinyplaceSunset.title': 'Tiny Place está saindo do app',
+  'tinyplaceSunset.message':
+    'Para continuar usando o tiny.place, acesse tiny.place. Ele será removido do app depois de 31 de agosto de 2026.',
+  'tinyplaceSunset.cta': 'Abrir tiny.place',
   'userErrors.scope.memory': 'Memória',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Valor',
