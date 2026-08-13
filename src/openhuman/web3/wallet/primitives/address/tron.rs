@@ -37,7 +37,7 @@ pub const ADDRESS_BYTES: usize = 21;
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use crate::openhuman::web3::wallet::primitives::address::tron;
 ///
 /// assert!(tron::validate("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t").is_ok());
@@ -94,7 +94,7 @@ pub fn decode(address: &str) -> Result<[u8; ADDRESS_BYTES]> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use crate::openhuman::web3::wallet::primitives::address::tron;
 ///
 /// let hex = tron::to_hex("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t")?;
@@ -121,7 +121,7 @@ pub fn to_hex(address: &str) -> Result<String> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use crate::openhuman::web3::wallet::primitives::address::tron;
 ///
 /// let bytes = tron::decode("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t")?;

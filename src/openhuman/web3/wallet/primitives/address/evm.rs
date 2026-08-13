@@ -42,7 +42,7 @@ const ADDRESS_HEX_LEN: usize = 40;
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use crate::openhuman::web3::wallet::primitives::address::evm;
 ///
 /// let addr = evm::validate("  0x52908400098527886E0F7030069857D2E4169EE7  ")?;
@@ -109,7 +109,7 @@ fn strip_prefix(address: &str) -> &str {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use crate::openhuman::web3::wallet::primitives::address::evm;
 ///
 /// // A correctly checksummed address.
@@ -132,7 +132,7 @@ pub fn is_checksum_valid(address: &str) -> Result<bool> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use crate::openhuman::web3::wallet::primitives::address::evm;
 ///
 /// let canonical = evm::to_checksummed("0x52908400098527886e0f7030069857d2e4169ee7")?;

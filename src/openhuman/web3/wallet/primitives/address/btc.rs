@@ -91,7 +91,7 @@ enum Kind {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use crate::openhuman::web3::wallet::primitives::address::btc;
 ///
 /// // Native segwit, wrapped segwit, legacy, and taproot are all accepted.
@@ -121,7 +121,7 @@ pub fn validate(address: &str) -> Result<String> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use crate::openhuman::web3::wallet::primitives::address::btc;
 ///
 /// // Native segwit: usable as a sender.

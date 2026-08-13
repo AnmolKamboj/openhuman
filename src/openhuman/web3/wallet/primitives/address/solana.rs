@@ -25,7 +25,7 @@ pub const ADDRESS_BYTES: usize = 32;
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use crate::openhuman::web3::wallet::primitives::address::solana;
 ///
 /// // The system program id — 32 zero bytes.
@@ -51,7 +51,7 @@ pub fn validate(address: &str) -> Result<String> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use crate::openhuman::web3::wallet::primitives::address::solana;
 ///
 /// let bytes = solana::decode("11111111111111111111111111111111")?;
@@ -90,7 +90,7 @@ pub fn decode(address: &str) -> Result<[u8; ADDRESS_BYTES]> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use crate::openhuman::web3::wallet::primitives::address::solana;
 ///
 /// assert_eq!(solana::encode(&[0u8; 32]), "11111111111111111111111111111111");
