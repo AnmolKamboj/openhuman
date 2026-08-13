@@ -89,14 +89,12 @@ hex = "0.4"
 # the ring provider at startup in `lib.rs::run()`.
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 log = "0.4"
-env_logger = "0.11"
 
 # Sentry for the Tauri shell (desktop host) process — separate Sentry project
 # from the React frontend and the Rust core sidecar. DSN is baked at compile
 # time via `option_env!("OPENHUMAN_TAURI_SENTRY_DSN")` in `lib.rs::run()` and
 # can be overridden at runtime via the same env var. Feature set mirrors the
-# core sidecar (`Cargo.toml` at repo root) minus `tracing` since the shell
-# uses `log` + `env_logger`.
+# core sidecar (`Cargo.toml` at repo root) minus `tracing`.
 sentry = { version = "0.47.0", default-features = false, features = ["backtrace", "contexts", "panic", "debug-images", "httpdate"] }
 
 # Used by the imessage_scanner module.
@@ -111,7 +109,6 @@ chrono = "0.4"
 async-trait = "0.1"
 # Desktop companion: native mic capture + POINT-tag parsing + session ids.
 cpal = "0.15"
-regex = "1"
 uuid = { version = "1", features = ["v4"] }
 # Mascot fake-camera pipeline (meet_call): rasterizes the OpenHuman
 # mascot SVG to a PNG once, converts it to a YUV420 Y4M frame, and

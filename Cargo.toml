@@ -359,7 +359,6 @@ tracing-appender = { version = "0.2", optional = true }
 urlencoding = "2.1"
 motosan-ai-oauth = { version = "0.2", features = ["codex"] }
 thiserror = "2.0"
-ring = "0.17"
 chrono-tz = "0.10"
 dotenvy = "0.15"
 regex = "1.10"

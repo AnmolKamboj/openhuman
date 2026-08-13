@@ -4507,19 +4507,27 @@ async fn inference_gate_probes_every_distinct_agent_node_role() {
     );
 }
 
+// ── dynamic agent_ref is rejected before inference readiness ───────────────
+
 #[test]
-fn dynamic_agent_ref_is_rejected_before_the_inference_gate() {
-    let result = validate_and_migrate_graph(json!({
+fn dynamic_agent_ref_is_rejected_during_structural_validation() {
+    // TinyFlows requires a literal agent registry reference so run data cannot
+    // choose an agent with different privileges. This happens before the
+    // inference-readiness gate, which therefore never needs to reason about a
+    // dynamic agent role.
+    let err = validate_and_migrate_graph(json!({
         "nodes": [
             { "id": "t", "kind": "trigger", "name": "Manual" },
             { "id": "a", "kind": "agent", "name": "Dynamic",
               "config": { "agent_ref": "=nodes.t.item.agent_choice", "prompt": "go" } }
         ],
         "edges": [ { "from_node": "t", "to_node": "a" } ]
-    }));
-
-    let error = result.expect_err("dynamic agent_ref must fail structural validation");
-    assert!(error.contains("`agent_ref` must be a literal"), "{error}");
+    }))
+    .expect_err("dynamic agent_ref must fail structural validation");
+    assert!(
+        err.contains("agent_ref") && err.contains("must be a literal"),
+        "{err}"
+    );
 }
 
 #[tokio::test]
