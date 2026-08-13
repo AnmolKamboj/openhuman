@@ -4702,7 +4702,6 @@ dependencies = [
  "rdev",
  "regex",
  "reqwest",
- "ring",
  "rppal",
  "rusqlite",
  "rustls",
