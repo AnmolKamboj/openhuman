@@ -150,7 +150,7 @@ pub async fn export_flow_run_trace(
     thread_id: &str,
     status: &str,
     trigger: FlowRunTrigger,
-    journal_observations: &[GraphObservation],
+    journal_observations: &[FlowObservation],
 ) {
     if !config.observability.share_usage_data {
         tracing::debug!(
@@ -204,9 +204,20 @@ pub async fn export_flow_run_trace(
         }
     };
 
+    let observations = to_exporter_observations(journal_observations);
+    if observations.is_empty() {
+        tracing::warn!(
+            target: LOG_TARGET,
+            flow_id = %flow_id,
+            thread_id = %thread_id,
+            "[flows] langfuse export skipped: no observation survived re-typing"
+        );
+        return;
+    }
+
     let exporter = build_flow_exporter(client, flow_id);
     let trace = build_flow_trace_config(flow_name, flow_id, thread_id, status, trigger);
-    let observation_count = journal_observations.len();
+    let observation_count = observations.len();
     tracing::debug!(
         target: LOG_TARGET,
         flow_id = %flow_id,
@@ -222,7 +233,7 @@ pub async fn export_flow_run_trace(
     // timeout caps a hung connection the same way the agent exporter does.
     match tokio::time::timeout(
         PUSH_TIMEOUT,
-        exporter.send_observations(trace, journal_observations),
+        exporter.send_observations(trace, &observations),
     )
     .await
     {
