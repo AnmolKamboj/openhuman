@@ -101,7 +101,7 @@ required-features = ["crash-reporting"]
 [[test]]
 name = "memory_artifacts_e2e"
 path = "tests/memory_artifacts_e2e.rs"
-# Opens the wiki ledger with `git2::Repository::open` and asserts on
+# Opens the wiki ledger with `tinycortex::git2::Repository::open` and asserts on
 # `content::wiki_git` artifacts — both of which exist only behind this gate.
 required-features = ["memory-git"]
 
