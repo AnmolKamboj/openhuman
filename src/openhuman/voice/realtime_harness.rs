@@ -26,7 +26,21 @@ use crate::openhuman::agent::progress::AgentProgress;
 use crate::openhuman::agent::turn_origin::{with_origin, AgentTurnOrigin};
 use crate::openhuman::platform::socket::manager::global_socket_manager;
 
-const TURN_TIMEOUT_SECS: u64 = 90;
+/// Hard ceiling on the background turn — not on how long the caller waits, which
+/// the ack deadline below caps at ~8s.
+///
+/// This governs the deferred half: the orchestrator keeps working after the voice
+/// turn closes, and its answer is delivered into chat and read aloud if the call
+/// is still up. At 90s that ceiling was cutting real answers. Observed on staging:
+/// the same "summarize my emails" request finished in ~53s on one call and was
+/// still running past 90s on the next, where it aborted and the caller got a
+/// failure notice instead of their summary — a hard failure caused purely by
+/// Composio round-trip variance, not by anything being wrong.
+///
+/// Kept in step with `DEFAULT_TIMEOUT_MS` in the backend's `relayService.ts`,
+/// which must stay above this so the desktop's own specific error wins the race
+/// rather than the relay's generic timeout.
+const TURN_TIMEOUT_SECS: u64 = 180;
 
 /// How long a voice turn may run before we stop making the caller wait and hand
 /// the result off to chat. The cloud voice session cancels a turn with no spoken
