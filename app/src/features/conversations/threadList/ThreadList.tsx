@@ -8,9 +8,6 @@ interface ThreadListProps {
   /** Threads visible after the sidebar's search/tab filtering. */
   threads: Thread[];
   selectedThreadId: string | null;
-  /** Free-text thread-title search. */
-  search: string;
-  onSearchChange: (value: string) => void;
   onCreateThread: () => void;
   /** Select a thread (owns dispatch + message load + route sync). */
   onSelectThread: (threadId: string) => void;
@@ -30,16 +27,14 @@ interface ThreadListProps {
 }
 
 /**
- * The conversations left rail: thread-title search, a "new conversation" row,
- * and the scrollable thread list with inline rename + delete affordances.
- * Extracted verbatim from the panel (Phase 1 shell split) — presentational,
- * driven entirely by props so it can be reused by the page and sidebar shells.
+ * The conversations left rail: a section header with the "new conversation"
+ * affordance docked on the right, above the scrollable thread list with inline
+ * rename + delete. Presentational, driven entirely by props so it can be reused
+ * by the page and sidebar shells.
  */
 export function ThreadList({
   threads,
   selectedThreadId,
-  search,
-  onSearchChange,
   onCreateThread,
   onSelectThread,
   resolveTitle,
@@ -57,74 +52,28 @@ export function ThreadList({
   return (
     // Card background / rounded corners come from TwoPanelLayout's pane styling.
     <div className="h-full flex flex-col">
-      {/* Thread search — flush full-width input, mirrors the settings search. */}
-      <div className="relative border-b border-line-subtle">
-        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-content-faint">
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z"
-            />
-          </svg>
+      {/* Section header: a muted group label with the "new" affordance docked on
+          the right, replacing the old full-width centered button. Mirrors the
+          grouped-nav idiom the settings sidebar already uses. */}
+      <div className="flex flex-shrink-0 items-center justify-between px-4 pb-1.5 pt-4">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-content-muted">
+          {t('chat.conversationsHeading')}
         </span>
-        <input
-          type="text"
-          value={search}
-          onChange={e => onSearchChange(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Escape' && search) {
-              e.preventDefault();
-              onSearchChange('');
-            }
-          }}
-          placeholder={t('chat.searchThreads')}
-          aria-label={t('chat.searchThreads')}
-          data-testid="chat-thread-search-input"
-          className="w-full border-0 bg-transparent py-2.5 pl-10 pr-10 text-sm text-content placeholder:text-stone-400 focus:outline-none focus:ring-0 dark:placeholder:text-neutral-500"
-        />
-        {search && (
-          <button
-            type="button"
-            onClick={() => onSearchChange('')}
-            aria-label={t('settings.settingsSearch.clear')}
-            data-testid="chat-thread-search-clear"
-            className="absolute inset-y-0 right-2 flex items-center px-1 text-content-faint hover:text-content-secondary">
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        )}
-      </div>
-      {/* New conversation — a subtle, centered thread-style row (not a loud
-          button), below the search and above the thread list. */}
-      <button
-        type="button"
-        data-testid="new-thread-button"
-        data-analytics-id="chat-sidebar-new-thread"
-        onClick={onCreateThread}
-        title={t('chat.newThreadShortcut')}
-        className="group w-full cursor-pointer border-b border-line-subtle/60 opacity-50 px-3 py-2 transition-colors hover:bg-surface-hover dark:border-line/60">
-        <div className="flex items-center justify-center gap-1.5">
-          <svg
-            className="h-3.5 w-3.5 flex-shrink-0 text-content-muted"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24">
+        <button
+          type="button"
+          data-testid="new-thread-button"
+          data-analytics-id="chat-sidebar-new-thread"
+          onClick={onCreateThread}
+          title={t('chat.newThreadShortcut')}
+          aria-label={t('chat.newConversation')}
+          className="flex h-5 w-5 flex-none items-center justify-center rounded text-content-faint transition-colors hover:bg-surface/40 hover:text-content-secondary">
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-          <span className="truncate text-xs text-content-secondary">
-            {t('chat.newConversation')}
-          </span>
-        </div>
-      </button>
-      <div className="flex-1 overflow-y-auto">
+        </button>
+      </div>
+      {/* Rows are inset pills, so the scroll container carries the gutter. */}
+      <div className="flex-1 overflow-y-auto px-2 pb-3">
         {threads.length === 0 ? (
           <p className="px-4 py-6 text-xs text-content-faint text-center">{t('chat.noThreads')}</p>
         ) : (
@@ -143,12 +92,21 @@ export function ThreadList({
                   onSelectThread(thread.id);
                 }
               }}
-              className={`w-full text-left px-3 py-1.5 border-b border-line-subtle/60 dark:border-line/60 transition-colors group cursor-pointer ${
+              // A rounded pill per row, separated by spacing rather than
+              // hairlines — six dividers in a short list read as a table, not a
+              // list of destinations. Alpha fills so the row lifts identically
+              // whether the list is projected into the (translucent) app sidebar
+              // or rendered inside the opaque chat aside.
+              // Fixed `h-8` matching SidebarNav's rows: the hover-revealed
+              // actions are taller than the title's line box, so a padding-sized
+              // row would grow 4px the moment the pointer entered it and the
+              // whole list would shift under the cursor.
+              className={`group mb-0.5 flex h-8 w-full cursor-pointer items-center rounded-md px-2.5 text-left transition-colors ${
                 selectedThreadId === thread.id
-                  ? 'bg-primary-50 dark:bg-primary-900/30 border-l-2 border-l-primary-500'
-                  : 'hover:bg-surface-hover'
+                  ? 'bg-surface/70'
+                  : 'hover:bg-surface/40 dark:hover:bg-surface/60'
               }`}>
-              <div className="flex items-center justify-between">
+              <div className="flex w-full min-w-0 items-center gap-1.5">
                 {editingThreadId === thread.id ? (
                   <input
                     ref={editTitleInputRef}
@@ -176,14 +134,26 @@ export function ThreadList({
                     autoFocus
                   />
                 ) : (
-                  <p
-                    className={`text-xs truncate flex-1 ${
-                      selectedThreadId === thread.id
-                        ? 'font-medium text-primary-700 dark:text-primary-200'
-                        : 'text-content-secondary'
-                    }`}>
-                    {resolveTitle(thread.id)}
-                  </p>
+                  <>
+                    <p
+                      className={`truncate flex-1 text-[14px] ${
+                        selectedThreadId === thread.id
+                          ? 'font-semibold text-content'
+                          : 'text-content-muted'
+                      }`}>
+                      {resolveTitle(thread.id)}
+                    </p>
+                    {/* Message count occupies the trailing slot at rest and
+                        yields to the row actions on hover, so the row never
+                        grows or reflows between the two states. */}
+                    {thread.messageCount > 0 && (
+                      <span
+                        data-testid={`thread-count-${thread.id}`}
+                        className="flex-none rounded-full bg-surface/60 px-1.5 text-[10px] leading-4 text-content-faint group-hover:hidden">
+                        {thread.messageCount > 99 ? '99+' : thread.messageCount}
+                      </span>
+                    )}
+                  </>
                 )}
                 <button
                   type="button"
@@ -194,7 +164,10 @@ export function ThreadList({
                   }}
                   aria-label={t('chat.editThreadTitle')}
                   title={t('chat.editThreadTitle')}
-                  className="ml-2 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-surface-strong dark:bg-surface-muted dark:hover:bg-surface-muted text-content-faint hover:text-primary-500 transition-all flex-shrink-0">
+                  // `hidden`, not `opacity-0`: an invisible-but-laid-out button
+                  // would keep reserving the trailing slot the count badge now
+                  // occupies, squeezing the title on every row.
+                  className="hidden h-5 w-5 flex-none items-center justify-center rounded text-content-faint transition-colors hover:bg-surface/60 hover:text-primary-500 group-hover:inline-flex">
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
                       strokeLinecap="round"
@@ -211,7 +184,7 @@ export function ThreadList({
                     e.stopPropagation();
                     onRequestDelete(thread);
                   }}
-                  className="ml-2 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-surface-strong dark:bg-surface-muted dark:hover:bg-surface-muted text-content-faint hover:text-coral-500 transition-all flex-shrink-0"
+                  className="hidden h-5 w-5 flex-none items-center justify-center rounded text-content-faint transition-colors hover:bg-surface/60 hover:text-coral-500 group-hover:inline-flex"
                   title={t('chat.deleteThread')}>
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path

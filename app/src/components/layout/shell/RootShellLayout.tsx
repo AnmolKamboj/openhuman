@@ -11,6 +11,7 @@ import {
 } from '../../../store/layoutSlice';
 import { Tooltip } from '../../ui';
 import CollapsedNavRail from './CollapsedNavRail';
+import ContentSurface from './ContentSurface';
 import WindowDragBar from './WindowDragBar';
 
 // `app-shell` (not the older `root-shell`) so the persisted geometry seeds
@@ -55,17 +56,29 @@ interface RootShellLayoutProps {
   sidebar: ReactNode;
   /** Dynamic main content (the routed page area). */
   children: ReactNode;
+  /**
+   * Render the content edge-to-edge instead of as an inset card. Forwarded to
+   * {@link ContentSurface} — see its docs for the compositing constraint this
+   * exists for, and why no route sets it today.
+   */
+  unframed?: boolean;
 }
 
 /**
- * Full-bleed, viewport-filling two-pane shell for the app root: a resizable
- * sidebar on the left and the main content on the right, separated by a flush
- * hairline seam. Unlike the in-page {@link TwoPanelLayout}, this fills its
- * container edge-to-edge (no card, no rounded corners) because it *is* the
- * window chrome. The dragged width persists per user via the `layout` slice
- * (id `root-shell`); the sidebar is always shown.
+ * Viewport-filling two-pane shell for the app root, built as two layers rather
+ * than two opaque panes:
+ *
+ *   - **Chrome** — this component paints nothing of its own. The themed
+ *     {@link AppBackground} behind it shows through here and behind the
+ *     sidebar, so the frame carries the theme's hue as one continuous surface.
+ *   - **Card** — the routed content sits on a single inset, rounded
+ *     {@link ContentSurface}, the only opaque sheet in the shell.
+ *
+ * The two separate by fill contrast, which is why the sidebar needs no border
+ * and the panes need no divider fill. The dragged sidebar width persists per
+ * user via the `layout` slice (id `app-shell`).
  */
-export default function RootShellLayout({ sidebar, children }: RootShellLayoutProps) {
+export default function RootShellLayout({ sidebar, children, unframed }: RootShellLayoutProps) {
   const { t } = useT();
   const dispatch = useAppDispatch();
   const layout = useAppSelector(selectPanelLayout(LAYOUT_ID, LAYOUT_DEFAULTS));
@@ -146,7 +159,19 @@ export default function RootShellLayout({ sidebar, children }: RootShellLayoutPr
   );
 
   return (
-    <div className="relative flex h-full w-full min-h-0 overflow-hidden">
+    // The chrome layer. One legibility scrim across the WHOLE shell — the
+    // sidebar column and the frame around the content card — so the two read as
+    // a single continuous surface. Scrimming per-pane would tint them
+    // differently and reintroduce the very seam this layout removes.
+    //
+    // The alpha is deliberately light: the themed AppBackground behind it is an
+    // *animated* WebGL mesh gradient, and the content card above is opaque, so
+    // the chrome is the only place that motion is visible at all. A heavier
+    // scrim (or a backdrop blur, which also smears the 18px dotted canvas)
+    // flattens it back into paint and leaves the shader burning GPU for nothing.
+    // /30 is the legibility knob — raise it if sidebar labels wash out, which is
+    // most likely under a `backdrop: image` theme rather than the mesh.
+    <div className="relative flex h-full w-full min-h-0 overflow-hidden bg-surface-chrome/30">
       {isOpen && (
         <>
           <div
@@ -169,9 +194,13 @@ export default function RootShellLayout({ sidebar, children }: RootShellLayoutPr
             onPointerDown={onPointerDown}
             onKeyDown={onDividerKeyDown}
             title={t('layout.resizeSidebar')}
-            className="group relative w-px flex-shrink-0 cursor-col-resize select-none self-stretch bg-surface-strong focus:outline-none">
+            // Transparent at rest: the sidebar and the content card separate by
+            // fill contrast, so a filled seam would draw a line across the
+            // chrome that the two-layer look is trying to remove. It still
+            // lights up on hover/focus to advertise the drag affordance.
+            className="group relative w-px flex-shrink-0 cursor-col-resize select-none self-stretch bg-transparent focus:outline-none">
             <span className="absolute inset-y-0 -left-1 -right-1 z-10" />
-            <span className="absolute inset-0 transition-colors group-hover:bg-primary-400 group-focus:bg-primary-500" />
+            <span className="absolute inset-0 transition-colors group-hover:bg-line-chrome group-focus:bg-line-chrome" />
           </div>
         </>
       )}
@@ -181,7 +210,7 @@ export default function RootShellLayout({ sidebar, children }: RootShellLayoutPr
           native CEF webview glued to the content's bounds, which composites
           above the HTML layer — starts to its right and never covers it. */}
       {!isOpen && (
-        <div className="flex w-14 flex-none flex-col items-center gap-0.5 border-r border-line bg-surface">
+        <div className="flex w-14 flex-none flex-col items-center gap-0.5">
           {/* macOS overlay title bar (titleBarStyle: Overlay) floats the traffic
               lights over the top-left. The expanded SidebarHeader dodges them by
               right-aligning, but this narrow rail can't — so reserve a draggable
@@ -207,20 +236,21 @@ export default function RootShellLayout({ sidebar, children }: RootShellLayoutPr
             </button>
           </Tooltip>
           {/* Keep the primary nav reachable while collapsed: an icon-only rail. */}
-          <div className="mt-1 w-full border-t border-line/70 pt-1 dark:border-line/70">
+          <div className="mt-1 w-full pt-1">
             <CollapsedNavRail />
           </div>
         </div>
       )}
 
-      <div className="relative flex-1 min-w-0 overflow-hidden" data-testid="root-shell-content">
-        {children}
-        {/* macOS overlay-title-bar drag strip — a transparent overlay pinned on
-            TOP of the routed view (last child) so full-bleed surfaces (Tiny
-            Place world, Chat backdrop) stay edge-to-edge while the top of the
-            window still drags. The sidebar is excluded — its header already
-            drags in place. No-op off macOS / outside Tauri. */}
+      <div
+        className="relative flex min-w-0 flex-1 flex-col overflow-hidden"
+        data-testid="root-shell-content">
+        {/* macOS overlay-title-bar band, in flow ABOVE the content card so the
+            traffic lights land on bare chrome instead of on the card. No-op off
+            macOS / outside Tauri, where the native title bar already owns that
+            band and reserving one would just waste 28px. */}
         <WindowDragBar />
+        <ContentSurface unframed={unframed}>{children}</ContentSurface>
       </div>
     </div>
   );

@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { NAV_TABS, type NavTab } from '../../../config/navConfig';
+import { type NavTab } from '../../../config/navConfig';
+import { useNavTabs } from '../../../hooks/useNavTabs';
 import { registry } from '../../../lib/commands/registry';
 import { useT } from '../../../lib/i18n/I18nContext';
 import { trackEvent } from '../../../services/analytics';
@@ -36,7 +37,11 @@ export default function CollapsedNavRail() {
   const handleHome = useHomeNav();
   const unreadCount = useAppSelector(state => selectUnreadCount(state.notifications.items));
 
-  const tabs = useMemo(() => NAV_TABS.map(tab => ({ ...tab, label: t(tab.labelKey) })), [t]);
+  const navTabs = useNavTabs();
+  const tabs = useMemo(
+    () => navTabs.map(tab => ({ ...tab, label: t(tab.labelKey) })),
+    [navTabs, t]
+  );
   const activeTab = tabs.find(tab => matchActive(tab.path, location.pathname));
 
   const handleClick = (tab: NavTab, active: boolean) => {
@@ -65,8 +70,8 @@ export default function CollapsedNavRail() {
           aria-current={homeActive ? 'page' : undefined}
           className={`${RAIL_BTN} ${
             homeActive
-              ? 'bg-surface text-content shadow-sm'
-              : 'text-content-muted hover:bg-surface-hover hover:text-content-secondary'
+              ? 'bg-surface/70 text-content'
+              : 'text-content-muted hover:bg-surface/40 hover:text-content-secondary'
           }`}>
           <NavIcon id="home" className="h-5 w-5" />
         </button>
@@ -99,8 +104,8 @@ export default function CollapsedNavRail() {
               aria-current={active ? 'page' : undefined}
               className={`${RAIL_BTN} ${
                 active
-                  ? 'bg-surface text-content shadow-sm'
-                  : 'text-content-muted hover:bg-surface-hover hover:text-content-secondary'
+                  ? 'bg-surface/70 text-content'
+                  : 'text-content-muted hover:bg-surface/40 hover:text-content-secondary'
               }`}>
               <NavIcon id={tab.id} className="h-5 w-5" />
               {showBadge && (
@@ -124,8 +129,8 @@ export default function CollapsedNavRail() {
         data-analytics-id="collapsed-rail-settings"
         className={`${RAIL_BTN} ${
           settingsActive
-            ? 'bg-surface text-content shadow-sm'
-            : 'text-content-muted hover:bg-surface-hover hover:text-content-secondary'
+            ? 'bg-surface/70 text-content'
+            : 'text-content-muted hover:bg-surface/40 hover:text-content-secondary'
         }`}>
         <NavIcon id="settings" className="h-5 w-5" />
       </button>

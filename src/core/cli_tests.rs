@@ -330,7 +330,7 @@ use crate::core::all::{
     capability_for_parts, capability_for_rpc_method, sole_capability_for_namespace,
 };
 use crate::core::cli_capability::capability_verdict;
-use tinycortex_api::capabilities::Capabilities;
+use crate::openhuman::memory::api::capabilities::Capabilities;
 
 #[test]
 fn capability_gated_namespace_reports_a_config_fact_not_a_typo() {
@@ -368,7 +368,9 @@ fn capability_gated_function_reports_a_config_fact_not_a_typo() {
 fn capability_gated_rpc_method_reports_its_family_unfiltered() {
     assert_eq!(
         capability_for_rpc_method("openhuman.memory_tree_wipe_all"),
-        Some(Some(tinycortex_api::capabilities::Capability::Tree))
+        Some(Some(
+            crate::openhuman::memory::api::capabilities::Capability::Tree
+        ))
     );
 }
 

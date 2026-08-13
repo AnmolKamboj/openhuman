@@ -1038,6 +1038,7 @@ const messages: TranslationMap = {
   'nav.routines': 'Routines',
   'chat.newThread': 'नई थ्रेड',
   'chat.newConversation': 'नई बातचीत',
+  'chat.conversationsHeading': 'बातचीत',
   'chat.newWindowWelcome1': 'स्वागत है, {name} 👋',
   'chat.newWindowWelcome2': 'चलिए शुरू करें, {name} 🧑‍🍳.',
   'chat.newWindowWelcome3': 'ध्यान लगाने का समय 🧘🏻',
@@ -7181,6 +7182,10 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'आपका एम्बेडिंग बजट खत्म हो गया है, इसलिए नई सामग्री अब मेमोरी में नहीं जुड़ रही। दोबारा शुरू करने के लिए लोकल एम्बेडिंग सेट करें या अपनी API कुंजी जोड़ें।',
   'memoryBudget.cta': 'एम्बेडिंग सेट करें',
+  'tinyplaceSunset.title': 'Tiny Place ऐप से बाहर जा रहा है',
+  'tinyplaceSunset.message':
+    'tiny.place का उपयोग जारी रखने के लिए tiny.place पर जाएं। 31 अगस्त 2026 के बाद इसे ऐप से हटा दिया जाएगा।',
+  'tinyplaceSunset.cta': 'tiny.place खोलें',
   'userErrors.scope.memory': 'मेमोरी',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'राशि',

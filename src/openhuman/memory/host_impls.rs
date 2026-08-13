@@ -64,7 +64,15 @@ impl EmbeddingHost for OpenHumanEmbeddingHost {
     }
 
     fn default_embedding_provider(&self) -> Arc<dyn EmbeddingProvider> {
-        crate::openhuman::inference::embeddings::default_embedding_provider()
+        // Scope the managed embedder to THIS host's config credential store, not
+        // the keyless `default_state_dir()` hardcode. The memory client caches
+        // this provider for the process lifetime, so a keyless scope that misses
+        // the signed-in user's `app-session` token makes every ingested
+        // document persist vector-less while "Test connection" (config-scoped)
+        // still passes — #5501.
+        crate::openhuman::inference::embeddings::default_embedding_provider_with_config(
+            &self.config,
+        )
     }
 
     fn create_embedding_provider_with_credentials(

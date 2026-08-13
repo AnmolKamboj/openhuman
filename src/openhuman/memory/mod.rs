@@ -24,6 +24,7 @@
 //! resolving unchanged. Prefer `tinymemory_core::…` in new code.
 
 pub mod agent;
+pub mod api;
 pub mod binding;
 pub mod driver;
 pub mod guard;
