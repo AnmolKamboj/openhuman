@@ -427,6 +427,54 @@ fn classify_inference_error_genuine_model_rejection_stays_nonretryable_config() 
     }
 }
 
+#[test]
+fn classify_inference_error_transient_model_unavailable_without_5xx_status_uses_split_arm() {
+    // #5503 coverage guard for the split's *own* true branch. The two fixtures
+    // in `..._is_retryable_not_config` above each carry a `503`/`529` status, so
+    // they are already claimed by the generic 5xx arm and never reach the
+    // model-unavailable split. A transient outage reported with NO 5xx status —
+    // a bare provider body that only says the model is temporarily unavailable /
+    // currently unavailable — can be rescued from the non-retryable "check your
+    // model settings" verdict *only* by the split arm itself. So this exercises
+    // the branch the other fixtures miss: each body carries the "model" +
+    // "unavailable" trigger (so it enters the model arm, not the 5xx arm) plus a
+    // temporary-outage marker (so it takes the retryable TRUE branch). On the
+    // pre-#5503 flattened code these classified as non-retryable
+    // `model_unavailable`; the split makes them retryable `provider_error`.
+    for raw in [
+        r#"custom_openai API error: {"error":{"message":"The model is temporarily unavailable, please try again later."}}"#,
+        r#"openrouter API error: {"error":{"message":"This model is currently unavailable; please retry shortly."}}"#,
+    ] {
+        let ClassifiedError {
+            error_type,
+            message,
+            retryable,
+            source,
+            ..
+        } = classify_inference_error(raw);
+        assert_eq!(
+            error_type, "provider_error",
+            "no-status transient outage must reach the split arm as provider_error, not model_unavailable: {raw}"
+        );
+        assert!(
+            retryable,
+            "no-status transient outage must stay retryable (keep Retry): {raw}"
+        );
+        assert_eq!(
+            source, "provider",
+            "transient outage is a provider fault: {raw}"
+        );
+        assert!(
+            message.contains("temporarily unavailable"),
+            "must use the temporarily-unavailable copy: {message}"
+        );
+        assert!(
+            !message.to_lowercase().contains("check your model settings"),
+            "must NOT tell the user their configuration is wrong: {message}"
+        );
+    }
+}
+
 // ── #2364: rate-limit classification + retry-after surfacing ────
 
 #[test]
