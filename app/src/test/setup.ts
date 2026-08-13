@@ -1,0 +1,331 @@
+/**
+ * Global test setup for Vitest.
+ *
+ * - Extends expect with @testing-library/jest-dom matchers
+ * - Starts local HTTP mock backend for API mocking
+ * - Silences console output during tests (unless DEBUG_TESTS=1)
+ * - Mocks Tauri-specific modules that aren't available in test env
+ * - Resets rate limiter module-level state between tests
+ */
+import '@testing-library/jest-dom/vitest';
+import { cleanup, configure } from '@testing-library/react';
+import type React from 'react';
+import { afterAll, afterEach, beforeEach, vi } from 'vitest';
+
+// @ts-ignore - test-only JS module outside app/src
+import {
+  clearRequestLog,
+  resetMockBehavior,
+  startMockServer,
+  stopMockServer,
+} from '../../../scripts/mock-api-core.mjs';
+
+// The full Vitest run is executed under v8 coverage instrumentation with a
+// single worker (see test/vitest.config.ts), which makes individual renders
+// markedly slower than an isolated, un-instrumented file run. Testing Library's
+// default 1000ms async-utility timeout is too tight in that environment, so
+// `findBy*`/`waitFor` assertions in render-heavy suites (e.g. the workflow
+// orchestration tab) flake intermittently — and which test trips first is
+// non-deterministic. Raising the global async-util budget removes that whole
+// class of false timeouts without masking real failures: `waitFor`/`findBy`
+// still resolve the instant their condition is met, this only widens the
+// ceiling before they give up (well within the 30s testTimeout).
+configure({ asyncUtilTimeout: 5000 });
+
+const DEFAULT_TEST_MOCK_API_PORT = 5005;
+
+function readMockApiPort() {
+  const rawPort = process.env.VITEST_MOCK_API_PORT ?? process.env.MOCK_API_PORT;
+  const port = rawPort ? Number(rawPort) : DEFAULT_TEST_MOCK_API_PORT;
+  return Number.isInteger(port) && port > 0 ? port : DEFAULT_TEST_MOCK_API_PORT;
+}
+
+const mockApiServer = await startMockServer(readMockApiPort(), { retryIfInUse: true });
+const mockApiUrl = `http://localhost:${mockApiServer.port}`;
+process.env.VITEST_MOCK_API_URL = mockApiUrl;
+process.env.VITE_BACKEND_URL = mockApiUrl;
+
+// Mock import.meta.env defaults for tests
+vi.stubEnv('DEV', true);
+vi.stubEnv('MODE', 'test');
+vi.stubEnv('VITE_BACKEND_URL', mockApiUrl);
+
+function createStorageMock(): Storage {
+  const store = new Map<string, string>();
+  return {
+    get length() {
+      return store.size;
+    },
+    clear() {
+      store.clear();
+    },
+    getItem(key: string) {
+      return store.has(key) ? store.get(key)! : null;
+    },
+    key(index: number) {
+      return Array.from(store.keys())[index] ?? null;
+    },
+    removeItem(key: string) {
+      store.delete(key);
+    },
+    setItem(key: string, value: string) {
+      store.set(String(key), String(value));
+    },
+  };
+}
+
+function ensureStorage(name: 'localStorage' | 'sessionStorage') {
+  const current = globalThis[name];
+  if (
+    current &&
+    typeof current.getItem === 'function' &&
+    typeof current.setItem === 'function' &&
+    typeof current.removeItem === 'function' &&
+    typeof current.clear === 'function'
+  ) {
+    return;
+  }
+
+  Object.defineProperty(globalThis, name, {
+    value: createStorageMock(),
+    configurable: true,
+    writable: true,
+  });
+}
+
+ensureStorage('localStorage');
+ensureStorage('sessionStorage');
+
+// Polyfill window.matchMedia — used by Rive (@rive-app/react-webgl2) and
+// some media-query hooks; not implemented in jsdom.
+if (typeof window.matchMedia === 'undefined') {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+}
+
+// Polyfill ResizeObserver for cmdk/Radix components in jsdom
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
+// Polyfill scrollIntoView for cmdk in jsdom
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = function () {};
+}
+
+// The hardened `isTauri()` (in `utils/tauriCommands/common.ts`) checks both
+// `coreIsTauri()` and `window.__TAURI_INTERNALS__.invoke`. Many existing test
+// files mock `@tauri-apps/api/core::isTauri` to `true` to exercise the
+// Tauri branch; without a matching IPC handle on `window` they would now
+// regress to the non-Tauri path. Seed a no-op handle once globally so the
+// IPC-readiness check passes by default. Tests that *want* the CEF gap
+// behaviour can `delete window.__TAURI_INTERNALS__` in a `beforeEach`.
+(
+  window as unknown as { __TAURI_INTERNALS__: { invoke: () => Promise<unknown> } }
+).__TAURI_INTERNALS__ = { invoke: vi.fn(() => Promise.resolve()) };
+
+// Mock Tauri APIs (not available in test env)
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), isTauri: vi.fn(() => false) }));
+
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn().mockResolvedValue(vi.fn()),
+  emit: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/plugin-deep-link', () => ({ onOpenUrl: vi.fn(), getCurrent: vi.fn() }));
+
+vi.mock('@tauri-apps/plugin-opener', () => ({ open: vi.fn() }));
+
+vi.mock('@tauri-apps/plugin-os', () => ({ platform: vi.fn().mockResolvedValue('macos') }));
+
+// Mock tauriCommands to prevent Tauri API calls in tests
+vi.mock('../utils/tauriCommands', () => ({
+  isTauri: vi.fn(() => false),
+  storeSession: vi.fn().mockResolvedValue(undefined),
+  getSessionToken: vi.fn().mockResolvedValue(null),
+  getAuthState: vi.fn().mockResolvedValue({ is_authenticated: false }),
+  logout: vi.fn().mockResolvedValue(undefined),
+  syncMemoryClientToken: vi.fn().mockResolvedValue(undefined),
+  openhumanServiceInstall: vi.fn().mockResolvedValue({ result: { state: 'Running' }, logs: [] }),
+  openhumanServiceStart: vi.fn().mockResolvedValue({ result: { state: 'Running' }, logs: [] }),
+  openhumanServiceStop: vi.fn().mockResolvedValue({ result: { state: 'Stopped' }, logs: [] }),
+  openhumanServiceStatus: vi.fn().mockResolvedValue({ result: { state: 'Running' }, logs: [] }),
+  openhumanServiceUninstall: vi
+    .fn()
+    .mockResolvedValue({ result: { state: 'NotInstalled' }, logs: [] }),
+  openhumanAgentServerStatus: vi.fn().mockResolvedValue({ result: { running: true }, logs: [] }),
+  openhumanUpdateMeetSettings: vi
+    .fn()
+    .mockResolvedValue({
+      result: { config: {}, workspace_dir: '/tmp', config_path: '/tmp/cfg.toml' },
+      logs: [],
+    }),
+  openhumanGetMeetSettings: vi
+    .fn()
+    .mockResolvedValue({
+      result: {
+        auto_orchestrator_handoff: false,
+        auto_join_policy: 'ask_each_time',
+        auto_summarize_policy: 'ask',
+        listen_only_default: true,
+        ingest_backend_transcripts: false,
+      },
+      logs: [],
+    }),
+  exchangeToken: vi.fn(),
+  invoke: vi.fn(),
+}));
+
+// Mock the config module
+vi.mock('../utils/config', () => ({
+  CORE_RPC_URL: 'http://127.0.0.1:7788/rpc',
+  CORE_RPC_TIMEOUT_MS: 30_000,
+  IS_DEV: true,
+  IS_DEV_LIKE: true,
+  IS_PROD: false,
+  E2E_DEFAULT_CORE_MODE: '',
+  E2E_RESTART_APP_AS_RELOAD: false,
+  DEV_FORCE_ONBOARDING: false,
+  CHAT_ATTACHMENTS_ENABLED: true,
+  DERIVED_TRANSCRIPT_ENABLED: true,
+  SKILLS_GITHUB_REPO: 'test/skills',
+  GA_MEASUREMENT_ID: undefined,
+  OPENPANEL_API_URL: 'https://panel.tinyhumans.ai/api',
+  OPENPANEL_CLIENT_ID: undefined,
+  SENTRY_DSN: undefined,
+  SENTRY_RELEASE: 'openhuman@test',
+  SENTRY_SMOKE_TEST: false,
+  BACKEND_URL: mockApiUrl,
+  TELEGRAM_BOT_USERNAME: 'openhuman_bot',
+  LATEST_APP_DOWNLOAD_URL: 'https://github.com/tinyhumansai/openhuman/releases/latest',
+  OPENHUMAN_GITHUB_REPO_URL: 'https://github.com/tinyhumansai/openhuman',
+  APP_VERSION: '0.0.0-test',
+  APP_BINARY_VERSION: '0.0.0-test',
+  APP_ENVIRONMENT: 'test',
+  BUILD_SHA: 'test',
+  CORE_CARGO_VERSION: '0.0.0-test',
+  TAURI_CARGO_VERSION: '0.0.0-test',
+  DEV_JWT_TOKEN: undefined,
+  MASCOT_VOICE_ID: 'JBFqnCBsd6RMkjVDRZzb',
+  MASCOT_VOICE_MODEL_ID: 'eleven_multilingual_v2',
+  MASCOT_MANIFEST_URL:
+    'https://raw.githubusercontent.com/tinyhumansai/mascots/main/dist/mascots.json',
+  VOICE_MODE_FLAG_ENABLED: false,
+  // Production defaults, so a test that does not care about the voice entry
+  // point sees what a shipped build sees.
+  HUMAN_VOICE_REALTIME_ENABLED: true,
+  HUMAN_VOICE_SHOW_BOTH: false,
+}));
+
+vi.mock('../services/backendUrl', () => ({
+  getBackendUrl: vi.fn().mockImplementation(() => Promise.resolve(mockApiUrl)),
+}));
+
+// Mock redux-persist to avoid CJS/ESM issues in vitest
+vi.mock('redux-persist', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('redux-persist');
+  return {
+    ...actual,
+    // Override persistReducer to just return the base reducer
+    persistReducer: (_config: unknown, reducer: (s: unknown, a: unknown) => unknown) => reducer,
+    // Override persistStore to return a no-op persistor
+    persistStore: () => ({
+      subscribe: () => () => {},
+      getState: () => ({}),
+      dispatch: () => {},
+      purge: () => Promise.resolve(),
+      flush: () => Promise.resolve(),
+      pause: () => {},
+      persist: () => {},
+    }),
+  };
+});
+
+// Mock redux-persist integration
+vi.mock('redux-persist/integration/react', () => ({
+  PersistGate: ({
+    children,
+  }: {
+    children: React.ReactNode;
+    loading?: unknown;
+    persistor?: unknown;
+  }) => children,
+}));
+
+// Mock redux-logger to avoid noisy test output
+vi.mock('redux-logger', () => ({
+  createLogger: () => () => (next: (action: unknown) => unknown) => (action: unknown) =>
+    next(action),
+}));
+
+// Mock Sentry
+vi.mock('@sentry/react', () => ({
+  init: vi.fn(),
+  ErrorBoundary: ({
+    children,
+  }: {
+    children: React.ReactNode;
+    fallback?: unknown;
+    onError?: unknown;
+  }) => children,
+  withScope: vi.fn(),
+  captureException: vi.fn(),
+  setTag: vi.fn(),
+  setUser: vi.fn(),
+}));
+
+// Silence console during tests to keep output clean. `debug`/`info` are
+// included because error-path diagnostics across the app (e.g. VoicePanel
+// "voice settings load failed", threadSlice "title refresh failed") use
+// `console.debug`, which otherwise floods the test output with expected noise.
+if (!process.env.DEBUG_TESTS) {
+  vi.spyOn(console, 'log').mockImplementation(() => {});
+  vi.spyOn(console, 'info').mockImplementation(() => {});
+  vi.spyOn(console, 'debug').mockImplementation(() => {});
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+}
+
+// Shared mock API server lifecycle for unit tests (default)
+afterEach(() => {
+  clearRequestLog();
+  cleanup();
+  // Re-seed the IPC handle after any test that may have deleted it
+  // (e.g. tests exercising the CEF-gap branch of `isTauri()`). Without
+  // this, sibling tests in the same jsdom worker would silently regress
+  // to the non-Tauri path. Per graycyrus review on PR #1556.
+  (
+    window as unknown as { __TAURI_INTERNALS__: { invoke: () => Promise<unknown> } }
+  ).__TAURI_INTERNALS__ = { invoke: vi.fn(() => Promise.resolve()) };
+});
+afterAll(async () => {
+  await stopMockServer();
+});
+
+// Reset rate limiter per-request counter before each test.
+beforeEach(async () => {
+  resetMockBehavior();
+  try {
+    const { resetRequestCallCount } = await import('../lib/mcp/rateLimiter');
+    if (typeof resetRequestCallCount === 'function') {
+      resetRequestCallCount();
+    }
+  } catch {
+    // Module may be fully mocked in some test files — safe to skip
+  }
+});

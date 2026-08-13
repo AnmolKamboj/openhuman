@@ -1,0 +1,100 @@
+---
+name: PR Quality (soft)
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: read
+  pull-requests: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.head_ref || github.ref }}
+  cancel-in-progress: true
+jobs:
+  # All three jobs are `continue-on-error: true` for the first ~2 weeks after
+  # this workflow lands, so we can tune the parsers + matrix gates without
+  # blocking merges. Flip to hard-fail once the false-positive rate is stable.
+  checklist-guard:
+    name: PR Submission Checklist
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    container:
+      image: ghcr.io/tinyhumansai/openhuman_ci:latest
+    continue-on-error: true
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'docs') && !contains(github.event.pull_request.labels.*.name, 'chore') }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - name: Verify Submission Checklist
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node scripts/check-pr-checklist.mjs
+  coverage-matrix:
+    name: Coverage Matrix Sync
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    container:
+      image: ghcr.io/tinyhumansai/openhuman_ci:latest
+    continue-on-error: true
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'docs') && !contains(github.event.pull_request.labels.*.name, 'chore') }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - name: Verify Coverage Matrix
+        run: node scripts/check-coverage-matrix.mjs
+  markdown-link-check:
+    name: Markdown Link Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'docs') && !contains(github.event.pull_request.labels.*.name, 'chore') }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - name: Lychee link check
+        uses: lycheeverse/lychee-action@v2
+        with:
+          # Product Hunt denies GitHub-hosted runners (403) for the translated
+          # README badge destination, so it cannot be a stable external-link
+          # check.
+          args: >-
+            --no-progress
+            --include-fragments
+            --exclude '^http://localhost'
+            --exclude '^https?://127\.0\.0\.1'
+            --exclude 'docs/install\.md#apt-debianubuntu$'
+            --exclude '^https://github\.com/tinyhumansai/homebrew-openhuman'
+            --exclude '^https://www\.reddit\.com/r/tinyhumansai/?$'
+            --exclude '^https://www\.star-history\.com/#tinyhumansai/openhuman&type=date&legend=top-left$'
+            --exclude '^https://github\.com/tinyhumansai/openhuman/stargazers'
+            --exclude '^https://api\.star-history\.com/'
+            --exclude '^https://x\.com/karpathy/status/2039805659525644595$'
+            --exclude '^https://www\.producthunt\.com/'
+            'docs/**/*.md'
+            'src/**/README.md'
+            '.github/PULL_REQUEST_TEMPLATE.md'
+          fail: true
+  appimage-rpath-guard:
+    name: AppImage RPATH + libxdo guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'docs') && !contains(github.event.pull_request.labels.*.name, 'chore') }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - name: Install patchelf
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq patchelf
+      - name: Syntax check release script
+        run: bash -n scripts/release/strip-appimage-graphics-libs.sh
+      - name: Run AppImage RPATH sanitize + libxdo guard test (issue #3224)
+        run: bash scripts/release/test-strip-appimage-rpaths.sh
