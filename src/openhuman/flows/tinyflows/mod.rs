@@ -17,6 +17,8 @@
 
 pub mod caps;
 pub mod checkpoint_sqlite;
+#[cfg(test)]
+mod checkpoint_sqlite_tests;
 pub mod langfuse_export;
 pub mod memory_adapter;
 /// End-to-end coverage for the `memory` node through the REAL engine + real
