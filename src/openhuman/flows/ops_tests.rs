@@ -4507,44 +4507,27 @@ async fn inference_gate_probes_every_distinct_agent_node_role() {
     );
 }
 
-// ── dynamic agent_ref still gets the Layer-1 check (finding C, P2) ─────────
+// ── dynamic agent_ref is rejected before inference readiness ───────────────
 
-#[tokio::test]
-async fn inference_gate_reports_signed_out_for_dynamic_agent_ref_only_graph() {
-    // Finding C: a graph whose only `agent` node has a DYNAMIC (`=`-derived)
-    // `agent_ref` still means "this graph runs inference" at run time — it
-    // must stay in scope for Layer 1 (signed-out/session), even though its
-    // exact per-model role can't be resolved statically. Previously the
-    // dynamic-ref filter excluded such nodes entirely, so a graph made up
-    // only of them returned `None` (no readiness signal at all) and a
-    // signed-out session went completely unreported.
-    let _signed_out = crate::openhuman::cron::scheduler_gate::SignedOutTestGuard::set(true);
-
-    let tmp = TempDir::new().unwrap();
-    let config = test_config(&tmp);
-    let g = graph(json!({
+#[test]
+fn dynamic_agent_ref_is_rejected_during_structural_validation() {
+    // TinyFlows requires a literal agent registry reference so run data cannot
+    // choose an agent with different privileges. This happens before the
+    // inference-readiness gate, which therefore never needs to reason about a
+    // dynamic agent role.
+    let err = validate_and_migrate_graph(json!({
         "nodes": [
             { "id": "t", "kind": "trigger", "name": "Manual" },
             { "id": "a", "kind": "agent", "name": "Dynamic",
               "config": { "agent_ref": "=nodes.t.item.agent_choice", "prompt": "go" } }
         ],
         "edges": [ { "from_node": "t", "to_node": "a" } ]
-    }));
-
-    let errors = validate_inference_readiness(&config, &g).await;
+    }))
+    .expect_err("dynamic agent_ref must fail structural validation");
     assert!(
-        !errors.is_empty(),
-        "a signed-out session must still be reported even though the only agent node's \
-         agent_ref is dynamic: {errors:?}"
+        err.contains("agent_ref") && err.contains("must be a literal"),
+        "{err}"
     );
-    assert!(
-        errors
-            .iter()
-            .any(|e| e.to_ascii_lowercase().contains("signed out")),
-        "{errors:?}"
-    );
-    // `SignedOutTestGuard` restores the prior flag on drop at the end of this
-    // scope — no other test observes this override.
 }
 
 #[tokio::test]
