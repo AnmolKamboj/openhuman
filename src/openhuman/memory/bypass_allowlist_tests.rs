@@ -7,12 +7,16 @@
 //! pretend otherwise. `MemoryClient` still hands out raw, undecoratable
 //! handles, all `pub(crate)` and all with live production callers:
 //!
-//! - `profile_conn()` (`memory/store/client.rs`) — an
-//!   `Arc<Mutex<rusqlite::Connection>>`. **No decorator can wrap a raw SQLite
-//!   connection**, so the eleven non-test call sites beneath
-//!   `agent/learning/*` and `memory/sync/composio/providers/profile.rs` reach
-//!   the profile/facet tables under all of the guard's policy steps. Closing
-//!   this is explicitly out of scope for M4.
+//! - `profile_store()` (`memory/store/client.rs`) — a typed `ProfileStore`
+//!   over the profile/facet tables. `profile_conn()`, the raw
+//!   `Arc<Mutex<rusqlite::Connection>>` it used to hand out, is now
+//!   `pub(in crate::openhuman::memory)` with a single in-family caller, so
+//!   every SQL statement against `user_profile` lives inside the memory
+//!   family and the compiler keeps it there. **This did not put the profile
+//!   tables under the guard**: the contract has no profile/facet capability
+//!   family, so these reads and writes still run beneath all seven policy
+//!   steps. The `.profile_store(` needle exists to keep that fact counted
+//!   rather than renamed away.
 //! - `memory_handle()` (`memory/store/client.rs`) — a raw `Arc<dyn Memory>`.
 //!   The contract has no `Arc<dyn Memory>` door, so consumers that must satisfy
 //!   a foreign trait (tinyflows, the agent-experience store) still take it.
@@ -90,16 +94,16 @@ const BYPASS_PATTERNS: &[(&str, &str)] = &[
         "raw rusqlite connection — undecoratable by construction",
     ),
     (
+        ".profile_store(",
+        "typed profile store — the profile/facet tables have no capability family, so these reads and writes still skip the guard's seven steps",
+    ),
+    (
         ".memory_handle(",
         "raw Arc<dyn Memory> — bypasses the MemoryClient API surface",
     ),
     (
         ".get_document(",
         "pub(crate) read-one escape hatch, driver-only by contract",
-    ),
-    (
-        "EmbeddedMemoryProvider::new(",
-        "direct driver construction — must go through binding::for_workspace",
     ),
     (
         "NullMemoryProvider::new(",
@@ -179,16 +183,16 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         ".memory_handle(",
         "session builder needs Arc<dyn Memory>; no contract door for it",
     ),
-    // ── Unguardable raw SQLite (profile_conn) — the known hole ──
+    // ── Unguarded (but no longer raw) profile/facet access ──
     (
         "src/openhuman/agent/learning/schemas.rs",
-        ".profile_conn(",
-        "raw SQLite profile/facet reads; undecoratable, out of scope for M4",
+        ".profile_store(",
+        "typed profile/facet reads; the contract has no profile family, so still unguarded",
     ),
     (
         "src/openhuman/agent/learning/schemas.rs",
         "global::client_if_ready(",
-        "resolved only to reach profile_conn() on the line below",
+        "resolved only to reach profile_store() on the line below",
     ),
     (
         "src/openhuman/agent/learning/startup.rs",
@@ -197,18 +201,18 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     ),
     (
         "src/openhuman/agent/learning/startup.rs",
-        ".profile_conn(",
-        "raw SQLite facet bootstrap; undecoratable, out of scope for M4",
+        ".profile_store(",
+        "typed facet bootstrap; the contract has no profile family, so still unguarded",
     ),
     (
         "src/openhuman/agent/learning/tools.rs",
-        ".profile_conn(",
-        "raw SQLite facet read from an agent tool; undecoratable, out of scope for M4",
+        ".profile_store(",
+        "typed facet read from an agent tool; the contract has no profile family",
     ),
     (
         "src/openhuman/agent/learning/tools.rs",
         "global::client_if_ready(",
-        "resolved only to reach profile_conn() on the line below",
+        "resolved only to reach profile_store() on the line below",
     ),
     // ── Flows: foreign trait shapes and a test-override seam ──
     (
@@ -220,11 +224,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "src/openhuman/flows/bus.rs",
         "active_memory_client(",
         "carries a #[cfg(test)] memory_override seam the guard would bypass",
-    ),
-    (
-        "src/openhuman/flows/ops.rs",
-        "active_memory_client(",
-        "clear_namespace has no contract method; plus a memory_client_override test seam",
     ),
     (
         "src/openhuman/flows/tinyflows/memory_adapter.rs",
@@ -250,31 +249,11 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     // ── The driver and the binding: guarding these would be a cycle ──
     (
         "src/openhuman/memory/binding.rs",
-        "EmbeddedMemoryProvider::new(",
-        "this is the construction path the lint protects",
-    ),
-    (
-        "src/openhuman/memory/binding.rs",
         "NullMemoryProvider::new(",
         "this is the construction path the lint protects (fail-closed fallback)",
     ),
     (
-        "src/openhuman/memory/driver/embedded/documents.rs",
-        ".get_document(",
-        "this IS the driver — the escape hatch exists for exactly this call",
-    ),
-    (
-        "src/openhuman/memory/driver/embedded/mod.rs",
-        ".memory_handle(",
-        "this IS the driver; it owns the engine handle by definition",
-    ),
-    (
-        "src/openhuman/memory/driver/embedded/mod.rs",
-        "EmbeddedMemoryProvider::new(",
-        "the driver's own constructor",
-    ),
-    (
-        "src/openhuman/memory/global.rs",
+        "vendor/tinymemory/core/src/global.rs",
         "MemoryClient::from_workspace_dir(",
         "the process-global slot itself; it is what global::client hands out",
     ),
@@ -303,16 +282,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "src/openhuman/memory/ops/helpers.rs",
         "global::client_if_ready(",
         "same definition site",
-    ),
-    (
-        "src/openhuman/memory/ops/kv_graph.rs",
-        "active_memory_client(",
-        "kv_get/kv_delete/graph_* have no contract twin or a lossy conversion",
-    ),
-    (
-        "src/openhuman/memory/ops/learn.rs",
-        "active_memory_client(",
-        "list_namespaces() -> Vec<String> vs the contract's Vec<NamespaceSummary>",
     ),
     (
         "src/openhuman/memory/ops/learn.rs",
@@ -345,67 +314,59 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",
     ),
     (
-        "src/openhuman/memory/ops/tool_memory.rs",
-        ".memory_handle(",
-        "open_store() still serves the four handlers with no contract twin",
-    ),
-    (
-        "src/openhuman/memory/ops/tool_memory.rs",
-        "active_memory_client(",
-        "tool_rule_put/get/*_json/*_for_prompt have no contract equivalent",
-    ),
-    // ── Composio memory sync: profile_conn + &MemoryClientRef ──
-    (
-        "src/openhuman/memory/sync/composio/providers/profile.rs",
+        "vendor/tinymemory/core/src/store/client.rs",
         ".profile_conn(",
-        "raw SQLite profile writes; undecoratable, out of scope for M4",
+        "sole in-family call; wraps the raw handle in ProfileStore. profile_conn is pub(in crate::openhuman::memory), so the compiler — not this lint — is the primary enforcement",
+    ),
+    // ── Composio memory sync: profile_store + &MemoryClientRef ──
+    (
+        "vendor/tinymemory/core/src/sync/composio/providers/profile.rs",
+        ".profile_store(",
+        "typed profile writes; the contract has no profile family, so still unguarded",
     ),
     (
-        "src/openhuman/memory/sync/composio/providers/profile.rs",
+        "vendor/tinymemory/core/src/sync/composio/providers/profile.rs",
         "global::client_if_ready(",
-        "resolved only to reach profile_conn()",
+        "resolved only to reach profile_store()",
     ),
     (
-        "src/openhuman/memory/sync/composio/providers/types.rs",
+        "vendor/tinymemory/core/src/sync/composio/providers/types.rs",
         "MemoryClient::from_workspace_dir(",
         "provider trait takes &MemoryClientRef; the contract has no such shape",
     ),
     (
-        "src/openhuman/memory/sync/composio/providers/types.rs",
+        "vendor/tinymemory/core/src/sync/composio/providers/types.rs",
         "global::client_if_ready(",
         "same provider trait shape",
     ),
     (
-        "src/openhuman/memory/sync/composio/providers/user_scopes.rs",
+        "vendor/tinymemory/core/src/sync/composio/providers/user_scopes.rs",
         "global::client_if_ready(",
         "same provider trait shape",
+    ),
+    // ── Golden-workspace fixture seeder (test infrastructure) ──
+    //
+    // `memory::store::golden` is the engine behind the `memory_golden_fixture_e2e`
+    // schema gate. It is never reachable from the product: nothing outside
+    // `tests/` calls it, and it is `#[doc(hidden)]`. It must seed the episodic,
+    // segment, event and profile tiers, which have no guard-routed writer — the
+    // archivist and the learning cache reach them the same way, and those two
+    // are already allowlisted below/above for the same reason.
+    (
+        "src/openhuman/memory/store_golden.rs",
+        ".profile_conn(",
+        "fixture seeder: episodic/segment/event/profile tiers have no guarded writer",
+    ),
+    (
+        "src/openhuman/memory/store_golden.rs",
+        "global::client(",
+        "resolved only to reach profile_conn() for the fixture seed/read-back",
     ),
     // ── The engine seam ──
     (
-        "src/openhuman/memory/tinycortex/sync.rs",
+        "vendor/tinymemory/core/src/tinycortex/sync.rs",
         "global::client_if_ready(",
         "the TinyCortex engine seam; it sits beneath the contract, not above it",
-    ),
-    // ── Agent tools — deferred to M5's capability filter ──
-    (
-        "src/openhuman/memory/tool_memory/tools/list.rs",
-        ".memory_handle(",
-        "builds ToolMemoryStore; re-pointable via as_tool_memory(), deferred to M5",
-    ),
-    (
-        "src/openhuman/memory/tool_memory/tools/list.rs",
-        "active_memory_client(",
-        "same tool; M5 filters the tool surface by capability and would collide",
-    ),
-    (
-        "src/openhuman/memory/tool_memory/tools/put.rs",
-        ".memory_handle(",
-        "builds ToolMemoryStore; re-pointable via as_tool_memory(), deferred to M5",
-    ),
-    (
-        "src/openhuman/memory/tool_memory/tools/put.rs",
-        "active_memory_client(",
-        "same tool; M5 filters the tool surface by capability and would collide",
     ),
 ];
 
@@ -445,6 +406,18 @@ fn scan() -> BTreeSet<(String, String)> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut files = Vec::new();
     collect_rs_files(&root.join("src"), &mut files);
+    // The memory subsystem was extracted into `tinymemory-core`, and most of
+    // the files this lint counts went with it. Scanning only this crate's `src`
+    // would quietly drop them from the tally — which would read as "the
+    // bypasses were cleaned up" rather than "they moved out of view".
+    collect_rs_files(
+        &root
+            .join("vendor")
+            .join("tinymemory")
+            .join("core")
+            .join("src"),
+        &mut files,
+    );
 
     let mut found = BTreeSet::new();
     for path in &files {
@@ -487,9 +460,10 @@ fn render(pairs: impl IntoIterator<Item = (String, String)>) -> String {
 /// A parser that silently found nothing would turn every other test here into a
 /// rubber stamp, so refuse to pass vacuously.
 ///
-/// The literal pinned below is the densest known bypass in the tree: five
-/// `profile_conn()` calls reaching raw SQLite. If the scanner ever stops seeing
-/// it, the scanner is broken — fix it, do not relax this assertion.
+/// The literal pinned below is `profile_store()`'s own construction site — a
+/// call inside the module that defines the method, so it is the most stable
+/// pair available. If the scanner ever stops seeing it, the scanner is broken —
+/// fix it, do not relax this assertion.
 #[test]
 fn bypass_scanner_finds_the_known_bypasses() {
     let found = scan();
@@ -499,7 +473,7 @@ fn bypass_scanner_finds_the_known_bypasses() {
          module would pass vacuously. Fix the scanner, not the assertion."
     );
     let canary = (
-        "src/openhuman/memory/sync/composio/providers/profile.rs".to_string(),
+        "vendor/tinymemory/core/src/store/client.rs".to_string(),
         ".profile_conn(".to_string(),
     );
     assert!(

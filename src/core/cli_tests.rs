@@ -366,7 +366,7 @@ use crate::core::all::{
     capability_for_parts, capability_for_rpc_method, sole_capability_for_namespace,
 };
 use crate::core::cli_capability::capability_verdict;
-use tinycortex_api::capabilities::Capabilities;
+use crate::openhuman::memory::api::capabilities::Capabilities;
 
 #[test]
 fn capability_gated_namespace_reports_a_config_fact_not_a_typo() {
@@ -404,7 +404,9 @@ fn capability_gated_function_reports_a_config_fact_not_a_typo() {
 fn capability_gated_rpc_method_reports_its_family_unfiltered() {
     assert_eq!(
         capability_for_rpc_method("openhuman.memory_tree_wipe_all"),
-        Some(Some(tinycortex_api::capabilities::Capability::Tree))
+        Some(Some(
+            crate::openhuman::memory::api::capabilities::Capability::Tree
+        ))
     );
 }
 
@@ -443,9 +445,19 @@ fn unknown_function_in_a_live_namespace_still_reports_unknown_function() {
 #[test]
 fn default_build_leaves_the_generic_namespace_path_unchanged() {
     let grouped = grouped_schemas();
-    for ns in ["memory", "memory_tree", "memory_diff", "memory_goals"] {
+    for ns in ["memory", "memory_tree", "memory_goals"] {
         assert!(grouped.contains_key(ns), "`{ns}` must still be listed");
     }
+    #[cfg(feature = "memory-git")]
+    assert!(
+        grouped.contains_key("memory_diff"),
+        "`memory_diff` must be listed when the memory-git feature is enabled"
+    );
+    #[cfg(not(feature = "memory-git"))]
+    assert!(
+        !grouped.contains_key("memory_diff"),
+        "`memory_diff` must be absent when the memory-git feature is disabled"
+    );
 }
 
 /// The gate must fire on the path a user actually takes.

@@ -47,6 +47,12 @@ ALL_E2E_SUITES=(
   mcp_registry_e2e
   mcp_setup_e2e
   memory_artifacts_e2e
+  # Golden-workspace schema gates. These are the guard against a memory-store
+  # schema change stranding an existing user workspace, so they belong in every
+  # run of this suite — they were previously listed nowhere in .github/ or
+  # scripts/ and therefore never executed.
+  memory_golden_fixture_e2e
+  memory_golden_parity_e2e
   memory_graph_sync_e2e
   memory_roundtrip_e2e
   memory_sources_e2e
@@ -140,6 +146,13 @@ if [ ! -x "$CARGO_BIN" ]; then
   CARGO_BIN="$(command -v cargo)"
 fi
 
+# This is the product E2E runner, not the slim contributor build. Several
+# suites below intentionally require product gates (for example `voice` for
+# `json_rpc_e2e` and `memory-git` for memory artifact coverage), so invoking
+# them with Cargo's default feature set makes the runner fail before a test can
+# execute. Keep this list in the same canonical source as `pnpm test:rust`.
+PRODUCT_FEATURES="$(bash "$REPO_ROOT/scripts/ci/product-features.sh")"
+
 echo "[rust-e2e] Running ${#SUITES[@]} suite(s) serially."
 
 run_json_rpc_e2e_suite() {
@@ -150,10 +163,12 @@ run_json_rpc_e2e_suite() {
     [ -n "$test_name" ] || continue
     echo "[rust-e2e]   $CARGO_BIN test --manifest-path Cargo.toml --test json_rpc_e2e $test_name"
     bash "$SCRIPT_DIR/ci-cancel-aware.sh" "$CARGO_BIN" test \
-      --manifest-path Cargo.toml --test json_rpc_e2e "$test_name" -- \
+      --manifest-path Cargo.toml --features "$PRODUCT_FEATURES" \
+      --test json_rpc_e2e "$test_name" -- \
       --exact --test-threads=1 "${EXTRA_ARGS[@]}"
   done < <(
-    "$CARGO_BIN" test --manifest-path Cargo.toml --test json_rpc_e2e -- --list \
+    "$CARGO_BIN" test --manifest-path Cargo.toml --features "$PRODUCT_FEATURES" \
+      --test json_rpc_e2e -- --list \
       | sed -n 's/: test$//p'
   )
 }
@@ -166,9 +181,12 @@ for suite in "${SUITES[@]}"; do
 
   if [ "${#EXTRA_ARGS[@]}" -gt 0 ]; then
     echo "[rust-e2e]   $CARGO_BIN test --manifest-path Cargo.toml --test $suite -- ${EXTRA_ARGS[*]}"
-    bash "$SCRIPT_DIR/ci-cancel-aware.sh" "$CARGO_BIN" test --manifest-path Cargo.toml --test "$suite" -- "${EXTRA_ARGS[@]}"
+    bash "$SCRIPT_DIR/ci-cancel-aware.sh" "$CARGO_BIN" test \
+      --manifest-path Cargo.toml --features "$PRODUCT_FEATURES" \
+      --test "$suite" -- "${EXTRA_ARGS[@]}"
   else
     echo "[rust-e2e]   $CARGO_BIN test --manifest-path Cargo.toml --test $suite"
-    bash "$SCRIPT_DIR/ci-cancel-aware.sh" "$CARGO_BIN" test --manifest-path Cargo.toml --test "$suite"
+    bash "$SCRIPT_DIR/ci-cancel-aware.sh" "$CARGO_BIN" test \
+      --manifest-path Cargo.toml --features "$PRODUCT_FEATURES" --test "$suite"
   fi
 done

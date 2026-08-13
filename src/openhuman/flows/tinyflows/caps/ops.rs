@@ -635,6 +635,11 @@ pub fn build_capabilities(config: Arc<Config>, state_namespace: impl Into<String
         agent: Some(Arc::new(OpenHumanAgentRunner {
             config: config.clone(),
         })),
+        // Shell execution needs a dedicated OpenHuman adapter that applies the
+        // host's autonomy and sandbox policy. Keep the capability unavailable
+        // until that boundary exists rather than inheriting ambient process
+        // access from the workflow engine.
+        shell: None,
         memory: Some(Arc::new(
             crate::openhuman::flows::tinyflows::memory_adapter::OpenHumanMemory {
                 config: config.clone(),

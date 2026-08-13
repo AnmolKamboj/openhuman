@@ -6,6 +6,50 @@
 
 ---
 
+## Amendment 2026-08-10 — the destination is `tinymemory`, not `vendor/tinycortex`
+
+This plan was written when TinyCortex was the only engine in view, so it named
+`vendor/tinycortex` as the destination for everything that moves. That is now split in two,
+because "engine-specific" and "engine-neutral" are different destinations:
+
+| Kind of code | Destination | Why |
+| --- | --- | --- |
+| TinyCortex's own storage, retrieval, tree, queue and sync internals (§6.2) | `vendor/tinycortex` — unchanged | It is the implementation of *one* engine. |
+| The contract, capability negotiation, driver admission, the conformance corpus, the shared mandatory families, and one adapter per engine | **`vendor/tinymemory`** (new submodule) | A second engine cannot be reached through a crate named after the first. |
+
+**What landed (2026-08-10).**
+
+- `tinymemory-api` — the contract, moved out of `tinycortex-api` byte-identical. §3.1's carve-out
+  still describes how it was *created*; it now lives one repository over.
+- `tinymemory::registry` — driver admission, lifted out of `memory/binding.rs`. §4's driver table
+  is where new ids get reserved.
+- `tinymemory::mandatory` — the three mandatory families composed once over the `Memory` storage
+  trait, so a new engine inherits the four easy-to-get-wrong parts (taint routing, all-namespace
+  list, scoped-recall refusal, import provenance) instead of re-deriving them.
+- `tinymemory-tinycortex` — the seam, with exhaustively-destructuring conversions.
+- `vendor/tinycortex` is pinned as a nested submodule of `tinymemory`. Adapters name their engine
+  by **version requirement**, so a host's own `[patch.crates-io]` unifies everything onto one
+  engine copy; a path dependency would give the host two engines with two incompatible `Memory`
+  traits.
+
+**Two contracts, converted at one seam — a deliberate deviation.** `tinycortex-api` was *not*
+turned into a re-export of `tinymemory-api`. The two therefore remain distinct Rust types that
+describe the same values, and `tinymemory-tinycortex` converts between them. The cost is real and
+should be stated: a value crossing the seam is rebuilt, and the two contracts can drift. The
+mitigation is that every conversion destructures exhaustively, so a field added on either side is
+a compile error naming the field rather than a silently dropped value.
+
+The consequence for this plan: **openhuman stays on `tinycortex-api`** as its contract. §6.7's grep
+invariant is unchanged. A future phase that unifies the two contracts would re-point the host's
+~200 `tinycortex_api::` references in one mechanical pass; until then, the seam is the boundary.
+
+**Sequencing unchanged.** M8a (the `source_scope` inversion) is still the hard gate before any
+`memory_tree/retrieval` file moves, and M8b's per-module moves still go to `vendor/tinycortex`.
+This amendment changes *where the engine-neutral layer lives*, not the order in which the engine
+moves.
+
+---
+
 ## 1. Goals
 
 1. **Memory becomes an API, not an implementation.** The kernel owns a versioned memory contract;

@@ -28,6 +28,7 @@ pub mod dispatcher;
 pub mod error;
 pub mod experience;
 pub mod file_state;
+pub(crate) mod git_attribution;
 pub mod harness;
 pub mod harness_init;
 pub mod hooks;

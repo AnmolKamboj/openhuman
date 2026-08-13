@@ -1082,6 +1082,7 @@ const messages: TranslationMap = {
   'nav.routines': 'Routines',
   'chat.newThread': 'Neuer Thread',
   'chat.newConversation': 'Neue Unterhaltung',
+  'chat.conversationsHeading': 'Unterhaltungen',
   'chat.newWindowWelcome1': 'Willkommen, {name} 👋',
   'chat.newWindowWelcome2': 'Legen wir los, {name} 🧑‍🍳.',
   'chat.newWindowWelcome3': 'Zeit zum Fokussieren 🧘🏻',
@@ -3415,14 +3416,6 @@ const messages: TranslationMap = {
   'accounts.respondQueue.pending': 'Ausstehend',
   'accounts.respondQueue.show': 'Antwortwarteschlange anzeigen',
   'accounts.respondQueue.title': 'Antwortwarteschlange',
-  'accounts.webviewHost.almostReady': 'Fast fertig...',
-  'accounts.webviewHost.loadTimeout': 'Zeitüberschreitung beim Laden der Webansicht',
-  'accounts.webviewHost.loading': 'Laden {providerName}...',
-  'accounts.webviewHost.loadingAccount': 'Konto wird geladen',
-  'accounts.webviewHost.restoringSession': 'Sitzung wird wiederhergestellt...',
-  'accounts.webviewHost.retryLoading': 'Versuche den Ladevorgang erneut',
-  'accounts.webviewHost.takingLonger': '{providerName} dauert länger als erwartet.',
-  'accounts.webviewHost.timeoutHint': 'Timeout-Hinweis',
   'app.connectionBadge.composio': 'Composio',
   'app.connectionBadge.messaging': 'Nachrichten',
   'app.connectionIndicator.connected': 'Verbunden mit OpenHuman AI 🚀',
@@ -7394,6 +7387,10 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Dein Embedding-Budget ist aufgebraucht, daher werden keine neuen Inhalte mehr ins Gedächtnis aufgenommen. Richte lokale Embeddings ein oder hinterlege deinen eigenen API-Schlüssel, um fortzufahren.',
   'memoryBudget.cta': 'Embeddings einrichten',
+  'tinyplaceSunset.title': 'Tiny Place zieht aus der App aus',
+  'tinyplaceSunset.message':
+    'Um tiny.place weiter zu nutzen, besuche tiny.place. Nach dem 31. August 2026 wird es aus der App entfernt.',
+  'tinyplaceSunset.cta': 'tiny.place öffnen',
   'userErrors.scope.memory': 'Speicher',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Betrag',

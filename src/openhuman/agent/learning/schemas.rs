@@ -660,8 +660,7 @@ fn handle_rebuild_cache(_params: Map<String, Value>) -> ControllerFuture {
 
         let client = crate::openhuman::memory::global::client_if_ready()
             .ok_or_else(|| "memory client not ready".to_string())?;
-        let conn = client.profile_conn();
-        let cache = FacetCache::new(conn);
+        let cache = FacetCache::new(client.profile_store());
         let detector = StabilityDetector::new(cache);
 
         let now = SystemTime::now()
@@ -698,8 +697,7 @@ fn handle_cache_stats(_params: Map<String, Value>) -> ControllerFuture {
 
         let client = crate::openhuman::memory::global::client_if_ready()
             .ok_or_else(|| "memory client not ready".to_string())?;
-        let conn = client.profile_conn();
-        let cache = FacetCache::new(conn);
+        let cache = FacetCache::new(client.profile_store());
 
         let all_facets = cache
             .list_all()
@@ -760,7 +758,7 @@ fn get_cache() -> Result<crate::openhuman::agent::learning::cache::FacetCache, S
     let client = crate::openhuman::memory::global::client_if_ready()
         .ok_or_else(|| "memory client not ready".to_string())?;
     Ok(crate::openhuman::agent::learning::cache::FacetCache::new(
-        client.profile_conn(),
+        client.profile_store(),
     ))
 }
 

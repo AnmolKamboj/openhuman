@@ -19,7 +19,7 @@
  * (Flatpak/Snap/portable). "Open anyway" and the config-dir override are the
  * escape hatches for that case; a false "not registered" never blocks the user.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
 import { useT } from '../../lib/i18n/I18nContext';
 import type { ToastNotification } from '../../types/intelligence';
@@ -70,7 +70,7 @@ export function ObsidianVaultSection({ contentRootAbs, onToast }: ObsidianVaultS
   // click outside the section or press Escape to close it. (Clicking the View
   // Vault button itself stays inside `containerRef`, so it re-runs the check
   // rather than dismissing — matching the panel's "click View Vault again" copy.)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!expanded) return;
     const onPointerDown = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {

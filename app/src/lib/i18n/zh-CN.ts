@@ -985,6 +985,7 @@ const messages: TranslationMap = {
   'nav.routines': 'Routines',
   'chat.newThread': '新对话',
   'chat.newConversation': '新对话',
+  'chat.conversationsHeading': '对话',
   'chat.newWindowWelcome1': '欢迎，{name} 👋',
   'chat.newWindowWelcome2': '开干吧，{name} 🧑‍🍳。',
   'chat.newWindowWelcome3': '是时候专注了 🧘🏻',
@@ -3151,14 +3152,6 @@ const messages: TranslationMap = {
   'accounts.respondQueue.pending': '待处理',
   'accounts.respondQueue.show': '显示回复队列',
   'accounts.respondQueue.title': '回复队列',
-  'accounts.webviewHost.almostReady': '即将就绪...',
-  'accounts.webviewHost.loadTimeout': '网页视图加载超时',
-  'accounts.webviewHost.loading': '正在加载 {providerName}...',
-  'accounts.webviewHost.loadingAccount': '正在加载账户',
-  'accounts.webviewHost.restoringSession': '正在恢复会话...',
-  'accounts.webviewHost.retryLoading': '重试加载',
-  'accounts.webviewHost.takingLonger': '{providerName} 加载时间比预期更长。',
-  'accounts.webviewHost.timeoutHint': '超时提示',
   'app.connectionBadge.composio': 'Composio',
   'app.connectionBadge.messaging': '消息',
   'app.connectionIndicator.connected': '已连接到 OpenHuman AI',
@@ -6806,6 +6799,10 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     '你的嵌入额度已用尽，新内容不会再加入记忆。设置本地嵌入或添加你自己的 API 密钥即可恢复。',
   'memoryBudget.cta': '设置嵌入',
+  'tinyplaceSunset.title': 'Tiny Place 即将移出应用',
+  'tinyplaceSunset.message':
+    '若要继续使用 tiny.place，请前往 tiny.place。2026 年 8 月 31 日后它将从应用中移除。',
+  'tinyplaceSunset.cta': '打开 tiny.place',
   'userErrors.scope.memory': '记忆',
   // Agent World：Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': '金额',

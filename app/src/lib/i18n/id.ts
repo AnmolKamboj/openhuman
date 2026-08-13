@@ -1050,6 +1050,7 @@ const messages: TranslationMap = {
   'nav.routines': 'Routines',
   'chat.newThread': 'Thread baru',
   'chat.newConversation': 'Percakapan baru',
+  'chat.conversationsHeading': 'Percakapan',
   'chat.newWindowWelcome1': 'Selamat datang, {name} 👋',
   'chat.newWindowWelcome2': 'Ayo mulai, {name} 🧑‍🍳.',
   'chat.newWindowWelcome3': 'Waktunya fokus 🧘🏻',
@@ -3335,15 +3336,6 @@ const messages: TranslationMap = {
   'accounts.respondQueue.pending': 'Tertunda',
   'accounts.respondQueue.show': 'Tampilkan antrean balasan',
   'accounts.respondQueue.title': 'Antrean respons',
-  'accounts.webviewHost.almostReady': 'Hampir siap...',
-  'accounts.webviewHost.loadTimeout': 'Waktu muat webview habis',
-  'accounts.webviewHost.loading': 'Memuat {providerName}...',
-  'accounts.webviewHost.loadingAccount': 'Memuat akun',
-  'accounts.webviewHost.restoringSession': 'Memulihkan sesi...',
-  'accounts.webviewHost.retryLoading': 'Coba muat ulang',
-  'accounts.webviewHost.takingLonger':
-    '{providerName} memakan waktu lebih lama dari yang diharapkan.',
-  'accounts.webviewHost.timeoutHint': 'Petunjuk waktu habis',
   'app.connectionBadge.composio': 'Composio',
   'app.connectionBadge.messaging': 'Pesan',
   'app.connectionIndicator.connected': 'Terhubung ke OpenHuman AI 🚀',
@@ -7229,6 +7221,10 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Anggaran embedding Anda sudah habis, sehingga konten baru tidak lagi ditambahkan ke memori. Siapkan embedding lokal atau tambahkan kunci API Anda sendiri untuk melanjutkan.',
   'memoryBudget.cta': 'Siapkan embedding',
+  'tinyplaceSunset.title': 'Tiny Place keluar dari aplikasi',
+  'tinyplaceSunset.message':
+    'Untuk terus memakai tiny.place, kunjungi tiny.place. Fitur ini akan dihapus dari aplikasi setelah 31 Agustus 2026.',
+  'tinyplaceSunset.cta': 'Buka tiny.place',
   'userErrors.scope.memory': 'Memori',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Jumlah',

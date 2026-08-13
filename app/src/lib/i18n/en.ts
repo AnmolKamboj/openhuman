@@ -822,6 +822,7 @@ const en: TranslationMap = {
   // Chat / Conversations
   'chat.newThread': 'New thread',
   'chat.newConversation': 'New Conversation',
+  'chat.conversationsHeading': 'Conversations',
   'chat.newWindowWelcome1': 'Welcome, {name} 👋',
   'chat.newWindowWelcome2': "Let's cook, {name} 🧑‍🍳.",
   'chat.newWindowWelcome3': 'Time to Zone In 🧘🏻',
@@ -3600,14 +3601,6 @@ const en: TranslationMap = {
   'accounts.respondQueue.pending': 'Pending',
   'accounts.respondQueue.show': 'Show respond queue',
   'accounts.respondQueue.title': 'Respond queue',
-  'accounts.webviewHost.almostReady': 'Almost ready...',
-  'accounts.webviewHost.loadTimeout': 'Webview load timeout',
-  'accounts.webviewHost.loading': 'Loading {providerName}...',
-  'accounts.webviewHost.loadingAccount': 'Loading account',
-  'accounts.webviewHost.restoringSession': 'Restoring session...',
-  'accounts.webviewHost.retryLoading': 'Retry loading',
-  'accounts.webviewHost.takingLonger': '{providerName} is taking longer than expected.',
-  'accounts.webviewHost.timeoutHint': 'Timeout hint',
   'app.connectionBadge.composio': 'Composio',
   'app.connectionBadge.messaging': 'Messaging',
   'app.connectionIndicator.connected': 'Connected',
@@ -7593,6 +7586,10 @@ const en: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Your embedding budget is used up, so new content is no longer being added to memory. Set up local embeddings or add your own API key to resume.',
   'memoryBudget.cta': 'Set up embeddings',
+  'tinyplaceSunset.title': 'Tiny Place is moving out of the app',
+  'tinyplaceSunset.message':
+    'To keep using tiny.place, visit tiny.place. It will be removed from the app after 31 August 2026.',
+  'tinyplaceSunset.cta': 'Open tiny.place',
   'memorySources.codingSessions.title': 'Coding-agent sessions',
   'memorySources.codingSessions.description':
     'Turn your Codex and Claude Code decisions and corrections into private persona memory.',

@@ -375,8 +375,25 @@ jobs:
         if: needs.changes.outputs['rust-core'] == 'true' || needs.changes.outputs['rust-tauri'] == 'true'
         run: bash scripts/check-linux-tls-dependencies.sh
 
-      - name: Run clippy (core crate)
+      - name: Run clippy (core crate, product feature set)
         if: needs.changes.outputs['rust-core'] == 'true'
+        # `--features` is load-bearing. `[features] default` is the CONTRIBUTOR
+        # set (see the comment above it in Cargo.toml) and omits voice, web3,
+        # documents, meet, contacts, inference and crash-reporting — so a bare
+        # `cargo clippy` no longer lints code that ships. Product set:
+        # scripts/ci/product-features.txt, asserted equal to the shell's
+        # forwarding list by check-feature-forwarding.mjs.
+        run: |
+          bash scripts/ci-cancel-aware.sh cargo clippy -p openhuman \
+            --features "$(bash scripts/ci/product-features.sh)" -- -D warnings
+
+      - name: Run clippy (core crate, contributor default set)
+        if: needs.changes.outputs['rust-core'] == 'true'
+        # The set a contributor's editor and pre-push hook actually compile. A
+        # lint that only fires with those gates OFF — an import left unused once
+        # a domain is compiled out, say — is invisible to the product lane above
+        # and would land red on every contributor's machine while CI stayed
+        # green. Cheap: this graph is ~356 packages against the product's ~567.
         run: bash scripts/ci-cancel-aware.sh cargo clippy -p openhuman -- -D warnings
 
       - name: Cache CEF binary distribution
@@ -441,6 +458,19 @@ jobs:
         # lane checks the lib and RUNS the gate-contract lib tests below.
         run: bash scripts/ci-cancel-aware.sh cargo check --manifest-path Cargo.toml --no-default-features
 
+      - name: Check the gates that are in NEITHER the contributor nor the product set
+        # `tui` is the one gate that is default-OFF *and* deliberately not
+        # forwarded to the desktop shell (it is a terminal front-end; the app
+        # ships its own UI). That combination means nothing else in CI compiles
+        # it: the product lanes do not select it, the contributor lanes no
+        # longer default it on, and the gates-off check above turns it off.
+        #
+        # Without this step the ratatui front-end would rot silently — which is
+        # the same shape of failure as #4901, just pointed at a gate instead of
+        # at the shipped app. If a future gate lands in this same
+        # neither-set position, add it here.
+        run: bash scripts/ci-cancel-aware.sh cargo check --manifest-path Cargo.toml --no-default-features --features tui
+
       - name: Run the gate-contract tests with the default domain gates disabled
         # `cargo check` (even --all-targets) never RUNS tests, so a gated family that
         # is asserted WITHOUT a matching #[cfg] compiles fine and only fails at
@@ -456,7 +486,7 @@ jobs:
         run: |
           bash scripts/ci-cancel-aware.sh cargo test --manifest-path Cargo.toml \
             --no-default-features --lib -- \
-            core::all:: core::cli:: core::jsonrpc:: core::legacy_aliases:: core::runtime:: agent::registry::agents::loader:: memory::people::address_book::tests:: openhuman::platform::socket::event_handlers:: tools::schemas:: tools::ops::tests::
+            core::all:: core::cli:: core::jsonrpc:: core::legacy_aliases:: core::runtime:: agent::registry::agents::loader:: memory::people::address_book::tests:: openhuman::config:: openhuman::platform::socket::event_handlers:: tools::schemas:: tools::ops::tests::
           bash scripts/ci-cancel-aware.sh cargo test --manifest-path Cargo.toml \
             --no-default-features --features mcp --lib -- \
             mcp::server::resources::
@@ -485,7 +515,7 @@ jobs:
         #
         # This asserts the calibration still holds. If it fails, every
         # projection built on the simulator is suspect until it is fixed.
-        run: python3 scripts/dep-sim.py --cut-nothing --expect-names 282
+        run: python3 scripts/dep-sim.py --cut-nothing --expect-names 284
 
       - name: Guard — new feature-gated test modules must be acknowledged
         # Self-maintaining coverage: the set of source files that #[cfg]-gate a test on
@@ -508,8 +538,7 @@ jobs:
           openhuman/agent/harness/session/tests.rs
           openhuman/agent/harness/subagent_runner/tool_prep.rs
           openhuman/agent/registry/agents/loader.rs
-          openhuman/inference/local/mod.rs
-          openhuman/memory/people/address_book.rs
+          openhuman/config/migrations/retire_local_whisper_stt_tests.rs
           openhuman/mcp/server/resources.rs
           openhuman/platform/socket/event_handlers.rs
           openhuman/platform/socket/ops.rs
@@ -519,6 +548,8 @@ jobs:
           openhuman/tools/ops_tests.rs
           openhuman/voice/compile_status.rs
           openhuman/web3/stub.rs
+          openhuman/web3/wallet/primitives/address/evm/test.rs
+          openhuman/web3/wallet/primitives/address/test.rs
           openhuman/web3/wallet/stub.rs
           openhuman/web3/x402/stub.rs
           EOF
@@ -749,8 +780,23 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      - name: Clear stale Tauri coverage artifacts
+        # rust-cache restores app/src-tauri/target, including llvm-cov-target.
+        # cargo's fingerprints do not distinguish a previously restored
+        # non-instrumented test executable, which then runs successfully but
+        # produces no .profraw file for cargo-llvm-cov to merge.
+        run: cargo llvm-cov clean --manifest-path app/src-tauri/Cargo.toml
+
       - name: Run cargo llvm-cov for Tauri shell
-        run: bash scripts/ci-cancel-aware.sh cargo llvm-cov --manifest-path app/src-tauri/Cargo.toml --lcov --output-path lcov-tauri.info
+        run: |
+          # The container's Cargo configuration installs sccache as its rustc
+          # wrapper. Use llvm-cov's RustFLAGS mode so that wrapper cannot
+          # replace its instrumentation wrapper and silently drop .profraw
+          # output after otherwise-passing tests.
+          # The job-level linker flag must also be cleared: llvm-cov sets the
+          # same variable with `-C instrument-coverage` for this invocation.
+          unset RUSTFLAGS
+          bash scripts/ci-cancel-aware.sh cargo llvm-cov --no-rustc-wrapper --manifest-path app/src-tauri/Cargo.toml --lcov --output-path lcov-tauri.info
         env:
           # Serialize codegen/link to cap peak memory + disk during the
           # instrumented Tauri-shell link (SIGBUS otherwise). Mirrors
@@ -929,10 +975,10 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Init tinycortex submodule
+      - name: Init tinycortex and tinymemory submodules
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git submodule update --init --recursive vendor/tinycortex
+          git submodule update --init --recursive vendor/tinycortex vendor/tinymemory
 
       - name: Cache TinyCortex build artifacts
         uses: Swatinem/rust-cache@v2

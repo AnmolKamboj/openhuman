@@ -1,8 +1,14 @@
 import { act, screen, waitFor } from '@testing-library/react';
+import { useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../../test/test-utils';
 import Brain from '../Brain';
+
+/** Renders the live router pathname so redirect tests can assert the final route. */
+function LocationProbe() {
+  return <div data-testid="location-pathname">{useLocation().pathname}</div>;
+}
 
 const graphExportMock = vi.hoisted(() => vi.fn());
 // Controllable authenticated identity so we can simulate a logout→login cycle
@@ -11,11 +17,26 @@ const coreAuthRef = vi.hoisted(() => ({ current: 'user-A' as string | null }));
 // Captures navigate() calls so we can assert the legacy TinyPlace-orchestration
 // deep link bounces to the folded-in Orchestration sub-tab.
 const navigateSpy = vi.hoisted(() => vi.fn());
+// Fires on every OrchestrationView render, so a redirect test can prove the
+// gated surface never mounted (not merely that it left the DOM afterwards).
+const orchestrationRenderSpy = vi.hoisted(() => vi.fn());
+// Controllable tiny.place identity so we can render Brain as a holder (default)
+// or a confirmed non-holder hitting the gated `?tab=orchestration` deep link.
+const tinyplaceIdentityRef = vi.hoisted(() => ({
+  current: { status: 'ready', hasIdentity: true } as {
+    status: 'loading' | 'ready';
+    hasIdentity: boolean;
+  },
+}));
 
 vi.mock('react-router-dom', async importOriginal => {
   const actual = await importOriginal<typeof import('react-router-dom')>();
   return { ...actual, useNavigate: () => navigateSpy };
 });
+
+vi.mock('../../hooks/useTinyPlaceIdentity', () => ({
+  useTinyPlaceIdentity: () => tinyplaceIdentityRef.current,
+}));
 
 vi.mock('../../utils/tauriCommands', () => ({
   memoryTreeGraphExport: graphExportMock,
@@ -64,7 +85,12 @@ vi.mock('../../components/layout/ChipTabs', async () => {
 vi.mock('../../components/ui/BetaBanner', () => ({ default: () => null }));
 vi.mock('../../components/orchestration/OrchestrationView', async () => {
   const React = await import('react');
-  return { default: () => React.createElement('div', { 'data-testid': 'brain-orchestration' }) };
+  return {
+    default: () => {
+      orchestrationRenderSpy();
+      return React.createElement('div', { 'data-testid': 'brain-orchestration' });
+    },
+  };
 });
 
 vi.mock('../../components/intelligence/MemoryControls', () => ({ MemoryControls: () => null }));
@@ -98,6 +124,7 @@ describe('Brain page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     coreAuthRef.current = 'user-A';
+    tinyplaceIdentityRef.current = { status: 'ready', hasIdentity: true };
   });
 
   afterEach(() => {
@@ -206,6 +233,43 @@ describe('Brain page', () => {
     // Folding Orchestration under Brain must not trigger the unrelated
     // memoryTreeGraphExport RPC that the standalone page never issued.
     expect(graphExportMock).not.toHaveBeenCalled();
+  });
+
+  it('redirects a confirmed non-holder away from ?tab=orchestration without mounting OrchestrationView', async () => {
+    // #5424 — the redirect is render-phase, so the gated tiny.place surface must
+    // never mount (not even for a single commit) once the identity check
+    // resolves to a non-holder.
+    tinyplaceIdentityRef.current = { status: 'ready', hasIdentity: false };
+    graphExportMock.mockResolvedValue(makeGraph(0));
+    await act(async () => {
+      renderWithProviders(
+        <>
+          <Brain />
+          <LocationProbe />
+        </>,
+        { initialEntries: ['/?tab=orchestration'] }
+      );
+    });
+    // Render-phase guard: OrchestrationView must never mount — asserting on the
+    // spy (not just final DOM) catches a regression that mounts then redirects
+    // from an effect.
+    expect(orchestrationRenderSpy).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('brain-orchestration')).not.toBeInTheDocument();
+    // Router landed on the Brain welcome tab.
+    expect(screen.getByTestId('location-pathname')).toHaveTextContent('/brain');
+    expect(screen.getByTestId('brain-welcome')).toBeInTheDocument();
+  });
+
+  it('keeps rendering OrchestrationView while the identity check is still loading', async () => {
+    // The in-flight window must not redirect — only a *confirmed* non-holder does.
+    tinyplaceIdentityRef.current = { status: 'loading', hasIdentity: false };
+    graphExportMock.mockResolvedValue(makeGraph(0));
+    await act(async () => {
+      renderWithProviders(<Brain />, { initialEntries: ['/?tab=orchestration'] });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('brain-orchestration')).toBeInTheDocument();
+    });
   });
 
   it('redirects the legacy tinyplace-orchestration deep link to the orchestration tab', async () => {

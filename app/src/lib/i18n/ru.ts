@@ -1051,6 +1051,7 @@ const messages: TranslationMap = {
   'nav.routines': 'Routines',
   'chat.newThread': 'Новый чат',
   'chat.newConversation': 'Новый разговор',
+  'chat.conversationsHeading': 'Разговоры',
   'chat.newWindowWelcome1': 'Привет, {name} 👋',
   'chat.newWindowWelcome2': 'Поехали, {name} 🧑‍🍳.',
   'chat.newWindowWelcome3': 'Время сосредоточиться 🧘🏻',
@@ -3348,14 +3349,6 @@ const messages: TranslationMap = {
   'accounts.respondQueue.pending': 'Ожидает',
   'accounts.respondQueue.show': 'Показать очередь ответов',
   'accounts.respondQueue.title': 'Очередь ответов',
-  'accounts.webviewHost.almostReady': 'Почти готово...',
-  'accounts.webviewHost.loadTimeout': 'Таймаут загрузки',
-  'accounts.webviewHost.loading': 'Загрузка {providerName}...',
-  'accounts.webviewHost.loadingAccount': 'Загрузка аккаунта',
-  'accounts.webviewHost.restoringSession': 'Восстановление сессии...',
-  'accounts.webviewHost.retryLoading': 'Повторить загрузку',
-  'accounts.webviewHost.takingLonger': '{providerName} загружается дольше обычного.',
-  'accounts.webviewHost.timeoutHint': 'Подсказка по таймауту',
   'app.connectionBadge.composio': 'Composio',
   'app.connectionBadge.messaging': 'Мессенджеры',
   'app.connectionIndicator.connected': 'Подключено к OpenHuman AI 🚀',
@@ -7269,6 +7262,10 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'Бюджет эмбеддингов израсходован, поэтому новые данные больше не добавляются в память. Настройте локальные эмбеддинги или добавьте свой ключ API, чтобы продолжить.',
   'memoryBudget.cta': 'Настроить эмбеддинги',
+  'tinyplaceSunset.title': 'Tiny Place уходит из приложения',
+  'tinyplaceSunset.message':
+    'Чтобы продолжить пользоваться tiny.place, откройте tiny.place. После 31 августа 2026 года он будет удалён из приложения.',
+  'tinyplaceSunset.cta': 'Открыть tiny.place',
   'userErrors.scope.memory': 'Память',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Сумма',

@@ -176,13 +176,27 @@ jobs:
               sort
           }
 
+          # This lane tests THE PRODUCT, so it must select the product's gates.
+          # `[features] default` is the CONTRIBUTOR set now and omits voice,
+          # web3, documents, meet, contacts, inference and crash-reporting.
+          # Source of truth: scripts/ci/product-features.txt.
+          #
+          # The same silent-skip trap the bin-tools note below describes applies
+          # here, and harder: four tests/*.rs targets carry `required-features`
+          # (observability_smoke, x402_twit_sh_live, json_rpc_e2e,
+          # raw_coverage_all — see Cargo.toml). Without these features
+          # `cargo test --test json_rpc_e2e` matches NOTHING and exits 0, and
+          # json_rpc_e2e alone is >12k lines of RPC contract coverage.
+          FEATURES="$(bash scripts/ci/product-features.sh),bin-tools"
+          echo "[test-reusable] feature set: ${FEATURES}"
+
           # `--features bin-tools` is load-bearing, not cosmetic: the six binaries
           # under src/bin/ now declare `required-features = ["bin-tools"]`, so
           # without it `--bins` silently matches NOTHING and this lane goes green
           # having compiled none of them. fleet.rs and slack_backfill.rs each carry
           # a `#[cfg(test)] mod`, so those tests would vanish too, with no error.
-          bash scripts/ci-cancel-aware.sh cargo test -p openhuman --lib --bins --features bin-tools
-          bash scripts/ci-cancel-aware.sh cargo test -p openhuman --doc
+          bash scripts/ci-cancel-aware.sh cargo test -p openhuman --lib --bins --features "${FEATURES}"
+          bash scripts/ci-cancel-aware.sh cargo test -p openhuman --doc --features "${FEATURES}"
 
           while IFS= read -r target; do
             [ -n "${target}" ] || continue
@@ -190,10 +204,23 @@ jobs:
               while IFS= read -r module; do
                 [ -n "${module}" ] || continue
                 echo "[test-reusable] raw coverage module: ${module}"
-                bash scripts/ci-cancel-aware.sh cargo test -p openhuman --test "${target}" -- "${module}::" --test-threads=1
+                bash scripts/ci-cancel-aware.sh cargo test -p openhuman --features "${FEATURES}" --test "${target}" -- "${module}::" --test-threads=1
               done < <(raw_coverage_modules)
+            elif [ "${target}" = "json_rpc_e2e" ]; then
+              # JSON-RPC E2E cases change process-global provider routes and
+              # environment. A single parallel libtest process lets one case
+              # leak its route into another; run each case in a fresh process,
+              # matching scripts/test-rust-with-mock.sh and test-rust-e2e.sh.
+              while IFS= read -r test_name; do
+                [ -n "${test_name}" ] || continue
+                echo "[test-reusable] JSON-RPC E2E test: ${test_name}"
+                bash scripts/ci-cancel-aware.sh cargo test -p openhuman --test "${target}" "${test_name}" -- --exact --test-threads=1
+              done < <(
+                cargo test -p openhuman --test "${target}" -- --list \
+                  | sed -n 's/: test$//p'
+              )
             else
-              bash scripts/ci-cancel-aware.sh cargo test -p openhuman --test "${target}"
+              bash scripts/ci-cancel-aware.sh cargo test -p openhuman --features "${FEATURES}" --test "${target}"
             fi
           done < <(integration_test_targets)
 
@@ -215,10 +242,10 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Init tinycortex submodule
+      - name: Init tinycortex and tinymemory submodules
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git submodule update --init --recursive vendor/tinycortex
+          git submodule update --init --recursive vendor/tinycortex vendor/tinymemory
 
       - name: Cache TinyCortex build artifacts
         uses: Swatinem/rust-cache@v2

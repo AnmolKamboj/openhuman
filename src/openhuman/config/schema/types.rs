@@ -34,7 +34,11 @@ pub const DEFAULT_MODEL: &str = MODEL_CHAT_V1;
 /// [`Config::memory_sync_interval_secs`] is `None` — i.e. the user has not
 /// explicitly picked a schedule. 24h, matching the "Sync every 24h" preset
 /// surfaced in the Memory Sources UI. See issue #3302.
-pub const DEFAULT_MEMORY_SYNC_INTERVAL_SECS: u64 = 86_400;
+///
+/// Defined in `tinymemory_api::host` and re-exported here: the extracted memory
+/// subsystem applies this fallback too, and two `86_400`s that must agree is a
+/// drift waiting to happen.
+pub use tinymemory_api::host::DEFAULT_MEMORY_SYNC_INTERVAL_SECS;
 
 /// Preset memory-sync cadences (seconds) offered in the UI: 4h / 12h / 24h.
 /// "Manual only" is represented separately by `Some(0)`. See issue #3302.
@@ -297,6 +301,12 @@ pub struct Config {
     #[serde(default)]
     pub mcp_client: McpClientConfig,
 
+    /// Loadable native modules — whether they load, whether this host may fetch
+    /// them, and where a developer's own build lives. The loadable *set* is
+    /// compiled in, not configured: see `openhuman::modules::registry`.
+    #[serde(default)]
+    pub modules: super::ModulesConfig,
+
     /// Trust metadata for external capability providers. Empty by default so
     /// existing installations keep the same tool-discovery behavior.
     #[serde(default)]
@@ -376,6 +386,17 @@ pub struct Config {
     /// When `None`, the factory falls back to the OpenHuman entry.
     #[serde(default)]
     pub primary_cloud: Option<String>,
+
+    /// Runtime only — where this one call's inference goes, when the caller
+    /// named an endpoint and bearer for it.
+    ///
+    /// `#[serde(skip)]` is the whole point: a per-call route must not be able to
+    /// reach `config.toml` and repoint the account's inference for good. See
+    /// [`ephemeral_route`](crate::openhuman::config::schema::ephemeral_route)
+    /// for how it is installed and which roles it governs.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub ephemeral_route: Option<crate::openhuman::config::schema::ephemeral_route::EphemeralRoute>,
 
     /// Provider string for direct conversational chat (simple back-and-forth).
     #[serde(default)]
@@ -764,6 +785,7 @@ impl Default for Config {
             api_url: None,
             api_key: None,
             inference_url: None,
+            ephemeral_route: None,
             default_model: Some(DEFAULT_MODEL.to_string()),
             default_temperature: DEFAULT_TEMPERATURE,
             output_language: None,
@@ -803,6 +825,7 @@ impl Default for Config {
             curl: CurlConfig::default(),
             gitbooks: GitbooksConfig::default(),
             mcp_client: McpClientConfig::default(),
+            modules: super::ModulesConfig::default(),
             capability_providers: Vec::new(),
             multimodal: MultimodalConfig::default(),
             multimodal_files: MultimodalFileConfig::default(),

@@ -406,16 +406,18 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
   });
 
   // Covers the page-mode sidebar (TwoPanelLayout, id `chat`) once opened. The
-  // General/Subconscious/Tasks filter chips were removed; the thread search is
-  // the stable top-of-sidebar control.
-  it('renders the sidebar thread search in page mode', async () => {
+  // General/Subconscious/Tasks filter chips were removed, and so was the thread
+  // search; the section header's "new conversation" affordance is now the stable
+  // top-of-sidebar control.
+  it('renders the sidebar thread list chrome in page mode', async () => {
     await act(async () => {
       await renderConversations({ thread: emptyThreadState });
     });
 
     await openSidebar();
 
-    expect(screen.getByTestId('chat-thread-search-input')).toBeInTheDocument();
+    expect(screen.getByTestId('new-thread-button')).toBeInTheDocument();
+    expect(screen.queryByTestId('chat-thread-search-input')).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'General' })).not.toBeInTheDocument();
   });
 

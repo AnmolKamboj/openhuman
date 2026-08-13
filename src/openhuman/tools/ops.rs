@@ -782,6 +782,10 @@ pub fn all_tools_with_runtime(
     // Memory diff — structured "what changed in the agent's world since a
     // checkpoint/last sync". Drives the subconscious tick's first stage and is
     // available to any agent that lists it. Unit struct, no runtime deps.
+    // Absent rather than erroring when `memory-git` is off: a registered tool
+    // that always fails is worse than no tool, because the model keeps
+    // choosing it and reporting the failure back to the user.
+    #[cfg(feature = "memory-git")]
     tools.push(Box::new(crate::openhuman::memory::diff::MemoryDiffTool));
 
     // Subconscious user-facing handoff — notify_user proactive delivery.
@@ -824,16 +828,16 @@ pub fn all_tools_with_runtime(
     {
         let goals_dir = root_config.workspace_dir.clone();
         tools.push(Box::new(
-            crate::openhuman::memory::goals::GoalsListTool::new(goals_dir.clone()),
+            crate::openhuman::memory::tools::goals::GoalsListTool::new(goals_dir.clone()),
         ));
         tools.push(Box::new(
-            crate::openhuman::memory::goals::GoalsAddTool::new(goals_dir.clone()),
+            crate::openhuman::memory::tools::goals::GoalsAddTool::new(goals_dir.clone()),
         ));
         tools.push(Box::new(
-            crate::openhuman::memory::goals::GoalsEditTool::new(goals_dir.clone()),
+            crate::openhuman::memory::tools::goals::GoalsEditTool::new(goals_dir.clone()),
         ));
         tools.push(Box::new(
-            crate::openhuman::memory::goals::GoalsDeleteTool::new(goals_dir),
+            crate::openhuman::memory::tools::goals::GoalsDeleteTool::new(goals_dir),
         ));
     }
 
@@ -1556,7 +1560,7 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
 ///
 /// ## Honesty clause — three assignments run ahead of the plumbing
 ///
-/// `goals_*` is filesystem-backed today (`memory::goals::store`), not
+/// `goals_*` is filesystem-backed today (`tinycortex::memory::goals::store`), not
 /// `MemoryGoals`; `tool_stats` reads the legacy `Arc<dyn Memory>` plus
 /// `agent::learning::tool_tracker`, not `MemoryToolMemory`; `memory_diff` reads
 /// `memory::diff::ops`, not `MemoryDiff`. Filtering them on the driver's
@@ -1564,8 +1568,8 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
 /// about what the *model is told exists*, and the later re-point onto
 /// `MemoryGuard` must not change the advertised surface. Assigning them `None`
 /// to dodge the mismatch would bake the wrong contract in.
-fn tool_capability(name: &str) -> Option<tinycortex_api::capabilities::Capability> {
-    use tinycortex_api::capabilities::Capability;
+fn tool_capability(name: &str) -> Option<crate::openhuman::memory::api::capabilities::Capability> {
+    use crate::openhuman::memory::api::capabilities::Capability;
 
     // Not driver-backed. Each entry is an argued exception, not a fallthrough.
     if name == "update_memory_md"          // writes the workspace `MEMORY.md` file directly

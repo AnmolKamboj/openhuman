@@ -9,7 +9,7 @@ use crate::rpc::RpcOutcome;
 use tinycortex::memory::diff::Ledger;
 
 use super::ops;
-use super::types::*;
+use tinycortex::memory::diff::types::*;
 
 // ── Request / Response types ──────────────────────────────────────────
 
