@@ -60,17 +60,20 @@ describe('SidebarNav active matching', () => {
     expect(tabButton('Workflows')).not.toHaveAttribute('aria-current');
   });
 
-  it('gives the active tab a visible brand-accent fill (not the white sidebar background)', () => {
+  it('gives the active tab a neutral fill that lifts off the chrome, not an accent tint', () => {
     renderWithProviders(<SidebarNav />, { initialEntries: ['/chat'] });
 
     const active = tabButton('Chat');
-    // Active state uses a themeable primary-accent tint that contrasts against
-    // any sidebar surface (light, dark, or custom themes).
-    expect(active.className).toContain('bg-primary-500/12');
+    // The sidebar sits on the themed chrome layer, which already carries the
+    // theme's hue — so selection is a neutral surface lift plus weight. Tinting
+    // the pill on top of a tinted chrome stacks two colours and reads as noise.
+    expect(active.className).toContain('bg-surface/70');
+    expect(active.className).toContain('font-semibold');
+    expect(active.className).not.toContain('bg-primary');
     expect(active.className).not.toContain('bg-white');
 
     // Inactive tabs carry no active fill.
-    expect(tabButton('Human').className).not.toContain('bg-primary-500/12');
+    expect(tabButton('Human').className).not.toContain('bg-surface/70');
   });
 
   it('clears an active provider selection when clicking the already-active nav item', () => {

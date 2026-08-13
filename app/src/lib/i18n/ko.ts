@@ -1031,6 +1031,7 @@ const messages: TranslationMap = {
   'nav.routines': 'Routines',
   'chat.newThread': '새 스레드',
   'chat.newConversation': '새 대화',
+  'chat.conversationsHeading': '대화',
   'chat.newWindowWelcome1': '환영해요, {name} 👋',
   'chat.newWindowWelcome2': '시작해 볼까요, {name} 🧑‍🍳.',
   'chat.newWindowWelcome3': '집중할 시간이에요 🧘🏻',

@@ -8,33 +8,35 @@ import { isTauri } from '../../../utils/tauriCommands/common';
 export const WINDOW_DRAG_BAR_HEIGHT = 28;
 
 /**
- * Transparent macOS window-drag strip for the overlay title bar.
+ * Transparent macOS window-drag band for the overlay title bar.
  *
  * The main window runs with `titleBarStyle: "Overlay"` + `hiddenTitle` (see
  * `app/src-tauri/tauri.conf.json`), so macOS draws transparent traffic lights
  * over the web content but does NOT make the top draggable on its own — the
  * webview captures the pointer events. We opt back in with a `data-tauri-drag-
- * region` strip.
+ * region` band.
  *
- * Rendered as an absolutely-positioned overlay pinned to the top of the main
- * content pane ({@link RootShellLayout}), as the LAST child so it paints ON TOP
- * of the routed view. That keeps full-bleed HTML surfaces (the Tiny Place world
- * canvas, the Chat backdrop) edge-to-edge — the strip floats over them and
- * drags the window — instead of a reserved inset that would push them down and
- * reveal the app background above them. It occupies no layout space and is
- * transparent.
+ * Rendered **in flow** at the top of the content column ({@link
+ * RootShellLayout}), above the inset {@link ContentSurface}. It reserves the
+ * band the traffic lights occupy so they sit on bare window chrome rather than
+ * on the content card.
  *
- * A drag region must be the top-most element under the pointer, so the band
- * does sit over the top ~28px of the pane: page chrome with controls in that
- * band keeps the bulk of each control clickable below the strip, and the
- * traffic lights (native, composited above the webview) are always clickable.
- * The sidebar is intentionally excluded — its header already drags in place.
+ * It used to be an absolutely-positioned overlay painted on top of the routed
+ * view, because the content pane was edge-to-edge and any reserved inset would
+ * have pushed full-bleed surfaces (the Tiny Place world canvas, the Chat
+ * backdrop) down and revealed the app background above them. The two-layer
+ * shell makes that moot: the card is inset by design, so an in-flow band is now
+ * both simpler and correct — and it no longer steals pointer events from the
+ * top ~28px of page content.
+ *
  * Native CEF provider webviews composite above all HTML and so can't be dragged
- * through; that's a platform limit, not this strip.
+ * through; that's a platform limit, not this band. The sidebar is intentionally
+ * excluded — its header already drags in place.
  *
  * macOS-only: Windows/Linux keep their native decorated title bar (the
- * `Overlay` style is a no-op there). Outside the Tauri runtime (browser/iOS)
- * there is no window to drag, so it renders nothing.
+ * `Overlay` style is a no-op there), so reserving a band would only waste
+ * vertical space. Outside the Tauri runtime (browser/iOS) there is no window to
+ * drag, so it renders nothing.
  */
 export default function WindowDragBar() {
   if (!isTauri() || !isMac()) return null;
@@ -42,7 +44,7 @@ export default function WindowDragBar() {
     <div
       data-tauri-drag-region
       aria-hidden="true"
-      className="absolute inset-x-0 top-0 z-20"
+      className="flex-none"
       style={{ height: WINDOW_DRAG_BAR_HEIGHT }}
     />
   );

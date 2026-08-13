@@ -19,7 +19,6 @@ import { MemoryTreeStatusPanel } from '../components/intelligence/MemoryTreeStat
 import SubconsciousTriggersPanel from '../components/intelligence/SubconsciousTriggersPanel';
 import { SyncAuditPanel } from '../components/intelligence/SyncAuditPanel';
 import { ToastContainer } from '../components/intelligence/Toast';
-import PageSectionHeader from '../components/layout/PageSectionHeader';
 import PageWelcome from '../components/layout/PageWelcome';
 import PanelPage from '../components/layout/PanelPage';
 import { SidebarContent } from '../components/layout/shell/SidebarSlot';
@@ -281,7 +280,11 @@ export default function Brain() {
           </div>
         </div>
       ) : (
-        <div className="mx-auto h-full w-full max-w-5xl">
+        // Full width on purpose: the header band has to run edge to edge across
+        // the content card, so the width cap cannot live above it. Each tab's
+        // body carries its own `mx-auto max-w-3xl`, which is what the old
+        // `max-w-5xl` here was really constraining.
+        <div className="h-full w-full">
           {activeTab === 'welcome' ? (
             <PageWelcome
               testId="brain-welcome"
@@ -329,20 +332,18 @@ export default function Brain() {
             />
           ) : (
             /* All tabs share the standard scaffold: a single scrolling body,
-            all custom controls live inside it. Each tab opens with the canonical
-            header card (title + one-line description), aligned to the content. */
-            <PanelPage contentClassName="p-4">
+            all custom controls live inside it. The title/description go through
+            PanelPage so every page opens with the same flush header band, rather
+            than a bordered card floating in the content column. */
+            <PanelPage
+              contentClassName="p-4"
+              title={t(
+                BRAIN_HEADERS[activeTab as Exclude<BrainTab, 'welcome' | 'orchestration'>].titleKey
+              )}
+              description={t(
+                BRAIN_HEADERS[activeTab as Exclude<BrainTab, 'welcome' | 'orchestration'>].descKey
+              )}>
               <div className="mx-auto max-w-3xl space-y-5">
-                <PageSectionHeader
-                  title={t(
-                    BRAIN_HEADERS[activeTab as Exclude<BrainTab, 'welcome' | 'orchestration'>]
-                      .titleKey
-                  )}
-                  description={t(
-                    BRAIN_HEADERS[activeTab as Exclude<BrainTab, 'welcome' | 'orchestration'>]
-                      .descKey
-                  )}
-                />
                 {activeTab === 'graph' && (
                   <div className="space-y-5 animate-fade-up">
                     <MemoryControls

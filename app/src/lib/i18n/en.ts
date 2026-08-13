@@ -822,6 +822,7 @@ const en: TranslationMap = {
   // Chat / Conversations
   'chat.newThread': 'New thread',
   'chat.newConversation': 'New Conversation',
+  'chat.conversationsHeading': 'Conversations',
   'chat.newWindowWelcome1': 'Welcome, {name} 👋',
   'chat.newWindowWelcome2': "Let's cook, {name} 🧑‍🍳.",
   'chat.newWindowWelcome3': 'Time to Zone In 🧘🏻',

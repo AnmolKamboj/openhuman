@@ -1051,6 +1051,7 @@ const messages: TranslationMap = {
   'nav.routines': 'Routines',
   'chat.newThread': 'Новый чат',
   'chat.newConversation': 'Новый разговор',
+  'chat.conversationsHeading': 'Разговоры',
   'chat.newWindowWelcome1': 'Привет, {name} 👋',
   'chat.newWindowWelcome2': 'Поехали, {name} 🧑‍🍳.',
   'chat.newWindowWelcome3': 'Время сосредоточиться 🧘🏻',
