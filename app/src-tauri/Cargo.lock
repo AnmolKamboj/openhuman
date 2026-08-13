@@ -47,7 +47,6 @@ dependencies = [
  "tauri-plugin-updater",
  "tempfile",
  "tiny-skia",
- "tinyjuice",
  "tokio",
  "tokio-tungstenite 0.24.0",
  "tokio-util",
@@ -4820,7 +4819,6 @@ dependencies = [
  "tinycortex-api",
  "tinyflows",
  "tinyhumans-sdk",
- "tinyjuice",
  "tinymemory",
  "tinymemory-api",
  "tinymemory-core",
@@ -7800,25 +7798,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tinyjuice"
-version = "0.2.1"
-dependencies = [
- "async-trait",
- "dirs 6.0.0",
- "hex",
- "log",
- "once_cell",
- "regex",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "thiserror 2.0.20",
- "tokio",
- "unicode-segmentation",
- "unicode-width",
-]
-
-[[package]]
 name = "tinymemory"
 version = "1.0.1"
 dependencies = [
@@ -8493,12 +8472,6 @@ name = "unicode-vo"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1d386ff53b415b7fe27b50bb44679e2cc4660272694b7b6f3326d8480823a94"
-
-[[package]]
-name = "unicode-width"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
 
 [[package]]
 name = "universal-hash"
