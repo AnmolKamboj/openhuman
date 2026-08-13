@@ -174,13 +174,10 @@ fn apply_overrides(config: &mut Config, overrides: &CliInferenceOverrides) {
         .or_else(|| current_model.map(str::to_string))
         .or_else(|| provider_default_model(config, &provider_key).map(str::to_string));
 
-    let is_managed = provider_key == "openhuman";
-    if is_managed {
+    if provider_key == "openhuman" {
         if let Some(model) = model.as_ref() {
             config.default_model = Some(model.clone());
         }
-    } else if let Some(model) = overrides.model.as_ref() {
-        config.default_model = Some(model.clone());
     }
 
     let route = match (provider_key.as_str(), model.as_deref()) {
@@ -278,6 +275,7 @@ mod tests {
     fn provider_id_and_model_override_all_interactive_workloads() {
         let mut config = Config::default();
         config.cloud_providers.push(provider());
+        let managed_default = config.default_model.clone();
 
         apply_overrides(
             &mut config,
@@ -295,13 +293,14 @@ mod tests {
         ] {
             assert_eq!(route.as_deref(), Some("openai-work:gpt-custom"));
         }
-        assert_eq!(config.default_model.as_deref(), Some("gpt-custom"));
+        assert_eq!(config.default_model, managed_default);
     }
 
     #[test]
     fn model_only_preserves_the_active_provider_and_allows_colons_in_model_ids() {
         let mut config = Config::default();
         config.chat_provider = Some("ollama:old:tag".into());
+        let managed_default = config.default_model.clone();
 
         apply_overrides(
             &mut config,
@@ -315,6 +314,7 @@ mod tests {
         assert_eq!(config.reasoning_provider, config.chat_provider);
         assert_eq!(config.agentic_provider, config.chat_provider);
         assert_eq!(config.coding_provider, config.chat_provider);
+        assert_eq!(config.default_model, managed_default);
     }
 
     #[test]
@@ -334,6 +334,40 @@ mod tests {
             config.chat_provider.as_deref(),
             Some("openai-work:gpt-default")
         );
+    }
+
+    #[test]
+    fn cloud_provider_resolves_to_primary_cloud_or_managed_fallback() {
+        let mut config = Config::default();
+        config.cloud_providers.push(provider());
+        config.primary_cloud = Some("p_openai_123".into());
+
+        assert_eq!(resolve_provider_key(&config, "cloud"), "openai-work");
+        assert_eq!(resolve_provider_key(&config, ""), "openai-work");
+
+        config.primary_cloud = Some("missing-provider".into());
+        assert_eq!(resolve_provider_key(&config, "cloud"), "openhuman");
+    }
+
+    #[test]
+    fn local_provider_only_uses_the_configured_chat_model() {
+        let mut config = Config::default();
+        config.local_ai.chat_model_id = "qwen3:8b".into();
+        let managed_default = config.default_model.clone();
+
+        apply_overrides(
+            &mut config,
+            &CliInferenceOverrides {
+                provider: Some("ollama".into()),
+                model: None,
+            },
+        );
+
+        assert_eq!(config.chat_provider.as_deref(), Some("ollama:qwen3:8b"));
+        assert_eq!(config.reasoning_provider, config.chat_provider);
+        assert_eq!(config.agentic_provider, config.chat_provider);
+        assert_eq!(config.coding_provider, config.chat_provider);
+        assert_eq!(config.default_model, managed_default);
     }
 
     #[test]

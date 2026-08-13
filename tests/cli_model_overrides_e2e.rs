@@ -42,7 +42,8 @@ fn cli_model_and_provider_flags_override_the_loaded_session_without_persisting()
     }
     assert_eq!(
         result.get("default_model").and_then(Value::as_str),
-        Some("qwen3:8b")
+        Some("chat-v1"),
+        "a local route override must not replace the managed default model"
     );
 
     let persisted =
