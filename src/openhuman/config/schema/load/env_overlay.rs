@@ -53,6 +53,12 @@ impl Config {
         crate::openhuman::inference::embeddings::rate_limit::set_embedding_rate_limit(
             self.memory.embedding_rate_limit_per_min,
         );
+
+        // Launch flags are process-local and intentionally win over both the
+        // persisted file and ordinary environment overlays. They are applied
+        // after loading so `openhuman -p <provider> -m <model>` never mutates
+        // config.toml and desktop launches remain unaffected.
+        super::super::cli_overrides::apply_cli_inference_overrides(self);
     }
 
     /// Pure-ish env overlay: applies overrides read from `env` to `self`.
