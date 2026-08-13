@@ -1588,6 +1588,7 @@ async fn flows_delete_clears_flow_memory_namespace() {
 
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
+    crate::openhuman::memory::host_impls::install_for_tests();
 
     // A directly-constructed `MemoryClient`, injected via `flows_delete_impl`
     // below, instead of `memory::global` — that singleton is a single

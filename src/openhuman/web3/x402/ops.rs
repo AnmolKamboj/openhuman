@@ -595,7 +595,7 @@ pub(crate) fn build_evm_payment_with_signer(
     challenge: &PaymentRequired,
     req: &PaymentRequirements,
 ) -> Result<PaymentPayload, X402Error> {
-    use tinywallet::eip712;
+    use crate::openhuman::web3::wallet::primitives::eip712;
 
     let chain_id = req
         .evm_chain_id()
@@ -695,7 +695,7 @@ pub(crate) fn build_evm_payment_with_signer(
 /// Derive the wallet's EVM signing key from the encrypted mnemonic.
 ///
 /// Returns the raw secret and the checksummed address it controls. Derivation
-/// goes through `tinywallet::key` — the same BIP-32 walk the wallet domain uses,
+/// goes through `crate::openhuman::web3::wallet::primitives::key` — the same BIP-32 walk the wallet domain uses,
 /// so an x402 payment is signed by exactly the account the wallet reports — and
 /// the key stays in this process.
 async fn derive_evm_signer() -> Result<(Vec<u8>, String), X402Error> {
@@ -717,8 +717,8 @@ async fn derive_evm_signer() -> Result<(Vec<u8>, String), X402Error> {
     .map_err(|e| X402Error::Wallet(format!("decrypt mnemonic: {e}")))?
     .value;
 
-    let derived = tinywallet::key::derive(
-        tinywallet::Chain::Evm,
+    let derived = crate::openhuman::web3::wallet::primitives::key::derive(
+        crate::openhuman::web3::wallet::primitives::Chain::Evm,
         mnemonic.as_str(),
         &secret.derivation_path,
     )
@@ -732,7 +732,7 @@ async fn derive_evm_signer() -> Result<(Vec<u8>, String), X402Error> {
 
 /// The 20 raw bytes of an EVM address.
 fn evm_address_bytes(address: &str) -> Result<[u8; 20], X402Error> {
-    let validated = tinywallet::address::evm::validate(address)
+    let validated = crate::openhuman::web3::wallet::primitives::address::evm::validate(address)
         .map_err(|e| X402Error::Protocol(format!("invalid EVM address '{address}': {e}")))?;
     let body = validated.strip_prefix("0x").unwrap_or(&validated);
     let decoded = hex::decode(body)

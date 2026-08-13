@@ -41,6 +41,7 @@ pub mod boot;
 pub mod documents;
 pub mod host;
 pub mod memory;
+mod memory_host;
 pub mod ops;
 pub mod platform;
 pub mod registry;

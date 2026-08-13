@@ -548,6 +548,8 @@ jobs:
           openhuman/tools/ops_tests.rs
           openhuman/voice/compile_status.rs
           openhuman/web3/stub.rs
+          openhuman/web3/wallet/primitives/address/evm/test.rs
+          openhuman/web3/wallet/primitives/address/test.rs
           openhuman/web3/wallet/stub.rs
           openhuman/web3/x402/stub.rs
           EOF
