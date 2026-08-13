@@ -19,12 +19,16 @@ interface ContentSurfaceProps {
   /**
    * Render edge-to-edge with square corners and no card seam.
    *
-   * **Required whenever a native CEF provider webview is mounted inside.**
-   * `WebviewHost` hands the Rust side a plain `{x, y, width, height}` rectangle
-   * and CEF composites that child view *above* the whole HTML layer — so the
-   * corners cannot be masked by `overflow-hidden`, a CSS radius, or any HTML
-   * overlay painted on top. A framed card under a live webview shows four
-   * square corners punching out through the radius.
+   * Written for native CEF provider webviews: `WebviewHost` handed the Rust
+   * side a plain `{x, y, width, height}` rectangle and CEF composited that
+   * child view *above* the whole HTML layer, so its corners could not be masked
+   * by `overflow-hidden`, a CSS radius, or any HTML overlay — a framed card
+   * under a live webview showed four square corners punching through.
+   *
+   * That surface was removed upstream (`WebviewHost` is gone), so **nothing
+   * sets this today**. Kept because the constraint recurs for any content the
+   * compositor draws above the HTML layer, and because a full-bleed page is a
+   * reasonable thing to want from a layout primitive.
    */
   unframed?: boolean;
 }

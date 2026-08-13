@@ -28,8 +28,9 @@ describe('ContentSurface', () => {
   it('drops the radius, insets and seam when unframed', () => {
     render(<ContentSurface unframed>body</ContentSurface>);
     const surface = screen.getByTestId('app-content-surface');
-    // A native CEF webview composites above HTML as a plain rectangle, so any
-    // radius here would leave four square corners poking through the card.
+    // The compositing constraint this exists for: content drawn above the HTML
+    // layer as a plain rectangle would leave four square corners poking through
+    // a rounded card.
     expect(surface.className).not.toContain('rounded-2xl');
     expect(surface.className).not.toContain('shadow-content-edge');
     expect(surface.className).not.toContain('m-3');

@@ -58,8 +58,8 @@ interface RootShellLayoutProps {
   children: ReactNode;
   /**
    * Render the content edge-to-edge instead of as an inset card. Forwarded to
-   * {@link ContentSurface} — see its docs for why a live CEF provider webview
-   * *must* set this.
+   * {@link ContentSurface} — see its docs for the compositing constraint this
+   * exists for, and why no route sets it today.
    */
   unframed?: boolean;
 }
