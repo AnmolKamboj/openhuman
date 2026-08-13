@@ -17,7 +17,9 @@ mod agent;
 mod autonomy;
 mod capability_providers;
 mod channels;
-pub mod cli_overrides;
+mod cli_overrides;
+#[doc(hidden)]
+pub use cli_overrides::AppliedInferenceOverride;
 mod context;
 mod dashboard;
 mod defaults;

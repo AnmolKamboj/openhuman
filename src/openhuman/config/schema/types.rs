@@ -99,17 +99,13 @@ pub struct Config {
     #[serde(skip)]
     pub config_path: PathBuf,
     /// Per-load snapshot used to remove standalone CLI inference overrides
-    /// from a saved clone. Runtime-only and never serialized.
+    /// from a saved clone. Runtime-only and never serialized. Public only so
+    /// external integration tests and embedding crates can continue to use
+    /// struct-update syntax with this public configuration type.
     #[serde(skip)]
     #[schemars(skip)]
-    // `pub`, not `pub(crate)`. `Config` is built with struct-literal syntax by
-    // eight integration tests in `tests/`, which are external crates, and that
-    // syntax requires EVERY field to be visible — so one crate-private field
-    // makes the whole struct unconstructible from outside and breaks those
-    // targets at compile time. `#[serde(skip)]` + `#[schemars(skip)]` are what
-    // keep this off the wire and out of the JSON schema; visibility was never
-    // what made it "runtime-only".
-    pub cli_inference_snapshot: Option<super::cli_overrides::AppliedInferenceOverride>,
+    #[doc(hidden)]
+    pub cli_inference_snapshot: Option<super::AppliedInferenceOverride>,
     /// Runtime only — `true` when this config was produced by the loader's
     /// corruption-recovery path: the on-disk `config.toml` was unreadable
     /// (non-UTF-8) or unparseable, so it was renamed to `.corrupted.<ts>` and the

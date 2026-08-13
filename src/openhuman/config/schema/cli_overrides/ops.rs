@@ -70,6 +70,7 @@ fn restore_if_applied<T: Clone + PartialEq>(current: &mut T, applied: &T, baseli
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[doc(hidden)]
 pub struct AppliedInferenceOverride {
     baseline: InferenceFields,
     applied: InferenceFields,
