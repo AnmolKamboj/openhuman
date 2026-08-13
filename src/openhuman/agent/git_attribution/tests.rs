@@ -32,14 +32,13 @@ fn hook_adds_openhuman_trailer_without_disabling_repository_hook() {
     std::fs::write(repo.join("a"), "a").unwrap();
     git(&["add", "a"]);
 
-    let hook_dir = super::hook::test_hook_dir();
+    let hook_env = super::hook::test_hook_env(Some(
+        "'test.openhuman-inherited'='kept' 'core.hooksPath'='/definitely-not-the-openhuman-hook'",
+    ));
     let output = Command::new("git")
         .args(["commit", "-q", "-m", "subject"])
         .current_dir(&repo)
-        .env("OPENHUMAN_GIT_ATTRIBUTION", super::hook::TRAILER)
-        .env("GIT_CONFIG_COUNT", "1")
-        .env("GIT_CONFIG_KEY_0", "core.hooksPath")
-        .env("GIT_CONFIG_VALUE_0", &hook_dir)
+        .envs(&hook_env)
         .output()
         .unwrap();
     assert!(
@@ -55,4 +54,13 @@ fn hook_adds_openhuman_trailer_without_disabling_repository_hook() {
     let message = String::from_utf8(output.stdout).unwrap();
     assert!(message.contains("repo-hook-ran"), "{message:?}");
     assert!(message.contains(super::hook::TRAILER), "{message:?}");
+
+    let inherited = Command::new("git")
+        .args(["config", "--get", "test.openhuman-inherited"])
+        .current_dir(&repo)
+        .envs(&hook_env)
+        .output()
+        .unwrap();
+    assert!(inherited.status.success());
+    assert_eq!(String::from_utf8(inherited.stdout).unwrap().trim(), "kept");
 }

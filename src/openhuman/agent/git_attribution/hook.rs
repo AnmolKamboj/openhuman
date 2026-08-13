@@ -62,14 +62,29 @@ pub fn hook_env() -> HashMap<String, String> {
     let Some(dir) = HOOK_DIR.get_or_init(|| build_hook_dir().ok()).as_ref() else {
         return HashMap::new();
     };
+    build_hook_env(dir, std::env::var("GIT_CONFIG_PARAMETERS").ok().as_deref())
+}
+
+#[cfg(unix)]
+fn build_hook_env(
+    dir: &std::path::Path,
+    inherited_parameters: Option<&str>,
+) -> HashMap<String, String> {
+    let mut parameters = inherited_parameters.unwrap_or_default().trim().to_owned();
+    if !parameters.is_empty() {
+        parameters.push(' ');
+    }
+    let hook_path = dir.to_string_lossy().replace('\'', "'\\''");
+    parameters.push_str("'core.hooksPath'='");
+    parameters.push_str(&hook_path);
+    parameters.push('\'');
+
     HashMap::from([
         ("OPENHUMAN_GIT_ATTRIBUTION".into(), TRAILER.into()),
-        ("GIT_CONFIG_COUNT".into(), "1".into()),
-        ("GIT_CONFIG_KEY_0".into(), "core.hooksPath".into()),
-        (
-            "GIT_CONFIG_VALUE_0".into(),
-            dir.to_string_lossy().into_owned(),
-        ),
+        // Parameters outrank GIT_CONFIG_COUNT. Preserve settings inherited
+        // from the parent harness, then append our hook so it wins if that
+        // harness also selected a hook path.
+        ("GIT_CONFIG_PARAMETERS".into(), parameters),
     ])
 }
 
@@ -94,6 +109,7 @@ fn build_hook_dir() -> std::io::Result<PathBuf> {
 }
 
 #[cfg(all(unix, test))]
-pub(super) fn test_hook_dir() -> PathBuf {
-    build_hook_dir().expect("create OpenHuman hook directory")
+pub(super) fn test_hook_env(inherited_parameters: Option<&str>) -> HashMap<String, String> {
+    let dir = build_hook_dir().expect("create OpenHuman hook directory");
+    build_hook_env(&dir, inherited_parameters)
 }
