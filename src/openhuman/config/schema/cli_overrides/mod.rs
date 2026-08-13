@@ -4,8 +4,6 @@
 //! launch may choose a provider/model without changing what the desktop app or
 //! the next invocation uses.
 
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::sync::{OnceLock, RwLock};
 
 use super::Config;
@@ -72,7 +70,7 @@ fn restore_if_applied<T: Clone + PartialEq>(current: &mut T, applied: &T, baseli
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct AppliedInferenceOverride {
+pub(crate) struct AppliedInferenceOverride {
     baseline: InferenceFields,
     applied: InferenceFields,
 }
@@ -80,7 +78,6 @@ struct AppliedInferenceOverride {
 #[derive(Debug, Default)]
 struct CliInferenceState {
     overrides: CliInferenceOverrides,
-    applied_by_config_path: HashMap<PathBuf, AppliedInferenceOverride>,
 }
 
 static CLI_INFERENCE_STATE: OnceLock<RwLock<CliInferenceState>> = OnceLock::new();
@@ -98,7 +95,6 @@ pub(crate) fn set_cli_inference_overrides(provider: Option<&str>, model: Option<
         .write()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     state.overrides = overrides;
-    state.applied_by_config_path.clear();
 }
 
 pub(crate) fn apply_cli_inference_overrides(config: &mut Config) {
@@ -110,15 +106,10 @@ pub(crate) fn apply_cli_inference_overrides(config: &mut Config) {
     let baseline = InferenceFields::from_config(config);
     apply_overrides(config, &overrides);
     if overrides.provider.is_some() || overrides.model.is_some() {
-        state()
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .applied_by_config_path
-            .entry(config.config_path.clone())
-            .or_insert_with(|| AppliedInferenceOverride {
-                baseline,
-                applied: InferenceFields::from_config(config),
-            });
+        config.cli_inference_snapshot = Some(AppliedInferenceOverride {
+            baseline,
+            applied: InferenceFields::from_config(config),
+        });
     }
 }
 
@@ -126,18 +117,7 @@ pub(crate) fn apply_cli_inference_overrides(config: &mut Config) {
 /// serialized. A handler mutation that replaced an overridden field is kept;
 /// only values still equal to the transient overlay are restored.
 pub(crate) fn restore_persisted_inference_fields(config: &mut Config) {
-    let config_path = config.config_path.clone();
-    restore_persisted_inference_fields_for_path(config, &config_path);
-}
-
-fn restore_persisted_inference_fields_for_path(config: &mut Config, config_path: &Path) {
-    let applied = state()
-        .read()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .applied_by_config_path
-        .get(config_path)
-        .cloned();
-    if let Some(applied) = applied {
+    if let Some(applied) = config.cli_inference_snapshot.take() {
         applied.baseline.restore_matching(config, &applied.applied);
     }
 }
@@ -258,6 +238,7 @@ fn nonempty_str(value: &str) -> Option<&str> {
 mod tests {
     use super::*;
     use crate::openhuman::config::schema::{AuthStyle, CloudProviderCreds};
+    use std::path::PathBuf;
 
     fn provider() -> CloudProviderCreds {
         CloudProviderCreds {
@@ -368,6 +349,44 @@ mod tests {
         assert_eq!(config.agentic_provider, config.chat_provider);
         assert_eq!(config.coding_provider, config.chat_provider);
         assert_eq!(config.default_model, managed_default);
+    }
+
+    #[tokio::test]
+    async fn reload_refreshes_the_snapshot_before_an_unrelated_save() {
+        let root = tempfile::tempdir().expect("temporary config root");
+        let config_path = root.path().join("config.toml");
+        let workspace_dir = root.path().join("workspace");
+
+        set_cli_inference_overrides(None, None);
+        let mut initial = Config::default();
+        initial.config_path = config_path.clone();
+        initial.workspace_dir = workspace_dir.clone();
+        initial.chat_provider = Some("openai:old".into());
+        initial.save().await.expect("save initial config");
+
+        set_cli_inference_overrides(Some("ollama"), Some("qwen3:8b"));
+        let mut first = Config::load_from_config_path(&config_path, &workspace_dir)
+            .await
+            .expect("first load");
+        first.chat_provider = Some("anthropic:explicit".into());
+        first.save().await.expect("save explicit route change");
+
+        let mut reloaded = Config::load_from_config_path(&config_path, &workspace_dir)
+            .await
+            .expect("reload after explicit change");
+        reloaded.onboarding_completed = true;
+        reloaded.save().await.expect("save unrelated change");
+
+        set_cli_inference_overrides(None, None);
+        let persisted = Config::load_from_config_path(&config_path, &workspace_dir)
+            .await
+            .expect("load persisted config without overrides");
+
+        assert_eq!(
+            persisted.chat_provider.as_deref(),
+            Some("anthropic:explicit")
+        );
+        assert!(persisted.onboarding_completed);
     }
 
     #[test]
