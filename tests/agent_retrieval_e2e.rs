@@ -40,10 +40,10 @@ fn test_config() -> (TempDir, Config) {
     let tmp = TempDir::new().unwrap();
     let workspace_dir = tmp.path().join("workspace");
     std::fs::create_dir_all(&workspace_dir).expect("create workspace dir");
-    let mut cfg = Config {
-        workspace_dir: workspace_dir.clone(),
-        ..Config::default()
-    };
+    // Assign after construction: Config carries private runtime-only state, so
+    // external integration tests cannot use struct-update syntax.
+    let mut cfg = Config::default();
+    cfg.workspace_dir = workspace_dir;
     // Inert embedder — keeps the test deterministic and avoids any real
     // Ollama call. Mirrors `retrieval/integration_test.rs`.
     cfg.memory_tree.embedding_endpoint = None;
