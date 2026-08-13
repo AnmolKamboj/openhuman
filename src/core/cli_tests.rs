@@ -99,7 +99,15 @@ fn launch_options_stop_at_the_subcommand() {
 
 #[test]
 fn launch_options_reject_missing_or_empty_values() {
-    for args in [vec!["--model".to_string()], vec!["--provider=".to_string()]] {
+    for args in [
+        vec!["--model".to_string()],
+        vec!["--provider=".to_string()],
+        vec![
+            "--model".to_string(),
+            "--provider".to_string(),
+            "ollama".to_string(),
+        ],
+    ] {
         assert!(parse_launch_options(&args).is_err());
     }
 }

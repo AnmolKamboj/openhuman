@@ -4,6 +4,8 @@
 //! launch may choose a provider/model without changing what the desktop app or
 //! the next invocation uses.
 
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::{OnceLock, RwLock};
 
 use super::Config;
@@ -14,26 +16,130 @@ struct CliInferenceOverrides {
     model: Option<String>,
 }
 
-static CLI_INFERENCE_OVERRIDES: OnceLock<RwLock<CliInferenceOverrides>> = OnceLock::new();
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct InferenceFields {
+    default_model: Option<String>,
+    chat_provider: Option<String>,
+    reasoning_provider: Option<String>,
+    agentic_provider: Option<String>,
+    coding_provider: Option<String>,
+}
+
+impl InferenceFields {
+    fn from_config(config: &Config) -> Self {
+        Self {
+            default_model: config.default_model.clone(),
+            chat_provider: config.chat_provider.clone(),
+            reasoning_provider: config.reasoning_provider.clone(),
+            agentic_provider: config.agentic_provider.clone(),
+            coding_provider: config.coding_provider.clone(),
+        }
+    }
+
+    fn restore_matching(&self, config: &mut Config, applied: &Self) {
+        restore_if_applied(
+            &mut config.default_model,
+            &applied.default_model,
+            &self.default_model,
+        );
+        restore_if_applied(
+            &mut config.chat_provider,
+            &applied.chat_provider,
+            &self.chat_provider,
+        );
+        restore_if_applied(
+            &mut config.reasoning_provider,
+            &applied.reasoning_provider,
+            &self.reasoning_provider,
+        );
+        restore_if_applied(
+            &mut config.agentic_provider,
+            &applied.agentic_provider,
+            &self.agentic_provider,
+        );
+        restore_if_applied(
+            &mut config.coding_provider,
+            &applied.coding_provider,
+            &self.coding_provider,
+        );
+    }
+}
+
+fn restore_if_applied<T: Clone + PartialEq>(current: &mut T, applied: &T, baseline: &T) {
+    if current == applied {
+        *current = baseline.clone();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AppliedInferenceOverride {
+    baseline: InferenceFields,
+    applied: InferenceFields,
+}
+
+#[derive(Debug, Default)]
+struct CliInferenceState {
+    overrides: CliInferenceOverrides,
+    applied_by_config_path: HashMap<PathBuf, AppliedInferenceOverride>,
+}
+
+static CLI_INFERENCE_STATE: OnceLock<RwLock<CliInferenceState>> = OnceLock::new();
+
+fn state() -> &'static RwLock<CliInferenceState> {
+    CLI_INFERENCE_STATE.get_or_init(|| RwLock::new(CliInferenceState::default()))
+}
 
 pub(crate) fn set_cli_inference_overrides(provider: Option<&str>, model: Option<&str>) {
     let overrides = CliInferenceOverrides {
         provider: nonempty(provider),
         model: nonempty(model),
     };
-    *CLI_INFERENCE_OVERRIDES
-        .get_or_init(|| RwLock::new(CliInferenceOverrides::default()))
+    let mut state = state()
         .write()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = overrides;
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    state.overrides = overrides;
+    state.applied_by_config_path.clear();
 }
 
 pub(crate) fn apply_cli_inference_overrides(config: &mut Config) {
-    let overrides = CLI_INFERENCE_OVERRIDES
-        .get_or_init(|| RwLock::new(CliInferenceOverrides::default()))
+    let overrides = state()
         .read()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .overrides
         .clone();
+    let baseline = InferenceFields::from_config(config);
     apply_overrides(config, &overrides);
+    if overrides.provider.is_some() || overrides.model.is_some() {
+        state()
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .applied_by_config_path
+            .entry(config.config_path.clone())
+            .or_insert_with(|| AppliedInferenceOverride {
+                baseline,
+                applied: InferenceFields::from_config(config),
+            });
+    }
+}
+
+/// Remove process-local launch values from a clone immediately before it is
+/// serialized. A handler mutation that replaced an overridden field is kept;
+/// only values still equal to the transient overlay are restored.
+pub(crate) fn restore_persisted_inference_fields(config: &mut Config) {
+    let config_path = config.config_path.clone();
+    restore_persisted_inference_fields_for_path(config, &config_path);
+}
+
+fn restore_persisted_inference_fields_for_path(config: &mut Config, config_path: &Path) {
+    let applied = state()
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .applied_by_config_path
+        .get(config_path)
+        .cloned();
+    if let Some(applied) = applied {
+        applied.baseline.restore_matching(config, &applied.applied);
+    }
 }
 
 fn nonempty(value: Option<&str>) -> Option<String> {
@@ -227,6 +333,33 @@ mod tests {
         assert_eq!(
             config.chat_provider.as_deref(),
             Some("openai-work:gpt-default")
+        );
+    }
+
+    #[test]
+    fn persistence_restore_keeps_handler_changes_and_removes_untouched_overlay_fields() {
+        let mut config = Config::default();
+        config.config_path = PathBuf::from("/test/config.toml");
+        config.chat_provider = Some("openai:before".into());
+        let baseline = InferenceFields::from_config(&config);
+
+        let overrides = CliInferenceOverrides {
+            provider: Some("ollama".into()),
+            model: Some("qwen3:8b".into()),
+        };
+        apply_overrides(&mut config, &overrides);
+        let applied = InferenceFields::from_config(&config);
+        config.coding_provider = Some("anthropic:explicit-change".into());
+
+        baseline.restore_matching(&mut config, &applied);
+
+        assert_eq!(config.default_model, baseline.default_model);
+        assert_eq!(config.chat_provider, baseline.chat_provider);
+        assert_eq!(config.reasoning_provider, baseline.reasoning_provider);
+        assert_eq!(config.agentic_provider, baseline.agentic_provider);
+        assert_eq!(
+            config.coding_provider.as_deref(),
+            Some("anthropic:explicit-change")
         );
     }
 

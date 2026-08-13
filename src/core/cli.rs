@@ -156,9 +156,14 @@ fn parse_launch_options(args: &[String]) -> Result<CliLaunchOptions> {
             Some(value) => value,
             None => {
                 i += 1;
-                args.get(i)
+                let value = args
+                    .get(i)
                     .map(String::as_str)
-                    .ok_or_else(|| anyhow::anyhow!("missing value for {arg}"))?
+                    .ok_or_else(|| anyhow::anyhow!("missing value for {arg}"))?;
+                if value.starts_with('-') {
+                    return Err(anyhow::anyhow!("missing value for {arg}"));
+                }
+                value
             }
         };
         let value = value.trim();
