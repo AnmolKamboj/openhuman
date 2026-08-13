@@ -1658,7 +1658,7 @@ fn memory_controllers_form_one_contiguous_run_in_aggregator_order() {
 // present and failing, because a registered-but-failing method teaches a model
 // the capability exists and makes it retry.
 
-use tinycortex_api::capabilities::Capability;
+use crate::openhuman::memory::api::capabilities::Capability;
 
 /// A workspace path unique to one test.
 ///
@@ -1983,8 +1983,9 @@ async fn visible_under(
 }
 
 #[tokio::test]
+#[cfg(feature = "modules")]
 async fn memory_families_registered_when_capabilities_advertised() {
-    // The embedded `tinycortex` driver (the default config) advertises
+    // The TinyMemory module driver advertises
     // `Capabilities::all()`, so every gated family is present. Scoped rather
     // than unscoped so this proves a BOUND driver's set, not the unbound
     // default-open fallback.

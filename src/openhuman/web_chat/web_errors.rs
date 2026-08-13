@@ -858,17 +858,46 @@ pub(crate) fn classify_inference_error(err: &str) -> ClassifiedError {
             || lower.contains("does not exist")
             || lower.contains("does not have access"))
     {
-        ClassifiedError {
-            error_type: "model_unavailable",
-            message: with_provider_detail(
-                "The selected model isn't available on your provider. Check your model settings.",
-                err,
-            ),
-            source: "config",
-            retryable: false,
-            retry_after_ms: None,
-            provider,
-            fallback_available: None,
+        // #5503: this arm previously flattened two distinct failures into one
+        // non-retryable "check your model settings" misconfiguration verdict.
+        // A TRANSIENT upstream outage ("the model is temporarily unavailable",
+        // "currently overloaded") is NOT a user misconfiguration — labelling it
+        // `config`/non-retryable tells the user to go fix settings that are
+        // fine, and hides the Retry button on a failure a retry would clear. So
+        // split on transience: a body carrying a temporary-outage marker routes
+        // to the retryable "temporarily unavailable" provider copy (the same
+        // class as the `500`/`503` arm above), while a genuine model rejection
+        // ("does not exist", "does not have access", "model unavailable on this
+        // endpoint" — a stale pin / wrong endpoint) keeps the non-retryable
+        // config copy. Genuine config-rejection bodies (`does not exist`,
+        // `model_not_found`, `/openai/v1/models`, …) are already claimed by the
+        // provider-config-rejection arm above and never reach here.
+        if is_transient_unavailability_text(&lower) {
+            ClassifiedError {
+                error_type: "provider_error",
+                message: with_provider_detail(
+                    "The AI provider is temporarily unavailable. Please try again later.",
+                    err,
+                ),
+                source: "provider",
+                retryable: true,
+                retry_after_ms: None,
+                provider,
+                fallback_available,
+            }
+        } else {
+            ClassifiedError {
+                error_type: "model_unavailable",
+                message: with_provider_detail(
+                    "The selected model isn't available on your provider. Check your model settings.",
+                    err,
+                ),
+                source: "config",
+                retryable: false,
+                retry_after_ms: None,
+                provider,
+                fallback_available: None,
+            }
         }
     } else if lower.contains("does not support vision") || lower.contains("capability=vision") {
         // A multimodal turn sent image markers to a text-only model
@@ -948,6 +977,22 @@ pub(crate) fn classify_inference_error(err: &str) -> ClassifiedError {
                 err,
             ),
             source: "transport",
+            retryable: true,
+            retry_after_ms: None,
+            provider,
+            fallback_available,
+        }
+    } else if is_transient_unavailability_text(&lower) {
+        // A transient upstream-outage marker that no more specific arm above
+        // claimed (e.g. a bare 5xx "overloaded" such as Anthropic's 529, or
+        // "please retry later") is a temporary provider outage — surface the
+        // retryable "temporarily unavailable" provider copy rather than the flat
+        // inference bucket, so the user gets an accurate, retryable error (#5503).
+        ClassifiedError {
+            error_type: "provider_error",
+            message: "The AI provider is temporarily unavailable. Please try again later."
+                .to_string(),
+            source: "provider",
             retryable: true,
             retry_after_ms: None,
             provider,
@@ -1075,6 +1120,35 @@ pub(crate) fn is_provider_request_rejected_text(lower: &str) -> bool {
         "api error (422",
     ];
     PROVIDER_4XX_MARKERS
+        .iter()
+        .any(|marker| lower.contains(marker))
+}
+
+/// Whether a model-availability error body describes a **transient** upstream
+/// outage rather than a user misconfiguration (#5503).
+///
+/// The `model_unavailable` arm matches on the bare word `unavailable`, which a
+/// provider emits for BOTH "you picked a model I don't host" (config, terminal)
+/// and "this model is temporarily down / overloaded right now" (transient,
+/// retryable). Only the second class carries one of these temporary-outage
+/// markers, so it's the safe discriminator: a terminal endpoint rejection like
+/// `"model unavailable on this endpoint"` (a 404 for a model that endpoint
+/// doesn't host) carries none of them and stays on the config verdict.
+///
+/// Deliberately does NOT key on the bare word `unavailable` — that's the very
+/// ambiguity being disambiguated. Caller passes the already-lowercased string.
+pub(crate) fn is_transient_unavailability_text(lower: &str) -> bool {
+    const TRANSIENT_MARKERS: &[&str] = &[
+        "temporarily",
+        "temporary",
+        "currently unavailable",
+        "currently overloaded",
+        "overloaded",
+        "try again later",
+        "try again in a",
+        "please retry",
+    ];
+    TRANSIENT_MARKERS
         .iter()
         .any(|marker| lower.contains(marker))
 }

@@ -36,6 +36,23 @@ use openhuman_core::openhuman::memory::sync::composio::providers::{
 };
 
 static ENV_LOCK: &OnceLock<Mutex<()>> = &crate::SHARED_ENV_LOCK;
+static MEMORY_SEAMS_INIT: OnceLock<()> = OnceLock::new();
+
+fn ensure_memory_seams() {
+    MEMORY_SEAMS_INIT.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("memory-sync-providers-raw-coverage-seams".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
+                    Arc::new(Config::default()),
+                );
+            })
+            .expect("spawn memory sync provider seam installer")
+            .join()
+            .expect("memory sync provider seam installer panicked");
+    });
+}
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     ENV_LOCK
@@ -77,6 +94,7 @@ impl Drop for EnvGuard {
 }
 
 fn config_in(tmp: &TempDir) -> Config {
+    ensure_memory_seams();
     let mut config = Config {
         config_path: tmp.path().join("config.toml"),
         workspace_dir: tmp.path().join("workspace"),

@@ -833,9 +833,14 @@ impl ApprovalGate {
                 return (
                     GateOutcome::Deny {
                         reason: format!(
-                            "{POLICY_DENIED_MARKER} Tool '{tool_name}' rejected: agent turn has \
-                             no origin label. Refusing external_effect tool from unlabelled call \
-                             site."
+                            "{POLICY_DENIED_MARKER} '{tool_name}' was blocked because this agent \
+                             turn is missing its origin label, so the approval gate cannot decide \
+                             who requested the action. Scheduling and other external-effect tools \
+                             (e.g. cron_add / cron_update) are refused when the turn has no origin. \
+                             This is an internal wiring gap, not something you did — the work most \
+                             likely ran on a background task that did not carry the turn's origin \
+                             forward; retry from a normal chat turn, or report it so the spawn site \
+                             can be fixed."
                         ),
                     },
                     None,
@@ -2155,7 +2160,15 @@ mod tests {
             .await;
 
         match outcome {
-            GateOutcome::Deny { reason } => assert!(reason.contains("no origin label")),
+            // The deny message is specific and actionable (issues #5508 / #5499,
+            // 2nd acceptance criterion): it names the missing origin label, calls
+            // out the scheduling/external-effect tools it affects, and frames it
+            // as an internal wiring gap rather than user error.
+            GateOutcome::Deny { reason } => {
+                assert!(reason.contains("origin label"), "reason was: {reason}");
+                assert!(reason.contains("cron_add"), "reason was: {reason}");
+                assert!(reason.contains("external-effect"), "reason was: {reason}");
+            }
             other => panic!("expected deny, got {other:?}"),
         }
     }
@@ -2930,6 +2943,57 @@ mod tests {
         )
         .await;
         assert!(matches!(outcome, GateOutcome::Allow));
+    }
+
+    /// Regression for #5508 / #5499: an external-effect scheduling tool
+    /// (`cron_add`) that runs on a freshly-spawned, turn-less task — the exact
+    /// shape of `hosted::orchestration::effect_executor::run_local_agent`, which
+    /// fires the local sub-agent from a bare `tokio::spawn` with no agent turn on
+    /// the stack — must NOT be `Unknown`-denied once the spawn site scopes an
+    /// explicit `AgentTurnOrigin::Cli` (the residual site PR #5465 did not cover).
+    ///
+    /// Both halves run inside a `tokio::spawn` so the assertion exercises the real
+    /// task boundary the fix crosses: `AGENT_TURN_ORIGIN` is a `tokio::task_local`
+    /// that does not survive `spawn`, so the origin the gate reads is whatever the
+    /// spawned future scopes for itself — nothing, or the fix's explicit label.
+    #[tokio::test]
+    async fn cron_add_on_a_turnless_spawn_resolves_to_a_real_origin_not_unknown_denied() {
+        let (gate, _dir) = test_gate();
+        let gate = Arc::new(gate);
+
+        // Precondition — mirrors the bug before the fix: a bare `tokio::spawn`
+        // with no ambient origin (capture() would yield None) reaches the gate as
+        // `Unknown`, and the scheduling tool is refused as "no origin label".
+        let g = gate.clone();
+        let denied = tokio::spawn(async move {
+            g.intercept("cron_add", "schedule a job", serde_json::json!({}))
+                .await
+        })
+        .await
+        .expect("spawned task panicked");
+        match denied {
+            GateOutcome::Deny { reason } => {
+                assert!(reason.contains("origin label"), "reason was: {reason}")
+            }
+            other => panic!("unlabelled turn-less spawn must fail closed, got {other:?}"),
+        }
+
+        // With the fix: `run_local_agent` scopes an explicit `Cli` origin around
+        // the spawned sub-agent work, so the same `cron_add` call now resolves to
+        // a real origin and is allowed (device-tool automation past the
+        // Master-chat gate) instead of being denied as unlabelled.
+        let g = gate.clone();
+        let allowed = tokio::spawn(turn_origin::with_origin(AgentTurnOrigin::Cli, async move {
+            g.intercept("cron_add", "schedule a job", serde_json::json!({}))
+                .await
+        }))
+        .await
+        .expect("spawned task panicked");
+        assert!(
+            matches!(allowed, GateOutcome::Allow),
+            "an explicit Cli origin scoped across the spawn must resolve cron_add \
+             to a real origin and allow it, got {allowed:?}"
+        );
     }
 
     #[tokio::test]

@@ -34,6 +34,10 @@ mod tests {
     use tempfile::TempDir;
 
     fn test_config(tmp: &TempDir) -> Config {
+        // Apply-mode migrations create unified-memory entries. The memory
+        // engine's host seams are explicit, so install the test wiring before
+        // constructing a configuration that can exercise that path.
+        crate::openhuman::memory::host_impls::install_for_tests();
         Config {
             workspace_dir: tmp.path().join("workspace"),
             action_dir: tmp.path().join("workspace"),

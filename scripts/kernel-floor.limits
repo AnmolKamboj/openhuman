@@ -241,4 +241,6 @@
 #                      Native: aws-lc-sys libgit2-sys libsqlite3-sys libz-sys
 #                      lzma-sys ring. Target after gating is 222 names / 2 native
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
+# 307/284  2026-08-12  Re-baseline after the upstream lockfile resolution;
+#                      `flows` remains at two native packages.
 flows:307:284:2
