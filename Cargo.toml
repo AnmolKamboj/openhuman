@@ -314,10 +314,16 @@ argon2 = "0.5"
 rand = "0.10"
 dirs = "5"
 sha2 = "0.10"
-# Git-backed change ledger for the memory_diff module: snapshots are commits,
-# checkpoints are tags, read markers are refs, diffs are git tree diffs.
-# Vendored libgit2 (no system git dependency on end-user machines).
-git2 = { version = "0.21", default-features = false, features = ["vendored-libgit2"], optional = true }
+# NO `git2` HERE, DELIBERATELY — do not add it back. Every use of libgit2 in
+# the memory stack lives in tinycortex: the diff ledger (`memory::diff`), the
+# wiki mirror (`memory::store::content::wiki_git`), and the persona git-history
+# reader. This crate holds the RPC surface, the agent tool and the gate around
+# them, and never touches a repository itself, so a direct dependency here was
+# a declaration with no `use` behind it. Re-declaring it costs nothing in
+# crates (the `memory-git` gate pulls tinycortex's copy either way) but invites
+# a second major pin, and `git2` sets `links = "git2"` — two majors in one
+# graph is a hard cargo error, not a warning. Test code that must inspect a
+# ledger goes through `tinycortex::git2`.
 hmac = "0.12"
 # Archive extraction for the Node.js runtime bootstrap. Unix Node
 # distributions ship as .tar.xz, Windows as .zip. `xz2` with `static`
