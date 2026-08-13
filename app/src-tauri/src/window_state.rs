@@ -255,6 +255,20 @@ pub fn restore_main<R: Runtime>(window: &WebviewWindow<R>) -> bool {
     true
 }
 
+/// Geometry for a window that should fill `monitor`'s work area.
+///
+/// Goes through [`clamp_to_work_area`] rather than returning the raw work-area
+/// dimensions, because [`clamp_size`] enforces the `MIN_WINDOW_*` floor: a work
+/// area smaller than 480x360 would otherwise produce a window below the
+/// module's stated minimum, and make first launch behave differently from
+/// [`restore_main`] and [`center_main`].
+///
+/// Split out from [`maximize_to_work_area`] so the invariant is testable
+/// without a live window handle.
+fn work_area_fill_geometry(monitor: WorkArea) -> (i32, i32, u32, u32) {
+    clamp_to_work_area(monitor.x, monitor.y, monitor.width, monitor.height, monitor)
+}
+
 /// Fill the target monitor's **work area** on a first launch (no saved
 /// geometry), so the app opens at full usable size instead of the modest
 /// default declared in `tauri.conf.json`.
@@ -279,12 +293,7 @@ pub fn maximize_to_work_area<R: Runtime>(window: &WebviewWindow<R>) -> bool {
         return false;
     };
 
-    // Through `clamp_to_work_area` rather than straight to the raw work-area
-    // dimensions: `clamp_size` enforces the MIN_WINDOW_* floor, so a work area
-    // smaller than 480x360 would otherwise open below the module's minimum and
-    // make this path behave differently from `restore_main` / `center_main`.
-    let (x, y, width, height) =
-        clamp_to_work_area(monitor.x, monitor.y, monitor.width, monitor.height, monitor);
+    let (x, y, width, height) = work_area_fill_geometry(monitor);
 
     if let Err(err) = window.set_position(PhysicalPosition::new(x, y)) {
         log::warn!("[window-state] work-area set_position failed: {err}");
@@ -873,6 +882,31 @@ mod tests {
         let (x, y, _, _) = clamp_to_work_area(-2000, 100, 1000, 800, work_area);
         assert_eq!(x, -1920);
         assert_eq!(y, 100);
+    }
+
+    #[test]
+    fn work_area_fill_uses_the_whole_work_area_on_a_normal_monitor() {
+        let (x, y, w, h) = work_area_fill_geometry(wa(0, 60, 3600, 2190));
+        assert_eq!((x, y), (0, 60));
+        assert_eq!((w, h), (3600, 2190));
+    }
+
+    #[test]
+    fn work_area_fill_keeps_the_offset_of_a_secondary_monitor() {
+        // A monitor to the left of the primary has a negative origin; filling
+        // its work area must land there, not at (0, 0).
+        let (x, y, w, h) = work_area_fill_geometry(wa(-1920, 0, 1920, 1080));
+        assert_eq!((x, y), (-1920, 0));
+        assert_eq!((w, h), (1920, 1080));
+    }
+
+    #[test]
+    fn work_area_fill_never_goes_below_the_minimum_window_size() {
+        // The invariant this helper exists for: a work area smaller than
+        // MIN_WINDOW_* must still produce at least the minimum, matching what
+        // `restore_main` and `center_main` guarantee.
+        let (_, _, w, h) = work_area_fill_geometry(wa(0, 0, 320, 200));
+        assert_eq!((w, h), (MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT));
     }
 
     #[test]
