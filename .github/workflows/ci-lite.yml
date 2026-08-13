@@ -681,19 +681,39 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
-      - name: Install checksum-pinned TinyMemory test module
+      - name: Install checksum-pinned native test modules
         run: |
-          module_dir="target/test-modules/tinymemory"
-          archive="$module_dir/tinymemory-module-1.0.1-ubuntu-22.04-x86_64.tar.gz"
-          mkdir -p "$module_dir"
+          module_root="target/test-modules"
+          memory_dir="$module_root/tinymemory"
+          juice_dir="$module_root/tinyjuice"
+          memory_archive="$memory_dir/tinymemory-module-1.0.1-ubuntu-22.04-x86_64.tar.gz"
+          juice_archive="$juice_dir/tinyjuice-module-0.2.2-ubuntu-22.04-x86_64.tar.gz"
+          rm -rf "$memory_dir" "$juice_dir"
+          mkdir -p "$memory_dir" "$juice_dir"
           curl --fail --location --silent --show-error \
-            "https://github.com/tinyhumansai/tinymemory/releases/download/v1.0.1/$(basename "$archive")" \
-            --output "$archive"
-          echo "35d13463041f455bebd833a71ba370d891a4e59d1b8e576e81635e2777a0c3dd  $archive" \
+            "https://github.com/tinyhumansai/tinymemory/releases/download/v1.0.1/$(basename "$memory_archive")" \
+            --output "$memory_archive"
+          curl --fail --location --silent --show-error \
+            "https://github.com/tinyhumansai/tinyjuice/releases/download/v0.2.2/$(basename "$juice_archive")" \
+            --output "$juice_archive"
+          echo "35d13463041f455bebd833a71ba370d891a4e59d1b8e576e81635e2777a0c3dd  $memory_archive" \
             | sha256sum --check
-          tar -xzf "$archive" -C "$module_dir"
-          echo "TINYMEMORY_TEST_MODULE=$GITHUB_WORKSPACE/$module_dir/libtinymemory_module.so" \
+          echo "fd8caf7fccb53328870fd26922aa9768d253cd4b3bf758967847d6512df03863  $juice_archive" \
+            | sha256sum --check
+          tar -xzf "$memory_archive" -C "$memory_dir"
+          tar -xzf "$juice_archive" -C "$juice_dir"
+          echo "TINYMEMORY_TEST_MODULE=$GITHUB_WORKSPACE/$memory_dir/libtinymemory_module.so" \
             >> "$GITHUB_ENV"
+          echo "TINYJUICE_TEST_MODULE=$GITHUB_WORKSPACE/$juice_dir/libtinyjuice_module.so" \
+            >> "$GITHUB_ENV"
+
+      - name: Run TinyJuice host-module regression
+        run: |
+          cargo test --lib --features modules \
+            openhuman::agent::tinyagents::middleware::tests::tool_output_tabulates_a_large_graph_for_a_non_exempt_tool \
+            -- --ignored --exact
+        env:
+          CARGO_BUILD_JOBS: "1"
 
       - name: Run cargo llvm-cov for openhuman core (changed modules only)
         run: bash scripts/ci/rust-coverage-changed.sh
