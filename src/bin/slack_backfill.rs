@@ -235,7 +235,7 @@ async fn main() -> Result<()> {
             source_id
         );
         let result = ingest_chat(
-            &config,
+            config.as_ref(),
             &source_id,
             "",
             vec!["probe".into(), "seal-cascade".into()],
