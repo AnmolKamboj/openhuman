@@ -24,6 +24,10 @@ Applies to every release, all platforms.
 
 - [ ] **`scripts/install.sh` downloads the latest asset on a proxy/VPN network** — From a clean checkout, run `bash scripts/install.sh --dry-run --verbose`, then run the public `curl -fsSL https://raw.githubusercontent.com/tinyhumansai/openhuman/main/scripts/install.sh | bash` flow on one macOS or Linux host. Expected: release metadata resolves, the asset downloads successfully, and transient GitHub/CDN HTTP/2 failures retry over HTTP/1.1 instead of surfacing `curl: (16) Error in the HTTP2 framing layer`.
 
+### Terminal agent cockpit
+
+- [ ] **`openhuman tui --last` completes an interactive agent turn and restores the terminal** — In a real PTY, resume a saved thread, send a multiline prompt, steer the active turn, open `/help` and `/status`, and exit with Ctrl+C. Expected: history and streaming rows stay in the selected thread, overlays accept and restore input correctly, and both alternate-screen and `--no-alt-screen` modes leave echo/raw mode usable after exit.
+
 ### macOS
 
 - [ ] **Gatekeeper accepts the signed `.app` on first launch** — Double-click the `.app` from a fresh download (Quarantine attribute set). Expected: app opens without `"OpenHuman" cannot be opened because the developer cannot be verified` dialog. If it appears, the build is unsigned or the notarization stapler is missing.
