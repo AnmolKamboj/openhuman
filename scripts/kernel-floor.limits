@@ -13,6 +13,12 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   304/281/2  2026-08-14  TinyJuice moved behind the TinyBus module boundary
+#                      (-3 packages / -3 names). The `tinyjuice`,
+#                      `tinyjuice-tokenizer`, and `tinyjuice-vector`
+#                      crates no longer enter the always-on `flows` graph;
+#                      OpenHuman keeps only its stable wire types and host
+#                      adapter. Measured with `scripts/kernel-floor.sh flows`.
 #   307/284/2  2026-08-12  tinymemory-core + its `ureq` HTTP client chain
 #                      (+2 packages / +2 names) became always-on via the
 #                      `add tinymemory-core dependency and patch tinycortex-api`
@@ -243,4 +249,4 @@
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
 # 307/284  2026-08-12  Re-baseline after the upstream lockfile resolution;
 #                      `flows` remains at two native packages.
-flows:307:284:2
+flows:304:281:2

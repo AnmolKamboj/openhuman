@@ -177,12 +177,6 @@ impl ModuleMemoryProvider {
                  cannot be loaded; call modules::memory::set_modules_policy during boot"
             ))
         })?;
-        ops::ensure_loaded(config, MODULE_ID)
-            .await
-            .map_err(|message| MemoryError::Other(anyhow::anyhow!(message)))?;
-
-        let record = registry::find(MODULE_ID)
-            .ok_or_else(|| MemoryError::Other(anyhow::anyhow!("unknown module '{MODULE_ID}'")))?;
         let runtime = host::runtime().await.map_err(|error| {
             MemoryError::Other(anyhow::anyhow!("the module bus is not running: {error}"))
         })?;
@@ -193,6 +187,16 @@ impl ModuleMemoryProvider {
                     "the memory module host callbacks are unavailable: {error}"
                 ))
             })?;
+        // TinyMemory resolves its embedding provider while the native library
+        // is admitted. Host callbacks must therefore exist before loading,
+        // including in tests and explicit-path overrides where no boot policy
+        // was available when the shared module runtime first started.
+        ops::ensure_loaded(config, MODULE_ID)
+            .await
+            .map_err(|message| MemoryError::Other(anyhow::anyhow!(message)))?;
+
+        let record = registry::find(MODULE_ID)
+            .ok_or_else(|| MemoryError::Other(anyhow::anyhow!("unknown module '{MODULE_ID}'")))?;
         let proxy = runtime
             .proxy(record.bus_name, record.object_path)
             .map_err(|error| MemoryError::Other(anyhow::anyhow!(error.to_string())))?;

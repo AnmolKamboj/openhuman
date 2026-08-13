@@ -4507,22 +4507,9 @@ async fn inference_gate_probes_every_distinct_agent_node_role() {
     );
 }
 
-// ── dynamic agent_ref still gets the Layer-1 check (finding C, P2) ─────────
-
-#[tokio::test]
-async fn inference_gate_reports_signed_out_for_dynamic_agent_ref_only_graph() {
-    // Finding C: a graph whose only `agent` node has a DYNAMIC (`=`-derived)
-    // `agent_ref` still means "this graph runs inference" at run time — it
-    // must stay in scope for Layer 1 (signed-out/session), even though its
-    // exact per-model role can't be resolved statically. Previously the
-    // dynamic-ref filter excluded such nodes entirely, so a graph made up
-    // only of them returned `None` (no readiness signal at all) and a
-    // signed-out session went completely unreported.
-    let _signed_out = crate::openhuman::cron::scheduler_gate::SignedOutTestGuard::set(true);
-
-    let tmp = TempDir::new().unwrap();
-    let config = test_config(&tmp);
-    let g = graph(json!({
+#[test]
+fn dynamic_agent_ref_is_rejected_before_the_inference_gate() {
+    let result = validate_and_migrate_graph(json!({
         "nodes": [
             { "id": "t", "kind": "trigger", "name": "Manual" },
             { "id": "a", "kind": "agent", "name": "Dynamic",
@@ -4531,20 +4518,8 @@ async fn inference_gate_reports_signed_out_for_dynamic_agent_ref_only_graph() {
         "edges": [ { "from_node": "t", "to_node": "a" } ]
     }));
 
-    let errors = validate_inference_readiness(&config, &g).await;
-    assert!(
-        !errors.is_empty(),
-        "a signed-out session must still be reported even though the only agent node's \
-         agent_ref is dynamic: {errors:?}"
-    );
-    assert!(
-        errors
-            .iter()
-            .any(|e| e.to_ascii_lowercase().contains("signed out")),
-        "{errors:?}"
-    );
-    // `SignedOutTestGuard` restores the prior flag on drop at the end of this
-    // scope — no other test observes this override.
+    let error = result.expect_err("dynamic agent_ref must fail structural validation");
+    assert!(error.contains("`agent_ref` must be a literal"), "{error}");
 }
 
 #[tokio::test]

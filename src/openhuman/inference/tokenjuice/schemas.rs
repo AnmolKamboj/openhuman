@@ -317,8 +317,8 @@ fn handle_settings_update(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_savings_stats(_params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        let agg = super::savings::stats();
         let cache = super::cache_stats().await?;
+        let agg = super::savings::stats();
         Ok(serde_json::json!({
             "attributionModel": super::savings::attribution_model(),
             "total": agg.total,
