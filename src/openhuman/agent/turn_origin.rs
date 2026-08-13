@@ -419,6 +419,34 @@ mod tests {
         assert!(observed.is_none());
     }
 
+    /// The `hosted::orchestration::effect_executor::run_local_agent` spawn site
+    /// (#5508 / #5499): the device-tool bridge fires the local sub-agent from a
+    /// bare `tokio::spawn` where there is **no ambient turn** to inherit — unlike
+    /// the four sites PR #5465 fixed with `capture`/`propagate`, `capture()` here
+    /// is `None`, so `with_inherited_origin` would leave the task `Unknown` and
+    /// the gate would refuse every external-effect tool (`cron_add`, shell, …).
+    /// The fix scopes an **explicit** `Cli` origin on the spawned task instead
+    /// (device automation past the Master-chat gate is trusted, turn-less
+    /// internal dispatch). This pins that shape: nothing to inherit on the
+    /// parent, a real `Cli` origin observed across the spawn boundary.
+    #[tokio::test]
+    async fn explicit_cli_origin_survives_a_turnless_spawn() {
+        // No outer scope — exactly the device-tool bridge's situation.
+        assert!(
+            capture().is_none(),
+            "precondition: the effect_executor spawn has no ambient origin to inherit"
+        );
+
+        let observed = tokio::spawn(with_origin(AgentTurnOrigin::Cli, async { current() }))
+            .await
+            .expect("spawned task panicked");
+
+        assert!(
+            matches!(observed, Some(AgentTurnOrigin::Cli)),
+            "the explicitly-scoped Cli origin must be visible on the spawned task, got {observed:?}"
+        );
+    }
+
     #[tokio::test]
     async fn current_returns_none_outside_scope() {
         assert!(current().is_none());
