@@ -271,14 +271,18 @@ pub async fn export_flow_run_trace(
 mod tests {
     use super::*;
     use serde_json::Value;
-    use tinyagents::harness::ids;
-    use tinyagents::GraphEvent;
+    use tinyflows::graph::ids;
+    use tinyflows::graph::GraphEvent;
 
     /// Builds a minimal observation stream for one node under run/thread ids
     /// shaped like a real `flows_run` (`thread_id = flow:{id}:{uuid}`).
-    fn sample_observations(thread_id: &str) -> Vec<GraphObservation> {
+    ///
+    /// Built as the ENGINE's observation type, which is what the `flows::`
+    /// domain actually hands this module — so every test below goes through
+    /// the same re-typing hop production does.
+    fn sample_observations(thread_id: &str) -> Vec<FlowObservation> {
         let node = ids::NodeId::new("fetch");
-        let mk = |offset: u64, step: usize, ts_ms: u64, event: GraphEvent| GraphObservation {
+        let mk = |offset: u64, step: usize, ts_ms: u64, event: GraphEvent| FlowObservation {
             event_id: ids::EventId::new(format!("evt-{offset}")),
             run_id: ids::RunId::new("run-9"),
             root_run_id: ids::RunId::new("run-9"),
@@ -392,7 +396,7 @@ mod tests {
             FlowRunTrigger::Rpc,
         );
         let payload = exporter
-            .build_ingestion_batch(trace, &observations)
+            .build_ingestion_batch(trace, &to_exporter_observations(&observations))
             .expect("batch");
         let batch = payload["batch"].as_array().expect("batch array");
 
@@ -463,5 +467,43 @@ mod tests {
             &[],
         )
         .await;
+    }
+
+    /// The re-typing hop is a serde round-trip between two independently
+    /// declared types, so nothing but a test notices when one of them grows,
+    /// renames, or re-tags a field: `to_exporter_observations` would start
+    /// silently dropping observations and the trace would quietly lose spans.
+    /// This asserts the whole sample survives AND that the fields the exporter
+    /// keys spans on come through with their values intact.
+    #[test]
+    fn re_typing_preserves_every_field() {
+        let thread_id = "flow:flow-1:uuid-1";
+        let engine = sample_observations(thread_id);
+        let converted = to_exporter_observations(&engine);
+
+        assert_eq!(
+            converted.len(),
+            engine.len(),
+            "an observation was dropped — the two GraphObservation types have drifted"
+        );
+        for (before, after) in engine.iter().zip(converted.iter()) {
+            assert_eq!(
+                serde_json::to_value(before).unwrap(),
+                serde_json::to_value(after).unwrap(),
+                "re-typing changed the observation's serialized form"
+            );
+        }
+
+        // Spot-check the fields the exporter reads directly, so a drift that
+        // happened to stay serde-compatible (a renamed field with a matching
+        // `#[serde(rename)]`, say) still fails here rather than producing a
+        // batch full of empty spans.
+        let first = &converted[0];
+        assert_eq!(first.thread_id.as_ref().map(|t| t.as_str()), Some(thread_id));
+        assert_eq!(first.run_id.as_str(), "run-9");
+        assert_eq!(first.graph_id.as_str(), "workflow");
+        assert_eq!(first.offset, 0);
+        assert_eq!(converted[2].step, 1);
+        assert_eq!(converted[2].ts_ms, 1_020);
     }
 }
