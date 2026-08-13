@@ -148,9 +148,8 @@ are recorded here so M4c starts from the real set.
 
 | Path | Reason |
 | --- | --- |
-| `memory/ops/documents.rs` — `doc_ingest`, `context_query`, `context_recall`, and retrieval envelope handlers | These still depend on engine-only ingestion and retrieval shapes. Namespace/document listing and deletion now use the shared Documents API. |
+| `memory/ops/documents.rs` — `doc_ingest` and retrieval envelope handlers | These still depend on engine-only ingestion and retrieval shapes. Namespace/document listing, deletion, context query, and context recall now use the shared Documents API. |
 | `memory/ops/sync.rs` | `client.ingestion_state().snapshot()` — queue telemetry, absent from the contract. |
-| `memory/ops/learn.rs` | `list_namespaces() -> Vec<String>` vs the contract's `Vec<NamespaceSummary>`, then heavy engine work. |
 | `flows/ops.rs` | The production namespace clear uses `MemoryDocuments`; only the directly injected `MemoryClientRef` test seam remains raw. |
 | `integrations/composio/schemas.rs` | Passes `&MemoryClientRef` into `user_scopes::save`. |
 | `memory/sync/composio/providers/user_scopes.rs`, `types.rs` | Same `&MemoryClientRef` parameter shape. |

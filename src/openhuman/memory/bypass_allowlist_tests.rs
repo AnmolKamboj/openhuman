@@ -285,11 +285,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     ),
     (
         "src/openhuman/memory/ops/learn.rs",
-        "active_memory_client(",
-        "list_namespaces() -> Vec<String> vs the contract's Vec<NamespaceSummary>",
-    ),
-    (
-        "src/openhuman/memory/ops/learn.rs",
         "global::client(",
         "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",
     ),
