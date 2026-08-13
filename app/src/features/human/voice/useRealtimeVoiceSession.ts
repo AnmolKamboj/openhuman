@@ -16,7 +16,8 @@ const log = createDebug('app:human:realtime-voice');
  * it verbatim. MUST match `VOICE_READBACK_PREFIX` in `voice/realtime_harness.rs`,
  * which uses it to avoid re-arming speak-back on the read-back turn (loop guard).
  */
-const READBACK_PREFIX = 'Please read the following to me, word for word, and say nothing else:';
+export const READBACK_PREFIX =
+  'Please read the following to me, word for word, and say nothing else:';
 
 /**
  * Lifecycle of a realtime ElevenLabs Agents voice session (#5399).

@@ -304,6 +304,9 @@ pub async fn handle_voice_harness_turn(correlation_id: String, messages: Vec<Val
     // result into the user's chat. The task owns the agent, the concurrency
     // permit, and the in-flight guard so that bookkeeping tracks the real turn.
     let (result_tx, result_rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
+    // Captured before the prompt moves into the task, so the foreground can still
+    // tell whether the user is waiting on an answer if that task dies.
+    let answerable = is_answerable_prompt(&prompt);
     let turn_cid = correlation_id.clone();
     let turn_messages = messages;
     let turn_prompt = prompt;
@@ -403,6 +406,13 @@ pub async fn handle_voice_harness_turn(correlation_id: String, messages: Vec<Val
             warn!(
                 "[voice-harness] turn task ended without a result (panicked or aborted) correlation={correlation_id}"
             );
+            // Unlike the ack-deadline path, nothing else will deliver here: the task
+            // died before reaching its own chat-delivery branch. The turn may already
+            // have promised a follow-up in chat, so post the notice from this side —
+            // for a turn the user is actually waiting on (see is_answerable_prompt).
+            if answerable {
+                deliver_voice_failure_to_chat(&correlation_id);
+            }
             // Closing on nothing at all would end the whole call (see
             // VOICE_SILENT_REPLY), so a lost turn still ends with a spoken beat.
             if !streamed.load(Ordering::SeqCst) {
