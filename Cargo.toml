@@ -631,9 +631,12 @@ default = ["media", "skills", "flows", "mcp", "channels", "medulla", "http-serve
 # git-backed wiki content format in `memory::store::content::wiki_git`.
 # Default-OFF, product-ON.
 #
-# The most expensive gate in the tree by native-build cost: it carries `git2`
-# with vendored libgit2, so turning it off drops `git2` + `libgit2-sys` +
-# `libz-sys` and takes the kernel profile from 5 native C builds to 3.
+# The most expensive gate in the tree by native-build cost: it turns on
+# tinycortex's `git-diff`/`wiki-git`, which carry `git2` with vendored libgit2,
+# so turning it off drops `git2` + `libgit2-sys` + `libz-sys` and takes the
+# kernel profile from 5 native C builds to 3. The cohort enters the graph
+# through tinycortex only — this crate declares no `git2` of its own (see the
+# note where it used to sit in `[dependencies]`).
 #
 # TYPE CARVE-OUT (see AGENTS.md): `memory::diff::types` stays compiled in BOTH
 # builds. It re-exports tinycortex's `serde`-only diff wire types, which the
