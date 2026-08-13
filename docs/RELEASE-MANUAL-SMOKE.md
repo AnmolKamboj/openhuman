@@ -26,7 +26,7 @@ Applies to every release, all platforms.
 
 ### Terminal agent cockpit
 
-- [ ] **`openhuman tui --last` completes an interactive agent turn and restores the terminal** — In a real PTY, resume a saved thread, send a multiline prompt, steer the active turn, open `/help` and `/status`, and exit with Ctrl+C. Expected: history and streaming rows stay in the selected thread, overlays accept and restore input correctly, and both alternate-screen and `--no-alt-screen` modes leave echo/raw mode usable after exit.
+- [ ] **`openhuman tui --last` completes an interactive agent turn and restores the terminal** — In a real PTY, first run `openhuman tui --new`, send `Remember marker TUI-SMOKE-42`, wait for completion, and exit with Ctrl+C. Run `openhuman tui --last`, verify that marker and its answer are restored, send a multiline prompt, steer the active turn with Enter, then type a follow-up and press Tab while streaming; verify the queued follow-up executes after the active turn. Open `/help` and `/status`, exit with Ctrl+C, and confirm shell echo/line editing still work. Repeat the resume, one turn, and exit flow with `openhuman tui --last --no-alt-screen`; confirm history renders in the current buffer and the shell is usable afterward.
 
 ### macOS
 

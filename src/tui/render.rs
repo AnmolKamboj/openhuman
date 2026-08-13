@@ -335,10 +335,9 @@ fn draw_footer(frame: &mut Frame, area: Rect, state: &TranscriptState, ui: &UiSt
 }
 
 fn short_id(id: &str) -> &str {
-    if id.len() > 12 {
-        &id[..12]
-    } else {
-        id
+    match id.char_indices().nth(12) {
+        Some((byte, _)) => &id[..byte],
+        None => id,
     }
 }
 
@@ -568,5 +567,12 @@ mod tests {
     fn cursor_byte_lookup_handles_wide_unicode() {
         assert_eq!(byte_at_display_column("界a", 2), "界".len());
         assert_eq!(byte_at_display_column("界a", 3), "界a".len());
+    }
+
+    #[test]
+    fn short_id_truncates_non_ascii_at_a_character_boundary() {
+        let id = "12345678901界xyz";
+        assert_eq!(short_id(id), "12345678901界");
+        assert_eq!(short_id("abcdefghijklmnop"), "abcdefghijkl");
     }
 }

@@ -511,18 +511,7 @@ async fn execute_command(
         }
         "status" => {
             let mut overlay = Overlay::new(OverlayKind::Status, "Session status");
-            let paths = runtime
-                .invoke("openhuman.config_get_agent_paths", json!({}))
-                .await
-                .ok();
-            if let Some(value) = paths.as_ref() {
-                let path = super::cockpit::unwrap_rpc(value)
-                    .get("action_dir")
-                    .or_else(|| super::cockpit::unwrap_rpc(value).get("actionDir"))
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or_default();
-                ui.action_dir = path.to_string();
-            }
+            refresh_agent_paths(runtime, ui).await;
             if let Ok(value) = runtime
                 .invoke(
                     "openhuman.channel_web_queue_status",
@@ -810,14 +799,12 @@ async fn handle_overlay_key(
         }
         return false;
     }
+    let typing = ui
+        .overlay
+        .as_ref()
+        .is_some_and(|overlay| overlay.input.is_some());
     if kind == OverlayKind::Approvals {
-        let decision = match key.code {
-            KeyCode::Char('1') => Some("approve_once"),
-            KeyCode::Char('2') => Some("approve_always_for_tool"),
-            KeyCode::Char('3') => Some("approve_always_for_flow"),
-            KeyCode::Char('d' | 'D') => Some("deny"),
-            _ => None,
-        };
+        let decision = decision_shortcut(kind, typing, key.code);
         if let Some(decision) = decision {
             let request_id = selected_overlay_row(ui)
                 .map(|row| row.id)
@@ -826,7 +813,7 @@ async fn handle_overlay_key(
             return false;
         }
     }
-    if kind == OverlayKind::PlanReview {
+    if kind == OverlayKind::PlanReview && !typing {
         if matches!(key.code, KeyCode::Char('e' | 'E')) {
             if let Some(overlay) = &mut ui.overlay {
                 overlay.input = Some(String::new());
@@ -834,11 +821,7 @@ async fn handle_overlay_key(
             }
             return false;
         }
-        let decision = match key.code {
-            KeyCode::Char('a' | 'A') => Some("approve"),
-            KeyCode::Char('r' | 'R') => Some("reject"),
-            _ => None,
-        };
+        let decision = decision_shortcut(kind, typing, key.code);
         if let Some(decision) = decision {
             if let Some(review) = ui.pending_plan_review.take() {
                 match runtime
@@ -999,6 +982,21 @@ async fn handle_overlay_key(
     false
 }
 
+fn decision_shortcut(kind: OverlayKind, typing: bool, code: KeyCode) -> Option<&'static str> {
+    if typing {
+        return None;
+    }
+    match (kind, code) {
+        (OverlayKind::Approvals, KeyCode::Char('1')) => Some("approve_once"),
+        (OverlayKind::Approvals, KeyCode::Char('2')) => Some("approve_always_for_tool"),
+        (OverlayKind::Approvals, KeyCode::Char('3')) => Some("approve_always_for_flow"),
+        (OverlayKind::Approvals, KeyCode::Delete) => Some("deny"),
+        (OverlayKind::PlanReview, KeyCode::Char('a' | 'A')) => Some("approve"),
+        (OverlayKind::PlanReview, KeyCode::Char('r' | 'R')) => Some("reject"),
+        _ => None,
+    }
+}
+
 fn selected_overlay_row(ui: &UiState) -> Option<OverlayRow> {
     let overlay = ui.overlay.as_ref()?;
     overlay
@@ -1105,13 +1103,19 @@ async fn open_file_picker(ui: &mut UiState) {
 }
 
 fn collect_files(root: &str, query: &str, limit: usize) -> Result<Vec<String>, String> {
+    const MAX_VISITED: usize = 25_000;
+    const MAX_DEPTH: usize = 8;
     if root.is_empty() {
         return Err("Action directory is unavailable.".into());
     }
     let root_path = std::path::Path::new(root);
-    let mut pending = vec![root_path.to_path_buf()];
+    let mut pending = vec![(root_path.to_path_buf(), 0usize)];
     let mut files = Vec::new();
-    while let Some(dir) = pending.pop() {
+    let mut visited = 0usize;
+    while let Some((dir, depth)) = pending.pop() {
+        if visited >= MAX_VISITED {
+            break;
+        }
         let entries = match std::fs::read_dir(&dir) {
             Ok(entries) => entries,
             Err(error) if dir == root_path => {
@@ -1120,6 +1124,10 @@ fn collect_files(root: &str, query: &str, limit: usize) -> Result<Vec<String>, S
             Err(_) => continue,
         };
         for entry in entries.flatten() {
+            visited += 1;
+            if visited > MAX_VISITED {
+                break;
+            }
             let path = entry.path();
             let name = entry.file_name();
             let name = name.to_string_lossy();
@@ -1130,11 +1138,13 @@ fn collect_files(root: &str, query: &str, limit: usize) -> Result<Vec<String>, S
                 continue;
             }
             if file_type.is_dir() {
-                if !matches!(
-                    name.as_ref(),
-                    ".git" | "target" | "node_modules" | "worktrees"
-                ) {
-                    pending.push(path);
+                if depth < MAX_DEPTH
+                    && !matches!(
+                        name.as_ref(),
+                        ".git" | "target" | "node_modules" | "worktrees"
+                    )
+                {
+                    pending.push((path, depth + 1));
                 }
                 continue;
             }
@@ -1174,16 +1184,22 @@ fn handle_web_event(ev: &WebChannelEvent, state: &mut TranscriptState, ui: &mut 
             ui.pending_approvals
                 .retain(|item| item.request_id != approval.request_id);
             ui.pending_approvals.push(approval.clone());
-            let mut overlay = Overlay::new(OverlayKind::Approvals, "Approval required");
-            overlay.rows.push(OverlayRow {
-                id: approval.request_id,
-                label: approval.tool_name,
-                detail: format!("{}\n{}", approval.summary, approval.args),
-                payload: approval.args,
-            });
-            overlay.status =
-                "1 approve once · 2 always for tool · 3 always for flow · d deny".into();
-            ui.overlay = Some(overlay);
+            let preserves_typed_input = ui
+                .overlay
+                .as_ref()
+                .is_some_and(|overlay| overlay.input.is_some());
+            if !preserves_typed_input {
+                let mut overlay = Overlay::new(OverlayKind::Approvals, "Approval required");
+                overlay.rows.push(OverlayRow {
+                    id: approval.request_id,
+                    label: approval.tool_name,
+                    detail: format!("{}\n{}", approval.summary, approval.args),
+                    payload: approval.args,
+                });
+                overlay.status =
+                    "1 approve once · 2 always for tool · 3 always for flow · Delete deny".into();
+                ui.overlay = Some(overlay);
+            }
         }
         "plan_review_request" => {
             let steps = ev
@@ -1269,11 +1285,19 @@ async fn open_git_diff(ui: &mut UiState) {
             "No tracked changes",
         )),
         Ok(diff) => {
+            const MAX_DIFF_LINES: usize = 2_000;
+            let line_count = diff.lines().count();
             overlay.rows = diff
                 .lines()
+                .take(MAX_DIFF_LINES)
                 .enumerate()
                 .map(|(index, line)| text_row(&index.to_string(), line, ""))
-                .collect()
+                .collect();
+            if line_count > MAX_DIFF_LINES {
+                overlay.status = format!(
+                    "Showing {MAX_DIFF_LINES} of {line_count} lines; remaining lines omitted"
+                );
+            }
         }
         Err(error) => overlay.status = error,
     }
@@ -1367,5 +1391,63 @@ mod tests {
         std::fs::write(root.path().join("target/hidden.rs"), "").unwrap();
         let files = collect_files(root.path().to_str().unwrap(), "main", 10).unwrap();
         assert_eq!(files, vec!["src/main.rs"]);
+    }
+
+    #[test]
+    fn workspace_file_picker_stops_at_the_depth_limit() {
+        let root = tempfile::tempdir().unwrap();
+        let mut deep = root.path().to_path_buf();
+        for level in 0..10 {
+            deep.push(format!("level-{level}"));
+        }
+        std::fs::create_dir_all(&deep).unwrap();
+        std::fs::write(deep.join("too-deep.txt"), "hidden").unwrap();
+        let files = collect_files(root.path().to_str().unwrap(), "too-deep", 10).unwrap();
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn decision_shortcuts_do_not_treat_filter_text_as_deny() {
+        assert_eq!(
+            decision_shortcut(OverlayKind::Approvals, false, KeyCode::Char('d')),
+            None
+        );
+        assert_eq!(
+            decision_shortcut(OverlayKind::Approvals, false, KeyCode::Delete),
+            Some("deny")
+        );
+        assert_eq!(
+            decision_shortcut(OverlayKind::PlanReview, true, KeyCode::Char('a')),
+            None
+        );
+    }
+
+    #[test]
+    fn inbound_approval_preserves_typed_overlay_input() {
+        let mut state = TranscriptState::new("client");
+        state.set_thread("thread");
+        let mut ui = UiState::new("thread".into(), "client".into());
+        let mut overlay = Overlay::new(OverlayKind::Rename, "Rename");
+        overlay.input = Some("draft title".into());
+        ui.overlay = Some(overlay);
+        handle_web_event(
+            &WebChannelEvent {
+                event: "approval_request".into(),
+                client_id: "client".into(),
+                thread_id: "thread".into(),
+                request_id: "approval-1".into(),
+                tool_name: Some("shell".into()),
+                ..Default::default()
+            },
+            &mut state,
+            &mut ui,
+        );
+        assert_eq!(
+            ui.overlay
+                .as_ref()
+                .and_then(|overlay| overlay.input.as_deref()),
+            Some("draft title")
+        );
+        assert_eq!(ui.pending_approvals.len(), 1);
     }
 }

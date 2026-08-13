@@ -156,19 +156,19 @@ async fn resolve_thread(
     }
 
     if prefer_existing && !force_new {
-        let listed = runtime
-            .invoke("openhuman.threads_list", json!({}))
-            .await
-            .map_err(|e| anyhow::anyhow!("openhuman.threads_list failed: {e}"))?;
-        let payload = super::cockpit::unwrap_rpc(&listed);
-        if let Some(id) = payload
-            .get("threads")
-            .and_then(Value::as_array)
-            .and_then(|threads| threads.first())
-            .and_then(|thread| thread.get("id"))
-            .and_then(Value::as_str)
-        {
-            return Ok(id.to_string());
+        match runtime.invoke("openhuman.threads_list", json!({})).await {
+            Ok(listed) => {
+                if let Some(id) = super::cockpit::array_at(&listed, &["threads", "items"])
+                    .first()
+                    .and_then(|thread| thread.get("id").or_else(|| thread.get("thread_id")))
+                    .and_then(Value::as_str)
+                {
+                    return Ok(id.to_string());
+                }
+            }
+            Err(error) => {
+                log::warn!("[tui] openhuman.threads_list failed: {error} — starting a new thread")
+            }
         }
     }
 

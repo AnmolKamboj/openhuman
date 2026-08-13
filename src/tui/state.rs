@@ -102,6 +102,9 @@ impl TranscriptState {
     }
 
     pub fn last_assistant(&self) -> Option<&str> {
+        if self.streaming {
+            return None;
+        }
         self.entries
             .iter()
             .rev()
@@ -559,6 +562,19 @@ mod tests {
             state.entries().last().unwrap().text,
             "rate limited · retryable after 3s"
         );
+    }
+
+    #[test]
+    fn last_assistant_excludes_an_in_flight_partial_answer() {
+        let mut state = TranscriptState::new(CLIENT);
+        state.begin_user_turn("question");
+        state.apply_event(&text_delta("partial"));
+        assert_eq!(state.last_assistant(), None);
+        state.apply_event(&WebChannelEvent {
+            full_response: Some("complete".into()),
+            ..ev("chat_done")
+        });
+        assert_eq!(state.last_assistant(), Some("complete"));
     }
 
     #[test]
