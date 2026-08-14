@@ -655,7 +655,7 @@ async fn osa(script: &str) -> Result<(), String> {
 /// Spawn the dedicated cpal capture thread. Blocks until the stream is set up
 /// (or fails), mirroring `audio_capture::start_recording`'s readiness handshake.
 fn spawn_capture_thread(
-    tx: tokio::sync::mpsc::UnboundedSender<RawChunk>,
+    tx: tokio::sync::mpsc::Sender<RawChunk>,
 ) -> Result<CaptureFormat, String> {
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<CaptureFormat, String>>(1);
     std::thread::Builder::new()
@@ -681,7 +681,7 @@ fn spawn_capture_thread(
 /// they now happen in the async processor, because this runs on a realtime
 /// audio thread where the right amount of work is the least possible.
 fn capture_on_thread(
-    tx: tokio::sync::mpsc::UnboundedSender<RawChunk>,
+    tx: tokio::sync::mpsc::Sender<RawChunk>,
     setup_tx: &std::sync::mpsc::SyncSender<Result<CaptureFormat, String>>,
 ) -> Result<(), String> {
     use crate::openhuman::desktop::accessibility::{detect_microphone_permission, PermissionState};
