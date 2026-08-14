@@ -355,7 +355,10 @@ pub async fn start_if_enabled(app_config: &Config) {
             if cursor < frames.len()
                 && !frames.is_empty()
                 && utterance.len() < MAX_UTTERANCE_SAMPLES
-                && session.is_speaking(&config).await.unwrap_or(false)
+                && match session.as_ref() {
+                    Some(open) => open.is_speaking(&config).await.unwrap_or(false),
+                    None => false,
+                }
             {
                 utterance.extend_from_slice(&frames[cursor..]);
             }
