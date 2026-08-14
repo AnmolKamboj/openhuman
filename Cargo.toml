@@ -101,7 +101,7 @@ required-features = ["crash-reporting"]
 [[test]]
 name = "memory_artifacts_e2e"
 path = "tests/memory_artifacts_e2e.rs"
-# Opens the wiki ledger with `git2::Repository::open` and asserts on
+# Opens the wiki ledger with `tinycortex::git2::Repository::open` and asserts on
 # `content::wiki_git` artifacts — both of which exist only behind this gate.
 required-features = ["memory-git"]
 
@@ -158,7 +158,7 @@ tinyplace = "2.0"
 #
 # Optional: exclusive to the default-ON `flows` feature (#4797). A slim build
 # without `flows` drops this crate and its `jaq-*` JSON-query stack entirely.
-tinyflows = { version = "0.6", features = ["mock"], optional = true }
+tinyflows = { version = "0.8", features = ["mock"], optional = true }
 # TinyAgents — Rust LLM orchestration framework (LangGraph/LangChain-style):
 # durable state graphs, agent-loop harness, model/tool registries, REPL +
 # `.rag` workflow language. openhuman's agent engine + orchestration run on this
@@ -182,13 +182,15 @@ tinyagents = { version = "2.1", features = ["sqlite"] }
 # crate through the adapter seam in `src/openhuman/tinycortex/` (mirroring the
 # tinyagents seam): engine logic (including provider sync pipelines) in the
 # crate; RPC, agent tools, sync scheduling/credentials/events, security gating,
-# and the global singleton stay host-side. rusqlite/git2 are
-# aligned to the host pins (=0.40 / 0.21) so one bundled SQLite + one libgit2
-# link. The submodule intentionally tracks reviewed upstream main commits;
-# keep this semver requirement compatible with the vendored crate version.
+# and the global singleton stay host-side. rusqlite is aligned to the host pin
+# (=0.40) so one bundled SQLite links. The submodule intentionally tracks
+# reviewed upstream main commits; keep this semver requirement compatible with
+# the vendored crate version.
 # `git-diff` and `wiki-git` are NOT here: they are pulled in by the
 # `memory-git` gate below, which is where the git2/libgit2-sys/libz-sys cohort
-# enters the graph. Everything else tinycortex needs is unconditional.
+# enters the graph. This crate holds no `git2` pin of its own to align — the
+# gate turns tinycortex's on, and tinycortex is the sole libgit2 link in the
+# graph. Everything else tinycortex needs is unconditional.
 tinycortex = { version = "0.1", features = [
     "obsidian",
     "persona",
@@ -310,10 +312,16 @@ argon2 = "0.5"
 rand = "0.10"
 dirs = "5"
 sha2 = "0.10"
-# Git-backed change ledger for the memory_diff module: snapshots are commits,
-# checkpoints are tags, read markers are refs, diffs are git tree diffs.
-# Vendored libgit2 (no system git dependency on end-user machines).
-git2 = { version = "0.21", default-features = false, features = ["vendored-libgit2"], optional = true }
+# NO `git2` HERE, DELIBERATELY — do not add it back. Every use of libgit2 in
+# the memory stack lives in tinycortex: the diff ledger (`memory::diff`), the
+# wiki mirror (`memory::store::content::wiki_git`), and the persona git-history
+# reader. This crate holds the RPC surface, the agent tool and the gate around
+# them, and never touches a repository itself, so a direct dependency here was
+# a declaration with no `use` behind it. Re-declaring it costs nothing in
+# crates (the `memory-git` gate pulls tinycortex's copy either way) but invites
+# a second major pin, and `git2` sets `links = "git2"` — two majors in one
+# graph is a hard cargo error, not a warning. Test code that must inspect a
+# ledger goes through `tinycortex::git2`.
 hmac = "0.12"
 # Archive extraction for the Node.js runtime bootstrap. Unix Node
 # distributions ship as .tar.xz, Windows as .zip. `xz2` with `static`
@@ -620,9 +628,12 @@ default = ["media", "skills", "flows", "mcp", "channels", "medulla", "http-serve
 # git-backed wiki content format in `memory::store::content::wiki_git`.
 # Default-OFF, product-ON.
 #
-# The most expensive gate in the tree by native-build cost: it carries `git2`
-# with vendored libgit2, so turning it off drops `git2` + `libgit2-sys` +
-# `libz-sys` and takes the kernel profile from 5 native C builds to 3.
+# The most expensive gate in the tree by native-build cost: it turns on
+# tinycortex's `git-diff`/`wiki-git`, which carry `git2` with vendored libgit2,
+# so turning it off drops `git2` + `libgit2-sys` + `libz-sys` and takes the
+# kernel profile from 5 native C builds to 3. The cohort enters the graph
+# through tinycortex only — this crate declares no `git2` of its own (see the
+# note where it used to sit in `[dependencies]`).
 #
 # TYPE CARVE-OUT (see AGENTS.md): `memory::diff::types` stays compiled in BOTH
 # builds. It re-exports tinycortex's `serde`-only diff wire types, which the
@@ -637,7 +648,7 @@ default = ["media", "skills", "flows", "mcp", "channels", "medulla", "http-serve
 # `None`; and the three `ops` entry points always-on code calls return a
 # build-fact error, so a post-sync snapshot or a subconscious diff is logged and
 # skipped rather than silently reported as "nothing changed".
-memory-git = ["dep:git2", "tinycortex/git-diff", "tinycortex/wiki-git", "tinymemory-core/memory-git"]
+memory-git = ["tinycortex/git-diff", "tinycortex/wiki-git", "tinymemory-core/memory-git"]
 http-server = ["dep:axum", "dep:socketioxide"]
 # Local audio-device access: the `cpal` capture stack behind voice recording
 # and the accessibility microphone-permission probe. Default-ON. Slim /
