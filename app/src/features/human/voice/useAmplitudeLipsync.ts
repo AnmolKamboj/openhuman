@@ -53,17 +53,27 @@ export function useAmplitudeLipsync(audio: RefObject<RealtimeVoiceAudio>): Ampli
         levelRef.current = 0;
         commit(false, 'sil');
       } else {
-        // The SDK reads from a live analyser; a session torn down mid-frame
-        // makes this throw rather than return 0, which would kill the loop and
-        // freeze the mouth open for the rest of the call.
-        let sample = 0;
+        // The SDK reads from a live analyser, so a session torn down mid-frame
+        // makes this throw rather than return 0.
+        let sample: number;
         try {
           sample = getOutputVolume();
         } catch {
-          sample = 0;
+          sample = Number.NaN;
         }
-        levelRef.current = smoothAmplitude(levelRef.current, sample);
-        commit(true, amplitudeToVisemeCode(levelRef.current));
+        if (Number.isFinite(sample)) {
+          levelRef.current = smoothAmplitude(levelRef.current, sample);
+          commit(true, amplitudeToVisemeCode(levelRef.current));
+        } else {
+          // A bad reading resets rather than decays, for two reasons. Smoothing
+          // toward 0 would hold the mouth open for ~16 frames after the audio is
+          // already gone; and smoothing toward a non-finite value poisons
+          // `levelRef` permanently — every later sample stays NaN, so the mouth
+          // never animates again for the rest of the call. Guarding only at the
+          // viseme mapping hides that as a quiet mouth instead of an error.
+          levelRef.current = 0;
+          commit(false, 'sil');
+        }
       }
       raf = window.requestAnimationFrame(tick);
     };
