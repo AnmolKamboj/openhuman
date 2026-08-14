@@ -82,7 +82,7 @@ No dedicated `store.rs`. State is persisted into the shared TOML `Config` via th
 - `crate::openhuman::desktop::accessibility` (macOS only) — focused-text inspection (`focused_text_context_verbose`) and the Swift globe-key listener (`globe_listener_start` / `globe_listener_poll`) used in place of rdev for the Fn key.
 - `crate::api` — `BackendOAuthClient`, `effective_backend_api_url`, `get_session_token` for backend-proxied reply-speech.
 - `crate::core::all` (`ControllerFuture`, `RegisteredController`), `crate::core::{ControllerSchema, FieldSchema, TypeSchema}`, `crate::core::logging` (CLI run init), and `crate::rpc::RpcOutcome`.
-- External crates: `cpal` + `hound` (capture/WAV), `rdev` (hotkeys), `enigo` + `arboard` (paste insertion), `reqwest` (external provider HTTP), `tokio`/`tokio-util`, `once_cell`.
+- External crates: `cpal` (capture), `rdev` (hotkeys), `enigo` + `arboard` (paste insertion), `reqwest` (external provider HTTP), `tokio`/`tokio-util`, `once_cell`.
 
 ## Used by
 

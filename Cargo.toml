@@ -398,7 +398,6 @@ url = "2"
 socketioxide = { version = "0.15", features = ["extensions"], optional = true }
 tempfile = "3"
 cpal = { version = "0.15", optional = true }
-hound = { version = "3.5", optional = true }
 enigo = { version = "0.3", optional = true }
 arboard = { version = "3", optional = true }
 rdev = { version = "0.5", optional = true }
@@ -589,7 +588,7 @@ proptest = "1"
 # keeping them on means `cargo check` and rust-analyzer still typecheck nearly
 # all of the tree. The gates turned OFF are the ones that carry the graph —
 # web3's ethers/secp256k1 cohort, `documents`' zstd/bzip2 native builds,
-# `voice`+`inference`'s cpal/hound/lettre/arboard/enigo/rdev stack, `contacts`'
+# `voice`+`inference`'s cpal/lettre/arboard/enigo/rdev stack, `contacts`'
 # macOS objc2 cohort, `crash-reporting`'s sentry tree, and `tui`'s
 # ratatui/crossterm, and `runtime-node`'s xz2/liblzma. Turning them off takes a
 # bare `cargo check` from 540 packages / 7 native builds down to ~350 / 2, which
@@ -705,8 +704,9 @@ modules = ["tinybus/modules"]
 # server, always-on listening, and podcast audio generation/email delivery.
 # Default-ON — the desktop app always ships with voice. Slim / headless builds
 # opt out via `--no-default-features --features "<explicit list without voice>"`,
-# which also drops the exclusive `hound` (WAV I/O) + `lettre` (podcast email)
-# dependencies. Composes with the runtime `DomainSet::voice` flag (#4796): the
+# which also drops the exclusive `lettre` (podcast email) dependency. `hound`
+# used to be on that list; WAV framing moved to the `tinyvoice` module, so the
+# crate left this graph entirely rather than merely being gated. Composes with the runtime `DomainSet::voice` flag (#4796): the
 # feature narrows the compile-time surface, `DomainSet` gates it at runtime.
 # Requires `inference` (the cpal capture stack), so enabling `voice` turns
 # `inference` on transitively.
@@ -719,7 +719,12 @@ modules = ["tinybus/modules"]
 # any build that just wants workflow execution.
 voice = [
     "inference",
-    "dep:hound",
+    # Wake-word gating, command routing and hallucination detection run in the
+    # `tinyvoice` module, so the voice domain needs the module host the same way
+    # `documents` needs it for `tinydocs`. Without this, `--features voice`
+    # alone fails to resolve `openhuman::modules` — which the product build
+    # hides, because `documents` turns `modules` on anyway.
+    "modules",
     "dep:lettre",
     "dep:arboard",
     "dep:enigo",

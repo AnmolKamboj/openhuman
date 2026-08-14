@@ -145,10 +145,10 @@ use openhuman_core::openhuman::inference::temperature::{glob_match, temperature_
 use openhuman_core::openhuman::inference::voice::cloud_transcribe::{
     transcribe_cloud, CloudTranscribeOptions,
 };
-use openhuman_core::openhuman::inference::voice::hallucination::{
-    is_hallucinated_output, HallucinationMode,
-};
 use openhuman_core::openhuman::inference::voice::local_speech::{synthesize_piper, PiperOptions};
+use openhuman_core::openhuman::modules::voice::{
+    is_hallucinated, HallucinationMode, VoiceCallError,
+};
 use openhuman_core::openhuman::inference::voice::postprocess::cleanup_transcription;
 use openhuman_core::openhuman::inference::{
     all_inference_controller_schemas, all_inference_registered_controllers,
@@ -2157,28 +2157,29 @@ async fn inference_http_models_router_uses_isolated_config_and_dedupes_entries()
         .all(|id| !id.ends_with("@0.2") && !id.ends_with("@0.4")));
 }
 
-#[test]
-fn inference_voice_and_triage_parsers_cover_public_error_shapes() {
-    assert!(is_hallucinated_output(
-        "[ blank_audio ]",
-        HallucinationMode::Conversation
+#[tokio::test]
+async fn inference_voice_and_triage_parsers_cover_public_error_shapes() {
+    // Hallucination detection moved behind the `tinyvoice` TinyBus module
+    // (see `openhuman::modules::voice`); this crate no longer has the
+    // pure-string detection logic to test directly. Without a loaded module
+    // the client must degrade to `Unavailable` rather than guess — that
+    // contract is what stays testable from this crate, and it is asserted
+    // for every mode the caller can request.
+    let workspace = tempdir().expect("voice module workspace");
+    let mut config = Config {
+        workspace_dir: workspace.path().to_path_buf(),
+        ..Config::default()
+    };
+    config.modules.enabled = true;
+    config.modules.allow_download = false;
+
+    assert!(matches!(
+        is_hallucinated(&config, "[ blank_audio ]", HallucinationMode::Conversation).await,
+        Err(VoiceCallError::Unavailable(_))
     ));
-    assert!(is_hallucinated_output(
-        "Thank you. Thank you. Thank you.",
-        HallucinationMode::Conversation
-    ));
-    assert!(is_hallucinated_output(
-        "it it it it it it hello",
-        HallucinationMode::Conversation
-    ));
-    assert!(is_hallucinated_output("okay", HallucinationMode::Dictation));
-    assert!(!is_hallucinated_output(
-        "okay",
-        HallucinationMode::Conversation
-    ));
-    assert!(!is_hallucinated_output(
-        "no no no please stop",
-        HallucinationMode::Conversation
+    assert!(matches!(
+        is_hallucinated(&config, "okay", HallucinationMode::Dictation).await,
+        Err(VoiceCallError::Unavailable(_))
     ));
 
     let fenced = parse_triage_decision(

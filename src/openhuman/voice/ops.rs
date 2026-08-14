@@ -14,9 +14,9 @@ use crate::openhuman::inference::local::paths::{resolve_piper_binary, resolve_tt
 use crate::rpc::RpcOutcome;
 
 use super::factory::{create_stt_provider, effective_stt_provider};
-use super::hallucination::{is_hallucinated_output, HallucinationMode};
 use super::postprocess;
 use super::types::{VoiceSpeechResult, VoiceStatus, VoiceTtsResult};
+use crate::openhuman::modules::voice::{is_hallucinated, HallucinationMode};
 
 const LOG_PREFIX: &str = "[voice]";
 
@@ -200,7 +200,21 @@ pub async fn voice_transcribe_bytes(
     );
 
     // Filter hallucinated output before spending time on LLM cleanup.
-    if is_hallucinated_output(&raw_text, HallucinationMode::Conversation) {
+    //
+    // Falls OPEN when the module cannot be reached: passing a stock phrase
+    // through costs the user one bad transcription they can see and redo,
+    // whereas defaulting to "hallucinated" would silently delete real speech.
+    // Only one of those is recoverable.
+    let hallucinated = match is_hallucinated(config, &raw_text, HallucinationMode::Conversation)
+        .await
+    {
+        Ok(verdict) => verdict,
+        Err(error) => {
+            warn!("{LOG_PREFIX} hallucination filter unavailable ({error}); passing text through");
+            false
+        }
+    };
+    if hallucinated {
         debug!("{LOG_PREFIX} transcribe_bytes: hallucination detected, returning empty result");
         return Ok(RpcOutcome::single_log(
             VoiceSpeechResult {
