@@ -434,10 +434,11 @@ GGML_NATIVE=OFF cargo check --manifest-path Cargo.toml \
 
 `--no-default-features --features flows` is the **kernel profile**: the surface a
 second host would embed to get workflow execution and nothing else. It is measured
-and ratcheted, because unmeasured it grows — three heavy dependencies remain
-unconditional today (`git2`/vendored-libgit2, `rusqlite`/bundled, and
-`tokio-tungstenite`), and none would likely have
-landed that way had a number moved in CI when they did.
+and ratcheted, because unmeasured it grows — `rusqlite`/bundled and
+`tokio-tungstenite` remain unconditional today (`git2`/vendored-libgit2 left the
+kernel profile with the `libgit2-sys` + `libz-sys` shed below, once it moved
+behind the `memory-git` gate), and none would likely have landed that way had a
+number moved in CI when they did.
 
 ```bash
 scripts/kernel-floor.sh flows        # CI Linux: 304 packages / 281 names / 3 native
