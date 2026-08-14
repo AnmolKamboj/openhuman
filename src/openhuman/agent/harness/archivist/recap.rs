@@ -2,26 +2,74 @@
 
 use super::types::ArchivistHook;
 use crate::openhuman::memory::store::fts5::{self, EpisodicEntry};
-use crate::openhuman::memory::store::segments;
+use crate::openhuman::memory::store::segments::{self, ConversationSegment};
 use crate::openhuman::memory::store::trees::types::TreeKind;
 use crate::openhuman::memory::tree::summarise::{summarise, SummaryContext, SummaryInput};
 use parking_lot::Mutex;
 use rusqlite::Connection;
 use std::sync::Arc;
 
+/// An episodic entry paired with the stable identity exposed by its backing
+/// store. The md archivist uses a per-session sequence while the legacy FTS5
+/// store uses a row id.
+pub(super) struct SessionEntry {
+    pub(super) entry: EpisodicEntry,
+    sequence: Option<u32>,
+}
+
+impl SessionEntry {
+    /// Whether this entry belongs to a closed segment.
+    ///
+    /// Segment endpoints identify user turns. Each user turn is immediately
+    /// followed by its assistant entry, so the inclusive span ends one entry
+    /// after the recorded end user turn.
+    pub(super) fn is_in_segment(&self, segment: &ConversationSegment) -> bool {
+        if let (Some(sequence), Some(start)) = (self.sequence, segment.start_seq) {
+            let end = segment.end_seq.unwrap_or(start).saturating_add(1);
+            return sequence >= start && sequence <= end;
+        }
+
+        if let Some(id) = self.entry.id {
+            let start = segment.start_episodic_id;
+            let end = segment.end_episodic_id.unwrap_or(start).saturating_add(1);
+            return id >= start && id <= end;
+        }
+
+        self.entry.timestamp >= segment.start_timestamp
+            && segment
+                .end_timestamp
+                .map(|end| self.entry.timestamp <= end)
+                .unwrap_or(true)
+    }
+
+    /// Whether this entry belongs to the open segment or a later turn.
+    pub(super) fn is_at_or_after_segment_start(&self, segment: &ConversationSegment) -> bool {
+        if let (Some(sequence), Some(start)) = (self.sequence, segment.start_seq) {
+            return sequence >= start;
+        }
+
+        if let Some(id) = self.entry.id {
+            return id >= segment.start_episodic_id;
+        }
+
+        self.entry.timestamp >= segment.start_timestamp
+    }
+}
+
 impl ArchivistHook {
     /// Read every entry recorded for `session_id`, preferring the
     /// crate-owned md-backed archivist store when `self.config` is set and
     /// falling back to the legacy FTS5 episodic table otherwise.
     ///
-    /// Returns `EpisodicEntry` so the existing call sites (segment
-    /// gathering, recap rendering, tree push) keep their shape unchanged
-    /// during the FTS5 retirement migration.
+    /// Each entry retains the stable sequence or row identity needed for
+    /// segment selection. Timestamps are only a fallback for legacy records:
+    /// the md store records epoch milliseconds and therefore cannot preserve
+    /// the sub-millisecond timestamps used when a segment is opened.
     pub(super) fn read_session_entries(
         &self,
         conn: &Arc<Mutex<Connection>>,
         session_id: &str,
-    ) -> Vec<EpisodicEntry> {
+    ) -> Vec<SessionEntry> {
         if let Some(cfg) = self.config.as_ref() {
             let engine_config = crate::openhuman::memory::tinycortex::memory_config_from(
                 cfg,
@@ -32,17 +80,20 @@ impl ArchivistHook {
                 Ok(turns) => {
                     return turns
                         .into_iter()
-                        .map(|t| EpisodicEntry {
-                            id: None,
-                            session_id: t.session_id,
-                            // ArchivedTurn stores epoch-ms; EpisodicEntry
-                            // takes epoch-seconds as f64.
-                            timestamp: (t.timestamp_ms as f64) / 1000.0,
-                            role: t.role,
-                            content: t.content,
-                            lesson: t.lesson,
-                            tool_calls_json: t.tool_calls_json,
-                            cost_microdollars: t.cost_microdollars,
+                        .map(|t| SessionEntry {
+                            sequence: Some(t.seq),
+                            entry: EpisodicEntry {
+                                id: None,
+                                session_id: t.session_id,
+                                // ArchivedTurn stores epoch-ms; EpisodicEntry
+                                // takes epoch-seconds as f64.
+                                timestamp: (t.timestamp_ms as f64) / 1000.0,
+                                role: t.role,
+                                content: t.content,
+                                lesson: t.lesson,
+                                tool_calls_json: t.tool_calls_json,
+                                cost_microdollars: t.cost_microdollars,
+                            },
                         })
                         .collect();
                 }
@@ -53,7 +104,14 @@ impl ArchivistHook {
                 }
             }
         }
-        fts5::episodic_session_entries(conn, session_id).unwrap_or_default()
+        fts5::episodic_session_entries(conn, session_id)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|entry| SessionEntry {
+                entry,
+                sequence: None,
+            })
+            .collect()
     }
 
     /// Shared summarize helper — the **single LLM summarizer** used by both
@@ -246,11 +304,12 @@ impl ArchivistHook {
         // Gather the episodic entries for this session so far.
         let all_entries = self.read_session_entries(conn, session_id);
 
-        // Keep only entries within the open segment's time window (start →
-        // now, inclusive). An open segment has `end_timestamp = None`.
+        // Keep only entries belonging to the open segment. Prefer stable
+        // sequence/row identity because the md store rounds timestamps to ms.
         let segment_entries: Vec<&EpisodicEntry> = all_entries
             .iter()
-            .filter(|e| e.timestamp >= open_segment.start_timestamp)
+            .filter(|record| record.is_at_or_after_segment_start(&open_segment))
+            .map(|record| &record.entry)
             .collect();
 
         if segment_entries.is_empty() {
@@ -303,5 +362,70 @@ impl ArchivistHook {
             open_segment.segment_id
         );
         Some(recap)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::openhuman::memory::store::segments::SegmentStatus;
+
+    fn segment() -> ConversationSegment {
+        ConversationSegment {
+            segment_id: "segment".into(),
+            session_id: "session".into(),
+            namespace: "global".into(),
+            start_episodic_id: 20,
+            end_episodic_id: Some(24),
+            start_timestamp: 100.000_9,
+            end_timestamp: Some(100.001_1),
+            turn_count: 3,
+            summary: None,
+            embedding: None,
+            topic_keywords: None,
+            status: SegmentStatus::Closed,
+            created_at: 100.0,
+            updated_at: 100.0,
+            start_seq: Some(10),
+            end_seq: Some(14),
+        }
+    }
+
+    fn entry(sequence: Option<u32>, id: Option<i64>, timestamp: f64) -> SessionEntry {
+        SessionEntry {
+            sequence,
+            entry: EpisodicEntry {
+                id,
+                session_id: "session".into(),
+                timestamp,
+                role: "user".into(),
+                content: "content".into(),
+                lesson: None,
+                tool_calls_json: None,
+                cost_microdollars: 0,
+            },
+        }
+    }
+
+    #[test]
+    fn segment_membership_uses_sequence_instead_of_rounded_timestamp() {
+        let segment = segment();
+
+        assert!(!entry(Some(9), None, 100.001).is_in_segment(&segment));
+        assert!(entry(Some(10), None, 100.000).is_in_segment(&segment));
+        assert!(entry(Some(15), None, 101.0).is_in_segment(&segment));
+        assert!(!entry(Some(16), None, 100.001).is_in_segment(&segment));
+    }
+
+    #[test]
+    fn segment_membership_falls_back_to_episodic_id() {
+        let mut segment = segment();
+        segment.start_seq = None;
+        segment.end_seq = None;
+
+        assert!(!entry(None, Some(19), 100.001).is_in_segment(&segment));
+        assert!(entry(None, Some(20), 100.000).is_in_segment(&segment));
+        assert!(entry(None, Some(25), 101.0).is_in_segment(&segment));
+        assert!(!entry(None, Some(26), 100.001).is_in_segment(&segment));
     }
 }
