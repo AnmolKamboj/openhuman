@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { useT } from '../../lib/i18n/I18nContext';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
@@ -22,6 +22,8 @@ import {
 import { useMascotManifest } from './Mascot/manifest/useMascotManifest';
 import RealtimeVoiceControls from './RealtimeVoiceControls';
 import { useHumanMascot } from './useHumanMascot';
+import { IDLE_REALTIME_VOICE_AUDIO, type RealtimeVoiceAudio } from './voice/amplitudeLipsync';
+import { useAmplitudeLipsync } from './voice/useAmplitudeLipsync';
 import { resolveHumanVoiceEntry } from './voiceEntry';
 
 const HumanPage = () => {
@@ -35,6 +37,24 @@ const HumanPage = () => {
   const speakReplies = useAppSelector(selectSpeakReplies);
 
   const { face, visemeCode } = useHumanMascot({ speakReplies });
+
+  // Lip-sync for the realtime voice session. The session lives inside
+  // RealtimeVoiceControls (which owns its own ConversationProvider), so it
+  // publishes its output-loudness accessor into this ref and the mascot samples
+  // it per frame — a 60fps signal must not travel through React state.
+  const realtimeAudioRef = useRef<RealtimeVoiceAudio>({ ...IDLE_REALTIME_VOICE_AUDIO });
+  // The agent's speaking edge, lifted out of RealtimeVoiceControls so it can gate
+  // the lip-sync loop below. Flips a couple of times per turn, so it is cheap as
+  // state (the 60fps amplitude stays in the ref). While it is false — an idle
+  // realtime session, or the classic voice path that never mounts the control —
+  // the loop schedules no frames at all.
+  const [realtimeSpeaking, setRealtimeSpeaking] = useState(false);
+  const realtimeLipsync = useAmplitudeLipsync(realtimeAudioRef, realtimeSpeaking);
+
+  // While the agent is speaking its own audio drives the mouth; otherwise the
+  // classic path keeps ownership, so the two never fight over the same frame.
+  const mascotFace = realtimeLipsync.active ? 'speaking' : face;
+  const mascotVisemeCode = realtimeLipsync.active ? realtimeLipsync.visemeCode : visemeCode;
   const mascotColor = useAppSelector(selectMascotColor);
   const customPrimary = useAppSelector(selectCustomPrimaryColor);
   const customSecondary = useAppSelector(selectCustomSecondaryColor);
@@ -76,7 +96,14 @@ const HumanPage = () => {
       <Conversations
         variant="sidebar"
         composer="mic-cloud"
-        voiceChatControl={voiceEntry === 'realtime' ? <RealtimeVoiceControls /> : null}
+        voiceChatControl={
+          voiceEntry === 'realtime' ? (
+            <RealtimeVoiceControls
+              audioRef={realtimeAudioRef}
+              onSpeakingChange={setRealtimeSpeaking}
+            />
+          ) : null
+        }
         showMicComposer={voiceEntry !== 'realtime'}
         projectThreadList
       />
@@ -97,23 +124,23 @@ const HumanPage = () => {
       <div className="absolute inset-y-0 left-0 right-[436px] flex items-center justify-center">
         <div className="relative w-[min(80vh,90%)] aspect-square">
           {customMascotGifUrl ? (
-            <CustomGifMascot src={customMascotGifUrl} face={face} />
+            <CustomGifMascot src={customMascotGifUrl} face={mascotFace} />
           ) : mascotEntry ? (
             <ManifestRiveMascot
               key={mascotEntry.id}
               entry={mascotEntry}
-              face={face}
+              face={mascotFace}
               primaryColor={primaryColor}
               secondaryColor={secondaryColor}
-              visemeCode={visemeCode}
+              visemeCode={mascotVisemeCode}
               idlePoseRotation
             />
           ) : (
             <RiveMascot
-              face={face}
+              face={mascotFace}
               primaryColor={primaryColor}
               secondaryColor={secondaryColor}
-              visemeCode={visemeCode}
+              visemeCode={mascotVisemeCode}
               idlePoseRotation
             />
           )}
@@ -125,7 +152,10 @@ const HumanPage = () => {
           tap-and-speak rather than a second button stacked on it. */}
       {voiceEntry === 'both' && (
         <div className="absolute bottom-8 left-0 right-[436px] z-10 flex justify-center">
-          <RealtimeVoiceControls />
+          <RealtimeVoiceControls
+            audioRef={realtimeAudioRef}
+            onSpeakingChange={setRealtimeSpeaking}
+          />
         </div>
       )}
 
