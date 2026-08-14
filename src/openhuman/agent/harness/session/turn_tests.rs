@@ -933,7 +933,9 @@ async fn turn_runs_full_tool_cycle_with_context_and_hooks() {
 
 #[tokio::test]
 async fn turn_triggers_configured_memory_agent_before_parent_prompt() {
-    // EXPERIMENT: seam install removed
+    // The embedding seam fails loudly when unwired; before the memory
+    // extraction this was a direct call and needed no setup.
+    crate::openhuman::memory::host_impls::install_for_tests();
     crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::init_global_builtins()
         .expect("built-in agent definitions should load");
     assert!(
