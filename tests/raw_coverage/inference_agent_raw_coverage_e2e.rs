@@ -146,7 +146,9 @@ use openhuman_core::openhuman::inference::voice::cloud_transcribe::{
     transcribe_cloud, CloudTranscribeOptions,
 };
 use openhuman_core::openhuman::inference::voice::local_speech::{synthesize_piper, PiperOptions};
-use openhuman_core::openhuman::modules::voice::{is_hallucinated, HallucinationMode, VoiceCallError};
+use openhuman_core::openhuman::modules::voice::{
+    is_hallucinated, HallucinationMode, VoiceCallError,
+};
 use openhuman_core::openhuman::inference::voice::postprocess::cleanup_transcription;
 use openhuman_core::openhuman::inference::{
     all_inference_controller_schemas, all_inference_registered_controllers,
