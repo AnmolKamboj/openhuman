@@ -13,6 +13,24 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   302/282/2  2026-08-14  tinycortex + tinymemory advanced to their merge
+#                      commits for the git2-ownership move (-6 packages /
+#                      -2 names). A shed, not a gate: the newer submodules stop
+#                      pulling a second `toml` parser stack into this profile —
+#                      `toml`, `toml_edit`, `toml_datetime`, `toml_write`,
+#                      `serde_spanned` and `winnow` leave, and nothing is added.
+#                      Six packages but only two names, because four of them
+#                      were duplicate majors of names still present at another
+#                      version. Measured with `scripts/kernel-floor.sh flows
+#                      --json` (302/282/2) and confirmed by diffing
+#                      `cargo tree --no-default-features --features flows
+#                      -e normal` across the two submodule pins.
+#
+#                      NOTE: this also brings the profile back to the 302
+#                      package count of the 2026-08-09 spec-target entry below,
+#                      which the three intervening entries had grown away from.
+#                      Native builds are unchanged at 2 (libsqlite3-sys, ring) —
+#                      still the floor, and still load-bearing.
 #   308/284/2  2026-08-13  tinyflows' host-stack advance (PR #5537) moved its
 #                      direct HTTP client from reqwest 0.12 to 0.13 while the
 #                      rest of the kernel still uses 0.12. That creates one
