@@ -25,6 +25,21 @@ pub(crate) const TARGET_SAMPLE_RATE: u32 = 16_000;
 /// different peak depending on which recorder captured it.
 const FRAME_SAMPLES: u32 = TARGET_SAMPLE_RATE / 50;
 
+/// Most raw samples one recording may accumulate.
+///
+/// Five minutes of 48 kHz stereo — the widest common device format — which is
+/// 57.6M `f32`, so the cap is expressed in samples and bounds memory at ~230
+/// MiB worst case and ~9.6 MiB for the 16 kHz mono case the streaming path
+/// already bounds the same way (`MAX_FULL_AUDIO_SAMPLES`, #1924).
+///
+/// This bound became load-bearing when the silence gate moved to the module.
+/// The gate used to run *inside* the capture callback and drop sustained
+/// silence, so an idle microphone added almost nothing; the callback now
+/// accumulates every raw interleaved sample, so a recording that is started
+/// and never stopped would grow without limit. Gating still happens — just at
+/// finalize, which is too late to bound what the callback collected.
+const MAX_RAW_SAMPLES: usize = 48_000 * 2 * 60 * 5;
+
 /// RMS below which the module's silence gate drops audio.
 ///
 /// The value the in-process gate used before this moved to the module.
@@ -204,6 +219,21 @@ pub fn start_recording() -> Result<RecordingHandle, String> {
     }
 }
 
+/// Append `samples` to `buffer`, stopping at [`MAX_RAW_SAMPLES`].
+///
+/// Truncates rather than dropping the whole chunk, so a recording that reaches
+/// the cap keeps its first five minutes instead of losing the chunk that
+/// crossed the line. Silent about it by design: this runs in the audio callback,
+/// where logging on every chunk past the cap would be its own problem.
+fn append_capped(buffer: &parking_lot::Mutex<Vec<f32>>, samples: &[f32]) {
+    let mut guard = buffer.lock();
+    let remaining = MAX_RAW_SAMPLES.saturating_sub(guard.len());
+    if remaining == 0 {
+        return;
+    }
+    guard.extend_from_slice(&samples[..samples.len().min(remaining)]);
+}
+
 /// Runs the entire recording lifecycle on a single thread (cpal requirement).
 fn record_on_thread(
     stop_flag: Arc<AtomicBool>,
@@ -321,7 +351,7 @@ fn record_on_thread(
                 .build_input_stream(
                     &stream_config,
                     move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                        samples_writer.lock().extend_from_slice(data);
+                        append_capped(&samples_writer, data);
                     },
                     |err| warn!("{LOG_PREFIX} audio stream error: {err}"),
                     None,
@@ -331,7 +361,7 @@ fn record_on_thread(
                 .build_input_stream(
                     &stream_config,
                     move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                        samples_writer.lock().extend_from_slice(&i16_to_f32(data));
+                        append_capped(&samples_writer, &i16_to_f32(data));
                     },
                     |err| warn!("{LOG_PREFIX} audio stream error: {err}"),
                     None,
@@ -341,7 +371,7 @@ fn record_on_thread(
                 .build_input_stream(
                     &stream_config,
                     move |data: &[u16], _: &cpal::InputCallbackInfo| {
-                        samples_writer.lock().extend_from_slice(&u16_to_f32(data));
+                        append_capped(&samples_writer, &u16_to_f32(data));
                     },
                     |err| warn!("{LOG_PREFIX} audio stream error: {err}"),
                     None,
@@ -377,7 +407,7 @@ fn record_on_thread(
                             .build_input_stream(
                                 &sc,
                                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                                    sw.lock().extend_from_slice(data);
+                                    append_capped(&sw, data);
                                 },
                                 |err| warn!("{LOG_PREFIX} audio stream error: {err}"),
                                 None,
@@ -387,7 +417,7 @@ fn record_on_thread(
                             .build_input_stream(
                                 &sc,
                                 move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                                    sw.lock().extend_from_slice(&i16_to_f32(data));
+                                    append_capped(&sw, &i16_to_f32(data));
                                 },
                                 |err| warn!("{LOG_PREFIX} audio stream error: {err}"),
                                 None,
@@ -397,7 +427,7 @@ fn record_on_thread(
                             .build_input_stream(
                                 &sc,
                                 move |data: &[u16], _: &cpal::InputCallbackInfo| {
-                                    sw.lock().extend_from_slice(&u16_to_f32(data));
+                                    append_capped(&sw, &u16_to_f32(data));
                                 },
                                 |err| warn!("{LOG_PREFIX} audio stream error: {err}"),
                                 None,
