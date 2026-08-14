@@ -325,3 +325,48 @@ fn an_out_of_range_volume_is_clamped_at_the_boundary() {
         assert_eq!(intent.clone().clamped(), intent);
     }
 }
+
+#[tokio::test]
+async fn every_entry_point_degrades_rather_than_hanging_when_the_module_is_gone() {
+    // The fallback directions are asymmetric on purpose, and the asymmetry is
+    // the point: whichever way a caller falls, it must first get a plain error
+    // back rather than a panic or a stall. `ops.rs` falls OPEN on this error
+    // (failing closed would silently delete real speech) and `always_on`'s
+    // wake-word gate falls CLOSED (failing open would hand an unaddressed
+    // utterance to the agent). Both depend on seeing `Unavailable`.
+    let mut config = offline_config();
+    config.modules.enabled = false;
+
+    assert!(matches!(
+        super::is_hallucinated(&config, "thank you for watching", HallucinationMode::Conversation)
+            .await,
+        Err(VoiceCallError::Unavailable(_))
+    ));
+    assert!(matches!(
+        super::extract_command(&config, "hey tiny pause", "Hey Tiny").await,
+        Err(VoiceCallError::Unavailable(_))
+    ));
+
+    // The session surface has to reach the same verdict, because always_on now
+    // retries `open` on a cooldown instead of tearing the loop down: a variant
+    // other than `Unavailable` here would change that path's behaviour.
+    assert!(matches!(
+        super::VadSession::open(&config, super::VadConfig::from_server_config(
+            &crate::openhuman::config::VoiceServerConfig::default()
+        ))
+        .await,
+        Err(VoiceCallError::Unavailable(_))
+    ));
+    assert!(matches!(
+        super::prepare_frames(&config, &[0.1, 0.2], 32_000, 2).await,
+        Err(VoiceCallError::Unavailable(_))
+    ));
+    assert!(matches!(
+        super::frame_energies(&config, &[0.1, 0.2], 1).await,
+        Err(VoiceCallError::Unavailable(_))
+    ));
+    assert!(matches!(
+        super::encode_wav_pcm16(&config, &[1i16, 2], 16_000, 1).await,
+        Err(VoiceCallError::Unavailable(_))
+    ));
+}
