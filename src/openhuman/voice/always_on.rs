@@ -278,22 +278,19 @@ pub async fn start_if_enabled(app_config: &Config) {
             // Measure BEFORE draining. Draining first and then failing would
             // discard the frames outright — a module hiccup would eat the
             // user's audio rather than delay it.
-            let energies = match tinyvoice::frame_energies(
-                &config,
-                &pending[..whole],
-                FRAME_SAMPLES as u32,
-            )
-            .await
-            {
-                Ok(energies) => energies,
-                Err(error) => {
-                    log::warn!(
-                        "{LOG_PREFIX} could not measure frame energies ({error}); \
+            let energies =
+                match tinyvoice::frame_energies(&config, &pending[..whole], FRAME_SAMPLES as u32)
+                    .await
+                {
+                    Ok(energies) => energies,
+                    Err(error) => {
+                        log::warn!(
+                            "{LOG_PREFIX} could not measure frame energies ({error}); \
                          retrying these frames on the next chunk"
-                    );
-                    continue;
-                }
-            };
+                        );
+                        continue;
+                    }
+                };
             let frames: Vec<f32> = pending.drain(..whole).collect();
 
             for rms in &energies {
@@ -662,9 +659,7 @@ async fn osa(script: &str) -> Result<(), String> {
 
 /// Spawn the dedicated cpal capture thread. Blocks until the stream is set up
 /// (or fails), mirroring `audio_capture::start_recording`'s readiness handshake.
-fn spawn_capture_thread(
-    tx: tokio::sync::mpsc::Sender<RawChunk>,
-) -> Result<CaptureFormat, String> {
+fn spawn_capture_thread(tx: tokio::sync::mpsc::Sender<RawChunk>) -> Result<CaptureFormat, String> {
     let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<CaptureFormat, String>>(1);
     std::thread::Builder::new()
         .name("voice-always-on".into())
