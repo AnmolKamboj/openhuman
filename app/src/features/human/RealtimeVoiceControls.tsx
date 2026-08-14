@@ -36,7 +36,7 @@ function RealtimeVoiceControlsInner({
   const { getOutputVolume, isSpeaking } = session;
   const speaking = active && isSpeaking;
   useEffect(() => {
-    if (audioRef) {
+    if (audioRef?.current) {
       audioRef.current.getOutputVolume = active ? getOutputVolume : null;
       audioRef.current.speaking = speaking;
     }
@@ -52,7 +52,7 @@ function RealtimeVoiceControlsInner({
   // edge the page gates its loop on.
   useEffect(
     () => () => {
-      if (audioRef) {
+      if (audioRef?.current) {
         audioRef.current.getOutputVolume = null;
         audioRef.current.speaking = false;
       }

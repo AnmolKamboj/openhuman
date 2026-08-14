@@ -6,12 +6,13 @@
  */
 import { configureStore } from '@reduxjs/toolkit';
 import { fireEvent, render, screen } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { Provider } from 'react-redux';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import mascotReducer from '../../store/mascotSlice';
 import RealtimeVoiceControls from './RealtimeVoiceControls';
+import type { RealtimeVoiceAudio } from './voice/amplitudeLipsync';
 import type { RealtimeVoiceSession } from './voice/useRealtimeVoiceSession';
 
 // `@elevenlabs/react`'s ConversationProvider is only a context shell here — pass
@@ -49,11 +50,14 @@ const LABEL = {
   speaking: 'Speaking',
 } as const;
 
-function renderControls(onSpeakingChange?: (speaking: boolean) => void) {
+function renderControls(
+  onSpeakingChange?: (speaking: boolean) => void,
+  audioRef?: RefObject<RealtimeVoiceAudio>
+) {
   const store = configureStore({ reducer: { mascot: mascotReducer } });
   return render(
     <Provider store={store}>
-      <RealtimeVoiceControls onSpeakingChange={onSpeakingChange} />
+      <RealtimeVoiceControls onSpeakingChange={onSpeakingChange} audioRef={audioRef} />
     </Provider>
   );
 }
@@ -135,5 +139,33 @@ describe('RealtimeVoiceControls', () => {
     session = makeSession({ state: 'active', isSpeaking: false });
     renderControls(onSpeakingChange);
     expect(onSpeakingChange).toHaveBeenLastCalledWith(false);
+  });
+
+  // The lip-sync loop reads the SDK accessor and speaking flag straight out of
+  // this ref (see useAmplitudeLipsync); a regression that stopped publishing
+  // them would freeze the mascot's mouth mid-turn without failing any of the
+  // presentational tests above, so pin the wiring directly.
+  it('publishes the loudness accessor and speaking flag into audioRef', () => {
+    const getOutputVolume = () => 0.5;
+    session = makeSession({ state: 'active', isSpeaking: true, getOutputVolume });
+    const audioRef: RefObject<RealtimeVoiceAudio> = {
+      current: { getOutputVolume: null, speaking: false },
+    };
+    renderControls(undefined, audioRef);
+    expect(audioRef.current?.getOutputVolume).toBe(getOutputVolume);
+    expect(audioRef.current?.speaking).toBe(true);
+  });
+
+  it('clears the audioRef when the session ends (unmount)', () => {
+    session = makeSession({ state: 'active', isSpeaking: true, getOutputVolume: () => 0.5 });
+    const audioRef: RefObject<RealtimeVoiceAudio> = {
+      current: { getOutputVolume: null, speaking: false },
+    };
+    const { unmount } = renderControls(undefined, audioRef);
+    expect(audioRef.current?.speaking).toBe(true);
+
+    unmount();
+    expect(audioRef.current?.getOutputVolume).toBeNull();
+    expect(audioRef.current?.speaking).toBe(false);
   });
 });
