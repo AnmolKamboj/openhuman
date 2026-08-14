@@ -165,7 +165,18 @@ async fn finalize(config: &Config, raw: &RawRecording) -> Result<RecordingResult
     .await
     .map_err(|e| format!("could not encode captured audio: {e}"))?;
 
-    let sample_count = mono.len();
+    // Derived from the WAV that is actually returned, not from `mono`.
+    //
+    // `mono` is the UNGATED buffer — it exists to measure peak energy, which
+    // has to see the silence. `wav_bytes` is the gated one. Reporting `mono`'s
+    // length here would describe audio the caller does not have: `server.rs`
+    // gates on `duration_secs` against `min_duration_secs`, so a recording that
+    // is mostly silence would claim a long duration and pass a check it should
+    // fail. Before the gate moved to the module it ran in the capture callback,
+    // so the buffer this was derived from was already gated and the two agreed.
+    //
+    // 16-bit mono PCM after a 44-byte header, so two bytes per sample.
+    let sample_count = wav_bytes.len().saturating_sub(44) / 2;
     let duration_secs = sample_count as f32 / TARGET_SAMPLE_RATE as f32;
     info!(
         "{LOG_PREFIX} recording finalized: {duration_secs:.1}s, {} bytes WAV, peak_rms={peak_rms:.6}",
