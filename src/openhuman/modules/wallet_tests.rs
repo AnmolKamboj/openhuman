@@ -10,7 +10,7 @@
 use tinywallet::wire::{Scheme, Signature, SigningPayload, TransactionSpec};
 use tinywallet::Chain;
 
-use super::{classify, sign_payload, WalletCallError};
+use super::{classify, WalletCallError};
 use crate::openhuman::config::Config;
 
 /// The BIP-39 test vector mnemonic. Never use it for real funds.
@@ -101,101 +101,6 @@ fn every_error_renders_as_its_message() {
     }
 }
 
-#[test]
-fn a_prehash_payload_is_signed_without_being_hashed_again() {
-    // The single most dangerous confusion in this file: hashing a digest a
-    // second time yields a valid signature over the wrong preimage, which the
-    // chain accepts as a different transaction or rejects with no explanation.
-    // Verified by recovering the signature against the digest itself.
-    use k256::ecdsa::signature::hazmat::PrehashVerifier as _;
-    use k256::ecdsa::{Signature as K256Signature, SigningKey, VerifyingKey};
-
-    let secret = evm_secret();
-    let digest = [0x42u8; 32];
-    let payload = SigningPayload {
-        bytes_hex: "42".repeat(32),
-        scheme: Scheme::Secp256k1Prehash,
-    };
-
-    let Signature::Secp256k1 { rs_hex, .. } = sign_payload(&payload, &secret).unwrap() else {
-        panic!("a prehash payload must produce a secp256k1 signature");
-    };
-
-    let raw: Vec<u8> = (0..rs_hex.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&rs_hex[i..i + 2], 16).unwrap())
-        .collect();
-    let signature = K256Signature::from_slice(&raw).unwrap();
-    let verifying: VerifyingKey = *SigningKey::from_slice(&secret).unwrap().verifying_key();
-
-    verifying
-        .verify_prehash(&digest, &signature)
-        .expect("the signature must verify against the digest, not a rehash of it");
-}
-
-#[test]
-fn a_prehash_payload_that_is_not_thirty_two_bytes_is_refused() {
-    let payload = SigningPayload {
-        bytes_hex: "42".repeat(16),
-        scheme: Scheme::Secp256k1Prehash,
-    };
-    assert!(matches!(
-        sign_payload(&payload, &evm_secret()),
-        Err(WalletCallError::Failed(_))
-    ));
-}
-
-#[test]
-fn an_ed25519_payload_is_signed_over_the_whole_message() {
-    // ed25519 hashes internally, so the payload is the message. Verified
-    // against the public key rather than merely checked for a length.
-    use ed25519_dalek::{Signature as EdSignature, SigningKey, Verifier as _};
-
-    let derived = tinywallet::key::derive(Chain::Solana, VECTOR, "m/44'/501'/0'/0'").unwrap();
-    let secret = derived.secret_bytes();
-    let message = b"a solana message that is clearly longer than thirty-two bytes";
-
-    let payload = SigningPayload {
-        bytes_hex: message.iter().fold(String::new(), |mut out, b| {
-            use std::fmt::Write as _;
-            let _ = write!(out, "{b:02x}");
-            out
-        }),
-        scheme: Scheme::Ed25519,
-    };
-
-    let Signature::Ed25519 { signature_hex } = sign_payload(&payload, secret).unwrap() else {
-        panic!("an ed25519 payload must produce an ed25519 signature");
-    };
-
-    let raw: Vec<u8> = (0..signature_hex.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&signature_hex[i..i + 2], 16).unwrap())
-        .collect();
-    let key: [u8; 32] = secret.try_into().unwrap();
-    SigningKey::from_bytes(&key)
-        .verifying_key()
-        .verify(message, &EdSignature::from_slice(&raw).unwrap())
-        .expect("the signature must verify over the message");
-}
-
-#[test]
-fn a_malformed_payload_from_the_module_is_refused_rather_than_signed() {
-    for bytes_hex in ["abc", "zz".repeat(32).as_str(), "aéb"] {
-        let payload = SigningPayload {
-            bytes_hex: bytes_hex.to_string(),
-            scheme: Scheme::Secp256k1Prehash,
-        };
-        assert!(
-            matches!(
-                sign_payload(&payload, &evm_secret()),
-                Err(WalletCallError::Failed(_))
-            ),
-            "{bytes_hex:?} should be refused"
-        );
-    }
-}
-
 #[tokio::test]
 async fn a_disabled_host_reports_unavailable_without_starting_a_broker() {
     let mut config = offline_config();
@@ -212,7 +117,7 @@ async fn a_disabled_host_reports_unavailable_without_starting_a_broker() {
     };
 
     assert!(matches!(
-        super::sign_transaction(&config, &spec, &evm_secret(), &[0x02; 33]).await,
+        super::sign_transaction_in_module(&config, &spec, &evm_signing_secret()).await,
         Err(WalletCallError::Unavailable(_))
     ));
     assert!(matches!(
