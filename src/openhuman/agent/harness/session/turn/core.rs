@@ -1746,6 +1746,10 @@ impl Agent {
         const MEMORY_AGENT_ID: &str = "agent_memory";
         const MAX_MEMORY_AGENT_BLOCK_CHARS: usize = 8000;
 
+        eprintln!(
+            "DBG: inject_triggered_memory_agent_context entered policy={:?} agent_id={}",
+            self.trigger_memory_agent, self.agent_definition_id
+        );
         if self.trigger_memory_agent != TriggerMemoryAgent::Always {
             log::debug!(
                 "[agent_memory:trigger] skipped agent_id={} policy={:?}",
