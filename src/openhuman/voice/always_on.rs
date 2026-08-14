@@ -52,6 +52,14 @@ const SESSION_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_se
 /// decide whether to send.
 const CAPTURE_QUEUE_CHUNKS: usize = 256;
 
+/// Chunks the capture callback had to drop because the queue was full.
+///
+/// A process-wide counter rather than closure state: the callback is built once
+/// per sample format and each closure must stay `Fn`, so the count cannot live
+/// in a captured local. One always-on stream exists per process, so a single
+/// counter is not an aggregation of unrelated streams.
+static DROPPED_CHUNKS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// One chunk of raw capture, exactly as the device delivered it.
 ///
 /// Interleaved and at the device's own rate: the callback converts the sample
@@ -728,10 +736,9 @@ fn capture_on_thread(
     //
     // A send error also covers the processor being gone (shutdown), which is
     // why neither case is fatal here.
-    let mut dropped: u64 = 0;
     let forward = move |samples: Vec<f32>| {
         if tx.try_send(RawChunk { samples }).is_err() {
-            dropped = dropped.saturating_add(1);
+            let dropped = DROPPED_CHUNKS.fetch_add(1, Ordering::Relaxed) + 1;
             // Log on a power-of-two schedule: a persistently overloaded
             // processor should be visible without logging inside every
             // callback once it starts.
