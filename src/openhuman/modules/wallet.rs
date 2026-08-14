@@ -212,7 +212,12 @@ pub async fn export_key(
         secret.chain
     );
     proxy
-        .call_confidential("ExportKey", (secret.clone(),))
+        .call_confidential(
+            "ExportKey",
+            (ExportRequest {
+                secret: secret.clone(),
+            },),
+        )
         .await
         .map_err(|error| classify(&error))
 }

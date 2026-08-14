@@ -11,6 +11,7 @@
 
 use base64::engine::{general_purpose::STANDARD as B64, Engine as _};
 use curve25519_dalek::edwards::CompressedEdwardsY;
+#[cfg(test)]
 use ed25519_dalek::{SigningKey, SECRET_KEY_LENGTH};
 use log::debug;
 use serde::Deserialize;
