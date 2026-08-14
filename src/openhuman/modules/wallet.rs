@@ -104,68 +104,6 @@ impl std::fmt::Display for WalletCallError {
     }
 }
 
-/// Build, sign, and assemble a transaction for `chain`.
-///
-/// `secret` is the raw signing key and never leaves this process. `public_key`
-/// is its compressed SEC1 form for secp256k1 chains, or the 32-byte public key
-/// for Solana — the module needs it to check that the key controls the sender
-/// before it will build anything.
-///
-/// # Errors
-///
-/// [`WalletCallError`] describing whether the request, the module, or the
-/// signing was at fault.
-pub async fn sign_transaction(
-    config: &Config,
-    transaction: &TransactionSpec,
-    secret: &[u8],
-    public_key: &[u8],
-) -> Result<SignedTransaction, WalletCallError> {
-    let (runtime, record) = ready(config).await?;
-    let proxy = proxy(runtime, record)?;
-    let public_key = PublicKey {
-        key_hex: hex(public_key),
-    };
-
-    let chain = transaction.chain();
-    log::debug!("[modules:wallet] build_unsigned chain={chain:?} module={MODULE_ID}");
-    let unsigned: UnsignedTransaction = proxy
-        .call(
-            "BuildUnsigned",
-            (SigningRequest {
-                transaction: transaction.clone(),
-                public_key: public_key.clone(),
-            },),
-        )
-        .await
-        .map_err(|error| classify(&error))?;
-
-    // Signed here. Bitcoin returns one payload per selected input and the
-    // signatures must come back in the same order, so this maps rather than
-    // handling a single value.
-    let signatures = unsigned
-        .payloads
-        .iter()
-        .map(|payload| sign_payload(payload, secret))
-        .collect::<Result<Vec<_>, _>>()?;
-
-    log::debug!(
-        "[modules:wallet] attach_signature chain={chain:?} signatures={}",
-        signatures.len()
-    );
-    proxy
-        .call(
-            "AttachSignature",
-            (AttachRequest {
-                transaction: transaction.clone(),
-                public_key,
-                signatures,
-            },),
-        )
-        .await
-        .map_err(|error| classify(&error))
-}
-
 /// Derive, build, sign and assemble entirely inside the module.
 ///
 /// The counterpart to [`sign_transaction`], and the one to prefer: the phrase
@@ -353,72 +291,9 @@ fn digest_is_pinned(record: &super::ModuleRecord, sha256: &str) -> bool {
         .any(|asset| asset.sha256.eq_ignore_ascii_case(sha256))
 }
 
-/// Sign one payload with whichever scheme it declares.
-///
-/// Dispatches on the payload's own tag, never on the chain: the module is the
-/// authority on what it needs signed and how, and a host that decided for itself
-/// would sign wrongly the moment the two disagreed.
-#[allow(unreachable_patterns)]
-fn sign_payload(payload: &SigningPayload, secret: &[u8]) -> Result<Signature, WalletCallError> {
-    let bytes = unhex(&payload.bytes_hex)?;
-    match payload.scheme {
-        Scheme::Secp256k1Prehash => {
-            let digest: [u8; 32] = bytes.try_into().map_err(|_| {
-                WalletCallError::Failed(
-                    "the module asked for a prehash signature over something that is not 32 bytes"
-                        .to_string(),
-                )
-            })?;
-            sign_secp256k1_prehash(&digest, secret)
-        }
-        Scheme::Ed25519 => sign_ed25519(&bytes, secret),
-        // `Scheme` is `#[non_exhaustive]`. A module newer than this build may
-        // name a scheme we cannot perform, and guessing would produce a
-        // signature over the wrong preimage.
-        _ => Err(WalletCallError::Failed(
-            "the module asked for a signing scheme this build does not implement".to_string(),
-        )),
-    }
-}
-
-/// secp256k1 ECDSA over an already-computed digest, with the recovery id.
-///
-/// `k256` rather than the `bitcoin` crate's `secp256k1`: this is the entire
-/// reason the host can drop that dependency and its native C build, and `k256`
-/// is already in the tree beneath `coins-bip32`, which derives the key being
-/// used here. It produces low-`s` signatures by default, which Bitcoin requires
-/// as relay policy (BIP-146) and Ethereum as consensus (EIP-2).
-fn sign_secp256k1_prehash(digest: &[u8; 32], secret: &[u8]) -> Result<Signature, WalletCallError> {
-    use k256::ecdsa::SigningKey;
-
-    let key = SigningKey::from_slice(secret)
-        .map_err(|_| WalletCallError::Failed("not a valid secp256k1 secret key".to_string()))?;
-    let (signature, recovery_id) = key
-        .sign_prehash_recoverable(digest)
-        .map_err(|_| WalletCallError::Failed("secp256k1 signing failed".to_string()))?;
-
-    Ok(Signature::Secp256k1 {
-        rs_hex: hex(&signature.to_bytes()),
-        recovery_id: recovery_id.to_byte(),
-    })
-}
-
-/// ed25519 over the whole message.
-fn sign_ed25519(message: &[u8], secret: &[u8]) -> Result<Signature, WalletCallError> {
-    use ed25519_dalek::{Signer as _, SigningKey};
-
-    let key: [u8; 32] = secret.try_into().map_err(|_| {
-        WalletCallError::Failed("an ed25519 secret key must be 32 bytes".to_string())
-    })?;
-    let signature = SigningKey::from_bytes(&key).sign(message);
-    Ok(Signature::Ed25519 {
-        signature_hex: hex(&signature.to_bytes()),
-    })
-}
-
 /// Load the wallet module if it is not already serving.
 ///
-/// Callers do not have to invoke this — [`sign_transaction`] does — but a caller
+/// Callers do not have to invoke this — the signing calls do — but a caller
 /// that wraps its work in a deadline should, *outside* that deadline. A first
 /// use may download and verify an artifact, and charging that against a
 /// transaction timeout means the first transfer a user ever makes is the one
