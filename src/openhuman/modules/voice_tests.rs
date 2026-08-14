@@ -293,3 +293,25 @@ async fn the_published_module_answers_through_this_client() {
     session.reset(&config).await.expect("VadReset");
     session.close(&config).await.expect("VadClose");
 }
+
+#[test]
+fn an_out_of_range_volume_is_clamped_at_the_boundary() {
+    // `percent` is interpolated into an `osascript` command downstream, and
+    // this type is decoded from a wire payload. The module clamps too, so this
+    // is belt-and-braces — but the braces are three lines and the failure mode
+    // is a shell command carrying a number nobody checked.
+    let decoded: VoiceIntent =
+        serde_json::from_str(r#"{"intent":"set_volume","percent":255}"#).expect("decodes");
+    assert_eq!(decoded, VoiceIntent::SetVolume { percent: 255 });
+    assert_eq!(
+        decoded.clamped(),
+        VoiceIntent::SetVolume { percent: 100 },
+        "the clamp is what `route` applies before any caller sees the intent"
+    );
+
+    // In-range values are untouched, including the boundary itself.
+    for percent in [0u8, 1, 50, 100] {
+        let intent = VoiceIntent::SetVolume { percent };
+        assert_eq!(intent.clone().clamped(), intent);
+    }
+}
