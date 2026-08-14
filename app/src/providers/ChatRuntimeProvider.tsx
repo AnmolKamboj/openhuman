@@ -116,6 +116,26 @@ function threadHasMessages(state: ThreadSliceState, threadId: string): boolean {
   return thread.messageCount > 0;
 }
 
+/**
+ * The realtime voice session's synthetic proactive thread id (mirrors
+ * `VOICE_CHAT_THREAD_ID` in `voice/realtime_harness.rs`). Every deferred voice
+ * turn delivers its answer as a `proactive_message` under this one id.
+ */
+const PROACTIVE_VOICE_THREAD_ID = 'proactive:voice';
+
+/**
+ * Whether a `proactive:` id names an ongoing *conversation surface* — many
+ * sequential turns that all belong to a single chat — rather than a one-shot
+ * interruption (morning brief, subconscious update, worker handoff). A
+ * conversation surface pins the visible thread it first resolves to and reuses
+ * it for the whole session; a one-shot keeps the fresh-or-create behaviour so it
+ * never lands in the user's active chat (#3713). Today only realtime voice
+ * qualifies.
+ */
+function isProactiveConversationSurface(incomingThreadId: string): boolean {
+  return incomingThreadId === PROACTIVE_VOICE_THREAD_ID;
+}
+
 function rtLog(message: string, fields?: Record<string, string | number | null | undefined>) {
   if (IS_PROD) return;
   if (fields && Object.keys(fields).length > 0) {
@@ -281,6 +301,13 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
   const segmentDeliveriesRef = useRef<Map<string, SegmentDelivery>>(new Map());
   const proactiveThreadCreationPromiseRef = useRef<Promise<string | null> | null>(null);
   const proactiveDispatchQueueRef = useRef<Promise<void>>(Promise.resolve());
+  // Pins a proactive *conversation surface* (see `isProactiveConversationSurface`)
+  // to the visible thread it first resolved to, so every subsequent turn of a
+  // realtime voice session lands in that same thread instead of spawning a fresh
+  // one per turn. Session-scoped (a ref, not persisted); an entry is dropped when
+  // its thread no longer exists so delivery re-resolves rather than targeting a
+  // deleted thread.
+  const proactiveThreadPinsRef = useRef<Map<string, string>>(new Map());
   const toolTimelineRef = useRef(toolTimelineByThread);
   const inferenceStatusRef = useRef(inferenceStatusByThread);
   const streamingAssistantRef = useRef(streamingAssistantByThread);
@@ -351,6 +378,27 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
       }
 
       const state = store.getState().thread;
+
+      // A proactive *conversation surface* (today the realtime voice session's
+      // `proactive:voice`) delivers many sequential turns under one synthetic id.
+      // Once it has resolved to a visible thread, pin that thread and keep
+      // delivering into it for the rest of the session. Without the pin, the
+      // fresh-or-create rule below spawns a brand-new thread on every turn after
+      // the first — turn 1 fills the fresh thread, turn 2+ sees it as occupied and
+      // creates another — flooding the list with one "Chat …" thread per voice
+      // turn. The pin is dropped when its thread no longer exists (deleted) so we
+      // re-resolve instead of delivering into a dead thread.
+      const isConversationSurface = isProactiveConversationSurface(incomingThreadId);
+      if (isConversationSurface) {
+        const pinned = proactiveThreadPinsRef.current.get(incomingThreadId);
+        if (pinned) {
+          if (state.threads.some(t => t.id === pinned)) {
+            return pinned;
+          }
+          proactiveThreadPinsRef.current.delete(incomingThreadId);
+        }
+      }
+
       // Reuse an existing thread for proactive delivery ONLY when it is
       // fresh (no messages). Injecting a morning brief / subconscious
       // update into a thread that already holds a conversation interrupts
@@ -362,6 +410,9 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
       // longer used as a target here.
       const candidateThreadId = state.selectedThreadId ?? state.threads[0]?.id ?? null;
       if (candidateThreadId && !threadHasMessages(state, candidateThreadId)) {
+        if (isConversationSurface) {
+          proactiveThreadPinsRef.current.set(incomingThreadId, candidateThreadId);
+        }
         return candidateThreadId;
       }
 
@@ -373,6 +424,9 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
         try {
           const newThread = await dispatch(createNewThread()).unwrap();
           dispatch(setSelectedThread(newThread.id));
+          if (isConversationSurface) {
+            proactiveThreadPinsRef.current.set(incomingThreadId, newThread.id);
+          }
           return newThread.id;
         } catch (error) {
           rtLog('proactive_thread_create_failed', {
