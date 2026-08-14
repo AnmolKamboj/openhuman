@@ -700,8 +700,11 @@ jobs:
             | sha256sum --check
           echo "fd8caf7fccb53328870fd26922aa9768d253cd4b3bf758967847d6512df03863  $juice_archive" \
             | sha256sum --check
-          tar -xzf "$memory_archive" -C "$memory_dir"
-          tar -xzf "$juice_archive" -C "$juice_dir"
+          # The container runs as root, so GNU tar would otherwise preserve the
+          # release builder's uid and the host's ownership check would correctly
+          # refuse the cross-user fixture.
+          tar --no-same-owner -xzf "$memory_archive" -C "$memory_dir"
+          tar --no-same-owner -xzf "$juice_archive" -C "$juice_dir"
           echo "TINYMEMORY_TEST_MODULE=$GITHUB_WORKSPACE/$memory_dir/libtinymemory_module.so" \
             >> "$GITHUB_ENV"
           echo "TINYJUICE_TEST_MODULE=$GITHUB_WORKSPACE/$juice_dir/libtinyjuice_module.so" \
