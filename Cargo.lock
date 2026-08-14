@@ -4130,7 +4130,6 @@ dependencies = [
  "fs2",
  "futures",
  "futures-util",
- "git2",
  "glob",
  "hex",
  "hkdf",
