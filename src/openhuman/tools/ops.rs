@@ -1318,9 +1318,6 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
         "list_connectable_toolkits",
         "list_node_kinds",
         "get_node_kind_contract",
-        // The `rhai_workflows` (.ragsh) tool is compile-gated with `flows` and
-        // belongs to the same runtime domain — drop it when Flows is off too.
-        "rhai_workflows",
         // Per-flow sandboxed memory (issue #5173) — `flow_` prefixed, not
         // `memory_`, so it does NOT fall under the `memory_` prefix check
         // below and must be listed here explicitly like every other
