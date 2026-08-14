@@ -32,6 +32,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 const LOG_PREFIX: &str = "[voice::always_on]";
 
+/// How long to wait before retrying a VAD session that would not open.
+///
+/// Long enough that a persistently unavailable module does not produce a call
+/// per audio chunk, short enough that a module which finishes downloading
+/// mid-session starts segmenting without the user restarting anything.
+const SESSION_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// One chunk of raw capture, exactly as the device delivered it.
 ///
 /// Interleaved and at the device's own rate: the callback converts the sample
@@ -143,17 +150,18 @@ pub async fn start_if_enabled(app_config: &Config) {
 
     let onset_threshold = vad.onset_threshold;
     tokio::spawn(async move {
-        // The segmenter lives in the module now. Opening it is the first thing
-        // that can fail for a reason unrelated to audio, so it happens before
-        // any capture is consumed and takes the loop down cleanly if it does.
-        let session = match tinyvoice::VadSession::open(&config, vad).await {
-            Ok(session) => session,
-            Err(error) => {
-                log::warn!("{LOG_PREFIX} could not open a VAD session ({error}); capture idle");
-                RUNNING.store(false, Ordering::SeqCst);
-                return;
-            }
-        };
+        // The segmenter lives in the module now, so opening it can fail for
+        // reasons unrelated to audio — a download that has not happened yet, a
+        // host with no published artifact.
+        //
+        // That failure must NOT end this task. The capture thread is already
+        // running and owns the microphone for the process lifetime; returning
+        // here would clear `RUNNING` while the stream stays live, and the next
+        // `start_if_enabled` would sail past the `RUNNING` guard and open a
+        // *second* microphone stream. So the session is opened lazily and
+        // retried, and audio is dropped until there is one.
+        let mut session: Option<tinyvoice::VadSession> = None;
+        let mut last_open_attempt: Option<std::time::Instant> = None;
 
         let mut pending: Vec<f32> = Vec::new();
         let mut utterance: Vec<f32> = Vec::new();
@@ -180,13 +188,43 @@ pub async fn start_if_enabled(app_config: &Config) {
                 // first: that check would be a second bus call to save a cheap
                 // idempotent one, and the privacy path should be the shortest
                 // path, not the cleverest.
-                if let Err(error) = session.reset(&config).await {
+                if let Some(session) = session.as_ref()
+                    && let Err(error) = session.reset(&config).await
+                {
                     log::warn!("{LOG_PREFIX} could not reset the VAD session: {error}");
                 }
                 pending.clear();
                 utterance.clear();
                 continue;
             }
+
+            // Open the segmenter on first use, retrying on a cooldown so a
+            // module that becomes available later heals this without a restart.
+            if session.is_none() {
+                let due = last_open_attempt
+                    .is_none_or(|at| at.elapsed() >= SESSION_RETRY_INTERVAL);
+                if !due {
+                    continue;
+                }
+                last_open_attempt = Some(std::time::Instant::now());
+                match tinyvoice::VadSession::open(&config, vad).await {
+                    Ok(opened) => {
+                        log::info!("{LOG_PREFIX} VAD session open; segmenting live audio");
+                        session = Some(opened);
+                    }
+                    Err(error) => {
+                        log::warn!(
+                            "{LOG_PREFIX} could not open a VAD session ({error}); \
+                             dropping audio and retrying in {}s",
+                            SESSION_RETRY_INTERVAL.as_secs()
+                        );
+                        continue;
+                    }
+                }
+            }
+            let Some(session) = session.as_ref() else {
+                continue;
+            };
 
             // Downmix + resample in the module. This is the work that used to
             // happen inside the cpal callback.
@@ -304,7 +342,9 @@ pub async fn start_if_enabled(app_config: &Config) {
             }
         }
 
-        if let Err(error) = session.close(&config).await {
+        if let Some(session) = session.as_ref()
+            && let Err(error) = session.close(&config).await
+        {
             log::warn!("{LOG_PREFIX} could not close the VAD session: {error}");
         }
         log::info!("{LOG_PREFIX} capture channel closed; processor exiting");
