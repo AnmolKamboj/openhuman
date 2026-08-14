@@ -31,6 +31,12 @@ export interface RealtimeVoiceSession {
   isSpeaking: boolean;
   /** ElevenLabs turn mode; `listening` while the user speaks. */
   mode: 'speaking' | 'listening';
+  /**
+   * Output loudness (0..1) of the agent's voice, sampled from the SDK's
+   * analyser. Drives the mascot's amplitude lip-sync — the realtime SDK owns
+   * playback, so this is the only signal available to animate the mouth against.
+   */
+  getOutputVolume: () => number;
   error: string | null;
   /** Fetch a signed URL and open the WebSocket session. Idempotent while busy. */
   start: () => Promise<void>;
@@ -174,6 +180,7 @@ export function useRealtimeVoiceSession(opts?: { voiceId?: string }): RealtimeVo
     state,
     isSpeaking: conversation.isSpeaking,
     mode: conversation.mode,
+    getOutputVolume: conversation.getOutputVolume,
     error,
     start,
     stop,

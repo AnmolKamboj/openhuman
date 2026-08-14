@@ -31,6 +31,7 @@ function makeSession(overrides: Partial<RealtimeVoiceSession> = {}): RealtimeVoi
     state: 'idle',
     isSpeaking: false,
     mode: 'listening',
+    getOutputVolume: () => 0,
     error: null,
     start,
     stop,
