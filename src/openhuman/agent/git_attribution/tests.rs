@@ -32,9 +32,9 @@ fn hook_adds_openhuman_trailer_without_disabling_repository_hook() {
     std::fs::write(repo.join("a"), "a").unwrap();
     git(&["add", "a"]);
 
-    let hook_env = super::hook::test_hook_env(Some(
+    let hook_env = super::hook::test_hook_env(Some(std::ffi::OsStr::new(
         "'test.openhuman-inherited'='kept' 'core.hooksPath'='/definitely-not-the-openhuman-hook'",
-    ));
+    )));
     let output = Command::new("git")
         .args(["commit", "-q", "-m", "subject"])
         .current_dir(&repo)
@@ -63,4 +63,20 @@ fn hook_adds_openhuman_trailer_without_disabling_repository_hook() {
         .unwrap();
     assert!(inherited.status.success());
     assert_eq!(String::from_utf8(inherited.stdout).unwrap().trim(), "kept");
+}
+
+#[cfg(unix)]
+#[test]
+fn hook_env_does_not_drop_inherited_parameters_containing_non_utf8() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let inherited = std::ffi::OsStr::from_bytes(
+        b"'test.openhuman-inherited'='before-\xff-after' 'test.second'='kept'",
+    );
+    let hook_env = super::hook::test_hook_env(Some(inherited));
+    let parameters = hook_env.get("GIT_CONFIG_PARAMETERS").unwrap();
+
+    assert!(parameters.contains("'test.openhuman-inherited'='before-"));
+    assert!(parameters.contains("-after' 'test.second'='kept'"));
+    assert!(parameters.contains("'core.hooksPath'="));
 }

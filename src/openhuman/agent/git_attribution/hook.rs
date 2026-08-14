@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 #[cfg(unix)]
+use std::ffi::OsStr;
+#[cfg(unix)]
 use std::path::PathBuf;
 #[cfg(unix)]
 use std::sync::OnceLock;
@@ -62,15 +64,20 @@ pub fn hook_env() -> HashMap<String, String> {
     let Some(dir) = HOOK_DIR.get_or_init(|| build_hook_dir().ok()).as_ref() else {
         return HashMap::new();
     };
-    build_hook_env(dir, std::env::var("GIT_CONFIG_PARAMETERS").ok().as_deref())
+    build_hook_env(dir, std::env::var_os("GIT_CONFIG_PARAMETERS").as_deref())
 }
 
 #[cfg(unix)]
 fn build_hook_env(
     dir: &std::path::Path,
-    inherited_parameters: Option<&str>,
+    inherited_parameters: Option<&OsStr>,
 ) -> HashMap<String, String> {
-    let mut parameters = inherited_parameters.unwrap_or_default().trim().to_owned();
+    // Sandbox environment maps are UTF-8 strings. Convert an inherited Unix
+    // value lossily so one non-UTF-8 byte does not discard every parent `-c`
+    // setting, as `std::env::var` would.
+    let mut parameters = inherited_parameters
+        .map(|value| value.to_string_lossy().trim().to_owned())
+        .unwrap_or_default();
     if !parameters.is_empty() {
         parameters.push(' ');
     }
@@ -109,7 +116,7 @@ fn build_hook_dir() -> std::io::Result<PathBuf> {
 }
 
 #[cfg(all(unix, test))]
-pub(super) fn test_hook_env(inherited_parameters: Option<&str>) -> HashMap<String, String> {
+pub(super) fn test_hook_env(inherited_parameters: Option<&OsStr>) -> HashMap<String, String> {
     let dir = build_hook_dir().expect("create OpenHuman hook directory");
     build_hook_env(&dir, inherited_parameters)
 }
