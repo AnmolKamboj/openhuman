@@ -1791,10 +1791,16 @@ impl Agent {
         );
 
         let started = std::time::Instant::now();
+        eprintln!("DBG: about to run memory subagent");
         let result = harness::with_parent_context(parent_context.clone(), async move {
             harness::run_subagent(&definition, &prompt, options).await
         })
         .await;
+        eprintln!(
+            "DBG: memory subagent result ok={} err={:?}",
+            result.is_ok(),
+            result.as_ref().err().map(|e| e.to_string())
+        );
 
         match result {
             Ok(outcome) => {
