@@ -83,7 +83,7 @@ const VOICE_ACK_DEADLINE_SECS: u64 = 8;
 /// while the call is still up, read aloud.
 const VOICE_HANDOFF_LINES: [&str; 4] = [
     "Still on it. ",
-    "Almost there. ",
+    "Still going. ",
     "Still working on it. ",
     "Bear with me. ",
 ];
@@ -916,8 +916,8 @@ mod tests {
                 "trailing space keeps speech unglued: {line:?}"
             );
             assert!(
-                !line.contains('…'),
-                "an ellipsis is not a sentence end: {line:?}"
+                !line.contains("...") && !line.contains('…'),
+                "an ellipsis is not a sentence end, in either form: {line:?}"
             );
         }
     }
