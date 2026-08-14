@@ -1012,6 +1012,12 @@ async fn turn_triggers_configured_memory_agent_before_parent_prompt() {
     let provider: Arc<dyn ChatModel<()>> = provider_impl.clone();
     let workspace = tempfile::TempDir::new().expect("temp workspace");
     let workspace_path = workspace.path().to_path_buf();
+    // The triggered memory agent runs through `run_subagent`, whose
+    // deterministic fast path loads the host config and queries whatever memory
+    // tree it points at. Keep that inside this test's scratch workspace so the
+    // fast path finds nothing and the model-driven walk (the two-call sequence
+    // asserted below) is what actually runs.
+    let _workspace_env = WorkspaceEnvGuard::set(&workspace_path);
     let memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
