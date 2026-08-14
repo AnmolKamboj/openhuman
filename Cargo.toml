@@ -158,7 +158,7 @@ tinyplace = "2.0"
 #
 # Optional: exclusive to the default-ON `flows` feature (#4797). A slim build
 # without `flows` drops this crate and its `jaq-*` JSON-query stack entirely.
-tinyflows = { version = "0.6", features = ["mock"], optional = true }
+tinyflows = { version = "0.8", features = ["mock"], optional = true }
 # TinyAgents — Rust LLM orchestration framework (LangGraph/LangChain-style):
 # durable state graphs, agent-loop harness, model/tool registries, REPL +
 # `.rag` workflow language. openhuman's agent engine + orchestration run on this
