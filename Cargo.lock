@@ -1588,15 +1588,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dirs"
-version = "6.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3e8aa94d75141228480295a7d0e7feb620b1a5ad9f12bc40be62411e38cce4e"
-dependencies = [
- "dirs-sys 0.5.0",
-]
-
-[[package]]
 name = "dirs-sys"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4119,7 +4110,7 @@ dependencies = [
  "curve25519-dalek",
  "dhat",
  "directories",
- "dirs 5.0.1",
+ "dirs",
  "dotenvy",
  "ed25519-dalek",
  "enigo",
@@ -4182,7 +4173,6 @@ dependencies = [
  "tinycortex-api",
  "tinyflows",
  "tinyhumans-sdk",
- "tinyjuice",
  "tinymemory",
  "tinymemory-api",
  "tinymemory-core",
@@ -6496,7 +6486,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "dirs 5.0.1",
+ "dirs",
  "futures",
  "git2",
  "hex",
@@ -6571,25 +6561,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tinyjuice"
-version = "0.2.1"
-dependencies = [
- "async-trait",
- "dirs 6.0.0",
- "hex",
- "log",
- "once_cell",
- "regex",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "thiserror 2.0.18",
- "tokio",
- "unicode-segmentation",
- "unicode-width",
-]
-
-[[package]]
 name = "tinymemory"
 version = "1.0.1"
 dependencies = [
@@ -6625,7 +6596,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
- "dirs 5.0.1",
+ "dirs",
  "futures",
  "git2",
  "log",
