@@ -1207,38 +1207,6 @@ pub fn all_tools_with_runtime(
         tracing::debug!("[lsp] capability gate off (set OPENHUMAN_LSP_ENABLED=1 to register)");
     }
 
-    // Language-workflow `rhai_workflows` tool (`.ragsh` REPL, `openhuman::flows::rhai`): lets
-    // the orchestrator author and run its own Rhai workflow cells (fan-out,
-    // loops, dedup/verify pipelines). Registered on the `supervised`/`full`
-    // tiers only — dark on `readonly` (it can drive effectful tools/sub-agents)
-    // and behind the `OPENHUMAN_RHAI_WORKFLOWS=0` kill switch. Every effectful inner call
-    // still re-gates itself in the Rhai bridge, so this surface adds no new
-    // ungated capability. Gated with `flows` — the whole tool (and the `rhai`
-    // engine behind it, via `tinyagents/repl`) is absent from a slim build.
-    #[cfg(feature = "flows")]
-    let rhai_workflows_enabled = std::env::var("OPENHUMAN_RHAI_WORKFLOWS")
-        .or_else(|_| std::env::var("OPENHUMAN_RHAI"))
-        .or_else(|_| std::env::var("OPENHUMAN_RLM"))
-        .map(|v| v != "0")
-        .unwrap_or(true);
-    #[cfg(feature = "flows")]
-    if rhai_workflows_enabled
-        && security.autonomy != crate::openhuman::security::policy::AutonomyLevel::ReadOnly
-    {
-        tools.push(Box::new(crate::openhuman::flows::rhai::RhaiTool::new()));
-        tracing::debug!("[rhai_workflows] registered rhai_workflows language-workflow tool");
-    } else {
-        tracing::debug!(
-            rhai_workflows_enabled,
-            tier = ?security.autonomy,
-            "[rhai_workflows] rhai_workflows tool not registered (readonly tier or OPENHUMAN_RHAI_WORKFLOWS=0)"
-        );
-    }
-    #[cfg(not(feature = "flows"))]
-    tracing::debug!(
-        "[rhai_workflows] rhai_workflows tool not registered — flows feature disabled at compile time"
-    );
-
     // Two INDEPENDENT post-filters over the assembled list (kernel.md §3.7's
     // separate axes — a narrowed DomainSet must not narrow capabilities, and
     // vice versa):
