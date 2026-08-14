@@ -1801,9 +1801,11 @@ impl Agent {
         })
         .await;
         eprintln!(
-            "DBG: memory subagent result ok={} err={:?}",
+            "DBG: memory subagent result ok={} err={:?} iters={:?} output={:?}",
             result.is_ok(),
-            result.as_ref().err().map(|e| e.to_string())
+            result.as_ref().err().map(|e| e.to_string()),
+            result.as_ref().ok().map(|o| o.iterations),
+            result.as_ref().ok().map(|o| o.output.chars().take(200).collect::<String>())
         );
 
         match result {
