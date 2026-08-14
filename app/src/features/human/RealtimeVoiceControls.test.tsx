@@ -195,4 +195,39 @@ describe('RealtimeVoiceControls', () => {
     expect(audioRef.current?.getOutputVolume).toBeNull();
     expect(audioRef.current?.speaking).toBe(false);
   });
+
+  // The agent falling silent mid-session flips only `isSpeaking` — the session
+  // stays 'active'. The publication effect must re-run on that edge alone, or a
+  // stale `speaking: true` would sit in the ref and freeze the mascot's mouth
+  // open. Keeping `active` true here (unlike the goes-idle case above, where the
+  // active→idle change would re-run the effect regardless) pins `speaking` in
+  // the effect's dependency array specifically.
+  it('publishes the speaking edge while the session stays active', () => {
+    const store = configureStore({ reducer: { mascot: mascotReducer } });
+    const onSpeakingChange = vi.fn();
+    const getOutputVolume = () => 0.5;
+    const audioRef: RefObject<RealtimeVoiceAudio> = {
+      current: { getOutputVolume: null, speaking: false },
+    };
+    session = makeSession({ state: 'active', isSpeaking: true, getOutputVolume });
+    const { rerender } = render(
+      <Provider store={store}>
+        <RealtimeVoiceControls audioRef={audioRef} onSpeakingChange={onSpeakingChange} />
+      </Provider>
+    );
+    expect(onSpeakingChange).toHaveBeenLastCalledWith(true);
+    expect(audioRef.current?.speaking).toBe(true);
+
+    session = makeSession({ state: 'active', isSpeaking: false, getOutputVolume });
+    rerender(
+      <Provider store={store}>
+        <RealtimeVoiceControls audioRef={audioRef} onSpeakingChange={onSpeakingChange} />
+      </Provider>
+    );
+    expect(onSpeakingChange).toHaveBeenLastCalledWith(false);
+    expect(audioRef.current?.speaking).toBe(false);
+    // The session never closed, so the accessor stays published — only the
+    // speaking flag dropped.
+    expect(audioRef.current?.getOutputVolume).toBe(getOutputVolume);
+  });
 });
