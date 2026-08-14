@@ -1746,10 +1746,6 @@ impl Agent {
         const MEMORY_AGENT_ID: &str = "agent_memory";
         const MAX_MEMORY_AGENT_BLOCK_CHARS: usize = 8000;
 
-        eprintln!(
-            "DBG: inject_triggered_memory_agent_context entered policy={:?} agent_id={}",
-            self.trigger_memory_agent, self.agent_definition_id
-        );
         if self.trigger_memory_agent != TriggerMemoryAgent::Always {
             log::debug!(
                 "[agent_memory:trigger] skipped agent_id={} policy={:?}",
@@ -1795,18 +1791,10 @@ impl Agent {
         );
 
         let started = std::time::Instant::now();
-        eprintln!("DBG: about to run memory subagent");
         let result = harness::with_parent_context(parent_context.clone(), async move {
             harness::run_subagent(&definition, &prompt, options).await
         })
         .await;
-        eprintln!(
-            "DBG: memory subagent result ok={} err={:?} iters={:?} output={:?}",
-            result.is_ok(),
-            result.as_ref().err().map(|e| e.to_string()),
-            result.as_ref().ok().map(|o| o.iterations),
-            result.as_ref().ok().map(|o| o.output.chars().take(200).collect::<String>())
-        );
 
         match result {
             Ok(outcome) => {
