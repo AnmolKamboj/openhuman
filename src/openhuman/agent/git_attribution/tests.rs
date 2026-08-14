@@ -68,15 +68,31 @@ fn hook_adds_openhuman_trailer_without_disabling_repository_hook() {
 #[cfg(unix)]
 #[test]
 fn hook_env_does_not_drop_inherited_parameters_containing_non_utf8() {
-    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::ffi::{OsStrExt, OsStringExt};
 
-    let inherited = std::ffi::OsStr::from_bytes(
-        b"'test.openhuman-inherited'='before-\xff-after' 'test.second'='kept'",
-    );
+    let inherited_bytes = b"'test.openhuman-inherited'='before-\xff-after' 'test.second'='kept'";
+    let inherited = std::ffi::OsStr::from_bytes(inherited_bytes);
     let hook_env = super::hook::test_hook_env(Some(inherited));
-    let parameters = hook_env.get("GIT_CONFIG_PARAMETERS").unwrap();
+    let parameters = hook_env
+        .get(std::ffi::OsStr::new("GIT_CONFIG_PARAMETERS"))
+        .unwrap()
+        .clone()
+        .into_vec();
 
-    assert!(parameters.contains("'test.openhuman-inherited'='before-"));
-    assert!(parameters.contains("-after' 'test.second'='kept'"));
-    assert!(parameters.contains("'core.hooksPath'="));
+    assert!(parameters.starts_with(inherited_bytes));
+    assert_eq!(parameters[inherited_bytes.len()], b' ');
+    assert!(parameters[inherited_bytes.len() + 1..].starts_with(b"'core.hooksPath'='"));
+    assert!(parameters.contains(&0xff));
+
+    let output = std::process::Command::new("git")
+        .args(["config", "--get", "test.openhuman-inherited"])
+        .envs(&hook_env)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(output.stdout, b"before-\xff-after\n");
 }
