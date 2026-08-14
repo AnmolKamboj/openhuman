@@ -338,6 +338,54 @@ impl PostTurnHook for RecordingHook {
     }
 }
 
+/// Point `OPENHUMAN_WORKSPACE` at a scratch directory for the lifetime of a
+/// test, restoring the previous value on drop.
+///
+/// Needed by any test that lets the harness reach `Config::load_or_init()` —
+/// notably the triggered `agent_memory` path, whose deterministic fast path
+/// (`subagent_runner::ops::runner::try_deterministic_memory_retrieval`, #4677)
+/// loads the **host** config and queries the real memory tree behind it, not
+/// the `Memory` handed to the `Agent` under test. Without this the test reads
+/// the developer's own `~/.openhuman`: on a populated machine `fast_retrieve`
+/// returns hits, the fast path short-circuits with zero provider calls, and the
+/// mock provider's queued responses land on the wrong turns. CI has an empty
+/// home, so the failure only ever reproduces locally.
+///
+/// Same shape as the guards in `memory::ops::files` / `memory::query::
+/// test_workspace`; `TEST_ENV_LOCK` serializes it against them.
+struct WorkspaceEnvGuard {
+    _lock: std::sync::MutexGuard<'static, ()>,
+    previous: Option<std::ffi::OsString>,
+}
+
+impl WorkspaceEnvGuard {
+    fn set(path: &std::path::Path) -> Self {
+        let lock = crate::openhuman::config::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let previous = std::env::var_os("OPENHUMAN_WORKSPACE");
+        unsafe {
+            std::env::set_var("OPENHUMAN_WORKSPACE", path);
+        }
+        Self {
+            _lock: lock,
+            previous,
+        }
+    }
+}
+
+impl Drop for WorkspaceEnvGuard {
+    fn drop(&mut self) {
+        unsafe {
+            if let Some(previous) = self.previous.take() {
+                std::env::set_var("OPENHUMAN_WORKSPACE", previous);
+            } else {
+                std::env::remove_var("OPENHUMAN_WORKSPACE");
+            }
+        }
+    }
+}
+
 fn make_agent(visible_tool_names: Option<HashSet<String>>) -> Agent {
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
