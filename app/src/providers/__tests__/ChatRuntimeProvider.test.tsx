@@ -17,6 +17,7 @@ import {
 import { setStatusForUser } from '../../store/socketSlice';
 import { clearAllThreads, loadThreads, setSelectedThread } from '../../store/threadSlice';
 import ChatRuntimeProvider from '../ChatRuntimeProvider';
+import { clearAllProactiveThreadPins } from '../proactiveThreadPins';
 
 vi.mock('../../services/chatService', async () => {
   const actual = await vi.importActual<typeof chatService>('../../services/chatService');
@@ -76,6 +77,9 @@ function resetRuntimeState() {
   // run order.
   store.dispatch(resetSessionTokenUsage());
   store.dispatch(setStatusForUser({ userId: '__pending__', status: 'disconnected' }));
+  // Pins live at module scope, so clear them between tests or a pinned voice
+  // surface would leak into the next test.
+  clearAllProactiveThreadPins();
 }
 
 describe('ChatRuntimeProvider — dedupe, proactive resolution, mid-turn invariants', () => {

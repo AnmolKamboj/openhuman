@@ -78,6 +78,7 @@ import {
   setSelectedThread,
 } from '../store/threadSlice';
 import { DERIVED_TRANSCRIPT_ENABLED, IS_PROD } from '../utils/config';
+import { isProactiveConversationSurface, proactiveThreadPins } from './proactiveThreadPins';
 
 const logChatRuntime = debug('openhuman:chat-runtime');
 const USER_FACING_AGENT_ERROR_MESSAGE =
@@ -114,26 +115,6 @@ function threadHasMessages(state: ThreadSliceState, threadId: string): boolean {
   // unloaded conversation.
   if (!thread) return true;
   return thread.messageCount > 0;
-}
-
-/**
- * The realtime voice session's synthetic proactive thread id (mirrors
- * `VOICE_CHAT_THREAD_ID` in `voice/realtime_harness.rs`). Every deferred voice
- * turn delivers its answer as a `proactive_message` under this one id.
- */
-const PROACTIVE_VOICE_THREAD_ID = 'proactive:voice';
-
-/**
- * Whether a `proactive:` id names an ongoing *conversation surface* — many
- * sequential turns that all belong to a single chat — rather than a one-shot
- * interruption (morning brief, subconscious update, worker handoff). A
- * conversation surface pins the visible thread it first resolves to and reuses
- * it for the whole session; a one-shot keeps the fresh-or-create behaviour so it
- * never lands in the user's active chat (#3713). Today only realtime voice
- * qualifies.
- */
-function isProactiveConversationSurface(incomingThreadId: string): boolean {
-  return incomingThreadId === PROACTIVE_VOICE_THREAD_ID;
 }
 
 function rtLog(message: string, fields?: Record<string, string | number | null | undefined>) {
@@ -301,13 +282,6 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
   const segmentDeliveriesRef = useRef<Map<string, SegmentDelivery>>(new Map());
   const proactiveThreadCreationPromiseRef = useRef<Promise<string | null> | null>(null);
   const proactiveDispatchQueueRef = useRef<Promise<void>>(Promise.resolve());
-  // Pins a proactive *conversation surface* (see `isProactiveConversationSurface`)
-  // to the visible thread it first resolved to, so every subsequent turn of a
-  // realtime voice session lands in that same thread instead of spawning a fresh
-  // one per turn. Session-scoped (a ref, not persisted); an entry is dropped when
-  // its thread no longer exists so delivery re-resolves rather than targeting a
-  // deleted thread.
-  const proactiveThreadPinsRef = useRef<Map<string, string>>(new Map());
   const toolTimelineRef = useRef(toolTimelineByThread);
   const inferenceStatusRef = useRef(inferenceStatusByThread);
   const streamingAssistantRef = useRef(streamingAssistantByThread);
@@ -390,12 +364,12 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
       // re-resolve instead of delivering into a dead thread.
       const isConversationSurface = isProactiveConversationSurface(incomingThreadId);
       if (isConversationSurface) {
-        const pinned = proactiveThreadPinsRef.current.get(incomingThreadId);
+        const pinned = proactiveThreadPins.get(incomingThreadId);
         if (pinned) {
           if (state.threads.some(t => t.id === pinned)) {
             return pinned;
           }
-          proactiveThreadPinsRef.current.delete(incomingThreadId);
+          proactiveThreadPins.clear(incomingThreadId);
         }
       }
 
@@ -411,7 +385,7 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
       const candidateThreadId = state.selectedThreadId ?? state.threads[0]?.id ?? null;
       if (candidateThreadId && !threadHasMessages(state, candidateThreadId)) {
         if (isConversationSurface) {
-          proactiveThreadPinsRef.current.set(incomingThreadId, candidateThreadId);
+          proactiveThreadPins.set(incomingThreadId, candidateThreadId);
         }
         return candidateThreadId;
       }
@@ -425,7 +399,7 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
           const newThread = await dispatch(createNewThread()).unwrap();
           dispatch(setSelectedThread(newThread.id));
           if (isConversationSurface) {
-            proactiveThreadPinsRef.current.set(incomingThreadId, newThread.id);
+            proactiveThreadPins.set(incomingThreadId, newThread.id);
           }
           return newThread.id;
         } catch (error) {

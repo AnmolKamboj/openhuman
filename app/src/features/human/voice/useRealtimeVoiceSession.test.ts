@@ -1,6 +1,11 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  clearAllProactiveThreadPins,
+  PROACTIVE_VOICE_THREAD_ID,
+  proactiveThreadPins,
+} from '../../../providers/proactiveThreadPins';
 import { fetchVoiceAgentSignedUrl } from '../../../services/api/voiceAgentApi';
 import { useRealtimeVoiceSession } from './useRealtimeVoiceSession';
 
@@ -50,6 +55,7 @@ describe('useRealtimeVoiceSession', () => {
     vi.clearAllMocks();
     captured = null;
     Object.keys(socketHandlers).forEach(k => delete socketHandlers[k]);
+    clearAllProactiveThreadPins();
   });
 
   it('fetches a signed URL and opens a WebSocket session with the voice override', async () => {
@@ -120,6 +126,20 @@ describe('useRealtimeVoiceSession', () => {
     act(() => result.current.stop());
     expect(endSession).toHaveBeenCalledTimes(1);
     expect(result.current.state).toBe('idle');
+  });
+
+  it('clears the voice thread pin when a new session begins', async () => {
+    // A prior session pinned proactive:voice to some thread. Starting a new
+    // session must drop that pin so this session's deferred answers resolve to a
+    // fresh/current thread rather than appending to the previous (now off-screen)
+    // one. See resolveVisibleThreadForProactive in ChatRuntimeProvider.
+    proactiveThreadPins.set(PROACTIVE_VOICE_THREAD_ID, 'previous-session-thread');
+    mockFetch.mockResolvedValueOnce({ signedUrl: 'wss://x', agentId: 'a1', userToken: 'tok-1' });
+    const { result } = renderHook(() => useRealtimeVoiceSession());
+    await act(async () => {
+      await result.current.start();
+    });
+    expect(proactiveThreadPins.get(PROACTIVE_VOICE_THREAD_ID)).toBeUndefined();
   });
 
   it('surfaces an SDK onError', () => {
