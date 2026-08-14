@@ -369,7 +369,7 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
           if (state.threads.some(t => t.id === pinned)) {
             return pinned;
           }
-          proactiveThreadPins.clear(incomingThreadId);
+          proactiveThreadPins.delete(incomingThreadId);
         }
       }
 

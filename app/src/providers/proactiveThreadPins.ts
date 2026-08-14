@@ -43,8 +43,13 @@ export const proactiveThreadPins = {
   set: (surfaceId: string, threadId: string): void => {
     pins.set(surfaceId, threadId);
   },
-  /** Drop this surface's pin so the next delivery re-resolves a fresh target. */
-  clear: (surfaceId: string): void => {
+  /**
+   * Drop a single surface's pin so its next delivery re-resolves a fresh target.
+   * Named `delete` (mirroring `Map.prototype.delete`) — it removes only the
+   * given key, never the whole map. To wipe every pin (tests), use
+   * `clearAllProactiveThreadPins`.
+   */
+  delete: (surfaceId: string): void => {
     pins.delete(surfaceId);
   },
 };

@@ -99,7 +99,7 @@ export function useRealtimeVoiceSession(opts?: { voiceId?: string }): RealtimeVo
     // no longer have selected — the answer would land off-screen). The pin is
     // re-established on this session's first delivery. See
     // `resolveVisibleThreadForProactive` in ChatRuntimeProvider.
-    proactiveThreadPins.clear(PROACTIVE_VOICE_THREAD_ID);
+    proactiveThreadPins.delete(PROACTIVE_VOICE_THREAD_ID);
     log('start: requesting signed url');
     try {
       const { signedUrl, userToken } = await fetchVoiceAgentSignedUrl();
