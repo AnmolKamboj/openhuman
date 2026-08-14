@@ -164,7 +164,11 @@ async fn summary_ingest_records_summary_only_git_history_and_timestamped_read_ta
     .expect("ingest summary");
 
     let wiki_root = content_root.join("wiki");
-    let repo = git2::Repository::open(&wiki_root).expect("wiki git repo should be initialized");
+    // Through tinycortex's re-export, not a `git2` dependency of this crate:
+    // tinycortex writes this ledger and owns the only libgit2 link in the
+    // graph, so the assertion reads it back with the very same binding.
+    let repo = tinycortex::git2::Repository::open(&wiki_root)
+        .expect("wiki git repo should be initialized");
     let head = repo.head().expect("wiki head").peel_to_commit().unwrap();
     let tree_obj = head.tree().expect("wiki commit tree");
 
