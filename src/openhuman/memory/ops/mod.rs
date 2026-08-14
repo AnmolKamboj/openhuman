@@ -89,7 +89,7 @@ pub(crate) static GLOBAL_MEMORY_TEST_LOCK: tokio::sync::Mutex<()> =
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]
-pub(crate) use test_support::ensure_shared_memory_client;
+pub(crate) use test_support::{ensure_shared_memory_client, shared_memory_test_workspace};
 
 #[cfg(test)]
 #[path = "../ops_tests.rs"]
