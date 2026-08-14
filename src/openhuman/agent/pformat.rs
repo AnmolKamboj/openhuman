@@ -85,7 +85,8 @@ mod tests {
 
     #[test]
     fn build_registry_keys_on_the_tools_own_names() {
-        let tools: Vec<Box<dyn Tool>> = vec![Box::new(StubTool("echo")), Box::new(StubTool("shell"))];
+        let tools: Vec<Box<dyn Tool>> =
+            vec![Box::new(StubTool("echo")), Box::new(StubTool("shell"))];
         let reg = build_registry(&tools);
         assert!(reg.contains_key("echo"));
         assert!(reg.contains_key("shell"));
