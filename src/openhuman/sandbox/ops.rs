@@ -11,6 +11,7 @@ use crate::openhuman::agent::platform_shell;
 use crate::openhuman::config::RuntimeConfig;
 use crate::openhuman::sandbox::cwd_jail::{self, Jail, NoopBackend};
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::path::Path;
 use std::time::Duration;
 
@@ -120,7 +121,7 @@ pub async fn execute_in_sandbox(
     policy: &SandboxPolicy,
     command: &str,
     working_dir: &Path,
-    extra_env: HashMap<String, String>,
+    extra_env: HashMap<OsString, OsString>,
     timeout: Duration,
 ) -> anyhow::Result<SandboxExecResult> {
     // Validate the working directory up front so a missing/bad action_dir
@@ -159,7 +160,7 @@ pub async fn execute_in_sandbox(
 async fn execute_unsandboxed(
     command: &str,
     working_dir: &Path,
-    extra_env: &HashMap<String, String>,
+    extra_env: &HashMap<OsString, OsString>,
     timeout: Duration,
 ) -> anyhow::Result<SandboxExecResult> {
     // Shell selection routed through `platform_shell` so this path picks
@@ -205,7 +206,7 @@ async fn execute_local_jail(
     policy: &SandboxPolicy,
     command: &str,
     working_dir: &Path,
-    extra_env: &HashMap<String, String>,
+    extra_env: &HashMap<OsString, OsString>,
     timeout: Duration,
 ) -> anyhow::Result<SandboxExecResult> {
     let mut jail = Jail::new(&policy.workspace_root, "sandbox.agent");
@@ -508,6 +509,35 @@ mod tests {
         .unwrap();
         assert!(result.success());
         assert!(result.stdout.contains("sandbox-test"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn execute_in_sandbox_preserves_non_utf8_environment_bytes() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let tempdir = tempfile::tempdir().unwrap();
+        let policy = resolve_sandbox_policy(
+            SandboxMode::None,
+            tempdir.path(),
+            &RuntimeConfig::default(),
+            false,
+        );
+        let env = HashMap::from([(
+            OsString::from("OPENHUMAN_RAW_ENV_TEST"),
+            OsString::from_vec(b"before-\xff-after".to_vec()),
+        )]);
+        let result = execute_in_sandbox(
+            &policy,
+            r#"[ "$OPENHUMAN_RAW_ENV_TEST" = "$(printf 'before-\377-after')" ]"#,
+            tempdir.path(),
+            env,
+            Duration::from_secs(10),
+        )
+        .await
+        .unwrap();
+
+        assert!(result.success(), "stderr: {}", result.stderr);
     }
 
     /// #4705 regression — `execute_in_sandbox` with the `None` backend

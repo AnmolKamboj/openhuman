@@ -158,11 +158,7 @@ tinyplace = "2.0"
 #
 # Optional: exclusive to the default-ON `flows` feature (#4797). A slim build
 # without `flows` drops this crate and its `jaq-*` JSON-query stack entirely.
-tinyflows = { version = "0.6", features = ["mock"], optional = true }
-# TinyJuice — host-agnostic TokenJuice compression engine. OpenHuman keeps
-# config/RPC/tool/runtime adapters in `src/openhuman/tokenjuice/` and patches
-# this dependency to the vendored submodule below.
-tinyjuice = { version = "0.2.1", default-features = false }
+tinyflows = { version = "0.8", features = ["mock"], optional = true }
 # TinyAgents — Rust LLM orchestration framework (LangGraph/LangChain-style):
 # durable state graphs, agent-loop harness, model/tool registries, REPL +
 # `.rag` workflow language. openhuman's agent engine + orchestration run on this
@@ -1059,7 +1055,7 @@ motosan-ai-oauth = { path = "vendor/motosan-ai-oauth" }
 # version in lockstep with the `tinyagents` requirement above. After cloning:
 # `git submodule update --init vendor/tinyagents` (worktrees included).
 tinyagents = { path = "vendor/tinyagents" }
-# TinyFlows, TinyCortex, TinyJuice, TinyChannels, and TinyPlace are vendored beside
+# TinyFlows, TinyCortex, TinyChannels, and TinyPlace are vendored beside
 # TinyAgents so integration work can test crate changes against OpenHuman before
 # publishing.
 tinyflows = { path = "vendor/tinyflows" }
@@ -1068,7 +1064,6 @@ tinycortex = { path = "vendor/tinycortex" }
 # depends on it by path, above). Patch it onto the same checkout so both see one
 # copy of the contract types and the trait identities unify.
 tinycortex-api = { path = "vendor/tinycortex/api" }
-tinyjuice = { path = "vendor/tinyjuice" }
 tinychannels = { path = "vendor/tinychannels" }
 tinyplace = { path = "vendor/tinyplace/sdk/rust" }
 

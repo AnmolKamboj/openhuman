@@ -539,7 +539,7 @@ impl NodeExecTool {
         } else {
             format!("{}{}{}", bin_dir.display(), sep, host_path)
         };
-        extra_env.insert("PATH".to_string(), prepended);
+        extra_env.insert("PATH".into(), prepended.into());
 
         match sandbox::execute_in_sandbox(
             &policy,

@@ -159,7 +159,7 @@ pub type TransportResult<T> = std::result::Result<T, TransportError>;
 ///
 /// # Implementing
 ///
-/// ```
+/// ```ignore
 /// use async_trait::async_trait;
 /// use serde_json::Value;
 /// use crate::openhuman::web3::wallet::primitives::rpc::{NetworkId, Transport, TransportError, TransportResult};

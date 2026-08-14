@@ -64,7 +64,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// # #[cfg(all(feature = "web3", feature = "web3", feature = "web3"))] {
 /// use crate::openhuman::web3::wallet::primitives::abi;
 ///

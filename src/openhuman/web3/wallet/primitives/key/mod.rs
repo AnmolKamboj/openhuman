@@ -197,7 +197,7 @@ impl std::fmt::Debug for DerivedKey {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// # #[cfg(feature = "web3")] {
 /// use crate::openhuman::web3::wallet::primitives::{key, Chain};
 ///

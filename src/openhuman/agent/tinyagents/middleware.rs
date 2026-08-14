@@ -3654,10 +3654,20 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires a built TinyJuice module"]
     async fn tool_output_tabulates_a_large_graph_for_a_non_exempt_tool() {
         // Sanity baseline proving this test's payload actually exercises real
         // tinyjuice tabulation (and isn't just below-threshold): a tool name
         // NOT in COMPACTION_EXEMPT_TOOLS loses the `"type"` marker.
+        // Resolve the explicit release fixture before `after_tool` performs
+        // ambient config initialisation. A pristine CI workspace otherwise
+        // exercises the production fail-open path before the test override is
+        // admitted, hiding a usable module behind unchanged output.
+        crate::openhuman::inference::tokenjuice::install_from_config(
+            &crate::openhuman::config::Config::default(),
+        )
+        .await
+        .expect("released TinyJuice module must load and accept host configuration");
         let mw = compaction_enabled_mw();
         let payload = large_workflow_proposal_json();
         assert!(

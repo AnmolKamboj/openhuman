@@ -248,8 +248,80 @@ const TINYMEMORY: ModuleRecord = ModuleRecord {
     load: LoadPolicy::Eager,
 };
 
+/// The `tinyjuice` content-aware tool-output compression engine.
+///
+/// Lazy because the host's compaction policy can disable it, and a session that
+/// never produces compressible tool output should not pay the download or
+/// resident native-library cost.
+const TINYJUICE: ModuleRecord = ModuleRecord {
+    id: "tinyjuice",
+    description: "Content-aware tool-output compression and recoverable caching",
+    bus_name: "ai.tinyhumans.tinyjuice.Compression",
+    object_path: "/ai/tinyhumans/tinyjuice/Compression",
+    version: "0.2.2",
+    release_url: "https://github.com/tinyhumansai/tinyjuice/releases/tag/v0.2.2",
+    assets: &[
+        PlatformAsset {
+            host_key: "ubuntu-24.04-x86_64",
+            archive: "tinyjuice-module-0.2.2-ubuntu-24.04-x86_64.tar.gz",
+            sha256: "ed80892f82e9ba824bb1cc436adf2ad77bc4ba59205a3bdb1eecd96841797a16",
+        },
+        PlatformAsset {
+            host_key: "ubuntu-24.04-arm64",
+            archive: "tinyjuice-module-0.2.2-ubuntu-24.04-arm64.tar.gz",
+            sha256: "91b16e77671c0c06ca3c413bddc7218b6d65453eb7b43d87d58b693fd8273a55",
+        },
+        PlatformAsset {
+            host_key: "ubuntu-22.04-x86_64",
+            archive: "tinyjuice-module-0.2.2-ubuntu-22.04-x86_64.tar.gz",
+            sha256: "fd8caf7fccb53328870fd26922aa9768d253cd4b3bf758967847d6512df03863",
+        },
+        PlatformAsset {
+            host_key: "ubuntu-22.04-arm64",
+            archive: "tinyjuice-module-0.2.2-ubuntu-22.04-arm64.tar.gz",
+            sha256: "10e70614aca9da5d108c7335b73238e81de3e9daaad8291a690ef5d2bb48e852",
+        },
+        PlatformAsset {
+            host_key: "macos-26-arm64",
+            archive: "tinyjuice-module-0.2.2-macos-26-arm64.tar.gz",
+            sha256: "30dc34f2901e1581f72c1d718b80632268714193964031ad52151dd6f046b5b8",
+        },
+        PlatformAsset {
+            host_key: "macos-26-x86_64",
+            archive: "tinyjuice-module-0.2.2-macos-26-x86_64.tar.gz",
+            sha256: "122bac614bb2d27717b0ce5d0661b1ee10810b2e3c3417f153daa7a783f706a9",
+        },
+        PlatformAsset {
+            host_key: "macos-15-arm64",
+            archive: "tinyjuice-module-0.2.2-macos-15-arm64.tar.gz",
+            sha256: "cf833e0315ecab66a6fd99695065745f04b1ceb5169d2e7d3227b9ff60828a0c",
+        },
+        PlatformAsset {
+            host_key: "macos-15-x86_64",
+            archive: "tinyjuice-module-0.2.2-macos-15-x86_64.tar.gz",
+            sha256: "ce28e5c4e06dab98b376defd09d2c4f7fd85b235c0daae1a9bd5e941c8085833",
+        },
+        PlatformAsset {
+            host_key: "windows-2025-x86_64",
+            archive: "tinyjuice-module-0.2.2-windows-2025-x86_64.zip",
+            sha256: "b22df6573abf7376252ce3f62e339870719dfceee9d8bfc0752b7f1cdd92ded0",
+        },
+        PlatformAsset {
+            host_key: "windows-2022-x86_64",
+            archive: "tinyjuice-module-0.2.2-windows-2022-x86_64.zip",
+            sha256: "dc44e589fc50b2d5e33d493a2547e38db7e7e9a28012c616b3155db2ff15c5cf",
+        },
+        PlatformAsset {
+            host_key: "windows-11-arm64",
+            archive: "tinyjuice-module-0.2.2-windows-11-arm64.zip",
+            sha256: "0b9389abae5f3432a02f0c18bfea33187e7cc2634a12281f2bdb67bb5501e338",
+        },
+    ],
+    load: LoadPolicy::Lazy,
+};
+
 /// Every module this build can load.
-pub const ALL: &[ModuleRecord] = &[TINYDOCS, TINYWALLET, TINYMEMORY];
+pub const ALL: &[ModuleRecord] = &[TINYDOCS, TINYWALLET, TINYMEMORY, TINYJUICE];
 
 /// The record for `id`, if this build knows it.
 #[must_use]

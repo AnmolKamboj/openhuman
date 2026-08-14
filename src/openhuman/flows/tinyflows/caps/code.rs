@@ -126,7 +126,7 @@ impl CodeRunner for OpenHumanCode {
 
             let mut extra_env = std::collections::HashMap::new();
             if let Ok(host_path) = std::env::var("PATH") {
-                extra_env.insert("PATH".to_string(), host_path);
+                extra_env.insert("PATH".into(), host_path.into());
             }
 
             tracing::debug!(

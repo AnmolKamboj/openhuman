@@ -253,7 +253,7 @@ motosan-ai-oauth = { path = "../../vendor/motosan-ai-oauth" }
 # released tag) — same patch as the root Cargo world so both resolve the
 # in-tree SDK source. `git submodule update --init vendor/tinyagents` first.
 tinyagents = { path = "../../vendor/tinyagents" }
-# TinyFlows, TinyCortex, TinyJuice, TinyChannels, and TinyPlace are vendored beside
+# TinyFlows, TinyCortex, TinyChannels, and TinyPlace are vendored beside
 # TinyAgents so integration work can test crate changes against OpenHuman before
 # publishing.
 tinyflows = { path = "../../vendor/tinyflows" }
@@ -263,7 +263,6 @@ tinycortex = { path = "../../vendor/tinycortex" }
 # patch it onto the same checkout here too, or this independent Cargo world
 # tries to resolve it from crates.io and fails (it was never published).
 tinycortex-api = { path = "../../vendor/tinycortex/api" }
-tinyjuice = { path = "../../vendor/tinyjuice" }
 tinychannels = { path = "../../vendor/tinychannels" }
 tinyplace = { path = "../../vendor/tinyplace/sdk/rust" }
 
