@@ -1,0 +1,208 @@
+import { useT } from '../../../../lib/i18n/I18nContext';
+import type { AgentProfile } from '../../../../types/agentProfile';
+import type { CoreCronJob, CoreCronRun } from '../../../../utils/tauriCommands';
+import Button from '../../../ui/Button';
+
+interface CoreJobListProps {
+  loading: boolean;
+  coreJobs: CoreCronJob[];
+  coreRunsByJob: Record<string, CoreCronRun[]>;
+  coreBusyKey: string | null;
+  onToggleCoreJob: (job: CoreCronJob) => void;
+  onRunCoreJob: (jobId: string) => void;
+  onLoadCoreRuns: (jobId: string) => void;
+  onRemoveCoreJob: (jobId: string) => void;
+  /** Optional: when provided, an Edit button is rendered per row. */
+  onEditCoreJob?: (job: CoreCronJob) => void;
+  /** Agent profiles, used to resolve a job's attributed profile name. */
+  profiles?: AgentProfile[];
+}
+
+const CoreJobList = ({
+  loading,
+  coreJobs,
+  coreRunsByJob,
+  coreBusyKey,
+  onToggleCoreJob,
+  onRunCoreJob,
+  onLoadCoreRuns,
+  onRemoveCoreJob,
+  onEditCoreJob,
+  profiles = [],
+}: CoreJobListProps) => {
+  const { t } = useT();
+
+  // Resolve a job's attributed profile to a display name, falling back to the
+  // raw id when the profile has since been deleted.
+  const profileLabel = (profileId: string): string =>
+    profiles.find(p => p.id === profileId)?.name || profileId;
+
+  const toggleButtonLabel = (job: CoreCronJob) => {
+    if (coreBusyKey === `core-toggle:${job.id}`) {
+      return t('settings.cron.jobs.saving');
+    }
+    return job.enabled ? t('settings.cron.jobs.pause') : t('settings.cron.jobs.resume');
+  };
+
+  const runButtonLabel = (jobId: string) =>
+    coreBusyKey === `core-run:${jobId}`
+      ? t('settings.cron.jobs.runningNow')
+      : t('subconscious.runNow');
+
+  const viewRunsButtonLabel = (jobId: string) =>
+    coreBusyKey === `core-runs:${jobId}`
+      ? t('settings.cron.jobs.loadingRuns')
+      : t('settings.cron.jobs.viewRuns');
+
+  const removeButtonLabel = (jobId: string) =>
+    coreBusyKey === `core-remove:${jobId}` ? t('settings.cron.jobs.removing') : t('common.remove');
+
+  return (
+    <section className="rounded-xl border border-line bg-surface">
+      <div className="p-4 border-b border-line">
+        <h3 className="text-sm font-semibold text-content">{t('settings.cron.jobs.title')}</h3>
+        <p className="text-xs text-content-muted mt-1">{t('settings.cron.jobs.desc')}</p>
+      </div>
+
+      {loading && (
+        <div className="p-4 text-sm text-content-faint">{t('settings.cron.jobs.loading')}</div>
+      )}
+
+      {!loading && coreJobs.length === 0 && (
+        <div className="p-4 text-sm text-content-faint">{t('settings.cron.jobs.empty')}</div>
+      )}
+
+      {!loading &&
+        coreJobs.map((job, index) => {
+          const runs = coreRunsByJob[job.id] ?? [];
+          return (
+            <div
+              key={job.id}
+              data-testid={`cron-job-row-${job.id}`}
+              className={`p-4 ${index === 0 ? '' : 'border-t border-line'} space-y-3`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-content">{job.name || job.id}</div>
+                  <div className="text-[11px] text-content-faint">{job.id}</div>
+                </div>
+                <span
+                  className={`px-2 py-1 text-[11px] font-semibold uppercase border rounded-full ${
+                    job.enabled
+                      ? 'bg-sage-50 dark:bg-sage-500/10 text-sage-700 dark:text-sage-300 border-sage-200 dark:border-sage-500/30'
+                      : 'bg-surface-subtle text-content-secondary border-line'
+                  }`}>
+                  {job.enabled ? t('common.enabled') : t('settings.cron.jobs.paused')}
+                </span>
+              </div>
+
+              <div className="text-xs text-content-secondary space-y-1">
+                <div>
+                  {t('settings.cron.jobs.schedule')}{' '}
+                  <span className="font-medium text-content-secondary">
+                    {job.schedule.kind === 'cron'
+                      ? job.schedule.expr
+                      : job.schedule.kind === 'every'
+                        ? `every ${job.schedule.every_ms}ms`
+                        : `at ${job.schedule.at}`}
+                  </span>
+                </div>
+                <div>
+                  {t('settings.cron.jobs.nextRun')}{' '}
+                  <span className="font-medium text-content-secondary">
+                    {new Date(job.next_run).toLocaleString()}
+                  </span>
+                </div>
+                {job.profile_id && (
+                  <div data-testid={`cron-job-profile-${job.id}`}>
+                    {t('settings.cron.jobs.profile')}{' '}
+                    <span className="font-medium text-content-secondary">
+                      {profileLabel(job.profile_id)}
+                    </span>
+                  </div>
+                )}
+                {job.last_status && (
+                  <div>
+                    {t('settings.cron.jobs.lastStatus')}{' '}
+                    <span className="font-medium text-content-secondary">{job.last_status}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  data-testid={`cron-job-toggle-${job.id}`}
+                  className="whitespace-nowrap"
+                  disabled={coreBusyKey === `core-toggle:${job.id}`}
+                  onClick={() => onToggleCoreJob(job)}>
+                  {toggleButtonLabel(job)}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  data-testid={`cron-job-run-${job.id}`}
+                  className="whitespace-nowrap"
+                  disabled={coreBusyKey === `core-run:${job.id}`}
+                  onClick={() => onRunCoreJob(job.id)}>
+                  {runButtonLabel(job.id)}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  data-testid={`cron-job-view-runs-${job.id}`}
+                  className="whitespace-nowrap"
+                  disabled={coreBusyKey === `core-runs:${job.id}`}
+                  onClick={() => onLoadCoreRuns(job.id)}>
+                  {viewRunsButtonLabel(job.id)}
+                </Button>
+                {onEditCoreJob && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    data-testid={`cron-job-edit-${job.id}`}
+                    className="whitespace-nowrap"
+                    onClick={() => onEditCoreJob(job)}>
+                    {t('settings.cron.jobs.edit')}
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="primary"
+                  tone="danger"
+                  size="sm"
+                  data-testid={`cron-job-remove-${job.id}`}
+                  className="whitespace-nowrap"
+                  disabled={coreBusyKey === `core-remove:${job.id}`}
+                  onClick={() => onRemoveCoreJob(job.id)}>
+                  {removeButtonLabel(job.id)}
+                </Button>
+              </div>
+
+              {runs.length > 0 && (
+                <div
+                  data-testid={`cron-job-runs-${job.id}`}
+                  className="rounded-lg border border-line bg-surface-muted p-3 space-y-1">
+                  <div className="text-[11px] uppercase tracking-wide text-content-faint">
+                    {t('settings.cron.jobs.recentRuns')}
+                  </div>
+                  {runs.map(run => (
+                    <div key={run.id} className="text-xs text-content-secondary">
+                      <span className="font-medium text-content-secondary">{run.status}</span> at{' '}
+                      {new Date(run.finished_at).toLocaleString()}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+    </section>
+  );
+};
+
+export default CoreJobList;
