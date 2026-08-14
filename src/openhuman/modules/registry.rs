@@ -103,27 +103,29 @@ const TINYDOCS: ModuleRecord = ModuleRecord {
 /// touch a wallet, and this artifact carries `bitcoin` and a native `secp256k1`
 /// build that would otherwise be resident for all of them.
 ///
-/// **This host sends it the recovery phrase, over confidential calls.** Bitcoin,
-/// EVM and Tron derive and sign entirely inside the module; no private key for
-/// those chains is reassembled in this process. Solana still uses the older
-/// split flow, where the module returns digests and this process signs them,
-/// because Solana hand-builds SPL messages the wire contract does not model.
-/// See [`super::wallet`] for both paths.
+/// **This host sends it the recovery phrase, over confidential calls, and never
+/// derives or signs itself.** All four chains — Bitcoin, EVM, Solana and Tron —
+/// derive and sign inside the module. This binary links neither `tinywallet`'s
+/// `key` feature nor `k256`; see the note on the `tinywallet` dependency.
 ///
 /// The phrase is only sent to a module tinybus has attested *and* whose digest
 /// matches one of the entries below — `super::wallet::attested_proxy` checks
 /// this table itself rather than trusting that some check happened.
 ///
-/// Two releases got us here, and the order mattered. v0.2.3 changed no method
-/// at all — it was the same module rebuilt against a bus that can attest it.
+/// One call brings key material back: `ExportKey`, used solely for tiny.place's
+/// `LocalSigner::from_seed`, which takes a seed and cannot be handed a message
+/// to sign instead. Replacing that seam is what it would take to remove it.
+///
+/// Three releases got here, and the order mattered. v0.2.3 changed no method at
+/// all — it was the same module rebuilt against a bus that could attest it.
 /// Attestation used to be recorded only from a `modules.toml` beside the
-/// artifact, and a release download extracts into a temporary directory that
-/// has none, so this module could never be an attested recipient however
-/// carefully the digest below was pinned. tinybus#15 carries that verified pin
-/// into an `Attestation` instead of discarding it. Only then was it safe for
-/// v0.3.0 to add methods that take a secret: without it they would have been
-/// unreachable in production and reachable in a developer's tree, which is the
-/// worst of both.
+/// artifact, and a release download extracts into a temporary directory that has
+/// none, so this module could never be an attested recipient however carefully
+/// the digest below was pinned (tinybus#15 fixed that). Only then was it safe
+/// for v0.3.0 to add methods that take a secret, and for v0.4.0 to add
+/// `SignMessage` for the Solana and x402 encodings the wire contract does not
+/// model. Adding them earlier would have made them unreachable in production and
+/// reachable in a developer's tree, which is the worst of both.
 const TINYWALLET: ModuleRecord = ModuleRecord {
     id: "tinywallet",
     description: "Transaction building and assembly for Bitcoin, EVM, Solana and Tron",
