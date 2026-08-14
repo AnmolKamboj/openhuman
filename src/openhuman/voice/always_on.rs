@@ -188,9 +188,17 @@ pub async fn start_if_enabled(app_config: &Config) {
                 // first: that check would be a second bus call to save a cheap
                 // idempotent one, and the privacy path should be the shortest
                 // path, not the cleverest.
-                if let Some(session) = session.as_ref() {
-                    if let Err(error) = session.reset(&config).await {
-                        log::warn!("{LOG_PREFIX} could not reset the VAD session: {error}");
+                if let Some(open) = session.as_ref() {
+                    if let Err(error) = open.reset(&config).await {
+                        // Same reasoning as a failed push: a reset that did not
+                        // land leaves a segmenter we cannot vouch for, and this
+                        // is the privacy path, so discard it rather than trust
+                        // it to have dropped the partial utterance.
+                        log::warn!(
+                            "{LOG_PREFIX} could not reset the VAD session ({error}); reopening"
+                        );
+                        session = None;
+                        last_open_attempt = Some(std::time::Instant::now());
                     }
                 }
                 pending.clear();
@@ -221,9 +229,6 @@ pub async fn start_if_enabled(app_config: &Config) {
                     }
                 }
             }
-            let Some(session) = session.as_ref() else {
-                continue;
-            };
 
             // Downmix + resample in the module. This is the work that used to
             // happen inside the cpal callback.
@@ -280,10 +285,25 @@ pub async fn start_if_enabled(app_config: &Config) {
 
             // One push per chunk rather than per frame: same events, same
             // order, one round trip instead of N.
-            let events = match session.push(&config, FRAME_MS, &energies).await {
+            let push = match session.as_ref() {
+                Some(open) => open.push(&config, FRAME_MS, &energies).await,
+                None => continue,
+            };
+            let events = match push {
                 Ok(events) => events,
                 Err(error) => {
-                    log::warn!("{LOG_PREFIX} VAD push failed: {error}");
+                    // Drop the handle, do not just skip the chunk. A push fails
+                    // when the module went away or the session is no longer
+                    // open, and neither heals by itself — keeping the handle
+                    // would reuse a dead session forever, because the lazy-open
+                    // retry above only runs while `session` is `None`.
+                    log::warn!("{LOG_PREFIX} VAD push failed ({error}); reopening the session");
+                    session = None;
+                    last_open_attempt = Some(std::time::Instant::now());
+                    // The partial utterance belonged to the dead segmenter, so
+                    // its boundaries mean nothing to the next one.
+                    pending.clear();
+                    utterance.clear();
                     continue;
                 }
             };
@@ -341,8 +361,8 @@ pub async fn start_if_enabled(app_config: &Config) {
             }
         }
 
-        if let Some(session) = session.as_ref() {
-            if let Err(error) = session.close(&config).await {
+        if let Some(open) = session.as_ref() {
+            if let Err(error) = open.close(&config).await {
                 log::warn!("{LOG_PREFIX} could not close the VAD session: {error}");
             }
         }
