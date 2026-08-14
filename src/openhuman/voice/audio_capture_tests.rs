@@ -73,3 +73,30 @@ fn find_best_config_errors_when_empty() {
         .expect_err("empty config list should fail");
     assert!(err.contains("no supported audio input configurations"));
 }
+
+#[test]
+fn append_capped_bounds_the_raw_buffer() {
+    // The silence gate used to run inside the capture callback and drop
+    // sustained silence, so an idle microphone cost almost nothing. It gates at
+    // finalize now, which is too late to bound what the callback collected — so
+    // the cap is what stops a recording that is started and never stopped from
+    // growing without limit.
+    let buffer = parking_lot::Mutex::new(Vec::new());
+
+    // Fill to just under the cap.
+    let chunk = vec![0.5f32; 4096];
+    while buffer.lock().len() + chunk.len() <= MAX_RAW_SAMPLES {
+        append_capped(&buffer, &chunk);
+    }
+    let before = buffer.lock().len();
+    assert!(before > 0);
+
+    // The chunk that crosses the line is truncated, not dropped whole: a
+    // recording that hits the cap keeps its first five minutes.
+    append_capped(&buffer, &vec![0.5f32; MAX_RAW_SAMPLES]);
+    assert_eq!(buffer.lock().len(), MAX_RAW_SAMPLES);
+
+    // Past the cap, further chunks are ignored rather than reallocating.
+    append_capped(&buffer, &chunk);
+    assert_eq!(buffer.lock().len(), MAX_RAW_SAMPLES);
+}

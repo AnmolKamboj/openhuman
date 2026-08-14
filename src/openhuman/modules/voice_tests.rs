@@ -241,10 +241,20 @@ async fn the_published_module_answers_through_this_client() {
         .expect("prepare_frames");
     assert_eq!(mono.len(), 100, "samples, not a container");
 
+    // 100 samples with a 320-sample frame is ONE short frame, not zero: the
+    // module slices with `chunks`, not `chunks_exact`, so the trailing partial
+    // frame is measured rather than dropped. Dropping it would lose the end of
+    // an utterance.
     let energies = super::frame_energies(&config, &mono, 320)
         .await
         .expect("frame_energies");
-    assert!(!energies.is_empty());
+    assert_eq!(energies.len(), 1, "a short trailing frame still counts");
+
+    // And a frame size that divides evenly gives the expected count.
+    let energies = super::frame_energies(&config, &mono, 25)
+        .await
+        .expect("frame_energies");
+    assert_eq!(energies.len(), 4);
 
     // PCM16 framing must return the caller's samples untouched.
     let pcm: Vec<i16> = vec![0, 1, -1, i16::MAX];
