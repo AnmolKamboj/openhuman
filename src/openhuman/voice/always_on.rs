@@ -201,8 +201,7 @@ pub async fn start_if_enabled(app_config: &Config) {
             // Open the segmenter on first use, retrying on a cooldown so a
             // module that becomes available later heals this without a restart.
             if session.is_none() {
-                let due =
-                    last_open_attempt.map_or(true, |at| at.elapsed() >= SESSION_RETRY_INTERVAL);
+                let due = last_open_attempt.is_none_or(|at| at.elapsed() >= SESSION_RETRY_INTERVAL);
                 if !due {
                     continue;
                 }
