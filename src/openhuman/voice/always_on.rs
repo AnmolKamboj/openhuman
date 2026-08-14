@@ -188,10 +188,10 @@ pub async fn start_if_enabled(app_config: &Config) {
                 // first: that check would be a second bus call to save a cheap
                 // idempotent one, and the privacy path should be the shortest
                 // path, not the cleverest.
-                if let Some(session) = session.as_ref()
-                    && let Err(error) = session.reset(&config).await
-                {
-                    log::warn!("{LOG_PREFIX} could not reset the VAD session: {error}");
+                if let Some(session) = session.as_ref() {
+                    if let Err(error) = session.reset(&config).await {
+                        log::warn!("{LOG_PREFIX} could not reset the VAD session: {error}");
+                    }
                 }
                 pending.clear();
                 utterance.clear();
@@ -202,7 +202,7 @@ pub async fn start_if_enabled(app_config: &Config) {
             // module that becomes available later heals this without a restart.
             if session.is_none() {
                 let due = last_open_attempt
-                    .is_none_or(|at| at.elapsed() >= SESSION_RETRY_INTERVAL);
+                    .map_or(true, |at| at.elapsed() >= SESSION_RETRY_INTERVAL);
                 if !due {
                     continue;
                 }
@@ -342,10 +342,10 @@ pub async fn start_if_enabled(app_config: &Config) {
             }
         }
 
-        if let Some(session) = session.as_ref()
-            && let Err(error) = session.close(&config).await
-        {
-            log::warn!("{LOG_PREFIX} could not close the VAD session: {error}");
+        if let Some(session) = session.as_ref() {
+            if let Err(error) = session.close(&config).await {
+                log::warn!("{LOG_PREFIX} could not close the VAD session: {error}");
+            }
         }
         log::info!("{LOG_PREFIX} capture channel closed; processor exiting");
         RUNNING.store(false, Ordering::SeqCst);
