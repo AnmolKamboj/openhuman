@@ -186,13 +186,15 @@ tinyagents = { version = "2.1", features = ["sqlite"] }
 # crate through the adapter seam in `src/openhuman/tinycortex/` (mirroring the
 # tinyagents seam): engine logic (including provider sync pipelines) in the
 # crate; RPC, agent tools, sync scheduling/credentials/events, security gating,
-# and the global singleton stay host-side. rusqlite/git2 are
-# aligned to the host pins (=0.40 / 0.21) so one bundled SQLite + one libgit2
-# link. The submodule intentionally tracks reviewed upstream main commits;
-# keep this semver requirement compatible with the vendored crate version.
+# and the global singleton stay host-side. rusqlite is aligned to the host pin
+# (=0.40) so one bundled SQLite links. The submodule intentionally tracks
+# reviewed upstream main commits; keep this semver requirement compatible with
+# the vendored crate version.
 # `git-diff` and `wiki-git` are NOT here: they are pulled in by the
 # `memory-git` gate below, which is where the git2/libgit2-sys/libz-sys cohort
-# enters the graph. Everything else tinycortex needs is unconditional.
+# enters the graph. This crate holds no `git2` pin of its own to align — the
+# gate turns tinycortex's on, and tinycortex is the sole libgit2 link in the
+# graph. Everything else tinycortex needs is unconditional.
 tinycortex = { version = "0.1", features = [
     "obsidian",
     "persona",
