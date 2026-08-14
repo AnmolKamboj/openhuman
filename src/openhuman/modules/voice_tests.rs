@@ -338,8 +338,12 @@ async fn every_entry_point_degrades_rather_than_hanging_when_the_module_is_gone(
     config.modules.enabled = false;
 
     assert!(matches!(
-        super::is_hallucinated(&config, "thank you for watching", HallucinationMode::Conversation)
-            .await,
+        super::is_hallucinated(
+            &config,
+            "thank you for watching",
+            HallucinationMode::Conversation
+        )
+        .await,
         Err(VoiceCallError::Unavailable(_))
     ));
     assert!(matches!(
@@ -351,9 +355,12 @@ async fn every_entry_point_degrades_rather_than_hanging_when_the_module_is_gone(
     // retries `open` on a cooldown instead of tearing the loop down: a variant
     // other than `Unavailable` here would change that path's behaviour.
     assert!(matches!(
-        super::VadSession::open(&config, super::VadConfig::from_server_config(
-            &crate::openhuman::config::VoiceServerConfig::default()
-        ))
+        super::VadSession::open(
+            &config,
+            super::VadConfig::from_server_config(
+                &crate::openhuman::config::VoiceServerConfig::default()
+            )
+        )
         .await,
         Err(VoiceCallError::Unavailable(_))
     ));
