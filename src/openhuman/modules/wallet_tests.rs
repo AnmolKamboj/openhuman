@@ -183,3 +183,65 @@ mod attestation_guard {
         assert!(digest_is_pinned(record, &upper));
     }
 }
+
+/// The confidential request shapes, pinned against the module's own types.
+///
+/// `call_confidential` is generic over its argument tuple, so nothing checks
+/// that the value sent for a method is the type that method takes. That gap is
+/// not theoretical: `ExportKey` was first called with a bare `SecretMaterial`
+/// where the module expects an `ExportRequest` wrapping one. It compiled, and
+/// it would have failed at deserialization on the far side of the bus — the
+/// only signal being a runtime error on the one path that exports a key.
+///
+/// These assert the two shapes are genuinely distinct, so the wrapper cannot be
+/// dropped again without a test failing.
+mod request_shapes {
+    use tinywallet::wire::{ExportRequest, SecretMaterial, SignMessageRequest, SignRequest};
+
+    fn secret() -> SecretMaterial {
+        super::evm_signing_secret()
+    }
+
+    #[test]
+    fn an_export_request_is_not_interchangeable_with_a_bare_secret() {
+        let bare = serde_json::to_value(secret()).unwrap();
+        assert!(
+            serde_json::from_value::<ExportRequest>(bare).is_err(),
+            "a bare SecretMaterial must not deserialize as an ExportRequest, or the \
+             wrapper could be dropped at a call site without anything noticing"
+        );
+
+        let wrapped = serde_json::to_value(ExportRequest { secret: secret() }).unwrap();
+        assert!(serde_json::from_value::<ExportRequest>(wrapped).is_ok());
+    }
+
+    #[test]
+    fn the_wrapped_request_types_do_not_accept_each_other() {
+        // `SignRequest` and `SignMessageRequest` both wrap a secret and both
+        // take a second field, so a call site that swapped them would still
+        // look plausible. `deny_unknown_fields` is what stops that.
+        let sign_message = serde_json::to_value(SignMessageRequest {
+            secret: secret(),
+            message_hex: "00".repeat(32),
+            scheme: tinywallet::wire::Scheme::Secp256k1Prehash,
+        })
+        .unwrap();
+        assert!(serde_json::from_value::<SignRequest>(sign_message).is_err());
+        assert!(serde_json::from_value::<ExportRequest>(
+            serde_json::to_value(SignRequest {
+                secret: secret(),
+                transaction: tinywallet::wire::TransactionSpec::Evm {
+                    to: format!("0x{}", "11".repeat(20)),
+                    value_wei: "1".to_string(),
+                    data_hex: "0x".to_string(),
+                    nonce: 0,
+                    gas_limit: 21_000,
+                    gas_price_wei: "1".to_string(),
+                    chain_id: 1,
+                },
+            })
+            .unwrap()
+        )
+        .is_err());
+    }
+}
