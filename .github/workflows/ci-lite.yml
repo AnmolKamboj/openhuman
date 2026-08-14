@@ -683,7 +683,11 @@ jobs:
 
       - name: Install checksum-pinned native test modules
         run: |
-          module_root="target/test-modules"
+          # tinybus validates every directory ancestor. GitHub mounts the
+          # checkout as the host runner uid while this container runs as root,
+          # so a module below $GITHUB_WORKSPACE is correctly refused. Keep
+          # native fixtures in a root-owned, container-ephemeral tree instead.
+          module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           memory_dir="$module_root/tinymemory"
           juice_dir="$module_root/tinyjuice"
           memory_archive="$memory_dir/tinymemory-module-1.0.1-ubuntu-22.04-x86_64.tar.gz"
@@ -700,9 +704,7 @@ jobs:
             | sha256sum --check
           echo "fd8caf7fccb53328870fd26922aa9768d253cd4b3bf758967847d6512df03863  $juice_archive" \
             | sha256sum --check
-          # The container runs as root, so GNU tar would otherwise preserve the
-          # release builder's uid and the host's ownership check would correctly
-          # refuse the cross-user fixture.
+          # Do not restore the release builder's uid into the trusted tree.
           tar --no-same-owner -xzf "$memory_archive" -C "$memory_dir"
           tar --no-same-owner -xzf "$juice_archive" -C "$juice_dir"
           echo "TINYMEMORY_TEST_MODULE=$GITHUB_WORKSPACE/$memory_dir/libtinymemory_module.so" \
