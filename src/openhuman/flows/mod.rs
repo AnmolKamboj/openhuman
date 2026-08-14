@@ -13,7 +13,7 @@
 //!
 //! # Gate shape — leaf, not facade
 //!
-//! The whole family (this module plus [`tinyflows`] and [`rhai`]) is gated at
+//! The whole family (this module plus [`tinyflows`]) is gated at
 //! `pub mod flows;` in `src/openhuman/mod.rs` on `#[cfg(feature = "flows")]`,
 //! and the submodules below inherit that gate. There is **no `stub.rs`**:
 //! every symbol reached from outside is a *registration site* (`core::all`,
@@ -39,8 +39,6 @@ pub mod memory_tools;
 mod n8n_import;
 pub mod node_contracts;
 pub mod ops;
-/// The `.ragsh` language-workflow tool (formerly `openhuman::rhai_workflows`).
-pub mod rhai;
 mod run_registry;
 mod schemas;
 mod store;

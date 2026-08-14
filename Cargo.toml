@@ -820,12 +820,12 @@ media = []
 # Default-ON — the desktop app always ships with Workflows. Slim / headless
 # builds opt out via `--no-default-features --features "<list without flows>"`,
 # which drops `tinyflows` + its `jaq-core`/`jaq-std`/`jaq-json` JSON-query stack
-# and, via `tinyagents/repl`, the `rhai` scripting engine. Composes with the
+# (the `rhai` scripting engine no longer rides along: tinyagents dropped its
+# `repl`/`rlm` features, and nothing here referenced them). Composes with the
 # runtime `DomainSet::flows` flag (#4796): the feature narrows the compile-time
 # surface, `DomainSet` gates it at runtime.
 # NOTE: this gate does NOT drop `tinyagents` itself — 26+ domains consume it.
-# Only its `repl` feature (⇒ `rhai`) is exclusive to flows.
-flows = ["dep:tinyflows", "tinyagents/repl"]
+flows = ["dep:tinyflows"]
 # Meet domains: `meet` (join-URL validation), `meet_agent` (live STT/LLM/TTS
 # loop over an open call), and `agent_meetings` (backend-delegated Meet bot via
 # Socket.IO). Default-ON — the desktop app always ships with Meet. Slim /
