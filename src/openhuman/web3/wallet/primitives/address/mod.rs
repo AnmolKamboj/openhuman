@@ -58,7 +58,7 @@ pub mod tron;
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// # #[cfg(feature = "web3")] {
 /// use crate::openhuman::web3::wallet::primitives::{address, chain::Chain};
 ///

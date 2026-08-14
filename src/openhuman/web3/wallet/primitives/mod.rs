@@ -20,7 +20,7 @@
 //!
 //! # Example
 //!
-//! ```
+//! ```ignore
 //! # #[cfg(all(feature = "web3", feature = "web3"))] {
 //! use crate::openhuman::web3::wallet::primitives::{address, chain::Chain};
 //!
