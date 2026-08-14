@@ -254,16 +254,26 @@ pub async fn start_if_enabled(app_config: &Config) {
             if whole == 0 {
                 continue;
             }
+            // Measure BEFORE draining. Draining first and then failing would
+            // discard the frames outright — a module hiccup would eat the
+            // user's audio rather than delay it.
+            let energies = match tinyvoice::frame_energies(
+                &config,
+                &pending[..whole],
+                FRAME_SAMPLES as u32,
+            )
+            .await
+            {
+                Ok(energies) => energies,
+                Err(error) => {
+                    log::warn!(
+                        "{LOG_PREFIX} could not measure frame energies ({error}); \
+                         retrying these frames on the next chunk"
+                    );
+                    continue;
+                }
+            };
             let frames: Vec<f32> = pending.drain(..whole).collect();
-
-            let energies =
-                match tinyvoice::frame_energies(&config, &frames, FRAME_SAMPLES as u32).await {
-                    Ok(energies) => energies,
-                    Err(error) => {
-                        log::warn!("{LOG_PREFIX} could not measure frame energies: {error}");
-                        continue;
-                    }
-                };
 
             for rms in &energies {
                 level_peak = level_peak.max(*rms);
