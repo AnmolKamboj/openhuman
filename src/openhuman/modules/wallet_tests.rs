@@ -33,11 +33,16 @@ fn failure(name: &str) -> tinybus::Error {
     }
 }
 
-fn evm_secret() -> Vec<u8> {
-    tinywallet::key::derive(Chain::Evm, VECTOR, "m/44'/60'/0'/0/0")
-        .expect("the vector mnemonic derives")
-        .secret_bytes()
-        .to_vec()
+/// The phrase and path a confidential call carries.
+///
+/// No key is derived here any more: the module does that. This is the request,
+/// not the secret it produces.
+fn evm_signing_secret() -> tinywallet::wire::SecretMaterial {
+    tinywallet::wire::SecretMaterial {
+        mnemonic: VECTOR.to_string(),
+        derivation_path: "m/44'/60'/0'/0/0".to_string(),
+        chain: Chain::Evm,
+    }
 }
 
 #[test]
