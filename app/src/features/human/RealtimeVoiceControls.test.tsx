@@ -156,7 +156,7 @@ describe('RealtimeVoiceControls', () => {
     expect(audioRef.current?.speaking).toBe(true);
   });
 
-  it('clears the audioRef when the session ends (unmount)', () => {
+  it('clears the audioRef on unmount cleanup', () => {
     session = makeSession({ state: 'active', isSpeaking: true, getOutputVolume: () => 0.5 });
     const audioRef: RefObject<RealtimeVoiceAudio> = {
       current: { getOutputVolume: null, speaking: false },
@@ -165,6 +165,33 @@ describe('RealtimeVoiceControls', () => {
     expect(audioRef.current?.speaking).toBe(true);
 
     unmount();
+    expect(audioRef.current?.getOutputVolume).toBeNull();
+    expect(audioRef.current?.speaking).toBe(false);
+  });
+
+  // Ending a session doesn't unmount the control — the card stays on screen and
+  // the session hook just returns to 'idle'. The live effect (not the unmount
+  // cleanup) has to clear the ref on that transition, or the mascot would keep
+  // reading a stale accessor after the agent has gone.
+  it('clears the audioRef when the session goes idle while still mounted', () => {
+    const store = configureStore({ reducer: { mascot: mascotReducer } });
+    const audioRef: RefObject<RealtimeVoiceAudio> = {
+      current: { getOutputVolume: null, speaking: false },
+    };
+    session = makeSession({ state: 'active', isSpeaking: true, getOutputVolume: () => 0.5 });
+    const { rerender } = render(
+      <Provider store={store}>
+        <RealtimeVoiceControls audioRef={audioRef} />
+      </Provider>
+    );
+    expect(audioRef.current?.speaking).toBe(true);
+
+    session = makeSession({ state: 'idle', isSpeaking: false });
+    rerender(
+      <Provider store={store}>
+        <RealtimeVoiceControls audioRef={audioRef} />
+      </Provider>
+    );
     expect(audioRef.current?.getOutputVolume).toBeNull();
     expect(audioRef.current?.speaking).toBe(false);
   });
