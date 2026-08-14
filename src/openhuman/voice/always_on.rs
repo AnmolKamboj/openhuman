@@ -39,6 +39,19 @@ const LOG_PREFIX: &str = "[voice::always_on]";
 /// mid-session starts segmenting without the user restarting anything.
 const SESSION_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// How many raw capture chunks may queue for the processor.
+///
+/// The channel was unbounded, which was survivable when the callback did the
+/// downmix and resample itself: the processor's work was pure arithmetic and it
+/// always outran the microphone. It no longer does — each chunk now costs three
+/// module round trips — so a stalled or slow processor could let the queue grow
+/// without limit behind a producer that never blocks.
+///
+/// A few seconds of chunks at typical `cpal` buffer sizes. Deliberately a
+/// *count* rather than a byte budget: the callback must not do arithmetic to
+/// decide whether to send.
+const CAPTURE_QUEUE_CHUNKS: usize = 256;
+
 /// One chunk of raw capture, exactly as the device delivered it.
 ///
 /// Interleaved and at the device's own rate: the callback converts the sample
@@ -119,7 +132,7 @@ pub async fn start_if_enabled(app_config: &Config) {
     // while — so run it on the blocking pool. This function is polled
     // concurrently with the other login-gated services (#3490), and blocking an
     // async worker here would stall them.
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<RawChunk>();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<RawChunk>(CAPTURE_QUEUE_CHUNKS);
     log::debug!(
         "{LOG_PREFIX} starting microphone capture (blocking readiness handshake on the blocking pool)"
     );
@@ -706,9 +719,26 @@ fn capture_on_thread(
     );
 
     // Forward one raw interleaved chunk per callback.
+    //
+    // `try_send`, never `send`: this runs on a realtime audio thread where
+    // blocking is a dropout, so a full queue drops the chunk rather than
+    // waiting for the processor to catch up. Dropping the newest chunk is the
+    // right end to lose — the queue ahead of it is older speech that is closer
+    // to being transcribed.
+    //
+    // A send error also covers the processor being gone (shutdown), which is
+    // why neither case is fatal here.
+    let mut dropped: u64 = 0;
     let forward = move |samples: Vec<f32>| {
-        // Ignore send errors — they mean the processor task is gone (shutdown).
-        let _ = tx.send(RawChunk { samples });
+        if tx.try_send(RawChunk { samples }).is_err() {
+            dropped = dropped.saturating_add(1);
+            // Log on a power-of-two schedule: a persistently overloaded
+            // processor should be visible without logging inside every
+            // callback once it starts.
+            if dropped.is_power_of_two() {
+                log::warn!("{LOG_PREFIX} capture queue full; dropped {dropped} chunk(s) so far");
+            }
+        }
     };
 
     let err_fn = |e| log::warn!("{LOG_PREFIX} cpal stream error: {e}");
