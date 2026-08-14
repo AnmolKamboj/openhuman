@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { useT } from '../../lib/i18n/I18nContext';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
@@ -43,7 +43,13 @@ const HumanPage = () => {
   // publishes its output-loudness accessor into this ref and the mascot samples
   // it per frame — a 60fps signal must not travel through React state.
   const realtimeAudioRef = useRef<RealtimeVoiceAudio>({ ...IDLE_REALTIME_VOICE_AUDIO });
-  const realtimeLipsync = useAmplitudeLipsync(realtimeAudioRef);
+  // The agent's speaking edge, lifted out of RealtimeVoiceControls so it can gate
+  // the lip-sync loop below. Flips a couple of times per turn, so it is cheap as
+  // state (the 60fps amplitude stays in the ref). While it is false — an idle
+  // realtime session, or the classic voice path that never mounts the control —
+  // the loop schedules no frames at all.
+  const [realtimeSpeaking, setRealtimeSpeaking] = useState(false);
+  const realtimeLipsync = useAmplitudeLipsync(realtimeAudioRef, realtimeSpeaking);
 
   // While the agent is speaking its own audio drives the mouth; otherwise the
   // classic path keeps ownership, so the two never fight over the same frame.
@@ -91,7 +97,12 @@ const HumanPage = () => {
         variant="sidebar"
         composer="mic-cloud"
         voiceChatControl={
-          voiceEntry === 'realtime' ? <RealtimeVoiceControls audioRef={realtimeAudioRef} /> : null
+          voiceEntry === 'realtime' ? (
+            <RealtimeVoiceControls
+              audioRef={realtimeAudioRef}
+              onSpeakingChange={setRealtimeSpeaking}
+            />
+          ) : null
         }
         showMicComposer={voiceEntry !== 'realtime'}
         projectThreadList
@@ -141,7 +152,10 @@ const HumanPage = () => {
           tap-and-speak rather than a second button stacked on it. */}
       {voiceEntry === 'both' && (
         <div className="absolute bottom-8 left-0 right-[436px] z-10 flex justify-center">
-          <RealtimeVoiceControls audioRef={realtimeAudioRef} />
+          <RealtimeVoiceControls
+            audioRef={realtimeAudioRef}
+            onSpeakingChange={setRealtimeSpeaking}
+          />
         </div>
       )}
 

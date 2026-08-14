@@ -7,6 +7,8 @@ import { useAmplitudeLipsync } from './useAmplitudeLipsync';
 
 /** Drive the rAF loop by hand so frames are deterministic. */
 let frames: FrameRequestCallback[] = [];
+let raf: ReturnType<typeof vi.fn>;
+let cancel: ReturnType<typeof vi.fn>;
 
 function flushFrames(count: number): void {
   for (let i = 0; i < count; i += 1) {
@@ -25,23 +27,25 @@ function audioRef(overrides: Partial<RealtimeVoiceAudio> = {}) {
 describe('useAmplitudeLipsync', () => {
   beforeEach(() => {
     frames = [];
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+    raf = vi.fn((cb: FrameRequestCallback) => {
       frames.push(cb);
       return frames.length;
     });
-    vi.stubGlobal('cancelAnimationFrame', () => {});
+    cancel = vi.fn();
+    vi.stubGlobal('requestAnimationFrame', raf);
+    vi.stubGlobal('cancelAnimationFrame', cancel);
   });
   afterEach(() => vi.unstubAllGlobals());
 
   it('stays inactive and rested while nothing is speaking', () => {
-    const { result } = renderHook(() => useAmplitudeLipsync(audioRef()));
+    const { result } = renderHook(() => useAmplitudeLipsync(audioRef(), true));
     flushFrames(3);
     expect(result.current).toEqual({ active: false, visemeCode: 'sil' });
   });
 
   it('drives the mouth from output loudness while the agent speaks', () => {
     const ref = audioRef({ speaking: true, getOutputVolume: () => 0.9 });
-    const { result } = renderHook(() => useAmplitudeLipsync(ref));
+    const { result } = renderHook(() => useAmplitudeLipsync(ref, true));
     flushFrames(10);
     expect(result.current.active).toBe(true);
     expect(result.current.visemeCode).toBe('aa');
@@ -51,7 +55,7 @@ describe('useAmplitudeLipsync', () => {
   // shape — a stuck-open mascot is worse than one that never moved.
   it('rests the mouth when speaking stops', () => {
     const ref = audioRef({ speaking: true, getOutputVolume: () => 0.9 });
-    const { result } = renderHook(() => useAmplitudeLipsync(ref));
+    const { result } = renderHook(() => useAmplitudeLipsync(ref, true));
     flushFrames(10);
     expect(result.current.visemeCode).toBe('aa');
 
@@ -69,7 +73,7 @@ describe('useAmplitudeLipsync', () => {
         throw new Error('analyser closed');
       },
     });
-    const { result } = renderHook(() => useAmplitudeLipsync(ref));
+    const { result } = renderHook(() => useAmplitudeLipsync(ref, true));
     expect(() => flushFrames(5)).not.toThrow();
     expect(result.current.visemeCode).toBe('sil');
   });
@@ -85,7 +89,7 @@ describe('useAmplitudeLipsync', () => {
         return volume;
       },
     });
-    const { result } = renderHook(() => useAmplitudeLipsync(ref));
+    const { result } = renderHook(() => useAmplitudeLipsync(ref, true));
     flushFrames(10);
     expect(result.current.visemeCode).toBe('aa');
 
@@ -100,7 +104,7 @@ describe('useAmplitudeLipsync', () => {
   it('recovers on the next valid sample after a non-finite reading', () => {
     let volume = 0.9;
     const ref = audioRef({ speaking: true, getOutputVolume: () => volume });
-    const { result } = renderHook(() => useAmplitudeLipsync(ref));
+    const { result } = renderHook(() => useAmplitudeLipsync(ref, true));
     flushFrames(10);
     expect(result.current.visemeCode).toBe('aa');
 
@@ -115,10 +119,42 @@ describe('useAmplitudeLipsync', () => {
   });
 
   it('cancels its frame loop on unmount', () => {
-    const cancel = vi.fn();
-    vi.stubGlobal('cancelAnimationFrame', cancel);
-    const { unmount } = renderHook(() => useAmplitudeLipsync(audioRef()));
+    const { unmount } = renderHook(() => useAmplitudeLipsync(audioRef(), true));
     unmount();
     expect(cancel).toHaveBeenCalled();
+  });
+
+  // The loop is the whole cost of the feature, and it must not run when the tab
+  // is not driving a speaking session — a disabled hook schedules no frames at
+  // all, even with a live-looking accessor sitting in the ref (#5546).
+  it('schedules no frames while disabled', () => {
+    const ref = audioRef({ speaking: true, getOutputVolume: () => 0.9 });
+    const { result } = renderHook(() => useAmplitudeLipsync(ref, false));
+    flushFrames(3);
+    expect(raf).not.toHaveBeenCalled();
+    expect(result.current).toEqual({ active: false, visemeCode: 'sil' });
+  });
+
+  // Disabling mid-turn must tear the loop down, not just idle it: no further
+  // frames are queued, and the mouth resets rather than freezing on its last
+  // shape (the loop that would otherwise commit 'sil' is gone).
+  it('stops scheduling frames and rests when it becomes disabled', () => {
+    const ref = audioRef({ speaking: true, getOutputVolume: () => 0.9 });
+    const { result, rerender } = renderHook(({ enabled }) => useAmplitudeLipsync(ref, enabled), {
+      initialProps: { enabled: true },
+    });
+    flushFrames(10);
+    expect(result.current.visemeCode).toBe('aa');
+    const scheduledWhileActive = raf.mock.calls.length;
+    expect(scheduledWhileActive).toBeGreaterThan(0);
+
+    rerender({ enabled: false });
+    expect(cancel).toHaveBeenCalled();
+    expect(result.current).toEqual({ active: false, visemeCode: 'sil' });
+
+    // No new frames after the idle transition — pins the regression the gate
+    // exists to prevent (the loop used to reschedule unconditionally).
+    flushFrames(5);
+    expect(raf.mock.calls.length).toBe(scheduledWhileActive);
   });
 });

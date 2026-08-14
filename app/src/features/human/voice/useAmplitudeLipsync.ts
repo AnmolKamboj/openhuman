@@ -16,10 +16,16 @@ export interface AmplitudeLipsync {
 /**
  * Drive the mascot's mouth from the realtime session's output loudness.
  *
- * Runs an animation-frame loop only while the agent is speaking, so an idle
- * Human tab schedules no frames. Reads the SDK accessor out of a ref rather
- * than props because the session lives inside `RealtimeVoiceControls` (which
- * owns its own `ConversationProvider`) — see `RealtimeVoiceAudio`.
+ * The animation-frame loop exists only while `enabled` is true — the caller
+ * passes the agent's speaking edge, so an idle Human tab (and the classic
+ * voice path, which never speaks a realtime session) schedules no frames at
+ * all. `enabled` gates the effect rather than being read inside the loop
+ * because a ref cannot re-subscribe an effect: the on/off edge changes a couple
+ * of times per turn, so it is cheap as a dependency, while the amplitude it
+ * drives stays in a ref because that moves every frame. Reads the SDK accessor
+ * out of a ref rather than props because the session lives inside
+ * `RealtimeVoiceControls` (which owns its own `ConversationProvider`) — see
+ * `RealtimeVoiceAudio`.
  *
  * State is committed only when the viseme code actually changes. The smoothed
  * level moves every frame, but the code it maps to steps between four values,
@@ -27,7 +33,10 @@ export interface AmplitudeLipsync {
  * to produce the same mouth — the exact cost the chat panel is memoised to
  * avoid (#5357).
  */
-export function useAmplitudeLipsync(audio: RefObject<RealtimeVoiceAudio>): AmplitudeLipsync {
+export function useAmplitudeLipsync(
+  audio: RefObject<RealtimeVoiceAudio>,
+  enabled: boolean
+): AmplitudeLipsync {
   const [state, setState] = useState<AmplitudeLipsync>({ active: false, visemeCode: 'sil' });
   const levelRef = useRef(0);
   // Mirrors `state` for the loop to compare against without re-subscribing the
@@ -36,15 +45,25 @@ export function useAmplitudeLipsync(audio: RefObject<RealtimeVoiceAudio>): Ampli
   const activeRef = useRef(false);
 
   useEffect(() => {
-    let raf = 0;
-    let stopped = false;
-
     const commit = (active: boolean, visemeCode: string): void => {
       if (active === activeRef.current && visemeCode === codeRef.current) return;
       activeRef.current = active;
       codeRef.current = visemeCode;
       setState({ active, visemeCode });
     };
+
+    // Disabled: schedule nothing, and make sure the mouth is at rest. The loop
+    // is the only thing that commits 'sil' when speech stops, and it does not
+    // run here, so the reset has to happen on the disabling render instead —
+    // otherwise the mouth would freeze on its last shape.
+    if (!enabled) {
+      levelRef.current = 0;
+      commit(false, 'sil');
+      return;
+    }
+
+    let raf = 0;
+    let stopped = false;
 
     const tick = (): void => {
       if (stopped) return;
@@ -83,7 +102,7 @@ export function useAmplitudeLipsync(audio: RefObject<RealtimeVoiceAudio>): Ampli
       stopped = true;
       window.cancelAnimationFrame(raf);
     };
-  }, [audio]);
+  }, [audio, enabled]);
 
   return state;
 }

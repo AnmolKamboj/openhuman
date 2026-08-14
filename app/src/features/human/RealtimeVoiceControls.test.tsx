@@ -49,11 +49,11 @@ const LABEL = {
   speaking: 'Speaking',
 } as const;
 
-function renderControls() {
+function renderControls(onSpeakingChange?: (speaking: boolean) => void) {
   const store = configureStore({ reducer: { mascot: mascotReducer } });
   return render(
     <Provider store={store}>
-      <RealtimeVoiceControls />
+      <RealtimeVoiceControls onSpeakingChange={onSpeakingChange} />
     </Provider>
   );
 }
@@ -112,5 +112,28 @@ describe('RealtimeVoiceControls', () => {
     fireEvent.click(screen.getByRole('button', { name: LABEL.stop }));
     expect(stop).toHaveBeenCalledTimes(1);
     expect(start).not.toHaveBeenCalled();
+  });
+
+  // The speaking edge gates the mascot's lip-sync loop on the page
+  // (useAmplitudeLipsync's `enabled`), so it must reflect `active && isSpeaking`,
+  // not either half alone.
+  it('reports not-speaking to onSpeakingChange while idle', () => {
+    const onSpeakingChange = vi.fn();
+    renderControls(onSpeakingChange);
+    expect(onSpeakingChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('reports speaking only when the session is active and the agent speaks', () => {
+    const onSpeakingChange = vi.fn();
+    session = makeSession({ state: 'active', isSpeaking: true });
+    renderControls(onSpeakingChange);
+    expect(onSpeakingChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it('reports not-speaking when active but the agent is silent', () => {
+    const onSpeakingChange = vi.fn();
+    session = makeSession({ state: 'active', isSpeaking: false });
+    renderControls(onSpeakingChange);
+    expect(onSpeakingChange).toHaveBeenLastCalledWith(false);
   });
 });
