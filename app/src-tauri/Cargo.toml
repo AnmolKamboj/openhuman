@@ -1,6 +1,6 @@
 [package]
 name = "OpenHuman"
-version = "0.63.7"
+version = "0.63.8"
 description = "OpenHuman - AI-powered Super Assistant"
 authors = ["OpenHuman"]
 edition = "2021"
@@ -89,14 +89,12 @@ hex = "0.4"
 # the ring provider at startup in `lib.rs::run()`.
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 log = "0.4"
-env_logger = "0.11"
 
 # Sentry for the Tauri shell (desktop host) process — separate Sentry project
 # from the React frontend and the Rust core sidecar. DSN is baked at compile
 # time via `option_env!("OPENHUMAN_TAURI_SENTRY_DSN")` in `lib.rs::run()` and
 # can be overridden at runtime via the same env var. Feature set mirrors the
-# core sidecar (`Cargo.toml` at repo root) minus `tracing` since the shell
-# uses `log` + `env_logger`.
+# core sidecar (`Cargo.toml` at repo root) minus `tracing`.
 sentry = { version = "0.47.0", default-features = false, features = ["backtrace", "contexts", "panic", "debug-images", "httpdate"] }
 
 # Used by the imessage_scanner module.
@@ -111,7 +109,6 @@ chrono = "0.4"
 async-trait = "0.1"
 # Desktop companion: native mic capture + POINT-tag parsing + session ids.
 cpal = "0.15"
-regex = "1"
 uuid = { version = "1", features = ["v4"] }
 # Mascot fake-camera pipeline (meet_call): rasterizes the OpenHuman
 # mascot SVG to a PNG once, converts it to a YUV420 Y4M frame, and
@@ -180,7 +177,6 @@ openhuman_core = { path = "../..", package = "openhuman", default-features = fal
     # driver stops advertising Capability::Diff — the product keeps all three.
     "memory-git",
 ] }
-tinyjuice = { version = "0.2.1", default-features = false }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", default-features = false, features = ["hostname", "signal", "user"] }
@@ -257,7 +253,7 @@ motosan-ai-oauth = { path = "../../vendor/motosan-ai-oauth" }
 # released tag) — same patch as the root Cargo world so both resolve the
 # in-tree SDK source. `git submodule update --init vendor/tinyagents` first.
 tinyagents = { path = "../../vendor/tinyagents" }
-# TinyFlows, TinyCortex, TinyJuice, TinyChannels, and TinyPlace are vendored beside
+# TinyFlows, TinyCortex, TinyChannels, and TinyPlace are vendored beside
 # TinyAgents so integration work can test crate changes against OpenHuman before
 # publishing.
 tinyflows = { path = "../../vendor/tinyflows" }
@@ -267,7 +263,6 @@ tinycortex = { path = "../../vendor/tinycortex" }
 # patch it onto the same checkout here too, or this independent Cargo world
 # tries to resolve it from crates.io and fails (it was never published).
 tinycortex-api = { path = "../../vendor/tinycortex/api" }
-tinyjuice = { path = "../../vendor/tinyjuice" }
 tinychannels = { path = "../../vendor/tinychannels" }
 tinyplace = { path = "../../vendor/tinyplace/sdk/rust" }
 

@@ -62,7 +62,9 @@ const SUBCOMMAND_CONTROLLER: &[(&str, &str)] = &[
 
 /// The capability `openhuman memory <sub>` needs, if any. Resolved from the
 /// controller registry, never from a local table.
-fn required_capability(subcommand: &str) -> Option<tinycortex_api::capabilities::Capability> {
+fn required_capability(
+    subcommand: &str,
+) -> Option<crate::openhuman::memory::api::capabilities::Capability> {
     let function = SUBCOMMAND_CONTROLLER
         .iter()
         .find(|(sub, _)| *sub == subcommand)
@@ -546,7 +548,7 @@ mod tests {
     use super::*;
     use crate::core::cli_capability::{capability_verdict, CAPABILITY_UNAVAILABLE_PREFIX};
     use crate::core::subsystem::DriverClass;
-    use tinycortex_api::capabilities::{Capabilities, Capability};
+    use crate::openhuman::memory::api::capabilities::{Capabilities, Capability};
 
     /// Drift guard: a renamed controller function must break here rather than
     /// silently un-gate a subcommand (`required_capability` would start

@@ -97,7 +97,7 @@ fn driver_health_display_includes_the_reason() {
 /// silently making the conversion partial.
 #[test]
 fn driver_health_shape_matches_memory_health_one_for_one() {
-    use tinycortex_api::health::MemoryHealth;
+    use crate::openhuman::memory::api::health::MemoryHealth;
 
     let pairs: Vec<(MemoryHealth, DriverHealth)> = vec![
         (MemoryHealth::Ready, DriverHealth::Ready),
@@ -188,7 +188,7 @@ fn driver_capabilities_contains_all_is_subset_semantics() {
 /// memory capability is.
 #[test]
 fn every_memory_contract_capability_string_maps_into_driver_capabilities() {
-    use tinycortex_api::capabilities::Capability;
+    use crate::openhuman::memory::api::capabilities::Capability;
 
     let caps: DriverCapabilities = Capability::ALL.iter().map(|cap| cap.as_str()).collect();
 

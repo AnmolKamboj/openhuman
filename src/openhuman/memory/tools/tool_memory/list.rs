@@ -5,14 +5,14 @@
 //! embedded driver is literally `tool_memory_store(self.memory()).list_rules(…)`,
 //! and the wire type matches by identity, not conversion:
 //! `memory::tool_memory::ToolMemoryRule` **is**
-//! `tinycortex_api::tool_memory::ToolMemoryRule`. So the re-point is exact —
+//! `crate::openhuman::memory::api::tool_memory::ToolMemoryRule`. So the re-point is exact —
 //! same rules, same order, same serialization — with `Capability::ToolMemory`
 //! admitted first.
 
+use crate::openhuman::memory::api::provider::MemoryProvider;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
-use tinycortex_api::provider::MemoryProvider;
 
 use crate::openhuman::memory::ops::guard::active_memory_guard;
 use crate::openhuman::memory::ops::tool_memory::NO_TOOL_MEMORY;

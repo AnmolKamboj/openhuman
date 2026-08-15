@@ -9,9 +9,9 @@
 
 use std::sync::Arc;
 
-use tinymemory_api::capabilities::{Capabilities, Capability};
-use tinymemory_api::error::MemoryError;
-use tinymemory_api::provider::MemoryProvider;
+use crate::openhuman::memory::api::capabilities::{Capabilities, Capability};
+use crate::openhuman::memory::api::error::MemoryError;
+use crate::openhuman::memory::api::provider::MemoryProvider;
 
 use super::{from_bus, ModuleMemoryProvider, MODULE_ID};
 use crate::openhuman::config::Config;
@@ -43,20 +43,16 @@ fn construction_touches_no_io_and_needs_no_runtime() {
 }
 
 #[test]
-fn the_advertised_capabilities_are_exactly_the_mandatory_three() {
-    // Must match what the module serves. Overstating is the dangerous direction:
-    // the kernel filters its RPC surface and agent-tool list from this set, so an
-    // extra family registers methods that answer errors.
+fn the_advertised_capabilities_cover_the_complete_memory_api() {
+    // The compiled module owns the complete TinyMemory API, so the host can
+    // assemble every memory RPC and tool family before the async bus starts.
     let capabilities = provider().capabilities();
-    assert_eq!(capabilities, Capabilities::mandatory());
+    assert_eq!(capabilities, Capabilities::all());
 
     for mandatory in Capability::MANDATORY {
         assert!(capabilities.contains(mandatory), "{mandatory:?} is missing");
     }
-    assert!(
-        !capabilities.contains(Capability::Tree),
-        "an optional family the module cannot serve must not be advertised"
-    );
+    assert!(capabilities.contains(Capability::Tree));
 }
 
 #[test]
@@ -103,13 +99,13 @@ fn the_memory_record_publishes_one_asset_per_supported_host() {
 fn a_not_found_survives_the_round_trip_as_not_found() {
     // `get`'s contract makes a missing entry `Ok(None)` and an `Invalid` a real
     // failure, so collapsing the two would be observable to a caller.
-    let error = from_bus(&failure(tinymemory_api::wire::NOT_FOUND));
+    let error = from_bus(&failure(crate::openhuman::memory::api::wire::NOT_FOUND));
     assert!(matches!(error, MemoryError::NotFound(_)), "{error:?}");
 }
 
 #[test]
 fn an_invalid_input_is_reported_as_something_the_caller_can_fix() {
-    let error = from_bus(&failure(tinymemory_api::wire::INVALID));
+    let error = from_bus(&failure(crate::openhuman::memory::api::wire::INVALID));
     assert!(matches!(error, MemoryError::Invalid(_)), "{error:?}");
 }
 
@@ -117,13 +113,13 @@ fn an_invalid_input_is_reported_as_something_the_caller_can_fix() {
 fn a_path_escape_does_not_arrive_as_a_caller_mistake() {
     // The mapping's most security-relevant case: a sandbox escape must not be
     // reclassified as a malformed argument.
-    let error = from_bus(&failure(tinymemory_api::wire::PATH_ESCAPE));
+    let error = from_bus(&failure(crate::openhuman::memory::api::wire::PATH_ESCAPE));
     assert!(matches!(error, MemoryError::PathEscape(_)), "{error:?}");
 }
 
 #[test]
 fn an_unsupported_capability_keeps_its_family_name() {
-    let error = from_bus(&failure(tinymemory_api::wire::UNSUPPORTED));
+    let error = from_bus(&failure(crate::openhuman::memory::api::wire::UNSUPPORTED));
     assert!(
         matches!(error, MemoryError::Unsupported { .. }),
         "{error:?}"
@@ -164,7 +160,10 @@ async fn a_disabled_host_reports_down_rather_than_erroring() {
     let provider = ModuleMemoryProvider::new(Arc::new(config));
     let health = provider.health().await;
     assert!(
-        matches!(health, tinymemory_api::health::MemoryHealth::Down { .. }),
+        matches!(
+            health,
+            crate::openhuman::memory::api::health::MemoryHealth::Down { .. }
+        ),
         "a disabled module host must report Down, got {health:?}"
     );
 }
@@ -176,7 +175,8 @@ async fn a_call_against_a_disabled_host_fails_instead_of_hanging() {
 
     let provider = ModuleMemoryProvider::new(Arc::new(config));
     let outcome =
-        tinymemory_api::provider::mandatory::MemoryCore::get(&provider, "ns", "key").await;
+        crate::openhuman::memory::api::provider::mandatory::MemoryCore::get(&provider, "ns", "key")
+            .await;
     assert!(outcome.is_err(), "expected an error, got {outcome:?}");
 }
 

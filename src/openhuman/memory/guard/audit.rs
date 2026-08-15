@@ -28,7 +28,7 @@
 //! published. One bus event per memory read would flood every subscriber on the
 //! hot path for no operator benefit; a refusal is the rare, actionable event.
 
-use tinycortex_api::capabilities::Capability;
+use crate::openhuman::memory::api::capabilities::Capability;
 
 use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;

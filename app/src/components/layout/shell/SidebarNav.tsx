@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { NAV_TABS, type NavTab } from '../../../config/navConfig';
+import { type NavTab } from '../../../config/navConfig';
+import { useNavTabs } from '../../../hooks/useNavTabs';
 import { useT } from '../../../lib/i18n/I18nContext';
 import { trackEvent } from '../../../services/analytics';
 import { setActiveAccount } from '../../../store/accountsSlice';
@@ -46,7 +47,11 @@ export default function SidebarNav() {
   const unreadCount = useAppSelector(state => selectUnreadCount(state.notifications.items));
   const companionActive = useAppSelector(selectCompanionSessionActive);
 
-  const tabs = useMemo(() => NAV_TABS.map(tab => ({ ...tab, label: t(tab.labelKey) })), [t]);
+  const navTabs = useNavTabs();
+  const tabs = useMemo(
+    () => navTabs.map(tab => ({ ...tab, label: t(tab.labelKey) })),
+    [navTabs, t]
+  );
   const activeTab = tabs.find(tab => matchActive(tab.path, location.pathname));
 
   const handleClick = (tab: NavTab, active: boolean) => {
@@ -63,7 +68,7 @@ export default function SidebarNav() {
   };
 
   return (
-    <nav className="flex flex-col gap-px p-1.5" aria-label={t('nav.home')}>
+    <nav className="flex flex-col gap-0.5 px-2 py-1" aria-label={t('nav.home')}>
       {tabs.map(tab => {
         const active = matchActive(tab.path, location.pathname);
         const showBadge = tab.id === 'notifications' && unreadCount > 0;
@@ -76,14 +81,15 @@ export default function SidebarNav() {
             onClick={() => handleClick(tab, active)}
             title={tab.label}
             aria-current={active ? 'page' : undefined}
-            // Active state uses the primary accent as a translucent tint + ring
-            // so it reads against any themed sidebar surface (light, dark, or a
-            // custom theme like Midnight) — accent tokens are themeable, so this
-            // no longer needs a hardcoded `dark:` neutral fill.
-            className={`group flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors cursor-pointer ${
+            // Active state is a neutral fill lifted off the chrome, not an
+            // accent tint: the chrome carries the theme's hue, so tinting a nav
+            // pill on top of it stacks two colours and reads as noise. Weight
+            // and contrast carry the selection instead. Fills are alpha-based so
+            // they lift against whatever backdrop the theme paints behind them.
+            className={`group flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[14px] transition-colors cursor-pointer ${
               active
-                ? 'bg-primary-500/12 text-primary-600 ring-1 ring-primary-500/25 dark:text-primary-300 font-semibold shadow-sm'
-                : 'text-content-muted hover:bg-surface-hover hover:text-content-secondary'
+                ? 'bg-surface/70 text-content font-semibold'
+                : 'text-content-muted hover:bg-surface/40 hover:text-content-secondary'
             }`}>
             <span className="relative inline-flex flex-shrink-0">
               <NavIcon id={tab.id} className="w-4 h-4" />

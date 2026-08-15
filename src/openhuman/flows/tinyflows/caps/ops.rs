@@ -12,10 +12,10 @@
 
 use std::sync::Arc;
 
+use crate::openhuman::flows::tinyflows::checkpoint_sqlite::SqliteCheckpointer;
 use anyhow::Context;
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use tinyagents::graph::SqliteCheckpointer;
 use tinyflows::caps::*;
 use tinyflows::error::{EngineError, Result};
 #[cfg(test)]
@@ -640,6 +640,15 @@ pub fn build_capabilities(config: Arc<Config>, state_namespace: impl Into<String
         // until that boundary exists rather than inheriting ambient process
         // access from the workflow engine.
         shell: None,
+        // `spawn`/`gate` overlap only when a TaskRunner is injected. With
+        // `None` the engine still produces the right answer — `spawn` runs its
+        // work inline and hands back a settled ticket — so the failure mode is
+        // a silent loss of concurrency rather than an error, which is exactly
+        // the kind that survives a smoke test. Flow runs are already on tokio,
+        // so take the crate's tokio-backed runner. It is in-process only:
+        // tickets do not survive a restart, which is the right bound for work
+        // a single run collects at its own gate.
+        tasks: Some(Arc::new(TokioTaskRunner::new())),
         memory: Some(Arc::new(
             crate::openhuman::flows::tinyflows::memory_adapter::OpenHumanMemory {
                 config: config.clone(),
@@ -651,14 +660,14 @@ pub fn build_capabilities(config: Arc<Config>, state_namespace: impl Into<String
 }
 
 /// Opens the durable, cross-process checkpointer a `flows_run` uses via
-/// `tinyflows::engine::run_with_checkpointer` — the crate's own
-/// `tinyagents::graph::SqliteCheckpointer`, stored under
-/// `<workspace_dir>/flows/checkpoints.db`.
+/// `tinyflows::engine::run_with_checkpointer` — this host's
+/// [`SqliteCheckpointer`], stored under `<workspace_dir>/flows/checkpoints.db`.
 ///
-/// Deliberately **not** a bespoke checkpointer: the crate ships its own
-/// SQLite-backed `Checkpointer<State>` impl (feature `sqlite`, already enabled
-/// on the `tinyagents` dependency), so the seam just opens it — mirrors the
-/// construction in `src/openhuman/agent/orchestration/delegation.rs`.
+/// It became host-owned when tinyflows vendored its state-graph runtime and
+/// dropped the SQLite backend with it (tinyflows PR #43). The port keeps the
+/// schema and SQL byte-identical, so an existing `checkpoints.db` — and any
+/// run interrupted before the upgrade — resumes unchanged. See
+/// [`super::super::checkpoint_sqlite`].
 pub fn open_flow_checkpointer(
     config: &Config,
 ) -> anyhow::Result<Arc<dyn tinyflows::engine::Checkpointer<serde_json::Value>>> {

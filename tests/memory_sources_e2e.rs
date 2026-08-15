@@ -21,6 +21,7 @@ const TEST_RPC_TOKEN: &str = "memory-sources-e2e-token";
 static AUTH_INIT: OnceLock<()> = OnceLock::new();
 static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static MEMORY_SEAMS_INIT: OnceLock<()> = OnceLock::new();
+static TEST_HOME: OnceLock<tempfile::TempDir> = OnceLock::new();
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     let mutex = ENV_LOCK.get_or_init(|| Mutex::new(()));
@@ -46,14 +47,23 @@ fn ensure_memory_seams() {
             .name("memory-sources-e2e-seams".to_string())
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
-                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(Arc::new(
-                    openhuman_core::openhuman::config::Config::default(),
-                ));
+                let config = Arc::new(openhuman_core::openhuman::config::Config::default());
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
+                    config.clone(),
+                );
+                #[cfg(feature = "modules")]
+                openhuman_core::openhuman::modules::memory::set_modules_policy(config);
             })
             .expect("spawn memory sources seam installer")
             .join()
             .expect("memory sources seam installer panicked");
     });
+}
+
+fn test_home() -> &'static Path {
+    TEST_HOME
+        .get_or_init(|| tempdir().expect("memory sources tempdir"))
+        .path()
 }
 
 struct EnvVarGuard {
@@ -164,8 +174,7 @@ fn ok(v: &Value, ctx: &str) -> Value {
 #[tokio::test]
 async fn memory_sources_crud_and_folder_read_flow() {
     let _guard = env_lock();
-    let tmp = tempdir().expect("tempdir");
-    let home = tmp.path();
+    let home = test_home();
     let openhuman_home = home.join(".openhuman");
 
     let _home = EnvVarGuard::set_to_path("HOME", home);
@@ -437,8 +446,7 @@ async fn memory_sources_crud_and_folder_read_flow() {
 #[tokio::test]
 async fn memory_sources_validation_rejects_bad_input() {
     let _guard = env_lock();
-    let tmp = tempdir().expect("tempdir");
-    let home = tmp.path();
+    let home = test_home();
     let openhuman_home = home.join(".openhuman");
 
     let _home = EnvVarGuard::set_to_path("HOME", home);
@@ -518,8 +526,7 @@ async fn memory_sources_github_repo_activity_flow() {
         return;
     }
     let _guard = env_lock();
-    let tmp = tempdir().expect("tempdir");
-    let home = tmp.path();
+    let home = test_home();
     let openhuman_home = home.join(".openhuman");
 
     let _home = EnvVarGuard::set_to_path("HOME", home);
@@ -699,8 +706,7 @@ async fn memory_sources_github_repo_activity_flow() {
 #[tokio::test]
 async fn memory_sources_composio_registry_flow() {
     let _guard = env_lock();
-    let tmp = tempdir().expect("tempdir");
-    let home = tmp.path();
+    let home = test_home();
     let openhuman_home = home.join(".openhuman");
 
     let _home = EnvVarGuard::set_to_path("HOME", home);

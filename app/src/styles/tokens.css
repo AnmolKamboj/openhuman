@@ -29,6 +29,11 @@
   --surface-hover: 240 240 240; /* hover fills — distinct from white surface so
                                    hover reads on elevated cards, not just canvas */
   --surface-overlay: 0 0 0; /* modal scrim (used with /40../70) */
+  --surface-chrome: 245 245 245; /* window chrome — the tinted frame the sidebar
+                                    sits on, behind the inset content card. Used
+                                    at partial alpha as a legibility scrim over
+                                    the themed AppBackground, so it must stay a
+                                    near-canvas neutral, not an accent. */
 
   /* ---- Text ---- */
   --content: 23 23 23; /* primary text (stone-900) */
@@ -41,6 +46,10 @@
   --line: 229 229 229; /* default hairline (stone-200) */
   --line-strong: 212 212 212; /* stronger divider (stone-300) */
   --line-subtle: 245 245 245; /* faintest divider (stone-100) */
+  --line-chrome: 212 212 212; /* the hairline where the content card meets the
+                                 chrome (stone-300). Drawn as a zero-blur inset
+                                 box-shadow, not a border — see the
+                                 `content-edge` shadow in tailwind.config.js. */
 
   /* ---- Accent palette: primary (Complementary Blue) ---- */
   --primary-50: 239 246 255;
@@ -111,6 +120,8 @@
   --surface-strong: 38 38 38; /* neutral-800 */
   --surface-hover: 38 38 38; /* neutral-800 */
   --surface-overlay: 0 0 0;
+  --surface-chrome: 10 10 10; /* neutral-950 — darker than --surface (23) so the
+                                 content card reads as raised against the frame */
 
   /* ---- Text ---- */
   --content: 245 245 245; /* neutral-100 */
@@ -123,6 +134,7 @@
   --line: 38 38 38; /* neutral-800 */
   --line-strong: 64 64 64; /* neutral-700 */
   --line-subtle: 38 38 38; /* neutral-800 */
+  --line-chrome: 64 64 64; /* neutral-700 */
 
   /*
    * Accent palettes intentionally inherit their `:root` values under dark mode:

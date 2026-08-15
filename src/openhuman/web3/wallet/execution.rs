@@ -347,8 +347,8 @@ pub(crate) fn validate_amount(raw: &str) -> Result<u128, String> {
 ///
 /// Every arm delegates to the vendored [`tinywallet`] crate, which owns the
 /// four address formats. The dispatch stays here rather than calling
-/// `tinywallet::address::validate` directly because [`WalletChain`] is
-/// OpenHuman's enum, and mapping it onto `tinywallet::Chain` here keeps that
+/// `crate::openhuman::web3::wallet::primitives::address::validate` directly because [`WalletChain`] is
+/// OpenHuman's enum, and mapping it onto `crate::openhuman::web3::wallet::primitives::Chain` here keeps that
 /// translation in one place.
 ///
 /// For Bitcoin this is the **recipient** rule — any well-formed mainnet
@@ -357,13 +357,14 @@ pub(crate) fn validate_amount(raw: &str) -> Result<u128, String> {
 /// the other three chains, so it cannot be expressed through this entry point.
 fn validate_address(chain: WalletChain, addr: &str) -> Result<String, String> {
     let tw_chain = match chain {
-        WalletChain::Evm => tinywallet::Chain::Evm,
-        WalletChain::Btc => tinywallet::Chain::Btc,
-        WalletChain::Solana => tinywallet::Chain::Solana,
-        WalletChain::Tron => tinywallet::Chain::Tron,
+        WalletChain::Evm => crate::openhuman::web3::wallet::primitives::Chain::Evm,
+        WalletChain::Btc => crate::openhuman::web3::wallet::primitives::Chain::Btc,
+        WalletChain::Solana => crate::openhuman::web3::wallet::primitives::Chain::Solana,
+        WalletChain::Tron => crate::openhuman::web3::wallet::primitives::Chain::Tron,
     };
     debug!("{LOG_PREFIX} validate_address chain={chain:?} role=recipient dispatch=tinywallet");
-    let result = tinywallet::address::validate(tw_chain, addr).map_err(|e| e.to_string());
+    let result = crate::openhuman::web3::wallet::primitives::address::validate(tw_chain, addr)
+        .map_err(|e| e.to_string());
     debug!(
         "{LOG_PREFIX} validate_address chain={chain:?} role=recipient result={}",
         if result.is_ok() {

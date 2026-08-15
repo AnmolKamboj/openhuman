@@ -3112,7 +3112,14 @@ pub fn run() {
                 // `setup()` returns, which is why clamping here alone is
                 // not enough.
                 window_state::install_dpi_guard(&window);
-                if !window_state::restore_main(&window) {
+                // No saved geometry (first launch, or the save is stale /
+                // belongs to a detached monitor) → open filling the work area
+                // rather than the modest default size from `tauri.conf.json`.
+                // `center_main` stays as the fallback for the case where no
+                // monitor resolves at all.
+                if !window_state::restore_main(&window)
+                    && !window_state::maximize_to_work_area(&window)
+                {
                     window_state::center_main(&window);
                 }
                 if !daemon_mode {

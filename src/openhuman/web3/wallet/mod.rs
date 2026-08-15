@@ -33,13 +33,15 @@ mod execution;
 #[cfg(feature = "web3")]
 mod ops;
 #[cfg(feature = "web3")]
+pub(crate) mod primitives;
+#[cfg(feature = "web3")]
 pub(crate) mod rpc;
 
 #[cfg(feature = "web3")]
 mod schemas;
 #[cfg(feature = "web3")]
 pub mod tools;
-/// The host side of `tinywallet`'s `Transport` seam — endpoint resolution,
+/// The host side of the wallet primitives' `Transport` seam — endpoint resolution,
 /// failover and redaction stay here, where the config lives.
 #[cfg(feature = "web3")]
 pub(crate) mod transport;

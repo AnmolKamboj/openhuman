@@ -451,8 +451,8 @@ impl PythonExecTool {
         } else {
             format!("{}{}{}", bin_dir.display(), sep, host_path)
         };
-        extra_env.insert("PATH".to_string(), prepended);
-        extra_env.insert("PYTHONUNBUFFERED".to_string(), "1".to_string());
+        extra_env.insert("PATH".into(), prepended.into());
+        extra_env.insert("PYTHONUNBUFFERED".into(), "1".into());
 
         match sandbox::execute_in_sandbox(
             &policy,

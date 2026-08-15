@@ -126,17 +126,24 @@ fn resolve_attribution_model(default: &str) -> String {
         .unwrap_or_else(|| default.to_string())
 }
 
-/// Install the attribution model and snapshot location, loading any prior
-/// snapshot. Called once at startup from [`crate::openhuman::inference::tokenjuice::install_config`].
+/// Install the attribution model and snapshot location, loading a prior
+/// snapshot once per workspace.
 pub fn configure(attribution_model: String, workspace_dir: &std::path::Path) {
     let path = workspace_dir.join("state").join("tokenjuice_savings.json");
-    let loaded = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|s| serde_json::from_str::<SavingsAggregate>(&s).ok());
     let mut st = state().lock().unwrap_or_else(|p| p.into_inner());
     if !attribution_model.trim().is_empty() {
         st.attribution_model = attribution_model;
     }
+    // Module calls apply host configuration lazily. Do not reload the snapshot
+    // on every tool result: besides needless I/O, a concurrent call could have
+    // read the file just before another call persisted a saving and then replace
+    // the newer in-memory aggregate with that stale copy.
+    if st.snapshot_path.as_ref() == Some(&path) {
+        return;
+    }
+    let loaded = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<SavingsAggregate>(&s).ok());
     st.snapshot_path = Some(path);
     if let Some(agg) = loaded {
         st.aggregate = agg;

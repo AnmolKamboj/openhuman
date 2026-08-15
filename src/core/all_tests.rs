@@ -1076,9 +1076,8 @@ fn mcp_namespaces_absent_when_gate_off() {
 
 // --- #4797: `flows` compile-time gate (directional proof) -------------------
 //
-// One namespace, not three: `tinyflows` registers no controllers, and
-// `rhai_workflows` is `scope() = AgentOnly` (no controller schemas in v1), so
-// `flows` is the gate's entire controller surface.
+// One namespace, not two: `tinyflows` registers no controllers, so `flows` is
+// the gate's entire controller surface.
 
 #[cfg(feature = "flows")]
 #[test]
@@ -1658,7 +1657,7 @@ fn memory_controllers_form_one_contiguous_run_in_aggregator_order() {
 // present and failing, because a registered-but-failing method teaches a model
 // the capability exists and makes it retry.
 
-use tinycortex_api::capabilities::Capability;
+use crate::openhuman::memory::api::capabilities::Capability;
 
 /// A workspace path unique to one test.
 ///
@@ -1983,8 +1982,9 @@ async fn visible_under(
 }
 
 #[tokio::test]
+#[cfg(feature = "modules")]
 async fn memory_families_registered_when_capabilities_advertised() {
-    // The embedded `tinycortex` driver (the default config) advertises
+    // The TinyMemory module driver advertises
     // `Capabilities::all()`, so every gated family is present. Scoped rather
     // than unscoped so this proves a BOUND driver's set, not the unbound
     // default-open fallback.

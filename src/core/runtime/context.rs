@@ -278,11 +278,11 @@ impl CoreContext {
     /// would keep `memory_store` / `memory_recall` / `memory.list_documents`
     /// answering off the embedded store the guarded re-point has not yet
     /// covered. See [`MemoryBinding::disables_memory`](crate::openhuman::memory::binding::MemoryBinding::disables_memory).
-    pub fn memory_capabilities(&self) -> tinycortex_api::capabilities::Capabilities {
+    pub fn memory_capabilities(&self) -> crate::openhuman::memory::api::capabilities::Capabilities {
         self.memory_binding()
             .map(|binding| {
                 if binding.disables_memory() {
-                    tinycortex_api::capabilities::Capabilities::default()
+                    crate::openhuman::memory::api::capabilities::Capabilities::default()
                 } else {
                     binding.capabilities()
                 }
@@ -317,7 +317,8 @@ impl CoreContext {
     /// there is no context at all. This is the direct analogue of
     /// `core::all::group_allowed` and is the function a future capability
     /// registration filter calls.
-    pub fn current_memory_capabilities() -> tinycortex_api::capabilities::Capabilities {
+    pub fn current_memory_capabilities() -> crate::openhuman::memory::api::capabilities::Capabilities
+    {
         Self::current()
             .map(|ctx| ctx.memory_capabilities())
             .unwrap_or_else(crate::openhuman::memory::binding::unbound_default_capabilities)
@@ -972,10 +973,12 @@ mod tests {
         };
 
         let bind_a = ctx.memory_binding().expect("bind workspace A");
-        assert_eq!(
-            bind_a.class(),
-            crate::core::subsystem::DriverClass::Embedded
-        );
+        let expected = if cfg!(feature = "modules") {
+            crate::core::subsystem::DriverClass::Module
+        } else {
+            crate::core::subsystem::DriverClass::Null
+        };
+        assert_eq!(bind_a.class(), expected);
 
         let null_cfg = crate::openhuman::config::schema::MemorySubsystemConfig {
             driver: "null".to_string(),
@@ -1016,7 +1019,7 @@ mod tests {
         };
 
         let bind_a = a.memory_binding().expect("bind workspace A");
-        assert_eq!(bind_a.driver_id(), "tinycortex");
+        assert_eq!(bind_a.driver_id(), "tinymemory");
         assert!(bind_a.fallback().is_none());
 
         let bind_b = b.memory_binding().expect("workspace B falls back");
@@ -1045,7 +1048,7 @@ mod tests {
         assert!(ctx.memory_binding().is_err(), "no workspace ⇒ no binding");
         assert_eq!(
             ctx.memory_capabilities(),
-            tinycortex_api::capabilities::Capabilities::all(),
+            crate::openhuman::memory::api::capabilities::Capabilities::all(),
             "a context with no binding must not deny any capability"
         );
     }
@@ -1060,14 +1063,14 @@ mod tests {
     fn current_memory_capabilities_defaults_open_without_a_context() {
         assert_eq!(
             crate::openhuman::memory::binding::unbound_default_capabilities(),
-            tinycortex_api::capabilities::Capabilities::all()
+            crate::openhuman::memory::api::capabilities::Capabilities::all()
         );
         // And when a context *is* ambient, the call resolves through it rather
         // than erroring.
         let ctx = CoreContext::for_test(crate::core::runtime::DomainSet::full(), None, None);
         assert_eq!(
             ctx.memory_capabilities(),
-            tinycortex_api::capabilities::Capabilities::all()
+            crate::openhuman::memory::api::capabilities::Capabilities::all()
         );
     }
 
@@ -1078,7 +1081,7 @@ mod tests {
         let ctx = CoreContext::for_test(crate::core::runtime::DomainSet::harness(), None, None);
         assert_eq!(
             ctx.memory_capabilities(),
-            tinycortex_api::capabilities::Capabilities::all()
+            crate::openhuman::memory::api::capabilities::Capabilities::all()
         );
     }
 }

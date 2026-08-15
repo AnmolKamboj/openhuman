@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 /// This is a **host configuration fact**, never something the driver reports.
 ///
 /// Deliberately not `#[non_exhaustive]`, for the same reason
-/// `tinycortex_api::capabilities::Capability` is not: adding a class must break
+/// `crate::openhuman::memory::api::capabilities::Capability` is not: adding a class must break
 /// every exhaustive `match` in the host, because those matches are where policy
 /// (egress, trust, credential resolution) is decided per class.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
@@ -46,27 +46,7 @@ pub enum DriverClass {
     /// An out-of-process backend reached through a transport adapter over a
     /// documented wire contract.
     External,
-    /// A loadable native module: a `cdylib` admitted through tinybus's ABI,
-    /// manifest and digest gates and reached over the in-process module bus.
-    ///
-    /// Neither of the two classes above fits, and the difference is the policy
-    /// this class gates:
-    ///
-    /// - not [`Self::Embedded`], because the code is **not compiled into this
-    ///   binary**. It is downloaded, verified against a digest pinned in
-    ///   `modules::registry`, and `dlopen`ed. Whether it is present at all is a
-    ///   runtime fact, so a capability set derived from it can be empty on a
-    ///   platform no artifact is published for.
-    /// - not [`Self::External`], because there is **no egress and no process
-    ///   boundary**. It shares this address space, these privileges and this
-    ///   crash domain, so the trust checks that make sense for a remote backend
-    ///   (endpoint allowlisting, TLS, credential scoping) are neither applicable
-    ///   nor sufficient. What protects the host is admission, not isolation.
-    ///
-    /// Treating a module as `External` would apply egress policy to something
-    /// that makes no network calls while implying an isolation the loader does
-    /// not provide; treating it as `Embedded` would claim a compile-time
-    /// guarantee that a downloaded artifact does not have.
+    /// A verified native TinyBus module loaded into this process.
     Module,
     /// A stub advertising zero capabilities — what a compiled-out or
     /// unconfigured subsystem binds to.
@@ -128,7 +108,7 @@ impl std::str::FromStr for DriverClass {
 
 /// Liveness of a bound driver, in the kernel's generic vocabulary.
 ///
-/// Shaped one-for-one against `tinycortex_api::health::MemoryHealth` — and
+/// Shaped one-for-one against `crate::openhuman::memory::api::health::MemoryHealth` — and
 /// against whatever the next subsystem's contract carries — so the boundary
 /// conversion is a total three-arm `match` that cannot drift. Serializes as an
 /// internally-tagged object with a stable snake_case `status` discriminant:
@@ -211,7 +191,7 @@ impl std::fmt::Display for DriverHealth {
 /// The kernel deliberately does not know any subsystem's family vocabulary —
 /// `"tree"` and `"tool_memory"` mean something to the memory subsystem and
 /// nothing here. Each subsystem's adapter converts its own typed set (for
-/// memory: `tinycortex_api::capabilities::Capabilities`) into this at bind
+/// memory: `crate::openhuman::memory::api::capabilities::Capabilities`) into this at bind
 /// time, and the kernel only ever asks "does the bound driver advertise this
 /// string?" when deciding whether to register a controller or emit a tool.
 ///

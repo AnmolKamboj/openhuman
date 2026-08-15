@@ -2551,7 +2551,6 @@ fn tool_group_classifies_gate_and_harness_families() {
         "list_connectable_toolkits",
         "list_node_kinds",
         "get_node_kind_contract",
-        "rhai_workflows",
         "flow_memory_recall",
         "flow_memory_remember",
     ] {
@@ -2675,13 +2674,12 @@ fn no_gate_family_tool_silently_defaults_to_platform() {
 
 // --- #4797: `flows` compile-time gate ---------------------------------------
 
-/// With the `flows` feature off, every flows-owned agent tool — and the
-/// `rhai_workflows` tool whose engine the gate sheds via `tinyagents/repl` — is
-/// compiled out of the default registry entirely.
+/// With the `flows` feature off, every flows-owned agent tool is compiled out
+/// of the default registry entirely.
 ///
-/// `SecurityPolicy::default()` is `Supervised` (not `ReadOnly`), so the
-/// `rhai_workflows` assertion is a real one: that tool *would* be registered at
-/// this tier if the feature were on.
+/// `SecurityPolicy::default()` is `Supervised` (not `ReadOnly`), so these
+/// assertions are real ones: each tool *would* be registered at this tier if
+/// the feature were on.
 #[test]
 #[cfg(not(feature = "flows"))]
 fn default_tools_omits_flows_tools_when_feature_off() {
@@ -2715,7 +2713,6 @@ fn default_tools_omits_flows_tools_when_feature_off() {
         "run_flow",
         "save_workflow",
         "suggest_workflows",
-        "rhai_workflows",
         "flow_memory_recall",
         "flow_memory_remember",
     ] {
@@ -2808,8 +2805,11 @@ const TOOL_LESS: &[crate::core::all::DomainGroup] = {
 // ---- tool_capability() drift guard (M5.3) ----------------------------------
 
 /// Driver-backed memory tools and the capability each requires.
-const MEMORY_TOOL_CAPABILITIES: &[(&str, tinycortex_api::capabilities::Capability)] = {
-    use tinycortex_api::capabilities::Capability as C;
+const MEMORY_TOOL_CAPABILITIES: &[(
+    &str,
+    crate::openhuman::memory::api::capabilities::Capability,
+)] = {
+    use crate::openhuman::memory::api::capabilities::Capability as C;
     &[
         ("memory_store", C::Core),
         ("memory_forget", C::Core),
@@ -2896,7 +2896,7 @@ fn every_memory_tool_has_an_explicit_capability_or_is_core() {
 /// (the never-filtered bucket). Synthetic names matching only the prefix.
 #[test]
 fn no_prefix_family_memory_tool_silently_defaults_to_uncapped() {
-    use tinycortex_api::capabilities::Capability;
+    use crate::openhuman::memory::api::capabilities::Capability;
     for (name, want) in [
         ("goals_new_thing", Capability::Goals),
         ("memory_tree_new_thing", Capability::Tree),
@@ -3002,10 +3002,11 @@ fn memory_tools_all_present_with_no_ambient_context() {
     }
 }
 
-/// Under the default (`driver = "tinycortex"`) binding the embedded driver
+/// Under the default binding the TinyMemory module
 /// advertises all thirteen families, so the list is byte-identical to today.
 #[tokio::test]
-async fn memory_tools_all_present_under_the_embedded_driver() {
+#[cfg(feature = "modules")]
+async fn memory_tools_all_present_under_the_module_driver() {
     use crate::core::runtime::context::CoreContext;
     use crate::core::runtime::DomainSet;
 
@@ -3022,13 +3023,13 @@ async fn memory_tools_all_present_under_the_embedded_driver() {
     {
         assert!(
             names.iter().any(|n| n == name),
-            "`{name}` must survive the embedded driver; got: {names:?}"
+            "`{name}` must survive the module driver; got: {names:?}"
         );
     }
     if cfg!(feature = "memory-git") {
         assert!(
             names.iter().any(|n| n == "memory_diff"),
-            "`memory_diff` must survive the embedded driver when `memory-git` is on; got: {names:?}"
+            "`memory_diff` must survive the module driver when `memory-git` is on; got: {names:?}"
         );
     }
 }

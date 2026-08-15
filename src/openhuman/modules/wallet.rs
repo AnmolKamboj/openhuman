@@ -41,7 +41,7 @@
 //! with which it is, and [`sign_payload`] dispatches on the tag rather than on
 //! the chain — so a chain that changes scheme cannot silently sign wrongly.
 
-use tinywallet::wire::{
+use crate::openhuman::web3::wallet::primitives::wire::{
     AttachRequest, PublicKey, Scheme, Signature, SignedTransaction, SigningPayload, SigningRequest,
     TransactionSpec, UnsignedTransaction,
 };
@@ -145,6 +145,7 @@ pub async fn sign_transaction(
 /// Dispatches on the payload's own tag, never on the chain: the module is the
 /// authority on what it needs signed and how, and a host that decided for itself
 /// would sign wrongly the moment the two disagreed.
+#[allow(unreachable_patterns)]
 fn sign_payload(payload: &SigningPayload, secret: &[u8]) -> Result<Signature, WalletCallError> {
     let bytes = unhex(&payload.bytes_hex)?;
     match payload.scheme {
