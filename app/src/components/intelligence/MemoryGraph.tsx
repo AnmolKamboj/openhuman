@@ -41,7 +41,11 @@ import { useT } from '../../lib/i18n/I18nContext';
 import { useAppSelector } from '../../store/hooks';
 import { resolveTheme, type ThemeMode } from '../../store/themeSlice';
 import { type GraphEdge, type GraphMode, type GraphNode } from '../../utils/tauriCommands';
-import { openWorkspacePath, previewWorkspaceText } from '../../utils/tauriCommands/workspacePaths';
+import {
+  openMemorySourcePath,
+  openWorkspacePath,
+  previewWorkspaceText,
+} from '../../utils/tauriCommands/workspacePaths';
 import Button from '../ui/Button';
 import {
   CONTACT_COLOR,
@@ -230,6 +234,9 @@ export function MemoryGraph({
   const themeMode = useAppSelector(state => state.theme?.mode ?? 'system') as ThemeMode;
   const isDark = resolveTheme(themeMode) === 'dark';
   const [hovered, setHovered] = useState<GraphNode | null>(null);
+  // Always-on node labels. Seeded from the prop, then owned by the toolbar
+  // toggle so a dense graph can be read without hovering every dot.
+  const [labelsOn, setLabelsOn] = useState(!!showLabels);
 
   // Fire `onReady` at most once across this component's lifetime. The latest
   // callback is held in a ref so `fireReady` stays stable (the SVG layout hook
@@ -398,6 +405,17 @@ export function MemoryGraph({
       });
     } finally {
       setPreviewingPath(null);
+    }
+  }, []);
+
+  // Vault notes live outside the OpenHuman workspace, so they open through the
+  // memory-source root rather than `openWorkspacePath`.
+  const openVaultNote = useCallback(async (node: GraphNode) => {
+    if (!node.source_id || !node.source_path) return;
+    try {
+      await openMemorySourcePath(node.source_id, node.source_path);
+    } catch (err) {
+      console.error('[memory-graph] openMemorySourcePath failed', err);
     }
   }, []);
 
@@ -656,6 +674,15 @@ export function MemoryGraph({
           <Button
             variant="secondary"
             size="xs"
+            onClick={() => setLabelsOn(v => !v)}
+            aria-pressed={labelsOn}
+            data-testid="memory-graph-toggle-labels"
+            className="text-[11px] shadow-sm">
+            {labelsOn ? t('graph.hideLabels', 'Hide labels') : t('graph.showLabels', 'Show labels')}
+          </Button>
+          <Button
+            variant="secondary"
+            size="xs"
             onClick={resetView}
             data-testid="memory-graph-reset-view"
             className="text-[11px] shadow-sm">
@@ -672,7 +699,7 @@ export function MemoryGraph({
           fill={fill}
           fitScale={fitScale}
           fitToBounds={fitToBounds}
-          showLabels={showLabels}
+          showLabels={labelsOn}
           tuning={tuning}
           dark={
             typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
@@ -681,6 +708,7 @@ export function MemoryGraph({
           onHover={setHovered}
           onOpen={n => {
             if (n.kind === 'summary') void openSummary(n);
+            else if (n.kind === 'chunk') void openVaultNote(n);
           }}
           onError={() => setPixiFailed(true)}
           onReady={fireReady}
@@ -756,6 +784,7 @@ export function MemoryGraph({
                       // when the pointer actually moved.
                       if (movedRef.current) return;
                       if (n.kind === 'summary') void openSummary(n);
+                      else if (n.kind === 'chunk') void openVaultNote(n);
                     }}
                     data-testid={`memory-graph-node-${n.id}`}>
                     <title>{tooltipFor(n, t)}</title>
@@ -763,7 +792,7 @@ export function MemoryGraph({
                 );
               })}
             </g>
-            {showLabels && (
+            {labelsOn && (
               <g>
                 {sim.sim.slice(0, svgVisible).map((n, i) => {
                   const label = (n.label ?? '').trim();
@@ -844,6 +873,21 @@ export function MemoryGraph({
             <>
               <span className="font-medium">{hovered.label || 'chunk'}</span>
               <span className="ml-3 text-content-faint">{t('graph.document')}</span>
+              {hovered.source_id && hovered.source_path && (
+                <>
+                  <span className="ml-3 break-all font-mono text-content-faint">
+                    {hovered.source_path}
+                  </span>
+                  <Button
+                    variant="secondary"
+                    size="xs"
+                    data-testid={`memory-graph-open-${hovered.id}`}
+                    onClick={() => void openVaultNote(hovered)}
+                    className="ml-3 text-[11px] shadow-sm">
+                    {t('graph.openFile', 'Open')}
+                  </Button>
+                </>
+              )}
             </>
           )}
         </div>

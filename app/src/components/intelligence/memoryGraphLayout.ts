@@ -137,11 +137,12 @@ export function buildGraph(
       if (!n.parent_id || !ids.has(n.parent_id) || !ids.has(n.id)) continue;
       links.push({ source: n.id, target: n.parent_id });
     }
-  } else {
-    for (const e of edges) {
-      if (!ids.has(e.from) || !ids.has(e.to)) continue;
-      links.push({ source: e.from, target: e.to });
-    }
+  }
+  // Explicit edges ride alongside the parent hierarchy: contacts mode uses them
+  // for entity mentions, tree mode for `[[wikilink]]`s between vault notes.
+  for (const e of edges) {
+    if (!ids.has(e.from) || !ids.has(e.to)) continue;
+    links.push({ source: e.from, target: e.to });
   }
   return { simNodes, links };
 }

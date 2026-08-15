@@ -16,12 +16,14 @@ function ReduxWrapper({ children }: PropsWithChildren) {
 const mocks = vi.hoisted(() => ({
   openUrl: vi.fn(),
   openWorkspacePath: vi.fn(),
+  openMemorySourcePath: vi.fn(),
   previewWorkspaceText: vi.fn(),
 }));
 
 vi.mock('../../utils/openUrl', () => ({ openUrl: (...args: unknown[]) => mocks.openUrl(...args) }));
 vi.mock('../../utils/tauriCommands/workspacePaths', () => ({
   openWorkspacePath: (...args: unknown[]) => mocks.openWorkspacePath(...args),
+  openMemorySourcePath: (...args: unknown[]) => mocks.openMemorySourcePath(...args),
   previewWorkspaceText: (...args: unknown[]) => mocks.previewWorkspaceText(...args),
 }));
 
@@ -310,6 +312,21 @@ describe('<MemoryGraph />', () => {
     render(<MemoryGraph nodes={nodes} edges={[]} mode="contacts" />, { wrapper: ReduxWrapper });
     fireEvent.click(screen.getByTestId('memory-graph-node-doc-1'));
     await Promise.resolve();
+    expect(mocks.openWorkspacePath).not.toHaveBeenCalled();
+  });
+
+  it('opens a vault note from the hovered chunk tooltip', async () => {
+    const nodes = [
+      makeChunkNode({ id: 'note-1', source_id: 'src_vault', source_path: 'People/Anmol.md' }),
+    ];
+    render(<MemoryGraph nodes={nodes} edges={[]} mode="tree" />, { wrapper: ReduxWrapper });
+    fireEvent.mouseEnter(screen.getByTestId('memory-graph-node-note-1'));
+
+    fireEvent.click(screen.getByTestId('memory-graph-open-note-1'));
+
+    await waitFor(() => {
+      expect(mocks.openMemorySourcePath).toHaveBeenCalledWith('src_vault', 'People/Anmol.md');
+    });
     expect(mocks.openWorkspacePath).not.toHaveBeenCalled();
   });
 

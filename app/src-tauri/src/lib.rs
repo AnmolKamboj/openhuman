@@ -3323,6 +3323,7 @@ pub fn run() {
             file_logging::reveal_logs_folder,
             file_logging::logs_folder_path,
             workspace_paths::open_workspace_path,
+            workspace_paths::open_memory_source_path,
             workspace_paths::reveal_workspace_path,
             workspace_paths::preview_workspace_text,
             workspace_paths::resolve_workspace_absolute_path,

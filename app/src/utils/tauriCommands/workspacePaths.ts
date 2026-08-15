@@ -29,6 +29,16 @@ export async function openWorkspacePath(path: string): Promise<void> {
   await invoke<void>('open_workspace_path', { path });
 }
 
+/**
+ * Open a file inside a configured memory source (e.g. the Obsidian vault
+ * behind a folder ingest). Vault files live outside the OpenHuman workspace,
+ * so {@link openWorkspacePath} rejects them.
+ */
+export async function openMemorySourcePath(sourceId: string, path: string): Promise<void> {
+  assertTauri();
+  await invoke<void>('open_memory_source_path', { sourceId, path });
+}
+
 export async function revealWorkspacePath(path: string): Promise<void> {
   assertTauri();
   await invoke<void>('reveal_workspace_path', { path });

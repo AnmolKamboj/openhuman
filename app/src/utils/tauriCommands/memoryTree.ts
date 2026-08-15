@@ -457,6 +457,12 @@ export interface GraphNode {
   time_range_start_ms?: number;
   time_range_end_ms?: number;
 
+  // Chunk-only, folder ingests ──
+  /** Id of the `memory_sources` entry (vault) this note was ingested from. */
+  source_id?: string;
+  /** The note's path relative to that source's root, e.g. `People/Anmol.md`. */
+  source_path?: string;
+
   // Contact-only ──
   /** `"person" | "organization" | …`. */
   entity_kind?: string;

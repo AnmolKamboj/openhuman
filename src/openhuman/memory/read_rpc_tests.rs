@@ -766,6 +766,32 @@ fn insert_chunk_with_parent(
     timestamp_ms: i64,
     content: &str,
 ) {
+    insert_chunk_with_source(
+        cfg,
+        id,
+        "slack:#eng",
+        timestamp_ms,
+        content,
+    );
+    if parent_summary_id.is_some() {
+        with_connection(cfg, |conn| {
+            conn.execute(
+                "UPDATE mem_tree_chunks SET parent_summary_id = ?1 WHERE id = ?2",
+                params![parent_summary_id, id],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    }
+}
+
+fn insert_chunk_with_source(
+    cfg: &Config,
+    id: &str,
+    source_id: &str,
+    timestamp_ms: i64,
+    content: &str,
+) {
     with_connection(cfg, |conn| {
         conn.execute(
             "INSERT INTO mem_tree_chunks (
@@ -773,8 +799,8 @@ fn insert_chunk_with_parent(
                 time_range_start_ms, time_range_end_ms, tags_json, content,
                 token_count, seq_in_source, created_at_ms, lifecycle_status,
                 content_path, parent_summary_id
-             ) VALUES (?1, 'chat', 'slack:#eng', NULL, 'tester', ?2, ?2, ?2, '[]', ?3, 1, 0, ?2, 'seeded', NULL, ?4)",
-            params![id, timestamp_ms, content, parent_summary_id],
+             ) VALUES (?1, 'chat', ?2, NULL, 'tester', ?3, ?3, ?3, '[]', ?4, 1, 0, ?3, 'seeded', NULL, NULL)",
+            params![id, source_id, timestamp_ms, content],
         )?;
         Ok(())
     })
@@ -823,12 +849,61 @@ async fn tree_graph_includes_leaf_chunks_linked_to_their_summary() {
     assert_eq!(sealed.label, "first line of sealed chunk");
 
     let orphan = resp.nodes.iter().find(|n| n.id == "chunk-orphan").unwrap();
-    assert!(
-        orphan.parent_id.is_none(),
-        "unsealed chunk has no parent → renders as an orphan node"
+    assert_eq!(
+        orphan.parent_id.as_deref(),
+        Some(source_root.id.as_str()),
+        "unsealed chunk must still hang off its source root so the graph is not a cloud of dots"
     );
 
     assert!(resp.edges.is_empty());
+}
+
+#[tokio::test]
+async fn tree_graph_links_folder_chunks_to_a_source_root_before_seal() {
+    let (_tmp, mut cfg) = test_config();
+    cfg.memory_sources = vec![
+        crate::openhuman::memory::sources::types::MemorySourceEntry {
+            id: "src_vault".into(),
+            kind: crate::openhuman::memory::sources::types::SourceKind::Folder,
+            label: "smriti".into(),
+            enabled: true,
+            toolkit: None,
+            connection_id: None,
+            path: Some("D:/vault".into()),
+            glob: Some("**/*.md".into()),
+            url: None,
+            branch: None,
+            paths: Vec::new(),
+            max_commits: None,
+            max_issues: None,
+            max_prs: None,
+            query: None,
+            since_days: None,
+            max_items: None,
+            selector: None,
+            max_tokens_per_sync: None,
+            max_cost_per_sync_usd: None,
+            sync_depth_days: None,
+        },
+    ];
+    insert_chunk_with_source(
+        &cfg,
+        "chunk-note",
+        "mem_src:src_vault:Daily/2026-08-02.md",
+        1_700_000_000_000,
+        "---\ntags: [daily]\n# Saturday\n",
+    );
+
+    let resp = graph_export_rpc(&cfg, GraphMode::Tree).await.unwrap().value;
+    let source = resp
+        .nodes
+        .iter()
+        .find(|n| n.kind == "source")
+        .expect("folder ingest must synthesise a source hub before summaries exist");
+    assert_eq!(source.id, "source:src_vault");
+    assert_eq!(source.label, "smriti");
+    let note = resp.nodes.iter().find(|n| n.id == "chunk-note").unwrap();
+    assert_eq!(note.parent_id.as_deref(), Some("source:src_vault"));
 }
 
 #[tokio::test]

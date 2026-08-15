@@ -41,6 +41,14 @@ pub struct GraphNode {
     pub file_basename: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entity_kind: Option<String>,
+    /// Folder-ingest chunks only: the `memory_sources` id this note came from,
+    /// paired with [`GraphNode::source_path`] so the UI can open the original
+    /// file on disk (the vault lives outside the OpenHuman workspace).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_id: Option<String>,
+    /// Folder-ingest chunks only: the note's path relative to the source root.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -140,6 +148,8 @@ fn collect_tree_graph(cfg: &Config) -> Result<(Vec<GraphNode>, Vec<GraphEdge>)> 
                         time_range_end_ms: Some(time_range_end_ms),
                         file_basename: Some(file_basename),
                         entity_kind: None,
+                        source_id: None,
+                        source_path: None,
                     },
                     tree_scope,
                     child_ids,
@@ -177,6 +187,8 @@ fn collect_tree_graph(cfg: &Config) -> Result<(Vec<GraphNode>, Vec<GraphEdge>)> 
             time_range_end_ms: None,
             file_basename: None,
             entity_kind: None,
+            source_id: None,
+            source_path: None,
         });
     }
 
@@ -234,10 +246,15 @@ fn collect_tree_graph(cfg: &Config) -> Result<(Vec<GraphNode>, Vec<GraphEdge>)> 
                 time_range_end_ms: sr.node.time_range_end_ms,
                 file_basename: None,
                 entity_kind: None,
+                source_id: None,
+                source_path: None,
             });
             doc_count += 1;
         }
     }
+
+    const MAX_WIKI_EDGES: usize = 20_000;
+    let mut wiki_edges: Vec<GraphEdge> = Vec::new();
 
     let chunk_budget = MAX_TREE_NODES.saturating_sub(nodes.len());
     if chunk_budget > 0 {
@@ -257,13 +274,24 @@ fn collect_tree_graph(cfg: &Config) -> Result<(Vec<GraphNode>, Vec<GraphEdge>)> 
                     let time_range_start_ms: i64 = row.get(3)?;
                     let time_range_end_ms: i64 = row.get(4)?;
                     let source_id: String = row.get(5)?;
-                    let label = content
-                        .lines()
-                        .next()
-                        .unwrap_or("")
-                        .chars()
-                        .take(72)
-                        .collect::<String>();
+                    let source_path = chunk_note_path(&source_id);
+                    let source_owner = source_path
+                        .as_ref()
+                        .map(|_| chunk_source_scope(&source_id));
+                    // Folder chunks title themselves by note name; everything
+                    // else falls back to the first line of the chunk body.
+                    let label = source_path
+                        .as_deref()
+                        .map(note_display_label)
+                        .unwrap_or_else(|| {
+                            content
+                                .lines()
+                                .next()
+                                .unwrap_or("")
+                                .chars()
+                                .take(72)
+                                .collect::<String>()
+                        });
                     Ok((
                         GraphNode {
                             kind: "chunk".into(),
@@ -279,8 +307,11 @@ fn collect_tree_graph(cfg: &Config) -> Result<(Vec<GraphNode>, Vec<GraphEdge>)> 
                             time_range_end_ms: Some(time_range_end_ms),
                             file_basename: None,
                             entity_kind: None,
+                            source_id: source_owner,
+                            source_path,
                         },
                         source_id,
+                        content,
                     ))
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()
@@ -288,12 +319,185 @@ fn collect_tree_graph(cfg: &Config) -> Result<(Vec<GraphNode>, Vec<GraphEdge>)> 
             Ok(rows)
         })?;
 
-        for (chunk, _source_id) in chunk_nodes {
+        let mut known_ids: std::collections::HashSet<String> =
+            nodes.iter().map(|n| n.id.clone()).collect();
+        // `[[wikilink]]` graph (Obsidian parity): note key → the node that
+        // represents that note, plus each node's outbound link targets. Both
+        // are keyed in the same normalized space (lowercased, `.md` stripped).
+        let mut note_key_to_node: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        let mut pending_links: Vec<(String, Vec<String>)> = Vec::new();
+        for (mut chunk, source_id, content) in chunk_nodes {
+            if let Some(note_path) = chunk_note_path(&source_id) {
+                for key in note_link_keys(&note_path) {
+                    note_key_to_node
+                        .entry(key)
+                        .or_insert_with(|| chunk.id.clone());
+                }
+                let targets = parse_wikilink_targets(&content);
+                if !targets.is_empty() {
+                    pending_links.push((chunk.id.clone(), targets));
+                }
+            }
+            let scope = chunk_source_scope(&source_id);
+            let root_id = format!("source:{scope}");
+            if !source_root_ids.contains_key(&scope) {
+                source_root_ids.insert(scope.clone(), root_id.clone());
+                if !known_ids.contains(&root_id) {
+                    let label = memory_source_label(cfg, &scope)
+                        .unwrap_or_else(|| scope_display_label(&scope));
+                    nodes.push(GraphNode {
+                        kind: "source".into(),
+                        id: root_id.clone(),
+                        label,
+                        tree_kind: None,
+                        tree_scope: Some(scope.clone()),
+                        tree_id: None,
+                        level: None,
+                        parent_id: None,
+                        child_count: None,
+                        time_range_start_ms: None,
+                        time_range_end_ms: None,
+                        file_basename: None,
+                        entity_kind: None,
+                        source_id: None,
+                        source_path: None,
+                    });
+                    known_ids.insert(root_id.clone());
+                }
+            }
+            let parent_ok = chunk
+                .parent_id
+                .as_ref()
+                .map(|pid| known_ids.contains(pid))
+                .unwrap_or(false);
+            if !parent_ok {
+                chunk.parent_id = Some(root_id);
+            }
+            known_ids.insert(chunk.id.clone());
             nodes.push(chunk);
+        }
+
+        let mut seen: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
+        'outer: for (from, targets) in pending_links {
+            for key in targets {
+                let Some(to) = note_key_to_node.get(&key) else {
+                    continue;
+                };
+                if to == &from {
+                    continue;
+                }
+                if seen.insert((from.clone(), to.clone())) {
+                    wiki_edges.push(GraphEdge {
+                        from: from.clone(),
+                        to: to.clone(),
+                    });
+                    if wiki_edges.len() >= MAX_WIKI_EDGES {
+                        break 'outer;
+                    }
+                }
+            }
         }
     }
 
-    Ok((nodes, Vec::new()))
+    Ok((nodes, wiki_edges))
+}
+
+/// Folder ingest writes `mem_src:<source_id>:<relative/path.md>`; everything
+/// after the second colon is the note's path inside the vault.
+fn chunk_note_path(source_id: &str) -> Option<String> {
+    let rest = source_id.strip_prefix("mem_src:")?;
+    let (_, path) = rest.split_once(':')?;
+    let path = path.trim();
+    if path.is_empty() {
+        None
+    } else {
+        Some(path.to_string())
+    }
+}
+
+/// `People/Anmol.md` → `Anmol`, matching how Obsidian titles a note.
+fn note_display_label(path: &str) -> String {
+    let normalized = path.replace('\\', "/");
+    let base = normalized.rsplit('/').next().unwrap_or(&normalized);
+    base.strip_suffix(".md").unwrap_or(base).to_string()
+}
+
+/// The keys a note can be referenced by in `[[wikilink]]` syntax: its full
+/// vault-relative path and its bare basename, lowercased with `.md` stripped.
+fn note_link_keys(path: &str) -> Vec<String> {
+    let normalized = path.replace('\\', "/");
+    let stem = normalized
+        .strip_suffix(".md")
+        .unwrap_or(normalized.as_str())
+        .to_string();
+    let mut keys = vec![stem.to_ascii_lowercase()];
+    if let Some((_, base)) = stem.rsplit_once('/') {
+        let base = base.to_ascii_lowercase();
+        if base != keys[0] {
+            keys.push(base);
+        }
+    }
+    keys
+}
+
+/// Obsidian link targets — `[[Note]]`, `[[Note|alias]]`, `[[Note#heading]]` —
+/// normalized into the same key space as [`note_link_keys`].
+fn parse_wikilink_targets(content: &str) -> Vec<String> {
+    const MAX_PER_CHUNK: usize = 64;
+    let mut out: Vec<String> = Vec::new();
+    let mut rest = content;
+    while let Some(start) = rest.find("[[") {
+        let after = &rest[start + 2..];
+        let Some(end) = after.find("]]") else {
+            break;
+        };
+        let raw = &after[..end];
+        rest = &after[end + 2..];
+        let target = raw
+            .split(|c| c == '|' || c == '#')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .replace('\\', "/");
+        if target.is_empty() {
+            continue;
+        }
+        let stem = target.strip_suffix(".md").unwrap_or(target.as_str());
+        let key = stem.to_ascii_lowercase();
+        if !out.contains(&key) {
+            out.push(key);
+        }
+        if out.len() >= MAX_PER_CHUNK {
+            break;
+        }
+    }
+    out
+}
+
+/// Folder ingest writes `mem_src:<source_id>:<relative/path.md>`. Tree scopes
+/// and the Memory Sources UI key off `<source_id>` alone, so strip the prefix
+/// and path. Other source_id shapes (slack, gmail, …) keep the existing
+/// `kind:account` grouping.
+fn chunk_source_scope(source_id: &str) -> String {
+    if let Some(rest) = source_id.strip_prefix("mem_src:") {
+        return rest
+            .split_once(':')
+            .map(|(id, _)| id.to_string())
+            .unwrap_or_else(|| rest.to_string());
+    }
+    source_id_to_scope(source_id)
+}
+
+fn memory_source_label(cfg: &Config, scope: &str) -> Option<String> {
+    cfg.memory_sources.iter().find_map(|src| {
+        if src.id == scope && !src.label.trim().is_empty() {
+            Some(src.label.clone())
+        } else {
+            None
+        }
+    })
 }
 
 fn scope_display_label(scope: &str) -> String {
@@ -327,7 +531,6 @@ fn document_label(child_id: &str) -> String {
     }
 }
 
-#[allow(dead_code)]
 pub(super) fn source_id_to_scope(source_id: &str) -> String {
     let parts: Vec<&str> = source_id.splitn(3, ':').collect();
     if parts.len() >= 2 {
@@ -436,6 +639,8 @@ fn collect_contacts_graph(cfg: &Config) -> Result<(Vec<GraphNode>, Vec<GraphEdge
                 time_range_end_ms: Some(ts),
                 file_basename: None,
                 entity_kind: None,
+                source_id: None,
+                source_path: None,
             });
         }
         for (entity_id, surface) in contacts {
@@ -453,6 +658,8 @@ fn collect_contacts_graph(cfg: &Config) -> Result<(Vec<GraphNode>, Vec<GraphEdge
                 time_range_end_ms: None,
                 file_basename: None,
                 entity_kind: Some("person".into()),
+                source_id: None,
+                source_path: None,
             });
         }
         Ok((nodes, edges_out))
@@ -466,4 +673,47 @@ pub fn sanitize_basename(id: &str) -> String {
             other => other,
         })
         .collect()
+}
+
+#[cfg(test)]
+mod wikilink_tests {
+    use super::*;
+
+    #[test]
+    fn note_path_is_read_from_the_folder_source_id() {
+        assert_eq!(
+            chunk_note_path("mem_src:src_abc:People/Anmol.md").as_deref(),
+            Some("People/Anmol.md")
+        );
+        assert_eq!(chunk_note_path("slack:eng"), None);
+    }
+
+    #[test]
+    fn a_note_is_reachable_by_path_and_basename() {
+        assert_eq!(
+            note_link_keys("People/Anmol.md"),
+            vec!["people/anmol".to_string(), "anmol".to_string()]
+        );
+        assert_eq!(note_link_keys("Anmol.md"), vec!["anmol".to_string()]);
+    }
+
+    #[test]
+    fn wikilink_targets_drop_aliases_and_headings() {
+        let content = "see [[People/Anmol]] and [[Boca Raton|home]] and [[Jarvis#Memory]]";
+        assert_eq!(
+            parse_wikilink_targets(content),
+            vec![
+                "people/anmol".to_string(),
+                "boca raton".to_string(),
+                "jarvis".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn unclosed_and_empty_links_are_ignored() {
+        assert!(parse_wikilink_targets("[[unterminated").is_empty());
+        assert!(parse_wikilink_targets("[[]] [[   ]]").is_empty());
+        assert!(parse_wikilink_targets("no links here").is_empty());
+    }
 }

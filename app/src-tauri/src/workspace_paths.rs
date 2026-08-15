@@ -29,6 +29,44 @@ pub async fn open_workspace_path(path: String) -> Result<(), String> {
     })
 }
 
+/// Open a file belonging to a configured memory source (e.g. the Obsidian
+/// vault behind a folder ingest). Those files live outside the OpenHuman
+/// workspace, so [`open_workspace_path`] rejects them; confinement here is to
+/// that source's own root, looked up from config by id.
+#[tauri::command]
+pub async fn open_memory_source_path(source_id: String, path: String) -> Result<(), String> {
+    let root = memory_source_root(&source_id).await?;
+    let target = resolve_workspace_path(&root, &path)?;
+    let label = workspace_path_label(&root, &target);
+    tauri_plugin_opener::open_path(&target, None::<&str>).map_err(|err| {
+        workspace_path_error_with_debug(
+            format!("failed to open memory source path {label}: {err}"),
+            format!(
+                "failed to open memory source path {}: {err}",
+                target.display()
+            ),
+        )
+    })
+}
+
+async fn memory_source_root(source_id: &str) -> Result<PathBuf, String> {
+    let config = openhuman_core::openhuman::config::Config::load_or_init()
+        .await
+        .map_err(|err| workspace_path_error(format!("failed to load OpenHuman config: {err}")))?;
+    let source = config
+        .memory_sources
+        .iter()
+        .find(|src| src.id == source_id)
+        .ok_or_else(|| workspace_path_error("unknown memory source".to_string()))?;
+    let root = source
+        .path
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| workspace_path_error("memory source has no folder root".to_string()))?;
+    Ok(PathBuf::from(root))
+}
+
 #[tauri::command]
 pub async fn reveal_workspace_path(path: String) -> Result<(), String> {
     let workspace = active_workspace_root().await?;
