@@ -46,7 +46,7 @@ fn ensure_workspace_file(
 /// If the workspace has no `PROFILE.md` / `MEMORY.md`, seed them from an
 /// enabled folder memory source (Anmol's Obsidian vault) so Cursor/XML
 /// turns still see identity even before the vector graph is warm.
-fn seed_user_brain_files(
+pub(crate) fn seed_user_brain_files(
     workspace_dir: &Path,
     config: &crate::openhuman::config::Config,
     created: &mut Vec<String>,
@@ -107,6 +107,14 @@ Never claim you have no memory without calling those tools.\n",
         }
     }
     Ok(())
+}
+
+/// Seed `PROFILE.md` / `MEMORY.md` when a folder vault is configured.
+/// Safe to call on every channel / session start — no-ops if the files exist.
+pub fn ensure_user_brain_files(config: &crate::openhuman::config::Config) -> Result<(), String> {
+    let mut created = Vec::new();
+    let mut existing = Vec::new();
+    seed_user_brain_files(&config.workspace_dir, config, &mut created, &mut existing)
 }
 
 /// Records `path` in the created / existing list according to what actually

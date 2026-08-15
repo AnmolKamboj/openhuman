@@ -2,9 +2,9 @@
 
 > **Purpose:** Paste or `@`-reference this file at the start of a new Cursor chat so the agent has full fork context without re-reading the entire upstream repo or prior conversation.
 >
-> **Last updated:** 2026-08-14
+> **Last updated:** 2026-08-15
 > **Owner:** Anmol — software engineer, MS CS from Florida Atlantic University
-> **Related:** [`../README.md`](../README.md) (upstream setup), Smriti context at `D:\Projects\smriti\docs\CONTEXT.md` (legacy Jarvis bot)
+> **Related:** [`../README.md`](../README.md) (upstream setup), [`model_routing.md`](model_routing.md) (which model for which task), Smriti context at `D:\Projects\smriti\docs\CONTEXT.md` (legacy Jarvis bot)
 
 ---
 
@@ -33,12 +33,14 @@
 | Git remotes | **origin** = `AnmolKamboj/openhuman`; **upstream** = `tinyhumansai/openhuman` | Personal rollup branch: **`mine`**. Cursor provider PR: **`feat/cursor-provider`** ([PR #5504](https://github.com/tinyhumansai/openhuman/pull/5504)) |
 | Vault (brain) | `D:\Projects\Obsidian\smriti-vault` (clone of `D:\Projects\Obsidian\Anmol`) | Remote: private GitHub `AnmolKamboj/smriti-vault`. **Never mix vault into this repo** |
 | Identity note | `People/Anmol.md` in the vault | Canonical facts. OpenHuman `PROFILE.md` is a short injection copy |
-| OpenHuman user | `C:\Users\anmol\.openhuman\users\local-topg\` | `config.toml`, workspace, memory tree live here — not in git |
+| OpenHuman user | `C:\Users\anmol\.openhuman\users\<id>\` | Google login uses a hex id (currently `6a7feb862865723c9876ee0b`). `local-topg` is the old local session. Settings are **not** in git. Snapshot: `~\.openhuman\anmol-settings\config.toml`. After a wipe: quit the app, `powershell -File scripts/restore-anmol-settings.ps1`, restart. Refresh snapshot: `scripts/save-anmol-settings.ps1` |
 | Secrets | `D:\Projects\smriti\.env` + OpenHuman credential store | **Never print keys.** Never commit `.env` |
-| Chat / agentic / memory LLM | Cursor Composer 2.5 (`cursor:composer-2.5~p=fast:false`) | Bridge at `http://127.0.0.1:8790/v1` |
-| Reasoning / coding LLM | Cursor Grok 4.6 high, not fast | `cursor:grok-4.6~p=effort:high~p=fast:false` |
-| Vision | `google:models/gemini-3.5-flash-lite` | |
-| Learning | `nvidia:z-ai/glm-5.2` | |
+| Chat / Vision | OpenAI **GPT-5.6 Luna** | Quick mode + image sub-agent. See [`model_routing.md`](model_routing.md) |
+| Reasoning | Cursor Grok 4.6 high, **fast** | `cursor:grok-4.6~p=effort:high~p=fast:true` |
+| Coding | Cursor Grok 4.6 high, **not fast** | `cursor:grok-4.6~p=effort:high~p=fast:false` |
+| Agentic | Cursor Composer 2.5 (`fast=false`) | Tool loops / sub-agents. Bridge at `http://127.0.0.1:8790/v1` |
+| Learning | `nvidia:z-ai/glm-5.2` | Reflections |
+| Memory / Heartbeat / Subconscious | OpenAI **gpt-5.6-luna** | Cheap background. Unset falls through to OpenHuman cloud |
 | Embeddings | NVIDIA NIM, **1024 dims** (tree hard-requires 1024) | Not `nemotron-3-embed-1b` (native 2048 only — HTTP 400 at 1024). Use `nvidia/nv-embedqa-e5-v5` + `input_type` |
 | Tool dispatcher | `auto`, but **Cursor is always XML/prompt-guided** | Cursor SDK `Agent.prompt` ignores OpenAI `tools`. Native function-calling never reaches Cursor |
 | Telegram | Same Jarvis bot, `allowed_users = ["7579931038"]` | DMs: chat id = user id |
@@ -55,8 +57,9 @@
    People/Anmol.md, Daily/, Places/, Traits/, Ideas/, ...
 
 2. Bot LTM     = OpenHuman workspace
-   C:\Users\anmol\.openhuman\users\local-topg\workspace\
+   C:\Users\anmol\.openhuman\users\6a7feb862865723c9876ee0b\workspace\
    PROFILE.md, MEMORY.md, memory_tree/, transcripts
+   (`local-topg` is the old local-only session — do not restore it over Google)
 ```
 
 They join via:
@@ -93,11 +96,11 @@ OpenAI-compatible providers with **more than 128 tools** also fall back to XML (
 
 ## Routing (Quick vs Reasoning vs Coding)
 
-| UI | Hint | Config slot |
-|---|---|---|
-| Quick (default) | `hint:chat` | `chat_provider` |
-| Reasoning pill | `hint:reasoning` | `reasoning_provider` |
-| Coding | `hint:coding` | `coding_provider` |
+| UI | Hint | Config slot | Model |
+|---|---|---|---|
+| Quick (default) | `hint:chat` | `chat_provider` | `openai:gpt-5.6-luna` |
+| Reasoning pill | `hint:reasoning` | `reasoning_provider` | `cursor:grok-4.6~p=effort:high~p=fast:true` |
+| Coding | `hint:coding` | `coding_provider` | `cursor:grok-4.6~p=effort:high~p=fast:false` |
 
 `default_model = "chat-v1"` is a managed-tier name; with BYOK Cursor it still resolves through `chat_provider`.
 
@@ -120,9 +123,19 @@ The memory tree **hard-requires 1024-dim** vectors (`EMBEDDING_DIM`). Config `em
 
 This fork's custom NVIDIA embedder (NIM endpoint detected) sends `input_type` and will not request illegal dimensions for `nemotron-3-embed-1b`.
 
-After changing embed model/dims: restart, then sync folder source `src_35d886dfdb134ed3b6c630de14a4ec59` (label `smriti`). Old incompatible vectors are unusable.
+After changing embed model/dims: restart, then sync folder source `src_c8a321c9982b49479d808e162ff580f7` (label `smriti`). Old incompatible vectors are unusable.
 
 `embedding_strict = false` — failed embeds are skipped rather than aborting ingest. Check logs if recall is empty after a sync.
+
+**Jarvis contract (do not leave recall/search to the model).** Host classifies the turn and injects evidence first (`agent/grounding.rs`): "what do you know about me" → vault/`PROFILE.md`; weather/prices/news → `web_search_tool`. Telegram's curated tool list must include `web_search_tool` (it did not — that is why it said search was unavailable). Seed `PROFILE.md` from `People/Anmol.md` via `ensure_user_brain_files`.
+
+**Graph links are parent-child, not raw vector edges.** Isolated dots mean extract/seal never ran:
+
+- `[scheduler_gate] mode` must be `auto` or `always_on` (UI: Memory Tree toggle **on**). `off` queues `extract_chunk` / `flush_stale` forever.
+- `memory_tree.cloud_summarization_opt_in = true` (local AI is off; seal uses `memory_provider` = Luna).
+- Then **Sync** the vault and **Build summary trees**. Embeddings fill during extract; summary hubs appear after seal.
+
+Unsealed notes still hang off a `source:<vault>` hub so the graph is not a cloud of dots.
 
 ---
 
@@ -139,7 +152,7 @@ Desktop UI ←→  same process
               memory_recall / folder ingest
                     ↓
          D:\Projects\Obsidian\smriti-vault     (brain, private git)
-         ~/.openhuman/users/local-topg/        (bot LTM + config)
+         ~/.openhuman/users/6a7feb862865723c9876ee0b/  (active Google session LTM + config)
 ```
 
 ---
@@ -190,7 +203,15 @@ C:\Users\anmol\.openhuman\users\local-topg\
 
 ---
 
-## Known gaps (as of 2026-08-14)
+## Live facts / internet
+
+Search **is** wired: orchestrator has `web_search_tool` (managed Exa) plus `stock_quote`. It does **not** browse unless the model calls a tool. Luna will answer from weights if the prompt allows "simple Q&A" first — that is the SpaceX-is-private failure.
+
+Permanent contract (this fork): orchestrator prompt step 0 is a hard gate — prices, tickers, IPO/public-vs-private, weather, news, "current/latest/today" **must** call `stock_quote` / `web_search_tool` / `web_fetch` before answering. Requires a rebuild so `prompt.md` is in the binary.
+
+---
+
+## Known gaps (as of 2026-08-15)
 
 | Gap | Status |
 |---|---|
@@ -198,6 +219,8 @@ C:\Users\anmol\.openhuman\users\local-topg\
 | PROFILE.md / MEMORY.md missing | Seeded into the OpenHuman workspace from the vault identity note |
 | Embeddings 2048 vs tree 1024 | **Fixed:** NVIDIA NIM client + `nv-embedqa-e5-v5` @ 1024 |
 | Folder source ingest empty | Re-sync `smriti` after rebuild; vectors were previously dropped |
+| Memory graph isolated dots | **Fixed:** unsealed chunks link to the vault source hub; enable `scheduler_gate=always_on` + `cloud_summarization_opt_in` so extract/seal actually run |
+| Chat answers live facts from weights | **Fixed:** orchestrator live-facts hard gate + `stock_quote` on the master agent. Rebuild required |
 | OpenAI 128-tool cap | Already on `mine` (XML fallback when tool count > 128) |
 | BYOK session/JWT gate | Already on `mine` (`verify_session_active` allows BYOK) |
 | Cursor provider upstream | Open PR #5504; daily work stays on `mine` |

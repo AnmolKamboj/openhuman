@@ -691,5 +691,24 @@ if (( DEV_PORT != 1420 )); then
 fi
 CONFIG_OVERRIDE+="}}"
 
+# A previous `tauri dev` often leaves `node …/vite/bin/vite.js` listening
+# after the shell exits. Vite then dies with "Port 1420 is already in use".
+# Only kill listeners whose command line is vite — never cursor-bridge or
+# unrelated node.
+echo "[run-dev-win] freeing leftover vite on port $DEV_PORT (if any)"
+powershell.exe -NoProfile -Command "
+  \$conns = Get-NetTCPConnection -LocalPort $DEV_PORT -State Listen -ErrorAction SilentlyContinue
+  foreach (\$c in \$conns) {
+    \$proc = Get-CimInstance Win32_Process -Filter \"ProcessId=\$(\$c.OwningProcess)\" -ErrorAction SilentlyContinue
+    if (\$null -eq \$proc) { continue }
+    if (\$proc.CommandLine -match 'vite[/\\\\]bin[/\\\\]vite\\.js') {
+      Write-Host \"[run-dev-win] killing leftover vite pid \$(\$proc.ProcessId) on port $DEV_PORT\"
+      Stop-Process -Id \$proc.ProcessId -Force -ErrorAction SilentlyContinue
+    } else {
+      Write-Host \"[run-dev-win] port $DEV_PORT held by pid \$(\$proc.ProcessId) (not vite) — leaving it\"
+    }
+  }
+" || true
+
 echo "[run-dev-win] tauri config override: $CONFIG_OVERRIDE"
 "$PNPM_EXE" tauri dev -c "$CONFIG_OVERRIDE"
