@@ -29,6 +29,8 @@ pub mod error;
 pub mod experience;
 pub mod file_state;
 pub(crate) mod git_attribution;
+/// Jarvis-style host grounding (recall + live search before the model answers).
+pub mod grounding;
 pub mod harness;
 pub mod harness_init;
 pub mod hooks;

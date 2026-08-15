@@ -862,6 +862,7 @@ mod tests {
                     "web_search_tool",
                     "web_fetch",
                     "http_request",
+                    "stock_quote",
                 ] {
                     assert!(
                         tools.iter().any(|t| t == direct),

@@ -846,6 +846,42 @@ impl Agent {
             .inject_agent_experience_context(user_message, enriched)
             .await;
 
+        // Jarvis contract: the host fetches vault / live-web evidence for
+        // identity and current-fact questions so cheap chat models cannot
+        // skip `memory_recall` / `web_search_tool` and answer from weights.
+        let enriched = if let Some(cfg) = self.runtime_config() {
+            let _ = crate::openhuman::config::workspace::ensure_user_brain_files(&cfg);
+            // Prior user turns carry the subject when this turn is a nudge
+            // ("yes") or a bare command ("search it").
+            let prior_user: Vec<&str> = self
+                .history
+                .iter()
+                .filter_map(|m| match m {
+                    ConversationMessage::Chat(chat) if chat.role == "user" => {
+                        Some(chat.content.as_str())
+                    }
+                    _ => None,
+                })
+                .collect();
+            if let Some(block) = crate::openhuman::agent::grounding::prefetch_grounding(
+                &cfg,
+                user_message,
+                &prior_user,
+            )
+            .await
+            {
+                log::info!(
+                    "[grounding] injected host prefetch chars={}",
+                    block.chars().count()
+                );
+                format!("{block}\n{enriched}")
+            } else {
+                enriched
+            }
+        } else {
+            enriched
+        };
+
         // ── SKILL.md body injection: REMOVED (was #781) ──────────────
         // We used to keyword-match installed skills against the user message
         // and prepend their full SKILL.md bodies onto the user turn. That

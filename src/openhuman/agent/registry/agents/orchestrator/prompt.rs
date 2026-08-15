@@ -606,9 +606,13 @@ mod tests {
     fn build_routes_live_facts_to_research_tool() {
         let body = build(&ctx_with(&[])).unwrap();
         assert!(body.contains("use `research`"));
+        assert!(body.contains("Who the user is / what you remember (hard gate)"));
+        assert!(body.contains("Live / current facts (hard gate"));
+        assert!(body.contains("Do **not** answer from weights"));
         assert!(body.contains("weather, forecasts, current temperatures"));
         assert!(body.contains("\"use Grok/web/live data\""));
         assert!(body.contains("Do **not** stop at \"on it\""));
+        assert!(body.contains("do **not** answer from training data"));
         assert!(
             !body.contains("delegate_researcher"),
             "orchestrator prompt should name the synthesized researcher tool"

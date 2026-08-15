@@ -333,6 +333,9 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
         }
     };
     // Build system prompt from workspace identity files + skills
+    if let Err(err) = crate::openhuman::config::workspace::ensure_user_brain_files(&config) {
+        tracing::warn!(error = %err, "[channels] failed to seed PROFILE.md / MEMORY.md");
+    }
     let workspace = config.workspace_dir.clone();
     let tools_registry = Arc::new(tools::all_tools_with_runtime(
         Arc::new(config.clone()),
@@ -382,6 +385,14 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
         (
             "memory_recall",
             "Search memory. Use when: retrieving prior decisions, user preferences, historical context. Don't use when: answer is already in current context.",
+        ),
+        (
+            "web_search_tool",
+            "Search the live web. Required for weather, prices, news, IPO/public-company status, and anything that can change after training cutoff. Never say search is unavailable — call this tool.",
+        ),
+        (
+            "web_fetch",
+            "Fetch one URL and return the page text. Use after web_search_tool when you need the body of a specific result.",
         ),
         (
             "memory_forget",

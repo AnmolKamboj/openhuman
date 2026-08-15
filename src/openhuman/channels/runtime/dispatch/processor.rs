@@ -282,12 +282,49 @@ pub(crate) async fn process_channel_runtime_message(
     }
 
     let channel_context = build_channel_context_block(&msg);
-    let enriched_message = match (memory_context.is_empty(), channel_context.is_empty()) {
+    let mut enriched_message = match (memory_context.is_empty(), channel_context.is_empty()) {
         (true, true) => msg.content.clone(),
         (false, true) => format!("{memory_context}{}", msg.content),
         (true, false) => format!("{channel_context}{}", msg.content),
         (false, false) => format!("{memory_context}{channel_context}{}", msg.content),
     };
+
+    // Same Jarvis contract as desktop: fetch vault / live-web evidence
+    // before the model answers. Channel turns skip AgentSession, so
+    // without this the model stalls on "I'm checking…" and never searches.
+    if let Some(cfg) = ctx.config.as_ref() {
+        let prior_user: Vec<String> = {
+            let histories = ctx
+                .conversation_histories
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            histories
+                .get(&history_key)
+                .map(|turns| {
+                    turns
+                        .iter()
+                        .filter(|m| m.role.eq_ignore_ascii_case("user"))
+                        .map(|m| m.content.clone())
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let prior_user_refs: Vec<&str> = prior_user.iter().map(String::as_str).collect();
+        if let Some(block) = crate::openhuman::agent::grounding::prefetch_grounding(
+            cfg,
+            &msg.content,
+            &prior_user_refs,
+        )
+        .await
+        {
+            tracing::info!(
+                channel = %msg.channel,
+                chars = block.chars().count(),
+                "[grounding] injected host prefetch into channel turn"
+            );
+            enriched_message = format!("{block}\n{enriched_message}");
+        }
+    }
 
     println!("  ⏳ Processing message...");
     let started_at = Instant::now();

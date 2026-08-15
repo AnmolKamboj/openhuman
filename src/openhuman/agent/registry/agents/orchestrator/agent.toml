@@ -220,6 +220,10 @@ named = [
     "web_search_tool",
     "web_fetch",
     "http_request",
+    # Live market quote (Alpha Vantage via the managed financial-apis proxy).
+    # Public tickers belong here; IPO / public-vs-private / "does X trade"
+    # still start with `web_search_tool` because there may be no ticker yet.
+    "stock_quote",
     # Direct memory surface (#4762). Recall/store are the product's core and must
     # be first-class DIRECT tools, not a sub-agent spawn: a trivial "what is my Q3
     # OKR" recall or a "remember my Q3 OKR" write should not pay a blocking
