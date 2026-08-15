@@ -13,6 +13,22 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   286/268/2  2026-08-15  tinywallet de-vendored back to a submodule + module
+#                      (-11 packages / -11 names). The inlined `tinywallet`
+#                      crate copy is deleted; key derivation and transaction
+#                      signing for BTC/EVM/Tron/Solana move into the loaded
+#                      `tinywallet` TinyBus module over confidential
+#                      `SignTransaction`/`SignMessage` calls. `web3` stayed
+#                      gated out of this profile already, so the shed here is
+#                      not the wallet crate itself (never in `flows`) — it is
+#                      `app/src-tauri/Cargo.lock`'s stale cryptocurrency
+#                      dependency tail that the old inlined copy had pulled in
+#                      and the delete-and-revendor removed (`chore(deps): prune
+#                      unused cryptocurrency dependencies from Cargo.lock`).
+#                      Measured on CI (Linux): `scripts/kernel-floor.sh flows
+#                      --json` -> 286/268/2. (macOS resolves ~298/280/2 per the
+#                      documented target skew; the ratchet stays calibrated on
+#                      Linux.)
 #   297/279/2  2026-08-14  tinycortex + tinymemory advanced to their merge
 #                      commits for the git2-ownership move (-6 packages /
 #                      -2 names). A shed, not a gate: the newer submodules stop
@@ -300,4 +316,4 @@
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
 # 307/284  2026-08-12  Re-baseline after the upstream lockfile resolution;
 #                      `flows` remains at two native packages.
-flows:297:279:2
+flows:286:268:2

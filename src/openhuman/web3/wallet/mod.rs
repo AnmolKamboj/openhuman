@@ -33,8 +33,6 @@ mod execution;
 #[cfg(feature = "web3")]
 mod ops;
 #[cfg(feature = "web3")]
-pub(crate) mod primitives;
-#[cfg(feature = "web3")]
 pub(crate) mod rpc;
 
 #[cfg(feature = "web3")]
