@@ -29,13 +29,105 @@ fn openai_model(
 }
 
 /// Whether to send the OpenAI `dimensions` request-body parameter for this
-/// model. Only the `text-embedding-3-*` family honors it (it's how 3-large is
-/// pinned to 1024 = `EMBEDDING_DIM`). Sending it to other models or to
-/// arbitrary OpenAI-compatible servers (vLLM, text-embeddings-inference,
-/// stricter LocalAI builds) makes those servers 400 on an unknown field, so we
-/// gate on the model id rather than the provider kind. (Reviewer sanil-23, #3076.)
+/// model. Only families that actually honour Matryoshka / outputDimensionality
+/// should get it — sending it elsewhere 400s (reviewer sanil-23, #3076).
+///
+/// `nvidia/nemotron-3-embed-1b` is **not** in this set: it is native-2048-only
+/// and returns HTTP 400 `dimensions must be one of 2048` for 1024, which is the
+/// size the memory tree hard-requires.
 pub(crate) fn model_supports_dimensions(model: &str) -> bool {
-    model.starts_with("text-embedding-3-")
+    let m = model.rsplit('/').next().unwrap_or(model).to_ascii_lowercase();
+    let full = model.to_ascii_lowercase();
+    m.starts_with("text-embedding-3-")
+        || full.contains("gemini-embedding")
+        || full.contains("llama-nemotron-embed")
+}
+
+fn boxed_openai_compat(
+    base_url: &str,
+    api_key: &str,
+    model: &str,
+    dims: usize,
+    required_key: bool,
+) -> Box<dyn EmbeddingProvider> {
+    if super::nvidia::is_nvidia_endpoint(base_url) {
+        return Box::new(super::nvidia::NvidiaNimEmbedding::new(
+            base_url,
+            api_key,
+            model,
+            dims,
+            model_supports_dimensions(model),
+        ));
+    }
+    Box::new(DimAlignedEmbedding {
+        inner: TinyAgentsEmbeddingProvider::boxed(openai_model(
+            base_url,
+            api_key,
+            model,
+            dims,
+            required_key,
+        )),
+        target_dims: dims,
+        allow_mrl_truncate: model_supports_dimensions(model),
+        model: model.to_string(),
+    })
+}
+
+/// Pins returned vectors to the configured tree size. MRL models may return a
+/// longer native vector; we keep the leading `target_dims` and L2-normalise.
+/// Non-MRL mismatches error instead of silently padding/truncating.
+struct DimAlignedEmbedding {
+    inner: Box<dyn EmbeddingProvider>,
+    target_dims: usize,
+    allow_mrl_truncate: bool,
+    model: String,
+}
+
+fn l2_normalize(values: &mut [f32]) {
+    let norm = values.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm > 0.0 {
+        for value in values {
+            *value /= norm;
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl EmbeddingProvider for DimAlignedEmbedding {
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    fn model_id(&self) -> &str {
+        self.inner.model_id()
+    }
+
+    fn dimensions(&self) -> usize {
+        self.target_dims
+    }
+
+    async fn embed(&self, texts: &[&str]) -> anyhow::Result<Vec<Vec<f32>>> {
+        let mut vectors = self.inner.embed(texts).await?;
+        for values in &mut vectors {
+            if self.target_dims == 0 || values.len() == self.target_dims {
+                continue;
+            }
+            if values.len() > self.target_dims && self.allow_mrl_truncate {
+                values.truncate(self.target_dims);
+                l2_normalize(values);
+                continue;
+            }
+            anyhow::bail!(
+                "embedding for `{}` returned {} dims; memory tree needs {}. \
+                 Pick a 1024-dim model (nvidia/nv-embedqa-e5-v5) or an MRL model \
+                 that honours dimensions=1024.",
+                self.model,
+                values.len(),
+                self.target_dims
+            );
+        }
+        Ok(vectors)
+    }
 }
 
 /// Creates an embedding provider based on the specified name and configuration.
@@ -89,9 +181,7 @@ pub fn create_embedding_provider(
         )),
         name if name.starts_with("custom:") => {
             let base_url = name.strip_prefix("custom:").unwrap_or("");
-            Ok(TinyAgentsEmbeddingProvider::boxed(openai_model(
-                base_url, "", model, dims, false,
-            )))
+            Ok(boxed_openai_compat(base_url, "", model, dims, false))
         }
         "none" => Ok(TinyAgentsEmbeddingProvider::boxed(NoopEmbeddingModel)),
         unknown => Err(anyhow::anyhow!(
@@ -145,15 +235,11 @@ pub fn create_embedding_provider_with_credentials(
         )),
         "custom" => {
             let url = custom_endpoint.unwrap_or("");
-            Ok(TinyAgentsEmbeddingProvider::boxed(openai_model(
-                url, api_key, model, dims, false,
-            )))
+            Ok(boxed_openai_compat(url, api_key, model, dims, false))
         }
         name if name.starts_with("custom:") => {
             let url = custom_endpoint.unwrap_or_else(|| name.strip_prefix("custom:").unwrap_or(""));
-            Ok(TinyAgentsEmbeddingProvider::boxed(openai_model(
-                url, api_key, model, dims, false,
-            )))
+            Ok(boxed_openai_compat(url, api_key, model, dims, false))
         }
         "none" => Ok(TinyAgentsEmbeddingProvider::boxed(NoopEmbeddingModel)),
         unknown => Err(anyhow::anyhow!(
@@ -471,5 +557,29 @@ mod tests {
             Some("Bearer sess-scoped-5356"),
             "managed provider must authenticate with the token from the config scope"
         );
+    }
+
+    #[test]
+    fn model_supports_dimensions_covers_mrl_not_nemotron3() {
+        assert!(model_supports_dimensions("text-embedding-3-large"));
+        assert!(model_supports_dimensions("gemini-embedding-001"));
+        assert!(model_supports_dimensions("models/gemini-embedding-001"));
+        assert!(model_supports_dimensions("nvidia/llama-nemotron-embed-1b-v2"));
+        assert!(!model_supports_dimensions("nvidia/nemotron-3-embed-1b"));
+        assert!(!model_supports_dimensions("nvidia/nv-embedqa-e5-v5"));
+        assert!(!model_supports_dimensions("bge-m3"));
+    }
+
+    #[test]
+    fn nvidia_custom_endpoint_builds_nvidia_provider() {
+        let p = create_embedding_provider(
+            "custom:https://integrate.api.nvidia.com/v1",
+            "nvidia/nv-embedqa-e5-v5",
+            1024,
+        )
+        .unwrap();
+        assert_eq!(p.name(), "nvidia");
+        assert_eq!(p.dimensions(), 1024);
+        assert_eq!(p.model_id(), "nvidia/nv-embedqa-e5-v5");
     }
 }

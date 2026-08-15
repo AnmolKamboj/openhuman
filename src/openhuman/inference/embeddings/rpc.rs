@@ -1155,10 +1155,14 @@ mod tests {
         // text-embedding-3-* honours the param → probe at the requested size.
         assert_eq!(probe_dims_for("text-embedding-3-large", 1024), 1024);
         assert_eq!(probe_dims_for("text-embedding-3-small", 512), 512);
+        assert_eq!(probe_dims_for("nvidia/llama-nemotron-embed-1b-v2", 1024), 1024);
+        assert_eq!(probe_dims_for("gemini-embedding-001", 1024), 1024);
         // Everything else → 0 (no param sent, no length guard).
         assert_eq!(probe_dims_for("bge-m3", 1024), 0);
         assert_eq!(probe_dims_for("nomic-embed-text", 768), 0);
         assert_eq!(probe_dims_for("gpt-5-mini", 1024), 0);
+        assert_eq!(probe_dims_for("nvidia/nemotron-3-embed-1b", 1024), 0);
+        assert_eq!(probe_dims_for("nvidia/nv-embedqa-e5-v5", 1024), 0);
     }
 
     /// Issue #4056: after a successful probe we adopt the endpoint's real
@@ -1174,6 +1178,10 @@ mod tests {
         assert_eq!(final_probe_dims("nomic-embed-text", 1024, 768), 768);
         // text-embedding-3-* → keep the requested size (param was honoured).
         assert_eq!(final_probe_dims("text-embedding-3-large", 1024, 3072), 1024);
+        assert_eq!(
+            final_probe_dims("nvidia/llama-nemotron-embed-1b-v2", 1024, 2048),
+            1024
+        );
         // Defensive: zero actual falls back to the configured value.
         assert_eq!(final_probe_dims("bge-m3", 1024, 0), 1024);
     }

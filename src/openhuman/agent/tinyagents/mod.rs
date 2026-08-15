@@ -1592,6 +1592,11 @@ impl TurnModelSource {
                     .unwrap_or(&provider_string)
                     .to_string()
             };
+            let prompt_guided =
+                crate::openhuman::inference::provider::factory::provider_requires_prompt_guided_tools(
+                    &provider_string,
+                );
+            let force_text = cn.force_text_mode || prompt_guided;
             return build_turn_models_crate(
                 &cn.role,
                 &cn.config,
@@ -1600,9 +1605,9 @@ impl TurnModelSource {
                 context_window,
                 cn.primary_override.as_deref(),
                 provider_id,
+                !is_local && !prompt_guided,
                 !is_local,
-                !is_local,
-                cn.force_text_mode,
+                force_text,
             );
         }
         Err(anyhow::anyhow!("turn model source is missing a model"))
@@ -1708,6 +1713,35 @@ struct AssembledTurnHarness {
 /// testable (issue #4249, Phase 11) — the returned [`AssembledTurnHarness`]
 /// exposes the harness registries without driving a run.
 #[allow(clippy::too_many_arguments)]
+fn count_admitted_tools(
+    tool_sets: &[Arc<Vec<Box<dyn crate::openhuman::tools::Tool>>>],
+    allowed: Option<&HashSet<String>>,
+    is_subagent_run: bool,
+) -> usize {
+    let mut seen: HashSet<String> = HashSet::new();
+    tool_sets
+        .iter()
+        .flat_map(|set| set.iter())
+        .map(|tool| tool.name().to_string())
+        .filter(|name| seen.insert(name.clone()))
+        .filter(|name| match allowed {
+            None => true,
+            Some(set) => set.contains(name),
+        })
+        .filter(|name| !(is_subagent_run && is_subagent_spawn_or_delegate_tool(name)))
+        .count()
+}
+
+fn disable_native_tool_profile(model: TurnChatModel) -> TurnChatModel {
+    let mut profile = model.profile().cloned().unwrap_or_default();
+    if !profile.tool_calling {
+        return model;
+    }
+    profile.tool_calling = false;
+    profile.parallel_tool_calls = false;
+    Arc::new(ProfileOverrideModel::new(model, profile))
+}
+
 fn assemble_turn_harness(
     turn_models: TurnModels,
     model: &str,
@@ -1766,18 +1800,35 @@ fn assemble_turn_harness(
     // is produced by a wrap-model middleware now, not the adapter, so route models
     // carry no usage side-channel (Phase 5).
     let provider_usage_carry: ProviderUsageCarry = Arc::default();
+    let is_subagent_run = subagent_scope.is_some();
+    let admitted_tools = count_admitted_tools(&tool_sets, allowed.as_ref(), is_subagent_run);
+    let over_native_cap =
+        admitted_tools > crate::openhuman::agent::dispatcher::OPENAI_COMPAT_MAX_NATIVE_TOOLS;
+
     // The turn's models are pre-built by `build_turn_models` (the single
     // `native model adapter` construction site) and handed in as crate `ChatModel`s —
     // the assembly no longer touches the raw provider (issue #4249, Phase 5).
     let TurnModels {
-        primary,
-        routes,
+        mut primary,
+        mut routes,
         summarizer: summarizer_model,
         error_slot,
         // Provider metadata (id/context-window/caps) is consumed by the turn-path
         // caller before dispatch, not by harness assembly.
         ..
     } = turn_models;
+    if over_native_cap {
+        tracing::warn!(
+            tools = admitted_tools,
+            cap = crate::openhuman::agent::dispatcher::OPENAI_COMPAT_MAX_NATIVE_TOOLS,
+            "[tinyagents] native tool list exceeds OpenAI-compatible cap — using prompt-guided tools"
+        );
+        primary = disable_native_tool_profile(primary);
+        routes = routes
+            .into_iter()
+            .map(|(name, model)| (name, disable_native_tool_profile(model)))
+            .collect();
+    }
     capability_registry.replace_model(model, primary.clone());
     harness
         .register_model(model, primary)
@@ -1921,7 +1972,6 @@ fn assemble_turn_harness(
     // or a `named` list that resolves to nothing) from silently inheriting the
     // parent's full tool surface (shell/file-write/spawn) — the old
     // `allowed.is_empty() || allowed.contains(name)` predicate was fail-open.
-    let is_subagent_run = subagent_scope.is_some();
     if let Some(set) = &allowed {
         if set.is_empty() {
             tracing::warn!(

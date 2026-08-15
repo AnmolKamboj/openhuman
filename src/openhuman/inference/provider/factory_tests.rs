@@ -1699,3 +1699,20 @@ fn the_route_resolves_to_a_provider_the_factory_can_build() {
     .expect("the per-call route builds a chat model");
     assert_eq!(model_id, "x/y");
 }
+
+#[test]
+fn verify_session_active_allows_byok_without_openhuman_login() {
+    let config = Config::default();
+    verify_session_active(&config).expect("BYOK/local chat must not require OpenHuman login");
+}
+
+#[test]
+fn cursor_provider_requires_prompt_guided_tools() {
+    assert!(provider_requires_prompt_guided_tools(
+        "cursor:composer-2.5~p=fast:false"
+    ));
+    assert!(provider_requires_prompt_guided_tools("Cursor:grok-4.6"));
+    assert!(!provider_requires_prompt_guided_tools("openai:gpt-4o"));
+    assert!(!provider_requires_prompt_guided_tools("nvidia:z-ai/glm-5.2"));
+    assert!(!provider_requires_prompt_guided_tools("openhuman"));
+}

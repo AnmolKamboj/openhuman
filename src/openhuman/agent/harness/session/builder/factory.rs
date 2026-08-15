@@ -466,15 +466,22 @@ impl Agent {
                 config,
                 config.default_temperature,
             )?;
-        let supports_native = resolved_chat_model
-            .profile()
-            .is_none_or(|profile| profile.tool_calling);
+        let provider_string =
+            crate::openhuman::inference::provider::provider_for_role(provider_role, config);
+        let prompt_guided = crate::openhuman::inference::provider::factory::provider_requires_prompt_guided_tools(
+            &provider_string,
+        );
+        let supports_native = !prompt_guided
+            && resolved_chat_model
+                .profile()
+                .is_none_or(|profile| profile.tool_calling);
         log::info!(
-            "[session-builder] agent_id={} provider_role={} resolved_model={} supports_native_tools={}",
+            "[session-builder] agent_id={} provider_role={} resolved_model={} supports_native_tools={} prompt_guided_tools={}",
             agent_id,
             provider_role,
             model_name,
-            supports_native
+            supports_native,
+            prompt_guided
         );
         let target_agent_id = target_def
             .map(|def| def.id.as_str())
@@ -1095,8 +1102,13 @@ impl Agent {
         // entry. The registry is self-contained — it doesn't hold a
         // reference back into the tools Vec.
         let pformat_registry = crate::openhuman::agent::pformat::build_registry(&tools);
-        let dispatcher_kind =
-            resolve_dispatcher_kind(&dispatcher_choice, supports_native, agent_id);
+        let dispatcher_kind = effective_dispatcher_kind(
+            &dispatcher_choice,
+            supports_native,
+            agent_id,
+            tools.len(),
+            &provider_string,
+        );
         let tool_dispatcher: Box<dyn crate::openhuman::agent::dispatcher::ToolDispatcher> =
             match dispatcher_kind {
                 DispatcherKind::Native => Box::new(NativeToolDispatcher),
@@ -1453,10 +1465,15 @@ enum DispatcherKind {
 /// (Notion, Salesforce, Gmail) blow past that ceiling, so a native request is
 /// rejected with a 400 before any generation. Falling back to JSON-in-tag puts
 /// the catalogue in the prompt as prose, so no grammar is compiled.
+///
+/// The same fallback applies when `tool_count` exceeds the OpenAI-compatible
+/// native `tools` array cap (128). OpenAI / NVIDIA / Groq return HTTP 400
+/// `array_above_max_length` otherwise.
 fn resolve_dispatcher_kind(
     dispatcher_choice: &str,
     supports_native: bool,
     agent_id: &str,
+    tool_count: usize,
 ) -> DispatcherKind {
     let base = match dispatcher_choice {
         "native" => DispatcherKind::Native,
@@ -1465,10 +1482,34 @@ fn resolve_dispatcher_kind(
         _ if supports_native => DispatcherKind::Native,
         _ => DispatcherKind::Xml,
     };
-    if agent_id == "integrations_agent" && base == DispatcherKind::Native {
+    let over_native_cap = tool_count
+        > crate::openhuman::agent::dispatcher::OPENAI_COMPAT_MAX_NATIVE_TOOLS;
+    if base == DispatcherKind::Native && (agent_id == "integrations_agent" || over_native_cap) {
         DispatcherKind::Xml
     } else {
         base
+    }
+}
+
+/// Like [`resolve_dispatcher_kind`], but Cursor (and any other tools-stripping
+/// bridge) always lands on XML even if the user pinned `tool_dispatcher =
+/// "native"`. Native OpenAI `tools` never reach `Agent.prompt`.
+fn effective_dispatcher_kind(
+    dispatcher_choice: &str,
+    supports_native: bool,
+    agent_id: &str,
+    tool_count: usize,
+    provider_string: &str,
+) -> DispatcherKind {
+    let kind = resolve_dispatcher_kind(dispatcher_choice, supports_native, agent_id, tool_count);
+    if kind == DispatcherKind::Native
+        && crate::openhuman::inference::provider::factory::provider_requires_prompt_guided_tools(
+            provider_string,
+        )
+    {
+        DispatcherKind::Xml
+    } else {
+        kind
     }
 }
 
@@ -1503,7 +1544,7 @@ pub(crate) fn provider_role_for(agent_id: &str, default_model: Option<&str>) -> 
 #[cfg(test)]
 mod provider_role_tests {
     use super::provider_role_for;
-    use super::{resolve_dispatcher_kind, DispatcherKind};
+    use super::{effective_dispatcher_kind, resolve_dispatcher_kind, DispatcherKind};
 
     #[test]
     fn legacy_orchestrator_fallback_defaults_to_chat() {
@@ -1552,17 +1593,17 @@ mod provider_role_tests {
     #[test]
     fn auto_prefers_native_when_supported_never_pformat() {
         assert_eq!(
-            resolve_dispatcher_kind("auto", true, "chat"),
+            resolve_dispatcher_kind("auto", true, "chat", 8),
             DispatcherKind::Native
         );
         // Text-only provider defaults to JSON-in-tag, NOT P-Format.
         assert_eq!(
-            resolve_dispatcher_kind("auto", false, "chat"),
+            resolve_dispatcher_kind("auto", false, "chat", 8),
             DispatcherKind::Xml
         );
         // An unrecognized value behaves like "auto".
         assert_eq!(
-            resolve_dispatcher_kind("bogus", false, "chat"),
+            resolve_dispatcher_kind("bogus", false, "chat", 8),
             DispatcherKind::Xml
         );
     }
@@ -1570,16 +1611,16 @@ mod provider_role_tests {
     #[test]
     fn explicit_choices_are_honoured_including_opt_in_pformat() {
         assert_eq!(
-            resolve_dispatcher_kind("native", false, "chat"),
+            resolve_dispatcher_kind("native", false, "chat", 8),
             DispatcherKind::Native
         );
         assert_eq!(
-            resolve_dispatcher_kind("xml", true, "chat"),
+            resolve_dispatcher_kind("xml", true, "chat", 8),
             DispatcherKind::Xml
         );
         // P-Format is only ever selected when explicitly requested.
         assert_eq!(
-            resolve_dispatcher_kind("pformat", true, "chat"),
+            resolve_dispatcher_kind("pformat", true, "chat", 8),
             DispatcherKind::PFormat
         );
     }
@@ -1589,16 +1630,52 @@ mod provider_role_tests {
         // Native would ship JSON tool specs and blow the provider grammar-rule
         // ceiling on large Composio toolkits → force JSON-in-tag.
         assert_eq!(
-            resolve_dispatcher_kind("auto", true, "integrations_agent"),
+            resolve_dispatcher_kind("auto", true, "integrations_agent", 8),
             DispatcherKind::Xml
         );
         assert_eq!(
-            resolve_dispatcher_kind("native", true, "integrations_agent"),
+            resolve_dispatcher_kind("native", true, "integrations_agent", 8),
             DispatcherKind::Xml
         );
         // An explicit non-native choice is left untouched for that agent.
         assert_eq!(
-            resolve_dispatcher_kind("pformat", true, "integrations_agent"),
+            resolve_dispatcher_kind("pformat", true, "integrations_agent", 8),
+            DispatcherKind::PFormat
+        );
+    }
+
+    #[test]
+    fn native_falls_back_to_xml_when_over_openai_compat_tool_cap() {
+        assert_eq!(
+            resolve_dispatcher_kind("auto", true, "chat", 128),
+            DispatcherKind::Native
+        );
+        assert_eq!(
+            resolve_dispatcher_kind("auto", true, "chat", 129),
+            DispatcherKind::Xml
+        );
+        assert_eq!(
+            resolve_dispatcher_kind("native", true, "orchestrator", 369),
+            DispatcherKind::Xml
+        );
+    }
+
+    #[test]
+    fn cursor_always_uses_xml_even_when_native_is_pinned() {
+        assert_eq!(
+            effective_dispatcher_kind("auto", true, "chat", 8, "cursor:composer-2.5"),
+            DispatcherKind::Xml
+        );
+        assert_eq!(
+            effective_dispatcher_kind("native", true, "orchestrator", 8, "cursor:grok-4.6"),
+            DispatcherKind::Xml
+        );
+        assert_eq!(
+            effective_dispatcher_kind("auto", true, "chat", 8, "openai:gpt-4o"),
+            DispatcherKind::Native
+        );
+        assert_eq!(
+            effective_dispatcher_kind("pformat", true, "chat", 8, "cursor:composer-2.5"),
             DispatcherKind::PFormat
         );
     }

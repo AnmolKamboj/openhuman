@@ -8,6 +8,12 @@ use serde_json::Value;
 use std::fmt::Write;
 use std::sync::Arc;
 
+/// OpenAI Chat Completions (and most compatible APIs: NVIDIA, Groq, Cursor
+/// OpenAI-wire) reject a `tools` array longer than this
+/// (`array_above_max_length`). When the orchestrator catalogue exceeds this,
+/// we must use prompt-guided / XML tool calling instead of native specs.
+pub(crate) const OPENAI_COMPAT_MAX_NATIVE_TOOLS: usize = 128;
+
 /// A parsed tool call representation after being extracted from an LLM response.
 #[derive(Debug, Clone)]
 pub struct ParsedToolCall {

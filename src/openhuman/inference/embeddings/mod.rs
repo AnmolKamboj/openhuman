@@ -16,6 +16,7 @@ pub mod catalog;
 #[path = "cloud_adapter.rs"]
 pub mod cloud;
 mod factory;
+mod nvidia;
 pub mod noop;
 mod provider_trait;
 pub mod rate_limit {

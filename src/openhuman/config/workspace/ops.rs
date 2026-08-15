@@ -43,6 +43,72 @@ fn ensure_workspace_file(
     Ok(if force { "overwritten" } else { "created" })
 }
 
+/// If the workspace has no `PROFILE.md` / `MEMORY.md`, seed them from an
+/// enabled folder memory source (Anmol's Obsidian vault) so Cursor/XML
+/// turns still see identity even before the vector graph is warm.
+fn seed_user_brain_files(
+    workspace_dir: &Path,
+    config: &crate::openhuman::config::Config,
+    created: &mut Vec<String>,
+    existing: &mut Vec<String>,
+) -> Result<(), String> {
+    use crate::openhuman::memory::sources::types::SourceKind;
+
+    let memory_md = workspace_dir.join("MEMORY.md");
+    if memory_md.is_file() {
+        existing.push(memory_md.display().to_string());
+    } else {
+        let mut body = String::from(
+            "# Long-term memory\n\n\
+The user's brain is an Obsidian vault ingested as a folder memory source.\n\
+Canonical identity note: `People/Anmol.md`.\n\n\
+When the user asks what you know about them, their life, family, work, or any stored fact:\n\
+1. Use PROFILE.md (already injected) for identity.\n\
+2. Call `memory_recall` with a focused query before answering.\n\
+3. If recall is thin, call `delegate_retrieve_memory` for a deeper tree walk.\n\
+Never claim you have no memory without calling those tools.\n",
+        );
+        for source in &config.memory_sources {
+            if source.enabled && source.kind == SourceKind::Folder {
+                if let Some(path) = source.path.as_deref() {
+                    body.push_str(&format!("\n- `{}` → `{path}`\n", source.label));
+                }
+            }
+        }
+        std::fs::write(&memory_md, body)
+            .map_err(|e| format!("failed to write MEMORY.md: {e}"))?;
+        created.push(memory_md.display().to_string());
+    }
+
+    let profile = workspace_dir.join("PROFILE.md");
+    if profile.is_file() {
+        existing.push(profile.display().to_string());
+        return Ok(());
+    }
+    for source in &config.memory_sources {
+        if !source.enabled || source.kind != SourceKind::Folder {
+            continue;
+        }
+        let Some(root) = source.path.as_deref() else {
+            continue;
+        };
+        for rel in ["People/Anmol.md", "People/Me.md", "PROFILE.md"] {
+            let candidate = Path::new(root).join(rel);
+            if candidate.is_file() {
+                std::fs::copy(&candidate, &profile).map_err(|e| {
+                    format!(
+                        "failed to seed PROFILE.md from {}: {e}",
+                        candidate.display()
+                    )
+                })?;
+                created.push(profile.display().to_string());
+                return Ok(());
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Records `path` in the created / existing list according to what actually
 /// happened, given whether it existed before the initialising call.
 ///
@@ -97,6 +163,7 @@ pub async fn init_workspace(force: bool) -> Result<serde_json::Value, String> {
             _ => existing_files.push(workspace_dir.join(filename).display().to_string()),
         }
     }
+    seed_user_brain_files(&workspace_dir, &config, &mut created_files, &mut existing_files)?;
 
     let skills_readme = workspace_dir.join("skills").join("README.md");
     let had_skills_readme = skills_readme.exists();
@@ -232,6 +299,67 @@ mod tests {
             err.contains("failed to write"),
             "expected write-failure error, got: {err}"
         );
+    }
+
+    #[test]
+    fn seed_user_brain_files_copies_identity_note_once() {
+        use crate::openhuman::memory::sources::types::{MemorySourceEntry, SourceKind};
+
+        let tmp = tempdir().unwrap();
+        let vault = tmp.path().join("vault");
+        std::fs::create_dir_all(vault.join("People")).unwrap();
+        std::fs::write(vault.join("People").join("Anmol.md"), "# Anmol\nfrom vault\n").unwrap();
+        let workspace = tmp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+
+        let mut config = crate::openhuman::config::Config::default();
+        config.memory_sources = vec![MemorySourceEntry {
+            id: "src_test".into(),
+            kind: SourceKind::Folder,
+            label: "smriti".into(),
+            enabled: true,
+            toolkit: None,
+            connection_id: None,
+            path: Some(vault.display().to_string()),
+            glob: Some("**/*.md".into()),
+            url: None,
+            branch: None,
+            paths: Vec::new(),
+            max_commits: None,
+            max_issues: None,
+            max_prs: None,
+            query: None,
+            since_days: None,
+            max_items: None,
+            selector: None,
+            max_tokens_per_sync: None,
+            max_cost_per_sync_usd: None,
+            sync_depth_days: None,
+        }];
+
+        let mut created = Vec::new();
+        let mut existing = Vec::new();
+        seed_user_brain_files(&workspace, &config, &mut created, &mut existing).unwrap();
+        assert!(
+            std::fs::read_to_string(workspace.join("PROFILE.md"))
+                .unwrap()
+                .contains("from vault")
+        );
+        assert!(
+            std::fs::read_to_string(workspace.join("MEMORY.md"))
+                .unwrap()
+                .contains("memory_recall")
+        );
+
+        std::fs::write(workspace.join("PROFILE.md"), "user edited").unwrap();
+        created.clear();
+        existing.clear();
+        seed_user_brain_files(&workspace, &config, &mut created, &mut existing).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(workspace.join("PROFILE.md")).unwrap(),
+            "user edited"
+        );
+        assert!(created.is_empty());
     }
 
     #[test]

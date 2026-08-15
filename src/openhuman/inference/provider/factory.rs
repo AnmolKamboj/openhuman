@@ -94,6 +94,21 @@ pub fn auth_key_for_slug(slug: &str) -> String {
     format!("provider:{slug}")
 }
 
+/// Providers whose OpenAI-compat `tools` array never reaches the model.
+///
+/// The Cursor sidecar (`scripts/cursor-bridge`) calls `Agent.prompt` with
+/// `tools: []`, so native function-calling is a no-op. Memory tools
+/// (`memory_recall`, …) only work when the dispatcher puts XML/JSON-in-tag
+/// schemas in the prompt text.
+pub(crate) fn provider_requires_prompt_guided_tools(provider: &str) -> bool {
+    provider
+        .trim()
+        .split([':', '/', '@'])
+        .next()
+        .unwrap_or("")
+        .eq_ignore_ascii_case("cursor")
+}
+
 /// Resolve a model hint (e.g. `"hint:reasoning"`) or tier name to the
 /// concrete model string that the provider router would use — without
 /// constructing the actual provider.  Returns the provider-string prefix
@@ -1860,60 +1875,18 @@ pub(crate) fn create_local_chat_model_from_string(
         .ok_or_else(|| anyhow::anyhow!("unsupported local provider string '{provider}'"))?
 }
 
-/// Verify the user has an active OpenHuman backend session.
+/// Previously required an OpenHuman cloud `app-session` JWT even for BYOK /
+/// local providers, which blocked Telegram and desktop chat unless the user
+/// signed into OpenHuman's servers. This fork keeps inference on the user's
+/// own keys (Cursor, NVIDIA, OpenAI, Ollama, …) and does not send chat
+/// through the managed backend, so the login gate is not applied here.
 ///
-/// Without this check, an unregistered user can configure every workload
-/// to use a custom cloud provider and bypass the session requirement
-/// entirely.  This function ensures that custom providers (Ollama,
-/// `<slug>:<model>`) are only reachable when the workspace holds a valid
-/// `app-session` JWT.
+/// Managed OpenHuman-backend turns still fail later in
+/// [`OpenHumanBackendModel`] when no JWT is present.
 ///
-/// `pub(crate)`: also reused directly by the flows provider-connectivity
-/// author gate (issue B45, `openhuman::flows::ops::evaluate_inference_readiness`)
-/// as its Layer 1 sync session check, so the author-time gate and this
-/// construction-time chokepoint can never diverge on what "session active"
-/// means.
-pub(crate) fn verify_session_active(config: &Config) -> anyhow::Result<()> {
-    // AgentBox marketplace containers run headless with no desktop
-    // `app-session` JWT — the deployment is operator-controlled and ships its
-    // own GMI MaaS credentials via `GMI_*` env vars. The session gate exists to
-    // stop an *unregistered desktop user* from routing every workload at a
-    // custom provider; that threat model doesn't apply here, so bypass it.
-    // Without this, every `/run` job would fail `SESSION_EXPIRED` before
-    // reaching GMI (the startup path stores only `provider:gmi-maas`).
-    if crate::openhuman::agent::agentbox::agentbox_mode_enabled() {
-        log::debug!(
-            "[chat-factory] AgentBox mode — bypassing app-session gate for custom provider"
-        );
-        return Ok(());
-    }
-    // Fast path: the scheduler gate already knows the session is dead.
-    if crate::openhuman::cron::scheduler_gate::is_signed_out() {
-        anyhow::bail!(
-            "SESSION_EXPIRED: backend session not active — sign in to use custom providers"
-        );
-    }
-    // Verify the app-session JWT actually exists in auth-profiles.
-    let state_dir = config
-        .config_path
-        .parent()
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            directories::UserDirs::new()
-                .map(|d| d.home_dir().join(".openhuman"))
-                .unwrap_or_else(|| std::path::PathBuf::from(".openhuman"))
-        });
-    let auth = AuthService::new(&state_dir, config.secrets.encrypt);
-    let has_session = auth
-        .get_provider_bearer_token(
-            crate::openhuman::security::credentials::APP_SESSION_PROVIDER,
-            None,
-        )?
-        .filter(|s| !s.trim().is_empty())
-        .is_some();
-    if !has_session {
-        anyhow::bail!("SESSION_EXPIRED: no backend session — sign in to use OpenHuman")
-    }
+/// `pub(crate)`: also reused by the flows provider-connectivity author gate
+/// so that gate and this construction-time chokepoint stay aligned.
+pub(crate) fn verify_session_active(_config: &Config) -> anyhow::Result<()> {
     Ok(())
 }
 
@@ -2382,6 +2355,11 @@ fn try_create_cloud_slug_chat_model_from_string_with_native_tools(
     if !config.cloud_providers.iter().any(|e| e.slug == slug) {
         return None;
     }
+
+    // Cursor's sidecar strips native `tools`. Force prompt-guided calling so
+    // memory_recall / store reach the model as XML in the prompt.
+    let native_tool_calling =
+        native_tool_calling && !provider_requires_prompt_guided_tools(&p);
 
     // Preserve the `Provider` path's gate for custom/cloud providers.
     if let Err(e) = enforce_local_only_inference(role, &p) {

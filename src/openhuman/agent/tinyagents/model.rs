@@ -478,6 +478,11 @@ impl ProfileOverrideModel {
         if request.temperature.is_none() {
             request.temperature = self.request_temperature;
         }
+        // Prompt-guided turns must not advertise native `tools` on the wire.
+        // OpenAI-compatible APIs 400 at 129+ entries (`array_above_max_length`).
+        if !self.profile.tool_calling {
+            request.tools.clear();
+        }
         request
     }
 }
