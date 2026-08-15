@@ -298,8 +298,9 @@ split-debuginfo = "packed"
 # `strip` preserves; a build that lost its debug files fails that script
 # loudly (#1403) rather than shipping un-symbolicated.
 #
-# These two `[profile.release]` blocks are separate Cargo worlds (two
-# `Cargo.lock`, two `target/`) — a change here needs the same change there.
+# These are separate Cargo worlds (each its own `Cargo.lock`/`target/`) — a
+# change here needs the same change in the root `Cargo.toml` and in
+# `app/src-tauri-mobile/Cargo.toml` (the iOS/Android host).
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
