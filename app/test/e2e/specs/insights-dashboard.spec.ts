@@ -66,7 +66,10 @@ describe('Insights dashboard smoke', () => {
 
   it('renders the memory graph surface (11.2.3)', async () => {
     stepLog('checking for memory graph testid');
-    const deadline = Date.now() + 10_000;
+    // Pixi reports readiness after the force simulation cools. Shared CI
+    // runners can render below 60 fps, so allow the same cold-start headroom
+    // used by the surrounding Brain navigation waits.
+    const deadline = Date.now() + 30_000;
     let present = false;
     while (Date.now() < deadline) {
       present = (await browser.execute(() => {
