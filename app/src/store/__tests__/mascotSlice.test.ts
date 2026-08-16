@@ -79,6 +79,20 @@ describe('mascotSlice', () => {
       expect(state.color).toBe('burgundy');
     });
 
+    it('restores custom swatch hex values that used to be dropped on reload', () => {
+      const state = reducer(
+        undefined,
+        rehydrate('mascot', {
+          color: 'custom',
+          customPrimaryColor: '#112233',
+          customSecondaryColor: '#445566',
+        })
+      );
+      expect(state.color).toBe('custom');
+      expect(state.customPrimaryColor).toBe('#112233');
+      expect(state.customSecondaryColor).toBe('#445566');
+    });
+
     it('falls back to the default when the persisted color is unknown', () => {
       const state = reducer(undefined, rehydrate('mascot', { color: 'fuchsia' }));
       expect(state.color).toBe(DEFAULT_MASCOT_COLOR);

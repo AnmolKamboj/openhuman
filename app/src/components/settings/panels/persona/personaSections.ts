@@ -119,6 +119,55 @@ export function applyPersonaField(soul: string, key: PersonaFieldKey, value: str
   return `${base}\n## ${heading}\n\n${nextBody}\n`;
 }
 
+/**
+ * Put the settings display name into SOUL.md so the model actually sees it.
+ *
+ * The Redux `persona.displayName` field is cosmetic (localStorage only). The
+ * runtime reads SOUL.md. Without this splice, chat still introduces itself as
+ * OpenHuman after the user named it in Settings.
+ */
+export function applyAssistantName(soul: string, name: string): string {
+  const nextName = name.trim();
+  if (!nextName) return soul;
+
+  let next = soul;
+  const headingRe = /^#\s+.+$/m;
+  if (headingRe.test(next)) {
+    next = next.replace(headingRe, `# ${nextName}`);
+  } else {
+    next = `# ${nextName}\n\n${next}`;
+  }
+
+  const youAreRe = /^You are [^\n—.\-]+/m;
+  if (youAreRe.test(next)) {
+    next = next.replace(youAreRe, `You are ${nextName}`);
+  } else {
+    const headingEnd = next.indexOf('\n');
+    const insertAt = headingEnd === -1 ? next.length : headingEnd + 1;
+    next = `${next.slice(0, insertAt)}\nYou are ${nextName} — the user's AI teammate.\n${next.slice(insertAt)}`;
+  }
+
+  return applyNameSection(next, nextName);
+}
+
+function applyNameSection(soul: string, name: string): string {
+  const heading = 'Name';
+  if (readSection(soul, heading) === name) return soul;
+  const span = findSectionSpan(soul, heading);
+  if (span) {
+    const raw = soul.slice(span.bodyStart, span.bodyEnd);
+    const lead = raw.match(/^\n*/)?.[0] ?? '';
+    const trail = raw.match(/\n*$/)?.[0] ?? '';
+    return soul.slice(0, span.bodyStart) + `${lead}${name}${trail || '\n'}` + soul.slice(span.bodyEnd);
+  }
+  const base = soul.replace(/\n*$/, '\n');
+  // Keep Name near the top so it is not buried under Personality.
+  const firstHeading = soul.search(/^##[ \t]/m);
+  const block = `## ${heading}\n\n${name}\n\n`;
+  if (firstHeading === -1) return `${base}\n${block}`;
+  return soul.slice(0, firstHeading) + block + soul.slice(firstHeading);
+}
+
 /** Apply every managed field at once (used for save-all / tests). */
 export function applyPersonaFields(soul: string, fields: PersonaFields): string {
   let next = soul;

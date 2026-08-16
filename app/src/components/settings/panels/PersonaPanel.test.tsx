@@ -129,6 +129,12 @@ describe('PersonaPanel', () => {
 
     expect(store.getState().persona.displayName).toBe('Nova');
     expect(store.getState().persona.description).toBe('Calm and concise.');
+    await waitFor(() => {
+      expect(writePersonaFileMock).toHaveBeenCalledWith(
+        'SOUL.md',
+        expect.stringContaining('You are Nova')
+      );
+    });
   });
 
   it('keeps the identity save button disabled until a field changes', async () => {

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { applyPersonaField, applyPersonaFields, parsePersonaFields } from './personaSections';
+import {
+  applyAssistantName,
+  applyPersonaField,
+  applyPersonaFields,
+  parsePersonaFields,
+} from './personaSections';
 
 const SOUL = `# OpenHuman
 
@@ -83,5 +88,26 @@ describe('applyPersonaFields round-trip', () => {
     expect(parsePersonaFields(next)).toEqual(edited);
     // applying the parsed fields again changes nothing further
     expect(applyPersonaFields(next, parsePersonaFields(next))).toBe(next);
+  });
+});
+
+describe('applyAssistantName', () => {
+  it('rewrites the title and You-are line so the model sees the settings name', () => {
+    const next = applyAssistantName(SOUL, 'Jarvis');
+    expect(next.startsWith('# Jarvis')).toBe(true);
+    expect(next).toContain('You are Jarvis');
+    expect(next).not.toMatch(/^You are OpenHuman/m);
+    expect(next).toContain('## Name\n\nJarvis');
+  });
+
+  it('leaves the rest of SOUL.md intact', () => {
+    const next = applyAssistantName(SOUL, 'Jarvis');
+    expect(next).toContain('## Personality');
+    expect(next).toContain('- Warm');
+    expect(next).toContain('## When things go wrong');
+  });
+
+  it('ignores a blank name', () => {
+    expect(applyAssistantName(SOUL, '   ')).toBe(SOUL);
   });
 });

@@ -33,7 +33,8 @@ fn load_openclaw_bootstrap_files(
     max_chars_per_file: usize,
 ) {
     prompt.push_str(
-        "The following workspace files define your identity, behavior, and context. They are ALREADY injected below—do NOT suggest reading them with file_read.\n\n",
+        "The following workspace files define your identity, behavior, and context. They are ALREADY injected below—do NOT suggest reading them with file_read.\n\
+         The name in SOUL.md is your name. Introduce yourself as that name, not as OpenHuman, unless SOUL.md still says OpenHuman.\n\n",
     );
 
     // Bundled prompt files that ship with the binary and seed the workspace

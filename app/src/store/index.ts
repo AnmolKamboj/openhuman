@@ -175,6 +175,8 @@ const mascotPersistConfig = {
   storage,
   whitelist: [
     'color',
+    'customPrimaryColor',
+    'customSecondaryColor',
     'voiceId',
     'customMascotGifUrl',
     'selectedMascotId',

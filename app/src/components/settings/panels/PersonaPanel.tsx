@@ -21,6 +21,7 @@ import Button from '../../ui/Button';
 import { SettingsRow, SettingsSection, SettingsTextArea, SettingsTextField } from '../controls';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
 import SettingsPanel from '../layout/SettingsPanel';
+import { applyAssistantName } from './persona/personaSections';
 import PersonaGuidedFields from './persona/PersonaGuidedFields';
 
 type SoulMode = 'guided' | 'advanced';
@@ -97,9 +98,26 @@ const PersonaPanel = ({ embedded = false }: PersonaPanelProps) => {
   const descriptionDirty = descriptionDraft.trim() !== storedDescription;
   const identityDirty = nameDirty || descriptionDirty;
 
-  const onSaveIdentity = () => {
+  const onSaveIdentity = async () => {
     if (nameDirty) dispatch(setPersonaDisplayName(nameDraft));
     if (descriptionDirty) dispatch(setPersonaDescription(descriptionDraft));
+
+    // Redux alone never reaches the model. Patch SOUL.md so desktop and
+    // Telegram both see the name the user typed.
+    const name = nameDraft.trim();
+    if (!nameDirty || !name) return;
+    setSoulBusy(true);
+    setSoulError(null);
+    try {
+      const file = await writePersonaFile(PERSONA_FILE_SOUL, applyAssistantName(soulDraft, name));
+      setSoulDraft(file.contents);
+      setSoulSaved(file.contents);
+      setSoulIsDefault(file.is_default);
+    } catch (err) {
+      setSoulError(err instanceof Error ? err.message : t('settings.persona.soul.saveError'));
+    } finally {
+      setSoulBusy(false);
+    }
   };
 
   const soulDirty = soulDraft !== soulSaved;

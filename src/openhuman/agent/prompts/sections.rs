@@ -278,7 +278,9 @@ impl PromptSection for IdentitySection {
     fn build(&self, ctx: &PromptContext<'_>) -> Result<String> {
         let mut prompt = String::from("## Project Context\n\n");
         prompt.push_str(
-            "The following workspace files define your identity, behavior, and context.\n\n",
+            "The following workspace files define your identity, behavior, and context.\n\
+             The name in SOUL.md is your name. Introduce yourself as that name, not as OpenHuman, \
+             unless SOUL.md still says OpenHuman.\n\n",
         );
         // When the visible-tool filter is active the main agent is a pure
         // orchestrator: it routes via spawn_subagent, synthesises results,
