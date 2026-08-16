@@ -115,6 +115,39 @@ describe('PersonaPanel', () => {
     });
   });
 
+  it('restores the display name from SOUL.md when the store is empty', async () => {
+    readPersonaFileMock.mockResolvedValue(
+      soulFile({ contents: '# Jarvis\n\n## Name\n\nJarvis\n', is_default: false })
+    );
+    const { store } = renderWithProviders(<PersonaPanel />);
+    await awaitLoaded();
+    await waitFor(() => {
+      expect(store.getState().persona.displayName).toBe('Jarvis');
+      expect(screen.getByTestId('persona-display-name-input')).toHaveValue('Jarvis');
+    });
+  });
+
+  it('writes dirty personality fields when identity is saved', async () => {
+    readPersonaFileMock.mockResolvedValue(
+      soulFile({ contents: '## Personality\n\nOld.\n', is_default: false })
+    );
+    renderWithProviders(<PersonaPanel />);
+    await awaitLoaded();
+    fireEvent.change(screen.getByTestId('persona-guided-personality'), {
+      target: { value: 'Warm and direct.' },
+    });
+    fireEvent.change(screen.getByTestId('persona-display-name-input'), {
+      target: { value: 'Jarvis' },
+    });
+    fireEvent.click(screen.getByTestId('persona-identity-save'));
+    await waitFor(() => {
+      const lastCall = writePersonaFileMock.mock.calls.at(-1);
+      expect(lastCall?.[0]).toBe('SOUL.md');
+      expect(lastCall?.[1]).toContain('Warm and direct.');
+      expect(lastCall?.[1]).toContain('You are Jarvis');
+    });
+  });
+
   it('persists the display name to the store on save', async () => {
     const { store } = renderWithProviders(<PersonaPanel />);
     await awaitLoaded();

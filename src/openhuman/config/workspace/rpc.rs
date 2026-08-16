@@ -158,6 +158,10 @@ pub fn write_workspace_file(
         );
         format!("failed to write {filename}: {e}")
     })?;
+    crate::openhuman::config::workspace::ops::mark_workspace_file_user_edited(
+        workspace_dir,
+        filename,
+    );
     log::debug!(
         "[workspace][rpc] write ok file='{filename}' bytes={}",
         contents.len()
@@ -194,6 +198,10 @@ pub fn reset_workspace_file(
         );
         format!("failed to reset {filename}: {e}")
     })?;
+    crate::openhuman::config::workspace::ops::clear_workspace_file_user_edited(
+        workspace_dir,
+        filename,
+    );
     log::debug!("[workspace][rpc] reset ok file='{filename}' (restored bundled default)");
     Ok(RpcOutcome::new(
         WorkspaceFile {
@@ -274,6 +282,13 @@ mod tests {
             .value;
         assert!(!written.is_default);
         assert_eq!(written.contents, "You are calm and concise.");
+        assert!(
+            crate::openhuman::config::workspace::ops::is_workspace_file_user_edited(
+                tmp.path(),
+                "SOUL.md"
+            ),
+            "a Settings save must mark SOUL.md so the next launch does not overwrite it"
+        );
 
         let read = read_workspace_file(tmp.path(), "SOUL.md")
             .expect("read ok")
@@ -304,6 +319,12 @@ mod tests {
         assert_eq!(reset.contents, bundled_default_contents("SOUL.md").unwrap());
         let on_disk = std::fs::read_to_string(tmp.path().join("SOUL.md")).unwrap();
         assert_eq!(on_disk, bundled_default_contents("SOUL.md").unwrap());
+        assert!(
+            !crate::openhuman::config::workspace::ops::is_workspace_file_user_edited(
+                tmp.path(),
+                "SOUL.md"
+            )
+        );
     }
 
     #[test]

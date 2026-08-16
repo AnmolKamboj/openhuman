@@ -168,6 +168,16 @@ function applyNameSection(soul: string, name: string): string {
   return soul.slice(0, firstHeading) + block + soul.slice(firstHeading);
 }
 
+/** Read the saved assistant name from SOUL.md (Name section, then the H1). */
+export function extractAssistantName(soul: string): string {
+  const fromSection = readSection(soul, 'Name').split('\n')[0]?.trim() ?? '';
+  if (fromSection) return fromSection;
+  const heading = soul.match(/^#\s+(.+)$/m);
+  const title = heading?.[1]?.trim() ?? '';
+  if (title && title.toLowerCase() !== 'openhuman') return title;
+  return '';
+}
+
 /** Apply every managed field at once (used for save-all / tests). */
 export function applyPersonaFields(soul: string, fields: PersonaFields): string {
   let next = soul;

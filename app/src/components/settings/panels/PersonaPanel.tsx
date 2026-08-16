@@ -21,7 +21,8 @@ import Button from '../../ui/Button';
 import { SettingsRow, SettingsSection, SettingsTextArea, SettingsTextField } from '../controls';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
 import SettingsPanel from '../layout/SettingsPanel';
-import { applyAssistantName } from './persona/personaSections';
+import { persistor } from '../../../store';
+import { applyAssistantName, extractAssistantName } from './persona/personaSections';
 import PersonaGuidedFields from './persona/PersonaGuidedFields';
 
 type SoulMode = 'guided' | 'advanced';
@@ -97,22 +98,44 @@ const PersonaPanel = ({ embedded = false }: PersonaPanelProps) => {
   const nameDirty = nameDraft.trim() !== storedDisplayName;
   const descriptionDirty = descriptionDraft.trim() !== storedDescription;
   const identityDirty = nameDirty || descriptionDirty;
+  const soulDirty = soulDraft !== soulSaved;
+
+  // If Redux lost the display name (persist write was a no-op before the
+  // user id was primed), recover it from the on-disk SOUL.md so the name
+  // the user saved is still there when they open Settings again.
+  useEffect(() => {
+    if (soulLoading || storedDisplayName.trim()) return;
+    const fromSoul = extractAssistantName(soulSaved);
+    if (!fromSoul) return;
+    dispatch(setPersonaDisplayName(fromSoul));
+    setNameDraft(fromSoul);
+  }, [soulLoading, soulSaved, storedDisplayName, dispatch]);
+
+  const persistSoul = async (contents: string) => {
+    const file = await writePersonaFile(PERSONA_FILE_SOUL, contents);
+    setSoulDraft(file.contents);
+    setSoulSaved(file.contents);
+    setSoulIsDefault(file.is_default);
+    await persistor.flush();
+  };
 
   const onSaveIdentity = async () => {
     if (nameDirty) dispatch(setPersonaDisplayName(nameDraft));
     if (descriptionDirty) dispatch(setPersonaDescription(descriptionDraft));
 
     // Redux alone never reaches the model. Patch SOUL.md so desktop and
-    // Telegram both see the name the user typed.
+    // Telegram both see the name / personality the user typed, and so it
+    // is still there after a restart.
     const name = nameDraft.trim();
-    if (!nameDirty || !name) return;
+    const nextSoul = name ? applyAssistantName(soulDraft, name) : soulDraft;
+    if (!nameDirty && !soulDirty && nextSoul === soulSaved) {
+      await persistor.flush();
+      return;
+    }
     setSoulBusy(true);
     setSoulError(null);
     try {
-      const file = await writePersonaFile(PERSONA_FILE_SOUL, applyAssistantName(soulDraft, name));
-      setSoulDraft(file.contents);
-      setSoulSaved(file.contents);
-      setSoulIsDefault(file.is_default);
+      await persistSoul(nextSoul);
     } catch (err) {
       setSoulError(err instanceof Error ? err.message : t('settings.persona.soul.saveError'));
     } finally {
@@ -120,17 +143,14 @@ const PersonaPanel = ({ embedded = false }: PersonaPanelProps) => {
     }
   };
 
-  const soulDirty = soulDraft !== soulSaved;
-
   const onSaveSoul = async () => {
     setSoulBusy(true);
     setSoulError(null);
     log('[ui-flow] soul.save:start bytes=%d', soulDraft.length);
     try {
-      const file = await writePersonaFile(PERSONA_FILE_SOUL, soulDraft);
-      setSoulDraft(file.contents);
-      setSoulSaved(file.contents);
-      setSoulIsDefault(file.is_default);
+      const name = nameDraft.trim() || storedDisplayName.trim();
+      const nextSoul = name ? applyAssistantName(soulDraft, name) : soulDraft;
+      await persistSoul(nextSoul);
       log('[ui-flow] soul.save:ok');
     } catch (err) {
       log('[ui-flow] soul.save:error %s', err instanceof Error ? err.message : err);

@@ -4,6 +4,7 @@ import {
   applyAssistantName,
   applyPersonaField,
   applyPersonaFields,
+  extractAssistantName,
   parsePersonaFields,
 } from './personaSections';
 
@@ -109,5 +110,19 @@ describe('applyAssistantName', () => {
 
   it('ignores a blank name', () => {
     expect(applyAssistantName(SOUL, '   ')).toBe(SOUL);
+  });
+});
+
+describe('extractAssistantName', () => {
+  it('prefers the Name section over the H1', () => {
+    expect(extractAssistantName('# OpenHuman\n\n## Name\n\nJarvis\n')).toBe('Jarvis');
+  });
+
+  it('falls back to a non-default H1', () => {
+    expect(extractAssistantName('# Jarvis\n\nYou are Jarvis.\n')).toBe('Jarvis');
+  });
+
+  it('ignores the bundled OpenHuman title', () => {
+    expect(extractAssistantName(SOUL)).toBe('');
   });
 });

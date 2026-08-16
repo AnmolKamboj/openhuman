@@ -540,6 +540,17 @@ pub fn sync_workspace_file(workspace_dir: &Path, filename: &str) {
     let stored_hash = std::fs::read_to_string(&hash_path).unwrap_or_default();
     let stored_hash = stored_hash.trim();
 
+    if crate::openhuman::config::workspace::is_workspace_file_user_edited(workspace_dir, filename)
+    {
+        // Settings (or an equivalent write) saved this personality. Never
+        // replace it with a newer bundled default — the user would lose the
+        // name / voice they just set the next time they open the app.
+        if stored_hash != current_hash {
+            let _ = std::fs::write(&hash_path, &current_hash);
+        }
+        return;
+    }
+
     if stored_hash == current_hash && path.exists() {
         // Built-in hasn't changed and file exists — nothing to do.
         return;

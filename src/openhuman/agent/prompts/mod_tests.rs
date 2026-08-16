@@ -1641,6 +1641,7 @@ fn sync_workspace_file_updates_hash_and_inject_workspace_file_truncates() {
     let original_hash = std::fs::read_to_string(&hash_path).unwrap();
 
     std::fs::write(workspace.join("SOUL.md"), "user override").unwrap();
+    crate::openhuman::config::workspace::mark_workspace_file_user_edited(&workspace, "SOUL.md");
     sync_workspace_file(&workspace, "SOUL.md");
     assert_eq!(std::fs::read_to_string(&hash_path).unwrap(), original_hash);
     assert_eq!(

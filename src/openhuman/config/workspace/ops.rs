@@ -13,6 +13,32 @@ const BOOTSTRAP_FILES: [(&str, &str); 2] = [
     ),
 ];
 
+/// Sidecar that marks a bootstrap file as user-owned so
+/// [`crate::openhuman::agent::prompts::sync_workspace_file`] never overwrites
+/// a saved personality on the next launch.
+pub fn workspace_file_user_edited_path(workspace_dir: &Path, filename: &str) -> std::path::PathBuf {
+    workspace_dir.join(format!(".{filename}.user-edited"))
+}
+
+/// True when the user saved this persona file from Settings (or an equivalent write).
+pub fn is_workspace_file_user_edited(workspace_dir: &Path, filename: &str) -> bool {
+    workspace_file_user_edited_path(workspace_dir, filename).is_file()
+}
+
+/// Remember that `filename` is a user-saved personality file.
+pub fn mark_workspace_file_user_edited(workspace_dir: &Path, filename: &str) {
+    let path = workspace_file_user_edited_path(workspace_dir, filename);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(path, "1\n");
+}
+
+/// Clear the user-owned mark (Reset to default).
+pub fn clear_workspace_file_user_edited(workspace_dir: &Path, filename: &str) {
+    let _ = std::fs::remove_file(workspace_file_user_edited_path(workspace_dir, filename));
+}
+
 /// Bundled default contents for a bootstrap workspace file, or `None` when the
 /// name is not one of the files shipped in [`BOOTSTRAP_FILES`].
 ///
