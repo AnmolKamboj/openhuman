@@ -130,6 +130,12 @@ use openhuman_core::openhuman::memory::{
         USER_PREF_GENERAL_NAMESPACE, USER_PREF_SITUATIONAL_NAMESPACE,
     },
     read_rpc as memory_read_rpc,
+    MemoryIngestionConfig, MemoryIngestionRequest,
+};
+// `remember`, `rpc_models`, `traits` and `util` moved into the extracted engine
+// crate with the rest of the memory implementation; the host re-exports some of
+// their contents flat but not the modules themselves.
+use tinymemory_core::{
     remember::RememberSourceKind,
     rpc_models::{
         ApiEnvelope, ApiError, ApiMeta, AppendConversationMessageRequest,
@@ -143,7 +149,6 @@ use openhuman_core::openhuman::memory::{
     },
     traits::{Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts},
     util::redact::{redact, redact_endpoint},
-    MemoryIngestionConfig, MemoryIngestionRequest,
 };
 use openhuman_core::openhuman::security::{AutonomyLevel, SecurityPolicy};
 use openhuman_core::openhuman::threads::ops as thread_ops;
