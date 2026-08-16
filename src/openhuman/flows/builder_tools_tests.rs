@@ -1923,6 +1923,10 @@ async fn get_node_kind_contract_tool_returns_contract_and_rejects_unknown() {
     let bad = tool.execute(json!({ "kind": "nope" })).await.unwrap();
     assert!(bad.is_error);
     assert!(bad.output().contains("list_node_kinds"));
+    assert!(bad.output().contains(&format!(
+        "{} valid kinds",
+        crate::openhuman::flows::NODE_KINDS.len()
+    )));
 
     let missing = tool.execute(json!({})).await.unwrap();
     assert!(missing.is_error);
