@@ -783,6 +783,12 @@ export async function walkOnboarding(logPrefix = '[E2E]', maxSteps = 12): Promis
  * timing races do not cause the helper to skip onboarding prematurely.
  */
 export async function completeOnboardingIfVisible(logPrefix = '[E2E]') {
+  // Deep-link delivery resolves when the URL has reached the WebView, before
+  // CoreStateProvider has necessarily applied the authenticated snapshot.
+  // Waiting for that snapshot prevents a slow bootstrap from being mistaken
+  // for an already-onboarded session when the onboarding button has not
+  // mounted yet.
+  await waitForAuthBootstrap(20_000);
   await walkOnboarding(logPrefix);
   const marker = await waitForHomePage(15_000);
   if (marker) return;
