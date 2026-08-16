@@ -332,7 +332,9 @@ pub(crate) async fn process_channel_runtime_message(
             cfg,
             &msg.content,
             &prior_user_refs,
-        ) {
+        )
+        .await
+        {
             enriched_message = format!("{block}\n{enriched_message}");
         }
     }

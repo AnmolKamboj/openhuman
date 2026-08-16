@@ -883,7 +883,9 @@ impl Agent {
                 &cfg,
                 user_message,
                 &prior_user,
-            ) {
+            )
+            .await
+            {
                 next = format!("{block}\n{next}");
             }
             next
