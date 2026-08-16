@@ -2101,7 +2101,7 @@ async fn memory_preferences_remember_redaction_and_pipeline_traits_cover_public_
             USER_PREF_GENERAL_NAMESPACE,
             "tone",
             "Prefer concise responses.",
-            MemoryCategory::Core,
+            openhuman_core::openhuman::memory::api::types::MemoryCategory::Core,
             None,
             MemoryTaint::Internal,
         )
@@ -2112,7 +2112,7 @@ async fn memory_preferences_remember_redaction_and_pipeline_traits_cover_public_
             USER_PREF_GENERAL_NAMESPACE,
             "empty",
             "   ",
-            MemoryCategory::Core,
+            openhuman_core::openhuman::memory::api::types::MemoryCategory::Core,
             None,
             MemoryTaint::Internal,
         )
@@ -2123,7 +2123,7 @@ async fn memory_preferences_remember_redaction_and_pipeline_traits_cover_public_
             USER_PREF_SITUATIONAL_NAMESPACE,
             "rust-tests",
             "When changing Rust code, run targeted tests first.",
-            MemoryCategory::Core,
+            openhuman_core::openhuman::memory::api::types::MemoryCategory::Core,
             None,
             MemoryTaint::Internal,
         )
@@ -2258,7 +2258,7 @@ async fn memory_tools_and_user_scope_prefs_cover_public_execution_paths() {
         .to_string()
         .contains("query cannot be empty"));
 
-    let forget_tool = MemoryForgetTool::new(memory.clone(), security);
+    let forget_tool = MemoryForgetTool::new(security);
     assert_eq!(forget_tool.name(), "memory_forget");
     let missing = forget_tool
         .execute(json!({
