@@ -15,8 +15,8 @@ use std::sync::Arc;
 use anyhow::Context;
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use tinyagents::graph::SqliteCheckpointer;
 use tinyflows::caps::*;
+use tinyflows::engine::FileCheckpointer;
 use tinyflows::error::{EngineError, Result};
 #[cfg(test)]
 use tinyflows::model::WorkflowGraph;
@@ -646,32 +646,32 @@ pub fn build_capabilities(config: Arc<Config>, state_namespace: impl Into<String
                 security,
             },
         )),
+        tasks: Some(Arc::new(TokioTaskRunner::new())),
         resolver: Arc::new(OpenHumanWorkflowResolver { config }),
     }
 }
 
 /// Opens the durable, cross-process checkpointer a `flows_run` uses via
 /// `tinyflows::engine::run_with_checkpointer` — the crate's own
-/// `tinyagents::graph::SqliteCheckpointer`, stored under
-/// `<workspace_dir>/flows/checkpoints.db`.
+/// [`FileCheckpointer`], stored under `<workspace_dir>/flows/checkpoints/`.
 ///
-/// Deliberately **not** a bespoke checkpointer: the crate ships its own
-/// SQLite-backed `Checkpointer<State>` impl (feature `sqlite`, already enabled
-/// on the `tinyagents` dependency), so the seam just opens it — mirrors the
-/// construction in `src/openhuman/agent/orchestration/delegation.rs`.
+/// Tinyflows now owns its graph runtime and checkpointer trait rather than
+/// sharing TinyAgents' SQLite implementation. Its bundled file backend keeps
+/// resume state durable without a host-specific compatibility adapter.
 pub fn open_flow_checkpointer(
     config: &Config,
 ) -> anyhow::Result<Arc<dyn tinyflows::engine::Checkpointer<serde_json::Value>>> {
-    let db_path = config.workspace_dir.join("flows").join("checkpoints.db");
-    if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("Failed to create flows directory: {}", parent.display()))?;
-    }
-    tracing::debug!(target: "flows", db = %db_path.display(), "[flows] opening checkpointer");
-    Ok(Arc::new(
-        SqliteCheckpointer::<serde_json::Value>::open(&db_path)
-            .with_context(|| format!("Failed to open flows checkpointer: {}", db_path.display()))?,
-    ))
+    let checkpoint_dir = config.workspace_dir.join("flows").join("checkpoints");
+    std::fs::create_dir_all(&checkpoint_dir).with_context(|| {
+        format!(
+            "Failed to create flows checkpoint directory: {}",
+            checkpoint_dir.display()
+        )
+    })?;
+    tracing::debug!(target: "flows", dir = %checkpoint_dir.display(), "[flows] opening checkpointer");
+    Ok(Arc::new(FileCheckpointer::<serde_json::Value>::new(
+        checkpoint_dir,
+    )))
 }
 
 #[cfg(test)]

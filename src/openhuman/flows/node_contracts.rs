@@ -126,7 +126,7 @@ fn apply_host_overlay(contract: NodeKindContract) -> NodeKindContract {
     }
 }
 
-/// All 16 node-kind contracts with this host's overlay applied, in
+/// All node-kind contracts with this host's overlay applied, in
 /// [`NODE_KINDS`] order.
 pub fn all_node_kind_contracts() -> Vec<NodeKindContract> {
     tinyflows::catalog::all_contracts()
@@ -135,8 +135,7 @@ pub fn all_node_kind_contracts() -> Vec<NodeKindContract> {
         .collect()
 }
 
-/// The overlaid contract for one node kind, or `None` if `kind` is not one of
-/// the 16.
+/// The overlaid contract for one node kind, or `None` if `kind` is unknown.
 pub fn node_kind_contract(kind: &str) -> Option<NodeKindContract> {
     tinyflows::catalog::contract_for(kind).map(apply_host_overlay)
 }
@@ -186,8 +185,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn overlay_preserves_all_16_kinds() {
-        assert_eq!(all_node_kind_contracts().len(), 16);
+    fn overlay_preserves_all_vendor_kinds() {
+        assert_eq!(all_node_kind_contracts().len(), NODE_KINDS.len());
         for kind in NODE_KINDS {
             assert!(node_kind_contract(kind).is_some(), "missing {kind}");
         }

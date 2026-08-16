@@ -27,7 +27,7 @@ pub async fn run() -> Result<ProfileResult> {
         rec.checkpoint("config-parse")?;
 
         // b. event-bus (plus agent-handler registration so turns can run).
-        crate::core::bus::init().await.expect("bus init");
+        init_global().await.expect("bus init");
         openhuman_core::openhuman::agent::bus::register_agent_handlers();
         rec.checkpoint("event-bus")?;
 

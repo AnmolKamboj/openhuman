@@ -27,6 +27,7 @@ use serde_json::{json, Map};
 use tinyagents::{
     GraphLangfuseExporter, GraphObservation, LangfuseAuth, LangfuseClient, LangfuseTraceConfig,
 };
+use tinyflows::engine::GraphObservation as FlowGraphObservation;
 
 use crate::api::config::effective_backend_api_url;
 use crate::openhuman::config::Config;
@@ -113,7 +114,7 @@ pub async fn export_flow_run_trace(
     thread_id: &str,
     status: &str,
     trigger: FlowRunTrigger,
-    journal_observations: &[GraphObservation],
+    journal_observations: &[FlowGraphObservation],
 ) {
     if !config.observability.share_usage_data {
         tracing::debug!(
@@ -167,6 +168,23 @@ pub async fn export_flow_run_trace(
         }
     };
 
+    // Tinyflows now owns its graph runtime. Its durable observation wire shape
+    // remains byte-compatible with TinyAgents', whose Langfuse exporter we
+    // still reuse for agent-graph rendering. Convert at this explicit seam so
+    // the two crates keep distinct Rust type identities.
+    let observations = match convert_observations(journal_observations) {
+        Ok(observations) => observations,
+        Err(err) => {
+            tracing::warn!(
+                target: LOG_TARGET,
+                flow_id = %flow_id,
+                error = %err,
+                "[flows] langfuse export skipped: observation conversion failed"
+            );
+            return;
+        }
+    };
+
     let exporter = build_flow_exporter(client, flow_id);
     let trace = build_flow_trace_config(flow_name, flow_id, thread_id, status, trigger);
     let observation_count = journal_observations.len();
@@ -185,7 +203,7 @@ pub async fn export_flow_run_trace(
     // timeout caps a hung connection the same way the agent exporter does.
     match tokio::time::timeout(
         PUSH_TIMEOUT,
-        exporter.send_observations(trace, journal_observations),
+        exporter.send_observations(trace, &observations),
     )
     .await
     {
@@ -219,18 +237,30 @@ pub async fn export_flow_run_trace(
     }
 }
 
+fn convert_observations(
+    observations: &[FlowGraphObservation],
+) -> serde_json::Result<Vec<GraphObservation>> {
+    observations
+        .iter()
+        .map(|observation| {
+            let value = serde_json::to_value(observation)?;
+            serde_json::from_value(value)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::Value;
-    use tinyagents::harness::ids;
-    use tinyagents::GraphEvent;
+    use tinyflows::graph::ids;
+    use tinyflows::graph::GraphEvent;
 
     /// Builds a minimal observation stream for one node under run/thread ids
     /// shaped like a real `flows_run` (`thread_id = flow:{id}:{uuid}`).
-    fn sample_observations(thread_id: &str) -> Vec<GraphObservation> {
+    fn sample_observations(thread_id: &str) -> Vec<FlowGraphObservation> {
         let node = ids::NodeId::new("fetch");
-        let mk = |offset: u64, step: usize, ts_ms: u64, event: GraphEvent| GraphObservation {
+        let mk = |offset: u64, step: usize, ts_ms: u64, event: GraphEvent| FlowGraphObservation {
             event_id: ids::EventId::new(format!("evt-{offset}")),
             run_id: ids::RunId::new("run-9"),
             root_run_id: ids::RunId::new("run-9"),
@@ -328,6 +358,7 @@ mod tests {
     fn batch_carries_flow_trace_and_langgraph_keys_on_node_spans() {
         let thread_id = "flow:flow-1:uuid-1";
         let observations = sample_observations(thread_id);
+        let observations = convert_observations(&observations).expect("compatible observations");
         let client = LangfuseClient::new(
             "https://backend.test/telemetry/langfuse/ingestion",
             LangfuseAuth::Bearer {

@@ -144,7 +144,7 @@ pub async fn run() -> Result<ProfileResult> {
     raise_fd_limit();
 
     let fixture = fixture()?;
-    crate::core::bus::init().await.expect("bus init");
+    init_global().await.expect("bus init");
     openhuman_core::openhuman::agent::bus::register_agent_handlers();
     let _ = AgentDefinitionRegistry::init_global_builtins();
     let mock = LatencyMock::from_env("Fleet agent: nothing needs your attention.");

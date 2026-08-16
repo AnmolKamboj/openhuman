@@ -57,7 +57,7 @@ impl Tool for ProposeWorkflowTool {
          (to_port just stays \"main\"); routing is keyed exclusively on from_port, so a label \
          on to_port instead silently turns the branch into an unconditional fan-out and is a \
          hard reject. Exactly ONE \
-         trigger node is required. The 16 node kinds: trigger (config.trigger_kind: manual | \
+         trigger node is required. The 21 node kinds: trigger (config.trigger_kind: manual | \
          schedule | webhook | app_event | form | chat_message | evaluation | system | \
          execute_by_workflow; schedule needs config.schedule = {kind:\"cron\",expr,tz?} | \
          {kind:\"at\",at} | {kind:\"every\",every_ms}; app_event needs config.toolkit + \
@@ -91,7 +91,14 @@ impl Tool for ProposeWorkflowTool {
          node back to the loop node. The pass number is readable as \
          \"=nodes.<loop id>.iteration\". The `body` must ROUTE BACK to the loop node, not merely \
          leave it. A fan-in `merge` must not sit on the cycle, and the loop node must not itself \
-         be a fan-in — join before it instead). If \
+         be a fan-in — join before it instead), spawn (config.target REQUIRED: workflow | tool | \
+         http; optional config.workflow/config.input/config.slug/config.args/config.request; emits \
+         a ticket for a downstream gate), gate (optional config.from/config.tickets/config.release/\
+         config.n/config.poll_interval_ms/config.max_polls/config.wait_mode/config.on_timeout), \
+         scatter (optional config.path/config.lanes; fans the downstream path into lanes), gather \
+         (config.from REQUIRED; optional config.release/config.n/config.on_lane_error/\
+         config.poll_interval_ms/config.max_polls; collects scatter lanes), void (terminal sink, \
+         no config and no outgoing edges). If \
          validation fails, fix the graph and call this tool again."
     }
 
@@ -119,7 +126,8 @@ impl Tool for ProposeWorkflowTool {
                                             "trigger", "agent", "tool_call", "http_request",
                                             "code", "shell", "condition", "switch", "merge", "split_out",
                                             "transform", "output_parser", "sub_workflow", "memory",
-                                            "dedup", "loop"
+                                            "dedup", "loop", "spawn", "gate", "scatter",
+                                            "gather", "void"
                                         ]
                                     },
                                     "name": { "type": "string", "description": "Human-readable node name." },
@@ -547,7 +555,14 @@ fn config_hint(node: &Node) -> Option<String> {
                 None => format!("max {max}"),
             })
         }
-        NodeKind::Merge | NodeKind::OutputParser | NodeKind::Trigger => None,
+        NodeKind::Merge
+        | NodeKind::OutputParser
+        | NodeKind::Trigger
+        | NodeKind::Spawn
+        | NodeKind::Scatter
+        | NodeKind::Gather
+        | NodeKind::Gate
+        | NodeKind::Void => None,
     }
 }
 

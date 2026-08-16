@@ -1076,9 +1076,8 @@ fn mcp_namespaces_absent_when_gate_off() {
 
 // --- #4797: `flows` compile-time gate (directional proof) -------------------
 //
-// One namespace, not three: `tinyflows` registers no controllers, and
-// `rhai_workflows` is `scope() = AgentOnly` (no controller schemas in v1), so
-// `flows` is the gate's entire controller surface.
+// One namespace: `tinyflows` registers no controllers, so `flows` is the
+// gate's entire controller surface.
 
 #[cfg(feature = "flows")]
 #[test]

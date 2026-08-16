@@ -127,7 +127,7 @@ pub async fn run() -> Result<ProfileResult> {
     apply_pool_config(&mut fixture.config, pool_enabled, pool_workers);
     let _approval_env = EnvGuard::set("OPENHUMAN_APPROVAL_GATE", "0");
 
-    crate::core::bus::init().await.expect("bus init");
+    init_global().await.expect("bus init");
     openhuman_core::openhuman::agent::bus::register_agent_handlers();
     let _ = AgentDefinitionRegistry::init_global_builtins();
 

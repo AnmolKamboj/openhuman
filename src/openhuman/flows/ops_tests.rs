@@ -4,6 +4,7 @@ use serde_json::json;
 use tempfile::TempDir;
 
 fn test_config(tmp: &TempDir) -> Config {
+    crate::openhuman::memory::host_impls::install_for_tests();
     let config = Config {
         workspace_dir: tmp.path().join("workspace"),
         action_dir: tmp.path().join("workspace"),
@@ -4507,44 +4508,21 @@ async fn inference_gate_probes_every_distinct_agent_node_role() {
     );
 }
 
-// ── dynamic agent_ref still gets the Layer-1 check (finding C, P2) ─────────
+// ── dynamic agent_ref is rejected structurally ─────────────────────────────
 
-#[tokio::test]
-async fn inference_gate_reports_signed_out_for_dynamic_agent_ref_only_graph() {
-    // Finding C: a graph whose only `agent` node has a DYNAMIC (`=`-derived)
-    // `agent_ref` still means "this graph runs inference" at run time — it
-    // must stay in scope for Layer 1 (signed-out/session), even though its
-    // exact per-model role can't be resolved statically. Previously the
-    // dynamic-ref filter excluded such nodes entirely, so a graph made up
-    // only of them returned `None` (no readiness signal at all) and a
-    // signed-out session went completely unreported.
-    let _signed_out = crate::openhuman::cron::scheduler_gate::SignedOutTestGuard::set(true);
-
-    let tmp = TempDir::new().unwrap();
-    let config = test_config(&tmp);
-    let g = graph(json!({
+#[test]
+fn dynamic_agent_ref_is_rejected_before_inference_readiness() {
+    let error = validate_and_migrate_graph(json!({
         "nodes": [
             { "id": "t", "kind": "trigger", "name": "Manual" },
             { "id": "a", "kind": "agent", "name": "Dynamic",
               "config": { "agent_ref": "=nodes.t.item.agent_choice", "prompt": "go" } }
         ],
         "edges": [ { "from_node": "t", "to_node": "a" } ]
-    }));
-
-    let errors = validate_inference_readiness(&config, &g).await;
-    assert!(
-        !errors.is_empty(),
-        "a signed-out session must still be reported even though the only agent node's \
-         agent_ref is dynamic: {errors:?}"
-    );
-    assert!(
-        errors
-            .iter()
-            .any(|e| e.to_ascii_lowercase().contains("signed out")),
-        "{errors:?}"
-    );
-    // `SignedOutTestGuard` restores the prior flag on drop at the end of this
-    // scope — no other test observes this override.
+    }))
+    .expect_err("dynamic agent_ref must fail validation");
+    assert!(error.contains("agent_ref"), "{error}");
+    assert!(error.contains("must be a literal"), "{error}");
 }
 
 #[tokio::test]

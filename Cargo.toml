@@ -146,10 +146,9 @@ tinyhumans-sdk = { path = "vendor/tinyhumans-sdk" }
 # publishing.
 tinyplace = "2.0"
 # tinyflows — host-agnostic workflow engine (typed node graph → validate → compile →
-# run on tinyagents). Powers the "Workflows" feature via the seam in
-# `src/openhuman/tinyflows/` + the `flows::` domain. Pulls tinyagents 2.1 transitively
-# (same version OpenHuman uses directly, preserving one trait identity). Published
-# on crates.io and patched below to the vendored submodule.
+# run through host capabilities). Powers the "Workflows" feature via the seam in
+# `src/openhuman/flows/tinyflows/` + the `flows::` domain. Published on crates.io
+# and patched below to the vendored submodule.
 #
 # `mock` feature: enables `tinyflows::caps::mock::mock_capabilities()` — the
 # deterministic in-memory capability bundle the flows `dry_run_workflow` agent
@@ -158,7 +157,7 @@ tinyplace = "2.0"
 #
 # Optional: exclusive to the default-ON `flows` feature (#4797). A slim build
 # without `flows` drops this crate and its `jaq-*` JSON-query stack entirely.
-tinyflows = { version = "0.6", features = ["mock"], optional = true }
+tinyflows = { version = "0.8", features = ["mock"], optional = true }
 # TinyJuice — host-agnostic TokenJuice compression engine. OpenHuman keeps
 # config/RPC/tool/runtime adapters in `src/openhuman/tokenjuice/` and patches
 # this dependency to the vendored submodule below.
@@ -174,10 +173,6 @@ tinyjuice = { version = "0.2.1", default-features = false }
 # aligned to 0.40, avoiding duplicate `links = "sqlite3"` native bindings.
 # Durable graph checkpoints still use `SqlRunLedgerCheckpointer` until the
 # migration re-points those rows to the crate checkpointer.
-# The `repl` feature (embedded Rhai `.ragsh` session runtime powering the
-# `rhai_workflows` language-workflow tool, `src/openhuman/rhai_workflows/`) is
-# NOT enabled here — the default-ON `flows` feature turns it on via
-# `tinyagents/repl` (#4797), so a slim build without `flows` sheds `rhai`.
 # The crate itself can never be dropped: 26+ domains consume tinyagents.
 tinyagents = { version = "2.1", features = ["sqlite"] }
 # TinyCortex — Rust core for the memory engine (store/chunks/tree/retrieval/
@@ -805,16 +800,15 @@ contacts = ["dep:objc2", "dep:objc2-foundation", "dep:objc2-contacts", "dep:bloc
 media = []
 # Flows domains: the `flows::` automation surface (saved tinyflows graphs —
 # create/run/schedule + the workflow_builder / flow_discovery agents), the
-# `tinyflows::` adapter seam, and the `rhai_workflows::` language-workflow tool.
+# `tinyflows::` adapter seam.
 # Default-ON — the desktop app always ships with Workflows. Slim / headless
 # builds opt out via `--no-default-features --features "<list without flows>"`,
-# which drops `tinyflows` + its `jaq-core`/`jaq-std`/`jaq-json` JSON-query stack
-# and, via `tinyagents/repl`, the `rhai` scripting engine. Composes with the
+# which drops `tinyflows` + its `jaq-core`/`jaq-std`/`jaq-json` JSON-query stack.
+# Composes with the
 # runtime `DomainSet::flows` flag (#4796): the feature narrows the compile-time
 # surface, `DomainSet` gates it at runtime.
 # NOTE: this gate does NOT drop `tinyagents` itself — 26+ domains consume it.
-# Only its `repl` feature (⇒ `rhai`) is exclusive to flows.
-flows = ["dep:tinyflows", "tinyagents/repl"]
+flows = ["dep:tinyflows"]
 # Meet domains: `meet` (join-URL validation), `meet_agent` (live STT/LLM/TTS
 # loop over an open call), and `agent_meetings` (backend-delegated Meet bot via
 # Socket.IO). Default-ON — the desktop app always ships with Meet. Slim /

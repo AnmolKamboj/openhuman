@@ -13,7 +13,7 @@ use crate::mock::PlainTextMock;
 
 pub async fn run() -> Result<ProfileResult> {
     let fixture = fixture()?;
-    crate::core::bus::init().await.expect("bus init");
+    init_global().await.expect("bus init");
     openhuman_core::openhuman::agent::bus::register_agent_handlers();
     let _ = AgentDefinitionRegistry::init_global_builtins();
     let mock = PlainTextMock::new("The Phoenix migration is healthy and on track.");

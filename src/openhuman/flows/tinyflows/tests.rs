@@ -29,8 +29,8 @@ use tinyflows::model::{Edge, Node, NodeKind, WorkflowGraph};
 use crate::openhuman::config::Config;
 use crate::openhuman::security::SecurityPolicy;
 
-use super::build_capabilities;
 use super::caps::{FlowStateStore, OpenHumanCode, OpenHumanHttp, OpenHumanTools};
+use super::{build_capabilities, open_flow_checkpointer};
 
 fn test_config(tmp: &TempDir) -> Arc<Config> {
     let config = Config {
@@ -70,8 +70,25 @@ fn edge(from: &str, to: &str) -> Edge {
 fn build_capabilities_constructs_every_slot_without_panicking() {
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
-    // Purely a construction smoke test — no capability is invoked here.
-    let _caps = build_capabilities(config, "test:build");
+    let caps = build_capabilities(config, "test:build");
+    assert!(caps.tasks.is_some(), "Tinyflows task nodes need a runner");
+}
+
+#[tokio::test]
+async fn flow_checkpointer_uses_the_workspace_file_store() {
+    let tmp = TempDir::new().unwrap();
+    let config = test_config(&tmp);
+    let checkpointer = open_flow_checkpointer(&config).expect("open checkpointer");
+
+    assert!(
+        checkpointer
+            .list("missing-thread")
+            .await
+            .unwrap()
+            .is_empty(),
+        "a new durable store should contain no checkpoints"
+    );
+    assert!(config.workspace_dir.join("flows/checkpoints").is_dir());
 }
 
 // ── HTTP adapter ─────────────────────────────────────────────────────────

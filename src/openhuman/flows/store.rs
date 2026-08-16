@@ -12,7 +12,7 @@
 //!
 //! There is deliberately **no** `flow_checkpoints` table here: the crate's own
 //! `tinyagents::SqliteCheckpointer` owns checkpoint persistence in a separate
-//! `checkpoints.db` (see `src/openhuman/flows/tinyflows/mod.rs::open_flow_checkpointer`).
+//! `checkpoints/` (see `src/openhuman/flows/tinyflows/mod.rs::open_flow_checkpointer`).
 
 use crate::openhuman::config::Config;
 use crate::openhuman::flows::types::{

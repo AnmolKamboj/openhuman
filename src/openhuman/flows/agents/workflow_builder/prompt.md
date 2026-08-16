@@ -305,7 +305,7 @@ A `WorkflowGraph` is `{ name?, nodes: [...], edges: [...] }`.
 - **Exactly ONE `trigger` node is required.** Every other node should be
   reachable from it; a dry-run helps catch orphans.
 
-### The 16 node kinds
+### The 21 node kinds
 
 > The authoritative, always-current config shapes, ports, examples, and gotchas
 > for each kind live in the `list_node_kinds` / `get_node_kind_contract { kind }`
@@ -583,6 +583,20 @@ A `WorkflowGraph` is `{ name?, nodes: [...], edges: [...] }`.
     passthrough and is fine), and a loop node that is itself a fan-in (join
     *before* it instead). Every pass costs what the body costs, so keep the cap
     tight when the body contains an `agent` node.
+17. **`spawn`** — starts a workflow, tool, or HTTP task without waiting and
+    emits an opaque ticket. Set `config.target` and the matching payload fields;
+    collect the result with a downstream `gate`, or route to `void` when the
+    result is intentionally abandoned.
+18. **`gate`** — collects `spawn` tickets under a release policy (`all`, `any`,
+    `first_n`, `quorum`, or `timeout_partial`). Use `config.from` for upstream
+    spawn node ids or `config.tickets` for a ticket expression.
+19. **`scatter`** — fans the entire downstream path into parallel lanes. Use it
+    for multi-node per-item pipelines and terminate the region at a `gather`.
+20. **`gather`** — collects scatter lanes. `config.from` is required and names
+    the lane-terminal node ids; optional release/error policy controls partial
+    completion.
+21. **`void`** — an explicit terminal sink. It discards its inputs, has no
+    config, and must have no outgoing edges.
 
 ### The `memory` node
 
