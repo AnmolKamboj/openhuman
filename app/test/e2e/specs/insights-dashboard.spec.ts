@@ -73,7 +73,7 @@ describe('Insights dashboard smoke', () => {
         () =>
           document.querySelector('[data-testid="memory-graph-svg"]') !== null ||
           document.querySelector('[data-testid="memory-graph-empty"]') !== null ||
-          document.querySelector('[data-testid="memory-graph-canvas"]') !== null
+          document.querySelector('[data-testid="memory-graph-canvas"] canvas') !== null
       )) as boolean;
       if (present) break;
       await browser.pause(500);
