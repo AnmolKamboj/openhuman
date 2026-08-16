@@ -6,10 +6,7 @@
  * All navigation uses browser.execute() with window.location.hash
  * because sidebar nav buttons are icon-only (aria-label, no text content).
  */
-import {
-  waitForAppReady,
-  waitForAuthBootstrap as waitForAuthenticatedCore,
-} from './app-helpers';
+import { waitForAppReady, waitForAuthBootstrap as waitForAuthenticatedCore } from './app-helpers';
 import { triggerAuthDeepLink } from './deep-link-helpers';
 import {
   clickText,
