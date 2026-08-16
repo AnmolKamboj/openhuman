@@ -19,5 +19,17 @@ test.describe('Insights Dashboard', () => {
         '[data-testid="memory-graph-svg"], [data-testid="memory-graph-empty"], [data-testid="memory-graph-canvas"] canvas'
       )
     ).toBeVisible();
+    const pixiCanvas = page.locator('[data-testid="memory-graph-canvas"] canvas');
+    if ((await pixiCanvas.count()) > 0) {
+      await expect
+        .poll(() =>
+          pixiCanvas.evaluate(canvas => {
+            const element = canvas as HTMLCanvasElement;
+            const bounds = element.getBoundingClientRect();
+            return element.width > 0 && element.height > 0 && bounds.width > 0 && bounds.height > 0;
+          })
+        )
+        .toBe(true);
+    }
   });
 });

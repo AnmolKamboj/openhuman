@@ -136,6 +136,13 @@ describe('Logout -> re-login onboarding overlay', function () {
     // ── Onboarding must be in clean first-step state ─────────────────────────
     // If stale mid-flow state from session 1 leaked, a later step would render
     // instead of the initial welcome step.
+    await browser.waitUntil(
+      async () =>
+        (await browser.execute(
+          () => document.querySelector('[data-testid="onboarding-welcome-step"]') !== null
+        )) as boolean,
+      { timeout: 10_000, interval: 250, timeoutMsg: 'Onboarding welcome step did not mount' }
+    );
     const firstStep = await browser.execute(() => {
       const welcome = document.querySelector('[data-testid="onboarding-welcome-step"]');
       return {

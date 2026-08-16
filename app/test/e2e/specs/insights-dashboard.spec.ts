@@ -69,12 +69,20 @@ describe('Insights dashboard smoke', () => {
     const deadline = Date.now() + 10_000;
     let present = false;
     while (Date.now() < deadline) {
-      present = (await browser.execute(
-        () =>
+      present = (await browser.execute(() => {
+        if (
           document.querySelector('[data-testid="memory-graph-svg"]') !== null ||
-          document.querySelector('[data-testid="memory-graph-empty"]') !== null ||
-          document.querySelector('[data-testid="memory-graph-canvas"] canvas') !== null
-      )) as boolean;
+          document.querySelector('[data-testid="memory-graph-empty"]') !== null
+        ) {
+          return true;
+        }
+        const canvas = document.querySelector(
+          '[data-testid="memory-graph-canvas"] canvas'
+        ) as HTMLCanvasElement | null;
+        if (!canvas || canvas.width <= 0 || canvas.height <= 0) return false;
+        const bounds = canvas.getBoundingClientRect();
+        return bounds.width > 0 && bounds.height > 0;
+      })) as boolean;
       if (present) break;
       await browser.pause(500);
     }
