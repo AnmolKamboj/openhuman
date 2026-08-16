@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { GraphNode } from '../../utils/tauriCommands';
@@ -42,7 +42,7 @@ describe('<PixiGraph />', () => {
     ];
     expect(opts.simNodes).toHaveLength(3); // 2 data nodes + synthetic root hub
     expect(opts.links).toHaveLength(1); // leaf -> root
-    opts.onReady();
+    act(() => opts.onReady());
     expect(host).toHaveAttribute('data-render-ready', 'true');
   });
 
@@ -86,7 +86,7 @@ describe('<PixiGraph />', () => {
     const [, opts] = mocks.mountPixiGraph.mock.calls[0] as [HTMLElement, { onReady: () => void }];
 
     unmount();
-    opts.onReady();
+    act(() => opts.onReady());
 
     expect(host).toHaveAttribute('data-render-ready', 'false');
     expect(onReady).not.toHaveBeenCalled();

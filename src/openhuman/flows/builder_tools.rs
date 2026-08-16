@@ -2693,7 +2693,7 @@ impl Tool for GetNodeKindContractTool {
             None => Ok(ToolResult::error(format!(
                 "'{kind}' is not a tinyflows node kind — call list_node_kinds for the {} valid \
                  kinds.",
-                crate::openhuman::flows::NODE_KINDS.len()
+                super::node_contracts::NODE_KINDS.len()
             ))),
         }
     }
