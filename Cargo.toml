@@ -16,6 +16,24 @@ autobins = false
 # collapsing them into one target removes ~75 full-crate link steps per test run.
 build = "build.rs"
 
+# `cargo machete` reports a dependency as unused when no `use` names it. These
+# two have no `use` and are still load-bearing, so they are suppressed here
+# rather than deleted — an unsuppressed false positive is how a real finding
+# gets ignored next time.
+#
+# `tinymemory` (the facade) and `tinymemory-tinycortex` (the TinyCortex
+# adapter) exist for DRIVER ADMISSION: the memory subsystem resolves its
+# engine through `tinymemory`'s driver registry, and the adapter is what makes
+# TinyCortex admissible as that engine. Both must stay linked so a second host
+# embedding the `flows` kernel profile can still bind a memory engine — see
+# the 2026-08-10 entry in `scripts/kernel-floor.limits`, which ratchets them in
+# deliberately. Dropping either would compile clean and fail at runtime.
+#
+# `tinymemory-api` and `tinymemory-core` are NOT listed: they are named
+# directly by `src/openhuman/memory/`, so machete is already satisfied.
+[package.metadata.cargo-machete]
+ignored = ["tinymemory", "tinymemory-tinycortex"]
+
 [[bin]]
 name = "openhuman-core"
 path = "src/main.rs"
@@ -476,14 +494,23 @@ unicode-width = { version = "0.2", optional = true }
 # What stays is address validation, key derivation, the `Transport` seam, the
 # wire contract, EIP-712 hashing and ERC-20 calldata — none of which needs a
 # chain library.
+# Key derivation (`key`) and transaction signing (`tx`) are deliberately absent:
+# both happen inside the loaded tinywallet module now, so this binary links
+# neither. What is left is the wire contract, address validation, the EIP-712 /
+# ABI encoders the x402 payment path builds with, the `Transport` seam, and
+# `tx-codec` — the Tron *verifier*, which runs host-side before a transaction is
+# sent for signing and needs no `bitcoin` build.
+#
+# `key` is re-enabled under [dev-dependencies] so test fixtures can still derive
+# a known account. Dev-dependency features are not linked into the shipped
+# binary, so that does not undo the shed.
+tinywallet = { path = "vendor/tinywallet", default-features = false, features = ["btc", "evm", "solana", "tron", "keccak", "net", "wire", "eip712", "abi", "tx-codec"], optional = true }
+
 # secp256k1 signing over the digests the wallet module hands back. Pure Rust,
 # and already in the graph beneath `coins-bip32` (which derives the key being
-# used), so naming it directly costs nothing and is what lets `bitcoin` go.
+# used, via tinywallet's `key` gate), so naming it directly costs nothing and
+# is what lets `bitcoin` go.
 k256 = { version = "0.13", default-features = false, features = ["std", "ecdsa"], optional = true }
-bech32 = { version = "0.11", optional = true }
-ripemd = { version = "0.1", optional = true }
-coins-bip32 = { version = "0.8", optional = true }
-sha3 = { version = "0.10", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 # Windows: tokio-tungstenite uses native-tls (schannel) so wss://
@@ -529,6 +556,13 @@ landlock = { version = "0.4", optional = true }
 rppal = { version = "0.22", optional = true }
 
 [dev-dependencies]
+# Test fixtures derive a known account from the BIP-39 vector phrase. Production
+# does not derive at all — see the note on the main `tinywallet` entry. Cargo
+# does not link dev-dependency features into the shipped binary, so enabling
+# `key` here does not put the derivation stack back into the product.
+tinywallet = { path = "vendor/tinywallet", default-features = false, features = ["key", "btc", "evm", "solana", "tron"] }
+k256 = { version = "0.13", default-features = false, features = ["std", "ecdsa"] }
+coins-bip39 = { version = "0.8" }
 # The host's own tests drive `tinymemory-core`'s test helpers
 # (`chat::test_override`, `StaticChatProvider`, `tool_memory::test_helpers`).
 # They were `#[cfg(test)]` items in this crate before the memory extraction; a
@@ -750,14 +784,17 @@ voice = [
 # and `tinyplace/payment` use them for agent-network identity, which has nothing
 # to do with the wallet. Measured: excluding them costs 0, because tinyplace
 # pulls them in regardless.
+# `k256` and `coins-bip39` are gone from this list: nothing in the shipped
+# binary derives a key or signs with secp256k1 any more — the wallet module
+# does both. Both crates remain under [dev-dependencies], where test fixtures
+# still derive a known account and check a signature against a fixed vector.
+#
+# `curve25519-dalek` stays: `associated_token_account` needs the off-curve check
+# to derive a Solana ATA, which is address arithmetic rather than signing, and
+# tinyplace pulls it in through `ed25519-dalek` regardless.
 web3 = [
-    "dep:k256",
-    "dep:bech32",
-    "dep:ripemd",
-    "dep:coins-bip32",
-    "dep:sha3",
+    "dep:tinywallet",
     "dep:curve25519-dalek",
-    "dep:coins-bip39",
     "modules",
 ]
 
@@ -1082,6 +1119,47 @@ tinyplace = { path = "vendor/tinyplace/sdk/rust" }
 [profile.release]
 debug = "line-tables-only"
 split-debuginfo = "packed"
+# Binary-size settings (#5541). Measured on the product feature set
+# (`scripts/ci/product-features.sh`), macOS arm64, `--bin openhuman-core`:
+# 116.9 MB -> 67.1 MB, a 42.6% cut with no feature removed and no dependency
+# dropped. The three settings do different jobs and are worth keeping
+# together:
+#
+#   lto = "thin"       Collapses duplicated codegen-unit copies of __text. The crate compiles ~120k
+#                      methods across 379 packages and the default 16 codegen
+#                      units emit the same async state machine repeatedly —
+#                      `Config::load_or_init_with_env_lookup::{{closure}}`
+#                      appeared SIX times at ~40 KB each in `cargo bloat`,
+#                      and it is not even generic (it already takes
+#                      `&dyn EnvLookup`). Thin LTO deduplicates those.
+#   codegen-units = 1  Required for the above to see the whole crate.
+#   strip = "symbols"  Drops the ~32 MB symbol table from __LINKEDIT.
+#
+# Why `strip` does NOT break Sentry symbolication:
+#   * Symbolication is server-side. `scripts/upload_sentry_symbols.sh` runs
+#     `sentry-cli upload-dif` over the whole Cargo target dir, and the debug
+#     info lives in a SEPARATE artifact (dSYM on macOS via the
+#     `split-debuginfo = "packed"` above, PDB on Windows, DWP on Linux).
+#     Stripping the shipped executable does not touch those files.
+#   * Sentry joins an event to its symbols by debug ID, which `strip`
+#     preserves — LC_UUID on Mach-O, `.note.gnu.build-id` on ELF. Verified:
+#     `dwarfdump --uuid` reports the same UUID for the stripped binary and
+#     its `.dSYM`.
+#   * If this ever stopped holding, it fails LOUDLY rather than silently:
+#     `upload_sentry_symbols.sh` hard-exits when `upload-dif` finds zero DIFs
+#     (#1403), so a build that lost its debug files never ships.
+#
+# `debug = "line-tables-only"` above is still what makes the dSYM useful, and
+# `strip` is applied to the linked executable only — the dSYM is emitted by
+# `dsymutil` first and keeps the DWARF. Do not "simplify" by dropping the
+# `debug` line: that would empty the dSYM and un-symbolicate production.
+#
+# Cost: release builds are slower (one codegen unit + an LTO pass). The `ci`
+# profile below deliberately overrides all three, so the fast CI lanes are
+# unaffected.
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
 
 # Fast CI builds: trade runtime perf for compile speed
 [profile.ci]

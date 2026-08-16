@@ -13,8 +13,17 @@
 //! production build even before the move.
 
 pub(crate) use tinyagents::harness::tool_calling::{
-    extract_json_values, parse_arguments_value, parse_glm_style_tool_calls, parse_tool_call_value,
-    parse_tool_calls, parse_tool_calls_from_json_value, parse_tool_calls_with_pformat,
+    extract_json_values, parse_tool_calls, parse_tool_calls_with_pformat,
+};
+
+// The rest of the crate's re-exports are only reached from this module's own
+// tests (`tests.rs`) and `harness_gap_tests.rs`, not from any production call
+// site — gated so a non-test build doesn't warn (and fail `-D warnings`) on
+// them.
+#[cfg(test)]
+pub(crate) use tinyagents::harness::tool_calling::{
+    parse_arguments_value, parse_glm_style_tool_calls, parse_tool_call_value,
+    parse_tool_calls_from_json_value,
 };
 
 #[cfg(test)]
