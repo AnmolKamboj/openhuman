@@ -2086,9 +2086,11 @@ fn memory_retrieval_embedding_and_rpc_model_helpers_round_trip() {
 
 #[tokio::test]
 async fn memory_preferences_remember_redaction_and_pipeline_traits_cover_public_edges() {
-    let tmp = TempDir::new().expect("tempdir");
-    let memory: Arc<dyn Memory> =
-        Arc::new(UnifiedMemory::new(tmp.path(), Arc::new(NoopEmbedding), None).expect("memory"));
+    // The preference readers take a `MemoryGuard` since the module port: they
+    // are host policy over a driver, not engine calls. `guarded_in_memory`
+    // gives a real guard over a real store, so this still exercises the
+    // decorator production uses rather than reaching past it.
+    let (_provider, memory) = openhuman_core::openhuman::memory::guard::in_memory::guarded_in_memory();
 
     memory
         .store(
@@ -2097,6 +2099,7 @@ async fn memory_preferences_remember_redaction_and_pipeline_traits_cover_public_
             "Prefer concise responses.",
             MemoryCategory::Core,
             None,
+            MemoryTaint::Internal,
         )
         .await
         .expect("store general preference");
@@ -2107,6 +2110,7 @@ async fn memory_preferences_remember_redaction_and_pipeline_traits_cover_public_
             "   ",
             MemoryCategory::Core,
             None,
+            MemoryTaint::Internal,
         )
         .await
         .expect("store empty general preference");
@@ -2117,6 +2121,7 @@ async fn memory_preferences_remember_redaction_and_pipeline_traits_cover_public_
             "When changing Rust code, run targeted tests first.",
             MemoryCategory::Core,
             None,
+            MemoryTaint::Internal,
         )
         .await
         .expect("store situational preference");

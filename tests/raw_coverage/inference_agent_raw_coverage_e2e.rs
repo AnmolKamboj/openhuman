@@ -3242,7 +3242,7 @@ async fn agent_preference_tools_tree_loader_and_triage_events_cover_public_edges
         "[pinned] (class=style) verbosity: terse"
     );
 
-    let remember = RememberPreferenceTool::new(memory.clone(), security.clone());
+    let remember = RememberPreferenceTool::new(security.clone());
     assert_eq!(remember.permission_level().to_string(), "Write");
     let remember_missing = remember
         .execute(json!({ "class": "style", "key": "verbosity" }))
