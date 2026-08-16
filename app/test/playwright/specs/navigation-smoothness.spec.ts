@@ -8,17 +8,17 @@ interface RouteCheck {
 }
 
 const routes: RouteCheck[] = [
-  { hash: '/chat', markers: ['Threads', 'Chat', 'Message', 'New'] },
+  { hash: '/chat', markers: ['Your assistant is ready', 'Reasoning', 'Super Context'] },
   { hash: '/connections', markers: ['Composio', 'Channels', 'MCP Servers', 'Skills'] },
   // Home folded into the unified chat surface — /home redirects to /chat.
-  { hash: '/home', markers: ['New Conversation'] },
+  { hash: '/home', markers: ['Your assistant is ready', 'Reasoning'] },
   { hash: '/channels', markers: ['Channels', 'Connections', 'Telegram', 'Discord'] },
   { hash: '/notifications', markers: ['Notifications', 'Alerts', 'No alerts yet'] },
   { hash: '/rewards', markers: ['Rewards', 'Referral', 'Credits', 'Invite'] },
   { hash: '/settings', markers: ['Settings', 'Account', 'Billing', 'Advanced'] },
   { hash: '/settings/notifications-hub', markers: ['Notifications'] },
   // Home folded into the unified chat surface — /home redirects to /chat.
-  { hash: '/home', markers: ['New Conversation'] },
+  { hash: '/home', markers: ['Your assistant is ready', 'Reasoning'] },
 ];
 
 async function rootTextLength(page: import('@playwright/test').Page): Promise<number> {
@@ -61,7 +61,7 @@ test.describe('Navigation Smoothness', () => {
     await page.goto('/#/home');
     await waitForAppReady(page);
     await expect(page.locator('[data-walkthrough="home-card"]')).toBeVisible();
-    await expect(page.getByText('New Conversation')).toBeVisible();
+    await expect(page.getByTestId('send-message-button')).toBeVisible();
     await expect.poll(async () => page.evaluate(() => window.location.hash)).toMatch(/^#\/chat/);
   });
 });
