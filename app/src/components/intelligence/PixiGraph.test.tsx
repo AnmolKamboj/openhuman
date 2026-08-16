@@ -33,14 +33,17 @@ describe('<PixiGraph />', () => {
         onOpen={vi.fn()}
       />
     );
-    expect(getByTestId('memory-graph-canvas')).toBeInTheDocument();
+    const host = getByTestId('memory-graph-canvas');
+    expect(host).toHaveAttribute('data-render-ready', 'false');
     await waitFor(() => expect(mocks.mountPixiGraph).toHaveBeenCalledTimes(1));
     const [, opts] = mocks.mountPixiGraph.mock.calls[0] as [
       HTMLElement,
-      { simNodes: unknown[]; links: unknown[] },
+      { simNodes: unknown[]; links: unknown[]; onReady: () => void },
     ];
     expect(opts.simNodes).toHaveLength(3); // 2 data nodes + synthetic root hub
     expect(opts.links).toHaveLength(1); // leaf -> root
+    opts.onReady();
+    expect(host).toHaveAttribute('data-render-ready', 'true');
   });
 
   it('destroys the renderer on unmount', async () => {

@@ -76,12 +76,11 @@ describe('Insights dashboard smoke', () => {
         ) {
           return true;
         }
-        const canvas = document.querySelector(
-          '[data-testid="memory-graph-canvas"] canvas'
-        ) as HTMLCanvasElement | null;
-        if (!canvas || canvas.width <= 0 || canvas.height <= 0) return false;
-        const bounds = canvas.getBoundingClientRect();
-        return bounds.width > 0 && bounds.height > 0;
+        return (
+          document.querySelector(
+            '[data-testid="memory-graph-canvas"][data-render-ready="true"] canvas'
+          ) !== null
+        );
       })) as boolean;
       if (present) break;
       await browser.pause(500);
