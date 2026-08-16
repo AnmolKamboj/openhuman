@@ -159,17 +159,44 @@ async fn run_local_agent(args: &Value, cycle_id: &str) -> Result<Value, String> 
     let task_id = cycle_id.to_string();
     let run_args = args.clone();
     let bg_task_id = task_id.clone();
-    tokio::spawn(async move {
-        if let Err(e) =
-            run_local_agent_and_forward(&counterpart, &session_id, &bg_task_id, &agent_id, run_args)
-                .await
-        {
-            log::warn!(
-                target: LOG,
-                "[orchestration] run_local_agent.forward_failed task={bg_task_id}: {e}"
-            );
-        }
-    });
+    // Scope an explicit turn origin around the spawned sub-agent work.
+    //
+    // This runs on a fresh `tokio::spawn` task with no agent turn on the stack,
+    // and `AGENT_TURN_ORIGIN` is a `tokio::task_local` that does NOT cross
+    // `tokio::spawn` — so `turn_origin::current()` here is `None`, the approval
+    // gate reads `AgentTurnOrigin::Unknown`, and every external_effect tool the
+    // sub-agent calls (cron_add / cron_update / shell / …) is refused as "no
+    // origin label" (issues #5508, #5499). PR #5465 fixed the four canonical
+    // spawn sites via capture/propagate; this is the residual one.
+    //
+    // Unlike those sites there is no ambient origin to inherit (the device-tool
+    // bridge is not itself an agent turn), so `with_inherited_origin(None, …)`
+    // would stay `Unknown` and keep failing closed. We instead scope an explicit
+    // `AgentTurnOrigin::Cli`: this only runs after the device-authoritative
+    // Master-chat gate in `dispatch_device_tool` has passed (a compromised cloud
+    // brain cannot reach here for an A2A cycle), so it is trusted, turn-less,
+    // device-initiated internal dispatch — exactly the label `mcp::registry`'s
+    // credential-help turn and `task_dispatcher` use for the same shape.
+    let bg = crate::openhuman::agent::turn_origin::with_origin(
+        crate::openhuman::agent::turn_origin::AgentTurnOrigin::Cli,
+        async move {
+            if let Err(e) = run_local_agent_and_forward(
+                &counterpart,
+                &session_id,
+                &bg_task_id,
+                &agent_id,
+                run_args,
+            )
+            .await
+            {
+                log::warn!(
+                    target: LOG,
+                    "[orchestration] run_local_agent.forward_failed task={bg_task_id}: {e}"
+                );
+            }
+        },
+    );
+    tokio::spawn(bg);
     Ok(json!({
         "accepted": true,
         "taskId": task_id,
@@ -189,6 +216,12 @@ async fn run_local_agent(args: &Value, cycle_id: &str) -> Result<Value, String> 
 /// subconscious). This is what lets a Master-chat cycle actually run a local
 /// sub-agent; without it the nested spawn failed `NoParentContext`
 /// ("spawn_async_subagent called outside of an agent turn").
+///
+/// The `AGENT_TURN_ORIGIN` task-local is a **separate** axis and is scoped by
+/// [`run_local_agent`] around the spawn (as [`AgentTurnOrigin::Cli`]), not here —
+/// `turn_origin.rs` forbids manufacturing a label inside `run_subagent`. Without
+/// that outer scope the sub-agent's external_effect tools (cron_add / shell / …)
+/// would reach the approval gate as `Unknown` and be refused (#5508, #5499).
 ///
 /// We call `run_subagent` (synchronous, real `output`) rather than the
 /// `spawn_async_subagent` tool wrapper on purpose: the wrapper defaults to the

@@ -17,7 +17,7 @@ dead-string rot the ratchet exists to prevent.
 
 ## Scope
 
-The lint scans `src/` for thirteen patterns, keyed on `(file, pattern)` so the
+The lint scans `src/` for twelve patterns, keyed on `(file, pattern)` so the
 failure message names the needle that tripped:
 
 | Pattern | What it hands out |
@@ -28,7 +28,7 @@ failure message names the needle that tripped:
 | `.profile_conn(` | raw `Arc<Mutex<rusqlite::Connection>>` (one in-family site) |
 | `.profile_store(` | a typed `ProfileStore` — confined, but still unguarded |
 | `.get_document(` | `pub(crate)` read-one escape hatch |
-| `EmbeddedMemoryProvider::new(` / `NullMemoryProvider::new(` | a driver, built outside `binding::for_workspace` |
+| `NullMemoryProvider::new(` | a driver, built outside `binding::for_workspace` |
 | `MemoryClient::from_workspace_dir(` | a second engine on the same store |
 | `binding::for_workspace(` / `.memory_binding(` | a raw `MemoryBinding` |
 | `.unguarded_provider(` | the raw `Arc<dyn MemoryProvider>` off a `MemoryBinding` |
@@ -38,7 +38,7 @@ scope.** Driver tests construct drivers — that is what a driver test *is* —
 so allowlisting them would add ~25 entries that can never shrink and would
 churn on every new test. Inline `#[cfg(test)] mod tests` blocks are *not*
 stripped, because brace-tracking Rust with a line scanner is fragile and
-getting it wrong silently hides production sites; the three files affected are
+getting it wrong silently hides production sites; the four files affected are
 allowlisted with a reason saying so. Comment lines are skipped, so doc-comment
 references are not mistaken for calls.
 
@@ -98,8 +98,6 @@ changes anything here.
 
 | Path | Reason |
 | --- | --- |
-| `memory/driver/embedded/mod.rs` | This **is** the driver. Guarding it would be a cycle. |
-| `memory/driver/embedded/tool_memory_tests.rs` | Driver tests. |
 | `memory/tinycortex/sync.rs` | The engine seam. |
 | `memory/global.rs` | The process-global slot itself. |
 | `memory/ops/helpers.rs` | Defines `active_memory_client`. |
@@ -145,18 +143,14 @@ are recorded here so M4c starts from the real set.
 | `agent/harness/session/builder/factory.rs` | `.memory_handle()` → `Arc<dyn Memory>`. |
 | `flows/tinyflows/memory_adapter.rs` | Returns `Arc<dyn Memory>` to satisfy a tinyflows engine trait. The contract has no `Arc<dyn Memory>` door. |
 | `flows/bus.rs` | `resolve_memory() -> Option<Arc<dyn Memory>>`, and carries a `#[cfg(test)] memory_override` seam a guard would bypass. |
-| `memory/ops/tool_memory.rs` (`open_store`) | Still needed by the four handlers left on the client. Shrank; did not disappear. |
 
 ### D. No contract method exists, or the wire shape would change
 
 | Path | Reason |
 | --- | --- |
-| `memory/ops/documents.rs` — `namespace_list`, `doc_ingest`, `doc_list`, `doc_delete`, `clear_namespace`, `context_query`, `context_recall`, `memory_*` | Each answers with a `serde_json::Value` / `String` shape with no typed contract twin; `clear_namespace` has no contract method at all; `memory_query_namespace` depends on `query_limit_for_request(client: &MemoryClient, …)`. |
-| `memory/ops/kv_graph.rs` — `kv_get`, `kv_delete`, `kv_list_namespace`, `graph_upsert`, `graph_query` | `kv_get` is an O(slice) scan in the driver and returns `MemoryKvRecord`, not `Value`; `kv_delete` has **no** contract method; `graph_query`'s camelCase→typed conversion is documented as new and lossy. |
-| `memory/ops/tool_memory.rs` — `tool_rule_put`, `tool_rule_get`, `tool_rules_json`, `tool_rules_for_prompt` | `put_tool_rule` returns unit while the RPC returns the stored rule with a refreshed `updated_at`; the other three have no contract equivalent. |
+| `memory/ops/documents.rs` — `doc_ingest` and retrieval envelope handlers | These still depend on engine-only ingestion and retrieval shapes. Namespace/document listing, deletion, context query, and context recall now use the shared Documents API. |
 | `memory/ops/sync.rs` | `client.ingestion_state().snapshot()` — queue telemetry, absent from the contract. |
-| `memory/ops/learn.rs` | `list_namespaces() -> Vec<String>` vs the contract's `Vec<NamespaceSummary>`, then heavy engine work. |
-| `flows/ops.rs` | `clear_namespace` (no contract method) plus a `memory_client_override` test seam. |
+| `flows/ops.rs` | The production namespace clear uses `MemoryDocuments`; only the directly injected `MemoryClientRef` test seam remains raw. |
 | `integrations/composio/schemas.rs` | Passes `&MemoryClientRef` into `user_scopes::save`. |
 | `memory/sync/composio/providers/user_scopes.rs`, `types.rs` | Same `&MemoryClientRef` parameter shape. |
 
@@ -166,18 +160,21 @@ are recorded here so M4c starts from the real set.
 `integrations/composio/ops_tests.rs`, `core/runtime/context.rs` (its `#[cfg(test)]`
 module).
 
+`vendor/tinymemory/core/src/tinycortex/sync.rs` also has an inline `#[cfg(test)]`
+module whose isolated-workspace fixtures construct `MemoryClient` directly; it
+is counted because the scanner does not brace-track inline test modules.
+
 ## Honest scorecard
 
-Six of the twenty-eight `active_memory_client()` call sites now route through
-the guard — four RPC handlers plus the `memory_tools_list` / `memory_tools_put`
-agent tools. Raw `profile_conn()` no longer leaves the memory family — but the ten
-profile/facet call sites it fed are still unguarded, now through a typed
-`ProfileStore`, and twelve non-test `memory_handle()` sites still hand out raw
-handles. The defensible claim is therefore:
+The document listing/mutation handlers, the full KV/graph handler family, the
+tool-memory handlers, and flow namespace cleanup now use the shared memory API.
+Raw profile/facet access and consumers whose foreign traits require
+`Arc<dyn Memory>` remain unguarded and are enumerated above. The defensible
+claim is therefore:
 
-> Every memory RPC handler whose contract twin is a literal delegation now
-> routes through the guard, and every remaining bypass is enumerated here with
-> a reason and pinned by a drift guard.
+> Every memory RPC handler covered by a shared capability family routes through
+> the guard, and every remaining bypass is enumerated here with a reason and
+> pinned by a drift guard.
 
 "Impossible to skip by construction" is **not** true until `memory_handle()`
 is gone and the profile/facet tables have a capability family to be guarded

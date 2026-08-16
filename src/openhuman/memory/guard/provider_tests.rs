@@ -4,14 +4,14 @@
 use super::*;
 use std::sync::Arc;
 
-use tinycortex_api::capabilities::{Capabilities, Capability};
-use tinycortex_api::null::NullMemoryProvider;
-use tinycortex_api::provider::types::SourceScope;
-use tinycortex_api::provider::{
+use crate::openhuman::memory::api::capabilities::{Capabilities, Capability};
+use crate::openhuman::memory::api::null::NullMemoryProvider;
+use crate::openhuman::memory::api::provider::types::SourceScope;
+use crate::openhuman::memory::api::provider::{
     audit_provider, MemoryCore, MemoryPortability, MemoryProvider, MemoryRecall,
 };
-use tinycortex_api::recall::OwnedRecallOpts;
-use tinycortex_api::types::{MemoryCategory, MemoryTaint};
+use crate::openhuman::memory::api::recall::OwnedRecallOpts;
+use crate::openhuman::memory::api::types::{MemoryCategory, MemoryTaint};
 
 use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;

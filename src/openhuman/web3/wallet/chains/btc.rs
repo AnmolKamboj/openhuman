@@ -7,16 +7,6 @@
 //! seeded with a standard recovery phrase + this path produces a `bc1q…`
 //! native segwit address.
 
-use bitcoin::absolute::LockTime;
-use bitcoin::hashes::Hash;
-use bitcoin::key::{CompressedPublicKey, PrivateKey};
-use bitcoin::secp256k1::{Message, Secp256k1};
-use bitcoin::sighash::{EcdsaSighashType, SighashCache};
-use bitcoin::transaction::Version;
-use bitcoin::{
-    consensus::encode::serialize_hex, Address, Amount, Network, OutPoint, ScriptBuf, Sequence,
-    Transaction, TxIn, TxOut, Witness,
-};
 use log::debug;
 use serde::Deserialize;
 
@@ -103,8 +93,6 @@ pub fn validate_btc_sender_address(addr: &str) -> Result<String, String> {
     result
 }
 
-use std::str::FromStr;
-
 pub async fn native_balance(address: &str) -> Result<u128, String> {
     validate_btc_address(address)?;
     let base = rpc_url_for_chain(WalletChain::Btc);
@@ -133,33 +121,26 @@ pub async fn broadcast_raw_hex(tx_hex: &str) -> Result<String, String> {
     rest_post_text(&url, tx_hex, "text/plain").await
 }
 
-/// Best-effort lookup of an address's spending scriptPubKey by parsing it.
-fn script_pubkey_for_addr(addr: &str) -> Result<ScriptBuf, String> {
-    let parsed = Address::from_str(addr)
-        .map_err(|e| format!("invalid address '{addr}': {e}"))?
-        .require_network(Network::Bitcoin)
-        .map_err(|e| format!("address '{addr}' is not mainnet: {e}"))?;
-    Ok(parsed.script_pubkey())
-}
-
 /// Derive the P2WPKH signing key for `derivation_path` from a BIP-39 mnemonic.
 ///
 /// Delegates to the vendored [`tinywallet`] crate, which owns BIP-32
 /// secp256k1 derivation. Custody stays here: the mnemonic is decrypted from
 /// the keyring by this crate and handed over as a `&str` that is not retained.
+/// Test-only: production derives inside the wallet module.
+#[cfg(test)]
 fn derive_btc_private_key(
     mnemonic: &str,
     derivation_path: &str,
-) -> Result<(PrivateKey, CompressedPublicKey), String> {
+) -> Result<(Vec<u8>, Vec<u8>), String> {
     let derived = tinywallet::key::derive(tinywallet::Chain::Btc, mnemonic, derivation_path)
         .map_err(|e| e.to_string())?;
-    let secret = bitcoin::secp256k1::SecretKey::from_slice(derived.secret_bytes())
-        .map_err(|e| format!("tinywallet returned an unusable BTC key: {e}"))?;
-    let secp = Secp256k1::signing_only();
-    let private_key = PrivateKey::new(secret, Network::Bitcoin);
-    let public_key = CompressedPublicKey::from_private_key(&secp, &private_key)
-        .map_err(|e| format!("failed to derive BTC public key: {e}"))?;
-    Ok((private_key, public_key))
+    let secret = derived.secret_bytes().to_vec();
+    // Compressed, because a P2WPKH witness program is defined over the
+    // compressed encoding — the uncompressed form yields a valid-looking
+    // address for an account holding no funds.
+    let public_key = super::super::execution::compressed_public_key(&secret)
+        .map_err(|_| "tinywallet returned an unusable BTC key".to_string())?;
+    Ok((secret, public_key))
 }
 
 /// Select UTXOs to cover `amount_sats + fee_sats`, returning the selected
@@ -221,72 +202,48 @@ pub async fn execute_btc_quote(mut quote: PreparedTransaction) -> Result<Executi
     )
     .await?
     .value;
-    let (private_key, public_key) = derive_btc_private_key(&mnemonic, &secret.derivation_path)?;
-
-    let from_spk = script_pubkey_for_addr(&from_addr)?;
-    let to_spk = script_pubkey_for_addr(&to_addr)?;
-
-    // Build inputs.
-    let mut tx_inputs = Vec::with_capacity(selected.len());
-    for utxo in &selected {
-        let txid = bitcoin::Txid::from_str(&utxo.txid)
-            .map_err(|e| format!("invalid utxo txid '{}': {e}", utxo.txid))?;
-        tx_inputs.push(TxIn {
-            previous_output: OutPoint {
-                txid,
-                vout: utxo.vout,
-            },
-            script_sig: ScriptBuf::new(),
-            sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
-            witness: Witness::default(),
-        });
-    }
-    // Outputs: recipient + (optional) change to self.
-    let mut tx_outputs = vec![TxOut {
-        value: Amount::from_sat(amount_sats),
-        script_pubkey: to_spk,
-    }];
-    if change_sats > 546 {
-        tx_outputs.push(TxOut {
-            value: Amount::from_sat(change_sats),
-            script_pubkey: from_spk.clone(),
-        });
-    }
-
-    let mut tx = Transaction {
-        version: Version::TWO,
-        lock_time: LockTime::ZERO,
-        input: tx_inputs,
-        output: tx_outputs,
+    // Derivation and signing both happen in the loaded wallet module now, so no
+    // private key is reassembled here. The phrase travels over a confidential
+    // call to a module that has proved it is an artifact this build pinned —
+    // see `modules::wallet::attested_proxy`.
+    let signing_secret = tinywallet::wire::SecretMaterial {
+        mnemonic,
+        derivation_path: secret.derivation_path.clone(),
+        chain: tinywallet::Chain::Btc,
     };
 
-    // Sign each input (BIP143 segwit sighash).
-    let secp = Secp256k1::signing_only();
-    let mut sighash_cache = SighashCache::new(&mut tx);
-    let mut witnesses = Vec::with_capacity(selected.len());
-    for (idx, utxo) in selected.iter().enumerate() {
-        let sighash = sighash_cache
-            .p2wpkh_signature_hash(
-                idx,
-                &from_spk,
-                Amount::from_sat(utxo.value),
-                EcdsaSighashType::All,
-            )
-            .map_err(|e| format!("failed to compute BTC sighash: {e}"))?;
-        let msg = Message::from_digest(sighash.to_byte_array());
-        let sig = secp.sign_ecdsa(&msg, &private_key.inner);
-        let mut witness = Witness::new();
-        let mut sig_bytes = sig.serialize_der().to_vec();
-        sig_bytes.push(EcdsaSighashType::All as u8);
-        witness.push(sig_bytes);
-        witness.push(public_key.to_bytes());
-        witnesses.push(witness);
-    }
-    for (input, witness) in tx.input.iter_mut().zip(witnesses) {
-        input.witness = witness;
-    }
+    // Selection stays here — this crate knows the fee policy and the UTXO
+    // source — but the transaction itself is encoded by the loaded wallet
+    // module, which also re-runs the same largest-first selection over the
+    // UTXOs it is handed. Passing only the already-selected set keeps the two
+    // in agreement: the module's `select_coins` and `select_utxos` above are
+    // the same algorithm, down to the 546-sat dust rule, so it reselects
+    // exactly what was chosen here.
+    let transaction = tinywallet::wire::TransactionSpec::Btc {
+        from: from_addr.clone(),
+        to: to_addr.clone(),
+        amount_sat: amount_sats,
+        fee_sat: fee_sats,
+        utxos: selected
+            .iter()
+            .map(|utxo| tinywallet::wire::Utxo {
+                txid: utxo.txid.clone(),
+                vout: utxo.vout,
+                value: utxo.value,
+            })
+            .collect(),
+    };
+    // One signature per selected input, all produced inside the module and
+    // applied there in input order — see `modules::wallet`.
+    let signed = crate::openhuman::modules::wallet::sign_transaction_in_module(
+        &config,
+        &transaction,
+        &signing_secret,
+    )
+    .await
+    .map_err(|e| format!("failed to sign BTC transaction: {e}"))?;
 
-    let tx_hex = serialize_hex(&tx);
+    let tx_hex = signed.raw;
     let txid_hex = broadcast_raw_hex(&tx_hex).await?;
     quote.estimated_fee_raw = fee_sats.to_string();
     quote.status = PreparedStatus::Broadcasted;
@@ -546,6 +503,17 @@ mod tests {
         assert!(err.contains("insufficient"), "got: {err}");
     }
 
+    // Drives the real wallet module, so it must be the only such test in its
+    // process: tinybus never unloads a module, and the module bus belongs to
+    // whichever tokio runtime created it — a second `#[tokio::test]` finds a
+    // broker whose tasks died with the first and the call fails with
+    // "connection closed". Verified passing in isolation:
+    //
+    //   cargo test -p openhuman --lib --features "$(bash scripts/ci/product-features.sh)" \
+    //     execute_btc_quote_builds_psbt_signs_and_broadcasts -- --ignored --test-threads=1
+    //
+    // Same constraint tinydocs documents for its module-backed tool tests.
+    #[ignore = "drives the loaded wallet module; must run alone in its process"]
     #[tokio::test]
     async fn execute_btc_quote_builds_psbt_signs_and_broadcasts() {
         let _guard = TEST_LOCK.lock();
@@ -683,17 +651,23 @@ mod tests {
         // The compressed pubkey should serialize to 33 bytes.
         let mnemonic =
             "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
-        let (pk, pubkey) = derive_btc_private_key(mnemonic, "m/84'/0'/0'/0/0").unwrap();
-        assert_eq!(pk.network, bitcoin::NetworkKind::Main);
-        assert_eq!(pubkey.to_bytes().len(), 33);
-        let secp = Secp256k1::signing_only();
-        let addr = Address::p2wpkh(&pubkey, Network::Bitcoin);
-        // Known good vector for this mnemonic + path:
+        let (secret, pubkey) = derive_btc_private_key(mnemonic, "m/84'/0'/0'/0/0").unwrap();
+        assert_eq!(secret.len(), 32);
+        // Compressed SEC1. The uncompressed form would be 65 bytes and would
+        // hash to a different — spendable by nobody — address.
+        assert_eq!(pubkey.len(), 33);
+        assert!(matches!(pubkey[0], 0x02 | 0x03));
+
+        // The known-good vector for this mnemonic and path, unchanged by the
+        // move off the `bitcoin` crate. Derived through `tinywallet`, which is
+        // the same code the address in `execute_btc_quote` comes from.
+        let derived =
+            tinywallet::key::derive(tinywallet::Chain::Btc, mnemonic, "m/84'/0'/0'/0/0").unwrap();
         assert_eq!(
-            addr.to_string(),
+            derived.address(),
             "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"
         );
-        let _ = secp; // suppress unused
+        assert_eq!(derived.secret_bytes(), secret.as_slice());
     }
 
     #[tokio::test]

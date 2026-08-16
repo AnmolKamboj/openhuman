@@ -5,26 +5,21 @@
 //! RPCs use, and the namespace they touch is exactly `tool-{tool_name}` —
 //! never `global` or `tool_effectiveness`.
 //!
-//! Two of them — [`tool_rule_list`] and [`tool_rule_delete`] — reach it through
-//! [`MemoryGuard`](crate::openhuman::memory::guard::MemoryGuard) because their
-//! contract twins are literal delegations to the same store. The other four
-//! stay on [`open_store`]: `tool_rule_put` returns the *stored* rule (with
-//! `created_at` preserved and `updated_at` refreshed) while the contract's
-//! `put_tool_rule` returns unit, and `get_rule` / `list_rules_json` /
-//! `rules_for_prompt` have no contract equivalent at all. See
-//! `docs/specs/memory-guard-allowlist.md`.
+//! Every handler reaches the module-backed [`MemoryToolMemory`](crate::openhuman::memory::api::provider::MemoryToolMemory)
+//! API through [`MemoryGuard`](crate::openhuman::memory::guard::MemoryGuard),
+//! including the host-shaped operations that compose multiple API methods to
+//! preserve their historical response values.
 
 use serde::Deserialize;
 use serde_json::Value;
+use std::sync::Arc;
 
-use tinycortex_api::provider::MemoryProvider;
+use crate::openhuman::memory::api::provider::MemoryProvider;
 
-use crate::openhuman::memory::tool_memory::{
-    tool_memory_store, ToolMemoryPriority, ToolMemoryRule, ToolMemorySource, ToolMemoryStore,
+use crate::openhuman::memory::api::tool_memory::{
+    ToolMemoryPriority, ToolMemoryRule, ToolMemorySource,
 };
 use crate::rpc::RpcOutcome;
-
-use super::helpers::active_memory_client;
 
 /// Parameters for `memory_tool_rule_put`.
 #[derive(Debug, Deserialize)]
@@ -70,9 +65,8 @@ pub struct ToolRulesForPromptParams {
     pub tools: Vec<String>,
 }
 
-async fn open_store() -> Result<ToolMemoryStore, String> {
-    let client = active_memory_client().await?;
-    Ok(tool_memory_store(client.memory_handle()))
+async fn tool_memory_guard() -> Result<Arc<crate::openhuman::memory::guard::MemoryGuard>, String> {
+    super::guard::active_memory_guard().await
 }
 
 /// Upsert a tool-scoped memory rule.
@@ -80,7 +74,6 @@ pub async fn tool_rule_put(
     params: ToolRulePutParams,
 ) -> Result<RpcOutcome<ToolMemoryRule>, String> {
     log::debug!("[tool-memory] rpc tool_rule_put tool={}", params.tool_name);
-    let store = open_store().await?;
     let mut rule = ToolMemoryRule::new(
         &params.tool_name,
         &params.rule,
@@ -93,8 +86,14 @@ pub async fn tool_rule_put(
             rule.id = id;
         }
     }
-    let stored = store.put_rule(rule).await?;
-    Ok(RpcOutcome::single_log(stored, "tool memory rule stored"))
+    let guard = tool_memory_guard().await?;
+    guard
+        .as_tool_memory()
+        .ok_or_else(|| NO_TOOL_MEMORY.to_string())?
+        .put_tool_rule(rule.clone())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(RpcOutcome::single_log(rule, "tool memory rule stored"))
 }
 
 /// Fetch a tool-scoped rule by id.
@@ -106,8 +105,15 @@ pub async fn tool_rule_get(
         params.tool_name,
         params.id
     );
-    let store = open_store().await?;
-    let rule = store.get_rule(&params.tool_name, &params.id).await?;
+    let guard = tool_memory_guard().await?;
+    let rule = guard
+        .as_tool_memory()
+        .ok_or_else(|| NO_TOOL_MEMORY.to_string())?
+        .tool_rules(&params.tool_name)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|rule| rule.id == params.id);
     Ok(RpcOutcome::single_log(rule, "tool memory rule fetched"))
 }
 
@@ -124,11 +130,9 @@ pub(crate) const NO_TOOL_MEMORY: &str = "memory driver does not support the tool
 /// List every tool-scoped rule for a tool.
 ///
 /// Routed through [`MemoryGuard`](crate::openhuman::memory::guard::MemoryGuard).
-/// `MemoryToolMemory::tool_rules` on the embedded driver is
-/// `tool_memory_store(self.memory()).list_rules(tool_name)` — the same store
-/// over the same `Arc<dyn Memory>` [`open_store`] builds. The wire type matches
-/// by identity, not conversion: `memory::tool_memory::ToolMemoryRule` **is**
-/// `tinycortex_api::tool_memory::ToolMemoryRule`.
+/// The wire type matches by identity, not conversion:
+/// `memory::tool_memory::ToolMemoryRule` **is**
+/// `crate::openhuman::memory::api::tool_memory::ToolMemoryRule`.
 pub async fn tool_rule_list(
     params: ToolRuleListParams,
 ) -> Result<RpcOutcome<Vec<ToolMemoryRule>>, String> {
@@ -145,9 +149,8 @@ pub async fn tool_rule_list(
 
 /// Delete a tool-scoped rule by id.
 ///
-/// Routed through [`MemoryGuard`](crate::openhuman::memory::guard::MemoryGuard);
-/// `MemoryToolMemory::delete_tool_rule` delegates to the same
-/// `ToolMemoryStore::delete_rule` [`open_store`] would reach.
+/// Routed through [`MemoryGuard`](crate::openhuman::memory::guard::MemoryGuard)
+/// and the shared tool-memory API.
 pub async fn tool_rule_delete(params: ToolRuleRefParams) -> Result<RpcOutcome<bool>, String> {
     log::debug!(
         "[tool-memory] rpc tool_rule_delete tool={} id={}",
@@ -183,16 +186,28 @@ pub async fn tool_rules_for_prompt(
         "[tool-memory] rpc tool_rules_for_prompt tools={:?}",
         params.tools
     );
-    let store = open_store().await?;
-    let grouped = store.rules_for_prompt(&params.tools).await?;
-    let mut flat: Vec<ToolMemoryRule> = grouped.into_values().flatten().collect();
+    let guard = tool_memory_guard().await?;
+    let family = guard
+        .as_tool_memory()
+        .ok_or_else(|| NO_TOOL_MEMORY.to_string())?;
+    let mut flat = Vec::new();
+    for tool in &params.tools {
+        flat.extend(
+            family
+                .tool_rules(tool)
+                .await
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .filter(|rule| rule.priority.is_eager()),
+        );
+    }
     flat.sort_by(|a, b| {
         b.priority
             .cmp(&a.priority)
             .then_with(|| a.tool_name.cmp(&b.tool_name))
             .then_with(|| a.rule.cmp(&b.rule))
     });
-    let rendered = crate::openhuman::memory::tool_memory::render_tool_memory_rules(&flat);
+    let rendered = crate::openhuman::memory::tool_memory::prompt::render_tool_memory_rules(&flat);
     Ok(RpcOutcome::single_log(
         ToolRulesForPromptResult {
             rendered,
@@ -209,26 +224,31 @@ pub async fn tool_rules_json(params: ToolRuleListParams) -> Result<RpcOutcome<Va
         "[tool-memory] rpc tool_rules_json tool={}",
         params.tool_name
     );
-    let store = open_store().await?;
-    let value = store.list_rules_json(&params.tool_name).await?;
+    let guard = tool_memory_guard().await?;
+    let rules = guard
+        .as_tool_memory()
+        .ok_or_else(|| NO_TOOL_MEMORY.to_string())?
+        .tool_rules(&params.tool_name)
+        .await
+        .map_err(|e| e.to_string())?;
+    let value = serde_json::to_value(rules).map_err(|e| e.to_string())?;
     Ok(RpcOutcome::single_log(value, "tool memory rules json"))
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
     use super::*;
-    use crate::openhuman::memory::tool_memory::ToolMemoryPriority;
+    use crate::openhuman::memory::api::tool_memory::ToolMemoryPriority;
 
     fn ensure_memory_client() {
         crate::openhuman::memory::ops::ensure_shared_memory_client();
     }
 
     fn unique_tool_name() -> String {
-        static NEXT_TOOL_ID: AtomicUsize = AtomicUsize::new(1);
-        let id = NEXT_TOOL_ID.fetch_add(1, Ordering::Relaxed);
-        format!("toolmem_test_{id}")
+        format!(
+            "toolmem_test_{}",
+            &uuid::Uuid::new_v4().as_simple().to_string()[..12]
+        )
     }
 
     #[tokio::test]
@@ -255,7 +275,7 @@ mod tests {
         assert_eq!(stored.priority, ToolMemoryPriority::Normal);
         assert_eq!(
             stored.source,
-            crate::openhuman::memory::tool_memory::ToolMemorySource::Programmatic
+            crate::openhuman::memory::api::tool_memory::ToolMemorySource::Programmatic
         );
         assert_eq!(stored.tags, vec!["safety".to_string()]);
         assert!(
@@ -369,13 +389,10 @@ mod tests {
         .await;
     }
 
-    /// The two guarded handlers and the four unguarded ones share one store.
-    /// `tool_rule_put` writes through `open_store()` (the bare client);
-    /// `tool_rule_list` and `tool_rule_delete` read and write through the
-    /// guard; `open_store()` is then asked directly whether the delete
-    /// actually happened.
+    /// Host-shaped put and guarded list/delete compose the same module-backed
+    /// tool-memory API.
     #[tokio::test]
-    async fn guarded_list_and_delete_share_the_store_with_the_unguarded_put() {
+    async fn guarded_list_and_delete_share_the_store_with_host_shaped_put() {
         let _serial = crate::openhuman::memory::ops::GLOBAL_MEMORY_TEST_LOCK
             .lock()
             .await;
@@ -391,7 +408,7 @@ mod tests {
             id: None,
         })
         .await
-        .expect("unguarded put")
+        .expect("host-shaped put")
         .value;
 
         let listed = tool_rule_list(ToolRuleListParams {
@@ -400,7 +417,7 @@ mod tests {
         .await
         .expect("guarded list")
         .value;
-        assert_eq!(listed.len(), 1, "the guard must see the unguarded write");
+        assert_eq!(listed.len(), 1, "the guard must see the API write");
         assert_eq!(listed[0].id, stored.id);
 
         let deleted = tool_rule_delete(ToolRuleRefParams {
@@ -412,15 +429,13 @@ mod tests {
         .value;
         assert!(deleted);
 
-        let remaining = open_store()
+        let remaining = tool_rule_list(ToolRuleListParams { tool_name })
             .await
-            .expect("unguarded store")
-            .list_rules(&tool_name)
-            .await
-            .expect("unguarded list");
+            .expect("module-backed list")
+            .value;
         assert!(
             remaining.is_empty(),
-            "the unguarded store must observe the guarded delete"
+            "the module-backed provider must observe the guarded delete"
         );
     }
 }

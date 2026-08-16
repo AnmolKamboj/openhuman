@@ -103,7 +103,10 @@ async fn open_store_in_subdir(
         let memory = crate::openhuman::memory::store::UnifiedMemory::new_with_memory_dir(
             &config.workspace_dir,
             memory_subdir,
-            crate::openhuman::inference::embeddings::default_embedding_provider(),
+            // Config-scoped so the experience store's managed embedder reads the
+            // signed-in user's session, not the keyless `default_state_dir()`
+            // scope (#5501).
+            crate::openhuman::inference::embeddings::default_embedding_provider_with_config(config),
             config.memory.sqlite_open_timeout_secs,
         )
         .map_err(|e| format!("open agent experience store '{memory_subdir}': {e:#}"))?;

@@ -305,7 +305,7 @@ A `WorkflowGraph` is `{ name?, nodes: [...], edges: [...] }`.
 - **Exactly ONE `trigger` node is required.** Every other node should be
   reachable from it; a dry-run helps catch orphans.
 
-### The 15 node kinds
+### The 22 node kinds
 
 > The authoritative, always-current config shapes, ports, examples, and gotchas
 > for each kind live in the `list_node_kinds` / `get_node_kind_contract { kind }`
@@ -531,8 +531,9 @@ A `WorkflowGraph` is `{ name?, nodes: [...], edges: [...] }`.
      media generation, files, …). No `connection_ref`. Args go in `config.args`.
 4. **`http_request`** — `config.method` + `config.url`, optional `headers` /
    `body`; `config.connection_ref` = an `http_cred:<name>` for auth.
-5. **`code`** — `config.language` (`"javascript"` | `"python"`) + `config.source`.
-6. **`condition`** — boolean gate on `config.field`; routes to the **`true`** or
+5. **`shell`** — a shell command in `config.source`.
+6. **`code`** — `config.language` (`"javascript"` | `"python"`) + `config.source`.
+7. **`condition`** — boolean gate on `config.field`; routes to the **`true`** or
    **`false`** port. Wire both (or the `false` branch dead-ends). If
    `config.field` binds to an `agent` node's output, that field's
    `output_parser.schema` property MUST be declared `"type": "boolean"` (see
@@ -554,21 +555,21 @@ A `WorkflowGraph` is `{ name?, nodes: [...], edges: [...] }`.
    enforced: `propose_workflow`/`revise_workflow`/`save_workflow` reject a
    `condition` node whose outgoing edges don't emit `"true"`/`"false"` on
    `from_port`.
-7. **`switch`** — multi-way on `config.expression` or `config.field`; routes to
+8. **`switch`** — multi-way on `config.expression` or `config.field`; routes to
    the matching **case** port, else **`default`**.
-8. **`merge`** — fan-in barrier; passes inputs through. No config.
-9. **`split_out`** — `config.path` to an array field; fans out one item per
+9. **`merge`** — fan-in barrier; passes inputs through. No config.
+10. **`split_out`** — `config.path` to an array field; fans out one item per
    element.
-10. **`transform`** — `config.set` = `{ key: "=expr" }`, merged onto each item.
-11. **`output_parser`** — passthrough today; no config required.
-12. **`sub_workflow`** — `config.workflow` = an embedded child `WorkflowGraph`.
-13. **`memory`** — reads or writes host-managed memory directly, no agent turn
+11. **`transform`** — `config.set` = `{ key: "=expr" }`, merged onto each item.
+12. **`output_parser`** — passthrough today; no config required.
+13. **`sub_workflow`** — `config.workflow` = an embedded child `WorkflowGraph`.
+14. **`memory`** — reads or writes host-managed memory directly, no agent turn
     involved. See "The `memory` node" just below for the full reference.
-14. **`dedup`** — commit-on-success exactly-once filter: drops an item whose
+15. **`dedup`** — commit-on-success exactly-once filter: drops an item whose
     per-item key was already committed by a prior successful run. See "The
     `dedup` node" below — this is THE way to do "process each item once",
     not a memory recall/condition graph.
-15. **`loop`** — a bounded loop head. Emits on `body` while it keeps looping
+16. **`loop`** — a bounded loop head. Emits on `body` while it keeps looping
     and on `done` when it stops; you CLOSE THE LOOP yourself by wiring the
     body's last node back to the loop node. `config.max_iterations` is optional
     and always finite, defaulting to 25; `config.on_exceeded` is `"error"`
@@ -582,6 +583,25 @@ A `WorkflowGraph` is `{ name?, nodes: [...], edges: [...] }`.
     passthrough and is fine), and a loop node that is itself a fan-in (join
     *before* it instead). Every pass costs what the body costs, so keep the cap
     tight when the body contains an `agent` node.
+17. **`spawn`** — starts a workflow, tool, or HTTP task without waiting and
+    emits an opaque ticket. Set `config.target` and the matching payload fields;
+    collect the result with a downstream `gate`, or route to `void` when the
+    result is intentionally abandoned.
+18. **`gate`** — collects `spawn` tickets under a release policy (`all`, `any`,
+    `first_n`, `quorum`, or `timeout_partial`). Use `config.from` for upstream
+    spawn node ids or `config.tickets` for a ticket expression.
+19. **`scatter`** — fans the entire downstream path into parallel lanes. Use it
+    for multi-node per-item pipelines and terminate the region at a `gather`.
+20. **`gather`** — collects scatter lanes. `config.from` is required and names
+    the lane-terminal node ids; optional release/error policy controls partial
+    completion.
+21. **`approval`** — presents a subject to a human and routes the verdict as
+    data on `approved` / `rejected`. This is distinct from a node's
+    `requires_approval` flag: use it when the reviewed payload or the human's
+    comment/edit belongs in the graph. Without a host review provider it parks
+    the run for `flows_resume`.
+22. **`void`** — an explicit terminal sink. It discards its inputs, has no
+    config, and must have no outgoing edges.
 
 ### The `memory` node
 

@@ -12,7 +12,7 @@
 //! `tests/fixtures/memory_golden/workspace/**.db` is a **real workspace,
 //! captured from a real build** (see that directory's `README.md` for the SHA).
 //! `manifest.txt` beside it is **derived from those DB files** by
-//! `memory::store::golden::schema_manifest`, never hand-written.
+//! `memory::store_golden::schema_manifest`, never hand-written.
 //!
 //! ## The ordering rule — read this before "fixing" a failure
 //!
@@ -42,11 +42,11 @@
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use tempfile::tempdir;
 
-use openhuman_core::openhuman::memory::store::golden;
+use openhuman_core::openhuman::memory::store_golden as golden;
 
 // ── Fixture layout ───────────────────────────────────────────────────────────
 
@@ -121,12 +121,41 @@ impl Drop for EnvVarGuard {
 }
 
 static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static MEMORY_SEAMS_INIT: OnceLock<()> = OnceLock::new();
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     ENV_LOCK
         .get_or_init(|| Mutex::new(()))
         .lock()
         .expect("env lock poisoned")
+}
+
+/// This integration target binds the transport-independent global memory
+/// client directly, so it must provide the same host seams that normal core
+/// startup installs before opening memory stores.
+fn ensure_memory_seams(workspace: &Path) {
+    MEMORY_SEAMS_INIT.get_or_init(|| {
+        let workspace = workspace.to_path_buf();
+        std::thread::Builder::new()
+            .name("memory-golden-fixture-seams".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let config = Arc::new(openhuman_core::openhuman::config::Config {
+                    workspace_dir: workspace.clone(),
+                    action_dir: workspace.clone(),
+                    config_path: workspace.join("config.toml"),
+                    ..openhuman_core::openhuman::config::Config::default()
+                });
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
+                    config.clone(),
+                );
+                #[cfg(feature = "modules")]
+                openhuman_core::openhuman::modules::memory::set_modules_policy(config);
+            })
+            .expect("spawn golden fixture memory seam installer")
+            .join()
+            .expect("golden fixture memory seam installer panicked");
+    });
 }
 
 // ── Assertions ───────────────────────────────────────────────────────────────
@@ -248,6 +277,7 @@ async fn golden_fixture_rows_read_back_and_schema_is_stable_after_reopen() {
     let workspace = tmp.path().join("workspace");
     copy_fixture_to(&workspace);
     let _ws = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", &workspace);
+    ensure_memory_seams(&workspace);
 
     let before = golden::schema_manifest(&workspace).expect("dump schema before open");
 
@@ -385,6 +415,7 @@ async fn second_process_readback() {
         panic!("{SECOND_PROCESS_WS_ENV} not set — this test is spawned, not run directly");
     };
     let workspace = PathBuf::from(workspace);
+    ensure_memory_seams(&workspace);
     eprintln!("[golden-fixture][child] reopening {}", workspace.display());
 
     openhuman_core::openhuman::memory::global::init(workspace.clone())
@@ -442,6 +473,7 @@ async fn regenerate_golden_fixture() {
     let staging = tmp.path().join("workspace");
     std::fs::create_dir_all(&staging).expect("create staging workspace");
     let _ws = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", &staging);
+    ensure_memory_seams(&staging);
 
     openhuman_core::openhuman::memory::global::init(staging.clone())
         .expect("bind global memory client to the staging workspace");
@@ -478,7 +510,7 @@ async fn regenerate_golden_fixture() {
     let header = format!(
         "# GENERATED — do not hand-edit.\n\
          # Derived from tests/fixtures/memory_golden/workspace/**.db by\n\
-         # memory::store::golden::schema_manifest. Regenerate both together with\n\
+         # memory::store_golden::schema_manifest. Regenerate both together with\n\
          # scripts/regen-memory-golden-fixture.sh.\n\
          # {} schema objects across {} db file(s).\n",
         manifest.len(),

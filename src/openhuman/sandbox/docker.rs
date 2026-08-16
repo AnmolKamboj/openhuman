@@ -118,7 +118,10 @@ pub async fn docker_exec(
     }
     // Inject request-specific environment.
     for (k, v) in &request.env {
-        cmd.arg("-e").arg(format!("{k}={v}"));
+        let mut assignment = k.clone();
+        assignment.push("=");
+        assignment.push(v);
+        cmd.arg("-e").arg(assignment);
     }
 
     cmd.arg(image);

@@ -34,7 +34,11 @@ pub const DEFAULT_MODEL: &str = MODEL_CHAT_V1;
 /// [`Config::memory_sync_interval_secs`] is `None` — i.e. the user has not
 /// explicitly picked a schedule. 24h, matching the "Sync every 24h" preset
 /// surfaced in the Memory Sources UI. See issue #3302.
-pub const DEFAULT_MEMORY_SYNC_INTERVAL_SECS: u64 = 86_400;
+///
+/// Defined in `tinymemory_api::host` and re-exported here: the extracted memory
+/// subsystem applies this fallback too, and two `86_400`s that must agree is a
+/// drift waiting to happen.
+pub use tinymemory_api::host::DEFAULT_MEMORY_SYNC_INTERVAL_SECS;
 
 /// Preset memory-sync cadences (seconds) offered in the UI: 4h / 12h / 24h.
 /// "Manual only" is represented separately by `Some(0)`. See issue #3302.
@@ -94,6 +98,14 @@ pub struct Config {
     pub action_dir_override: Option<PathBuf>,
     #[serde(skip)]
     pub config_path: PathBuf,
+    /// Per-load snapshot used to remove standalone CLI inference overrides
+    /// from a saved clone. Runtime-only and never serialized. Public only so
+    /// external integration tests and embedding crates can continue to use
+    /// struct-update syntax with this public configuration type.
+    #[serde(skip)]
+    #[schemars(skip)]
+    #[doc(hidden)]
+    pub cli_inference_snapshot: Option<super::AppliedInferenceOverride>,
     /// Runtime only — `true` when this config was produced by the loader's
     /// corruption-recovery path: the on-disk `config.toml` was unreadable
     /// (non-UTF-8) or unparseable, so it was renamed to `.corrupted.<ts>` and the
@@ -770,6 +782,7 @@ impl Default for Config {
             action_dir: crate::openhuman::config::default_action_dir(),
             action_dir_override: None,
             config_path: openhuman_dir.join("config.toml"),
+            cli_inference_snapshot: None,
             recovered_from_corruption: false,
             schema_version: 0,
             api_url: None,

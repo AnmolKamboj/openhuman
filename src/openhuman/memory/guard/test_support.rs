@@ -11,28 +11,28 @@
 
 use std::sync::{Arc, Mutex};
 
-use async_trait::async_trait;
-use tinycortex_api::capabilities::Capabilities;
-use tinycortex_api::chunks::Chunk;
-use tinycortex_api::error::MemoryError;
-use tinycortex_api::goals::GoalsDoc;
-use tinycortex_api::health::MemoryHealth;
-use tinycortex_api::provider::types::{
+use crate::openhuman::memory::api::capabilities::Capabilities;
+use crate::openhuman::memory::api::chunks::Chunk;
+use crate::openhuman::memory::api::error::MemoryError;
+use crate::openhuman::memory::api::goals::GoalsDoc;
+use crate::openhuman::memory::api::health::MemoryHealth;
+use crate::openhuman::memory::api::provider::types::{
     DiffReport, EntityHit, ExportPage, ExportRecord, ImportOutcome, IngestItem, IngestOutcome,
     MaintenanceReport, SnapshotRef, SourceItem, SourceScope,
 };
-use tinycortex_api::provider::{
+use crate::openhuman::memory::api::provider::{
     MemoryCore, MemoryDiff, MemoryDocuments, MemoryEntities, MemoryGoals, MemoryGraph,
     MemoryIngest, MemoryMaintenance, MemoryPortability, MemoryProvider, MemoryRecall,
     MemorySourceSink, MemoryToolMemory, MemoryTree,
 };
-use tinycortex_api::recall::OwnedRecallOpts;
-use tinycortex_api::tool_memory::ToolMemoryRule;
-use tinycortex_api::tree::{IngestRequest, QueryResult, TreeStatus};
-use tinycortex_api::types::{
+use crate::openhuman::memory::api::recall::OwnedRecallOpts;
+use crate::openhuman::memory::api::tool_memory::ToolMemoryRule;
+use crate::openhuman::memory::api::tree::{IngestRequest, QueryResult, TreeStatus};
+use crate::openhuman::memory::api::types::{
     GraphRelationRecord, MemoryCategory, MemoryEntry, MemoryKvRecord, MemoryTaint,
     NamespaceDocumentInput, NamespaceRetrievalContext, NamespaceSummary, StoredMemoryDocument,
 };
+use async_trait::async_trait;
 
 /// One call that reached the driver.
 #[derive(Debug, Clone, PartialEq)]
@@ -338,6 +338,33 @@ impl MemoryDocuments for RecordingProvider {
         Ok(None)
     }
 
+    async fn list_documents(
+        &self,
+        _namespace: Option<&str>,
+    ) -> Result<serde_json::Value, MemoryError> {
+        self.record(Call::plain("documents.list_documents"));
+        Ok(serde_json::json!({"documents": []}))
+    }
+
+    async fn list_namespaces(&self) -> Result<Vec<String>, MemoryError> {
+        self.record(Call::plain("documents.list_namespaces"));
+        Ok(vec![])
+    }
+
+    async fn delete_document(
+        &self,
+        _namespace: &str,
+        _document_id: &str,
+    ) -> Result<serde_json::Value, MemoryError> {
+        self.record(Call::plain("documents.delete_document"));
+        Ok(serde_json::json!({"deleted": false}))
+    }
+
+    async fn clear_namespace(&self, _namespace: &str) -> Result<(), MemoryError> {
+        self.record(Call::plain("documents.clear_namespace"));
+        Ok(())
+    }
+
     async fn query_documents(
         &self,
         namespace: &str,
@@ -353,6 +380,20 @@ impl MemoryDocuments for RecordingProvider {
         Ok(NamespaceRetrievalContext {
             namespace: namespace.to_string(),
             query: Some(query.to_string()),
+            context_text: String::new(),
+            hits: vec![],
+        })
+    }
+
+    async fn recall_documents(
+        &self,
+        namespace: &str,
+        _limit: usize,
+    ) -> Result<NamespaceRetrievalContext, MemoryError> {
+        self.record(Call::plain("documents.recall_documents"));
+        Ok(NamespaceRetrievalContext {
+            namespace: namespace.to_string(),
+            query: None,
             context_text: String::new(),
             hits: vec![],
         })
@@ -469,6 +510,11 @@ impl MemoryGraph for RecordingProvider {
             scoped: None,
         });
         Ok(())
+    }
+
+    async fn kv_delete(&self, _namespace: Option<&str>, _key: &str) -> Result<bool, MemoryError> {
+        self.record(Call::plain("graph.kv_delete"));
+        Ok(false)
     }
 
     async fn kv_list(

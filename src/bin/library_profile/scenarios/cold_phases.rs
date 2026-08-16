@@ -5,7 +5,6 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use openhuman_core::core::bus::init as init_global;
 use openhuman_core::openhuman::agent::harness::AgentDefinitionRegistry;
 use openhuman_core::openhuman::agent::Agent;
 use openhuman_core::openhuman::inference::provider::factory::test_provider_override;
@@ -27,7 +26,7 @@ pub async fn run() -> Result<ProfileResult> {
         rec.checkpoint("config-parse")?;
 
         // b. event-bus (plus agent-handler registration so turns can run).
-        crate::core::bus::init().await.expect("bus init");
+        openhuman_core::core::bus::init().await.expect("bus init");
         openhuman_core::openhuman::agent::bus::register_agent_handlers();
         rec.checkpoint("event-bus")?;
 

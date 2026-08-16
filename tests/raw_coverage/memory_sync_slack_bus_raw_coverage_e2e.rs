@@ -15,11 +15,7 @@ use serde_json::{json, Value};
 use tempfile::TempDir;
 
 use openhuman_core::core::events::DomainEvent;
-use tinybus::EventHandler;
 use openhuman_core::openhuman::config::Config;
-use openhuman_core::openhuman::security::credentials::{
-    AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
-};
 use openhuman_core::openhuman::memory::global as memory_global;
 use openhuman_core::openhuman::memory::sync::composio::bus::{
     ComposioConfigChangedSubscriber, ComposioConnectionCreatedSubscriber, ComposioTriggerSubscriber,
@@ -31,8 +27,31 @@ use openhuman_core::openhuman::memory::sync::composio::providers::slack::{
 use openhuman_core::openhuman::memory::sync::composio::providers::{
     ComposioProvider, ProviderContext, SyncReason,
 };
+use openhuman_core::openhuman::security::credentials::{
+    AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
+};
+use tinybus::EventHandler;
 
 static ENV_LOCK: &OnceLock<Mutex<()>> = &crate::SHARED_ENV_LOCK;
+static MEMORY_SEAMS_INIT: OnceLock<()> = OnceLock::new();
+
+fn ensure_memory_seams(config: Arc<Config>) {
+    MEMORY_SEAMS_INIT.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("memory-sync-slack-bus-raw-coverage-seams".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
+                    Arc::clone(&config),
+                );
+                #[cfg(feature = "modules")]
+                openhuman_core::openhuman::modules::memory::set_modules_policy(config);
+            })
+            .expect("spawn slack bus memory seam installer")
+            .join()
+            .expect("slack bus memory seam installer panicked");
+    });
+}
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     ENV_LOCK
@@ -81,6 +100,7 @@ fn config_in(tmp: &TempDir) -> Config {
         ..Config::default()
     };
     config.secrets.encrypt = false;
+    ensure_memory_seams(Arc::new(config.clone()));
     config
 }
 

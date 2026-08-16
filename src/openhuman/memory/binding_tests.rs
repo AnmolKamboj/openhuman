@@ -8,23 +8,34 @@
 //! depends on.
 
 use super::*;
+use crate::core::subsystem::DriverClass;
+use crate::openhuman::config::schema::MemorySubsystemConfig;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
-// Imported here rather than re-exported from `binding.rs`: since admission
-// moved to `tinymemory::registry`, the production module no longer names this
-// constant and an import kept alive only for the tests would read as dead code.
-use crate::openhuman::memory::driver::embedded::EMBEDDED_DRIVER_ID;
+// `binding.rs` reaches these through its own `use` statements; a sibling test
+// module only inherits its `pub` items, so they are named again here.
+use crate::core::subsystem::{DriverHealth, SubsystemSlot};
+use crate::openhuman::memory::api::capabilities::Capabilities;
+use crate::openhuman::memory::api::health::MemoryHealth;
+use crate::openhuman::memory::api::null::{NullMemoryProvider, NULL_DRIVER_ID};
+use crate::openhuman::memory::api::provider::MemoryProvider;
+use crate::openhuman::memory::api::CONTRACT_VERSION;
 
+use crate::openhuman::memory::api::capabilities::Capability;
+use crate::openhuman::memory::api::error::MemoryError;
+use crate::openhuman::memory::api::provider::types::{
+    ExportPage, ExportRecord, ImportOutcome, SourceScope,
+};
+use crate::openhuman::memory::api::provider::{MemoryCore, MemoryPortability, MemoryRecall};
+use crate::openhuman::memory::api::recall::OwnedRecallOpts;
+use crate::openhuman::memory::api::types::{
+    MemoryCategory, MemoryEntry, MemoryTaint, NamespaceSummary,
+};
 use async_trait::async_trait;
-use tinycortex_api::capabilities::Capability;
-use tinycortex_api::error::MemoryError;
-use tinycortex_api::provider::types::{ExportPage, ExportRecord, ImportOutcome, SourceScope};
-use tinycortex_api::provider::{MemoryCore, MemoryPortability, MemoryRecall};
-use tinycortex_api::recall::OwnedRecallOpts;
-use tinycortex_api::types::{MemoryCategory, MemoryEntry, MemoryTaint, NamespaceSummary};
 
-use crate::openhuman::config::schema::MemoryDriverConfig;
+use tinymemory_api::host::MemoryDriverConfig;
 
 fn external_driver_cfg(trust_state: &str) -> MemorySubsystemConfig {
     let mut cfg = MemorySubsystemConfig {
@@ -45,10 +56,10 @@ fn external_driver_cfg(trust_state: &str) -> MemorySubsystemConfig {
 }
 
 #[test]
-fn admit_default_config_binds_embedded_tinycortex() {
+fn admit_default_config_binds_module_tinymemory() {
     let (id, class) = admit(&MemorySubsystemConfig::default()).expect("default config admits");
-    assert_eq!(id, "tinycortex");
-    assert_eq!(class, DriverClass::Embedded);
+    assert_eq!(id, "tinymemory");
+    assert_eq!(class, DriverClass::Module);
 }
 
 #[test]
@@ -63,24 +74,24 @@ fn admit_null_driver_binds_null_class() {
 }
 
 #[test]
-fn admit_typo_d_embedded_driver_id_gets_embedded_class() {
+fn admit_builtin_module_driver_id_gets_module_class() {
     // Regression for the reviewer finding: before this, any non-null id without
     // a drivers entry — a typo like "tinycortx", or an external backend that
     // forgot its table — was silently classified Embedded. Only the two built-in
     // ids admit implicitly.
     let cfg = MemorySubsystemConfig {
-        driver: "tinycortex".into(),
+        driver: "tinymemory".into(),
         ..Default::default()
     };
-    let (id, class) = admit(&cfg).expect("the embedded default id admits");
-    assert_eq!(id, "tinycortex");
-    assert_eq!(class, DriverClass::Embedded);
+    let (id, class) = admit(&cfg).expect("the module default id admits");
+    assert_eq!(id, "tinymemory");
+    assert_eq!(class, DriverClass::Module);
 }
 
 #[test]
 fn admit_refuses_an_unregistered_non_null_driver_id() {
     // A typo or an external backend with no `drivers.<id>` entry must not
-    // silently run the embedded engine under an invented driver id.
+    // silently run the module under an invented driver id.
     let cfg = MemorySubsystemConfig {
         driver: "supermemory".into(),
         ..Default::default()
@@ -130,10 +141,7 @@ fn admit_refuses_non_builtin_id_even_with_a_drivers_entry_that_says_no_class() {
 }
 
 #[test]
-fn admit_accepts_an_explicit_embedded_class_for_a_registered_id() {
-    // A drivers entry that explicitly names the embedded class is a deliberate
-    // declaration — that id genuinely means the in-process engine. Explicit
-    // beats implicit.
+fn admit_refuses_an_unregistered_module_id() {
     let mut cfg = MemorySubsystemConfig {
         driver: "custom-mem".into(),
         ..Default::default()
@@ -141,13 +149,19 @@ fn admit_accepts_an_explicit_embedded_class_for_a_registered_id() {
     cfg.drivers.insert(
         "custom-mem".into(),
         MemoryDriverConfig {
-            class: Some("embedded".into()),
+            class: Some("module".into()),
             ..Default::default()
         },
     );
-    let (id, class) = admit(&cfg).expect("explicit embedded class admits");
-    assert_eq!(id, "custom-mem");
-    assert_eq!(class, DriverClass::Embedded);
+    let refusal = admit(&cfg).expect_err("only a registered TinyBus module may bind");
+    assert!(refusal.reason.contains("not registered"));
+}
+
+#[test]
+fn admit_refuses_the_removed_embedded_class() {
+    let refusal = admit(&cfg_with_class("custom-mem", "embedded"))
+        .expect_err("the in-process memory engine was removed");
+    assert!(refusal.reason.contains("no longer supported"));
 }
 
 #[test]
@@ -229,6 +243,59 @@ fn for_workspace_caches_binding_per_workspace() {
     );
 }
 
+#[cfg(feature = "modules")]
+#[tokio::test]
+async fn unrelated_test_binding_cannot_capture_the_module_workspace() {
+    let _serial = crate::openhuman::memory::ops::GLOBAL_MEMORY_TEST_LOCK
+        .lock()
+        .await;
+    crate::openhuman::memory::ops::ensure_shared_memory_client();
+    let unrelated = tempfile::tempdir().expect("unrelated workspace");
+    let binding =
+        for_workspace(unrelated.path(), &MemorySubsystemConfig::default()).expect("module binding");
+    let guard = binding.guard();
+    let documents = guard.as_documents().expect("documents capability");
+    let namespace = format!("memory-binding-test-{}", uuid::Uuid::new_v4());
+    let key = format!(
+        "shared{}",
+        &uuid::Uuid::new_v4().as_simple().to_string()[..12]
+    );
+
+    documents
+        .put_document(
+            crate::openhuman::memory::api::types::NamespaceDocumentInput {
+                namespace: namespace.clone(),
+                key: key.clone(),
+                title: "Shared test module workspace".into(),
+                content: "The module must share the process-global test store.".into(),
+                source_type: "doc".into(),
+                priority: "normal".into(),
+                tags: vec![],
+                metadata: serde_json::Value::Null,
+                category: "general".into(),
+                session_id: None,
+                document_id: None,
+                taint: MemoryTaint::Internal,
+            },
+        )
+        .await
+        .expect("module-backed put");
+
+    let client = crate::openhuman::memory::global::client().expect("shared test client");
+    let raw = client
+        .list_documents(Some(&namespace))
+        .await
+        .expect("raw list");
+    assert!(
+        raw["documents"]
+            .as_array()
+            .expect("documents array")
+            .iter()
+            .any(|document| document["key"] == key),
+        "an unrelated binding must not split the native module from the shared test store"
+    );
+}
+
 #[test]
 fn same_workspace_with_changed_config_binds_fresh() {
     // `CoreContext::rebind_workspace` treats "same workspace, changed
@@ -243,11 +310,11 @@ fn same_workspace_with_changed_config_binds_fresh() {
         ..Default::default()
     };
 
-    let tiny = for_workspace(dir.path(), &default).expect("bind tinycortex");
-    assert_eq!(tiny.driver_id(), "tinycortex");
+    let tiny = for_workspace(dir.path(), &default).expect("bind tinymemory");
+    assert_eq!(tiny.driver_id(), "tinymemory");
 
     // Same (workspace, config) pair reuses the cached binding...
-    let tiny_again = for_workspace(dir.path(), &default).expect("re-bind tinycortex");
+    let tiny_again = for_workspace(dir.path(), &default).expect("re-bind tinymemory");
     assert!(
         Arc::ptr_eq(&tiny, &tiny_again),
         "unchanged config must reuse the cached binding"
@@ -257,7 +324,7 @@ fn same_workspace_with_changed_config_binds_fresh() {
     let null_binding = for_workspace(dir.path(), &null).expect("bind null");
     assert!(
         !Arc::ptr_eq(&tiny, &null_binding),
-        "changed config must bind fresh, not serve the stale tinycortex driver"
+        "changed config must bind fresh, not serve the stale tinymemory driver"
     );
     assert_eq!(null_binding.driver_id(), "null");
 
@@ -265,7 +332,7 @@ fn same_workspace_with_changed_config_binds_fresh() {
     // the transient-mismatch half: a stale (workspace, config) pairing never
     // shadows the correct pair, so it cannot permanently pin a workspace to the
     // wrong driver (the atomicity concern in the login/logout rebind).
-    let tiny_reverted = for_workspace(dir.path(), &default).expect("re-bind tinycortex");
+    let tiny_reverted = for_workspace(dir.path(), &default).expect("re-bind tinymemory");
     assert!(
         Arc::ptr_eq(&tiny, &tiny_reverted),
         "returning to the original config must serve the original binding"
@@ -273,16 +340,16 @@ fn same_workspace_with_changed_config_binds_fresh() {
 }
 
 #[test]
-fn embedded_class_binds_the_embedded_driver_not_null() {
+fn module_class_binds_the_module_driver_not_null() {
     // Plain `#[test]`: no tokio runtime. Binding must stay synchronous and
-    // I/O-free, which is why the embedded driver resolves its client lazily.
+    // I/O-free, which is why the module provider resolves its client lazily.
     let dir = tempfile::tempdir().unwrap();
     let workspace = dir.path().join("never-created");
     let binding =
         for_workspace(&workspace, &MemorySubsystemConfig::default()).expect("default bind");
 
-    assert_eq!(binding.driver_id(), "tinycortex");
-    assert_eq!(binding.class(), DriverClass::Embedded);
+    assert_eq!(binding.driver_id(), "tinymemory");
+    assert_eq!(binding.class(), DriverClass::Module);
     assert!(binding.fallback().is_none());
     assert_ne!(binding.unguarded_provider().driver_id(), NULL_DRIVER_ID);
     assert!(binding.capabilities().contains(Capability::Core));
@@ -294,7 +361,7 @@ fn embedded_class_binds_the_embedded_driver_not_null() {
 }
 
 #[test]
-fn embedded_binding_advertises_every_family() {
+fn module_binding_advertises_every_family() {
     // Widened once per M3 step; M3d is the last one. The interesting assertion
     // is the second: a *bound* context and an *unbound* one now agree, which
     // they did not for the whole of M2/M3a-c.
@@ -497,7 +564,7 @@ impl MemoryProvider for CountingProvider {
 #[test]
 fn capabilities_are_asked_exactly_once_per_bind() {
     let provider = Arc::new(CountingProvider::new());
-    let binding = bind_provider_for_test(provider.clone(), DriverClass::Embedded);
+    let binding = bind_provider_for_test(provider.clone(), DriverClass::Module);
 
     for _ in 0..5 {
         assert_eq!(binding.capabilities(), Capabilities::all());
@@ -515,9 +582,9 @@ fn capabilities_are_asked_exactly_once_per_bind() {
 // ---------------------------------------------------------------------------
 //
 // A per-driver table may confirm a built-in id's class but never override it.
-// Without that rule `driver = "null"` plus `class = "embedded"` builds the real
+// Without that rule `driver = "null"` plus `class = "module"` builds the real
 // engine and persists memory under the id documented as `/dev/null`, and the
-// inverse labels a store-nothing provider `tinycortex`.
+// inverse labels a store-nothing provider `tinymemory`.
 
 fn cfg_with_class(driver: &str, class: &str) -> MemorySubsystemConfig {
     let mut cfg = MemorySubsystemConfig {
@@ -535,9 +602,9 @@ fn cfg_with_class(driver: &str, class: &str) -> MemorySubsystemConfig {
 }
 
 #[test]
-fn admit_refuses_an_embedded_class_override_on_the_null_driver() {
-    let refusal = admit(&cfg_with_class("null", "embedded"))
-        .expect_err("null must not be re-classed as embedded");
+fn admit_refuses_a_module_class_override_on_the_null_driver() {
+    let refusal = admit(&cfg_with_class("null", "module"))
+        .expect_err("null must not be re-classed as module");
     assert_eq!(refusal.configured_driver, "null");
     assert!(
         refusal.reason.contains("built in"),
@@ -547,10 +614,10 @@ fn admit_refuses_an_embedded_class_override_on_the_null_driver() {
 }
 
 #[test]
-fn admit_refuses_a_null_class_override_on_the_embedded_driver() {
-    let refusal = admit(&cfg_with_class(EMBEDDED_DRIVER_ID, "null"))
-        .expect_err("tinycortex must not be re-classed as null");
-    assert_eq!(refusal.configured_driver, EMBEDDED_DRIVER_ID);
+fn admit_refuses_a_null_class_override_on_the_module_driver() {
+    let refusal = admit(&cfg_with_class(MODULE_ID, "null"))
+        .expect_err("tinymemory must not be re-classed as null");
+    assert_eq!(refusal.configured_driver, MODULE_ID);
     assert!(
         refusal.reason.contains("built in"),
         "refusal must say the id is built in: {}",
@@ -565,18 +632,17 @@ fn admit_accepts_a_class_line_that_agrees_with_the_built_in_id() {
     assert_eq!(id, "null");
     assert_eq!(class, DriverClass::Null);
 
-    let (id, class) =
-        admit(&cfg_with_class(EMBEDDED_DRIVER_ID, "embedded")).expect("agreeing class admits");
-    assert_eq!(id, EMBEDDED_DRIVER_ID);
-    assert_eq!(class, DriverClass::Embedded);
+    let (id, class) = admit(&cfg_with_class(MODULE_ID, "module")).expect("agreeing class admits");
+    assert_eq!(id, MODULE_ID);
+    assert_eq!(class, DriverClass::Module);
 }
 
 #[test]
-fn a_null_class_override_cannot_smuggle_the_embedded_engine_into_the_binding() {
+fn a_null_class_override_cannot_smuggle_the_module_into_the_binding() {
     // The end-to-end shape of the refusal: `build` must not hand back an
-    // embedded provider for `driver = "null"`.
+    // module provider for `driver = "null"`.
     let dir = tempfile::tempdir().unwrap();
-    let binding = for_workspace(dir.path(), &cfg_with_class("null", "embedded")).expect("binds");
+    let binding = for_workspace(dir.path(), &cfg_with_class("null", "module")).expect("binds");
 
     assert_eq!(binding.class(), DriverClass::Null);
     assert_eq!(binding.driver_id(), NULL_DRIVER_ID);
@@ -619,8 +685,42 @@ fn a_fallback_to_null_does_not_disable_memory() {
 }
 
 #[test]
-fn the_embedded_driver_never_disables_memory() {
+fn the_module_driver_never_disables_memory() {
     let dir = tempfile::tempdir().unwrap();
     let binding = for_workspace(dir.path(), &MemorySubsystemConfig::default()).expect("binds");
     assert!(!binding.disables_memory());
+}
+
+// A build that admits the module class but cannot construct a module-backed
+// provider must not *report* the module class. `bind_provider` receives the
+// class that status, `modules.status` and the boot log all read, so passing the
+// admitted class while binding a placeholder advertises a live module-backed
+// surface with a null store behind it — the one failure this codebase's drift
+// guards exist to prevent, and the shape a reviewer caught here.
+
+#[cfg(not(feature = "modules"))]
+#[test]
+fn a_module_driver_reports_the_null_class_when_the_feature_is_off() {
+    let cfg = cfg_with_class("tinymemory", "module");
+    let binding = super::build(std::path::Path::new("/tmp/openhuman-binding-test"), &cfg);
+    assert_eq!(
+        binding.class(),
+        crate::core::subsystem::DriverClass::Null,
+        "a placeholder must not be reported as module-backed"
+    );
+}
+
+#[cfg(feature = "modules")]
+#[test]
+fn a_module_driver_reports_the_module_class_when_the_feature_is_on() {
+    // The other direction, so the arm above cannot be "fixed" by making every
+    // module binding report Null. Construction stays I/O-free, so this needs no
+    // runtime and loads nothing.
+    let cfg = cfg_with_class("tinymemory", "module");
+    let binding = super::build(std::path::Path::new("/tmp/openhuman-binding-test"), &cfg);
+    assert_eq!(
+        binding.class(),
+        crate::core::subsystem::DriverClass::Module,
+        "a real module binding must report the module class"
+    );
 }

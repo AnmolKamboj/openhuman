@@ -13,6 +13,91 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   286/268/2  2026-08-15  tinywallet de-vendored back to a submodule + module
+#                      (-11 packages / -11 names). The inlined `tinywallet`
+#                      crate copy is deleted; key derivation and transaction
+#                      signing for BTC/EVM/Tron/Solana move into the loaded
+#                      `tinywallet` TinyBus module over confidential
+#                      `SignTransaction`/`SignMessage` calls. `web3` stayed
+#                      gated out of this profile already, so the shed here is
+#                      not the wallet crate itself (never in `flows`) — it is
+#                      `app/src-tauri/Cargo.lock`'s stale cryptocurrency
+#                      dependency tail that the old inlined copy had pulled in
+#                      and the delete-and-revendor removed (`chore(deps): prune
+#                      unused cryptocurrency dependencies from Cargo.lock`).
+#                      Measured on CI (Linux): `scripts/kernel-floor.sh flows
+#                      --json` -> 286/268/2. (macOS resolves ~298/280/2 per the
+#                      documented target skew; the ratchet stays calibrated on
+#                      Linux.)
+#   297/279/2  2026-08-14  tinycortex + tinymemory advanced to their merge
+#                      commits for the git2-ownership move (-6 packages /
+#                      -2 names). A shed, not a gate: the newer submodules stop
+#                      pulling a second `toml` parser stack into this profile —
+#                      `toml`, `toml_edit`, `toml_datetime`, `toml_write`,
+#                      `serde_spanned` and `winnow` leave, and nothing is added.
+#                      Six packages but only two names, because four of them
+#                      were duplicate majors of names still present at another
+#                      version.
+#
+#                      Measured AFTER merging main's TinyJuice extraction and
+#                      tinyflows 0.8 (the 303/281/2 entry below), so this is
+#                      that baseline minus this branch's shed: 303 - 6 = 297
+#                      packages, 281 - 2 = 279 names. The two sheds are
+#                      disjoint — no crate is claimed twice. Measured with
+#                      `scripts/kernel-floor.sh flows --json` (297/279/2) and
+#                      confirmed by diffing `cargo tree --no-default-features
+#                      --features flows -e normal` across the two submodule
+#                      pins.
+#
+#                      NOTE: this takes the profile BELOW the 302 package count
+#                      of the 2026-08-09 spec-target entry below, which the
+#                      three intervening entries had grown away from. Native
+#                      builds are unchanged at 2 (libsqlite3-sys, ring) — still
+#                      the floor, and still load-bearing.
+#   303/281/2  2026-08-14  tinyflows 0.8: the duplicate reqwest major is gone,
+#                      closing #5539. Main had raised this to 308 because
+#                      tinyflows pulled reqwest 0.13 alongside the kernel's
+#                      0.12; tinyflows PR #45 put its HTTP client behind the
+#                      `chrome-extension` and `host-caps` features, and this
+#                      crate enables neither, so 0.13 leaves the graph entirely
+#                      rather than being unified. -1 PACKAGE, and deliberately
+#                      NOT -1 name: `reqwest` is still resolved at 0.12.28, so
+#                      only the duplicate major goes. Verified with `cargo tree
+#                      --no-default-features --features flows -e normal |
+#                      grep '^reqwest '` → one line. Nothing was gated here;
+#                      the vendor bump stopped pulling the second copy in.
+#                      Measured on top of the TinyJuice entry below:
+#                      303 packages / 281 names / 2 native builds.
+#   304/281/2  2026-08-14  TinyJuice moved behind the TinyBus module boundary
+#                      (-3 packages / -3 names). The `tinyjuice`,
+#                      `tinyjuice-tokenizer`, and `tinyjuice-vector`
+#                      crates no longer enter the always-on `flows` graph;
+#                      OpenHuman keeps only its stable wire types and host
+#                      adapter. Measured with `scripts/kernel-floor.sh flows`.
+#   308/284/2  2026-08-13  tinyflows' host-stack advance (PR #5537) moved its
+#                      direct HTTP client from reqwest 0.12 to 0.13 while the
+#                      rest of the kernel still uses 0.12. That creates one
+#                      additional resolved package but no new crate name or
+#                      native build. The submodule advance landed without the
+#                      matching root lockfile/schema compatibility updates, so
+#                      current main cannot build the flows profile until the
+#                      0.13 package and WorkflowGraph::agents initialization
+#                      are recorded. Keep both versions for compatibility now;
+#                      unifying the HTTP-client major is tracked in #5539.
+#                      Measured with `scripts/kernel-floor.sh flows --json`:
+#                      308 packages / 284 names / 2 native builds.
+#   307/284/2  2026-08-12  tinymemory-core + its `ureq` HTTP client chain
+#                      (+2 packages / +2 names) became always-on via the
+#                      `add tinymemory-core dependency and patch tinycortex-api`
+#                      change (6bf080266), which wired the crate into
+#                      `openhuman_core` on the always-on memory path but did not
+#                      update this ratchet — so `main` failed the Feature-Gate
+#                      Smoke lane. tinymemory-core is the concrete memory/
+#                      embedding core the always-on memory families consume; its
+#                      `ureq` client rides with it. This reconciles the ratchet
+#                      to the dependency graph already on `main` (no new deps are
+#                      introduced here). Verified via CI (Linux resolves 307/284;
+#                      macOS resolves 308/285 per the documented target skew).
 #   305/282/2  2026-08-10  tinymemory engine-neutral memory layer (+3 packages
 #                      / +3 names). `tinymemory`, `tinymemory-api`, and
 #                      `tinymemory-tinycortex` are deliberate always-on
@@ -229,4 +314,6 @@
 #                      Native: aws-lc-sys libgit2-sys libsqlite3-sys libz-sys
 #                      lzma-sys ring. Target after gating is 222 names / 2 native
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
-flows:305:282:2
+# 307/284  2026-08-12  Re-baseline after the upstream lockfile resolution;
+#                      `flows` remains at two native packages.
+flows:286:268:2

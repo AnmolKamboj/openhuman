@@ -2,14 +2,14 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use tinycortex_api::capabilities::{Capabilities, Capability};
-use tinycortex_api::error::MemoryError;
-use tinycortex_api::health::MemoryHealth;
-use tinycortex_api::provider::{
+use crate::openhuman::memory::api::capabilities::{Capabilities, Capability};
+use crate::openhuman::memory::api::error::MemoryError;
+use crate::openhuman::memory::api::health::MemoryHealth;
+use crate::openhuman::memory::api::provider::{
     MemoryDiff, MemoryDocuments, MemoryEntities, MemoryGoals, MemoryGraph, MemoryIngest,
     MemoryMaintenance, MemoryProvider, MemorySourceSink, MemoryToolMemory, MemoryTree,
 };
+use async_trait::async_trait;
 
 use super::families::{
     GuardedDiff, GuardedDocuments, GuardedEntities, GuardedGoals, GuardedGraph, GuardedIngest,

@@ -119,12 +119,14 @@ async fn resolve(config: &Config, record: &'static ModuleRecord) -> Result<(), S
     // An override points at a developer's own build. Checked before the pinned
     // release so a module can be iterated on against a live core.
     if let Some(path) = local_override(config, record.id) {
-        return blocking(move || load_local(runtime, &path, record.id)).await;
+        let module_config = module_config(config, record.id);
+        return blocking(move || load_local(runtime, &path, record.id, module_config)).await;
     }
 
     // An artifact already extracted into the install directory by an earlier run.
     if let Some(path) = installed_artifact(config, record) {
-        return blocking(move || load_local(runtime, &path, record.id)).await;
+        let module_config = module_config(config, record.id);
+        return blocking(move || load_local(runtime, &path, record.id, module_config)).await;
     }
 
     // The search path tinybus itself honours, including OPENHUMAN_MODULE_PATH.
@@ -158,7 +160,8 @@ async fn resolve(config: &Config, record: &'static ModuleRecord) -> Result<(), S
     // hashes the archive, extracts it and `dlopen`s the result — all
     // synchronously. Left inline it would stall every other task sharing this
     // worker for the length of a download on whatever link the user has.
-    blocking(move || download(runtime, record)).await
+    let module_config = module_config(config, record.id);
+    blocking(move || download(runtime, record, module_config)).await
 }
 
 /// Run a blocking module operation on the blocking pool.
@@ -169,19 +172,23 @@ async fn blocking<F>(work: F) -> Result<(), String>
 where
     F: FnOnce() -> Result<(), String> + Send + 'static,
 {
-    match tokio::task::spawn_blocking(work).await {
-        Ok(result) => result,
-        Err(err) => Err(format!(
-            "the module loader did not finish: {err}. This is terminal for the running \
-             process; restart the app to try again"
-        )),
-    }
+    host::runtime()
+        .await
+        .map_err(|error| format!("the module bus could not start: {error}"))?
+        .blocking(work)
+        .await
+        .map_err(|error| {
+            format!(
+                "{error}. This is terminal for the running process; restart the app to try again"
+            )
+        })
 }
 
 /// Download, verify, and load the pinned release artifact for this host.
 fn download(
     runtime: &'static host::ModuleRuntime,
     record: &'static ModuleRecord,
+    module_config: serde_json::Value,
 ) -> Result<(), String> {
     let candidates = platform::host_candidates();
     let assets: Vec<_> = candidates
@@ -205,7 +212,7 @@ fn download(
             record.release_url,
             asset.archive,
             Some(asset.sha256),
-            serde_json::json!({}),
+            module_config.clone(),
         ) {
             Ok(_) => {
                 log::info!(
@@ -240,8 +247,9 @@ pub(super) fn load_local(
     runtime: &host::ModuleRuntime,
     path: &Path,
     id: &str,
+    module_config: serde_json::Value,
 ) -> Result<(), String> {
-    match runtime.host().load_file(path) {
+    match runtime.host().load_file_with_config(path, module_config) {
         Ok(_) => {
             log::info!("[modules] loaded '{id}' from a local artifact");
             Ok(())
@@ -251,6 +259,36 @@ pub(super) fn load_local(
              for the running process; restart the app to try again"
         )),
     }
+}
+
+/// Configuration crossing into a first-party compiled module.
+///
+/// Credentials are intentionally absent. TinyMemory calls back into the host
+/// for embedding and chat compute; the other modules need no host config.
+fn module_config(config: &Config, id: &str) -> serde_json::Value {
+    if id != super::memory::MODULE_ID {
+        return serde_json::json!({});
+    }
+    serde_json::json!({
+        "workspace_dir": config.workspace_dir,
+        "memory": config.memory,
+        "memory_tree": config.memory_tree,
+        "scheduler_gate": config.scheduler_gate,
+        "local_ai": config.local_ai,
+        "embeddings_provider": config.embeddings_provider,
+        "memory_provider": config.memory_provider,
+        "default_model": config.default_model,
+        "default_temperature": config.default_temperature,
+        "output_language": config.output_language,
+        "memory_sources": config.memory_sources,
+        "embedding_routes": config.embedding_routes,
+        "storage_provider": config.storage.provider.config,
+        "ollama_base_url": crate::openhuman::inference::local::ollama_base_url_from_config(config),
+        "cloud_embedding_model": config.memory.embedding_model,
+        "cloud_embedding_dimensions": config.memory.embedding_dimensions,
+        "models_supporting_dimensions": [],
+        "driver_id": "tinymemory",
+    })
 }
 
 /// A configured local artifact for `id`, if one is set.
@@ -310,26 +348,31 @@ pub fn list(config: &Config) -> Vec<ModuleStatus> {
 
 /// Status of one module.
 fn status_of(config: &Config, record: &ModuleRecord) -> ModuleStatus {
-    let (state, detail) = match cached_resolution(record.id) {
-        Some(Resolution::Ready) => (ModuleState::Ready, None),
-        Some(Resolution::Failed(reason)) => (ModuleState::Failed, Some(reason)),
-        None if !config.modules.enabled => (
+    // Configuration is authoritative for the current core instance. A module
+    // may remain loaded in this process after a prior request, but callers
+    // whose configuration disables modules must still be told it is unusable.
+    let (state, detail) = match () {
+        _ if !config.modules.enabled => (
             ModuleState::Unsupported,
             Some("modules are disabled in configuration".to_string()),
         ),
-        None => {
-            let supported = platform::host_candidates()
-                .iter()
-                .any(|key| record.asset_for(key).is_some());
-            if supported {
-                (ModuleState::Available, None)
-            } else {
-                (
-                    ModuleState::Unsupported,
-                    Some("no artifact is published for this platform".to_string()),
-                )
+        _ => match cached_resolution(record.id) {
+            Some(Resolution::Ready) => (ModuleState::Ready, None),
+            Some(Resolution::Failed(reason)) => (ModuleState::Failed, Some(reason)),
+            None => {
+                let supported = platform::host_candidates()
+                    .iter()
+                    .any(|key| record.asset_for(key).is_some());
+                if supported {
+                    (ModuleState::Available, None)
+                } else {
+                    (
+                        ModuleState::Unsupported,
+                        Some("no artifact is published for this platform".to_string()),
+                    )
+                }
             }
-        }
+        },
     };
     ModuleStatus {
         id: record.id.to_string(),

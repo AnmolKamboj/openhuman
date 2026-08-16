@@ -515,7 +515,7 @@ jobs:
         #
         # This asserts the calibration still holds. If it fails, every
         # projection built on the simulator is suspect until it is fixed.
-        run: python3 scripts/dep-sim.py --cut-nothing --expect-names 282
+        run: python3 scripts/dep-sim.py --cut-nothing --expect-names 268
 
       - name: Guard — new feature-gated test modules must be acknowledged
         # Self-maintaining coverage: the set of source files that #[cfg]-gate a test on
@@ -539,7 +539,6 @@ jobs:
           openhuman/agent/harness/subagent_runner/tool_prep.rs
           openhuman/agent/registry/agents/loader.rs
           openhuman/config/migrations/retire_local_whisper_stt_tests.rs
-          openhuman/memory/people/address_book.rs
           openhuman/mcp/server/resources.rs
           openhuman/platform/socket/event_handlers.rs
           openhuman/platform/socket/ops.rs
@@ -551,6 +550,7 @@ jobs:
           openhuman/web3/stub.rs
           openhuman/web3/wallet/stub.rs
           openhuman/web3/x402/stub.rs
+          tui/runner.rs
           EOF
           )
           ACTUAL=$(grep -rlE '#\[cfg\((not\()?feature = "(voice|media|web3|meet|mcp|skills|flows|channels|contacts)"|#\[cfg\((not\()?all\([^]]*feature = "contacts"' src --include='*.rs' \
@@ -679,6 +679,45 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      - name: Install checksum-pinned native test modules
+        run: |
+          # tinybus validates every directory ancestor. GitHub mounts the
+          # checkout as the host runner uid while this container runs as root,
+          # so a module below $GITHUB_WORKSPACE is correctly refused. Keep
+          # native fixtures in a root-owned, container-ephemeral tree instead.
+          module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          memory_dir="$module_root/tinymemory"
+          juice_dir="$module_root/tinyjuice"
+          memory_archive="$memory_dir/tinymemory-module-1.0.1-ubuntu-22.04-x86_64.tar.gz"
+          juice_archive="$juice_dir/tinyjuice-module-0.2.2-ubuntu-22.04-x86_64.tar.gz"
+          rm -rf "$memory_dir" "$juice_dir"
+          mkdir -p "$memory_dir" "$juice_dir"
+          curl --fail --location --silent --show-error \
+            "https://github.com/tinyhumansai/tinymemory/releases/download/v1.0.1/$(basename "$memory_archive")" \
+            --output "$memory_archive"
+          curl --fail --location --silent --show-error \
+            "https://github.com/tinyhumansai/tinyjuice/releases/download/v0.2.2/$(basename "$juice_archive")" \
+            --output "$juice_archive"
+          echo "35d13463041f455bebd833a71ba370d891a4e59d1b8e576e81635e2777a0c3dd  $memory_archive" \
+            | sha256sum --check
+          echo "fd8caf7fccb53328870fd26922aa9768d253cd4b3bf758967847d6512df03863  $juice_archive" \
+            | sha256sum --check
+          # Do not restore the release builder's uid into the trusted tree.
+          tar --no-same-owner -xzf "$memory_archive" -C "$memory_dir"
+          tar --no-same-owner -xzf "$juice_archive" -C "$juice_dir"
+          echo "TINYMEMORY_TEST_MODULE=$memory_dir/libtinymemory_module.so" \
+            >> "$GITHUB_ENV"
+          echo "TINYJUICE_TEST_MODULE=$juice_dir/libtinyjuice_module.so" \
+            >> "$GITHUB_ENV"
+
+      - name: Run TinyJuice host-module regression
+        run: |
+          cargo test --lib --features modules \
+            openhuman::agent::tinyagents::middleware::tests::tool_output_tabulates_a_large_graph_for_a_non_exempt_tool \
+            -- --ignored --exact
+        env:
+          CARGO_BUILD_JOBS: "1"
+
       - name: Run cargo llvm-cov for openhuman core (changed modules only)
         run: bash scripts/ci/rust-coverage-changed.sh
         env:
@@ -788,20 +827,14 @@ jobs:
 
       - name: Run cargo llvm-cov for Tauri shell
         run: |
-          # Write raw profiles to the container's local filesystem first. On
-          # hosted container jobs the workspace bind mount can accept the test
-          # binary but silently fail LLVM's profile writer. Move the completed
-          # profiles into llvm-cov's target before reporting.
-          profile_dir="/tmp/openhuman-tauri-profraw"
-          rm -rf "$profile_dir"
-          mkdir -p "$profile_dir"
-          export LLVM_PROFILE_FILE="$profile_dir/tauri-%p-%m.profraw"
-          bash scripts/ci-cancel-aware.sh cargo llvm-cov --manifest-path app/src-tauri/Cargo.toml --no-report
-          shopt -s nullglob
-          profiles=("$profile_dir"/*.profraw)
-          test "${#profiles[@]}" -gt 0
-          mv "${profiles[@]}" app/src-tauri/target/llvm-cov-target/
-          bash scripts/ci-cancel-aware.sh cargo llvm-cov report --manifest-path app/src-tauri/Cargo.toml --lcov --output-path lcov-tauri.info
+          # The container's Cargo configuration installs sccache as its rustc
+          # wrapper. Use llvm-cov's RustFLAGS mode so that wrapper cannot
+          # replace its instrumentation wrapper and silently drop .profraw
+          # output after otherwise-passing tests.
+          # The job-level linker flag must also be cleared: llvm-cov sets the
+          # same variable with `-C instrument-coverage` for this invocation.
+          unset RUSTFLAGS
+          bash scripts/ci-cancel-aware.sh cargo llvm-cov --no-rustc-wrapper --manifest-path app/src-tauri/Cargo.toml --lcov --output-path lcov-tauri.info
         env:
           # Serialize codegen/link to cap peak memory + disk during the
           # instrumented Tauri-shell link (SIGBUS otherwise). Mirrors

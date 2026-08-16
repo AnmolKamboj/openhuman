@@ -1019,6 +1019,7 @@ const messages: TranslationMap = {
   'nav.routines': 'Routines',
   'chat.newThread': 'محادثة جديدة',
   'chat.newConversation': 'محادثة جديدة',
+  'chat.conversationsHeading': 'المحادثات',
   'chat.newWindowWelcome1': 'مرحبًا، {name} 👋',
   'chat.newWindowWelcome2': 'لنبدأ العمل، {name} 🧑‍🍳.',
   'chat.newWindowWelcome3': 'حان وقت التركيز 🧘🏻',
@@ -7026,6 +7027,10 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     'انتهت ميزانية التضمينات لديك، لذلك لم يعد المحتوى الجديد يُضاف إلى الذاكرة. أعدّ تضمينات محلية أو أضف مفتاح API الخاص بك للمتابعة.',
   'memoryBudget.cta': 'إعداد التضمينات',
+  'tinyplaceSunset.title': 'ينتقل Tiny Place خارج التطبيق',
+  'tinyplaceSunset.message':
+    'لمواصلة استخدام tiny.place، زر tiny.place. ستتم إزالته من التطبيق بعد 31 أغسطس 2026.',
+  'tinyplaceSunset.cta': 'فتح tiny.place',
   'userErrors.scope.memory': 'الذاكرة',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'المبلغ',

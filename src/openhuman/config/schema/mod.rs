@@ -17,6 +17,9 @@ mod agent;
 mod autonomy;
 mod capability_providers;
 mod channels;
+mod cli_overrides;
+#[doc(hidden)]
+pub use cli_overrides::AppliedInferenceOverride;
 mod context;
 mod dashboard;
 mod defaults;
@@ -72,6 +75,7 @@ pub use channels::{
     ResourceLimitsConfig, SandboxBackend, SandboxConfig, SecurityConfig, SignalConfig, SlackConfig,
     StreamMode, TelegramConfig, WebhookConfig, WhatsAppConfig, YuanbaoConfig,
 };
+pub(crate) use cli_overrides::set_cli_inference_overrides;
 pub use context::ContextConfig;
 pub use dashboard::{DashboardConfig, DiagramViewerConfig, EventStreamConfig, ModelHealthConfig};
 pub use dictation::{DictationActivationMode, DictationConfig};

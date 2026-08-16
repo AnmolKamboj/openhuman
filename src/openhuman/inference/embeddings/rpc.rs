@@ -1104,8 +1104,18 @@ mod tests {
         config.memory.embedding_provider = "cloud".to_string();
         // A managed session exists, so the ladder would resolve to cloud …
         std::fs::write(tmp.path().join("auth-profiles.json"), "{}").unwrap();
-        // … except the unified workload setting routes embeddings to Ollama.
+        // … except a local Ollama route wins. As of tinymemory v1.0.1 the
+        // effective-embedder ladder no longer treats the `embeddings_provider`
+        // string alone as authoritative for local routing — local Ollama is
+        // resolved from an explicit `memory_tree.embedding_endpoint` override or
+        // the unified `workload_local_model` setting. Drive the explicit
+        // endpoint rung here: it resolves deterministically without an installed
+        // embedding host, and still exercises the point of the test — that
+        // `provider` (the picker) stays `cloud` while `effective_provider`
+        // reports the local route that bills nothing (#5402).
         config.embeddings_provider = Some("ollama:all-minilm:latest".into());
+        config.memory_tree.embedding_endpoint = Some("http://localhost:11434".into());
+        config.memory_tree.embedding_model = Some("all-minilm".into());
 
         let out = get_settings(&config)
             .await

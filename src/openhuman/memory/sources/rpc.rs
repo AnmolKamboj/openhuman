@@ -1,10 +1,13 @@
 //! RPC handler implementations for memory sources.
 
+// `to_arc` / the config accessors are `MemoryHostConfig` trait methods.
 use crate::openhuman::config::rpc as config_rpc;
+use crate::openhuman::memory::sources::apply_kind_defaults;
 use crate::openhuman::memory::sources::readers;
 use crate::openhuman::memory::sources::registry::{self, MemorySourcePatch};
 use crate::openhuman::memory::sources::types::{MemorySourceEntry, SourceKind};
 use crate::rpc::RpcOutcome;
+use tinymemory_api::host::MemoryHostConfig;
 
 #[derive(Debug, serde::Serialize)]
 pub struct CodingSessionStatusResponse {
@@ -32,6 +35,56 @@ pub async fn coding_session_status_rpc() -> Result<RpcOutcome<CodingSessionStatu
     ))
 }
 
+/// Wall-clock ceiling for one `ingest_coding_sessions` RPC, sized to the number
+/// of sessions the caller asked to backfill and hard-capped at the ceiling the
+/// frontend can actually wait for.
+///
+/// The original formula (`120 + N*30`) assumed **one LLM call per session**.
+/// That premise is false: TinyCortex's persona pipeline splits an oversized
+/// session into windows (`WINDOW_CHARS`-sized chunks of evidence) and issues one
+/// LLM call *per window*, so a multi-window session drives several sequential
+/// calls. A dense backfill therefore blew the old budget — 15 sessions hit the
+/// exact 570 s ceiling (`120 + 15*30`) and were killed mid-flight.
+///
+/// The per-session allowance is therefore sized for *multiple* windows, not one
+/// call: `PER_SESSION_SECS` budgets ~3 sequential per-window LLM calls at the
+/// windows' observed 20–45 s span (#5509). It is a deliberate flat estimate, not
+/// a per-session window count.
+///
+/// The result is hard-capped at `HARD_CAP_SECS` for two reasons that are really
+/// one. First, this is the true reachable ceiling: the frontend RPC client
+/// clamps every per-call timeout to `PER_CALL_TIMEOUT_MAX_MS = 600 s`
+/// (`app/src/services/coreRpcClient.ts`), so a server budget above that can never
+/// be observed — the client aborts first. Second, that cap also bounds the
+/// blocking-pool worker this budget guards: `max_sessions` is untrusted (an
+/// advertised programmatic RPC, `platform/about_app/catalog_data.rs`), and
+/// without the cap a caller passing 1000 would pin a thread for ~33 h. Capping
+/// the resulting `Duration` — not the multiplier — makes both true at once.
+///
+/// Because a single pass is bounded, large histories drain across repeated passes
+/// (client `drainCodingSessions`); the per-pass batch is sized so `BASE + N*PER`
+/// stays under the cap for the UI's `CODING_SESSION_BATCH_MAX`, keeping the
+/// server budget the *tighter* of the two so it returns a clean structured
+/// timeout before the client's fetch aborts. This is a *ceiling to catch a wedged
+/// run*, not a latency target.
+fn ingest_budget(max_sessions: usize) -> std::time::Duration {
+    /// Fixed overhead allowance (config load, discovery, process warm-up) added
+    /// on top of the per-session budget.
+    const BASE_SECS: u64 = 120;
+    /// Per-session allowance, sized for ~3 sequential per-window LLM calls at the
+    /// 20–45 s/window span observed in #5509 rather than the single call the old
+    /// formula assumed.
+    const PER_SESSION_SECS: u64 = 90;
+    /// Hard ceiling on the whole budget. Mirrors the frontend's
+    /// `PER_CALL_TIMEOUT_MAX_MS` (600 s) — a larger budget is unreachable because
+    /// the client aborts first — and bounds the blocking worker against an
+    /// untrusted `max_sessions`.
+    const HARD_CAP_SECS: u64 = 600;
+
+    let scaled = BASE_SECS.saturating_add((max_sessions as u64).saturating_mul(PER_SESSION_SECS));
+    std::time::Duration::from_secs(scaled.min(HARD_CAP_SECS))
+}
+
 pub async fn ingest_coding_sessions_rpc(
     req: crate::openhuman::memory::tinycortex::CodingSessionIngestRequest,
 ) -> Result<RpcOutcome<crate::openhuman::memory::tinycortex::CodingSessionIngestResponse>, String> {
@@ -46,12 +99,9 @@ pub async fn ingest_coding_sessions_rpc(
     let runtime = tokio::runtime::Handle::current();
     // Wall-clock ceiling so a stalled provider call or a wedged session step
     // can't keep the RPC (and its blocking worker) waiting indefinitely (#4863
-    // review). Scale to the requested budget — each session drives at most one
-    // LLM call — so a large backfill isn't killed mid-flight while a genuine
-    // infinite hang still terminates. `max_sessions` is untrusted, so cap the
-    // multiplier before computing the budget.
-    let ingest_timeout =
-        std::time::Duration::from_secs(120 + (req.max_sessions.min(1_000) as u64) * 30);
+    // review), sized to the requested backfill so a legitimate large run isn't
+    // killed mid-flight while a genuine infinite hang still terminates.
+    let ingest_timeout = ingest_budget(req.max_sessions);
     let response = tokio::task::spawn_blocking(move || {
         runtime.block_on(async move {
             tokio::time::timeout(
@@ -267,39 +317,6 @@ pub async fn add_rpc(req: AddRequest) -> Result<RpcOutcome<AddResponse>, String>
     Ok(RpcOutcome::new(AddResponse { source }, vec![]))
 }
 
-/// Apply conservative per-kind cap defaults to a new source entry.
-///
-/// Only fills fields that are still `None` — never overwrites a
-/// caller-supplied value. This mirrors the retroactive migration logic in
-/// `reconcile::apply_composio_source_caps_migration` so the same defaults
-/// are applied consistently at creation time and during migration.
-pub fn apply_kind_defaults(entry: &mut MemorySourceEntry) {
-    match entry.kind {
-        SourceKind::GithubRepo => {
-            if entry.max_prs.is_none() {
-                entry.max_prs = Some(10);
-            }
-            if entry.max_issues.is_none() {
-                entry.max_issues = Some(10);
-            }
-            if entry.max_commits.is_none() {
-                entry.max_commits = Some(50);
-            }
-        }
-        SourceKind::RssFeed => {
-            if entry.max_items.is_none() {
-                entry.max_items = Some(20);
-            }
-        }
-        SourceKind::TwitterQuery if entry.since_days.is_none() => {
-            entry.since_days = Some(7);
-        }
-        // Folder / WebPage / Composio: no defaults to apply here.
-        // Composio defaults are set at upsert time in registry::upsert_composio_source.
-        _ => {}
-    }
-}
-
 // ── Update ──
 
 #[derive(Debug, serde::Deserialize)]
@@ -418,7 +435,7 @@ pub async fn sync_rpc(req: SyncRequest) -> Result<RpcOutcome<SyncResponse>, Stri
         .ok_or_else(|| format!("source '{}' not found", req.source_id))?;
 
     let config = config_rpc::load_config_with_timeout().await?;
-    crate::openhuman::memory::sources::sync::sync_source(source, config).await?;
+    crate::openhuman::memory::sources::sync::sync_source(source, config.to_arc()).await?;
 
     Ok(RpcOutcome::new(
         SyncResponse {
@@ -744,7 +761,7 @@ pub async fn apply_all_in_rpc() -> Result<RpcOutcome<AllInResponse>, String> {
             kind = %source.kind.as_str(),
             "[memory_sources] apply_all_in_rpc: triggering sync"
         );
-        match crate::openhuman::memory::sources::sync::sync_source(source.clone(), config.clone())
+        match crate::openhuman::memory::sources::sync::sync_source(source.clone(), config.to_arc())
             .await
         {
             Ok(()) => {
@@ -959,6 +976,69 @@ mod supported_toolkits_tests {
         assert_eq!(
             toolkits, sorted,
             "toolkits should be sorted and de-duplicated"
+        );
+    }
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    /// The frontend's `CODING_SESSION_BATCH_MAX` (`app/src/services/memorySourcesService.ts`).
+    /// Mirrored here so the cross-wire invariant below is checkable Rust-side; the
+    /// two must move together.
+    const CLIENT_BATCH_MAX: usize = 5;
+    /// The frontend's `PER_CALL_TIMEOUT_MAX_MS` (`app/src/services/coreRpcClient.ts`),
+    /// in seconds — the ceiling the client can actually wait for.
+    const CLIENT_HARD_CAP_SECS: u64 = 600;
+    /// The frontend's `CODING_SESSION_RPC_GRACE_MS`, in seconds.
+    const CLIENT_GRACE_SECS: u64 = 15;
+
+    /// The formula is `min(120 + N * 90, 600)` seconds.
+    #[test]
+    fn budget_scales_per_session_for_multiple_windows() {
+        // Zero sessions → base overhead only.
+        assert_eq!(ingest_budget(0).as_secs(), 120);
+        // One session carries a full per-session (multi-window) allowance.
+        assert_eq!(ingest_budget(1).as_secs(), 120 + 90);
+        // The UI batch (5 sessions) gets 570s — sized so a pass fits under the
+        // 600s reachable ceiling while a 15-session backlog drains across passes.
+        assert_eq!(ingest_budget(CLIENT_BATCH_MAX).as_secs(), 120 + 5 * 90);
+    }
+
+    /// The budget is hard-capped at the reachable ceiling (600s), so an untrusted
+    /// `max_sessions` cannot pin the blocking worker beyond it — and cannot
+    /// overflow.
+    #[test]
+    fn budget_is_capped_at_the_reachable_ceiling() {
+        assert_eq!(ingest_budget(1_000).as_secs(), CLIENT_HARD_CAP_SECS);
+        // Anything at or above the cap yields exactly the ceiling, no overflow.
+        assert_eq!(ingest_budget(usize::MAX).as_secs(), CLIENT_HARD_CAP_SECS);
+        assert_eq!(ingest_budget(5_000).as_secs(), CLIENT_HARD_CAP_SECS);
+    }
+
+    /// The invariant #5509 actually needs, pinned across the wire: for the UI's
+    /// batch size the server budget must (a) stay under the client's hard cap so
+    /// the pass is reachable, and (b) be the *tighter* of the two — i.e. below the
+    /// client's own timeout for the same batch — so the server returns a clean
+    /// structured timeout before the client's fetch aborts. This is the guard
+    /// that would have caught the server-only fix moving the ceiling from 570s to
+    /// an unreachable 1920s.
+    #[test]
+    fn server_budget_is_reachable_and_tighter_than_the_client() {
+        let server = ingest_budget(CLIENT_BATCH_MAX).as_secs();
+        let client = 120 + (CLIENT_BATCH_MAX as u64) * 90 + CLIENT_GRACE_SECS;
+        assert!(
+            server <= CLIENT_HARD_CAP_SECS,
+            "server budget {server}s must be reachable (<= {CLIENT_HARD_CAP_SECS}s client cap)"
+        );
+        assert!(
+            client <= CLIENT_HARD_CAP_SECS,
+            "client budget {client}s must stay under its own {CLIENT_HARD_CAP_SECS}s clamp"
+        );
+        assert!(
+            server < client,
+            "server budget {server}s must fire before the client's {client}s abort"
         );
     }
 }

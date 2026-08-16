@@ -16,8 +16,8 @@ use crate::openhuman::agent::context::prompt::{
 use crate::openhuman::agent::file_state::with_file_state_agent_id;
 use crate::openhuman::agent::harness::agent_graph::{AgentTurnRequest, AgentTurnUsage};
 use crate::openhuman::agent::harness::artifact_offload::{
-    effective_offload_threshold, extract_artifact_paths, note_artifact_handoff,
-    offload_oversized_result, ArtifactOffload, DEFAULT_OFFLOAD_THRESHOLD_BYTES,
+    effective_offload_threshold, extract_artifact_paths, new_artifact_offload,
+    note_artifact_handoff, offload_oversized_result, DEFAULT_OFFLOAD_THRESHOLD_BYTES,
     HANDOFF_STAGE_RECORDED,
 };
 use crate::openhuman::agent::harness::definition::{
@@ -579,7 +579,7 @@ async fn offload_outcome_artifacts(
         .as_ref()
         .map(|p| p.action_dir.clone())
         .unwrap_or_else(|| action_dir.clone());
-    let offload = ArtifactOffload::new(action_dir, policy, outcome.agent_id.clone(), task_id)
+    let offload = new_artifact_offload(action_dir, policy, outcome.agent_id.clone(), task_id)
         .with_render_root(render_root);
     let (output, _artifact) =
         offload_oversized_result(std::mem::take(&mut outcome.output), &offload, threshold).await;

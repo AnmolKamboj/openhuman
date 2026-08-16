@@ -113,7 +113,7 @@ fn unresolved_status(reason: String) -> SubsystemStatus {
         health: DriverHealth::down(reason.clone()).as_str().to_string(),
         health_reason: Some(reason.clone()),
         contract_version: crate::core::subsystem::format_contract_version(
-            tinycortex_api::CONTRACT_VERSION,
+            crate::openhuman::memory::api::CONTRACT_VERSION,
         ),
         capabilities: Vec::new(),
         fell_back_from: None,
@@ -142,7 +142,9 @@ mod tests {
         // build fact, independent of whether anything bound.
         assert_eq!(
             status.contract_version,
-            crate::core::subsystem::format_contract_version(tinycortex_api::CONTRACT_VERSION)
+            crate::core::subsystem::format_contract_version(
+                crate::openhuman::memory::api::CONTRACT_VERSION
+            )
         );
     }
 
@@ -155,14 +157,16 @@ mod tests {
 
         let status = status_from_binding(&binding).await;
         assert_eq!(status.slot, "memory");
-        // The default `[subsystems.memory] driver` is the embedded tinycortex
-        // driver.
-        assert_eq!(status.driver, cfg.driver);
-        assert_eq!(status.class, "embedded");
+        // The legacy default id is normalized to the compiled TinyMemory
+        // module at the binding boundary.
+        assert_eq!(status.driver, crate::openhuman::memory::binding::MODULE_ID);
+        assert_eq!(status.class, "module");
         assert_eq!(status.health, "ready");
         assert_eq!(
             status.contract_version,
-            crate::core::subsystem::format_contract_version(tinycortex_api::CONTRACT_VERSION)
+            crate::core::subsystem::format_contract_version(
+                crate::openhuman::memory::api::CONTRACT_VERSION
+            )
         );
         // All thirteen families, as of M3d. Spelled out rather than derived
         // from `Capabilities::all()` on purpose: this is the wire surface the

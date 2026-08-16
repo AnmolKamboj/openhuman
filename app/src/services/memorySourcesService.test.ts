@@ -230,11 +230,19 @@ describe('memorySourcesService', () => {
 
     const result = await ingestCodingSessions(false, 25);
 
+    // Clamped to the batch max (5), and the per-call timeout stays under the RPC
+    // client's hard 600s ceiling: 120s + 5*90s + 15s = 585s.
     expect(mockedCall).toHaveBeenCalledWith({
       method: 'openhuman.memory_sources_ingest_coding_sessions',
-      params: { backfill: false, max_sessions: 15 },
+      params: { backfill: false, max_sessions: 5 },
       timeoutMs: 585_000,
     });
+    // Guard the cross-wire contract: the per-call timeout must stay under
+    // coreRpcClient's PER_CALL_TIMEOUT_MAX_MS (600s), or the override is clamped
+    // and silently unreachable (the #5509 gap). Raising BATCH_MAX / per-session
+    // past this must fail here.
+    const CORE_RPC_PER_CALL_TIMEOUT_MAX_MS = 10 * 60 * 1_000;
+    expect(585_000).toBeLessThanOrEqual(CORE_RPC_PER_CALL_TIMEOUT_MAX_MS);
     expect(result.sessions_processed).toBe(2);
   });
 
@@ -269,7 +277,7 @@ describe('memorySourcesService', () => {
     expect(mockedCall).toHaveBeenCalledTimes(3);
     // Every pass stays bounded to the timeout-safe per-call maximum.
     expect(mockedCall).toHaveBeenLastCalledWith(
-      expect.objectContaining({ params: { backfill: false, max_sessions: 15 } })
+      expect.objectContaining({ params: { backfill: false, max_sessions: 5 } })
     );
     expect(result.passes).toBe(3);
     expect(result.sessionsProcessed).toBe(40); // 15 + 15 + 10

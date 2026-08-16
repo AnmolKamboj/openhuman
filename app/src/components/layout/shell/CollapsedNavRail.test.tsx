@@ -16,6 +16,12 @@ vi.mock('./useHomeNav', () => ({ useHomeNav: () => mockHome }));
 // Deterministic labels: render the i18n key so queries don't depend on locale.
 vi.mock('../../../lib/i18n/I18nContext', () => ({ useT: () => ({ t: (k: string) => k }) }));
 vi.mock('../../../services/analytics', () => ({ trackEvent: vi.fn() }));
+// The agent-world tab is gated on a tiny.place identity (#5424). These tests
+// exercise the full rail, so pin identity present; the gate is covered by
+// useNavTabs.test.ts.
+vi.mock('../../../hooks/useTinyPlaceIdentity', () => ({
+  useTinyPlaceIdentity: () => ({ status: 'ready', hasIdentity: true }),
+}));
 
 describe('CollapsedNavRail', () => {
   beforeEach(() => vi.clearAllMocks());

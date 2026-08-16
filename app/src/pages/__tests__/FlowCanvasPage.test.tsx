@@ -547,6 +547,21 @@ describe('FlowCanvasPage', () => {
       // wheel event) so the test isn't flaky under slow CI runners.
       const pane = document.querySelector('.react-flow__pane');
       expect(pane).not.toBeNull();
+      // jsdom has no layout engine and returns a zero-sized rectangle by
+      // default. React Flow deliberately ignores a wheel pan without a
+      // measurable viewport, which made this otherwise behavioral test flaky
+      // in the Linux coverage container.
+      vi.spyOn(pane as Element, 'getBoundingClientRect').mockReturnValue({
+        x: 0,
+        y: 0,
+        width: 800,
+        height: 600,
+        top: 0,
+        right: 800,
+        bottom: 600,
+        left: 0,
+        toJSON: () => ({}),
+      });
       const viewportEl = document.querySelector('.react-flow__viewport') as HTMLElement | null;
       expect(viewportEl).not.toBeNull();
       const transformBeforePan = viewportEl?.style.transform;

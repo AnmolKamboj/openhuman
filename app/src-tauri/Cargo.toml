@@ -1,6 +1,6 @@
 [package]
 name = "OpenHuman"
-version = "0.63.7"
+version = "0.63.8"
 description = "OpenHuman - AI-powered Super Assistant"
 authors = ["OpenHuman"]
 edition = "2021"
@@ -89,14 +89,12 @@ hex = "0.4"
 # the ring provider at startup in `lib.rs::run()`.
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 log = "0.4"
-env_logger = "0.11"
 
 # Sentry for the Tauri shell (desktop host) process — separate Sentry project
 # from the React frontend and the Rust core sidecar. DSN is baked at compile
 # time via `option_env!("OPENHUMAN_TAURI_SENTRY_DSN")` in `lib.rs::run()` and
 # can be overridden at runtime via the same env var. Feature set mirrors the
-# core sidecar (`Cargo.toml` at repo root) minus `tracing` since the shell
-# uses `log` + `env_logger`.
+# core sidecar (`Cargo.toml` at repo root) minus `tracing`.
 sentry = { version = "0.47.0", default-features = false, features = ["backtrace", "contexts", "panic", "debug-images", "httpdate"] }
 
 # Used by the imessage_scanner module.
@@ -111,15 +109,20 @@ chrono = "0.4"
 async-trait = "0.1"
 # Desktop companion: native mic capture + POINT-tag parsing + session ids.
 cpal = "0.15"
-regex = "1"
 uuid = { version = "1", features = ["v4"] }
-# Mascot fake-camera pipeline (meet_call): rasterizes the OpenHuman
-# mascot SVG to a PNG once, converts it to a YUV420 Y4M frame, and
-# points CEF's `--use-file-for-fake-video-capture` flag at the cached
-# file so Meet sees the mascot as the agent's webcam. Pure Rust, no
-# system codecs needed.
-resvg = { version = "0.45", default-features = false, features = ["text", "system-fonts"] }
-tiny-skia = "0.11"
+# NOTE (#5541): `resvg` + `tiny-skia` were removed here. They existed only for
+# the mascot fake-camera pipeline, which rasterized the mascot SVG to a Y4M
+# frame for CEF's `--use-file-for-fake-video-capture` flag. That whole path
+# (`meet_call`, `fake_camera`) was deleted in #5478 when the app moved off CEF
+# to Wry, but the two dependencies stayed behind — `cargo machete` found zero
+# references to either crate anywhere in `app/src-tauri/src/`.
+#
+# They were not cheap to leave: the pair carried the entire SVG rasterisation
+# stack, and dropping them takes the shipped app from 511 to 481 unique
+# crates — `usvg`, `fontdb`, `rustybuzz`, `ttf-parser`, `roxmltree`, `kurbo`,
+# `svgtypes`, `simplecss` and the unicode-bidi/script/ccc/vo tail, 30 crates
+# in total. If mascot SVG rasterisation ever comes back, re-add them here
+# rather than reaching for a heavier image stack.
 
 # Core domain logic, embedded in-process so the core's HTTP/JSON-RPC server
 # runs as a tokio task inside the Tauri host. Avoids the orphan-sidecar class
@@ -180,7 +183,6 @@ openhuman_core = { path = "../..", package = "openhuman", default-features = fal
     # driver stops advertising Capability::Diff — the product keeps all three.
     "memory-git",
 ] }
-tinyjuice = { version = "0.2.1", default-features = false }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", default-features = false, features = ["hostname", "signal", "user"] }
@@ -257,12 +259,16 @@ motosan-ai-oauth = { path = "../../vendor/motosan-ai-oauth" }
 # released tag) — same patch as the root Cargo world so both resolve the
 # in-tree SDK source. `git submodule update --init vendor/tinyagents` first.
 tinyagents = { path = "../../vendor/tinyagents" }
-# TinyFlows, TinyCortex, TinyJuice, TinyChannels, and TinyPlace are vendored beside
+# TinyFlows, TinyCortex, TinyChannels, and TinyPlace are vendored beside
 # TinyAgents so integration work can test crate changes against OpenHuman before
 # publishing.
 tinyflows = { path = "../../vendor/tinyflows" }
 tinycortex = { path = "../../vendor/tinycortex" }
-tinyjuice = { path = "../../vendor/tinyjuice" }
+# `tinymemory-core` (pulled in transitively through `openhuman_core`) names
+# `tinycortex-api` by version requirement, same as the root Cargo world —
+# patch it onto the same checkout here too, or this independent Cargo world
+# tries to resolve it from crates.io and fails (it was never published).
+tinycortex-api = { path = "../../vendor/tinycortex/api" }
 tinychannels = { path = "../../vendor/tinychannels" }
 tinyplace = { path = "../../vendor/tinyplace/sdk/rust" }
 
@@ -283,6 +289,21 @@ tempfile = "3"
 [profile.release]
 debug = "line-tables-only"
 split-debuginfo = "packed"
+# Binary-size settings (#5541) — kept in sync with the root `Cargo.toml`,
+# which carries the full rationale and the measurements. The short version:
+# the shell statically embeds the whole core crate, so it pays the same ~120k
+# monomorphized methods, and the same three settings apply. `strip` is safe
+# because Sentry symbolicates server-side from the separate dSYM/PDB/DWP that
+# `scripts/upload_sentry_symbols.sh` uploads, matched by a debug ID that
+# `strip` preserves; a build that lost its debug files fails that script
+# loudly (#1403) rather than shipping un-symbolicated.
+#
+# These are separate Cargo worlds (each its own `Cargo.lock`/`target/`) — a
+# change here needs the same change in the root `Cargo.toml` and in
+# `app/src-tauri-mobile/Cargo.toml` (the iOS/Android host).
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
 
 # Fast CI builds: trade runtime perf for compile speed
 [profile.ci]

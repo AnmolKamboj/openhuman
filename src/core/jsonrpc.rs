@@ -2058,12 +2058,6 @@ fn register_domain_subscribers(
         // battery-powered hosts).
         crate::openhuman::cron::scheduler_gate::init_global(&config);
 
-        // Install the TokenJuice content-router runtime config (compressor
-        // toggles + CCR cache limits + optional on-disk tier). Compaction runs on
-        // every agent's tool output, so this must be set before any agent loop
-        // executes a tool.
-        crate::openhuman::inference::tokenjuice::install_from_config(&config);
-
         // Seed the scheduler-gate signed-out override from the on-disk session.
         // Without this, a sidecar that boots with no stored JWT would happily
         // spin up cron / channel loops and fire LLM requests that all 401.
@@ -2301,7 +2295,7 @@ fn register_domain_subscribers(
             crate::openhuman::memory::conversations::register_conversation_persistence_subscriber(
                 workspace_dir.clone(),
             );
-            crate::openhuman::memory::sync_events::register_sync_stage_bridge(&config);
+            crate::openhuman::memory::sync_events_bridge::register_sync_stage_bridge(&config);
         }
     } else {
         log::debug!(

@@ -1,11 +1,12 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use chrono::Utc;
 use openhuman_core::openhuman::desktop::app_state::{
     snapshot, update_local_state, StoredAppStatePatch, StoredOnboardingTasks,
 };
+use openhuman_core::openhuman::config::Config;
 use openhuman_core::openhuman::config::rpc as config_rpc;
 use openhuman_core::openhuman::security::credentials::profiles::{
     profile_id, AuthProfile, AuthProfilesStore, TokenSet,
@@ -30,6 +31,23 @@ use tempfile::{Builder, TempDir};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 static ROUND19_ENV_LOCK: &OnceLock<Mutex<()>> = &crate::SHARED_ENV_LOCK;
+static MEMORY_SEAMS_INIT: OnceLock<()> = OnceLock::new();
+
+fn ensure_memory_seams() {
+    MEMORY_SEAMS_INIT.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("round19-memory-source-seams".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
+                    Arc::new(Config::default()),
+                );
+            })
+            .expect("spawn round19 memory source seam installer")
+            .join()
+            .expect("round19 memory source seam installer panicked");
+    });
+}
 
 struct EnvGuard {
     key: &'static str,
@@ -640,13 +658,14 @@ fn write_transcript(path: &Path, agent: &str, thread_id: &str) {
 #[tokio::test]
 async fn round19_memory_sources_registry_readers_sync_and_reconcile_edges() {
     let _lock = env_lock();
+    ensure_memory_seams();
     let harness = setup("http://127.0.0.1:9");
     let config = harness.config().await;
 
     let invalid = memory_sources::add_source(source_entry("", SourceKind::Folder, "No id"))
         .await
         .expect_err("id required");
-    assert!(invalid.contains("id is required"));
+    assert!(invalid.contains("id is required"), "unexpected validation error: {invalid}");
 
     let folder_dir = harness.root.join("notes");
     std::fs::create_dir_all(&folder_dir).expect("notes dir");
@@ -683,7 +702,7 @@ async fn round19_memory_sources_registry_readers_sync_and_reconcile_edges() {
             .len(),
         0
     );
-    let disabled_sync = memory_sources::sync::sync_source(updated.clone(), config.clone())
+    let disabled_sync = memory_sources::sync::sync_source(updated.clone(), Arc::new(config.clone()))
         .await
         .expect_err("disabled source rejected");
     assert!(disabled_sync.contains("disabled"));
@@ -711,7 +730,7 @@ async fn round19_memory_sources_registry_readers_sync_and_reconcile_edges() {
             query: Some("openhuman".to_string()),
             ..twitter
         },
-        config.clone(),
+        Arc::new(config.clone()),
     )
     .await;
     assert!(

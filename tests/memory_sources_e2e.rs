@@ -7,7 +7,7 @@
 //! Run with: `cargo test --test memory_sources_e2e`
 
 use std::path::Path;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use axum::http::header::AUTHORIZATION;
@@ -20,6 +20,8 @@ use openhuman_core::core::jsonrpc::build_core_http_router;
 const TEST_RPC_TOKEN: &str = "memory-sources-e2e-token";
 static AUTH_INIT: OnceLock<()> = OnceLock::new();
 static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static MEMORY_SEAMS_INIT: OnceLock<()> = OnceLock::new();
+static TEST_HOME: OnceLock<tempfile::TempDir> = OnceLock::new();
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     let mutex = ENV_LOCK.get_or_init(|| Mutex::new(()));
@@ -35,6 +37,33 @@ fn ensure_rpc_auth() {
         let token_dir = std::env::temp_dir().join("openhuman-memory-sources-e2e-auth");
         init_rpc_token(&token_dir).expect("init rpc auth");
     });
+}
+
+/// The transport-only JSON-RPC router does not create a core runtime context,
+/// so memory-backed routes need their host seams installed explicitly.
+fn ensure_memory_seams() {
+    MEMORY_SEAMS_INIT.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("memory-sources-e2e-seams".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let config = Arc::new(openhuman_core::openhuman::config::Config::default());
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
+                    config.clone(),
+                );
+                #[cfg(feature = "modules")]
+                openhuman_core::openhuman::modules::memory::set_modules_policy(config);
+            })
+            .expect("spawn memory sources seam installer")
+            .join()
+            .expect("memory sources seam installer panicked");
+    });
+}
+
+fn test_home() -> &'static Path {
+    TEST_HOME
+        .get_or_init(|| tempdir().expect("memory sources tempdir"))
+        .path()
 }
 
 struct EnvVarGuard {
@@ -85,6 +114,7 @@ embedding_strict = false
 }
 
 async fn serve() -> (String, tokio::task::JoinHandle<Result<(), std::io::Error>>) {
+    ensure_memory_seams();
     ensure_rpc_auth();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -144,8 +174,7 @@ fn ok(v: &Value, ctx: &str) -> Value {
 #[tokio::test]
 async fn memory_sources_crud_and_folder_read_flow() {
     let _guard = env_lock();
-    let tmp = tempdir().expect("tempdir");
-    let home = tmp.path();
+    let home = test_home();
     let openhuman_home = home.join(".openhuman");
 
     let _home = EnvVarGuard::set_to_path("HOME", home);
@@ -417,8 +446,7 @@ async fn memory_sources_crud_and_folder_read_flow() {
 #[tokio::test]
 async fn memory_sources_validation_rejects_bad_input() {
     let _guard = env_lock();
-    let tmp = tempdir().expect("tempdir");
-    let home = tmp.path();
+    let home = test_home();
     let openhuman_home = home.join(".openhuman");
 
     let _home = EnvVarGuard::set_to_path("HOME", home);
@@ -498,8 +526,7 @@ async fn memory_sources_github_repo_activity_flow() {
         return;
     }
     let _guard = env_lock();
-    let tmp = tempdir().expect("tempdir");
-    let home = tmp.path();
+    let home = test_home();
     let openhuman_home = home.join(".openhuman");
 
     let _home = EnvVarGuard::set_to_path("HOME", home);
@@ -679,8 +706,7 @@ async fn memory_sources_github_repo_activity_flow() {
 #[tokio::test]
 async fn memory_sources_composio_registry_flow() {
     let _guard = env_lock();
-    let tmp = tempdir().expect("tempdir");
-    let home = tmp.path();
+    let home = test_home();
     let openhuman_home = home.join(".openhuman");
 
     let _home = EnvVarGuard::set_to_path("HOME", home);

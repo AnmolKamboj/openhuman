@@ -1076,9 +1076,8 @@ fn mcp_namespaces_absent_when_gate_off() {
 
 // --- #4797: `flows` compile-time gate (directional proof) -------------------
 //
-// One namespace, not three: `tinyflows` registers no controllers, and
-// `rhai_workflows` is `scope() = AgentOnly` (no controller schemas in v1), so
-// `flows` is the gate's entire controller surface.
+// One namespace, not two: `tinyflows` registers no controllers, so `flows` is
+// the gate's entire controller surface.
 
 #[cfg(feature = "flows")]
 #[test]
@@ -1658,7 +1657,7 @@ fn memory_controllers_form_one_contiguous_run_in_aggregator_order() {
 // present and failing, because a registered-but-failing method teaches a model
 // the capability exists and makes it retry.
 
-use tinycortex_api::capabilities::Capability;
+use crate::openhuman::memory::api::capabilities::Capability;
 
 /// A workspace path unique to one test.
 ///
@@ -1813,6 +1812,11 @@ fn memory_capability_map_has_no_stale_entries() {
         .collect();
 
     for (ns, _) in MEMORY_NAMESPACE_CAPABILITY {
+        // `memory_diff` only registers when `memory-git` is compiled in; no CI
+        // lane enables it, so it would otherwise read as a stale table entry.
+        if *ns == "memory_diff" && !cfg!(feature = "memory-git") {
+            continue;
+        }
         assert!(
             live.iter().any(|(n, _)| n == ns),
             "MEMORY_NAMESPACE_CAPABILITY names `{ns}`, which registers no Memory controller"
@@ -1978,8 +1982,9 @@ async fn visible_under(
 }
 
 #[tokio::test]
+#[cfg(feature = "modules")]
 async fn memory_families_registered_when_capabilities_advertised() {
-    // The embedded `tinycortex` driver (the default config) advertises
+    // The TinyMemory module driver advertises
     // `Capabilities::all()`, so every gated family is present. Scoped rather
     // than unscoped so this proves a BOUND driver's set, not the unbound
     // default-open fallback.
@@ -1992,14 +1997,19 @@ async fn memory_families_registered_when_capabilities_advertised() {
         "tree_summarizer",
         "memory_sync",
         "memory_sources",
-        #[cfg(feature = "memory-git")]
-        "memory_diff",
         "slack_memory",
         "people",
     ] {
         assert!(
             ns.contains(present),
             "`{present}` must be present under a full-capability driver"
+        );
+    }
+    // `memory_diff` only registers when `memory-git` is compiled in.
+    if cfg!(feature = "memory-git") {
+        assert!(
+            ns.contains("memory_diff"),
+            "`memory_diff` must be present under a full-capability driver when `memory-git` is on"
         );
     }
     for present in [

@@ -272,19 +272,13 @@ impl ArchivistHook {
         // back to FTS5 in test paths or when config isn't wired.
         let entries = self.read_session_entries(conn, session_id);
 
-        // Filter entries that fall within the segment's time window.
-        // Use <= for end_timestamp (entries at the boundary are part of this
-        // segment). The boundary-triggering turn has a timestamp AFTER
-        // end_timestamp, so it won't be included.
+        // Filter entries by their stable per-session sequence or episodic row
+        // id. The md store rounds timestamps to milliseconds, which can move a
+        // fast turn just before its segment's higher-precision start time.
         let segment_entries: Vec<&EpisodicEntry> = entries
             .iter()
-            .filter(|e| {
-                e.timestamp >= segment.start_timestamp
-                    && segment
-                        .end_timestamp
-                        .map(|end| e.timestamp <= end)
-                        .unwrap_or(true)
-            })
+            .filter(|record| record.is_in_segment(segment))
+            .map(|record| &record.entry)
             .collect();
 
         if segment_entries.is_empty() {
