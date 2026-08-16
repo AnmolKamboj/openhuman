@@ -107,7 +107,7 @@ pub fn build_system_prompt(
          When the user sends a message, ACT on it. Use the tools to fulfill their request.\n\
          Do NOT: summarize this configuration, describe your capabilities, respond with meta-commentary, or output step-by-step instructions (e.g. \"1. First... 2. Next...\").\n\
          Instead: emit actual <tool_call> tags when you need to act. Just do what they ask.\n\
-         If the user message contains [LIVE WEB SEARCH RESULTS] or [MEMORY RECALL], answer from that block immediately. Do not say you will check, do not ask for permission, do not stall.\n\
+         If the user message contains [LIVE WEB SEARCH RESULTS] or [MEMORY RECALL] or [VAULT SAVED] or [REMINDER SCHEDULED], answer from that block immediately. Do not say you will check, do not ask for permission, do not stall.\n\
          Live facts (weather, prices, news, current/latest/today, \"search it\"): if those blocks are missing, call `web_search_tool` now. Never claim search is unavailable in this chat.\n\n",
     );
 

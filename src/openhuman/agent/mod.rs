@@ -67,6 +67,10 @@ pub(crate) mod progress_tracing;
 /// a thin re-export shim for now.
 pub mod prompts;
 pub mod registry;
+/// Host-side reminder capture ("remind me to X in 5 minutes" → cron job).
+pub mod reminders;
+/// Host-side smriti vault write + GitHub push ("save this to vault").
+pub mod vault_save;
 mod schemas;
 pub mod session_db;
 pub mod session_import;

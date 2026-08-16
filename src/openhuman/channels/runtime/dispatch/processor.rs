@@ -324,6 +324,17 @@ pub(crate) async fn process_channel_runtime_message(
             );
             enriched_message = format!("{block}\n{enriched_message}");
         }
+
+        if let Some(block) = schedule_requested_reminder(cfg, &msg) {
+            enriched_message = format!("{block}\n{enriched_message}");
+        }
+        if let Some(block) = crate::openhuman::agent::vault_save::save_requested_fact(
+            cfg,
+            &msg.content,
+            &prior_user_refs,
+        ) {
+            enriched_message = format!("{block}\n{enriched_message}");
+        }
     }
 
     println!("  ⏳ Processing message...");
@@ -859,6 +870,90 @@ pub(crate) async fn process_channel_runtime_message(
         success,
         workspace_dir: ctx.workspace_dir.as_ref().clone(),
     });
+}
+
+/// Create the cron job for "remind me to X in N minutes" and return a prompt
+/// block telling the model it is already done.
+///
+/// The model cannot be trusted to schedule this itself: channel turns blow
+/// past the provider's function-call cap and fall back to prompt-guided tools,
+/// and `schedule` is an external-effect tool that the approval gate parks on an
+/// untrusted channel turn with no surface to approve it. The user typed the
+/// request, so the host honours it directly and binds delivery back to the
+/// chat that asked.
+fn schedule_requested_reminder(
+    config: &crate::openhuman::config::Config,
+    msg: &crate::openhuman::channels::traits::ChannelMessage,
+) -> Option<String> {
+    use crate::openhuman::cron::{self, DeliveryConfig, Schedule, SessionTarget};
+
+    let request =
+        crate::openhuman::agent::reminders::parse_reminder(&msg.content, chrono::Utc::now())?;
+    let local = request.at.with_timezone(&chrono::Local);
+    let when = local.format("%I:%M %p").to_string();
+
+    let job = cron::add_agent_job(
+        config,
+        Some(format!("reminder_{}", slug(&request.task))),
+        Schedule::At { at: request.at },
+        &format!(
+            "Send this reminder to the user, exactly as written and with no preamble: \
+             Reminder: {}",
+            request.task
+        ),
+        SessionTarget::Isolated,
+        None,
+        Some(DeliveryConfig {
+            mode: "announce".to_string(),
+            channel: Some(msg.channel.clone()),
+            to: Some(msg.reply_target.clone()),
+            best_effort: true,
+        }),
+        true,
+    );
+
+    match job {
+        Ok(job) => {
+            tracing::info!(
+                channel = %msg.channel,
+                job_id = %job.id,
+                fires_at = %request.at,
+                "[reminders] host-scheduled reminder from channel turn"
+            );
+            Some(format!(
+                "[REMINDER SCHEDULED — the host already created it. It fires at {when} local \
+                 time and is delivered to this chat. Confirm it in one short line. Do not call \
+                 any scheduling tool; it is done.]\n\nTask: {}\n",
+                request.task
+            ))
+        }
+        Err(err) => {
+            tracing::warn!(
+                channel = %msg.channel,
+                error = %err,
+                "[reminders] failed to create the reminder job"
+            );
+            Some(format!(
+                "[REMINDER FAILED — the host could not create the reminder: {err}. Tell the user \
+                 plainly that it was not set. Do not claim it is scheduled.]\n"
+            ))
+        }
+    }
+}
+
+fn slug(text: &str) -> String {
+    text.chars()
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .take(40)
+        .collect::<String>()
+        .trim_matches('_')
+        .to_string()
 }
 
 pub(crate) async fn run_message_dispatch_loop(

@@ -863,12 +863,13 @@ impl Agent {
                     _ => None,
                 })
                 .collect();
-            if let Some(block) = crate::openhuman::agent::grounding::prefetch_grounding(
-                &cfg,
-                user_message,
-                &prior_user,
-            )
-            .await
+            let mut next = if let Some(block) =
+                crate::openhuman::agent::grounding::prefetch_grounding(
+                    &cfg,
+                    user_message,
+                    &prior_user,
+                )
+                .await
             {
                 log::info!(
                     "[grounding] injected host prefetch chars={}",
@@ -877,7 +878,15 @@ impl Agent {
                 format!("{block}\n{enriched}")
             } else {
                 enriched
+            };
+            if let Some(block) = crate::openhuman::agent::vault_save::save_requested_fact(
+                &cfg,
+                user_message,
+                &prior_user,
+            ) {
+                next = format!("{block}\n{next}");
             }
+            next
         } else {
             enriched
         };
