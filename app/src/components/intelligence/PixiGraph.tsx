@@ -101,6 +101,7 @@ export function PixiGraph({
       onHover: n => onHoverRef.current(n),
       onOpen: n => onOpenRef.current(n),
       onReady: () => {
+        if (cancelled) return;
         host.dataset.renderReady = 'true';
         onReadyRef.current?.();
       },

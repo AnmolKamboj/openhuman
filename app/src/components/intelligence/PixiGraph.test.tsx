@@ -64,4 +64,31 @@ describe('<PixiGraph />', () => {
     unmount();
     await waitFor(() => expect(handle.destroy).toHaveBeenCalled());
   });
+
+  it('ignores renderer readiness after cleanup', async () => {
+    const handle = { resetView: vi.fn(), setTheme: vi.fn(), destroy: vi.fn() };
+    const onReady = vi.fn();
+    mocks.mountPixiGraph.mockResolvedValue(handle);
+    const { getByTestId, unmount } = render(
+      <PixiGraph
+        nodes={NODES}
+        edges={[]}
+        mode="tree"
+        dark={false}
+        resetSignal={0}
+        onHover={vi.fn()}
+        onOpen={vi.fn()}
+        onReady={onReady}
+      />
+    );
+    const host = getByTestId('memory-graph-canvas');
+    await waitFor(() => expect(mocks.mountPixiGraph).toHaveBeenCalledTimes(1));
+    const [, opts] = mocks.mountPixiGraph.mock.calls[0] as [HTMLElement, { onReady: () => void }];
+
+    unmount();
+    opts.onReady();
+
+    expect(host).toHaveAttribute('data-render-ready', 'false');
+    expect(onReady).not.toHaveBeenCalled();
+  });
 });
