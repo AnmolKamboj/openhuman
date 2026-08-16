@@ -3291,7 +3291,7 @@ async fn agent_preference_tools_tree_loader_and_triage_events_cover_public_edges
         PrefScope::General.other_namespace()
     );
 
-    let save = SavePreferenceTool::new(memory.clone(), security);
+    let save = SavePreferenceTool::new(security);
     assert_eq!(save.permission_level().to_string(), "Write");
     let bad_category = save
         .execute(json!({
