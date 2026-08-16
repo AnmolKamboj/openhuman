@@ -4497,6 +4497,13 @@ async fn memory_tree_retrieval_rpc_and_schema_wrappers_cover_empty_and_invalid_p
 #[tokio::test]
 async fn memory_query_backend_and_tree_flush_wrappers_cover_public_edges() {
     let _lock = env_lock();
+    // The query tools resolve a bound memory driver, and binding one needs the
+    // module policy an integration test never boots. Publishing it here is
+    // safe: each raw-coverage module runs in its own process.
+    #[cfg(feature = "modules")]
+    openhuman_core::openhuman::modules::memory::set_modules_policy(std::sync::Arc::new(
+        Config::default(),
+    ));
     let tmp = TempDir::new().expect("tempdir");
     let _workspace = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", tmp.path());
     let mut config = Config::load_or_init().await.expect("init isolated config");
