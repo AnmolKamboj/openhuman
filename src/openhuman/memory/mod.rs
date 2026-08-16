@@ -58,7 +58,11 @@ pub mod tool_memory;
 pub mod tree;
 
 #[cfg(test)]
+mod api_identity_tests;
+#[cfg(test)]
 mod bypass_allowlist_tests;
+#[cfg(test)]
+mod direct_engine_refs_tests;
 #[cfg(test)]
 mod profile_conn_guard_tests;
 #[cfg(test)]

@@ -635,7 +635,22 @@ proptest = "1"
 # gated-off domains, so every CI lane that builds or tests "the product" now
 # passes `--features "$(scripts/ci/product-features.sh)"`. If you add a lane,
 # decide which of the two sets it is testing and say so.
-default = ["media", "skills", "flows", "mcp", "channels", "medulla", "http-server", "scheduler-gate", "file-logging"]
+# `modules` is in this list because the memory seam is not optional at test
+# time. `memory::binding::module_provider` has a `#[cfg(not(feature =
+# "modules"))]` arm that binds `NullMemoryProvider`, so without the gate a bare
+# `cargo test --lib -- memory::` fails 26 tests, every one of them a "null vs
+# module" assertion, and 15 further module-gated tests do not exist at all
+# (582 passed / 26 failed, versus 623 passed / 0 failed with the gate on).
+# A default set that cannot run its own test suite is not a usable inner loop.
+# The cost is the smallest of any gate here: +9 packages / +5 unique names
+# (`ureq`, `ureq-proto`, `utf8-zero`, `toml_edit`, `toml_write`) and **zero**
+# new native builds — the native list is byte-identical with the gate on and
+# off. That is nothing like the cohorts #4919 moved out of `default`, and it
+# also brings the build in line with what AGENTS.md has always documented
+# (`modules`: Contrib=ON, Product=ON) and with `scripts/ci/product-features.txt`,
+# which already lists it. This does NOT move the kernel floor: that profile is
+# `--no-default-features --features flows` and never reads this list.
+default = ["media", "skills", "flows", "mcp", "channels", "medulla", "http-server", "scheduler-gate", "file-logging", "modules"]
 # HTTP + Socket.IO server transport (#5048): the `/rpc` JSON-RPC endpoint and
 # its auth middleware/CORS layer (`core::jsonrpc`, `core::auth`), the `/v1`
 # OpenAI-compatible router (`inference::http`), the ad-hoc static-dir file

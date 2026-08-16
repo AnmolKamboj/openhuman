@@ -43,10 +43,10 @@ use std::sync::{Arc, OnceLock, RwLock};
 
 use crate::openhuman::memory::api::capabilities::Capabilities;
 use crate::openhuman::memory::api::health::MemoryHealth;
-use crate::openhuman::memory::api::null::{NullMemoryProvider, NULL_DRIVER_ID};
 use crate::openhuman::memory::api::provider::MemoryProvider;
 use crate::openhuman::memory::api::CONTRACT_VERSION;
 use crate::openhuman::memory::guard::{GuardPolicy, MemoryGuard};
+use tinymemory_api::null::{NullMemoryProvider, NULL_DRIVER_ID};
 
 use crate::core::subsystem::{
     BoundDriver, DriverCapabilities, DriverClass, DriverHealth, SubsystemSlot,
