@@ -2180,8 +2180,7 @@ async fn memory_preferences_remember_redaction_and_pipeline_traits_cover_public_
 #[tokio::test]
 async fn memory_tools_and_user_scope_prefs_cover_public_execution_paths() {
     let tmp = TempDir::new().expect("tempdir");
-    let memory: Arc<dyn Memory> =
-        Arc::new(UnifiedMemory::new(tmp.path(), Arc::new(NoopEmbedding), None).expect("memory"));
+    let _ = &tmp;
     let security = Arc::new(SecurityPolicy {
         autonomy: AutonomyLevel::Full,
         ..SecurityPolicy::default()
