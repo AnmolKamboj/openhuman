@@ -19,7 +19,7 @@ use tempfile::TempDir;
 
 use openhuman_core::openhuman::config::{Config, SchedulerGateMode};
 use tinymemory_core::chat::{ChatPrompt, ChatProvider};
-use openhuman_core::openhuman::memory::queue as jobs;
+use tinymemory_core::queue as jobs;
 use tinymemory_core::queue::types::ReembedBackfillPayload;
 use tinymemory_core::queue::{ExtractChunkPayload, NewJob};
 use tinymemory_core::store::chunks::store::{

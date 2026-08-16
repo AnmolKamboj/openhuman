@@ -19,7 +19,7 @@ use openhuman_core::openhuman::config::Config;
 use openhuman_core::openhuman::security::credentials::{
     AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
 };
-use openhuman_core::openhuman::memory::global as memory_global;
+use tinymemory_core::global as memory_global;
 use tinymemory_core::store::chunks::store::with_connection;
 use tinymemory_core::store::content::atomic::stage_summary;
 use tinymemory_core::store::content::{SummaryComposeInput, SummaryTreeKind};

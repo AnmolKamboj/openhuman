@@ -16,7 +16,7 @@ use tempfile::TempDir;
 
 use openhuman_core::core::events::DomainEvent;
 use openhuman_core::openhuman::config::Config;
-use openhuman_core::openhuman::memory::global as memory_global;
+use tinymemory_core::global as memory_global;
 use openhuman_core::openhuman::memory::sync::composio::bus::{
     ComposioConfigChangedSubscriber, ComposioConnectionCreatedSubscriber, ComposioTriggerSubscriber,
 };
