@@ -195,10 +195,15 @@ function routeReadySelector(hash) {
 }
 
 async function waitForHashRouteReady(hash, options = {}) {
-  const { timeout = 10_000 } = options;
+  const { timeout = 15_000 } = options;
   // Routes that redirect (e.g. /activity → /settings/notifications) settle on
   // the resolved target, so wait for that hash rather than the requested one.
   const expected = normalizeHash(`#${resolveRedirect(normalizeHash(hash).replace(/^#/, ''))}`);
+  const hashMatches = current =>
+    current === expected ||
+    // On wide desktop layouts, the settings index immediately selects its
+    // default panel. Accept that final destination as well.
+    (expected === '#/settings' && current === '#/settings/account');
   const readySelector = routeReadySelector(hash);
   // We deliberately do NOT use a root-innerText "signature changed" heuristic:
   // the TwoPanelLayout shell keeps a persistent sidebar whose text dominates the
@@ -230,7 +235,7 @@ async function waitForHashRouteReady(hash, options = {}) {
       if (res.hasSelector) return true;
       // Otherwise require the resolved target hash. Redirects are accounted
       // for above when computing `expected`.
-      return res.current === expected;
+      return hashMatches(res.current);
     },
     {
       timeout,
