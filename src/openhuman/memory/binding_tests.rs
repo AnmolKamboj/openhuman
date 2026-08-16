@@ -19,9 +19,9 @@ use std::sync::Arc;
 use crate::core::subsystem::{DriverHealth, SubsystemSlot};
 use crate::openhuman::memory::api::capabilities::Capabilities;
 use crate::openhuman::memory::api::health::MemoryHealth;
-use crate::openhuman::memory::api::null::{NullMemoryProvider, NULL_DRIVER_ID};
 use crate::openhuman::memory::api::provider::MemoryProvider;
 use crate::openhuman::memory::api::CONTRACT_VERSION;
+use tinymemory_api::null::{NullMemoryProvider, NULL_DRIVER_ID};
 
 use crate::openhuman::memory::api::capabilities::Capability;
 use crate::openhuman::memory::api::error::MemoryError;

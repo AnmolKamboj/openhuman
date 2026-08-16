@@ -5,13 +5,13 @@ use super::*;
 use std::sync::Arc;
 
 use crate::openhuman::memory::api::capabilities::{Capabilities, Capability};
-use crate::openhuman::memory::api::null::NullMemoryProvider;
 use crate::openhuman::memory::api::provider::types::SourceScope;
 use crate::openhuman::memory::api::provider::{
     audit_provider, MemoryCore, MemoryPortability, MemoryProvider, MemoryRecall,
 };
 use crate::openhuman::memory::api::recall::OwnedRecallOpts;
 use crate::openhuman::memory::api::types::{MemoryCategory, MemoryTaint};
+use tinymemory_api::null::NullMemoryProvider;
 
 use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
