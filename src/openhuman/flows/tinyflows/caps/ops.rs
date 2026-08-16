@@ -590,7 +590,7 @@ impl ToolInvoker for OpenHumanTools {
     }
 }
 
-/// Builds the [`Capabilities`] bundle for one run, wiring each of the seven
+/// Builds the [`Capabilities`] bundle for one run, wiring each supported
 /// host-injected traits to a real OpenHuman adapter (see each adapter above,
 /// and [`super::memory_adapter::OpenHumanMemory`] for `memory`, for its
 /// contract).
@@ -649,6 +649,11 @@ pub fn build_capabilities(config: Arc<Config>, state_namespace: impl Into<String
         // tickets do not survive a restart, which is the right bound for work
         // a single run collects at its own gate.
         tasks: Some(Arc::new(TokioTaskRunner::new())),
+        // OpenHuman already persists `RunOutcome::pending_approvals` and
+        // resumes named gates through `flows_resume`. Leaving the optional
+        // provider unset deliberately selects Tinyflows' compatible fallback
+        // instead of creating a second review store beside that surface.
+        approvals: None,
         memory: Some(Arc::new(
             crate::openhuman::flows::tinyflows::memory_adapter::OpenHumanMemory {
                 config: config.clone(),

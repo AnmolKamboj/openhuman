@@ -305,7 +305,7 @@ A `WorkflowGraph` is `{ name?, nodes: [...], edges: [...] }`.
 - **Exactly ONE `trigger` node is required.** Every other node should be
   reachable from it; a dry-run helps catch orphans.
 
-### The 21 node kinds
+### The 22 node kinds
 
 > The authoritative, always-current config shapes, ports, examples, and gotchas
 > for each kind live in the `list_node_kinds` / `get_node_kind_contract { kind }`
@@ -595,7 +595,12 @@ A `WorkflowGraph` is `{ name?, nodes: [...], edges: [...] }`.
 20. **`gather`** — collects scatter lanes. `config.from` is required and names
     the lane-terminal node ids; optional release/error policy controls partial
     completion.
-21. **`void`** — an explicit terminal sink. It discards its inputs, has no
+21. **`approval`** — presents a subject to a human and routes the verdict as
+    data on `approved` / `rejected`. This is distinct from a node's
+    `requires_approval` flag: use it when the reviewed payload or the human's
+    comment/edit belongs in the graph. Without a host review provider it parks
+    the run for `flows_resume`.
+22. **`void`** — an explicit terminal sink. It discards its inputs, has no
     config, and must have no outgoing edges.
 
 ### The `memory` node
