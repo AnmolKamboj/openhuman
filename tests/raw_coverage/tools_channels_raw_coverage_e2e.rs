@@ -333,7 +333,6 @@ fn tool_registries_schemas_and_local_helpers_cover_safe_branches() {
         Arc::clone(&config),
         &security,
         audit,
-        memory,
         &config.browser,
         &config.http_request,
         &config.workspace_dir,

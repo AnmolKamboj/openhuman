@@ -470,7 +470,6 @@ async fn round22_tool_registry_covers_config_gated_registration() {
         Arc::new(harness.config.clone()),
         &security,
         audit,
-        memory,
         &harness.config.browser,
         &harness.config.http_request,
         &harness.workspace,

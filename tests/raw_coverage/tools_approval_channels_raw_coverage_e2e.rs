@@ -1404,7 +1404,6 @@ fn tools_and_tool_registry_public_surfaces_cover_schema_and_assembly_paths() {
         Arc::new(config.clone()),
         &security,
         AuditLogger::disabled(),
-        memory,
         &config.browser,
         &config.http_request,
         &config.workspace_dir,
