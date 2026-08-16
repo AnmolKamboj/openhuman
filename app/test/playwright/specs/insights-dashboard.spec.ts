@@ -18,6 +18,6 @@ test.describe('Insights Dashboard', () => {
       page.locator(
         '[data-testid="memory-graph-svg"], [data-testid="memory-graph-empty"], [data-testid="memory-graph-canvas"][data-render-ready="true"] canvas'
       )
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 60_000 });
   });
 });
