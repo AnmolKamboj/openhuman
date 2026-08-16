@@ -2,7 +2,6 @@
 //! researcher subagents through the parallel-delegation tool.
 
 use anyhow::Result;
-use openhuman_core::core::bus::init as init_global;
 use openhuman_core::openhuman::agent::harness::AgentDefinitionRegistry;
 use openhuman_core::openhuman::config::schema::SubconsciousMode;
 use openhuman_core::openhuman::inference::provider::factory::test_provider_override;
@@ -13,7 +12,7 @@ use crate::mock::{subagent_marker, SubagentMock};
 
 pub async fn run() -> Result<ProfileResult> {
     let fixture = fixture()?;
-    crate::core::bus::init().await.expect("bus init");
+    openhuman_core::core::bus::init().await.expect("bus init");
     openhuman_core::openhuman::agent::bus::register_agent_handlers();
     let _ = AgentDefinitionRegistry::init_global_builtins();
     let mock = SubagentMock::new();

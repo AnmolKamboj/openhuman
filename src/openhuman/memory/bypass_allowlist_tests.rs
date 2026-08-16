@@ -54,7 +54,7 @@
 //!   and would churn on every new driver test — the exact rot this lint fights.
 //! - **Inline `#[cfg(test)] mod tests` blocks are NOT stripped.** Brace-tracking
 //!   Rust source with a line scanner is fragile, and getting it wrong silently
-//!   *hides* production sites. Three files are therefore allowlisted for a
+//!   *hides* production sites. Four files are therefore allowlisted for a
 //!   match that lives only in an inline test module; each says so.
 //! - **`app/src-tauri/` is not scanned.** It links `openhuman_core` with
 //!   `default-features = false` and cannot name `pub(crate)` items at all, so
@@ -362,7 +362,12 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "global::client(",
         "resolved only to reach profile_conn() for the fixture seed/read-back",
     ),
-    // ── The engine seam ──
+    // ── Inline test module and engine seam ──
+    (
+        "vendor/tinymemory/core/src/tinycortex/sync.rs",
+        "MemoryClient::from_workspace_dir(",
+        "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",
+    ),
     (
         "vendor/tinymemory/core/src/tinycortex/sync.rs",
         "global::client_if_ready(",
