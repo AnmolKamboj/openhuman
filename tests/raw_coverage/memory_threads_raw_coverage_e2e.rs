@@ -135,6 +135,10 @@ use openhuman_core::openhuman::memory::{
 // `remember`, `rpc_models`, `traits` and `util` moved into the extracted engine
 // crate with the rest of the memory implementation; the host re-exports some of
 // their contents flat but not the modules themselves.
+// The guard exposes `store` through the contract's mandatory core trait, and
+// stamps provenance from an explicit taint argument.
+use openhuman_core::openhuman::memory::api::provider::MemoryCore;
+use openhuman_core::openhuman::memory::api::types::MemoryTaint;
 use tinymemory_core::{
     remember::RememberSourceKind,
     rpc_models::{
@@ -2183,7 +2187,7 @@ async fn memory_tools_and_user_scope_prefs_cover_public_execution_paths() {
         ..SecurityPolicy::default()
     });
 
-    let store_tool = MemoryStoreTool::new(memory.clone(), security.clone());
+    let store_tool = MemoryStoreTool::new(security.clone());
     assert_eq!(store_tool.name(), "memory_store");
     assert!(store_tool.parameters_schema()["required"]
         .as_array()
@@ -2235,7 +2239,7 @@ async fn memory_tools_and_user_scope_prefs_cover_public_execution_paths() {
             .is_error
     );
 
-    let recall_tool = MemoryRecallTool::new(memory.clone());
+    let recall_tool = MemoryRecallTool::new();
     assert_eq!(recall_tool.name(), "memory_recall");
     let recalled = recall_tool
         .execute(json!({
