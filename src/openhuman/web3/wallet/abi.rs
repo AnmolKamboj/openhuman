@@ -5,7 +5,7 @@
 //! grammar, a bignum, and their tails — to produce a four-byte selector
 //! followed by two 32-byte words.
 //!
-//! `crate::openhuman::web3::wallet::primitives::abi` owns that encoding now, over `sha3` alone, and
+//! `tinywallet::abi` owns that encoding now, over `sha3` alone, and
 //! deliberately sits outside its `tx` gate: calldata is an *input* to building
 //! a transaction, so a host that builds elsewhere still needs it locally rather
 //! than paying a bus round trip for keccak over 68 bytes.
@@ -27,19 +27,18 @@
 /// amount is not a non-negative integer that fits in 256 bits.
 #[allow(unreachable_patterns)]
 pub fn encode_erc20_transfer(to_address: &str, amount_raw: &str) -> Result<String, String> {
-    crate::openhuman::web3::wallet::primitives::abi::encode_erc20_transfer(to_address, amount_raw)
-        .map_err(|error| match error {
-            crate::openhuman::web3::wallet::primitives::abi::Error::InvalidRecipient { .. } => {
-                format!("invalid EVM recipient address '{to_address}': {error}")
-            }
-            // Preserves the wording the previous implementation used, because the
-            // agent tool's schema documents it and a model reads it to correct
-            // itself.
-            crate::openhuman::web3::wallet::primitives::abi::Error::InvalidAmount { .. } => {
-                format!("amount '{amount_raw}' is not a valid non-negative integer")
-            }
-            _ => error.to_string(),
-        })
+    tinywallet::abi::encode_erc20_transfer(to_address, amount_raw).map_err(|error| match error {
+        tinywallet::abi::Error::InvalidRecipient { .. } => {
+            format!("invalid EVM recipient address '{to_address}': {error}")
+        }
+        // Preserves the wording the previous implementation used, because the
+        // agent tool's schema documents it and a model reads it to correct
+        // itself.
+        tinywallet::abi::Error::InvalidAmount { .. } => {
+            format!("amount '{amount_raw}' is not a valid non-negative integer")
+        }
+        _ => error.to_string(),
+    })
 }
 
 #[cfg(test)]

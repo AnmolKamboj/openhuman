@@ -2676,6 +2676,10 @@ fn no_gate_family_tool_silently_defaults_to_platform() {
 
 /// With the `flows` feature off, every flows-owned agent tool is compiled out
 /// of the default registry entirely.
+///
+/// `SecurityPolicy::default()` is `Supervised` (not `ReadOnly`), so these
+/// assertions are real ones: each tool *would* be registered at this tier if
+/// the feature were on.
 #[test]
 #[cfg(not(feature = "flows"))]
 fn default_tools_omits_flows_tools_when_feature_off() {

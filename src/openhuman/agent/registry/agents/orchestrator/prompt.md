@@ -110,8 +110,8 @@ run at the same time and whose results you will combine — e.g. "research these
 "check each of these 4 files". It returns an array of results, one per spawned worker, in
 spawn order. Reason over the whole array: some entries may have failed while others
 succeeded. Do **not** use it when the subtasks depend on each other's output (sequence
-those), and don't fan out work that a
-single delegation or a direct tool already covers.
+those explicitly), and don't fan out work that a single delegation or a direct tool
+already covers.
 
 **Fan-out is ONE `spawn_parallel_agents` call, never a loop of `spawn_subagent`.** When the
 user asks for parallel work — "in parallel", "a separate researcher/agent for each X",

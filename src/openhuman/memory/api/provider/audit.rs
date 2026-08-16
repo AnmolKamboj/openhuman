@@ -96,8 +96,8 @@ fn join(families: &[Capability]) -> String {
 /// # Examples
 ///
 /// ```
-/// # use crate::openhuman::memory::api::null::NullMemoryProvider;
-/// # use crate::openhuman::memory::api::provider::audit_provider;
+/// # use openhuman_core::openhuman::memory::api::null::NullMemoryProvider;
+/// # use openhuman_core::openhuman::memory::api::provider::audit_provider;
 /// // The reference null driver is self-consistent.
 /// assert!(audit_provider(&NullMemoryProvider::new()).is_ok());
 /// ```

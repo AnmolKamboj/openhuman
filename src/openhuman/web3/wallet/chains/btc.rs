@@ -14,8 +14,8 @@ use crate::openhuman::config::rpc as config_rpc;
 
 use super::super::defaults::{explorer_tx_url, rpc_url_for_chain};
 use super::super::execution::{
-    compressed_public_key, ExecutionResult, PreparedKind, PreparedStatus, PreparedTransaction,
-    TxLookupInfo, TxReceiptInfo, TxState, TxStatusInfo,
+    ExecutionResult, PreparedKind, PreparedStatus, PreparedTransaction, TxLookupInfo,
+    TxReceiptInfo, TxState, TxStatusInfo,
 };
 use super::super::ops::{secret_material, WalletChain};
 use super::super::rpc::{rest_get_json, rest_get_text, rest_post_text};
@@ -61,8 +61,7 @@ pub fn estimated_btc_fee_sats() -> u64 {
 /// specific, so the rules live where any host can reach them; what stays here
 /// is the `Result<_, String>` shape the rest of this domain speaks.
 pub fn validate_btc_address(addr: &str) -> Result<String, String> {
-    let result = crate::openhuman::web3::wallet::primitives::address::btc::validate(addr)
-        .map_err(|e| e.to_string());
+    let result = tinywallet::address::btc::validate(addr).map_err(|e| e.to_string());
     debug!(
         "{LOG_PREFIX} validate_address role=recipient result={}",
         if result.is_ok() {
@@ -82,8 +81,7 @@ pub fn validate_btc_address(addr: &str) -> Result<String, String> {
 /// the recipient rule for a sender accepts an address that only fails later,
 /// at signing time.
 pub fn validate_btc_sender_address(addr: &str) -> Result<String, String> {
-    let result = crate::openhuman::web3::wallet::primitives::address::btc::validate_sender(addr)
-        .map_err(|e| e.to_string());
+    let result = tinywallet::address::btc::validate_sender(addr).map_err(|e| e.to_string());
     debug!(
         "{LOG_PREFIX} validate_address role=sender result={}",
         if result.is_ok() {
@@ -128,21 +126,19 @@ pub async fn broadcast_raw_hex(tx_hex: &str) -> Result<String, String> {
 /// Delegates to the vendored [`tinywallet`] crate, which owns BIP-32
 /// secp256k1 derivation. Custody stays here: the mnemonic is decrypted from
 /// the keyring by this crate and handed over as a `&str` that is not retained.
+/// Test-only: production derives inside the wallet module.
+#[cfg(test)]
 fn derive_btc_private_key(
     mnemonic: &str,
     derivation_path: &str,
 ) -> Result<(Vec<u8>, Vec<u8>), String> {
-    let derived = crate::openhuman::web3::wallet::primitives::key::derive(
-        crate::openhuman::web3::wallet::primitives::Chain::Btc,
-        mnemonic,
-        derivation_path,
-    )
-    .map_err(|e| e.to_string())?;
+    let derived = tinywallet::key::derive(tinywallet::Chain::Btc, mnemonic, derivation_path)
+        .map_err(|e| e.to_string())?;
     let secret = derived.secret_bytes().to_vec();
     // Compressed, because a P2WPKH witness program is defined over the
     // compressed encoding — the uncompressed form yields a valid-looking
     // address for an account holding no funds.
-    let public_key = compressed_public_key(&secret)
+    let public_key = super::super::execution::compressed_public_key(&secret)
         .map_err(|_| "tinywallet returned an unusable BTC key".to_string())?;
     Ok((secret, public_key))
 }
@@ -206,7 +202,15 @@ pub async fn execute_btc_quote(mut quote: PreparedTransaction) -> Result<Executi
     )
     .await?
     .value;
-    let (private_key, public_key) = derive_btc_private_key(&mnemonic, &secret.derivation_path)?;
+    // Derivation and signing both happen in the loaded wallet module now, so no
+    // private key is reassembled here. The phrase travels over a confidential
+    // call to a module that has proved it is an artifact this build pinned —
+    // see `modules::wallet::attested_proxy`.
+    let signing_secret = tinywallet::wire::SecretMaterial {
+        mnemonic,
+        derivation_path: secret.derivation_path.clone(),
+        chain: tinywallet::Chain::Btc,
+    };
 
     // Selection stays here — this crate knows the fee policy and the UTXO
     // source — but the transaction itself is encoded by the loaded wallet
@@ -215,29 +219,26 @@ pub async fn execute_btc_quote(mut quote: PreparedTransaction) -> Result<Executi
     // in agreement: the module's `select_coins` and `select_utxos` above are
     // the same algorithm, down to the 546-sat dust rule, so it reselects
     // exactly what was chosen here.
-    let transaction = crate::openhuman::web3::wallet::primitives::wire::TransactionSpec::Btc {
+    let transaction = tinywallet::wire::TransactionSpec::Btc {
         from: from_addr.clone(),
         to: to_addr.clone(),
         amount_sat: amount_sats,
         fee_sat: fee_sats,
         utxos: selected
             .iter()
-            .map(
-                |utxo| crate::openhuman::web3::wallet::primitives::wire::Utxo {
-                    txid: utxo.txid.clone(),
-                    vout: utxo.vout,
-                    value: utxo.value,
-                },
-            )
+            .map(|utxo| tinywallet::wire::Utxo {
+                txid: utxo.txid.clone(),
+                vout: utxo.vout,
+                value: utxo.value,
+            })
             .collect(),
     };
-    // One signature per selected input, produced in this process and returned
-    // to the module in input order — see `modules::wallet`.
-    let signed = crate::openhuman::modules::wallet::sign_transaction(
+    // One signature per selected input, all produced inside the module and
+    // applied there in input order — see `modules::wallet`.
+    let signed = crate::openhuman::modules::wallet::sign_transaction_in_module(
         &config,
         &transaction,
-        &private_key,
-        &public_key,
+        &signing_secret,
     )
     .await
     .map_err(|e| format!("failed to sign BTC transaction: {e}"))?;
@@ -660,12 +661,8 @@ mod tests {
         // The known-good vector for this mnemonic and path, unchanged by the
         // move off the `bitcoin` crate. Derived through `tinywallet`, which is
         // the same code the address in `execute_btc_quote` comes from.
-        let derived = crate::openhuman::web3::wallet::primitives::key::derive(
-            crate::openhuman::web3::wallet::primitives::Chain::Btc,
-            mnemonic,
-            "m/84'/0'/0'/0/0",
-        )
-        .unwrap();
+        let derived =
+            tinywallet::key::derive(tinywallet::Chain::Btc, mnemonic, "m/84'/0'/0'/0/0").unwrap();
         assert_eq!(
             derived.address(),
             "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"

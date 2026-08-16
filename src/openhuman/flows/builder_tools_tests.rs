@@ -1880,22 +1880,23 @@ async fn save_workflow_accepts_correctly_schemad_graph() {
 }
 
 #[tokio::test]
-async fn list_node_kinds_tool_returns_the_vendor_catalog() {
+async fn list_node_kinds_tool_returns_every_kind() {
     let tool = ListNodeKindsTool::new();
     let result = tool.execute(json!({})).await.unwrap();
     assert!(!result.is_error, "{}", result.output());
     let parsed: Value = serde_json::from_str(&result.output()).unwrap();
     let kinds = parsed["node_kinds"].as_array().unwrap();
     assert_eq!(kinds.len(), crate::openhuman::flows::NODE_KINDS.len());
+    // The tool must advertise the whole catalog, not a subset that happens to
+    // include the kinds someone remembered to name here — a kind the engine
+    // knows but this tool omits is a kind the builder agent cannot reach.
+    for kind in crate::openhuman::flows::NODE_KINDS {
+        assert!(
+            kinds.iter().any(|k| k["kind"] == kind),
+            "list_node_kinds omits `{kind}`"
+        );
+    }
     // Each entry carries a kind + summary + the config-field name lists.
-    assert!(kinds.iter().any(|k| k["kind"] == "tool_call"));
-    assert!(kinds.iter().any(|k| k["kind"] == "memory"));
-    assert!(kinds.iter().any(|k| k["kind"] == "dedup"));
-    assert!(kinds.iter().any(|k| k["kind"] == "loop"));
-    assert!(kinds.iter().any(|k| k["kind"] == "shell"));
-    assert!(kinds.iter().any(|k| k["kind"] == "spawn"));
-    assert!(kinds.iter().any(|k| k["kind"] == "gather"));
-    assert!(kinds.iter().any(|k| k["kind"] == "void"));
     assert!(kinds.iter().all(|k| k.get("summary").is_some()));
 }
 

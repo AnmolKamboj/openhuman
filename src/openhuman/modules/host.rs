@@ -177,6 +177,7 @@ async fn build_runtime() -> tinybus::Result<ModuleRuntime> {
     if let Some(config) = super::memory::policy().cloned() {
         super::memory_host::install(&connection, Arc::clone(&config)).await?;
     }
+    super::tokenjuice_host::install(&connection).await?;
 
     Ok(ModuleRuntime {
         host,

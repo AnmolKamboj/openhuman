@@ -12,7 +12,7 @@
 //!  The facilitator submits the signed authorization on-chain.
 
 use base64::engine::{general_purpose::STANDARD as B64, Engine as _};
-use ed25519_dalek::{Signer, SigningKey};
+
 use log::{debug, warn};
 use reqwest::header::HeaderMap;
 use sha2::{Digest, Sha256};
@@ -43,13 +43,16 @@ impl X402Client {
     /// Send a request. If the server returns 402 with a `PAYMENT-REQUIRED`
     /// header, attempt to pay using the wallet's Solana key and retry.
     ///
-    /// `signing_key` — the wallet's ed25519 key (caller derives from mnemonic).
+    /// The signing key is no longer a parameter: derivation and signing both
+    /// happen inside the loaded wallet module, so there is no key for a caller
+    /// to hold or pass. The wallet's phrase is resolved here and handed over on
+    /// a confidential call.
+    ///
     /// `max_amount` — optional ceiling in atomic units; rejects challenges above
     ///                this to prevent runaway spending.
     pub async fn try_paid_request(
         &self,
         request: reqwest::Request,
-        signing_key: &SigningKey,
         max_amount: Option<u64>,
     ) -> Result<reqwest::Response, X402Error> {
         let method = request.method().clone();
@@ -106,7 +109,15 @@ impl X402Client {
 
         let payment = match chain {
             PaymentChain::Solana => {
-                build_solana_payment(signing_key, &challenge, requirement).await?
+                let (config, signing_secret, our_pubkey) = wallet_signer().await?;
+                build_solana_payment(
+                    &config,
+                    &signing_secret,
+                    our_pubkey,
+                    &challenge,
+                    requirement,
+                )
+                .await?
             }
             PaymentChain::Evm => build_evm_payment(&challenge, requirement).await?,
         };
@@ -176,7 +187,6 @@ pub fn handle_402(
 /// Separated from `try_paid_request` so callers that manage their own HTTP
 /// layer can still use the payment construction.
 pub async fn try_paid_request(
-    signing_key: &SigningKey,
     challenge: &PaymentRequired,
     requirement: &PaymentRequirements,
 ) -> Result<String, X402Error> {
@@ -186,7 +196,11 @@ pub async fn try_paid_request(
         PaymentChain::Solana
     };
     let payment = match chain {
-        PaymentChain::Solana => build_solana_payment(signing_key, challenge, requirement).await?,
+        PaymentChain::Solana => {
+            let (config, signing_secret, our_pubkey) = wallet_signer().await?;
+            build_solana_payment(&config, &signing_secret, our_pubkey, challenge, requirement)
+                .await?
+        }
         PaymentChain::Evm => build_evm_payment(challenge, requirement).await?,
     };
     let json = serde_json::to_string(&payment)
@@ -258,8 +272,15 @@ pub async fn handle_402_and_pay(
 
     let payment = match chain {
         PaymentChain::Solana => {
-            let signing_key = derive_wallet_signing_key().await?;
-            build_solana_payment(&signing_key, &challenge, requirement).await?
+            let (config, signing_secret, our_pubkey) = wallet_signer().await?;
+            build_solana_payment(
+                &config,
+                &signing_secret,
+                our_pubkey,
+                &challenge,
+                requirement,
+            )
+            .await?
         }
         PaymentChain::Evm => build_evm_payment(&challenge, requirement).await?,
     };
@@ -279,7 +300,19 @@ pub async fn handle_402_and_pay(
 }
 
 /// Derive the wallet's Solana ed25519 signing key from the encrypted mnemonic.
-async fn derive_wallet_signing_key() -> Result<SigningKey, X402Error> {
+/// The phrase to sign a payment with, its config, and the wallet's public key.
+///
+/// Derivation happens in the loaded wallet module; this process never holds the
+/// private key. The phrase is handed over on a confidential call, and only to a
+/// module that has proved it is an artifact this build pinned.
+async fn wallet_signer() -> Result<
+    (
+        crate::openhuman::config::Config,
+        tinywallet::wire::SecretMaterial,
+        [u8; 32],
+    ),
+    X402Error,
+> {
     use crate::openhuman::web3::wallet::WalletChain;
 
     let secret = crate::openhuman::web3::wallet::secret_material(WalletChain::Solana)
@@ -298,76 +331,16 @@ async fn derive_wallet_signing_key() -> Result<SigningKey, X402Error> {
     .map_err(|e| X402Error::Wallet(format!("decrypt mnemonic: {e}")))?
     .value;
 
-    derive_solana_keypair_from_mnemonic(&mnemonic, &secret.derivation_path)
-}
-
-fn derive_solana_keypair_from_mnemonic(
-    mnemonic: &str,
-    derivation_path: &str,
-) -> Result<SigningKey, X402Error> {
-    use coins_bip39::{English, Mnemonic};
-    use ed25519_dalek::SECRET_KEY_LENGTH;
-    use hmac::{Hmac, Mac};
-    use sha2::Sha512;
-
-    let mnemonic_obj: Mnemonic<English> = mnemonic
-        .trim()
-        .parse()
-        .map_err(|e| X402Error::Wallet(format!("invalid mnemonic: {e}")))?;
-    let seed = mnemonic_obj
-        .to_seed(None)
-        .map_err(|e| X402Error::Wallet(format!("seed derivation: {e}")))?;
-
-    // SLIP-0010 ed25519 derivation
-    type HmacSha512 = Hmac<Sha512>;
-    let mut mac = HmacSha512::new_from_slice(b"ed25519 seed")
-        .map_err(|e| X402Error::Wallet(format!("HMAC init: {e}")))?;
-    mac.update(&seed);
-    let i = mac.finalize().into_bytes();
-    let mut key = [0u8; 32];
-    let mut chain_code = [0u8; 32];
-    key.copy_from_slice(&i[..32]);
-    chain_code.copy_from_slice(&i[32..]);
-
-    let path = parse_derivation_path(derivation_path)?;
-    for index in path {
-        let hardened = index | 0x8000_0000;
-        let mut mac = HmacSha512::new_from_slice(&chain_code)
-            .map_err(|e| X402Error::Wallet(format!("HMAC init: {e}")))?;
-        mac.update(&[0u8]);
-        mac.update(&key);
-        mac.update(&hardened.to_be_bytes());
-        let i = mac.finalize().into_bytes();
-        key.copy_from_slice(&i[..32]);
-        chain_code.copy_from_slice(&i[32..]);
-    }
-
-    let bytes: [u8; SECRET_KEY_LENGTH] = key;
-    Ok(SigningKey::from_bytes(&bytes))
-}
-
-fn parse_derivation_path(path: &str) -> Result<Vec<u32>, X402Error> {
-    let trimmed = path.trim();
-    let mut iter = trimmed.split('/');
-    match iter.next() {
-        Some("m") => {}
-        _ => {
-            return Err(X402Error::Wallet(format!(
-                "path must start with 'm': {path}"
-            )))
-        }
-    }
-    let mut out = Vec::new();
-    for seg in iter {
-        let stripped = seg
-            .strip_suffix('\'')
-            .ok_or_else(|| X402Error::Wallet(format!("non-hardened segment in: {path}")))?;
-        let v: u32 = stripped
-            .parse()
-            .map_err(|e| X402Error::Wallet(format!("invalid path segment '{seg}': {e}")))?;
-        out.push(v);
-    }
-    Ok(out)
+    let signing_secret = tinywallet::wire::SecretMaterial {
+        mnemonic,
+        derivation_path: secret.derivation_path.clone(),
+        chain: tinywallet::Chain::Solana,
+    };
+    let account = crate::openhuman::modules::wallet::derive_account(&config, &signing_secret)
+        .await
+        .map_err(|e| X402Error::Wallet(format!("derive account: {e}")))?;
+    let pubkey = b58_to_32(&account.address)?;
+    Ok((config, signing_secret, pubkey))
 }
 
 // ---------------------------------------------------------------------------
@@ -479,11 +452,12 @@ fn parse_settlement_response(b64_str: &str) -> Result<SettlementResponse, String
 ///   2. TransferChecked { amount, decimals=6 }
 ///   3. Memo (if extra.memo set, otherwise random 16-byte hex nonce)
 async fn build_solana_payment(
-    signing_key: &SigningKey,
+    config: &crate::openhuman::config::Config,
+    signing_secret: &tinywallet::wire::SecretMaterial,
+    our_pubkey: [u8; 32],
     challenge: &PaymentRequired,
     req: &PaymentRequirements,
 ) -> Result<PaymentPayload, X402Error> {
-    let our_pubkey = signing_key.verifying_key().to_bytes();
     let amount: u64 = req
         .amount
         .parse()
@@ -551,8 +525,23 @@ async fn build_solana_payment(
     wire.extend(encode_shortvec(2)); // 2 required signatures
     wire.extend([0u8; 64]); // slot 0: fee_payer (left zeroed for facilitator)
 
-    let sig = signing_key.sign(&message);
-    wire.extend(sig.to_bytes()); // slot 1: our signature
+    // Signed in the module: the phrase goes over a confidential call and the
+    // private key is never assembled in this process.
+    let signature = crate::openhuman::modules::wallet::sign_message(
+        config,
+        signing_secret,
+        &message,
+        tinywallet::wire::Scheme::Ed25519,
+    )
+    .await
+    .map_err(|e| X402Error::Wallet(format!("sign payment: {e}")))?;
+    let tinywallet::wire::Signature::Ed25519 { signature_hex } = signature else {
+        return Err(X402Error::Wallet(
+            "the wallet module returned a non-ed25519 signature".to_string(),
+        ));
+    };
+    let sig_bytes = hex_to_32_bytes_64(&signature_hex)?;
+    wire.extend(sig_bytes); // slot 1: our signature
     wire.extend(&message);
 
     let tx_b64 = B64.encode(&wire);
@@ -584,18 +573,65 @@ async fn build_evm_payment(
     challenge: &PaymentRequired,
     req: &PaymentRequirements,
 ) -> Result<PaymentPayload, X402Error> {
-    let (secret, from_address) = derive_evm_signer().await?;
-    build_evm_payment_with_signer(&secret, &from_address, challenge, req)
+    let (config, signing_secret, from_address) = evm_signer().await?;
+    let authorization = evm_payment_authorization(&from_address, req)?;
+
+    // Signed in the wallet module over the prehashed EIP-712 digest. This
+    // process never holds the EVM key.
+    let signature = crate::openhuman::modules::wallet::sign_message(
+        &config,
+        &signing_secret,
+        &authorization.digest,
+        tinywallet::wire::Scheme::Secp256k1Prehash,
+    )
+    .await
+    .map_err(|e| X402Error::Wallet(format!("sign EIP-3009: {e}")))?;
+    let tinywallet::wire::Signature::Secp256k1 {
+        rs_hex,
+        recovery_id,
+    } = signature
+    else {
+        return Err(X402Error::Wallet(
+            "the wallet module returned a non-secp256k1 signature".to_string(),
+        ));
+    };
+    let rs = hex::decode(&rs_hex)
+        .map_err(|e| X402Error::Wallet(format!("invalid signature hex: {e}")))?;
+    if rs.len() != 64 {
+        return Err(X402Error::Wallet(
+            "the wallet module returned a malformed signature".to_string(),
+        ));
+    }
+    let mut sig_bytes = [0u8; 65];
+    sig_bytes[..64].copy_from_slice(&rs);
+    sig_bytes[64] = recovery_id
+        .checked_add(27)
+        .ok_or_else(|| X402Error::Wallet("recovery id out of range".to_string()))?;
+
+    evm_payment_payload(&authorization, sig_bytes, &from_address, challenge, req)
 }
 
-/// Core EVM payment construction — separated from wallet derivation for testability.
-pub(crate) fn build_evm_payment_with_signer(
-    secret: &[u8],
+/// The EIP-712 digest to sign, and the fields the payload needs alongside it.
+///
+/// Split out from signing so that production (which signs in the wallet module)
+/// and the tests (which sign locally, to check the construction against a fixed
+/// vector) share one implementation of the part that can be wrong. Only *who
+/// holds the key* differs between them.
+pub(crate) struct EvmPaymentAuthorization {
+    /// The 32-byte EIP-712 digest.
+    pub digest: [u8; 32],
+    /// The EIP-3009 nonce, echoed into the payload.
+    pub nonce: [u8; 32],
+    valid_after_secs: u64,
+    valid_before_secs: u64,
+}
+
+/// Compute the EIP-3009 authorization and its EIP-712 digest.
+pub(crate) fn evm_payment_authorization(
     from_address: &str,
-    challenge: &PaymentRequired,
     req: &PaymentRequirements,
-) -> Result<PaymentPayload, X402Error> {
-    use crate::openhuman::web3::wallet::primitives::eip712;
+) -> Result<EvmPaymentAuthorization, X402Error> {
+    use tinywallet::eip712;
 
     let chain_id = req
         .evm_chain_id()
@@ -653,17 +689,31 @@ pub(crate) fn build_evm_payment_with_signer(
     );
     let digest = eip712::signing_digest(domain_separator, struct_hash);
 
-    // Signed here with `k256`, over the prehashed digest. An EIP-712 signature
-    // is `r ‖ s ‖ v` where `v` is the recovery id offset by 27 — not EIP-155's
-    // chain-mixed `v`, because typed data is not a transaction.
-    let key = k256::ecdsa::SigningKey::from_slice(secret)
-        .map_err(|_| X402Error::Wallet("derived EVM key is unusable".to_string()))?;
-    let (signature, recovery_id) = key
-        .sign_prehash_recoverable(&digest)
-        .map_err(|e| X402Error::Wallet(format!("EVM sign EIP-3009: {e}")))?;
-    let mut sig_bytes = [0u8; 65];
-    sig_bytes[..64].copy_from_slice(&signature.to_bytes());
-    sig_bytes[64] = recovery_id.to_byte() + 27;
+    Ok(EvmPaymentAuthorization {
+        digest,
+        nonce,
+        valid_after_secs: 0,
+        valid_before_secs,
+    })
+}
+
+/// Assemble the payload from an authorization and its signature.
+///
+/// An EIP-712 signature is `r ‖ s ‖ v` where `v` is the recovery id offset by
+/// 27 — not EIP-155's chain-mixed `v`, because typed data is not a transaction.
+pub(crate) fn evm_payment_payload(
+    authorization: &EvmPaymentAuthorization,
+    sig_bytes: [u8; 65],
+    from_address: &str,
+    challenge: &PaymentRequired,
+    req: &PaymentRequirements,
+) -> Result<PaymentPayload, X402Error> {
+    let chain_id = req
+        .evm_chain_id()
+        .ok_or_else(|| X402Error::Protocol(format!("not an EVM network: {}", req.network)))?;
+    let valid_after = authorization.valid_after_secs;
+    let valid_before = authorization.valid_before_secs;
+    let nonce = authorization.nonce;
 
     let sig_hex = format!("0x{}", hex::encode(sig_bytes));
     let nonce_hex = format!("0x{}", hex::encode(nonce));
@@ -683,8 +733,8 @@ pub(crate) fn build_evm_payment_with_signer(
                 from: from_address.to_string(),
                 to: req.pay_to.clone(),
                 value: req.amount.clone(),
-                valid_after: "0".to_string(),
-                valid_before: valid_before_secs.to_string(),
+                valid_after: valid_after.to_string(),
+                valid_before: valid_before.to_string(),
                 nonce: nonce_hex,
             },
         }),
@@ -695,10 +745,17 @@ pub(crate) fn build_evm_payment_with_signer(
 /// Derive the wallet's EVM signing key from the encrypted mnemonic.
 ///
 /// Returns the raw secret and the checksummed address it controls. Derivation
-/// goes through `crate::openhuman::web3::wallet::primitives::key` — the same BIP-32 walk the wallet domain uses,
+/// goes through `tinywallet::key` — the same BIP-32 walk the wallet domain uses,
 /// so an x402 payment is signed by exactly the account the wallet reports — and
 /// the key stays in this process.
-async fn derive_evm_signer() -> Result<(Vec<u8>, String), X402Error> {
+async fn evm_signer() -> Result<
+    (
+        crate::openhuman::config::Config,
+        tinywallet::wire::SecretMaterial,
+        String,
+    ),
+    X402Error,
+> {
     use crate::openhuman::web3::wallet::WalletChain;
 
     let secret = crate::openhuman::web3::wallet::secret_material(WalletChain::Evm)
@@ -717,22 +774,56 @@ async fn derive_evm_signer() -> Result<(Vec<u8>, String), X402Error> {
     .map_err(|e| X402Error::Wallet(format!("decrypt mnemonic: {e}")))?
     .value;
 
-    let derived = crate::openhuman::web3::wallet::primitives::key::derive(
-        crate::openhuman::web3::wallet::primitives::Chain::Evm,
-        mnemonic.as_str(),
-        &secret.derivation_path,
-    )
-    .map_err(|e| X402Error::Wallet(format!("derive EVM signer: {e}")))?;
+    let signing_secret = tinywallet::wire::SecretMaterial {
+        mnemonic,
+        derivation_path: secret.derivation_path.clone(),
+        chain: tinywallet::Chain::Evm,
+    };
+    let account = crate::openhuman::modules::wallet::derive_account(&config, &signing_secret)
+        .await
+        .map_err(|e| X402Error::Wallet(format!("derive EVM signer: {e}")))?;
 
-    Ok((
-        derived.secret_bytes().to_vec(),
-        derived.address().to_string(),
-    ))
+    Ok((config, signing_secret, account.address))
+}
+
+/// Sign an EIP-712 digest locally. Test-only.
+///
+/// Production signs in the wallet module; this exists so the payment
+/// construction can be checked against a fixed vector without a broker. It is
+/// the only remaining local use of a private key in this domain, and it is
+/// compiled out of the shipped binary.
+#[cfg(test)]
+pub(crate) fn sign_evm_digest_locally(
+    secret: &[u8],
+    digest: &[u8; 32],
+) -> Result<[u8; 65], X402Error> {
+    let key = k256::ecdsa::SigningKey::from_slice(secret)
+        .map_err(|_| X402Error::Wallet("derived EVM key is unusable".to_string()))?;
+    let (signature, recovery_id) = key
+        .sign_prehash_recoverable(digest)
+        .map_err(|e| X402Error::Wallet(format!("EVM sign EIP-3009: {e}")))?;
+    let mut sig_bytes = [0u8; 65];
+    sig_bytes[..64].copy_from_slice(&signature.to_bytes());
+    sig_bytes[64] = recovery_id.to_byte() + 27;
+    Ok(sig_bytes)
+}
+
+/// The construction the tests drive: authorize, sign locally, assemble.
+#[cfg(test)]
+pub(crate) fn build_evm_payment_with_signer(
+    secret: &[u8],
+    from_address: &str,
+    challenge: &PaymentRequired,
+    req: &PaymentRequirements,
+) -> Result<PaymentPayload, X402Error> {
+    let authorization = evm_payment_authorization(from_address, req)?;
+    let sig_bytes = sign_evm_digest_locally(secret, &authorization.digest)?;
+    evm_payment_payload(&authorization, sig_bytes, from_address, challenge, req)
 }
 
 /// The 20 raw bytes of an EVM address.
 fn evm_address_bytes(address: &str) -> Result<[u8; 20], X402Error> {
-    let validated = crate::openhuman::web3::wallet::primitives::address::evm::validate(address)
+    let validated = tinywallet::address::evm::validate(address)
         .map_err(|e| X402Error::Protocol(format!("invalid EVM address '{address}': {e}")))?;
     let body = validated.strip_prefix("0x").unwrap_or(&validated);
     let decoded = hex::decode(body)
@@ -918,4 +1009,19 @@ async fn fetch_recent_blockhash_for_x402() -> Result<[u8; 32], X402Error> {
     .map_err(|e| X402Error::Wallet(format!("fetch blockhash: {e}")))?;
 
     b58_to_32(&result.value.blockhash)
+}
+
+/// Decode a 64-byte signature returned as lowercase hex by the wallet module.
+fn hex_to_32_bytes_64(value: &str) -> Result<[u8; 64], X402Error> {
+    if value.len() != 128 {
+        return Err(X402Error::Wallet(
+            "the wallet module returned a malformed signature".to_string(),
+        ));
+    }
+    let mut out = [0u8; 64];
+    for (index, slot) in out.iter_mut().enumerate() {
+        *slot = u8::from_str_radix(&value[index * 2..index * 2 + 2], 16)
+            .map_err(|e| X402Error::Wallet(format!("invalid signature hex: {e}")))?;
+    }
+    Ok(out)
 }

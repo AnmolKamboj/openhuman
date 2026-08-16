@@ -27,7 +27,7 @@ use serde_json::{json, Map};
 use tinyagents::{
     GraphLangfuseExporter, GraphObservation, LangfuseAuth, LangfuseClient, LangfuseTraceConfig,
 };
-use tinyflows::engine::GraphObservation as FlowGraphObservation;
+use tinyflows::engine::GraphObservation as FlowObservation;
 
 use crate::api::config::effective_backend_api_url;
 use crate::openhuman::config::Config;
@@ -103,6 +103,42 @@ fn build_flow_exporter(client: LangfuseClient, flow_id: &str) -> GraphLangfuseEx
     })
 }
 
+/// Re-types the engine's observations for the exporter.
+///
+/// The engine now emits `tinyflows::engine::GraphObservation` — tinyflows
+/// vendored its state-graph runtime in PR #43 — while the Langfuse batch is
+/// still built by `tinyagents`' exporter, which names its own. The two types
+/// are the same shape (`tinyagents` is where tinyflows' copy came from) down
+/// to the `GraphEvent` payload, so this re-types through their shared serde
+/// representation rather than duplicating a 20-field mapping that would then
+/// have to be kept in step by hand.
+///
+/// An observation that fails to convert is **dropped, not fatal**: exporting
+/// is best-effort throughout this module, and losing one span from a trace is
+/// a better outcome than losing the trace. A drop is logged at `warn` because
+/// the only way it can happen is the two types drifting apart, which is worth
+/// hearing about — `re_typing_preserves_every_field` is the guard that should
+/// catch it first.
+fn to_exporter_observations(observations: &[FlowObservation]) -> Vec<GraphObservation> {
+    observations
+        .iter()
+        .filter_map(|obs| {
+            match serde_json::to_value(obs).and_then(serde_json::from_value::<GraphObservation>) {
+                Ok(converted) => Some(converted),
+                Err(err) => {
+                    tracing::warn!(
+                        target: LOG_TARGET,
+                        error = %err,
+                        "[flows] dropped an observation the exporter could not read — \
+                         tinyflows and tinyagents GraphObservation have drifted"
+                    );
+                    None
+                }
+            }
+        })
+        .collect()
+}
+
 /// Exports one settled flow run to Langfuse as a single trace. Best-effort:
 /// every failure path logs a `[flows]`-prefixed warning and returns — a
 /// Langfuse outage can never fail or delay-fail the run. No-op when
@@ -114,7 +150,7 @@ pub async fn export_flow_run_trace(
     thread_id: &str,
     status: &str,
     trigger: FlowRunTrigger,
-    journal_observations: &[FlowGraphObservation],
+    journal_observations: &[FlowObservation],
 ) {
     if !config.observability.share_usage_data {
         tracing::debug!(
@@ -168,26 +204,20 @@ pub async fn export_flow_run_trace(
         }
     };
 
-    // Tinyflows now owns its graph runtime. Its durable observation wire shape
-    // remains byte-compatible with TinyAgents', whose Langfuse exporter we
-    // still reuse for agent-graph rendering. Convert at this explicit seam so
-    // the two crates keep distinct Rust type identities.
-    let observations = match convert_observations(journal_observations) {
-        Ok(observations) => observations,
-        Err(err) => {
-            tracing::warn!(
-                target: LOG_TARGET,
-                flow_id = %flow_id,
-                error = %err,
-                "[flows] langfuse export skipped: observation conversion failed"
-            );
-            return;
-        }
-    };
+    let observations = to_exporter_observations(journal_observations);
+    if observations.is_empty() {
+        tracing::warn!(
+            target: LOG_TARGET,
+            flow_id = %flow_id,
+            thread_id = %thread_id,
+            "[flows] langfuse export skipped: no observation survived re-typing"
+        );
+        return;
+    }
 
     let exporter = build_flow_exporter(client, flow_id);
     let trace = build_flow_trace_config(flow_name, flow_id, thread_id, status, trigger);
-    let observation_count = journal_observations.len();
+    let observation_count = observations.len();
     tracing::debug!(
         target: LOG_TARGET,
         flow_id = %flow_id,
@@ -237,18 +267,6 @@ pub async fn export_flow_run_trace(
     }
 }
 
-fn convert_observations(
-    observations: &[FlowGraphObservation],
-) -> serde_json::Result<Vec<GraphObservation>> {
-    observations
-        .iter()
-        .map(|observation| {
-            let value = serde_json::to_value(observation)?;
-            serde_json::from_value(value)
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,9 +276,13 @@ mod tests {
 
     /// Builds a minimal observation stream for one node under run/thread ids
     /// shaped like a real `flows_run` (`thread_id = flow:{id}:{uuid}`).
-    fn sample_observations(thread_id: &str) -> Vec<FlowGraphObservation> {
+    ///
+    /// Built as the ENGINE's observation type, which is what the `flows::`
+    /// domain actually hands this module — so every test below goes through
+    /// the same re-typing hop production does.
+    fn sample_observations(thread_id: &str) -> Vec<FlowObservation> {
         let node = ids::NodeId::new("fetch");
-        let mk = |offset: u64, step: usize, ts_ms: u64, event: GraphEvent| FlowGraphObservation {
+        let mk = |offset: u64, step: usize, ts_ms: u64, event: GraphEvent| FlowObservation {
             event_id: ids::EventId::new(format!("evt-{offset}")),
             run_id: ids::RunId::new("run-9"),
             root_run_id: ids::RunId::new("run-9"),
@@ -358,7 +380,6 @@ mod tests {
     fn batch_carries_flow_trace_and_langgraph_keys_on_node_spans() {
         let thread_id = "flow:flow-1:uuid-1";
         let observations = sample_observations(thread_id);
-        let observations = convert_observations(&observations).expect("compatible observations");
         let client = LangfuseClient::new(
             "https://backend.test/telemetry/langfuse/ingestion",
             LangfuseAuth::Bearer {
@@ -375,7 +396,7 @@ mod tests {
             FlowRunTrigger::Rpc,
         );
         let payload = exporter
-            .build_ingestion_batch(trace, &observations)
+            .build_ingestion_batch(trace, &to_exporter_observations(&observations))
             .expect("batch");
         let batch = payload["batch"].as_array().expect("batch array");
 
@@ -446,5 +467,46 @@ mod tests {
             &[],
         )
         .await;
+    }
+
+    /// The re-typing hop is a serde round-trip between two independently
+    /// declared types, so nothing but a test notices when one of them grows,
+    /// renames, or re-tags a field: `to_exporter_observations` would start
+    /// silently dropping observations and the trace would quietly lose spans.
+    /// This asserts the whole sample survives AND that the fields the exporter
+    /// keys spans on come through with their values intact.
+    #[test]
+    fn re_typing_preserves_every_field() {
+        let thread_id = "flow:flow-1:uuid-1";
+        let engine = sample_observations(thread_id);
+        let converted = to_exporter_observations(&engine);
+
+        assert_eq!(
+            converted.len(),
+            engine.len(),
+            "an observation was dropped — the two GraphObservation types have drifted"
+        );
+        for (before, after) in engine.iter().zip(converted.iter()) {
+            assert_eq!(
+                serde_json::to_value(before).unwrap(),
+                serde_json::to_value(after).unwrap(),
+                "re-typing changed the observation's serialized form"
+            );
+        }
+
+        // Spot-check the fields the exporter reads directly, so a drift that
+        // happened to stay serde-compatible (a renamed field with a matching
+        // `#[serde(rename)]`, say) still fails here rather than producing a
+        // batch full of empty spans.
+        let first = &converted[0];
+        assert_eq!(
+            first.thread_id.as_ref().map(|t| t.as_str()),
+            Some(thread_id)
+        );
+        assert_eq!(first.run_id.as_str(), "run-9");
+        assert_eq!(first.graph_id.as_str(), "workflow");
+        assert_eq!(first.offset, 0);
+        assert_eq!(converted[2].step, 1);
+        assert_eq!(converted[2].ts_ms, 1_020);
     }
 }

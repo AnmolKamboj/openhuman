@@ -12,11 +12,11 @@
 
 use std::sync::Arc;
 
+use crate::openhuman::flows::tinyflows::checkpoint_sqlite::SqliteCheckpointer;
 use anyhow::Context;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use tinyflows::caps::*;
-use tinyflows::engine::FileCheckpointer;
 use tinyflows::error::{EngineError, Result};
 #[cfg(test)]
 use tinyflows::model::WorkflowGraph;
@@ -640,38 +640,47 @@ pub fn build_capabilities(config: Arc<Config>, state_namespace: impl Into<String
         // until that boundary exists rather than inheriting ambient process
         // access from the workflow engine.
         shell: None,
+        // `spawn`/`gate` overlap only when a TaskRunner is injected. With
+        // `None` the engine still produces the right answer — `spawn` runs its
+        // work inline and hands back a settled ticket — so the failure mode is
+        // a silent loss of concurrency rather than an error, which is exactly
+        // the kind that survives a smoke test. Flow runs are already on tokio,
+        // so take the crate's tokio-backed runner. It is in-process only:
+        // tickets do not survive a restart, which is the right bound for work
+        // a single run collects at its own gate.
+        tasks: Some(Arc::new(TokioTaskRunner::new())),
         memory: Some(Arc::new(
             crate::openhuman::flows::tinyflows::memory_adapter::OpenHumanMemory {
                 config: config.clone(),
                 security,
             },
         )),
-        tasks: Some(Arc::new(TokioTaskRunner::new())),
         resolver: Arc::new(OpenHumanWorkflowResolver { config }),
     }
 }
 
 /// Opens the durable, cross-process checkpointer a `flows_run` uses via
-/// `tinyflows::engine::run_with_checkpointer` — the crate's own
-/// [`FileCheckpointer`], stored under `<workspace_dir>/flows/checkpoints/`.
+/// `tinyflows::engine::run_with_checkpointer` — this host's
+/// [`SqliteCheckpointer`], stored under `<workspace_dir>/flows/checkpoints.db`.
 ///
-/// Tinyflows now owns its graph runtime and checkpointer trait rather than
-/// sharing TinyAgents' SQLite implementation. Its bundled file backend keeps
-/// resume state durable without a host-specific compatibility adapter.
+/// It became host-owned when tinyflows vendored its state-graph runtime and
+/// dropped the SQLite backend with it (tinyflows PR #43). The port keeps the
+/// schema and SQL byte-identical, so an existing `checkpoints.db` — and any
+/// run interrupted before the upgrade — resumes unchanged. See
+/// [`super::super::checkpoint_sqlite`].
 pub fn open_flow_checkpointer(
     config: &Config,
 ) -> anyhow::Result<Arc<dyn tinyflows::engine::Checkpointer<serde_json::Value>>> {
-    let checkpoint_dir = config.workspace_dir.join("flows").join("checkpoints");
-    std::fs::create_dir_all(&checkpoint_dir).with_context(|| {
-        format!(
-            "Failed to create flows checkpoint directory: {}",
-            checkpoint_dir.display()
-        )
-    })?;
-    tracing::debug!(target: "flows", dir = %checkpoint_dir.display(), "[flows] opening checkpointer");
-    Ok(Arc::new(FileCheckpointer::<serde_json::Value>::new(
-        checkpoint_dir,
-    )))
+    let db_path = config.workspace_dir.join("flows").join("checkpoints.db");
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create flows directory: {}", parent.display()))?;
+    }
+    tracing::debug!(target: "flows", db = %db_path.display(), "[flows] opening checkpointer");
+    Ok(Arc::new(
+        SqliteCheckpointer::<serde_json::Value>::open(&db_path)
+            .with_context(|| format!("Failed to open flows checkpointer: {}", db_path.display()))?,
+    ))
 }
 
 #[cfg(test)]

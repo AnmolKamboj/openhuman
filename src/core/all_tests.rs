@@ -1076,8 +1076,8 @@ fn mcp_namespaces_absent_when_gate_off() {
 
 // --- #4797: `flows` compile-time gate (directional proof) -------------------
 //
-// One namespace: `tinyflows` registers no controllers, so `flows` is the
-// gate's entire controller surface.
+// One namespace, not two: `tinyflows` registers no controllers, so `flows` is
+// the gate's entire controller surface.
 
 #[cfg(feature = "flows")]
 #[test]

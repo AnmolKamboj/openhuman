@@ -46,7 +46,10 @@ pub mod ops;
 pub mod platform;
 pub mod registry;
 pub mod schemas;
+mod tokenjuice_host;
 pub mod types;
+#[cfg(feature = "voice")]
+pub mod voice;
 #[cfg(feature = "web3")]
 pub mod wallet;
 

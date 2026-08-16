@@ -70,7 +70,7 @@ pub const CONTRACT_VERSION: (u16, u16) = (2, 0);
 /// # Examples
 ///
 /// ```
-/// use crate::openhuman::memory::api::{is_compatible, CONTRACT_VERSION};
+/// use openhuman_core::openhuman::memory::api::{is_compatible, CONTRACT_VERSION};
 ///
 /// // The version this build speaks is always compatible with itself.
 /// assert!(is_compatible(CONTRACT_VERSION));

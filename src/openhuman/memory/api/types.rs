@@ -79,7 +79,7 @@ impl MemoryTaint {
     /// # Examples
     ///
     /// ```
-    /// use crate::openhuman::memory::api::types::MemoryTaint;
+    /// use openhuman_core::openhuman::memory::api::types::MemoryTaint;
     ///
     /// assert_eq!(MemoryTaint::Internal.as_db_str(), "internal");
     /// assert_eq!(MemoryTaint::ExternalSync.as_db_str(), "external_sync");
@@ -103,7 +103,7 @@ impl MemoryTaint {
     /// # Examples
     ///
     /// ```
-    /// use crate::openhuman::memory::api::types::MemoryTaint;
+    /// use openhuman_core::openhuman::memory::api::types::MemoryTaint;
     ///
     /// assert_eq!(MemoryTaint::from_db_str("internal"), MemoryTaint::Internal);
     /// assert_eq!(MemoryTaint::from_db_str("external_sync"), MemoryTaint::ExternalSync);

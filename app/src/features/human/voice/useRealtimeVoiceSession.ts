@@ -2,6 +2,10 @@ import { useConversation } from '@elevenlabs/react';
 import createDebug from 'debug';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import {
+  PROACTIVE_VOICE_THREAD_ID,
+  proactiveThreadPins,
+} from '../../../providers/proactiveThreadPins';
 import { fetchVoiceAgentSignedUrl } from '../../../services/api/voiceAgentApi';
 import { socketService } from '../../../services/socketService';
 import { MASCOT_VOICE_ID } from '../../../utils/config';
@@ -31,6 +35,12 @@ export interface RealtimeVoiceSession {
   isSpeaking: boolean;
   /** ElevenLabs turn mode; `listening` while the user speaks. */
   mode: 'speaking' | 'listening';
+  /**
+   * Output loudness (0..1) of the agent's voice, sampled from the SDK's
+   * analyser. Drives the mascot's amplitude lip-sync — the realtime SDK owns
+   * playback, so this is the only signal available to animate the mouth against.
+   */
+  getOutputVolume: () => number;
   error: string | null;
   /** Fetch a signed URL and open the WebSocket session. Idempotent while busy. */
   start: () => Promise<void>;
@@ -89,6 +99,13 @@ export function useRealtimeVoiceSession(opts?: { voiceId?: string }): RealtimeVo
     setError(null);
     setState('connecting');
     spokenRef.current.clear();
+    // Each session is its own conversation: drop any pin from a prior session so
+    // this session's deferred answers resolve to a fresh/current thread rather
+    // than appending to the previous session's thread (which the Human page may
+    // no longer have selected — the answer would land off-screen). The pin is
+    // re-established on this session's first delivery. See
+    // `resolveVisibleThreadForProactive` in ChatRuntimeProvider.
+    proactiveThreadPins.delete(PROACTIVE_VOICE_THREAD_ID);
     log('start: requesting signed url');
     try {
       const { signedUrl, userToken } = await fetchVoiceAgentSignedUrl();
@@ -174,6 +191,7 @@ export function useRealtimeVoiceSession(opts?: { voiceId?: string }): RealtimeVo
     state,
     isSpeaking: conversation.isSpeaking,
     mode: conversation.mode,
+    getOutputVolume: conversation.getOutputVolume,
     error,
     start,
     stop,

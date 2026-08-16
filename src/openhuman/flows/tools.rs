@@ -91,14 +91,32 @@ impl Tool for ProposeWorkflowTool {
          node back to the loop node. The pass number is readable as \
          \"=nodes.<loop id>.iteration\". The `body` must ROUTE BACK to the loop node, not merely \
          leave it. A fan-in `merge` must not sit on the cycle, and the loop node must not itself \
-         be a fan-in — join before it instead), spawn (config.target REQUIRED: workflow | tool | \
-         http; optional config.workflow/config.input/config.slug/config.args/config.request; emits \
-         a ticket for a downstream gate), gate (optional config.from/config.tickets/config.release/\
-         config.n/config.poll_interval_ms/config.max_polls/config.wait_mode/config.on_timeout), \
-         scatter (optional config.path/config.lanes; fans the downstream path into lanes), gather \
-         (config.from REQUIRED; optional config.release/config.n/config.on_lane_error/\
-         config.poll_interval_ms/config.max_polls; collects scatter lanes), void (terminal sink, \
-         no config and no outgoing edges). If \
+         be a fan-in — join before it instead), \
+         spawn (config.target REQUIRED: workflow | tool | http — starts work WITHOUT waiting \
+         and emits an opaque ticket, so the branch carries on; target=tool needs config.slug + \
+         config.args, target=workflow needs config.workflow, target=http needs config.request. \
+         Pass the ticket to a `gate`; never interpret it. A spawn no gate collects simply runs \
+         — wire it into a `void` to say that on purpose), \
+         gate (the collecting half of spawn: config.from = ids of the spawn nodes to wait on, \
+         or config.tickets \"=expr\"; optional config.release: \"all\" (default) | \"any\" | \
+         \"first_n\" | \"quorum\" | \"timeout_partial\", with config.n REQUIRED and > 0 for \
+         first_n/quorum; optional config.wait_mode: \"poll\" (default) | \"suspend\". EVERY \
+         poll costs a super-step, so a long wait wants \"suspend\", not a big max_polls), \
+         scatter (fans the whole DOWNSTREAM PATH into parallel lanes, not just the immediate \
+         successors: scatter → enrich → score → gather runs that pipeline once per lane. \
+         Optional config.path to an array to fan out over, else the node's own input items are \
+         the lanes; optional config.lanes to chunk into at most N lanes, clamped to 256. MUST \
+         reach a `gather`, and lane nodes are read as \"=nodes.<id>.lanes.<lane>\", NOT \
+         \"=nodes.<id>.item\". A nested scatter, a loop head, or requires_approval inside a \
+         lane are each rejected), \
+         gather (collects the lanes: config.from REQUIRED = ids of the lane-terminal nodes; same \
+         config.release/config.n policies as gate; optional config.on_lane_error: \"collect\" \
+         (default) | \"skip\" | \"fail_fast\". Output is ordered by lane index, not by finish \
+         order), \
+         void (terminal sink, no config: accepts items, discards them, runs nothing downstream. \
+         Says \"this branch is a side effect and nothing waits on it\" where an unwired port \
+         would read like a forgotten one. An outgoing edge is a hard reject, and so is having \
+         no incoming edge; it adds NO concurrency — use spawn for that). If \
          validation fails, fix the graph and call this tool again."
     }
 
@@ -126,8 +144,8 @@ impl Tool for ProposeWorkflowTool {
                                             "trigger", "agent", "tool_call", "http_request",
                                             "code", "shell", "condition", "switch", "merge", "split_out",
                                             "transform", "output_parser", "sub_workflow", "memory",
-                                            "dedup", "loop", "spawn", "gate", "scatter",
-                                            "gather", "void"
+                                            "dedup", "loop", "spawn", "gate", "scatter", "gather",
+                                            "void"
                                         ]
                                     },
                                     "name": { "type": "string", "description": "Human-readable node name." },
@@ -555,14 +573,49 @@ fn config_hint(node: &Node) -> Option<String> {
                 None => format!("max {max}"),
             })
         }
-        NodeKind::Merge
-        | NodeKind::OutputParser
-        | NodeKind::Trigger
-        | NodeKind::Spawn
-        | NodeKind::Scatter
-        | NodeKind::Gather
-        | NodeKind::Gate
-        | NodeKind::Void => None,
+        // What was started is the one thing worth seeing at a glance; which
+        // gate collects it is an edge, and the timeline already shows edges.
+        NodeKind::Spawn => {
+            let target = cfg.get("target").and_then(Value::as_str).unwrap_or("?");
+            let what = cfg
+                .get("slug")
+                .and_then(Value::as_str)
+                .or_else(|| cfg.get("name").and_then(Value::as_str));
+            Some(truncate_hint(&match what {
+                Some(what) => format!("{target}: {what}"),
+                None => target.to_string(),
+            }))
+        }
+        // A gate and a gather both wait, and the release policy is the whole
+        // question — `any` versus `all` is the difference between a run that
+        // proceeds on one result and one that blocks on the slowest.
+        NodeKind::Gate | NodeKind::Gather => {
+            let release = cfg
+                .get("release")
+                .and_then(Value::as_str)
+                .unwrap_or("all")
+                .to_string();
+            Some(match cfg.get("n").and_then(Value::as_u64) {
+                Some(n) => format!("{release} ({n})"),
+                None => release,
+            })
+        }
+        NodeKind::Scatter => {
+            let over = cfg
+                .get("path")
+                .and_then(Value::as_str)
+                .map_or_else(|| "input items".to_string(), |p| format!("path: {p}"));
+            Some(truncate_hint(
+                &match cfg.get("lanes").and_then(Value::as_u64) {
+                    Some(lanes) => format!("{over} · {lanes} lanes"),
+                    None => over,
+                },
+            ))
+        }
+        // A void takes no config, and "discards its input" is what the kind
+        // already says on the timeline.
+        NodeKind::Void => None,
+        NodeKind::Merge | NodeKind::OutputParser | NodeKind::Trigger => None,
     }
 }
 

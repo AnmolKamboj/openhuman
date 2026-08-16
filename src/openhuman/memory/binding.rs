@@ -344,7 +344,7 @@ fn module_provider(_workspace_dir: &Path) -> (Arc<dyn MemoryProvider>, DriverCla
     // workspace as the process-global test client so concurrent tests cannot
     // win module initialization with an unrelated tempdir and split guarded
     // writes from legacy read-back calls.
-    let workspace_dir = crate::openhuman::memory::ops::ensure_shared_memory_client();
+    let workspace_dir = crate::openhuman::memory::ops::shared_memory_test_workspace();
     let mut config = crate::openhuman::config::Config::default();
     config.workspace_dir = workspace_dir.clone();
     config.modules.install_dir = Some(workspace_dir.join("modules").to_string_lossy().into_owned());
