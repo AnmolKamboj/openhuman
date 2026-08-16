@@ -3261,23 +3261,16 @@ async fn agent_preference_tools_tree_loader_and_triage_events_cover_public_edges
         .expect("bad key is handled");
     assert!(remember_bad_key.output().contains("invalid characters"));
 
-    let remembered = remember
-        .execute(json!({
-            "class": "style",
-            "key": "verbosity",
-            "value": "  terse\nanswers only  "
-        }))
-        .await
-        .expect("remember preference");
-    assert!(!remembered.is_error);
-    assert!(remembered.output().contains("Preference saved"));
-    let stored = memory.stored.lock().expect("stored").clone();
-    assert!(stored.iter().any(|record| {
-        record.namespace == PINNED_PREFERENCES_NAMESPACE
-            && record.key == "pinned/style/verbosity"
-            && record.content == "[pinned] (class=style) verbosity: terse answers only"
-            && record.category == MemoryCategory::Core
-    }));
+    // The success path is deliberately not asserted here any more. Since the
+    // module port the tool resolves the *bound* driver instead of being handed
+    // a memory handle, so a write no longer lands in the stub above — and with
+    // no driver bound in an integration test it cannot succeed at all. The
+    // argument-validation paths above still run, because they fail before
+    // touching memory.
+    //
+    // Storage behaviour is covered by the tool's own tests in
+    // `agent/tools/remember_preference.rs`, which carry the same
+    // OPENHUMAN_MODULE_PATH gate as the rest of the module-dependent suite.
 
     assert_eq!(PrefScope::parse("GENERAL"), Some(PrefScope::General));
     assert_eq!(
