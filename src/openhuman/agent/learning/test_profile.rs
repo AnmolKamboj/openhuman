@@ -43,12 +43,21 @@ use crate::openhuman::memory::api::provider::{FacetType, MemoryProfile, ProfileF
 #[derive(Default)]
 pub struct InMemoryProfile {
     facets: Mutex<HashMap<String, ProfileFacet>>,
+    /// When set, `delete_facet` fails for this key. Lets a test drive the
+    /// failure branch of a delete loop, which is the branch that decides
+    /// whether a partial reset is reported as success.
+    fail_delete_for: Mutex<Option<String>>,
 }
 
 impl InMemoryProfile {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Make `delete_facet` fail for `key`.
+    pub fn fail_delete_for(&self, key: &str) {
+        *self.fail_delete_for.lock() = Some(key.to_string());
     }
 
     /// Facets sorted the way the engine returns them: stability descending,
@@ -157,6 +166,9 @@ impl MemoryProfile for InMemoryProfile {
     }
 
     async fn delete_facet(&self, key: &str) -> Result<bool, MemoryError> {
+        if self.fail_delete_for.lock().as_deref() == Some(key) {
+            return Err(MemoryError::Backend("simulated delete failure".into()));
+        }
         Ok(self.facets.lock().remove(key).is_some())
     }
 
