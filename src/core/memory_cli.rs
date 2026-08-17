@@ -516,6 +516,15 @@ async fn create_memory_client(subcommand: &str) -> Result<tinymemory_core::store
         }
     }
 
+    // The CLI dispatches straight to a subcommand and never runs the runtime
+    // bootstrap, so nothing else installs these. They must be in place before
+    // the first memory call: the embedding, chat, Composio and config seams
+    // fail loudly when unwired rather than degrading, and a `memory` subcommand
+    // that reached one would report a broken subsystem rather than a missing
+    // one. Idempotent, so calling it per invocation is safe.
+    crate::openhuman::memory::host_impls::install_memory_host_seams(std::sync::Arc::new(
+        config.clone(),
+    ));
     tinymemory_core::global::init(config.workspace_dir).map_err(anyhow::Error::msg)
 }
 

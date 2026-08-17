@@ -110,7 +110,13 @@ fn run_tick(args: &[String]) -> Result<()> {
             config.workspace_dir.display()
         );
 
-        // Init memory client
+        // Init memory client. The host seams come first for the same reason as
+        // in `memory_cli`: this path bypasses the runtime bootstrap, and the
+        // subconscious writes memory, so an unwired embedding seam would be
+        // discovered mid-run rather than at startup.
+        crate::openhuman::memory::host_impls::install_memory_host_seams(std::sync::Arc::new(
+            config.clone(),
+        ));
         let _ = tinymemory_core::global::init(config.workspace_dir.clone());
 
         // Init scheduler gate so is_signed_out() works
