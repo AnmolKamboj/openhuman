@@ -515,7 +515,7 @@ jobs:
         #
         # This asserts the calibration still holds. If it fails, every
         # projection built on the simulator is suspect until it is fixed.
-        run: python3 scripts/dep-sim.py --cut-nothing --expect-names 281
+        run: python3 scripts/dep-sim.py --cut-nothing --expect-names 268
 
       - name: Guard — new feature-gated test modules must be acknowledged
         # Self-maintaining coverage: the set of source files that #[cfg]-gate a test on
@@ -548,8 +548,6 @@ jobs:
           openhuman/tools/ops_tests.rs
           openhuman/voice/compile_status.rs
           openhuman/web3/stub.rs
-          openhuman/web3/wallet/primitives/address/evm/test.rs
-          openhuman/web3/wallet/primitives/address/test.rs
           openhuman/web3/wallet/stub.rs
           openhuman/web3/x402/stub.rs
           tui/runner.rs

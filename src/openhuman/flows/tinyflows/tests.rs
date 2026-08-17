@@ -70,8 +70,12 @@ fn edge(from: &str, to: &str) -> Edge {
 fn build_capabilities_constructs_every_slot_without_panicking() {
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
-    // Purely a construction smoke test — no capability is invoked here.
-    let _caps = build_capabilities(config, "test:build");
+    let caps = build_capabilities(config, "test:build");
+    assert!(caps.tasks.is_some(), "Tinyflows task nodes need a runner");
+    assert!(
+        caps.approvals.is_none(),
+        "OpenHuman resumes approvals through its existing flow-run surface"
+    );
 }
 
 // ── HTTP adapter ─────────────────────────────────────────────────────────

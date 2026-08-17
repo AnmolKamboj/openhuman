@@ -1,6 +1,6 @@
 [package]
 name = "OpenHuman"
-version = "0.63.8"
+version = "0.63.9"
 description = "OpenHuman - AI-powered Super Assistant"
 authors = ["OpenHuman"]
 edition = "2021"
@@ -110,13 +110,19 @@ async-trait = "0.1"
 # Desktop companion: native mic capture + POINT-tag parsing + session ids.
 cpal = "0.15"
 uuid = { version = "1", features = ["v4"] }
-# Mascot fake-camera pipeline (meet_call): rasterizes the OpenHuman
-# mascot SVG to a PNG once, converts it to a YUV420 Y4M frame, and
-# points CEF's `--use-file-for-fake-video-capture` flag at the cached
-# file so Meet sees the mascot as the agent's webcam. Pure Rust, no
-# system codecs needed.
-resvg = { version = "0.45", default-features = false, features = ["text", "system-fonts"] }
-tiny-skia = "0.11"
+# NOTE (#5541): `resvg` + `tiny-skia` were removed here. They existed only for
+# the mascot fake-camera pipeline, which rasterized the mascot SVG to a Y4M
+# frame for CEF's `--use-file-for-fake-video-capture` flag. That whole path
+# (`meet_call`, `fake_camera`) was deleted in #5478 when the app moved off CEF
+# to Wry, but the two dependencies stayed behind — `cargo machete` found zero
+# references to either crate anywhere in `app/src-tauri/src/`.
+#
+# They were not cheap to leave: the pair carried the entire SVG rasterisation
+# stack, and dropping them takes the shipped app from 511 to 481 unique
+# crates — `usvg`, `fontdb`, `rustybuzz`, `ttf-parser`, `roxmltree`, `kurbo`,
+# `svgtypes`, `simplecss` and the unicode-bidi/script/ccc/vo tail, 30 crates
+# in total. If mascot SVG rasterisation ever comes back, re-add them here
+# rather than reaching for a heavier image stack.
 
 # Core domain logic, embedded in-process so the core's HTTP/JSON-RPC server
 # runs as a tokio task inside the Tauri host. Avoids the orphan-sidecar class
@@ -283,6 +289,21 @@ tempfile = "3"
 [profile.release]
 debug = "line-tables-only"
 split-debuginfo = "packed"
+# Binary-size settings (#5541) — kept in sync with the root `Cargo.toml`,
+# which carries the full rationale and the measurements. The short version:
+# the shell statically embeds the whole core crate, so it pays the same ~120k
+# monomorphized methods, and the same three settings apply. `strip` is safe
+# because Sentry symbolicates server-side from the separate dSYM/PDB/DWP that
+# `scripts/upload_sentry_symbols.sh` uploads, matched by a debug ID that
+# `strip` preserves; a build that lost its debug files fails that script
+# loudly (#1403) rather than shipping un-symbolicated.
+#
+# These are separate Cargo worlds (each its own `Cargo.lock`/`target/`) — a
+# change here needs the same change in the root `Cargo.toml` and in
+# `app/src-tauri-mobile/Cargo.toml` (the iOS/Android host).
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
 
 # Fast CI builds: trade runtime perf for compile speed
 [profile.ci]

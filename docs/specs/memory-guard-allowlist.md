@@ -38,7 +38,7 @@ scope.** Driver tests construct drivers — that is what a driver test *is* —
 so allowlisting them would add ~25 entries that can never shrink and would
 churn on every new test. Inline `#[cfg(test)] mod tests` blocks are *not*
 stripped, because brace-tracking Rust with a line scanner is fragile and
-getting it wrong silently hides production sites; the three files affected are
+getting it wrong silently hides production sites; the four files affected are
 allowlisted with a reason saying so. Comment lines are skipped, so doc-comment
 references are not mistaken for calls.
 
@@ -159,6 +159,10 @@ are recorded here so M4c starts from the real set.
 `flows/ops_tests.rs`, `flows/tinyflows/memory_node_e2e_tests.rs`,
 `integrations/composio/ops_tests.rs`, `core/runtime/context.rs` (its `#[cfg(test)]`
 module).
+
+`vendor/tinymemory/core/src/tinycortex/sync.rs` also has an inline `#[cfg(test)]`
+module whose isolated-workspace fixtures construct `MemoryClient` directly; it
+is counted because the scanner does not brace-track inline test modules.
 
 ## Honest scorecard
 

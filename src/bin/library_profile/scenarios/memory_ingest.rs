@@ -3,7 +3,6 @@
 
 use anyhow::Result;
 use chrono::{TimeZone, Utc};
-use openhuman_core::core::bus::init as init_global;
 use openhuman_core::openhuman::memory::ingest_pipeline::ingest_chat;
 use openhuman_core::openhuman::memory::queue::drain_until_idle;
 use tinycortex::memory::ingest::canonicalize::chat::{ChatBatch, ChatMessage};
@@ -37,7 +36,7 @@ fn ingestion_batch() -> ChatBatch {
 
 pub async fn run() -> Result<ProfileResult> {
     let fixture = fixture()?;
-    crate::core::bus::init().await.expect("bus init");
+    openhuman_core::core::bus::init().await.expect("bus init");
     eprintln!("[library-profile] memory-ingest: fixture + event bus ready");
     measure("memory-ingest", INGEST_MESSAGE_COUNT, None, |_rec| async {
         let result = ingest_chat(

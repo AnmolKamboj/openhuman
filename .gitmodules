@@ -24,3 +24,6 @@
 	path = vendor/tinymemory
 	url = https://github.com/tinyhumansai/tinymemory.git
 	branch = main
+[submodule "vendor/tinywallet"]
+	path = vendor/tinywallet
+	url = https://github.com/tinyhumansai/tinywallet

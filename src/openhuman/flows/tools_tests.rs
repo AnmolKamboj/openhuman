@@ -213,6 +213,28 @@ fn dedup_config_hint_is_truncated_for_a_long_key_expression() {
 }
 
 #[test]
+fn approval_config_hint_prefers_the_review_title() {
+    let graph = WorkflowGraph {
+        nodes: vec![Node {
+            id: "review".to_string(),
+            kind: NodeKind::Approval,
+            type_version: 1,
+            name: "Review".to_string(),
+            config: json!({
+                "title": "Publish this draft?",
+                "prompt": "Approve publication"
+            }),
+            ports: Vec::new(),
+            position: None,
+        }],
+        ..Default::default()
+    };
+
+    let summary = build_summary(&graph);
+    assert_eq!(summary["steps"][0]["config_hint"], "Publish this draft?");
+}
+
+#[test]
 fn shell_config_hint_prefers_the_script_path_and_truncates_inline_source() {
     let graph = WorkflowGraph {
         nodes: vec![
