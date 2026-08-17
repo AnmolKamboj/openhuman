@@ -175,9 +175,11 @@ pub async fn reset_non_pinned(cache: &FacetCache) -> anyhow::Result<(usize, usiz
         if facet.user_state == UserState::Pinned {
             continue;
         }
-        if cache.delete(&facet.key).await.map_err(|e| {
-            anyhow::anyhow!("delete failed after removing {deleted} facets: {e:#}")
-        })? {
+        if cache
+            .delete(&facet.key)
+            .await
+            .map_err(|e| anyhow::anyhow!("delete failed after removing {deleted} facets: {e:#}"))?
+        {
             deleted += 1;
         }
     }
