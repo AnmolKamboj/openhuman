@@ -4,11 +4,11 @@
 use super::helpers::strip_tool_calls_from_response;
 use super::types::ArchivistHook;
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::ingest_pipeline;
-use crate::openhuman::memory::store::fts5;
 #[cfg(test)]
 use std::sync::Arc;
 use tinycortex::memory::ingest::canonicalize::chat::{ChatBatch, ChatMessage};
+use tinymemory_core::ingest_pipeline;
+use tinymemory_core::store::fts5;
 
 impl ArchivistHook {
     /// Pipe a closed segment's raw prose turns into the memory tree as
@@ -35,7 +35,7 @@ impl ArchivistHook {
     pub(super) async fn pipe_segment_to_tree(
         &self,
         config: &Config,
-        segment: &crate::openhuman::memory::store::segments::ConversationSegment,
+        segment: &tinymemory_core::store::segments::ConversationSegment,
         session_id: &str,
         entries: &[&fts5::EpisodicEntry],
     ) {
@@ -123,7 +123,7 @@ impl ArchivistHook {
 
         #[cfg(test)]
         let ingest_result = if let Some(provider) = self.chat_provider.as_ref() {
-            crate::openhuman::memory::chat::test_override::with_provider(
+            tinymemory_core::chat::test_override::with_provider(
                 Arc::clone(provider),
                 ingest_pipeline::ingest_chat(config, source_id, owner, tags, batch),
             )

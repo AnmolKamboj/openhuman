@@ -26,6 +26,7 @@ use crate::openhuman::channels::routes::{
 use crate::openhuman::channels::traits;
 use crate::openhuman::channels::{ChannelSendExt, SendMessage};
 use crate::openhuman::inference::provider;
+use crate::openhuman::memory::api::provider::MemoryCore as _;
 use crate::openhuman::util::truncate_with_ellipsis;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -265,7 +266,7 @@ pub(crate) async fn process_channel_runtime_message(
     };
 
     let memory_context =
-        build_memory_context(ctx.memory.as_ref(), &msg.content, ctx.min_relevance_score).await;
+        build_memory_context(&ctx.memory, &msg.content, ctx.min_relevance_score).await;
 
     if ctx.auto_save_memory {
         let autosave_key = conversation_memory_key(&msg);
@@ -275,8 +276,9 @@ pub(crate) async fn process_channel_runtime_message(
                 "",
                 &autosave_key,
                 &msg.content,
-                crate::openhuman::memory::MemoryCategory::Conversation,
+                crate::openhuman::memory::api::types::MemoryCategory::Conversation,
                 None,
+                crate::openhuman::memory::api::types::MemoryTaint::Internal,
             )
             .await;
     }

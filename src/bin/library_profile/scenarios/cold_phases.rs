@@ -8,7 +8,7 @@ use anyhow::Result;
 use openhuman_core::openhuman::agent::harness::AgentDefinitionRegistry;
 use openhuman_core::openhuman::agent::Agent;
 use openhuman_core::openhuman::inference::provider::factory::test_provider_override;
-use openhuman_core::openhuman::memory::store::MemoryClient;
+use tinymemory_core::store::MemoryClient;
 
 use crate::harness::{fixture, measure, ProfileResult};
 use crate::mock::PlainTextMock;

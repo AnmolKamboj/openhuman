@@ -1,6 +1,6 @@
 //! `memory_tools_list` — list every stored rule for a given tool.
 //!
-//! Routed through [`MemoryGuard`](tinymemory_core::guard::MemoryGuard)
+//! Routed through [`MemoryGuard`](crate::openhuman::memory::guard::MemoryGuard)
 //! rather than a raw `ToolMemoryStore`. `MemoryToolMemory::tool_rules` on the
 //! embedded driver is literally `tool_memory_store(self.memory()).list_rules(…)`,
 //! and the wire type matches by identity, not conversion:

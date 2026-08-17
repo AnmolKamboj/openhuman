@@ -281,7 +281,7 @@ async fn golden_fixture_rows_read_back_and_schema_is_stable_after_reopen() {
 
     let before = golden::schema_manifest(&workspace).expect("dump schema before open");
 
-    openhuman_core::openhuman::memory::global::init(workspace.clone())
+    tinymemory_core::global::init(workspace.clone())
         .expect("bind global memory client to the fixture copy");
 
     // ── Row-level read-back through memory::ops ──
@@ -418,7 +418,7 @@ async fn second_process_readback() {
     ensure_memory_seams(&workspace);
     eprintln!("[golden-fixture][child] reopening {}", workspace.display());
 
-    openhuman_core::openhuman::memory::global::init(workspace.clone())
+    tinymemory_core::global::init(workspace.clone())
         .expect("bind global memory client in the child process");
     let readback = golden::read_back(&workspace)
         .await
@@ -475,7 +475,7 @@ async fn regenerate_golden_fixture() {
     let _ws = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", &staging);
     ensure_memory_seams(&staging);
 
-    openhuman_core::openhuman::memory::global::init(staging.clone())
+    tinymemory_core::global::init(staging.clone())
         .expect("bind global memory client to the staging workspace");
     golden::seed(&staging).await.expect("seed golden workspace");
 

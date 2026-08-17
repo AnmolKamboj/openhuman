@@ -1,8 +1,8 @@
 use anyhow::Result;
 
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::store::content::obsidian_registry;
 use crate::rpc::RpcOutcome;
+use tinymemory_core::store::content::obsidian_registry;
 
 use super::types::{ObsidianVaultStatusResponse, VaultHealthCheckResponse};
 
@@ -33,7 +33,7 @@ pub async fn obsidian_vault_status_rpc(
         "memory_tree::read: obsidian_vault_status registered={} config_found={} root_hash={}",
         resp.registered,
         resp.config_found,
-        crate::openhuman::memory::util::redact::redact(&resp.content_root_abs),
+        tinymemory_core::util::redact::redact(&resp.content_root_abs),
     );
     Ok(RpcOutcome::single_log(resp, log))
 }
@@ -96,7 +96,7 @@ pub async fn vault_health_check_rpc(
         resp.obsidian_registered,
         resp.pipeline_healthy,
         resp.last_sync_ms,
-        crate::openhuman::memory::util::redact::redact(&resp.content_root_abs),
+        tinymemory_core::util::redact::redact(&resp.content_root_abs),
     );
     Ok(RpcOutcome::single_log(resp, log))
 }

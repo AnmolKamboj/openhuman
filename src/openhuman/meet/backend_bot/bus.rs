@@ -356,7 +356,7 @@ mod tests {
     }
 
     async fn has_summary_prompt_marker(meeting_id: &str) -> bool {
-        use crate::openhuman::memory::rpc_models::{ConversationMessagesRequest, EmptyRequest};
+        use tinymemory_core::rpc_models::{ConversationMessagesRequest, EmptyRequest};
 
         let threads = crate::openhuman::threads::ops::threads_list(EmptyRequest {})
             .await

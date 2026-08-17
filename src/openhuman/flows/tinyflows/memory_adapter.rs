@@ -41,8 +41,10 @@ use crate::openhuman::agent::harness::memory_context_safety::{
 use crate::openhuman::agent::turn_origin::{self, AgentTurnOrigin, TrustedAutomationSource};
 use crate::openhuman::config::Config;
 use crate::openhuman::flows::{cross_flow_recall, flow_namespace};
+use crate::openhuman::memory::api::provider::{MemoryCore, MemoryRecall};
+use crate::openhuman::memory::api::recall::OwnedRecallOpts;
+use crate::openhuman::memory::api::types::{MemoryCategory, MemoryEntry, MemoryTaint};
 use crate::openhuman::memory::tools::flavour::{lookup_flavour, FlavourLookup};
-use crate::openhuman::memory::{Memory, MemoryCategory, MemoryEntry, MemoryTaint, RecallOpts};
 use crate::openhuman::security::approval::{
     redact_args, summarize_action, ApprovalGate, ExecutionOutcome, GateOutcome,
 };
@@ -79,10 +81,9 @@ impl OpenHumanMemory {
     /// initialised global client when ready, else lazily initialises it for
     /// the current workspace. No adapter-local memory instance is ever
     /// constructed, so there is exactly one on-disk store in play.
-    async fn memory(&self) -> Result<Arc<dyn Memory>> {
-        crate::openhuman::memory::ops::helpers::active_memory_client()
+    async fn memory(&self) -> Result<Arc<crate::openhuman::memory::guard::MemoryGuard>> {
+        crate::openhuman::memory::ops::guard::active_memory_guard()
             .await
-            .map(|client| client.memory_handle())
             .map_err(EngineError::Capability)
     }
 
@@ -206,7 +207,7 @@ impl OpenHumanMemory {
         let results: Vec<Value> = entries
             .iter()
             .map(|entry| {
-                let text = if is_potentially_untrusted(entry) {
+                let text = if is_potentially_untrusted(entry.namespace.as_deref(), &entry.key) {
                     let hint = entry.namespace.as_deref().unwrap_or(scope);
                     wrap_untrusted_for_agent(&entry.content, hint)
                 } else {
@@ -262,10 +263,10 @@ impl MemoryProvider for OpenHumanMemory {
         let entries = match scope {
             "user" => {
                 let memory = self.memory().await?;
-                let recall_opts = RecallOpts {
-                    namespace: Some(USER_NAMESPACE),
+                let recall_opts = OwnedRecallOpts {
+                    namespace: Some(USER_NAMESPACE.to_string()),
                     min_score,
-                    ..RecallOpts::default()
+                    ..Default::default()
                 };
                 tracing::debug!(
                     target: "flows",
@@ -274,7 +275,7 @@ impl MemoryProvider for OpenHumanMemory {
                     "{LOG_PREFIX} recall: querying user-scope namespace"
                 );
                 memory
-                    .recall(query, limit, recall_opts)
+                    .recall(query, limit, &recall_opts, None)
                     .await
                     .map_err(|e| {
                         EngineError::Capability(format!("memory node: recall failed: {e}"))
@@ -283,10 +284,10 @@ impl MemoryProvider for OpenHumanMemory {
             "flow" => {
                 let namespace = self.flow_memory_namespace()?;
                 let memory = self.memory().await?;
-                let recall_opts = RecallOpts {
-                    namespace: Some(namespace.as_str()),
+                let recall_opts = OwnedRecallOpts {
+                    namespace: Some(namespace.as_str().to_string()),
                     min_score,
-                    ..RecallOpts::default()
+                    ..Default::default()
                 };
                 tracing::debug!(
                     target: "flows",
@@ -295,7 +296,7 @@ impl MemoryProvider for OpenHumanMemory {
                     "{LOG_PREFIX} recall: querying this flow's own namespace"
                 );
                 memory
-                    .recall(query, limit, recall_opts)
+                    .recall(query, limit, &recall_opts, None)
                     .await
                     .map_err(|e| {
                         EngineError::Capability(format!("memory node: recall failed: {e}"))
@@ -384,21 +385,23 @@ impl MemoryProvider for OpenHumanMemory {
         tracing::debug!(target: "flows", has_query = query.is_some(), "{LOG_PREFIX} people: entry");
         self.tier_gate_read("people")?;
 
-        let store = crate::core::runtime::context::CoreContext::current()
-            .ok_or_else(|| {
-                EngineError::Capability(
-                    "memory node: people store unavailable: core context not initialized"
-                        .to_string(),
-                )
-            })?
-            .people()
+        // Reads people through the bound driver, like every other people caller
+        // — the store moved behind the loaded module.
+        use crate::openhuman::memory::api::provider::MemoryProvider;
+        let guard = crate::openhuman::memory::ops::guard::active_memory_guard()
+            .await
             .map_err(|e| {
-                EngineError::Capability(format!("memory node: people store unavailable: {e}"))
+                EngineError::Capability(format!("memory node: people unavailable: {e}"))
             })?;
+        let people = guard.as_people().ok_or_else(|| {
+            EngineError::Capability(
+                "memory node: memory driver does not support the people family".to_string(),
+            )
+        })?;
 
         const DEFAULT_PEOPLE_LIMIT: usize = 100;
         let outcome =
-            crate::openhuman::memory::people::rpc::handle_list(&store, DEFAULT_PEOPLE_LIMIT)
+            crate::openhuman::memory::people::rpc::handle_list(people, DEFAULT_PEOPLE_LIMIT)
                 .await
                 .map_err(EngineError::Capability)?;
 
@@ -448,7 +451,7 @@ impl MemoryProvider for OpenHumanMemory {
         // up front rather than spend that approval round-trip on a write
         // that was always going to be rejected (review fix — see #5227).
         let content = value_to_content(&value);
-        if crate::openhuman::memory::store::safety::has_likely_secret(&content) {
+        if tinymemory_core::store::safety::has_likely_secret(&content) {
             tracing::warn!(
                 target: "flows",
                 key_chars = key.chars().count(),
@@ -466,7 +469,7 @@ impl MemoryProvider for OpenHumanMemory {
         let namespace = self.flow_memory_namespace()?;
         let memory = self.memory().await?;
         let store_result = memory
-            .store_with_taint(
+            .store(
                 &namespace,
                 key,
                 &content,

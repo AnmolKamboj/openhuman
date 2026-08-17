@@ -15,13 +15,13 @@ use crate::openhuman::agent::host_runtime;
 use crate::openhuman::config::Config;
 use crate::openhuman::inference::provider;
 use crate::openhuman::memory::agent::memory_loader::DefaultMemoryLoader;
-use crate::openhuman::memory::store as memory_store;
 use crate::openhuman::memory::tool_memory::capture::ToolMemoryCaptureHook;
 use crate::openhuman::memory::Memory;
 use crate::openhuman::security::SecurityPolicy;
 use crate::openhuman::tools::{self, Tool};
 use anyhow::Result;
 use std::sync::Arc;
+use tinymemory_core::store as memory_store;
 
 impl Agent {
     /// Constructs an `Agent` instance from a global system configuration.
@@ -305,7 +305,7 @@ impl Agent {
             None
         } else {
             Some(
-                crate::openhuman::memory::global::init(config.workspace_dir.clone())
+                tinymemory_core::global::init(config.workspace_dir.clone())
                     .map_err(anyhow::Error::msg)?
                     .memory_handle(),
             )
@@ -365,7 +365,6 @@ impl Agent {
             &security,
             runtime,
             audit,
-            memory.clone(),
             &tool_config.browser,
             &tool_config.http_request,
             &tool_config.action_dir,

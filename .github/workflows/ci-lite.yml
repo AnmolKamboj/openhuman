@@ -478,6 +478,13 @@ jobs:
         # (#5022). This step executes the gate-contract test modules so that class of
         # regression fails CI, not just a local pre-push.
         #
+        # `memory::people::address_book::tests` used to be here and was removed: the
+        # address-book tests moved into the tinycortex dependency crate with the code
+        # they cover, and a dependency's unit tests are not collected by this crate's
+        # `--lib` harness — so the filter matched zero tests while reading like
+        # coverage. `contacts_gate_tests` is the live replacement (its off-macOS arm
+        # compiles on Linux, which is where this lane runs).
+        #
         # Scope is deliberate: the full gates-off `--lib` run aborts on a pre-existing
         # task_local stack overflow (`agent::harness::session::tests::
         # turn_dispatches_spawn_subagent_through_full_path`) that reproduces in the
@@ -486,7 +493,7 @@ jobs:
         run: |
           bash scripts/ci-cancel-aware.sh cargo test --manifest-path Cargo.toml \
             --no-default-features --lib -- \
-            core::all:: core::cli:: core::jsonrpc:: core::legacy_aliases:: core::runtime:: agent::registry::agents::loader:: memory::people::address_book::tests:: openhuman::config:: openhuman::platform::socket::event_handlers:: tools::schemas:: tools::ops::tests::
+            core::all:: core::cli:: core::jsonrpc:: core::legacy_aliases:: core::runtime:: agent::registry::agents::loader:: memory::people::contacts_gate_tests:: openhuman::config:: openhuman::platform::socket::event_handlers:: tools::schemas:: tools::ops::tests::
           bash scripts/ci-cancel-aware.sh cargo test --manifest-path Cargo.toml \
             --no-default-features --features mcp --lib -- \
             mcp::server::resources::
@@ -540,6 +547,7 @@ jobs:
           openhuman/agent/registry/agents/loader.rs
           openhuman/config/migrations/retire_local_whisper_stt_tests.rs
           openhuman/mcp/server/resources.rs
+          openhuman/memory/people/mod.rs
           openhuman/platform/socket/event_handlers.rs
           openhuman/platform/socket/ops.rs
           openhuman/tinyplace/manifest.rs

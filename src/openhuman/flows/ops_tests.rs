@@ -1584,8 +1584,8 @@ async fn reconcile_schedule_triggers_on_boot_survives_a_corrupt_row() {
 
 #[tokio::test]
 async fn flows_delete_clears_flow_memory_namespace() {
-    use crate::openhuman::memory::store::MemoryClient;
     use crate::openhuman::memory::{MemoryCategory, MemoryTaint};
+    use tinymemory_core::store::MemoryClient;
 
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
@@ -6514,6 +6514,9 @@ async fn flows_build_hides_the_live_run_tool_from_the_builder_belt() {
          origin bypasses; see restrict_builder_toolset's doc"
     );
 
+    // Building an agent constructs a memory client, which needs the host seams
+    // wired. `Once`-guarded, so this is free when another test got there first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     crate::openhuman::agent::harness::AgentDefinitionRegistry::init_global(&config.workspace_dir)
         .expect("agent registry init");
     let mut agent =
@@ -6610,6 +6613,9 @@ async fn flows_build_copilot_toolset_unhides_the_live_run_tools() {
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
 
+    // Building an agent constructs a memory client, which needs the host seams
+    // wired. `Once`-guarded, so this is free when another test got there first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     crate::openhuman::agent::harness::AgentDefinitionRegistry::init_global(&config.workspace_dir)
         .expect("agent registry init");
     let mut agent =
@@ -6669,6 +6675,9 @@ async fn flows_build_applies_the_builder_definitions_effective_iteration_cap() {
     // effective cap, otherwise this test can't distinguish the two.
     assert_eq!(config.agent.max_tool_iterations, 10);
 
+    // Building an agent constructs a memory client, which needs the host seams
+    // wired. `Once`-guarded, so this is free when another test got there first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     crate::openhuman::agent::harness::AgentDefinitionRegistry::init_global(&config.workspace_dir)
         .expect("agent registry init");
     let def = crate::openhuman::agent::harness::AgentDefinitionRegistry::global()
@@ -6708,6 +6717,9 @@ async fn flows_discover_applies_the_flow_discovery_definitions_effective_iterati
     let config = test_config(&tmp);
     assert_eq!(config.agent.max_tool_iterations, 10);
 
+    // Building an agent constructs a memory client, which needs the host seams
+    // wired. `Once`-guarded, so this is free when another test got there first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     crate::openhuman::agent::harness::AgentDefinitionRegistry::init_global(&config.workspace_dir)
         .expect("agent registry init");
     let def = crate::openhuman::agent::harness::AgentDefinitionRegistry::global()

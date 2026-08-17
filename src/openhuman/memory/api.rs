@@ -81,10 +81,15 @@ pub use tinymemory_api::{
 /// The inbound half of the seam: the only two `tinymemory_api::host` types that
 /// cross the bus, rather than the whole engine-embedding namespace.
 ///
-/// `modules/memory_host.rs` serves both — [`MemoryEvent`] is what the module
-/// publishes back into the host's event bus, and [`SpacyResponse`] answers the
-/// module's NLP callback. The rest of `tinymemory_api::host` is the in-process
-/// engine seam and must be named on the crate.
+/// `modules/memory_host.rs` serves two of them — [`MemoryEvent`] is what the
+/// module publishes back into the host's event bus, and [`SpacyResponse`]
+/// answers the module's NLP callback. [`EvidenceRef`] joined them with the
+/// `Profile` capability family: it is not a callback type, but it is a field of
+/// `provider::profile::ProfileFacet`, so it crosses the bus in both directions
+/// whenever a facet does. That is the same rule the rest of this list follows —
+/// what actually crosses — and it is why the entry is here rather than being
+/// named on the crate at each call site. The rest of `tinymemory_api::host` is
+/// the in-process engine seam and must still be named on the crate.
 pub mod host {
-    pub use tinymemory_api::host::{MemoryEvent, SpacyResponse};
+    pub use tinymemory_api::host::{EvidenceRef, MemoryEvent, SpacyResponse};
 }

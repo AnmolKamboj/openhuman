@@ -5,8 +5,8 @@
 
 use crate::openhuman::config::rpc as config_rpc;
 use crate::openhuman::memory::sync::composio;
-use crate::openhuman::memory::sync_events::{emit_sync_stage, MemorySyncStage, MemorySyncTrigger};
 use crate::rpc::RpcOutcome;
+use tinymemory_core::sync_events::{emit_sync_stage, MemorySyncStage, MemorySyncTrigger};
 
 /// Parameters for `memory_sync_channel`.
 #[derive(Debug, serde::Deserialize)]
@@ -162,7 +162,7 @@ async fn spawn_manual_sync(requested_connection: Option<String>) -> Result<(), S
                 None, // provider-level composio sync — not a memory-source row
             );
 
-            match crate::openhuman::memory::tinycortex::run_composio_connection(
+            match tinymemory_core::tinycortex::run_composio_connection(
                 &target.toolkit,
                 &target.connection_id,
                 &config,
@@ -209,7 +209,7 @@ async fn spawn_manual_sync(requested_connection: Option<String>) -> Result<(), S
 /// in-flight document, queue depth, and the most recent completion. Read-only,
 /// safe to poll.
 pub async fn memory_ingestion_status() -> Result<RpcOutcome<IngestionStatusResult>, String> {
-    let snapshot = match crate::openhuman::memory::global::client_if_ready() {
+    let snapshot = match tinymemory_core::global::client_if_ready() {
         Some(c) => c.ingestion_state().snapshot(),
         // Memory not yet initialised — report idle, no in-flight job.
         None => Default::default(),
@@ -248,9 +248,9 @@ mod tests {
         LOCK.get_or_init(|| std::sync::Mutex::new(()))
     }
 
-    fn ensure_memory_client() -> crate::openhuman::memory::store::MemoryClientRef {
+    fn ensure_memory_client() -> tinymemory_core::store::MemoryClientRef {
         crate::openhuman::memory::ops::ensure_shared_memory_client();
-        crate::openhuman::memory::global::client().expect("memory client")
+        tinymemory_core::global::client().expect("memory client")
     }
 
     struct ChannelCapture {

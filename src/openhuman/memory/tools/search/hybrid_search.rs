@@ -8,14 +8,12 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 use std::fmt::Write;
-use std::sync::Arc;
 
-use crate::openhuman::config::rpc as config_rpc;
-use crate::openhuman::inference::embeddings::{provider_from_config, EmbeddingProvider};
+use crate::openhuman::memory::api::provider::MemoryProvider;
+use crate::openhuman::memory::api::types::MemoryItemKind;
+use crate::openhuman::memory::ops::guard::active_memory_guard;
 use crate::openhuman::tools::traits::{Tool, ToolResult};
 use tinycortex::memory::WeightProfile;
-use tinymemory_core::store::types::MemoryItemKind;
-use tinymemory_core::store::UnifiedMemory;
 
 pub struct MemoryHybridSearchTool;
 
@@ -130,21 +128,18 @@ impl Tool for MemoryHybridSearchTool {
             limit,
         );
 
-        let config = config_rpc::load_config_with_timeout()
+        // Reads through the bound driver. This used to call
+        // `UnifiedMemory::new(&config.workspace_dir, …)` — constructing a
+        // *whole second engine* over the workspace the loaded module already
+        // owns, the most severe instance of the split brain this port removes.
+        let guard = active_memory_guard()
             .await
-            .map_err(|e| anyhow::anyhow!("memory_hybrid_search: load config failed: {e}"))?;
-
-        let embedder: Arc<dyn EmbeddingProvider> = Arc::from(
-            provider_from_config(&config)
-                .map_err(|e| anyhow::anyhow!("memory_hybrid_search: embedding provider: {e}"))?,
-        );
-
-        let memory = UnifiedMemory::new(
-            &config.workspace_dir,
-            embedder,
-            config.memory.sqlite_open_timeout_secs,
-        )
-        .map_err(|e| anyhow::anyhow!("memory_hybrid_search: open store failed: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("memory_hybrid_search: {e}"))?;
+        let retrieval = guard.as_retrieval().ok_or_else(|| {
+            anyhow::anyhow!(
+                "memory_hybrid_search: memory driver does not support the retrieval family"
+            )
+        })?;
 
         // Self-echo guard (agent-agnostic, mirrors `UnifiedMemory::recall`):
         // exclude documents auto-saved for the ambient chat thread (set by
@@ -158,11 +153,11 @@ impl Tool for MemoryHybridSearchTool {
                 "[tool][memory_hybrid_search] applying same-session exclusion exclude_session_id={excluded}"
             );
         }
-        let hits = memory
-            .query_namespace_hits_excluding_session(
+        let hits = retrieval
+            .recall_namespace_scored(
                 &parsed.namespace,
                 &parsed.query,
-                limit,
+                limit as usize,
                 exclude_session_id.as_deref(),
             )
             .await

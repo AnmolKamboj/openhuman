@@ -21,16 +21,21 @@ use crate::openhuman::memory::api::provider::types::{
     MaintenanceReport, SnapshotRef, SourceItem, SourceScope,
 };
 use crate::openhuman::memory::api::provider::{
-    MemoryCore, MemoryDiff, MemoryDocuments, MemoryEntities, MemoryGoals, MemoryGraph,
-    MemoryIngest, MemoryMaintenance, MemoryPortability, MemoryProvider, MemoryRecall,
-    MemorySourceSink, MemoryToolMemory, MemoryTree,
+    AddressBookSeedOutcome, ChunkDetail, ChunkEmbedding, ChunkQuery, CoverWindowQuery, EntityMatch,
+    FacetType, FastRetrieveQuery, MemoryChunks, MemoryCore, MemoryDiff, MemoryDocuments,
+    MemoryEntities, MemoryEpisodic, MemoryGoals, MemoryGraph, MemoryIngest, MemoryMaintenance,
+    MemoryPeople, MemoryPortability, MemoryProfile, MemoryProvider, MemoryRecall, MemoryRetrieval,
+    MemorySourceSink, MemoryToolMemory, MemoryTree, PersonHandle, PersonInteraction, PersonRecord,
+    PersonScore, ProfileFacet, RankedPerson, ResolvedPerson, RetrievalHit, RetrievalResponse,
+    SourceRetrievalQuery, UserState,
 };
 use crate::openhuman::memory::api::recall::OwnedRecallOpts;
 use crate::openhuman::memory::api::tool_memory::ToolMemoryRule;
 use crate::openhuman::memory::api::tree::{IngestRequest, QueryResult, TreeStatus};
 use crate::openhuman::memory::api::types::{
     GraphRelationRecord, MemoryCategory, MemoryEntry, MemoryKvRecord, MemoryTaint,
-    NamespaceDocumentInput, NamespaceRetrievalContext, NamespaceSummary, StoredMemoryDocument,
+    NamespaceDocumentInput, NamespaceMemoryHit, NamespaceRetrievalContext, NamespaceSummary,
+    StoredMemoryDocument,
 };
 use async_trait::async_trait;
 
@@ -44,6 +49,15 @@ pub struct Call {
     pub taint: Option<MemoryTaint>,
     /// Whether the method received a `Some(scope)`.
     pub scoped: Option<bool>,
+}
+
+/// The scope's allow list rendered for assertions, sorted for determinism.
+fn rendered_scope(scope: Option<&SourceScope>) -> Option<String> {
+    scope.map(|s| {
+        let mut allow = s.allow.clone();
+        allow.sort();
+        allow.join(",")
+    })
 }
 
 impl Call {
@@ -696,5 +710,364 @@ impl MemoryProvider for RecordingProvider {
     }
     fn as_maintenance(&self) -> Option<&dyn MemoryMaintenance> {
         Some(self)
+    }
+    fn as_people(&self) -> Option<&dyn MemoryPeople> {
+        Some(self)
+    }
+    fn as_chunks(&self) -> Option<&dyn MemoryChunks> {
+        Some(self)
+    }
+    fn as_retrieval(&self) -> Option<&dyn MemoryRetrieval> {
+        Some(self)
+    }
+    fn as_profile(&self) -> Option<&dyn MemoryProfile> {
+        Some(self)
+    }
+    fn as_episodic(&self) -> Option<&dyn MemoryEpisodic> {
+        Some(self)
+    }
+}
+
+#[async_trait]
+impl MemoryEpisodic for RecordingProvider {
+    async fn insert_turn(
+        &self,
+        turn: &crate::openhuman::memory::api::provider::episodic::EpisodicTurn,
+    ) -> Result<i64, MemoryError> {
+        // Records the turn text, so a guard that failed to redact one would be
+        // visible here rather than only in a live store.
+        self.record(Call {
+            method: "episodic.insert_turn".into(),
+            content: Some(turn.content.clone()),
+            taint: None,
+            scoped: None,
+        });
+        Ok(1)
+    }
+
+    async fn session_turns(
+        &self,
+        _session_id: &str,
+    ) -> Result<Vec<crate::openhuman::memory::api::provider::episodic::EpisodicTurn>, MemoryError>
+    {
+        self.record(Call::plain("episodic.session_turns"));
+        Ok(vec![])
+    }
+
+    async fn open_segment(
+        &self,
+        _session_id: &str,
+    ) -> Result<
+        Option<crate::openhuman::memory::api::provider::episodic::ConversationSegment>,
+        MemoryError,
+    > {
+        self.record(Call::plain("episodic.open_segment"));
+        Ok(None)
+    }
+
+    async fn create_segment(
+        &self,
+        _segment_id: &str,
+        _session_id: &str,
+        _namespace: &str,
+        _start_episodic_id: i64,
+        _start_timestamp: f64,
+        _now: f64,
+    ) -> Result<(), MemoryError> {
+        self.record(Call::plain("episodic.create_segment"));
+        Ok(())
+    }
+
+    async fn append_turn(
+        &self,
+        _segment_id: &str,
+        _episodic_id: i64,
+        _timestamp: f64,
+        _now: f64,
+    ) -> Result<(), MemoryError> {
+        self.record(Call::plain("episodic.append_turn"));
+        Ok(())
+    }
+
+    async fn close_segment(&self, _segment_id: &str, _now: f64) -> Result<(), MemoryError> {
+        self.record(Call::plain("episodic.close_segment"));
+        Ok(())
+    }
+
+    async fn set_segment_summary(
+        &self,
+        _segment_id: &str,
+        summary: &str,
+        _now: f64,
+    ) -> Result<(), MemoryError> {
+        self.record(Call {
+            method: "episodic.set_segment_summary".into(),
+            content: Some(summary.to_string()),
+            taint: None,
+            scoped: None,
+        });
+        Ok(())
+    }
+
+    async fn upsert_segment_embedding(
+        &self,
+        _segment_id: &str,
+        _model_signature: &str,
+        _embedding: &[f32],
+        _created_at: f64,
+    ) -> Result<(), MemoryError> {
+        self.record(Call::plain("episodic.upsert_segment_embedding"));
+        Ok(())
+    }
+}
+#[async_trait]
+impl MemoryProfile for RecordingProvider {
+    async fn list_active_facets(&self) -> Result<Vec<ProfileFacet>, MemoryError> {
+        self.record(Call::plain("profile.list_active_facets"));
+        Ok(vec![])
+    }
+    async fn list_all_facets(&self) -> Result<Vec<ProfileFacet>, MemoryError> {
+        self.record(Call::plain("profile.list_all_facets"));
+        Ok(vec![])
+    }
+    async fn get_facet(&self, _key: &str) -> Result<Option<ProfileFacet>, MemoryError> {
+        self.record(Call::plain("profile.get_facet"));
+        Ok(None)
+    }
+    async fn facets_by_type(
+        &self,
+        _facet_type: FacetType,
+    ) -> Result<Vec<ProfileFacet>, MemoryError> {
+        self.record(Call::plain("profile.facets_by_type"));
+        Ok(vec![])
+    }
+    async fn upsert_facet(&self, _facet: &ProfileFacet) -> Result<(), MemoryError> {
+        self.record(Call::plain("profile.upsert_facet"));
+        Ok(())
+    }
+    async fn upsert_provider_facet(
+        &self,
+        _facet_id: &str,
+        _facet_type: FacetType,
+        _key: &str,
+        _value: &str,
+        _confidence: f64,
+        _segment_id: Option<&str>,
+        _observed_at: f64,
+    ) -> Result<(), MemoryError> {
+        self.record(Call::plain("profile.upsert_provider_facet"));
+        Ok(())
+    }
+    async fn set_facet_user_state(
+        &self,
+        _key: &str,
+        _user_state: UserState,
+    ) -> Result<bool, MemoryError> {
+        self.record(Call::plain("profile.set_facet_user_state"));
+        Ok(false)
+    }
+    async fn delete_facet(&self, _key: &str) -> Result<bool, MemoryError> {
+        self.record(Call::plain("profile.delete_facet"));
+        Ok(false)
+    }
+    async fn delete_facet_by_id(&self, _facet_id: &str) -> Result<bool, MemoryError> {
+        self.record(Call::plain("profile.delete_facet_by_id"));
+        Ok(false)
+    }
+    async fn drop_facets_below(&self, _threshold: f64) -> Result<usize, MemoryError> {
+        self.record(Call::plain("profile.drop_facets_below"));
+        Ok(0)
+    }
+    async fn workflow_identity_matches(&self, _pattern: &str, _value: &str) -> bool {
+        self.record(Call::plain("profile.workflow_identity_matches"));
+        false
+    }
+}
+
+#[async_trait]
+impl MemoryChunks for RecordingProvider {
+    async fn list_chunks(
+        &self,
+        _query: &ChunkQuery,
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<Chunk>, MemoryError> {
+        self.record(Call {
+            method: "chunks.list_chunks".into(),
+            content: rendered_scope(scope),
+            taint: None,
+            scoped: Some(scope.is_some()),
+        });
+        Ok(vec![])
+    }
+
+    async fn get_chunk(&self, _chunk_id: &str) -> Result<Option<Chunk>, MemoryError> {
+        self.record(Call::plain("chunks.get_chunk"));
+        Ok(None)
+    }
+
+    async fn chunk_detail(&self, _chunk_id: &str) -> Result<Option<ChunkDetail>, MemoryError> {
+        self.record(Call::plain("chunks.chunk_detail"));
+        Ok(None)
+    }
+
+    async fn storage_kinds(&self) -> Result<Vec<String>, MemoryError> {
+        self.record(Call::plain("chunks.storage_kinds"));
+        Ok(vec![])
+    }
+
+    async fn chunk_embeddings(
+        &self,
+        _chunk_ids: &[String],
+        _model_signature: &str,
+    ) -> Result<Vec<ChunkEmbedding>, MemoryError> {
+        self.record(Call::plain("chunks.chunk_embeddings"));
+        Ok(vec![])
+    }
+}
+
+#[async_trait]
+impl MemoryRetrieval for RecordingProvider {
+    async fn fast_retrieve(
+        &self,
+        _query: &str,
+        _options: FastRetrieveQuery,
+        scope: Option<&SourceScope>,
+    ) -> Result<RetrievalResponse, MemoryError> {
+        self.record(Call {
+            method: "retrieval.fast_retrieve".into(),
+            content: rendered_scope(scope),
+            taint: None,
+            scoped: Some(scope.is_some()),
+        });
+        Ok(RetrievalResponse::default())
+    }
+
+    async fn cover_window(
+        &self,
+        _window: &CoverWindowQuery,
+        scope: Option<&SourceScope>,
+    ) -> Result<RetrievalResponse, MemoryError> {
+        self.record(Call {
+            method: "retrieval.cover_window".into(),
+            content: rendered_scope(scope),
+            taint: None,
+            scoped: Some(scope.is_some()),
+        });
+        Ok(RetrievalResponse::default())
+    }
+
+    async fn retrieve_source(
+        &self,
+        _query: &SourceRetrievalQuery,
+        scope: Option<&SourceScope>,
+    ) -> Result<RetrievalResponse, MemoryError> {
+        self.record(Call {
+            method: "retrieval.retrieve_source".into(),
+            content: rendered_scope(scope),
+            taint: None,
+            scoped: Some(scope.is_some()),
+        });
+        Ok(RetrievalResponse::default())
+    }
+
+    async fn retrieve_children(
+        &self,
+        _node_id: &str,
+        _max_depth: u32,
+        _query: Option<&str>,
+        _limit: Option<usize>,
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<RetrievalHit>, MemoryError> {
+        self.record(Call {
+            method: "retrieval.retrieve_children".into(),
+            content: rendered_scope(scope),
+            taint: None,
+            scoped: Some(scope.is_some()),
+        });
+        Ok(vec![])
+    }
+
+    async fn retrieve_leaves(
+        &self,
+        _chunk_ids: &[String],
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<RetrievalHit>, MemoryError> {
+        self.record(Call {
+            method: "retrieval.retrieve_leaves".into(),
+            content: rendered_scope(scope),
+            taint: None,
+            scoped: Some(scope.is_some()),
+        });
+        Ok(vec![])
+    }
+
+    async fn recall_namespace_scored(
+        &self,
+        _namespace: &str,
+        _query: &str,
+        _limit: usize,
+        _exclude_session_id: Option<&str>,
+    ) -> Result<Vec<NamespaceMemoryHit>, MemoryError> {
+        self.record(Call::plain("retrieval.recall_namespace_scored"));
+        Ok(vec![])
+    }
+
+    async fn search_entities(
+        &self,
+        _query: &str,
+        _kinds: Option<&[String]>,
+        _limit: usize,
+    ) -> Result<Vec<EntityMatch>, MemoryError> {
+        self.record(Call::plain("retrieval.search_entities"));
+        Ok(vec![])
+    }
+}
+
+#[async_trait]
+impl MemoryPeople for RecordingProvider {
+    async fn list_people(&self, _limit: Option<usize>) -> Result<Vec<RankedPerson>, MemoryError> {
+        self.record(Call::plain("people.list_people"));
+        Ok(vec![])
+    }
+
+    async fn get_person(&self, _person_id: &str) -> Result<Option<PersonRecord>, MemoryError> {
+        self.record(Call::plain("people.get_person"));
+        Ok(None)
+    }
+
+    async fn resolve_handle(
+        &self,
+        _handle: &PersonHandle,
+        _create_if_missing: bool,
+    ) -> Result<Option<ResolvedPerson>, MemoryError> {
+        self.record(Call::plain("people.resolve_handle"));
+        Ok(None)
+    }
+
+    async fn add_handle_alias(
+        &self,
+        _person_id: &str,
+        _handle: &PersonHandle,
+    ) -> Result<(), MemoryError> {
+        self.record(Call::plain("people.add_handle_alias"));
+        Ok(())
+    }
+
+    async fn score_person(&self, _person_id: &str) -> Result<Option<PersonScore>, MemoryError> {
+        self.record(Call::plain("people.score_person"));
+        Ok(None)
+    }
+
+    async fn record_interaction(
+        &self,
+        _interaction: &PersonInteraction,
+    ) -> Result<(), MemoryError> {
+        self.record(Call::plain("people.record_interaction"));
+        Ok(())
+    }
+
+    async fn seed_from_address_book(&self) -> Result<AddressBookSeedOutcome, MemoryError> {
+        self.record(Call::plain("people.seed_from_address_book"));
+        Ok(AddressBookSeedOutcome::default())
     }
 }

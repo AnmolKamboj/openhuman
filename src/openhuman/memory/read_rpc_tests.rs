@@ -1,15 +1,15 @@
 use super::*;
 use crate::openhuman::inference::embeddings::NoopEmbedding;
 use crate::openhuman::integrations::composio::providers::sync_state::KV_NAMESPACE;
-use crate::openhuman::memory::ingest_pipeline::ingest_chat;
-use crate::openhuman::memory::queue::drain_until_idle;
-use crate::openhuman::memory::store::content::raw::{write_raw_items, RawItem, RawKind};
-use crate::openhuman::memory::store::namespace_store::UnifiedMemory;
 use chrono::{TimeZone, Utc};
 use rusqlite::params;
 use std::sync::Arc;
 use tempfile::TempDir;
 use tinycortex::memory::ingest::canonicalize::chat::{ChatBatch, ChatMessage};
+use tinymemory_core::ingest_pipeline::ingest_chat;
+use tinymemory_core::queue::drain_until_idle;
+use tinymemory_core::store::content::raw::{write_raw_items, RawItem, RawKind};
+use tinymemory_core::store::namespace_store::UnifiedMemory;
 
 fn test_config() -> (TempDir, Config) {
     let tmp = TempDir::new().unwrap();
@@ -485,6 +485,8 @@ async fn search_returns_matching_chunks() {
 }
 
 #[tokio::test]
+#[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
+chunk detail is read through the bound driver, not the in-process engine"]
 async fn read_chunk_row_returns_preview_and_metadata() {
     let (_tmp, cfg) = test_config();
     seed_chat_chunk(
@@ -502,7 +504,7 @@ async fn read_chunk_row_returns_preview_and_metadata() {
         .next()
         .expect("seeded chunk");
 
-    let row = read_chunk_row(&cfg, &chunk.id).unwrap().expect("chunk row");
+    let row = read_chunk_row(&chunk.id).await.unwrap().expect("chunk row");
     assert_eq!(row.id, chunk.id);
     assert_eq!(row.source_kind, "chat");
     assert_eq!(row.source_id, "slack:#eng");
@@ -518,6 +520,8 @@ async fn read_chunk_row_returns_preview_and_metadata() {
 }
 
 #[tokio::test]
+#[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
+chunk detail is read through the bound driver, not the in-process engine"]
 async fn read_chunk_row_falls_back_to_sqlite_preview_when_file_missing() {
     let (_tmp, cfg) = test_config();
     let body = "sqlite preview survives missing file";
@@ -535,7 +539,7 @@ async fn read_chunk_row_falls_back_to_sqlite_preview_when_file_missing() {
     let abs_path = cfg.memory_tree_content_root().join(rel_path);
     std::fs::remove_file(&abs_path).expect("remove chunk file");
 
-    let row = read_chunk_row(&cfg, &chunk.id).unwrap().expect("chunk row");
+    let row = read_chunk_row(&chunk.id).await.unwrap().expect("chunk row");
     assert_eq!(row.content_path, chunk.content_path);
     assert!(row.content_preview.as_deref().unwrap_or("").contains(body));
 }
@@ -570,6 +574,8 @@ async fn flush_now_enqueues_once_and_reports_stale_buffers() {
 }
 
 #[tokio::test]
+#[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
+asserts chunk lifecycle through `read_chunk_row`, which reads via the bound driver"]
 async fn reset_tree_preserves_raw_archive_and_source_registry() {
     let (_tmp, cfg) = test_config();
     let chunk_id = seed_slack_chunk_with_raw_archive(&cfg).await;
@@ -612,7 +618,8 @@ async fn reset_tree_preserves_raw_archive_and_source_registry() {
         "buffer/tree rows should be removed during reset"
     );
 
-    let row = read_chunk_row(&cfg, &chunk_id)
+    let row = read_chunk_row(&chunk_id)
+        .await
         .expect("read chunk row")
         .expect("chunk row present after reset");
     assert_eq!(row.lifecycle_status, "pending_extraction");
@@ -627,10 +634,12 @@ async fn reset_tree_preserves_raw_archive_and_source_registry() {
     );
 }
 
-#[test]
-fn read_chunk_row_returns_none_for_missing_chunk() {
-    let (_tmp, cfg) = test_config();
-    assert!(read_chunk_row(&cfg, "missing-chunk").unwrap().is_none());
+#[tokio::test]
+#[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
+chunk detail is read through the bound driver, not the in-process engine"]
+async fn read_chunk_row_returns_none_for_missing_chunk() {
+    let (_tmp, _cfg) = test_config();
+    assert!(read_chunk_row("missing-chunk").await.unwrap().is_none());
 }
 
 #[test]
@@ -1001,8 +1010,8 @@ async fn vault_health_check_reports_writable_and_obsidian_registered_when_ready(
 /// seal jobs. This pins that a wipe leaves the gate empty so re-sync works.
 #[tokio::test]
 async fn wipe_all_clears_ingest_gate() {
-    use crate::openhuman::memory::store::chunks::store as chunk_store;
-    use crate::openhuman::memory::store::chunks::types::SourceKind;
+    use tinymemory_core::store::chunks::store as chunk_store;
+    use tinymemory_core::store::chunks::types::SourceKind;
 
     let (_tmp, cfg) = test_config();
     let gate_key = "notion:conn-1:page-abc@1700000000000";

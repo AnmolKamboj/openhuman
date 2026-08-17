@@ -112,11 +112,20 @@ No decorator can wrap an `Arc<Mutex<rusqlite::Connection>>`. These reach the
 profile / facet tables beneath all seven policy steps. **This is why "the guard
 is the only path" is not yet a true invariant.**
 
+> **Update (memory module port).** The `agent/learning/*` facet bypasses are
+> gone. They were justified by "the contract has no profile family"; it now has
+> [`MemoryProfile`], and the learning subsystem reads and writes facets through
+> the bound driver, guard included. `agent/learning/schemas.rs` and
+> `agent/learning/tools.rs` no longer appear below at all, and
+> `agent/learning/startup.rs` keeps two entries: a `#[cfg(test)]`-only
+> construction the scanner cannot brace-track, and a boot-time
+> `binding::for_workspace(` that resolves a **guard** (not a raw client) for a
+> known workspace, exactly as `active_memory_guard`'s own no-ambient-context
+> fallback does.
+
 | Path | Sites |
 | --- | --- |
 | `memory/sync/composio/providers/profile.rs` | 5 |
-| `agent/learning/schemas.rs` | 3 |
-| `agent/learning/tools.rs` | 1 |
 | `agent/learning/startup.rs` | 2 |
 | `memory/store/client_tests.rs` | 2 (test) |
 | `memory/store/golden.rs` | 2 (test infrastructure — see below) |

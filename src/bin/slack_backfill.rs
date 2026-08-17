@@ -183,8 +183,9 @@ async fn main() -> Result<()> {
     // Bootstrap the memory global so `SyncState` KV reads/writes work
     // from inside `SlackProvider::sync()`. `init` is idempotent and
     // returns the (possibly pre-existing) client.
-    memory::global::init(config.workspace_dir.clone())
-        .map_err(|e| anyhow::anyhow!("[slack_backfill] memory::global::init failed: {e}"))?;
+    tinymemory_core::global::init(config.workspace_dir.clone()).map_err(|e| {
+        anyhow::anyhow!("[slack_backfill] tinymemory_core::global::init failed: {e}")
+    })?;
 
     // Register the default Composio providers (gmail, notion, slack).
     // Idempotent — safe even if called twice.
@@ -203,8 +204,8 @@ async fn main() -> Result<()> {
 
     if cli.seal_probe {
         use chrono::{Duration, Utc};
-        use openhuman_core::openhuman::memory::ingest_pipeline::ingest_chat;
         use tinycortex::memory::ingest::canonicalize::chat::{ChatBatch, ChatMessage};
+        use tinymemory_core::ingest_pipeline::ingest_chat;
 
         let connection_id = cli.connection_id.clone().ok_or_else(|| {
             anyhow::anyhow!(
@@ -441,7 +442,7 @@ async fn main() -> Result<()> {
         let started = Instant::now();
         let mut total_buckets = 0usize;
         for conn in &slack_conns {
-            match openhuman_core::openhuman::memory::tinycortex::run_slack_search_backfill(
+            match tinymemory_core::tinycortex::run_slack_search_backfill(
                 &conn.id,
                 cli.days,
                 config.as_ref(),
@@ -516,7 +517,7 @@ async fn main() -> Result<()> {
     for conn in &candidates {
         if cli.reset_state {
             let key = format!("slack:{}", conn.id);
-            match memory::global::client_if_ready() {
+            match tinymemory_core::global::client_if_ready() {
                 Some(mem) => match mem.kv_delete(Some("composio-sync-state"), &key).await {
                     Ok(true) => log::info!(
                         "[slack_backfill] reset SyncState for connection={} (cleared cursors)",
@@ -536,7 +537,7 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        match openhuman_core::openhuman::memory::tinycortex::run_composio_connection(
+        match tinymemory_core::tinycortex::run_composio_connection(
             "slack",
             &conn.id,
             config.as_ref(),

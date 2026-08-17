@@ -23,7 +23,7 @@ use crate::openhuman::memory::guard::test_support::{
     RecordingProvider,
 };
 use crate::openhuman::memory::guard::GuardPolicy;
-use crate::openhuman::memory::source_scope::with_source_scope;
+use tinymemory_core::source_scope::with_source_scope;
 
 fn budgeted(recall_max_chars: usize, capture_max_chars: usize) -> GuardPolicy {
     GuardPolicy::new(
@@ -58,7 +58,7 @@ async fn guard_passes_audit_provider_against_its_own_capabilities() {
 }
 
 #[tokio::test]
-async fn guard_accessor_presence_mirrors_inner_provides_for_all_ten_families() {
+async fn guard_accessor_presence_mirrors_inner_provides_for_every_family() {
     let (_driver, guard) = guarded(embedded_policy());
     for capability in Capability::ALL {
         assert!(

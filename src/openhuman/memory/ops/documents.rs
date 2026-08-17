@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::openhuman::memory::api::provider::MemoryProvider;
 use crate::openhuman::memory::api::types::NamespaceDocumentInput;
-use crate::openhuman::memory::store::NamespaceRetrievalContext;
 use crate::openhuman::memory::{
     ApiEnvelope, DeleteDocumentRequest, DeleteDocumentResponse, EmptyRequest, ListDocumentsRequest,
     ListDocumentsResponse, ListNamespacesResponse, MemoryIngestionConfig, MemoryIngestionResult,
@@ -16,6 +15,7 @@ use crate::openhuman::memory::{
     RecallMemoriesResponse,
 };
 use crate::rpc::RpcOutcome;
+use tinymemory_core::store::NamespaceRetrievalContext;
 
 use super::envelope::{envelope, error_envelope, memory_counts};
 use super::guard::active_memory_guard;
@@ -379,7 +379,7 @@ pub async fn memory_init(
     let _ = request.jwt_token; // accepted but unused — memory is local-only
     let workspace_dir = current_workspace_dir().await?;
     // Initialise (or return existing) global singleton.
-    let _ = super::super::global::init(workspace_dir.clone())?;
+    let _ = tinymemory_core::global::init(workspace_dir.clone())?;
     let memory_dir = workspace_dir.join("memory");
     Ok(envelope(
         MemoryInitResponse {

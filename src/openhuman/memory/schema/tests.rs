@@ -1,5 +1,4 @@
 use super::definitions::NAMESPACE;
-use super::*;
 use super::{all_controller_schemas, all_registered_controllers, schemas};
 
 #[test]

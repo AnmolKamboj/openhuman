@@ -19,8 +19,8 @@ use openhuman_core::openhuman::config::Config;
 use openhuman_core::openhuman::security::credentials::{
     AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
 };
-use openhuman_core::openhuman::memory::global as memory_global;
-use openhuman_core::openhuman::memory::queue::drain_until_idle;
+use tinymemory_core::global as memory_global;
+use tinymemory_core::queue::drain_until_idle;
 use openhuman_core::openhuman::memory::sync::composio::bus::{
     ComposioConfigChangedSubscriber, ComposioConnectionCreatedSubscriber, ComposioTriggerSubscriber,
 };
@@ -794,7 +794,7 @@ async fn gmail_sync_stops_after_an_all_already_synced_page() {
         state.mark_synced(format!("gmail-cap-msg-{i}"));
     }
     let state_adapter =
-        openhuman_core::openhuman::memory::tinycortex::HostSyncAdapter::new(memory.clone());
+        tinymemory_core::tinycortex::HostSyncAdapter::new(memory.clone());
     state
         .save(&state_adapter)
         .await

@@ -5,7 +5,6 @@ use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
 use crate::openhuman::agent::host_runtime::{NativeRuntime, RuntimeAdapter};
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::Memory;
 use crate::openhuman::runtime::node::types::{ExecuteToolOutcome, RuntimeToolSummary};
 use crate::openhuman::security::{CommandClass, SecurityPolicy};
 use crate::openhuman::tools::{self, PermissionLevel, Tool, ToolCallOptions, ToolScope};
@@ -93,36 +92,12 @@ pub fn build_runtime_tools(config: &Config) -> Result<Vec<Box<dyn Tool>>, String
     )
     .map_err(|e| e.to_string())?;
     let runtime: Arc<dyn RuntimeAdapter> = Arc::new(NativeRuntime::new());
-    let local_embedding = config.workload_local_model("embeddings");
-    let embedding_api_key = crate::openhuman::inference::embeddings::resolve_api_key(
-        config,
-        &config.memory.embedding_provider,
-    );
-    trace!("[runtime_node::ops] build_runtime_tools: create_memory_with_local_ai");
-    let memory: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory::store::create_memory_with_local_ai(
-            &config.memory,
-            local_embedding.as_deref(),
-            &embedding_api_key,
-            &config.embedding_routes,
-            Some(&config.storage.provider.config),
-            &config.workspace_dir,
-        )
-        .map_err(|error| {
-            debug!(
-                error = %error,
-                "[runtime_node::ops] build_runtime_tools: create_memory_with_local_ai failed"
-            );
-            error.to_string()
-        })?,
-    );
     trace!("[runtime_node::ops] build_runtime_tools: tools::all_tools_with_runtime");
     let built = tools::all_tools_with_runtime(
         Arc::new(config.clone()),
         &security,
         runtime,
         audit,
-        memory,
         &config.browser,
         &config.http_request,
         &config.action_dir,

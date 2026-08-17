@@ -277,14 +277,14 @@ pub fn admit(cfg: &MemorySubsystemConfig) -> Result<(String, DriverClass), Fallb
 /// Build the binding for a workspace. Infallible by design: an inadmissible
 /// driver falls back to the placeholder rather than leaving the slot empty
 /// (kernel.md §3.7 — "logged loudly, surfaced in status, never silent").
-fn build(workspace_dir: &Path, cfg: &MemorySubsystemConfig) -> MemoryBinding {
+fn build(workspace_dir: &Path, memory_subdir: &str, cfg: &MemorySubsystemConfig) -> MemoryBinding {
     match admit(cfg) {
         Ok((driver_id, class)) => {
             let (provider, reported_class): (Arc<dyn MemoryProvider>, DriverClass) =
                 if class == DriverClass::Null {
                     (Arc::new(NullMemoryProvider::new()), DriverClass::Null)
                 } else {
-                    module_provider(workspace_dir)
+                    module_provider(workspace_dir, memory_subdir)
                 };
             let binding = bind_provider(provider, driver_id, reported_class, None);
             log::info!(
@@ -329,15 +329,27 @@ fn build(workspace_dir: &Path, cfg: &MemorySubsystemConfig) -> MemoryBinding {
 }
 
 #[cfg(all(feature = "modules", not(test)))]
-fn module_provider(_workspace_dir: &Path) -> (Arc<dyn MemoryProvider>, DriverClass) {
+fn module_provider(
+    _workspace_dir: &Path,
+    memory_subdir: &str,
+) -> (Arc<dyn MemoryProvider>, DriverClass) {
+    // The workspace itself still comes from the boot policy — the module is
+    // loaded once per process and captures it at setup. The **subtree** is per
+    // binding, and the module opens it on first use.
     (
-        Arc::new(crate::openhuman::modules::memory::ModuleMemoryProvider::from_boot_policy()),
+        Arc::new(
+            crate::openhuman::modules::memory::ModuleMemoryProvider::from_boot_policy()
+                .in_subdir(memory_subdir),
+        ),
         DriverClass::Module,
     )
 }
 
 #[cfg(all(feature = "modules", test))]
-fn module_provider(_workspace_dir: &Path) -> (Arc<dyn MemoryProvider>, DriverClass) {
+fn module_provider(
+    _workspace_dir: &Path,
+    memory_subdir: &str,
+) -> (Arc<dyn MemoryProvider>, DriverClass) {
     // Unit tests do not run the full boot sequence that publishes the module
     // policy. A native module is loaded once per process and therefore captures
     // the first workspace it receives. Pin every test binding to the same
@@ -358,13 +370,19 @@ fn module_provider(_workspace_dir: &Path) -> (Arc<dyn MemoryProvider>, DriverCla
             });
     }
     (
-        Arc::new(crate::openhuman::modules::memory::ModuleMemoryProvider::new(Arc::new(config))),
+        Arc::new(
+            crate::openhuman::modules::memory::ModuleMemoryProvider::new(Arc::new(config))
+                .in_subdir(memory_subdir),
+        ),
         DriverClass::Module,
     )
 }
 
 #[cfg(not(feature = "modules"))]
-fn module_provider(_workspace_dir: &Path) -> (Arc<dyn MemoryProvider>, DriverClass) {
+fn module_provider(
+    _workspace_dir: &Path,
+    _memory_subdir: &str,
+) -> (Arc<dyn MemoryProvider>, DriverClass) {
     log::warn!(
         "[memory:binding] the 'modules' feature is disabled; binding the null memory provider"
     );
@@ -416,7 +434,10 @@ pub(crate) fn bind_provider_for_test(
 /// Per-workspace binding cache. Same shape as
 /// `memory::people::store::STORES` — see the module docs for why this is a map
 /// and not a slot.
-type BindingCacheKey = (PathBuf, MemorySubsystemConfig);
+/// Keyed by workspace **and memory subtree**: a profile that opted into
+/// dedicated memory is a different store, so it must be a different binding.
+/// The subtree is `"memory"` for every ordinary caller.
+type BindingCacheKey = (PathBuf, String, MemorySubsystemConfig);
 static BINDINGS: OnceLock<RwLock<HashMap<BindingCacheKey, Arc<MemoryBinding>>>> = OnceLock::new();
 
 /// The bound memory driver for `workspace_dir`, constructing it on first use.
@@ -432,8 +453,30 @@ pub fn for_workspace(
     workspace_dir: &Path,
     cfg: &MemorySubsystemConfig,
 ) -> Result<Arc<MemoryBinding>, String> {
+    for_subtree(workspace_dir, "memory", cfg)
+}
+
+/// The bound memory driver for one **memory subtree** of `workspace_dir`.
+///
+/// `"memory"` is the shared tree and is what [`for_workspace`] passes;
+/// `"memory-<id>"` is a profile that opted into dedicated memory. Each subtree
+/// gets its own binding and therefore its own driver, which is the whole point
+/// — two profiles with dedicated memory must not see each other's entries.
+///
+/// # Errors
+///
+/// Only lock poisoning, as [`for_workspace`].
+pub fn for_subtree(
+    workspace_dir: &Path,
+    memory_subdir: &str,
+    cfg: &MemorySubsystemConfig,
+) -> Result<Arc<MemoryBinding>, String> {
     let cache = BINDINGS.get_or_init(Default::default);
-    let key = (workspace_dir.to_path_buf(), cfg.clone());
+    let key = (
+        workspace_dir.to_path_buf(),
+        memory_subdir.to_string(),
+        cfg.clone(),
+    );
     if let Some(binding) = cache
         .read()
         .map_err(|e| format!("[memory:binding] cache read lock poisoned: {e}"))?
@@ -442,7 +485,7 @@ pub fn for_workspace(
         return Ok(Arc::clone(binding));
     }
 
-    let binding = Arc::new(build(workspace_dir, cfg));
+    let binding = Arc::new(build(workspace_dir, memory_subdir, cfg));
 
     let mut guard = cache
         .write()

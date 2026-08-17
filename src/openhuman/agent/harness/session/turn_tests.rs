@@ -397,9 +397,8 @@ fn make_agent(visible_tool_names: Option<HashSet<String>>) -> Agent {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
-    );
+    let mem: Arc<dyn Memory> =
+        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
 
     let mut builder = Agent::builder()
         .chat_model(Arc::new(DummyProvider))
@@ -455,9 +454,8 @@ fn make_agent_with_builder_and_dispatcher(
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
-    );
+    let mem: Arc<dyn Memory> =
+        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
 
     Agent::builder()
         .chat_model(provider)
@@ -981,6 +979,7 @@ async fn turn_runs_full_tool_cycle_with_context_and_hooks() {
 
 #[tokio::test]
 async fn turn_triggers_configured_memory_agent_before_parent_prompt() {
+    crate::openhuman::memory::host_impls::install_for_tests();
     // The embedding seam fails loudly when unwired; before the memory
     // extraction this was a direct call and needed no setup.
     crate::openhuman::memory::host_impls::install_for_tests();
@@ -1022,9 +1021,8 @@ async fn turn_triggers_configured_memory_agent_before_parent_prompt() {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
-    );
+    let mem: Arc<dyn Memory> =
+        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
 
     let mut agent = Agent::builder()
         .chat_model(provider)
@@ -2164,7 +2162,7 @@ fn make_agent_with_memory(
 
 fn make_real_memory(workspace: &std::path::Path) -> Arc<dyn Memory> {
     use crate::openhuman::inference::embeddings::NoopEmbedding;
-    use crate::openhuman::memory::store::UnifiedMemory;
+    use tinymemory_core::store::UnifiedMemory;
     Arc::new(UnifiedMemory::new(workspace, Arc::new(NoopEmbedding), None).unwrap())
 }
 
@@ -2268,7 +2266,7 @@ async fn fetch_learned_context_returns_general_prefs_when_explicit_flag_on_learn
     // writes them). The explicit path now reads `user_pref_general`, not the
     // legacy `user_profile` pinned namespace.
     mem.store(
-        crate::openhuman::memory::preferences::USER_PREF_GENERAL_NAMESPACE,
+        tinymemory_core::preferences::USER_PREF_GENERAL_NAMESPACE,
         "package_manager",
         "Use pnpm for package management.",
         crate::openhuman::memory::MemoryCategory::Core,
@@ -2277,7 +2275,7 @@ async fn fetch_learned_context_returns_general_prefs_when_explicit_flag_on_learn
     .await
     .unwrap();
     mem.store(
-        crate::openhuman::memory::preferences::USER_PREF_GENERAL_NAMESPACE,
+        tinymemory_core::preferences::USER_PREF_GENERAL_NAMESPACE,
         "verbosity",
         "Keep replies terse.",
         crate::openhuman::memory::MemoryCategory::Core,
@@ -2362,7 +2360,7 @@ async fn fetch_learned_context_loads_general_prefs_when_learning_enabled() {
     let tmp = tempfile::TempDir::new().unwrap();
     let mem = make_real_memory(tmp.path());
     mem.store(
-        crate::openhuman::memory::preferences::USER_PREF_GENERAL_NAMESPACE,
+        tinymemory_core::preferences::USER_PREF_GENERAL_NAMESPACE,
         "tone",
         "Be concise and direct.",
         crate::openhuman::memory::MemoryCategory::Core,

@@ -31,6 +31,7 @@ pub mod guard;
 pub mod host;
 pub mod host_impls;
 pub mod ops;
+pub mod preferences;
 pub mod sync_events_bridge;
 // The consolidated `memory_query` agent tool and its six retrieval modes. Came
 // back from `tinymemory-core` with the rest of the agent tools — it is a `Tool`
@@ -76,21 +77,23 @@ mod tree_e2e_tests;
 //
 // `pub use … as …` rather than `pub mod` — these are other crates' modules now.
 // Every one of these was a `pub mod` here before the extraction.
-pub use tinymemory_core::{
-    chat, chat_host, composio_host, config_loader, embedding_adapter, embedding_host, events,
-    global, ingest_pipeline, ingestion, learning_candidate, nlp_host, observability, preferences,
-    queue, remember, rpc_models, scheduler_gate, search, source_scope, store, sync_events,
-    test_env_lock, thread_context, tinycortex, traits, tree_policy, tree_source, util,
-};
+// The engine's modules are **not** re-exported here any more.
+//
+// They used to be, under their historical `memory::…` paths, which made engine
+// access indistinguishable from host-local code at every call site: a line
+// reading `crate::openhuman::memory::store::chunks::…` never appeared in a
+// `tinymemory_core` grep, so the audit that scoped this port undercounted the
+// direct-engine surface roughly threefold. Every remaining caller now names
+// `tinymemory_core::` explicitly, so `grep tinymemory_core` is an honest
+// inventory of what still has to move behind the driver.
 
-pub use ingestion::{
-    ExtractedEntity, ExtractedRelation, ExtractionMode, IngestionJob, IngestionQueue,
-    IngestionState, IngestionStatusSnapshot, MemoryIngestionConfig, MemoryIngestionRequest,
-    MemoryIngestionResult, DEFAULT_MEMORY_EXTRACTION_MODEL,
-};
+// Flat *type* re-exports, kept while the module facade above is gone.
+//
+// These are types, not module trees: `memory::MemoryCategory` names one value
+// type, where `memory::store::…` opened the whole engine. They still have to
+// move to `memory::api`'s equivalents, but they hide nothing in the meantime.
 pub use ops as rpc;
 pub use ops::*;
-pub use rpc_models::*;
 pub use schemas::{
     all_controller_schemas as all_memory_controller_schemas,
     all_core_recall_controller_schemas as all_memory_core_recall_controller_schemas,
@@ -113,10 +116,18 @@ pub use schemas::{
     all_tool_memory_controller_schemas as all_memory_tool_memory_controller_schemas,
     all_tool_memory_registered_controllers as all_memory_tool_memory_registered_controllers,
 };
-pub use traits::{Memory, MemoryCategory, MemoryEntry, MemoryTaint, NamespaceSummary, RecallOpts};
+pub use tinymemory_core::ingestion::{
+    ExtractedEntity, ExtractedRelation, ExtractionMode, IngestionJob, IngestionQueue,
+    IngestionState, IngestionStatusSnapshot, MemoryIngestionConfig, MemoryIngestionRequest,
+    MemoryIngestionResult, DEFAULT_MEMORY_EXTRACTION_MODEL,
+};
+pub use tinymemory_core::rpc_models::*;
+pub use tinymemory_core::traits::{
+    Memory, MemoryCategory, MemoryEntry, MemoryTaint, NamespaceSummary, RecallOpts,
+};
 
 // Types that external tests and consumers historically imported from
 // `memory::*`. The definitions moved to sibling crates during the memory
 // refactor; these aliases keep the public surface stable.
-pub use store::types::NamespaceDocumentInput;
-pub use store::{MemoryClient, UnifiedMemory};
+pub use tinymemory_core::store::types::NamespaceDocumentInput;
+pub use tinymemory_core::store::{MemoryClient, UnifiedMemory};

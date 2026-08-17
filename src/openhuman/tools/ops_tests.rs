@@ -19,17 +19,6 @@ fn test_config(tmp: &TempDir) -> Config {
     }
 }
 
-fn test_memory(tmp: &TempDir) -> Arc<dyn Memory> {
-    let mem_cfg = MemoryConfig {
-        backend: "markdown".into(),
-        ..MemoryConfig::default()
-    };
-    // The embedding seam fails loudly when unwired; before the memory
-    // extraction this was a direct call and needed no setup.
-    crate::openhuman::memory::host_impls::install_for_tests();
-    Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap())
-}
-
 fn tool_names(tools: &[Box<dyn Tool>]) -> Vec<String> {
     tools.iter().map(|t| t.name().to_string()).collect()
 }
@@ -81,14 +70,12 @@ fn integration_test_config(tmp: &TempDir, backend_url: &str) -> Config {
 
 fn integration_tools_for_config(tmp: &TempDir, cfg: &Config) -> Vec<Box<dyn Tool>> {
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(tmp);
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
     all_tools(
         Arc::new(cfg.clone()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -120,14 +107,12 @@ fn all_tools_includes_spawn_subagent() {
     // in `agent::harness::subagent_runner` becomes unreachable.
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    // The embedding seam fails loudly when unwired — see `test_memory`.
+    // The embedding seam fails loudly when unwired.
     crate::openhuman::memory::host_impls::install_for_tests();
-    let mem_cfg = MemoryConfig {
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig {
         enabled: false,
@@ -142,7 +127,6 @@ fn all_tools_includes_spawn_subagent() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -164,7 +148,6 @@ fn all_tools_includes_spawn_subagent() {
 fn whatsapp_data_tools_present_when_channels_on() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig {
         enabled: false,
         allowed_domains: vec![],
@@ -177,7 +160,6 @@ fn whatsapp_data_tools_present_when_channels_on() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -205,7 +187,6 @@ fn whatsapp_data_tools_present_when_channels_on() {
 fn whatsapp_data_tools_absent_when_channels_off() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig {
         enabled: false,
         allowed_domains: vec![],
@@ -218,7 +199,6 @@ fn whatsapp_data_tools_absent_when_channels_off() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -242,14 +222,12 @@ fn whatsapp_data_tools_absent_when_channels_off() {
 fn all_tools_includes_spawn_async_subagent() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    // The embedding seam fails loudly when unwired — see `test_memory`.
+    // The embedding seam fails loudly when unwired.
     crate::openhuman::memory::host_impls::install_for_tests();
-    let mem_cfg = MemoryConfig {
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
     let browser = BrowserConfig {
         enabled: false,
         allowed_domains: vec![],
@@ -263,7 +241,6 @@ fn all_tools_includes_spawn_async_subagent() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -281,14 +258,12 @@ fn all_tools_includes_spawn_async_subagent() {
 fn all_tools_includes_spawn_parallel_agents() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    // The embedding seam fails loudly when unwired — see `test_memory`.
+    // The embedding seam fails loudly when unwired.
     crate::openhuman::memory::host_impls::install_for_tests();
-    let mem_cfg = MemoryConfig {
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
     let browser = BrowserConfig {
         enabled: false,
         allowed_domains: vec![],
@@ -302,7 +277,6 @@ fn all_tools_includes_spawn_parallel_agents() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -324,16 +298,14 @@ fn all_tools_always_registers_curl() {
     // off agents that aren't allowed to modify the workspace.
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    // The embedding seam fails loudly when unwired — see `test_memory`. This
+    // The embedding seam fails loudly when unwired. This
     // test doesn't use that helper (it needs the `Arc<dyn Memory>` alongside
     // its own config setup below), so it installs the seams directly.
     crate::openhuman::memory::host_impls::install_for_tests();
-    let mem_cfg = MemoryConfig {
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -343,7 +315,6 @@ fn all_tools_always_registers_curl() {
         Arc::new(cfg.clone()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -400,7 +371,6 @@ fn media_tools_absent_when_feature_off() {
 fn document_tools_registered_when_feature_on() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig {
         enabled: false,
         ..BrowserConfig::default()
@@ -411,7 +381,6 @@ fn document_tools_registered_when_feature_on() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -434,7 +403,6 @@ fn document_tools_registered_when_feature_on() {
 fn document_tools_absent_when_feature_off() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig {
         enabled: false,
         ..BrowserConfig::default()
@@ -445,7 +413,6 @@ fn document_tools_absent_when_feature_off() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -465,14 +432,12 @@ fn document_tools_absent_when_feature_off() {
 fn all_tools_registers_gitbooks_when_enabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    // The embedding seam fails loudly when unwired — see `test_memory`.
+    // The embedding seam fails loudly when unwired.
     crate::openhuman::memory::host_impls::install_for_tests();
-    let mem_cfg = MemoryConfig {
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
     let mut cfg = test_config(&tmp);
@@ -482,7 +447,6 @@ fn all_tools_registers_gitbooks_when_enabled() {
         Arc::new(cfg.clone()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -583,14 +547,12 @@ fn all_tools_omits_mcp_tools_when_gate_off() {
 fn all_tools_skips_gitbooks_when_disabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    // The embedding seam fails loudly when unwired — see `test_memory`.
+    // The embedding seam fails loudly when unwired.
     crate::openhuman::memory::host_impls::install_for_tests();
-    let mem_cfg = MemoryConfig {
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
     let mut cfg = test_config(&tmp);
@@ -600,7 +562,6 @@ fn all_tools_skips_gitbooks_when_disabled() {
         Arc::new(cfg.clone()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -622,14 +583,12 @@ fn all_tools_skips_gitbooks_when_disabled() {
 fn all_tools_includes_current_time() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    // The embedding seam fails loudly when unwired — see `test_memory`.
+    // The embedding seam fails loudly when unwired.
     crate::openhuman::memory::host_impls::install_for_tests();
-    let mem_cfg = MemoryConfig {
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -639,7 +598,6 @@ fn all_tools_includes_current_time() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -657,7 +615,6 @@ fn all_tools_includes_current_time() {
 fn all_tools_default_registry_contains_expected_baseline_surface() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig {
         enabled: false,
         ..BrowserConfig::default()
@@ -669,7 +626,6 @@ fn all_tools_default_registry_contains_expected_baseline_surface() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -749,7 +705,6 @@ fn all_tools_default_registry_contains_expected_baseline_surface() {
 fn all_tools_default_registry_has_no_duplicate_tool_names() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig {
         enabled: false,
         ..BrowserConfig::default()
@@ -761,7 +716,6 @@ fn all_tools_default_registry_has_no_duplicate_tool_names() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -781,14 +735,12 @@ fn all_tools_default_registry_has_no_duplicate_tool_names() {
 fn all_tools_excludes_browser_when_disabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    // The embedding seam fails loudly when unwired — see `test_memory`.
+    // The embedding seam fails loudly when unwired.
     crate::openhuman::memory::host_impls::install_for_tests();
-    let mem_cfg = MemoryConfig {
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig {
         enabled: false,
@@ -803,7 +755,6 @@ fn all_tools_excludes_browser_when_disabled() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -847,14 +798,12 @@ fn browser_allowed_domains_shares_fetch_list_minus_wildcard() {
 fn all_tools_includes_browser_when_enabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    // The embedding seam fails loudly when unwired — see `test_memory`.
+    // The embedding seam fails loudly when unwired.
     crate::openhuman::memory::host_impls::install_for_tests();
-    let mem_cfg = MemoryConfig {
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig {
         enabled: true,
@@ -869,7 +818,6 @@ fn all_tools_includes_browser_when_enabled() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -971,14 +919,12 @@ fn tool_spec_serde() {
 fn all_tools_includes_delegate_when_agents_configured() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    // The embedding seam fails loudly when unwired — see `test_memory`.
+    // The embedding seam fails loudly when unwired.
     crate::openhuman::memory::host_impls::install_for_tests();
-    let mem_cfg = MemoryConfig {
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -999,7 +945,6 @@ fn all_tools_includes_delegate_when_agents_configured() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -1014,14 +959,12 @@ fn all_tools_includes_delegate_when_agents_configured() {
 fn all_tools_excludes_delegate_when_no_agents() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    // The embedding seam fails loudly when unwired — see `test_memory`.
+    // The embedding seam fails loudly when unwired.
     crate::openhuman::memory::host_impls::install_for_tests();
-    let mem_cfg = MemoryConfig {
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -1031,7 +974,6 @@ fn all_tools_excludes_delegate_when_no_agents() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -1051,14 +993,12 @@ fn all_tools_registers_node_exec_when_node_enabled() {
     // lose both tools.
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    // The embedding seam fails loudly when unwired — see `test_memory`.
+    // The embedding seam fails loudly when unwired.
     crate::openhuman::memory::host_impls::install_for_tests();
-    let mem_cfg = MemoryConfig {
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -1068,7 +1008,6 @@ fn all_tools_registers_node_exec_when_node_enabled() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -1092,14 +1031,12 @@ fn all_tools_registers_python_exec_when_python_enabled() {
     // appear in the registry (routes inline code through the runtime pool, #5106).
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    // The embedding seam fails loudly when unwired — see `test_memory`.
+    // The embedding seam fails loudly when unwired.
     crate::openhuman::memory::host_impls::install_for_tests();
-    let mem_cfg = MemoryConfig {
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -1109,7 +1046,6 @@ fn all_tools_registers_python_exec_when_python_enabled() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -1127,14 +1063,12 @@ fn all_tools_registers_python_exec_when_python_enabled() {
 fn all_tools_excludes_node_exec_when_node_disabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    // The embedding seam fails loudly when unwired — see `test_memory`.
+    // The embedding seam fails loudly when unwired.
     crate::openhuman::memory::host_impls::install_for_tests();
-    let mem_cfg = MemoryConfig {
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -1145,7 +1079,6 @@ fn all_tools_excludes_node_exec_when_node_disabled() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -1167,7 +1100,6 @@ fn all_tools_excludes_node_exec_when_node_disabled() {
 fn all_tools_registers_integration_families_when_enabled_and_signed_in() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
     let mut cfg = test_config(&tmp);
@@ -1188,7 +1120,6 @@ fn all_tools_registers_integration_families_when_enabled_and_signed_in() {
         Arc::new(cfg.clone()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -1237,7 +1168,6 @@ fn all_tools_registers_brave_engine_lsp_and_tool_stats_when_enabled() {
     // alongside lsp + tool_stats.
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
     let mut cfg = test_config(&tmp);
@@ -1260,7 +1190,6 @@ fn all_tools_registers_brave_engine_lsp_and_tool_stats_when_enabled() {
         Arc::new(cfg.clone()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -1289,7 +1218,6 @@ fn all_tools_registers_brave_engine_lsp_and_tool_stats_when_enabled() {
 fn all_tools_registers_querit_engine_when_enabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
     let mut cfg = test_config(&tmp);
@@ -1300,7 +1228,6 @@ fn all_tools_registers_querit_engine_when_enabled() {
         Arc::new(cfg.clone()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -1315,7 +1242,6 @@ fn all_tools_registers_querit_engine_when_enabled() {
 fn all_tools_omits_search_surface_when_search_is_disabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
     let mut cfg = test_config(&tmp);
@@ -1330,7 +1256,6 @@ fn all_tools_omits_search_surface_when_search_is_disabled() {
         Arc::new(cfg.clone()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -1807,7 +1732,6 @@ async fn readonly_acting_tools_carry_policy_blocked_marker() {
 /// workspace — enough to exercise the expansion tools end-to-end.
 fn expansion_tools_for(tmp: &TempDir) -> Vec<Box<dyn Tool>> {
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(tmp);
     let browser = BrowserConfig {
         enabled: false,
         allowed_domains: vec![],
@@ -1820,7 +1744,6 @@ fn expansion_tools_for(tmp: &TempDir) -> Vec<Box<dyn Tool>> {
         Arc::new(cfg.clone()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),

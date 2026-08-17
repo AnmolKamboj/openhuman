@@ -11,16 +11,15 @@ use tinymemory_api::host::MemoryHostConfig;
 
 #[derive(Debug, serde::Serialize)]
 pub struct CodingSessionStatusResponse {
-    pub sources: Vec<crate::openhuman::memory::tinycortex::CodingSessionSourceStatus>,
+    pub sources: Vec<tinymemory_core::tinycortex::CodingSessionSourceStatus>,
 }
 
 pub async fn coding_session_status_rpc() -> Result<RpcOutcome<CodingSessionStatusResponse>, String>
 {
     tracing::debug!("[memory_sources] coding_session_status_rpc: entry");
-    let sources =
-        tokio::task::spawn_blocking(crate::openhuman::memory::tinycortex::coding_session_status)
-            .await
-            .map_err(|error| format!("join coding-session discovery: {error}"))?;
+    let sources = tokio::task::spawn_blocking(tinymemory_core::tinycortex::coding_session_status)
+        .await
+        .map_err(|error| format!("join coding-session discovery: {error}"))?;
     tracing::debug!(
         sources = sources.len(),
         files = sources
@@ -86,8 +85,8 @@ fn ingest_budget(max_sessions: usize) -> std::time::Duration {
 }
 
 pub async fn ingest_coding_sessions_rpc(
-    req: crate::openhuman::memory::tinycortex::CodingSessionIngestRequest,
-) -> Result<RpcOutcome<crate::openhuman::memory::tinycortex::CodingSessionIngestResponse>, String> {
+    req: tinymemory_core::tinycortex::CodingSessionIngestRequest,
+) -> Result<RpcOutcome<tinymemory_core::tinycortex::CodingSessionIngestResponse>, String> {
     tracing::info!("[memory_sources] ingest_coding_sessions_rpc: entry");
     let config = crate::openhuman::config::Config::load_or_init()
         .await
@@ -106,7 +105,7 @@ pub async fn ingest_coding_sessions_rpc(
         runtime.block_on(async move {
             tokio::time::timeout(
                 ingest_timeout,
-                crate::openhuman::memory::tinycortex::ingest_coding_sessions(&config, req),
+                tinymemory_core::tinycortex::ingest_coding_sessions(&config, req),
             )
             .await
         })
@@ -483,7 +482,7 @@ pub struct ReconcileResponse {
 /// sync; this RPC exposes it for inspection and manual triggering.
 pub async fn reconcile_rpc(req: ReconcileRequest) -> Result<RpcOutcome<ReconcileResponse>, String> {
     use crate::openhuman::memory::sources::sync::derive_scopes;
-    use crate::openhuman::memory::tinycortex::{raw_coverage, rebuild_tree_from_raw};
+    use tinymemory_core::tinycortex::{raw_coverage, rebuild_tree_from_raw};
 
     tracing::info!(
         source_id = ?req.source_id,
@@ -612,12 +611,12 @@ pub async fn supported_toolkits_rpc() -> Result<RpcOutcome<SupportedToolkitsResp
 
 #[derive(Debug, serde::Serialize)]
 pub struct SyncAuditLogResponse {
-    pub entries: Vec<crate::openhuman::memory::tinycortex::SyncAuditEntry>,
+    pub entries: Vec<tinymemory_core::tinycortex::SyncAuditEntry>,
 }
 
 pub async fn sync_audit_log_rpc() -> Result<RpcOutcome<SyncAuditLogResponse>, String> {
     let config = config_rpc::load_config_with_timeout().await?;
-    let entries = crate::openhuman::memory::tinycortex::read_audit_log(&config);
+    let entries = tinymemory_core::tinycortex::read_audit_log(&config);
     Ok(RpcOutcome::new(SyncAuditLogResponse { entries }, vec![]))
 }
 
@@ -657,7 +656,7 @@ pub async fn estimate_sync_cost_rpc(
     let estimated_input_tokens = item_count as u64 * 500;
     let estimated_output_tokens = item_count as u64 * 100;
     let estimated_tokens = estimated_input_tokens + estimated_output_tokens;
-    let estimated_cost_usd = crate::openhuman::memory::tinycortex::estimate_cost_usd(
+    let estimated_cost_usd = tinymemory_core::tinycortex::estimate_cost_usd(
         estimated_input_tokens,
         estimated_output_tokens,
     );
@@ -690,7 +689,7 @@ pub struct MonthlyCostSummaryResponse {
 pub async fn monthly_cost_summary_rpc() -> Result<RpcOutcome<MonthlyCostSummaryResponse>, String> {
     tracing::debug!("[memory_sources] monthly_cost_summary_rpc: entry");
     let config = config_rpc::load_config_with_timeout().await?;
-    let entries = crate::openhuman::memory::tinycortex::read_audit_log(&config);
+    let entries = tinymemory_core::tinycortex::read_audit_log(&config);
 
     let now = chrono::Utc::now();
     let month_str = now.format("%Y-%m").to_string();

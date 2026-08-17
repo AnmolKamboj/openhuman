@@ -69,7 +69,7 @@ use std::path::{Path, PathBuf};
 ///
 /// Substring needles, not regexes, and deliberately path-*suffixed*: the same
 /// call is written `memory::global::client_if_ready()`,
-/// `crate::openhuman::memory::global::client_if_ready()` and
+/// `tinymemory_core::global::client_if_ready()` and
 /// `super::super::global::client_if_ready()` in this tree, so anchoring on an
 /// absolute path would miss the third.
 ///
@@ -183,17 +183,12 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         ".memory_handle(",
         "session builder needs Arc<dyn Memory>; no contract door for it",
     ),
-    // ── Unguarded (but no longer raw) profile/facet access ──
-    (
-        "src/openhuman/agent/learning/schemas.rs",
-        ".profile_store(",
-        "typed profile/facet reads; the contract has no profile family, so still unguarded",
-    ),
-    (
-        "src/openhuman/agent/learning/schemas.rs",
-        "global::client_if_ready(",
-        "resolved only to reach profile_store() on the line below",
-    ),
+    // ── Profile/facet access ──
+    //
+    // The five `.profile_store(` / `global::client_if_ready(` entries that
+    // stood here are gone: they were justified by "the contract has no profile
+    // family", and it now has one. The learning subsystem reads facets through
+    // `MemoryProfile` on the bound driver.
     (
         "src/openhuman/agent/learning/startup.rs",
         "MemoryClient::from_workspace_dir(",
@@ -201,40 +196,16 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     ),
     (
         "src/openhuman/agent/learning/startup.rs",
-        ".profile_store(",
-        "typed facet bootstrap; the contract has no profile family, so still unguarded",
-    ),
-    (
-        "src/openhuman/agent/learning/tools.rs",
-        ".profile_store(",
-        "typed facet read from an agent tool; the contract has no profile family",
-    ),
-    (
-        "src/openhuman/agent/learning/tools.rs",
-        "global::client_if_ready(",
-        "resolved only to reach profile_store() on the line below",
+        "binding::for_workspace(",
+        "boot-time facet cache: resolves a *guard* for a known workspace, exactly as \
+         `active_memory_guard`'s own no-ambient-context fallback does. Not a raw client, \
+         and not async-reachable — the caller is a sync `OnceLock` initialiser",
     ),
     // ── Flows: foreign trait shapes and a test-override seam ──
-    (
-        "src/openhuman/flows/bus.rs",
-        ".memory_handle(",
-        "resolve_memory() -> Option<Arc<dyn Memory>>; no contract door for it",
-    ),
-    (
-        "src/openhuman/flows/bus.rs",
-        "active_memory_client(",
-        "carries a #[cfg(test)] memory_override seam the guard would bypass",
-    ),
-    (
-        "src/openhuman/flows/tinyflows/memory_adapter.rs",
-        ".memory_handle(",
-        "returns Arc<dyn Memory> to satisfy a tinyflows engine trait",
-    ),
-    (
-        "src/openhuman/flows/tinyflows/memory_adapter.rs",
-        "active_memory_client(",
-        "same adapter; the tinyflows trait names the engine type, not the contract",
-    ),
+    //
+    // `flows/bus.rs`'s two entries are gone: the run-digest subscriber resolves
+    // the guarded driver, and its `#[cfg(test)]` override now injects a real
+    // `MemoryGuard` over an in-memory provider rather than a raw handle.
     // ── Composio integration: &MemoryClientRef parameter shape ──
     (
         "src/openhuman/integrations/composio/ops/memory_cleanup.rs",

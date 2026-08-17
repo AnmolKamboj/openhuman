@@ -168,7 +168,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::openhuman::memory::store::NamespaceDocumentInput;
+    use tinymemory_core::store::NamespaceDocumentInput;
 
     fn ensure_memory_client() {
         crate::openhuman::memory::ops::ensure_shared_memory_client();
@@ -207,7 +207,7 @@ mod tests {
         ensure_memory_client();
         let short_id = &uuid::Uuid::new_v4().as_simple().to_string()[..12];
         let namespace = format!("{prefix}ns{short_id}");
-        let client = crate::openhuman::memory::global::client().expect("memory client");
+        let client = tinymemory_core::global::client().expect("memory client");
         client
             .put_doc_light(NamespaceDocumentInput {
                 namespace: namespace.clone(),

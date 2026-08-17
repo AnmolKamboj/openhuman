@@ -2,7 +2,6 @@ use super::*;
 
 use crate::openhuman::agent::host_runtime::{NativeRuntime, RuntimeAdapter};
 use crate::openhuman::config::{Config, DelegateAgentConfig};
-use crate::openhuman::memory::Memory;
 use crate::openhuman::runtime::javascript::NodeBootstrap;
 use crate::openhuman::runtime::python::PythonBootstrap;
 use crate::openhuman::security::{AuditLogger, SecurityPolicy};
@@ -58,7 +57,6 @@ pub fn all_tools(
     config: Arc<Config>,
     security: &Arc<SecurityPolicy>,
     audit: Arc<AuditLogger>,
-    memory: Arc<dyn Memory>,
     browser_config: &crate::openhuman::config::BrowserConfig,
     http_config: &crate::openhuman::config::HttpRequestConfig,
     action_dir: &std::path::Path,
@@ -70,7 +68,6 @@ pub fn all_tools(
         security,
         Arc::new(NativeRuntime::new()),
         audit,
-        memory,
         browser_config,
         http_config,
         action_dir,
@@ -95,7 +92,6 @@ pub fn all_tools_with_runtime(
     security: &Arc<SecurityPolicy>,
     runtime: Arc<dyn RuntimeAdapter>,
     audit: Arc<AuditLogger>,
-    memory: Arc<dyn Memory>,
     browser_config: &crate::openhuman::config::BrowserConfig,
     http_config: &crate::openhuman::config::HttpRequestConfig,
     action_dir: &std::path::Path,
@@ -419,12 +415,9 @@ pub fn all_tools_with_runtime(
         // cross-flow exception — it can see every flow's namespace by
         // design, but can never be used to write outside a flow's own.
         #[cfg(feature = "flows")]
-        Box::new(FlowMemoryRecallTool::new(memory.clone())),
+        Box::new(FlowMemoryRecallTool::new()),
         #[cfg(feature = "flows")]
-        Box::new(FlowMemoryRememberTool::new(
-            memory.clone(),
-            security.clone(),
-        )),
+        Box::new(FlowMemoryRememberTool::new(security.clone())),
         // Wallet tools — expose wallet operations to the agent tool-call pipeline
         // so the crypto sub-agent can prepare transfers, check status, etc.
         // Gated with the `web3` feature (the wallet domain is compiled out when
@@ -441,9 +434,9 @@ pub fn all_tools_with_runtime(
         Box::new(WalletTxReceiptTool::new()),
         #[cfg(feature = "web3")]
         Box::new(WalletLookupTxTool::new()),
-        Box::new(MemoryStoreTool::new(memory.clone(), security.clone())),
-        Box::new(MemoryRecallTool::new(memory.clone())),
-        Box::new(MemoryForgetTool::new(memory.clone(), security.clone())),
+        Box::new(MemoryStoreTool::new(security.clone())),
+        Box::new(MemoryRecallTool::new()),
+        Box::new(MemoryForgetTool::new(security.clone())),
         // #4458: the memory read→dedupe→write→update-index protocol
         // (`agent::harness::memory_protocol`) can only close its write cycle via a
         // successful `update_memory_md` call, and the archivist's `[tools] named`
@@ -479,14 +472,11 @@ pub fn all_tools_with_runtime(
         // inference-based learning subsystem is enabled.  The preference
         // injection into the system prompt is controlled independently by
         // `config.learning.explicit_preferences_enabled`.
-        Box::new(RememberPreferenceTool::new(
-            memory.clone(),
-            security.clone(),
-        )),
+        Box::new(RememberPreferenceTool::new(security.clone())),
         // Two-lane explicit preferences (general → system prompt, situational →
         // per-query recall). Written verbatim to user_pref_{general,situational};
         // bypasses the inference/stability pipeline. Always registered.
-        Box::new(SavePreferenceTool::new(memory.clone(), security.clone())),
+        Box::new(SavePreferenceTool::new(security.clone())),
         Box::new(MonitorTool::new(
             security.clone(),
             Arc::clone(&runtime),
@@ -1080,7 +1070,7 @@ pub fn all_tools_with_runtime(
         "evaluating ToolStatsTool registration"
     );
     if root_config.learning.enabled && root_config.learning.tool_tracking_enabled {
-        tools.push(Box::new(ToolStatsTool::new(memory.clone())));
+        tools.push(Box::new(ToolStatsTool::new()));
         tracing::debug!("ToolStatsTool registered");
     }
 

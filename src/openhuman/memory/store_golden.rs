@@ -48,12 +48,12 @@ use crate::openhuman::memory::ops::{
     doc_list, doc_put, graph_query, graph_upsert, kv_get, memory_query_namespace, GraphQueryParams,
     GraphUpsertParams, KvGetDeleteParams, KvSetParams, NamespaceOnlyParams, PutDocParams,
 };
-use crate::openhuman::memory::rpc_models::QueryNamespaceRequest;
-use crate::openhuman::memory::store::chunks;
-use crate::openhuman::memory::store::chunks::types::{Chunk, Metadata, SourceKind, SourceRef};
-use crate::openhuman::memory::store::namespace_store::{events, fts5, profile, segments};
-use crate::openhuman::memory::store::trees;
-use crate::openhuman::memory::store::trees::types::{SummaryNode, Tree, TreeKind, TreeStatus};
+use tinymemory_core::rpc_models::QueryNamespaceRequest;
+use tinymemory_core::store::chunks;
+use tinymemory_core::store::chunks::types::{Chunk, Metadata, SourceKind, SourceRef};
+use tinymemory_core::store::namespace_store::{events, fts5, profile, segments};
+use tinymemory_core::store::trees;
+use tinymemory_core::store::trees::types::{SummaryNode, Tree, TreeKind, TreeStatus};
 
 // ── Fixture identity ─────────────────────────────────────────────────────────
 //
@@ -142,7 +142,7 @@ pub async fn seed(workspace: &Path) -> Result<()> {
     seed_kv().await?;
     seed_graph().await?;
 
-    let client = crate::openhuman::memory::global::client()
+    let client = tinymemory_core::global::client()
         .map_err(|e| anyhow::anyhow!("[golden] memory client not bound: {e}"))?;
     let conn = client.profile_conn();
 
@@ -234,7 +234,10 @@ fn seed_episodic(conn: &SharedConn) -> Result<()> {
             cost_microdollars: 0,
         },
     )
-    .context("[golden] episodic_insert")
+    .context("[golden] episodic_insert")?;
+    // The insert now answers with the assigned row id; the golden fixture only
+    // needs the row to exist.
+    Ok(())
 }
 
 /// A sealed (summarised) conversation segment with both embedding tiers.
@@ -413,7 +416,7 @@ pub async fn init_fresh_schema(workspace: &Path) -> Result<()> {
     std::fs::create_dir_all(workspace).context("[golden] create fresh workspace dir")?;
 
     // Host unified tier.
-    let memory = crate::openhuman::memory::store::UnifiedMemory::new(
+    let memory = tinymemory_core::store::UnifiedMemory::new(
         workspace,
         std::sync::Arc::new(tinymemory_api::host::NoopEmbedding),
         None,
@@ -514,7 +517,7 @@ pub async fn read_back(workspace: &Path) -> Result<Readback> {
     .value
     .len();
 
-    let client = crate::openhuman::memory::global::client()
+    let client = tinymemory_core::global::client()
         .map_err(|e| anyhow::anyhow!("[golden] memory client not bound: {e}"))?;
     let conn = client.profile_conn();
 

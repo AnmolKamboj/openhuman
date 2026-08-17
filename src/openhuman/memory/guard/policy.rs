@@ -42,11 +42,11 @@ use crate::openhuman::memory::api::types::MemoryTaint;
 
 use crate::core::subsystem::DriverClass;
 use crate::openhuman::config::schema::MemoryHooksConfig;
-use crate::openhuman::memory::source_scope::current_source_scope;
 use crate::openhuman::security::egress::emit_external_transfer;
 use crate::openhuman::security::egress::types::{DataKind, EgressDescriptor, EgressReason};
 use crate::openhuman::security::live_policy;
 use crate::openhuman::security::policy::ToolOperation;
+use tinymemory_core::source_scope::current_source_scope;
 
 /// Prefix on every guard-authored error message, so a refusal that surfaces to
 /// a caller is attributable to the guard rather than to the driver underneath.
@@ -348,7 +348,7 @@ impl GuardPolicy {
                 Cow::Borrowed(content)
             }
             DriverClass::External => {
-                Cow::Owned(crate::openhuman::memory::store::safety::sanitize_text(content).value)
+                Cow::Owned(tinymemory_core::store::safety::sanitize_text(content).value)
             }
         }
     }
@@ -359,9 +359,7 @@ impl GuardPolicy {
     pub fn redact_outbound_json(&self, value: serde_json::Value) -> serde_json::Value {
         match self.class {
             DriverClass::Embedded | DriverClass::Module | DriverClass::Null => value,
-            DriverClass::External => {
-                crate::openhuman::memory::store::safety::sanitize_json(&value).value
-            }
+            DriverClass::External => tinymemory_core::store::safety::sanitize_json(&value).value,
         }
     }
 

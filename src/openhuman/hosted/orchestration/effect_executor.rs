@@ -777,8 +777,8 @@ fn evict_source_id(session_id: &str, cycle_id: &str) -> String {
 /// pipeline. The device's memory never leaves the machine — only the hosted
 /// brain's own compressed summary text (which it just sent us) is stored.
 pub async fn execute_evict(effect: &EvictEffect) -> Result<(), String> {
-    use crate::openhuman::memory::ingest_pipeline::ingest_document_with_scope;
     use tinycortex::memory::ingest::canonicalize::document::DocumentInput;
+    use tinymemory_core::ingest_pipeline::ingest_document_with_scope;
 
     let config = crate::openhuman::config::Config::load_or_init()
         .await

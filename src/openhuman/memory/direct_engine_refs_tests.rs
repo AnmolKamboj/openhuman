@@ -112,6 +112,16 @@ pub(crate) enum Verdict {
     /// Not a driver call: a re-export shim, host-seam installation, or an
     /// inert type import.
     HostSide,
+    /// The file's engine dependency **predates this branch** and was hidden
+    /// behind `memory/mod.rs`'s re-export facade; deleting that facade made it
+    /// textually visible to this lint without changing what the file does.
+    ///
+    /// It is a deliberately unflattering label. These are not audited, and the
+    /// bucket exists so that "nobody has looked at this yet" cannot be mistaken
+    /// for one of the three considered verdicts above. Draining it means
+    /// re-classifying each entry as one of those three, not deleting the
+    /// variant.
+    FacadeRevealed,
 }
 
 /// The literal this lint searches for. A single needle, deliberately: the
@@ -124,6 +134,444 @@ const NEEDLE: &str = "tinymemory_core::";
 /// path — [`scan`] returns a `BTreeSet`, so keeping the literal in the same
 /// order makes diffs readable.
 const ALLOWED: &[(&str, Verdict, &str)] = &[
+    // ── Revealed by deleting the `memory/mod.rs` re-export facade ───────────
+    //
+    // This lint was calibrated against a tree where `memory/mod.rs` re-exported
+    // ~24 engine names, so a file writing `crate::openhuman::memory::UnifiedMemory`
+    // did not match the `tinymemory_core::` needle. Those files were direct
+    // engine users the whole time; the facade just spelled the dependency
+    // differently. Deleting it — so that `grep tinymemory_core` *is* the
+    // inventory — is what surfaced them, and the count of real engine
+    // dependencies did not grow by one.
+    //
+    // They are `FacadeRevealed` rather than one of the three considered
+    // verdicts because they have not been audited individually. See the note on
+    // that variant.
+    (
+        "src/bin/gmail_backfill_3d.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/bin/library_profile/scenarios/cold_phases.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/bin/library_profile/scenarios/memory_ingest.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/bin/memory_tree_init_smoke.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/bin/slack_backfill.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/core/memory_cli.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/core/runtime/context.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/core/runtime/services.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/core/subconscious_cli.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/lib.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/agentbox/invoker.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/experience/ops.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/experience/store.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/harness/archivist/hook_impl.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/harness/archivist/lifecycle.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/harness/archivist/mod.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/harness/archivist/recap.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/harness/archivist/test_constructors.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/harness/archivist/tree_ingest.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/harness/archivist/types.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/harness/artifact_offload/policy.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/harness/session/builder/factory.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/harness/session/turn/context.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/harness/session/turn/core.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/harness/subagent_runner/ops/runner.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/harness/tool_result_artifacts/mod.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/learning/linkedin_enrichment.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/learning/startup.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/task_dispatcher/executor.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/tinyagents/host/agent_memory.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/tools/remember_preference.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/agent/tools/save_preference.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/channels/controllers/ops/connect.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/channels/runtime/startup.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/channels/tests/memory.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/config/migration_helpers/core.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/config/ops/model.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/cron/scheduler.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/desktop/app_state/ops.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/flows/memory_tools.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/flows/ops.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/flows/tinyflows/memory_adapter.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/hosted/orchestration/effect_executor.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/inference/embeddings/rpc.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/integrations/composio/ops/memory_cleanup.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/integrations/composio/ops/mod.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/integrations/composio/ops/providers_ops.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/integrations/composio/schemas.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/mcp/audit/store.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/meet/backend_bot/bus.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/meet/backend_bot/ops.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/guard/audit.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/guard/policy.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/ops/documents.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/ops/guard.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/ops/helpers.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/ops/learn.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/ops/sync.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/ops/test_support.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/read_rpc/admin.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/read_rpc/chunks.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/read_rpc/entities.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/read_rpc/graph.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/read_rpc/mod.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/read_rpc/vault.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/sources/rpc.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/sources/schemas.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/store_golden.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/sync/composio/bus.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/sync/composio/providers/slack/rpc.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/sync/sync_status/rpc.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/sync_events_bridge.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/tools/flavour.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/tools/forget.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/tools/recall.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/tools/store.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/tree/retrieval/rpc.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/memory/tree/tree/rpc.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/platform/doctor/core.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/security/approval/store.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/security/credentials/ops.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/skills/runtime/run_machinery.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/subconscious/source_chunk.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/tools/registry/ops.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
+    (
+        "src/openhuman/web_chat/run_task.rs",
+        Verdict::FacadeRevealed,
+        "engine dependency predates this branch; the facade deletion made it visible",
+    ),
     // ── Re-export shims: `pub use tinymemory_core::<domain>::*;` ────────────
     //
     // These are the historical-path aliases `memory/mod.rs` documents. They
@@ -243,44 +691,9 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     ),
     // ── Retrieval: filters the seam's tree family has no room for ───────────
     (
-        "src/openhuman/memory/query/backend.rs",
-        Verdict::NeedsWiderSeam,
-        "retrieval::source::query_source / drill_down / fetch_leaves take a time window, a free-text query, a SourceKind and a depth; MemoryTree::query_source takes (namespace, source_id, limit, scope) and drill_down takes (namespace, node_id)",
-    ),
-    (
-        "src/openhuman/memory/query/cover_window.rs",
-        Verdict::NeedsWiderSeam,
-        "retrieval::cover::cover_window has no seam equivalent",
-    ),
-    (
-        "src/openhuman/memory/query/drill_down.rs",
-        Verdict::NeedsWiderSeam,
-        "inline #[cfg(test)] module only — asserts the tool result against a direct engine drill_down; the production path goes through query/backend.rs",
-    ),
-    (
-        "src/openhuman/memory/query/fast_walk.rs",
-        Verdict::NeedsWiderSeam,
-        "retrieval::fast_retrieve (the E2GraphRAG retriever) has no seam equivalent",
-    ),
-    (
-        "src/openhuman/memory/query/fetch_leaves.rs",
-        Verdict::NeedsWiderSeam,
-        "inline #[cfg(test)] module only — asserts the tool result against a direct engine fetch_leaves",
-    ),
-    (
         "src/openhuman/memory/query/ingest_document.rs",
         Verdict::NeedsWiderSeam,
         "names SourceKind / SourceRef, which are tinycortex-api types the engine re-exports — NOT the same type as the contract's api::chunks::SourceKind, so this is not a type carve-out",
-    ),
-    (
-        "src/openhuman/memory/query/query_source.rs",
-        Verdict::NeedsWiderSeam,
-        "SourceKind in production, plus an inline #[cfg(test)] assertion against a direct engine query_source",
-    ),
-    (
-        "src/openhuman/memory/query/search_entities.rs",
-        Verdict::NeedsWiderSeam,
-        "retrieval::search_entities filters on Vec<EntityKind>; MemoryEntities::entities takes (namespace, query, limit) only",
     ),
     // ── Agent tools: chunk reads, source listing, people, source scope ──────
     (
@@ -294,39 +707,9 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
         "sources::{get_source, list_sources}; MemorySourceSink is accept_source_items + forget_source, with no list door",
     ),
     (
-        "src/openhuman/memory/tools/people.rs",
-        Verdict::NeedsWiderSeam,
-        "people::store::PeopleStore and the Handle/Interaction/PersonId vocabulary; there is no people capability family",
-    ),
-    (
-        "src/openhuman/memory/tools/raw_store/kinds.rs",
-        Verdict::NeedsWiderSeam,
-        "store::MemoryKind — an engine type with no contract counterpart",
-    ),
-    (
-        "src/openhuman/memory/tools/raw_store/raw_chunks.rs",
-        Verdict::NeedsWiderSeam,
-        "store::chunks::store::list_chunks with a nine-field ListChunksQuery, plus the source_scope task-local",
-    ),
-    (
-        "src/openhuman/memory/tools/raw_store/raw_search.rs",
-        Verdict::NeedsWiderSeam,
-        "retrieval::search::search_entities with an EntityKind filter",
-    ),
-    (
         "src/openhuman/memory/tools/search/chunk_context.rs",
         Verdict::NeedsWiderSeam,
         "get_chunk / list_chunks by id and source, plus source_scope::chunk_source_allowed",
-    ),
-    (
-        "src/openhuman/memory/tools/search/hybrid_search.rs",
-        Verdict::NeedsWiderSeam,
-        "constructs a UnifiedMemory directly and reads MemoryItemKind; the seam has no constructor door",
-    ),
-    (
-        "src/openhuman/memory/tools/search/vector_search.rs",
-        Verdict::NeedsWiderSeam,
-        "vector chunk search over ListChunksQuery, plus the source_scope task-local",
     ),
 ];
 

@@ -20,7 +20,7 @@ use tinybus::SubscriptionHandle;
 use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::sync_events::{
+use tinymemory_core::sync_events::{
     emit_sync_stage, extract_mem_src_id, MemorySyncStage, MemorySyncTrigger,
 };
 
@@ -80,7 +80,7 @@ impl EventHandler<DomainEvent> for SyncCompleteEmbedTrigger {
         if let DomainEvent::MemorySyncStageChanged { stage, .. } = event {
             if stage == "completed" {
                 log::debug!("[memory-sync] sync completed — triggering batch embedding backfill");
-                crate::openhuman::memory::queue::ensure_reembed_backfill(&self.config);
+                tinymemory_core::queue::ensure_reembed_backfill(&self.config);
             }
         }
     }

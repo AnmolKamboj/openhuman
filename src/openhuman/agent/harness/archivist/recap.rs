@@ -1,13 +1,13 @@
 //! Summarization and rolling recap logic for `ArchivistHook`.
 
 use super::types::ArchivistHook;
-use crate::openhuman::memory::store::fts5::{self, EpisodicEntry};
-use crate::openhuman::memory::store::segments::{self, ConversationSegment};
-use crate::openhuman::memory::store::trees::types::TreeKind;
 use crate::openhuman::memory::tree::summarise::{summarise, SummaryContext, SummaryInput};
 use parking_lot::Mutex;
 use rusqlite::Connection;
 use std::sync::Arc;
+use tinymemory_core::store::fts5::{self, EpisodicEntry};
+use tinymemory_core::store::segments::ConversationSegment;
+use tinymemory_core::store::trees::types::TreeKind;
 
 /// An episodic entry paired with the stable identity exposed by its backing
 /// store. The md archivist uses a per-session sequence while the legacy FTS5
@@ -71,10 +71,8 @@ impl ArchivistHook {
         session_id: &str,
     ) -> Vec<SessionEntry> {
         if let Some(cfg) = self.config.as_ref() {
-            let engine_config = crate::openhuman::memory::tinycortex::memory_config_from(
-                cfg,
-                cfg.workspace_dir.clone(),
-            );
+            let engine_config =
+                tinymemory_core::tinycortex::memory_config_from(cfg, cfg.workspace_dir.clone());
             match tinycortex::memory::archivist::store::session_entries(&engine_config, session_id)
             {
                 Ok(turns) => {
@@ -148,7 +146,7 @@ impl ArchivistHook {
                 "[archivist] summarize_entries: no entries for segment={segment_id} — \
                  returning empty fallback"
             );
-            return (segments::fallback_summary("", "", turn_count), false);
+            return (super::boundary::fallback_summary("", "", turn_count), false);
         }
 
         // Build a full prose corpus from ALL entries (user + assistant prose;
@@ -158,7 +156,7 @@ impl ArchivistHook {
             .iter()
             .filter(|e| !e.content.trim().is_empty())
             .map(|e| {
-                use crate::openhuman::memory::store::chunks::types::approx_token_count;
+                use tinymemory_core::store::chunks::types::approx_token_count;
                 let content = e.content.clone();
                 let token_count = approx_token_count(&content);
                 let ts = chrono::DateTime::from_timestamp(e.timestamp as i64, 0)
@@ -197,7 +195,7 @@ impl ArchivistHook {
                 );
                 #[cfg(test)]
                 let summary_result = if let Some(provider) = self.chat_provider.as_ref() {
-                    crate::openhuman::memory::chat::test_override::with_provider(
+                    tinymemory_core::chat::test_override::with_provider(
                         Arc::clone(provider),
                         summarise(config, &corpus_inputs, &summary_ctx),
                     )
@@ -242,7 +240,10 @@ impl ArchivistHook {
                  heuristic fallback segment={segment_id}"
             );
         }
-        (segments::fallback_summary(first, last, turn_count), false)
+        (
+            super::boundary::fallback_summary(first, last, turn_count),
+            false,
+        )
     }
 
     /// Produce a rolling recap of the **currently-open** segment for
@@ -281,25 +282,24 @@ impl ArchivistHook {
         let conn = self.conn.as_ref()?;
 
         // Find the currently-open segment for this session.
-        let open_segment = match crate::openhuman::memory::store::segments::open_segment_for_session(
-            conn, session_id,
-        ) {
-            Ok(Some(seg)) => seg,
-            Ok(None) => {
-                tracing::debug!(
-                    "[archivist] rolling_segment_recap: no open segment for \
+        let open_segment =
+            match tinymemory_core::store::segments::open_segment_for_session(conn, session_id) {
+                Ok(Some(seg)) => seg,
+                Ok(None) => {
+                    tracing::debug!(
+                        "[archivist] rolling_segment_recap: no open segment for \
                      session={session_id} — returning None"
-                );
-                return None;
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "[archivist] rolling_segment_recap: failed to query open segment \
+                    );
+                    return None;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "[archivist] rolling_segment_recap: failed to query open segment \
                      session={session_id}: {e} — returning None"
-                );
-                return None;
-            }
-        };
+                    );
+                    return None;
+                }
+            };
 
         // Gather the episodic entries for this session so far.
         let all_entries = self.read_session_entries(conn, session_id);
@@ -368,7 +368,7 @@ impl ArchivistHook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openhuman::memory::store::segments::SegmentStatus;
+    use tinymemory_core::store::segments::SegmentStatus;
 
     fn segment() -> ConversationSegment {
         ConversationSegment {

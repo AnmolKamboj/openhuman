@@ -39,7 +39,7 @@ use crate::openhuman::agent::learning::cache::FacetCache;
 use crate::openhuman::agent::learning::candidate::{
     self, CueFamily, FacetClass, LearningCandidate,
 };
-use crate::openhuman::memory::store::profile::{FacetState, FacetType, ProfileFacet, UserState};
+use crate::openhuman::memory::api::provider::{FacetState, FacetType, ProfileFacet, UserState};
 
 // ── Thresholds ────────────────────────────────────────────────────────────────
 
@@ -177,7 +177,9 @@ impl StabilityDetector {
     /// 6. Apply per-class budgets (demote excess Active → Provisional).
     /// 7. Persist changes and delete Dropped rows.
     /// 8. Emit `DomainEvent::CacheRebuilt`.
-    pub fn rebuild(&self, now: f64) -> anyhow::Result<RebuildOutcome> {
+    ///
+    /// Async since the facet store moved behind the memory driver.
+    pub async fn rebuild(&self, now: f64) -> anyhow::Result<RebuildOutcome> {
         tracing::debug!("[learning::stability] rebuild starting at t={now:.0}");
 
         // Step 1 — drain buffer.
@@ -188,7 +190,7 @@ impl StabilityDetector {
         );
 
         // Step 2 — load existing facets.
-        let existing_facets = self.cache.list_all()?;
+        let existing_facets = self.cache.list_all().await?;
         let existing_by_key: HashMap<String, ProfileFacet> = existing_facets
             .into_iter()
             .map(|f| (f.key.clone(), f))
@@ -264,10 +266,10 @@ impl StabilityDetector {
             let new_refs: Vec<crate::openhuman::agent::learning::candidate::EvidenceRef> =
                 cands.iter().map(|c| c.evidence.clone()).collect();
 
-            let all_refs = merge_evidence_refs(
-                existing.map(|f| f.evidence_refs.as_slice()).unwrap_or(&[]),
-                new_refs,
-            );
+            let existing_refs = existing
+                .map(|f| evidence_from_contract(&f.evidence_refs))
+                .unwrap_or_default();
+            let all_refs = merge_evidence_refs(&existing_refs, new_refs);
 
             // Build cue-families counts from this cycle's candidates.
             let mut cue_counts: HashMap<String, u32> = HashMap::new();
@@ -298,7 +300,7 @@ impl StabilityDetector {
                     state,
                     stability: final_stability,
                     user_state,
-                    evidence_refs: all_refs,
+                    evidence_refs: evidence_to_contract(&all_refs),
                     // Class derived from the key prefix (always set for learning rows).
                     class: Some(class_prefix(*class).to_string()),
                     cue_families: if cue_counts.is_empty() {
@@ -367,20 +369,20 @@ impl StabilityDetector {
             } else {
                 kept += 1;
             }
-            self.cache.upsert(&cf.facet)?;
+            self.cache.upsert(&cf.facet).await?;
         }
 
         // (Existing keys not in the rebuild output are legacy/non-class rows — skip.)
 
         // Clean up Dropped rows from the table.
-        let cleaned = self.cache.drop_below_threshold(TAU_EVICT)?;
+        let cleaned = self.cache.drop_below_threshold(TAU_EVICT).await?;
         if cleaned > 0 {
             tracing::debug!(
                 "[learning::stability] cleaned {cleaned} rows below threshold from table"
             );
         }
 
-        let active_rows = self.cache.list_active()?;
+        let active_rows = self.cache.list_active().await?;
         let total_size = active_rows.len();
 
         tracing::info!(
@@ -492,6 +494,46 @@ fn dominant_cue(cands: &[LearningCandidate], _existing: Option<&ProfileFacet>) -
         .unwrap_or(CueFamily::Behavioral)
 }
 
+/// Convert the learning domain's `EvidenceRef` to the memory contract's.
+///
+/// # Why a conversion and not one type
+///
+/// They are the *same shape* — `memory/api/host/evidence.rs` and
+/// `tinymemory-api`'s copy are byte-identical, and this round-trips through
+/// serde precisely because of that. They are nominally distinct only because
+/// the learning candidate types still live in `tinymemory_core`, so
+/// `candidate::EvidenceRef` resolves to the crate's copy while
+/// `ProfileFacet::evidence_refs` uses the host's.
+///
+/// This bridge disappears when `learning_candidate` comes home — it is agent
+/// domain knowledge, not engine storage, and belongs host-side with the rest of
+/// the learning subsystem. Tracked as stage 4 in
+/// `docs/specs/2026-08-13-memory-module-port.md`.
+fn evidence_to_contract(
+    refs: &[candidate::EvidenceRef],
+) -> Vec<crate::openhuman::memory::api::host::EvidenceRef> {
+    refs.iter()
+        .filter_map(|r| {
+            serde_json::to_value(r)
+                .ok()
+                .and_then(|v| serde_json::from_value(v).ok())
+        })
+        .collect()
+}
+
+/// The inverse of [`evidence_to_contract`].
+fn evidence_from_contract(
+    refs: &[crate::openhuman::memory::api::host::EvidenceRef],
+) -> Vec<candidate::EvidenceRef> {
+    refs.iter()
+        .filter_map(|r| {
+            serde_json::to_value(r)
+                .ok()
+                .and_then(|v| serde_json::from_value(v).ok())
+        })
+        .collect()
+}
+
 /// Merge the existing row's evidence refs with this cycle's new refs,
 /// deduplicating while preserving first-seen order.
 ///
@@ -574,21 +616,12 @@ fn class_prefix(class: FacetClass) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openhuman::agent::learning::cache::FacetCache;
     use crate::openhuman::agent::learning::candidate::{
         Buffer, EvidenceRef, FacetClass, LearningCandidate,
     };
-    use crate::openhuman::memory::store::profile::PROFILE_INIT_SQL;
-    use parking_lot::Mutex;
-    use rusqlite::Connection;
-    use std::sync::Arc;
 
     fn make_detector() -> StabilityDetector {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(PROFILE_INIT_SQL).unwrap();
-        let cache = FacetCache::new(crate::openhuman::memory::store::ProfileStore::for_tests(
-            Arc::new(Mutex::new(conn)),
-        ));
+        let cache = crate::openhuman::agent::learning::test_profile::in_memory_cache();
         // Use a private buffer so tests don't interfere with the global singleton.
         let buffer: &'static Buffer = Box::leak(Box::new(Buffer::new(256)));
         StabilityDetector { cache, buffer }
@@ -703,20 +736,20 @@ mod tests {
 
     // ── rebuild ──────────────────────────────────────────────────────────────
 
-    #[test]
-    fn rebuild_empty_buffer_no_candidates_is_noop() {
+    #[tokio::test]
+    async fn rebuild_empty_buffer_no_candidates_is_noop() {
         let detector = make_detector();
         let now = 1_000_000.0;
         // No candidates, no existing rows → rebuild is a no-op.
-        let outcome = detector.rebuild(now).unwrap();
+        let outcome = detector.rebuild(now).await.unwrap();
         assert_eq!(outcome.added, 0);
         assert_eq!(outcome.evicted, 0);
         assert_eq!(outcome.kept, 0);
         assert_eq!(outcome.total_size, 0);
     }
 
-    #[test]
-    fn rebuild_strong_candidate_becomes_active() {
+    #[tokio::test]
+    async fn rebuild_strong_candidate_becomes_active() {
         let detector = make_detector();
         let now = 1_000_000.0;
 
@@ -731,18 +764,18 @@ mod tests {
             ));
         }
 
-        let outcome = detector.rebuild(now).unwrap();
+        let outcome = detector.rebuild(now).await.unwrap();
         assert_eq!(outcome.added, 1);
 
-        let actives = detector.cache.list_active().unwrap();
+        let actives = detector.cache.list_active().await.unwrap();
         assert_eq!(actives.len(), 1);
         assert_eq!(actives[0].key, "style/verbosity");
         assert_eq!(actives[0].value, "terse");
         assert_eq!(actives[0].state, FacetState::Active);
     }
 
-    #[test]
-    fn rebuild_conflict_resolution_picks_stronger_value() {
+    #[tokio::test]
+    async fn rebuild_conflict_resolution_picks_stronger_value() {
         let detector = make_detector();
         let now = 1_000_000.0;
 
@@ -764,8 +797,8 @@ mod tests {
             now - 5.0,
         ));
 
-        detector.rebuild(now).unwrap();
-        let actives = detector.cache.list_active().unwrap();
+        detector.rebuild(now).await.unwrap();
+        let actives = detector.cache.list_active().await.unwrap();
         assert!(!actives.is_empty(), "should have at least one active row");
         let verbosity = actives.iter().find(|f| f.key == "style/verbosity").unwrap();
         assert_eq!(
@@ -774,8 +807,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn rebuild_class_budget_respected() {
+    #[tokio::test]
+    async fn rebuild_class_budget_respected() {
         let detector = make_detector();
         let now = 1_000_000.0;
 
@@ -798,9 +831,13 @@ mod tests {
             }
         }
 
-        detector.rebuild(now).unwrap();
+        detector.rebuild(now).await.unwrap();
 
-        let by_class = detector.cache.list_by_class(FacetClass::Style).unwrap();
+        let by_class = detector
+            .cache
+            .list_by_class(FacetClass::Style)
+            .await
+            .unwrap();
         assert!(
             by_class.len() <= BUDGET_STYLE,
             "style class should have at most {BUDGET_STYLE} active rows, got {}",
@@ -808,13 +845,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn rebuild_pinned_facet_stays_active_regardless_of_stability() {
+    #[tokio::test]
+    async fn rebuild_pinned_facet_stays_active_regardless_of_stability() {
         let detector = make_detector();
         let now = 1_000_000.0;
 
         // Manually insert a Pinned row.
-        use crate::openhuman::memory::store::profile::{FacetState, FacetType, UserState};
+        use crate::openhuman::memory::api::provider::{FacetState, FacetType, UserState};
         let pinned = ProfileFacet {
             facet_id: "f-pinned".into(),
             facet_type: FacetType::Preference,
@@ -832,14 +869,15 @@ mod tests {
             class: Some("style".into()),
             cue_families: None,
         };
-        detector.cache.upsert(&pinned).unwrap();
+        detector.cache.upsert(&pinned).await.unwrap();
 
         // No new candidates for this key → only decay applies.
-        detector.rebuild(now).unwrap();
+        detector.rebuild(now).await.unwrap();
 
         let f = detector
             .cache
             .get("style/format")
+            .await
             .unwrap()
             .expect("pinned row must survive");
         assert_eq!(f.state, FacetState::Active);

@@ -35,6 +35,23 @@ use crate::openhuman::memory::api::capabilities::Capability;
 use crate::openhuman::memory::api::chunks::Chunk;
 use crate::openhuman::memory::api::error::MemoryError;
 use crate::openhuman::memory::api::goals::GoalsDoc;
+use crate::openhuman::memory::api::provider::chunks::{
+    ChunkDetail, ChunkEmbedding, ChunkQuery, MemoryChunks,
+};
+use crate::openhuman::memory::api::provider::episodic::{
+    ConversationSegment, EpisodicTurn, MemoryEpisodic,
+};
+use crate::openhuman::memory::api::provider::people::{
+    AddressBookSeedOutcome, MemoryPeople, PersonHandle, PersonInteraction, PersonRecord,
+    PersonScore, RankedPerson, ResolvedPerson,
+};
+use crate::openhuman::memory::api::provider::profile::{
+    FacetType, MemoryProfile, ProfileFacet, UserState,
+};
+use crate::openhuman::memory::api::provider::retrieval::{
+    CoverWindowQuery, EntityMatch, FastRetrieveQuery, MemoryRetrieval, RetrievalHit,
+    RetrievalResponse, SourceRetrievalQuery,
+};
 use crate::openhuman::memory::api::provider::types::{
     DiffReport, EntityHit, IngestItem, IngestOutcome, MaintenanceReport, SnapshotRef, SourceItem,
     SourceScope,
@@ -45,6 +62,7 @@ use crate::openhuman::memory::api::provider::{
 };
 use crate::openhuman::memory::api::tool_memory::ToolMemoryRule;
 use crate::openhuman::memory::api::tree::{IngestRequest, QueryResult, TreeStatus};
+use crate::openhuman::memory::api::types::NamespaceMemoryHit;
 use crate::openhuman::memory::api::types::{
     GraphRelationRecord, MemoryKvRecord, MemoryTaint, NamespaceDocumentInput,
     NamespaceRetrievalContext, StoredMemoryDocument,
@@ -156,6 +174,41 @@ decorator!(
     dyn MemoryMaintenance,
     as_maintenance,
     Maintenance
+);
+decorator!(
+    /// Guarded [`MemoryPeople`].
+    GuardedPeople,
+    dyn MemoryPeople,
+    as_people,
+    People
+);
+decorator!(
+    /// Guarded [`MemoryChunks`].
+    GuardedChunks,
+    dyn MemoryChunks,
+    as_chunks,
+    Chunks
+);
+decorator!(
+    /// Guarded [`MemoryRetrieval`].
+    GuardedRetrieval,
+    dyn MemoryRetrieval,
+    as_retrieval,
+    Retrieval
+);
+decorator!(
+    /// Guarded [`MemoryEpisodic`].
+    GuardedEpisodic,
+    dyn MemoryEpisodic,
+    as_episodic,
+    Episodic
+);
+decorator!(
+    /// Guarded [`MemoryProfile`].
+    GuardedProfile,
+    dyn MemoryProfile,
+    as_profile,
+    Profile
 );
 
 // ── Ingest ───────────────────────────────────────────────────────────────────
@@ -345,7 +398,7 @@ impl MemoryTree for GuardedTree {
     /// `ListChunksQuery.source_scope`, which reaches SQL *before* `LIMIT`.
     ///
     /// The ambient allowlist
-    /// ([`source_scope::current_source_scope`](crate::openhuman::memory::source_scope::current_source_scope))
+    /// ([`source_scope::current_source_scope`](tinymemory_core::source_scope::current_source_scope))
     /// is therefore read at this boundary and passed down, rather than being
     /// applied to the returned rows. An explicit `scope` argument may only
     /// *narrow* it: the two are intersected by
@@ -739,6 +792,594 @@ impl MemoryMaintenance for GuardedMaintenance {
             false,
         )?;
         self.family()?.doctor().await
+    }
+}
+
+// ── People ───────────────────────────────────────────────────────────────────
+
+#[async_trait]
+impl MemoryPeople for GuardedPeople {
+    async fn list_people(&self, limit: Option<usize>) -> Result<Vec<RankedPerson>, MemoryError> {
+        self.policy.admit_read(
+            Capability::People,
+            "people.list_people",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.list_people(limit).await
+    }
+
+    async fn get_person(&self, person_id: &str) -> Result<Option<PersonRecord>, MemoryError> {
+        self.policy
+            .admit_read(Capability::People, "people.get_person", NO_NAMESPACE, false)?;
+        self.family()?.get_person(person_id).await
+    }
+
+    /// A read *unless* it may mint a person, which is a write.
+    ///
+    /// The tier check follows what the call can actually do rather than what it
+    /// is named: with `create_if_missing` set this inserts a row, so a
+    /// `readonly` operator must be refused. Classifying the whole method as a
+    /// read would have handed `readonly` a working insert through the back
+    /// door.
+    async fn resolve_handle(
+        &self,
+        handle: &PersonHandle,
+        create_if_missing: bool,
+    ) -> Result<Option<ResolvedPerson>, MemoryError> {
+        if create_if_missing {
+            self.policy.admit_write(
+                Capability::People,
+                "people.resolve_handle",
+                NO_NAMESPACE,
+                true,
+            )?;
+        } else {
+            self.policy.admit_read(
+                Capability::People,
+                "people.resolve_handle",
+                NO_NAMESPACE,
+                false,
+            )?;
+        }
+        self.family()?
+            .resolve_handle(handle, create_if_missing)
+            .await
+    }
+
+    async fn add_handle_alias(
+        &self,
+        person_id: &str,
+        handle: &PersonHandle,
+    ) -> Result<(), MemoryError> {
+        self.policy.admit_write(
+            Capability::People,
+            "people.add_handle_alias",
+            NO_NAMESPACE,
+            true,
+        )?;
+        self.family()?.add_handle_alias(person_id, handle).await
+    }
+
+    async fn score_person(&self, person_id: &str) -> Result<Option<PersonScore>, MemoryError> {
+        self.policy.admit_read(
+            Capability::People,
+            "people.score_person",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.score_person(person_id).await
+    }
+
+    async fn record_interaction(&self, interaction: &PersonInteraction) -> Result<(), MemoryError> {
+        self.policy.admit_write(
+            Capability::People,
+            "people.record_interaction",
+            NO_NAMESPACE,
+            true,
+        )?;
+        self.family()?.record_interaction(interaction).await
+    }
+
+    /// A write: it reads the platform address book and inserts what it finds.
+    async fn seed_from_address_book(&self) -> Result<AddressBookSeedOutcome, MemoryError> {
+        self.policy.admit_write(
+            Capability::People,
+            "people.seed_from_address_book",
+            NO_NAMESPACE,
+            true,
+        )?;
+        self.family()?.seed_from_address_book().await
+    }
+}
+
+// ── Chunks ───────────────────────────────────────────────────────────────────
+
+#[async_trait]
+impl MemoryChunks for GuardedChunks {
+    async fn list_chunks(
+        &self,
+        query: &ChunkQuery,
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<Chunk>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Chunks,
+            "chunks.list_chunks",
+            NO_NAMESPACE,
+            false,
+        )?;
+        // Intersected with the ambient allowlist, never passed through. The
+        // ambient scope is an upper bound: forwarding the caller's scope
+        // unchanged would let a source-restricted turn widen itself back out by
+        // naming a collection the restriction excluded. See
+        // `GuardPolicy::narrow_scope`.
+        let effective = self.policy.narrow_scope(scope);
+        self.family()?.list_chunks(query, effective.as_ref()).await
+    }
+
+    async fn get_chunk(&self, chunk_id: &str) -> Result<Option<Chunk>, MemoryError> {
+        self.policy
+            .admit_read(Capability::Chunks, "chunks.get_chunk", NO_NAMESPACE, false)?;
+        self.family()?.get_chunk(chunk_id).await
+    }
+
+    async fn chunk_detail(&self, chunk_id: &str) -> Result<Option<ChunkDetail>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Chunks,
+            "chunks.chunk_detail",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.chunk_detail(chunk_id).await
+    }
+
+    /// The catalog is not user content, so it takes no namespace and the
+    /// lightest read check — refusing it under `readonly` would stop an
+    /// operator finding out what the store can even hold.
+    async fn storage_kinds(&self) -> Result<Vec<String>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Chunks,
+            "chunks.storage_kinds",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.storage_kinds().await
+    }
+
+    /// Vectors, not content — but still a read of stored material, so it takes
+    /// the same tier check rather than being waved through as metadata.
+    async fn chunk_embeddings(
+        &self,
+        chunk_ids: &[String],
+        model_signature: &str,
+    ) -> Result<Vec<ChunkEmbedding>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Chunks,
+            "chunks.chunk_embeddings",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?
+            .chunk_embeddings(chunk_ids, model_signature)
+            .await
+    }
+}
+
+// ── Retrieval ────────────────────────────────────────────────────────────────
+
+#[async_trait]
+impl MemoryRetrieval for GuardedRetrieval {
+    async fn fast_retrieve(
+        &self,
+        query: &str,
+        options: FastRetrieveQuery,
+        scope: Option<&SourceScope>,
+    ) -> Result<RetrievalResponse, MemoryError> {
+        self.policy.admit_read(
+            Capability::Retrieval,
+            "retrieval.fast_retrieve",
+            NO_NAMESPACE,
+            false,
+        )?;
+        let effective = self.policy.narrow_scope(scope);
+        self.family()?
+            .fast_retrieve(query, options, effective.as_ref())
+            .await
+    }
+
+    async fn cover_window(
+        &self,
+        window: &CoverWindowQuery,
+        scope: Option<&SourceScope>,
+    ) -> Result<RetrievalResponse, MemoryError> {
+        self.policy.admit_read(
+            Capability::Retrieval,
+            "retrieval.cover_window",
+            NO_NAMESPACE,
+            false,
+        )?;
+        let effective = self.policy.narrow_scope(scope);
+        self.family()?
+            .cover_window(window, effective.as_ref())
+            .await
+    }
+
+    async fn retrieve_source(
+        &self,
+        query: &SourceRetrievalQuery,
+        scope: Option<&SourceScope>,
+    ) -> Result<RetrievalResponse, MemoryError> {
+        self.policy.admit_read(
+            Capability::Retrieval,
+            "retrieval.retrieve_source",
+            NO_NAMESPACE,
+            false,
+        )?;
+        let effective = self.policy.narrow_scope(scope);
+        self.family()?
+            .retrieve_source(query, effective.as_ref())
+            .await
+    }
+
+    async fn retrieve_children(
+        &self,
+        node_id: &str,
+        max_depth: u32,
+        query: Option<&str>,
+        limit: Option<usize>,
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<RetrievalHit>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Retrieval,
+            "retrieval.retrieve_children",
+            NO_NAMESPACE,
+            false,
+        )?;
+        // Intersected with the ambient allowlist, never passed through — same
+        // rule as `list_chunks`. See `GuardPolicy::narrow_scope`.
+        let effective = self.policy.narrow_scope(scope);
+        self.family()?
+            .retrieve_children(node_id, max_depth, query, limit, effective.as_ref())
+            .await
+    }
+
+    async fn retrieve_leaves(
+        &self,
+        chunk_ids: &[String],
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<RetrievalHit>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Retrieval,
+            "retrieval.retrieve_leaves",
+            NO_NAMESPACE,
+            false,
+        )?;
+        let effective = self.policy.narrow_scope(scope);
+        self.family()?
+            .retrieve_leaves(chunk_ids, effective.as_ref())
+            .await
+    }
+
+    /// Namespace-scoped, so the namespace reaches the tier check — unlike the
+    /// other retrieval primitives, which span the store.
+    async fn recall_namespace_scored(
+        &self,
+        namespace: &str,
+        query: &str,
+        limit: usize,
+        exclude_session_id: Option<&str>,
+    ) -> Result<Vec<NamespaceMemoryHit>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Retrieval,
+            "retrieval.recall_namespace_scored",
+            namespace,
+            false,
+        )?;
+        self.family()?
+            .recall_namespace_scored(namespace, query, limit, exclude_session_id)
+            .await
+    }
+
+    async fn search_entities(
+        &self,
+        query: &str,
+        kinds: Option<&[String]>,
+        limit: usize,
+    ) -> Result<Vec<EntityMatch>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Retrieval,
+            "retrieval.search_entities",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.search_entities(query, kinds, limit).await
+    }
+}
+
+// ── Profile ──────────────────────────────────────────────────────────────────
+
+#[async_trait]
+impl MemoryEpisodic for GuardedEpisodic {
+    async fn insert_turn(&self, turn: &EpisodicTurn) -> Result<i64, MemoryError> {
+        // A recorded turn is user-authored conversation content, so this is a
+        // write and is admitted as one — the read/write split here is about
+        // what the tier permits, not about how much data moves.
+        self.policy.admit_write(
+            Capability::Episodic,
+            "episodic.insert_turn",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.insert_turn(turn).await
+    }
+
+    async fn session_turns(&self, session_id: &str) -> Result<Vec<EpisodicTurn>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Episodic,
+            "episodic.session_turns",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.session_turns(session_id).await
+    }
+
+    async fn open_segment(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<ConversationSegment>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Episodic,
+            "episodic.open_segment",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.open_segment(session_id).await
+    }
+
+    async fn create_segment(
+        &self,
+        segment_id: &str,
+        session_id: &str,
+        namespace: &str,
+        start_episodic_id: i64,
+        start_timestamp: f64,
+        now: f64,
+    ) -> Result<(), MemoryError> {
+        // The only episodic call that names a namespace, so it is the only one
+        // that can be admitted against it.
+        self.policy.admit_write(
+            Capability::Episodic,
+            "episodic.create_segment",
+            namespace,
+            false,
+        )?;
+        self.family()?
+            .create_segment(
+                segment_id,
+                session_id,
+                namespace,
+                start_episodic_id,
+                start_timestamp,
+                now,
+            )
+            .await
+    }
+
+    async fn append_turn(
+        &self,
+        segment_id: &str,
+        episodic_id: i64,
+        timestamp: f64,
+        now: f64,
+    ) -> Result<(), MemoryError> {
+        self.policy.admit_write(
+            Capability::Episodic,
+            "episodic.append_turn",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?
+            .append_turn(segment_id, episodic_id, timestamp, now)
+            .await
+    }
+
+    async fn close_segment(&self, segment_id: &str, now: f64) -> Result<(), MemoryError> {
+        self.policy.admit_write(
+            Capability::Episodic,
+            "episodic.close_segment",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.close_segment(segment_id, now).await
+    }
+
+    async fn set_segment_summary(
+        &self,
+        segment_id: &str,
+        summary: &str,
+        now: f64,
+    ) -> Result<(), MemoryError> {
+        self.policy.admit_write(
+            Capability::Episodic,
+            "episodic.set_segment_summary",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?
+            .set_segment_summary(segment_id, summary, now)
+            .await
+    }
+
+    async fn upsert_segment_embedding(
+        &self,
+        segment_id: &str,
+        model_signature: &str,
+        embedding: &[f32],
+        created_at: f64,
+    ) -> Result<(), MemoryError> {
+        self.policy.admit_write(
+            Capability::Episodic,
+            "episodic.upsert_segment_embedding",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?
+            .upsert_segment_embedding(segment_id, model_signature, embedding, created_at)
+            .await
+    }
+}
+
+#[async_trait]
+impl MemoryProfile for GuardedProfile {
+    async fn list_active_facets(&self) -> Result<Vec<ProfileFacet>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Profile,
+            "profile.list_active_facets",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.list_active_facets().await
+    }
+
+    async fn list_all_facets(&self) -> Result<Vec<ProfileFacet>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Profile,
+            "profile.list_all_facets",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.list_all_facets().await
+    }
+
+    async fn get_facet(&self, key: &str) -> Result<Option<ProfileFacet>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Profile,
+            "profile.get_facet",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.get_facet(key).await
+    }
+
+    async fn facets_by_type(
+        &self,
+        facet_type: FacetType,
+    ) -> Result<Vec<ProfileFacet>, MemoryError> {
+        self.policy.admit_read(
+            Capability::Profile,
+            "profile.facets_by_type",
+            NO_NAMESPACE,
+            false,
+        )?;
+        self.family()?.facets_by_type(facet_type).await
+    }
+
+    async fn upsert_facet(&self, facet: &ProfileFacet) -> Result<(), MemoryError> {
+        self.policy.admit_write(
+            Capability::Profile,
+            "profile.upsert_facet",
+            NO_NAMESPACE,
+            true,
+        )?;
+        self.family()?.upsert_facet(facet).await
+    }
+
+    async fn upsert_provider_facet(
+        &self,
+        facet_id: &str,
+        facet_type: FacetType,
+        key: &str,
+        value: &str,
+        confidence: f64,
+        segment_id: Option<&str>,
+        observed_at: f64,
+    ) -> Result<(), MemoryError> {
+        self.policy.admit_write(
+            Capability::Profile,
+            "profile.upsert_provider_facet",
+            NO_NAMESPACE,
+            true,
+        )?;
+        self.family()?
+            .upsert_provider_facet(
+                facet_id,
+                facet_type,
+                key,
+                value,
+                confidence,
+                segment_id,
+                observed_at,
+            )
+            .await
+    }
+
+    async fn set_facet_user_state(
+        &self,
+        key: &str,
+        user_state: UserState,
+    ) -> Result<bool, MemoryError> {
+        self.policy.admit_write(
+            Capability::Profile,
+            "profile.set_facet_user_state",
+            NO_NAMESPACE,
+            true,
+        )?;
+        self.family()?.set_facet_user_state(key, user_state).await
+    }
+
+    async fn delete_facet(&self, key: &str) -> Result<bool, MemoryError> {
+        self.policy.admit_write(
+            Capability::Profile,
+            "profile.delete_facet",
+            NO_NAMESPACE,
+            true,
+        )?;
+        self.family()?.delete_facet(key).await
+    }
+
+    async fn delete_facet_by_id(&self, facet_id: &str) -> Result<bool, MemoryError> {
+        self.policy.admit_write(
+            Capability::Profile,
+            "profile.delete_facet_by_id",
+            NO_NAMESPACE,
+            true,
+        )?;
+        self.family()?.delete_facet_by_id(facet_id).await
+    }
+
+    async fn drop_facets_below(&self, threshold: f64) -> Result<usize, MemoryError> {
+        self.policy.admit_write(
+            Capability::Profile,
+            "profile.drop_facets_below",
+            NO_NAMESPACE,
+            true,
+        )?;
+        self.family()?.drop_facets_below(threshold).await
+    }
+
+    /// Refused reads answer `false`, matching the trait's "an error reads as
+    /// no". A tier refusal is not evidence that the row matches.
+    async fn workflow_identity_matches(&self, key_pattern: &str, canonical_value: &str) -> bool {
+        if self
+            .policy
+            .admit_read(
+                Capability::Profile,
+                "profile.workflow_identity_matches",
+                NO_NAMESPACE,
+                false,
+            )
+            .is_err()
+        {
+            return false;
+        }
+        match self.family() {
+            Ok(family) => {
+                family
+                    .workflow_identity_matches(key_pattern, canonical_value)
+                    .await
+            }
+            Err(_) => false,
+        }
     }
 }
 

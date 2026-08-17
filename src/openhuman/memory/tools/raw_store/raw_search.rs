@@ -10,10 +10,9 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::openhuman::config::rpc as config_rpc;
+use crate::openhuman::memory::api::provider::MemoryProvider;
+use crate::openhuman::memory::ops::guard::active_memory_guard;
 use crate::openhuman::tools::traits::{Tool, ToolResult};
-use tinymemory_core::tree::retrieval::search::search_entities;
-use tinymemory_core::tree::score::extract::EntityKind;
 
 pub struct MemoryStoreRawSearchTool;
 
@@ -77,23 +76,29 @@ impl Tool for MemoryStoreRawSearchTool {
             parsed.kinds,
             parsed.limit
         );
-        let cfg = config_rpc::load_config_with_timeout()
+        // An empty `kinds` list means "no filter", matching the previous
+        // behaviour — it is not forwarded as an empty allowlist, which the
+        // driver would read as "match no kind at all".
+        let kinds = parsed
+            .kinds
+            .as_ref()
+            .filter(|kinds| !kinds.is_empty())
+            .map(Vec::as_slice);
+        // Kind validation belongs to the driver now: the vocabulary is open on
+        // the wire. See the note in `memory/query/search_entities.rs`.
+        let guard = active_memory_guard()
             .await
-            .map_err(|e| anyhow::anyhow!("memory_store_raw_search: load config failed: {e}"))?;
-        let kinds = match parsed.kinds {
-            Some(ks) if !ks.is_empty() => {
-                let mut out = Vec::with_capacity(ks.len());
-                for k in ks {
-                    out.push(
-                        EntityKind::parse(&k)
-                            .map_err(|e| anyhow::anyhow!("memory_store_raw_search: {e}"))?,
-                    );
-                }
-                Some(out)
-            }
-            _ => None,
-        };
-        let hits = search_entities(&cfg, &parsed.query, kinds, parsed.limit).await?;
+            .map_err(|e| anyhow::anyhow!("memory_store_raw_search: {e}"))?;
+        let hits = guard
+            .as_retrieval()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "memory_store_raw_search: memory driver does not support the retrieval family"
+                )
+            })?
+            .search_entities(&parsed.query, kinds, parsed.limit)
+            .await
+            .map_err(|e| anyhow::anyhow!("memory_store_raw_search: {e}"))?;
         log::debug!(
             "[tool][memory_store] raw_search returning hits={}",
             hits.len()
@@ -200,6 +205,8 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
+the tool now reads the entity index through the bound driver, not the in-process engine"]
     async fn execute_success_path_returns_json_array() {
         let tmp = TempDir::new().expect("tempdir");
         let (_workspace, _config) = isolated_config(&tmp).await;

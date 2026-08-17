@@ -1,21 +1,20 @@
 //! Constructor methods, segment lifecycle management, and flush logic for
 //! `ArchivistHook`.
 
+use super::boundary::{BoundaryConfig, BoundaryDecision};
 use super::helpers::{extract_profile_key, uuid_v4};
 use super::types::ArchivistHook;
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::chat::ChatProvider;
-use crate::openhuman::memory::store::events::{self, EventRecord, EventType};
-use crate::openhuman::memory::store::fts5::EpisodicEntry;
-use crate::openhuman::memory::store::profile::{self, FacetType};
-use crate::openhuman::memory::store::segments::{
-    self, BoundaryConfig, BoundaryDecision, ConversationSegment,
-};
 use crate::openhuman::memory::tree::score::embed::{build_embedder_from_config, Embedder};
 use parking_lot::Mutex;
 use rusqlite::Connection;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tinymemory_core::chat::ChatProvider;
+use tinymemory_core::store::events::{self, EventRecord, EventType};
+use tinymemory_core::store::fts5::EpisodicEntry;
+use tinymemory_core::store::profile::{self, FacetType};
+use tinymemory_core::store::segments::{self, ConversationSegment};
 
 impl ArchivistHook {
     /// Create an Archivist hook with a shared SQLite connection.
@@ -46,7 +45,7 @@ impl ArchivistHook {
     pub fn with_config(mut self, config: Config) -> Self {
         // Build the LLM chat provider for segment recap.
         let chat_provider: Option<Arc<dyn ChatProvider>> =
-            match crate::openhuman::memory::chat::build_chat_provider(&config) {
+            match tinymemory_core::chat::build_chat_provider(&config) {
                 Ok(p) => {
                     tracing::debug!("[archivist] segment recap provider={} registered", p.name());
                     Some(p)
@@ -168,9 +167,18 @@ impl ArchivistHook {
         match open_segment {
             Some(segment) => {
                 // Run boundary detection.
-                let decision = segments::detect_boundary(
+                // Boundary detection is host policy and lives in
+                // `archivist::boundary`; the engine only persists what it
+                // decides. `SegmentBoundaryState` names the four fields the
+                // decision actually reads.
+                let decision = super::boundary::detect_boundary(
                     &self.boundary_config,
-                    &segment,
+                    &super::boundary::SegmentBoundaryState {
+                        turn_count: segment.turn_count,
+                        start_timestamp: segment.start_timestamp,
+                        end_timestamp: segment.end_timestamp,
+                        embedding: segment.embedding.clone(),
+                    },
                     timestamp,
                     user_message,
                     None, // No embedding for now — cosine drift skipped without embedder access.

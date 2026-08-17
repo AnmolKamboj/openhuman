@@ -2,7 +2,6 @@
 
 use crate::openhuman::agent::messages::ChatMessage;
 use crate::openhuman::agent::tinyagents::TurnModelSource;
-use crate::openhuman::memory::Memory;
 use crate::openhuman::tools::Tool;
 use crate::openhuman::util::truncate_with_ellipsis;
 use std::collections::HashMap;
@@ -34,7 +33,7 @@ pub(crate) struct ChannelRuntimeContext {
     /// Production contexts carry `config` and construct crate-native sources.
     pub(crate) turn_model_source: Option<TurnModelSource>,
     pub(crate) default_provider: Arc<String>,
-    pub(crate) memory: Arc<dyn Memory>,
+    pub(crate) memory: Arc<crate::openhuman::memory::guard::MemoryGuard>,
     pub(crate) tools_registry: Arc<Vec<Box<dyn Tool>>>,
     pub(crate) system_prompt: Arc<String>,
     pub(crate) model: Arc<String>,
@@ -108,15 +107,24 @@ pub(crate) fn is_context_window_overflow_error(err: &anyhow::Error) -> bool {
     tinychannels::context::is_context_window_overflow_message(&err.to_string())
 }
 
+use crate::openhuman::memory::api::provider::MemoryRecall as _;
+
 pub(crate) async fn build_memory_context(
-    mem: &dyn Memory,
+    mem: &crate::openhuman::memory::guard::MemoryGuard,
     user_msg: &str,
     min_relevance_score: f64,
 ) -> String {
     let mut context = String::new();
 
     if let Ok(entries) = mem
-        .recall(user_msg, 5, crate::openhuman::memory::RecallOpts::default())
+        .recall(
+            user_msg,
+            5,
+            &crate::openhuman::memory::api::recall::OwnedRecallOpts::default(),
+            // Unrestricted: a channel turn carries no ambient source scope, and
+            // the guard narrows against its own allowlist regardless.
+            None,
+        )
         .await
     {
         let mut included = 0usize;
@@ -167,7 +175,7 @@ pub(crate) async fn build_memory_context(
 mod tests {
     use super::*;
     use crate::openhuman::channels::traits;
-    use crate::openhuman::memory::{Memory, MemoryCategory, MemoryEntry};
+    use crate::openhuman::memory::api::types::{MemoryCategory, MemoryEntry};
     use crate::openhuman::tools::{Tool, ToolResult};
     use async_trait::async_trait;
 
@@ -189,68 +197,6 @@ mod tests {
 
         async fn execute(&self, _args: serde_json::Value) -> anyhow::Result<ToolResult> {
             Ok(ToolResult::success("ok"))
-        }
-    }
-
-    struct MockMemory {
-        entries: Vec<MemoryEntry>,
-    }
-
-    #[async_trait]
-    impl Memory for MockMemory {
-        fn name(&self) -> &str {
-            "mock"
-        }
-
-        async fn store(
-            &self,
-            _namespace: &str,
-            _key: &str,
-            _content: &str,
-            _category: MemoryCategory,
-            _session_id: Option<&str>,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn recall(
-            &self,
-            _query: &str,
-            _limit: usize,
-            _opts: crate::openhuman::memory::RecallOpts<'_>,
-        ) -> anyhow::Result<Vec<MemoryEntry>> {
-            Ok(self.entries.clone())
-        }
-
-        async fn get(&self, _namespace: &str, _key: &str) -> anyhow::Result<Option<MemoryEntry>> {
-            Ok(None)
-        }
-
-        async fn list(
-            &self,
-            _namespace: Option<&str>,
-            _category: Option<&MemoryCategory>,
-            _session_id: Option<&str>,
-        ) -> anyhow::Result<Vec<MemoryEntry>> {
-            Ok(Vec::new())
-        }
-
-        async fn forget(&self, _namespace: &str, _key: &str) -> anyhow::Result<bool> {
-            Ok(false)
-        }
-
-        async fn namespace_summaries(
-            &self,
-        ) -> anyhow::Result<Vec<crate::openhuman::memory::NamespaceSummary>> {
-            Ok(Vec::new())
-        }
-
-        async fn count(&self) -> anyhow::Result<usize> {
-            Ok(self.entries.len())
-        }
-
-        async fn health_check(&self) -> bool {
-            true
         }
     }
 
@@ -279,9 +225,9 @@ mod tests {
                 crate::openhuman::agent::tinyagents::TurnModelSource::from_model(model),
             ),
             default_provider: Arc::new("default".into()),
-            memory: Arc::new(MockMemory {
-                entries: Vec::new(),
-            }),
+            memory: crate::openhuman::memory::guard::in_memory::FixedRecallProvider::guarded(
+                Vec::new(),
+            ),
             tools_registry: Arc::new(vec![Box::new(DummyTool) as Box<dyn Tool>]),
             system_prompt: Arc::new("prompt".into()),
             model: Arc::new("model".into()),
@@ -388,18 +334,16 @@ mod tests {
 
     #[tokio::test]
     async fn build_memory_context_filters_entries_and_truncates_content() {
-        let mem = MockMemory {
-            entries: vec![
-                memory_entry("keep", "v", Some(0.9)),
-                memory_entry("drop_history", "ignored", Some(0.9)),
-                memory_entry("low", "too low", Some(0.1)),
-                memory_entry(
-                    "long",
-                    &"x".repeat(MEMORY_CONTEXT_ENTRY_MAX_CHARS + 50),
-                    Some(0.9),
-                ),
-            ],
-        };
+        let mem = crate::openhuman::memory::guard::in_memory::FixedRecallProvider::guarded(vec![
+            memory_entry("keep", "v", Some(0.9)),
+            memory_entry("drop_history", "ignored", Some(0.9)),
+            memory_entry("low", "too low", Some(0.1)),
+            memory_entry(
+                "long",
+                &"x".repeat(MEMORY_CONTEXT_ENTRY_MAX_CHARS + 50),
+                Some(0.9),
+            ),
+        ]);
 
         let rendered = build_memory_context(&mem, "hello", 0.4).await;
         assert!(rendered.starts_with("[Memory context]\n"));
@@ -415,7 +359,7 @@ mod tests {
         let entries = (0..10)
             .map(|idx| memory_entry(&format!("k{idx}"), &"x".repeat(700), Some(0.9)))
             .collect();
-        let mem = MockMemory { entries };
+        let mem = crate::openhuman::memory::guard::in_memory::FixedRecallProvider::guarded(entries);
 
         let rendered = build_memory_context(&mem, "hello", 0.4).await;
         assert!(rendered.chars().count() <= MEMORY_CONTEXT_MAX_CHARS + 32);

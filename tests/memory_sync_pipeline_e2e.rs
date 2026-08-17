@@ -46,16 +46,14 @@ use openhuman_core::openhuman::config::Config;
 use openhuman_core::openhuman::memory::read_rpc::{graph_export_rpc, GraphMode};
 use openhuman_core::openhuman::memory::sources::sync::sync_source;
 use openhuman_core::openhuman::memory::sources::types::{MemorySourceEntry, SourceKind};
-use openhuman_core::openhuman::memory::store::content::raw::{
-    raw_kind_dir, raw_source_dir, RawKind,
-};
-use openhuman_core::openhuman::memory::store::trees::store as tree_store;
-use openhuman_core::openhuman::memory::store::trees::types::SUMMARY_FANOUT;
-use openhuman_core::openhuman::memory::tinycortex::read_audit_log;
-use openhuman_core::openhuman::memory::tinycortex::run_github_sync;
-use openhuman_core::openhuman::memory::tinycortex::{needs_rebuild, rebuild_tree_from_raw};
 use openhuman_core::openhuman::memory::tree::ingest::{ingest_summary, SummaryIngestInput};
-use openhuman_core::openhuman::memory::tree_source::get_or_create_source_tree;
+use tinymemory_core::store::content::raw::{raw_kind_dir, raw_source_dir, RawKind};
+use tinymemory_core::store::trees::store as tree_store;
+use tinymemory_core::store::trees::types::SUMMARY_FANOUT;
+use tinymemory_core::tinycortex::read_audit_log;
+use tinymemory_core::tinycortex::run_github_sync;
+use tinymemory_core::tinycortex::{needs_rebuild, rebuild_tree_from_raw};
+use tinymemory_core::tree_source::get_or_create_source_tree;
 
 // ── Shared harness ────────────────────────────────────────────────────────
 

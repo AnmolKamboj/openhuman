@@ -51,16 +51,21 @@ use crate::openhuman::memory::api::provider::types::{
     MaintenanceReport, SnapshotRef, SourceItem, SourceScope,
 };
 use crate::openhuman::memory::api::provider::{
-    MemoryCore, MemoryDiff, MemoryDocuments, MemoryEntities, MemoryGoals, MemoryGraph,
-    MemoryIngest, MemoryMaintenance, MemoryPortability, MemoryProvider, MemoryRecall,
-    MemorySourceSink, MemoryToolMemory, MemoryTree,
+    AddressBookSeedOutcome, ChunkDetail, ChunkEmbedding, ChunkQuery, CoverWindowQuery, EntityMatch,
+    FacetType, FastRetrieveQuery, MemoryChunks, MemoryCore, MemoryDiff, MemoryDocuments,
+    MemoryEntities, MemoryGoals, MemoryGraph, MemoryIngest, MemoryMaintenance, MemoryPeople,
+    MemoryPortability, MemoryProfile, MemoryProvider, MemoryRecall, MemoryRetrieval,
+    MemorySourceSink, MemoryToolMemory, MemoryTree, PersonHandle, PersonInteraction, PersonRecord,
+    PersonScore, ProfileFacet, RankedPerson, ResolvedPerson, RetrievalHit, RetrievalResponse,
+    SourceRetrievalQuery, UserState,
 };
 use crate::openhuman::memory::api::recall::OwnedRecallOpts;
 use crate::openhuman::memory::api::tool_memory::ToolMemoryRule;
 use crate::openhuman::memory::api::tree::{IngestRequest, QueryResult, TreeStatus};
 use crate::openhuman::memory::api::types::{
     GraphRelationRecord, MemoryCategory, MemoryEntry, MemoryKvRecord, MemoryTaint,
-    NamespaceDocumentInput, NamespaceRetrievalContext, NamespaceSummary, StoredMemoryDocument,
+    NamespaceDocumentInput, NamespaceMemoryHit, NamespaceRetrievalContext, NamespaceSummary,
+    StoredMemoryDocument,
 };
 use crate::openhuman::memory::api::wire;
 use async_trait::async_trait;
@@ -121,6 +126,15 @@ pub struct ModuleMemoryProvider {
     /// Set once the module has answered `Capabilities`, so the cross-check runs
     /// once rather than per call.
     verified: std::sync::OnceLock<()>,
+    /// Memory subtree this driver is bound to, when it is not the shared one.
+    ///
+    /// `None` means `<workspace>/memory` — the root object the module serves
+    /// eagerly at setup. `Some("memory-<id>")` is a profile that opted into
+    /// dedicated memory; the first call asks the root object to open it and
+    /// caches the object path it answers with.
+    memory_subdir: Option<String>,
+    /// Object path resolved for [`Self::memory_subdir`], once asked for.
+    resolved_path: tokio::sync::OnceCell<String>,
 }
 
 impl std::fmt::Debug for ModuleMemoryProvider {
@@ -158,7 +172,46 @@ impl ModuleMemoryProvider {
                 .map_or_else(|| MODULE_ID.to_string(), |record| record.id.to_string()),
             config,
             verified: std::sync::OnceLock::new(),
+            memory_subdir: None,
+            resolved_path: tokio::sync::OnceCell::new(),
         }
+    }
+
+    /// Bind this driver to a named memory subtree rather than the shared one.
+    ///
+    /// `"memory"` is the shared tree and is treated as `None`, so a caller can
+    /// pass whatever `memory_subdir_for_suffix` produced without special-casing
+    /// the default.
+    #[must_use]
+    pub fn in_subdir(mut self, memory_subdir: &str) -> Self {
+        if memory_subdir != "memory" && !memory_subdir.is_empty() {
+            self.memory_subdir = Some(memory_subdir.to_string());
+        }
+        self
+    }
+
+    /// The object path this driver talks to, opening the subtree on first use.
+    ///
+    /// The root object is served eagerly at module setup, so the shared tree
+    /// costs nothing here. A dedicated subtree is opened once and cached; the
+    /// module is idempotent per subtree, so a lost race re-uses the same store
+    /// rather than opening the database twice.
+    async fn object_path(&self, proxy_root: &tinybus::Proxy) -> Result<String, MemoryError> {
+        let record = registry::find(MODULE_ID)
+            .ok_or_else(|| MemoryError::Other(anyhow::anyhow!("unknown module '{MODULE_ID}'")))?;
+        let Some(subdir) = self.memory_subdir.as_deref() else {
+            return Ok(record.object_path.to_string());
+        };
+        self.resolved_path
+            .get_or_try_init(|| async {
+                log::debug!("[modules:memory] opening a dedicated memory subtree");
+                proxy_root
+                    .call::<String>("OpenStore", (subdir.to_string(),))
+                    .await
+                    .map_err(|error| from_bus(&error))
+            })
+            .await
+            .cloned()
     }
 
     /// Ensure the module is serving, and hand back a proxy for its object.
@@ -197,12 +250,21 @@ impl ModuleMemoryProvider {
 
         let record = registry::find(MODULE_ID)
             .ok_or_else(|| MemoryError::Other(anyhow::anyhow!("unknown module '{MODULE_ID}'")))?;
-        let proxy = runtime
+        let root = runtime
             .proxy(record.bus_name, record.object_path)
             .map_err(|error| MemoryError::Other(anyhow::anyhow!(error.to_string())))?;
 
-        self.verify(&proxy).await;
-        Ok(proxy)
+        self.verify(&root).await;
+
+        // The shared tree is the root object itself, so this is a no-op for
+        // every caller that did not ask for a dedicated subtree.
+        let path = self.object_path(&root).await?;
+        if path == record.object_path {
+            return Ok(root);
+        }
+        runtime
+            .proxy(record.bus_name, &path)
+            .map_err(|error| MemoryError::Other(anyhow::anyhow!(error.to_string())))
     }
 
     /// Cross-check the module's advertised capabilities against what this build
@@ -248,6 +310,26 @@ impl MemoryProvider for ModuleMemoryProvider {
     }
 
     /// Every family is implemented by the pinned compiled module.
+    ///
+    /// # This couples to the registry pin, and the coupling is not enforced
+    ///
+    /// `Capabilities::all()` grows whenever a family is added to the contract,
+    /// but the *artifact* only grows when a release is cut and
+    /// [`registry`](super::registry) is re-pinned to it. Between those two
+    /// moments this over-claims: the host says it can do something the loaded
+    /// binary cannot.
+    ///
+    /// [`Self::verify`] notices and logs, but it does **not** narrow the
+    /// advertised set — so the failure mode is a call that reaches the module
+    /// and comes back as an unknown method, not a family that quietly turns
+    /// itself off.
+    ///
+    /// Today `people` is exactly that case: family fourteen is served by the
+    /// module source in this tree but not by the pinned `1.0.1` artifact. It is
+    /// currently inert, because nothing in the host reaches `as_people()` yet.
+    /// **It stops being inert the moment the people RPC handlers are routed
+    /// through this driver**, so that change and the module release must land
+    /// together — see `docs/specs/2026-08-13-memory-module-port.md` stage 2.
     fn capabilities(&self) -> Capabilities {
         Capabilities::all()
     }
@@ -308,6 +390,18 @@ impl MemoryProvider for ModuleMemoryProvider {
         Some(self)
     }
     fn as_maintenance(&self) -> Option<&dyn MemoryMaintenance> {
+        Some(self)
+    }
+    fn as_people(&self) -> Option<&dyn MemoryPeople> {
+        Some(self)
+    }
+    fn as_chunks(&self) -> Option<&dyn MemoryChunks> {
+        Some(self)
+    }
+    fn as_retrieval(&self) -> Option<&dyn MemoryRetrieval> {
+        Some(self)
+    }
+    fn as_profile(&self) -> Option<&dyn MemoryProfile> {
         Some(self)
     }
 }
@@ -765,3 +859,251 @@ impl MemoryMaintenance for ModuleMemoryProvider {
 #[cfg(test)]
 #[path = "memory_tests.rs"]
 mod tests;
+
+#[async_trait]
+impl MemoryPeople for ModuleMemoryProvider {
+    async fn list_people(&self, limit: Option<usize>) -> Result<Vec<RankedPerson>, MemoryError> {
+        module_call!(self, "list_people", "ListPeople", (limit,))
+    }
+    async fn get_person(&self, person_id: &str) -> Result<Option<PersonRecord>, MemoryError> {
+        module_call!(self, "get_person", "GetPerson", (person_id,))
+    }
+    async fn resolve_handle(
+        &self,
+        handle: &PersonHandle,
+        create_if_missing: bool,
+    ) -> Result<Option<ResolvedPerson>, MemoryError> {
+        module_call!(
+            self,
+            "resolve_handle",
+            "ResolveHandle",
+            (handle, create_if_missing)
+        )
+    }
+    async fn add_handle_alias(
+        &self,
+        person_id: &str,
+        handle: &PersonHandle,
+    ) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "add_handle_alias",
+            "AddHandleAlias",
+            (person_id, handle)
+        )
+    }
+    async fn score_person(&self, person_id: &str) -> Result<Option<PersonScore>, MemoryError> {
+        module_call!(self, "score_person", "ScorePerson", (person_id,))
+    }
+    async fn record_interaction(&self, interaction: &PersonInteraction) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "record_interaction",
+            "RecordInteraction",
+            (interaction,)
+        )
+    }
+    async fn seed_from_address_book(&self) -> Result<AddressBookSeedOutcome, MemoryError> {
+        module_call!(self, "seed_from_address_book", "SeedFromAddressBook", ())
+    }
+}
+
+#[async_trait]
+impl MemoryChunks for ModuleMemoryProvider {
+    async fn list_chunks(
+        &self,
+        query: &ChunkQuery,
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<Chunk>, MemoryError> {
+        module_call!(self, "list_chunks", "ListChunks", (query, scope))
+    }
+    async fn get_chunk(&self, chunk_id: &str) -> Result<Option<Chunk>, MemoryError> {
+        module_call!(self, "get_chunk", "GetChunk", (chunk_id,))
+    }
+    async fn chunk_detail(&self, chunk_id: &str) -> Result<Option<ChunkDetail>, MemoryError> {
+        module_call!(self, "chunk_detail", "ChunkDetail", (chunk_id,))
+    }
+    async fn storage_kinds(&self) -> Result<Vec<String>, MemoryError> {
+        module_call!(self, "storage_kinds", "StorageKinds", ())
+    }
+    async fn chunk_embeddings(
+        &self,
+        chunk_ids: &[String],
+        model_signature: &str,
+    ) -> Result<Vec<ChunkEmbedding>, MemoryError> {
+        module_call!(
+            self,
+            "chunk_embeddings",
+            "ChunkEmbeddings",
+            (chunk_ids, model_signature)
+        )
+    }
+}
+
+#[async_trait]
+impl MemoryRetrieval for ModuleMemoryProvider {
+    async fn fast_retrieve(
+        &self,
+        query: &str,
+        options: FastRetrieveQuery,
+        scope: Option<&SourceScope>,
+    ) -> Result<RetrievalResponse, MemoryError> {
+        module_call!(
+            self,
+            "fast_retrieve",
+            "FastRetrieve",
+            (query, options, scope)
+        )
+    }
+    async fn cover_window(
+        &self,
+        window: &CoverWindowQuery,
+        scope: Option<&SourceScope>,
+    ) -> Result<RetrievalResponse, MemoryError> {
+        module_call!(self, "cover_window", "CoverWindow", (window, scope))
+    }
+    async fn retrieve_source(
+        &self,
+        query: &SourceRetrievalQuery,
+        scope: Option<&SourceScope>,
+    ) -> Result<RetrievalResponse, MemoryError> {
+        module_call!(self, "retrieve_source", "RetrieveSource", (query, scope))
+    }
+    async fn retrieve_children(
+        &self,
+        node_id: &str,
+        max_depth: u32,
+        query: Option<&str>,
+        limit: Option<usize>,
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<RetrievalHit>, MemoryError> {
+        module_call!(
+            self,
+            "retrieve_children",
+            "RetrieveChildren",
+            (node_id, max_depth, query, limit, scope)
+        )
+    }
+    async fn retrieve_leaves(
+        &self,
+        chunk_ids: &[String],
+        scope: Option<&SourceScope>,
+    ) -> Result<Vec<RetrievalHit>, MemoryError> {
+        module_call!(
+            self,
+            "retrieve_leaves",
+            "RetrieveLeaves",
+            (chunk_ids, scope)
+        )
+    }
+    async fn recall_namespace_scored(
+        &self,
+        namespace: &str,
+        query: &str,
+        limit: usize,
+        exclude_session_id: Option<&str>,
+    ) -> Result<Vec<NamespaceMemoryHit>, MemoryError> {
+        module_call!(
+            self,
+            "recall_namespace_scored",
+            "RecallNamespaceScored",
+            (namespace, query, limit, exclude_session_id)
+        )
+    }
+    async fn search_entities(
+        &self,
+        query: &str,
+        kinds: Option<&[String]>,
+        limit: usize,
+    ) -> Result<Vec<EntityMatch>, MemoryError> {
+        module_call!(
+            self,
+            "search_entities",
+            "SearchEntities",
+            (query, kinds, limit)
+        )
+    }
+}
+
+#[async_trait]
+impl MemoryProfile for ModuleMemoryProvider {
+    async fn list_active_facets(&self) -> Result<Vec<ProfileFacet>, MemoryError> {
+        module_call!(self, "list_active_facets", "ListActiveFacets", ())
+    }
+    async fn list_all_facets(&self) -> Result<Vec<ProfileFacet>, MemoryError> {
+        module_call!(self, "list_all_facets", "ListAllFacets", ())
+    }
+    async fn get_facet(&self, key: &str) -> Result<Option<ProfileFacet>, MemoryError> {
+        module_call!(self, "get_facet", "GetFacet", (key,))
+    }
+    async fn facets_by_type(
+        &self,
+        facet_type: FacetType,
+    ) -> Result<Vec<ProfileFacet>, MemoryError> {
+        module_call!(self, "facets_by_type", "FacetsByType", (facet_type,))
+    }
+    async fn upsert_facet(&self, facet: &ProfileFacet) -> Result<(), MemoryError> {
+        module_call!(self, "upsert_facet", "UpsertFacet", (facet,))
+    }
+    async fn upsert_provider_facet(
+        &self,
+        facet_id: &str,
+        facet_type: FacetType,
+        key: &str,
+        value: &str,
+        confidence: f64,
+        segment_id: Option<&str>,
+        observed_at: f64,
+    ) -> Result<(), MemoryError> {
+        module_call!(
+            self,
+            "upsert_provider_facet",
+            "UpsertProviderFacet",
+            (
+                facet_id,
+                facet_type,
+                key,
+                value,
+                confidence,
+                segment_id,
+                observed_at
+            )
+        )
+    }
+    async fn set_facet_user_state(
+        &self,
+        key: &str,
+        user_state: UserState,
+    ) -> Result<bool, MemoryError> {
+        module_call!(
+            self,
+            "set_facet_user_state",
+            "SetFacetUserState",
+            (key, user_state)
+        )
+    }
+    async fn delete_facet(&self, key: &str) -> Result<bool, MemoryError> {
+        module_call!(self, "delete_facet", "DeleteFacet", (key,))
+    }
+    async fn delete_facet_by_id(&self, facet_id: &str) -> Result<bool, MemoryError> {
+        module_call!(self, "delete_facet_by_id", "DeleteFacetById", (facet_id,))
+    }
+    async fn drop_facets_below(&self, threshold: f64) -> Result<usize, MemoryError> {
+        module_call!(self, "drop_facets_below", "DropFacetsBelow", (threshold,))
+    }
+    /// Any transport failure reads as `false` — the trait's documented rule for
+    /// this predicate, and the reason it returns `bool` rather than a `Result`.
+    async fn workflow_identity_matches(&self, key_pattern: &str, canonical_value: &str) -> bool {
+        // Written out rather than via `module_call!`: that macro uses `?`, which
+        // needs a `Result`-returning body, and this one returns `bool` on
+        // purpose. Both failure points — resolving the proxy and the call
+        // itself — collapse to `false`, which is the rule above.
+        let Ok(proxy) = self.proxy("workflow_identity_matches").await else {
+            return false;
+        };
+        proxy
+            .call::<bool>("WorkflowIdentityMatches", (key_pattern, canonical_value))
+            .await
+            .unwrap_or(false)
+    }
+}

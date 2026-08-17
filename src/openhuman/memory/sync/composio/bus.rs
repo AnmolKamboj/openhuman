@@ -386,7 +386,7 @@ impl EventHandler<DomainEvent> for ComposioTriggerSubscriber {
                         "[composio][triage] run_triage failed (label={}): {e:#}",
                         envelope.display_label
                     );
-                    crate::openhuman::memory::observability::report_error_or_expected(
+                    tinymemory_core::observability::report_error_or_expected(
                         detail.as_str(),
                         "composio",
                         "trigger_triage",
@@ -615,8 +615,8 @@ impl EventHandler<DomainEvent> for ComposioConnectionCreatedSubscriber {
                                 .collect();
                             toolkits.sort();
                             toolkits.dedup();
-                            crate::openhuman::memory::events::publish(
-                                crate::openhuman::memory::events::MemoryEvent::ComposioIntegrationsChanged {
+                            tinymemory_core::events::publish(
+                                tinymemory_core::events::MemoryEvent::ComposioIntegrationsChanged {
                                     toolkits: toolkits.clone(),
                                 },
                             );
@@ -703,7 +703,7 @@ impl EventHandler<DomainEvent> for ComposioConnectionCreatedSubscriber {
                     );
                 }
 
-                match crate::openhuman::memory::tinycortex::run_composio_connection(
+                match tinymemory_core::tinycortex::run_composio_connection(
                     &toolkit,
                     &connection_id,
                     ctx.config.as_ref(),
@@ -918,9 +918,11 @@ impl EventHandler<DomainEvent> for ComposioConfigChangedSubscriber {
                         .collect();
                     toolkits.sort();
                     toolkits.dedup();
-                    crate::openhuman::memory::events::publish(crate::openhuman::memory::events::MemoryEvent::ComposioIntegrationsChanged {
-                        toolkits: toolkits.clone(),
-                    });
+                    tinymemory_core::events::publish(
+                        tinymemory_core::events::MemoryEvent::ComposioIntegrationsChanged {
+                            toolkits: toolkits.clone(),
+                        },
+                    );
                     tracing::debug!(
                         active_toolkits = ?toolkits,
                         "[composio-cache] config changed eager warm complete; published integrations changed"

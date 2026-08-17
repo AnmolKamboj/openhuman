@@ -1555,10 +1555,6 @@ fn every_domain_group_is_accounted_for_in_store_init_plan() {
     only_memory.memory = true;
     let plan = StoreInitPlan::for_domains(only_memory);
     assert!(plan.memory, "Memory on ⇒ memory store initialized");
-    assert!(
-        plan.people,
-        "Memory on ⇒ people store initialized (people lives under memory/)"
-    );
     assert!(!plan.agent_attachments, "Agent off ⇒ attachments store off");
     assert!(!plan.skills_prune, "Skills off ⇒ skills prune off");
 }
@@ -1834,7 +1830,7 @@ fn memory_capability_map_has_no_stale_entries() {
 /// gates at least one controller, or it is listed as deliberately RPC-less.
 ///
 /// `Capability` is deliberately NOT `#[non_exhaustive]` (see that module's
-/// docs), so a fourteenth family is a **compile error** in the `match` below
+/// docs), so a new family is a **compile error** in the `match` below
 /// before it is a test failure. That compile error is the mechanism which
 /// guarantees a new family gets wired somewhere rather than silently defaulting
 /// to ungated.
@@ -1871,6 +1867,28 @@ fn every_capability_family_is_accounted_for_in_the_rpc_surface() {
             Capability::Entities => false,
             // No controller exposes re-embed / compact / dream / doctor yet.
             Capability::Maintenance => false,
+            // The `people.*` controllers exist, but they still reach
+            // `PeopleStore` directly rather than through the bound driver, so
+            // tagging them with this family would gate a surface on a
+            // capability it does not actually consult — a null driver would
+            // unregister RPC methods that would have worked fine.
+            //
+            // Flips to `true` in the same change that routes those handlers
+            // through `as_people()`. See
+            // `docs/specs/2026-08-13-memory-module-port.md` stage 2.
+            Capability::People => false,
+            // Same as `People`: the chunk-tier and retrieval primitives back
+            // agent tools that still call the engine in-process, so nothing is
+            // gated on these families yet. Both flip to reflect reality in the
+            // change that routes those tools through the driver.
+            Capability::Chunks | Capability::Retrieval => false,
+            // Profile has no controllers of its own — the learning domain's
+            // RPC surface is tagged `Agent`, not `Memory`.
+            Capability::Profile => false,
+            // Episodic has no controllers either, and is unlikely to get any:
+            // its only caller is the archivist post-turn hook, which runs
+            // in-process on the turn path rather than answering an RPC.
+            Capability::Episodic => false,
         };
         assert_eq!(
             gated.contains(&cap),

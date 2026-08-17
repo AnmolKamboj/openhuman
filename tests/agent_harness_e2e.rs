@@ -2392,7 +2392,6 @@ mod streaming_support {
     use openhuman_core::openhuman::agent::Agent;
     use openhuman_core::openhuman::config::{AgentConfig, ContextConfig, MemoryConfig};
     use openhuman_core::openhuman::memory::agent::memory_loader::MemoryLoader;
-    use openhuman_core::openhuman::memory::store as memory_store;
     use openhuman_core::openhuman::memory::Memory;
     use openhuman_core::openhuman::tools::traits::ToolCallOptions;
     use openhuman_core::openhuman::tools::{
@@ -2410,6 +2409,7 @@ mod streaming_support {
     };
     use tinyagents::harness::tool::ToolCall;
     use tinyagents::harness::usage::Usage;
+    use tinymemory_core::store as memory_store;
 
     // ── ScriptedProvider ────────────────────────────────────────────────────
     // Copied (minimal) from tests/agent_session_turn_raw_coverage_e2e.rs:76-152.

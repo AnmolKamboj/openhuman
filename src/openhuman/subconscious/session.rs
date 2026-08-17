@@ -396,6 +396,11 @@ mod tests {
     /// gets 15.
     #[test]
     fn build_agent_preserves_simple_modes_15_iteration_cap() {
+        // The embedding seam fails loudly when unwired; a test that builds an
+        // agent must install it, and must not rely on another test having run
+        // first.
+        crate::openhuman::memory::host_impls::install_for_tests();
+
         use crate::openhuman::agent::harness::AgentDefinitionRegistry;
 
         AgentDefinitionRegistry::init_global_builtins().unwrap();
@@ -427,6 +432,11 @@ mod tests {
     /// here, but must come from the mode override, not incidentally).
     #[test]
     fn build_agent_preserves_aggressive_modes_30_iteration_cap() {
+        // The embedding seam fails loudly when unwired; a test that builds an
+        // agent must install it, and must not rely on another test having run
+        // first.
+        crate::openhuman::memory::host_impls::install_for_tests();
+
         use crate::openhuman::agent::harness::AgentDefinitionRegistry;
 
         AgentDefinitionRegistry::init_global_builtins().unwrap();

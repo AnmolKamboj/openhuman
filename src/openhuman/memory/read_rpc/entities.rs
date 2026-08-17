@@ -2,9 +2,9 @@ use anyhow::{Context, Result};
 use rusqlite::params;
 
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::store::chunks::store::with_connection;
 use crate::openhuman::memory::tree::score::store as score_store;
 use crate::rpc::RpcOutcome;
+use tinymemory_core::store::chunks::store::with_connection;
 
 use super::types::{DeleteChunkResponse, EntityRef, ScoreBreakdown, ScoreSignal, MAX_LIST_LIMIT};
 
@@ -251,7 +251,7 @@ pub async fn delete_chunk_rpc(
                     if e.kind() != std::io::ErrorKind::NotFound {
                         log::warn!(
                             "[memory_tree::read::delete] failed to remove chunk file path_hash={}: {e}",
-                            crate::openhuman::memory::util::redact::redact(&rel),
+                            tinymemory_core::util::redact::redact(&rel),
                         );
                     }
                 }

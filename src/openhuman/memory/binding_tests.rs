@@ -281,7 +281,7 @@ async fn unrelated_test_binding_cannot_capture_the_module_workspace() {
         .await
         .expect("module-backed put");
 
-    let client = crate::openhuman::memory::global::client().expect("shared test client");
+    let client = tinymemory_core::global::client().expect("shared test client");
     let raw = client
         .list_documents(Some(&namespace))
         .await
@@ -702,7 +702,11 @@ fn the_module_driver_never_disables_memory() {
 #[test]
 fn a_module_driver_reports_the_null_class_when_the_feature_is_off() {
     let cfg = cfg_with_class("tinymemory", "module");
-    let binding = super::build(std::path::Path::new("/tmp/openhuman-binding-test"), &cfg);
+    let binding = super::build(
+        std::path::Path::new("/tmp/openhuman-binding-test"),
+        "memory",
+        &cfg,
+    );
     assert_eq!(
         binding.class(),
         crate::core::subsystem::DriverClass::Null,
@@ -717,7 +721,11 @@ fn a_module_driver_reports_the_module_class_when_the_feature_is_on() {
     // module binding report Null. Construction stays I/O-free, so this needs no
     // runtime and loads nothing.
     let cfg = cfg_with_class("tinymemory", "module");
-    let binding = super::build(std::path::Path::new("/tmp/openhuman-binding-test"), &cfg);
+    let binding = super::build(
+        std::path::Path::new("/tmp/openhuman-binding-test"),
+        "memory",
+        &cfg,
+    );
     assert_eq!(
         binding.class(),
         crate::core::subsystem::DriverClass::Module,

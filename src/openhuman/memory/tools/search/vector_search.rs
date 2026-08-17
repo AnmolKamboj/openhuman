@@ -11,13 +11,13 @@ use std::fmt::Write;
 
 use crate::openhuman::config::rpc as config_rpc;
 use crate::openhuman::inference::embeddings::provider_from_config;
+use crate::openhuman::memory::api::chunks::SourceKind;
+use crate::openhuman::memory::api::provider::ChunkQuery;
+use crate::openhuman::memory::api::provider::MemoryProvider;
+use crate::openhuman::memory::ops::guard::active_memory_guard;
 use crate::openhuman::tools::traits::{Tool, ToolResult};
 use tinycortex::memory::retrieval::mmr::{mmr_select, MmrCandidate};
 use tinycortex::memory::store::vectors::cosine_similarity;
-use tinymemory_core::store::chunks::store::{
-    get_chunk_embeddings_for_signature_batch, list_chunks, ListChunksQuery,
-};
-use tinymemory_core::store::chunks::types::SourceKind;
 
 pub struct MemoryVectorSearchTool;
 
@@ -122,6 +122,19 @@ impl Tool for MemoryVectorSearchTool {
             .await
             .map_err(|e| anyhow::anyhow!("memory_vector_search: load config failed: {e}"))?;
 
+        // Chunks are read through the bound driver, not by opening the store
+        // in this process. Before the module port this called
+        // `list_chunks(&config, …)` directly, which resolved the workspace path
+        // and opened the same SQLite database the loaded module already had
+        // open — two engine instances over one file, with the module not
+        // authoritative. See `docs/specs/2026-08-13-memory-module-port.md` §2.1.
+        let guard = active_memory_guard()
+            .await
+            .map_err(|e| anyhow::anyhow!("memory_vector_search: {e}"))?;
+        let chunk_reader = guard.as_chunks().ok_or_else(|| {
+            anyhow::anyhow!("memory_vector_search: memory driver does not support the chunk family")
+        })?;
+
         let embedder = provider_from_config(&config)
             .map_err(|e| anyhow::anyhow!("memory_vector_search: embedding provider failed: {e}"))?;
 
@@ -143,9 +156,13 @@ impl Tool for MemoryVectorSearchTool {
         });
 
         // Fetch candidate chunks with metadata filters. The per-profile
-        // memory-source gate is applied inside `list_chunks` (before the row
-        // limit), so disallowed-source chunks can't starve permitted ones.
-        let query = ListChunksQuery {
+        // memory-source gate is applied inside the driver's query (before the
+        // row limit), so disallowed-source chunks can't starve permitted ones.
+        //
+        // `None` for the scope is not "unrestricted": the guard intersects it
+        // with the ambient per-turn allowlist and passes the result down, so
+        // naming a scope here could only ever *narrow* what the turn may see.
+        let query = ChunkQuery {
             source_kind,
             source_id: None,
             owner: None,
@@ -153,11 +170,12 @@ impl Tool for MemoryVectorSearchTool {
             until_ms: None,
             limit: Some(1000),
             offset: None,
-            source_scope: tinymemory_core::source_scope::current_source_scope(),
             exclude_dropped: false,
         };
 
-        let chunks = list_chunks(&config, &query)
+        let chunks = chunk_reader
+            .list_chunks(&query, None)
+            .await
             .map_err(|e| anyhow::anyhow!("memory_vector_search: list chunks failed: {e}"))?;
 
         if chunks.is_empty() {
@@ -167,8 +185,13 @@ impl Tool for MemoryVectorSearchTool {
         // Get embeddings for these chunks
         let chunk_ids: Vec<String> = chunks.iter().map(|c| c.id.clone()).collect();
         let model_sig = embedder.signature();
-        let embeddings = get_chunk_embeddings_for_signature_batch(&config, &chunk_ids, &model_sig)
-            .map_err(|e| anyhow::anyhow!("memory_vector_search: load embeddings failed: {e}"))?;
+        let embeddings: std::collections::HashMap<String, Vec<f32>> = chunk_reader
+            .chunk_embeddings(&chunk_ids, &model_sig)
+            .await
+            .map_err(|e| anyhow::anyhow!("memory_vector_search: load embeddings failed: {e}"))?
+            .into_iter()
+            .map(|embedding| (embedding.chunk_id, embedding.vector))
+            .collect();
 
         // Score each chunk
         let mut scored: Vec<(usize, f64, &[f32])> = Vec::new();

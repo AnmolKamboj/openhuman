@@ -46,7 +46,6 @@ pub(crate) fn ensure_shared_memory_client() -> PathBuf {
     // setup; now they need the host impls installed.
     crate::openhuman::memory::host_impls::install_for_tests();
     let workspace = shared_memory_test_workspace();
-    crate::openhuman::memory::global::init(workspace.clone())
-        .expect("initialize shared test memory client");
+    tinymemory_core::global::init(workspace.clone()).expect("initialize shared test memory client");
     workspace
 }

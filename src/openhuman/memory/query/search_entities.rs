@@ -1,10 +1,9 @@
-use crate::openhuman::config::rpc as config_rpc;
+use crate::openhuman::memory::api::provider::MemoryProvider;
+use crate::openhuman::memory::ops::guard::active_memory_guard;
 use crate::openhuman::memory::tree::retrieval::rpc::SearchEntitiesRequest;
 use crate::openhuman::tools::traits::{Tool, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
-use tinymemory_core::tree::retrieval;
-use tinymemory_core::tree::score::extract::EntityKind;
 
 pub struct MemoryTreeSearchEntitiesTool;
 
@@ -57,24 +56,35 @@ impl Tool for MemoryTreeSearchEntitiesTool {
         let req: SearchEntitiesRequest = serde_json::from_value(args).map_err(|e| {
             anyhow::anyhow!("invalid arguments for memory_tree_search_entities: {e}")
         })?;
-        // Validate arguments before touching config/disk — `EntityKind::parse`
-        // is pure, and a bad `kinds` value must fail with the kind error
-        // regardless of workspace state.
-        let kinds = match req.kinds {
-            None => None,
-            Some(list) => {
-                let parsed: Result<Vec<EntityKind>, String> =
-                    list.iter().map(|s| EntityKind::parse(s)).collect();
-                Some(parsed.map_err(|e| {
-                    anyhow::anyhow!("memory_tree_search_entities: invalid kind: {e}")
-                })?)
-            }
-        };
-        let cfg = config_rpc::load_config_with_timeout()
-            .await
-            .map_err(|e| anyhow::anyhow!("memory_tree_search_entities: load config failed: {e}"))?;
+        // `kinds` is **not** validated here any more, and that is a deliberate
+        // move rather than an omission.
+        //
+        // Entity kinds are an open vocabulary on the wire (see
+        // `memory::api::provider::retrieval`): the engine's own `EntityKind` is
+        // `#[non_exhaustive]` and has grown twice, so a closed host-side copy
+        // would either reject a kind the engine understands or drift silently
+        // out of date. The driver owns the vocabulary and rejects an unknown
+        // kind with `Invalid`.
+        //
+        // The cost is real and worth naming: a bad `kinds` value used to fail
+        // without a workspace, and now needs a bound driver to fail. The
+        // alternative — duplicating an open vocabulary host-side — is the
+        // failure mode this contract was shaped to avoid.
         let limit = req.limit.unwrap_or(5).min(100);
-        let matches = retrieval::search_entities(&cfg, &req.query, kinds, limit).await?;
+        let guard = active_memory_guard()
+            .await
+            .map_err(|e| anyhow::anyhow!("memory_tree_search_entities: {e}"))?;
+        let matches = guard
+            .as_retrieval()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "memory_tree_search_entities: memory driver does not support the \
+                     retrieval family"
+                )
+            })?
+            .search_entities(&req.query, req.kinds.as_deref(), limit)
+            .await
+            .map_err(|e| anyhow::anyhow!("memory_tree_search_entities: {e}"))?;
         log::debug!(
             "[tool][memory_tree] search_entities returning matches={}",
             matches.len()
@@ -167,7 +177,19 @@ mod tests {
             .contains("invalid arguments for memory_tree_search_entities"));
     }
 
+    /// An unknown `kinds` value is refused — by the **driver**, not the host.
+    ///
+    /// This used to assert that validation happened before any workspace was
+    /// touched, because the host owned a closed copy of the engine's
+    /// `EntityKind`. It no longer does: the vocabulary is open on the wire and
+    /// the driver is its authority. With no module artifact bound, the failure
+    /// now surfaces as the driver being unable to serve the family, which is
+    /// still a refusal of the same request — but it is a weaker guarantee than
+    /// the pure-function check it replaced, so it is called out rather than
+    /// quietly relaxed.
     #[tokio::test]
+    #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
+kind validation moved into the driver with the open entity-kind vocabulary"]
     async fn execute_rejects_invalid_kind_after_validation() {
         let tool = MemoryTreeSearchEntitiesTool;
         let err = tool
@@ -182,10 +204,18 @@ mod tests {
             .contains("memory_tree_search_entities: invalid kind:"));
     }
 
+    /// The parity half of this test is gone with the split brain.
+    ///
+    /// It used to run the tool and then call `retrieval::search_entities`
+    /// directly on the same workspace, asserting both saw an empty store. That
+    /// second call is exactly the in-process engine access this port removes —
+    /// there is no longer a second reader to agree with.
     #[tokio::test]
+    #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
+the tool now reads entities through the bound driver, not the in-process engine"]
     async fn execute_success_path_returns_empty_json_array_for_isolated_workspace() {
         let tmp = TempDir::new().expect("tempdir");
-        let (_workspace, cfg) = isolated_config(&tmp).await;
+        let (_workspace, _cfg) = isolated_config(&tmp).await;
         let tool = MemoryTreeSearchEntitiesTool;
         let result = tool
             .execute(json!({
@@ -203,14 +233,11 @@ mod tests {
             "search_entities should serialize a JSON array"
         );
         assert_eq!(parsed, json!([]));
-
-        let direct = retrieval::search_entities(&cfg, "alice", None, 3)
-            .await
-            .expect("direct search_entities on empty workspace");
-        assert!(direct.is_empty());
     }
 
     #[tokio::test]
+    #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
+the tool now reads entities through the bound driver, not the in-process engine"]
     async fn execute_accepts_kind_filter_and_clamps_large_limit() {
         let tmp = TempDir::new().expect("tempdir");
         let (_workspace, _cfg) = isolated_config(&tmp).await;
