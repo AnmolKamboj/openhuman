@@ -12,8 +12,8 @@ describe('Tauri content security policy', () => {
   it('allows scripts served from the Wry custom scheme', () => {
     const scriptSource = config.app?.security?.csp
       ?.split(';')
-      .map((directive) => directive.trim())
-      .find((directive) => directive.startsWith('script-src '));
+      .map(directive => directive.trim())
+      .find(directive => directive.startsWith('script-src '));
 
     expect(scriptSource).toBeDefined();
     expect(scriptSource).toContain('tauri:');
@@ -23,8 +23,8 @@ describe('Tauri content security policy', () => {
   it('retains the existing script execution requirements', () => {
     const scriptSource = config.app?.security?.csp
       ?.split(';')
-      .map((directive) => directive.trim())
-      .find((directive) => directive.startsWith('script-src '));
+      .map(directive => directive.trim())
+      .find(directive => directive.startsWith('script-src '));
 
     expect(scriptSource).toContain("'self'");
     expect(scriptSource).toContain("'wasm-unsafe-eval'");
