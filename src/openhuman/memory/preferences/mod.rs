@@ -108,8 +108,17 @@ pub async fn load_general_preferences(memory: &MemoryGuard, limit: usize) -> Vec
         .await
         .unwrap_or_default();
 
+    // `limit` counts preferences the caller will actually see, so the blank
+    // check comes first and the budget is spent only on kept values. Taking
+    // `limit` entries up front instead would let a single blank newest entry
+    // consume the whole budget and return nothing while a valid preference sat
+    // one row behind it — the prompt block would quietly lose a standing
+    // preference, with no error to notice.
     let mut out = Vec::new();
-    for entry in entries.into_iter().take(limit) {
+    for entry in entries {
+        if out.len() >= limit {
+            break;
+        }
         if let Ok(Some(full)) = memory.get(USER_PREF_GENERAL_NAMESPACE, &entry.key).await {
             let value = full.content.trim();
             if !value.is_empty() {
