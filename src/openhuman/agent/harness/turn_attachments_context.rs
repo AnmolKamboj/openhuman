@@ -36,8 +36,11 @@ pub async fn with_current_turn_image_placeholders<F, R>(placeholders: Vec<String
 where
     F: std::future::Future<Output = R>,
 {
+    // Box before `scope` so only a pointer moves into the task-local frame
+    // rather than the whole nested turn generator — see the measurements on
+    // `with_turn_collector` in `turn_subagent_usage.rs`.
     CURRENT_TURN_IMAGE_PLACEHOLDERS
-        .scope(placeholders, future)
+        .scope(placeholders, Box::pin(future))
         .await
 }
 

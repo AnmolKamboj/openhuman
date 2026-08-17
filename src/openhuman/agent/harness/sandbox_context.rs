@@ -50,7 +50,12 @@ pub async fn with_current_sandbox_mode<F, R>(mode: SandboxMode, future: F) -> R
 where
     F: std::future::Future<Output = R>,
 {
-    CURRENT_AGENT_SANDBOX_MODE.scope(mode, future).await
+    // Box before `scope` so only a pointer moves into the task-local frame
+    // rather than the whole nested turn generator — see the measurements on
+    // `with_turn_collector` in `turn_subagent_usage.rs`.
+    CURRENT_AGENT_SANDBOX_MODE
+        .scope(mode, Box::pin(future))
+        .await
 }
 
 #[cfg(test)]
