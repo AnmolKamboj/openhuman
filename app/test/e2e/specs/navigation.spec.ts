@@ -43,8 +43,6 @@ const ROUTES: Route[] = [
   { hash: '/connections' },
   { hash: '/rewards' },
   { hash: '/settings' },
-  // The Agent World index redirects to its welcome surface.
-  { hash: '/agent-world/welcome' },
   { hash: '/flows' },
   // Orchestration folded under Brain; `/orchestration` now redirects to
   // `/brain?tab=orchestration`, so we assert the Brain destination instead
@@ -85,6 +83,16 @@ describe('Navigation', () => {
       homeText = await waitForHomePage(15_000);
     }
     expect(homeText).toBeTruthy();
+  });
+
+  it('redirects users without a tiny.place identity away from Agent World', async () => {
+    await browser.execute(() => {
+      window.location.hash = '/agent-world/welcome';
+    });
+    await browser.waitUntil(
+      async () => (await browser.execute(() => window.location.hash)) === '#/chat',
+      { timeout: 15_000, timeoutMsg: 'Agent World did not redirect a non-identity user to chat' }
+    );
   });
 
   for (const route of ROUTES) {

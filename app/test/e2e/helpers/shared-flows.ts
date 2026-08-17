@@ -6,7 +6,7 @@
  * All navigation uses browser.execute() with window.location.hash
  * because sidebar nav buttons are icon-only (aria-label, no text content).
  */
-import { waitForAppReady, waitForAuthBootstrap } from './app-helpers';
+import { waitForAppReady, waitForAuthBootstrap as waitForAuthenticatedCore } from './app-helpers';
 import { triggerAuthDeepLink } from './deep-link-helpers';
 import {
   clickText,
@@ -195,10 +195,15 @@ function routeReadySelector(hash) {
 }
 
 async function waitForHashRouteReady(hash, options = {}) {
-  const { timeout = 10_000 } = options;
+  const { timeout = 15_000 } = options;
   // Routes that redirect (e.g. /activity → /settings/notifications) settle on
   // the resolved target, so wait for that hash rather than the requested one.
   const expected = normalizeHash(`#${resolveRedirect(normalizeHash(hash).replace(/^#/, ''))}`);
+  const hashMatches = current =>
+    current === expected ||
+    // On wide desktop layouts, the settings index immediately selects its
+    // default panel. Accept that final destination as well.
+    (expected === '#/settings' && current === '#/settings/account');
   const readySelector = routeReadySelector(hash);
   // We deliberately do NOT use a root-innerText "signature changed" heuristic:
   // the TwoPanelLayout shell keeps a persistent sidebar whose text dominates the
@@ -230,7 +235,7 @@ async function waitForHashRouteReady(hash, options = {}) {
       if (res.hasSelector) return true;
       // Otherwise require the resolved target hash. Redirects are accounted
       // for above when computing `expected`.
-      return res.current === expected;
+      return hashMatches(res.current);
     },
     {
       timeout,
@@ -778,6 +783,12 @@ export async function walkOnboarding(logPrefix = '[E2E]', maxSteps = 12): Promis
  * timing races do not cause the helper to skip onboarding prematurely.
  */
 export async function completeOnboardingIfVisible(logPrefix = '[E2E]') {
+  // Deep-link delivery resolves when the URL has reached the WebView, before
+  // CoreStateProvider has necessarily applied the authenticated snapshot.
+  // Waiting for that snapshot prevents a slow bootstrap from being mistaken
+  // for an already-onboarded session when the onboarding button has not
+  // mounted yet.
+  await waitForAuthenticatedCore(20_000);
   await walkOnboarding(logPrefix);
   const marker = await waitForHomePage(15_000);
   if (marker) return;
@@ -902,7 +913,7 @@ export async function performFullLogin(
   await waitForWindowVisible(25_000);
   await waitForWebView(15_000);
   await waitForAppReady(15_000);
-  await waitForAuthBootstrap(15_000);
+  await waitForAuthenticatedCore(15_000);
 
   await walkOnboarding(logPrefix);
 

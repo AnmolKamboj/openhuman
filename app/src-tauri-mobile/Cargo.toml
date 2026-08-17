@@ -49,7 +49,14 @@ tauri-plugin-ptt = { path = "../../packages/tauri-plugin-ptt" }
 default = []
 custom-protocol = ["tauri/custom-protocol"]
 
-# Match the desktop release profile for binary size.
+# Match the desktop release profile for binary size (#5541) — this crate is a
+# third, separate Cargo world (own Cargo.lock/target/) built via
+# `scripts/ios-init.sh` (`cargo build --release --target aarch64-apple-ios[-sim]`),
+# so it needs the same three settings as root `Cargo.toml` and
+# `app/src-tauri/Cargo.toml`, which carry the full rationale and measurements.
 [profile.release]
 debug = "line-tables-only"
 split-debuginfo = "packed"
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

@@ -7,12 +7,10 @@
 //! themselves are covered where they can be honest: `tinywallet`'s own loader
 //! E2E, which drives a real module over a real broker.
 
-use crate::openhuman::web3::wallet::primitives::wire::{
-    Scheme, Signature, SigningPayload, TransactionSpec,
-};
-use crate::openhuman::web3::wallet::primitives::Chain;
+use tinywallet::wire::{Scheme, Signature, SigningPayload, TransactionSpec};
+use tinywallet::Chain;
 
-use super::{classify, sign_payload, WalletCallError};
+use super::{classify, WalletCallError};
 use crate::openhuman::config::Config;
 
 /// The BIP-39 test vector mnemonic. Never use it for real funds.
@@ -35,11 +33,16 @@ fn failure(name: &str) -> tinybus::Error {
     }
 }
 
-fn evm_secret() -> Vec<u8> {
-    crate::openhuman::web3::wallet::primitives::key::derive(Chain::Evm, VECTOR, "m/44'/60'/0'/0/0")
-        .expect("the vector mnemonic derives")
-        .secret_bytes()
-        .to_vec()
+/// The phrase and path a confidential call carries.
+///
+/// No key is derived here any more: the module does that. This is the request,
+/// not the secret it produces.
+fn evm_signing_secret() -> tinywallet::wire::SecretMaterial {
+    tinywallet::wire::SecretMaterial {
+        mnemonic: VECTOR.to_string(),
+        derivation_path: "m/44'/60'/0'/0/0".to_string(),
+        chain: Chain::Evm,
+    }
 }
 
 #[test]
@@ -103,106 +106,6 @@ fn every_error_renders_as_its_message() {
     }
 }
 
-#[test]
-fn a_prehash_payload_is_signed_without_being_hashed_again() {
-    // The single most dangerous confusion in this file: hashing a digest a
-    // second time yields a valid signature over the wrong preimage, which the
-    // chain accepts as a different transaction or rejects with no explanation.
-    // Verified by recovering the signature against the digest itself.
-    use k256::ecdsa::signature::hazmat::PrehashVerifier as _;
-    use k256::ecdsa::{Signature as K256Signature, SigningKey, VerifyingKey};
-
-    let secret = evm_secret();
-    let digest = [0x42u8; 32];
-    let payload = SigningPayload {
-        bytes_hex: "42".repeat(32),
-        scheme: Scheme::Secp256k1Prehash,
-    };
-
-    let Signature::Secp256k1 { rs_hex, .. } = sign_payload(&payload, &secret).unwrap() else {
-        panic!("a prehash payload must produce a secp256k1 signature");
-    };
-
-    let raw: Vec<u8> = (0..rs_hex.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&rs_hex[i..i + 2], 16).unwrap())
-        .collect();
-    let signature = K256Signature::from_slice(&raw).unwrap();
-    let verifying: VerifyingKey = *SigningKey::from_slice(&secret).unwrap().verifying_key();
-
-    verifying
-        .verify_prehash(&digest, &signature)
-        .expect("the signature must verify against the digest, not a rehash of it");
-}
-
-#[test]
-fn a_prehash_payload_that_is_not_thirty_two_bytes_is_refused() {
-    let payload = SigningPayload {
-        bytes_hex: "42".repeat(16),
-        scheme: Scheme::Secp256k1Prehash,
-    };
-    assert!(matches!(
-        sign_payload(&payload, &evm_secret()),
-        Err(WalletCallError::Failed(_))
-    ));
-}
-
-#[test]
-fn an_ed25519_payload_is_signed_over_the_whole_message() {
-    // ed25519 hashes internally, so the payload is the message. Verified
-    // against the public key rather than merely checked for a length.
-    use ed25519_dalek::{Signature as EdSignature, SigningKey, Verifier as _};
-
-    let derived = crate::openhuman::web3::wallet::primitives::key::derive(
-        Chain::Solana,
-        VECTOR,
-        "m/44'/501'/0'/0'",
-    )
-    .unwrap();
-    let secret = derived.secret_bytes();
-    let message = b"a solana message that is clearly longer than thirty-two bytes";
-
-    let payload = SigningPayload {
-        bytes_hex: message.iter().fold(String::new(), |mut out, b| {
-            use std::fmt::Write as _;
-            let _ = write!(out, "{b:02x}");
-            out
-        }),
-        scheme: Scheme::Ed25519,
-    };
-
-    let Signature::Ed25519 { signature_hex } = sign_payload(&payload, secret).unwrap() else {
-        panic!("an ed25519 payload must produce an ed25519 signature");
-    };
-
-    let raw: Vec<u8> = (0..signature_hex.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&signature_hex[i..i + 2], 16).unwrap())
-        .collect();
-    let key: [u8; 32] = secret.try_into().unwrap();
-    SigningKey::from_bytes(&key)
-        .verifying_key()
-        .verify(message, &EdSignature::from_slice(&raw).unwrap())
-        .expect("the signature must verify over the message");
-}
-
-#[test]
-fn a_malformed_payload_from_the_module_is_refused_rather_than_signed() {
-    for bytes_hex in ["abc", "zz".repeat(32).as_str(), "aéb"] {
-        let payload = SigningPayload {
-            bytes_hex: bytes_hex.to_string(),
-            scheme: Scheme::Secp256k1Prehash,
-        };
-        assert!(
-            matches!(
-                sign_payload(&payload, &evm_secret()),
-                Err(WalletCallError::Failed(_))
-            ),
-            "{bytes_hex:?} should be refused"
-        );
-    }
-}
-
 #[tokio::test]
 async fn a_disabled_host_reports_unavailable_without_starting_a_broker() {
     let mut config = offline_config();
@@ -219,11 +122,126 @@ async fn a_disabled_host_reports_unavailable_without_starting_a_broker() {
     };
 
     assert!(matches!(
-        super::sign_transaction(&config, &spec, &evm_secret(), &[0x02; 33]).await,
+        super::sign_transaction_in_module(&config, &spec, &evm_signing_secret()).await,
         Err(WalletCallError::Unavailable(_))
     ));
     assert!(matches!(
         super::ensure_ready(&config).await,
         Err(WalletCallError::Unavailable(_))
     ));
+}
+
+// ---------------------------------------------------------------------------
+// The attestation guard
+// ---------------------------------------------------------------------------
+
+/// The digest check is the one part of `attested_proxy` that does not need a
+/// live broker, and it is the part that decides whether a recovery phrase is
+/// handed over. The rest of the guard — that an attestation exists at all — is
+/// enforced by tinybus and covered by its own tests against a real `dlopen`.
+mod attestation_guard {
+    use super::super::digest_is_pinned;
+    use crate::openhuman::modules::registry;
+
+    fn record() -> &'static crate::openhuman::modules::ModuleRecord {
+        registry::find("tinywallet").expect("the tinywallet record is compiled in")
+    }
+
+    #[test]
+    fn every_pinned_artifact_is_accepted() {
+        let record = record();
+        assert!(!record.assets.is_empty());
+        for asset in record.assets {
+            assert!(
+                digest_is_pinned(record, asset.sha256),
+                "pinned artifact {} was not accepted by its own table",
+                asset.archive
+            );
+        }
+    }
+
+    #[test]
+    fn a_digest_this_build_did_not_pin_is_refused() {
+        // The case that matters: an artifact the host attested but this build
+        // never named. Without the check, "the host vouched for something"
+        // would be enough to be sent a key.
+        assert!(!digest_is_pinned(record(), &"a".repeat(64)));
+        assert!(!digest_is_pinned(record(), ""));
+    }
+
+    #[test]
+    fn a_pinned_digest_is_matched_regardless_of_hex_case() {
+        // The release manifest and this table are written by different hands.
+        // A case mismatch refusing a legitimate artifact would break signing
+        // for every user, and it would look like an attack rather than a typo.
+        let record = record();
+        let upper = record.assets[0].sha256.to_ascii_uppercase();
+        assert_ne!(
+            upper, record.assets[0].sha256,
+            "fixture must actually differ"
+        );
+        assert!(digest_is_pinned(record, &upper));
+    }
+}
+
+/// The confidential request shapes, pinned against the module's own types.
+///
+/// `call_confidential` is generic over its argument tuple, so nothing checks
+/// that the value sent for a method is the type that method takes. That gap is
+/// not theoretical: `ExportKey` was first called with a bare `SecretMaterial`
+/// where the module expects an `ExportRequest` wrapping one. It compiled, and
+/// it would have failed at deserialization on the far side of the bus — the
+/// only signal being a runtime error on the one path that exports a key.
+///
+/// These assert the two shapes are genuinely distinct, so the wrapper cannot be
+/// dropped again without a test failing.
+mod request_shapes {
+    use tinywallet::wire::{ExportRequest, SecretMaterial, SignMessageRequest, SignRequest};
+
+    fn secret() -> SecretMaterial {
+        super::evm_signing_secret()
+    }
+
+    #[test]
+    fn an_export_request_is_not_interchangeable_with_a_bare_secret() {
+        let bare = serde_json::to_value(secret()).unwrap();
+        assert!(
+            serde_json::from_value::<ExportRequest>(bare).is_err(),
+            "a bare SecretMaterial must not deserialize as an ExportRequest, or the \
+             wrapper could be dropped at a call site without anything noticing"
+        );
+
+        let wrapped = serde_json::to_value(ExportRequest { secret: secret() }).unwrap();
+        assert!(serde_json::from_value::<ExportRequest>(wrapped).is_ok());
+    }
+
+    #[test]
+    fn the_wrapped_request_types_do_not_accept_each_other() {
+        // `SignRequest` and `SignMessageRequest` both wrap a secret and both
+        // take a second field, so a call site that swapped them would still
+        // look plausible. `deny_unknown_fields` is what stops that.
+        let sign_message = serde_json::to_value(SignMessageRequest {
+            secret: secret(),
+            message_hex: "00".repeat(32),
+            scheme: tinywallet::wire::Scheme::Secp256k1Prehash,
+        })
+        .unwrap();
+        assert!(serde_json::from_value::<SignRequest>(sign_message).is_err());
+        assert!(serde_json::from_value::<ExportRequest>(
+            serde_json::to_value(SignRequest {
+                secret: secret(),
+                transaction: tinywallet::wire::TransactionSpec::Evm {
+                    to: format!("0x{}", "11".repeat(20)),
+                    value_wei: "1".to_string(),
+                    data_hex: "0x".to_string(),
+                    nonce: 0,
+                    gas_limit: 21_000,
+                    gas_price_wei: "1".to_string(),
+                    chain_id: 1,
+                },
+            })
+            .unwrap()
+        )
+        .is_err());
+    }
 }

@@ -57,7 +57,7 @@ impl Tool for ProposeWorkflowTool {
          (to_port just stays \"main\"); routing is keyed exclusively on from_port, so a label \
          on to_port instead silently turns the branch into an unconditional fan-out and is a \
          hard reject. Exactly ONE \
-         trigger node is required. The 21 node kinds: trigger (config.trigger_kind: manual | \
+         trigger node is required. The 22 node kinds: trigger (config.trigger_kind: manual | \
          schedule | webhook | app_event | form | chat_message | evaluation | system | \
          execute_by_workflow; schedule needs config.schedule = {kind:\"cron\",expr,tz?} | \
          {kind:\"at\",at} | {kind:\"every\",every_ms}; app_event needs config.toolkit + \
@@ -113,6 +113,10 @@ impl Tool for ProposeWorkflowTool {
          config.release/config.n policies as gate; optional config.on_lane_error: \"collect\" \
          (default) | \"skip\" | \"fail_fast\". Output is ordered by lane index, not by finish \
          order), \
+         approval (a HUMAN review step, distinct from requires_approval: optional config.subject \
+         or \"=expr\", config.subject_kind, config.title, config.prompt, config.assignees, and \
+         config.metadata; routes the verdict as data on \"approved\" / \"rejected\". With no \
+         host review provider it parks the run and is settled through flows_resume), \
          void (terminal sink, no config: accepts items, discards them, runs nothing downstream. \
          Says \"this branch is a side effect and nothing waits on it\" where an unwired port \
          would read like a forgotten one. An outgoing edge is a hard reject, and so is having \
@@ -145,7 +149,7 @@ impl Tool for ProposeWorkflowTool {
                                             "code", "shell", "condition", "switch", "merge", "split_out",
                                             "transform", "output_parser", "sub_workflow", "memory",
                                             "dedup", "loop", "spawn", "gate", "scatter", "gather",
-                                            "void"
+                                            "approval", "void"
                                         ]
                                     },
                                     "name": { "type": "string", "description": "Human-readable node name." },
@@ -612,6 +616,12 @@ fn config_hint(node: &Node) -> Option<String> {
                 },
             ))
         }
+        NodeKind::Approval => cfg
+            .get("title")
+            .and_then(Value::as_str)
+            .or_else(|| cfg.get("prompt").and_then(Value::as_str))
+            .map(truncate_hint)
+            .or_else(|| Some("human review".to_string())),
         // A void takes no config, and "discards its input" is what the kind
         // already says on the timeline.
         NodeKind::Void => None,

@@ -59,7 +59,9 @@ GGML_NATIVE=OFF cargo check --manifest-path Cargo.toml
 
 `pnpm core:stage` is a no-op (sidecar removed).
 
-**Build speed**: both `Cargo.toml` files set `[profile.dev.package."*"] debug = false` — dependencies compile without DWARF in `dev`/`test` (faster builds + smaller `target/`); our own crates keep full debuginfo so panics/backtraces still resolve to file:line. `release`/`ci` profiles are unchanged. Keep this stanza in sync across the root and `app/src-tauri/Cargo.toml` if you touch profiles.
+**Build speed**: both `Cargo.toml` files set `[profile.dev.package."*"] debug = false` — dependencies compile without DWARF in `dev`/`test` (faster builds + smaller `target/`); our own crates keep full debuginfo so panics/backtraces still resolve to file:line. Keep this stanza in sync across the root and `app/src-tauri/Cargo.toml` if you touch profiles.
+
+**Binary size**: both `[profile.release]` blocks set `lto = "thin"`, `codegen-units = 1` and `strip = "symbols"` (#5541) — measured at **116.9 MB → 67.1 MB** for `openhuman-core` on the product feature set, with no feature removed and no dependency dropped. The win is not about dependencies: `cargo bloat` puts **59.5% of `.text` in `openhuman_core` itself** and only ~15 MB across all 379 third-party packages, and there is no hotspot — it is ~110k monomorphized methods, of which the default 16 codegen units emitted many twice (`Config::load_or_init_with_env_lookup::{{closure}}` appeared 6× at ~40 KB, and it is not even generic). `strip` is safe because Sentry symbolicates **server-side** from the separate dSYM/PDB/DWP that `scripts/upload_sentry_symbols.sh` uploads, matched by a debug ID `strip` preserves; if that ever broke, the script hard-exits on zero DIFs (#1403) instead of shipping un-symbolicated. Do not drop `debug = "line-tables-only"` — that is what makes the dSYM useful. `[profile.ci]` deliberately overrides all three, so the fast CI lanes are unaffected; release builds are slower by design.
 
 **Two-lane CI model**: **CI Lite** (`ci-lite.yml`, quick — pushes to `main` + PRs targeting `main` or `release`): quality checks per changed area plus unit tests **only for the changed files** — `vitest related` for `app/src` changes and domain-scoped `cargo llvm-cov` (libtest filter derived from `src/<a>/<b>/…`) for Rust — still gated at ≥ 80% diff coverage. Config-level changes (lockfile, Cargo.toml/lock, vitest config, `src/lib.rs`, …) fall back to the full suite (`scripts/ci/vitest-changed-coverage.sh`, `scripts/ci/rust-coverage-changed.sh`). **CI Full** (`ci-full.yml`, slow — PRs targeting the long-lived `release` branch + every push to it): complete unit suites, Rust mock-backend E2E, Playwright, and the full desktop E2E matrix on 3 OSes, aggregated by the `CI Full Gate` check (except the Playwright spec run — non-blocking signal while flaky, #3615). `release` advances when a maintainer dispatches `promote-main-to-release.yml` (pushes a merge commit from `main` into `release` — no standing PR) and when fix PRs opened directly against `release` merge (those run both lanes, with `CI Full Gate` blocking the merge; the post-merge push re-runs CI Full). Production releases are always cut from `release`; staging builds may be cut from `main` or `release` by selecting that workflow-dispatch ref. Release-source cuts back-merge `release` into `main` via `scripts/release/merge-release-into-main.sh`, and version-bump commits carry `[skip ci]`. Long build/test commands must run through `scripts/ci-cancel-aware.sh`, whose Actions-API watchdog stops cancelled builds inside container jobs (docker exec swallows runner signals).
 
@@ -410,7 +412,23 @@ Per-domain Cargo features drop whole domains **at compile time** (smaller binary
 
 | Set | Where it lives | What it is |
 | --- | --- | --- |
-| **Contributor** | `[features] default` in `Cargo.toml` | What a bare `cargo check`, `cargo test` and rust-analyzer compile. 9 cheap gates. **353 packages / 3 native builds** (`libsqlite3-sys`, `lzma-sys`, `ring`). |
+| **Contributor** | `[features] default` in `Cargo.toml` | What a bare `cargo check`, `cargo test` and rust-analyzer compile. 10 cheap gates. **~353 packages / 3 native builds** (`libsqlite3-sys`, `lzma-sys`, `ring`). |
+
+> **`modules` is in `default`, and it is the one gate here that is not optional.**
+> The table below has documented it as Contrib=ON since it landed and
+> `scripts/ci/product-features.txt` has always listed it, but it was missing from
+> `[features] default` — so a bare `cargo test --lib -- memory::` failed **26**
+> tests (582 passed / 26 failed), every one a "null vs module" assertion, because
+> `memory::binding::module_provider` took its `#[cfg(not(feature = "modules"))]`
+> arm and bound `NullMemoryProvider`. A further 15 module-gated tests did not
+> exist at all. With the gate on: **623 passed, 0 failed.** A default set that
+> cannot run its own test suite is not an inner loop, so this one stays.
+> It is also the cheapest gate in the list — **+9 packages / +5 unique names**
+> (`ureq`, `ureq-proto`, `utf8-zero`, `toml_edit`, `toml_write`) and **zero** new
+> native builds; the native list is identical with it on and off. Nothing like
+> the cohorts that motivated splitting `default` from the product set. It does
+> **not** move the kernel floor — that profile is `--no-default-features
+> --features flows` and never reads this list.
 | **Product** | `scripts/ci/product-features.txt` | What the shipped desktop app has. 16 gates. **540 packages / 7 native builds** (adds `bzip2-sys`, `libgit2-sys`, `libz-sys`, `zstd-sys`). |
 
 `default` used to be the product set, which made the inner loop pay for the whole product on every edit — web3's ethers/secp256k1 cohort, `documents`' zstd/bzip2 native builds (since removed from the graph entirely — the codecs run in a module now), the cpal/hound/arboard/enigo/rdev stack behind `voice`+`inference`, `contacts`' macOS objc2 cohort, `crash-reporting`'s sentry tree, `tui`'s ratatui. Those are default-OFF now. **This did not change what ships**: the shell has set `default-features = false` since #1061 and never inherited `default` anyway.
@@ -434,10 +452,11 @@ GGML_NATIVE=OFF cargo check --manifest-path Cargo.toml \
 
 `--no-default-features --features flows` is the **kernel profile**: the surface a
 second host would embed to get workflow execution and nothing else. It is measured
-and ratcheted, because unmeasured it grows — three heavy dependencies remain
-unconditional today (`git2`/vendored-libgit2, `rusqlite`/bundled, and
-`tokio-tungstenite`), and none would likely have
-landed that way had a number moved in CI when they did.
+and ratcheted, because unmeasured it grows — `rusqlite`/bundled and
+`tokio-tungstenite` remain unconditional today (`git2`/vendored-libgit2 left the
+kernel profile with the `libgit2-sys` + `libz-sys` shed below, once it moved
+behind the `memory-git` gate), and none would likely have landed that way had a
+number moved in CI when they did.
 
 ```bash
 scripts/kernel-floor.sh flows        # CI Linux: 304 packages / 281 names / 3 native
@@ -494,7 +513,7 @@ Two columns because there are two sets (see above): **Contrib** is `[features] d
 | `mcp` | ON | ON | `openhuman::mcp::server` (the `openhuman mcp` stdio/HTTP server), `openhuman::mcp::registry` (dynamic Smithery installs — `mcp_clients` RPC namespace, SQLite, boot spawn, supervisor, OAuth), `openhuman::mcp::audit` (write-audit log), and the static config-declared server set in `openhuman::mcp::config_servers`. ~19 agent tools, ~20k LOC | **none** (see scope note) |
 | `tui` | OFF | — | `openhuman::tui` — the tabbed ratatui/crossterm CLI UI (Logs, Chat, Config, Settings), auto-opened by bare `openhuman` on interactive non-container hosts and forced with `openhuman tui` (alias `chat`). Runs the core in-process. No controllers, no agent tools. **Intentionally NOT forwarded to the desktop shell** (allowlisted in `check-feature-forwarding.mjs`). | `ratatui`, `crossterm` |
 | `channels` | ON | ON | `openhuman::channels` (external-messaging providers — Telegram/Discord/Slack/Signal/WhatsApp/iMessage/IRC/… — plus the channel runtime, controllers, host, proactive messaging + inbound dispatch) and the `channels::webview_accounts` / `webview_apis` / `webview_notifications` / `channels::whatsapp_data` webview-bridge domains (incl. the 3 `whatsapp_data_*` agent tools). **Carve-outs `channels::{traits, cli}` stay ungated.** | **28** via `tinychannels/{email,lark}` — the crate itself stays (load-bearing), its two heavy providers do not |
-| `memory-git` | OFF | ON | `openhuman::memory::diff` (git-backed snapshots/checkpoints/read markers, the `memory_diff` RPC namespace + agent tool) and the git wiki mirror in `memory::store::content::wiki_git`. **Type carve-out**: `memory::diff::types` compiles in BOTH builds — the always-on subconscious memory profile renders `CrossSourceDiff`/`ChangeKind` into prompts, and tinycortex makes the matching split (its `memory::diff::{types,source}` are ungated, only the `Ledger`/`DiffEngine` half sits behind `git-diff`). Off ⇒ `memory_diff` is unknown-method, the tool is absent, the embedded driver drops `Capability::Diff` **and** `as_diff()` returns `None` in lockstep (`audit_provider` fails on either half alone), and summary nodes are still written to disk but not mirrored into git. | **3**: `git2`, `libgit2-sys`, `libz-sys` — two of the five native C builds in the kernel profile, the largest native shed in the program |
+| `memory-git` | OFF | ON | `openhuman::memory::diff` (git-backed snapshots/checkpoints/read markers, the `memory_diff` RPC namespace + agent tool) and the git wiki mirror in `memory::store::content::wiki_git`. **Type carve-out**: `memory::diff::types` compiles in BOTH builds — the always-on subconscious memory profile renders `CrossSourceDiff`/`ChangeKind` into prompts, and tinycortex makes the matching split (its `memory::diff::{types,source}` are ungated, only the `Ledger`/`DiffEngine` half sits behind `git-diff`). Off ⇒ `memory_diff` is unknown-method, the tool is absent, the embedded driver drops `Capability::Diff` **and** `as_diff()` returns `None` in lockstep (`audit_provider` fails on either half alone), and summary nodes are still written to disk but not mirrored into git. **This crate declares no `git2`** — tinycortex owns every libgit2 call in the stack (the diff ledger, the wiki mirror, the persona git-history reader), and the gate reaches the cohort by forwarding `tinycortex/git-diff` + `tinycortex/wiki-git`; `tinymemory-core/memory-git` forwards the same pair. Do not re-add a direct `git2` dependency to this crate or to `tinymemory-core`: it would buy no crates and invite a second major pin, which `links = "git2"` makes a hard cargo error. Test code that must read a ledger back goes through the `tinycortex::git2` re-export (`tests/memory_artifacts_e2e.rs`). | **3**: `git2`, `libgit2-sys`, `libz-sys` — two of the five native C builds in the kernel profile, the largest native shed in the program |
 | `contacts` | OFF | ON | `memory::people::address_book`'s macOS CNContactStore reader — the address-book seeding path for the people domain. Leaf gate over a **pre-existing** off-state: the module already shipped a non-macOS `imp` stub returning an empty contact list, so the gate only widens that stub's cfg. `read`/`read_with`/`AddressBookError`/`SystemContactsSource` and the whole `people` RPC surface stay compiled in every build; off ⇒ a refresh seeds nothing instead of failing. | **6** on macOS (`objc2`, `objc2-foundation`, `objc2-contacts`, `block2` + 2 transitive). **No-op on Linux/Windows** — never in those graphs, so the kernel-floor ratchet does not move. Verify cross-target: `cargo tree --target aarch64-apple-darwin -e normal -i objc2-contacts --no-default-features` (294 → 288 packages). |
 | `runtime-node` | OFF | ON | `runtime::node` (download / verify / extract / install a pinned Node.js toolchain), the `runtime::javascript` language slot, `runtime::pool::node`, the `node_exec` / `npm_exec` agent tools, and the `node_runtime` harness-init step. **Facade + stub** — `ShellTool` holds `Option<Arc<NodeBootstrap>>` and `shell.rs` is kernel, so the module cannot simply vanish; `runtime/node/stub.rs` carries the `NodeBootstrap` type surface while registration sites are leaf-gated. **The generic native-tool dispatcher (`runtime::node::ops` / `runtime::node::types`) is NOT gated** — it backs both the gated `javascript.*` controllers and the ungated `flows` `oh:` `NativeToolBackend`, so native flow tools (`memory_search`, file, shell, …) keep working when the managed Node runtime is off. Off ⇒ `try_cached`/`probe_installed` return `None` and the shell never prepends a managed bin dir, identical to today's `node.enabled = false` path. | **`xz2` + its static liblzma C build.** First gate to remove a NATIVE toolchain build: `lzma-sys` leaves the list, 6 → 5. `tar`/`zip` are NOT shed — shared with `inference` (install_piper), `runtime::python`, and the document tools. |
 
@@ -656,6 +675,80 @@ always-on kernel surface, so `features = ["modules"]` there puts a loader plus
 `ureq` and an archive stack into the kernel profile for a host that can never use
 one — 305 → 308 packages, which the kernel-floor ratchet caught. It is forwarded
 from this crate's own `modules` feature instead.
+
+#### The memory seam — one contract, two live paths (#5560)
+
+Memory is the second module consumer, and it is **half migrated**. Read this
+before touching `src/openhuman/memory/`.
+
+**The contract is `tinymemory-api`, and `crate::openhuman::memory::api` is a
+re-export of it — not a copy.** `3ee5a3cad` inlined that crate as 10,894 lines
+under `src/openhuman/memory/api/`, every file byte-identical to
+`vendor/tinymemory/api/src/` apart from doc-comment paths. Nothing behaved
+differently, which is what made it worth undoing: the contract is the vocabulary
+the host, `ModuleMemoryProvider`, and the separately compiled module all speak,
+and the module compiles against the **crate**. A verbatim copy made the host's
+`MemoryError`, `Chunk`, `Capabilities` and `MemoryProvider` distinct types from
+the ones on the wire. `api::wire` is where that bit hardest — its own docs, and
+`modules/memory.rs`, both justify sharing the error table because
+reimplementing it "is what would let a `PathEscape` arrive as an `Invalid`" —
+and while the host held a private copy of that table the sentence described an
+intention rather than the build. `memory/api.rs` is a short `pub use` now;
+`memory/api_identity_tests.rs` pins the identity with type equalities, so a
+re-inlining fails to compile rather than passing silently.
+
+**`memory::api` is the contract surface, not an alias for the crate.** It
+exports only what actually crosses the bus, derived from both directions —
+outbound from `modules/memory.rs`, inbound from `modules/memory_host.rs`. Whole
+namespaces where the namespace *is* wire vocabulary (`capabilities`, `chunks`,
+`error`, `goals`, `health`, `provider` with its `provider::types` payloads,
+`recall`, `tool_memory`, `tree`, `types`, `wire`), plus `CONTRACT_VERSION` for
+version negotiation. Three exclusions are deliberate and each has a reason:
+
+- **`host`** is re-exported as **two types, not the namespace** — only
+  `MemoryEvent` and `SpacyResponse` cross the bus. The rest of
+  `tinymemory_api::host` is the *in-process engine-embedding* seam (the
+  persisted `MemoryConfig` sections, `MemoryHostConfig`, `EmbeddingProvider`,
+  `MemoryEventSink`), which the host hands to `tinymemory-core` directly and
+  which never touches a module.
+- **`null`** is the fallback driver `memory::binding` installs when no module is
+  available — what runs when nothing crosses the bus, so the opposite of
+  contract. Name `tinymemory_api::null` at the call site.
+- **`traits`**, **`version`** and **`is_compatible`** had zero uses in `src/`;
+  they were alias surface only.
+
+That is the point of the split: `tinymemory-api` is *also* the crate this host
+embeds the engine through, and "the module contract" and "the host's own use of
+the crate" are different surfaces. Reaching the second one by naming
+`tinymemory_api::` directly keeps the difference visible in the source rather
+than in someone's memory. **Do not widen `memory::api` back out to the whole
+crate** — if a new path needs something not exported there, the question to
+answer first is whether it crosses the bus.
+
+**`tinymemory-api` stays; `tinymemory-core` has not left yet.** The API crate is
+the host-owned contract and is meant to be a dependency. The *engine* crate is
+still linked (1.44 MB of `.text`) because ~71 lines across 38 production files
+name `tinymemory_core::` directly, and ~687 more paths reach it through the
+twenty-five module re-exports in `memory/mod.rs`. `memory/direct_engine_refs_tests.rs`
+is the ratchet over the first number, with every file classified as a re-export
+shim, a host-seam installation, or a call that needs a wider bus surface.
+
+**Most of what remains is blocked upstream, not here.** `modules::registry` pins
+the TinyMemory module to a released, SHA-256-verified artifact, so a new bus
+method is a `tinymemory` release plus a registry re-pin before it is a host
+change. Adding a `MemoryProvider` method without that produces a driver that
+answers `Unsupported` — strictly worse than the direct call, because the failure
+moves from compile time to run time. The concrete gaps (retrieval filters, chunk
+reads, an entity-kind filter, source listing, the people domain, and the
+`source_scope` task-local) are enumerated in that lint's module docs.
+
+**One trap worth naming: `tinymemory-api` and `tinycortex-api` are two crates
+with near-identical types.** The engine's
+`tinymemory_core::store::chunks::types::SourceKind` resolves to
+`tinycortex_api::chunks::SourceKind`, which is **not** the contract's
+`memory::api::chunks::SourceKind`. Swapping one import for the other looks like
+a free type carve-out and is a type error — the module does that conversion at
+its own boundary.
 
 #### The `tui` gate
 
