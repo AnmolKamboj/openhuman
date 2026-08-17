@@ -889,7 +889,6 @@ fn handle_get_facet(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_update_facet(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        use crate::openhuman::memory::api::provider::UserState;
 
         let class_str = params
             .get("class")
