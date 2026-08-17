@@ -167,7 +167,9 @@ impl MemoryProfile for InMemoryProfile {
 
     async fn delete_facet(&self, key: &str) -> Result<bool, MemoryError> {
         if self.fail_delete_for.lock().as_deref() == Some(key) {
-            return Err(MemoryError::Other(anyhow::anyhow!("simulated delete failure")));
+            return Err(MemoryError::Other(anyhow::anyhow!(
+                "simulated delete failure"
+            )));
         }
         Ok(self.facets.lock().remove(key).is_some())
     }
