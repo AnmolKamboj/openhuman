@@ -1081,7 +1081,6 @@ fn handle_forget_facet(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_reset_cache(_params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        use crate::openhuman::memory::api::provider::UserState;
 
         tracing::debug!("[learning.reset_cache] called");
 
