@@ -482,28 +482,10 @@ impl Tool for LearningResetCacheTool {
     async fn execute(&self, _args: serde_json::Value) -> anyhow::Result<ToolResult> {
         log::debug!("[tool][learning] reset_cache invoked");
         let cache = get_cache().await?;
-        let all = cache
-            .list_all()
-            .await
-            .map_err(|e| anyhow::anyhow!("learning_reset_cache: {e:#}"))?;
-        let pinned_preserved = all
-            .iter()
-            .filter(|f| f.user_state == UserState::Pinned)
-            .count();
-        // See `learning::schemas::reset_cache` for why a delete failure is
-        // propagated rather than counted as a no-op: reporting success on a
-        // reset that left facets behind is undetectable to the caller.
-        let mut deleted = 0usize;
-        for f in &all {
-            if f.user_state == UserState::Pinned {
-                continue;
-            }
-            if cache.delete(&f.key).await.map_err(|e| {
-                anyhow::anyhow!("learning_reset_cache: delete failed after removing {deleted} facets: {e:#}")
-            })? {
-                deleted += 1;
-            }
-        }
+        let (deleted, pinned_preserved) =
+            crate::openhuman::agent::learning::cache::reset_non_pinned(&cache)
+                .await
+                .map_err(|e| anyhow::anyhow!("learning_reset_cache: {e:#}"))?;
         Ok(ToolResult::success(serde_json::to_string(&json!({
             "deleted": deleted,
             "pinned_preserved": pinned_preserved,
