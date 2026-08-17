@@ -54,6 +54,39 @@ async fn load_general_preferences_returns_bodies_not_topic_keys_and_honours_the_
     assert_eq!(load_general_preferences(&guard, 1).await.len(), 1);
 }
 
+/// A blank entry must not consume the caller's budget.
+///
+/// `list()` returns newest-first, so a blank newest entry sat in front of the
+/// real ones. Truncating to `limit` before dropping blanks meant a caller
+/// asking for one preference got none — the Lane-A prompt block silently lost
+/// a standing preference, and nothing anywhere reported a problem.
+#[tokio::test]
+async fn a_blank_newest_entry_does_not_consume_the_limit() {
+    let (_provider, guard) = guarded_in_memory();
+
+    // Stored oldest-first so the blank one is newest and is seen first.
+    for (key, value) in [("tone", "Be terse."), ("scratch", "   ")] {
+        guard
+            .store(
+                USER_PREF_GENERAL_NAMESPACE,
+                key,
+                value,
+                MemoryCategory::Core,
+                None,
+                MemoryTaint::Internal,
+            )
+            .await
+            .unwrap();
+    }
+
+    let general = load_general_preferences(&guard, 1).await;
+    assert_eq!(
+        general,
+        vec!["Be terse.".to_string()],
+        "a blank newest entry must be skipped, not counted against the limit"
+    );
+}
+
 /// A driver whose only real family is retrieval, answering with hits whose
 /// vector component is set per-entry so the filter can be observed.
 struct ScriptedRetrieval {
