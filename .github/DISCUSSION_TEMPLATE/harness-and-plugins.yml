@@ -23,8 +23,8 @@ body:
     id: what
     attributes:
       label: What are you trying to do?
-      validations:
-        required: true
+    validations:
+      required: true
   - type: textarea
     id: behavior
     attributes:
