@@ -149,6 +149,41 @@ pub fn class_from_key(key: &str) -> Option<FacetClass> {
     }
 }
 
+/// Delete every non-`Pinned` facet, returning `(deleted, pinned_preserved)`.
+///
+/// Shared by the `learning.reset_cache` RPC and the `learning_reset_cache`
+/// agent tool so the two cannot drift — they answer the same user request and
+/// previously carried two copies of this loop.
+///
+/// # Errors
+///
+/// Propagates a delete failure rather than counting it as "nothing to delete".
+/// Swallowing it would answer a reset with success while leaving the facets in
+/// place, which is the one outcome the caller cannot detect and the one that
+/// matters: the next turn keeps reading material the user asked to forget.
+/// `Ok(false)` from a delete is different and stays silent — the row was
+/// already gone, which is the requested end state.
+pub async fn reset_non_pinned(cache: &FacetCache) -> anyhow::Result<(usize, usize)> {
+    let all = cache.list_all().await?;
+    let pinned_preserved = all
+        .iter()
+        .filter(|f| f.user_state == UserState::Pinned)
+        .count();
+
+    let mut deleted = 0usize;
+    for facet in &all {
+        if facet.user_state == UserState::Pinned {
+            continue;
+        }
+        if cache.delete(&facet.key).await.map_err(|e| {
+            anyhow::anyhow!("delete failed after removing {deleted} facets: {e:#}")
+        })? {
+            deleted += 1;
+        }
+    }
+    Ok((deleted, pinned_preserved))
+}
+
 /// Build a full key from a class and a suffix (e.g. `(Style, "verbosity")` → `"style/verbosity"`).
 pub fn key_with_class(class: FacetClass, suffix: &str) -> String {
     format!("{}/{suffix}", class_prefix(class))
