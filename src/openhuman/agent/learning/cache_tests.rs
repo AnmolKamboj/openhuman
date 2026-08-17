@@ -253,3 +253,60 @@ async fn delete_removes_facet_by_key() {
     let loaded = cache.get("goal/learn_rust").await.unwrap();
     assert!(loaded.is_none());
 }
+
+// ── reset_non_pinned ─────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn reset_deletes_every_non_pinned_facet_and_keeps_the_pinned_ones() {
+    let profile = std::sync::Arc::new(
+        crate::openhuman::agent::learning::test_profile::InMemoryProfile::new(),
+    );
+    let cache = FacetCache::for_tests(profile.clone());
+    for (key, state) in [
+        ("style/verbosity", UserState::Auto),
+        ("tooling/package_manager", UserState::Pinned),
+        ("goal/ship", UserState::Auto),
+    ] {
+        let mut facet = stub_facet(key, key, "v", FacetState::Active, 0.9);
+        facet.user_state = state;
+        cache.upsert(&facet).await.expect("seed facet");
+    }
+
+    let (deleted, pinned_preserved) =
+        crate::openhuman::agent::learning::cache::reset_non_pinned(&cache)
+            .await
+            .expect("reset succeeds");
+
+    assert_eq!(deleted, 2);
+    assert_eq!(pinned_preserved, 1);
+    let remaining = cache.list_all().await.expect("list");
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].key, "tooling/package_manager");
+}
+
+/// A failed delete must surface, not be counted as "nothing to delete".
+///
+/// This is the case that made the old `unwrap_or(false)` wrong: the reset
+/// reported success while the facets were still stored, so the next turn kept
+/// reading material the user had asked to forget — and nothing in the response
+/// let the caller tell that apart from a clean reset.
+#[tokio::test]
+async fn a_failed_delete_is_reported_rather_than_counted_as_a_no_op() {
+    let profile = std::sync::Arc::new(
+        crate::openhuman::agent::learning::test_profile::InMemoryProfile::new(),
+    );
+    let cache = FacetCache::for_tests(profile.clone());
+    for key in ["style/verbosity", "goal/ship"] {
+        let facet = stub_facet(key, key, "v", FacetState::Active, 0.9);
+        cache.upsert(&facet).await.expect("seed facet");
+    }
+    profile.fail_delete_for("goal/ship");
+
+    let error = crate::openhuman::agent::learning::cache::reset_non_pinned(&cache)
+        .await
+        .expect_err("a delete failure must not report success");
+    assert!(
+        error.to_string().contains("delete failed"),
+        "the error should name the failure: {error}"
+    );
+}
