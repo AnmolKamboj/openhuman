@@ -58,14 +58,12 @@ const VOICE_ACK_DEADLINE_SECS: u64 = 8;
 /// own, so the caller is told the answer is still coming instead of being left on
 /// a trail of filler.
 ///
-/// The preface the voice directive asks the model for cannot be relied on to
-/// arrive inside the window: building the per-turn orchestrator (config load,
-/// tool registry, integration catalogue) and running memory recall takes seconds
-/// before the first model token is even requested, and the model's first round is
-/// often a tool call carrying no text at all. Measured against staging, the first
-/// streamable token landed ~10.6s into a turn whose whole budget is 8s — so every
-/// slow turn ended on the relay's ellipsis padding and nothing else, which sounds
-/// like the assistant losing the thread rather than working on an answer.
+/// The model is deliberately not asked to speak first (see VOICE_DIRECTIVE), and
+/// could not be relied on to anyway: building the per-turn orchestrator (config
+/// load, tool registry, integration catalogue) takes seconds before the first
+/// model token is even requested, and the first round is usually a tool call
+/// carrying no text. Measured against staging, the first streamable token landed
+/// ~10.6s into a turn whose whole budget is 8s.
 ///
 /// Neutral rather than a promise. "I'll have that for you in a moment" states an
 /// outcome the turn cannot guarantee the shape of: the answer may follow a second
@@ -219,21 +217,27 @@ fn messages_to_history_pairs(messages: &[Value]) -> Vec<(String, String)> {
 /// Spoken-output directive appended to the orchestrator profile so replies read
 /// naturally through TTS instead of as markdown.
 ///
-/// The tool-preface clause is latency-critical, not cosmetic: the cloud realtime
-/// session enforces a per-response time ceiling, and a turn that delegates (email,
-/// calendar, files) produces no top-level assistant text until the sub-agent
-/// returns 10-20s later — past the ceiling. Emitting one short spoken sentence
-/// first makes the model stream an immediate `TextDelta`, so audio reaches the
-/// caller right away and the turn stays alive while the tool runs.
+/// It deliberately does NOT ask for a spoken preface before tool use any more.
+/// That clause existed to get audio to the caller early, back when the relay's
+/// filler was inaudible until the turn closed. It cost far more than it bought:
+/// a reply carrying only text and no tool call *is* the end of a turn, so a model
+/// that dutifully announced "let me pull up your inbox — I'll drop the summary in
+/// your chat" ended there, and that sentence was delivered as the final answer.
+/// The caller got a promise and no summary — observed live, with the model
+/// echoing this doc's own former example almost verbatim.
+///
+/// The acknowledgement is the relay's job now (`VOICE_FILLERS` in
+/// `voiceAgent.ts`, spoken ~700ms in) precisely because it does not depend on the
+/// model choosing to speak first. So the directive tells the model the opposite:
+/// call the tool and answer from the result.
 const VOICE_DIRECTIVE: &str = "You are speaking aloud in a live voice conversation. \
 Reply in natural, concise spoken sentences. Do not use markdown, code blocks, \
-bullet lists, headings, or emoji. Before you use a tool or delegate (for example \
-to check email, a calendar, files, or the web), first say one short spoken \
-sentence telling the user what you are doing — and, since those actions sometimes \
-take a while, that you'll follow up with the details in their chat IF it does — \
-then proceed. Example: \"Sure, let me pull up your inbox — if it takes a moment \
-I'll drop the summary in your chat.\" Keep that preface to one sentence so it \
-starts speaking immediately.";
+bullet lists, headings, or emoji. When answering needs a tool or a delegate (email, \
+calendar, files, the web), call it straight away and answer from what it returns. \
+Do NOT announce what you are about to do: a reply that only says what you are \
+going to do ends your turn, so the caller is left with a promise and never gets \
+the answer. The caller already hears a short acknowledgement while you work, so \
+say nothing until you have something to tell them.";
 
 /// Extract the user prompt from an OpenAI-style `messages` array: the content of
 /// the last `user` message. Content may be a plain string or an array of
@@ -385,8 +389,8 @@ pub async fn handle_voice_harness_turn(correlation_id: String, messages: Vec<Val
                     }
                 }
                 Err(err) => {
-                    // The spoken turn already closed with `done` and the preface may
-                    // have promised a chat follow-up, so a silent failure would leave
+                    // The spoken turn already closed with `done` and the caller was
+                    // told the answer was still coming, so a silent failure would leave
                     // the user waiting for a message that never arrives. Post a brief
                     // failure notice to the same thread — but only for a turn whose
                     // answer the user is actually waiting on. A read-back or a
@@ -730,8 +734,8 @@ fn deliver_voice_result_to_chat(correlation_id: &str, reply: String, allow_speak
 /// `run_single`'s returned text is the sole answer channel: the orchestrator
 /// folds any tool/subagent output into its final reply, so an empty reply means
 /// nothing was produced for the user, not that the answer went elsewhere).
-/// Because the spoken preface may have told the user their answer would land in
-/// chat, staying silent would leave them waiting on a message that never comes —
+/// Because the caller was told the answer was still coming, staying silent would
+/// leave them waiting on a message that never arrives —
 /// this makes the promised message always appear. Delivered as a normal
 /// assistant message (not spoken) on the same `proactive:voice` surface as a
 /// successful deferred answer.
@@ -899,6 +903,23 @@ mod tests {
         assert!(!should_arm_speak_back(&format!(
             "   \n{VOICE_READBACK_PREFIX} trailing payload"
         )));
+    }
+
+    // A reply carrying only text and no tool call ends the turn, so an instruction
+    // to announce work before doing it makes the announcement the final answer:
+    // the caller hears a promise and never gets the summary. Observed live.
+    #[test]
+    fn the_directive_forbids_announcing_work_instead_of_doing_it() {
+        assert!(
+            VOICE_DIRECTIVE.contains("Do NOT announce"),
+            "the directive must forbid a preface-only reply"
+        );
+        for banned in ["first say one short spoken sentence", "then proceed"] {
+            assert!(
+                !VOICE_DIRECTIVE.contains(banned),
+                "directive must not ask the model to speak before acting: {banned:?}"
+            );
+        }
     }
 
     // The provider synthesises on sentence boundaries, so an unterminated line is
