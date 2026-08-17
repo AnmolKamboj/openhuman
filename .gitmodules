@@ -33,3 +33,7 @@
 [submodule "vendor/tinydocs"]
 	path = vendor/tinydocs
 	url = https://github.com/tinyhumansai/tinydocs
+[submodule "vendor/tinyhosts"]
+	path = vendor/tinyhosts
+	url = https://github.com/tinyhumansai/tinyhosts.git
+	branch = main

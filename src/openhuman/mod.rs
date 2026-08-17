@@ -22,6 +22,12 @@ pub mod desktop;
 #[cfg(feature = "flows")]
 pub mod flows;
 pub mod hosted;
+// Hosting: the `hosting_*` tools that put a workspace on a real hosting
+// provider, over the `tinyhosts` unified model. Leaf gate — when `hosting` is
+// off the domain is not compiled and the tools are absent from the registry
+// rather than degraded to an error (see `tools::ops`).
+#[cfg(feature = "hosting")]
+pub mod hosting;
 // The whole http_host domain is an axum static-directory server, so it is
 // exclusive to the `http-server` feature (#5048). Its only outside reference is
 // the controller-registration push in `core::all`, itself gated in lockstep, so

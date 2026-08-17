@@ -452,6 +452,10 @@ pub struct Config {
     #[serde(default)]
     pub tokenjuice: TokenjuiceConfig,
 
+    /// Hosting provider credentials and switch (`hosting` feature).
+    #[serde(default)]
+    pub hosting: HostingConfig,
+
     #[serde(default)]
     pub voice_server: VoiceServerConfig,
 
@@ -851,6 +855,7 @@ impl Default for Config {
             runtime_python: RuntimePythonConfig::default(),
             runtime_pool: RuntimePoolConfig::default(),
             tokenjuice: TokenjuiceConfig::default(),
+            hosting: HostingConfig::default(),
             voice_server: VoiceServerConfig::default(),
             voice_providers: Vec::new(),
             stt_provider: None,
