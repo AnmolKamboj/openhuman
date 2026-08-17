@@ -13,7 +13,7 @@
 //! audit-trail path rather than running with trusted-CLI semantics.
 
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
@@ -47,7 +47,7 @@ const TURN_TIMEOUT_SECS: u64 = 180;
 /// token in ~11-12s, and a slow tool action (email/calendar summary can be
 /// 20-30s of Composio round-trips) will never fit that window. Once this elapses
 /// we close the voice turn cleanly — the caller has heard the relay's spoken
-/// filler and is told the answer is still coming (see VOICE_HANDOFF_LINE) — and
+/// filler and is told the answer is still coming (see VOICE_HANDOFF_LINES) — and
 /// let the orchestrator finish in the background,
 /// delivering its answer into the user's in-app chat and, while the call is
 /// still up, reading it aloud. Sits under the provider's cancel deadline so
@@ -67,9 +67,33 @@ const VOICE_ACK_DEADLINE_SECS: u64 = 8;
 /// slow turn ended on the relay's ellipsis padding and nothing else, which sounds
 /// like the assistant losing the thread rather than working on an answer.
 ///
-/// Both delivery paths honour the promise: the answer is posted to chat and,
+/// Neutral rather than a promise. "I'll have that for you in a moment" states an
+/// outcome the turn cannot guarantee the shape of: the answer may follow a second
+/// later, or thirty, and on a turn the caller expected to be trivial ("no, not
+/// now") a promise of future delivery reads as the assistant having
+/// misunderstood. A short acknowledgement says the same thing about the only fact
+/// known at this point — work is still going — without committing to when.
+///
+/// Rotated per turn so a caller who hits the deadline twice in a call does not
+/// hear the same words back. Each ends in a full stop deliberately: the provider
+/// synthesises on sentence boundaries, so an unterminated line is buffered rather
+/// than spoken (see `VOICE_FILLERS` in the backend relay).
+///
+/// The answer itself still arrives on both delivery paths — posted to chat and,
 /// while the call is still up, read aloud.
-const VOICE_HANDOFF_LINE: &str = "I'll have that for you in a moment. ";
+const VOICE_HANDOFF_LINES: [&str; 4] = [
+    "Still on it. ",
+    "Still going. ",
+    "Still working on it. ",
+    "Bear with me. ",
+];
+static VOICE_HANDOFF_CURSOR: AtomicUsize = AtomicUsize::new(0);
+
+/// Next handoff line, rotating. Pure apart from the cursor; unit-tested.
+fn next_handoff_line() -> &'static str {
+    VOICE_HANDOFF_LINES
+        [VOICE_HANDOFF_CURSOR.fetch_add(1, Ordering::Relaxed) % VOICE_HANDOFF_LINES.len()]
+}
 
 /// Sent for a turn we have nothing to say to.
 ///
@@ -457,7 +481,7 @@ pub async fn handle_voice_harness_turn(correlation_id: String, messages: Vec<Val
             if !streamed.load(Ordering::SeqCst) {
                 emit_event(
                     "voice:harness:delta",
-                    json!({ "correlationId": correlation_id, "text": VOICE_HANDOFF_LINE }),
+                    json!({ "correlationId": correlation_id, "text": next_handoff_line() }),
                 )
                 .await;
             }
@@ -875,6 +899,36 @@ mod tests {
         assert!(!should_arm_speak_back(&format!(
             "   \n{VOICE_READBACK_PREFIX} trailing payload"
         )));
+    }
+
+    // The provider synthesises on sentence boundaries, so an unterminated line is
+    // buffered instead of spoken — the same defect that made the relay's fillers
+    // inaudible for eight seconds.
+    #[test]
+    fn every_handoff_line_is_a_terminated_sentence() {
+        for line in VOICE_HANDOFF_LINES {
+            assert!(
+                line.trim_end().ends_with('.'),
+                "handoff line must end a sentence: {line:?}"
+            );
+            assert!(
+                line.ends_with(' '),
+                "trailing space keeps speech unglued: {line:?}"
+            );
+            assert!(
+                !line.contains("...") && !line.contains('…'),
+                "an ellipsis is not a sentence end, in either form: {line:?}"
+            );
+        }
+    }
+
+    // A caller who hits the deadline twice in one call should not hear the same
+    // words back.
+    #[test]
+    fn handoff_lines_rotate() {
+        let first = next_handoff_line();
+        let second = next_handoff_line();
+        assert_ne!(first, second);
     }
 
     #[test]
