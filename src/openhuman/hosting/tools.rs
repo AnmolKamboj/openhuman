@@ -501,7 +501,11 @@ impl Tool for SetEnvTool {
                         .unwrap_or_else(|| value.to_string()),
                 )
                 .with_targets(targets.clone());
-                if secret { var.secret() } else { var }
+                if secret {
+                    var.secret()
+                } else {
+                    var
+                }
             })
             .collect();
 
@@ -644,7 +648,11 @@ impl Tool for AnalyticsTool {
             Ok(site) => site,
             Err(error) => return Ok(ToolResult::error(error.to_string())),
         };
-        let days = args.get("days").and_then(Value::as_u64).unwrap_or(7).clamp(1, 365);
+        let days = args
+            .get("days")
+            .and_then(Value::as_u64)
+            .unwrap_or(7)
+            .clamp(1, 365);
 
         let until_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
         let since_ms = until_ms.saturating_sub(days * 24 * 60 * 60 * 1000);

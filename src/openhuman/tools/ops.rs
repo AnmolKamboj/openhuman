@@ -1031,6 +1031,29 @@ pub fn all_tools_with_runtime(
         ),
     );
 
+    // Hosting tools — deploy a workspace directory to a real hosting provider,
+    // with a managed database wired into it. Registered only once a credential
+    // actually resolves (`[hosting].api_key`, else the provider's environment
+    // variables): a tool that cannot work is worse than one that is absent,
+    // because a model retries it. A misconfigured section — an unknown provider
+    // slug, a blank key — is logged and skipped rather than failing startup,
+    // since nothing else in the process depends on hosting.
+    #[cfg(feature = "hosting")]
+    match crate::openhuman::hosting::Account::from_config(root_config) {
+        Ok(Some(account)) => {
+            let hosting_tools = account.tools();
+            tracing::debug!(
+                count = hosting_tools.len(),
+                "[tools::ops] registered hosting tools"
+            );
+            tools.extend(hosting_tools);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            tracing::warn!(%error, "[tools::ops] hosting is enabled but misconfigured; tools not registered");
+        }
+    }
+
     // High-level web3 tools (swaps / bridges / dapp calls) built on the wallet.
     // They call the backend deBridge proxy per-invocation and error gracefully
     // when the user is not signed in, so they register unconditionally.

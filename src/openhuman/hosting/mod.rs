@@ -105,6 +105,37 @@ impl Account {
         }))
     }
 
+    /// Builds an account from credentials an embedder resolved itself.
+    ///
+    /// OpenCompany holds one hosting credential per company, in that company's
+    /// secret store rather than in this process's configuration, and deploys
+    /// into that company's workspace. This is the seam it uses: the provider
+    /// slug and key as strings, so an embedder does not have to name
+    /// `tinyhosts` in its own dependency graph to reach the tools.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an unknown provider slug, a blank key, or a client
+    /// that cannot be built.
+    pub fn connect(
+        provider: &str,
+        api_key: &str,
+        team: Option<&str>,
+        workspace_dir: PathBuf,
+    ) -> anyhow::Result<Self> {
+        let provider = ProviderKind::from_str(provider)?;
+        let credentials = Credentials::new(api_key)?;
+        let credentials = match team {
+            Some(team) => credentials.with_team(team),
+            None => credentials,
+        };
+
+        Ok(Self {
+            host: Arc::from(tinyhosts::connect(provider, credentials)?),
+            workspace_dir,
+        })
+    }
+
     /// The provider client, shared by every tool.
     pub fn host(&self) -> Arc<dyn Host> {
         Arc::clone(&self.host)
@@ -141,11 +172,14 @@ pub fn resolve_in_workspace(workspace_dir: &PathBuf, relative: &str) -> anyhow::
     }
 
     let joined = workspace_dir.join(&candidate);
-    let canonical = joined.canonicalize().map_err(|error| {
-        anyhow::anyhow!("cannot read {}: {error}", joined.display())
-    })?;
+    let canonical = joined
+        .canonicalize()
+        .map_err(|error| anyhow::anyhow!("cannot read {}: {error}", joined.display()))?;
     let root = workspace_dir.canonicalize().map_err(|error| {
-        anyhow::anyhow!("cannot read the workspace {}: {error}", workspace_dir.display())
+        anyhow::anyhow!(
+            "cannot read the workspace {}: {error}",
+            workspace_dir.display()
+        )
     })?;
 
     if !canonical.starts_with(&root) {
