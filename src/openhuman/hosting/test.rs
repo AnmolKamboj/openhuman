@@ -149,7 +149,7 @@ fn a_directory_inside_the_workspace_resolves() {
     let workspace = tempfile::tempdir().expect("tempdir");
     std::fs::create_dir(workspace.path().join("site")).expect("mkdir");
 
-    let resolved = resolve_in_workspace(&workspace.path().to_path_buf(), "site").expect("resolves");
+    let resolved = resolve_in_workspace(workspace.path(), "site").expect("resolves");
 
     assert!(resolved.ends_with("site"));
 }
@@ -158,7 +158,7 @@ fn a_directory_inside_the_workspace_resolves() {
 fn an_empty_path_is_the_workspace_root() {
     let workspace = tempfile::tempdir().expect("tempdir");
 
-    let resolved = resolve_in_workspace(&workspace.path().to_path_buf(), "  ").expect("resolves");
+    let resolved = resolve_in_workspace(workspace.path(), "  ").expect("resolves");
 
     assert_eq!(
         resolved,
@@ -169,13 +169,13 @@ fn an_empty_path_is_the_workspace_root() {
 #[test]
 fn a_path_outside_the_workspace_is_refused() {
     let workspace = tempfile::tempdir().expect("tempdir");
-    let root = workspace.path().to_path_buf();
+    let root = workspace.path();
 
     // A deployment uploads every byte under the directory to a third party, so
     // this is the check that decides what may leave the machine.
-    assert!(resolve_in_workspace(&root, "/etc").is_err());
-    assert!(resolve_in_workspace(&root, "../..").is_err());
-    assert!(resolve_in_workspace(&root, "does-not-exist").is_err());
+    assert!(resolve_in_workspace(root, "/etc").is_err());
+    assert!(resolve_in_workspace(root, "../..").is_err());
+    assert!(resolve_in_workspace(root, "does-not-exist").is_err());
 }
 
 #[test]
@@ -183,8 +183,8 @@ fn a_file_is_not_a_deployable_directory() {
     let workspace = tempfile::tempdir().expect("tempdir");
     std::fs::write(workspace.path().join("page.tsx"), b"x").expect("write");
 
-    let error = resolve_in_workspace(&workspace.path().to_path_buf(), "page.tsx")
-        .expect_err("a file is not a directory");
+    let error =
+        resolve_in_workspace(workspace.path(), "page.tsx").expect_err("a file is not a directory");
 
     assert!(error.to_string().contains("not a directory"), "{error}");
 }

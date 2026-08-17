@@ -24,7 +24,7 @@
 //! registry then does not register the tools at all. A tool that is present and
 //! cannot work is worse than one that is absent: a model will retry it.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -163,7 +163,7 @@ impl Account {
 ///
 /// Returns an error when the path is absolute, escapes the workspace, or does
 /// not name a directory.
-pub fn resolve_in_workspace(workspace_dir: &PathBuf, relative: &str) -> anyhow::Result<PathBuf> {
+pub fn resolve_in_workspace(workspace_dir: &Path, relative: &str) -> anyhow::Result<PathBuf> {
     let trimmed = relative.trim();
     let candidate = PathBuf::from(if trimmed.is_empty() { "." } else { trimmed });
 
