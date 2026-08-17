@@ -162,6 +162,7 @@ are recorded here so M4c starts from the real set.
 | `flows/ops.rs` | The production namespace clear uses `MemoryDocuments`; only the directly injected `MemoryClientRef` test seam remains raw. |
 | `integrations/composio/schemas.rs` | Passes `&MemoryClientRef` into `user_scopes::save`. |
 | `memory/sync/composio/providers/user_scopes.rs`, `types.rs` | Same `&MemoryClientRef` parameter shape. |
+| `agent/learning/linkedin_enrichment.rs` | `MemoryClient::store_skill_sync` — derives the `skill-<id>` namespace and keys the upsert on an opaque `document_id`, so a scraped profile title never reaches the secret/PII key guard. No provider family carries that shape, and reimplementing it at the call site is the duplication the method exists to prevent. **Newly listed, not newly bypassed:** this site previously reached the same client through `MemoryClient::new_local()`, for which the scanner had no needle — and which pinned `~/.openhuman` regardless of `OPENHUMAN_WORKSPACE`, so on a scoped host the profile was written to a store nothing else reads. |
 
 ### E. Tests
 

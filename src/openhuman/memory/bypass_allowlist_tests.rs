@@ -190,6 +190,17 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     // family", and it now has one. The learning subsystem reads facets through
     // `MemoryProfile` on the bound driver.
     (
+        "src/openhuman/agent/learning/linkedin_enrichment.rs",
+        "global::client(",
+        "LinkedIn profile persistence needs `MemoryClient::store_skill_sync`, which \
+         derives the `skill-<id>` namespace and keys the upsert on an opaque \
+         `document_id` so a scraped title never reaches the secret/PII key guard. \
+         No provider family carries that, and reimplementing it at the call site is \
+         the duplication the method exists to prevent. Previously reached the same \
+         client via `MemoryClient::new_local()`, which the scanner had no needle for \
+         and which pinned `~/.openhuman` regardless of OPENHUMAN_WORKSPACE",
+    ),
+    (
         "src/openhuman/agent/learning/startup.rs",
         "MemoryClient::from_workspace_dir(",
         "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",

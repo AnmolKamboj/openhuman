@@ -671,10 +671,26 @@ pub async fn scrape_linkedin_profile(
         .ok_or_else(|| anyhow::anyhow!("Apify run returned an empty items array"))
 }
 
-/// Build a local memory client for profile persistence.
-fn build_memory_client() -> anyhow::Result<tinymemory_core::store::MemoryClient> {
-    tinymemory_core::store::MemoryClient::new_local()
-        .map_err(|e| anyhow::anyhow!("memory client unavailable: {e}"))
+/// The process-wide memory client, for profile persistence.
+///
+/// Deliberately **not** `MemoryClient::new_local()`. That constructor resolves
+/// `~/.openhuman/workspace` from the home directory and never consults
+/// `OPENHUMAN_WORKSPACE`, so on any host that scopes its workspace — every
+/// hosted tenant, and any local run with the variable set — the scraped profile
+/// was written to a store nothing else reads. It failed by *succeeding*, which
+/// is why nothing surfaced it.
+///
+/// It was also a second engine construction against the same data directory,
+/// which `memory::bypass_allowlist_tests` refuses for
+/// `MemoryClient::from_workspace_dir` on the grounds that it "risks a second
+/// ingestion worker on one store". `new_local` reaches the same constructor one
+/// call deeper, so it was the same hazard with none of the enforcement.
+///
+/// The caller treats an error here as "skip persistence and warn", so a host
+/// that has not bound memory yet now loses the profile write rather than
+/// misplacing it.
+fn build_memory_client() -> anyhow::Result<tinymemory_core::store::MemoryClientRef> {
+    tinymemory_core::global::client().map_err(|e| anyhow::anyhow!("memory client unavailable: {e}"))
 }
 
 /// Persist the full scraped LinkedIn profile to the user-profile memory
