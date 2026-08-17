@@ -490,9 +490,17 @@ impl Tool for LearningResetCacheTool {
             .iter()
             .filter(|f| f.user_state == UserState::Pinned)
             .count();
+        // See `learning::schemas::reset_cache` for why a delete failure is
+        // propagated rather than counted as a no-op: reporting success on a
+        // reset that left facets behind is undetectable to the caller.
         let mut deleted = 0usize;
         for f in &all {
-            if f.user_state != UserState::Pinned && cache.delete(&f.key).await.unwrap_or(false) {
+            if f.user_state == UserState::Pinned {
+                continue;
+            }
+            if cache.delete(&f.key).await.map_err(|e| {
+                anyhow::anyhow!("learning_reset_cache: delete failed after removing {deleted} facets: {e:#}")
+            })? {
                 deleted += 1;
             }
         }

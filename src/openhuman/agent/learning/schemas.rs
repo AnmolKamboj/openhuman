@@ -1099,9 +1099,24 @@ fn handle_reset_cache(_params: Map<String, Value>) -> ControllerFuture {
             .count();
 
         // Delete all non-Pinned rows.
+        //
+        // A delete failure is reported, not counted as "nothing to delete".
+        // Swallowing it here would answer a reset request with success while
+        // leaving the facets in place — the one outcome a caller cannot detect
+        // and the one that matters, since the next turn would keep reading the
+        // material the user asked to forget. `Ok(false)` is different and stays
+        // silent: it means the row was already gone, which is the requested
+        // end state.
         let mut deleted = 0usize;
         for f in &all {
-            if f.user_state != UserState::Pinned && cache.delete(&f.key).await.unwrap_or(false) {
+            if f.user_state == UserState::Pinned {
+                continue;
+            }
+            if cache
+                .delete(&f.key)
+                .await
+                .map_err(|e| format!("delete failed after removing {deleted} facets: {e:#}"))?
+            {
                 deleted += 1;
             }
         }
