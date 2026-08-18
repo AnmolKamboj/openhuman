@@ -475,6 +475,23 @@ unicode-width = { version = "0.2", optional = true }
 #
 # Optional: exclusive to the default-ON `documents` feature.
 
+# TinyHosts — the unified hosting API: one `Host` trait over a hosting provider,
+# and the `launch` flow that puts a Next.js application, its database, its
+# environment and its domains on it in the one order that works.
+#
+# The provider vocabulary stops inside the crate. What OpenHuman gets is the
+# model — sites, deployments, databases, domains, analytics — so which provider
+# a user pastes a key for is a config value here rather than a code path.
+#
+# Taken with the `vercel` provider only, which is the one that exists.
+#
+# Vendored as a path dependency like `tinyhumans-sdk`: the crate is not
+# published to crates.io, so there is no `[patch.crates-io]` entry for it.
+# After cloning: `git submodule update --init vendor/tinyhosts`.
+#
+# Optional: exclusive to the default-OFF `hosting` feature.
+tinyhosts = { path = "vendor/tinyhosts", default-features = false, features = ["vercel"], optional = true }
+
 # TinyWallet — host-agnostic multi-chain wallet primitives. Owns the address
 # formats themselves: parsing, validation, and the conversions between their
 # encodings for Bitcoin, EVM chains, Solana and Tron. Nothing about "is this a
@@ -724,6 +741,19 @@ inference = ["dep:cpal"]
 # (`agent::multimodal::extract_pdf_text`). Slim / headless builds opt out via
 # `--no-default-features --features "<explicit list without documents>"`.
 documents = ["modules"]
+# Hosting: the `hosting_*` agent tools that put a workspace on a real hosting
+# provider — a site, a managed database wired into it, its environment, its
+# domains, its deployments and the traffic they served. Default-OFF,
+# product-ON: a host with no hosting credential has no use for the tools, and
+# an agent that can deploy to the internet is authority a headless embedding
+# should have to ask for.
+#
+# Leaf gate: when off, `openhuman::hosting` is not compiled and the tools are
+# absent from the registry rather than degraded to an error. When on, they are
+# still only registered once a credential actually resolves — from
+# `[hosting].api_key` or the provider's environment variable — because a tool
+# that cannot work is worse than a tool that is not there.
+hosting = ["dep:tinyhosts"]
 # The dynamic module host (`openhuman::modules`): the loader that admits a
 # compiled `cdylib` through tinybus's ABI descriptor, manifest, dependency and
 # SHA-256 gates, plus the `modules` RPC namespace and the registry of modules

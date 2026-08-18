@@ -25,6 +25,8 @@ mod dashboard;
 mod defaults;
 mod dictation;
 mod heartbeat_cron;
+pub mod hosting;
+pub use hosting::HostingConfig;
 mod identity_cost;
 mod learning;
 mod load;
