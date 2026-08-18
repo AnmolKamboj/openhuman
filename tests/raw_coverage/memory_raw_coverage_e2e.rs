@@ -15,8 +15,8 @@ use openhuman_core::openhuman::memory::{
 };
 use openhuman_core::openhuman::memory::sources::status::{source_status, FreshnessLabel};
 use openhuman_core::openhuman::memory::sources::{MemorySourceEntry, SourceKind};
-use openhuman_core::openhuman::memory::store::chunks::store::upsert_chunks;
-use openhuman_core::openhuman::memory::store::chunks::types::{
+use tinymemory_core::store::chunks::store::upsert_chunks;
+use tinymemory_core::store::chunks::types::{
     approx_token_count, chunk_id, Chunk, Metadata, SourceKind as ChunkSourceKind, SourceRef,
 };
 use tinycortex::memory::ingest::canonicalize::chat::{
@@ -267,7 +267,7 @@ fn memory_tree_types_and_fallback_summary_cover_budget_and_legacy_parse_paths() 
 
     let ctx = SummaryContext {
         tree_id: "tree-coverage",
-        tree_kind: openhuman_core::openhuman::memory::store::trees::types::TreeKind::Global,
+        tree_kind: tinymemory_core::store::trees::types::TreeKind::Global,
         target_level: 2,
         token_budget: 128,
         input_token_budget: tinycortex::memory::config::INPUT_TOKEN_BUDGET,

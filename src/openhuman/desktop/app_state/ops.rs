@@ -528,8 +528,7 @@ async fn finish_revalidated_user_activation(
     user_id: &str,
     service_rebind_source: Option<&Config>,
 ) {
-    if let Err(error) = crate::openhuman::memory::global::init(target_config.workspace_dir.clone())
-    {
+    if let Err(error) = tinymemory_core::global::init(target_config.workspace_dir.clone()) {
         warn!(
             "{LOG_PREFIX} failed to bind memory client after pending session revalidation: {error}"
         );
@@ -540,16 +539,9 @@ async fn finish_revalidated_user_activation(
     ) {
         warn!("{LOG_PREFIX} failed to rebind core context after pending session revalidation: {error}");
     }
-    // Rebind the people store to the activated user's workspace, mirroring the
-    // memory-client rebind so people controllers/tools follow the active user
-    // instead of the pre-switch workspace (#4378).
-    if let Err(error) =
-        crate::openhuman::memory::people::store::init_from_workspace(&target_config.workspace_dir)
-    {
-        warn!(
-            "{LOG_PREFIX} failed to bind people store after pending session revalidation: {error}"
-        );
-    }
+    // No people-store rebind: people is served by the bound memory driver, and
+    // the core-context rebind above already moved that binding to the activated
+    // user's workspace.
     crate::openhuman::memory::conversations::register_conversation_persistence_subscriber(
         target_config.workspace_dir.clone(),
     );

@@ -1031,6 +1031,7 @@ const messages: TranslationMap = {
   'nav.routines': 'Routines',
   'chat.newThread': '새 스레드',
   'chat.newConversation': '새 대화',
+  'chat.conversationsHeading': '대화',
   'chat.newWindowWelcome1': '환영해요, {name} 👋',
   'chat.newWindowWelcome2': '시작해 볼까요, {name} 🧑‍🍳.',
   'chat.newWindowWelcome3': '집중할 시간이에요 🧘🏻',
@@ -7102,6 +7103,10 @@ const messages: TranslationMap = {
   'memoryBudget.exhaustedMessage':
     '임베딩 예산을 모두 사용해 새 콘텐츠가 메모리에 추가되지 않습니다. 로컬 임베딩을 설정하거나 본인의 API 키를 추가하면 다시 시작됩니다.',
   'memoryBudget.cta': '임베딩 설정',
+  'tinyplaceSunset.title': 'Tiny Place가 앱에서 분리됩니다',
+  'tinyplaceSunset.message':
+    'tiny.place를 계속 사용하려면 tiny.place에서 이용하세요. 2026년 8월 31일 이후 앱에서 제거됩니다.',
+  'tinyplaceSunset.cta': 'tiny.place 열기',
   'userErrors.scope.memory': '메모리',
   // Agent World: Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': '금액',

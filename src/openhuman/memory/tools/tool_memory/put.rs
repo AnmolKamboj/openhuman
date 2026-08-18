@@ -21,15 +21,17 @@
 //! store-level validation errors arrive as `MemoryError::Invalid` rather than as
 //! a raw string.
 
+use crate::openhuman::memory::api::provider::MemoryProvider;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
-use tinycortex_api::provider::MemoryProvider;
 
+use crate::openhuman::memory::api::tool_memory::{
+    ToolMemoryPriority, ToolMemoryRule, ToolMemorySource,
+};
 use crate::openhuman::memory::ops::guard::active_memory_guard;
 use crate::openhuman::memory::ops::tool_memory::NO_TOOL_MEMORY;
 use crate::openhuman::tools::traits::{Tool, ToolResult};
-use tinymemory_core::tool_memory::{ToolMemoryPriority, ToolMemoryRule, ToolMemorySource};
 
 pub struct MemoryToolsPutTool;
 

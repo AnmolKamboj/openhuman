@@ -594,7 +594,6 @@ fn round16_all_tools_registry_branches_and_browser_allowlist() {
             &harness.workspace,
         )),
         AuditLogger::disabled(),
-        Arc::new(StubMemory),
         &BrowserConfig {
             enabled: true,
             session_name: Some("round16-session".into()),

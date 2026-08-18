@@ -4,14 +4,14 @@
 use super::*;
 use std::sync::Arc;
 
-use tinycortex_api::capabilities::{Capabilities, Capability};
-use tinycortex_api::null::NullMemoryProvider;
-use tinycortex_api::provider::types::SourceScope;
-use tinycortex_api::provider::{
+use crate::openhuman::memory::api::capabilities::{Capabilities, Capability};
+use crate::openhuman::memory::api::provider::types::SourceScope;
+use crate::openhuman::memory::api::provider::{
     audit_provider, MemoryCore, MemoryPortability, MemoryProvider, MemoryRecall,
 };
-use tinycortex_api::recall::OwnedRecallOpts;
-use tinycortex_api::types::{MemoryCategory, MemoryTaint};
+use crate::openhuman::memory::api::recall::OwnedRecallOpts;
+use crate::openhuman::memory::api::types::{MemoryCategory, MemoryTaint};
+use tinymemory_api::null::NullMemoryProvider;
 
 use crate::core::bus::BUS;
 use crate::core::events::DomainEvent;
@@ -23,7 +23,7 @@ use crate::openhuman::memory::guard::test_support::{
     RecordingProvider,
 };
 use crate::openhuman::memory::guard::GuardPolicy;
-use crate::openhuman::memory::source_scope::with_source_scope;
+use tinymemory_core::source_scope::with_source_scope;
 
 fn budgeted(recall_max_chars: usize, capture_max_chars: usize) -> GuardPolicy {
     GuardPolicy::new(
@@ -58,7 +58,7 @@ async fn guard_passes_audit_provider_against_its_own_capabilities() {
 }
 
 #[tokio::test]
-async fn guard_accessor_presence_mirrors_inner_provides_for_all_ten_families() {
+async fn guard_accessor_presence_mirrors_inner_provides_for_every_family() {
     let (_driver, guard) = guarded(embedded_policy());
     for capability in Capability::ALL {
         assert!(

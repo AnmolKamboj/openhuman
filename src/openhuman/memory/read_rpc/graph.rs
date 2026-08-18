@@ -3,8 +3,8 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::store::chunks::store::with_connection;
 use crate::rpc::RpcOutcome;
+use tinymemory_core::store::chunks::store::with_connection;
 
 // ── wire types ────────────────────────────────────────────────────────────
 
@@ -84,7 +84,7 @@ pub async fn graph_export_rpc(
         mode,
         resp.nodes.len(),
         resp.edges.len(),
-        crate::openhuman::memory::util::redact::redact(&resp.content_root_abs),
+        tinymemory_core::util::redact::redact(&resp.content_root_abs),
     );
     Ok(RpcOutcome::single_log(resp, log))
 }

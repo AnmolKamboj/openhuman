@@ -117,6 +117,11 @@ async fn existing_profile_agent_build_failure_does_not_fall_back_profile_less() 
 
 #[tokio::test]
 async fn attributed_cron_build_retains_profile_gates() {
+    // The embedding seam fails loudly when unwired. Installed here rather
+    // than relied upon from another test: `install_for_tests` is
+    // `Once`-guarded, so a test that omits it passes only while some
+    // earlier test in the same binary happened to run first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::init_global_builtins()
         .expect("init built-in agent definitions");
     let tmp = TempDir::new().unwrap();
@@ -149,6 +154,11 @@ async fn attributed_cron_build_retains_profile_gates() {
 
 #[tokio::test]
 async fn attributed_cron_build_applies_profile_temperature_and_prompt_defaults() {
+    // The embedding seam fails loudly when unwired. Installed here rather
+    // than relied upon from another test: `install_for_tests` is
+    // `Once`-guarded, so a test that omits it passes only while some
+    // earlier test in the same binary happened to run first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::init_global_builtins()
         .expect("init built-in agent definitions");
     let tmp = TempDir::new().unwrap();
@@ -996,6 +1006,11 @@ async fn run_agent_job_returns_error_without_provider_key() {
 
 #[tokio::test]
 async fn cron_agent_job_uses_agent_definition_tool_scope() {
+    // The embedding seam fails loudly when unwired. Installed here rather
+    // than relied upon from another test: `install_for_tests` is
+    // `Once`-guarded, so a test that omits it passes only while some
+    // earlier test in the same binary happened to run first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::init_global_builtins()
         .expect("init built-in agent definitions");
     let tmp = TempDir::new().unwrap();

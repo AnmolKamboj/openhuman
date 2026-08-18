@@ -36,8 +36,9 @@ static QUOTE_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// Return the compressed SEC1 public key for a secp256k1 secret.
 ///
-/// The wallet module uses this public data to confirm that the locally held
-/// secret controls the transaction sender.
+/// Test-only. Production never holds a secp256k1 secret: the wallet module
+/// derives the key and reports the public half through `DeriveAccount`.
+#[cfg(test)]
 pub(super) fn compressed_public_key(secret: &[u8]) -> Result<Vec<u8>, String> {
     let key = k256::ecdsa::SigningKey::from_slice(secret)
         .map_err(|_| "derived key is not a valid secp256k1 scalar".to_string())?;

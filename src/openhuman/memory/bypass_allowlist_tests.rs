@@ -54,7 +54,7 @@
 //!   and would churn on every new driver test — the exact rot this lint fights.
 //! - **Inline `#[cfg(test)] mod tests` blocks are NOT stripped.** Brace-tracking
 //!   Rust source with a line scanner is fragile, and getting it wrong silently
-//!   *hides* production sites. Three files are therefore allowlisted for a
+//!   *hides* production sites. Four files are therefore allowlisted for a
 //!   match that lives only in an inline test module; each says so.
 //! - **`app/src-tauri/` is not scanned.** It links `openhuman_core` with
 //!   `default-features = false` and cannot name `pub(crate)` items at all, so
@@ -69,7 +69,7 @@ use std::path::{Path, PathBuf};
 ///
 /// Substring needles, not regexes, and deliberately path-*suffixed*: the same
 /// call is written `memory::global::client_if_ready()`,
-/// `crate::openhuman::memory::global::client_if_ready()` and
+/// `tinymemory_core::global::client_if_ready()` and
 /// `super::super::global::client_if_ready()` in this tree, so anchoring on an
 /// absolute path would miss the third.
 ///
@@ -104,10 +104,6 @@ const BYPASS_PATTERNS: &[(&str, &str)] = &[
     (
         ".get_document(",
         "pub(crate) read-one escape hatch, driver-only by contract",
-    ),
-    (
-        "EmbeddedMemoryProvider::new(",
-        "direct driver construction — must go through binding::for_workspace",
     ),
     (
         "NullMemoryProvider::new(",
@@ -187,17 +183,12 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         ".memory_handle(",
         "session builder needs Arc<dyn Memory>; no contract door for it",
     ),
-    // ── Unguarded (but no longer raw) profile/facet access ──
-    (
-        "src/openhuman/agent/learning/schemas.rs",
-        ".profile_store(",
-        "typed profile/facet reads; the contract has no profile family, so still unguarded",
-    ),
-    (
-        "src/openhuman/agent/learning/schemas.rs",
-        "global::client_if_ready(",
-        "resolved only to reach profile_store() on the line below",
-    ),
+    // ── Profile/facet access ──
+    //
+    // The five `.profile_store(` / `global::client_if_ready(` entries that
+    // stood here are gone: they were justified by "the contract has no profile
+    // family", and it now has one. The learning subsystem reads facets through
+    // `MemoryProfile` on the bound driver.
     (
         "src/openhuman/agent/learning/startup.rs",
         "MemoryClient::from_workspace_dir(",
@@ -205,45 +196,16 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     ),
     (
         "src/openhuman/agent/learning/startup.rs",
-        ".profile_store(",
-        "typed facet bootstrap; the contract has no profile family, so still unguarded",
-    ),
-    (
-        "src/openhuman/agent/learning/tools.rs",
-        ".profile_store(",
-        "typed facet read from an agent tool; the contract has no profile family",
-    ),
-    (
-        "src/openhuman/agent/learning/tools.rs",
-        "global::client_if_ready(",
-        "resolved only to reach profile_store() on the line below",
+        "binding::for_workspace(",
+        "boot-time facet cache: resolves a *guard* for a known workspace, exactly as \
+         `active_memory_guard`'s own no-ambient-context fallback does. Not a raw client, \
+         and not async-reachable — the caller is a sync `OnceLock` initialiser",
     ),
     // ── Flows: foreign trait shapes and a test-override seam ──
-    (
-        "src/openhuman/flows/bus.rs",
-        ".memory_handle(",
-        "resolve_memory() -> Option<Arc<dyn Memory>>; no contract door for it",
-    ),
-    (
-        "src/openhuman/flows/bus.rs",
-        "active_memory_client(",
-        "carries a #[cfg(test)] memory_override seam the guard would bypass",
-    ),
-    (
-        "src/openhuman/flows/ops.rs",
-        "active_memory_client(",
-        "clear_namespace has no contract method; plus a memory_client_override test seam",
-    ),
-    (
-        "src/openhuman/flows/tinyflows/memory_adapter.rs",
-        ".memory_handle(",
-        "returns Arc<dyn Memory> to satisfy a tinyflows engine trait",
-    ),
-    (
-        "src/openhuman/flows/tinyflows/memory_adapter.rs",
-        "active_memory_client(",
-        "same adapter; the tinyflows trait names the engine type, not the contract",
-    ),
+    //
+    // `flows/bus.rs`'s two entries are gone: the run-digest subscriber resolves
+    // the guarded driver, and its `#[cfg(test)]` override now injects a real
+    // `MemoryGuard` over an in-memory provider rather than a raw handle.
     // ── Composio integration: &MemoryClientRef parameter shape ──
     (
         "src/openhuman/integrations/composio/ops/memory_cleanup.rs",
@@ -258,28 +220,8 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     // ── The driver and the binding: guarding these would be a cycle ──
     (
         "src/openhuman/memory/binding.rs",
-        "EmbeddedMemoryProvider::new(",
-        "this is the construction path the lint protects",
-    ),
-    (
-        "src/openhuman/memory/binding.rs",
         "NullMemoryProvider::new(",
         "this is the construction path the lint protects (fail-closed fallback)",
-    ),
-    (
-        "src/openhuman/memory/driver/embedded/documents.rs",
-        ".get_document(",
-        "this IS the driver — the escape hatch exists for exactly this call",
-    ),
-    (
-        "src/openhuman/memory/driver/embedded/mod.rs",
-        ".memory_handle(",
-        "this IS the driver; it owns the engine handle by definition",
-    ),
-    (
-        "src/openhuman/memory/driver/embedded/mod.rs",
-        "EmbeddedMemoryProvider::new(",
-        "the driver's own constructor",
     ),
     (
         "vendor/tinymemory/core/src/global.rs",
@@ -313,16 +255,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "same definition site",
     ),
     (
-        "src/openhuman/memory/ops/kv_graph.rs",
-        "active_memory_client(",
-        "kv_get/kv_delete/graph_* have no contract twin or a lossy conversion",
-    ),
-    (
-        "src/openhuman/memory/ops/learn.rs",
-        "active_memory_client(",
-        "list_namespaces() -> Vec<String> vs the contract's Vec<NamespaceSummary>",
-    ),
-    (
         "src/openhuman/memory/ops/learn.rs",
         "global::client(",
         "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",
@@ -351,16 +283,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "src/openhuman/memory/ops/sync.rs",
         "global::client(",
         "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",
-    ),
-    (
-        "src/openhuman/memory/ops/tool_memory.rs",
-        ".memory_handle(",
-        "open_store() still serves the four handlers with no contract twin",
-    ),
-    (
-        "src/openhuman/memory/ops/tool_memory.rs",
-        "active_memory_client(",
-        "tool_rule_put/get/*_json/*_for_prompt have no contract equivalent",
     ),
     (
         "vendor/tinymemory/core/src/store/client.rs",
@@ -411,7 +333,12 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "global::client(",
         "resolved only to reach profile_conn() for the fixture seed/read-back",
     ),
-    // ── The engine seam ──
+    // ── Inline test module and engine seam ──
+    (
+        "vendor/tinymemory/core/src/tinycortex/sync.rs",
+        "MemoryClient::from_workspace_dir(",
+        "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",
+    ),
     (
         "vendor/tinymemory/core/src/tinycortex/sync.rs",
         "global::client_if_ready(",

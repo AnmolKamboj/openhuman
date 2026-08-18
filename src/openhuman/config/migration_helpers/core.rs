@@ -1,5 +1,4 @@
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::store as memory_store;
 use crate::openhuman::memory::{Memory, MemoryCategory};
 use anyhow::{bail, Context, Result};
 use directories::UserDirs;
@@ -8,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use tinymemory_core::store as memory_store;
 
 #[derive(Debug, Clone)]
 struct SourceEntry {

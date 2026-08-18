@@ -12,16 +12,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::ingest_pipeline::{
-    ingest_chat as do_ingest_chat, ingest_document as do_ingest_document,
-    ingest_email as do_ingest_email, IngestResult,
-};
-use crate::openhuman::memory::store::chunks::store::{self as chunk_store, ListChunksQuery};
-use crate::openhuman::memory::store::chunks::types::{Chunk, SourceKind};
 use crate::rpc::RpcOutcome;
 use tinycortex::memory::ingest::canonicalize::{
     chat::ChatBatch, document::DocumentInput, email::EmailThread,
 };
+use tinymemory_core::ingest_pipeline::{
+    ingest_chat as do_ingest_chat, ingest_document as do_ingest_document,
+    ingest_email as do_ingest_email, IngestResult,
+};
+use tinymemory_core::store::chunks::store::{self as chunk_store, ListChunksQuery};
+use tinymemory_core::store::chunks::types::{Chunk, SourceKind};
 
 /// Unified ingest request. The `payload` shape is adapter-specific and is
 /// validated inside the dispatch based on `source_kind`.
@@ -295,7 +295,7 @@ pub async fn backfill_status_rpc(
         log::debug!("[memory::rpc] backfill_status: error: {msg}");
         msg
     })?;
-    let in_progress = crate::openhuman::memory::queue::backfill_in_progress() || pending_jobs > 0;
+    let in_progress = tinymemory_core::queue::backfill_in_progress() || pending_jobs > 0;
     Ok(RpcOutcome::single_log(
         BackfillStatusResponse {
             in_progress,
@@ -403,9 +403,9 @@ pub struct PipelineStatusResponse {
 pub async fn pipeline_status_rpc(
     config: &Config,
 ) -> Result<RpcOutcome<PipelineStatusResponse>, String> {
-    use crate::openhuman::memory::queue::store as queue_store;
-    use crate::openhuman::memory::queue::types::JobStatus;
     use tinymemory_api::host::SchedulerGateMode;
+    use tinymemory_core::queue::store as queue_store;
+    use tinymemory_core::queue::types::JobStatus;
 
     log::debug!("[memory-tree][rpc] pipeline_status: entry");
 
@@ -540,7 +540,7 @@ pub async fn pipeline_status_rpc(
                 );
                 None
             });
-            let coverage = crate::openhuman::memory::store::chunks::store::extraction_coverage(&cfg)
+            let coverage = tinymemory_core::store::chunks::store::extraction_coverage(&cfg)
                 .map_err(|e| {
                     log::warn!(
                         "[memory-tree][rpc] pipeline_status: extraction_coverage read failed: {e:#}"
@@ -628,14 +628,13 @@ pub struct RetryFailedResponse {
 /// re-run without re-ingesting source data. Backs the "Retry failed" button.
 pub async fn retry_failed_rpc(config: &Config) -> Result<RpcOutcome<RetryFailedResponse>, String> {
     let cfg = config.clone();
-    let requeued = tokio::task::spawn_blocking(move || {
-        crate::openhuman::memory::queue::store::requeue_failed(&cfg)
-    })
-    .await
-    .map_err(|e| format!("retry_failed join error: {e}"))?
-    .map_err(|e| format!("retry_failed: {e:#}"))?;
+    let requeued =
+        tokio::task::spawn_blocking(move || tinymemory_core::queue::store::requeue_failed(&cfg))
+            .await
+            .map_err(|e| format!("retry_failed join error: {e}"))?
+            .map_err(|e| format!("retry_failed: {e:#}"))?;
     // Wake the worker pool so the requeued jobs are picked up promptly.
-    crate::openhuman::memory::queue::wake_workers();
+    tinymemory_core::queue::wake_workers();
     Ok(RpcOutcome::single_log(
         RetryFailedResponse { requeued },
         format!("memory_tree: retry_failed requeued={requeued}"),
@@ -1102,12 +1101,12 @@ pub async fn set_enabled_rpc(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openhuman::memory::queue as jobs;
-    use crate::openhuman::memory::store::chunks::types::SourceKind;
     use chrono::Utc;
     use serde_json::json;
     use tempfile::TempDir;
     use tinycortex::memory::ingest::canonicalize::document::DocumentInput;
+    use tinymemory_core::queue as jobs;
+    use tinymemory_core::store::chunks::types::SourceKind;
 
     fn test_config() -> (TempDir, Config) {
         let tmp = TempDir::new().unwrap();
@@ -1753,8 +1752,8 @@ mod tests {
     /// heavy users this issue is about.
     #[tokio::test]
     async fn queue_idle_ms_ignores_deep_but_draining_and_deferred_backlogs() {
-        use crate::openhuman::memory::queue::store as queue_store;
-        use crate::openhuman::memory::queue::types::{FlushStalePayload, NewJob};
+        use tinymemory_core::queue::store as queue_store;
+        use tinymemory_core::queue::types::{FlushStalePayload, NewJob};
 
         let (_tmp, cfg) = test_config();
         let now = 1_800_000_000_000_i64;
@@ -1832,8 +1831,8 @@ mod tests {
     /// appeared, before the worker had any chance to touch it.
     #[tokio::test]
     async fn queue_idle_ms_starts_from_fresh_work_not_ancient_completion() {
-        use crate::openhuman::memory::queue::store as queue_store;
-        use crate::openhuman::memory::queue::types::{FlushStalePayload, NewJob};
+        use tinymemory_core::queue::store as queue_store;
+        use tinymemory_core::queue::types::{FlushStalePayload, NewJob};
 
         let (_tmp, cfg) = test_config();
         let now = 1_800_000_000_000_i64;
@@ -1892,8 +1891,8 @@ mod tests {
         failed_at_ms: i64,
         done_at_ms: Option<i64>,
     ) {
-        use crate::openhuman::memory::queue::store as queue_store;
-        use crate::openhuman::memory::queue::types::{FlushStalePayload, NewJob};
+        use tinymemory_core::queue::store as queue_store;
+        use tinymemory_core::queue::types::{FlushStalePayload, NewJob};
 
         let failed_job =
             NewJob::flush_stale(&FlushStalePayload::default(), "2026-07-10", 3).unwrap();

@@ -1,14 +1,14 @@
 //! Test-only constructors for `ArchivistHook` that inject stub providers
 //! directly, bypassing `with_config`'s provider-build logic.
 
+use super::boundary::BoundaryConfig;
 use super::types::ArchivistHook;
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::chat::ChatProvider;
-use crate::openhuman::memory::store::segments::BoundaryConfig;
 use crate::openhuman::memory::tree::score::embed::Embedder;
 use parking_lot::Mutex;
 use rusqlite::Connection;
 use std::sync::Arc;
+use tinymemory_core::chat::ChatProvider;
 
 #[cfg(test)]
 impl ArchivistHook {

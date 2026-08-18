@@ -16,8 +16,8 @@ use super::super::defaults::{
     explorer_tx_url_for_evm_network, rpc_url_for_evm_network, EvmNetwork,
 };
 use super::super::execution::{
-    compressed_public_key, hex_to_u128, u128_to_hex, ExecutionResult, PreparedKind, PreparedStatus,
-    PreparedTransaction, RawBroadcastResult, TxLookupInfo, TxReceiptInfo, TxState, TxStatusInfo,
+    hex_to_u128, u128_to_hex, ExecutionResult, PreparedKind, PreparedStatus, PreparedTransaction,
+    RawBroadcastResult, TxLookupInfo, TxReceiptInfo, TxState, TxStatusInfo,
 };
 use super::super::ops::{secret_material, WalletChain};
 use super::super::rpc::{evm_rpc_call, rpc_call_to};
@@ -51,19 +51,18 @@ async fn sign_and_broadcast(
     )
     .await?
     .value;
-    // Derivation stays here, and so does the key. `tinywallet::key` owns BIP-32
-    // for every chain; what changed is that the *signing* no longer happens in
-    // this binary either — the transaction is encoded by the loaded wallet
-    // module, which hands back a digest for this process to sign. Custody is
-    // unchanged: the mnemonic is decrypted from the keyring above, handed over
-    // as a `&str` that is not retained, and never crosses the bus.
-    let derived = tinywallet::key::derive(
-        tinywallet::Chain::Evm,
-        mnemonic.as_str(),
-        &secret.derivation_path,
-    )
-    .map_err(|e| e.to_string())?;
-    let public_key = compressed_public_key(derived.secret_bytes())?;
+    // Neither derivation nor signing happens in this binary any more. The
+    // phrase decrypted above is handed to the loaded wallet module over a
+    // confidential call, which derives, encodes, signs and assembles; this
+    // process never holds a private key for the transaction it is sending.
+    //
+    // The module is only sent the phrase once it has proved it is an artifact
+    // this build pinned — see `modules::wallet::attested_proxy`.
+    let signing_secret = tinywallet::wire::SecretMaterial {
+        mnemonic,
+        derivation_path: secret.derivation_path.clone(),
+        chain: tinywallet::Chain::Evm,
+    };
 
     let to = tinywallet::address::evm::validate(to)
         .map_err(|e| format!("invalid EVM target address '{to}': {e}"))?;
@@ -116,11 +115,10 @@ async fn sign_and_broadcast(
         gas_price_wei: gas_price.to_string(),
         chain_id,
     };
-    let signed = crate::openhuman::modules::wallet::sign_transaction(
+    let signed = crate::openhuman::modules::wallet::sign_transaction_in_module(
         &config,
         &transaction,
-        derived.secret_bytes(),
-        &public_key,
+        &signing_secret,
     )
     .await
     .map_err(|e| format!("failed to sign EVM transaction: {e}"))?;

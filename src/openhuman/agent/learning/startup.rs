@@ -28,9 +28,9 @@
 use std::path::Path;
 use std::sync::OnceLock;
 
-use crate::openhuman::memory::global::client_if_ready;
-use crate::openhuman::memory::store::MemoryClientRef;
 use tinybus::SubscriptionHandle;
+use tinymemory_core::global::client_if_ready;
+use tinymemory_core::store::MemoryClientRef;
 
 static EMAIL_SIG_HANDLE: OnceLock<Option<SubscriptionHandle>> = OnceLock::new();
 
@@ -83,6 +83,30 @@ where
 
 /// Register the client-dependent learning subscribers.
 ///
+/// The profile facet cache for `workspace_dir`.
+///
+/// Resolved through the memory binding rather than the process-global client:
+/// facets live behind the driver now, and `binding::for_workspace` is
+/// synchronous and cached, so this stays callable from the boot path without
+/// an await.
+fn facet_cache_for(
+    workspace_dir: &std::path::Path,
+) -> Option<crate::openhuman::agent::learning::cache::FacetCache> {
+    use crate::openhuman::config::schema::MemorySubsystemConfig;
+    match crate::openhuman::memory::binding::for_workspace(
+        workspace_dir,
+        &MemorySubsystemConfig::default(),
+    ) {
+        Ok(binding) => Some(crate::openhuman::agent::learning::cache::FacetCache::new(
+            binding.guard(),
+        )),
+        Err(error) => {
+            tracing::warn!("[learning::startup] no memory binding for facet cache: {error}");
+            None
+        }
+    }
+}
+
 /// Returns `(rebuild_trigger_handle, profile_md_renderer_handle)`.
 ///
 /// When `client` is `Some`, both the Phase 3 rebuild trigger (plus its periodic
@@ -98,7 +122,7 @@ fn register_with_client(
     client: Option<MemoryClientRef>,
     workspace_dir: &Path,
 ) -> (Option<SubscriptionHandle>, Option<SubscriptionHandle>) {
-    let Some(client) = client else {
+    let Some(_client) = client else {
         tracing::warn!(
             "[learning::scheduler] memory client not ready at boot — skipping event-trigger + \
              periodic-rebuild registration; learning rebuilds will not fire until the client \
@@ -114,11 +138,12 @@ fn register_with_client(
 
     // Phase 3 learning: event-driven rebuild trigger + periodic 30-minute loop.
     let rebuild_trigger = {
-        use crate::openhuman::agent::learning::cache::FacetCache;
         use crate::openhuman::agent::learning::scheduler::register_event_trigger;
         use crate::openhuman::agent::learning::StabilityDetector;
         use std::sync::Arc;
-        let cache = FacetCache::new(client.profile_store());
+        let Some(cache) = facet_cache_for(workspace_dir) else {
+            return (None, None);
+        };
         let detector = Arc::new(StabilityDetector::new(cache));
         // Also spawn the periodic rebuild loop (30-minute cadence).
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
@@ -145,10 +170,12 @@ fn register_with_client(
     // re-renders the five cache-derived PROFILE.md blocks (style, identity,
     // tooling, vetoes, goals).
     let profile_md = {
-        use crate::openhuman::agent::learning::cache::FacetCache;
         use crate::openhuman::agent::learning::ProfileMdRenderer;
         use std::sync::Arc;
-        let cache = Arc::new(FacetCache::new(client.profile_store()));
+        let Some(cache) = facet_cache_for(workspace_dir) else {
+            return (rebuild_trigger, None);
+        };
+        let cache = Arc::new(cache);
         let renderer = Arc::new(ProfileMdRenderer::new(cache, workspace_dir.to_path_buf()));
         let handle = ProfileMdRenderer::subscribe(renderer);
         if handle.is_some() {
@@ -171,15 +198,21 @@ mod tests {
     use crate::openhuman::agent::learning::extract::signature::{
         parse_signature, register_email_signature_subscriber_on,
     };
-    use crate::openhuman::memory::store::MemoryClient;
     use std::sync::Arc;
     use std::time::Duration;
     use tempfile::TempDir;
-    use tinybus::EventBus;
+    use tinymemory_core::store::MemoryClient;
 
     /// Build a real `MemoryClient` against a fresh temp workspace. The temp dir
     /// is returned so callers keep it alive for the client's lifetime.
     fn test_client() -> (TempDir, MemoryClientRef) {
+        // Building a real `MemoryClient` needs the host seams wired — an
+        // unwired embedding host fails loudly by design. This module never
+        // installed them, so it passed only when some *other* test in the same
+        // binary happened to run first; alone, or filtered to this module, it
+        // failed. `install_for_tests` is `Once`-guarded, so calling it here is
+        // free when another test already has.
+        crate::openhuman::memory::host_impls::install_for_tests();
         let tmp = TempDir::new().expect("tempdir");
         let client = Arc::new(
             MemoryClient::from_workspace_dir(tmp.path().join("workspace"))

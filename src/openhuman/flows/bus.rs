@@ -14,7 +14,8 @@ use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
 use crate::openhuman::flows::store;
 use crate::openhuman::flows::{flow_namespace, Flow, FlowRun};
-use crate::openhuman::memory::{Memory, MemoryCategory, MemoryTaint};
+use crate::openhuman::memory::api::provider::MemoryCore;
+use crate::openhuman::memory::api::types::{MemoryCategory, MemoryTaint};
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -326,7 +327,7 @@ pub struct FlowRunDigestSubscriber {
     /// [`Memory`] here lets the digest tests write and read back through the
     /// SAME instance deterministically, exactly as `flows::memory_tools`'
     /// tests do with `UnifiedMemory::new`.
-    memory_override: Option<Arc<dyn Memory>>,
+    memory_override: Option<Arc<crate::openhuman::memory::guard::MemoryGuard>>,
 }
 
 impl FlowRunDigestSubscriber {
@@ -340,7 +341,10 @@ impl FlowRunDigestSubscriber {
     /// Test constructor: run the digest against an explicitly-provided memory
     /// instance instead of the process-global client. See [`Self::memory_override`].
     #[cfg(test)]
-    fn with_memory(config: Arc<Config>, memory: Arc<dyn Memory>) -> Self {
+    fn with_memory(
+        config: Arc<Config>,
+        memory: Arc<crate::openhuman::memory::guard::MemoryGuard>,
+    ) -> Self {
         Self {
             config,
             memory_override: Some(memory),
@@ -351,14 +355,16 @@ impl FlowRunDigestSubscriber {
     /// override when present, else the process-global client
     /// ([`active_memory_client`]). Returns `None` (best-effort skip) when the
     /// global client is unavailable.
-    async fn resolve_memory(&self) -> Option<Arc<dyn Memory>> {
+    async fn resolve_memory(&self) -> Option<Arc<crate::openhuman::memory::guard::MemoryGuard>> {
         if let Some(memory) = &self.memory_override {
             return Some(memory.clone());
         }
-        match crate::openhuman::memory::ops::helpers::active_memory_client().await {
-            Ok(client) => Some(client.memory_handle()),
+        // The guarded driver, not the raw engine client. The digest writes
+        // through the policy layer like every other write.
+        match crate::openhuman::memory::ops::guard::active_memory_guard().await {
+            Ok(guard) => Some(guard),
             Err(e) => {
-                tracing::warn!(target: "flows", error = %e, "[flows] digest: memory client unavailable — skipping");
+                tracing::warn!(target: "flows", error = %e, "[flows] digest: memory unavailable — skipping");
                 None
             }
         }
@@ -402,8 +408,13 @@ impl FlowRunDigestSubscriber {
         let namespace = flow_namespace(flow_id);
         let digest_key = format!("run_digest:{run_id}");
 
+        // `store` carries the taint on the contract, so the separate
+        // `store_with_taint` door the engine trait needed is gone. The guard
+        // still stamps the effective value — `ExternalSync` here is the
+        // request, and it is the honest one: a digest is machine-generated
+        // from a flow run, not user-authored.
         if let Err(e) = memory
-            .store_with_taint(
+            .store(
                 &namespace,
                 &digest_key,
                 &digest,
@@ -422,7 +433,11 @@ impl FlowRunDigestSubscriber {
 
     /// Best-effort prune: keeps at most [`DIGEST_RETENTION_CAP`] `run_digest:*`
     /// entries per flow namespace, evicting the oldest (by `timestamp`) first.
-    async fn enforce_retention_cap(&self, memory: &Arc<dyn Memory>, namespace: &str) {
+    async fn enforce_retention_cap(
+        &self,
+        memory: &Arc<crate::openhuman::memory::guard::MemoryGuard>,
+        namespace: &str,
+    ) {
         let entries = match memory.list(Some(namespace), None, None).await {
             Ok(entries) => entries,
             Err(e) => {
@@ -885,8 +900,6 @@ fn store_key_set(
 mod tests {
     use super::*;
     use crate::openhuman::flows::Flow;
-    use crate::openhuman::inference::embeddings::NoopEmbedding;
-    use crate::openhuman::memory::store::UnifiedMemory;
     use serde_json::json;
     use tinyflows::model::{Node, NodeKind, WorkflowGraph};
 
@@ -898,8 +911,17 @@ mod tests {
     /// subscriber via [`FlowRunDigestSubscriber::with_memory`] makes writes and
     /// read-backs go through the SAME store deterministically — the same shape
     /// `flows::memory_tools`' tests use.
-    fn digest_test_memory(tmp: &tempfile::TempDir) -> Arc<dyn Memory> {
-        Arc::new(UnifiedMemory::new(tmp.path(), Arc::new(NoopEmbedding), None).unwrap())
+    /// A guard over an in-memory store.
+    ///
+    /// This used to build a real `UnifiedMemory` over `tmp` so writes and
+    /// read-backs went through one store. The digest writes through the guarded
+    /// driver now, so the fake sits behind a real `MemoryGuard` — same
+    /// determinism, same round trip, and the policy layer is on the path where
+    /// production has it.
+    fn digest_test_memory(
+        _tmp: &tempfile::TempDir,
+    ) -> Arc<crate::openhuman::memory::guard::MemoryGuard> {
+        crate::openhuman::memory::guard::in_memory::guarded_in_memory().1
     }
 
     fn test_config(tmp: &tempfile::TempDir) -> Arc<Config> {

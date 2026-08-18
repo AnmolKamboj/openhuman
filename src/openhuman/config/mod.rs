@@ -31,6 +31,7 @@ pub use schema::{
 };
 // Crate-internal: workspace→config-dir resolver reused by the cloud embedder.
 pub(crate) use schema::resolve_config_dir_for_workspace;
+pub(crate) use schema::set_cli_inference_overrides;
 #[allow(unused_imports)]
 pub use schema::{
     apply_runtime_proxy_to_builder, build_runtime_proxy_client,

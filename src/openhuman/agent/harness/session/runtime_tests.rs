@@ -110,9 +110,8 @@ fn make_agent(model: Arc<dyn ChatModel<()>>) -> Agent {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
-    );
+    let mem: Arc<dyn Memory> =
+        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
 
     Agent::builder()
         .chat_model(model)

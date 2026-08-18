@@ -475,9 +475,9 @@ async fn apply_model_settings_updates_fields_and_persists_snapshot() {
 /// embeddings provider is what un-parks them.
 #[tokio::test]
 async fn apply_model_settings_requeues_failed_jobs_only_on_embedder_change() {
-    use crate::openhuman::memory::queue::store;
-    use crate::openhuman::memory::queue::types::{FlushStalePayload, JobStatus, NewJob};
     use crate::openhuman::memory::tree::health::{FailureCode, PipelineFailure};
+    use tinymemory_core::queue::store;
+    use tinymemory_core::queue::types::{FlushStalePayload, JobStatus, NewJob};
 
     let tmp = tempdir().unwrap();
     let mut cfg = tmp_config(&tmp);
@@ -540,9 +540,9 @@ async fn apply_model_settings_requeues_failed_jobs_only_on_embedder_change() {
 /// the embedding provider un-parks them.
 #[tokio::test]
 async fn apply_memory_settings_requeues_failed_jobs_only_on_embedder_change() {
-    use crate::openhuman::memory::queue::store;
-    use crate::openhuman::memory::queue::types::{FlushStalePayload, JobStatus, NewJob};
     use crate::openhuman::memory::tree::health::{FailureCode, PipelineFailure};
+    use tinymemory_core::queue::store;
+    use tinymemory_core::queue::types::{FlushStalePayload, JobStatus, NewJob};
 
     let tmp = tempdir().unwrap();
     let mut cfg = tmp_config(&tmp);

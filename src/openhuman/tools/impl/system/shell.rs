@@ -536,7 +536,7 @@ impl ShellTool {
         let mut extra_env = std::collections::HashMap::new();
         match self.runtime_path_for_command(command).await {
             Ok(Some(path)) => {
-                extra_env.insert("PATH".to_string(), path);
+                extra_env.insert("PATH".into(), path.into());
             }
             Ok(None) => {}
             Err(error) => {

@@ -376,7 +376,7 @@ pub async fn update_settings(
     config.save().await.map_err(|e| e.to_string())?;
 
     if sig_changed {
-        crate::openhuman::memory::queue::ensure_reembed_backfill(&config);
+        tinymemory_core::queue::ensure_reembed_backfill(&config);
     }
 
     // #5324: this is the exact screen the "embedding budget reached" alert
@@ -396,7 +396,7 @@ pub async fn update_settings(
     // fail the RPC, but it must be surfaced (not reported as `0`) so a queue
     // that stayed parked isn't presented as remediated.
     let requeue_result = if is_embedding_remediation {
-        crate::openhuman::memory::queue::requeue_failed_after_provider_change(&config)
+        tinymemory_core::queue::requeue_failed_after_provider_change(&config)
     } else {
         Ok(0)
     };
@@ -460,8 +460,7 @@ pub async fn set_api_key(
     // separately discovers the "Retry failed" button. A store failure is
     // surfaced (not reported as `0`) so the key-stored response can't imply the
     // parked queue was recovered when it wasn't.
-    let requeue_result =
-        crate::openhuman::memory::queue::requeue_failed_after_provider_change(config);
+    let requeue_result = tinymemory_core::queue::requeue_failed_after_provider_change(config);
     let requeued_count = *requeue_result.as_ref().unwrap_or(&0);
     let requeue_error = requeue_result.as_ref().err().cloned();
     let requeued_note = match &requeue_error {
@@ -1104,8 +1103,18 @@ mod tests {
         config.memory.embedding_provider = "cloud".to_string();
         // A managed session exists, so the ladder would resolve to cloud …
         std::fs::write(tmp.path().join("auth-profiles.json"), "{}").unwrap();
-        // … except the unified workload setting routes embeddings to Ollama.
+        // … except a local Ollama route wins. As of tinymemory v1.0.1 the
+        // effective-embedder ladder no longer treats the `embeddings_provider`
+        // string alone as authoritative for local routing — local Ollama is
+        // resolved from an explicit `memory_tree.embedding_endpoint` override or
+        // the unified `workload_local_model` setting. Drive the explicit
+        // endpoint rung here: it resolves deterministically without an installed
+        // embedding host, and still exercises the point of the test — that
+        // `provider` (the picker) stays `cloud` while `effective_provider`
+        // reports the local route that bills nothing (#5402).
         config.embeddings_provider = Some("ollama:all-minilm:latest".into());
+        config.memory_tree.embedding_endpoint = Some("http://localhost:11434".into());
+        config.memory_tree.embedding_model = Some("all-minilm".into());
 
         let out = get_settings(&config)
             .await

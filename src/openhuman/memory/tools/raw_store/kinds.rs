@@ -1,11 +1,17 @@
-//! `memory_store_kinds` — introspection. Enumerate every supported
-//! [`MemoryKind`] so an agent can plan a fan-out without hard-coding.
+//! `memory_store_kinds` — introspection. Enumerate every storage shape the
+//! bound driver persists, so an agent can plan a fan-out without hard-coding.
+//!
+//! The catalog comes from the driver rather than from a compiled-in list: it is
+//! the engine's own vocabulary, and a host-side copy drifts. This one had —
+//! the description below used to advertise `content`, `document` and `graph`,
+//! none of which exist, while omitting `raw` and `entity`, which do.
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
+use crate::openhuman::memory::api::provider::MemoryProvider;
+use crate::openhuman::memory::ops::guard::active_memory_guard;
 use crate::openhuman::tools::traits::{Tool, ToolResult};
-use tinymemory_core::store::MemoryKind;
 
 pub struct MemoryStoreKindsTool;
 
@@ -16,9 +22,9 @@ impl Tool for MemoryStoreKindsTool {
     }
 
     fn description(&self) -> &str {
-        "Return the catalog of memory_store storage kinds (content, chunk, \
-         tree, vector, document, kv, graph, contact). No arguments. Use \
-         when planning a multi-kind retrieval fan-out."
+        "Return the catalog of memory_store storage kinds the active memory \
+         driver persists. No arguments. Use when planning a multi-kind \
+         retrieval fan-out."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -27,13 +33,23 @@ impl Tool for MemoryStoreKindsTool {
 
     async fn execute(&self, _args: Value) -> anyhow::Result<ToolResult> {
         log::debug!("[tool][memory_store] kinds start");
-        let kinds: Vec<&'static str> = MemoryKind::ALL.iter().map(|k| k.as_str()).collect();
-        let json = serde_json::to_string(&json!({ "kinds": kinds }))?;
-        log::debug!(
-            "[tool][memory_store] kinds success count={}",
-            MemoryKind::ALL.len()
-        );
-        Ok(ToolResult::success(json))
+        let guard = active_memory_guard()
+            .await
+            .map_err(|e| anyhow::anyhow!("memory_store_kinds: {e}"))?;
+        let kinds = guard
+            .as_chunks()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "memory_store_kinds: memory driver does not support the chunk family"
+                )
+            })?
+            .storage_kinds()
+            .await
+            .map_err(|e| anyhow::anyhow!("memory_store_kinds: {e}"))?;
+        log::debug!("[tool][memory_store] kinds success count={}", kinds.len());
+        Ok(ToolResult::success(serde_json::to_string(
+            &json!({ "kinds": kinds }),
+        )?))
     }
 }
 
@@ -49,12 +65,20 @@ mod tests {
         assert_eq!(schema["properties"], json!({}));
     }
 
+    /// The catalog is the driver's now, so this needs one bound.
+    ///
+    /// It used to assert against `MemoryKind::ALL` compiled into this crate,
+    /// which is exactly the host-side copy that had drifted from the engine.
     #[tokio::test]
-    async fn execute_returns_all_memory_kinds() {
+    #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
+the catalog is read from the bound driver, not a compiled-in list"]
+    async fn execute_returns_the_drivers_storage_kinds() {
         let tool = MemoryStoreKindsTool;
         let result = tool.execute(Value::Null).await.unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result.output()).unwrap();
-        let expected: Vec<&str> = MemoryKind::ALL.iter().map(|k| k.as_str()).collect();
-        assert_eq!(parsed["kinds"], json!(expected));
+        assert!(
+            parsed["kinds"].as_array().is_some_and(|k| !k.is_empty()),
+            "a bound driver must report a non-empty catalog"
+        );
     }
 }

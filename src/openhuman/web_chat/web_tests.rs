@@ -342,6 +342,139 @@ fn classify_inference_error_chat_factory_empty_model_is_actionable_config() {
     );
 }
 
+// ── #5503: transient model-unavailable vs misconfiguration ─────
+
+#[test]
+fn classify_inference_error_transient_model_unavailable_is_retryable_not_config() {
+    // #5503: a BYO/direct-provider body that says the model is *temporarily*
+    // down (a transient upstream outage — the real symptom behind "all tiers
+    // die over a long session") must NOT be flattened into the non-retryable
+    // "check your model settings" misconfiguration copy. It routes to the
+    // retryable "temporarily unavailable" provider class instead, so the FE
+    // keeps the Retry button and doesn't send the user to fix settings that
+    // are fine. Each of these carries a temporary-outage marker.
+    for raw in [
+        r#"custom_openai API error (503 Service Unavailable): {"error":{"message":"The model is temporarily unavailable, please try again later."}}"#,
+        r#"cloud API error (529): {"error":{"message":"model is currently overloaded"}}"#,
+        r#"openrouter API error (503): {"error":{"message":"This model is temporarily unavailable. Please retry."}}"#,
+    ] {
+        let ClassifiedError {
+            error_type,
+            message,
+            retryable,
+            source,
+            ..
+        } = classify_inference_error(raw);
+        assert_eq!(
+            error_type, "provider_error",
+            "transient model outage must classify as provider_error, not model_unavailable: {raw}"
+        );
+        assert!(
+            retryable,
+            "transient model outage must stay retryable (keep Retry): {raw}"
+        );
+        assert_eq!(
+            source, "provider",
+            "transient outage is a provider fault: {raw}"
+        );
+        assert!(
+            message.contains("temporarily unavailable"),
+            "must use the temporarily-unavailable copy: {message}"
+        );
+        assert!(
+            !message.to_lowercase().contains("check your model settings"),
+            "must NOT tell the user their configuration is wrong: {message}"
+        );
+    }
+}
+
+#[test]
+fn classify_inference_error_genuine_model_rejection_stays_nonretryable_config() {
+    // Guard the other direction: a genuine model rejection with NO
+    // temporary-outage marker (wrong endpoint, no access) keeps the
+    // non-retryable `model_unavailable` + "check your model settings" config
+    // verdict. This is the half of the #5503 split that must not regress the
+    // pre-existing behaviour.
+    for raw in [
+        // Endpoint doesn't host this model (a terminal 404, not a transient dip).
+        r#"custom_openai API error (404 Not Found): {"error":{"message":"model unavailable on this endpoint"}}"#,
+        // No access to the requested model — bare "not found", no outage marker.
+        r#"custom_openai API error (404 Not Found): {"error":{"message":"the requested model was not found for this account"}}"#,
+    ] {
+        let ClassifiedError {
+            error_type,
+            message,
+            retryable,
+            source,
+            ..
+        } = classify_inference_error(raw);
+        assert_eq!(
+            error_type, "model_unavailable",
+            "genuine model rejection must stay model_unavailable: {raw}"
+        );
+        assert!(
+            !retryable,
+            "genuine model rejection is non-retryable (hide Retry): {raw}"
+        );
+        assert_eq!(
+            source, "config",
+            "genuine model rejection is user config: {raw}"
+        );
+        assert!(
+            message.contains("Check your model settings"),
+            "must keep the actionable config copy: {message}"
+        );
+    }
+}
+
+#[test]
+fn classify_inference_error_transient_model_unavailable_without_5xx_status_uses_split_arm() {
+    // #5503 coverage guard for the split's *own* true branch. The two fixtures
+    // in `..._is_retryable_not_config` above each carry a `503`/`529` status, so
+    // they are already claimed by the generic 5xx arm and never reach the
+    // model-unavailable split. A transient outage reported with NO 5xx status —
+    // a bare provider body that only says the model is temporarily unavailable /
+    // currently unavailable — can be rescued from the non-retryable "check your
+    // model settings" verdict *only* by the split arm itself. So this exercises
+    // the branch the other fixtures miss: each body carries the "model" +
+    // "unavailable" trigger (so it enters the model arm, not the 5xx arm) plus a
+    // temporary-outage marker (so it takes the retryable TRUE branch). On the
+    // pre-#5503 flattened code these classified as non-retryable
+    // `model_unavailable`; the split makes them retryable `provider_error`.
+    for raw in [
+        r#"custom_openai API error: {"error":{"message":"The model is temporarily unavailable, please try again later."}}"#,
+        r#"openrouter API error: {"error":{"message":"This model is currently unavailable; please retry shortly."}}"#,
+    ] {
+        let ClassifiedError {
+            error_type,
+            message,
+            retryable,
+            source,
+            ..
+        } = classify_inference_error(raw);
+        assert_eq!(
+            error_type, "provider_error",
+            "no-status transient outage must reach the split arm as provider_error, not model_unavailable: {raw}"
+        );
+        assert!(
+            retryable,
+            "no-status transient outage must stay retryable (keep Retry): {raw}"
+        );
+        assert_eq!(
+            source, "provider",
+            "transient outage is a provider fault: {raw}"
+        );
+        assert!(
+            message.contains("temporarily unavailable"),
+            "must use the temporarily-unavailable copy: {message}"
+        );
+        assert!(
+            !message.to_lowercase().contains("check your model settings"),
+            "must NOT tell the user their configuration is wrong: {message}"
+        );
+    }
+}
+
 // ── #2364: rate-limit classification + retry-after surfacing ────
 
 #[test]

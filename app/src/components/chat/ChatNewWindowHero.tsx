@@ -147,7 +147,12 @@ export default function ChatNewWindowHero() {
           the app background. */}
       <div
         data-walkthrough="home-card"
-        className="animate-fade-up rounded-2xl border border-line/80 bg-surface/80 p-6 shadow-soft backdrop-blur-sm dark:border-line/80">
+        // `surface-muted`, not `surface/80`: the translucent fill only read as a
+        // card while the chat page painted a darker tint beneath it. The page is
+        // the card surface now, so surface/80 over surface would flatten to the
+        // same colour and leave only the border. This is the same lift token the
+        // message bubbles use.
+        className="animate-fade-up rounded-2xl border border-line/80 bg-surface-muted p-6 shadow-soft dark:border-line/80">
         {/* Animated greeting */}
         <h1 className="min-h-[3.5rem] text-2xl text-center font-bold text-content">
           {typedWelcome}

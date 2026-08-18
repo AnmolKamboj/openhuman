@@ -19,11 +19,11 @@ use openhuman_core::openhuman::config::Config;
 use openhuman_core::openhuman::security::credentials::{
     AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
 };
-use openhuman_core::openhuman::memory::global as memory_global;
-use openhuman_core::openhuman::memory::store::chunks::store::with_connection;
-use openhuman_core::openhuman::memory::store::content::atomic::stage_summary;
-use openhuman_core::openhuman::memory::store::content::{SummaryComposeInput, SummaryTreeKind};
-use openhuman_core::openhuman::memory::store::trees::types::{SummaryNode, Tree, TreeKind};
+use tinymemory_core::global as memory_global;
+use tinymemory_core::store::chunks::store::with_connection;
+use tinymemory_core::store::content::atomic::stage_summary;
+use tinymemory_core::store::content::{SummaryComposeInput, SummaryTreeKind};
+use tinymemory_core::store::trees::types::{SummaryNode, Tree, TreeKind};
 use openhuman_core::openhuman::memory::sync::composio::periodic::record_sync_success;
 use openhuman_core::openhuman::memory::sync::composio::providers::gmail::GmailProvider;
 use openhuman_core::openhuman::memory::sync::composio::providers::linear::LinearProvider;
@@ -40,6 +40,23 @@ use openhuman_core::openhuman::memory::tree::tree::store as tree_store;
 use openhuman_core::openhuman::memory::tree::tree::TreeStatus;
 
 static ENV_LOCK: &OnceLock<Mutex<()>> = &crate::SHARED_ENV_LOCK;
+static MEMORY_SEAMS_INIT: OnceLock<()> = OnceLock::new();
+
+fn ensure_memory_seams() {
+    MEMORY_SEAMS_INIT.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("memory-sync-tree-round21-raw-coverage-seams".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
+                    Arc::new(Config::default()),
+                );
+            })
+            .expect("spawn round21 memory tree seam installer")
+            .join()
+            .expect("round21 memory tree seam installer panicked");
+    });
+}
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     ENV_LOCK
@@ -79,6 +96,7 @@ impl Drop for EnvGuard {
 }
 
 fn config_in(tmp: &TempDir) -> Config {
+    ensure_memory_seams();
     let mut config = Config {
         config_path: tmp.path().join("config.toml"),
         workspace_dir: tmp.path().join("workspace"),
@@ -423,7 +441,7 @@ async fn slack_sync_status_rpc_reads_mock_connections_and_persisted_state() {
     state.mark_synced("C21:1714003200.000100");
     state.record_requests(7);
     let state_adapter =
-        openhuman_core::openhuman::memory::tinycortex::HostSyncAdapter::new(memory.clone());
+        tinymemory_core::tinycortex::HostSyncAdapter::new(memory.clone());
     state
         .save(&state_adapter)
         .await
@@ -477,7 +495,7 @@ async fn memory_tree_source_query_filters_reranks_and_hydrates_manual_summaries(
     let chat = query_source(
         &config,
         None,
-        Some(openhuman_core::openhuman::memory::store::chunks::types::SourceKind::Chat),
+        Some(tinymemory_core::store::chunks::types::SourceKind::Chat),
         None,
         Some("semantic query keeps embedded rows first"),
         10,

@@ -545,7 +545,7 @@ async fn store_session_inner(
 
     logs.push("session stored".to_string());
 
-    match crate::openhuman::memory::global::init(effective_config.workspace_dir.clone()) {
+    match tinymemory_core::global::init(effective_config.workspace_dir.clone()) {
         Ok(_) => logs.push(format!(
             "memory client bound to workspace {}",
             effective_config.workspace_dir.display()
@@ -568,21 +568,11 @@ async fn store_session_inner(
             logs.push(format!("core context bind warning: {e}"));
         }
     }
-    // Rebind the people store to the per-user workspace too — the boot seed may
-    // have bound it to the pre-login workspace, and it must follow the active
-    // user like the memory client does (#4378).
-    match crate::openhuman::memory::people::store::init_from_workspace(
-        &effective_config.workspace_dir,
-    ) {
-        Ok(_) => logs.push(format!(
-            "people store bound to workspace {}",
-            effective_config.workspace_dir.display()
-        )),
-        Err(e) => {
-            tracing::warn!(error = %e, "[credentials] failed to bind people store after login");
-            logs.push(format!("people store bind warning: {e}"));
-        }
-    }
+    // No people-store rebind here any more: people is served by the bound
+    // memory driver, and `rebind_default_workspace` above already moved that
+    // binding to the per-user workspace. Seeding a host-side global as well
+    // opened the engine's database a second time in this process (#4378 fixed
+    // the workspace it pointed at; the module port removes the second reader).
     crate::openhuman::memory::conversations::register_conversation_persistence_subscriber(
         effective_config.workspace_dir.clone(),
     );
@@ -615,7 +605,7 @@ async fn store_session_inner(
         operation = "store_session",
         "[credentials][auth-store] scheduler gate cleared; ensuring re-embed backfill after login"
     );
-    crate::openhuman::memory::queue::ensure_reembed_backfill(&effective_config);
+    tinymemory_core::queue::ensure_reembed_backfill(&effective_config);
     logs.push("memory re-embed backfill checked after login".to_string());
 
     // Bind the Sentry scope to this user so background events that fire
@@ -809,7 +799,7 @@ pub async fn clear_session(config: &Config) -> Result<RpcOutcome<serde_json::Val
     match crate::openhuman::config::load_config_with_timeout().await {
         Ok(signed_out_config) => {
             let workspace = signed_out_config.workspace_dir.clone();
-            if let Err(error) = crate::openhuman::memory::global::init(workspace.clone()) {
+            if let Err(error) = tinymemory_core::global::init(workspace.clone()) {
                 tracing::warn!(%error, "failed to rebind memory after logout");
             }
             if let Err(error) = crate::core::runtime::context::CoreContext::rebind_default_workspace(
@@ -817,11 +807,6 @@ pub async fn clear_session(config: &Config) -> Result<RpcOutcome<serde_json::Val
                 signed_out_config.subsystems.memory.clone(),
             ) {
                 tracing::warn!(%error, "failed to rebind core context after logout");
-            }
-            if let Err(error) =
-                crate::openhuman::memory::people::store::init_from_workspace(&workspace)
-            {
-                tracing::warn!(%error, "failed to rebind people store after logout");
             }
             crate::openhuman::memory::conversations::register_conversation_persistence_subscriber(
                 workspace.clone(),

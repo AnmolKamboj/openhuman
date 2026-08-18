@@ -35,18 +35,18 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use tinycortex_api::capabilities::Capability;
-use tinycortex_api::error::MemoryError;
-use tinycortex_api::provider::types::SourceScope;
-use tinycortex_api::types::MemoryTaint;
+use crate::openhuman::memory::api::capabilities::Capability;
+use crate::openhuman::memory::api::error::MemoryError;
+use crate::openhuman::memory::api::provider::types::SourceScope;
+use crate::openhuman::memory::api::types::MemoryTaint;
 
 use crate::core::subsystem::DriverClass;
 use crate::openhuman::config::schema::MemoryHooksConfig;
-use crate::openhuman::memory::source_scope::current_source_scope;
 use crate::openhuman::security::egress::emit_external_transfer;
 use crate::openhuman::security::egress::types::{DataKind, EgressDescriptor, EgressReason};
 use crate::openhuman::security::live_policy;
 use crate::openhuman::security::policy::ToolOperation;
+use tinymemory_core::source_scope::current_source_scope;
 
 /// Prefix on every guard-authored error message, so a refusal that surfaces to
 /// a caller is attributable to the guard rather than to the driver underneath.
@@ -344,22 +344,11 @@ impl GuardPolicy {
     /// same time as the class check that selects it.
     pub fn redact_outbound<'a>(&self, content: &'a str) -> Cow<'a, str> {
         match self.class {
-            // `Module` sits with the in-process classes, and the test for this
-            // grouping is "does the content leave the device", not "is the code
-            // compiled in". A loaded module is in this address space and makes no
-            // egress of its own — the memory module's embeddings go back *to* the
-            // host, which is the whole point of that split — so there is no
-            // transfer here to disclose or scrub.
-            //
-            // Scrubbing would also be actively destructive for the same reason it
-            // would be for `Embedded`: these are the user's own memory writes, and
-            // sanitizing them would silently corrupt the data being stored rather
-            // than protect anything.
             DriverClass::Embedded | DriverClass::Module | DriverClass::Null => {
                 Cow::Borrowed(content)
             }
             DriverClass::External => {
-                Cow::Owned(crate::openhuman::memory::store::safety::sanitize_text(content).value)
+                Cow::Owned(tinymemory_core::store::safety::sanitize_text(content).value)
             }
         }
     }
@@ -369,11 +358,8 @@ impl GuardPolicy {
     /// unmodified pass-through for embedded and null drivers.
     pub fn redact_outbound_json(&self, value: serde_json::Value) -> serde_json::Value {
         match self.class {
-            // Same grouping and the same reason as `redact_outbound`.
             DriverClass::Embedded | DriverClass::Module | DriverClass::Null => value,
-            DriverClass::External => {
-                crate::openhuman::memory::store::safety::sanitize_json(&value).value
-            }
+            DriverClass::External => tinymemory_core::store::safety::sanitize_json(&value).value,
         }
     }
 

@@ -1,187 +1,83 @@
 //! Phase 2 — always-on listening.
 //!
 //! Instead of a hotkey gating each recording, always-on mode keeps the mic
-//! open continuously and uses **voice-activity detection (VAD)** to carve the
-//! audio stream into utterances: an utterance opens when energy rises above an
-//! onset threshold and closes after a configurable run of silence (the
-//! "hangover"). Each completed utterance is transcribed and pushed onto the
-//! dictation bus, so it reaches the agent and the notch exactly like a hotkey
-//! dictation.
+//! open continuously and uses **voice-activity detection** to carve the audio
+//! stream into utterances: an utterance opens when energy rises above an onset
+//! threshold and closes after a configurable run of silence (the "hangover").
+//! Each completed utterance is transcribed and pushed onto the dictation bus,
+//! so it reaches the agent and the notch exactly like a hotkey dictation.
 //!
-//! Layers:
-//!   - [`VadSegmenter`] — a pure state machine over per-frame RMS energies,
-//!     unit-tested deterministically (no audio backend).
-//!   - [`start_if_enabled`] — opens a continuous cpal mic stream on a dedicated
-//!     thread, slices 16 kHz mono frames, drives the segmenter, transcribes each
-//!     utterance via the configured STT provider, then applies the wake-word
-//!     gate ([`extract_command`], default "Hey Tiny") before delivering the
-//!     command to the agent via `publish_transcription`.
-//!   - [`spawn_lock_watcher`] — privacy hook: pauses capture while the screen is
-//!     locked (macOS via the Quartz session dictionary).
+//! ## Where the work happens
+//!
+//! Everything that is not device I/O runs in the `tinyvoice` module — the
+//! segmenter, the downmix, the resample, the per-frame energies, the WAV
+//! framing, the wake-word gate and the intent classifier. This file owns the
+//! `cpal` stream, the thread discipline around it, and the policy decisions
+//! (what to transcribe, when to pause, what to tell the notch).
+//!
+//! The split follows the audio callback, not the cost of a call. A module call
+//! is ~15 µs against a 20 ms frame, so the bus is not the constraint; the
+//! constraint is that `cpal` delivers on a realtime thread where blocking is a
+//! dropout. So the callback does the least it can — convert the sample format
+//! and forward raw interleaved samples — and every transform happens in the
+//! async processor below.
 //!
 //! Privacy: always-on is **opt-in** (`config.voice_server.always_on_enabled`,
 //! default false) and pauses when the screen is locked.
 
-use crate::openhuman::config::VoiceServerConfig as CfgVoiceServer;
+use crate::openhuman::config::Config;
+use crate::openhuman::modules::voice as tinyvoice;
+use crate::openhuman::voice::audio_capture::TARGET_SAMPLE_RATE;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const LOG_PREFIX: &str = "[voice::always_on]";
 
-/// Tuning for the VAD segmenter, distilled from [`CfgVoiceServer`].
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct VadConfig {
-    /// Peak-RMS energy above which a frame counts as speech.
-    pub onset_threshold: f32,
-    /// How long energy must stay below `onset_threshold` before the current
-    /// utterance is closed. Bridges natural mid-sentence pauses.
-    pub hangover_ms: u32,
-    /// Minimum voiced duration for a segment to be emitted; shorter blips
-    /// (cough, door) are dropped.
-    pub min_speech_ms: u32,
-    /// Hard ceiling on a single utterance — forces a flush so a continuous
-    /// noise source can't grow an unbounded recording.
-    pub max_utterance_ms: u32,
+/// How long to wait before retrying a VAD session that would not open.
+///
+/// Long enough that a persistently unavailable module does not produce a call
+/// per audio chunk, short enough that a module which finishes downloading
+/// mid-session starts segmenting without the user restarting anything.
+const SESSION_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// How many raw capture chunks may queue for the processor.
+///
+/// The channel was unbounded, which was survivable when the callback did the
+/// downmix and resample itself: the processor's work was pure arithmetic and it
+/// always outran the microphone. It no longer does — each chunk now costs three
+/// module round trips — so a stalled or slow processor could let the queue grow
+/// without limit behind a producer that never blocks.
+///
+/// A few seconds of chunks at typical `cpal` buffer sizes. Deliberately a
+/// *count* rather than a byte budget: the callback must not do arithmetic to
+/// decide whether to send.
+const CAPTURE_QUEUE_CHUNKS: usize = 256;
+
+/// Chunks the capture callback had to drop because the queue was full.
+///
+/// A process-wide counter rather than closure state: the callback is built once
+/// per sample format and each closure must stay `Fn`, so the count cannot live
+/// in a captured local. One always-on stream exists per process, so a single
+/// counter is not an aggregation of unrelated streams.
+static DROPPED_CHUNKS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// One chunk of raw capture, exactly as the device delivered it.
+///
+/// Interleaved and at the device's own rate: the callback converts the sample
+/// format and nothing else, so `channels` and `source_rate` travel with the
+/// samples for the processor to hand to the module.
+struct RawChunk {
+    /// Interleaved `f32` samples.
+    samples: Vec<f32>,
 }
 
-impl VadConfig {
-    /// Build VAD tuning from the persisted voice-server config.
-    pub fn from_server_config(c: &CfgVoiceServer) -> Self {
-        Self {
-            onset_threshold: c.vad_onset_threshold,
-            hangover_ms: c.vad_hangover_ms,
-            min_speech_ms: c.vad_min_speech_ms,
-            max_utterance_ms: (c.vad_max_utterance_secs * 1000.0).round().max(1.0) as u32,
-        }
-    }
-}
-
-/// An event emitted by the segmenter as the audio stream is consumed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VadEvent {
-    /// Energy crossed the onset threshold — an utterance has begun.
-    SpeechStart,
-    /// An utterance closed. `voiced_ms` is the accumulated speech duration
-    /// (excluding the trailing silence); `emit` is false when it fell below
-    /// `min_speech_ms` (drop it); `forced` is true when the close was caused
-    /// by the `max_utterance_ms` ceiling rather than a silence hangover.
-    SpeechEnd {
-        voiced_ms: u32,
-        emit: bool,
-        forced: bool,
-    },
-}
-
+/// The device format, learned once when the stream is built.
 #[derive(Debug, Clone, Copy)]
-enum State {
-    /// No active utterance — waiting for energy to cross the onset threshold.
-    Silent,
-    /// Inside an utterance.
-    Speaking {
-        /// Total elapsed time since the utterance opened (voiced + silence).
-        total_ms: u32,
-        /// Accumulated voiced time (frames above onset).
-        voiced_ms: u32,
-        /// Consecutive below-onset time since the last voiced frame.
-        silence_run_ms: u32,
-    },
+struct CaptureFormat {
+    /// Device sample rate, before resampling to [`TARGET_SAMPLE_RATE`].
+    source_rate: u32,
+    /// Interleaved channel count.
+    channels: u16,
 }
-
-/// Pure VAD state machine. Drive it by calling [`push_frame`](Self::push_frame)
-/// with the RMS energy of each fixed-size audio frame; it returns at most one
-/// [`VadEvent`] per frame.
-#[derive(Debug)]
-pub struct VadSegmenter {
-    cfg: VadConfig,
-    state: State,
-}
-
-impl VadSegmenter {
-    pub fn new(cfg: VadConfig) -> Self {
-        Self {
-            cfg,
-            state: State::Silent,
-        }
-    }
-
-    /// True while inside an utterance (between `SpeechStart` and `SpeechEnd`).
-    pub fn is_speaking(&self) -> bool {
-        matches!(self.state, State::Speaking { .. })
-    }
-
-    /// Abort any in-flight utterance and return to the idle state without
-    /// emitting an event. Used by the privacy hook (screen lock) and on
-    /// stream teardown.
-    pub fn reset(&mut self) {
-        self.state = State::Silent;
-    }
-
-    /// Feed one frame's RMS energy and its duration in milliseconds.
-    pub fn push_frame(&mut self, rms: f32, frame_ms: u32) -> Option<VadEvent> {
-        let above = rms >= self.cfg.onset_threshold;
-        match self.state {
-            State::Silent => {
-                if above {
-                    self.state = State::Speaking {
-                        total_ms: frame_ms,
-                        voiced_ms: frame_ms,
-                        silence_run_ms: 0,
-                    };
-                    Some(VadEvent::SpeechStart)
-                } else {
-                    None
-                }
-            }
-            State::Speaking {
-                mut total_ms,
-                mut voiced_ms,
-                mut silence_run_ms,
-            } => {
-                total_ms = total_ms.saturating_add(frame_ms);
-                if above {
-                    voiced_ms = voiced_ms.saturating_add(frame_ms);
-                    silence_run_ms = 0;
-                } else {
-                    silence_run_ms = silence_run_ms.saturating_add(frame_ms);
-                }
-
-                // Close on a silence hangover.
-                if silence_run_ms >= self.cfg.hangover_ms {
-                    self.state = State::Silent;
-                    let emit = voiced_ms >= self.cfg.min_speech_ms;
-                    return Some(VadEvent::SpeechEnd {
-                        voiced_ms,
-                        emit,
-                        forced: false,
-                    });
-                }
-                // Close on the hard utterance ceiling.
-                if total_ms >= self.cfg.max_utterance_ms {
-                    self.state = State::Silent;
-                    let emit = voiced_ms >= self.cfg.min_speech_ms;
-                    return Some(VadEvent::SpeechEnd {
-                        voiced_ms,
-                        emit,
-                        forced: true,
-                    });
-                }
-
-                self.state = State::Speaking {
-                    total_ms,
-                    voiced_ms,
-                    silence_run_ms,
-                };
-                None
-            }
-        }
-    }
-}
-
-// ── Continuous capture loop ─────────────────────────────────────────────────
-
-use crate::openhuman::config::Config;
-use crate::openhuman::voice::audio_capture::{
-    chunk_rms, encode_wav_16k, resample, to_mono, TARGET_SAMPLE_RATE,
-};
-use std::sync::atomic::{AtomicBool, Ordering};
 
 /// The capture thread + processor have been spawned (once per process).
 static RUNNING: AtomicBool = AtomicBool::new(false);
@@ -211,7 +107,7 @@ const MAX_UTTERANCE_SAMPLES: usize = TARGET_SAMPLE_RATE as usize * 60;
 /// toggling off flips `ENABLED` so the processor immediately stops transcribing/
 /// delivering; toggling on starts capture live without a restart.
 ///
-/// Opens a continuous mic stream, segments it with the [`VadSegmenter`], and
+/// Opens a continuous mic stream, segments it through the `tinyvoice` module, and
 /// routes each finished utterance through STT and the dictation delivery bus (so
 /// it reaches the agent exactly like a hotkey dictation, and lights up the notch).
 pub async fn start_if_enabled(app_config: &Config) {
@@ -226,7 +122,7 @@ pub async fn start_if_enabled(app_config: &Config) {
         return;
     }
 
-    let vad = VadConfig::from_server_config(&app_config.voice_server);
+    let vad = tinyvoice::VadConfig::from_server_config(&app_config.voice_server);
     let config = app_config.clone();
     log::info!(
         "{LOG_PREFIX} enabled — onset={:.4} hangover={}ms min_speech={}ms max_utt={}ms",
@@ -237,22 +133,24 @@ pub async fn start_if_enabled(app_config: &Config) {
     );
 
     // The cpal stream is `!Send`, so it lives on a dedicated thread that pushes
-    // 16 kHz mono frames over a channel to the async processor below.
+    // RAW interleaved chunks over a channel to the async processor below —
+    // deliberately raw: every transform now happens off the audio callback.
     // `spawn_capture_thread` blocks on a synchronous readiness handshake while
     // the OS builds the input stream — cold WASAPI init on Windows can take a
     // while — so run it on the blocking pool. This function is polled
     // concurrently with the other login-gated services (#3490), and blocking an
     // async worker here would stall them.
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Vec<f32>>();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<RawChunk>(CAPTURE_QUEUE_CHUNKS);
     log::debug!(
         "{LOG_PREFIX} starting microphone capture (blocking readiness handshake on the blocking pool)"
     );
     // Distinguish a Tokio join failure (the blocking task itself panicked) from a
     // `spawn_capture_thread` setup error (e.g. no input device), so the log points
     // at the right layer instead of flattening both into one message.
-    match tokio::task::spawn_blocking(move || spawn_capture_thread(tx)).await {
-        Ok(Ok(())) => {
+    let format = match tokio::task::spawn_blocking(move || spawn_capture_thread(tx)).await {
+        Ok(Ok(format)) => {
             log::debug!("{LOG_PREFIX} microphone capture stream ready");
+            format
         }
         Ok(Err(e)) => {
             log::warn!("{LOG_PREFIX} could not start microphone capture: {e}");
@@ -266,14 +164,26 @@ pub async fn start_if_enabled(app_config: &Config) {
             RUNNING.store(false, Ordering::SeqCst);
             return;
         }
-    }
+    };
 
     // Privacy hook: pause capture while the screen is locked.
     spawn_lock_watcher();
 
     let onset_threshold = vad.onset_threshold;
     tokio::spawn(async move {
-        let mut seg = VadSegmenter::new(vad);
+        // The segmenter lives in the module now, so opening it can fail for
+        // reasons unrelated to audio — a download that has not happened yet, a
+        // host with no published artifact.
+        //
+        // That failure must NOT end this task. The capture thread is already
+        // running and owns the microphone for the process lifetime; returning
+        // here would clear `RUNNING` while the stream stays live, and the next
+        // `start_if_enabled` would sail past the `RUNNING` guard and open a
+        // *second* microphone stream. So the session is opened lazily and
+        // retried, and audio is dropped until there is one.
+        let mut session: Option<tinyvoice::VadSession> = None;
+        let mut last_open_attempt: Option<std::time::Instant> = None;
+
         let mut pending: Vec<f32> = Vec::new();
         let mut utterance: Vec<f32> = Vec::new();
         // Test-build diagnostics: confirm audio actually flows from the mic and
@@ -289,50 +199,170 @@ pub async fn start_if_enabled(app_config: &Config) {
                 first_chunk_logged = true;
                 log::info!(
                     "{LOG_PREFIX} first audio chunk received from mic (samples={}) — capture pipeline live",
-                    chunk.len()
+                    chunk.samples.len()
                 );
             }
             // Drop audio and abandon any in-flight utterance while paused
             // (screen locked) or toggled off — nothing is captured or sent.
             if PAUSED.load(Ordering::Relaxed) || !ENABLED.load(Ordering::Relaxed) {
-                if seg.is_speaking() {
-                    seg.reset();
+                // Reset unconditionally rather than checking `is_speaking`
+                // first: that check would be a second bus call to save a cheap
+                // idempotent one, and the privacy path should be the shortest
+                // path, not the cleverest.
+                if let Some(open) = session.as_ref() {
+                    if let Err(error) = open.reset(&config).await {
+                        // Same reasoning as a failed push: a reset that did not
+                        // land leaves a segmenter we cannot vouch for, and this
+                        // is the privacy path, so discard it rather than trust
+                        // it to have dropped the partial utterance.
+                        log::warn!(
+                            "{LOG_PREFIX} could not reset the VAD session ({error}); reopening"
+                        );
+                        session = None;
+                        last_open_attempt = Some(std::time::Instant::now());
+                    }
                 }
                 pending.clear();
                 utterance.clear();
                 continue;
             }
-            pending.extend_from_slice(&chunk);
-            while pending.len() >= FRAME_SAMPLES {
-                let frame: Vec<f32> = pending.drain(..FRAME_SAMPLES).collect();
-                let rms = chunk_rms(&frame);
-                level_peak = level_peak.max(rms);
-                level_frames += 1;
-                if last_level_log.elapsed() >= std::time::Duration::from_secs(5) {
-                    log::info!(
-                        "{LOG_PREFIX} mic level peak_rms={level_peak:.4} onset={onset_threshold:.4} frames={level_frames} ({})",
-                        if level_peak >= onset_threshold {
-                            "speech would trigger"
-                        } else {
-                            "below onset — lower vad_onset_threshold or check mic gain"
-                        }
-                    );
-                    level_peak = 0.0;
-                    level_frames = 0;
-                    last_level_log = std::time::Instant::now();
+
+            // Open the segmenter on first use, retrying on a cooldown so a
+            // module that becomes available later heals this without a restart.
+            if session.is_none() {
+                let due = last_open_attempt.is_none_or(|at| at.elapsed() >= SESSION_RETRY_INTERVAL);
+                if !due {
+                    continue;
                 }
-                match seg.push_frame(rms, FRAME_MS) {
-                    Some(VadEvent::SpeechStart) => {
+                last_open_attempt = Some(std::time::Instant::now());
+                match tinyvoice::VadSession::open(&config, vad).await {
+                    Ok(opened) => {
+                        log::info!("{LOG_PREFIX} VAD session open; segmenting live audio");
+                        session = Some(opened);
+                    }
+                    Err(error) => {
+                        log::warn!(
+                            "{LOG_PREFIX} could not open a VAD session ({error}); \
+                             dropping audio and retrying in {}s",
+                            SESSION_RETRY_INTERVAL.as_secs()
+                        );
+                        continue;
+                    }
+                }
+            }
+
+            // Downmix + resample in the module. This is the work that used to
+            // happen inside the cpal callback.
+            let mono16k = match tinyvoice::prepare_frames(
+                &config,
+                &chunk.samples,
+                format.source_rate,
+                format.channels,
+            )
+            .await
+            {
+                Ok(samples) => samples,
+                Err(error) => {
+                    log::warn!("{LOG_PREFIX} could not prepare capture frames: {error}");
+                    continue;
+                }
+            };
+            pending.extend_from_slice(&mono16k);
+
+            // Whole frames only; the remainder stays in `pending` for the next
+            // chunk so no audio is dropped at a chunk boundary.
+            let whole = pending.len() / FRAME_SAMPLES * FRAME_SAMPLES;
+            if whole == 0 {
+                continue;
+            }
+            // Measure BEFORE draining. Draining first and then failing would
+            // discard the frames outright — a module hiccup would eat the
+            // user's audio rather than delay it.
+            let energies =
+                match tinyvoice::frame_energies(&config, &pending[..whole], FRAME_SAMPLES as u32)
+                    .await
+                {
+                    Ok(energies) => energies,
+                    Err(error) => {
+                        log::warn!(
+                            "{LOG_PREFIX} could not measure frame energies ({error}); \
+                         retrying these frames on the next chunk"
+                        );
+                        continue;
+                    }
+                };
+            let frames: Vec<f32> = pending.drain(..whole).collect();
+
+            for rms in &energies {
+                level_peak = level_peak.max(*rms);
+            }
+            level_frames += energies.len() as u32;
+            if last_level_log.elapsed() >= std::time::Duration::from_secs(5) {
+                log::info!(
+                    "{LOG_PREFIX} mic level peak_rms={level_peak:.4} onset={onset_threshold:.4} frames={level_frames} ({})",
+                    if level_peak >= onset_threshold {
+                        "speech would trigger"
+                    } else {
+                        "below onset — lower vad_onset_threshold or check mic gain"
+                    }
+                );
+                level_peak = 0.0;
+                level_frames = 0;
+                last_level_log = std::time::Instant::now();
+            }
+
+            // One push per chunk rather than per frame: same events, same
+            // order, one round trip instead of N.
+            let push = match session.as_ref() {
+                Some(open) => open.push(&config, FRAME_MS, &energies).await,
+                None => continue,
+            };
+            let events = match push {
+                Ok(events) => events,
+                Err(error) => {
+                    // Drop the handle, do not just skip the chunk. A push fails
+                    // when the module went away or the session is no longer
+                    // open, and neither heals by itself — keeping the handle
+                    // would reuse a dead session forever, because the lazy-open
+                    // retry above only runs while `session` is `None`.
+                    log::warn!("{LOG_PREFIX} VAD push failed ({error}); reopening the session");
+                    session = None;
+                    last_open_attempt = Some(std::time::Instant::now());
+                    // The partial utterance belonged to the dead segmenter, so
+                    // its boundaries mean nothing to the next one.
+                    pending.clear();
+                    utterance.clear();
+                    continue;
+                }
+            };
+
+            // `frame` indexes `frames`; slice the audio at the same boundaries
+            // the segmenter reported so an utterance carries exactly the
+            // samples it was measured from.
+            let mut cursor = 0usize;
+            for event in events {
+                match event {
+                    tinyvoice::VadEvent::SpeechStart { frame } => {
+                        let at = frame * FRAME_SAMPLES;
                         log::info!(
-                            "{LOG_PREFIX} speech onset rms={rms:.4} (onset={onset_threshold:.4})"
+                            "{LOG_PREFIX} speech onset rms={:.4} (onset={onset_threshold:.4})",
+                            energies.get(frame).copied().unwrap_or_default()
                         );
                         utterance.clear();
-                        utterance.extend_from_slice(&frame);
+                        cursor = at;
                         notch_status("Listening", 2500); // pill: capturing speech
                     }
-                    Some(VadEvent::SpeechEnd {
-                        emit, voiced_ms, ..
-                    }) => {
+                    tinyvoice::VadEvent::SpeechEnd {
+                        frame,
+                        emit,
+                        voiced_ms,
+                        ..
+                    } => {
+                        let upto = ((frame + 1) * FRAME_SAMPLES).min(frames.len());
+                        if upto > cursor && utterance.len() < MAX_UTTERANCE_SAMPLES {
+                            utterance.extend_from_slice(&frames[cursor..upto]);
+                        }
+                        cursor = upto;
                         let captured = std::mem::take(&mut utterance);
                         log::info!(
                             "{LOG_PREFIX} utterance end voiced_ms={voiced_ms} emit={emit} samples={}",
@@ -345,12 +375,26 @@ pub async fn start_if_enabled(app_config: &Config) {
                             });
                         }
                     }
-                    None => {
-                        if seg.is_speaking() && utterance.len() < MAX_UTTERANCE_SAMPLES {
-                            utterance.extend_from_slice(&frame);
-                        }
-                    }
                 }
+            }
+
+            // Whatever is still open after the reported events belongs to the
+            // utterance in progress.
+            if cursor < frames.len()
+                && !frames.is_empty()
+                && utterance.len() < MAX_UTTERANCE_SAMPLES
+                && match session.as_ref() {
+                    Some(open) => open.is_speaking(&config).await.unwrap_or(false),
+                    None => false,
+                }
+            {
+                utterance.extend_from_slice(&frames[cursor..]);
+            }
+        }
+
+        if let Some(open) = session.as_ref() {
+            if let Err(error) = open.close(&config).await {
+                log::warn!("{LOG_PREFIX} could not close the VAD session: {error}");
             }
         }
         log::info!("{LOG_PREFIX} capture channel closed; processor exiting");
@@ -385,10 +429,10 @@ fn notch_status(status: &str, ttl_ms: u32) {
 async fn transcribe_and_deliver(config: &Config, samples_16k: Vec<f32>) {
     use base64::Engine as _;
     let sample_count = samples_16k.len();
-    let wav = match encode_wav_16k(&samples_16k) {
-        Ok(w) => w,
-        Err(e) => {
-            log::warn!("{LOG_PREFIX} wav encode failed: {e}");
+    let wav = match tinyvoice::encode_wav(config, &samples_16k, TARGET_SAMPLE_RATE).await {
+        Ok(wav) => wav,
+        Err(error) => {
+            log::warn!("{LOG_PREFIX} wav encode failed: {error}");
             return;
         }
     };
@@ -437,7 +481,23 @@ async fn transcribe_and_deliver(config: &Config, samples_16k: Vec<f32>) {
             }
             // Wake-word gate: only act on utterances addressed to the agent
             // ("Hey Tiny, …"). Strip the wake phrase and deliver the command.
-            match extract_command(&text, &config.voice_server.wake_word) {
+            // A module failure here must not deliver an unaddressed utterance
+            // to the agent: this gate is what keeps a passing conversation out
+            // of the assistant, so it fails CLOSED — the opposite of the
+            // hallucination filter, where the risk runs the other way.
+            let gated =
+                match tinyvoice::extract_command(config, &text, &config.voice_server.wake_word)
+                    .await
+                {
+                    Ok(gated) => gated,
+                    Err(error) => {
+                        log::warn!(
+                        "{LOG_PREFIX} wake-word gate unavailable ({error}); dropping the utterance"
+                    );
+                        return;
+                    }
+                };
+            match gated {
                 Some(cmd) => {
                     // Redacted: never log the raw spoken command (always-on mic PII).
                     log::info!("{LOG_PREFIX} wake word matched → cmd_len={}", cmd.len());
@@ -445,7 +505,13 @@ async fn transcribe_and_deliver(config: &Config, samples_16k: Vec<f32>) {
                     deliver_command(config, cmd).await;
                 }
                 None => {
-                    if wake_word_present(&text, &config.voice_server.wake_word) {
+                    // Presence is only used to choose between acknowledging and
+                    // staying silent, so an error here degrades to silence.
+                    let present =
+                        tinyvoice::wake_word_present(config, &text, &config.voice_server.wake_word)
+                            .await
+                            .unwrap_or(false);
+                    if present {
                         // Wake word spoken with no trailing command ("Hey Tiny").
                         // Acknowledge with an agent turn so the user gets a reply
                         // instead of silence, then they can follow up.
@@ -474,8 +540,17 @@ async fn transcribe_and_deliver(config: &Config, samples_16k: Vec<f32>) {
 /// path, no LLM turn), and fall back to the agent for `Unknown` — or when a
 /// local execution fails, so routing can only shortcut, never drop a command.
 async fn deliver_command(config: &Config, cmd: String) {
-    use crate::openhuman::voice::command_router::{route, VoiceIntent};
-    let intent = route(&cmd);
+    use crate::openhuman::modules::voice::{route, VoiceIntent};
+    // A module that will not load costs the fast path, not the command: an
+    // unroutable transcript goes to the agent, which is exactly what
+    // `VoiceIntent::Unknown` already means.
+    let intent = match route(config, &cmd).await {
+        Ok(intent) => intent,
+        Err(error) => {
+            log::warn!("{LOG_PREFIX} intent routing unavailable ({error}); deferring to agent");
+            VoiceIntent::Unknown
+        }
+    };
     // Log only the intent *kind* + lengths — never the transcript-derived query /
     // app / result text (always-on mic PII).
     if matches!(intent, VoiceIntent::Unknown) {
@@ -509,9 +584,9 @@ async fn deliver_command(config: &Config, cmd: String) {
 /// routing can only *shortcut*, never *block*.
 async fn execute_intent(
     _config: &Config,
-    intent: crate::openhuman::voice::command_router::VoiceIntent,
+    intent: crate::openhuman::modules::voice::VoiceIntent,
 ) -> Result<String, String> {
-    use crate::openhuman::voice::command_router::VoiceIntent as VI;
+    use crate::openhuman::modules::voice::VoiceIntent as VI;
     match intent {
         VI::Play { .. } => Err("play has no local fast-path; defer to agent".to_string()),
         VI::OpenApp { .. } => Err("app launch has no local fast-path; defer to agent".to_string()),
@@ -582,92 +657,10 @@ async fn osa(script: &str) -> Result<(), String> {
     }
 }
 
-/// Apply the wake-word gate to a transcript.
-///
-/// Returns the command to send to the agent (the text after the wake phrase),
-/// or `None` when the wake word isn't present (the utterance wasn't addressed to
-/// the agent). An empty `wake_word` disables the gate (every utterance passes).
-/// Matching is tolerant: case-insensitive, punctuation-insensitive, and the
-/// phrase may appear after leading filler ("um, hey tiny, play music").
-/// Tokenize into lowercase alphanumeric words — shared by the wake-word matcher
-/// and the bare-wake detector so both apply identical normalization.
-fn wake_tokens(s: &str) -> Vec<String> {
-    s.to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { ' ' })
-        .collect::<String>()
-        .split_whitespace()
-        .map(String::from)
-        .collect()
-}
-
-/// True when the configured wake word appears near the start of the transcript,
-/// regardless of whether a command follows. Lets the caller acknowledge a bare
-/// wake word ("Hey Tiny" with nothing after it) instead of silently dropping it.
-pub(crate) fn wake_word_present(transcript: &str, wake_word: &str) -> bool {
-    let wake = wake_tokens(wake_word);
-    if wake.is_empty() {
-        return false;
-    }
-    let t = wake_tokens(transcript);
-    let anchor = wake.iter().max_by_key(|w| w.len()).cloned().unwrap();
-    let max_dist = if anchor.chars().count() <= 4 { 1 } else { 2 };
-    (0..t.len().min(3)).any(|i| levenshtein(&t[i], &anchor) <= max_dist)
-}
-
-pub(crate) fn extract_command(transcript: &str, wake_word: &str) -> Option<String> {
-    let wake = wake_tokens(wake_word);
-    let t = wake_tokens(transcript);
-    if wake.is_empty() {
-        // No wake word configured → deliver everything (non-empty).
-        return if t.is_empty() {
-            None
-        } else {
-            Some(t.join(" "))
-        };
-    }
-
-    // Anchor on the most distinctive (longest) wake token, e.g. "tiny" — STT
-    // mangles the greeting ("hey"→"a"/"ok") and the exact spelling
-    // ("tiny"→"tony"/"tinny"), so fuzzy-match the anchor near the start and take
-    // everything after it as the command. Bounded to the first 3 tokens to avoid
-    // mid-sentence false triggers.
-    let anchor = wake.iter().max_by_key(|w| w.len()).cloned().unwrap();
-    let max_dist = if anchor.chars().count() <= 4 { 1 } else { 2 };
-    for i in 0..t.len().min(3) {
-        if levenshtein(&t[i], &anchor) <= max_dist {
-            let cmd = t[i + 1..].join(" ");
-            return if cmd.trim().is_empty() {
-                None // wake word alone, no command
-            } else {
-                Some(cmd)
-            };
-        }
-    }
-    None
-}
-
-/// Classic Levenshtein edit distance (small inputs — wake-word tokens).
-fn levenshtein(a: &str, b: &str) -> usize {
-    let a: Vec<char> = a.chars().collect();
-    let b: Vec<char> = b.chars().collect();
-    let mut prev: Vec<usize> = (0..=b.len()).collect();
-    let mut cur = vec![0usize; b.len() + 1];
-    for (i, ca) in a.iter().enumerate() {
-        cur[0] = i + 1;
-        for (j, cb) in b.iter().enumerate() {
-            let cost = if ca == cb { 0 } else { 1 };
-            cur[j + 1] = (prev[j + 1] + 1).min(cur[j] + 1).min(prev[j] + cost);
-        }
-        std::mem::swap(&mut prev, &mut cur);
-    }
-    prev[b.len()]
-}
-
 /// Spawn the dedicated cpal capture thread. Blocks until the stream is set up
 /// (or fails), mirroring `audio_capture::start_recording`'s readiness handshake.
-fn spawn_capture_thread(tx: tokio::sync::mpsc::UnboundedSender<Vec<f32>>) -> Result<(), String> {
-    let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<(), String>>(1);
+fn spawn_capture_thread(tx: tokio::sync::mpsc::Sender<RawChunk>) -> Result<CaptureFormat, String> {
+    let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<CaptureFormat, String>>(1);
     std::thread::Builder::new()
         .name("voice-always-on".into())
         .spawn(move || {
@@ -678,17 +671,21 @@ fn spawn_capture_thread(tx: tokio::sync::mpsc::UnboundedSender<Vec<f32>>) -> Res
         })
         .map_err(|e| format!("failed to spawn always-on capture thread: {e}"))?;
     match setup_rx.recv() {
-        Ok(Ok(())) => Ok(()),
+        Ok(Ok(format)) => Ok(format),
         Ok(Err(e)) => Err(e),
         Err(_) => Err("always-on capture thread exited before signalling readiness".to_string()),
     }
 }
 
-/// Owns the cpal stream for the process lifetime. Each callback downmixes to
-/// mono, resamples to 16 kHz, and forwards samples to the async processor.
+/// Owns the cpal stream for the process lifetime.
+///
+/// Each callback converts the device's sample format to `f32` and forwards the
+/// interleaved buffer untouched. Downmixing and resampling used to happen here;
+/// they now happen in the async processor, because this runs on a realtime
+/// audio thread where the right amount of work is the least possible.
 fn capture_on_thread(
-    tx: tokio::sync::mpsc::UnboundedSender<Vec<f32>>,
-    setup_tx: &std::sync::mpsc::SyncSender<Result<(), String>>,
+    tx: tokio::sync::mpsc::Sender<RawChunk>,
+    setup_tx: &std::sync::mpsc::SyncSender<Result<CaptureFormat, String>>,
 ) -> Result<(), String> {
     use crate::openhuman::desktop::accessibility::{detect_microphone_permission, PermissionState};
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -714,7 +711,7 @@ fn capture_on_thread(
         .default_input_config()
         .map_err(|e| format!("no default input config: {e}"))?;
     let source_rate = supported.sample_rate().0;
-    let channels = supported.channels() as usize;
+    let channels = supported.channels();
     let sample_format = supported.sample_format();
     let stream_config: StreamConfig = supported.into();
     // Name + source rate/channels/format vary across M-chip, Intel, and Windows
@@ -724,26 +721,40 @@ fn capture_on_thread(
         "{LOG_PREFIX} capture device ready name='{device_name}' rate={source_rate}->{TARGET_SAMPLE_RATE} channels={channels} format={sample_format:?}"
     );
 
-    // Forward one resampled-to-16k mono chunk per callback.
-    let forward = move |mono_src: Vec<f32>| {
-        let mono16k = resample(&mono_src, source_rate);
-        // Ignore send errors — they mean the processor task is gone (shutdown).
-        let _ = tx.send(mono16k);
+    // Forward one raw interleaved chunk per callback.
+    //
+    // `try_send`, never `send`: this runs on a realtime audio thread where
+    // blocking is a dropout, so a full queue drops the chunk rather than
+    // waiting for the processor to catch up. Dropping the newest chunk is the
+    // right end to lose — the queue ahead of it is older speech that is closer
+    // to being transcribed.
+    //
+    // A send error also covers the processor being gone (shutdown), which is
+    // why neither case is fatal here.
+    let forward = move |samples: Vec<f32>| {
+        if tx.try_send(RawChunk { samples }).is_err() {
+            let dropped = DROPPED_CHUNKS.fetch_add(1, Ordering::Relaxed) + 1;
+            // Log on a power-of-two schedule: a persistently overloaded
+            // processor should be visible without logging inside every
+            // callback once it starts.
+            if dropped.is_power_of_two() {
+                log::warn!("{LOG_PREFIX} capture queue full; dropped {dropped} chunk(s) so far");
+            }
+        }
     };
 
     let err_fn = |e| log::warn!("{LOG_PREFIX} cpal stream error: {e}");
     let stream = match sample_format {
         SampleFormat::F32 => device.build_input_stream(
             &stream_config,
-            move |data: &[f32], _| forward(to_mono(data, channels)),
+            move |data: &[f32], _| forward(data.to_vec()),
             err_fn,
             None,
         ),
         SampleFormat::I16 => device.build_input_stream(
             &stream_config,
             move |data: &[i16], _| {
-                let floats: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
-                forward(to_mono(&floats, channels));
+                forward(data.iter().map(|&s| f32::from(s) / 32768.0).collect());
             },
             err_fn,
             None,
@@ -751,8 +762,7 @@ fn capture_on_thread(
         SampleFormat::U16 => device.build_input_stream(
             &stream_config,
             move |data: &[u16], _| {
-                let floats: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0 - 1.0).collect();
-                forward(to_mono(&floats, channels));
+                forward(data.iter().map(|&s| f32::from(s) / 32768.0 - 1.0).collect());
             },
             err_fn,
             None,
@@ -764,7 +774,10 @@ fn capture_on_thread(
     stream
         .play()
         .map_err(|e| format!("failed to start stream: {e}"))?;
-    let _ = setup_tx.send(Ok(()));
+    let _ = setup_tx.send(Ok(CaptureFormat {
+        source_rate,
+        channels,
+    }));
     log::info!("{LOG_PREFIX} microphone stream live");
 
     // Keep the stream (and thus this thread) alive for the process lifetime.
@@ -885,208 +898,41 @@ mod tests {
         stop();
         assert!(
             !ENABLED.load(Ordering::SeqCst),
-            "stop() must clear the ENABLED gate so capture goes idle on logout"
+            "stop() must clear the runtime gate"
         );
     }
 
-    fn cfg() -> VadConfig {
-        VadConfig {
-            onset_threshold: 0.01,
-            hangover_ms: 100,
-            min_speech_ms: 60,
-            max_utterance_ms: 1000,
-        }
-    }
-
-    /// Drive `n` frames of constant `rms` at `frame_ms` each, collecting events.
-    fn drive(seg: &mut VadSegmenter, rms: f32, frame_ms: u32, n: u32) -> Vec<VadEvent> {
-        (0..n)
-            .filter_map(|_| seg.push_frame(rms, frame_ms))
-            .collect()
-    }
-
+    // The VAD state machine and the wake-word gate moved to `tinyvoice`, which
+    // carries their unit tests. What stays testable here is the piece that is
+    // genuinely OpenHuman's: turning persisted config into the module's tuning.
     #[test]
-    fn silence_emits_nothing() {
-        let mut seg = VadSegmenter::new(cfg());
-        assert!(drive(&mut seg, 0.0, 20, 50).is_empty());
-        assert!(!seg.is_speaking());
-    }
-
-    #[test]
-    fn onset_then_hangover_emits_one_utterance() {
-        let mut seg = VadSegmenter::new(cfg());
-        // First loud frame opens the utterance.
-        assert_eq!(seg.push_frame(0.2, 20), Some(VadEvent::SpeechStart));
-        assert!(seg.is_speaking());
-        // More speech, no event yet.
-        assert!(drive(&mut seg, 0.2, 20, 5).is_empty());
-        // Silence shorter than hangover: still open.
-        assert!(seg.push_frame(0.0, 20).is_none()); // 20ms silence
-        assert!(seg.push_frame(0.0, 20).is_none()); // 40ms
-        assert!(seg.push_frame(0.0, 20).is_none()); // 60ms
-        assert!(seg.push_frame(0.0, 20).is_none()); // 80ms
-                                                    // Crossing the 100ms hangover closes it.
-        let ev = seg.push_frame(0.0, 20).unwrap(); // 100ms
-        match ev {
-            VadEvent::SpeechEnd { emit, forced, .. } => {
-                assert!(emit, "120ms voiced should clear the 60ms min");
-                assert!(!forced);
-            }
-            other => panic!("expected SpeechEnd, got {other:?}"),
-        }
-        assert!(!seg.is_speaking());
-    }
-
-    #[test]
-    fn short_blip_is_dropped() {
-        let mut seg = VadSegmenter::new(cfg());
-        // One 20ms loud frame (below the 60ms min), then silence to close.
-        assert_eq!(seg.push_frame(0.2, 20), Some(VadEvent::SpeechStart));
-        let mut ev = None;
-        for _ in 0..5 {
-            if let Some(e) = seg.push_frame(0.0, 20) {
-                ev = Some(e);
-                break;
-            }
-        }
-        match ev.expect("utterance should close") {
-            VadEvent::SpeechEnd {
-                voiced_ms, emit, ..
-            } => {
-                assert_eq!(voiced_ms, 20);
-                assert!(!emit, "20ms < 60ms min_speech ⇒ dropped");
-            }
-            other => panic!("expected SpeechEnd, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn mid_utterance_pause_does_not_split() {
-        let mut seg = VadSegmenter::new(cfg());
-        seg.push_frame(0.2, 20);
-        // 80ms pause (< 100ms hangover) then speech resumes — one utterance.
-        for _ in 0..4 {
-            assert!(seg.push_frame(0.0, 20).is_none());
-        }
-        assert!(
-            seg.is_speaking(),
-            "pause under hangover keeps utterance open"
-        );
-        assert!(drive(&mut seg, 0.2, 20, 3).is_empty());
-        assert!(seg.is_speaking());
-    }
-
-    #[test]
-    fn max_utterance_forces_flush() {
-        let mut seg = VadSegmenter::new(cfg()); // max 1000ms
-        seg.push_frame(0.2, 20);
-        // Keep talking past the ceiling; silence never triggers the close.
-        let mut forced_seen = false;
-        for _ in 0..60 {
-            if let Some(VadEvent::SpeechEnd { forced, emit, .. }) = seg.push_frame(0.2, 20) {
-                assert!(forced, "loud-throughout close must be the ceiling");
-                assert!(emit);
-                forced_seen = true;
-                break;
-            }
-        }
-        assert!(forced_seen, "should force-flush at max_utterance_ms");
-        assert!(!seg.is_speaking());
-    }
-
-    #[test]
-    fn reset_aborts_without_event() {
-        let mut seg = VadSegmenter::new(cfg());
-        seg.push_frame(0.2, 20);
-        assert!(seg.is_speaking());
-        seg.reset();
-        assert!(!seg.is_speaking());
-        // After reset, a fresh onset starts a new utterance.
-        assert_eq!(seg.push_frame(0.2, 20), Some(VadEvent::SpeechStart));
-    }
-
-    #[test]
-    fn from_server_config_maps_seconds_to_ms() {
-        let mut c = CfgVoiceServer::default();
+    fn vad_config_maps_persisted_seconds_to_milliseconds() {
+        let mut c = crate::openhuman::config::VoiceServerConfig::default();
         c.vad_max_utterance_secs = 2.5;
         c.vad_hangover_ms = 750;
-        let v = VadConfig::from_server_config(&c);
-        assert_eq!(v.max_utterance_ms, 2500);
-        assert_eq!(v.hangover_ms, 750);
+
+        let v = tinyvoice::VadConfig::from_server_config(&c);
+
+        assert_eq!(v.max_utterance_ms, 2500, "seconds become milliseconds");
+        assert_eq!(v.hangover_ms, 750, "milliseconds pass through");
         assert_eq!(v.onset_threshold, c.vad_onset_threshold);
     }
 
     #[test]
-    fn wake_word_extracts_command() {
-        // Case/punctuation tolerant; strips the phrase, keeps the command.
+    fn a_nonpositive_utterance_ceiling_cannot_collapse_to_zero() {
+        // A zero ceiling would close every utterance on its first frame, which
+        // reads to a user as the microphone hearing nothing at all.
+        let mut c = crate::openhuman::config::VoiceServerConfig::default();
+        c.vad_max_utterance_secs = 0.0;
         assert_eq!(
-            extract_command("Hey Tiny, play Numb by Linkin Park", "Hey Tiny").as_deref(),
-            Some("play numb by linkin park")
+            tinyvoice::VadConfig::from_server_config(&c).max_utterance_ms,
+            1
         );
-        assert_eq!(
-            extract_command("hey tiny open slack", "Hey Tiny").as_deref(),
-            Some("open slack")
-        );
-        // Leading filler before the wake phrase is tolerated.
-        assert_eq!(
-            extract_command("um, hey tiny what time is it", "Hey Tiny").as_deref(),
-            Some("what time is it")
-        );
-    }
 
-    #[test]
-    fn wake_word_tolerates_stt_homophones() {
-        // STT often mangles "Hey Tiny" — accept close variants of the anchor.
+        c.vad_max_utterance_secs = -5.0;
         assert_eq!(
-            extract_command("Hey Tony, play music", "Hey Tiny").as_deref(),
-            Some("play music")
+            tinyvoice::VadConfig::from_server_config(&c).max_utterance_ms,
+            1
         );
-        assert_eq!(
-            extract_command("a tinny open slack", "Hey Tiny").as_deref(),
-            Some("open slack")
-        );
-        // Anchor too far in / absent → not a command.
-        assert_eq!(
-            extract_command("the tiny details matter here a lot", "Hey Tiny").as_deref(),
-            // "tiny" at index 1 → command is the rest; documents the known
-            // trade-off that an early "tiny" can trigger.
-            Some("details matter here a lot")
-        );
-    }
-
-    #[test]
-    fn wake_word_absent_is_ignored() {
-        assert_eq!(extract_command("play some music", "Hey Tiny"), None);
-        // Wake word alone with no command → nothing to do.
-        assert_eq!(extract_command("Hey Tiny", "Hey Tiny"), None);
-        assert_eq!(extract_command("hey tiny!", "Hey Tiny"), None);
-    }
-
-    #[test]
-    fn empty_wake_word_passes_everything() {
-        assert_eq!(
-            extract_command("just say this", "").as_deref(),
-            Some("just say this")
-        );
-        assert_eq!(extract_command("   ", ""), None);
-    }
-
-    #[test]
-    fn wake_word_present_detects_bare_and_fuzzy() {
-        // Bare wake word (no command) is still detected so the caller can ack.
-        assert!(wake_word_present("Hey Tiny", "Hey Tiny"));
-        assert!(wake_word_present("hey tiny!", "Hey Tiny"));
-        // Fuzzy anchor (STT mangles "tiny" → "tony"/"tinny").
-        assert!(wake_word_present("hey tony", "Hey Tiny"));
-        // Wake word followed by a command also counts as present.
-        assert!(wake_word_present("Hey Tiny, play music", "Hey Tiny"));
-    }
-
-    #[test]
-    fn wake_word_present_false_when_absent() {
-        assert!(!wake_word_present("play some music", "Hey Tiny"));
-        assert!(!wake_word_present("", "Hey Tiny"));
-        // No wake word configured → never a bare-wake ack.
-        assert!(!wake_word_present("anything at all", ""));
     }
 }

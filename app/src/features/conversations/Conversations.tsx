@@ -1,6 +1,6 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
 import debugFactory from 'debug';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { type ChatSendError, chatSendError } from '../../chat/chatSendError';
@@ -19,6 +19,7 @@ import SuperContextToggle from '../../components/chat/SuperContextToggle';
 import { whenSuperContextWriteSettled } from '../../components/chat/superContextWrite';
 import WorkflowProposalCard from '../../components/chat/WorkflowProposalCard';
 import { ConfirmationModal } from '../../components/intelligence/ConfirmationModal';
+import PanelHeader from '../../components/layout/PanelHeader';
 import { SidebarContent } from '../../components/layout/shell/SidebarSlot';
 import { settingsNavState } from '../../components/settings/modal/settingsOverlay';
 import UpsellBanner from '../../components/upsell/UpsellBanner';
@@ -150,6 +151,19 @@ interface ConversationsProps {
    */
   composer?: 'text' | 'mic-cloud';
   /**
+   * Voice-chat control rendered in the `mic-cloud` composer slot, above the mic
+   * button. Passed in as a node rather than imported here so this component
+   * keeps no dependency on the realtime voice stack (and the ElevenLabs SDK
+   * stays out of every consumer's module graph). Ignored outside `mic-cloud`.
+   */
+  voiceChatControl?: ReactNode;
+  /**
+   * Whether the `mic-cloud` slot renders the push-to-talk mic composer. Default
+   * `true` — set `false` alongside {@link ConversationsProps.voiceChatControl}
+   * to replace tap-and-speak with the realtime control rather than stack them.
+   */
+  showMicComposer?: boolean;
+  /**
    * Project the thread list into the root sidebar's dynamic region even in the
    * `sidebar` variant. Page variant always projects it; this lets an embedded
    * instance (e.g. the Human page's right-rail chat) surface the user's threads
@@ -247,6 +261,8 @@ export function deriveChatErrorBanner(
 const Conversations = ({
   variant = 'page',
   composer: composerProp = 'text',
+  voiceChatControl = null,
+  showMicComposer = true,
   projectThreadList = false,
 }: ConversationsProps = {}) => {
   const [composerOverride, setComposerOverride] = useState<'mic-cloud' | 'text' | null>(null);
@@ -301,7 +317,6 @@ const Conversations = ({
   // General/Subconscious/Tasks chips were removed. Subconscious reflections and
   // task/worker threads have dedicated surfaces (Intelligence, Tasks board).
   const selectedLabel = GENERAL_TAB_VALUE;
-  const [threadSearch, setThreadSearch] = useState('');
   const [sendError, setSendError] = useState<ChatSendError | null>(null);
   // Recorded by the slice for *every* create path (#5156) — including the shell's
   // "New chat" button and the home-nav shortcut, which have no UI of their own —
@@ -1791,14 +1806,6 @@ const Conversations = ({
     );
   }, [filteredThreads]);
 
-  // Free-text search over the thread sidebar — filters the visible list by
-  // title (mirrors the settings sidebar search).
-  const visibleThreads = useMemo(() => {
-    const q = threadSearch.trim().toLowerCase();
-    if (!q) return sortedThreads;
-    return sortedThreads.filter(thread => (thread.title ?? '').toLowerCase().includes(q));
-  }, [sortedThreads, threadSearch]);
-
   const isSidebar = variant === 'sidebar';
   // "New window" = the merged Home surface: a page-variant chat whose selected
   // thread has no messages yet. We show the greeting + banners hero above a
@@ -1869,10 +1876,8 @@ const Conversations = ({
   // mode; the embedded `variant="sidebar"` mode shows no thread list at all.
   const threadSidebar = (
     <ThreadList
-      threads={visibleThreads}
+      threads={sortedThreads}
       selectedThreadId={selectedThreadId ?? null}
-      search={threadSearch}
-      onSearchChange={setThreadSearch}
       onCreateThread={() => void handleCreateNewThread()}
       onSelectThread={id => {
         dispatch(setSelectedThread(id));
@@ -1923,6 +1928,7 @@ const Conversations = ({
   );
 
   // Main chat area (right pane): header, message list, composer.
+  const showChatHeader = !isSidebar && Boolean(selectedThreadId);
   const mainPanel = (
     <div
       className={
@@ -1933,6 +1939,24 @@ const Conversations = ({
             // the absolutely-positioned floating composer.
             'relative flex-1 flex flex-col min-w-0'
       }>
+      {/* Page header band — the same flush title band every other page opens
+          with (PanelHeader / bg-surface-muted), naming the open thread. Page
+          variant only: the embedded sidebar variant lives in a narrow aside
+          where a full band would cost more vertical room than it earns, and its
+          host already titles the surface. Suppressed until a thread resolves so
+          a brand-new chat doesn't open with an empty band above the hero. */}
+      {showChatHeader && selectedThreadId && (
+        // No fade beneath the band, deliberately. The bottom of the pane needs
+        // one because the composer is absolutely positioned and floats over the
+        // messages; this header is `flex-shrink-0` in normal flow, so the scroll
+        // area simply starts below it and nothing ever scrolls underneath. A
+        // gradient here has no overlap to soften — it just paints a veil over
+        // whatever message happens to be at the top of the list.
+        <PanelHeader
+          title={resolveThreadDisplayTitle(selectedThreadId)}
+          className="flex-shrink-0 px-4 pt-4 pb-3"
+        />
+      )}
       <ChatThreadView
         ref={threadViewRef}
         threadId={selectedThreadId ?? null}
@@ -1955,12 +1979,19 @@ const Conversations = ({
         pendingSendActive={selectedThreadId ? pendingSendingThreadIds.has(selectedThreadId) : false}
       />
 
-      {/* Full-width fade so messages dissolve into the background (black/white
-          per theme) behind the floating composer. Page variant only. */}
+      {/* Full-width fade so messages dissolve into the page behind the floating
+          composer. Page variant only.
+
+          Fades to `surface` — the token the content card actually paints — not
+          a hardcoded white/black pair. Those matched only while the page was a
+          transparent window onto the app canvas (`--surface-canvas`, pure black
+          in dark); on the inset card (`--surface`, neutral-900) they fade to a
+          colour the card never reaches and leave a visible band. The token also
+          keeps this correct for custom themes, which the literals never were. */}
       {!isSidebar && (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-white via-white/90 to-transparent dark:from-black dark:via-black/90"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-surface via-surface/90 to-transparent"
         />
       )}
 
@@ -2298,16 +2329,19 @@ const Conversations = ({
           // — this branch renders no ChatComposer to hang it off.
           <div className="relative flex flex-col items-center gap-3 py-1">
             {mascotDock}
-            <MicComposer
-              // Without `!selectedThreadId`, a mic submit before a thread is
-              // ready hits `handleSendMessage`'s early return and the
-              // transcript is silently dropped — the user spoke into the void.
-              disabled={composerInteractionBlocked || isSending || !selectedThreadId}
-              onSubmit={text => handleSendMessage(text)}
-              onError={message => setSendError(chatSendError('voice_transcription', message))}
-              showDeviceSelector
-              onSwitchToText={() => setComposerOverride('text')}
-            />
+            {voiceChatControl}
+            {showMicComposer && (
+              <MicComposer
+                // Without `!selectedThreadId`, a mic submit before a thread is
+                // ready hits `handleSendMessage`'s early return and the
+                // transcript is silently dropped — the user spoke into the void.
+                disabled={composerInteractionBlocked || isSending || !selectedThreadId}
+                onSubmit={text => handleSendMessage(text)}
+                onError={message => setSendError(chatSendError('voice_transcription', message))}
+                showDeviceSelector
+                onSwitchToText={() => setComposerOverride('text')}
+              />
+            )}
           </div>
         ) : inputMode === 'text' ? (
           <>
@@ -2520,7 +2554,14 @@ const Conversations = ({
       className={
         isSidebar
           ? 'h-full relative z-10 flex overflow-hidden'
-          : 'h-full relative z-10 flex justify-center overflow-hidden bg-surface/70 dark:bg-black/40'
+          : // No background of its own. The old `bg-surface/70 dark:bg-black/40`
+            // was a translucent tint over the app canvas, which composed to pure
+            // black in dark — the colour the composer fade below hardcoded. On
+            // the opaque content card it instead composes to an un-tokened
+            // ~#0e0e0e that nothing else in the app can name or match, so the
+            // fade could never line up. The page now simply *is* the card's
+            // surface, and the fade matches by construction.
+            'h-full relative z-10 flex justify-center overflow-hidden'
       }>
       {isSidebar ? (
         <>

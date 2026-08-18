@@ -1,10 +1,9 @@
 use anyhow::{Context, Result};
 
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::store::chunks::store::{self as chunk_store, with_connection};
-use crate::openhuman::memory::store::content::read as content_read;
 use crate::openhuman::memory::tree::retrieval::types::NodeKind;
 use crate::rpc::RpcOutcome;
+use tinymemory_core::store::chunks::store::with_connection;
 
 use super::types::{
     ChunkFilter, ChunkRow, ListChunksResponse, RecallResponse, Source, DEFAULT_LIST_LIMIT,
@@ -403,15 +402,33 @@ pub async fn recall_rpc(
 
 // ── small helpers ───────────────────────────────────────────────────────
 
-pub fn read_chunk_row(config: &Config, chunk_id: &str) -> Result<Option<ChunkRow>> {
-    let chunk = match chunk_store::get_chunk(config, chunk_id)? {
-        Some(c) => c,
-        None => return Ok(None),
+/// One chunk rendered for inspection.
+///
+/// Reads through the bound driver's [`MemoryChunks::chunk_detail`], which
+/// returns the row, its vault body, content path, lifecycle state and embedding
+/// presence in **one** call. It used to make four separate engine calls in
+/// process; four bus round trips per rendered row would have been the direct
+/// translation, and this is used to render lists.
+pub async fn read_chunk_row(chunk_id: &str) -> Result<Option<ChunkRow>> {
+    use crate::openhuman::memory::api::provider::MemoryProvider;
+
+    let guard = crate::openhuman::memory::ops::guard::active_memory_guard()
+        .await
+        .map_err(|e| anyhow::anyhow!("read_chunk_row: {e}"))?;
+    let Some(detail) = guard
+        .as_chunks()
+        .ok_or_else(|| anyhow::anyhow!("read_chunk_row: driver has no chunk family"))?
+        .chunk_detail(chunk_id)
+        .await?
+    else {
+        return Ok(None);
     };
-    let body =
-        content_read::read_chunk_body(config, chunk_id).unwrap_or_else(|_| chunk.content.clone());
+
+    let chunk = detail.chunk;
+    // A failed vault read falls back to the row's own content, as before —
+    // `body: None` means "could not read", not "empty".
+    let body = detail.body.unwrap_or_else(|| chunk.content.clone());
     let preview: String = body.chars().take(PREVIEW_MAX_CHARS).collect();
-    let has_embedding = chunk_store::get_chunk_embedding(config, chunk_id)?.is_some();
     Ok(Some(ChunkRow {
         id: chunk.id,
         source_kind: chunk.metadata.source_kind.as_str().to_string(),
@@ -420,15 +437,16 @@ pub fn read_chunk_row(config: &Config, chunk_id: &str) -> Result<Option<ChunkRow
         owner: chunk.metadata.owner,
         timestamp_ms: chunk.metadata.timestamp.timestamp_millis(),
         token_count: chunk.token_count,
-        lifecycle_status: chunk_store::get_chunk_lifecycle_status(config, chunk_id)?
+        lifecycle_status: detail
+            .lifecycle_status
             .unwrap_or_else(|| "unknown".to_string()),
-        content_path: chunk_store::get_chunk_content_path(config, chunk_id)?,
+        content_path: detail.content_path,
         content_preview: if preview.is_empty() {
             None
         } else {
             Some(preview)
         },
-        has_embedding,
+        has_embedding: detail.has_embedding,
         tags: chunk.metadata.tags,
     }))
 }

@@ -1371,7 +1371,7 @@ async fn approval_rpc_decision_paths_persist_always_allow_and_recent_audit() {
     match &no_chat.0 {
         openhuman_core::openhuman::security::approval::GateOutcome::Deny { reason } => {
             assert!(
-                reason.contains("no origin label"),
+                reason.contains("origin label"),
                 "unlabelled call should be denied for missing origin: {reason}"
             );
         }

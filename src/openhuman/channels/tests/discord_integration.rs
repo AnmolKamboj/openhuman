@@ -29,7 +29,7 @@ use super::super::context::{
 use super::super::runtime::process_channel_message;
 use super::super::traits;
 use super::super::{Channel, SendMessage};
-use super::common::{HistoryCaptureModel, NoopMemory};
+use super::common::HistoryCaptureModel;
 use crate::openhuman::agent::bus::{mock_agent_run_turn, AgentTurnResponse};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -111,7 +111,7 @@ fn make_discord_ctx(
             crate::openhuman::agent::tinyagents::TurnModelSource::from_model(model),
         ),
         default_provider: Arc::new("test-provider".to_string()),
-        memory: Arc::new(NoopMemory),
+        memory: crate::openhuman::memory::guard::in_memory::FixedRecallProvider::guarded(Vec::new()),
         tools_registry: Arc::new(vec![]),
         system_prompt: Arc::new("test-system-prompt".to_string()),
         model: Arc::new("test-model".to_string()),

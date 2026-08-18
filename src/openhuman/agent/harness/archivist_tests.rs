@@ -1,8 +1,8 @@
 use super::*;
 use crate::openhuman::agent::hooks::{ToolCallRecord, TurnContext};
-use crate::openhuman::memory::chat::ChatPrompt;
-use crate::openhuman::memory::store::{events as ev, fts5, segments as seg};
 use std::sync::OnceLock;
+use tinymemory_core::chat::ChatPrompt;
+use tinymemory_core::store::{events as ev, fts5, segments as seg};
 
 static TREE_INGEST_TEST_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 
@@ -36,10 +36,8 @@ where
     // keeps the *chat* side offline, since `build_chat_runtime` checks it
     // before building anything.
     crate::openhuman::memory::host_impls::install_for_tests();
-    crate::openhuman::memory::chat::test_override::with_provider(
-        Arc::new(crate::openhuman::memory::chat::StaticChatProvider::new(
-            "{}",
-        )),
+    tinymemory_core::chat::test_override::with_provider(
+        Arc::new(tinymemory_core::chat::StaticChatProvider::new("{}")),
         fut,
     )
     .await
@@ -385,7 +383,7 @@ async fn phase0_episodic_rows_and_segment_without_learning_enabled() {
 struct StubChatProvider;
 
 #[async_trait::async_trait]
-impl crate::openhuman::memory::chat::ChatProvider for StubChatProvider {
+impl tinymemory_core::chat::ChatProvider for StubChatProvider {
     fn name(&self) -> &str {
         "stub:test"
     }
@@ -588,8 +586,8 @@ async fn phase1_flush_open_segment_finalizes_trailing_segment() {
 //   g) flush_open_segment also triggers tree ingest.
 
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::store::chunks::store::{count_chunks, list_chunks, ListChunksQuery};
 use tempfile::TempDir;
+use tinymemory_core::store::chunks::store::{count_chunks, list_chunks, ListChunksQuery};
 
 /// Build a Config that points at a temp workspace, suitable for tree-ingest tests.
 /// The memory_tree DB and content dir are created under `tmp.path()`.
@@ -803,7 +801,7 @@ async fn phase2_provenance_stamped_on_leaf_and_source_id_is_constant_inner() {
         .iter()
         .find(|s| {
             s.session_id == session
-                && s.status != crate::openhuman::memory::store::segments::SegmentStatus::Open
+                && s.status != tinymemory_core::store::segments::SegmentStatus::Open
         })
         .expect("Expected a closed segment after flush");
 

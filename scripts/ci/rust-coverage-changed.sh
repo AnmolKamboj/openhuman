@@ -42,25 +42,25 @@ log() { echo "[ci][rust-cov-changed] $*"; }
 # scripts/ci/product-features.txt.
 PRODUCT_FEATURES="$(bash scripts/ci/product-features.sh)"
 
+# The CI job normally supplies a linker-only RUSTFLAGS value. cargo-llvm-cov
+# owns this variable while it compiles coverage-instrumented crates; preserving
+# the outer value suppresses its `-C instrument-coverage` flag and leaves an
+# otherwise successful test run with no .profraw data to report.
+unset RUSTFLAGS
+
 llvm_cov() {
   # `clean` and `report` are cargo-llvm-cov subcommands that take no feature
   # selection; passing --features to them is an error.
   case "${1:-}" in
-    clean | report | show-env)
+    clean | report)
       bash scripts/ci-cancel-aware.sh cargo llvm-cov "$@"
       return
       ;;
   esac
-  # `show-env` above configures ordinary Cargo test commands for coverage.
-  # Invoking cargo-llvm-cov again under those exported variables is unsupported
-  # (and fails before tests run), so remove its report-only flag and run Cargo.
-  local -a cargo_args=()
-  local arg
-  for arg in "$@"; do
-    [ "${arg}" = "--no-report" ] && continue
-    cargo_args+=("${arg}")
-  done
-  bash scripts/ci-cancel-aware.sh cargo test --features "${PRODUCT_FEATURES}" "${cargo_args[@]}"
+  # Let cargo-llvm-cov own compiler instrumentation and raw-profile
+  # collection. A hand-exported `show-env` setup can be bypassed by the
+  # repository's Cargo wrapper configuration in container jobs.
+  bash scripts/ci-cancel-aware.sh cargo llvm-cov --features "${PRODUCT_FEATURES}" "$@"
 }
 
 integration_test_targets() {
@@ -135,18 +135,6 @@ run_full() {
   llvm_cov report --lcov --output-path "${OUT}"
   exit 0
 }
-
-# Containerised GitHub runners mount the workspace from the host. LLVM can run
-# the test binary successfully there while silently failing to create its raw
-# profile on that mount. `show-env` is cargo-llvm-cov's supported mode for
-# instrumenting ordinary Cargo test commands; override only its profile output
-# after it has configured the compiler wrapper.
-eval "$(cargo llvm-cov show-env --sh)"
-# Keep profiles where cargo-llvm-cov itself reports from. This avoids relying
-# on bind-mounted temporary paths that the report subprocess cannot observe.
-profile_dir="${LLVM_PROFILE_DIR:-${CARGO_LLVM_COV_TARGET_DIR}}"
-mkdir -p "${profile_dir}"
-export LLVM_PROFILE_FILE="${profile_dir}/core-%p-%m.profraw"
 
 if [ "${FULL}" = "true" ]; then
   run_full "build-config/workflow-level change detected by paths-filter"
@@ -301,10 +289,6 @@ if [ "${#test_targets[@]}" -gt 0 ]; then
     run_integration_target "${t}"
   done
 fi
-
-shopt -s nullglob
-profiles=("${profile_dir}"/*.profraw)
-test "${#profiles[@]}" -gt 0
 
 log "merging coverage into ${OUT}"
 llvm_cov report --lcov --output-path "${OUT}"

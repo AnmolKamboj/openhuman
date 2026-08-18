@@ -735,7 +735,7 @@ fn handle_coding_session_status(_params: Map<String, Value>) -> ControllerFuture
 
 fn handle_ingest_coding_sessions(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        let req = parse_value::<crate::openhuman::memory::tinycortex::CodingSessionIngestRequest>(
+        let req = parse_value::<tinymemory_core::tinycortex::CodingSessionIngestRequest>(
             Value::Object(params),
         )?;
         to_json(rpc::ingest_coding_sessions_rpc(req).await?)

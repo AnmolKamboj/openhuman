@@ -209,19 +209,6 @@ impl CoreContext {
             })
     }
 
-    /// The people store for this context's workspace — the first per-domain
-    /// store handle carved off the process globals (Phase 2 Stage C /
-    /// store-trait seam). Two contexts over different workspaces get isolated
-    /// stores; the same context always gets the same cached store. Handlers
-    /// migrate off `people::store::get()` by reading through
-    /// `CoreContext::current()?.people()` instead.
-    pub fn people(
-        &self,
-    ) -> Result<Arc<crate::openhuman::memory::people::store::PeopleStore>, String> {
-        let workspace_dir = self.workspace_dir()?;
-        crate::openhuman::memory::people::store::for_workspace(&workspace_dir)
-    }
-
     /// The bound memory driver for this context's workspace — the memory
     /// subsystem's binding seam (`docs/specs/kernel.md` §3.1). Deliberately the
     /// same shape as [`CoreContext::people`]: two contexts over different
@@ -278,11 +265,11 @@ impl CoreContext {
     /// would keep `memory_store` / `memory_recall` / `memory.list_documents`
     /// answering off the embedded store the guarded re-point has not yet
     /// covered. See [`MemoryBinding::disables_memory`](crate::openhuman::memory::binding::MemoryBinding::disables_memory).
-    pub fn memory_capabilities(&self) -> tinycortex_api::capabilities::Capabilities {
+    pub fn memory_capabilities(&self) -> crate::openhuman::memory::api::capabilities::Capabilities {
         self.memory_binding()
             .map(|binding| {
                 if binding.disables_memory() {
-                    tinycortex_api::capabilities::Capabilities::default()
+                    crate::openhuman::memory::api::capabilities::Capabilities::default()
                 } else {
                     binding.capabilities()
                 }
@@ -317,7 +304,8 @@ impl CoreContext {
     /// there is no context at all. This is the direct analogue of
     /// `core::all::group_allowed` and is the function a future capability
     /// registration filter calls.
-    pub fn current_memory_capabilities() -> tinycortex_api::capabilities::Capabilities {
+    pub fn current_memory_capabilities() -> crate::openhuman::memory::api::capabilities::Capabilities
+    {
         Self::current()
             .map(|ctx| ctx.memory_capabilities())
             .unwrap_or_else(crate::openhuman::memory::binding::unbound_default_capabilities)
@@ -463,13 +451,6 @@ pub struct StoreInitPlan {
     pub memory: bool,
     /// `agent::multimodal` attachments sidecar dir — gated on [`DomainGroup::Agent`].
     pub agent_attachments: bool,
-    /// `memory::people::store` — gated on [`DomainGroup::Memory`].
-    ///
-    /// Was `Platform` while `people` was a top-level domain. The reorg moved it
-    /// to `memory/people` and its controllers are tagged `Memory`; leaving the
-    /// store on `Platform` would register those controllers under `harness()`
-    /// with no store behind them.
-    pub people: bool,
     /// legacy-workflow prune under `skills::registry` — gated on [`DomainGroup::Skills`].
     pub skills_prune: bool,
 }
@@ -481,7 +462,6 @@ impl StoreInitPlan {
         Self {
             memory: domains.allows(DomainGroup::Memory),
             agent_attachments: domains.allows(DomainGroup::Agent),
-            people: domains.allows(DomainGroup::Memory),
             skills_prune: domains.allows(DomainGroup::Skills),
         }
     }
@@ -521,7 +501,7 @@ pub async fn init_stores(
         // `MemoryBinding::for_workspace`.
         #[cfg(feature = "modules")]
         crate::openhuman::modules::memory::set_modules_policy(Arc::new(cfg.clone()));
-        match crate::openhuman::memory::global::init(cfg.workspace_dir.clone()) {
+        match tinymemory_core::global::init(cfg.workspace_dir.clone()) {
             Ok(_) => log::info!(
                 "[boot] memory::global initialized (workspace={})",
                 cfg.workspace_dir.display()
@@ -574,23 +554,12 @@ pub async fn init_stores(
     // (The WhatsApp data store moved to the Tauri shell; the core no longer
     // initializes it here. The shell lazily opens it from its own workspace
     // dir when the first ingest / query arrives.)
-    // Seed the people store so people controllers + `people_*`
-    // tools can read/write. Without this the process-global stays
-    // empty and every call fails with "people store not
-    // initialised" (Sentry TAURI-RUST-8NM). Sits inside this
-    // Ok(cfg) arm so it inherits the wrong-workspace guard above
-    // (never seed against a Config::default fallback).
-    if plan.people {
-        match crate::openhuman::memory::people::store::init_from_workspace(&cfg.workspace_dir) {
-            Ok(_) => log::info!(
-                "[boot] people::store initialized (workspace={})",
-                cfg.workspace_dir.display()
-            ),
-            Err(e) => log::warn!("[boot] people::store init failed: {e}"),
-        }
-    } else {
-        log::debug!("[boot] people::store init SKIPPED — Memory domain disabled");
-    }
+    // The people store is NOT seeded here any more. People is served by the
+    // bound memory driver (`MemoryPeople`), so the engine owns that database —
+    // and the module opens it. Seeding a host-side process-global as well meant
+    // two readers over one SQLite file, with nothing left reading the host's:
+    // `CoreContext::people()` is gone and no handler consults
+    // `people::store::get()`.
     // Prune legacy bundled skills (dev-workflow / github-issue-crusher
     // / pr-review-shepherd) that older builds seeded into
     // <workspace>/skills/. OpenHuman no longer ships bundled defaults;
@@ -652,7 +621,6 @@ mod tests {
             StoreInitPlan {
                 memory: true,
                 agent_attachments: true,
-                people: true,
                 skills_prune: true,
             },
             "full() must initialize every workspace-bound store"
@@ -667,7 +635,6 @@ mod tests {
             StoreInitPlan {
                 memory: false,
                 agent_attachments: false,
-                people: false,
                 skills_prune: false,
             },
             "none() must leave every workspace-bound store uninitialized"
@@ -682,15 +649,6 @@ mod tests {
         assert!(
             plan.agent_attachments,
             "harness keeps agent attachments sidecar (Agent)"
-        );
-        // `people` moved to `memory/people` in the domain reorg (#5328) and its
-        // controllers are tagged `Memory`, so harness — which enables Memory —
-        // must now initialize its store too. Before the realignment it keyed on
-        // `Platform`, which meant harness registered the people controllers with
-        // no store behind them.
-        assert!(
-            plan.people,
-            "harness keeps memory::people::store (Memory) — it moved under memory/"
         );
         // Skills is NOT in harness → its store work stays off.
         assert!(
@@ -742,123 +700,16 @@ mod tests {
 
     // The Phase 3 exit criterion, at the store level: two contexts over distinct
     // workspaces resolve isolated per-domain stores, and one context always
-    // resolves the same cached store. This is the vertical proof that the
-    // ambient-context mechanism + a per-context store handle give real
-    // cross-context isolation (here for the first migrated domain, `people`).
-    #[test]
-    fn people_store_is_isolated_per_context_workspace() {
-        let dir_a = tempfile::tempdir().unwrap();
-        let dir_b = tempfile::tempdir().unwrap();
-        let a = Arc::new(CoreContext {
-            host_kind: HostKind::Cli,
-            workspace_binding: RwLock::new(WorkspaceBinding {
-                workspace_dir: Some(dir_a.path().to_path_buf()),
-                memory_subsystem: Default::default(),
-            }),
-            domains: crate::core::runtime::DomainSet::full(),
-        });
-        let b = Arc::new(CoreContext {
-            host_kind: HostKind::Cli,
-            workspace_binding: RwLock::new(WorkspaceBinding {
-                workspace_dir: Some(dir_b.path().to_path_buf()),
-                memory_subsystem: Default::default(),
-            }),
-            domains: crate::core::runtime::DomainSet::full(),
-        });
-
-        let store_a = a.people().expect("open people store for workspace A");
-        let store_b = b.people().expect("open people store for workspace B");
-        // Different workspaces → isolated stores.
-        assert!(!Arc::ptr_eq(&store_a, &store_b));
-
-        // Same context/workspace → same cached store (no per-call reopen).
-        let store_a_again = a.people().expect("reopen people store for workspace A");
-        assert!(Arc::ptr_eq(&store_a, &store_a_again));
-    }
-
-    #[test]
-    fn rebind_workspace_updates_context_store_resolution() {
-        let dir_a = tempfile::tempdir().unwrap();
-        let dir_b = tempfile::tempdir().unwrap();
-        let ctx = CoreContext {
-            host_kind: HostKind::Cli,
-            workspace_binding: RwLock::new(WorkspaceBinding {
-                workspace_dir: Some(dir_a.path().to_path_buf()),
-                memory_subsystem: Default::default(),
-            }),
-            domains: crate::core::runtime::DomainSet::full(),
-        };
-
-        let store_a = ctx.people().expect("open people store for workspace A");
-        ctx.rebind_workspace(dir_b.path(), Default::default())
-            .expect("rebind context workspace");
-
-        assert_eq!(ctx.workspace_dir().unwrap(), dir_b.path());
-        let store_b = ctx.people().expect("open people store for workspace B");
-        assert!(!Arc::ptr_eq(&store_a, &store_b));
-    }
-
-    #[tokio::test]
-    async fn people_rpc_uses_scoped_context_store() {
-        use crate::openhuman::memory::people::types::Handle;
-
-        let dir_a = tempfile::tempdir().unwrap();
-        let dir_b = tempfile::tempdir().unwrap();
-        let a = Arc::new(CoreContext {
-            host_kind: HostKind::Cli,
-            workspace_binding: RwLock::new(WorkspaceBinding {
-                workspace_dir: Some(dir_a.path().to_path_buf()),
-                memory_subsystem: Default::default(),
-            }),
-            domains: crate::core::runtime::DomainSet::full(),
-        });
-        let b = Arc::new(CoreContext {
-            host_kind: HostKind::Cli,
-            workspace_binding: RwLock::new(WorkspaceBinding {
-                workspace_dir: Some(dir_b.path().to_path_buf()),
-                memory_subsystem: Default::default(),
-            }),
-            domains: crate::core::runtime::DomainSet::full(),
-        });
-
-        let params = serde_json::json!({
-            "kind": "email",
-            "value": "tenant-a@example.com",
-            "create_if_missing": true
-        })
-        .as_object()
-        .unwrap()
-        .clone();
-
-        let result = CoreContext::scope(
-            a.clone(),
-            crate::core::all::try_invoke_registered_rpc("openhuman.people_resolve", params),
-        )
-        .await
-        .expect("people_resolve registered")
-        .expect("people_resolve succeeds");
-
-        assert_eq!(result["created"], true);
-        let handle = Handle::Email("tenant-a@example.com".to_string());
-        assert!(
-            a.people()
-                .expect("workspace A store")
-                .lookup(&handle)
-                .await
-                .unwrap()
-                .is_some(),
-            "scoped RPC must write workspace A"
-        );
-        assert!(
-            b.people()
-                .expect("workspace B store")
-                .lookup(&handle)
-                .await
-                .unwrap()
-                .is_none(),
-            "scoped RPC must not write workspace B"
-        );
-    }
+    // The three people-based context tests that stood here are gone with
+    // `CoreContext::people()`. They proved per-context workspace isolation
+    // using the people store as the example, and that property is proved
+    // unchanged by `memory_binding_is_isolated_per_context_workspace` and
+    // `rebind_workspace_updates_context_memory_binding` below — which is what
+    // people now resolves through. The third,
+    // `people_rpc_uses_scoped_context_store`, asserted that a scoped
+    // `people_resolve` wrote workspace A and not B by reading both stores
+    // directly; there is no second reader to check against any more, and the
+    // isolation it tested is the binding's.
 
     #[test]
     fn degraded_context_rejects_workspace_bound_stores() {
@@ -871,8 +722,12 @@ mod tests {
             domains: crate::core::runtime::DomainSet::full(),
         };
 
-        let err = match ctx.people() {
-            Ok(_) => panic!("degraded context unexpectedly opened a people store"),
+        // `workspace_dir()` is the gate every workspace-bound store goes
+        // through, so it is asserted directly. This used to go through
+        // `CoreContext::people()`, which was simply the first such store; it
+        // resolves through the memory binding now and no longer exists.
+        let err = match ctx.workspace_dir() {
+            Ok(_) => panic!("degraded context unexpectedly resolved a workspace"),
             Err(err) => err,
         };
         assert!(
@@ -972,10 +827,12 @@ mod tests {
         };
 
         let bind_a = ctx.memory_binding().expect("bind workspace A");
-        assert_eq!(
-            bind_a.class(),
-            crate::core::subsystem::DriverClass::Embedded
-        );
+        let expected = if cfg!(feature = "modules") {
+            crate::core::subsystem::DriverClass::Module
+        } else {
+            crate::core::subsystem::DriverClass::Null
+        };
+        assert_eq!(bind_a.class(), expected);
 
         let null_cfg = crate::openhuman::config::schema::MemorySubsystemConfig {
             driver: "null".to_string(),
@@ -1016,7 +873,7 @@ mod tests {
         };
 
         let bind_a = a.memory_binding().expect("bind workspace A");
-        assert_eq!(bind_a.driver_id(), "tinycortex");
+        assert_eq!(bind_a.driver_id(), "tinymemory");
         assert!(bind_a.fallback().is_none());
 
         let bind_b = b.memory_binding().expect("workspace B falls back");
@@ -1045,7 +902,7 @@ mod tests {
         assert!(ctx.memory_binding().is_err(), "no workspace ⇒ no binding");
         assert_eq!(
             ctx.memory_capabilities(),
-            tinycortex_api::capabilities::Capabilities::all(),
+            crate::openhuman::memory::api::capabilities::Capabilities::all(),
             "a context with no binding must not deny any capability"
         );
     }
@@ -1060,14 +917,14 @@ mod tests {
     fn current_memory_capabilities_defaults_open_without_a_context() {
         assert_eq!(
             crate::openhuman::memory::binding::unbound_default_capabilities(),
-            tinycortex_api::capabilities::Capabilities::all()
+            crate::openhuman::memory::api::capabilities::Capabilities::all()
         );
         // And when a context *is* ambient, the call resolves through it rather
         // than erroring.
         let ctx = CoreContext::for_test(crate::core::runtime::DomainSet::full(), None, None);
         assert_eq!(
             ctx.memory_capabilities(),
-            tinycortex_api::capabilities::Capabilities::all()
+            crate::openhuman::memory::api::capabilities::Capabilities::all()
         );
     }
 
@@ -1078,7 +935,7 @@ mod tests {
         let ctx = CoreContext::for_test(crate::core::runtime::DomainSet::harness(), None, None);
         assert_eq!(
             ctx.memory_capabilities(),
-            tinycortex_api::capabilities::Capabilities::all()
+            crate::openhuman::memory::api::capabilities::Capabilities::all()
         );
     }
 }

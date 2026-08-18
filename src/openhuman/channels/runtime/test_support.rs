@@ -17,7 +17,7 @@ use crate::openhuman::channels::traits::{ChannelMessage, SendMessage};
 use crate::openhuman::channels::Channel;
 use crate::openhuman::config::{MultimodalConfig, MultimodalFileConfig, ReliabilityConfig};
 use crate::openhuman::inference::provider::ProviderRuntimeOptions;
-use crate::openhuman::memory::{Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts};
+use crate::openhuman::memory::api::types::{MemoryCategory, MemoryEntry};
 use crate::openhuman::tools::{Tool, ToolResult};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -198,16 +198,19 @@ impl ChatModel<()> for HarnessModel {
     }
 }
 
+/// A provider whose `recall` answers with a fixed entry list regardless of
+/// query.
+///
+/// Deliberately not [`InMemoryProvider`](crate::openhuman::memory::guard::in_memory::InMemoryProvider):
+/// that one substring-matches, and these harness entries are scripted to come
+/// back for whatever the test sends. The point here is the channel pipeline
+/// downstream of recall, not recall itself.
 struct HarnessMemory {
     entries: Vec<MemoryEntry>,
 }
 
 #[async_trait]
-impl Memory for HarnessMemory {
-    fn name(&self) -> &str {
-        "harness-memory"
-    }
-
+impl crate::openhuman::memory::api::provider::MemoryCore for HarnessMemory {
     async fn store(
         &self,
         _namespace: &str,
@@ -215,21 +218,26 @@ impl Memory for HarnessMemory {
         _content: &str,
         _category: MemoryCategory,
         _session_id: Option<&str>,
-    ) -> Result<()> {
+        _taint: crate::openhuman::memory::api::types::MemoryTaint,
+    ) -> std::result::Result<(), crate::openhuman::memory::api::error::MemoryError> {
         Ok(())
     }
 
-    async fn recall(
+    async fn get(
         &self,
-        _query: &str,
-        _limit: usize,
-        _opts: RecallOpts<'_>,
-    ) -> Result<Vec<MemoryEntry>> {
-        Ok(self.entries.clone())
+        _namespace: &str,
+        _key: &str,
+    ) -> std::result::Result<Option<MemoryEntry>, crate::openhuman::memory::api::error::MemoryError>
+    {
+        Ok(None)
     }
 
-    async fn get(&self, _namespace: &str, _key: &str) -> Result<Option<MemoryEntry>> {
-        Ok(None)
+    async fn forget(
+        &self,
+        _namespace: &str,
+        _key: &str,
+    ) -> std::result::Result<bool, crate::openhuman::memory::api::error::MemoryError> {
+        Ok(false)
     }
 
     async fn list(
@@ -237,24 +245,75 @@ impl Memory for HarnessMemory {
         _namespace: Option<&str>,
         _category: Option<&MemoryCategory>,
         _session_id: Option<&str>,
-    ) -> Result<Vec<MemoryEntry>> {
+    ) -> std::result::Result<Vec<MemoryEntry>, crate::openhuman::memory::api::error::MemoryError>
+    {
         Ok(Vec::new())
     }
 
-    async fn forget(&self, _namespace: &str, _key: &str) -> Result<bool> {
-        Ok(false)
-    }
-
-    async fn namespace_summaries(&self) -> Result<Vec<NamespaceSummary>> {
+    async fn namespaces(
+        &self,
+    ) -> std::result::Result<
+        Vec<crate::openhuman::memory::api::types::NamespaceSummary>,
+        crate::openhuman::memory::api::error::MemoryError,
+    > {
         Ok(Vec::new())
     }
+}
 
-    async fn count(&self) -> Result<usize> {
-        Ok(self.entries.len())
+#[async_trait]
+impl crate::openhuman::memory::api::provider::MemoryRecall for HarnessMemory {
+    async fn recall(
+        &self,
+        _query: &str,
+        _limit: usize,
+        _opts: &crate::openhuman::memory::api::recall::OwnedRecallOpts,
+        _scope: Option<&crate::openhuman::memory::api::provider::types::SourceScope>,
+    ) -> std::result::Result<Vec<MemoryEntry>, crate::openhuman::memory::api::error::MemoryError>
+    {
+        Ok(self.entries.clone())
+    }
+}
+
+#[async_trait]
+impl crate::openhuman::memory::api::provider::MemoryPortability for HarnessMemory {
+    async fn export_page(
+        &self,
+        _cursor: Option<&str>,
+        _limit: usize,
+    ) -> std::result::Result<
+        crate::openhuman::memory::api::provider::types::ExportPage,
+        crate::openhuman::memory::api::error::MemoryError,
+    > {
+        Err(crate::openhuman::memory::api::error::MemoryError::Other(
+            anyhow::anyhow!("harness memory does not export"),
+        ))
     }
 
-    async fn health_check(&self) -> bool {
-        true
+    async fn import_records(
+        &self,
+        _records: Vec<crate::openhuman::memory::api::provider::types::ExportRecord>,
+    ) -> std::result::Result<
+        crate::openhuman::memory::api::provider::types::ImportOutcome,
+        crate::openhuman::memory::api::error::MemoryError,
+    > {
+        Err(crate::openhuman::memory::api::error::MemoryError::Other(
+            anyhow::anyhow!("harness memory does not import"),
+        ))
+    }
+}
+
+#[async_trait]
+impl crate::openhuman::memory::api::provider::MemoryProvider for HarnessMemory {
+    fn driver_id(&self) -> &str {
+        "harness-memory"
+    }
+
+    fn capabilities(&self) -> crate::openhuman::memory::api::capabilities::Capabilities {
+        crate::openhuman::memory::api::capabilities::Capabilities::mandatory()
+    }
+
+    async fn health(&self) -> crate::openhuman::memory::api::health::MemoryHealth {
+        crate::openhuman::memory::api::health::MemoryHealth::Ready
     }
 }
 
@@ -289,7 +348,7 @@ fn memory_entry(input: TestMemoryEntry) -> MemoryEntry {
         timestamp: "now".to_string(),
         session_id: None,
         score: input.score,
-        taint: crate::openhuman::memory::MemoryTaint::Internal,
+        taint: crate::openhuman::memory::api::types::MemoryTaint::Internal,
     }
 }
 
@@ -436,13 +495,13 @@ pub async fn run_dispatch_harness(options: DispatchHarnessOptions) -> DispatchHa
             crate::openhuman::agent::tinyagents::TurnModelSource::from_model(model),
         ),
         default_provider: Arc::new("harness-provider".to_string()),
-        memory: Arc::new(HarnessMemory {
+        memory: crate::openhuman::memory::guard::in_memory::guard_over(Arc::new(HarnessMemory {
             entries: options
                 .memory_entries
                 .into_iter()
                 .map(memory_entry)
                 .collect(),
-        }),
+        })),
         tools_registry: Arc::new(vec![Box::new(HarnessTool) as Box<dyn Tool>]),
         system_prompt: Arc::new("system prompt".to_string()),
         model: Arc::new("harness-model".to_string()),

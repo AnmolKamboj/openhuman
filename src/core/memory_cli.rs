@@ -15,8 +15,8 @@ use anyhow::Result;
 use std::io::Read;
 use std::path::PathBuf;
 
-use crate::openhuman::memory::ingestion::{MemoryIngestionConfig, MemoryIngestionRequest};
-use crate::openhuman::memory::store::NamespaceDocumentInput;
+use tinymemory_core::ingestion::{MemoryIngestionConfig, MemoryIngestionRequest};
+use tinymemory_core::store::NamespaceDocumentInput;
 
 /// Entry point for `openhuman memory <subcommand>`.
 pub fn run_memory_command(args: &[String]) -> Result<()> {
@@ -62,7 +62,9 @@ const SUBCOMMAND_CONTROLLER: &[(&str, &str)] = &[
 
 /// The capability `openhuman memory <sub>` needs, if any. Resolved from the
 /// controller registry, never from a local table.
-fn required_capability(subcommand: &str) -> Option<tinycortex_api::capabilities::Capability> {
+fn required_capability(
+    subcommand: &str,
+) -> Option<crate::openhuman::memory::api::capabilities::Capability> {
     let function = SUBCOMMAND_CONTROLLER
         .iter()
         .find(|(sub, _)| *sub == subcommand)
@@ -487,9 +489,7 @@ fn read_input(path: &str) -> Result<String> {
 ///
 /// This is the single chokepoint every subcommand already funnels through, and
 /// it already loads config, so the gates cost no extra config read.
-async fn create_memory_client(
-    subcommand: &str,
-) -> Result<crate::openhuman::memory::store::MemoryClientRef> {
+async fn create_memory_client(subcommand: &str) -> Result<tinymemory_core::store::MemoryClientRef> {
     let config = crate::openhuman::config::Config::load_or_init()
         .await
         .unwrap_or_default();
@@ -516,7 +516,16 @@ async fn create_memory_client(
         }
     }
 
-    crate::openhuman::memory::global::init(config.workspace_dir).map_err(anyhow::Error::msg)
+    // The CLI dispatches straight to a subcommand and never runs the runtime
+    // bootstrap, so nothing else installs these. They must be in place before
+    // the first memory call: the embedding, chat, Composio and config seams
+    // fail loudly when unwired rather than degrading, and a `memory` subcommand
+    // that reached one would report a broken subsystem rather than a missing
+    // one. Idempotent, so calling it per invocation is safe.
+    crate::openhuman::memory::host_impls::install_memory_host_seams(std::sync::Arc::new(
+        config.clone(),
+    ));
+    tinymemory_core::global::init(config.workspace_dir).map_err(anyhow::Error::msg)
 }
 
 fn print_memory_help() {
@@ -546,7 +555,7 @@ mod tests {
     use super::*;
     use crate::core::cli_capability::{capability_verdict, CAPABILITY_UNAVAILABLE_PREFIX};
     use crate::core::subsystem::DriverClass;
-    use tinycortex_api::capabilities::{Capabilities, Capability};
+    use crate::openhuman::memory::api::capabilities::{Capabilities, Capability};
 
     /// Drift guard: a renamed controller function must break here rather than
     /// silently un-gate a subcommand (`required_capability` would start

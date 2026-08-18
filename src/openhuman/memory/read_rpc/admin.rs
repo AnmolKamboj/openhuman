@@ -2,11 +2,11 @@ use anyhow::{Context, Result};
 use rusqlite::params;
 
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::store::chunks::store::{
+use crate::rpc::RpcOutcome;
+use tinymemory_core::store::chunks::store::{
     delete_chunks_by_source, delete_orphaned_source_tree, with_connection,
 };
-use crate::openhuman::memory::store::chunks::types::SourceKind;
-use crate::rpc::RpcOutcome;
+use tinymemory_core::store::chunks::types::SourceKind;
 
 use super::types::{
     DeleteSourceResponse, FlushNowResponse, FlushSourceTreeResponse, ResetTreeResponse,
@@ -111,7 +111,7 @@ pub async fn wipe_all_rpc(config: &Config) -> Result<RpcOutcome<WipeAllResponse>
 }
 
 pub(crate) fn clear_composio_sync_state(db_path: &std::path::Path) -> Result<u64> {
-    use crate::openhuman::memory::tinycortex::HOST_SYNC_STATE_NAMESPACE;
+    use tinymemory_core::tinycortex::HOST_SYNC_STATE_NAMESPACE;
     let conn = rusqlite::Connection::open(db_path)
         .with_context(|| format!("open unified memory db {}", db_path.display()))?;
     let n = conn
@@ -126,8 +126,8 @@ pub(crate) fn clear_composio_sync_state(db_path: &std::path::Path) -> Result<u64
 // ── reset_tree ───────────────────────────────────────────────────────────
 
 pub async fn reset_tree_rpc(config: &Config) -> Result<RpcOutcome<ResetTreeResponse>, String> {
-    use crate::openhuman::memory::queue::store as jobs_store;
-    use crate::openhuman::memory::queue::types::{ExtractChunkPayload, NewJob};
+    use tinymemory_core::queue::store as jobs_store;
+    use tinymemory_core::queue::types::{ExtractChunkPayload, NewJob};
 
     let cfg = config.clone();
     let (tree_rows_deleted, chunks_requeued, jobs_enqueued) =
@@ -223,7 +223,7 @@ pub async fn reset_tree_rpc(config: &Config) -> Result<RpcOutcome<ResetTreeRespo
         }
     }
 
-    crate::openhuman::memory::queue::wake_workers();
+    tinymemory_core::queue::wake_workers();
 
     let resp = ResetTreeResponse {
         tree_rows_deleted,
@@ -244,7 +244,7 @@ pub async fn flush_source_tree_rpc(
     config: &Config,
     source_scope: &str,
 ) -> Result<RpcOutcome<FlushSourceTreeResponse>, String> {
-    use crate::openhuman::memory::tree_source::get_or_create_source_tree;
+    use tinymemory_core::tree_source::get_or_create_source_tree;
 
     use crate::openhuman::memory::tree::tree::flush::force_flush_tree;
     use crate::openhuman::memory::tree::tree::TreeFactory;
@@ -315,9 +315,9 @@ pub async fn flush_source_tree_rpc(
 // ── flush_now ─────────────────────────────────────────────────────────────
 
 pub async fn flush_now_rpc(config: &Config) -> Result<RpcOutcome<FlushNowResponse>, String> {
-    use crate::openhuman::memory::queue::store as jobs_store;
-    use crate::openhuman::memory::queue::types::{FlushStalePayload, NewJob};
     use crate::openhuman::memory::tree::tree::store as tree_store;
+    use tinymemory_core::queue::store as jobs_store;
+    use tinymemory_core::queue::types::{FlushStalePayload, NewJob};
 
     let cfg = config.clone();
     let resp = tokio::task::spawn_blocking(move || -> Result<FlushNowResponse> {
@@ -418,7 +418,7 @@ pub async fn delete_source_rpc(
     let log = format!(
         // Redact the source id: it can embed user-linked identifiers.
         "memory_tree::read: delete_source source_id_hash={} deleted={} chunks_removed={} tree_cleaned={}",
-        crate::openhuman::memory::util::redact::redact(&source_id),
+        tinymemory_core::util::redact::redact(&source_id),
         resp.deleted,
         resp.chunks_removed,
         tree_cleaned

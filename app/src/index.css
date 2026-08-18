@@ -23,6 +23,63 @@
     color: var(--color-text-primary);
   }
 
+  /* Thin, theme-tinted, auto-hiding scrollbars app-wide — the macOS overlay
+     behaviour, which CEF does not give us for free (it paints classic
+     always-visible bars, so every scroll pane drew a permanent gutter down the
+     edge of the content card).
+
+     The track is always present and always the same width: only the THUMB's
+     colour animates. Toggling `width` instead would reflow the pane's content
+     on every scroll. So the gutter is reserved but invisible at rest.
+
+     `data-scrolling` is stamped on the scrolling element for a moment after it
+     scrolls (see `lib/autoHideScrollbars.ts`) — CSS has no "is scrolling"
+     state. Hover reveals it too, matching the platform.
+
+     Deliberately NOT setting `scrollbar-color`/`scrollbar-width`: in Chromium
+     the standard properties take precedence and disable ::-webkit-scrollbar
+     styling entirely, which would kill the auto-hide.
+
+     Cannot reach native CEF provider webviews — those are separate documents
+     composited above the HTML layer and keep their own scrollbars. */
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 9999px;
+    /* Transparent border + content-box clip insets the thumb to ~4px inside the
+       10px gutter, so it reads as a thin pill rather than a full-width slab. */
+    border: 3px solid transparent;
+    background-clip: content-box;
+    transition: background-color 160ms ease-out;
+  }
+
+  *[data-scrolling]::-webkit-scrollbar-thumb,
+  *:hover::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--content-faint) / 0.55);
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(var(--content-muted) / 0.8);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *::-webkit-scrollbar-thumb {
+      transition: none;
+    }
+  }
+
   body {
     @apply font-sans;
     line-height: 1.6;
@@ -317,28 +374,12 @@
 
 /* Utility layer - Custom utilities */
 @layer utilities {
-  /* Scrollbar styling for better UX */
-  .scrollbar-thin {
-    scrollbar-width: thin;
-    scrollbar-color: rgb(163 163 163) transparent;
-  }
-
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  .scrollbar-thin::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: rgb(163 163 163);
-    border-radius: 3px;
-  }
-
-  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background-color: rgb(115 115 115);
-  }
+  /* NOTE: a `.scrollbar-thin` utility used to live here. It had zero call
+     sites, and being in `@layer utilities` it outranked the base-layer
+     auto-hide rules above — so the moment anyone reached for it, that pane
+     would have kept a permanently visible grey thumb and silently ignored
+     `data-scrolling`. Deleted rather than kept as a trap; scrollbars are thin
+     and theme-tinted app-wide now, so nothing needs to opt in. */
 
   /* Hide scrollbar while keeping scroll behavior */
   .scrollbar-hide {

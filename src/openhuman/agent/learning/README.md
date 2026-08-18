@@ -94,7 +94,7 @@ These are subscriber registrations rather than a single `bus.rs`; subscriptions 
 
 ## Dependencies
 
-- `crate::openhuman::memory::store::profile` — the `ProfileFacet` / `FacetState` / `UserState` types and the SQL helpers backing `FacetCache` (heaviest dependency).
+- `tinymemory_core::store::profile` — the `ProfileFacet` / `FacetState` / `UserState` types and the SQL helpers backing `FacetCache` (heaviest dependency).
 - `crate::openhuman::memory` / `memory_store` — the `Memory` trait, `MemoryClient`, categories; all KV persistence and the global memory client used by RPC handlers.
 - `crate::openhuman::agent::hooks` — `PostTurnHook` / `TurnContext` / `ToolCallRecord` implemented by the three hooks.
 - `crate::openhuman::agent::harness::session::transcript` — `SessionTranscript` parsing for transcript ingestion.

@@ -8,7 +8,7 @@
 | Captured at commit | `cdf997b4f8a9e751c7f3c9a24920e808d14d75ed` |
 | Captured on | 2026-08-10T12:26:26Z |
 | Generator | `regenerate_golden_fixture` in `tests/memory_golden_fixture_e2e.rs` |
-| Seeder | `openhuman_core::openhuman::memory::store::golden::seed` |
+| Seeder | `tinymemory_core::store::golden::seed` |
 
 ## Contents
 

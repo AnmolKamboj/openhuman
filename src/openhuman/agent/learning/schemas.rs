@@ -477,8 +477,8 @@ mod tests {
 
     #[test]
     fn facet_to_json_includes_cue_families_and_evidence_refs() {
-        use crate::openhuman::agent::learning::candidate::EvidenceRef;
-        use crate::openhuman::memory::store::profile::{
+        use crate::openhuman::memory::api::host::EvidenceRef;
+        use crate::openhuman::memory::api::provider::{
             FacetState, FacetType, ProfileFacet, UserState,
         };
         use std::collections::HashMap;
@@ -658,9 +658,11 @@ fn handle_rebuild_cache(_params: Map<String, Value>) -> ControllerFuture {
 
         tracing::debug!("[learning.rebuild_cache] manual rebuild requested via RPC");
 
-        let client = crate::openhuman::memory::global::client_if_ready()
-            .ok_or_else(|| "memory client not ready".to_string())?;
-        let cache = FacetCache::new(client.profile_store());
+        let cache = FacetCache::new(
+            crate::openhuman::memory::ops::guard::active_memory_guard()
+                .await
+                .map_err(|e| format!("memory unavailable: {e}"))?,
+        );
         let detector = StabilityDetector::new(cache);
 
         let now = SystemTime::now()
@@ -670,6 +672,7 @@ fn handle_rebuild_cache(_params: Map<String, Value>) -> ControllerFuture {
 
         let outcome = detector
             .rebuild(now)
+            .await
             .map_err(|e| format!("rebuild failed: {e:#}"))?;
 
         let log = vec![format!(
@@ -691,16 +694,19 @@ fn handle_rebuild_cache(_params: Map<String, Value>) -> ControllerFuture {
 fn handle_cache_stats(_params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
         use crate::openhuman::agent::learning::cache::FacetCache;
-        use crate::openhuman::memory::store::profile::FacetState;
+        use crate::openhuman::memory::api::provider::FacetState;
 
         tracing::debug!("[learning.cache_stats] cache stats requested via RPC");
 
-        let client = crate::openhuman::memory::global::client_if_ready()
-            .ok_or_else(|| "memory client not ready".to_string())?;
-        let cache = FacetCache::new(client.profile_store());
+        let cache = FacetCache::new(
+            crate::openhuman::memory::ops::guard::active_memory_guard()
+                .await
+                .map_err(|e| format!("memory unavailable: {e}"))?,
+        );
 
         let all_facets = cache
             .list_all()
+            .await
             .map_err(|e| format!("list_all failed: {e:#}"))?;
 
         let total = all_facets.len();
@@ -753,12 +759,17 @@ fn handle_cache_stats(_params: Map<String, Value>) -> ControllerFuture {
 
 // ── Helper: shared cache access ───────────────────────────────────────────────
 
-/// Build a [`FacetCache`] from the global memory client, or return a string error.
-fn get_cache() -> Result<crate::openhuman::agent::learning::cache::FacetCache, String> {
-    let client = crate::openhuman::memory::global::client_if_ready()
-        .ok_or_else(|| "memory client not ready".to_string())?;
+/// Build a [`FacetCache`] from the bound memory driver, or return a string
+/// error.
+///
+/// Async since facets moved behind the module: there is no process-global
+/// memory client to ask any more.
+async fn get_cache() -> Result<crate::openhuman::agent::learning::cache::FacetCache, String> {
+    let guard = crate::openhuman::memory::ops::guard::active_memory_guard()
+        .await
+        .map_err(|e| format!("memory unavailable: {e}"))?;
     Ok(crate::openhuman::agent::learning::cache::FacetCache::new(
-        client.profile_store(),
+        guard,
     ))
 }
 
@@ -769,7 +780,7 @@ fn full_key(class_str: &str, key_suffix: &str) -> String {
 }
 
 /// Serialize a [`ProfileFacet`] to a serde_json [`Value`] for RPC output.
-fn facet_to_json(f: &crate::openhuman::memory::store::profile::ProfileFacet) -> serde_json::Value {
+fn facet_to_json(f: &crate::openhuman::memory::api::provider::ProfileFacet) -> serde_json::Value {
     serde_json::json!({
         "key": f.key,
         "value": f.value,
@@ -794,7 +805,7 @@ fn facet_to_json(f: &crate::openhuman::memory::store::profile::ProfileFacet) -> 
 
 fn handle_list_facets(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        use crate::openhuman::memory::store::profile::FacetState;
+        use crate::openhuman::memory::api::provider::FacetState;
 
         tracing::debug!("[learning.list_facets] called");
 
@@ -803,11 +814,12 @@ fn handle_list_facets(params: Map<String, Value>) -> ControllerFuture {
             .and_then(Value::as_str)
             .map(str::to_string);
 
-        let cache = get_cache()?;
+        let cache = get_cache().await?;
 
         // list_all returns all states (active + provisional + candidate + dropped).
         let all = cache
             .list_all()
+            .await
             .map_err(|e| format!("list_all failed: {e:#}"))?;
 
         let facets: Vec<serde_json::Value> = all
@@ -856,8 +868,11 @@ fn handle_get_facet(params: Map<String, Value>) -> ControllerFuture {
         let fk = full_key(&class_str, &key_suffix);
         tracing::debug!("[learning.get_facet] key={fk}");
 
-        let cache = get_cache()?;
-        let facet = cache.get(&fk).map_err(|e| format!("get failed: {e:#}"))?;
+        let cache = get_cache().await?;
+        let facet = cache
+            .get(&fk)
+            .await
+            .map_err(|e| format!("get failed: {e:#}"))?;
 
         let (found, facet_val) = match &facet {
             Some(f) => (true, facet_to_json(f)),
@@ -874,7 +889,7 @@ fn handle_get_facet(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_update_facet(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        use crate::openhuman::memory::store::profile::UserState;
+        use crate::openhuman::memory::api::provider::UserState;
 
         let class_str = params
             .get("class")
@@ -895,10 +910,11 @@ fn handle_update_facet(params: Map<String, Value>) -> ControllerFuture {
         let fk = full_key(&class_str, &key_suffix);
         tracing::debug!("[learning.update_facet] key={fk} value={new_value}");
 
-        let cache = get_cache()?;
+        let cache = get_cache().await?;
 
         let mut facet = cache
             .get(&fk)
+            .await
             .map_err(|e| format!("get failed: {e:#}"))?
             .ok_or_else(|| format!("facet not found: {fk}"))?;
 
@@ -908,10 +924,12 @@ fn handle_update_facet(params: Map<String, Value>) -> ControllerFuture {
 
         cache
             .upsert(&facet)
+            .await
             .map_err(|e| format!("upsert failed: {e:#}"))?;
 
         let updated = cache
             .get(&fk)
+            .await
             .map_err(|e| format!("re-read failed: {e:#}"))?
             .ok_or_else(|| "facet disappeared after upsert".to_string())?;
 
@@ -927,7 +945,7 @@ fn handle_update_facet(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_pin_facet(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        use crate::openhuman::memory::store::profile::UserState;
+        use crate::openhuman::memory::api::provider::UserState;
 
         let class_str = params
             .get("class")
@@ -943,9 +961,10 @@ fn handle_pin_facet(params: Map<String, Value>) -> ControllerFuture {
         let fk = full_key(&class_str, &key_suffix);
         tracing::debug!("[learning.pin_facet] key={fk}");
 
-        let cache = get_cache()?;
+        let cache = get_cache().await?;
         let updated = cache
             .set_user_state(&fk, UserState::Pinned)
+            .await
             .map_err(|e| format!("set_user_state failed: {e:#}"))?;
 
         if !updated {
@@ -954,6 +973,7 @@ fn handle_pin_facet(params: Map<String, Value>) -> ControllerFuture {
 
         let facet = cache
             .get(&fk)
+            .await
             .map_err(|e| format!("re-read failed: {e:#}"))?
             .ok_or_else(|| "facet disappeared after update".to_string())?;
 
@@ -967,7 +987,7 @@ fn handle_pin_facet(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_unpin_facet(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        use crate::openhuman::memory::store::profile::UserState;
+        use crate::openhuman::memory::api::provider::UserState;
 
         let class_str = params
             .get("class")
@@ -983,9 +1003,10 @@ fn handle_unpin_facet(params: Map<String, Value>) -> ControllerFuture {
         let fk = full_key(&class_str, &key_suffix);
         tracing::debug!("[learning.unpin_facet] key={fk}");
 
-        let cache = get_cache()?;
+        let cache = get_cache().await?;
         let updated = cache
             .set_user_state(&fk, UserState::Auto)
+            .await
             .map_err(|e| format!("set_user_state failed: {e:#}"))?;
 
         if !updated {
@@ -994,6 +1015,7 @@ fn handle_unpin_facet(params: Map<String, Value>) -> ControllerFuture {
 
         let facet = cache
             .get(&fk)
+            .await
             .map_err(|e| format!("re-read failed: {e:#}"))?
             .ok_or_else(|| "facet disappeared after update".to_string())?;
 
@@ -1007,7 +1029,7 @@ fn handle_unpin_facet(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_forget_facet(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        use crate::openhuman::memory::store::profile::{FacetState, UserState};
+        use crate::openhuman::memory::api::provider::{FacetState, UserState};
 
         let class_str = params
             .get("class")
@@ -1023,9 +1045,12 @@ fn handle_forget_facet(params: Map<String, Value>) -> ControllerFuture {
         let fk = full_key(&class_str, &key_suffix);
         tracing::debug!("[learning.forget_facet] key={fk}");
 
-        let cache = get_cache()?;
+        let cache = get_cache().await?;
 
-        let facet_before = cache.get(&fk).map_err(|e| format!("get failed: {e:#}"))?;
+        let facet_before = cache
+            .get(&fk)
+            .await
+            .map_err(|e| format!("get failed: {e:#}"))?;
 
         let facet_json = if let Some(mut f) = facet_before {
             // Mark Forgotten + Dropped so it doesn't resurface.
@@ -1033,9 +1058,11 @@ fn handle_forget_facet(params: Map<String, Value>) -> ControllerFuture {
             f.state = FacetState::Dropped;
             cache
                 .upsert(&f)
+                .await
                 .map_err(|e| format!("upsert failed: {e:#}"))?;
             let updated = cache
                 .get(&fk)
+                .await
                 .map_err(|e| format!("re-read failed: {e:#}"))?
                 .unwrap_or(f);
             facet_to_json(&updated)
@@ -1055,28 +1082,14 @@ fn handle_forget_facet(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_reset_cache(_params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        use crate::openhuman::memory::store::profile::UserState;
-
         tracing::debug!("[learning.reset_cache] called");
 
-        let cache = get_cache()?;
+        let cache = get_cache().await?;
 
-        let all = cache
-            .list_all()
-            .map_err(|e| format!("list_all failed: {e:#}"))?;
-
-        let pinned_preserved = all
-            .iter()
-            .filter(|f| f.user_state == UserState::Pinned)
-            .count();
-
-        // Delete all non-Pinned rows.
-        let mut deleted = 0usize;
-        for f in &all {
-            if f.user_state != UserState::Pinned && cache.delete(&f.key).unwrap_or(false) {
-                deleted += 1;
-            }
-        }
+        let (deleted, pinned_preserved) =
+            crate::openhuman::agent::learning::cache::reset_non_pinned(&cache)
+                .await
+                .map_err(|e| format!("reset_cache failed: {e:#}"))?;
 
         tracing::info!(
             "[learning.reset_cache] deleted={deleted} pinned_preserved={pinned_preserved}"

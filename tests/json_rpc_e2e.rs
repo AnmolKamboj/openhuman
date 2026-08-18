@@ -67,6 +67,7 @@ impl Drop for EnvVarGuard {
 /// inherited `VITE_BACKEND_URL`.
 static JSON_RPC_E2E_ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static JSON_RPC_E2E_KEYRING_INIT: OnceLock<()> = OnceLock::new();
+static JSON_RPC_E2E_MEMORY_SEAMS_INIT: OnceLock<()> = OnceLock::new();
 static CHAT_COMPLETION_MODELS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
 static CHAT_COMPLETION_REQUESTS: OnceLock<Mutex<Vec<Value>>> = OnceLock::new();
 
@@ -80,6 +81,28 @@ fn json_rpc_e2e_env_lock() -> std::sync::MutexGuard<'static, ()> {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     }
+}
+
+/// The transport-only JSON-RPC router deliberately does not construct a core
+/// runtime context. Install its memory seams once for this integration-test
+/// binary before any router can dispatch a memory-backed method.
+fn ensure_json_rpc_e2e_memory_seams() {
+    JSON_RPC_E2E_MEMORY_SEAMS_INIT.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("json-rpc-e2e-memory-seams".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let config = Arc::new(openhuman_core::openhuman::config::Config::default());
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
+                    config.clone(),
+                );
+                #[cfg(feature = "modules")]
+                openhuman_core::openhuman::modules::memory::set_modules_policy(config);
+            })
+            .expect("spawn json_rpc e2e memory seam installer")
+            .join()
+            .expect("json_rpc e2e memory seam installer panicked");
+    });
 }
 
 fn run_json_rpc_e2e_on_agent_stack<F, Fut>(name: &str, future_factory: F)
@@ -753,6 +776,7 @@ async fn serve_on_ephemeral(
     tokio::task::JoinHandle<Result<(), std::io::Error>>,
 ) {
     ensure_test_rpc_auth();
+    ensure_json_rpc_e2e_memory_seams();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind");

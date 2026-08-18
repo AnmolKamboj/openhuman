@@ -125,11 +125,13 @@ function ChatPageScaffold({
         {children}
       </div>
 
-      {/* Fade so messages dissolve into the background behind the composer. */}
+      {/* Fade so messages dissolve into the page behind the composer. Fades to
+          the `surface` token the content card paints, not a hardcoded
+          white/black pair — see the matching fade in Conversations.tsx. */}
       {footer ? (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-white via-white/90 to-transparent dark:from-black dark:via-black/90"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-surface via-surface/90 to-transparent"
         />
       ) : null}
 

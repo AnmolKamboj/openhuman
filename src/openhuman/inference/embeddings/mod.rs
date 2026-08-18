@@ -44,7 +44,7 @@ pub use cloud::{
 pub use factory::{
     create_embedding_provider, create_embedding_provider_with_config,
     create_embedding_provider_with_credentials, default_embedding_provider,
-    default_local_embedding_provider,
+    default_embedding_provider_with_config, default_local_embedding_provider,
 };
 // `pub(crate)` helper — reused by the memory-tree OpenAI-compat adapter to gate
 // configs whose dimension the fixed-1024 tree can't store (#4056). Not part of

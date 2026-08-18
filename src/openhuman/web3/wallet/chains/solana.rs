@@ -11,7 +11,8 @@
 
 use base64::engine::{general_purpose::STANDARD as B64, Engine as _};
 use curve25519_dalek::edwards::CompressedEdwardsY;
-use ed25519_dalek::{Signer, SigningKey, SECRET_KEY_LENGTH};
+#[cfg(test)]
+use ed25519_dalek::{SigningKey, SECRET_KEY_LENGTH};
 use log::debug;
 use serde::Deserialize;
 use serde_json::json;
@@ -102,6 +103,8 @@ pub async fn native_balance(address: &str) -> Result<u128, String> {
 /// its own error variant rather than folding it into a generic parse failure,
 /// because such a path is derivable-looking but underivable on ed25519 — and
 /// silently hardening it would return a different account than the path names.
+/// Test-only: production derives inside the wallet module.
+#[cfg(test)]
 fn derive_solana_keypair(mnemonic: &str, derivation_path: &str) -> Result<SigningKey, String> {
     let derived = tinywallet::key::derive(tinywallet::Chain::Solana, mnemonic, derivation_path)
         .map_err(|e| e.to_string())?;
@@ -230,6 +233,105 @@ fn pubkey_to_b58(pubkey: &[u8; 32]) -> String {
     bs58::encode(pubkey).into_string()
 }
 
+/// The wallet's Solana account, and the phrase to sign with.
+///
+/// Derivation and signing both happen in the loaded wallet module; this process
+/// holds the phrase only long enough to hand it over on a confidential call,
+/// and never assembles a private key. The module is sent it only after proving
+/// it is an artifact this build pinned — see `modules::wallet::attested_proxy`.
+///
+/// # The `cfg(test)` branch
+///
+/// Under `cfg(test)` this derives locally instead of calling the module, and so
+/// does [`solana_sign`]. A unit test has no loaded module, and the coverage
+/// these tests carry is the RPC choreography and wire format around signing —
+/// how many calls go out, in what order, and what bytes get broadcast — none of
+/// which is about *who* holds the key.
+///
+/// What that deliberately does not cover is the module wiring itself. That is
+/// covered where it can be honest: tinywallet's loader E2E signs through a real
+/// `dlopen`'d module over a real broker, and `modules::wallet`'s own tests pin
+/// the attestation guard. The local branch cannot exist in a shipped binary.
+async fn solana_signer(
+    config: &crate::openhuman::config::Config,
+) -> Result<(tinywallet::wire::SecretMaterial, [u8; 32]), String> {
+    let secret = secret_material(WalletChain::Solana).await?;
+    let mnemonic = crate::openhuman::security::encryption::rpc::decrypt_secret(
+        config,
+        &secret.encrypted_mnemonic,
+    )
+    .await?
+    .value;
+    let signing_secret = tinywallet::wire::SecretMaterial {
+        mnemonic,
+        derivation_path: secret.derivation_path.clone(),
+        chain: tinywallet::Chain::Solana,
+    };
+    #[cfg(test)]
+    {
+        let _ = config;
+        let derived =
+            derive_solana_keypair(&signing_secret.mnemonic, &signing_secret.derivation_path)?;
+        return Ok((signing_secret, derived.verifying_key().to_bytes()));
+    }
+
+    #[cfg(not(test))]
+    {
+        let account = crate::openhuman::modules::wallet::derive_account(config, &signing_secret)
+            .await
+            .map_err(|e| format!("failed to derive the Solana account: {e}"))?;
+        let pubkey = b58_to_pubkey(&account.address)?;
+        Ok((signing_secret, pubkey))
+    }
+}
+
+/// Sign `message` with the wallet key, inside the module.
+async fn solana_sign(
+    config: &crate::openhuman::config::Config,
+    signing_secret: &tinywallet::wire::SecretMaterial,
+    message: &[u8],
+) -> Result<[u8; 64], String> {
+    #[cfg(test)]
+    {
+        use ed25519_dalek::Signer as _;
+        let _ = config;
+        let key = derive_solana_keypair(&signing_secret.mnemonic, &signing_secret.derivation_path)?;
+        return Ok(key.sign(message).to_bytes());
+    }
+
+    #[cfg(not(test))]
+    let signature = crate::openhuman::modules::wallet::sign_message(
+        config,
+        signing_secret,
+        message,
+        tinywallet::wire::Scheme::Ed25519,
+    )
+    .await
+    .map_err(|e| format!("failed to sign the Solana message: {e}"))?;
+    #[cfg(not(test))]
+    {
+        let tinywallet::wire::Signature::Ed25519 { signature_hex } = signature else {
+            return Err("the wallet module returned a non-ed25519 Solana signature".to_string());
+        };
+        let bytes = hex_to_bytes(&signature_hex)?;
+        <[u8; 64]>::try_from(bytes.as_slice())
+            .map_err(|_| "the wallet module returned a malformed Solana signature".to_string())
+    }
+}
+
+/// Decode lowercase hex.
+fn hex_to_bytes(value: &str) -> Result<Vec<u8>, String> {
+    if !value.len().is_multiple_of(2) {
+        return Err("odd-length hex from the wallet module".to_string());
+    }
+    (0..value.len() / 2)
+        .map(|i| {
+            u8::from_str_radix(&value[i * 2..i * 2 + 2], 16)
+                .map_err(|e| format!("invalid hex from the wallet module: {e}"))
+        })
+        .collect()
+}
+
 fn build_native_transfer_message(
     from: [u8; 32],
     to: [u8; 32],
@@ -325,16 +427,8 @@ pub async fn execute_solana_quote(
         .parse()
         .map_err(|e| format!("invalid Solana amount '{}': {e}", quote.amount_raw))?;
 
-    let secret = secret_material(WalletChain::Solana).await?;
     let config = config_rpc::load_config_with_timeout().await?;
-    let mnemonic = crate::openhuman::security::encryption::rpc::decrypt_secret(
-        &config,
-        &secret.encrypted_mnemonic,
-    )
-    .await?
-    .value;
-    let signing_key = derive_solana_keypair(&mnemonic, &secret.derivation_path)?;
-    let from_pk = signing_key.verifying_key().to_bytes();
+    let (signing_secret, from_pk) = solana_signer(&config).await?;
     let expected_from = b58_to_pubkey(&from_addr)?;
     if from_pk != expected_from {
         return Err(format!(
@@ -374,8 +468,7 @@ pub async fn execute_solana_quote(
         }
     };
 
-    let signature = signing_key.sign(&message_bytes);
-    let sig_bytes = signature.to_bytes();
+    let sig_bytes = solana_sign(&config, &signing_secret, &message_bytes).await?;
     let mut wire = Vec::with_capacity(1 + 64 + message_bytes.len());
     wire.extend(encode_shortvec(1));
     wire.extend(&sig_bytes);
@@ -450,16 +543,8 @@ pub(crate) async fn sign_and_broadcast_versioned(
     }
 
     // Derive our signing key.
-    let secret = secret_material(WalletChain::Solana).await?;
     let config = config_rpc::load_config_with_timeout().await?;
-    let mnemonic = crate::openhuman::security::encryption::rpc::decrypt_secret(
-        &config,
-        &secret.encrypted_mnemonic,
-    )
-    .await?
-    .value;
-    let signing_key = derive_solana_keypair(&mnemonic, &secret.derivation_path)?;
-    let our_pubkey = signing_key.verifying_key().to_bytes();
+    let (signing_secret, our_pubkey) = solana_signer(&config).await?;
 
     // Find our signer index.
     let mut our_index: Option<usize> = None;
@@ -481,8 +566,7 @@ pub(crate) async fn sign_and_broadcast_versioned(
     }
 
     // Sign the message bytes and write into our signature slot.
-    let signature = signing_key.sign(message);
-    let sig_bytes = signature.to_bytes();
+    let sig_bytes = solana_sign(&config, &signing_secret, message).await?;
     let slot_off = sigs_start + our_index * 64;
     wire[slot_off..slot_off + 64].copy_from_slice(&sig_bytes);
 
@@ -607,20 +691,36 @@ pub async fn lookup_tx(hash: &str) -> Result<TxLookupInfo, String> {
 /// derivation at `wallet/chains/solana.rs:369–376`.
 pub(crate) async fn tinyplace_signer_seed() -> Result<[u8; 32], String> {
     log::debug!("[tinyplace] deriving signer seed from Solana wallet key");
-    let secret = secret_material(WalletChain::Solana).await?;
     let config = config_rpc::load_config_with_timeout().await?;
-    // Mirror exactly the decrypt call at solana.rs:371-374 (.value extraction).
+    let secret = secret_material(WalletChain::Solana).await?;
     let mnemonic = crate::openhuman::security::encryption::rpc::decrypt_secret(
         &config,
         &secret.encrypted_mnemonic,
     )
     .await?
     .value;
-    let signing_key = derive_solana_keypair(&mnemonic, &secret.derivation_path)?;
-    // Extract 32-byte SLIP-0010 secret — same bytes LocalSigner::from_seed expects.
+    let signing_secret = tinywallet::wire::SecretMaterial {
+        mnemonic,
+        derivation_path: secret.derivation_path.clone(),
+        chain: tinywallet::Chain::Solana,
+    };
+
+    // The one path that brings a private key back into this process. Every
+    // other Solana operation signs inside the module and never sees one; this
+    // cannot, because tiny.place's `LocalSigner::from_seed` takes a seed and
+    // has no way to be handed a message to sign instead. Replacing that seam is
+    // what it would take to remove this call.
+    //
+    // The key travels as the reply to a confidential call, so it is delivered
+    // to this connection and never fanned out, monitored, or carried to a peer.
+    let exported = crate::openhuman::modules::wallet::export_key(&config, &signing_secret)
+        .await
+        .map_err(|e| format!("failed to export the Solana signer seed: {e}"))?;
+    let bytes = hex_to_bytes(&exported.secret_key_hex)?;
     // Never logged: the log below omits the seed.
     log::debug!("[tinyplace] signer seed derived (seed not logged)");
-    Ok(signing_key.to_bytes())
+    <[u8; 32]>::try_from(bytes.as_slice())
+        .map_err(|_| "the wallet module returned a malformed Solana seed".to_string())
 }
 
 #[cfg(test)]

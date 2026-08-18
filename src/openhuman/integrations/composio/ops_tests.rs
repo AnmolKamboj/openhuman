@@ -231,10 +231,6 @@ fn invalidate_connected_integrations_cache_is_safe_without_prior_insert() {
 
 // ── Mock-backend integration tests for ops ─────────────────────
 
-use crate::openhuman::memory::store::chunks::store as memory_tree_store;
-use crate::openhuman::memory::store::chunks::types::{
-    chunk_id, Chunk, Metadata, SourceKind, SourceRef,
-};
 use axum::{
     extract::{Path, Query, State},
     http::HeaderMap,
@@ -244,6 +240,8 @@ use axum::{
 use chrono::{TimeZone, Utc};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use tinymemory_core::store::chunks::store as memory_tree_store;
+use tinymemory_core::store::chunks::types::{chunk_id, Chunk, Metadata, SourceKind, SourceRef};
 
 struct WorkspaceEnvGuard {
     previous: Option<std::ffi::OsString>,
@@ -580,10 +578,10 @@ async fn composio_delete_connection_clear_memory_deletes_slack_source() {
 /// content file sits at the production `content_path` location.
 #[tokio::test]
 async fn composio_delete_connection_clear_memory_cascades_source_tree_and_content_file() {
-    use crate::openhuman::memory::store::trees::store as tree_store;
-    use crate::openhuman::memory::store::trees::types::{SummaryNode, TreeKind};
-    use crate::openhuman::memory::tree_source::registry::get_or_create_source_tree;
     use rusqlite::params;
+    use tinymemory_core::store::trees::store as tree_store;
+    use tinymemory_core::store::trees::types::{SummaryNode, TreeKind};
+    use tinymemory_core::tree_source::registry::get_or_create_source_tree;
 
     let app = Router::new()
         .route(
@@ -699,14 +697,14 @@ async fn composio_delete_connection_clear_memory_cascades_source_tree_and_conten
 /// tree, the summary row, AND the seal-produced content file away.
 #[tokio::test]
 async fn composio_delete_connection_clear_memory_cascades_live_sealed_tree_and_file() {
-    use crate::openhuman::memory::store::chunks::store::{
+    use crate::openhuman::memory::tree::tree::bucket_seal::{seal_one_level, LabelStrategy};
+    use tinymemory_core::store::chunks::store::{
         get_summary_content_pointers, upsert_staged_chunks_tx,
     };
-    use crate::openhuman::memory::store::content::stage_chunks;
-    use crate::openhuman::memory::store::trees::store as tree_store;
-    use crate::openhuman::memory::store::trees::types::{Buffer, TreeKind};
-    use crate::openhuman::memory::tree::tree::bucket_seal::{seal_one_level, LabelStrategy};
-    use crate::openhuman::memory::tree_source::registry::get_or_create_source_tree;
+    use tinymemory_core::store::content::stage_chunks;
+    use tinymemory_core::store::trees::store as tree_store;
+    use tinymemory_core::store::trees::types::{Buffer, TreeKind};
+    use tinymemory_core::tree_source::registry::get_or_create_source_tree;
 
     let app = Router::new()
         .route(
@@ -896,6 +894,11 @@ async fn composio_delete_connection_clear_memory_keeps_other_gmail_connections()
 
 #[tokio::test]
 async fn notion_cleanup_targets_include_synced_page_sources() {
+    // The embedding seam fails loudly when unwired. Installed here rather
+    // than relied upon from another test: `install_for_tests` is
+    // `Once`-guarded, so a test that omits it passes only while some
+    // earlier test in the same binary happened to run first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
     let memory = std::sync::Arc::new(
@@ -905,7 +908,7 @@ async fn notion_cleanup_targets_include_synced_page_sources() {
     let mut state = SyncState::new("notion", "conn-1");
     state.mark_synced("page-a@2026-01-01T00:00:00Z");
     state.mark_synced("page-b");
-    let adapter = crate::openhuman::memory::tinycortex::HostSyncAdapter::new(memory);
+    let adapter = tinymemory_core::tinycortex::HostSyncAdapter::new(memory);
     state.save(&adapter).await.expect("sync state should save");
 
     let targets = composio_memory_targets_for_connection(&config, Some("notion"), "conn-1")
@@ -928,6 +931,11 @@ async fn notion_cleanup_targets_include_synced_page_sources() {
 
 #[tokio::test]
 async fn notion_cleanup_targets_surface_corrupt_sync_state() {
+    // The embedding seam fails loudly when unwired. Installed here rather
+    // than relied upon from another test: `install_for_tests` is
+    // `Once`-guarded, so a test that omits it passes only while some
+    // earlier test in the same binary happened to run first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
     let memory = std::sync::Arc::new(
@@ -975,6 +983,11 @@ async fn drive_cleanup_targets_are_connection_scoped() {
 
 #[tokio::test]
 async fn composio_get_user_profile_via_mock_returns_provider_profile() {
+    // The embedding seam fails loudly when unwired. Installed here rather
+    // than relied upon from another test: `install_for_tests` is
+    // `Once`-guarded, so a test that omits it passes only while some
+    // earlier test in the same binary happened to run first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     use crate::openhuman::config::TEST_ENV_LOCK;
     let _cache_guard = cache_guard();
     let _env_guard = TEST_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -1120,6 +1133,11 @@ async fn composio_execute_via_mock_propagates_backend_error() {
 
 #[tokio::test]
 async fn composio_sync_gmail_via_mock_stores_skill_document_and_updates_outcome() {
+    // The embedding seam fails loudly when unwired. Installed here rather
+    // than relied upon from another test: `install_for_tests` is
+    // `Once`-guarded, so a test that omits it passes only while some
+    // earlier test in the same binary happened to run first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let _serial = crate::openhuman::memory::ops::GLOBAL_MEMORY_TEST_LOCK
         .lock()
         .await;
@@ -1193,7 +1211,7 @@ async fn composio_sync_gmail_via_mock_stores_skill_document_and_updates_outcome(
     config.memory_tree.embedding_strict = false;
     let _workspace_env_guard = WorkspaceEnvGuard::set(tmp.path());
     config.save().await.unwrap();
-    let _ = crate::openhuman::memory::global::init(config.workspace_dir.clone()).unwrap();
+    let _ = tinymemory_core::global::init(config.workspace_dir.clone()).unwrap();
 
     let outcome = composio_sync(&config, "c1", Some("manual".to_string()))
         .await
@@ -1224,7 +1242,7 @@ async fn composio_sync_gmail_via_mock_stores_skill_document_and_updates_outcome(
     let documents = {
         let mut documents = Vec::new();
         for _ in 0..50 {
-            documents = crate::openhuman::memory::global::client_if_ready()
+            documents = tinymemory_core::global::client_if_ready()
                 .expect("memory client remains initialized")
                 .list_documents(Some("skill-gmail"))
                 .await
@@ -2465,7 +2483,7 @@ async fn init_memory_client(workspace: &std::path::Path) -> tokio::sync::MutexGu
     let guard = crate::openhuman::memory::ops::GLOBAL_MEMORY_TEST_LOCK
         .lock()
         .await;
-    crate::openhuman::memory::global::init(workspace.to_path_buf())
+    tinymemory_core::global::init(workspace.to_path_buf())
         .expect("global memory client should initialize for enrichment test");
     guard
 }
@@ -2482,6 +2500,11 @@ fn make_connections_response(
 
 #[tokio::test]
 async fn enrich_does_nothing_when_no_cached_identities() {
+    // The embedding seam fails loudly when unwired. Installed here rather
+    // than relied upon from another test: `install_for_tests` is
+    // `Once`-guarded, so a test that omits it passes only while some
+    // earlier test in the same binary happened to run first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     // Hold the lock so no sibling test can rebind the global to a workspace
     // that has a profile row matching "c1".  The fresh temp workspace has no
     // profiles, so load_connected_identities returns Vec::new() and the
@@ -2498,6 +2521,11 @@ async fn enrich_does_nothing_when_no_cached_identities() {
 
 #[tokio::test]
 async fn enrich_populates_email_from_cached_profile() {
+    // The embedding seam fails loudly when unwired. Installed here rather
+    // than relied upon from another test: `install_for_tests` is
+    // `Once`-guarded, so a test that omits it passes only while some
+    // earlier test in the same binary happened to run first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     use crate::openhuman::memory::sync::composio::providers::{
         profile::persist_provider_profile, ProviderUserProfile,
     };
@@ -2533,6 +2561,11 @@ async fn enrich_populates_email_from_cached_profile() {
 
 #[tokio::test]
 async fn enrich_populates_handle_for_github() {
+    // The embedding seam fails loudly when unwired. Installed here rather
+    // than relied upon from another test: `install_for_tests` is
+    // `Once`-guarded, so a test that omits it passes only while some
+    // earlier test in the same binary happened to run first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     use crate::openhuman::memory::sync::composio::providers::{
         profile::persist_provider_profile, ProviderUserProfile,
     };
@@ -2575,6 +2608,11 @@ async fn enrich_skips_connection_already_having_identity() {
 
 #[tokio::test]
 async fn enrich_handles_multiple_connections_same_toolkit() {
+    // The embedding seam fails loudly when unwired. Installed here rather
+    // than relied upon from another test: `install_for_tests` is
+    // `Once`-guarded, so a test that omits it passes only while some
+    // earlier test in the same binary happened to run first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     // Two Gmail accounts — each gets its own identity label, not "Account N".
     use crate::openhuman::memory::sync::composio::providers::{
         profile::persist_provider_profile, ProviderUserProfile,
@@ -2615,6 +2653,11 @@ async fn enrich_handles_multiple_connections_same_toolkit() {
 
 #[tokio::test]
 async fn enrich_leaves_unmatched_connection_unchanged() {
+    // The embedding seam fails loudly when unwired. Installed here rather
+    // than relied upon from another test: `install_for_tests` is
+    // `Once`-guarded, so a test that omits it passes only while some
+    // earlier test in the same binary happened to run first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     // Connection whose id has no cached profile row is returned with all
     // identity fields as None — the UI falls back to "toolkit · connection_id".
     use crate::openhuman::memory::sync::composio::providers::{

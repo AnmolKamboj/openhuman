@@ -616,6 +616,16 @@ async fn write_attachment(id: &str, data_uri: &str) -> anyhow::Result<PathBuf> {
     tokio::fs::create_dir_all(&dir).await?;
     let final_path = dir.join(format!("{id}.{ext}"));
     if tokio::fs::try_exists(&final_path).await.unwrap_or(false) {
+        // Content-addressing deduplicates identical images, but a new message
+        // can legitimately reference a file whose previous reference is older
+        // than the startup TTL. Refresh its mtime so the immediately following
+        // sweep cannot reclaim an attachment that was just reused.
+        let touch_path = final_path.clone();
+        tokio::task::spawn_blocking(move || -> std::io::Result<()> {
+            std::fs::File::open(touch_path)?
+                .set_times(std::fs::FileTimes::new().set_modified(std::time::SystemTime::now()))
+        })
+        .await??;
         return Ok(final_path); // content-addressed: already persisted
     }
     let tmp_path = dir.join(format!(".{id}.{ext}.tmp"));

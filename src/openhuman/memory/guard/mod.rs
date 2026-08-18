@@ -3,7 +3,7 @@
 //!
 //! ## The shape, and why it is this shape
 //!
-//! The guard implements [`MemoryProvider`](tinycortex_api::provider::MemoryProvider)
+//! The guard implements [`MemoryProvider`](crate::openhuman::memory::api::provider::MemoryProvider)
 //! over an `Arc<dyn MemoryProvider>`. That makes it *transparent* — a caller
 //! writes the same code against the guard as against the driver — and it makes
 //! the guard *unskippable by construction* for anyone holding it, because there
@@ -60,9 +60,9 @@
 //!
 //! `MemoryClient::profile_conn` no longer leaves the memory family: it is
 //! `pub(in crate::openhuman::memory)` with one caller,
-//! [`MemoryClient::profile_store`](crate::openhuman::memory::store::MemoryClient::profile_store),
+//! [`MemoryClient::profile_store`](tinymemory_core::store::MemoryClient::profile_store),
 //! which wraps it in a typed
-//! [`ProfileStore`](crate::openhuman::memory::store::ProfileStore). Every SQL
+//! [`ProfileStore`](tinymemory_core::store::ProfileStore). Every SQL
 //! statement against `user_profile` is now inside the family, and the compiler
 //! enforces that.
 //!
@@ -88,6 +88,10 @@
 pub mod audit;
 pub mod budget;
 pub mod families;
+/// In-memory provider fake for tests. Not `#[cfg(test)]` — integration tests
+/// link the lib without it.
+#[doc(hidden)]
+pub mod in_memory;
 mod mandatory;
 pub mod policy;
 pub mod provider;

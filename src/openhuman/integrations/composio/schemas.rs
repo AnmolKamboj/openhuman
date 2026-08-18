@@ -934,7 +934,7 @@ fn handle_set_user_scopes(params: Map<String, Value>) -> ControllerFuture {
             admin = pref.admin,
             "[composio:scopes] handler entry"
         );
-        let memory = match crate::openhuman::memory::global::client_if_ready() {
+        let memory = match tinymemory_core::global::client_if_ready() {
             Some(m) => m,
             None => {
                 tracing::error!(

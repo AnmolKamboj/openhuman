@@ -2,7 +2,6 @@ use super::*;
 
 use crate::openhuman::agent::host_runtime::{NativeRuntime, RuntimeAdapter};
 use crate::openhuman::config::{Config, DelegateAgentConfig};
-use crate::openhuman::memory::Memory;
 use crate::openhuman::runtime::javascript::NodeBootstrap;
 use crate::openhuman::runtime::python::PythonBootstrap;
 use crate::openhuman::security::{AuditLogger, SecurityPolicy};
@@ -58,7 +57,6 @@ pub fn all_tools(
     config: Arc<Config>,
     security: &Arc<SecurityPolicy>,
     audit: Arc<AuditLogger>,
-    memory: Arc<dyn Memory>,
     browser_config: &crate::openhuman::config::BrowserConfig,
     http_config: &crate::openhuman::config::HttpRequestConfig,
     action_dir: &std::path::Path,
@@ -70,7 +68,6 @@ pub fn all_tools(
         security,
         Arc::new(NativeRuntime::new()),
         audit,
-        memory,
         browser_config,
         http_config,
         action_dir,
@@ -95,7 +92,6 @@ pub fn all_tools_with_runtime(
     security: &Arc<SecurityPolicy>,
     runtime: Arc<dyn RuntimeAdapter>,
     audit: Arc<AuditLogger>,
-    memory: Arc<dyn Memory>,
     browser_config: &crate::openhuman::config::BrowserConfig,
     http_config: &crate::openhuman::config::HttpRequestConfig,
     action_dir: &std::path::Path,
@@ -419,12 +415,9 @@ pub fn all_tools_with_runtime(
         // cross-flow exception — it can see every flow's namespace by
         // design, but can never be used to write outside a flow's own.
         #[cfg(feature = "flows")]
-        Box::new(FlowMemoryRecallTool::new(memory.clone())),
+        Box::new(FlowMemoryRecallTool::new()),
         #[cfg(feature = "flows")]
-        Box::new(FlowMemoryRememberTool::new(
-            memory.clone(),
-            security.clone(),
-        )),
+        Box::new(FlowMemoryRememberTool::new(security.clone())),
         // Wallet tools — expose wallet operations to the agent tool-call pipeline
         // so the crypto sub-agent can prepare transfers, check status, etc.
         // Gated with the `web3` feature (the wallet domain is compiled out when
@@ -441,9 +434,9 @@ pub fn all_tools_with_runtime(
         Box::new(WalletTxReceiptTool::new()),
         #[cfg(feature = "web3")]
         Box::new(WalletLookupTxTool::new()),
-        Box::new(MemoryStoreTool::new(memory.clone(), security.clone())),
-        Box::new(MemoryRecallTool::new(memory.clone())),
-        Box::new(MemoryForgetTool::new(memory.clone(), security.clone())),
+        Box::new(MemoryStoreTool::new(security.clone())),
+        Box::new(MemoryRecallTool::new()),
+        Box::new(MemoryForgetTool::new(security.clone())),
         // #4458: the memory read→dedupe→write→update-index protocol
         // (`agent::harness::memory_protocol`) can only close its write cycle via a
         // successful `update_memory_md` call, and the archivist's `[tools] named`
@@ -479,14 +472,11 @@ pub fn all_tools_with_runtime(
         // inference-based learning subsystem is enabled.  The preference
         // injection into the system prompt is controlled independently by
         // `config.learning.explicit_preferences_enabled`.
-        Box::new(RememberPreferenceTool::new(
-            memory.clone(),
-            security.clone(),
-        )),
+        Box::new(RememberPreferenceTool::new(security.clone())),
         // Two-lane explicit preferences (general → system prompt, situational →
         // per-query recall). Written verbatim to user_pref_{general,situational};
         // bypasses the inference/stability pipeline. Always registered.
-        Box::new(SavePreferenceTool::new(memory.clone(), security.clone())),
+        Box::new(SavePreferenceTool::new(security.clone())),
         Box::new(MonitorTool::new(
             security.clone(),
             Arc::clone(&runtime),
@@ -1103,7 +1093,7 @@ pub fn all_tools_with_runtime(
         "evaluating ToolStatsTool registration"
     );
     if root_config.learning.enabled && root_config.learning.tool_tracking_enabled {
-        tools.push(Box::new(ToolStatsTool::new(memory.clone())));
+        tools.push(Box::new(ToolStatsTool::new()));
         tracing::debug!("ToolStatsTool registered");
     }
 
@@ -1230,38 +1220,6 @@ pub fn all_tools_with_runtime(
         tracing::debug!("[lsp] capability gate off (set OPENHUMAN_LSP_ENABLED=1 to register)");
     }
 
-    // Language-workflow `rhai_workflows` tool (`.ragsh` REPL, `openhuman::flows::rhai`): lets
-    // the orchestrator author and run its own Rhai workflow cells (fan-out,
-    // loops, dedup/verify pipelines). Registered on the `supervised`/`full`
-    // tiers only — dark on `readonly` (it can drive effectful tools/sub-agents)
-    // and behind the `OPENHUMAN_RHAI_WORKFLOWS=0` kill switch. Every effectful inner call
-    // still re-gates itself in the Rhai bridge, so this surface adds no new
-    // ungated capability. Gated with `flows` — the whole tool (and the `rhai`
-    // engine behind it, via `tinyagents/repl`) is absent from a slim build.
-    #[cfg(feature = "flows")]
-    let rhai_workflows_enabled = std::env::var("OPENHUMAN_RHAI_WORKFLOWS")
-        .or_else(|_| std::env::var("OPENHUMAN_RHAI"))
-        .or_else(|_| std::env::var("OPENHUMAN_RLM"))
-        .map(|v| v != "0")
-        .unwrap_or(true);
-    #[cfg(feature = "flows")]
-    if rhai_workflows_enabled
-        && security.autonomy != crate::openhuman::security::policy::AutonomyLevel::ReadOnly
-    {
-        tools.push(Box::new(crate::openhuman::flows::rhai::RhaiTool::new()));
-        tracing::debug!("[rhai_workflows] registered rhai_workflows language-workflow tool");
-    } else {
-        tracing::debug!(
-            rhai_workflows_enabled,
-            tier = ?security.autonomy,
-            "[rhai_workflows] rhai_workflows tool not registered (readonly tier or OPENHUMAN_RHAI_WORKFLOWS=0)"
-        );
-    }
-    #[cfg(not(feature = "flows"))]
-    tracing::debug!(
-        "[rhai_workflows] rhai_workflows tool not registered — flows feature disabled at compile time"
-    );
-
     // Two INDEPENDENT post-filters over the assembled list (kernel.md §3.7's
     // separate axes — a narrowed DomainSet must not narrow capabilities, and
     // vice versa):
@@ -1373,9 +1331,6 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
         "list_connectable_toolkits",
         "list_node_kinds",
         "get_node_kind_contract",
-        // The `rhai_workflows` (.ragsh) tool is compile-gated with `flows` and
-        // belongs to the same runtime domain — drop it when Flows is off too.
-        "rhai_workflows",
         // Per-flow sandboxed memory (issue #5173) — `flow_` prefixed, not
         // `memory_`, so it does NOT fall under the `memory_` prefix check
         // below and must be listed here explicitly like every other
@@ -1591,8 +1546,8 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
 /// about what the *model is told exists*, and the later re-point onto
 /// `MemoryGuard` must not change the advertised surface. Assigning them `None`
 /// to dodge the mismatch would bake the wrong contract in.
-fn tool_capability(name: &str) -> Option<tinycortex_api::capabilities::Capability> {
-    use tinycortex_api::capabilities::Capability;
+fn tool_capability(name: &str) -> Option<crate::openhuman::memory::api::capabilities::Capability> {
+    use crate::openhuman::memory::api::capabilities::Capability;
 
     // Not driver-backed. Each entry is an argued exception, not a fallthrough.
     if name == "update_memory_md"          // writes the workspace `MEMORY.md` file directly

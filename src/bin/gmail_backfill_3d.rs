@@ -29,7 +29,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use openhuman_core::openhuman::config::Config;
-use openhuman_core::openhuman::memory::queue::drain_until_idle;
+use tinymemory_core::queue::drain_until_idle;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -107,8 +107,8 @@ async fn main() -> Result<()> {
         .await
         .context("[gmail_backfill_3d] Config::load_or_init failed")?;
 
-    let memory = openhuman_core::openhuman::memory::global::init(config.workspace_dir.clone())
-        .map_err(anyhow::Error::msg)?;
+    let memory =
+        tinymemory_core::global::init(config.workspace_dir.clone()).map_err(anyhow::Error::msg)?;
     if cli.wipe {
         log::info!("[gmail_backfill_3d] clearing skill-gmail documents");
         memory
@@ -161,7 +161,7 @@ async fn main() -> Result<()> {
                 "no Gmail connection configured; pass --connection-id or add a Gmail memory source"
             )
         })?;
-    let outcome = openhuman_core::openhuman::memory::tinycortex::run_gmail_backfill(
+    let outcome = tinymemory_core::tinycortex::run_gmail_backfill(
         &connection_id,
         &query,
         cli.max_pages as usize,
@@ -214,9 +214,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn gmail_document_count(
-    memory: &openhuman_core::openhuman::memory::store::MemoryClientRef,
-) -> Result<usize> {
+async fn gmail_document_count(memory: &tinymemory_core::store::MemoryClientRef) -> Result<usize> {
     let value = memory
         .list_documents(Some("skill-gmail"))
         .await

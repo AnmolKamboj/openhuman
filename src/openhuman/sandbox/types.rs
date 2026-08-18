@@ -56,7 +56,7 @@ pub struct SandboxExecRequest {
     /// container-side path (e.g. `/workspace`).
     pub working_dir: PathBuf,
     /// Environment variables to inject.
-    pub env: HashMap<String, String>,
+    pub env: HashMap<std::ffi::OsString, std::ffi::OsString>,
     /// Execution timeout.
     pub timeout: std::time::Duration,
 }

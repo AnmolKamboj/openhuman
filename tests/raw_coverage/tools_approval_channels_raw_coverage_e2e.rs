@@ -1399,12 +1399,10 @@ fn tools_and_tool_registry_public_surfaces_cover_schema_and_assembly_paths() {
         &config.workspace_dir,
         &config.workspace_dir,
     ));
-    let memory: Arc<dyn Memory> = Arc::new(StubMemory);
     let tools = all_tools(
         Arc::new(config.clone()),
         &security,
         AuditLogger::disabled(),
-        memory,
         &config.browser,
         &config.http_request,
         &config.workspace_dir,

@@ -394,10 +394,10 @@ fn solana_payment_proof_serializes_correctly() {
 
 #[test]
 fn eip712_domain_separator_is_deterministic() {
-    // Now `tinywallet::eip712`, which also pins the hashes against the
-    // published EIP-712/EIP-3009 constants. What this still checks is the
-    // property that matters at this layer: the separator binds the chain, so
-    // an authorization cannot be replayed on another one.
+    // Now `tinywallet::eip712`; the crate's own suite pins its hashes against
+    // the published EIP-712/EIP-3009 vectors. What this test checks is the
+    // property that matters at this layer: the separator is deterministic and
+    // binds the chain, so an authorization cannot be replayed on another one.
     use tinywallet::eip712::domain_separator;
 
     let contract = base_usdc();

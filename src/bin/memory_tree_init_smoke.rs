@@ -30,7 +30,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use openhuman_core::openhuman::config::Config;
-use openhuman_core::openhuman::memory::store::chunks::store::with_connection;
+use tinymemory_core::store::chunks::store::with_connection;
 
 fn main() -> ExitCode {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -57,10 +57,8 @@ fn main() -> ExitCode {
         }
     };
 
-    let cfg = Config {
-        workspace_dir: workspace.clone(),
-        ..Config::default()
-    };
+    let mut cfg = Config::default();
+    cfg.workspace_dir = workspace.clone();
 
     let db_path = workspace.join("memory_tree").join("chunks.db");
     let cold = !db_path.exists();

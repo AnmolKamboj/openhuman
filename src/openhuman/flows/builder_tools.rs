@@ -2660,7 +2660,10 @@ impl Tool for GetNodeKindContractTool {
             "properties": {
                 "kind": {
                     "type": "string",
-                    "description": "One of the 15 node kinds, e.g. 'tool_call' (from list_node_kinds).",
+                    "description": format!(
+                        "One of the {} node kinds, e.g. 'tool_call' (from list_node_kinds).",
+                        crate::openhuman::flows::NODE_KINDS.len()
+                    ),
                     "enum": crate::openhuman::flows::NODE_KINDS,
                 }
             },
@@ -2688,8 +2691,9 @@ impl Tool for GetNodeKindContractTool {
                 &contract,
             )?)),
             None => Ok(ToolResult::error(format!(
-                "'{kind}' is not a tinyflows node kind — call list_node_kinds for the 14 valid \
-                 kinds."
+                "'{kind}' is not a tinyflows node kind — call list_node_kinds for the {} valid \
+                 kinds.",
+                super::node_contracts::NODE_KINDS.len()
             ))),
         }
     }

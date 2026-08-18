@@ -8,6 +8,13 @@ import SidebarNav from './SidebarNav';
 // Analytics is fire-and-forget; stub it so the nav renders without a transport.
 vi.mock('../../../services/analytics', () => ({ trackEvent: vi.fn() }));
 
+// The Tiny.Place (agent-world) tab is gated on a tiny.place identity (#5424).
+// These tests exercise active-route matching with the full nav, so pin identity
+// present; the gate itself is covered by useNavTabs.test.ts.
+vi.mock('../../../hooks/useTinyPlaceIdentity', () => ({
+  useTinyPlaceIdentity: () => ({ status: 'ready', hasIdentity: true }),
+}));
+
 /** The rendered button for a nav label (label text lives in a child span). */
 function tabButton(label: string): HTMLButtonElement {
   return screen.getByRole('button', { name: new RegExp(label) }) as HTMLButtonElement;
@@ -53,17 +60,20 @@ describe('SidebarNav active matching', () => {
     expect(tabButton('Workflows')).not.toHaveAttribute('aria-current');
   });
 
-  it('gives the active tab a visible brand-accent fill (not the white sidebar background)', () => {
+  it('gives the active tab a neutral fill that lifts off the chrome, not an accent tint', () => {
     renderWithProviders(<SidebarNav />, { initialEntries: ['/chat'] });
 
     const active = tabButton('Chat');
-    // Active state uses a themeable primary-accent tint that contrasts against
-    // any sidebar surface (light, dark, or custom themes).
-    expect(active.className).toContain('bg-primary-500/12');
+    // The sidebar sits on the themed chrome layer, which already carries the
+    // theme's hue — so selection is a neutral surface lift plus weight. Tinting
+    // the pill on top of a tinted chrome stacks two colours and reads as noise.
+    expect(active.className).toContain('bg-surface/70');
+    expect(active.className).toContain('font-semibold');
+    expect(active.className).not.toContain('bg-primary');
     expect(active.className).not.toContain('bg-white');
 
     // Inactive tabs carry no active fill.
-    expect(tabButton('Human').className).not.toContain('bg-primary-500/12');
+    expect(tabButton('Human').className).not.toContain('bg-surface/70');
   });
 
   it('clears an active provider selection when clicking the already-active nav item', () => {

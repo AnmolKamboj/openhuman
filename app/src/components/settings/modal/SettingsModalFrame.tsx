@@ -72,6 +72,11 @@ export function SettingsModalFrame({ onClose, children, labelledBy }: SettingsMo
           aria-label={labelledBy ? undefined : t('nav.settings')}
           tabIndex={-1}
           data-testid="settings-modal-card"
+          // Radius matches the shell's ContentSurface so the modal reads as the
+          // app's one content card lifted forward. It keeps `shadow-xl` rather
+          // than the shell's `shadow-content-edge` hairline: this card floats on
+          // a dimmed scrim with no adjacent chrome to seam against, and the two
+          // utilities would collide on `box-shadow` anyway.
           className="flex h-full w-full overflow-hidden rounded-2xl bg-surface shadow-xl animate-fade-up focus:outline-none">
           {children}
         </div>

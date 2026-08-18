@@ -10,6 +10,26 @@
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+/// Return the process-global workspace used by memory tests without starting a
+/// client.
+///
+/// Binding tests use this narrower helper because constructing a module-backed
+/// provider is intentionally synchronous and lazy. The live client starts a
+/// Tokio ingestion worker, so initializing it here would make a mere bind
+/// depend on whichever test happened to install a reactor first.
+pub(crate) fn shared_memory_test_workspace() -> PathBuf {
+    static WORKSPACE: OnceLock<PathBuf> = OnceLock::new();
+    WORKSPACE
+        .get_or_init(|| {
+            let tmp = tempfile::TempDir::new().expect("tempdir");
+            let path = tmp.path().join("workspace");
+            std::fs::create_dir_all(&path).expect("workspace dir");
+            std::mem::forget(tmp);
+            path
+        })
+        .clone()
+}
+
 /// Binds the process-global memory client to a single shared temp workspace and
 /// returns that workspace path.
 ///
@@ -25,15 +45,7 @@ pub(crate) fn ensure_shared_memory_client() -> PathBuf {
     // unwired. Before the extraction these were direct calls and needed no
     // setup; now they need the host impls installed.
     crate::openhuman::memory::host_impls::install_for_tests();
-    static WORKSPACE: OnceLock<PathBuf> = OnceLock::new();
-    let workspace = WORKSPACE.get_or_init(|| {
-        let tmp = tempfile::TempDir::new().expect("tempdir");
-        let path = tmp.path().join("workspace");
-        std::fs::create_dir_all(&path).expect("workspace dir");
-        std::mem::forget(tmp);
-        path
-    });
-    crate::openhuman::memory::global::init(workspace.clone())
-        .expect("initialize shared test memory client");
-    workspace.clone()
+    let workspace = shared_memory_test_workspace();
+    tinymemory_core::global::init(workspace.clone()).expect("initialize shared test memory client");
+    workspace
 }

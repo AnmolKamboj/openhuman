@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { useT } from '../../lib/i18n/I18nContext';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
@@ -8,10 +8,9 @@ import {
   selectCustomSecondaryColor,
   selectMascotColor,
   selectSpeakReplies,
-  selectVoiceMode,
   setSpeakReplies,
 } from '../../store/mascotSlice';
-import { VOICE_MODE_FLAG_ENABLED } from '../../utils/config';
+import { HUMAN_VOICE_REALTIME_ENABLED, HUMAN_VOICE_SHOW_BOTH } from '../../utils/config';
 import Conversations from '../conversations/Conversations';
 import {
   CustomGifMascot,
@@ -23,6 +22,9 @@ import {
 import { useMascotManifest } from './Mascot/manifest/useMascotManifest';
 import RealtimeVoiceControls from './RealtimeVoiceControls';
 import { useHumanMascot } from './useHumanMascot';
+import { IDLE_REALTIME_VOICE_AUDIO, type RealtimeVoiceAudio } from './voice/amplitudeLipsync';
+import { useAmplitudeLipsync } from './voice/useAmplitudeLipsync';
+import { resolveHumanVoiceEntry } from './voiceEntry';
 
 const HumanPage = () => {
   const { t } = useT();
@@ -35,8 +37,24 @@ const HumanPage = () => {
   const speakReplies = useAppSelector(selectSpeakReplies);
 
   const { face, visemeCode } = useHumanMascot({ speakReplies });
-  const voiceMode = useAppSelector(selectVoiceMode);
-  const realtimeEnabled = VOICE_MODE_FLAG_ENABLED && voiceMode === 'realtime';
+
+  // Lip-sync for the realtime voice session. The session lives inside
+  // RealtimeVoiceControls (which owns its own ConversationProvider), so it
+  // publishes its output-loudness accessor into this ref and the mascot samples
+  // it per frame — a 60fps signal must not travel through React state.
+  const realtimeAudioRef = useRef<RealtimeVoiceAudio>({ ...IDLE_REALTIME_VOICE_AUDIO });
+  // The agent's speaking edge, lifted out of RealtimeVoiceControls so it can gate
+  // the lip-sync loop below. Flips a couple of times per turn, so it is cheap as
+  // state (the 60fps amplitude stays in the ref). While it is false — an idle
+  // realtime session, or the classic voice path that never mounts the control —
+  // the loop schedules no frames at all.
+  const [realtimeSpeaking, setRealtimeSpeaking] = useState(false);
+  const realtimeLipsync = useAmplitudeLipsync(realtimeAudioRef, realtimeSpeaking);
+
+  // While the agent is speaking its own audio drives the mouth; otherwise the
+  // classic path keeps ownership, so the two never fight over the same frame.
+  const mascotFace = realtimeLipsync.active ? 'speaking' : face;
+  const mascotVisemeCode = realtimeLipsync.active ? realtimeLipsync.visemeCode : visemeCode;
   const mascotColor = useAppSelector(selectMascotColor);
   const customPrimary = useAppSelector(selectCustomPrimaryColor);
   const customSecondary = useAppSelector(selectCustomSecondaryColor);
@@ -53,6 +71,17 @@ const HumanPage = () => {
     [mascotColor, customSecondary, palette]
   );
 
+  // Which voice control the tab offers. Build-flag driven (#5399). In the
+  // single-control modes the realtime button takes the slot the push-to-talk mic
+  // used to own, so the tab has one voice affordance rather than two competing
+  // ones. `both` keeps them apart instead of stacking them — the realtime button
+  // floats over the mascot stage where it used to live, the card keeps
+  // tap-and-speak — so the two paths stay visually distinct while being compared.
+  const voiceEntry = resolveHumanVoiceEntry({
+    realtimeEnabled: HUMAN_VOICE_REALTIME_ENABLED,
+    showBoth: HUMAN_VOICE_SHOW_BOTH,
+  });
+
   // The mascot drives a ~60fps lipsync re-render while the agent is speaking
   // (useHumanMascot forces a frame each rAF tick). Conversations is a heavy
   // subtree, so co-rendering it here would reconcile the whole chat tree every
@@ -60,9 +89,26 @@ const HumanPage = () => {
   // locked during TTS playback (#5357). Its props are constant, so hold a stable
   // element: React short-circuits reconciliation of an unchanged child, keeping
   // the per-frame mascot re-render off the chat tree and the UI responsive.
+  // `voiceEntry` is build-time constant, so it cannot invalidate this memo at
+  // runtime — it is in the deps only to keep the dependency honest.
   const chatPanel = useMemo(
-    () => <Conversations variant="sidebar" composer="mic-cloud" projectThreadList />,
-    []
+    () => (
+      <Conversations
+        variant="sidebar"
+        composer="mic-cloud"
+        voiceChatControl={
+          voiceEntry === 'realtime' ? (
+            <RealtimeVoiceControls
+              audioRef={realtimeAudioRef}
+              onSpeakingChange={setRealtimeSpeaking}
+            />
+          ) : null
+        }
+        showMicComposer={voiceEntry !== 'realtime'}
+        projectThreadList
+      />
+    ),
+    [voiceEntry]
   );
 
   return (
@@ -78,35 +124,38 @@ const HumanPage = () => {
       <div className="absolute inset-y-0 left-0 right-[436px] flex items-center justify-center">
         <div className="relative w-[min(80vh,90%)] aspect-square">
           {customMascotGifUrl ? (
-            <CustomGifMascot src={customMascotGifUrl} face={face} />
+            <CustomGifMascot src={customMascotGifUrl} face={mascotFace} />
           ) : mascotEntry ? (
             <ManifestRiveMascot
               key={mascotEntry.id}
               entry={mascotEntry}
-              face={face}
+              face={mascotFace}
               primaryColor={primaryColor}
               secondaryColor={secondaryColor}
-              visemeCode={visemeCode}
+              visemeCode={mascotVisemeCode}
               idlePoseRotation
             />
           ) : (
             <RiveMascot
-              face={face}
+              face={mascotFace}
               primaryColor={primaryColor}
               secondaryColor={secondaryColor}
-              visemeCode={visemeCode}
+              visemeCode={mascotVisemeCode}
               idlePoseRotation
             />
           )}
         </div>
       </div>
 
-      {/* Realtime voice-chat controls (#5399) — additive overlay shown only when
-          the flag + realtime mode are on; the classic push-to-talk path below
-          is untouched. */}
-      {realtimeEnabled && (
+      {/* Comparison mode only: the realtime control keeps its own place over the
+          mascot stage, so it reads as a separate path from the card's
+          tap-and-speak rather than a second button stacked on it. */}
+      {voiceEntry === 'both' && (
         <div className="absolute bottom-8 left-0 right-[436px] z-10 flex justify-center">
-          <RealtimeVoiceControls />
+          <RealtimeVoiceControls
+            audioRef={realtimeAudioRef}
+            onSpeakingChange={setRealtimeSpeaking}
+          />
         </div>
       )}
 
