@@ -194,7 +194,7 @@ pub async fn run_linkedin_enrichment(
     result.log.push("Scraping LinkedIn profile...".into());
 
     // Build memory client once for all persist calls.
-    let memory = match build_memory_client() {
+    let memory = match build_memory_client().await {
         Ok(m) => Some(m),
         Err(e) => {
             tracing::warn!(
@@ -686,11 +686,27 @@ pub async fn scrape_linkedin_profile(
 /// ingestion worker on one store". `new_local` reaches the same constructor one
 /// call deeper, so it was the same hazard with none of the enforcement.
 ///
-/// The caller treats an error here as "skip persistence and warn", so a host
-/// that has not bound memory yet now loses the profile write rather than
-/// misplacing it.
-fn build_memory_client() -> anyhow::Result<tinymemory_core::store::MemoryClientRef> {
-    tinymemory_core::global::client().map_err(|e| anyhow::anyhow!("memory client unavailable: {e}"))
+/// Resolved through `memory::ops::helpers::active_memory_client` rather than
+/// `global::client` directly, for two reasons beyond the one above.
+///
+/// It does not lose the write when startup wiring has not run: it falls back to
+/// `global::init(Config::load_or_init().workspace_dir)`, explicitly **not** to
+/// `~/.openhuman/workspace` — so it cannot reintroduce the bug this function
+/// exists to fix. Both entry points reach here inside a running daemon, so init
+/// has almost certainly happened; this is about which failure the remaining case
+/// gets, and silently dropping a scraped profile is the worse one.
+///
+/// It also resolves the *same* workspace `write_profile_md` writes `PROFILE.md`
+/// into, since both now derive it from `Config`. Taking the global binding here
+/// left the two halves of `run_linkedin_enrichment` deriving their target from
+/// different sources, which can in principle disagree.
+///
+/// The caller still treats an error as "skip persistence and warn", for the
+/// genuine failures that remain.
+async fn build_memory_client() -> anyhow::Result<tinymemory_core::store::MemoryClientRef> {
+    crate::openhuman::memory::ops::helpers::active_memory_client()
+        .await
+        .map_err(|e| anyhow::anyhow!("memory client unavailable: {e}"))
 }
 
 /// Persist the full scraped LinkedIn profile to the user-profile memory

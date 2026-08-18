@@ -191,14 +191,20 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     // `MemoryProfile` on the bound driver.
     (
         "src/openhuman/agent/learning/linkedin_enrichment.rs",
-        "global::client(",
+        "active_memory_client(",
         "LinkedIn profile persistence needs `MemoryClient::store_skill_sync`, which \
-         derives the `skill-<id>` namespace and keys the upsert on an opaque \
-         `document_id` so a scraped title never reaches the secret/PII key guard. \
-         No provider family carries that, and reimplementing it at the call site is \
-         the duplication the method exists to prevent. Previously reached the same \
-         client via `MemoryClient::new_local()`, which the scanner had no needle for \
-         and which pinned `~/.openhuman` regardless of OPENHUMAN_WORKSPACE",
+         derives the `skill-<id>` namespace and stamps every write \
+         `MemoryTaint::ExternalSync` so the subconscious gate can see the \
+         provenance through the persistence layer. No provider family exposes \
+         either, and reimplementing them at the call site is the duplication the \
+         method exists to prevent. Note it does NOT get the opaque-`document_id` \
+         key protection: this caller passes `None`, and `store_skill_sync` names \
+         it as the exception — the key stays the title and does go through the \
+         secret/PII guard. Harmless for a LinkedIn URL, but stated here because a \
+         reason string that overclaims is worse than none. Previously reached the \
+         same client via `MemoryClient::new_local()`, which the scanner had no \
+         needle for and which pinned `~/.openhuman` regardless of \
+         OPENHUMAN_WORKSPACE",
     ),
     (
         "src/openhuman/agent/learning/startup.rs",
