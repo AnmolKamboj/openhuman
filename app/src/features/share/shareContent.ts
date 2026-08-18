@@ -126,7 +126,11 @@ export function buildFallbackHeadline(agentOutput: string): string {
   const cleaned = redactSensitive(stripMarkdown(agentOutput));
   if (!cleaned) return '';
   // Prefer the first sentence; fall back to the whole cleaned string.
-  const firstSentence = cleaned.split(/(?<=[.!?])\s/)[0] ?? cleaned;
+  // Match up to and including the first sentence terminator that is followed
+  // by whitespace. A lookahead (not a lookbehind) is used deliberately: RegExp
+  // lookbehind needs WebKit 16.4, which no macOS 12 (Monterey) system WebView
+  // ships, so it would throw before the module loads (#5571).
+  const firstSentence = cleaned.match(/^[\s\S]*?[.!?](?=\s)/)?.[0] ?? cleaned;
   const candidate = firstSentence.length >= 12 ? firstSentence : cleaned;
   return truncateAtWord(candidate.replace(/[.!?]+$/, ''), SHARE_HEADLINE_MAX);
 }

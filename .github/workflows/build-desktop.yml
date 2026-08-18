@@ -382,7 +382,9 @@ jobs:
           # DIFs go to the Tauri / core projects in the dedicated steps
           # below.
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT_REACT }}
-          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.settings.platform == 'macos-latest' && '10.15' || '' }}
+          # Keep in sync with bundle.macOS.minimumSystemVersion in
+          # app/src-tauri/tauri.conf.json — the Wry system-WebView floor (#5571).
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.settings.platform == 'macos-latest' && '12.3' || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || secrets.UPDATER_PRIVATE_KEY_PASSWORD }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.UPDATER_PRIVATE_KEY }}
           WITH_UPDATER: ${{ inputs.with_updater && 'true' || 'false' }}
