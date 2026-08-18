@@ -162,6 +162,7 @@ are recorded here so M4c starts from the real set.
 | `flows/ops.rs` | The production namespace clear uses `MemoryDocuments`; only the directly injected `MemoryClientRef` test seam remains raw. |
 | `integrations/composio/schemas.rs` | Passes `&MemoryClientRef` into `user_scopes::save`. |
 | `memory/sync/composio/providers/user_scopes.rs`, `types.rs` | Same `&MemoryClientRef` parameter shape. |
+| `agent/learning/linkedin_enrichment.rs` | `MemoryClient::store_skill_sync` — derives the `skill-<id>` namespace and stamps every write `MemoryTaint::ExternalSync`, so the subconscious gate can see the provenance through the persistence layer. No provider family exposes either, and reimplementing them at the call site is the duplication the method exists to prevent. **It does not get the opaque-`document_id` key protection:** this caller passes `None`, and `store_skill_sync` names it as the exception — the key stays the title (`LinkedIn profile: {url}`) and does go through `upsert_document`'s secret/PII key guard. Harmless in practice for a LinkedIn URL, recorded because this column is what a future reviewer relies on to tell deliberate from forgotten, and a reason that overclaims is worse than none. **Newly listed, not newly bypassed:** this site previously reached the same client through `MemoryClient::new_local()`, for which the scanner had no needle — and which pinned `~/.openhuman` regardless of `OPENHUMAN_WORKSPACE`, so on a scoped host the profile was written to a store nothing else reads. |
 
 ### E. Tests
 

@@ -190,6 +190,23 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     // family", and it now has one. The learning subsystem reads facets through
     // `MemoryProfile` on the bound driver.
     (
+        "src/openhuman/agent/learning/linkedin_enrichment.rs",
+        "active_memory_client(",
+        "LinkedIn profile persistence needs `MemoryClient::store_skill_sync`, which \
+         derives the `skill-<id>` namespace and stamps every write \
+         `MemoryTaint::ExternalSync` so the subconscious gate can see the \
+         provenance through the persistence layer. No provider family exposes \
+         either, and reimplementing them at the call site is the duplication the \
+         method exists to prevent. Note it does NOT get the opaque-`document_id` \
+         key protection: this caller passes `None`, and `store_skill_sync` names \
+         it as the exception — the key stays the title and does go through the \
+         secret/PII guard. Harmless for a LinkedIn URL, but stated here because a \
+         reason string that overclaims is worse than none. Previously reached the \
+         same client via `MemoryClient::new_local()`, which the scanner had no \
+         needle for and which pinned `~/.openhuman` regardless of \
+         OPENHUMAN_WORKSPACE",
+    ),
+    (
         "src/openhuman/agent/learning/startup.rs",
         "MemoryClient::from_workspace_dir(",
         "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",
