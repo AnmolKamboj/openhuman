@@ -44,6 +44,17 @@ fn required_str(args: &Value, key: &str) -> anyhow::Result<String> {
         .ok_or_else(|| anyhow::anyhow!("`{key}` is required"))
 }
 
+/// Renders one `env` object value. A number or a bool is still a variable, so
+/// it is rendered rather than dropped. `null` and a container are refused: a
+/// variable silently set to `"null"` is worse than a named error.
+fn env_value(key: &str, value: &Value) -> anyhow::Result<String> {
+    match value {
+        Value::String(value) => Ok(value.clone()),
+        Value::Number(_) | Value::Bool(_) => Ok(value.to_string()),
+        _ => anyhow::bail!("`env.{key}` must be a string, number, or boolean"),
+    }
+}
+
 /// Renders a launch as the two sentences a model needs: where it is, and what
 /// it still has to wait for.
 fn describe(launch: &Launch) -> String {
@@ -151,20 +162,11 @@ impl LaunchSiteTool {
         }
 
         if let Some(env) = args.get("env").and_then(Value::as_object) {
-            plan = plan.with_env(
-                env.iter()
-                    .map(|(key, value)| {
-                        EnvVar::new(
-                            key,
-                            value.as_str().map(ToOwned::to_owned).unwrap_or_else(|| {
-                                // A number or bool in the object is still a
-                                // variable; render it rather than dropping it.
-                                value.to_string()
-                            }),
-                        )
-                    })
-                    .collect(),
-            );
+            let vars = env
+                .iter()
+                .map(|(key, value)| Ok(EnvVar::new(key, env_value(key, value)?)))
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            plan = plan.with_env(vars);
         }
 
         if let Some(domains) = args.get("domains").and_then(Value::as_array) {
@@ -490,24 +492,17 @@ impl Tool for SetEnvTool {
             Vec::new()
         };
 
-        let vars: Vec<EnvVar> = env
+        let vars: Vec<EnvVar> = match env
             .iter()
             .map(|(key, value)| {
-                let var = EnvVar::new(
-                    key,
-                    value
-                        .as_str()
-                        .map(ToOwned::to_owned)
-                        .unwrap_or_else(|| value.to_string()),
-                )
-                .with_targets(targets.clone());
-                if secret {
-                    var.secret()
-                } else {
-                    var
-                }
+                let var = EnvVar::new(key, env_value(key, value)?).with_targets(targets.clone());
+                Ok(if secret { var.secret() } else { var })
             })
-            .collect();
+            .collect::<anyhow::Result<Vec<_>>>()
+        {
+            Ok(vars) => vars,
+            Err(error) => return Ok(ToolResult::error(error.to_string())),
+        };
 
         let names: Vec<&str> = vars.iter().map(|var| var.key.as_str()).collect();
         match self.host.set_env(&site, &vars).await {
@@ -659,19 +654,22 @@ impl Tool for AnalyticsTool {
 
         let mut query = AnalyticsQuery::new(site, since_ms, until_ms);
         if let Some(dimension) = args.get("breakdown").and_then(Value::as_str) {
-            let dimension = match dimension {
-                "country" => Some(AnalyticsDimension::Country),
-                "request_path" => Some(AnalyticsDimension::RequestPath),
-                "device_type" => Some(AnalyticsDimension::DeviceType),
-                "browser_name" => Some(AnalyticsDimension::BrowserName),
-                "os_name" => Some(AnalyticsDimension::OsName),
-                "referrer_hostname" => Some(AnalyticsDimension::ReferrerHostname),
-                "route" => Some(AnalyticsDimension::Route),
-                _ => None,
+            let breakdown = match dimension {
+                "country" => AnalyticsDimension::Country,
+                "request_path" => AnalyticsDimension::RequestPath,
+                "device_type" => AnalyticsDimension::DeviceType,
+                "browser_name" => AnalyticsDimension::BrowserName,
+                "os_name" => AnalyticsDimension::OsName,
+                "referrer_hostname" => AnalyticsDimension::ReferrerHostname,
+                "route" => AnalyticsDimension::Route,
+                other => {
+                    return Ok(ToolResult::error(format!(
+                        "`breakdown` must be one of country, request_path, device_type, \
+                         browser_name, os_name, referrer_hostname, route — not `{other}`"
+                    )));
+                }
             };
-            if let Some(dimension) = dimension {
-                query = query.with_breakdown(dimension);
-            }
+            query = query.with_breakdown(breakdown);
         }
 
         match self.host.analytics(&query).await {

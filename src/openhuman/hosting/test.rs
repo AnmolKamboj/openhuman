@@ -151,7 +151,14 @@ fn a_directory_inside_the_workspace_resolves() {
 
     let resolved = resolve_in_workspace(workspace.path(), "site").expect("resolves");
 
-    assert!(resolved.ends_with("site"));
+    assert_eq!(
+        resolved,
+        workspace
+            .path()
+            .canonicalize()
+            .expect("canonical root")
+            .join("site")
+    );
 }
 
 #[test]

@@ -13,7 +13,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct HostingConfig {
     /// Master switch. When `false`, no hosting tool is registered, whatever
@@ -34,6 +34,22 @@ pub struct HostingConfig {
     /// personal account.
     #[serde(default)]
     pub team: String,
+}
+
+impl std::fmt::Debug for HostingConfig {
+    /// Redacts `api_key`. `Config` derives `Debug` and embeds `HostingConfig`,
+    /// so a nested `{:?}` must never render the raw credential.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HostingConfig")
+            .field("enabled", &self.enabled)
+            .field("provider", &self.provider)
+            .field(
+                "api_key",
+                &if self.has_api_key() { "<redacted>" } else { "" },
+            )
+            .field("team", &self.team)
+            .finish()
+    }
 }
 
 fn default_provider() -> String {
@@ -112,5 +128,26 @@ mod tests {
         assert!(config.enabled);
         assert_eq!(config.provider, "vercel");
         assert_eq!(config.api_key, "token");
+    }
+
+    #[test]
+    fn the_team_scope_round_trips_through_toml() {
+        let config: HostingConfig =
+            toml::from_str("enabled = true\nteam = \"team_abc\"\n").expect("parses");
+
+        assert_eq!(config.team(), Some("team_abc"));
+    }
+
+    #[test]
+    fn debug_formatting_never_renders_the_raw_key() {
+        let config = HostingConfig {
+            api_key: "super-secret-token".to_string(),
+            ..HostingConfig::default()
+        };
+
+        let rendered = format!("{config:?}");
+
+        assert!(!rendered.contains("super-secret-token"));
+        assert!(rendered.contains("<redacted>"));
     }
 }
