@@ -93,6 +93,27 @@ describe('buildFallbackHeadline', () => {
   test('redacts secrets that appear in output', () => {
     expect(buildFallbackHeadline('Wrote key to /Users/jane/.env file')).not.toContain('jane');
   });
+
+  // First-sentence extraction was rewritten off a RegExp lookbehind (WebKit
+  // 16.4+, unavailable on the macOS 12 system WebView) onto a lookahead
+  // (#5571). These pin the equivalence across terminators and boundaries.
+  test('splits the first sentence on ! and ? terminators', () => {
+    expect(buildFallbackHeadline('Shipped the feature! Then celebrated.')).toBe(
+      'Shipped the feature'
+    );
+    expect(buildFallbackHeadline('Did the build work? I think so.')).toBe('Did the build work');
+  });
+
+  test('splits on the first terminator even with extra whitespace', () => {
+    expect(buildFallbackHeadline('First thing here.  Second thing.')).toBe('First thing here');
+  });
+
+  test('keeps the whole string when no terminator is followed by whitespace', () => {
+    // Periods inside a version string are not followed by whitespace → no boundary.
+    expect(buildFallbackHeadline('Bumped to v1.2.3 today')).toBe('Bumped to v1.2.3 today');
+    // Terminator at end of input with no trailing whitespace → whole string.
+    expect(buildFallbackHeadline('All done here.')).toBe('All done here');
+  });
 });
 
 describe('sanitizeHeadline', () => {
