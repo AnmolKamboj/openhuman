@@ -719,8 +719,18 @@ async fn memory_source_status_counts_reader_and_composio_prefixes() {
     ];
     upsert_chunks(&config, &chunks).expect("upsert chunks");
     with_connection(&config, |conn| {
+        // Mark the chunk embedded the way the status query now READS it.
+        // Setting `mem_tree_chunks.embedding` no longer means anything: that
+        // legacy column is never written by the engine, which is why the
+        // status query used to report every chunk pending forever
+        // (tinymemory#59 item 2). It counts against the live
+        // `mem_tree_chunk_embeddings` sidecar now, so the fixture writes
+        // there.
         conn.execute(
-            "UPDATE mem_tree_chunks SET embedding = X'00010203' WHERE source_id = ?1",
+            "INSERT INTO mem_tree_chunk_embeddings \
+               (chunk_id, model_signature, vector, dim, created_at) \
+             SELECT id, 'test-model', X'00010203', 4, 0.0 \
+               FROM mem_tree_chunks WHERE source_id = ?1",
             ["mem_src:src_folder:note-1"],
         )?;
         Ok(())

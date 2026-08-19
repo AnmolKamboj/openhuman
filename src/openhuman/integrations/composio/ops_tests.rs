@@ -908,10 +908,10 @@ async fn notion_cleanup_targets_include_synced_page_sources() {
     let mut state = SyncState::new("notion", "conn-1");
     state.mark_synced("page-a@2026-01-01T00:00:00Z");
     state.mark_synced("page-b");
-    let adapter = tinymemory_core::tinycortex::HostSyncAdapter::new(memory);
+    let adapter = tinymemory_core::tinycortex::HostSyncAdapter::new(std::sync::Arc::clone(&memory));
     state.save(&adapter).await.expect("sync state should save");
 
-    let targets = composio_memory_targets_for_connection(&config, Some("notion"), "conn-1")
+    let targets = composio_memory_targets_for_connection(&memory, Some("notion"), "conn-1")
         .await
         .expect("notion cleanup targets should resolve");
 
@@ -951,7 +951,7 @@ async fn notion_cleanup_targets_surface_corrupt_sync_state() {
         .await
         .expect("corrupt sync state should be written");
 
-    let err = composio_memory_targets_for_connection(&config, Some("notion"), "conn-1")
+    let err = composio_memory_targets_for_connection(&memory, Some("notion"), "conn-1")
         .await
         .expect_err("corrupt sync state should surface");
 
@@ -960,12 +960,23 @@ async fn notion_cleanup_targets_surface_corrupt_sync_state() {
 
 #[tokio::test]
 async fn drive_cleanup_targets_are_connection_scoped() {
+    // The embedding seam fails loudly when unwired; same reasoning as the
+    // notion tests above.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let tmp = tempfile::tempdir().unwrap();
     let config = test_config(&tmp);
+    // The drive arm never touches the store, but discovery takes the caller's
+    // client unconditionally — the parameter is the seam the notion tests
+    // inject through.
+    let drive_memory = std::sync::Arc::new(
+        MemoryClient::from_workspace_dir(config.workspace_dir.clone())
+            .expect("memory client should initialise"),
+    );
 
-    let targets = composio_memory_targets_for_connection(&config, Some("google_drive"), "conn-1")
-        .await
-        .expect("drive cleanup targets should resolve");
+    let targets =
+        composio_memory_targets_for_connection(&drive_memory, Some("google_drive"), "conn-1")
+            .await
+            .expect("drive cleanup targets should resolve");
 
     assert!(targets.contains(&MemoryCleanupTarget::Exact(
         SourceKind::Document,

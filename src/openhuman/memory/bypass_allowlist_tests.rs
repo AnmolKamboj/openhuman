@@ -225,9 +225,14 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     // `MemoryGuard` over an in-memory provider rather than a raw handle.
     // ── Composio integration: &MemoryClientRef parameter shape ──
     (
-        "src/openhuman/integrations/composio/ops/memory_cleanup.rs",
-        "MemoryClient::from_workspace_dir(",
-        "cleanup runs off a config workspace with no live binding",
+        "src/openhuman/integrations/composio/ops/connections.rs",
+        "active_memory_client(",
+        "delete_connection resolves the LIVE client for cleanup-target \
+         discovery, which loads notion sync state through HostSyncAdapter — a \
+         seam beneath the contract with no provider door. Replaces \
+         memory_cleanup.rs constructing a second engine per delete via \
+         from_workspace_dir, which started a second ingestion worker on the \
+         live store every time",
     ),
     (
         "src/openhuman/integrations/composio/schemas.rs",
@@ -350,16 +355,36 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "global::client(",
         "resolved only to reach profile_conn() for the fixture seed/read-back",
     ),
-    // ── Inline test module and engine seam ──
+    // ── Inline test modules and the two sync seams ──
+    //
+    // tinymemory#18 §C1 renamed `core/src/tinycortex/` to `core/src/engine/`,
+    // and §B1 added `core/src/sync/pipelines/host.rs` — the engine-FREE sync
+    // runner, an adapter over `MemoryClient` shaped exactly like the engine
+    // seam it sits beside. Both are beneath the contract, not above it: they
+    // are what a bound driver is built FROM, which is why they name the raw
+    // client. Their `from_workspace_dir` hits are all inside inline
+    // `#[cfg(test)]` modules (the #61 connection-guard tests), which the
+    // scanner does not brace-track.
     (
-        "vendor/tinymemory/core/src/tinycortex/sync.rs",
+        "vendor/tinymemory/core/src/engine/sync.rs",
         "MemoryClient::from_workspace_dir(",
         "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",
     ),
     (
-        "vendor/tinymemory/core/src/tinycortex/sync.rs",
+        "vendor/tinymemory/core/src/engine/sync.rs",
         "global::client_if_ready(",
         "the TinyCortex engine seam; it sits beneath the contract, not above it",
+    ),
+    (
+        "vendor/tinymemory/core/src/sync/pipelines/host.rs",
+        "MemoryClient::from_workspace_dir(",
+        "inline #[cfg(test)] module only (the connection-guard tests); not brace-tracked",
+    ),
+    (
+        "vendor/tinymemory/core/src/sync/pipelines/host.rs",
+        "global::client_if_ready(",
+        "the engine-free sync runner's seam over the bound client; beneath the contract, \
+         the same way the engine seam beside it is",
     ),
 ];
 

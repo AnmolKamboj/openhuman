@@ -3,9 +3,9 @@
 use std::sync::Arc;
 
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::MemoryClient;
 use tinymemory_core::store::chunks::store as memory_tree_store;
 use tinymemory_core::store::chunks::types::SourceKind;
+use tinymemory_core::store::MemoryClientRef;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MemoryCleanupTarget {
@@ -48,8 +48,14 @@ impl MemoryCleanupTarget {
     }
 }
 
+/// `memory` is the caller's handle on the live store — the RPC path resolves
+/// the process client, tests pass one bound to their own workspace. Taken as a
+/// parameter rather than constructed here: `MemoryClient::from_workspace_dir`
+/// starts an ingestion worker at construction, so building one per
+/// connection-delete put a second worker on the live store every time — the
+/// exact hazard `memory::bypass_allowlist_tests` names for that constructor.
 pub(crate) async fn composio_memory_targets_for_connection(
-    config: &Config,
+    memory: &MemoryClientRef,
     toolkit: Option<&str>,
     connection_id: &str,
 ) -> anyhow::Result<Vec<MemoryCleanupTarget>> {
@@ -63,7 +69,7 @@ pub(crate) async fn composio_memory_targets_for_connection(
             format!("slack:{connection_id}"),
         )],
         "gmail" => gmail_memory_sources_for_connection(connection_id),
-        "notion" => notion_memory_targets_for_connection(config, connection_id).await?,
+        "notion" => notion_memory_targets_for_connection(memory, connection_id).await?,
         "drive" | "googledrive" | "google_drive" => {
             drive_memory_targets_for_connection(connection_id)
         }
@@ -82,19 +88,12 @@ fn gmail_memory_sources_for_connection(connection_id: &str) -> Vec<MemoryCleanup
 }
 
 async fn notion_memory_targets_for_connection(
-    config: &Config,
+    memory: &MemoryClientRef,
     connection_id: &str,
 ) -> anyhow::Result<Vec<MemoryCleanupTarget>> {
     let mut targets = connection_scoped_document_targets("notion", connection_id);
 
-    let memory = Arc::new(
-        MemoryClient::from_workspace_dir(config.workspace_dir.clone()).map_err(|error| {
-            anyhow::anyhow!(
-                "failed to open memory client for notion cleanup target discovery: {error}"
-            )
-        })?,
-    );
-    let adapter = tinymemory_core::tinycortex::HostSyncAdapter::new(memory);
+    let adapter = tinymemory_core::tinycortex::HostSyncAdapter::new(Arc::clone(memory));
     let state = tinycortex::memory::sync::SyncState::load(&adapter, "notion", connection_id)
         .await
         .map_err(|error| {

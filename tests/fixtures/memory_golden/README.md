@@ -5,10 +5,10 @@
 
 | | |
 | --- | --- |
-| Captured at commit | `cdf997b4f8a9e751c7f3c9a24920e808d14d75ed` |
-| Captured on | 2026-08-10T12:26:26Z |
+| Captured at commit | `01b7814f3ff81c9614ade9026f05d00c8ca4cfb5` |
+| Captured on | 2026-08-19T11:05:15Z |
 | Generator | `regenerate_golden_fixture` in `tests/memory_golden_fixture_e2e.rs` |
-| Seeder | `tinymemory_core::store::golden::seed` |
+| Seeder | `openhuman_core::openhuman::memory::store::golden::seed` |
 
 ## Contents
 

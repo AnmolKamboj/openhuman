@@ -7135,14 +7135,7 @@ dependencies = [
 name = "tinycortex-api"
 version = "0.1.1"
 dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 2.0.20",
- "uuid",
+ "tinymemory-api",
 ]
 
 [[package]]
@@ -7212,7 +7205,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "axum",
  "chrono",
  "dirs 5.0.1",
  "futures",
@@ -7229,8 +7221,9 @@ dependencies = [
  "tinyagents",
  "tinycortex",
  "tinycortex-api",
- "tinymemory",
  "tinymemory-api",
+ "tinymemory-sources",
+ "tinymemory-sync",
  "tokio",
  "tracing",
  "url",
@@ -7239,14 +7232,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "tinymemory-sources"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "futures",
+ "regex",
+ "reqwest 0.12.28",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "tinymemory-api",
+ "tokio",
+ "toml 0.9.12+spec-1.1.0",
+ "tracing",
+ "uuid",
+ "walkdir",
+]
+
+[[package]]
+name = "tinymemory-sync"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "log",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "tinymemory-tinycortex"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "chrono",
+ "log",
+ "serde",
+ "serde_json",
  "tinycortex",
- "tinymemory",
  "tinymemory-api",
+ "tinymemory-core",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
