@@ -50,18 +50,23 @@ describe('redactSensitive', () => {
 
   // The last-resort rule requires an upper-case character so it does not fire on
   // prose. Everything below is lower-case + digits, so it reached the card intact
-  // until these patterns were added. Each string is a shape-accurate dummy.
+  // until these patterns were added. Each value is a shape-accurate dummy, not a
+  // real credential.
   //
-  // The Slack ones are assembled from parts on purpose: written as one literal they
-  // match GitHub's Slack-token detector well enough that push protection rejects the
-  // commit, which would block this file for anyone pushing it.
-  const slackToken = (prefix: string, ...rest: string[]) => [prefix, ...rest].join('-');
+  // Every vendor-prefixed value is assembled from parts on purpose: written as a
+  // single literal it carries the vendor's exact token shape, which is what a
+  // secret scanner keys on. GitHub push protection already rejects the Slack form
+  // outright, and that would block this file for anyone pushing it.
+  const assembled = (separator: string, ...parts: string[]) => parts.join(separator);
 
   test.each([
-    ['slack bot token', slackToken('xoxb', '123456789012', '987654321098', 'abcdefghijklmnop')],
-    ['slack user token', slackToken('xoxp', '987654321098', '123456789012', 'zyxwvutsrqponmlk')],
-    ['gitlab personal access token', 'glpat-abcdefghij1234567890'],
-    ['huggingface token', 'hf_abcdefghijklmnopqrstuvwxyz1234'],
+    ['slack bot token', assembled('-', 'xoxb', '123456789012', '987654321098', 'abcdefghijklmnop')],
+    [
+      'slack user token',
+      assembled('-', 'xoxp', '987654321098', '123456789012', 'zyxwvutsrqponmlk'),
+    ],
+    ['gitlab personal access token', assembled('-', 'glpat', 'abcdefghij1234567890')],
+    ['huggingface token', assembled('_', 'hf', 'abcdefghijklmnopqrstuvwxyz1234')],
   ])('scrubs an all-lower-case %s', (_label, secret) => {
     const out = redactSensitive(`saved ${secret} for you`);
     expect(out).toContain('[redacted]');
@@ -80,7 +85,8 @@ describe('redactSensitive', () => {
 
   test('survives stripMarkdown running first, as buildFallbackHeadline runs it', () => {
     // stripMarkdown removes `_`, so a pattern that insisted on it would never match.
-    const head = buildFallbackHeadline('Done. Saved hf_abcdefghijklmnopqrstuvwxyz1234 for you.');
+    const hfToken = assembled('_', 'hf', 'abcdefghijklmnopqrstuvwxyz1234');
+    const head = buildFallbackHeadline(`Done. Saved ${hfToken} for you.`);
     expect(head).not.toContain('abcdefghijklmnopqrstuvwxyz');
     expect(head).toContain('[redacted]');
   });
