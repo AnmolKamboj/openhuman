@@ -13,6 +13,22 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   286/264/2  2026-08-19  tinymemory bumped across its #18 arc (-4 names, 0
+#                      packages net, native unchanged). A shed, not a gate, and
+#                      a downstream one: tinymemory#43 (§D2) moved `axum` from
+#                      tinymemory-core's normal dependencies to dev-only — its
+#                      four references there were all inside `mod tests` — and
+#                      that takes the whole tail out of this always-on profile:
+#                      `axum`, `axum-core`, `axum-macros`, `matchit`,
+#                      `httpdate`, `serde_path_to_error` leave (-6). Two enter:
+#                      `tinymemory-sources` and `tinymemory-sync`, the crates
+#                      tinymemory#46/#48 split the source readers and the
+#                      engine-free Composio sync into — both already-compiled
+#                      code relocated, so packages stay flat. Net -4 names.
+#                      Measured on CI (Linux): `scripts/kernel-floor.sh flows
+#                      --json` -> 286/264/2. (macOS resolves 286/265/2 per the
+#                      documented target skew.) The crate-set diff old-pin vs
+#                      new-pin confirms exactly the six-out/two-in above.
 #   286/268/2  2026-08-15  tinywallet de-vendored back to a submodule + module
 #                      (-11 packages / -11 names). The inlined `tinywallet`
 #                      crate copy is deleted; key derivation and transaction
@@ -316,4 +332,4 @@
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
 # 307/284  2026-08-12  Re-baseline after the upstream lockfile resolution;
 #                      `flows` remains at two native packages.
-flows:286:268:2
+flows:286:264:2
