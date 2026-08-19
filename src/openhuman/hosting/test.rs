@@ -90,9 +90,12 @@ fn an_account_exposes_every_hosting_tool() {
         [
             "hosting_launch_site",
             "hosting_deployment_status",
+            "hosting_list_deployments",
+            "hosting_rollback",
             "hosting_list_sites",
             "hosting_set_env",
             "hosting_add_domain",
+            "hosting_domain_status",
             "hosting_analytics",
         ]
     );
@@ -109,7 +112,7 @@ fn only_the_tools_that_change_the_world_carry_an_external_effect() {
     for tool in account.tools() {
         let expected = matches!(
             tool.name(),
-            "hosting_launch_site" | "hosting_set_env" | "hosting_add_domain"
+            "hosting_launch_site" | "hosting_set_env" | "hosting_add_domain" | "hosting_rollback"
         );
         assert_eq!(
             tool.external_effect(),
@@ -245,4 +248,238 @@ async fn a_read_tool_reports_a_missing_argument_rather_than_calling_out() {
         .expect("the tool reports rather than panics");
 
     assert!(result.is_error);
+}
+
+// ── The deployment-history and rollback tools (issue opencompany#913) ────────
+
+#[tokio::test]
+async fn the_new_read_tools_report_a_missing_site_rather_than_calling_out() {
+    let workspace = tempfile::tempdir().expect("tempdir");
+    let config = config_with(workspace.path(), true, "token");
+    let account = Account::from_config(&config)
+        .expect("resolution does not fail")
+        .expect("an account");
+
+    let listed = tools::ListDeploymentsTool::new(account.host())
+        .execute(json!({}))
+        .await
+        .expect("the tool reports rather than panics");
+    assert!(listed.is_error);
+
+    let domains = tools::DomainStatusTool::new(account.host())
+        .execute(json!({}))
+        .await
+        .expect("the tool reports rather than panics");
+    assert!(domains.is_error);
+}
+
+#[tokio::test]
+async fn a_rollback_missing_either_argument_is_refused_before_any_call() {
+    let workspace = tempfile::tempdir().expect("tempdir");
+    let config = config_with(workspace.path(), true, "token");
+    let account = Account::from_config(&config)
+        .expect("resolution does not fail")
+        .expect("an account");
+
+    // A rollback names two things and neither can be guessed: repointing
+    // production at an unnamed deployment is not a recoverable mistake.
+    for args in [
+        json!({}),
+        json!({"site": "shop"}),
+        json!({"deployment_id": "d1"}),
+    ] {
+        let result = tools::RollbackTool::new(account.host())
+            .execute(args.clone())
+            .await
+            .expect("the tool reports rather than panics");
+        assert!(result.is_error, "{args} should have been refused");
+    }
+}
+
+// ── The rollback guard, against a mock of the provider's API ─────────────────
+
+use std::sync::Arc as TestArc;
+
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
+
+/// A real provider client pointed at a local mock rather than at Vercel.
+///
+/// `connect_to`'s own documentation names this case, and loopback `http://` is
+/// accepted precisely so a test can carry a bearer token to a server that never
+/// leaves the machine.
+fn host_against(server: &MockServer) -> TestArc<dyn tinyhosts::Host> {
+    let base_url = server.uri();
+    TestArc::from(
+        tinyhosts::connect_to(
+            tinyhosts::ProviderKind::Vercel,
+            tinyhosts::Credentials::new("token").expect("credentials"),
+            Some(base_url.as_str()),
+        )
+        .expect("a client against the mock"),
+    )
+}
+
+/// **The guard that makes this tool a recovery path rather than a second way to
+/// break the site.**
+///
+/// `hosting_list_deployments` returns failed and still-building deployments too
+/// — they are part of the history an agent reads — so the id it picks is not
+/// necessarily one that can serve traffic. Promoting a failed build would take
+/// the site down during an attempt to bring it back up.
+///
+/// The assertion that matters is `expect(0)` on the promote route: the refusal
+/// has to happen *before* the outward call, not be an error message reported
+/// after production already moved.
+#[tokio::test]
+async fn rolling_back_to_a_deployment_that_never_built_does_not_touch_production() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/v13/deployments/dpl_broken"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "dpl_broken",
+            "name": "shop",
+            "readyState": "ERROR",
+            "errorMessage": "build failed"
+        })))
+        .mount(&server)
+        .await;
+
+    // Vercel's promote is POST /v10/projects/{project}/promote/{deployment},
+    // reached only after GET /v9/projects/{site} resolves the id. Neither may
+    // be called at all.
+    Mock::given(method("GET"))
+        .and(path("/v9/projects/shop"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "prj_1",
+            "name": "shop"
+        })))
+        .expect(0)
+        .mount(&server)
+        .await;
+
+    let result = tools::RollbackTool::new(host_against(&server))
+        .execute(json!({"site": "shop", "deployment_id": "dpl_broken"}))
+        .await
+        .expect("the tool reports rather than panics");
+
+    assert!(result.is_error, "a failed deployment must not be promoted");
+    // The status is named, so a model can pick a different deployment rather
+    // than retry the same one.
+    let rendered = result.text();
+    assert!(
+        rendered.contains("Failed"),
+        "the refusal should name the state it refused: {rendered}"
+    );
+}
+
+/// The ordinary path: a deployment that built is promoted, and the site's URL
+/// comes back so the agent can say where production now points.
+#[tokio::test]
+async fn rolling_back_to_a_ready_deployment_promotes_it() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/v13/deployments/dpl_good"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "dpl_good",
+            "name": "shop",
+            "url": "shop-abc.vercel.app",
+            "readyState": "READY",
+            "target": "production"
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v9/projects/shop"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "prj_1",
+            "name": "shop"
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v10/projects/prj_1/promote/dpl_good"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let result = tools::RollbackTool::new(host_against(&server))
+        .execute(json!({"site": "shop", "deployment_id": "dpl_good"}))
+        .await
+        .expect("the tool reports rather than panics");
+
+    assert!(!result.is_error, "{result:?}");
+    let rendered = result.text();
+    assert!(
+        rendered.contains("dpl_good") && rendered.contains("shop-abc.vercel.app"),
+        "the result should say what is serving and where: {rendered}"
+    );
+}
+
+/// The history read an agent uses to *find* the id above.
+#[tokio::test]
+async fn listing_deployments_reports_the_history_a_rollback_picks_from() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/v7/deployments"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "deployments": [
+                {"id": "dpl_new", "name": "shop", "readyState": "ERROR"},
+                {"id": "dpl_old", "name": "shop", "readyState": "READY"}
+            ]
+        })))
+        .mount(&server)
+        .await;
+
+    let result = tools::ListDeploymentsTool::new(host_against(&server))
+        .execute(json!({"site": "shop"}))
+        .await
+        .expect("the tool reports rather than panics");
+
+    assert!(!result.is_error, "{result:?}");
+    let rendered = result.text();
+    // Both are reported: the failed one is why the agent is here, and the ready
+    // one is where it is going.
+    assert!(
+        rendered.contains("dpl_new") && rendered.contains("dpl_old"),
+        "{rendered}"
+    );
+}
+
+/// A domain that is attached but unverified is not serving, and the tool has to
+/// say so — that difference is the entire reason to read domains.
+#[tokio::test]
+async fn domain_status_distinguishes_a_verified_domain_from_a_pending_one() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/v9/projects/shop/domains"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "domains": [
+                {"name": "shop.example.com", "verified": true},
+                {"name": "www.example.com", "verified": false}
+            ]
+        })))
+        .mount(&server)
+        .await;
+
+    let result = tools::DomainStatusTool::new(host_against(&server))
+        .execute(json!({"site": "shop"}))
+        .await
+        .expect("the tool reports rather than panics");
+
+    assert!(!result.is_error, "{result:?}");
+    let rendered = result.text();
+    assert!(
+        rendered.contains("shop.example.com") && rendered.contains("www.example.com"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("true") && rendered.contains("false"),
+        "{rendered}"
+    );
 }
