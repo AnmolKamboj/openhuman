@@ -48,6 +48,48 @@ describe('redactSensitive', () => {
     expect(redactSensitive('mail jane.doe@example.com now')).toContain('[email]');
   });
 
+  // The last-resort rule requires an upper-case character so it does not fire on
+  // prose. Everything below is lower-case + digits, so it reached the card intact
+  // until these patterns were added. Each string is a shape-accurate dummy.
+  //
+  // The Slack ones are assembled from parts on purpose: written as one literal they
+  // match GitHub's Slack-token detector well enough that push protection rejects the
+  // commit, which would block this file for anyone pushing it.
+  const slackToken = (prefix: string, ...rest: string[]) => [prefix, ...rest].join('-');
+
+  test.each([
+    ['slack bot token', slackToken('xoxb', '123456789012', '987654321098', 'abcdefghijklmnop')],
+    ['slack user token', slackToken('xoxp', '987654321098', '123456789012', 'zyxwvutsrqponmlk')],
+    ['gitlab personal access token', 'glpat-abcdefghij1234567890'],
+    ['huggingface token', 'hf_abcdefghijklmnopqrstuvwxyz1234'],
+  ])('scrubs an all-lower-case %s', (_label, secret) => {
+    const out = redactSensitive(`saved ${secret} for you`);
+    expect(out).toContain('[redacted]');
+    expect(out).not.toContain(secret);
+  });
+
+  test.each([
+    ['slack', 'https://hooks.slack.com/services/T00000000/B00000000/abcdefghijklmnopqrst'],
+    [
+      'discord',
+      'https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz012345',
+    ],
+  ])('scrubs a %s webhook URL, which carries its secret in the path', (_label, url) => {
+    expect(redactSensitive(`posting to ${url} now`)).not.toContain(url);
+  });
+
+  test('survives stripMarkdown running first, as buildFallbackHeadline runs it', () => {
+    // stripMarkdown removes `_`, so a pattern that insisted on it would never match.
+    const head = buildFallbackHeadline('Done. Saved hf_abcdefghijklmnopqrstuvwxyz1234 for you.');
+    expect(head).not.toContain('abcdefghijklmnopqrstuvwxyz');
+    expect(head).toContain('[redacted]');
+  });
+
+  test('does not fire on ordinary lower-case prose', () => {
+    const clean = 'renamed the folder to archive and moved twelve files into it';
+    expect(redactSensitive(clean)).toBe(clean);
+  });
+
   test('is idempotent and leaves clean prose untouched', () => {
     const clean = 'Summarised three months of emails in twelve seconds';
     expect(redactSensitive(clean)).toBe(clean);
