@@ -1,5 +1,5 @@
-import { Linter } from 'eslint';
 import tsparser from '@typescript-eslint/parser';
+import { Linter } from 'eslint';
 import { describe, expect, it } from 'vitest';
 
 // eslint.config.js is plain JS and ships no declarations; importing the real
@@ -21,7 +21,7 @@ import eslintConfig from '../../eslint.config.js';
  */
 
 const configBlock = (eslintConfig as Linter.Config[]).find(
-  (block) => block.rules?.['no-restricted-syntax'],
+  block => block.rules?.['no-restricted-syntax']
 );
 
 const [, restriction] = (configBlock?.rules?.['no-restricted-syntax'] ?? []) as [
@@ -37,7 +37,7 @@ function lint(code: string) {
     rules: { 'no-restricted-syntax': ['error', restriction] },
   });
   // A parse failure would otherwise read as "the rule did not fire".
-  expect(messages.filter((message) => message.fatal)).toEqual([]);
+  expect(messages.filter(message => message.fatal)).toEqual([]);
   return messages;
 }
 
