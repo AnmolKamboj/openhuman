@@ -247,7 +247,10 @@ export default [
       'no-restricted-syntax': [
         'error',
         {
-          selector: 'MemberExpression[object.type="MetaProperty"][property.name="env"]',
+          // Pin the meta-property to `import.meta` -- `new.target` is a MetaProperty
+          // too -- and match both `import.meta.env` and `import.meta['env']`.
+          selector:
+            'MemberExpression[object.type="MetaProperty"][object.meta.name="import"][object.property.name="meta"]:matches([computed=false][property.name="env"], [computed=true][property.value="env"])',
           message:
             'Read frontend config from src/utils/config.ts (IS_DEV, IS_DEV_LIKE, ...) instead of import.meta.env directly; add the value there if it is missing.',
         },
