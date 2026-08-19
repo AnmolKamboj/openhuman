@@ -163,7 +163,17 @@ pub async fn composio_delete_connection(
         Err(_) => None,
     };
     let memory_targets = if clear_memory {
-        composio_memory_targets_for_connection(config, toolkit.as_deref(), connection_id)
+        // The LIVE process client — target discovery loads notion sync state
+        // through it. Resolved here, not constructed inside the discovery:
+        // `MemoryClient::from_workspace_dir` starts an ingestion worker at
+        // construction, so building one per delete put a second worker on the
+        // live store every time.
+        let memory = crate::openhuman::memory::ops::helpers::active_memory_client()
+            .await
+            .map_err(|error| {
+                format!("[composio] delete_connection cannot resolve the memory client: {error}")
+            })?;
+        composio_memory_targets_for_connection(&memory, toolkit.as_deref(), connection_id)
             .await
             .map_err(|error| {
                 format!("[composio] delete_connection cannot enumerate memory targets: {error:#}")

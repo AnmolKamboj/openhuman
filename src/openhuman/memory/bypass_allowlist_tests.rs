@@ -225,9 +225,14 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     // `MemoryGuard` over an in-memory provider rather than a raw handle.
     // ── Composio integration: &MemoryClientRef parameter shape ──
     (
-        "src/openhuman/integrations/composio/ops/memory_cleanup.rs",
-        "MemoryClient::from_workspace_dir(",
-        "cleanup runs off a config workspace with no live binding",
+        "src/openhuman/integrations/composio/ops/connections.rs",
+        "active_memory_client(",
+        "delete_connection resolves the LIVE client for cleanup-target \
+         discovery, which loads notion sync state through HostSyncAdapter — a \
+         seam beneath the contract with no provider door. Replaces \
+         memory_cleanup.rs constructing a second engine per delete via \
+         from_workspace_dir, which started a second ingestion worker on the \
+         live store every time",
     ),
     (
         "src/openhuman/integrations/composio/schemas.rs",
