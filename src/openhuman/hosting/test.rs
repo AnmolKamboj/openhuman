@@ -441,13 +441,21 @@ async fn listing_deployments_reports_the_history_a_rollback_picks_from() {
         .expect("the tool reports rather than panics");
 
     assert!(!result.is_error, "{result:?}");
-    let rendered = result.text();
-    // Both are reported: the failed one is why the agent is here, and the ready
-    // one is where it is going.
-    assert!(
-        rendered.contains("dpl_new") && rendered.contains("dpl_old"),
-        "{rendered}"
-    );
+
+    // Both are reported, and each status is bound to its id. The failed one is
+    // why the agent is here and the ready one is where it is going, so a list
+    // that returned the right ids against the wrong statuses would send the
+    // rollback at the deployment that just broke the site.
+    let deployments: serde_json::Value =
+        serde_json::from_str(&result.text()).expect("the tool answers with JSON");
+    let rows = deployments.as_array().expect("an array of deployments");
+
+    assert_eq!(rows.len(), 2, "{deployments}");
+    // Newest first, as the crate documents and as the provider returned them.
+    assert_eq!(rows[0]["id"], "dpl_new", "{deployments}");
+    assert_eq!(rows[0]["status"], "failed", "{deployments}");
+    assert_eq!(rows[1]["id"], "dpl_old", "{deployments}");
+    assert_eq!(rows[1]["status"], "ready", "{deployments}");
 }
 
 /// A domain that is attached but unverified is not serving, and the tool has to
@@ -473,13 +481,31 @@ async fn domain_status_distinguishes_a_verified_domain_from_a_pending_one() {
         .expect("the tool reports rather than panics");
 
     assert!(!result.is_error, "{result:?}");
-    let rendered = result.text();
+
+    // Bound to the name rather than checked for presence: asserting only that a
+    // `true` and a `false` both appear somewhere passes just as happily if the
+    // two are swapped, which is the one thing this tool must not get wrong.
+    let domains: serde_json::Value =
+        serde_json::from_str(&result.text()).expect("the tool answers with JSON");
+    let verified_for = |name: &str| -> bool {
+        let entry = domains
+            .as_array()
+            .expect("an array of domains")
+            .iter()
+            .find(|domain| domain["name"] == name)
+            .unwrap_or_else(|| panic!("{name} is missing from {domains}"));
+        entry["verified"]
+            .as_bool()
+            .expect("`verified` is a boolean")
+    };
+
     assert!(
-        rendered.contains("shop.example.com") && rendered.contains("www.example.com"),
-        "{rendered}"
+        verified_for("shop.example.com"),
+        "the verified domain must report verified: {domains}"
     );
     assert!(
-        rendered.contains("true") && rendered.contains("false"),
-        "{rendered}"
+        !verified_for("www.example.com"),
+        "and the pending one must not — that difference is the entire reason to \
+         read domains: {domains}"
     );
 }
