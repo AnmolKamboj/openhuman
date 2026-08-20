@@ -27,7 +27,12 @@ set -euo pipefail
 
 ALLOWLIST="${ALLOWLIST:-scripts/ci/coverage-presence-allowlist.txt}"
 
+# Progress line on stdout. Prefixed so the lane's log stays greppable.
 log() { echo "[ci][cov-presence] $*"; }
+
+# Usage/environment error: stderr, exit 2. Distinct from exit 1 ("found
+# unverified files") so a caller can tell a broken invocation from a real
+# finding.
 die() {
   echo "[ci][cov-presence] $*" >&2
   exit 2
@@ -45,6 +50,7 @@ die() {
 #   .../browser/native_backend.rs  `browser-native`, an opt-in dev backend.
 UNCOVERED_BY_DESIGN='^(src/tui/|src/openhuman/test_support/|src/openhuman/tools/impl/browser/native_backend\.rs$)'
 
+# Invocation help, printed to stdout for --help and to stderr on a usage error.
 usage() {
   cat <<'USAGE'
 Usage: assert-coverage-presence.sh <lcov-file> (--all | --files <path>...)
@@ -131,8 +137,13 @@ for line in sys.stdin:
         print(path[marker + 1 :])' \
   | sort -u >"${covered_file}"
 
+# Did the coverage build emit records for this repo-relative path?
+# Fixed-string, whole-line: a path containing regex metacharacters cannot match
+# the wrong entry.
 covered() { grep -Fxq "$1" "${covered_file}"; }
 
+# Is this path recorded in the allowlist as deliberately uncompiled?
+# Absent allowlist means nothing is exempt, which is the safe direction.
 allowlisted() {
   [ -f "${ALLOWLIST}" ] || return 1
   grep -v '^[[:space:]]*#' "${ALLOWLIST}" 2>/dev/null \

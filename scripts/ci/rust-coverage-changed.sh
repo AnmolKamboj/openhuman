@@ -135,10 +135,21 @@ run_integration_target() {
     # globals (env vars, event bus handlers, auth tokens, singleton stores).
     # Run one process per generated module filter to preserve the former
     # per-binary isolation contract while still paying only one link.
+    #
+    # `|| return` is load-bearing, not defensive noise. This loop's exit status
+    # is that of its LAST iteration, so a module that fails followed by one that
+    # succeeds reports success. That used to be masked by ambient errexit — the
+    # function was called bare, so a failing `llvm_cov` aborted the script here.
+    # It is no longer: `run_counted` runs its command inside a pipeline with
+    # `set +e`, which disables errexit for everything underneath, so without this
+    # the failure is silently discarded and a red suite goes green.
+    #
+    # Returning on the first failure also preserves the previous fail-fast
+    # timing exactly: no module ran after a failure before, and none does now.
     while IFS= read -r module; do
       [ -n "${module}" ] || continue
       log "running raw coverage module: ${module}"
-      llvm_cov --no-report --no-fail-fast -p openhuman --test "${target}" -- "${module}::" --test-threads=1
+      llvm_cov --no-report --no-fail-fast -p openhuman --test "${target}" -- "${module}::" --test-threads=1 || return
     done < <(raw_coverage_modules)
   elif [ "${target}" = "json_rpc_e2e" ]; then
     # This target exercises process-global runtime/config state. Its tests take
