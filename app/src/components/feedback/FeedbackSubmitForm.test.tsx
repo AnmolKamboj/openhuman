@@ -175,12 +175,24 @@ describe('<FeedbackSubmitForm /> quality tiers', () => {
     expect(screen.queryByTestId('feedback-quality-hint')).not.toBeInTheDocument();
   });
 
-  it('does not ask the server about an empty draft', async () => {
-    render(<FeedbackSubmitForm onAccepted={() => {}} />);
-    fillForm('', '');
+  it('does not ask the server about an empty draft', () => {
+    // A real-timer wait would have to outlive the debounce window to prove
+    // nothing fires — a time flake on a slow or loaded CI node. Fake timers
+    // make the proof deterministic.
+    vi.useFakeTimers();
+    try {
+      render(<FeedbackSubmitForm onAccepted={() => {}} />);
+      fillForm('', '');
 
-    await new Promise(resolve => setTimeout(resolve, 400));
-    expect(mockValidate).not.toHaveBeenCalled();
+      // Far past the debounce window: if an empty draft were ever scheduled,
+      // this would fire the call and the assertion below would fail.
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(mockValidate).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // Warn is advisory. The submission is published; the reason is a nudge.
