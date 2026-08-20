@@ -160,33 +160,6 @@ row in the namespace, twice over. Only reducing what is touched — items 1, 2, 
 and 7 above — can change that. Micro-optimizing around the scan has now been
 measured twice and found worthless.
 
-## An earlier note kept for the record
-
-**Hypothesis:** `load_chunks_for_scope` decoded every embedding blob into a
-`Vec<f32>` *inside* the connection lock — ~10k allocations and ~10M
-little-endian conversions per recall at this scale, with every concurrent turn
-blocked behind it. Moving the decode outside the lock should shorten the
-critical section and raise the ceiling.
-
-**Result: no measurable improvement.** Interleaved A/B, two reps each, identical
-populated workspaces, concurrency 8, 90 s:
-
-| arm | rep 1 | rep 2 | mean |
-| --- | --- | --- | --- |
-| baseline | 14.87/s | 14.37/s | 14.62/s |
-| decode outside lock | 14.42/s | 14.18/s | 14.30/s |
-
-The point estimate is slightly *negative* and well inside the ~3% within-arm
-spread. The extra intermediate vector plausibly costs as much as the decode
-saved. The change was dropped — `load_chunks_for_scope` is back to decoding
-inline, on whichever connection it is handed.
-
-**What that rules out:** the decode is not the serialized cost. Combined with
-finding 4 (writes are ~8%), the critical section is the SQLite scan itself —
-iterating 10k rows and copying ~40 MiB of blobs through one mutex, per turn.
-Any fix has to avoid *reading* the whole namespace. Shaving work around the scan
-does not help.
-
 ## Deeper dive — where the cost actually is
 
 The first pass framed this as "recall is O(N), needs a vector index". That is
