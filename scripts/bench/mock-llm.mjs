@@ -357,15 +357,14 @@ function handleEmbeddings(res, body, opts) {
   // stored without vectors and the memory write path runs degraded for the whole
   // run — silently, as a warning rather than an error. 1536 (the usual
   // text-embedding-3-small width) is the wrong default here; the store wants
-  // 1024. A constant vector is fine, since nothing scores retrieval quality.
-  const vector = new Array(opts.embedDims).fill(0.0001);
+  // 1024.
   sendJson(res, 200, {
     object: 'list',
     model: 'mock-embedding',
     data: Array.from({ length: count }, (_, i) => ({
       object: 'embedding',
       index: i,
-      embedding: vector,
+      embedding: embeddingFor(inputs[i] ?? '', opts.embedDims),
     })),
     usage: { prompt_tokens: count, total_tokens: count },
   });
