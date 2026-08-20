@@ -173,6 +173,45 @@ daily_limit_usd = 1000000.0
 monthly_limit_usd = 1000000.0
 TOML
 )
+
+# --memory-off is the CONTROL for the memory subsystem.
+#
+# Per-turn cost that grows with accumulated data is hard to attribute from a
+# single run, because the agent both writes memory and recalls over it every
+# turn. Turning the writes and the post-turn learning hooks off gives a
+# comparison run whose only difference is that accumulation: if per-turn latency
+# stops climbing, the growth is the memory path; if it still climbs, it is not.
+#
+# There is no single `[memory] enabled` switch — three independent producers run
+# per turn, so all three have to be named:
+#   * `memory.auto_save`     the UnifiedMemory document write (markdown sidecar,
+#                            memory_docs row, and re-inserted vector chunks)
+#   * `[learning]` hooks     episodic capture and chat→tree, which default ON
+#                            *independently* of `learning.enabled`
+#   * embeddings             `provider = "none"` selects the no-op embedder;
+#                            an unknown string here hard-errors the session
+# Agent turns still complete with all of this off — every path degrades rather
+# than failing.
+if [[ -n "$MEMORY_OFF" ]]; then
+  BENCH_CONFIG="$BENCH_CONFIG$(cat <<'TOML'
+
+[memory]
+auto_save = false
+embedding_provider = "none"
+
+[learning]
+enabled = false
+episodic_capture_enabled = false
+chat_to_tree_enabled = false
+stm_recall_enabled = false
+tool_memory_capture_enabled = false
+goals_enrichment_enabled = false
+
+[memory_tree]
+spacy_enabled = false
+TOML
+)"
+fi
 mkdir -p "$WORKSPACE/workspace"
 printf '%s\n' "$BENCH_CONFIG" >"$WORKSPACE/config.toml"
 printf '%s\n' "$BENCH_CONFIG" >"$WORKSPACE/workspace/config.toml"
