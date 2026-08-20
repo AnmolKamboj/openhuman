@@ -255,12 +255,8 @@ passes per call, via `normalize_search_text`). The result depends only on the
 document, never on the query, so it is recomputed identically every turn.
 Semantics-identical.
 
-**6. A read-only connection pool.** WAL already supports concurrent readers; one
-mutex-guarded connection serializes them. `db_path` is on the struct and the
-recall path is `SELECT`-only, so this is structurally contained. Changes no
-behaviour, and with 7 idle cores it should convert directly into throughput.
-Caveat: a second connection sees its own WAL snapshot, so any read-your-own-write
-caller within a single call would need checking.
+**6. A read-only connection pool. — IMPLEMENTED, see below.** WAL already
+supports concurrent readers; one mutex-guarded connection serializes them.
 
 **7. Only then, a vector index** (sqlite-vec / HNSW). This is the real answer for
 genuinely unbounded semantic search, and the only one that makes recall
