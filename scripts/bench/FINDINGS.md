@@ -255,8 +255,8 @@ passes per call, via `normalize_search_text`). The result depends only on the
 document, never on the query, so it is recomputed identically every turn.
 Semantics-identical.
 
-**6. A read-only connection pool. — IMPLEMENTED, see below.** WAL already
-supports concurrent readers; one mutex-guarded connection serializes them.
+**6. ~~A read-only connection pool.~~ Tried and measured — it does not help.
+See "Two fixes that failed" below.**
 
 **7. Only then, a vector index** (sqlite-vec / HNSW). This is the real answer for
 genuinely unbounded semantic search, and the only one that makes recall
