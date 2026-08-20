@@ -43,16 +43,52 @@ fn construction_touches_no_io_and_needs_no_runtime() {
 }
 
 #[test]
-fn the_advertised_capabilities_cover_the_complete_memory_api() {
-    // The compiled module owns the complete TinyMemory API, so the host can
-    // assemble every memory RPC and tool family before the async bus starts.
+fn the_advertised_capabilities_match_the_pinned_artifact() {
+    // Renamed from `..._cover_the_complete_memory_api`, which asserted
+    // `capabilities == Capabilities::all()`. That encoded #5598 as the expected
+    // behaviour: the host advertised all eighteen families the contract crate
+    // declares while the pinned v1.0.1 artifact serves thirteen, so the other
+    // five answered UnknownMethod instead of reporting themselves absent.
+    //
+    // The part that was always true is still pinned below: the host assembles
+    // the memory RPC surface and its tool families from this set before the
+    // async bus starts, so a missing mandatory family is a boot-time defect.
     let capabilities = provider().capabilities();
-    assert_eq!(capabilities, Capabilities::all());
 
     for mandatory in Capability::MANDATORY {
         assert!(capabilities.contains(mandatory), "{mandatory:?} is missing");
     }
     assert!(capabilities.contains(Capability::Tree));
+
+    // A strict subset of the contract: the artifact is a released binary and the
+    // contract is the crate this host compiles against, so the contract may be
+    // ahead but can never be behind.
+    assert!(
+        Capabilities::all().contains_all(capabilities),
+        "the artifact advertises a family the contract does not declare",
+    );
+    // Stated on the pinned branch, not on `capabilities`, so the documented
+    // `OPENHUMAN_MEMORY_MODULE_ASSUME_FULL_CAPABILITIES=1` override cannot turn
+    // this red. Every assertion above holds under both configurations; this one
+    // is about the pin itself.
+    assert_ne!(
+        super::capabilities_for(false),
+        Capabilities::all(),
+        "advertising the whole contract is the #5598 over-claim",
+    );
+}
+
+#[test]
+fn the_full_capability_override_restores_the_whole_contract() {
+    // The escape hatch for a locally-built module, which does serve the whole
+    // contract. Asserted through `capabilities_for` rather than by setting
+    // `OPENHUMAN_MEMORY_MODULE_ASSUME_FULL_CAPABILITIES` — mutating a
+    // process-global env var would race every other test in this binary.
+    assert_eq!(super::capabilities_for(true), Capabilities::all());
+    assert_ne!(
+        super::capabilities_for(true),
+        super::capabilities_for(false)
+    );
 }
 
 #[test]
@@ -189,4 +225,62 @@ async fn shutdown_on_an_unused_driver_is_a_no_op() {
 
     let provider = ModuleMemoryProvider::new(Arc::new(config));
     assert!(provider.shutdown().await.is_ok());
+}
+
+#[test]
+fn the_capability_list_matches_the_pinned_release() {
+    // ARTIFACT_CAPABILITIES describes what ONE specific release of the module
+    // serves. Re-pinning the registry to a newer release without re-reading that
+    // list would silently re-introduce #5598 in the other direction — the host
+    // would under-claim and hide families the new artifact does have.
+    //
+    // Tying the two together here means the pin bump is a red test, not a
+    // silent drift.
+    let record = crate::openhuman::modules::registry::find(super::MODULE_ID)
+        .expect("the tinymemory module must be in the registry");
+    assert_eq!(
+        record.version,
+        super::ARTIFACT_CAPABILITIES_PIN,
+        "the registry pin moved to {} but ARTIFACT_CAPABILITIES is still the list read from {}. \
+         Re-read Capability::ALL at the new tag, update both, and re-run.",
+        record.version,
+        super::ARTIFACT_CAPABILITIES_PIN,
+    );
+}
+
+#[test]
+fn the_advertised_set_does_not_over_claim_the_artifact() {
+    // The regression guard for #5598 proper: the driver must not advertise a
+    // family the pinned artifact cannot serve. Capabilities::all() is what the
+    // CONTRACT declares; the artifact is older and smaller.
+    use crate::openhuman::memory::api::capabilities::{Capabilities, Capability};
+
+    // `capabilities_for(false)` rather than `artifact_capabilities()`: the
+    // invariant is a property of the pinned list, and reading the environment
+    // here would make this test fail for anyone running with the documented
+    // `OPENHUMAN_MEMORY_MODULE_ASSUME_FULL_CAPABILITIES=1` override.
+    let advertised = super::capabilities_for(false);
+    for capability in [
+        Capability::People,
+        Capability::Chunks,
+        Capability::Retrieval,
+        Capability::Profile,
+        // The fifth family the contract added after v1.0.1. Without it the
+        // explicit check below passes if only `Episodic` is added by mistake.
+        Capability::Episodic,
+    ] {
+        assert!(
+            !advertised.contains(capability),
+            "{capability:?} is advertised but the pinned {} artifact does not serve it — \
+             this is exactly the over-claim that made memory_tree, memory_store_raw_chunks \
+             and memory_diff answer UnknownMethod (#5598)",
+            super::ARTIFACT_CAPABILITIES_PIN,
+        );
+    }
+
+    assert_ne!(
+        advertised,
+        Capabilities::all(),
+        "advertising the whole contract is the bug this test exists to prevent",
+    );
 }
