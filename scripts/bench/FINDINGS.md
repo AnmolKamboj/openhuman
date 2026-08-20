@@ -132,27 +132,148 @@ iterating 10k rows and copying ~40 MiB of blobs through one mutex, per turn.
 Any fix has to avoid *reading* the whole namespace. Shaving work around the scan
 does not help.
 
-## Not fixed — needs a design decision
+## Deeper dive — where the cost actually is
 
-Making recall sub-linear means making it selective, and every option changes
-retrieval behaviour, so it is the memory owners' call rather than a benchmark
-fix:
+The first pass framed this as "recall is O(N), needs a vector index". That is
+true but it is the *last* thing to fix, not the first. Looking at the caller
+side changes the picture: most of the work is not needed at all.
 
-- **Bound the candidate set** (recency window). Cheapest; old memories become
-  unreachable by vector search.
-- **Two-stage retrieval** — FTS/keyword prefilter, then vector-rank the
-  survivors. `episodic_fts` already exists. Changes which memories surface.
-- **A real vector index** (sqlite-vec, HNSW). Correct long-term answer, largest
-  change.
-- **Concurrent readers.** Independent of the above, and the only option here
-  that changes no behaviour: SQLite WAL supports concurrent readers, but one
-  mutex-guarded connection serializes them. A read-only connection pool would
-  let recalls proceed in parallel. Note this raises the ceiling without removing
-  the per-turn O(N) work, so it defers the problem rather than solving it —
-  but unlike the others it cannot change which memories surface.
+### The turn does more recalls than you would guess
 
-A deliberately-bounded recall would also make the memory verdict in this harness
-unambiguous, since RSS would stop tracking stored data.
+**4.26 embedding calls per turn**, measured identically across three independent
+runs (4.26 / 4.27 / 4.26 — `mock-stats.json` vs `driver.json`). Each recall
+embeds its query, so that count is a direct proxy for recall operations. Per
+turn there are **three full-namespace SQL recalls plus one vector-only query**,
+all before the LLM call, all blocking:
+
+| recall | query | limit | namespace |
+| --- | --- | --- | --- |
+| citations | user message | 5 | `global` |
+| working memory | `"working.user {msg}"` | 5 | `global` |
+| prior conversations | `"conversation_memory {msg}"` | 12 | `conversation_memory` |
+| situational prefs | user message | 5 | `user_pref_situational` |
+
+Two of them scan `global`. Sub-agents do **not** re-recall (they inherit the
+parent's block), so this is per user turn, not per agent.
+
+### What all that buys
+
+At most **9 lines and ~2000 characters** — roughly 500 tokens — reach the
+prompt: three each from working memory, prior conversations and cross-chat, each
+hard-capped. Citations do not reach the prompt at all; they populate
+`last_turn_citations` for the UI.
+
+Measured waste on the vector side: over 20 queries against a real 2,121-chunk
+corpus, **99.73%** of chunks scored fell below the 0.4 relevance floor. About
+six chunks per query clear it.
+
+And the cosine is not the expensive part — scoring 2,121 chunks takes **3.5 ms
+in JavaScript**, so well under a millisecond in Rust. The cost is re-reading and
+re-decoding the corpus from SQLite every turn, plus repeated full-content
+normalization on the keyword side.
+
+### The clearest single defect
+
+The working-memory recall builds the query string `"working.user {user_message}"`
+— a text hack meant to bias ranking — scans all of `global`, takes the top 5,
+and **then** filters `key.starts_with("working.user.")`
+(`src/openhuman/memory/agent/memory_loader.rs:218-232`).
+
+So it scans the entire namespace to find entries identified by a known key
+prefix. In the benchmark corpus:
+
+```
+global docs scanned per turn : 2025
+docs with key 'working.user.': 0
+```
+
+Every one of those scans returned nothing usable. This is not only slow, it
+**degrades silently**: as autosaved chat fills `global`, the chance that a
+`working.user.*` entry survives into the global top-5 falls toward zero, so the
+feature quietly stops working long before anyone profiles it.
+
+> Caveat worth checking with someone who owns the sync path: I found **no
+> in-repo writer** of `working.user.*` keys at all — only the query, test
+> fixtures, and a doc comment describing them as "sync-derived profile facts".
+> If nothing writes them in current builds, this block is permanently empty and
+> the scan is pure cost. I could not confirm either way.
+
+### Why `global` grows without bound
+
+Every autosaved user message is stored with an empty namespace
+(`src/openhuman/agent/harness/session/turn/core.rs:709`), which
+`sanitize_namespace` maps to `global` — the same namespace the two hot recalls
+scan. The corpus above is 2,024 `user_msg:*` documents and one other.
+
+Namespace partitioning already exists and is already used for
+`conversation_memory` and `user_pref_situational`. It is simply not applied to
+the two expensive calls.
+
+### The ceiling is the lock, and there are idle cores
+
+The box has **14 cores**; the memory-on run used **7.2**. So this is not CPU
+saturation. `UnifiedMemory` holds a single `Mutex<Connection>` and the recall
+path acquires it ~8 times per call, so ~61 ms per turn of serialized SQL caps
+throughput near 16/s — matching the measured 14.5/s — with half the machine
+idle.
+
+## What can be done, cheapest first
+
+The first three are in **`src/openhuman/`, not the vendored crate**, and reduce
+how much is scanned rather than how fast the scan runs.
+
+**1. Scope the working-memory recall to its own namespace.** The entries are
+already identified by a key prefix; give them a namespace and query that instead
+of filtering `global` top-5 after the fact. Removes one full `global` scan per
+turn and *fixes* the silent-degradation bug — a working-memory entry can no
+longer be crowded out by unrelated chat. Uses machinery already in use
+elsewhere. **Do this one first even if nothing else is done.**
+
+**2. Take citations off the turn's critical path.** They are UI-only and never
+enter the prompt, yet a full `global` scan blocks the response on them. Removes
+the second `global` scan from the latency path.
+
+**3. Stop autosaving raw chat messages into `global`.** This is what makes N
+unbounded in the hottest namespace. Needs a product answer first: is raw
+user-message recall still earning its place now that `conversation_memory`
+(transcript-derived durable facts) and the cross-chat JSONL scan exist? If it is
+redundant, this is a one-line namespace change that bounds the problem
+permanently.
+
+**4. Add a timeout to recall.** Every call site already treats recall as
+best-effort (`unwrap_or_default()` throughout, failures logged and skipped) —
+but there is **no timeout anywhere**, and the turn blocks. A slow recall stalls a
+turn indefinitely today. This is a robustness fix worth making regardless of the
+performance work.
+
+Then, in the vendored crate, in this order:
+
+**5. Cache normalized document text.** `keyword_score_for_text` re-normalizes
+every document's full content on every recall (three allocations and ~three
+passes per call, via `normalize_search_text`). The result depends only on the
+document, never on the query, so it is recomputed identically every turn.
+Semantics-identical.
+
+**6. A read-only connection pool.** WAL already supports concurrent readers; one
+mutex-guarded connection serializes them. `db_path` is on the struct and the
+recall path is `SELECT`-only, so this is structurally contained. Changes no
+behaviour, and with 7 idle cores it should convert directly into throughput.
+Caveat: a second connection sees its own WAL snapshot, so any read-your-own-write
+caller within a single call would need checking.
+
+**7. Only then, a vector index** (sqlite-vec / HNSW). This is the real answer for
+genuinely unbounded semantic search, and the only one that makes recall
+sub-linear — but items 1–3 cut N by far more than an index would cut the
+constant, and they carry much less risk. There is precedent for bounded
+retrieval everywhere else in the crate: `episodic_search`, `event_search_fts`,
+segments and entities are all `ORDER BY … LIMIT`. This one path is the outlier.
+
+## Tried and rejected
+
+- **Decode embeddings outside the connection lock** — measured, no effect
+  (see above). The serialized cost is the SQLite read itself, not the decode.
+- **A bounded/approximate candidate set as the first move** — it changes which
+  memories surface, and items 1–3 achieve more without that cost.
 
 ## Separate finding — journal write amplification
 
