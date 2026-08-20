@@ -41,7 +41,75 @@
 
 use std::sync::Arc;
 
-use crate::openhuman::memory::api::capabilities::Capabilities;
+use crate::openhuman::memory::api::capabilities::{Capabilities, Capability};
+
+/// The release whose capability set [`ARTIFACT_CAPABILITIES`] was read from.
+///
+/// Checked against the registry pin by `the_capability_list_matches_the_pinned_release`,
+/// so bumping the pin without re-reading the list is a red test rather than a
+/// silent over-claim.
+const ARTIFACT_CAPABILITIES_PIN: &str = "1.0.1";
+
+/// The capability families the **pinned artifact** actually serves.
+///
+/// Deliberately not `Capabilities::all()`. `Capability::ALL` is what the
+/// *contract crate this host compiles against* declares; the loaded `cdylib` is
+/// an older release and serves fewer families. Read from `Capability::ALL` in
+/// `api/src/capabilities.rs` at tag `v1.0.1` — thirteen entries. The five the
+/// contract has since added (`People`, `Chunks`, `Retrieval`, `Profile`,
+/// `Episodic`) have no bus member in that artifact, so calling them returns
+/// `tinybus::Error::UnknownMethod` (#5598).
+///
+/// **Widen this only together with the `version` bump in
+/// [`super::registry`].**
+const ARTIFACT_CAPABILITIES: &[Capability] = &[
+    Capability::Core,
+    Capability::Recall,
+    Capability::Ingest,
+    Capability::Documents,
+    Capability::Tree,
+    Capability::Entities,
+    Capability::Graph,
+    Capability::Diff,
+    Capability::Goals,
+    Capability::ToolMemory,
+    Capability::Sources,
+    Capability::Maintenance,
+    Capability::Portability,
+];
+
+/// Escape hatch for a locally-built module.
+///
+/// Set `OPENHUMAN_MEMORY_MODULE_ASSUME_FULL_CAPABILITIES=1` when the loaded
+/// library was built from `vendor/tinymemory/crates/tinymemory-module` rather
+/// than downloaded from the pinned release — that build serves the whole
+/// contract, and pinning it to the older list would hide families it does have.
+/// Deliberately **not** keyed off `TINYMEMORY_TEST_MODULE`: CI sets that to the
+/// downloaded `v1.0.1` artifact, so keying off it would switch the guard off in
+/// exactly the lane that must exercise it.
+fn assume_full_capabilities() -> bool {
+    matches!(
+        std::env::var("OPENHUMAN_MEMORY_MODULE_ASSUME_FULL_CAPABILITIES")
+            .ok()
+            .as_deref()
+            .map(str::trim),
+        Some("1") | Some("true") | Some("yes") | Some("on")
+    )
+}
+
+/// The set this build will advertise for the module driver.
+fn artifact_capabilities() -> Capabilities {
+    if assume_full_capabilities() {
+        return Capabilities::all();
+    }
+    ARTIFACT_CAPABILITIES.iter().copied().collect()
+}
+
+/// Whether the pinned artifact serves `capability`. Drives the optional
+/// `as_*()` accessors so they agree with [`artifact_capabilities`].
+fn artifact_serves(capability: Capability) -> bool {
+    assume_full_capabilities() || ARTIFACT_CAPABILITIES.contains(&capability)
+}
 use crate::openhuman::memory::api::chunks::Chunk;
 use crate::openhuman::memory::api::error::MemoryError;
 use crate::openhuman::memory::api::goals::GoalsDoc;
@@ -309,29 +377,30 @@ impl MemoryProvider for ModuleMemoryProvider {
         &self.driver_id
     }
 
-    /// Every family is implemented by the pinned compiled module.
+    /// The families the **pinned artifact** serves — not the whole contract.
     ///
-    /// # This couples to the registry pin, and the coupling is not enforced
+    /// # This couples to the registry pin, and the coupling IS enforced
     ///
     /// `Capabilities::all()` grows whenever a family is added to the contract,
     /// but the *artifact* only grows when a release is cut and
-    /// [`registry`](super::registry) is re-pinned to it. Between those two
-    /// moments this over-claims: the host says it can do something the loaded
-    /// binary cannot.
+    /// [`registry`](super::registry) is re-pinned to it. Returning `all()`
+    /// between those two moments over-claimed: the host said it could do
+    /// something the loaded binary could not, and [`Self::verify`] noticed and
+    /// logged it without narrowing the advertised set. The failure mode was a
+    /// call that reached the module and came back `UnknownMethod` (#5598)
+    /// rather than a family that cleanly reported itself absent.
     ///
-    /// [`Self::verify`] notices and logs, but it does **not** narrow the
-    /// advertised set — so the failure mode is a call that reaches the module
-    /// and comes back as an unknown method, not a family that quietly turns
-    /// itself off.
+    /// [`ARTIFACT_CAPABILITIES`] is now the source of truth, and
+    /// `the_capability_list_matches_the_pinned_release` fails if it is widened
+    /// without moving [`ARTIFACT_CAPABILITIES_PIN`] and the registry pin
+    /// together.
     ///
-    /// Today `people` is exactly that case: family fourteen is served by the
-    /// module source in this tree but not by the pinned `1.0.1` artifact. It is
-    /// currently inert, because nothing in the host reaches `as_people()` yet.
-    /// **It stops being inert the moment the people RPC handlers are routed
-    /// through this driver**, so that change and the module release must land
-    /// together — see `docs/specs/2026-08-13-memory-module-port.md` stage 2.
+    /// The kernel filters its RPC surface and agent-tool assembly from this set,
+    /// and the guard builds one family decorator per `provides()`, so an
+    /// over-claim here is precisely what turns an absent family into a live
+    /// method that answers `UnknownMethod`.
     fn capabilities(&self) -> Capabilities {
-        Capabilities::all()
+        artifact_capabilities()
     }
 
     async fn health(&self) -> MemoryHealth {
@@ -392,17 +461,23 @@ impl MemoryProvider for ModuleMemoryProvider {
     fn as_maintenance(&self) -> Option<&dyn MemoryMaintenance> {
         Some(self)
     }
+    // The four families below are gated on the pinned artifact rather than
+    // returning `Some(self)` unconditionally. `provides()` derives from these
+    // accessors, the guard builds its decorators from `provides()`, and every
+    // caller already writes a clean "driver does not support the X family"
+    // error on `None` — so gating here converts a deep `UnknownMethod` into an
+    // early, accurate refusal at every call site at once (#5598).
     fn as_people(&self) -> Option<&dyn MemoryPeople> {
-        Some(self)
+        artifact_serves(Capability::People).then_some(self as &dyn MemoryPeople)
     }
     fn as_chunks(&self) -> Option<&dyn MemoryChunks> {
-        Some(self)
+        artifact_serves(Capability::Chunks).then_some(self as &dyn MemoryChunks)
     }
     fn as_retrieval(&self) -> Option<&dyn MemoryRetrieval> {
-        Some(self)
+        artifact_serves(Capability::Retrieval).then_some(self as &dyn MemoryRetrieval)
     }
     fn as_profile(&self) -> Option<&dyn MemoryProfile> {
-        Some(self)
+        artifact_serves(Capability::Profile).then_some(self as &dyn MemoryProfile)
     }
 }
 
