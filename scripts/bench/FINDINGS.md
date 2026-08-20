@@ -294,10 +294,13 @@ segments and entities are all `ORDER BY … LIMIT`. This one path is the outlier
 
 ## Tried and rejected
 
-- **Decode embeddings outside the connection lock** — measured, no effect
-  (see above). The serialized cost is the SQLite read itself, not the decode.
-- **A bounded/approximate candidate set as the first move** — it changes which
-  memories surface, and items 1–3 achieve more without that cost.
+- **Decode embeddings outside the connection lock** — implemented, measured, no
+  effect. See "Two fixes that failed".
+- **A read-only connection pool** — implemented, measured, no effect. See the
+  same section.
+- **A bounded/approximate candidate set as the first move** — not tried,
+  deliberately: it changes which memories surface, and items 1–3 achieve more
+  without that cost.
 
 ## Separate finding — journal write amplification
 
