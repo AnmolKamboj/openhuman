@@ -72,7 +72,26 @@ query has no selective predicate, it wants every row in the namespace.
 `query_namespace_hits_excluding_session` does take a `limit`, but applies it
 after loading and scoring everything.
 
-### 4. The single connection mutex sets the ceiling
+### 4. It is the read path, not write contention
+
+Reads and writes share one connection, and `--memory-off` disables both — so on
+its own it cannot say which is expensive. Against an already-populated
+workspace, with writes off but recall still scanning every turn:
+
+```bash
+scripts/bench/run-agent-scale.sh --duration-ms 90000 --tool-depth 0 \
+  --memory-writes-off --workspace <populated>
+```
+
+| | throughput | p50 |
+| --- | --- | --- |
+| reads + writes | 14.6/s | 540 ms |
+| **reads only** | **15.8/s** | **499 ms** |
+
+Removing every write buys ~8%. The recall scan is the cost; write contention is
+a rounding error.
+
+### 5. The single connection mutex sets the ceiling
 
 `UnifiedMemory` owns one `Mutex<Connection>`, so the scan serializes across
 concurrent turns. Throughput saturates accordingly:
