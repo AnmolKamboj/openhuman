@@ -531,6 +531,12 @@ is_elf() {
 # so the pass is idempotent.
 #
 # Returns 0 if any ELF was rewritten, 1 otherwise.
+# NOTE (#5606): the fallback rpath this synthesises is sharun-shaped
+# ($ORIGIN:$ORIGIN/<up>shared/lib). It is currently unreachable on a linuxdeploy
+# AppDir - linuxdeploy has already rewritten every ELF to $ORIGIN-relative paths,
+# so the forbidden-RPATH trigger never fires - but if it ever did fire it would
+# write a directory that does not exist in that layout. Make the fallback
+# layout-aware before relying on it.
 sanitize_elf_rpaths() {
   local appdir="$1"
   if ! command -v patchelf >/dev/null 2>&1; then
@@ -635,7 +641,10 @@ validate_appimage_required_libs() {
   fi
 
   local root pattern found
-  for pattern in 'anylinux.so' 'libxdo.so*' 'libcef.so*'; do
+  # libcef.so* was here until #5606. CEF was removed in #5456 and there is no
+  # cef package in either Cargo.lock, so no build can satisfy it - it would fail
+  # every sharun bundle this function is still able to see.
+  for pattern in 'anylinux.so' 'libxdo.so*'; do
     found=0
     for root in "$appdir/shared/lib" "$appdir/usr/lib" "$appdir/lib"; do
       [ -d "$root" ] || continue
@@ -652,9 +661,6 @@ validate_appimage_required_libs() {
         ;;
       libxdo.so\*)
         echo "[strip-libs] ERROR: AppImage is missing libxdo.so.* — the enigo NEEDED dependency was not bundled (issue #3224). The app would segfault on launch on hosts without the legacy libxdo soname (e.g. Arch). Ensure libxdo-dev is installed on the build runner so lib4bin's ldd-walk bundles it." >&2
-        ;;
-      libcef.so\*)
-        echo "[strip-libs] ERROR: AppImage is missing libcef.so — the CEF runtime was not copied into the final bundle (issue #4020). Ensure the CEF cache/prewarm step exposes the directory containing libcef.so before the Tauri AppImage build." >&2
         ;;
     esac
     return 1

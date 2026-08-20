@@ -9,20 +9,11 @@
 #
 # The list is a ratchet: entries come off, they do not go on. Adding one needs a
 # written justification in the PR body and a reviewer who reads it.
-
-# TEMPORARY — remove both lines in #5619.
 #
-# The `hosting` Cargo gate (Cargo.toml:756, `hosting = ["dep:tinyhosts"]`) is in
-# neither `[features] default` nor `scripts/ci/product-features.txt`, so
-# `src/openhuman/hosting/**` is #[cfg]'d out at src/openhuman/mod.rs:29-30 and
-# the coverage lane never compiles it. That is the exact defect #5613 describes
-# and this gate exists to catch — it is listed here only because the gate lands
-# before the classification fix, not because the absence is correct.
+# It has already come off once. This file briefly carried
+# `src/openhuman/hosting/{mod,tools}.rs`, because the gate was written before
+# #5619 classified the `hosting` Cargo gate into `scripts/ci/product-features.txt`.
+# #5619 merged first, the lane now compiles the family, and the two lines were
+# deleted rather than left to rot into "excluded on purpose".
 #
-# #5619 ("fix(hosting): compile the hosting family into the product") adds the
-# gate to the product set. When it merges, delete these two lines; the gate then
-# verifies hosting like any other family. If #5619 is closed without landing,
-# these lines must be replaced by a written decision that hosting ships
-# uncompiled, not left here by default.
-src/openhuman/hosting/mod.rs
-src/openhuman/hosting/tools.rs
+# (empty)

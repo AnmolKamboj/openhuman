@@ -204,7 +204,34 @@ eligible() {
 
 declare -a candidates=()
 if [ "${MODE}" = all ]; then
-  while IFS= read -r f; do candidates+=("${f}"); done < <(git ls-files 'src/*.rs' 'src/**/*.rs' | sort -u)
+  # `git ls-files` is not reliably available here, and its failure mode is
+  # silent. In this repo's CI container it prints
+  #
+  #   fatal: detected dubious ownership in repository at '/__w/openhuman/openhuman'
+  #
+  # because actions/checkout registers `safe.directory` under a temporarily
+  # overridden `HOME` that later steps do not run with. Read through a process
+  # substitution that produced an EMPTY candidate list, and this gate then
+  # reported "clean — every eligible changed source file produced coverage
+  # records" having checked ZERO files: the exact verified-nothing fail-open it
+  # exists to close, reproduced inside the fix for it. Observed on run
+  # 32367545922.
+  #
+  # So: take git's answer only if git actually succeeded AND returned something,
+  # otherwise walk the filesystem. The eligibility filter is identical either
+  # way; the only difference is that an untracked `src/**.rs` in a developer's
+  # working tree would also be checked, which is harmless (it is a real file
+  # that either compiled or did not).
+  listing=""
+  if listing="$(git ls-files 'src/*.rs' 'src/**/*.rs' 2>/dev/null)" && [ -n "${listing}" ]; then
+    log "enumerating tracked sources with git ls-files"
+  else
+    log "git ls-files unavailable or empty — falling back to a filesystem walk"
+    listing="$(find src -type f -name '*.rs' 2>/dev/null || true)"
+  fi
+  while IFS= read -r f; do
+    [ -n "${f}" ] && candidates+=("${f}")
+  done < <(printf '%s\n' "${listing}" | sort -u)
 else
   candidates=("${want[@]+"${want[@]}"}")
 fi
@@ -218,6 +245,15 @@ for f in "${candidates[@]+"${candidates[@]}"}"; do
 done
 
 log "checked ${checked} eligible source file(s) against $(wc -l <"${covered_file}" | tr -d ' ') covered path(s)"
+
+# A whole-tree run that checked nothing has not passed — it has failed to look.
+# This repository always contains eligible Rust sources, so zero means the tree
+# walk broke, and reporting success on it is the fail-open this gate exists to
+# close. `--files` is exempt: a PR touching only tests or docs legitimately has
+# nothing to check.
+if [ "${MODE}" = all ] && [ "${checked}" -eq 0 ]; then
+  die "--all checked 0 eligible files. The tree walk found nothing, which for this repository means it failed rather than that there is nothing to verify. Refusing to report success."
+fi
 
 if [ "${#unverified[@]}" -eq 0 ]; then
   log "clean — every eligible changed source file produced coverage records"

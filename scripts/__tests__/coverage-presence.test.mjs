@@ -252,6 +252,95 @@ test("--all walks the tracked tree", () => {
   );
 });
 
+test("--all still enumerates when git ls-files fails (CI dubious-ownership)", () => {
+  // Regression for run 32367545922: actions/checkout registers `safe.directory`
+  // under a temporarily overridden HOME, so `git ls-files` in a later step dies
+  // with `fatal: detected dubious ownership`. Read through a process
+  // substitution that yielded an EMPTY candidate list, and the gate reported
+  // "clean" having checked ZERO files — the verified-nothing fail-open this
+  // script exists to close, reproduced inside it.
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "openhuman-cov-presence-nogit-"),
+  );
+  fs.mkdirSync(path.join(cwd, "src", "a"), { recursive: true });
+  fs.writeFileSync(path.join(cwd, "src", "a", "uncompiled.rs"), WITH_FN);
+  fs.writeFileSync(path.join(cwd, "cov.info"), "");
+
+  // A `git` on PATH that always fails, standing in for dubious ownership.
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), "openhuman-fakegit-"));
+  fs.writeFileSync(
+    path.join(bin, "git"),
+    "#!/usr/bin/env bash\necho 'fatal: detected dubious ownership' >&2\nexit 128\n",
+  );
+  fs.chmodSync(path.join(bin, "git"), 0o755);
+
+  let status = 0;
+  let output = "";
+  try {
+    output = execFileSync(
+      "bash",
+      [script, path.join(cwd, "cov.info"), "--all"],
+      {
+        cwd,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          ALLOWLIST: path.join(cwd, "absent.txt"),
+        },
+      },
+    );
+  } catch (err) {
+    status = err.status;
+    output = `${err.stdout ?? ""}${err.stderr ?? ""}`;
+  }
+
+  assert.match(output, /falling back to a filesystem walk/);
+  assert.equal(
+    status,
+    1,
+    `the uncompiled file must still be found, got:\n${output}`,
+  );
+  assert.match(output, /checked 1 eligible/);
+  assert.match(output, /src\/a\/uncompiled\.rs produced no coverage records/);
+});
+
+test("--all refuses to report success when it checked nothing", () => {
+  // Zero eligible files in whole-tree mode means the walk broke, not that there
+  // is nothing to verify. Exit 2 (environment error), not 0.
+  const cwd = fs.mkdtempSync(
+    path.join(os.tmpdir(), "openhuman-cov-presence-empty-"),
+  );
+  fs.writeFileSync(path.join(cwd, "cov.info"), "");
+  execFileSync("git", ["init", "-q", "."], { cwd });
+  let status = 0;
+  let output = "";
+  try {
+    execFileSync("bash", [script, path.join(cwd, "cov.info"), "--all"], {
+      cwd,
+      encoding: "utf8",
+      env: { ...process.env, ALLOWLIST: path.join(cwd, "absent.txt") },
+    });
+  } catch (err) {
+    status = err.status;
+    output = `${err.stdout ?? ""}${err.stderr ?? ""}`;
+  }
+  assert.equal(status, 2, `expected exit 2, got ${status}:\n${output}`);
+  assert.match(output, /checked 0 eligible files/);
+});
+
+test("--files may legitimately check nothing and still pass", () => {
+  // The counterpart: a PR touching only test sources has nothing to verify, and
+  // that is not an error.
+  const res = run(
+    { "src/a/thing_tests.rs": WITH_FN },
+    [],
+    ["--files", "src/a/thing_tests.rs"],
+  );
+  assert.equal(res.status, 0);
+  assert.match(res.output, /checked 0 eligible/);
+});
+
 test("exits 2 on a missing lcov file and on bad usage", () => {
   const cwd = fs.mkdtempSync(
     path.join(os.tmpdir(), "openhuman-cov-presence-usage-"),

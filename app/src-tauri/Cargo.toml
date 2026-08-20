@@ -182,6 +182,12 @@ openhuman_core = { path = "../..", package = "openhuman", default-features = fal
     # shipped app, the memory_diff agent tool is absent, and the embedded
     # driver stops advertising Capability::Diff — the product keeps all three.
     "memory-git",
+    # Declared "Default-OFF, product-ON" by its own gate comment in the root
+    # Cargo.toml, but it reached neither the product set nor this list, so the
+    # family was compiled in no configuration at all. Registration stays
+    # credential-gated in tools/ops.rs, so a host with no hosting credential
+    # sees no new tools.
+    "hosting",
 ] }
 
 [target.'cfg(unix)'.dependencies]
@@ -312,7 +318,9 @@ split-debuginfo = "packed"
 # change here needs the same change in the root `Cargo.toml` and in
 # `app/src-tauri-mobile/Cargo.toml` (the iOS/Android host).
 lto = "thin"
-codegen-units = 1
+# 16, not 1 — see the root `Cargo.toml` for why (#5595: one codegen unit cost
+# the desktop release matrix +82% build time and blocked every release).
+codegen-units = 16
 strip = "symbols"
 
 # Fast CI builds: trade runtime perf for compile speed

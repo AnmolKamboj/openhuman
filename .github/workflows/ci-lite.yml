@@ -143,6 +143,16 @@ jobs:
               # The changed-files runner itself must trigger the lane that
               # runs it (it is also in rust-core-full → full-suite mode).
               - 'scripts/ci/rust-coverage-changed.sh'
+              # The product feature set decides what the Rust lanes below
+              # actually compile (clippy's `--features`, the test suite's, and
+              # rust-coverage-changed.sh's). Changing it changes the code under
+              # test as surely as editing `Cargo.toml` does, so it has to arm
+              # this lane too — #5619 turned `hosting` on and, without this
+              # entry, resolved to `["rust-tauri"]` alone, skipping every lane
+              # that would have compiled the family it enabled.
+              - 'scripts/ci/product-features.*'
+              # The coverage-presence gate and its allowlist decide whether this
+              # lane FAILS, so they arm it for the same reason.
               - 'scripts/ci/assert-coverage-presence.sh'
               - 'scripts/ci/coverage-presence-allowlist.txt'
               - 'Cargo.toml'
@@ -156,12 +166,24 @@ jobs:
               - 'scripts/check-linux-tls-dependencies.sh'
               - 'scripts/test-rust-e2e.sh'
               - 'scripts/test-rust-with-mock.sh'
-              - 'vendor/motosan-ai-oauth/**'
-              - 'vendor/tinychannels'
+              # Every vendored crate, not an enumeration. `[patch.crates-io]`
+              # force-resolves all ten submodules by path, so ANY pointer bump
+              # changes what this crate compiles against. The previous list
+              # named two of them, so a bump to the other eight ran no openhuman
+              # Rust lane at all while PR CI Gate still reported success.
+              # Enumerating here failed the same way the release Docker
+              # submodule list did three times before #5596 replaced it with
+              # `--init --recursive`. Do not go back to a list.
+              - '.gitmodules'
+              - 'vendor/**'
             # Changes here invalidate per-module test scoping → full suite.
             rust-core-full:
               - '.github/workflows/ci-lite.yml'
               - 'scripts/ci/rust-coverage-changed.sh'
+              # Same reason as in `rust-core` above: a feature-set change
+              # changes what compiles, which invalidates per-module scoping
+              # exactly as a `Cargo.toml` change does.
+              - 'scripts/ci/product-features.*'
               - 'scripts/ci/assert-coverage-presence.sh'
               - 'scripts/ci/coverage-presence-allowlist.txt'
               - 'Cargo.toml'
@@ -171,8 +193,11 @@ jobs:
               - 'rust-toolchain.toml'
               - 'scripts/ci-cancel-aware.sh'
               - 'scripts/check-linux-tls-dependencies.sh'
-              - 'vendor/motosan-ai-oauth/**'
-              - 'vendor/tinychannels'
+              # A vendored-crate bump invalidates per-module test scoping for the
+              # same reason a Cargo.lock change does: it moves the dependency
+              # graph under every module. Full suite, not scoped.
+              - '.gitmodules'
+              - 'vendor/**'
             rust-core-src:
               - 'src/**'
               - 'tests/**'
@@ -189,6 +214,11 @@ jobs:
               - 'rust-toolchain.toml'
               - 'app/src-tauri/**'
               - 'scripts/ci-cancel-aware.sh'
+              # The shell is a second Cargo world with its own duplicate
+              # `[patch.crates-io]` table pointing at the same submodules, so it
+              # is affected by a bump exactly as the core is. It named none.
+              - '.gitmodules'
+              - 'vendor/**'
             # Shared mock backend + script self-tests. The mock backend every
             # E2E suite depends on had zero PR-lane coverage before this (its
             # own socket-auth tests never ran in CI) — arm the scripts
