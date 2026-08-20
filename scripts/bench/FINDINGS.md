@@ -106,7 +106,61 @@ Saturation at ~14.5/s implies ~65 ms per turn in a serialized section, matching
 the measured ~61 ms scan. Adding cores cannot raise this, and it falls as the
 namespace grows.
 
-## A fix that was tried and reverted — do not repeat it
+## The cost is work volume, not synchronization
+
+Two plausible optimizations were implemented and measured. Neither helped. Both
+were aimed at how the scan is *synchronized*; the thing that actually costs is
+how much the scan *touches*.
+
+The measurement that settles it, at 5,162 chunks, concurrency 8:
+
+```
+p50 = 326 ms, throughput 24.1/s
+Little's law: 24.1 × 0.326 = 7.85 ≈ concurrency 8   → every worker busy all turn
+CPU: 6.85 of 14 cores (49%),  295 ms of CPU per turn
+```
+
+295 ms of **CPU** per turn, against 28 ms with memory off. That is not a queue
+behind a lock — it is real work being done, at half the machine's capacity, with
+no contention to remove. Any fix that leaves the same rows being read, decoded
+and scored will move this number by a few percent at best, which is exactly what
+both attempts did.
+
+### Two fixes that failed — do not repeat them
+
+**Attempt 1 — decode embeddings outside the connection lock.** Rationale: ~10k
+allocations and ~10M little-endian conversions per recall were happening inside
+the critical section. Interleaved A/B, 2 reps, identical populated workspaces:
+
+| arm | rep 1 | rep 2 | mean |
+| --- | --- | --- | --- |
+| baseline | 14.87/s | 14.37/s | 14.62/s |
+| decode outside lock | 14.42/s | 14.18/s | 14.30/s |
+
+**Attempt 2 — a read-only connection pool for the two O(N) scans.** Rationale:
+WAL supports concurrent readers, but one mutex-guarded connection serializes
+them, and half the cores were idle. Verified genuinely in use (the pooled arm
+held ~19 more file descriptors, and a unit test asserted connections were
+actually parked rather than silently falling back). Measured at two corpus sizes:
+
+| corpus | arm | rep 1 | rep 2 | mean |
+| --- | --- | --- | --- | --- |
+| 2,121 chunks | baseline | 37.21/s | 35.64/s | 36.43/s |
+| 2,121 chunks | read pool | 36.04/s | 34.56/s | 35.30/s |
+| 5,162 chunks | baseline | 24.07/s | 23.91/s | 23.99/s |
+| 5,162 chunks | read pool | 23.81/s | 23.55/s | 23.68/s |
+
+Both point estimates are slightly negative, consistently, across four pairs.
+Both changes were reverted; `vendor/tinymemory` is byte-identical to upstream
+`f8bd9af` (`git diff f8bd9af` is empty, 855 tests pass).
+
+**The lesson, stated plainly so it is not re-learned:** the recall path is not
+lock-bound and not I/O-bound. It is doing ~270 ms of CPU per turn touching every
+row in the namespace, twice over. Only reducing what is touched — items 1, 2, 3
+and 7 above — can change that. Micro-optimizing around the scan has now been
+measured twice and found worthless.
+
+## An earlier note kept for the record
 
 **Hypothesis:** `load_chunks_for_scope` decoded every embedding blob into a
 `Vec<f32>` *inside* the connection lock — ~10k allocations and ~10M
