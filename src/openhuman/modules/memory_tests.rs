@@ -67,10 +67,27 @@ fn the_advertised_capabilities_match_the_pinned_artifact() {
         Capabilities::all().contains_all(capabilities),
         "the artifact advertises a family the contract does not declare",
     );
+    // Stated on the pinned branch, not on `capabilities`, so the documented
+    // `OPENHUMAN_MEMORY_MODULE_ASSUME_FULL_CAPABILITIES=1` override cannot turn
+    // this red. Every assertion above holds under both configurations; this one
+    // is about the pin itself.
     assert_ne!(
-        capabilities,
+        super::capabilities_for(false),
         Capabilities::all(),
         "advertising the whole contract is the #5598 over-claim",
+    );
+}
+
+#[test]
+fn the_full_capability_override_restores_the_whole_contract() {
+    // The escape hatch for a locally-built module, which does serve the whole
+    // contract. Asserted through `capabilities_for` rather than by setting
+    // `OPENHUMAN_MEMORY_MODULE_ASSUME_FULL_CAPABILITIES` — mutating a
+    // process-global env var would race every other test in this binary.
+    assert_eq!(super::capabilities_for(true), Capabilities::all());
+    assert_ne!(
+        super::capabilities_for(true),
+        super::capabilities_for(false)
     );
 }
 
@@ -238,12 +255,19 @@ fn the_advertised_set_does_not_over_claim_the_artifact() {
     // CONTRACT declares; the artifact is older and smaller.
     use crate::openhuman::memory::api::capabilities::{Capabilities, Capability};
 
-    let advertised = super::artifact_capabilities();
+    // `capabilities_for(false)` rather than `artifact_capabilities()`: the
+    // invariant is a property of the pinned list, and reading the environment
+    // here would make this test fail for anyone running with the documented
+    // `OPENHUMAN_MEMORY_MODULE_ASSUME_FULL_CAPABILITIES=1` override.
+    let advertised = super::capabilities_for(false);
     for capability in [
         Capability::People,
         Capability::Chunks,
         Capability::Retrieval,
         Capability::Profile,
+        // The fifth family the contract added after v1.0.1. Without it the
+        // explicit check below passes if only `Episodic` is added by mistake.
+        Capability::Episodic,
     ] {
         assert!(
             !advertised.contains(capability),

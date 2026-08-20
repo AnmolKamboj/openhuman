@@ -99,7 +99,19 @@ fn assume_full_capabilities() -> bool {
 
 /// The set this build will advertise for the module driver.
 fn artifact_capabilities() -> Capabilities {
-    if assume_full_capabilities() {
+    capabilities_for(assume_full_capabilities())
+}
+
+/// The advertised set for a given override state.
+///
+/// Split out from [`artifact_capabilities`] so the pinned-artifact invariants
+/// can be asserted on the `false` branch directly. Reading the environment
+/// inside the assertion would make those tests fail for anyone who has
+/// `OPENHUMAN_MEMORY_MODULE_ASSUME_FULL_CAPABILITIES=1` exported — a documented,
+/// supported configuration — and mutating the variable from a test would race
+/// the rest of the binary.
+fn capabilities_for(assume_full: bool) -> Capabilities {
+    if assume_full {
         return Capabilities::all();
     }
     ARTIFACT_CAPABILITIES.iter().copied().collect()
@@ -338,16 +350,25 @@ impl ModuleMemoryProvider {
     /// Cross-check the module's advertised capabilities against what this build
     /// assumes, once per process.
     ///
-    /// Logged rather than fatal. Any mismatch means the registry pin and the
-    /// artifact have diverged; advertising less is the dangerous direction,
-    /// because the host assembled its full memory surface from this static set.
+    /// Compared against [`artifact_capabilities`] rather than
+    /// `Capabilities::all()`: the pinned `v1.0.1` artifact answers thirteen
+    /// families, so comparing with the eighteen the contract declares would warn
+    /// on the *expected* state at every first module use and leave the warning
+    /// permanently crying wolf. Against the configured set it fires only when
+    /// the loaded artifact genuinely disagrees with the pin — including when the
+    /// full-capability override is on but an older artifact was loaded.
+    ///
+    /// Logged rather than fatal. A mismatch means the registry pin and the
+    /// artifact have diverged; the module advertising *less* than this build
+    /// assumes is the dangerous direction, because the host assembles its memory
+    /// RPC surface and tool families from the assumed set before any call.
     async fn verify(&self, proxy: &tinybus::Proxy) {
         if self.verified.get().is_some() {
             return;
         }
         match proxy.call::<Capabilities>("Capabilities", ()).await {
             Ok(actual) => {
-                let assumed = Capabilities::all();
+                let assumed = artifact_capabilities();
                 if actual != assumed {
                     log::warn!(
                         "[modules:memory] the module advertises {actual:?} but this build \
