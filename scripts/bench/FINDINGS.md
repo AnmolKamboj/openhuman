@@ -106,20 +106,31 @@ Saturation at ~14.5/s implies ~65 ms per turn in a serialized section, matching
 the measured ~61 ms scan. Adding cores cannot raise this, and it falls as the
 namespace grows.
 
-## Fix applied
+## A fix that was tried and reverted — do not repeat it
 
-`vendor/tinymemory` — `load_chunks_for_scope` now decodes embeddings **outside**
-the connection lock. Previously the decode ran inside the critical section: N
-heap allocations and N × dim little-endian conversions (~10k allocations and
-~10M conversions at this scale) with every other turn blocked behind it.
+**Hypothesis:** `load_chunks_for_scope` decoded every embedding blob into a
+`Vec<f32>` *inside* the connection lock — ~10k allocations and ~10M
+little-endian conversions per recall at this scale, with every concurrent turn
+blocked behind it. Moving the decode outside the lock should shorten the
+critical section and raise the ceiling.
 
-Semantics are unchanged — the same rows produce the same `StoredChunk` values —
-and `load_chunks_for_scope_decodes_every_embedding_faithfully` pins that,
-including the NULL-blob case where `None` must not become `Some(vec![])`. The
-full `tinymemory-core` suite (856 tests) passes.
+**Result: no measurable improvement.** Interleaved A/B, two reps each, identical
+populated workspaces, concurrency 8, 90 s:
 
-**This shortens the critical section; it does not change the asymptotics.**
-Recall is still O(namespace) per turn, so degradation still occurs, just later.
+| arm | rep 1 | rep 2 | mean |
+| --- | --- | --- | --- |
+| baseline | 14.87/s | 14.37/s | 14.62/s |
+| decode outside lock | 14.42/s | 14.18/s | 14.30/s |
+
+The point estimate is slightly *negative* and well inside the ~3% within-arm
+spread. The extra intermediate vector plausibly costs as much as the decode
+saved. The change was reverted; `vendor/tinymemory` is untouched.
+
+**What that rules out:** the decode is not the serialized cost. Combined with
+finding 4 (writes are ~8%), the critical section is the SQLite scan itself —
+iterating 10k rows and copying ~40 MiB of blobs through one mutex, per turn.
+Any fix has to avoid *reading* the whole namespace. Shaving work around the scan
+does not help.
 
 ## Not fixed — needs a design decision
 
