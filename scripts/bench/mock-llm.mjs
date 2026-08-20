@@ -212,11 +212,40 @@ function argumentsFor(toolName) {
   }
 }
 
-function buildReplyText(chars) {
-  // A repeating, compressible-but-not-empty body. Size is the knob that
-  // matters; content is not.
-  const unit = 'openhuman agent scale benchmark reply. ';
-  return unit.repeat(Math.max(1, Math.ceil(chars / unit.length))).slice(0, chars);
+// A small vocabulary the reply builder samples from. Replies get stored as
+// memories, so if every reply were the same string the whole corpus would
+// collapse to one distinct document — fine for throughput, useless for asking
+// which memories a retrieval change surfaces.
+const VOCAB = [
+  'invoice', 'deployment', 'kubernetes', 'roadmap', 'latency', 'onboarding',
+  'refund', 'schema', 'migration', 'webhook', 'billing', 'timezone',
+  'passport', 'itinerary', 'recipe', 'mortgage', 'vaccination', 'landlord',
+  'guitar', 'marathon', 'thesis', 'compiler', 'telescope', 'sourdough',
+];
+
+/**
+ * Deterministic, varied reply text of approximately `chars` length.
+ *
+ * `seed` makes it reproducible per turn while still differing between turns.
+ */
+function buildReplyText(chars, seed) {
+  let state = hash32(String(seed)) || 1;
+  const next = () => {
+    state ^= state << 13;
+    state >>>= 0;
+    state ^= state >> 17;
+    state ^= state << 5;
+    state >>>= 0;
+    return state;
+  };
+  const words = [];
+  let len = 0;
+  while (len < chars) {
+    const w = VOCAB[next() % VOCAB.length];
+    words.push(w);
+    len += w.length + 1;
+  }
+  return words.join(' ').slice(0, chars);
 }
 
 async function handleCompletion(req, res, body, opts) {
