@@ -189,6 +189,10 @@ jobs:
                 return 0
               fi
               echo "::warning::apt-get $1 failed or exceeded ${budget}s (attempt ${attempt}/3); retrying"
+              # `timeout` can TERM apt-get mid-transaction, leaving dpkg
+              # interrupted; every later attempt then fails with "dpkg was
+              # interrupted" and the retry loop burns all three for nothing.
+              sudo dpkg --configure -a || true
               sleep 10
             done
             echo "::error::apt-get $1 failed after 3 attempts"

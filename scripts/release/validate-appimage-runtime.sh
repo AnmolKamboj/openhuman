@@ -25,6 +25,17 @@ RUNTIME_VALIDATOR_SCRIPT_DIR="$(
 # shellcheck source=strip-appimage-graphics-libs.sh
 source "$RUNTIME_VALIDATOR_SCRIPT_DIR/strip-appimage-graphics-libs.sh"
 
+# The production NEEDED contract, in ONE place. `validate_extracted_appdir`
+# takes it as its default and the direct-invocation branch at the bottom pins it,
+# so a caller-supplied `APPIMAGE_EXPECTED_NEEDED` can relax the check for a
+# fixture but never for a real release artifact. Both readers name this constant
+# — the previous code duplicated the list, and the stale copy (libcef.so)
+# outlived CEF by two weeks.
+#
+# Verified against a real linuxdeploy bundle on both Linux arches: usr/bin/OpenHuman
+# declares and bundles libxdo.so.3 and libwebkit2gtk-4.1.so.0.
+APPIMAGE_PRODUCTION_NEEDED="libxdo.so.3 libwebkit2gtk-4.1.so.0"
+
 runtime_validation_error() {
   echo "[appimage-runtime] ERROR: $*" >&2
   return 1
@@ -149,11 +160,8 @@ validate_linuxdeploy_appdir() {
 
   # -e follows symlinks: the AppDir-root icon and .DirIcon are relative symlinks
   # into usr/share/icons, NOT regular files.
-  local link
-  for link in "$appdir/.DirIcon"; do
-    [ -e "$link" ] \
-      || { runtime_validation_error "${link#"$appdir"/} does not resolve"; return 1; }
-  done
+  [ -e "$appdir/.DirIcon" ] \
+    || { runtime_validation_error ".DirIcon does not resolve"; return 1; }
 
   [ -n "$(find "$appdir/usr/lib" -maxdepth 1 -type f -name '*.so*' -print -quit 2>/dev/null)" ] \
     || { runtime_validation_error "usr/lib contains no shared libraries"; return 1; }
@@ -272,16 +280,20 @@ validate_extracted_appdir() {
   # segfaulted the app on launch (#4020). libcef.so used to be on this list; CEF
   # was removed in #5456 and no build can produce it any more.
   #
-  # Being bundled is the fatal condition, because that is what #4020 actually
-  # was. A missing NEEDED entry only warns: it means the dependency was dropped
-  # upstream, which is a review question rather than a broken artifact.
-  local expected_needed="${APPIMAGE_EXPECTED_NEEDED-libxdo.so.3 libwebkit2gtk-4.1.so.0}"
+  # Both halves are fatal, and they catch different regressions. A NEEDED entry
+  # that is not bundled is #4020 itself: the loader fails at startup. An entry
+  # that is no longer declared at all means the dependency was dropped upstream
+  # — no segfault, but a silent capability loss, which is precisely the class of
+  # regression this tripwire exists to surface. Warning instead would put it in a
+  # 90-minute release log where nobody reads it. If a drop is intentional, remove
+  # the name from APPIMAGE_PRODUCTION_NEEDED in the same commit.
+  local expected_needed="${APPIMAGE_EXPECTED_NEEDED-$APPIMAGE_PRODUCTION_NEEDED}"
   local needed_name found
   for needed_name in $expected_needed; do
     if ! printf '%s\n' "$needed" | grep -Fxq "$needed_name"; then
-      echo "[appimage-runtime] WARNING: ${main_binary#"$appdir"/} no longer declares" \
-        "NEEDED '$needed_name'; if that is intended, drop it from APPIMAGE_EXPECTED_NEEDED" >&2
-      continue
+      runtime_validation_error \
+        "${main_binary#"$appdir"/} is missing NEEDED entry '$needed_name'"
+      return 1
     fi
     found=0
     for root in "${lib_roots[@]}"; do
@@ -721,8 +733,10 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     echo "Usage: $0 <final.AppImage>" >&2
     exit 2
   }
-  # Do NOT re-pin APPIMAGE_EXPECTED_NEEDED here: hardcoding it silently defeated
-  # the documented env override, and the old value (libcef.so) outlived CEF by
-  # two weeks. The default lives with the check, in validate_extracted_appdir.
-  validate_final_appimage "$1"
+  # Pin the production contract for a direct invocation so a caller-supplied
+  # `APPIMAGE_EXPECTED_NEEDED` cannot disarm it on a real artifact. This reads the
+  # same constant as the default in `validate_extracted_appdir`, so unlike the
+  # previous hardcode there is no second copy to go stale.
+  APPIMAGE_EXPECTED_NEEDED="$APPIMAGE_PRODUCTION_NEEDED" \
+    validate_final_appimage "$1"
 fi
