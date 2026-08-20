@@ -143,6 +143,14 @@ jobs:
               # The changed-files runner itself must trigger the lane that
               # runs it (it is also in rust-core-full → full-suite mode).
               - 'scripts/ci/rust-coverage-changed.sh'
+              # The product feature set decides what the Rust lanes below
+              # actually compile (clippy's `--features`, the test suite's, and
+              # rust-coverage-changed.sh's). Changing it changes the code under
+              # test as surely as editing `Cargo.toml` does, so it has to arm
+              # this lane too — #5619 turned `hosting` on and, without this
+              # entry, resolved to `["rust-tauri"]` alone, skipping every lane
+              # that would have compiled the family it enabled.
+              - 'scripts/ci/product-features.*'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'build.rs'
@@ -168,6 +176,10 @@ jobs:
             rust-core-full:
               - '.github/workflows/ci-lite.yml'
               - 'scripts/ci/rust-coverage-changed.sh'
+              # Same reason as in `rust-core` above: a feature-set change
+              # changes what compiles, which invalidates per-module scoping
+              # exactly as a `Cargo.toml` change does.
+              - 'scripts/ci/product-features.*'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'build.rs'

@@ -4424,6 +4424,7 @@ dependencies = [
  "tinycortex",
  "tinycortex-api",
  "tinyflows",
+ "tinyhosts",
  "tinyhumans-sdk",
  "tinymemory",
  "tinymemory-api",
@@ -7154,6 +7155,21 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "tinyhosts"
+version = "0.1.5"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "hex",
+ "percent-encoding",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha1",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

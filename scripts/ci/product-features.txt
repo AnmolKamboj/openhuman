@@ -96,3 +96,12 @@ runtime-node
 # Git-backed memory diff (snapshots/checkpoints/read markers) and the git wiki
 # mirror of summary nodes. Carries git2 + vendored libgit2.
 memory-git
+
+# The `hosting_*` agent tools: put a workspace on a real hosting provider and
+# manage its sites, databases, environment, domains and deployments over the
+# tinyhosts unified model. Its gate in the root Cargo.toml declares
+# "Default-OFF, product-ON" but it reached neither this file nor the shell's
+# forwarding list, so the family compiled in no configuration. Tool
+# registration stays credential-gated (`tools/ops.rs`), so enabling this adds
+# nothing for a host without a hosting credential.
+hosting
