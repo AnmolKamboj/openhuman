@@ -124,7 +124,8 @@ populated workspaces, concurrency 8, 90 s:
 
 The point estimate is slightly *negative* and well inside the ~3% within-arm
 spread. The extra intermediate vector plausibly costs as much as the decode
-saved. The change was reverted; `vendor/tinymemory` is untouched.
+saved. The change was dropped — `load_chunks_for_scope` is back to decoding
+inline, on whichever connection it is handed.
 
 **What that rules out:** the decode is not the serialized cost. Combined with
 finding 4 (writes are ~8%), the critical section is the SQLite scan itself —
