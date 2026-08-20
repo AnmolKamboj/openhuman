@@ -477,6 +477,21 @@ impl SecurityPolicy {
         if Self::is_always_forbidden(path) {
             return false;
         }
+        // Per-turn grant (see `agent::turn_workspace`): an embedder that scoped
+        // a workspace root for this turn — a workflow run's checkout — trusts
+        // it read/write for the turn's duration. Checked alongside the
+        // configured roots rather than instead of them, and *after*
+        // `is_always_forbidden` above, so a per-turn grant is exactly as strong
+        // as a user-configured `TrustedRoot` and no stronger: credential stores
+        // and workspace-internal state stay unreachable through it.
+        if let Some(turn_root) = crate::openhuman::agent::turn_workspace::current() {
+            let canonical_turn_root = turn_root
+                .canonicalize()
+                .unwrap_or_else(|_| turn_root.clone());
+            if path.starts_with(&turn_root) || path.starts_with(&canonical_turn_root) {
+                return true;
+            }
+        }
         self.trusted_roots.iter().any(|root| {
             if require_write && root.access != TrustedAccess::ReadWrite {
                 return false;

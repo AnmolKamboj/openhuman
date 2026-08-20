@@ -34,7 +34,11 @@ pub const DEFAULT_MODEL: &str = MODEL_CHAT_V1;
 /// [`Config::memory_sync_interval_secs`] is `None` — i.e. the user has not
 /// explicitly picked a schedule. 24h, matching the "Sync every 24h" preset
 /// surfaced in the Memory Sources UI. See issue #3302.
-pub const DEFAULT_MEMORY_SYNC_INTERVAL_SECS: u64 = 86_400;
+///
+/// Defined in `tinymemory_api::host` and re-exported here: the extracted memory
+/// subsystem applies this fallback too, and two `86_400`s that must agree is a
+/// drift waiting to happen.
+pub use tinymemory_api::host::DEFAULT_MEMORY_SYNC_INTERVAL_SECS;
 
 /// Preset memory-sync cadences (seconds) offered in the UI: 4h / 12h / 24h.
 /// "Manual only" is represented separately by `Some(0)`. See issue #3302.
@@ -94,6 +98,14 @@ pub struct Config {
     pub action_dir_override: Option<PathBuf>,
     #[serde(skip)]
     pub config_path: PathBuf,
+    /// Per-load snapshot used to remove standalone CLI inference overrides
+    /// from a saved clone. Runtime-only and never serialized. Public only so
+    /// external integration tests and embedding crates can continue to use
+    /// struct-update syntax with this public configuration type.
+    #[serde(skip)]
+    #[schemars(skip)]
+    #[doc(hidden)]
+    pub cli_inference_snapshot: Option<super::AppliedInferenceOverride>,
     /// Runtime only — `true` when this config was produced by the loader's
     /// corruption-recovery path: the on-disk `config.toml` was unreadable
     /// (non-UTF-8) or unparseable, so it was renamed to `.corrupted.<ts>` and the
@@ -263,6 +275,14 @@ pub struct Config {
     #[serde(default)]
     pub storage: StorageConfig,
 
+    /// `[subsystems.*]` — the uniform cross-subsystem driver-binding config
+    /// (kernel.md §3.6 / plan-memory.md §4.5). Currently only `subsystems.memory` is
+    /// populated; nothing reads this yet (zero behaviour change). The
+    /// existing `[memory]`, `[memory_tree]`, `[[memory_sources]]` blocks
+    /// above are unaffected.
+    #[serde(default)]
+    pub subsystems: SubsystemsConfig,
+
     #[serde(default)]
     pub composio: ComposioConfig,
 
@@ -283,6 +303,12 @@ pub struct Config {
 
     #[serde(default)]
     pub mcp_client: McpClientConfig,
+
+    /// Loadable native modules — whether they load, whether this host may fetch
+    /// them, and where a developer's own build lives. The loadable *set* is
+    /// compiled in, not configured: see `openhuman::modules::registry`.
+    #[serde(default)]
+    pub modules: super::ModulesConfig,
 
     /// Trust metadata for external capability providers. Empty by default so
     /// existing installations keep the same tool-discovery behavior.
@@ -364,6 +390,17 @@ pub struct Config {
     #[serde(default)]
     pub primary_cloud: Option<String>,
 
+    /// Runtime only — where this one call's inference goes, when the caller
+    /// named an endpoint and bearer for it.
+    ///
+    /// `#[serde(skip)]` is the whole point: a per-call route must not be able to
+    /// reach `config.toml` and repoint the account's inference for good. See
+    /// [`ephemeral_route`](crate::openhuman::config::schema::ephemeral_route)
+    /// for how it is installed and which roles it governs.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub ephemeral_route: Option<crate::openhuman::config::schema::ephemeral_route::EphemeralRoute>,
+
     /// Provider string for direct conversational chat (simple back-and-forth).
     #[serde(default)]
     pub chat_provider: Option<String>,
@@ -423,6 +460,10 @@ pub struct Config {
     #[serde(default)]
     pub tokenjuice: TokenjuiceConfig,
 
+    /// Hosting provider credentials and switch (`hosting` feature).
+    #[serde(default)]
+    pub hosting: HostingConfig,
+
     #[serde(default)]
     pub voice_server: VoiceServerConfig,
 
@@ -433,19 +474,20 @@ pub struct Config {
     // Provider-string grammar (consumed by `voice::factory`):
     //
     //   "cloud" / "openhuman"  → OpenHuman backend proxy (STT or TTS)
-    //   "whisper"              → local Whisper (STT only)
     //   "piper"                → local Piper (TTS only)
     //   "<slug>:<model>"       → voice_providers entry matched by slug
     //
     // When `stt_provider` / `tts_provider` are `None`, the factory falls
-    // back to `local_ai.stt_provider` / `local_ai.tts_provider` (legacy),
-    // then to `"cloud"`.
+    // back to `local_ai.stt_provider` / `local_ai.tts_provider` (legacy).
+    // For STT the final fallback is `voice_server.stt_engine`; for TTS it is
+    // `"cloud"`.
     /// Registered voice providers (STT/TTS). Analogous to `cloud_providers`
     /// for LLM inference.
     #[serde(default)]
     pub voice_providers: Vec<crate::openhuman::config::schema::voice_providers::VoiceProviderCreds>,
 
-    /// STT routing string. Grammar: `"cloud"` | `"whisper"` | `"<slug>:<model>"`.
+    /// STT routing string. Grammar: `"cloud"` | `"<slug>:<model>"`.
+    /// `"cloud"` (or unset) defers to `voice_server.stt_engine`.
     #[serde(default)]
     pub stt_provider: Option<String>,
 
@@ -744,11 +786,13 @@ impl Default for Config {
             action_dir: crate::openhuman::config::default_action_dir(),
             action_dir_override: None,
             config_path: openhuman_dir.join("config.toml"),
+            cli_inference_snapshot: None,
             recovered_from_corruption: false,
             schema_version: 0,
             api_url: None,
             api_key: None,
             inference_url: None,
+            ephemeral_route: None,
             default_model: Some(DEFAULT_MODEL.to_string()),
             default_temperature: DEFAULT_TEMPERATURE,
             output_language: None,
@@ -780,6 +824,7 @@ impl Default for Config {
             memory: MemoryConfig::default(),
             memory_tree: MemoryTreeConfig::default(),
             storage: StorageConfig::default(),
+            subsystems: SubsystemsConfig::default(),
             composio: ComposioConfig::default(),
             secrets: SecretsConfig::default(),
             browser: BrowserConfig::default(),
@@ -787,6 +832,7 @@ impl Default for Config {
             curl: CurlConfig::default(),
             gitbooks: GitbooksConfig::default(),
             mcp_client: McpClientConfig::default(),
+            modules: super::ModulesConfig::default(),
             capability_providers: Vec::new(),
             multimodal: MultimodalConfig::default(),
             multimodal_files: MultimodalFileConfig::default(),
@@ -818,6 +864,7 @@ impl Default for Config {
             runtime_python: RuntimePythonConfig::default(),
             runtime_pool: RuntimePoolConfig::default(),
             tokenjuice: TokenjuiceConfig::default(),
+            hosting: HostingConfig::default(),
             voice_server: VoiceServerConfig::default(),
             voice_providers: Vec::new(),
             stt_provider: None,

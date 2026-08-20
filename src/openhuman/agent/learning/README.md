@@ -68,7 +68,7 @@ Namespace `learning` (wired into `src/core/all.rs`; 11 controllers). Methods:
 | `learning.forget_facet` | Mark `Dropped` + `user_state = Forgotten` (blocks re-promotion). |
 | `learning.reset_cache` | Delete all `Auto` rows, preserve `Pinned`. |
 
-All handlers go through the memory client's `profile_conn()` and a `FacetCache`; `linkedin_enrichment` / `save_profile` load config via `config::rpc::load_config_with_timeout`.
+All handlers go through the memory client's `profile_store()` and a `FacetCache`; `linkedin_enrichment` / `save_profile` load config via `config::rpc::load_config_with_timeout`.
 
 ## Agent tools
 
@@ -94,7 +94,7 @@ These are subscriber registrations rather than a single `bus.rs`; subscriptions 
 
 ## Dependencies
 
-- `crate::openhuman::memory::store::profile` — the `ProfileFacet` / `FacetState` / `UserState` types and the SQL helpers backing `FacetCache` (heaviest dependency).
+- `tinymemory_core::store::profile` — the `ProfileFacet` / `FacetState` / `UserState` types and the SQL helpers backing `FacetCache` (heaviest dependency).
 - `crate::openhuman::memory` / `memory_store` — the `Memory` trait, `MemoryClient`, categories; all KV persistence and the global memory client used by RPC handlers.
 - `crate::openhuman::agent::hooks` — `PostTurnHook` / `TurnContext` / `ToolCallRecord` implemented by the three hooks.
 - `crate::openhuman::agent::harness::session::transcript` — `SessionTranscript` parsing for transcript ingestion.

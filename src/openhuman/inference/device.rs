@@ -91,9 +91,9 @@ fn detect_gpu(cpu_brand: &str, os_name: &str) -> (bool, Option<String>) {
         return (true, Some("Apple Silicon (Metal)".to_string()));
     }
 
-    // Intel Mac: macOS with Intel CPU — no Metal GPU acceleration for whisper.
+    // Intel Mac: macOS with Intel CPU — no Metal GPU acceleration.
     if os_lower.contains("mac") {
-        tracing::debug!("Intel Mac detected — no GPU acceleration available for whisper");
+        tracing::debug!("Intel Mac detected — no GPU acceleration available");
         return (false, Some("Intel Mac (no Metal GPU)".to_string()));
     }
 

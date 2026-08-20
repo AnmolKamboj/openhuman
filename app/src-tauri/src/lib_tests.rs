@@ -599,60 +599,6 @@ fn platform_arch_is_aarch64_on_apple_silicon_build() {
 }
 
 // -------------------------------------------------------------------------
-// cef_prewarm_enabled (issue #2463 — Wayland/XWayland BadWindow guard)
-// -------------------------------------------------------------------------
-
-#[test]
-fn prewarm_enabled_by_default_on_non_wayland() {
-    assert!(cef_prewarm_enabled(None, false));
-}
-
-#[test]
-fn prewarm_auto_disabled_on_wayland_when_env_unset() {
-    assert!(!cef_prewarm_enabled(None, true));
-}
-
-#[test]
-fn prewarm_explicit_disable_respected_on_non_wayland() {
-    assert!(!cef_prewarm_enabled(Some("0"), false));
-    assert!(!cef_prewarm_enabled(Some("false"), false));
-    assert!(!cef_prewarm_enabled(Some("no"), false));
-    assert!(!cef_prewarm_enabled(Some("off"), false));
-}
-
-#[test]
-fn prewarm_explicit_disable_respected_on_wayland() {
-    assert!(!cef_prewarm_enabled(Some("0"), true));
-    assert!(!cef_prewarm_enabled(Some("false"), true));
-}
-
-#[test]
-fn prewarm_explicit_enable_overrides_wayland_guard() {
-    // OPENHUMAN_CEF_PREWARM=1 (or any non-disable value) lets ops
-    // force prewarm even on Wayland sessions.
-    assert!(cef_prewarm_enabled(Some("1"), true));
-    assert!(cef_prewarm_enabled(Some("true"), true));
-    assert!(cef_prewarm_enabled(Some("yes"), true));
-    assert!(cef_prewarm_enabled(Some("on"), true));
-}
-
-#[test]
-fn prewarm_disable_flags_are_case_insensitive() {
-    assert!(!cef_prewarm_enabled(Some("FALSE"), false));
-    assert!(!cef_prewarm_enabled(Some("OFF"), true));
-    assert!(!cef_prewarm_enabled(Some("  0  "), false));
-    assert!(!cef_prewarm_enabled(Some("  No  "), true));
-}
-
-#[test]
-fn prewarm_unknown_env_value_treated_as_enable() {
-    // Any string that is not a recognised disable token → treat as enable.
-    assert!(cef_prewarm_enabled(Some("enabled"), false));
-    assert!(cef_prewarm_enabled(Some("yes"), false));
-    assert!(cef_prewarm_enabled(Some(""), false));
-}
-
-// -------------------------------------------------------------------------
 // build_sentry_release_tag
 // -------------------------------------------------------------------------
 

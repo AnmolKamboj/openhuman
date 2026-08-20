@@ -9,7 +9,8 @@ use std::time::Instant;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
 use crate::rpc::RpcOutcome;
 
@@ -276,7 +277,7 @@ pub async fn mcp_clients_install(
         server.qualified_name
     );
 
-    publish_global(DomainEvent::McpServerInstalled {
+    BUS.publish(DomainEvent::McpServerInstalled {
         server_id: server_id.clone(),
         qualified_name: server.qualified_name.clone(),
     });
@@ -418,7 +419,7 @@ pub async fn mcp_clients_connect(
 
     let tool_count = tools.len() as u32;
 
-    publish_global(DomainEvent::McpServerConnected {
+    BUS.publish(DomainEvent::McpServerConnected {
         server_id: server_id.trim().to_string(),
         tool_count,
     });
@@ -471,7 +472,7 @@ pub async fn mcp_clients_set_enabled(
     if !enabled {
         connections::disconnect(&server_id).await;
         connections::clear_last_error(&server_id).await;
-        publish_global(DomainEvent::McpServerDisconnected {
+        BUS.publish(DomainEvent::McpServerDisconnected {
             server_id: server_id.clone(),
             reason: Some("disabled".to_string()),
         });
@@ -496,7 +497,7 @@ pub async fn mcp_clients_disconnect(server_id: String) -> Result<RpcOutcome<Valu
 
     connections::disconnect(server_id.trim()).await;
 
-    publish_global(DomainEvent::McpServerDisconnected {
+    BUS.publish(DomainEvent::McpServerDisconnected {
         server_id: server_id.trim().to_string(),
         reason: None,
     });
@@ -551,7 +552,7 @@ pub async fn mcp_clients_update_env(
 
     // Drop any live session so the reconnect picks up the new env.
     connections::disconnect(server_id).await;
-    publish_global(DomainEvent::McpServerDisconnected {
+    BUS.publish(DomainEvent::McpServerDisconnected {
         server_id: server_id.to_string(),
         reason: Some("env reconfigured".to_string()),
     });
@@ -591,7 +592,7 @@ pub async fn mcp_clients_update_env(
     match connections::connect(config, &server).await {
         Ok(tools) => {
             let tool_count = tools.len() as u32;
-            publish_global(DomainEvent::McpServerConnected {
+            BUS.publish(DomainEvent::McpServerConnected {
                 server_id: server_id.to_string(),
                 tool_count,
             });
@@ -786,7 +787,7 @@ pub async fn mcp_clients_tool_call(
     let elapsed_ms = start.elapsed().as_millis() as u64;
     let success = result.is_ok();
 
-    publish_global(DomainEvent::McpClientToolExecuted {
+    BUS.publish(DomainEvent::McpClientToolExecuted {
         server_id: server_id.trim().to_string(),
         tool_name: tool_name.trim().to_string(),
         success,

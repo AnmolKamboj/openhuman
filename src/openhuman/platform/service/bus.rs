@@ -5,7 +5,9 @@ use std::sync::{
 
 use async_trait::async_trait;
 
-use crate::core::event_bus::{DomainEvent, EventHandler, SubscriptionHandle};
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 
 /// Holds the single process-lifetime subscription handle so it is never
 /// double-registered and never dropped (which would abort the task).
@@ -24,7 +26,7 @@ pub fn register_restart_subscriber() {
         return;
     }
 
-    match crate::core::event_bus::subscribe_global(Arc::new(RestartSubscriber)) {
+    match crate::core::bus::BUS.subscribe(Arc::new(RestartSubscriber)) {
         Some(handle) => {
             // Store the handle; OnceLock ensures at most one wins if there is a
             // race between two threads calling this function concurrently.
@@ -45,7 +47,7 @@ pub fn register_shutdown_subscriber() {
         return;
     }
 
-    match crate::core::event_bus::subscribe_global(Arc::new(ShutdownSubscriber)) {
+    match crate::core::bus::BUS.subscribe(Arc::new(ShutdownSubscriber)) {
         Some(handle) => {
             let _ = SHUTDOWN_HANDLE.set(handle);
         }
@@ -72,7 +74,7 @@ static SHUTDOWN_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 pub struct RestartSubscriber;
 
 #[async_trait]
-impl EventHandler for RestartSubscriber {
+impl EventHandler<DomainEvent> for RestartSubscriber {
     fn name(&self) -> &str {
         "service::restart"
     }
@@ -138,7 +140,7 @@ impl EventHandler for RestartSubscriber {
 pub struct ShutdownSubscriber;
 
 #[async_trait]
-impl EventHandler for ShutdownSubscriber {
+impl EventHandler<DomainEvent> for ShutdownSubscriber {
     fn name(&self) -> &str {
         "service::shutdown"
     }

@@ -20,26 +20,30 @@ use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use tempfile::TempDir;
 
-use crate::core::event_bus::{
-    init_global as init_event_bus, subscribe_global, DomainEvent, EventHandler, SubscriptionHandle,
-};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::ingest_pipeline::ingest_chat;
-use crate::openhuman::memory::queue::{
-    self as memory_queue, count_total, drain_until_idle, JobStatus,
-};
-use crate::openhuman::memory::store::chunks::store::{
-    count_chunks, count_chunks_by_lifecycle_status, CHUNK_STATUS_BUFFERED,
-};
-use crate::openhuman::memory::store::trees::{store as tree_store, types::TreeKind};
-use crate::openhuman::memory::sync_events::{emit_sync_stage, MemorySyncStage, MemorySyncTrigger};
 use crate::openhuman::memory::tree::retrieval::{query_source, search_entities};
 use crate::openhuman::memory::tree::score::store::lookup_entity;
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 use tinycortex::memory::ingest::canonicalize::chat::{ChatBatch, ChatMessage};
+use tinymemory_core::ingest_pipeline::ingest_chat;
+use tinymemory_core::queue::{self as memory_queue, count_total, drain_until_idle, JobStatus};
+use tinymemory_core::store::chunks::store::{
+    count_chunks, count_chunks_by_lifecycle_status, CHUNK_STATUS_BUFFERED,
+};
+use tinymemory_core::store::trees::{store as tree_store, types::TreeKind};
+use tinymemory_core::sync_events::{emit_sync_stage, MemorySyncStage, MemorySyncTrigger};
 
 // ── helpers ─────────────────────────────────────────────────────────────
 
 fn test_config() -> (TempDir, Config) {
+    // Ingestion canonicalises through the host seams, so they must be wired.
+    // This module never installed them and passed only when some other test in
+    // the binary had; filtered to this file it failed outright. `Once`-guarded,
+    // so this is free when another test got there first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let tmp = TempDir::new().unwrap();
     let mut cfg = Config::default();
     cfg.workspace_dir = tmp.path().to_path_buf();
@@ -49,8 +53,9 @@ fn test_config() -> (TempDir, Config) {
     (tmp, cfg)
 }
 
-fn ensure_event_bus() {
-    let _ = init_event_bus(256);
+async fn ensure_event_bus() {
+    // Standing the bus up is async now — it connects to a broker. Idempotent.
+    crate::core::bus::init().await.expect("bus init");
 }
 
 #[derive(Clone)]
@@ -66,7 +71,7 @@ impl EventCollector {
     }
 
     fn subscribe(self) -> (Self, Option<SubscriptionHandle>) {
-        let handle = subscribe_global(Arc::new(self.clone()));
+        let handle = BUS.subscribe(Arc::new(self.clone()));
         (self, handle)
     }
 
@@ -78,10 +83,27 @@ impl EventCollector {
             .filter(|e| pred(e))
             .count()
     }
+
+    /// Wait until at least `want` events match, or fail on a deadline.
+    ///
+    /// A single `yield_now` used to be enough when the bus was a channel and
+    /// the handler ran inline on the subscriber task. On tinybus an event
+    /// crosses two task hops — the subscriber loop, then the isolated handler
+    /// task — so a batch of twenty needs to be waited for rather than assumed.
+    async fn wait_for<F: Fn(&DomainEvent) -> bool>(&self, want: usize, pred: F) -> usize {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let seen = self.count_by(&pred);
+            if seen >= want || tokio::time::Instant::now() > deadline {
+                return seen;
+            }
+            tokio::task::yield_now().await;
+        }
+    }
 }
 
 #[async_trait]
-impl EventHandler for EventCollector {
+impl EventHandler<DomainEvent> for EventCollector {
     fn name(&self) -> &str {
         "test::event_collector"
     }
@@ -142,7 +164,7 @@ fn mk_batch(source: &str, label: &str, seq: u32, body: &str, base_ts: i64) -> Ch
 #[tokio::test]
 async fn single_batch_sync_to_tree() {
     let (_tmp, cfg) = test_config();
-    ensure_event_bus();
+    ensure_event_bus().await;
 
     let (collector, _handle) = EventCollector::new().subscribe();
 
@@ -176,12 +198,15 @@ async fn single_batch_sync_to_tree() {
     let total_jobs = count_total(&cfg).unwrap();
     assert!(total_jobs >= 1, "extract_chunk job should be queued");
 
-    // DocumentCanonicalized event.
-    tokio::task::yield_now().await;
-    let canonicalized_count = collector.count_by(|e| {
-        matches!(e, DomainEvent::DocumentCanonicalized { source_kind, source_id: sid, .. }
-            if source_kind == "chat" && sid == "gmail:alice-thread-1")
-    });
+    // DocumentCanonicalized event. Waited for, not assumed: the event crosses
+    // two task hops on tinybus, so a bare `yield_now` raced the handler and
+    // made this test flaky — it alternated pass/fail across identical runs.
+    let canonicalized_count = collector
+        .wait_for(1, |e| {
+            matches!(e, DomainEvent::DocumentCanonicalized { source_kind, source_id: sid, .. }
+                if source_kind == "chat" && sid == "gmail:alice-thread-1")
+        })
+        .await;
     assert!(canonicalized_count >= 1);
 
     // Drain: extract → admit → append_buffer.
@@ -216,7 +241,15 @@ async fn single_batch_sync_to_tree() {
         None, // channel-level — not a memory-source row
     );
 
-    tokio::task::yield_now().await;
+    // Same race as above. Waits for the **terminal** stage specifically, not
+    // merely for some stage event: the assertions below require `completed` to
+    // have arrived, and any earlier stage would satisfy a looser predicate
+    // while the pipeline was still running.
+    collector
+        .wait_for(1, |e| {
+            matches!(e, DomainEvent::MemorySyncStageChanged { stage, .. } if stage == "completed")
+        })
+        .await;
     let sync_stages: Vec<String> = collector
         .events
         .lock()
@@ -236,7 +269,7 @@ async fn single_batch_sync_to_tree() {
 #[tokio::test]
 async fn multi_batch_volume_builds_full_tree() {
     let (_tmp, cfg) = test_config();
-    ensure_event_bus();
+    ensure_event_bus().await;
 
     let (collector, _handle) = EventCollector::new().subscribe();
 
@@ -267,12 +300,13 @@ async fn multi_batch_volume_builds_full_tree() {
     let total_chunks = count_chunks(&cfg).unwrap();
     assert!(total_chunks >= 20, "got {total_chunks}");
 
-    tokio::task::yield_now().await;
-    let canonicalized = collector.count_by(|e| {
-        matches!(e, DomainEvent::DocumentCanonicalized { source_id: sid, .. }
-            if sid == "gmail:alice-volume")
-    });
-    assert!(canonicalized >= 20);
+    let canonicalized = collector
+        .wait_for(20, |e| {
+            matches!(e, DomainEvent::DocumentCanonicalized { source_id: sid, .. }
+                if sid == "gmail:alice-volume")
+        })
+        .await;
+    assert!(canonicalized >= 20, "got {canonicalized}");
 
     // A parallel test can briefly hold the process-global LLM gate, causing
     // the seal job to defer. Keep draining until that deferred work becomes
@@ -324,12 +358,16 @@ async fn multi_batch_volume_builds_full_tree() {
     // (The global-digest and topic-spawn steps were removed with those
     // trees — source trees plus the entity index are the substrate.)
 
-    // Verify event stream.
-    tokio::task::yield_now().await;
+    // Verify event stream. Twenty events across two task hops each — the
+    // helper exists precisely because a single yield cannot cover that.
+    let canonicalized = collector
+        .wait_for(20, |e| {
+            matches!(e, DomainEvent::DocumentCanonicalized { source_id: sid, .. }
+                if sid == "gmail:alice-volume")
+        })
+        .await;
     assert!(
-        collector.count_by(
-            |e| matches!(e, DomainEvent::DocumentCanonicalized { source_id: sid, .. }
-            if sid == "gmail:alice-volume")
-        ) >= 20
+        canonicalized >= 20,
+        "expected 20 canonicalized events, saw {canonicalized}"
     );
 }

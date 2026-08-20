@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   LuArrowLeft,
   LuArrowRight,
@@ -867,7 +868,14 @@ function TaskBriefDialog({
     onClose();
   };
 
-  return (
+  // Portaled to `document.body` rather than rendered in place. This is a
+  // viewport-level overlay, but its host tree sits inside `Conversations`'
+  // `relative z-10` wrapper — a stacking context. Left in place, `z-50` only
+  // orders it against its own siblings; from the outside the whole chat subtree
+  // is just "z-10", so any later sibling with a higher z-index paints straight
+  // over it. Portaling lifts it into the root stacking context, where `z-50`
+  // means what it reads like. Same pattern as `components/ui/ModalShell`.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 py-6">
       <section className="max-h-full w-full max-w-xl overflow-y-auto rounded-lg border border-line bg-surface p-4 shadow-xl">
         <div className="mb-3 flex items-start justify-between gap-3">
@@ -1052,7 +1060,8 @@ function TaskBriefDialog({
           </div>
         )}
       </section>
-    </div>
+    </div>,
+    document.body
   );
 }
 

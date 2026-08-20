@@ -11,20 +11,26 @@
 //!   envelope-style handler.
 //! - [`helpers`] — formatting, default constants, path validators, and the
 //!   active memory-client lookup.
+//! - [`guard`] — the guarded-driver lookup handlers use instead of
+//!   `helpers::active_memory_client` when their operation has a typed contract
+//!   twin (`docs/specs/memory-guard-allowlist.md`).
 //! - [`documents`] — document/namespace direct API and the envelope-style
 //!   façade (`memory_init`, `memory_list_documents`, `memory_query_namespace`,
 //!   recall_*).
 //! - [`kv_graph`] — key-value and knowledge-graph handlers.
 //! - [`sync`] — `memory_sync_*` and `memory_ingestion_status`.
 //! - [`learn`] — `memory_learn_all`.
+//! - [`provider`] — `memory_provider_status` (the bound memory driver).
 //! - [`files`] — `ai_*_memory_file` handlers (use `tokio::fs`).
 
 pub mod documents;
 pub mod envelope;
 pub mod files;
+pub mod guard;
 pub mod helpers;
 pub mod kv_graph;
 pub mod learn;
+pub mod provider;
 pub mod sync;
 pub mod tool_memory;
 
@@ -45,6 +51,7 @@ pub use kv_graph::{
     GraphUpsertParams, KvGetDeleteParams, KvSetParams,
 };
 pub use learn::{memory_learn_all, LearnAllParams, LearnAllResult, NamespaceLearnResult};
+pub use provider::{memory_provider_status, memory_subsystem_status};
 pub use sync::{
     memory_ingestion_status, memory_sync_all, memory_sync_channel, IngestionStatusResult,
     SyncAllResult, SyncChannelParams, SyncChannelResult,
@@ -83,6 +90,8 @@ pub(crate) static GLOBAL_MEMORY_TEST_LOCK: tokio::sync::Mutex<()> =
 mod test_support;
 #[cfg(test)]
 pub(crate) use test_support::ensure_shared_memory_client;
+#[cfg(all(test, feature = "modules"))]
+pub(crate) use test_support::shared_memory_test_workspace;
 
 #[cfg(test)]
 #[path = "../ops_tests.rs"]

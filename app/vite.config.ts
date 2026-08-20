@@ -119,6 +119,24 @@ export default defineConfig(async () => ({
   build: {
     outDir: isWebTarget ? "../dist-web" : "../dist",
     emptyOutDir: true,
+    // Compatibility floor for the Wry system WebView (#5571). Since the
+    // CEF→Wry migration (#5456) the desktop app renders in the OS-provided
+    // engine (WKWebView on macOS, WebView2 on Windows, WebKitGTK on Linux),
+    // so the bundle must not emit syntax newer than the oldest supported
+    // engine. macOS 12 (Monterey) ships WebKit ~15.x, so Safari 15 is the
+    // JS/CSS floor — without it Vite emits untranspiled ES2022+ that fails to
+    // parse before React mounts, and the window (revealed unconditionally by
+    // the Rust shell) is shown blank. Safari 15 is a strict subset of
+    // WebView2/WebKitGTK, so the Windows/Linux bundles lose nothing.
+    //
+    // The target lowers *syntax* only; it never polyfills runtime methods. The
+    // bundle still calls WebKit-15.4 APIs (structuredClone, Object.hasOwn,
+    // Array.prototype.at), so the real mount floor is WebKit 15.4 = macOS 12.3
+    // (bundle.macOS.minimumSystemVersion). The one WebKit-16.4 feature we use
+    // in-source — a RegExp lookbehind — is rewritten to a lookahead at its call
+    // site (features/share/shareContent.ts) since no Monterey WebKit ships it.
+    target: "safari15",
+    cssTarget: "safari15",
     // Desktop CEF has surfaced a runtime where `link.relList.supports` is
     // truthy but not callable. Vite calls it both in the modulepreload
     // polyfill and the dynamic-import preload helper, before React mounts.

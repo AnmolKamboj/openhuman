@@ -13,12 +13,12 @@ use openhuman_core::openhuman::agent::tool_policy::{
 };
 use openhuman_core::openhuman::agent::Agent;
 use openhuman_core::openhuman::memory::agent::memory_loader::MemoryLoader;
-use openhuman_core::openhuman::config::{AgentConfig, ContextConfig, MemoryConfig};
+use openhuman_core::openhuman::config::{AgentConfig, Config, ContextConfig, MemoryConfig};
 use openhuman_core::openhuman::agent::messages::ConversationMessage;
 use openhuman_core::openhuman::memory::{
     Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts,
 };
-use openhuman_core::openhuman::memory::store as memory_store;
+use tinymemory_core::store as memory_store;
 use openhuman_core::openhuman::inference::tokenjuice::AgentTokenjuiceCompression;
 use openhuman_core::openhuman::tools::traits::ToolCallOptions;
 use openhuman_core::openhuman::tools::{
@@ -28,7 +28,7 @@ use serde_json::json;
 use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use tempfile::TempDir;
 use tinyagents::harness::message::{AssistantMessage, ContentBlock, Message, MessageDelta};
 use tinyagents::harness::model::{
@@ -66,6 +66,46 @@ fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     LOCK.get_or_init(|| std::sync::Mutex::new(()))
         .lock()
         .unwrap_or_else(|e| e.into_inner())
+}
+
+static MEMORY_SEAMS_INIT: OnceLock<()> = OnceLock::new();
+
+fn ensure_memory_seams() {
+    MEMORY_SEAMS_INIT.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("agent-session-turn-raw-coverage-seams".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
+                    Arc::new(Config::default()),
+                );
+            })
+            .expect("spawn agent session turn raw coverage seam installer")
+            .join()
+            .expect("agent session turn raw coverage seam installer panicked");
+    });
+}
+
+fn run_on_agent_stack<F, Fut>(name: &str, future_factory: F)
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = ()> + 'static,
+{
+    std::thread::Builder::new()
+        .name(name.to_string())
+        .stack_size(openhuman_core::core::runtime::AGENT_WORKER_STACK_BYTES)
+        .spawn(move || {
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .thread_stack_size(openhuman_core::core::runtime::AGENT_WORKER_STACK_BYTES)
+                .enable_all()
+                .build()
+                .expect("build agent session turn raw coverage runtime")
+                .block_on(future_factory());
+        })
+        .expect("spawn agent session turn raw coverage thread")
+        .join()
+        .expect("agent session turn raw coverage thread should not panic");
 }
 
 #[derive(Clone, Debug)]
@@ -497,6 +537,7 @@ fn reasoning_text_response(text: &str, reasoning: &str, usage: Usage) -> ModelRe
         raw: None,
         resolved_model: None,
         continue_turn: None,
+            served_from_cache: false,
     }
 }
 
@@ -517,6 +558,7 @@ fn tool_response(id: &str, name: &str, args: serde_json::Value) -> ModelResponse
         raw: None,
         resolved_model: None,
         continue_turn: None,
+            served_from_cache: false,
     }
 }
 
@@ -586,8 +628,16 @@ fn agent_with(
         .unwrap()
 }
 
-#[tokio::test]
-async fn turn_native_tool_progress_reasoning_usage_and_resume_seed_paths() {
+#[test]
+fn turn_native_tool_progress_reasoning_usage_and_resume_seed_paths() {
+    run_on_agent_stack(
+        "agent-session-turn-native-tool-raw-coverage",
+        turn_native_tool_progress_reasoning_usage_and_resume_seed_paths_inner,
+    );
+}
+
+async fn turn_native_tool_progress_reasoning_usage_and_resume_seed_paths_inner() {
+    ensure_memory_seams();
     let _env = env_lock();
     let (_temp, workspace_path) = workspace("native-progress");
     let _workspace_guard = EnvGuard::set_path("OPENHUMAN_WORKSPACE", &workspace_path);
@@ -728,8 +778,16 @@ async fn turn_native_tool_progress_reasoning_usage_and_resume_seed_paths() {
     assert_eq!(seeded_answer, "seeded final");
 }
 
-#[tokio::test]
-async fn turn_xml_failures_checkpoint_policy_visibility_and_hooks_are_publicly_exercised() {
+#[test]
+fn turn_xml_failures_checkpoint_policy_visibility_and_hooks_are_publicly_exercised() {
+    run_on_agent_stack(
+        "agent-session-turn-xml-raw-coverage",
+        turn_xml_failures_checkpoint_policy_visibility_and_hooks_are_publicly_exercised_inner,
+    );
+}
+
+async fn turn_xml_failures_checkpoint_policy_visibility_and_hooks_are_publicly_exercised_inner() {
+    ensure_memory_seams();
     let _env = env_lock();
     let (_temp, workspace_path) = workspace("xml-failures");
     let _workspace_guard = EnvGuard::set_path("OPENHUMAN_WORKSPACE", &workspace_path);
@@ -840,7 +898,8 @@ async fn turn_xml_failures_checkpoint_policy_visibility_and_hooks_are_publicly_e
 
     let checkpoint = agent.turn("exercise failure branches").await.unwrap();
     assert!(
-        checkpoint.contains("Done so far") || checkpoint.contains("Need next"),
+        checkpoint.contains("Tool 'round17_ok' was denied by policy 'round17-deny'")
+            && checkpoint.contains("Different commands are all failing"),
         "fallback checkpoint should be deterministic, got {checkpoint}"
     );
     assert_eq!(ok_calls.load(Ordering::SeqCst), 0);
@@ -879,7 +938,8 @@ async fn turn_xml_failures_checkpoint_policy_visibility_and_hooks_are_publicly_e
     assert!(joined.contains("unknown tool `hidden_tool`"));
     assert!(joined.contains("semantic failure"));
     assert!(joined.contains("Error executing round17_boom"));
-    assert!(joined.contains("denied by policy 'round17-deny'"));
+    // Policy denials now terminate through the checkpoint path above instead
+    // of being replayed into a subsequent model request.
 
     let (_failing_tmp, failing_workspace) = workspace("provider-error");
     let provider_error = ScriptedModel::failing("provider offline");

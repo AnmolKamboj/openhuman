@@ -36,7 +36,7 @@ pub(crate) fn provider_role_for_model_override(model_override: Option<&str>) -> 
         Some("hint:agentic") | Some("agentic-v1") => "agentic",
         Some("hint:coding") | Some("coding-v1") => "coding",
         Some("hint:summarization") | Some("summarization-v1") => "summarization",
-        Some("hint:reasoning") => "reasoning",
+        Some("hint:reasoning") | Some("reasoning-v1") => "reasoning",
         _ => "chat",
     }
 }

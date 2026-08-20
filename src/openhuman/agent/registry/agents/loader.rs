@@ -114,24 +114,6 @@ pub const BUILTINS: &[BuiltinAgent] = &[
         prompt_fn: super::flow_memory_agent::prompt::build,
         graph_fn: None,
     },
-    // `markets_agent`'s only implemented venue tool is `polymarket`
-    // (`kalshi` is named in its allowlist but has no
-    // `src/openhuman/tools/impl/network/kalshi.rs` implementation yet). With
-    // `prediction-markets` compiled out, `polymarket` is unregistered
-    // (`all_web3_agent_tools` / `tools/ops.rs`), so an unconditional
-    // markets_agent would be a dead delegation surface — the orchestrator
-    // would route `do_prediction_markets` to a worker with zero working
-    // venue tools. Gate it like the other tool-backed specialists
-    // (`crypto_agent` is intentionally NOT gated behind `web3` because its
-    // wallet-status/read tools degrade gracefully via the web3 stub;
-    // markets_agent has no such stub path, so absence is correct here).
-    #[cfg(feature = "prediction-markets")]
-    BuiltinAgent {
-        id: "markets_agent",
-        toml: include_str!("markets_agent/agent.toml"),
-        prompt_fn: super::markets_agent::prompt::build,
-        graph_fn: None,
-    },
     BuiltinAgent {
         id: "tinyplace_agent",
         toml: include_str!("../../../tinyplace/agent/agent.toml"),
@@ -809,9 +791,11 @@ mod tests {
     }
 
     #[test]
-    fn orchestrator_has_chat_hint_and_named_tools() {
+    fn master_agent_has_coding_hint_and_named_tools() {
         let def = find("orchestrator");
-        assert!(matches!(def.model, ModelSpec::Hint(ref h) if h == "chat"));
+        assert_eq!(def.display_name.as_deref(), Some("Master Agent"));
+        assert!(matches!(def.model, ModelSpec::Hint(ref h) if h == "coding"));
+        assert_eq!(def.sandbox_mode, SandboxMode::Sandboxed);
         match def.tools {
             ToolScope::Named(tools) => {
                 // spawn_subagent was removed in #1141. spawn_worker_thread is
@@ -847,26 +831,29 @@ mod tests {
                     "spawn_subagent must not appear — removed in #1141"
                 );
                 assert!(!tools.iter().any(|t| t == "call_memory_agent"));
-                // Write tools and shell stay OUT — the chat-tier
-                // orchestrator must not mutate files or run commands; all
-                // modification is deferred to `run_code` / owning
-                // specialists where edits live next to build/test/verify.
+                // The Master Agent owns the ordinary coding loop directly.
+                // Keep its mutation surface intentionally small: one patch
+                // mechanism for existing files, file_write for new files,
+                // shell for execution, and native git operations.
+                for direct in ["shell", "file_write", "apply_patch", "git_operations"] {
+                    assert!(
+                        tools.iter().any(|t| t == direct),
+                        "Master Agent must have direct coding tool `{direct}`"
+                    );
+                }
                 for forbidden in [
-                    "shell",
                     "edit",
-                    "file_write",
-                    "apply_patch",
                     "curl",
                     "storage_set_visibility",
                     "storage_delete_file",
                 ] {
                     assert!(
                         !tools.iter().any(|t| t == forbidden),
-                        "orchestrator must NOT have write/exec/lifecycle tool `{forbidden}`"
+                        "Master Agent must NOT have redundant or lifecycle tool `{forbidden}`"
                     );
                 }
-                // Basic READ-ONLY direct surface: quick lookups without
-                // spawning a sub-agent per touch.
+                // Inspect tools remain direct for the normal coding loop and
+                // quick non-code lookups.
                 for direct in [
                     "file_read",
                     "grep",
@@ -878,7 +865,7 @@ mod tests {
                 ] {
                     assert!(
                         tools.iter().any(|t| t == direct),
-                        "orchestrator must have read-only direct tool `{direct}`"
+                        "Master Agent must have direct inspect tool `{direct}`"
                     );
                 }
                 // Direct memory surface (#4762): recall/store are the product's
@@ -929,7 +916,7 @@ mod tests {
     /// drops `resolve_time`, this test fails loudly.
     #[test]
     fn time_sensitive_agents_expose_resolve_time() {
-        let mut ids = vec![
+        let ids = vec![
             "orchestrator",
             "integrations_agent",
             "scheduler_agent",
@@ -937,13 +924,6 @@ mod tests {
             "crypto_agent",
             "tinyplace_agent",
         ];
-        // `markets_agent` is compiled out when `prediction-markets` is off
-        // (its only implemented venue tool, `polymarket`, disappears with
-        // it) — see the `#[cfg(feature = "prediction-markets")]` on its
-        // `BuiltinAgent` entry.
-        if cfg!(feature = "prediction-markets") {
-            ids.push("markets_agent");
-        }
         for id in ids {
             let def = find(id);
             match def.tools {
@@ -1894,174 +1874,12 @@ mod tests {
         );
     }
 
-    #[test]
-    #[cfg(feature = "prediction-markets")]
-    fn markets_agent_has_narrow_prediction_market_tools_and_safety_on() {
-        let def = find("markets_agent");
-        // Hint must be agentic — the agent reasons about market shape vs.
-        // executes across multiple tool calls per turn.
-        assert!(matches!(def.model, ModelSpec::Hint(ref h) if h == "agentic"));
-        assert_eq!(def.sandbox_mode, SandboxMode::None);
-        // Financial-side-effect agent — global safety preamble stays ON.
-        assert!(
-            !def.omit_safety_preamble,
-            "markets_agent must keep the global safety preamble — financial-risk gate"
-        );
-        match &def.tools {
-            ToolScope::Named(tools) => {
-                // Prediction-market venues.
-                for required in ["polymarket", "kalshi"] {
-                    assert!(
-                        tools.iter().any(|t| t == required),
-                        "markets_agent needs venue tool `{required}`"
-                    );
-                }
-                // Confirmation gate — MUST be present so the prompt's
-                // "confirm before execute" rule is mechanically enforceable.
-                assert!(
-                    tools.iter().any(|t| t == "ask_user_clarification"),
-                    "markets_agent needs ask_user_clarification to gate write ops"
-                );
-                // Time grounding stays as a tool; memory retrieval is the
-                // orchestrator's on-demand concern — this specialist gets a
-                // grounded request and does not pre-fetch memory itself.
-                for required in ["current_time"] {
-                    assert!(
-                        tools.iter().any(|t| t == required),
-                        "markets_agent needs supporting tool `{required}`"
-                    );
-                }
-                assert!(!tools.iter().any(|t| t == "call_memory_agent"));
-                // Hard exclusions — no broad-surface tools, no wallet
-                // primitives (those belong to crypto_agent), no
-                // delegation tools (markets_agent is a worker leaf).
-                for forbidden in [
-                    "shell",
-                    "file_write",
-                    "curl",
-                    "http_request",
-                    "composio_execute",
-                    "composio_list_tools",
-                    "spawn_subagent",
-                    "spawn_worker_thread",
-                    "delegate_to_integrations_agent",
-                    // Synthesised delegation tools use the unprefixed
-                    // `delegate_name` overrides — forbid those names too.
-                    "run_code",
-                    "research",
-                    "plan",
-                    "wallet_execute_prepared",
-                    "wallet_prepare_transfer",
-                    "web3_swap_execute",
-                    "web3_bridge_execute",
-                    "web3_dapp_execute",
-                ] {
-                    assert!(
-                        !tools.iter().any(|t| t == forbidden),
-                        "markets_agent must NOT have `{forbidden}` — keeps blast radius bounded"
-                    );
-                }
-            }
-            ToolScope::Wildcard => panic!("markets_agent must have a Named tool scope"),
-        }
-        // Keep iteration cap tight — browse → propose → confirm → execute
-        // is a short loop, not a research crawl.
-        assert!(
-            def.max_iterations <= 10,
-            "markets_agent max_iterations must stay tight (got {})",
-            def.max_iterations
-        );
-        assert!(def.omit_identity);
-        assert!(def.omit_memory_context);
-        assert!(def.omit_skills_catalog);
-        // Pure-function specialist (omit_memory_context = true) — no eager
-        // memory pre-fetch; the orchestrator hands it a grounded request.
-        assert_eq!(def.trigger_memory_agent, TriggerMemoryAgent::Never);
-        // Delegate name must be the stable, chat-friendly slug — the
-        // orchestrator surfaces it as `delegate_do_prediction_markets`.
-        assert_eq!(
-            def.delegate_name.as_deref(),
-            Some("do_prediction_markets"),
-            "markets_agent must keep its `do_prediction_markets` delegate name stable"
-        );
-    }
-
-    /// Routing: the orchestrator must list `markets_agent` in its
-    /// `subagents` so a `delegate_do_prediction_markets` tool is
-    /// synthesised at agent-build time. Without this entry the
-    /// orchestrator can't route Polymarket / Kalshi requests to the
-    /// specialist and they fall back into the generalist tools_agent
-    /// wildcard.
-    #[test]
-    fn orchestrator_subagents_include_markets_agent() {
-        use crate::openhuman::agent::harness::definition::SubagentEntry;
-        let def = find("orchestrator");
-        let listed = def.subagents.iter().any(|e| match e {
-            SubagentEntry::AgentId(id) => id == "markets_agent",
-            _ => false,
-        });
-        assert!(
-            listed,
-            "orchestrator.subagents must list `markets_agent` so the \
-             routing layer can synthesise `delegate_do_prediction_markets`"
-        );
-    }
-
-    /// Companion to the above, asserting the real gated shape: with
-    /// `prediction-markets` compiled out, `markets_agent` is genuinely absent
-    /// from the loaded set — its only implemented venue tool (`polymarket`)
-    /// is gone too — while the orchestrator's `agent.toml` (DATA, can't be
-    /// `#[cfg]`'d) still lists it. `load_builtins` (which runs
-    /// `validate_tier_hierarchy` internally, already proven tolerant of an
-    /// unresolvable subagent id by `orchestrator_tolerates_unresolvable_subagent_id`)
-    /// must still succeed — i.e. the core boots. Mirrors
-    /// `orchestrator_tolerates_absent_mcp_agent`.
-    #[test]
-    #[cfg(not(feature = "prediction-markets"))]
-    fn orchestrator_tolerates_absent_markets_agent() {
-        use crate::openhuman::agent::harness::definition::SubagentEntry;
-
-        let defs = load_builtins().expect(
-            "load_builtins must succeed with `prediction-markets` compiled out — the \
-             orchestrator's dangling `markets_agent` subagent reference must not fail the boot",
-        );
-
-        assert!(
-            !defs.iter().any(|d| d.id == "markets_agent"),
-            "`markets_agent` must be compiled out when the `prediction-markets` feature is off \
-             — its only implemented venue tool (`polymarket`) is gone too"
-        );
-
-        let orchestrator = defs
-            .iter()
-            .find(|d| d.id == "orchestrator")
-            .expect("orchestrator must still load");
-        assert!(
-            orchestrator.subagents.iter().any(|e| matches!(
-                e,
-                SubagentEntry::AgentId(id) if id == "markets_agent"
-            )),
-            "orchestrator.agent.toml is data and still lists `markets_agent` — this dangling \
-             reference must resolve to nothing rather than fail the boot"
-        );
-    }
-
     /// `tools_agent` must explicitly disallow specialist-owned external action
     /// families so the wildcard inventory does not surface raw paid/write
     /// tools to the generalist, bypassing specialist prompts.
     #[test]
     fn tools_agent_disallows_specialist_owned_external_tools() {
         let def = find("tools_agent");
-        assert!(
-            def.disallowed_tools.iter().any(|t| t == "polymarket"),
-            "tools_agent.disallowed_tools must contain `polymarket` so the \
-             venue routes through markets_agent exclusively"
-        );
-        assert!(
-            def.disallowed_tools.iter().any(|t| t == "kalshi"),
-            "tools_agent.disallowed_tools must contain `kalshi` so the \
-             venue routes through markets_agent exclusively"
-        );
         assert!(
             def.disallowed_tools.iter().any(|t| t == "tinyplace_*"),
             "tools_agent.disallowed_tools must contain `tinyplace_*` so \

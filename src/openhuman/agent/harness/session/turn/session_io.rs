@@ -1,6 +1,9 @@
 //! Session persistence: transcript loading, checkpointing, and background tasks.
 
 use super::super::transcript;
+use super::super::transcript_history::{
+    FileTranscriptLocator, SessionHistoryLocator, TranscriptTurn,
+};
 use super::super::types::Agent;
 use crate::openhuman::agent::context::ARCHIVIST_EXTRACTION_PROMPT;
 use crate::openhuman::agent::harness;
@@ -20,57 +23,107 @@ impl Agent {
     /// Try to load a previous session transcript for KV cache resume.
     ///
     /// Best-effort: failures are logged and silently ignored.
+    ///
+    /// # How this reaches the transcript (S4)
+    ///
+    /// Both halves of the turn path now go through the seam: writes through
+    /// [`SessionHistory::append_turn`][super::super::transcript_history::SessionHistory::append_turn],
+    /// reads through
+    /// [`SessionHistoryLocator`][super::super::transcript_history::SessionHistoryLocator]
+    /// + [`SessionTranscriptRead::read_session`][super::super::transcript_history::SessionTranscriptRead::read_session].
+    ///
+    /// The read is **not** `ChatHistory::messages()`, and that is settled, not
+    /// pending: `messages()` returns `Vec<Message>`, and converting back with
+    /// `message_to_chat_message` flattens `Assistant.tool_calls` into plain
+    /// text. That is precisely what
+    /// [`bound_cached_transcript_messages`][Agent::bound_cached_transcript_messages]'
+    /// TAURI-RUST-7 trailing strip inspects, and re-sending a flattened prefix
+    /// to a native provider is the `400 assistant message with 'tool_calls'
+    /// must be followed by tool messages` failure that strip exists to prevent.
+    /// `read_session` returns the whole [`SessionTranscript`][super::super::transcript::SessionTranscript]
+    /// instead — the same struct the free function returns, from the same
+    /// `read_transcript` call — so compaction replay, `interrupted: true`
+    /// partial skipping and the `_meta` header
+    /// [`maybe_shadow_read_session_store`][Agent::maybe_shadow_read_session_store]
+    /// needs all survive by construction.
+    ///
+    /// Discovery lives on the locator because it is a *lookup*, not a read:
+    /// this function's key is `(workspace, session_raw_subdir, agent name)`
+    /// (newest match, with a legacy `session_raw/DDMMYYYY/` fallback) and the
+    /// cold-boot sibling
+    /// [`seed_resume_from_thread_transcript`][Agent::seed_resume_from_thread_transcript]
+    /// keys off `_meta.thread_id`. Neither is a stem, and `ChatHistory` has no
+    /// discovery concept at all.
     pub(in super::super) fn try_load_session_transcript(&mut self) {
-        match transcript::find_latest_transcript_in_subdir(
-            &self.workspace_dir,
-            &self.session_raw_subdir,
-            &self.agent_definition_name,
-        ) {
-            Some(path) => {
-                log::info!(
-                    "[transcript] found previous transcript path={}",
+        let Some(handle) = self
+            .session_locator()
+            .latest_for_agent(&self.agent_definition_name)
+        else {
+            log::debug!(
+                "[transcript] no previous transcript found for agent={}",
+                self.agent_definition_name
+            );
+            return;
+        };
+        let path = handle.path().to_path_buf();
+        log::info!(
+            "[transcript] found previous transcript path={}",
+            path.display()
+        );
+        match handle.read_session() {
+            // `Ok(None)` (file vanished between discovery and read) folds into
+            // the same "nothing to resume from" branch as an empty transcript,
+            // so the caller's behaviour is unchanged either way.
+            Ok(None) => {
+                log::debug!("[transcript] previous transcript is empty — skipping resume");
+            }
+            Ok(Some(session)) => {
+                if session.messages.is_empty() {
+                    log::debug!("[transcript] previous transcript is empty — skipping resume");
+                    return;
+                }
+                let loaded_count = session.messages.len();
+                log::info!("[transcript] loaded {} messages for resume", loaded_count);
+                // Best-effort store-backed shadow read (issue #4249,
+                // 04.2 phase 2). Observes + logs divergence only; the
+                // legacy transcript just loaded stays authoritative and
+                // is what feeds the resume below. Gated OFF by default.
+                self.maybe_shadow_read_session_store(&path, &session);
+                let bounded = self.bound_cached_transcript_messages(session.messages);
+                if bounded.len() < loaded_count {
+                    log::warn!(
+                        "[transcript] resume prefix trimmed from {} to {} messages (max_history_messages={})",
+                        loaded_count,
+                        bounded.len(),
+                        self.config.max_history_messages
+                    );
+                }
+                self.cached_transcript_messages = Some(bounded);
+            }
+            Err(err) => {
+                log::warn!(
+                    "[transcript] failed to parse previous transcript {}: {err}",
                     path.display()
                 );
-                match transcript::read_transcript(&path) {
-                    Ok(session) => {
-                        if session.messages.is_empty() {
-                            log::debug!(
-                                "[transcript] previous transcript is empty — skipping resume"
-                            );
-                            return;
-                        }
-                        let loaded_count = session.messages.len();
-                        log::info!("[transcript] loaded {} messages for resume", loaded_count);
-                        // Best-effort store-backed shadow read (issue #4249,
-                        // 04.2 phase 2). Observes + logs divergence only; the
-                        // legacy transcript just loaded stays authoritative and
-                        // is what feeds the resume below. Gated OFF by default.
-                        self.maybe_shadow_read_session_store(&path, &session);
-                        let bounded = self.bound_cached_transcript_messages(session.messages);
-                        if bounded.len() < loaded_count {
-                            log::warn!(
-                                "[transcript] resume prefix trimmed from {} to {} messages (max_history_messages={})",
-                                loaded_count,
-                                bounded.len(),
-                                self.config.max_history_messages
-                            );
-                        }
-                        self.cached_transcript_messages = Some(bounded);
-                    }
-                    Err(err) => {
-                        log::warn!(
-                            "[transcript] failed to parse previous transcript {}: {err}",
-                            path.display()
-                        );
-                    }
-                }
             }
-            None => {
-                log::debug!(
-                    "[transcript] no previous transcript found for agent={}",
-                    self.agent_definition_name
-                );
-            }
+        }
+    }
+
+    /// The transcript locator for this session — the injected one, or a
+    /// [`FileTranscriptLocator`] built from the agent's **current** workspace.
+    ///
+    /// Built per call rather than cached: `workspace_dir` and
+    /// `session_raw_subdir` are reassignable after `build()` (tests do exactly
+    /// that), and a locator frozen at build time would silently keep resolving
+    /// against the directory the agent no longer uses. The construction is two
+    /// clones of small strings — cheaper than the `read_dir` it precedes.
+    pub(in super::super) fn session_locator(&self) -> std::sync::Arc<dyn SessionHistoryLocator> {
+        match &self.session_history_locator {
+            Some(locator) => locator.clone(),
+            None => std::sync::Arc::new(FileTranscriptLocator::new(
+                self.workspace_dir.clone(),
+                self.session_raw_subdir.clone(),
+            )),
         }
     }
 
@@ -284,7 +337,7 @@ impl Agent {
     pub(in super::super) async fn enforce_required_output(
         &self,
         reply: &str,
-        contract: &crate::openhuman::config::RequiredOutputContract,
+        contract: &tinyagents::harness::config::RequiredOutput,
         effective_model: &str,
         iteration_for_stream: u32,
     ) -> Option<(String, Option<UsageInfo>)> {
@@ -497,35 +550,11 @@ impl Agent {
         charged_amount_usd: f64,
         turn_usage: Option<&transcript::TurnUsage>,
     ) {
-        // Resolve the transcript path on first write. The stem is
-        // `{parent_prefix}__{session_key}` for sub-agents (producing a
-        // flat hierarchical filename) or just `{session_key}` for a
-        // root session. Prefix chaining is already done by the
-        // sub-agent runner when it populates `session_parent_prefix`.
-        if self.session_transcript_path.is_none() {
-            let stem = match &self.session_parent_prefix {
-                Some(prefix) => format!("{}__{}", prefix, self.session_key),
-                None => self.session_key.clone(),
-            };
-            let session_raw_dir = self.workspace_dir.join(&self.session_raw_subdir);
-            match transcript::resolve_keyed_transcript_path_in_dir(&session_raw_dir, &stem) {
-                Ok(path) => {
-                    log::info!(
-                        "[transcript] new session transcript path={}",
-                        path.display()
-                    );
-                    self.session_transcript_path = Some(path);
-                }
-                Err(err) => {
-                    log::warn!("[transcript] failed to resolve transcript path: {err}");
-                    return;
-                }
-            }
-        }
-
-        let path = self.session_transcript_path.as_ref().unwrap();
         let now = chrono::Utc::now().to_rfc3339();
 
+        // This turn's `_meta`. Built before the path/handle binding below so it
+        // can double as the handle's `seed_meta`; it depends only on agent
+        // state and this turn's figures, never on the resolved path.
         let meta = transcript::TranscriptMeta {
             agent_name: self.agent_definition_name.clone(),
             agent_id: Some(self.agent_definition_id.clone()),
@@ -552,22 +581,73 @@ impl Agent {
             task_id: None,
         };
 
+        // Bind the write seam on first write. The stem is
+        // `{parent_prefix}__{session_key}` for sub-agents (producing a
+        // flat hierarchical filename) or just `{session_key}` for a
+        // root session. Prefix chaining is already done by the
+        // sub-agent runner when it populates `session_parent_prefix`.
+        //
+        // Path resolution is the locator's job, not this function's: it used to
+        // be duplicated here (a `resolve_keyed_transcript_path_in_dir` call
+        // that had to stay in lockstep with the identical one inside the
+        // handle's constructor). One call now yields both, and
+        // `session_transcript_path` is simply the bound handle's own path — so
+        // they cannot drift. The seed meta only matters when the file is absent
+        // and the caller supplies none; the turn path always passes its own
+        // freshly-computed meta below, so it never takes effect.
+        if self.session_transcript_path.is_none() {
+            let stem = match &self.session_parent_prefix {
+                Some(prefix) => format!("{}__{}", prefix, self.session_key),
+                None => self.session_key.clone(),
+            };
+            match self.session_locator().open_stem(&stem, meta.clone()) {
+                Ok(history) => {
+                    log::info!(
+                        "[transcript] new session transcript path={}",
+                        history.path().display()
+                    );
+                    self.session_transcript_path = Some(history.path().to_path_buf());
+                    self.session_history = Some(history);
+                }
+                Err(err) => {
+                    log::warn!("[transcript] failed to bind session history: {err:#}");
+                    self.session_transcript_path = None;
+                    return;
+                }
+            }
+        }
+
+        let path = self.session_transcript_path.clone().unwrap();
+        // Cloned out of `self` before the write so the later `&mut self`
+        // dual-write does not conflict with a live borrow of the handle.
+        let Some(history) = self.session_history.clone() else {
+            log::warn!("[transcript] no session history bound; skipping append");
+            return;
+        };
+
         // Append-only write (Phase A, transcript-derived view): diff this turn's
         // logical messages against the previously-persisted set tracked in
         // memory. A pure extension appends only the new tail; a context
         // reduction appends a `compaction` record. The file is never rewritten,
         // so pre-compaction history survives on disk for the display projection.
         // `request_id` (web-chat only) stamps a turn boundary on each line.
+        //
+        // This goes through `SessionHistory::append_turn` rather than
+        // `transcript::append_transcript_turn` directly (S4). The handle is a
+        // pure forwarder of exactly these six values — it must be, because the
+        // crate's `ChatHistory` methods carry no channel for `request_id`,
+        // `turn_usage` or a caller-computed `TranscriptMeta`, and dropping any
+        // of them silently guts the transcript-view projection. See the header
+        // of `transcript_history.rs` for the full argument.
         let prev = std::mem::take(&mut self.persisted_transcript_messages);
         let request_id = crate::openhuman::agent::turn_origin::current_request_id();
-        match transcript::append_transcript_turn(
-            path,
-            &prev,
-            messages,
-            &meta,
+        match history.append_turn(TranscriptTurn {
+            prev: &prev,
+            next: messages,
+            meta: &meta,
             turn_usage,
-            request_id.as_deref(),
-        ) {
+            request_id: request_id.as_deref(),
+        }) {
             Ok(()) => {
                 // Track the new persisted logical set for the next turn's diff.
                 self.persisted_transcript_messages = messages.to_vec();
@@ -576,7 +656,7 @@ impl Agent {
                 // (`OPENHUMAN_SESSION_DUAL_WRITE` is a kill switch). Only runs
                 // after the legacy JSONL append above succeeds; the legacy path
                 // is primary and untouched (issue #4249, 04.1).
-                self.maybe_dual_write_session_store(path, messages, &meta, turn_usage);
+                self.maybe_dual_write_session_store(&path, messages, &meta, turn_usage);
             }
             Err(err) => {
                 // Restore the tracked state so a transient failure doesn't make

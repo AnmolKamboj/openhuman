@@ -121,18 +121,6 @@ const COMPOSIO_DIRECT_CREDENTIALS: Option<CapabilityPrivacy> = Some(CapabilityPr
     destinations: &["Composio (backend.composio.dev)"],
 });
 
-const POLYMARKET_MARKET_DATA: Option<CapabilityPrivacy> = Some(CapabilityPrivacy {
-    leaves_device: true,
-    data_kind: PrivacyDataKind::Metadata,
-    destinations: &["Polymarket Gamma API", "Polymarket CLOB API"],
-});
-
-const POLYMARKET_TRADING_DATA: Option<CapabilityPrivacy> = Some(CapabilityPrivacy {
-    leaves_device: true,
-    data_kind: PrivacyDataKind::Derived,
-    destinations: &["Polymarket CLOB API"],
-});
-
 // "Test Connection" on the Embeddings settings panel routes a small probe
 // payload to *whichever provider the user has selected* — not just the
 // managed cloud default. `DERIVED_TO_BACKEND` only enumerates the managed
@@ -190,6 +178,20 @@ pub(super) const CAPABILITIES: &[Capability] = &[
         category: CapabilityCategory::Conversation,
         description: "Record or attach voice input and send it as a message.",
         how_to: "Conversations > Voice input",
+        status: CapabilityStatus::Beta,
+        privacy: DERIVED_TO_BACKEND,
+    },
+    Capability {
+        id: "voice.stt_engine",
+        name: "Speech Recognition Engine",
+        domain: "voice",
+        category: CapabilityCategory::Conversation,
+        description: "Choose which hosted engine transcribes your speech. \"Backend\" uses \
+                      OpenHuman's transcription proxy and needs no setup; ElevenLabs and OpenAI \
+                      call the provider directly with your own API key. Audio always leaves the \
+                      device — the bundled offline whisper.cpp engine was removed, so there is \
+                      no local option.",
+        how_to: "Settings → Voice → Speech recognition engine",
         status: CapabilityStatus::Beta,
         privacy: DERIVED_TO_BACKEND,
     },
@@ -674,16 +676,6 @@ pub(super) const CAPABILITIES: &[Capability] = &[
         privacy: DERIVED_TO_BACKEND,
     },
     Capability {
-        id: "intelligence.language_workflows",
-        name: "Language Workflows (Rhai)",
-        domain: "intelligence",
-        category: CapabilityCategory::Intelligence,
-        description: "The orchestrator can author and run small Rhai workflow scripts to express ad-hoc control flow over delegated work — parallel fan-out, loops, and dedup-then-verify pipelines that fixed spawn/parallel primitives cannot. Each script runs bounded and fail-closed (per-cell timeout, per-session caps on tool/model/agent calls and recursion depth), and every effectful step still passes the same approval and permission gates as a direct tool call. Progress rides the existing tool-call timeline.",
-        how_to: "Runs automatically when the orchestrator chooses the `rhai_workflows` tool; disable with OPENHUMAN_RHAI_WORKFLOWS=0 or the read-only autonomy tier",
-        status: CapabilityStatus::Beta,
-        privacy: DERIVED_TO_BACKEND,
-    },
-    Capability {
         id: "intelligence.agent_library",
         name: "Agents Library",
         domain: "intelligence",
@@ -952,26 +944,6 @@ pub(super) const CAPABILITIES: &[Capability] = &[
         privacy: None,
     },
     Capability {
-        id: "workflows.polymarket_readonly",
-        name: "Polymarket Read-Only Browse",
-        domain: "workflows",
-        category: CapabilityCategory::Workflows,
-        description: "Browse Polymarket markets, events, orderbooks, and prices via Gamma + CLOB APIs.",
-        how_to: "Conversations > ask the assistant to browse Polymarket (tool: polymarket).",
-        status: CapabilityStatus::Beta,
-        privacy: POLYMARKET_MARKET_DATA,
-    },
-    Capability {
-        id: "workflows.polymarket_trading",
-        name: "Polymarket Trading",
-        domain: "workflows",
-        category: CapabilityCategory::Workflows,
-        description: "Place and cancel Polymarket limit orders with EIP-712 signing, authenticated account reads, and explicit approval for writes.",
-        how_to: "Conversations > ask the assistant to trade on Polymarket (tool: polymarket; set `approved=true` for write actions).",
-        status: CapabilityStatus::Beta,
-        privacy: POLYMARKET_TRADING_DATA,
-    },
-    Capability {
         id: "local_ai.download_model",
         name: "Download Local Models",
         domain: "local_ai",
@@ -1022,19 +994,6 @@ pub(super) const CAPABILITIES: &[Capability] = &[
         privacy: LOCAL_RAW,
     },
     Capability {
-        id: "local_ai.speech_to_text",
-        name: "Speech Recognition (Local)",
-        domain: "local_ai",
-        category: CapabilityCategory::LocalAI,
-        description:
-            "Transcribe audio into text using local whisper.cpp via the voice STT factory. \
-             Pick the model size (tiny / base / small / medium / large-v3-turbo) in \
-             Settings > Voice; the factory routes through WHISPER_BIN or the in-process engine.",
-        how_to: "Settings > Voice > STT Provider = Whisper",
-        status: CapabilityStatus::Beta,
-        privacy: None,
-    },
-    Capability {
         id: "local_ai.text_to_speech",
         name: "Text to Speech (Local)",
         domain: "local_ai",
@@ -1066,20 +1025,6 @@ pub(super) const CAPABILITIES: &[Capability] = &[
         how_to: "Settings > Local AI Model > Advanced > Test Custom Prompt",
         status: CapabilityStatus::Beta,
         privacy: None,
-    },
-    Capability {
-        id: "local_ai.whisper_installer",
-        name: "Whisper Installer (Local STT)",
-        domain: "local_ai",
-        category: CapabilityCategory::LocalAI,
-        description:
-            "One-click download of the whisper.cpp GGML model (and on Windows the whisper-cli \
-             binary) into the workspace so local Speech-to-Text runs without manual setup. \
-             Streams to disk via a .part file + atomic rename so a crash never leaves a corrupt \
-             model behind.",
-        how_to: "Settings > Voice > Voice Providers > Install Whisper",
-        status: CapabilityStatus::Beta,
-        privacy: MODEL_DOWNLOAD,
     },
     Capability {
         id: "local_ai.piper_installer",

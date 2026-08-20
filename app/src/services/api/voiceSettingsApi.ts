@@ -25,13 +25,12 @@ type VoiceWorkloadId = 'stt' | 'tts';
  *
  * Wire grammar:
  *   "cloud" / "openhuman" / empty -> { kind: 'cloud' }
- *   "whisper"                     -> { kind: 'local', engine: 'whisper', model }
  *   "piper"                       -> { kind: 'local', engine: 'piper', model }
  *   "<slug>:<model>"              -> { kind: 'external', providerSlug, model }
  */
 export type VoiceProviderRef =
   | { kind: 'cloud' }
-  | { kind: 'local'; engine: 'whisper' | 'piper'; model: string }
+  | { kind: 'local'; engine: 'piper'; model: string }
   | { kind: 'external'; providerSlug: string; model: string };
 
 export type VoiceCapability = 'stt' | 'tts' | 'both';
@@ -76,9 +75,6 @@ export function parseVoiceProviderString(s: string | null | undefined): VoicePro
   if (!trimmed || trimmed === 'cloud' || trimmed === 'openhuman') {
     return { kind: 'cloud' };
   }
-  if (trimmed === 'whisper') {
-    return { kind: 'local', engine: 'whisper', model: '' };
-  }
   if (trimmed === 'piper') {
     return { kind: 'local', engine: 'piper', model: '' };
   }
@@ -86,9 +82,6 @@ export function parseVoiceProviderString(s: string | null | undefined): VoicePro
   if (colonIdx > 0) {
     const slug = trimmed.slice(0, colonIdx).trim();
     const model = trimmed.slice(colonIdx + 1).trim();
-    if (slug === 'whisper') {
-      return { kind: 'local', engine: 'whisper', model };
-    }
     if (slug === 'piper') {
       return { kind: 'local', engine: 'piper', model };
     }

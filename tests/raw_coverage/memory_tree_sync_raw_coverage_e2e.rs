@@ -13,15 +13,16 @@ use chrono::{TimeZone, Utc};
 use serde_json::json;
 use tempfile::TempDir;
 
-use openhuman_core::core::event_bus::{DomainEvent, EventHandler};
+use openhuman_core::core::events::DomainEvent;
+use tinybus::EventHandler;
 use openhuman_core::openhuman::config::Config;
-use openhuman_core::openhuman::memory::store::chunks::store::upsert_chunks;
-use openhuman_core::openhuman::memory::store::chunks::types::{
+use tinymemory_core::store::chunks::store::upsert_chunks;
+use tinymemory_core::store::chunks::types::{
     approx_token_count, chunk_id, Chunk, Metadata, SourceKind as ChunkSourceKind, SourceRef,
 };
-use openhuman_core::openhuman::memory::store::content;
-use openhuman_core::openhuman::memory::store::trees::types::TreeKind;
-use openhuman_core::openhuman::memory::store::trees::types::INPUT_TOKEN_BUDGET;
+use tinymemory_core::store::content;
+use tinymemory_core::store::trees::types::TreeKind;
+use tinymemory_core::store::trees::types::INPUT_TOKEN_BUDGET;
 use openhuman_core::openhuman::memory::sync::composio::bus::{
     ComposioConfigChangedSubscriber, ComposioTriggerSubscriber,
 };
@@ -125,7 +126,7 @@ fn staged_chunk(cfg: &Config, source_id: &str, seq: u32, tokens: u32) -> Chunk {
     std::fs::create_dir_all(&content_root).expect("content root");
     let staged = content::stage_chunks(&content_root, std::slice::from_ref(&chunk))
         .expect("stage chunk body");
-    openhuman_core::openhuman::memory::store::chunks::store::with_connection(cfg, |conn| {
+    tinymemory_core::store::chunks::store::with_connection(cfg, |conn| {
         for staged_chunk in &staged {
             conn.execute(
                 "UPDATE mem_tree_chunks

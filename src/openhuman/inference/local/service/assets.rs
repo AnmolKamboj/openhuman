@@ -7,9 +7,7 @@ use crate::openhuman::inference::model_ids;
 use tracing::{debug, trace};
 
 use crate::openhuman::inference::local::provider::{provider_from_config, LocalAiProvider};
-use crate::openhuman::inference::paths::{
-    resolve_stt_model_path, resolve_tts_voice_path, stt_model_target_path, tts_model_target_path,
-};
+use crate::openhuman::inference::paths::{resolve_tts_voice_path, tts_model_target_path};
 use crate::openhuman::inference::presets::{self, VisionMode};
 use crate::openhuman::inference::types::{
     LocalAiAssetStatus, LocalAiAssetsStatus, LocalAiDownloadProgressItem, LocalAiDownloadsProgress,
@@ -22,7 +20,6 @@ impl LocalAiService {
         let chat_model = model_ids::effective_chat_model_id(config);
         let vision_model = model_ids::effective_vision_model_id(config);
         let embedding_model = model_ids::effective_embedding_model_id(config);
-        let stt_model = model_ids::effective_stt_model_id(config);
         let tts_voice = model_ids::effective_tts_voice_id(config);
 
         let provider = provider_from_config(config);
@@ -229,34 +226,20 @@ impl LocalAiService {
             ollama_available,
             "[local_ai:assets:provider_routing] exit"
         );
-        let stt_resolve = resolve_stt_model_path(config);
         let tts_resolve = resolve_tts_voice_path(config);
 
-        let stt_path = stt_resolve.as_ref().ok().cloned();
         let tts_path = tts_resolve.as_ref().ok().cloned();
 
-        // STT and TTS are downloaded on-demand (first transcription / first
-        // synthesis).  When the model file is not yet on disk but a download
-        // URL is configured, report "ondemand" instead of "missing" so the
-        // UI can treat the capability as non-blocking.
-        let has_stt_url = config
-            .local_ai
-            .stt_download_url
-            .as_deref()
-            .is_some_and(|v| !v.trim().is_empty());
+        // TTS is downloaded on demand (first synthesis). When the model file
+        // is not yet on disk but a download URL is configured, report
+        // "ondemand" instead of "missing" so the UI can treat it as
+        // non-blocking.
         let has_tts_url = config
             .local_ai
             .tts_download_url
             .as_deref()
             .is_some_and(|v| !v.trim().is_empty());
 
-        let stt_state = if stt_path.is_some() {
-            "ready"
-        } else if has_stt_url {
-            "ondemand"
-        } else {
-            "missing"
-        };
         let tts_state = if tts_path.is_some() {
             "ready"
         } else if has_tts_url {
@@ -265,19 +248,10 @@ impl LocalAiService {
             "missing"
         };
 
-        if let Err(ref err) = stt_resolve {
-            debug!("[local_ai::assets_status] STT resolve failed (state={stt_state}): {err}");
-        }
         if let Err(ref err) = tts_resolve {
             debug!("[local_ai::assets_status] TTS resolve failed (state={tts_state}): {err}");
         }
 
-        let stt_warning = match stt_state {
-            "ondemand" => {
-                Some("STT model will download on first transcription request.".to_string())
-            }
-            _ => None,
-        };
         let tts_warning = match tts_state {
             "ondemand" => Some("TTS voice will download on first synthesis request.".to_string()),
             _ => None,
@@ -339,13 +313,6 @@ impl LocalAiService {
                         .to_string()
                 }),
             },
-            stt: LocalAiAssetStatus {
-                state: stt_state.to_string(),
-                id: stt_model,
-                provider: "whisper.cpp".to_string(),
-                path: stt_path,
-                warning: stt_warning,
-            },
             tts: LocalAiAssetStatus {
                 state: tts_state.to_string(),
                 id: tts_voice,
@@ -401,18 +368,6 @@ impl LocalAiService {
             warning: assets.embedding.warning,
             path: assets.embedding.path,
         };
-        let mut stt = LocalAiDownloadProgressItem {
-            id: assets.stt.id,
-            provider: assets.stt.provider,
-            state: assets.stt.state,
-            progress: None,
-            downloaded_bytes: None,
-            total_bytes: None,
-            speed_bps: None,
-            eta_seconds: None,
-            warning: assets.stt.warning,
-            path: assets.stt.path,
-        };
         let mut tts = LocalAiDownloadProgressItem {
             id: assets.tts.id,
             provider: assets.tts.provider,
@@ -427,9 +382,7 @@ impl LocalAiService {
         };
 
         if status.state == "downloading" {
-            let active = if status.stt_state == "downloading" {
-                "stt"
-            } else if status.tts_state == "downloading" {
+            let active = if status.tts_state == "downloading" {
                 "tts"
             } else if status.vision_state == "downloading" {
                 "vision"
@@ -450,7 +403,6 @@ impl LocalAiService {
             };
 
             match active {
-                "stt" => apply(&mut stt),
                 "tts" => apply(&mut tts),
                 "vision" => apply(&mut vision),
                 "embedding" => apply(&mut embedding),
@@ -469,7 +421,6 @@ impl LocalAiService {
             chat,
             vision,
             embedding,
-            stt,
             tts,
             ollama_available: assets.ollama_available,
         })
@@ -479,7 +430,6 @@ impl LocalAiService {
         &self,
         config: &Config,
         embedding_state: Option<&'static str>,
-        stt_state: Option<&'static str>,
         tts_state: Option<&'static str>,
         warning: Option<String>,
     ) {
@@ -492,11 +442,6 @@ impl LocalAiService {
             status.embedding_state = "idle".to_string();
         } else if status.embedding_state != "ready" {
             status.embedding_state = "missing".to_string();
-        }
-        if let Some(state) = stt_state {
-            status.stt_state = state.to_string();
-        } else if !config.local_ai.preload_stt_model {
-            status.stt_state = "idle".to_string();
         }
         if let Some(state) = tts_state {
             status.tts_state = state.to_string();
@@ -542,29 +487,10 @@ impl LocalAiService {
                     log::warn!(
                         "[local_ai] LM Studio download_all_models embedding preload failed: {err}"
                     );
-                    self.finalize_lm_studio_download_status(
-                        config,
-                        Some("missing"),
-                        None,
-                        None,
-                        None,
-                    );
+                    self.finalize_lm_studio_download_status(config, Some("missing"), None, None);
                     return Err(err);
                 }
                 embedding_state = Some("ready");
-            }
-            let mut stt_warning = None;
-            let mut stt_state = None;
-            if config.local_ai.preload_stt_model {
-                if let Err(err) = self.ensure_stt_asset_available(config).await {
-                    log::warn!(
-                        "[local_ai] LM Studio download_all_models STT preload failed: {err}"
-                    );
-                    stt_state = Some("missing");
-                    stt_warning = Some(err);
-                } else {
-                    stt_state = Some("ready");
-                }
             }
             let mut tts_warning = None;
             let mut tts_state = None;
@@ -579,19 +505,8 @@ impl LocalAiService {
                     tts_state = Some("ready");
                 }
             }
-            let warning = match (stt_warning, tts_warning) {
-                (Some(a), Some(b)) => Some(format!("{a}; {b}")),
-                (Some(a), None) => Some(a),
-                (None, Some(b)) => Some(b),
-                (None, None) => None,
-            };
-            self.finalize_lm_studio_download_status(
-                config,
-                embedding_state,
-                stt_state,
-                tts_state,
-                warning,
-            );
+            let warning = tts_warning;
+            self.finalize_lm_studio_download_status(config, embedding_state, tts_state, warning);
             return Ok(());
         }
 
@@ -630,12 +545,6 @@ impl LocalAiService {
                 .await?;
         }
 
-        let mut stt_warning = None;
-        if let Err(err) = self.ensure_stt_asset_available(config).await {
-            self.status.lock().stt_state = "missing".to_string();
-            stt_warning = Some(err);
-        }
-
         let mut tts_warning = None;
         if let Err(err) = self.ensure_tts_asset_available(config).await {
             self.status.lock().tts_state = "missing".to_string();
@@ -655,12 +564,7 @@ impl LocalAiService {
             status.total_bytes = None;
             status.download_speed_bps = None;
             status.eta_seconds = None;
-            status.warning = match (stt_warning, tts_warning) {
-                (Some(a), Some(b)) => Some(format!("{a}; {b}")),
-                (Some(a), None) => Some(a),
-                (None, Some(b)) => Some(b),
-                (None, None) => None,
-            };
+            status.warning = tts_warning;
         }
 
         Ok(())
@@ -722,44 +626,17 @@ impl LocalAiService {
                 self.ensure_ollama_model_available(config, &model, "embedding")
                     .await?;
             }
-            "stt" => {
-                self.ensure_stt_asset_available(config).await?;
-            }
             "tts" => {
                 self.ensure_tts_asset_available(config).await?;
             }
             _ => {
                 return Err(
-                    "Unknown capability. Use one of: chat, vision, embedding, stt, tts."
-                        .to_string(),
+                    "Unknown capability. Use one of: chat, vision, embedding, tts.".to_string(),
                 )
             }
         }
 
         self.assets_status(config).await
-    }
-
-    pub(in crate::openhuman::inference::local::service) async fn ensure_stt_asset_available(
-        &self,
-        config: &Config,
-    ) -> Result<(), String> {
-        if resolve_stt_model_path(config).is_ok() {
-            self.status.lock().stt_state = "ready".to_string();
-            return Ok(());
-        }
-
-        let url = config
-            .local_ai
-            .stt_download_url
-            .as_deref()
-            .filter(|v| !v.trim().is_empty())
-            .ok_or_else(|| {
-                "STT model missing and no local_ai.stt_download_url configured".to_string()
-            })?;
-        let dest = stt_model_target_path(config);
-        self.download_file_with_progress(url, &dest, "stt").await?;
-        self.status.lock().stt_state = "ready".to_string();
-        Ok(())
     }
 
     pub(in crate::openhuman::inference::local::service) async fn ensure_tts_asset_available(

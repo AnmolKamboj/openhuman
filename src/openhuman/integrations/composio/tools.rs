@@ -649,8 +649,8 @@ impl Tool for ComposioAuthorizeTool {
         };
         match client.authorize(&toolkit, None).await {
             Ok(resp) => {
-                crate::core::event_bus::publish_global(
-                    crate::core::event_bus::DomainEvent::ComposioConnectionCreated {
+                crate::core::bus::BUS.publish(
+                    crate::core::events::DomainEvent::ComposioConnectionCreated {
                         toolkit: toolkit.clone(),
                         connection_id: resp.connection_id.clone(),
                         connect_url: resp.connect_url.clone(),
@@ -1507,8 +1507,8 @@ impl Tool for ComposioExecuteTool {
                     response = ?resp,
                     "[composio][execute] << full response (DEBUG)"
                 );
-                crate::core::event_bus::publish_global(
-                    crate::core::event_bus::DomainEvent::ComposioActionExecuted {
+                crate::core::bus::BUS.publish(
+                    crate::core::events::DomainEvent::ComposioActionExecuted {
                         tool: tool.clone(),
                         success: resp.successful,
                         error: resp.error.clone(),
@@ -1543,8 +1543,8 @@ impl Tool for ComposioExecuteTool {
                     elapsed_ms,
                     "[composio][execute] << dispatch error"
                 );
-                crate::core::event_bus::publish_global(
-                    crate::core::event_bus::DomainEvent::ComposioActionExecuted {
+                crate::core::bus::BUS.publish(
+                    crate::core::events::DomainEvent::ComposioActionExecuted {
                         tool: tool.clone(),
                         success: false,
                         error: Some(e.to_string()),

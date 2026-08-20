@@ -3,7 +3,7 @@
 //!
 //! Single source of truth feeding both user-facing surfaces for a rejected
 //! BYO key, so the two can never drift:
-//!   - the **notification center** — a one-shot [`crate::core::event_bus::
+//!   - the **notification center** — a one-shot [`crate::core::bus::
 //!     DomainEvent::ProviderApiKeyRejected`] published the first time a
 //!     provider starts failing, and
 //!   - the **AI-settings provider-error notice** — read live via the

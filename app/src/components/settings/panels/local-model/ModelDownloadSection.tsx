@@ -19,7 +19,7 @@ interface ModelDownloadSectionProps {
   assetDownloadBusy: Record<string, boolean>;
   statusTone: (state: string) => string;
   runtimeEnabled: boolean;
-  onTriggerAssetDownload: (capability: 'chat' | 'vision' | 'embedding' | 'stt' | 'tts') => void;
+  onTriggerAssetDownload: (capability: 'chat' | 'vision' | 'embedding' | 'tts') => void;
 
   summaryInput: string;
   summaryOutput: string;
@@ -114,7 +114,6 @@ const ModelDownloadSection = ({
     ['settings.localModel.download.capabilityChat', 'chat', assets?.chat],
     ['settings.localModel.download.capabilityVision', 'vision', assets?.vision],
     ['settings.localModel.download.capabilityEmbedding', 'embedding', assets?.embedding],
-    ['settings.localModel.download.capabilityStt', 'stt', assets?.stt],
     ['settings.localModel.download.capabilityTts', 'tts', assets?.tts],
   ] as const;
 

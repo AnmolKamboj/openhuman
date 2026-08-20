@@ -9,7 +9,7 @@
 //! off.
 //!
 //! Signatures MUST match the real ones exactly; the disabled build
-//! (`cargo check --no-default-features --features tokenjuice-treesitter`) is
+//! (`cargo check --no-default-features`) is
 //! the only thing that catches drift.
 
 use std::path::Path;

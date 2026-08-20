@@ -132,8 +132,8 @@ pub async fn composio_authorize(
         }
     };
 
-    crate::core::event_bus::publish_global(
-        crate::core::event_bus::DomainEvent::ComposioConnectionCreated {
+    crate::core::bus::BUS.publish(
+        crate::core::events::DomainEvent::ComposioConnectionCreated {
             toolkit: toolkit.to_string(),
             connection_id: resp.connection_id.clone(),
             connect_url: resp.connect_url.clone(),
@@ -163,7 +163,17 @@ pub async fn composio_delete_connection(
         Err(_) => None,
     };
     let memory_targets = if clear_memory {
-        composio_memory_targets_for_connection(config, toolkit.as_deref(), connection_id)
+        // The LIVE process client — target discovery loads notion sync state
+        // through it. Resolved here, not constructed inside the discovery:
+        // `MemoryClient::from_workspace_dir` starts an ingestion worker at
+        // construction, so building one per delete put a second worker on the
+        // live store every time.
+        let memory = crate::openhuman::memory::ops::helpers::active_memory_client()
+            .await
+            .map_err(|error| {
+                format!("[composio] delete_connection cannot resolve the memory client: {error}")
+            })?;
+        composio_memory_targets_for_connection(&memory, toolkit.as_deref(), connection_id)
             .await
             .map_err(|error| {
                 format!("[composio] delete_connection cannot enumerate memory targets: {error:#}")
@@ -232,8 +242,8 @@ pub async fn composio_delete_connection(
             "[composio] failed to prune memory_sources entry after connection deletion (non-fatal)"
         ),
     }
-    crate::core::event_bus::publish_global(
-        crate::core::event_bus::DomainEvent::ComposioConnectionDeleted {
+    crate::core::bus::BUS.publish(
+        crate::core::events::DomainEvent::ComposioConnectionDeleted {
             toolkit: toolkit.unwrap_or_else(|| "unknown".to_string()),
             connection_id: connection_id.to_string(),
         },

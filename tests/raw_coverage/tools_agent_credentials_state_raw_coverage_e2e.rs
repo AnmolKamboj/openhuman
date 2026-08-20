@@ -342,6 +342,7 @@ fn response(text: Option<&str>, tool_calls: Vec<ToolCall>) -> ModelResponse {
         raw: None,
         resolved_model: None,
         continue_turn: None,
+            served_from_cache: false,
     }
 }
 
@@ -593,7 +594,6 @@ fn round16_all_tools_registry_branches_and_browser_allowlist() {
             &harness.workspace,
         )),
         AuditLogger::disabled(),
-        Arc::new(StubMemory),
         &BrowserConfig {
             enabled: true,
             session_name: Some("round16-session".into()),

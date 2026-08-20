@@ -4,8 +4,8 @@ use super::super::runtime::{
     process_channel_message, run_message_dispatch_loop, RuntimeChannelMessage,
 };
 use super::super::{traits, Channel};
-use super::common::{use_real_agent_handler, NoopMemory, RecordingChannel, SlowModel};
-use crate::core::event_bus::{init_global, DomainEvent, DEFAULT_CAPACITY};
+use super::common::{use_real_agent_handler, RecordingChannel, SlowModel};
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::bus::{mock_agent_run_turn, AgentTurnRequest, AgentTurnResponse};
 use crate::openhuman::inference::provider;
 use std::collections::HashMap;
@@ -124,7 +124,9 @@ async fn message_dispatch_processes_messages_in_parallel() {
                 )),
             ),
             default_provider: Arc::new("test-provider".to_string()),
-            memory: Arc::new(NoopMemory),
+            memory: crate::openhuman::memory::guard::in_memory::FixedRecallProvider::guarded(
+                Vec::new(),
+            ),
             tools_registry: Arc::new(vec![]),
             system_prompt: Arc::new("test-system-prompt".to_string()),
             model: Arc::new("test-model".to_string()),
@@ -199,7 +201,7 @@ async fn process_channel_message_cancels_scoped_typing_task() {
             })),
         ),
         default_provider: Arc::new("test-provider".to_string()),
-        memory: Arc::new(NoopMemory),
+        memory: crate::openhuman::memory::guard::in_memory::FixedRecallProvider::guarded(Vec::new()),
         tools_registry: Arc::new(vec![]),
         system_prompt: Arc::new("test-system-prompt".to_string()),
         model: Arc::new("test-model".to_string()),
@@ -291,7 +293,7 @@ async fn dispatch_routes_through_agent_run_turn_bus_handler() {
             )),
         ),
         default_provider: Arc::new("test-provider".to_string()),
-        memory: Arc::new(NoopMemory),
+        memory: crate::openhuman::memory::guard::in_memory::FixedRecallProvider::guarded(Vec::new()),
         tools_registry: Arc::new(vec![]),
         system_prompt: Arc::new("test-system-prompt".to_string()),
         model: Arc::new("test-model".to_string()),
@@ -350,10 +352,11 @@ async fn dispatch_routes_through_agent_run_turn_bus_handler() {
 
 #[tokio::test]
 async fn channel_processed_event_records_resolved_agent_route() {
-    init_global(DEFAULT_CAPACITY);
-    let mut events = crate::core::event_bus::global()
+    crate::core::bus::init().await.expect("bus init");
+    let mut events = crate::core::bus::BUS
+        .get()
         .expect("event bus should be initialized")
-        .raw_receiver();
+        .receiver();
 
     let _bus_guard = mock_agent_run_turn(move |_req| async move {
         Ok(AgentTurnResponse::with_resolved_route(
@@ -378,7 +381,7 @@ async fn channel_processed_event_records_resolved_agent_route() {
             )),
         ),
         default_provider: Arc::new("requested-provider".to_string()),
-        memory: Arc::new(NoopMemory),
+        memory: crate::openhuman::memory::guard::in_memory::FixedRecallProvider::guarded(Vec::new()),
         tools_registry: Arc::new(vec![]),
         system_prompt: Arc::new("test-system-prompt".to_string()),
         model: Arc::new("requested-model".to_string()),
@@ -421,13 +424,7 @@ async fn channel_processed_event_records_resolved_agent_route() {
         let event = tokio::time::timeout(Duration::from_millis(200), events.recv())
             .await
             .expect("ChannelMessageProcessed event should be published");
-        let event = match event {
-            Ok(event) => event,
-            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                panic!("event receiver should stay open")
-            }
-        };
+        let event = event.expect("the bus closed before the expected event arrived");
 
         if let DomainEvent::ChannelMessageProcessed {
             message_id,
@@ -500,7 +497,7 @@ async fn process_channel_message_hardens_multimodal_files_against_smuggled_marke
             )),
         ),
         default_provider: Arc::new("test-provider".to_string()),
-        memory: Arc::new(NoopMemory),
+        memory: crate::openhuman::memory::guard::in_memory::FixedRecallProvider::guarded(Vec::new()),
         tools_registry: Arc::new(vec![]),
         system_prompt: Arc::new("test-system-prompt".to_string()),
         model: Arc::new("test-model".to_string()),
@@ -587,7 +584,7 @@ async fn process_channel_message_hardens_against_relative_path_markers() {
             )),
         ),
         default_provider: Arc::new("test-provider".to_string()),
-        memory: Arc::new(NoopMemory),
+        memory: crate::openhuman::memory::guard::in_memory::FixedRecallProvider::guarded(Vec::new()),
         tools_registry: Arc::new(vec![]),
         system_prompt: Arc::new("test-system-prompt".to_string()),
         model: Arc::new("test-model".to_string()),

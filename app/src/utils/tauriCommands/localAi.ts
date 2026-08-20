@@ -51,7 +51,6 @@ export interface LocalAiAssetsStatus {
   chat: LocalAiAssetStatus;
   vision: LocalAiAssetStatus;
   embedding: LocalAiAssetStatus;
-  stt: LocalAiAssetStatus;
   tts: LocalAiAssetStatus;
   quantization: string;
   /**
@@ -86,7 +85,6 @@ export interface LocalAiDownloadsProgress {
   chat: LocalAiDownloadProgressItem;
   vision: LocalAiDownloadProgressItem;
   embedding: LocalAiDownloadProgressItem;
-  stt: LocalAiDownloadProgressItem;
   tts: LocalAiDownloadProgressItem;
   /** Mirrors `LocalAiAssetsStatus.ollama_available` — see that field. */
   ollama_available: boolean;

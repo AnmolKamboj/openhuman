@@ -44,7 +44,7 @@ pub enum TriageAction {
 
 impl TriageAction {
     /// Short stable string used in log prefixes and the
-    /// [`crate::core::event_bus::DomainEvent::TriggerEvaluated::decision`]
+    /// [`crate::core::events::DomainEvent::TriggerEvaluated::decision`]
     /// field. Intentionally distinct from the `Debug` impl so we can
     /// change the enum representation without breaking dashboards.
     pub fn as_str(&self) -> &'static str {

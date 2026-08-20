@@ -468,6 +468,128 @@ async fn apply_model_settings_updates_fields_and_persists_snapshot() {
     );
 }
 
+/// #5324 (CodeRabbit): the failed-job un-park must be scoped to an embedder
+/// change. Saving an unrelated model setting (temperature, chat model, …)
+/// through this shared path must leave terminally-`failed` embedding jobs
+/// parked, not restart them into the same external failure. Switching the
+/// embeddings provider is what un-parks them.
+#[tokio::test]
+async fn apply_model_settings_requeues_failed_jobs_only_on_embedder_change() {
+    use crate::openhuman::memory::tree::health::{FailureCode, PipelineFailure};
+    use tinymemory_core::queue::store;
+    use tinymemory_core::queue::types::{FlushStalePayload, JobStatus, NewJob};
+
+    let tmp = tempdir().unwrap();
+    let mut cfg = tmp_config(&tmp);
+
+    // Park a job exactly the way an exhausted managed budget does.
+    let new_job = NewJob::flush_stale(&FlushStalePayload::default(), "2026-08-05", 3).unwrap();
+    let id = store::enqueue(&cfg, &new_job).unwrap().expect("enqueue");
+    let job = store::get_job(&cfg, &id).unwrap().expect("job exists");
+    store::mark_failed_typed(
+        &cfg,
+        &job,
+        "Insufficient budget",
+        Some(&PipelineFailure::new(FailureCode::BudgetExhausted)),
+    )
+    .unwrap();
+    assert_eq!(store::count_by_status(&cfg, JobStatus::Failed).unwrap(), 1);
+
+    // Unrelated save (temperature only) — the job must stay parked.
+    let unrelated = ModelSettingsPatch {
+        default_temperature: Some(0.5),
+        ..Default::default()
+    };
+    let outcome = apply_model_settings(&mut cfg, unrelated)
+        .await
+        .expect("apply");
+    assert_eq!(
+        store::count_by_status(&cfg, JobStatus::Failed).unwrap(),
+        1,
+        "an unrelated model save must not un-park failed embedding jobs"
+    );
+    assert!(
+        outcome.logs.iter().any(|m| m.contains("requeued_failed=0")),
+        "messages: {:?}",
+        outcome.logs
+    );
+
+    // Now change the embeddings provider — this is the remediation, so the
+    // parked job must be flipped back to `ready`.
+    let switch = ModelSettingsPatch {
+        embeddings_provider: Some("ollama:bge-m3".into()),
+        ..Default::default()
+    };
+    let outcome = apply_model_settings(&mut cfg, switch).await.expect("apply");
+    assert_eq!(
+        store::count_by_status(&cfg, JobStatus::Ready).unwrap(),
+        1,
+        "switching the embeddings provider must un-park the failed job"
+    );
+    assert_eq!(store::count_by_status(&cfg, JobStatus::Failed).unwrap(), 0);
+    assert!(
+        outcome.logs.iter().any(|m| m.contains("requeued_failed=1")),
+        "messages: {:?}",
+        outcome.logs
+    );
+}
+
+/// #5324 (CodeRabbit): mirror of the model-settings gate for the memory path.
+/// A `memory_window` / `auto_save` / `backend` save shares this function but
+/// does not remediate the embedder, so failed jobs must stay parked; changing
+/// the embedding provider un-parks them.
+#[tokio::test]
+async fn apply_memory_settings_requeues_failed_jobs_only_on_embedder_change() {
+    use crate::openhuman::memory::tree::health::{FailureCode, PipelineFailure};
+    use tinymemory_core::queue::store;
+    use tinymemory_core::queue::types::{FlushStalePayload, JobStatus, NewJob};
+
+    let tmp = tempdir().unwrap();
+    let mut cfg = tmp_config(&tmp);
+
+    let new_job = NewJob::flush_stale(&FlushStalePayload::default(), "2026-08-05", 3).unwrap();
+    let id = store::enqueue(&cfg, &new_job).unwrap().expect("enqueue");
+    let job = store::get_job(&cfg, &id).unwrap().expect("job exists");
+    store::mark_failed_typed(
+        &cfg,
+        &job,
+        "Insufficient budget",
+        Some(&PipelineFailure::new(FailureCode::BudgetExhausted)),
+    )
+    .unwrap();
+
+    // Unrelated save (memory window preset only) — job stays parked.
+    let unrelated = MemorySettingsPatch {
+        memory_window: Some("balanced".into()),
+        ..Default::default()
+    };
+    let outcome = apply_memory_settings(&mut cfg, unrelated)
+        .await
+        .expect("apply");
+    assert_eq!(
+        store::count_by_status(&cfg, JobStatus::Failed).unwrap(),
+        1,
+        "a memory-window save must not un-park failed embedding jobs"
+    );
+    assert!(outcome.logs.iter().any(|m| m.contains("requeued_failed=0")));
+
+    // Change the embedding provider — un-parks.
+    let switch = MemorySettingsPatch {
+        embedding_provider: Some("ollama".into()),
+        ..Default::default()
+    };
+    let outcome = apply_memory_settings(&mut cfg, switch)
+        .await
+        .expect("apply");
+    assert_eq!(
+        store::count_by_status(&cfg, JobStatus::Ready).unwrap(),
+        1,
+        "switching the embedding provider must un-park the failed job"
+    );
+    assert_eq!(store::count_by_status(&cfg, JobStatus::Failed).unwrap(), 0);
+    assert!(outcome.logs.iter().any(|m| m.contains("requeued_failed=1")));
+}
+
 #[tokio::test]
 async fn apply_search_settings_sets_and_clears_allowed_domains() {
     let tmp = tempdir().unwrap();
@@ -1326,6 +1448,7 @@ async fn load_and_apply_voice_server_settings_rejects_invalid_activation_mode() 
         custom_dictionary: None,
         always_on_enabled: None,
         wake_word: None,
+        stt_engine: None,
     };
     let err = load_and_apply_voice_server_settings(patch)
         .await
@@ -1380,6 +1503,7 @@ async fn load_and_apply_voice_server_settings_accepts_valid_modes_and_clamps() {
         custom_dictionary: Some(vec!["term".into()]),
         always_on_enabled: Some(true),
         wake_word: Some("Hey Tiny".to_string()),
+        stt_engine: Some("elevenlabs".into()),
     };
     let outcome = load_and_apply_voice_server_settings(patch)
         .await
@@ -1390,6 +1514,46 @@ async fn load_and_apply_voice_server_settings_accepts_valid_modes_and_clamps() {
             .unwrap_or(-1.0)
             >= 0.0
     );
+    assert_eq!(
+        outcome.value["config"]["voice_server"]["stt_engine"]
+            .as_str()
+            .unwrap_or_default(),
+        "elevenlabs",
+        "the engine picker must persist through the config update RPC"
+    );
+    unsafe {
+        std::env::remove_var("OPENHUMAN_WORKSPACE");
+    }
+}
+
+/// An engine name the core does not know must fail loudly. Defaulting to the
+/// backend proxy would silently transcribe (and bill) somewhere the caller did
+/// not ask for.
+#[tokio::test]
+async fn load_and_apply_voice_server_settings_rejects_unknown_stt_engine() {
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempdir().unwrap();
+    unsafe {
+        std::env::set_var("OPENHUMAN_WORKSPACE", tmp.path());
+    }
+    let patch = VoiceServerSettingsPatch {
+        auto_start: None,
+        hotkey: None,
+        activation_mode: None,
+        skip_cleanup: None,
+        min_duration_secs: None,
+        silence_threshold: None,
+        custom_dictionary: None,
+        always_on_enabled: None,
+        wake_word: None,
+        // The removed local engine is the case that matters: an old client
+        // could still send it.
+        stt_engine: Some("whisper".into()),
+    };
+    let err = load_and_apply_voice_server_settings(patch)
+        .await
+        .unwrap_err();
+    assert!(err.contains("invalid stt_engine"), "got: {err}");
     unsafe {
         std::env::remove_var("OPENHUMAN_WORKSPACE");
     }

@@ -737,12 +737,11 @@ impl Agent {
         // cost). An unrelated message clears the similarity gate to nothing, so
         // no block is injected.
         {
-            let situational =
-                crate::openhuman::memory::preferences::recall_situational_preferences(
-                    &self.memory,
-                    user_message,
-                )
-                .await;
+            let situational = tinymemory_core::preferences::recall_situational_preferences(
+                &self.memory,
+                user_message,
+            )
+            .await;
             if !situational.is_empty() {
                 log::info!(
                     "[pref_recall] situational block injected: {} item(s)",
@@ -923,6 +922,16 @@ impl Agent {
 
         let mut agent_context_prepared_sources: Vec<harness::AgentContextPreparedSource> =
             Vec::new();
+        // Triggered memory-agent recall runs on EVERY channel, voice included:
+        // dropping it on voice would strip the user's remembered context
+        // (preferences, people, prior facts) from spoken answers — a real quality
+        // loss the transcript alone can't replace. Recall adds a few seconds of
+        // embedding + retrieval before the first model token, but on realtime
+        // voice that latency is already covered end-to-end: the backend relay
+        // streams an audible keepalive filler from t=0 so the cloud session never
+        // sees a silent stall, and the desktop's ~8s ack-defer closes the spoken
+        // turn and finishes in the background if the work runs long. So the recall
+        // path is byte-for-byte identical across voice and chat.
         let (enriched, memory_agent_context_injected) = self
             .inject_triggered_memory_agent_context(user_message, enriched, &parent_context)
             .await;
@@ -1215,12 +1224,12 @@ impl Agent {
         // `[FILE:…]` markers into provider-ready content before dispatch. The
         // expanded copy is provider-only and never persisted to `history`.
         let multimodal = self
-            .integration_runtime_config
+            .runtime_config
             .as_ref()
             .map(|c| c.multimodal.clone())
             .unwrap_or_default();
         let multimodal_files = self
-            .integration_runtime_config
+            .runtime_config
             .as_ref()
             .map(|c| c.multimodal_files.clone())
             .unwrap_or_default();
@@ -1327,6 +1336,13 @@ impl Agent {
                     // descriptor (if any) so the top-level chat turn's acting
                     // tools default their cwd to the profile's dedicated dir.
                     workspace_descriptor: self.workspace_descriptor.clone(),
+                    // Scope direct Master-Agent calls under its declared
+                    // sandbox. `agent_definition_name` can carry a thread
+                    // suffix, so resolve with the stable definition id.
+                    sandbox_mode: crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::global()
+                        .and_then(|registry| registry.get(&self.agent_definition_id))
+                        .map(|definition| definition.sandbox_mode)
+                        .unwrap_or(crate::openhuman::agent::harness::definition::SandboxMode::None),
                 }),
             )
             .await;
@@ -1489,7 +1505,16 @@ impl Agent {
         // The trailing assistant message is rewritten to match, and the repair
         // call's usage is folded into the turn accounting. `required_output`
         // defaults to `None`, so existing agents are entirely unaffected.
-        let reply = if let Some(contract) = self.config.required_output.clone() {
+        // Converted to the crate contract at the read site: the enforcement
+        // helpers below are part of the runtime slated to move into TinyAgents
+        // and so speak the crate type, while the session still holds the host's
+        // `AgentConfig`. See `tinyagents::config::required_output_from`.
+        let reply = if let Some(contract) = self
+            .config
+            .required_output
+            .as_ref()
+            .map(crate::openhuman::agent::tinyagents::config::required_output_from)
+        {
             match self
                 .enforce_required_output(
                     &reply,
@@ -1594,7 +1619,7 @@ impl Agent {
         // never reaches the span store or any exporter. The collector applies the
         // same storage-level gate as defense in depth.
         let capture_content = self
-            .integration_runtime_config
+            .runtime_config
             .as_ref()
             .map(|c| c.observability.agent_tracing.capture_content)
             .unwrap_or(false);

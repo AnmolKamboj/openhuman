@@ -24,8 +24,8 @@ const en: TranslationMap = {
   'skills.recallCalendar.description': 'Auto-join Google Meet calls via Recall.ai',
   // Navigation
   'nav.home': 'Home',
-  'nav.human': 'Human',
   'nav.chat': 'Chat',
+  'nav.human': 'Human',
   'nav.assistant': 'Assistant',
 
   // Assistant surface: face mode toggle (Phase 6)
@@ -822,6 +822,7 @@ const en: TranslationMap = {
   // Chat / Conversations
   'chat.newThread': 'New thread',
   'chat.newConversation': 'New Conversation',
+  'chat.conversationsHeading': 'Conversations',
   'chat.newWindowWelcome1': 'Welcome, {name} 👋',
   'chat.newWindowWelcome2': "Let's cook, {name} 🧑‍🍳.",
   'chat.newWindowWelcome3': 'Time to Zone In 🧘🏻',
@@ -1210,6 +1211,9 @@ const en: TranslationMap = {
   'memoryTree.status.statusError': 'Error',
   'memoryTree.status.statusIdle': 'Idle',
   'memoryTree.status.statusDegraded': 'Degraded',
+  // #5324: a spent embedding budget is a distinct state from a generic error —
+  // memory is paused, not broken, and the fix is the user's to make.
+  'memoryTree.status.statusBudgetExhausted': 'Paused: embedding budget reached',
   'memoryTree.status.never': 'Never',
   // #002: degraded badges + typed remediation strings. The Rust core sends a
   // `remediation_key` (one of memory.health.remediation.*) which the status
@@ -1243,6 +1247,11 @@ const en: TranslationMap = {
     'Memory processing encountered an issue. Check Connections → API keys for configuration.',
   'memoryTree.status.fetchError': "Couldn't fetch Memory Tree status",
   'memoryTree.status.retry': 'Retry',
+  'memoryTree.status.retryFailed': 'Retry failed jobs',
+  'memoryTree.status.retryFailedBusy': 'Retrying...',
+  'memoryTree.status.retryFailedDone': 'Failed jobs requeued',
+  'memoryTree.status.retryFailedCount': 'Jobs queued to run again: {count}.',
+  'memoryTree.status.retryFailedError': 'Could not requeue the failed jobs',
   'memoryTree.status.toggleFailed': "Couldn't toggle auto-sync",
   // Relative-time buckets surfaced by the last-sync tile. `{count}` is
   // replaced client-side at the call site (the runtime `t()` does not
@@ -2495,9 +2504,6 @@ const en: TranslationMap = {
   'voice.failedToSaveSettings': 'Failed to save voice settings',
   'voice.failedToStartServer': 'Failed to start voice server',
   'voice.failedToStopServer': 'Failed to stop voice server',
-  'voice.sttDisabledPrefix':
-    'Voice dictation is disabled until the local STT model is downloaded. Use the',
-  'voice.sttDisabledSuffix': 'section above to install Whisper.',
   'voice.debug.failedToLoadVoiceDebugData': 'Failed to load voice debug data',
   'voice.debug.settingsSaved': 'Debug settings saved.',
   'voice.debug.failedToSaveSettings': 'Failed to save voice settings',
@@ -2532,34 +2538,29 @@ const en: TranslationMap = {
   'voice.providers.repair': 'Repair',
   'voice.providers.retryLocally': 'Retry locally',
   'voice.providers.installLocally': 'Install locally',
-  'voice.providers.whisperReady': 'Whisper is ready.',
-  'voice.providers.whisperInstallStarted': 'Whisper install started',
   'voice.providers.queued': 'queued',
-  'voice.providers.failedToInstallWhisper': 'Failed to install Whisper',
   'voice.providers.piperReady': 'Piper is ready.',
   'voice.providers.piperInstallStarted': 'Piper install started',
   'voice.providers.failedToInstallPiper': 'Failed to install Piper',
+  'voice.mode.title': 'Voice mode',
+  'voice.mode.desc': 'Choose how the assistant talks in the Human tab.',
+  'voice.mode.realtime': 'Realtime voice (beta)',
+  'voice.mode.realtimeDesc': 'Stream a live conversation instead of taking turns.',
+  'voice.mode.start': 'Start voice chat',
+  'voice.mode.stop': 'End voice chat',
+  'voice.mode.connecting': 'Connecting…',
+  'voice.mode.listening': 'Listening',
+  'voice.mode.speaking': 'Speaking',
   'voice.providers.title': 'Voice Providers',
   'voice.providers.desc':
-    'Choose where transcription and synthesis run. Use the Install locally buttons to download the binaries and models into your workspace. Local providers can be saved before the install finishes: no manual WHISPER_BIN or PIPER_BIN setup required.',
+    'Choose which hosted engine transcribes your speech and where synthesis runs. Speech-to-text always runs in the cloud; only text-to-speech has a local option (Piper), installed with the Install locally button. No manual PIPER_BIN setup required.',
   'voice.providers.sttProvider': 'Speech-to-Text Provider',
   'voice.providers.sttProviderAria': 'STT provider',
-  'voice.providers.cloudWhisperProxy': 'OpenHuman (Managed)',
-  'voice.providers.localWhisper': 'Local Whisper',
+  'voice.providers.backendSttProxy': 'OpenHuman (Managed)',
   'voice.providers.installRequired': ' (install required)',
-  'voice.providers.whisperInstalledTitle': 'Whisper is installed. Click to reinstall.',
-  'voice.providers.whisperDownloadTitle':
-    'Download whisper.cpp and the GGML model into your workspace.',
   'voice.providers.installed': 'Installed',
   'voice.providers.installFailed': 'Install failed',
   'voice.providers.notInstalled': 'Not installed',
-  'voice.providers.whisperModel': 'Whisper Model',
-  'voice.providers.whisperModelAria': 'Whisper model',
-  'voice.providers.whisperModelTiny': 'Tiny (39 MB, fastest)',
-  'voice.providers.whisperModelBase': 'Base (74 MB)',
-  'voice.providers.whisperModelSmall': 'Small (244 MB)',
-  'voice.providers.whisperModelMedium': 'Medium (769 MB, recommended)',
-  'voice.providers.whisperModelLargeTurbo': 'Large v3 Turbo (1.5 GB, best accuracy)',
   'voice.providers.ttsProvider': 'Text-to-Speech Provider',
   'voice.providers.ttsProviderAria': 'TTS provider',
   'voice.providers.cloudElevenLabsProxy': 'OpenHuman (Managed)',
@@ -2592,9 +2593,6 @@ const en: TranslationMap = {
   // Voice provider chips (new chip-toggle UI)
   'voice.providers.chip.cloud': 'OpenHuman (Managed)',
   'voice.providers.chip.cloudAria': 'OpenHuman managed provider is always enabled',
-  'voice.providers.chip.whisper': 'Whisper (Local)',
-  'voice.providers.chip.enableWhisper': 'Enable local Whisper STT',
-  'voice.providers.chip.disableWhisper': 'Disable local Whisper STT',
   'voice.providers.chip.piper': 'Piper (Local)',
   'voice.providers.chip.enablePiper': 'Enable local Piper TTS',
   'voice.providers.chip.disablePiper': 'Disable local Piper TTS',
@@ -2612,8 +2610,6 @@ const en: TranslationMap = {
   'voice.modal.testing': 'Testing…',
   'voice.modal.saveAndEnable': 'Save & Enable',
   'voice.modal.enable': 'Enable',
-  'voice.modal.whisperDesc':
-    'Choose a model size and install the Whisper binary and GGML model into your workspace. Larger models are more accurate but slower.',
   'voice.modal.piperDesc':
     'Choose a voice and install the Piper binary and ONNX model into your workspace. Piper runs fully offline with low latency.',
 
@@ -2863,6 +2859,18 @@ const en: TranslationMap = {
   'chat.playingVoiceReply': 'Playing voice reply',
   'chat.voiceHint': 'Use the mic to speak',
   'chat.micUnavailable': 'Microphone unavailable',
+  // Chat mascot: the figure standing on the composer, and its voice stage.
+  'chat.mascot.expand': 'Talk to your assistant',
+  'chat.mascot.collapse': 'Back to the chat',
+  'chat.mascot.speakReplies': 'Speak replies out loud',
+  'chat.mascot.speakRepliesHint':
+    'Replies are read aloud while the mascot is open. Turn this off to keep the conversation silent.',
+  'chat.mascot.dismiss': 'Hide Tiny',
+  'chat.mascot.dismissTitle': 'Hide Tiny?',
+  'chat.mascot.dismissBody':
+    "No hard feelings if you'd rather have the message box to yourself. You can bring Tiny back any time from Settings › Appearance › Chat.",
+  'chat.mascot.dismissConfirm': 'Hide Tiny',
+  'chat.mascot.dismissCancel': 'Keep Tiny',
   'chat.turn': 'turn',
   'chat.turns': 'turns',
   'chat.openWorkerThread': 'Open worker thread',
@@ -3593,14 +3601,6 @@ const en: TranslationMap = {
   'accounts.respondQueue.pending': 'Pending',
   'accounts.respondQueue.show': 'Show respond queue',
   'accounts.respondQueue.title': 'Respond queue',
-  'accounts.webviewHost.almostReady': 'Almost ready...',
-  'accounts.webviewHost.loadTimeout': 'Webview load timeout',
-  'accounts.webviewHost.loading': 'Loading {providerName}...',
-  'accounts.webviewHost.loadingAccount': 'Loading account',
-  'accounts.webviewHost.restoringSession': 'Restoring session...',
-  'accounts.webviewHost.retryLoading': 'Retry loading',
-  'accounts.webviewHost.takingLonger': '{providerName} is taking longer than expected.',
-  'accounts.webviewHost.timeoutHint': 'Timeout hint',
   'app.connectionBadge.composio': 'Composio',
   'app.connectionBadge.messaging': 'Messaging',
   'app.connectionIndicator.connected': 'Connected',
@@ -6431,15 +6431,23 @@ const en: TranslationMap = {
   'settings.appearance.hideAgentInsights': 'Hide agent thinking',
   'settings.appearance.hideAgentInsightsDesc':
     'Collapse the live step-by-step agent timeline in chat. A blinking “Processing” link still lets you open the full run.',
+  'settings.appearance.showChatMascot': 'Show Tiny on the message box',
+  'settings.appearance.showChatMascotDesc':
+    'Keep the mascot standing on the composer. Hidden, the chat is text only until you turn this back on.',
   'settings.mascot.active': 'Active',
   'settings.mascot.characterDesc': 'Choose your OpenHuman character.',
   'settings.mascot.characterDraft': 'Draft',
   'settings.mascot.characterHeading': 'Character',
   'settings.mascot.customGifError':
-    'Enter an HTTPS .gif URL, loopback HTTP .gif URL, file:// .gif URL, or local .gif path.',
-  'settings.mascot.customGifHeading': 'Custom GIF avatar',
-  'settings.mascot.customGifLabel': 'Custom GIF avatar URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Enter an HTTPS, file://, or local image URL (PNG, GIF, JPEG, WebP, or BMP), or upload a file.',
+  'settings.mascot.customGifHeading': 'Custom image avatar',
+  'settings.mascot.customGifLabel': 'Custom image avatar URL',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Upload image',
+  'settings.mascot.customGifInvalidType':
+    'Unsupported file type. Upload a PNG, GIF, JPEG, WebP, or BMP image.',
+  'settings.mascot.customGifTooLarge': 'Image is too large. Upload a file up to 1.5 MB.',
+  'settings.mascot.customGifReadError': 'Could not read that image. Please try another file.',
   'settings.mascot.characterPreview': 'Preview',
   'settings.mascot.characterStates': 'states',
   'settings.mascot.characterVisemes': 'visemes',
@@ -6547,7 +6555,7 @@ const en: TranslationMap = {
   'settings.persona.templates.family.desc': 'Warm, friendly, safe for all ages',
   'settings.persona.appearanceHeading': 'Avatar & Voice',
   'settings.persona.appearanceDesc':
-    'Mascot color, custom GIF avatar, and reply voice are configured in Mascot settings.',
+    'Mascot color, custom image avatar, and reply voice are configured in Mascot settings.',
   'settings.persona.openMascotSettings': 'Open Mascot settings',
   'settings.memoryWindow.balanced.badge': 'Recommended',
   'settings.memoryWindow.balanced.hint':
@@ -6889,7 +6897,7 @@ const en: TranslationMap = {
   'skills.setup.voice.stepSuccess': 'Ready to go',
   'skills.setup.voice.sttNotReady': 'Speech-to-text model not ready',
   'skills.setup.voice.sttNotReadyDesc':
-    'Voice Intelligence requires a local Whisper model for transcription. Download it from the Local Model settings.',
+    'Voice Intelligence needs a working speech-to-text engine. Pick one under Settings › Voice.',
   'skills.setup.voice.sttReady': 'Speech-to-text model ready',
   'skills.setup.voice.sttReturnHint': 'The speech-to-text model is loading. Come back in a moment.',
   'skills.setup.voice.title': 'Voice Intelligence',
@@ -7549,6 +7557,7 @@ const en: TranslationMap = {
   'userErrors.dismiss': 'Dismiss',
   'userErrors.action.openBilling': 'Open billing',
   'userErrors.action.openProviderSettings': 'Provider settings',
+  'userErrors.action.openEmbeddingsSettings': 'Set up embeddings',
   'userErrors.budgetExceeded.title': 'Managed budget reached',
   'userErrors.budgetExceeded.body':
     'Your managed AI budget is used up. Add budget or change your plan to continue.',
@@ -7558,13 +7567,41 @@ const en: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'API key required',
   'userErrors.apiKeyMissing.body':
     'Your AI provider has no API key set. Add one in provider settings to continue.',
+  'userErrors.memoryBudgetExhausted.title': 'Memory has stopped growing',
+  'userErrors.memoryBudgetExhausted.body':
+    'Your embedding budget is used up, so new content is no longer being added to memory. Set up local embeddings or add your own API key to resume.',
+  'userErrors.localModelUnavailable.title': 'Local model unavailable',
+  'userErrors.localModelUnavailable.body':
+    'Ollama is not reachable at the configured endpoint, or the required model is not installed there. Start Ollama and pull the model at that endpoint, or switch this workload to a cloud provider.',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Scheduled job',
+  'userErrors.scope.workspace': 'Workspace',
+  'userErrors.scope.memory': 'Memory',
+
+  // Memory embedding budget banners (#5324)
+  'memoryBudget.approachingTitle': 'Memory is approaching its embedding limit',
+  'memoryBudget.approachingMessage':
+    "You've used {pct}% of your embedding budget. Set up local embeddings or add your own API key to keep building memory without interruption.",
+  'memoryBudget.exhaustedTitle': 'Memory has stopped growing',
+  'memoryBudget.exhaustedMessage':
+    'Your embedding budget is used up, so new content is no longer being added to memory. Set up local embeddings or add your own API key to resume.',
+  'memoryBudget.cta': 'Set up embeddings',
+  'tinyplaceSunset.title': 'Tiny Place is moving out of the app',
+  'tinyplaceSunset.message':
+    'To keep using tiny.place, visit tiny.place. It will be removed from the app after 31 August 2026.',
+  'tinyplaceSunset.cta': 'Open tiny.place',
   'memorySources.codingSessions.title': 'Coding-agent sessions',
   'memorySources.codingSessions.description':
     'Turn your Codex and Claude Code decisions and corrections into private persona memory.',
-  'memorySources.codingSessions.ingest': 'Ingest new sessions',
-  'memorySources.codingSessions.ingesting': 'Ingesting…',
+  'memorySources.codingSessions.importAll': 'Import all sessions',
+  'memorySources.codingSessions.draining': 'Importing… pass {passes}',
+  'memorySources.codingSessions.stop': 'Stop',
+  'memorySources.codingSessions.progress':
+    '{processed} sessions imported · {observations} observations',
+  'memorySources.codingSessions.remaining': 'about {remaining} left',
+  'memorySources.codingSessions.stopped': 'Import paused',
+  'memorySources.codingSessions.stoppedMessage':
+    'Imported {processed} sessions. Run import again to continue the remaining {remaining}.',
   'memorySources.codingSessions.claude': 'Claude Code',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} sessions · {evidence} human turns',
@@ -7576,8 +7613,6 @@ const en: TranslationMap = {
     '{processed} sessions produced {observations} persona observations.',
   'memorySources.codingSessions.partialFailure':
     '{failed} sessions failed while {processed} were processed. Run ingestion again to retry them.',
-  'memorySources.codingSessions.moreRemaining':
-    'The session batch limit was reached. Run ingestion again to continue importing your history.',
   'memorySources.codingSessions.failed': 'Coding-session ingestion failed',
   'notifications.configRecovered.title': 'Settings file recovered',
   'notifications.configRecovered.body':

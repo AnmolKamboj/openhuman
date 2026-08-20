@@ -27,13 +27,11 @@ use super::super::graph::drive_phases;
 use crate::openhuman::agent::context::prompt::ToolCallFormat;
 use crate::openhuman::agent::harness::definition::AgentDefinitionRegistry;
 use crate::openhuman::agent::harness::fork_context::{with_parent_context, ParentExecutionContext};
-use crate::openhuman::agent::session_db::run_ledger::{
-    get_workflow_run, upsert_workflow_run, WorkflowRunUpsert,
-};
 use crate::openhuman::config::{AgentConfig, Config};
 use crate::openhuman::memory::{Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts};
 use crate::openhuman::tools::{Tool, ToolSpec};
 use tinyagents::harness::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
+use tinyagents::session::run_ledger::{get_workflow_run, upsert_workflow_run, WorkflowRunUpsert};
 
 use super::super::types::{WorkflowDefinition, WorkflowPhase, WorkflowSafetyTier};
 
@@ -212,7 +210,7 @@ fn test_config() -> (tempfile::TempDir, Config) {
 fn seed_run(config: &Config, definition: &WorkflowDefinition, input: Value) -> String {
     let id = format!("wfrun-test-{}", uuid::Uuid::new_v4());
     upsert_workflow_run(
-        config,
+        &config.workspace_dir,
         WorkflowRunUpsert {
             id: id.clone(),
             definition_id: definition.id.clone(),
@@ -264,11 +262,17 @@ fn linear_def(concurrency: u32, max_children: u32, parallel_in_b: usize) -> Work
 }
 
 fn status_of(config: &Config, id: &str) -> WorkflowRunStatus {
-    get_workflow_run(config, id).unwrap().unwrap().status
+    get_workflow_run(&config.workspace_dir, id)
+        .unwrap()
+        .unwrap()
+        .status
 }
 
 fn phase_states(config: &Config, id: &str) -> Value {
-    get_workflow_run(config, id).unwrap().unwrap().phase_states
+    get_workflow_run(&config.workspace_dir, id)
+        .unwrap()
+        .unwrap()
+        .phase_states
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -309,7 +313,10 @@ async fn unit_phases_execute_in_dependency_order() {
 
     // Summary comes from the last phase's output (no phase literally named
     // 'synthesize', so the fallback picks phase c).
-    let summary = get_workflow_run(&config, &id).unwrap().unwrap().summary;
+    let summary = get_workflow_run(&config.workspace_dir, &id)
+        .unwrap()
+        .unwrap()
+        .summary;
     assert!(
         summary
             .as_deref()
@@ -397,7 +404,10 @@ async fn unit_max_children_hard_cap_fails_run() {
     .expect("drive_phases returns Ok with terminal Failed state");
 
     assert_eq!(status_of(&config, &id), WorkflowRunStatus::Failed);
-    let summary = get_workflow_run(&config, &id).unwrap().unwrap().summary;
+    let summary = get_workflow_run(&config.workspace_dir, &id)
+        .unwrap()
+        .unwrap()
+        .summary;
     assert!(
         summary
             .as_deref()
@@ -502,13 +512,15 @@ async fn unit_resume_skips_completed_phases() {
     );
 
     // Mark phase 'a' already completed (simulating a prior partial run).
-    let run = get_workflow_run(&config, &id).unwrap().unwrap();
+    let run = get_workflow_run(&config.workspace_dir, &id)
+        .unwrap()
+        .unwrap();
     let mut states = run.phase_states.clone();
     states["a"]["status"] = json!("completed");
     states["a"]["outputs"] =
         json!([{ "orchestrationId": "x", "agentId": "code_executor", "output": "A_DONE" }]);
     upsert_workflow_run(
-        &config,
+        &config.workspace_dir,
         WorkflowRunUpsert {
             id: id.clone(),
             definition_id: run.definition_id.clone(),

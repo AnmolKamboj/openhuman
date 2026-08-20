@@ -4,7 +4,8 @@ use super::types::{
     TunnelRegistration, WebhookDebugEvent, WebhookDebugLogEntry, WebhookRequest,
     WebhookResponseData,
 };
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use log::{debug, error, warn};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -209,7 +210,7 @@ impl WebhookRouter {
         self.publish_event("registration_changed", None, Some(tunnel_uuid.to_string()));
         self.persist();
 
-        publish_global(DomainEvent::WebhookRegistered {
+        BUS.publish(DomainEvent::WebhookRegistered {
             tunnel_id: tunnel_uuid.to_string(),
             skill_id: skill_id.to_string(),
             tunnel_name: tunnel_name_clone,
@@ -245,7 +246,7 @@ impl WebhookRouter {
         self.publish_event("registration_changed", None, Some(tunnel_uuid.to_string()));
         self.persist();
 
-        publish_global(DomainEvent::WebhookUnregistered {
+        BUS.publish(DomainEvent::WebhookUnregistered {
             tunnel_id: tunnel_uuid.to_string(),
             skill_id: skill_id.to_string(),
         });
@@ -282,7 +283,7 @@ impl WebhookRouter {
             self.persist();
 
             for tunnel_id in removed_tunnels {
-                publish_global(DomainEvent::WebhookUnregistered {
+                BUS.publish(DomainEvent::WebhookUnregistered {
                     tunnel_id,
                     skill_id: skill_id.to_string(),
                 });

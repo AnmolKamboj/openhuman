@@ -93,10 +93,7 @@ pub async fn sync_trigger_rpc(
 
     for conn in candidates {
         let started_at_ms = now_ms();
-        match crate::openhuman::memory::tinycortex::run_composio_connection(
-            "slack", &conn.id, config,
-        )
-        .await
+        match tinymemory_core::tinycortex::run_composio_connection("slack", &conn.id, config).await
         {
             Ok(outcome) => outcomes.push(SyncOutcome {
                 toolkit: "slack".to_string(),
@@ -185,9 +182,7 @@ pub async fn sync_status_rpc(
             continue;
         }
         let state =
-            match crate::openhuman::memory::tinycortex::load_composio_sync_state("slack", &conn.id)
-                .await
-            {
+            match tinymemory_core::tinycortex::load_composio_sync_state("slack", &conn.id).await {
                 Ok(s) => s,
                 Err(err) => {
                     log::warn!(
@@ -245,7 +240,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let mut config = Config::default();
         config.config_path = tmp.path().join("config.toml");
-        config.composio.mode = crate::openhuman::config::schema::COMPOSIO_MODE_DIRECT.to_string();
+        config.composio.mode = tinymemory_api::host::COMPOSIO_MODE_DIRECT.to_string();
         std::mem::forget(tmp);
         config
     }
@@ -307,7 +302,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let mut config = Config::default();
         config.config_path = tmp.path().join("config.toml");
-        config.composio.mode = crate::openhuman::config::schema::COMPOSIO_MODE_DIRECT.to_string();
+        config.composio.mode = tinymemory_api::host::COMPOSIO_MODE_DIRECT.to_string();
         config.composio.api_key = Some("test-direct-key".to_string());
         std::mem::forget(tmp);
 

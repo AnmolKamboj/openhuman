@@ -10,6 +10,7 @@ use crate::openhuman::threads::ThreadsError;
 use serde_json::{json, Value};
 use std::ffi::OsString;
 use std::path::Path;
+use tinycortex::memory::conversations as conversations_store;
 
 struct EnvVarGuard {
     key: &'static str,
@@ -75,15 +76,15 @@ fn build_title_prompt_renders_user_and_assistant_sections_in_order() {
     let prompt = build_title_prompt("hi there", "hello back");
     assert_eq!(
         prompt,
-        "First user message:\nhi there\n\nAssistant reply:\nhello back\n\nReturn the best thread title."
+        "First user message:\nhi there\n\nAssistant reply:\nhello back\n\nReturn the best thread name."
     );
 }
 
 // NOTE: the sanitize_generated_title / title_from_user_message copies were
 // removed here (plan.md §2.1) — threads/title.rs (the owning module) already
-// covers these functions with equivalent cases (quotes/punct trimming, first
-// non-empty line, empty→None, internal-whitespace collapse, char-safe 80-char
-// truncation incl. multibyte, and the fallback-title cases).
+// covers these functions with equivalent cases (title shaping, filler removal,
+// first non-empty line, empty→None, and the char-safe length ceiling incl.
+// multibyte input).
 
 // ── is_auto_generated_thread_title ────────────────────────────
 
@@ -281,11 +282,11 @@ fn record_to_message_preserves_null_extra_metadata() {
 
 #[test]
 fn title_system_prompt_constrains_model_output_shape() {
-    // The system prompt is shipped verbatim to the provider. Locking
-    // in the trailing "no trailing punctuation" clause catches
-    // accidental edits that would let the model emit trailing periods
-    // that `sanitize_generated_title` would then silently strip.
-    assert!(THREAD_TITLE_SYSTEM_PROMPT.contains("under 8 words"));
+    // The system prompt is shipped verbatim to the provider. Locking in the
+    // length clause catches accidental edits that would let the model emit a
+    // sentence-shaped title that `sanitize_generated_title` would then have to
+    // rewrite silently.
+    assert!(THREAD_TITLE_SYSTEM_PROMPT.contains("at most 3 words"));
     assert!(THREAD_TITLE_SYSTEM_PROMPT.contains("No quotes"));
     assert!(THREAD_TITLE_SYSTEM_PROMPT.contains("No markdown"));
 }
@@ -360,7 +361,7 @@ async fn create_thread_with_title(_workspace: &tempfile::TempDir, thread_id: &st
         .await
         .expect("load config")
         .workspace_dir;
-    conversations::ensure_thread(
+    conversations_store::ensure_thread(
         dir,
         CreateConversationThread {
             id: thread_id.to_string(),
@@ -387,7 +388,7 @@ async fn generate_title_leaves_custom_title_unchanged() {
         .await
         .expect("load config")
         .workspace_dir;
-    conversations::append_message(
+    conversations_store::append_message(
         dir,
         thread_id,
         ConversationMessage {
@@ -452,7 +453,7 @@ async fn generate_title_falls_back_to_first_user_message_when_assistant_missing(
         .expect("load config")
         .workspace_dir;
     let user_message = "Please summarize the latest five email threads for me.";
-    conversations::append_message(
+    conversations_store::append_message(
         dir,
         thread_id,
         ConversationMessage {

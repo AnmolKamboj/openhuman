@@ -1,7 +1,47 @@
 use super::*;
 use crate::openhuman::agent::hooks::{ToolCallRecord, TurnContext};
-use crate::openhuman::memory::chat::ChatPrompt;
-use crate::openhuman::memory::store::{events as ev, fts5, segments as seg};
+use std::sync::OnceLock;
+use tinymemory_core::chat::ChatPrompt;
+use tinymemory_core::store::{events as ev, fts5, segments as seg};
+
+static TREE_INGEST_TEST_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+
+/// Runs `fut` with the memory chat provider pinned to a deterministic stub.
+///
+/// These tree-ingest tests look hermetic but are not. `ingest_chat` builds its
+/// **own** chat provider from `Config` — `memory::tinycortex::ingest::context`
+/// → `scoring_config` → `build_chat_provider` — so it ignores the
+/// `StubChatProvider` wired into the hook and reaches the managed backend over
+/// the network. The ingest treats its own failure as non-fatal (logged and
+/// swallowed in `tree_ingest.rs`), so a slow or failed call surfaces only as
+/// zero tree chunks, which reads as a wrong assertion rather than a network
+/// problem. Under a loaded parallel suite that call's timing varies, which is
+/// what made these tests flaky.
+///
+/// `build_chat_runtime` checks this task-local override before building
+/// anything, so scoping the whole test body through it keeps the ingest
+/// offline and deterministic.
+async fn with_stub_chat_provider<F, T>(fut: F) -> T
+where
+    F: std::future::Future<Output = T>,
+{
+    // `test_override` is task-local, but tree ingest also builds shared
+    // runtime state. Keep these integration-style tests isolated from each
+    // other so a concurrent provider construction cannot escape the stub.
+    let lock = TREE_INGEST_TEST_LOCK.get_or_init(|| tokio::sync::Mutex::new(()));
+    let _guard = lock.lock().await;
+    // Tree ingest builds a memory store, which reaches the embedding seam.
+    // Installing it here rather than relying on some earlier test having done
+    // so is what makes these deterministic — the `test_override` below still
+    // keeps the *chat* side offline, since `build_chat_runtime` checks it
+    // before building anything.
+    crate::openhuman::memory::host_impls::install_for_tests();
+    tinymemory_core::chat::test_override::with_provider(
+        Arc::new(tinymemory_core::chat::StaticChatProvider::new("{}")),
+        fut,
+    )
+    .await
+}
 
 fn setup_conn() -> Arc<Mutex<Connection>> {
     let conn = Connection::open_in_memory().unwrap();
@@ -343,7 +383,7 @@ async fn phase0_episodic_rows_and_segment_without_learning_enabled() {
 struct StubChatProvider;
 
 #[async_trait::async_trait]
-impl crate::openhuman::memory::chat::ChatProvider for StubChatProvider {
+impl tinymemory_core::chat::ChatProvider for StubChatProvider {
     fn name(&self) -> &str {
         "stub:test"
     }
@@ -546,8 +586,8 @@ async fn phase1_flush_open_segment_finalizes_trailing_segment() {
 //   g) flush_open_segment also triggers tree ingest.
 
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::store::chunks::store::{count_chunks, list_chunks, ListChunksQuery};
 use tempfile::TempDir;
+use tinymemory_core::store::chunks::store::{count_chunks, list_chunks, ListChunksQuery};
 
 /// Build a Config that points at a temp workspace, suitable for tree-ingest tests.
 /// The memory_tree DB and content dir are created under `tmp.path()`.
@@ -555,7 +595,19 @@ fn test_config_with_tree() -> (TempDir, Config) {
     let tmp = TempDir::new().unwrap();
     let mut cfg = Config::default();
     cfg.workspace_dir = tmp.path().to_path_buf();
-    // Disable embedding so ingest doesn't fail trying to contact Ollama.
+    // Route the embedder to `InertEmbedder`. This is the knob that actually
+    // takes ingest offline: the tree reads `memory.embedding_model`
+    // (`memory::tinycortex::config::memory_config_from`), which defaults to the
+    // CLOUD model `embedding-v1` — so the three `memory_tree.embedding_*` lines
+    // below never disabled anything, and ingest was really calling out to the
+    // managed embedding service. `ingest_chat`'s failure is swallowed as
+    // non-fatal in `tree_ingest.rs`, so a slow or failed call surfaced only as
+    // "got 0 chunks", which reads as a broken assertion rather than a network
+    // timeout — that is what made these tests flaky under a loaded suite.
+    // See `memory::tree_e2e_tests::pipeline_works_with_embeddings_disabled`,
+    // which pins that "none" routes to `InertEmbedder`.
+    cfg.embeddings_provider = Some("none".into());
+    // Kept: these govern the memory_tree-specific embedding path.
     cfg.memory_tree.embedding_endpoint = None;
     cfg.memory_tree.embedding_model = None;
     cfg.memory_tree.embedding_strict = false;
@@ -579,6 +631,10 @@ fn hook_with_stubs_and_tree_config(conn: Arc<Mutex<Connection>>, cfg: Config) ->
 /// the per-turn pipe_turn_to_tree path no longer exists.
 #[tokio::test]
 async fn phase2_no_per_turn_tree_write() {
+    with_stub_chat_provider(phase2_no_per_turn_tree_write_inner()).await
+}
+
+async fn phase2_no_per_turn_tree_write_inner() {
     let conn = setup_conn();
     let (_tmp, cfg) = test_config_with_tree();
     let hook = hook_with_stubs_and_tree_config(conn.clone(), cfg.clone());
@@ -618,6 +674,10 @@ async fn phase2_no_per_turn_tree_write() {
 /// for that segment containing all its turns — not one ingest per turn.
 #[tokio::test]
 async fn phase2_exactly_one_tree_ingest_per_segment_close() {
+    with_stub_chat_provider(phase2_exactly_one_tree_ingest_per_segment_close_inner()).await
+}
+
+async fn phase2_exactly_one_tree_ingest_per_segment_close_inner() {
     let conn = setup_conn();
     let (_tmp, cfg) = test_config_with_tree();
     let hook = hook_with_stubs_and_tree_config(conn.clone(), cfg.clone());
@@ -705,6 +765,11 @@ async fn phase2_exactly_one_tree_ingest_per_segment_close() {
 /// Also verifies that `source_id` is the constant `"conversations:agent"`.
 #[tokio::test]
 async fn phase2_provenance_stamped_on_leaf_and_source_id_is_constant() {
+    with_stub_chat_provider(phase2_provenance_stamped_on_leaf_and_source_id_is_constant_inner())
+        .await
+}
+
+async fn phase2_provenance_stamped_on_leaf_and_source_id_is_constant_inner() {
     let conn = setup_conn();
     let (_tmp, cfg) = test_config_with_tree();
     let hook = hook_with_stubs_and_tree_config(conn.clone(), cfg.clone());
@@ -736,7 +801,7 @@ async fn phase2_provenance_stamped_on_leaf_and_source_id_is_constant() {
         .iter()
         .find(|s| {
             s.session_id == session
-                && s.status != crate::openhuman::memory::store::segments::SegmentStatus::Open
+                && s.status != tinymemory_core::store::segments::SegmentStatus::Open
         })
         .expect("Expected a closed segment after flush");
 
@@ -790,6 +855,10 @@ async fn phase2_provenance_stamped_on_leaf_and_source_id_is_constant() {
 /// layer; the tree must ingest raw evidence so it can build its own summaries.
 #[tokio::test]
 async fn phase2_ingested_content_is_raw_prose_not_recap() {
+    with_stub_chat_provider(phase2_ingested_content_is_raw_prose_not_recap_inner()).await
+}
+
+async fn phase2_ingested_content_is_raw_prose_not_recap_inner() {
     let conn = setup_conn();
     let (_tmp, cfg) = test_config_with_tree();
     let hook = hook_with_stubs_and_tree_config(conn.clone(), cfg.clone());
@@ -854,6 +923,10 @@ async fn phase2_ingested_content_is_raw_prose_not_recap() {
 /// open segment (same as on_segment_closed at a topic boundary).
 #[tokio::test]
 async fn phase2_flush_also_triggers_tree_ingest() {
+    with_stub_chat_provider(phase2_flush_also_triggers_tree_ingest_inner()).await
+}
+
+async fn phase2_flush_also_triggers_tree_ingest_inner() {
     let conn = setup_conn();
     let (_tmp, cfg) = test_config_with_tree();
     let hook = hook_with_stubs_and_tree_config(conn.clone(), cfg.clone());

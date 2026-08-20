@@ -92,7 +92,6 @@ pub struct LocalAiAssetsStatus {
     pub chat: LocalAiAssetStatus,
     pub vision: LocalAiAssetStatus,
     pub embedding: LocalAiAssetStatus,
-    pub stt: LocalAiAssetStatus,
     pub tts: LocalAiAssetStatus,
     pub quantization: String,
     /// True when the configured Ollama endpoint is reachable enough for model
@@ -127,7 +126,6 @@ pub struct LocalAiDownloadsProgress {
     pub chat: LocalAiDownloadProgressItem,
     pub vision: LocalAiDownloadProgressItem,
     pub embedding: LocalAiDownloadProgressItem,
-    pub stt: LocalAiDownloadProgressItem,
     pub tts: LocalAiDownloadProgressItem,
     /// Mirrors `LocalAiAssetsStatus::ollama_available` so a single
     /// `local_ai.downloads_progress` poll can render the right UI state.

@@ -10,7 +10,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use async_trait::async_trait;
 
-use crate::core::event_bus::{subscribe_global, DomainEvent, EventHandler, SubscriptionHandle};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 
 use super::runtime::TriggerOrchestrator;
 
@@ -39,7 +42,7 @@ impl SubconsciousTriggerSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for SubconsciousTriggerSubscriber {
+impl EventHandler<DomainEvent> for SubconsciousTriggerSubscriber {
     fn name(&self) -> &str {
         "subconscious_triggers::ingest"
     }
@@ -64,7 +67,7 @@ pub fn register_subconscious_triggers_subscriber(orchestrator: Arc<TriggerOrches
     if guard.is_some() {
         return;
     }
-    match subscribe_global(Arc::new(SubconsciousTriggerSubscriber::new(orchestrator))) {
+    match BUS.subscribe(Arc::new(SubconsciousTriggerSubscriber::new(orchestrator))) {
         Some(handle) => {
             *guard = Some(handle);
             tracing::debug!("[subconscious_triggers:bus] subscriber registered");

@@ -2769,3 +2769,105 @@ fn action_dir_in_default_policy() {
     let policy = SecurityPolicy::default();
     assert_eq!(policy.action_dir, std::path::PathBuf::from("."));
 }
+
+// -- Per-turn workspace grant (agent::turn_workspace) ------------------------
+//
+// These drive the grant through the real `validate_parent_path` gate every file
+// write funnels through, so they prove the tightening/loosening lands at the
+// shared call site rather than only in the standalone predicate.
+
+/// A `workspace_only` policy whose workspace is `<root>/home`, plus a separate
+/// `<root>/checkout` directory standing in for the run's own tree.
+fn turn_workspace_policy() -> (tempfile::TempDir, PathBuf, SecurityPolicy) {
+    let root = tempfile::tempdir().expect("root tempdir");
+    let workspace = root.path().join("home");
+    let checkout = root.path().join("checkout");
+    std::fs::create_dir_all(&workspace).unwrap();
+    std::fs::create_dir_all(&checkout).unwrap();
+    let policy = SecurityPolicy {
+        autonomy: AutonomyLevel::Full,
+        workspace_dir: workspace.clone(),
+        action_dir: workspace,
+        workspace_only: true,
+        // The OS tempdir lives under /tmp or /var, both on the default
+        // forbidden list; clear it so the workspace boundary is what decides.
+        forbidden_paths: Vec::new(),
+        trusted_roots: Vec::new(),
+        ..SecurityPolicy::default()
+    };
+    (root, checkout, policy)
+}
+
+/// Without a scoped root the checkout is simply outside the workspace, and a
+/// write into it is refused — the behaviour every existing caller keeps.
+#[tokio::test]
+async fn write_outside_the_workspace_is_refused_without_a_turn_root() {
+    let (_root, checkout, policy) = turn_workspace_policy();
+    let target = checkout.join("notes.md");
+    let err = policy
+        .validate_parent_path(target.to_str().unwrap())
+        .await
+        .expect_err("a path outside the workspace must not validate");
+    assert!(
+        err.contains(POLICY_BLOCKED_MARKER),
+        "unexpected error: {err}"
+    );
+}
+
+/// With the checkout scoped as this turn's workspace, the same write validates:
+/// the grant is what lets an embedded turn work in the tree its host named.
+#[tokio::test]
+async fn write_into_the_scoped_turn_root_is_allowed() {
+    let (_root, checkout, policy) = turn_workspace_policy();
+    let target = checkout.join("notes.md");
+    let resolved = crate::openhuman::agent::turn_workspace::with_workspace(checkout.clone(), {
+        let policy = &policy;
+        let target = target.clone();
+        async move { policy.validate_parent_path(target.to_str().unwrap()).await }
+    })
+    .await
+    .expect("the scoped turn root must be writable");
+    assert!(resolved.ends_with("notes.md"), "resolved: {resolved:?}");
+}
+
+/// The grant covers its own subtree and nothing beside it: a sibling directory
+/// stays outside, so scoping one checkout does not open the whole parent.
+#[tokio::test]
+async fn the_turn_root_grant_does_not_reach_a_sibling_directory() {
+    let (root, checkout, policy) = turn_workspace_policy();
+    let sibling = root.path().join("other");
+    std::fs::create_dir_all(&sibling).unwrap();
+    let target = sibling.join("notes.md");
+    let err = crate::openhuman::agent::turn_workspace::with_workspace(checkout, {
+        let policy = &policy;
+        let target = target.clone();
+        async move { policy.validate_parent_path(target.to_str().unwrap()).await }
+    })
+    .await
+    .expect_err("a sibling of the scoped root must stay outside it");
+    assert!(
+        err.contains(POLICY_BLOCKED_MARKER),
+        "unexpected error: {err}"
+    );
+}
+
+/// The grant is exactly as strong as a configured trusted root and no stronger:
+/// a credential store under the scoped tree is still unreachable.
+#[tokio::test]
+async fn the_turn_root_grant_never_reaches_a_credential_store() {
+    let (_root, checkout, policy) = turn_workspace_policy();
+    let ssh = checkout.join(".ssh");
+    std::fs::create_dir_all(&ssh).unwrap();
+    let target = ssh.join("id_rsa");
+    let err = crate::openhuman::agent::turn_workspace::with_workspace(checkout, {
+        let policy = &policy;
+        let target = target.clone();
+        async move { policy.validate_parent_path(target.to_str().unwrap()).await }
+    })
+    .await
+    .expect_err("credential stores stay forbidden inside a granted root");
+    assert!(
+        err.contains(POLICY_BLOCKED_MARKER),
+        "unexpected error: {err}"
+    );
+}

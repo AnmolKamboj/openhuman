@@ -13,13 +13,14 @@ use axum::{Json, Router};
 use serde_json::{json, Value};
 use tempfile::TempDir;
 
-use openhuman_core::core::event_bus::{DomainEvent, EventHandler};
+use openhuman_core::core::events::DomainEvent;
+use tinybus::EventHandler;
 use openhuman_core::openhuman::config::Config;
 use openhuman_core::openhuman::security::credentials::{
     AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
 };
-use openhuman_core::openhuman::memory::global as memory_global;
-use openhuman_core::openhuman::memory::queue::drain_until_idle;
+use tinymemory_core::global as memory_global;
+use tinymemory_core::queue::drain_until_idle;
 use openhuman_core::openhuman::memory::sync::composio::bus::{
     ComposioConfigChangedSubscriber, ComposioConnectionCreatedSubscriber, ComposioTriggerSubscriber,
 };
@@ -35,6 +36,23 @@ use openhuman_core::openhuman::memory::sync::composio::providers::{
 };
 
 static ENV_LOCK: &OnceLock<Mutex<()>> = &crate::SHARED_ENV_LOCK;
+static MEMORY_SEAMS_INIT: OnceLock<()> = OnceLock::new();
+
+fn ensure_memory_seams() {
+    MEMORY_SEAMS_INIT.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("memory-sync-providers-raw-coverage-seams".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(
+                    Arc::new(Config::default()),
+                );
+            })
+            .expect("spawn memory sync provider seam installer")
+            .join()
+            .expect("memory sync provider seam installer panicked");
+    });
+}
 
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     ENV_LOCK
@@ -76,6 +94,7 @@ impl Drop for EnvGuard {
 }
 
 fn config_in(tmp: &TempDir) -> Config {
+    ensure_memory_seams();
     let mut config = Config {
         config_path: tmp.path().join("config.toml"),
         workspace_dir: tmp.path().join("workspace"),
@@ -775,7 +794,7 @@ async fn gmail_sync_stops_after_an_all_already_synced_page() {
         state.mark_synced(format!("gmail-cap-msg-{i}"));
     }
     let state_adapter =
-        openhuman_core::openhuman::memory::tinycortex::HostSyncAdapter::new(memory.clone());
+        tinymemory_core::tinycortex::HostSyncAdapter::new(memory.clone());
     state
         .save(&state_adapter)
         .await

@@ -1,9 +1,9 @@
 //! Tiny PCM16LE → WAV-container wrapper used to ship audio batches to
-//! the backend Whisper endpoint.
+//! the backend transcription endpoint.
 //!
 //! `voice::cloud_transcribe` takes whatever the desktop UI captured
 //! (typically `audio/webm`) and forwards bytes to the backend. Our
-//! call buffers are raw PCM16LE @ 16 kHz mono — Whisper accepts WAV
+//! call buffers are raw PCM16LE @ 16 kHz mono — the endpoint accepts WAV
 //! natively, so we wrap the bytes in a minimal RIFF/WAVE header and
 //! mark the upload as `audio/wav`. No other transcoding needed.
 

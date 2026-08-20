@@ -13,7 +13,7 @@
 
 use serde::Deserialize;
 
-use crate::core::event_bus::BackendMeetTurn;
+use crate::core::events::BackendMeetTurn;
 use crate::openhuman::config::{AutoSummarizePolicy, Config};
 use crate::openhuman::inference::provider::create_chat_model;
 use tinyagents::harness::message::Message;

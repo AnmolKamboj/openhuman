@@ -23,12 +23,13 @@ use crate::openhuman::flows::types::{
     FlowConnection, FlowRunStep, FlowRunTrigger, FlowSuggestion, SuggestionStatus,
 };
 use crate::openhuman::flows::{flow_namespace, Flow, FlowRun};
-use crate::openhuman::memory::store::MemoryClientRef;
+use crate::openhuman::memory::api::provider::MemoryProvider;
 use crate::openhuman::security::approval::{
     ApprovalChatContext, FlowRunContext, APPROVAL_CHAT_CONTEXT, APPROVAL_COPILOT_STREAM_CONTEXT,
     APPROVAL_FLOW_RUN_CONTEXT,
 };
 use crate::rpc::RpcOutcome;
+use tinymemory_core::store::MemoryClientRef;
 
 /// Overall safety bound on a single `flows_run` / `flows_resume`. Individual
 /// capabilities have their own timeouts (HTTP, sandbox), but a hung LLM/tool
@@ -3821,13 +3822,13 @@ fn title_case_toolkit(toolkit: &str) -> String {
         .join(" ")
 }
 
-/// Publishes a [`DomainEvent::FlowChanged`](crate::core::event_bus::DomainEvent::FlowChanged)
+/// Publishes a [`DomainEvent::FlowChanged`](crate::core::events::DomainEvent::FlowChanged)
 /// so an open Workflows list/canvas refetches (bridged to a `flow:changed`
 /// socket event) — the observability half of audit F6. Best-effort broadcast;
 /// `actor` is a coarse hint (`"system"` for RPC-driven changes today).
 fn publish_flow_changed(flow_id: &str, kind: &str, actor: &str) {
     tracing::debug!(target: "flows", %flow_id, kind, actor, "[flows] publishing FlowChanged");
-    crate::core::event_bus::publish_global(crate::core::event_bus::DomainEvent::FlowChanged {
+    crate::core::bus::BUS.publish(crate::core::events::DomainEvent::FlowChanged {
         flow_id: flow_id.to_string(),
         kind: kind.to_string(),
         actor: actor.to_string(),
@@ -4199,19 +4200,25 @@ async fn flows_delete_impl(
     // entries or run digests behind. Never fails the delete itself: the flow
     // row is already gone by this point regardless of what happens here.
     let memory_namespace = flow_namespace(id);
-    let client_result = match memory_client_override {
-        Some(client) => Ok(client),
-        None => crate::openhuman::memory::ops::helpers::active_memory_client().await,
+    let clear_result = if let Some(client) = memory_client_override {
+        client
+            .clear_namespace(&memory_namespace)
+            .await
+            .map_err(|error| error.to_string())
+    } else {
+        match crate::openhuman::memory::ops::guard::active_memory_guard().await {
+            Ok(guard) => match guard.as_documents() {
+                Some(documents) => documents
+                    .clear_namespace(&memory_namespace)
+                    .await
+                    .map_err(|error| error.to_string()),
+                None => Err("memory driver does not support the documents family".to_string()),
+            },
+            Err(error) => Err(error),
+        }
     };
-    match client_result {
-        Ok(client) => {
-            if let Err(e) = client.clear_namespace(&memory_namespace).await {
-                tracing::warn!(target: "flows", flow_id = %id, namespace = %memory_namespace, error = %e, "[flows] flows_delete: failed to clear flow memory namespace");
-            }
-        }
-        Err(e) => {
-            tracing::warn!(target: "flows", flow_id = %id, namespace = %memory_namespace, error = %e, "[flows] flows_delete: memory client unavailable — could not clear flow memory namespace");
-        }
+    if let Err(error) = clear_result {
+        tracing::warn!(target: "flows", flow_id = %id, namespace = %memory_namespace, %error, "[flows] flows_delete: failed to clear flow memory namespace");
     }
 
     publish_flow_changed(id, "deleted", "system");
@@ -4736,7 +4743,7 @@ fn publish_flow_run_started(flow_id: &str, thread_id: &str) {
         run_id = %thread_id,
         "[flows] flows_run: publishing FlowRunStarted"
     );
-    crate::core::event_bus::publish_global(crate::core::event_bus::DomainEvent::FlowRunStarted {
+    crate::core::bus::BUS.publish(crate::core::events::DomainEvent::FlowRunStarted {
         flow_id: flow_id.to_string(),
         run_id: thread_id.to_string(),
     });
@@ -5731,13 +5738,11 @@ pub async fn sweep_expired_parked_runs(config: &Config) -> usize {
             flow_id,
             "[flows] TTL sweep: publishing FlowRunFinished for expired parked run"
         );
-        crate::core::event_bus::publish_global(
-            crate::core::event_bus::DomainEvent::FlowRunFinished {
-                flow_id: flow_id.to_string(),
-                run_id: run_id.to_string(),
-                status: "cancelled".to_string(),
-            },
-        );
+        crate::core::bus::BUS.publish(crate::core::events::DomainEvent::FlowRunFinished {
+            flow_id: flow_id.to_string(),
+            run_id: run_id.to_string(),
+            status: "cancelled".to_string(),
+        });
         drop_checkpoint(config, run_id).await;
     }
     if !swept.is_empty() {
@@ -5806,13 +5811,11 @@ pub async fn sweep_orphaned_running_runs_on_boot(config: &Config) -> usize {
                 if let Err(e) = store::record_run(config, &flow_id, "interrupted") {
                     tracing::warn!(target: "flows", run_id = %run_id, flow_id = %flow_id, error = %e, "[flows] boot sweep: failed to update flow summary for reconciled run");
                 }
-                crate::core::event_bus::publish_global(
-                    crate::core::event_bus::DomainEvent::FlowRunFinished {
-                        flow_id: flow_id.clone(),
-                        run_id: run_id.clone(),
-                        status: "interrupted".to_string(),
-                    },
-                );
+                crate::core::bus::BUS.publish(crate::core::events::DomainEvent::FlowRunFinished {
+                    flow_id: flow_id.clone(),
+                    run_id: run_id.clone(),
+                    status: "interrupted".to_string(),
+                });
                 drop_checkpoint(config, &run_id).await;
                 tracing::info!(target: "flows", run_id = %run_id, flow_id = %flow_id, "[flows] boot sweep: reconciled orphaned running run to 'interrupted'");
             }
@@ -6078,7 +6081,7 @@ fn finish_flow_run_row(
         status,
         "[flows] finish_flow_run_row: publishing FlowRunFinished"
     );
-    crate::core::event_bus::publish_global(crate::core::event_bus::DomainEvent::FlowRunFinished {
+    crate::core::bus::BUS.publish(crate::core::events::DomainEvent::FlowRunFinished {
         flow_id: flow_id.to_string(),
         run_id: thread_id.to_string(),
         status: status.to_string(),

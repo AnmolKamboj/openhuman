@@ -124,10 +124,11 @@ pub(crate) fn handle_voice_update_provider_settings(
 
                 let stt_api_style = match update.stt_api_style.as_deref() {
                     Some("deepgram") => SttApiStyle::Deepgram,
+                    Some("elevenlabs") => SttApiStyle::ElevenLabs,
                     Some("openai_audio") | None => SttApiStyle::OpenaiAudio,
                     Some(other) => {
                         return Err(format!(
-                            "invalid stt_api_style '{other}' (valid: 'openai_audio', 'deepgram')"
+                            "invalid stt_api_style '{other}' (valid: 'openai_audio', 'deepgram', 'elevenlabs')"
                         ))
                     }
                 };
@@ -314,7 +315,7 @@ pub(crate) fn handle_voice_test_provider(params: Map<String, Value>) -> Controll
                         .map_err(|e| e.to_string())?;
 
                 // 0.1s of silence as WAV (16kHz mono 16-bit PCM) so the local
-                // Whisper provider can transcribe it in-process without an
+                // The selected engine can transcribe it without an
                 // external binary (issue #3425).
                 let silent_wav = generate_silent_wav();
                 let audio_b64 = {

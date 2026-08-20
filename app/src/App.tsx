@@ -10,7 +10,6 @@ import {
 import { PersistGate } from 'redux-persist/integration/react';
 
 import AppRoutes from './AppRoutes';
-import WebviewHost from './components/accounts/WebviewHost';
 import { AnalyticsPageTracker } from './components/analytics';
 import AnnouncementGate from './components/Announcement/AnnouncementGate';
 import AppBackground from './components/AppBackground';
@@ -34,6 +33,7 @@ import SecurityBanner from './components/SecurityBanner';
 import SettingsModal from './components/settings/modal/SettingsModal';
 import { resolveSettingsOverlay } from './components/settings/modal/settingsOverlay';
 import GlobalUpsellBanner from './components/upsell/GlobalUpsellBanner';
+import MemoryEmbeddingBudgetBanner from './components/upsell/MemoryEmbeddingBudgetBanner';
 import UserErrorCenter from './components/userErrors/UserErrorCenter';
 import AppWalkthrough from './components/walkthrough/AppWalkthrough';
 import { MascotFrameProducer } from './features/meet/MascotFrameProducer';
@@ -44,10 +44,6 @@ import {
   stopNativeNotificationsService,
 } from './lib/nativeNotifications';
 import { getIsMobile } from './lib/platform';
-import {
-  startWebviewNotificationsService,
-  stopWebviewNotificationsService,
-} from './lib/webviewNotifications';
 import ChatRuntimeProvider from './providers/ChatRuntimeProvider';
 import CoreStateProvider, { useCoreState } from './providers/CoreStateProvider';
 import SocketProvider from './providers/SocketProvider';
@@ -57,25 +53,9 @@ import {
   startInternetStatusListener,
   stopInternetStatusListener,
 } from './services/internetStatusListener';
-import {
-  hideWebviewAccount,
-  startWebviewAccountService,
-  stopWebviewAccountService,
-} from './services/webviewAccountService';
 import { persistor, store } from './store';
-import { setActiveAccount } from './store/accountsSlice';
-import { useAppDispatch, useAppSelector } from './store/hooks';
-import { AGENT_ACCOUNT_ID } from './utils/accountsFullscreen';
 import { DEV_FORCE_ONBOARDING } from './utils/config';
 
-// Attach the `webview:event` listener at app boot so background recipe
-// events (Google Meet captions → transcript flush, WhatsApp ingest, …)
-// are handled even when the user hasn't navigated to /accounts yet.
-// Idempotent — the service uses a `started` singleton guard.
-// On iOS these services are no-ops (isTauri() webview guard inside each),
-// but we call them unconditionally to keep the boot path consistent.
-startWebviewAccountService();
-startWebviewNotificationsService();
 startNativeNotificationsService();
 // Connectivity status (#1527): wire navigator.onLine + start core sidecar
 // health poll. Both idempotent via internal `started` guards.
@@ -83,8 +63,6 @@ startInternetStatusListener();
 startCoreHealthMonitor();
 
 export function stopBootServicesForHmr(): void {
-  stopWebviewAccountService();
-  stopWebviewNotificationsService();
   stopNativeNotificationsService();
   stopInternetStatusListener();
   stopCoreHealthMonitor();
@@ -201,7 +179,6 @@ function AppShell() {
 export function AppShellDesktop() {
   const location = useLocation();
   const navigate = useNavigate();
-  const dispatch = useAppDispatch();
   const { snapshot, isBootstrapping } = useCoreState();
   const onOnboardingRoute = location.pathname.startsWith('/onboarding');
   const onboardingPending =
@@ -232,26 +209,6 @@ export function AppShellDesktop() {
     navigate,
   ]);
 
-  // Hide the active connected-app webview when we navigate away from the chat
-  // surface. Provider CEF selection is intentionally route-independent; any
-  // real route change clears that high-level selection so the native view
-  // cannot linger over the newly-routed page.
-  const activeAccountId = useAppSelector(state => state.accounts.activeAccountId);
-  const accountsById = useAppSelector(state => state.accounts.accounts);
-  const accountsOverlayOpen = useAppSelector(state => state.accounts.overlayOpen);
-  const previousPathRef = useRef(location.pathname);
-  useEffect(() => {
-    if (
-      location.pathname !== previousPathRef.current &&
-      activeAccountId &&
-      activeAccountId !== AGENT_ACCOUNT_ID
-    ) {
-      void hideWebviewAccount(activeAccountId);
-      dispatch(setActiveAccount(AGENT_ACCOUNT_ID));
-    }
-    previousPathRef.current = location.pathname;
-  }, [dispatch, location.pathname, activeAccountId]);
-
   // Sync the notch indicator to the persisted always-on listening state once
   // the core is ready (once per boot). Extracted to a hook so it's testable.
   useNotchBootSync(isBootstrapping);
@@ -279,36 +236,19 @@ export function AppShellDesktop() {
   const chromeless = !token || onOnboardingRoute || onHiddenChromePath || onWorkflowCanvas;
 
   // Desktop Settings is a modal overlay (the backgroundLocation pattern): when
-  // the URL is a settings path we keep rendering the page *behind* it
-  // (`baseLocation`) and mount <SettingsModal/> on top (z-50 portal), which sits
-  // above the provider WebviewHost overlay (z-30) below.
+  // the URL is a settings path we keep rendering the page behind it.
   const { settingsOpen, baseLocation } = resolveSettingsOverlay(location);
-
-  const activeProviderAccount =
-    activeAccountId && activeAccountId !== AGENT_ACCOUNT_ID
-      ? (accountsById[activeAccountId] ?? null)
-      : null;
 
   const content = (
     <div ref={scrollRef} className="relative h-full overflow-y-auto">
       <GlobalUpsellBanner />
+      {/* #5324: memory-specific budget warning. Distinct from the banner
+          above — that one sells a plan upgrade, this one steers to the
+          embedding fixes (local Ollama / BYO key) that keep memory growing.
+          Only renders for users whose embeddings actually bill against the
+          managed budget. */}
+      <MemoryEmbeddingBudgetBanner />
       <AppRoutes location={baseLocation} />
-      {activeProviderAccount && !accountsOverlayOpen && (
-        <div className="absolute inset-0 z-30">
-          {/* key on the account id so switching provider accounts fully
-              unmounts the previous host (running its cleanup → hideWebviewAccount)
-              and mounts a fresh one, instead of React reusing one instance with
-              new props. Guarantees deterministic hide-old-before-show-new
-              ordering and stops a deselected provider's CEF view from bleeding
-              into the newly-selected account's slot on rapid rail switches
-              (#4421). */}
-          <WebviewHost
-            key={activeProviderAccount.id}
-            accountId={activeProviderAccount.id}
-            provider={activeProviderAccount.provider}
-          />
-        </div>
-      )}
     </div>
   );
 
@@ -320,6 +260,13 @@ export function AppShellDesktop() {
           {chromeless ? (
             content
           ) : (
+            // Nothing sets `unframed` today. It existed for live CEF provider
+            // webviews — WebviewHost handed the Rust side a plain rectangle and
+            // CEF composited that child view above the whole HTML layer, so a
+            // rounded card under it showed four square corners punching through
+            // the radius. That surface was removed upstream along with
+            // WebviewHost, so no route needs the escape hatch right now; the
+            // prop stays on the primitive for the next full-bleed surface.
             <RootShellLayout sidebar={<AppSidebar />}>{content}</RootShellLayout>
           )}
         </div>

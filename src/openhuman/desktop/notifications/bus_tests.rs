@@ -6,7 +6,7 @@
 //! `publish_core_notification` / `subscribe_core_notifications` broadcast path.
 
 use super::*;
-use crate::core::event_bus::DomainEvent;
+use crate::core::events::DomainEvent;
 
 // ── event_to_notification: webhook boundary conditions ─────────────────────
 

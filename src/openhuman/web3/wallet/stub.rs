@@ -8,14 +8,12 @@
 //!
 //! The signatures here MUST match the real ones exactly (return types
 //! included). The disabled build
-//! (`cargo check --no-default-features --features tokenjuice-treesitter`) is
+//! (`cargo check --no-default-features`) is
 //! the only thing that catches drift — if a real signature changes, update the
 //! mirror below until that build is green again.
 //!
 //! Consumers covered here (all outside `wallet`, so all must keep compiling):
 //! - `core/jsonrpc.rs` — `WALLET_NOT_CONFIGURED_MESSAGE`
-//! - `tools/impl/network/polymarket.rs` — `secret_material`, `status`,
-//!   `WalletChain`
 //! - `tinyplace/payment.rs` — `prepare_transfer`, `execute_prepared`, the
 //!   param/result types, `SolanaCluster`, `solana_cluster`,
 //!   `tinyplace_solana_rpc_endpoints`, `rpc::with_tinyplace_solana_endpoints`
@@ -56,7 +54,7 @@ pub enum WalletChain {
     Tron,
 }
 
-/// A derived per-chain account. Mirrors the fields Polymarket reads
+/// A derived per-chain account. Mirrors the fields wallet-signed callers read
 /// (`chain`, `address`).
 #[derive(Debug, Clone, Serialize)]
 pub struct WalletAccount {
@@ -65,13 +63,13 @@ pub struct WalletAccount {
 }
 
 /// Wallet status snapshot. Only `accounts` is read by out-of-module callers
-/// (Polymarket EOA resolution); with the wallet disabled it is always empty.
+/// (EOA resolution for wallet-signed writes); with the wallet disabled it is always empty.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct WalletStatus {
     pub accounts: Vec<WalletAccount>,
 }
 
-/// Decrypted secret handle. Polymarket reads `encrypted_mnemonic` +
+/// Decrypted secret handle. Wallet-signed callers read `encrypted_mnemonic` +
 /// `derivation_path` — but `secret_material` never returns `Ok` here, so these
 /// are never actually produced. Kept nameable for the return type.
 pub(crate) struct WalletSecretMaterial {
@@ -80,7 +78,7 @@ pub(crate) struct WalletSecretMaterial {
 }
 
 /// Disabled: no wallet is configured, so the status carries no accounts. Kept
-/// `Ok` (not `Err`) so Polymarket degrades to the clean "run wallet setup"
+/// `Ok` (not `Err`) so wallet-signed callers degrade to the clean "run wallet setup"
 /// message instead of a decrypt-context error.
 pub async fn status() -> Result<RpcOutcome<WalletStatus>, String> {
     log::debug!("[wallet-stub] status requested (web3 disabled) — no accounts");
@@ -91,7 +89,7 @@ pub async fn status() -> Result<RpcOutcome<WalletStatus>, String> {
 }
 
 /// Always errors: secret material cannot be produced with the wallet compiled
-/// out. Callers `?`-propagate (Polymarket writes surface the disabled error).
+/// out. Callers `?`-propagate (wallet-signed writes surface the disabled error).
 pub(crate) async fn secret_material(_chain: WalletChain) -> Result<WalletSecretMaterial, String> {
     log::debug!(
         "[wallet-stub] secret_material requested (web3 disabled) — returning disabled error"
@@ -269,8 +267,7 @@ pub fn all_wallet_controller_schemas() -> Vec<ControllerSchema> {
 // This module is only compiled when the `web3` feature is OFF (see the
 // `#[cfg(not(feature = "web3"))] mod stub;` gate in `super`), so a plain
 // `#[cfg(test)]` here already runs only in the disabled build — it locks in the
-// degraded contract that always-on callers (tinyplace payments, Polymarket
-// writes) depend on.
+// degraded contract that always-on callers (tinyplace payments) depend on.
 #[cfg(test)]
 mod tests {
     use super::*;

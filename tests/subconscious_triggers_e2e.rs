@@ -19,7 +19,8 @@
 
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 
-use openhuman_core::core::event_bus::{global, init_global, DomainEvent};
+use openhuman_core::core::bus::BUS;
+use openhuman_core::core::events::DomainEvent;
 use openhuman_core::openhuman::agent::triage::{TriageAction, TriageDecision};
 use openhuman_core::openhuman::subconscious::triggers::gate::{apply_budget, map_triage_to_gate};
 use openhuman_core::openhuman::subconscious::triggers::{
@@ -481,11 +482,12 @@ fn bus_lock() -> std::sync::MutexGuard<'static, ()> {
 #[tokio::test]
 async fn scenario_notify_user_delivers_and_persists() {
     let _guard = bus_lock();
-    init_global(64);
+    openhuman_core::core::bus::init().await.expect("bus init");
 
     let captured: Arc<StdMutex<Vec<DomainEvent>>> = Arc::new(StdMutex::new(Vec::new()));
     let sink = Arc::clone(&captured);
-    let _sub = global()
+    let _sub = openhuman_core::core::bus::BUS
+        .get()
         .expect("bus initialized")
         .on("e2e-notify-capture", move |event| {
             let sink = Arc::clone(&sink);
@@ -520,9 +522,8 @@ async fn scenario_notify_user_delivers_and_persists() {
     );
 
     // 2) The message landed in the reserved user-facing thread.
-    let persisted =
-        openhuman_core::openhuman::memory::conversations::get_messages(workspace, USER_THREAD_ID)
-            .expect("read user thread");
+    let persisted = tinycortex::memory::conversations::get_messages(workspace, USER_THREAD_ID)
+        .expect("read user thread");
     assert!(
         persisted
             .iter()
@@ -537,7 +538,7 @@ async fn scenario_notify_user_delivers_and_persists() {
 
 #[test]
 fn scenario_reserved_threads_are_distinct_and_persist() {
-    use openhuman_core::openhuman::memory::conversations::{
+    use tinycortex::memory::conversations::{
         append_message, ensure_thread, get_messages, ConversationMessage, CreateConversationThread,
     };
 

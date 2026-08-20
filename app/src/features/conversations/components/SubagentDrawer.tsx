@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import Button from '../../../components/ui/Button';
 import { useT } from '../../../lib/i18n/I18nContext';
@@ -225,7 +226,14 @@ export function SubagentDrawer({
     }
   }
 
-  return (
+  // Portaled to `document.body` rather than rendered in place. This is a
+  // viewport-level overlay, but its host tree sits inside `Conversations`'
+  // `relative z-10` wrapper — a stacking context. Left in place, `z-50` only
+  // orders it against its own siblings; from the outside the whole chat subtree
+  // is just "z-10", so any later sibling with a higher z-index paints straight
+  // over it. Portaling lifts it into the root stacking context, where `z-50`
+  // means what it reads like. Same pattern as `components/ui/ModalShell`.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex justify-end" data-testid="subagent-drawer">
       {/* Backdrop */}
       <button
@@ -384,7 +392,8 @@ export function SubagentDrawer({
           )}
         </div>
       </aside>
-    </div>
+    </div>,
+    document.body
   );
 }
 

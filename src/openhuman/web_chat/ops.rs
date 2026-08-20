@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::core::event_bus::DomainEvent;
+use crate::core::events::DomainEvent;
 use crate::core::socketio::WebChannelEvent;
 use crate::openhuman::security::prompt_injection::{
     enforce_prompt_input, PromptEnforcementAction, PromptEnforcementContext,
@@ -610,7 +610,7 @@ pub async fn start_chat(
                 request_id,
                 status.total
             );
-            crate::core::event_bus::publish_global(DomainEvent::RunQueueMessageQueued {
+            crate::core::bus::BUS.publish(DomainEvent::RunQueueMessageQueued {
                 thread_id: thread_id.clone(),
                 mode: parsed_mode.to_string(),
                 queue_depth: status.total,
@@ -642,7 +642,7 @@ pub async fn start_chat(
                 thread_id,
                 cancelled_id
             );
-            crate::core::event_bus::publish_global(DomainEvent::RunQueueInterrupted {
+            crate::core::bus::BUS.publish(DomainEvent::RunQueueInterrupted {
                 thread_id: thread_id.clone(),
                 cancelled_request_id: cancelled_id.clone(),
             });
@@ -820,8 +820,8 @@ pub async fn start_chat(
                 followups.len(),
                 thread_id_task
             );
-            crate::core::event_bus::publish_global(
-                crate::core::event_bus::DomainEvent::RunQueueFollowupDispatched {
+            crate::core::bus::BUS.publish(
+                crate::core::events::DomainEvent::RunQueueFollowupDispatched {
                     thread_id: thread_id_task.clone(),
                     followup_count: followups.len(),
                 },

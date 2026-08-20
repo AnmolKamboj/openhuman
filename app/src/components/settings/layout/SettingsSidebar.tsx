@@ -98,12 +98,16 @@ const SettingsSidebar = () => {
                 const active = activeSidebarId === row.id;
                 const highlight = !!row.highlight;
                 const rowClass = active
-                  ? // Active rows highlight both background and text in the accent colour.
-                    'bg-primary-50 font-medium text-primary-700 dark:bg-primary-500/15 dark:text-primary-200'
+                  ? // Active rows lift with a neutral fill + weight, matching the
+                    // app sidebar. The accent is reserved for rows that carry
+                    // real meaning (see `highlight` below), so selection and
+                    // significance stay visually distinct.
+                    'bg-surface/70 font-semibold text-content'
                   : highlight
-                    ? // Highlighted-but-inactive rows accent the text only (no bg).
-                      'font-medium text-primary-700 hover:bg-surface-hover dark:text-primary-300'
-                    : 'text-content-secondary hover:bg-surface-hover hover:text-content';
+                    ? // Highlighted-but-inactive rows (e.g. Billing) accent the
+                      // text only — this is semantic, so it keeps its colour.
+                      'text-primary-700 hover:bg-surface/40 dark:text-primary-300'
+                    : 'text-content-muted hover:bg-surface/40 hover:text-content-secondary';
                 return (
                   <li key={row.id}>
                     <button
@@ -111,12 +115,17 @@ const SettingsSidebar = () => {
                       data-testid={`settings-nav-${row.id}`}
                       aria-current={active ? 'page' : undefined}
                       onClick={() => navigateToSettings(row.route)}
-                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[13px] transition-colors ${rowClass}`}>
+                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[14px] transition-colors ${rowClass}`}>
                       <span
+                        // `active` is tested first so a row that is both active
+                        // and highlighted renders fully neutral — otherwise the
+                        // label went neutral while the icon kept the accent.
                         className={`shrink-0 ${
-                          active || highlight
-                            ? 'text-primary-600 dark:text-primary-400'
-                            : 'text-content-faint'
+                          active
+                            ? 'text-content-secondary'
+                            : highlight
+                              ? 'text-primary-600 dark:text-primary-400'
+                              : 'text-content-faint'
                         }`}>
                         {SETTINGS_NAV_ICONS[row.id] ?? null}
                       </span>

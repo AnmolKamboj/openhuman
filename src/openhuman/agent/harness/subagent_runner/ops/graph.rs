@@ -82,6 +82,7 @@ pub(crate) async fn run_agent_turn_request_via_default_graph(
         provider_label,
         handoff_cache,
         tokenjuice_compression,
+        config,
     } = req;
 
     let (output, iterations, usage, early_exit_tool, hit_cap, breaker_halt) =
@@ -109,6 +110,7 @@ pub(crate) async fn run_agent_turn_request_via_default_graph(
             &provider_label,
             handoff_cache,
             tokenjuice_compression,
+            config.as_deref(),
         )
         .await?;
 
@@ -171,6 +173,11 @@ pub(super) async fn run_subagent_via_graph(
     // tool outputs get the same content-aware compaction the chat path applies
     // instead of a blunt byte-cap truncation.
     tokenjuice_compression: AgentTokenjuiceCompression,
+    // Host config for the `[context]` middleware knobs. Passed in rather than
+    // loaded here (plan-agents Phase 3): this function is slated to move into
+    // TinyAgents, where there is no config file. `None` yields the safe
+    // byte-cap-only defaults.
+    config: Option<&crate::openhuman::config::Config>,
 ) -> Result<
     (
         String,
@@ -250,7 +257,7 @@ pub(super) async fn run_subagent_via_graph(
     // content-aware TokenJuice compaction the definition asked for. Honor the
     // `[context]` enabled / autocompact opt-outs, microcompact keep-recent, and
     // per-result byte budget too, so a sub-agent turn compacts like a chat turn.
-    let context_mw = build_subagent_context_mw(tokenjuice_compression).await;
+    let context_mw = build_subagent_context_mw(tokenjuice_compression, config);
 
     // Live transcript snapshot sink (#4466): the harness owns the working message
     // vector and drops it on a mid-run `Err`, so a failed sub-agent run used to
@@ -550,15 +557,16 @@ pub(super) async fn run_subagent_via_graph(
 /// [`TurnContextMiddleware::defaults`] when the config can't be loaded so a
 /// config glitch degrades to the safe (byte-cap-only) behavior rather than
 /// erroring the run.
-async fn build_subagent_context_mw(
+fn build_subagent_context_mw(
     tokenjuice_compression: AgentTokenjuiceCompression,
+    config: Option<&crate::openhuman::config::Config>,
 ) -> crate::openhuman::agent::tinyagents::TurnContextMiddleware {
     let mut mw = crate::openhuman::agent::tinyagents::TurnContextMiddleware::defaults();
     // Always thread the agent's compression profile — even on the config-default
     // path — so the definition's TokenJuice choice is honored.
     mw.tokenjuice_compression = tokenjuice_compression;
-    match crate::openhuman::config::Config::load_or_init().await {
-        Ok(config) => {
+    match config {
+        Some(config) => {
             let ctx = &config.context;
             // TokenJuice content-aware compaction gates on the same master
             // `[context].compaction_enabled` the chat path reads
@@ -583,10 +591,9 @@ async fn build_subagent_context_mw(
                 "[subagent_runner:graph] built sub-agent context middleware from config (#4466)"
             );
         }
-        Err(err) => {
+        None => {
             tracing::debug!(
-                error = %err,
-                "[subagent_runner:graph] config load failed building sub-agent context mw; using defaults + compression profile"
+                "[subagent_runner:graph] no config available building sub-agent context mw; using defaults + compression profile"
             );
         }
     }
@@ -727,7 +734,7 @@ fn persist_failed_run(
     }
 }
 
-/// Append a worker-thread [`StoredMessage`](crate::openhuman::memory::conversations::ConversationMessage)
+/// Append a worker-thread [`StoredMessage`](tinycortex::memory::conversations::ConversationMessage)
 /// with the restored legacy [`SubagentObserver`] metadata (#4466): `scope`,
 /// `agent_id`, `task_id`, plus the per-message `iteration`, `final`, `mode`, and
 /// (for assistant tool rounds / tool results) `tool_calls` / `tool_call_id` /
@@ -743,9 +750,7 @@ fn append_worker_message(
     sender: &str,
     metadata: serde_json::Value,
 ) {
-    use crate::openhuman::memory::conversations::{
-        append_message, ConversationMessage as StoredMessage,
-    };
+    use tinycortex::memory::conversations::{append_message, ConversationMessage as StoredMessage};
     let mut extra = serde_json::json!({
         "scope": "worker_thread",
         "agent_id": agent_id,
@@ -1031,6 +1036,7 @@ mod tests {
             raw: None,
             resolved_model: None,
             continue_turn: None,
+            served_from_cache: false,
         }
     }
 
@@ -1109,6 +1115,10 @@ mod tests {
             "mock-channel",
             None,
             AgentTokenjuiceCompression::Off,
+            // No host config in tests: the graph takes byte-cap-only
+            // context defaults instead of reading the developer machine's
+            // real config.toml, which is what the old in-graph load did.
+            None,
         )
         .await
         .expect("graph subagent runs");
@@ -1192,6 +1202,10 @@ mod tests {
             "mock-channel",
             None,
             AgentTokenjuiceCompression::Off,
+            // No host config in tests: the graph takes byte-cap-only
+            // context defaults instead of reading the developer machine's
+            // real config.toml, which is what the old in-graph load did.
+            None,
         )
         .await
         .expect("child-delta subagent runs");
@@ -1323,6 +1337,10 @@ mod tests {
             "mock-channel",
             None,
             AgentTokenjuiceCompression::Off,
+            // No host config in tests: the graph takes byte-cap-only
+            // context defaults instead of reading the developer machine's
+            // real config.toml, which is what the old in-graph load did.
+            None,
         )
         .await
         .expect("ask-clarification subagent runs");
@@ -1412,6 +1430,10 @@ mod tests {
             "mock-channel",
             None,
             AgentTokenjuiceCompression::Off,
+            // No host config in tests: the graph takes byte-cap-only
+            // context defaults instead of reading the developer machine's
+            // real config.toml, which is what the old in-graph load did.
+            None,
         )
         .await
         .expect("cap-hit subagent runs");

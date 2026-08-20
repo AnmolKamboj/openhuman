@@ -6,11 +6,6 @@
 //! `None` (legacy quotes or callers that didn't specify), Ethereum mainnet
 //! is assumed.
 
-use std::str::FromStr;
-
-use ethers_core::types::transaction::eip2718::TypedTransaction;
-use ethers_core::types::{Address, Bytes, NameOrAddress, TransactionRequest, U256};
-use ethers_signers::{coins_bip39::English, MnemonicBuilder, Signer};
 use log::debug;
 use serde_json::json;
 
@@ -21,17 +16,17 @@ use super::super::defaults::{
     explorer_tx_url_for_evm_network, rpc_url_for_evm_network, EvmNetwork,
 };
 use super::super::execution::{
-    hex_to_bytes, hex_to_u256, u256_to_hex, ExecutionResult, PreparedKind, PreparedStatus,
-    PreparedTransaction, RawBroadcastResult, TxLookupInfo, TxReceiptInfo, TxState, TxStatusInfo,
+    hex_to_u128, u128_to_hex, ExecutionResult, PreparedKind, PreparedStatus, PreparedTransaction,
+    RawBroadcastResult, TxLookupInfo, TxReceiptInfo, TxState, TxStatusInfo,
 };
 use super::super::ops::{secret_material, WalletChain};
 use super::super::rpc::{evm_rpc_call, rpc_call_to};
 
 const LOG_PREFIX: &str = "[wallet::evm]";
 
-pub async fn evm_balance(network: EvmNetwork, address: &str) -> Result<U256, String> {
+pub async fn evm_balance(network: EvmNetwork, address: &str) -> Result<u128, String> {
     let raw: String = evm_rpc_call(network, "eth_getBalance", json!([address, "latest"])).await?;
-    hex_to_u256(&raw)
+    hex_to_u128(&raw)
 }
 
 /// Sign an EVM transaction `(to, value, data)` from the wallet's encrypted
@@ -43,10 +38,10 @@ pub async fn evm_balance(network: EvmNetwork, address: &str) -> Result<U256, Str
 async fn sign_and_broadcast(
     network: EvmNetwork,
     from_address: &str,
-    tx_to: Address,
-    tx_value: U256,
+    to: &str,
+    value_raw: &str,
     tx_data: Option<String>,
-) -> Result<(String, U256), String> {
+) -> Result<(String, u128), String> {
     let rpc_url = rpc_url_for_evm_network(network);
     let secret = secret_material(WalletChain::Evm).await?;
     let config = config_rpc::load_config_with_timeout().await?;
@@ -56,19 +51,21 @@ async fn sign_and_broadcast(
     )
     .await?
     .value;
-    let signer = MnemonicBuilder::<English>::default()
-        .phrase(mnemonic.as_str())
-        .derivation_path(&secret.derivation_path)
-        .map_err(|e| {
-            format!(
-                "invalid EVM derivation path '{}': {e}",
-                secret.derivation_path
-            )
-        })?
-        .build()
-        .map_err(|e| format!("failed to derive EVM signer from wallet secret: {e}"))?;
-    let from = Address::from_str(from_address)
-        .map_err(|e| format!("invalid stored EVM sender address '{from_address}': {e}"))?;
+    // Neither derivation nor signing happens in this binary any more. The
+    // phrase decrypted above is handed to the loaded wallet module over a
+    // confidential call, which derives, encodes, signs and assembles; this
+    // process never holds a private key for the transaction it is sending.
+    //
+    // The module is only sent the phrase once it has proved it is an artifact
+    // this build pinned — see `modules::wallet::attested_proxy`.
+    let signing_secret = tinywallet::wire::SecretMaterial {
+        mnemonic,
+        derivation_path: secret.derivation_path.clone(),
+        chain: tinywallet::Chain::Evm,
+    };
+
+    let to = tinywallet::address::evm::validate(to)
+        .map_err(|e| format!("invalid EVM target address '{to}': {e}"))?;
 
     let chain_id_hex: String = rpc_call_to(&rpc_url, "eth_chainId", json!([])).await?;
     // Use "pending" so already-submitted-but-not-mined txs don't cause a
@@ -80,16 +77,21 @@ async fn sign_and_broadcast(
     )
     .await?;
     let gas_price_hex: String = rpc_call_to(&rpc_url, "eth_gasPrice", json!([])).await?;
+    let value = value_raw
+        .trim()
+        .parse::<u128>()
+        .map_err(|e| format!("invalid native value '{value_raw}': {e}"))?;
     let mut estimate_tx = json!({
         "from": from_address,
-        "to": format!("{tx_to:#x}"),
-        "value": u256_to_hex(tx_value),
+        "to": to,
+        "value": u128_to_hex(value),
     });
     if let Some(data_hex) = tx_data.as_deref() {
         estimate_tx["data"] = json!(data_hex);
     }
     let gas_hex: String = rpc_call_to(&rpc_url, "eth_estimateGas", json!([estimate_tx])).await?;
-    let chain_id = hex_to_u256(&chain_id_hex)?.as_u64();
+    let chain_id = u64::try_from(hex_to_u128(&chain_id_hex)?)
+        .map_err(|_| format!("EVM RPC reported an implausible chain_id '{chain_id_hex}'"))?;
     if chain_id != network.chain_id() {
         return Err(format!(
             "EVM RPC chain_id mismatch: rpc reported {} but network {} expects {}",
@@ -98,34 +100,34 @@ async fn sign_and_broadcast(
             network.chain_id()
         ));
     }
-    let nonce = hex_to_u256(&nonce_hex)?;
-    let gas_price = hex_to_u256(&gas_price_hex)?;
-    let gas = hex_to_u256(&gas_hex)?;
+    let nonce = u64::try_from(hex_to_u128(&nonce_hex)?)
+        .map_err(|_| format!("EVM RPC reported an implausible nonce '{nonce_hex}'"))?;
+    let gas_price = hex_to_u128(&gas_price_hex)?;
+    let gas_limit = u64::try_from(hex_to_u128(&gas_hex)?)
+        .map_err(|_| format!("EVM RPC reported an implausible gas limit '{gas_hex}'"))?;
 
-    let tx_data_bytes = tx_data
-        .map(|value| hex_to_bytes(&value).map(Bytes::from))
-        .transpose()?;
-    let mut request = TransactionRequest::new()
-        .from(from)
-        .to(NameOrAddress::Address(tx_to))
-        .value(tx_value)
-        .nonce(nonce)
-        .gas(gas)
-        .gas_price(gas_price)
-        .chain_id(chain_id);
-    if let Some(data) = tx_data_bytes {
-        request = request.data(data);
-    }
-    let tx: TypedTransaction = request.into();
-    let signature = signer
-        .with_chain_id(chain_id)
-        .sign_transaction(&tx)
-        .await
-        .map_err(|e| format!("failed to sign EVM transaction: {e}"))?;
-    let raw_bytes = tx.rlp_signed(&signature);
-    let raw_tx = format!("0x{}", hex::encode(raw_bytes));
-    let tx_hash: String = rpc_call_to(&rpc_url, "eth_sendRawTransaction", json!([raw_tx])).await?;
-    let fee = gas_price.checked_mul(gas).unwrap_or_default();
+    let transaction = tinywallet::wire::TransactionSpec::Evm {
+        to,
+        value_wei: value.to_string(),
+        data_hex: tx_data.unwrap_or_default(),
+        nonce,
+        gas_limit,
+        gas_price_wei: gas_price.to_string(),
+        chain_id,
+    };
+    let signed = crate::openhuman::modules::wallet::sign_transaction_in_module(
+        &config,
+        &transaction,
+        &signing_secret,
+    )
+    .await
+    .map_err(|e| format!("failed to sign EVM transaction: {e}"))?;
+
+    let tx_hash: String =
+        rpc_call_to(&rpc_url, "eth_sendRawTransaction", json!([signed.raw])).await?;
+    let fee = gas_price
+        .checked_mul(u128::from(gas_limit))
+        .unwrap_or_default();
     debug!(
         "{LOG_PREFIX} sign_and_broadcast network={} tx_hash={}",
         network.as_str(),
@@ -137,15 +139,16 @@ async fn sign_and_broadcast(
 pub async fn execute_evm_quote(mut quote: PreparedTransaction) -> Result<ExecutionResult, String> {
     let network = quote.evm_network.unwrap_or(EvmNetwork::EthereumMainnet);
     let (tx_to, tx_value, tx_data) = match quote.kind {
+        // A native transfer pays the recipient directly and carries no data.
         PreparedKind::NativeTransfer => (
-            Address::from_str(&quote.to_address).map_err(|e| {
+            tinywallet::address::evm::validate(&quote.to_address).map_err(|e| {
                 format!("invalid EVM recipient address '{}': {e}", quote.to_address)
             })?,
-            U256::from_dec_str(&quote.amount_raw).map_err(|e| {
-                format!("invalid prepared native value '{}': {e}", quote.amount_raw)
-            })?,
+            quote.amount_raw.clone(),
             None,
         ),
+        // A token transfer pays the *contract* zero and puts the recipient and
+        // the amount in the calldata instead.
         PreparedKind::TokenTransfer => {
             let token = quote
                 .token_address
@@ -153,16 +156,16 @@ pub async fn execute_evm_quote(mut quote: PreparedTransaction) -> Result<Executi
                 .ok_or_else(|| "prepared token transfer is missing token_address".to_string())?;
             let calldata = encode_erc20_transfer(&quote.to_address, &quote.amount_raw)?;
             (
-                Address::from_str(token)
+                tinywallet::address::evm::validate(token)
                     .map_err(|e| format!("invalid ERC20 token contract address '{token}': {e}"))?,
-                U256::zero(),
+                "0".to_string(),
                 Some(calldata),
             )
         }
     };
 
     let (tx_hash, fee) =
-        sign_and_broadcast(network, &quote.from_address, tx_to, tx_value, tx_data).await?;
+        sign_and_broadcast(network, &quote.from_address, &tx_to, &tx_value, tx_data).await?;
     quote.estimated_fee_raw = fee.to_string();
     quote.status = PreparedStatus::Broadcasted;
     debug!(
@@ -193,14 +196,12 @@ pub(crate) async fn sign_and_broadcast_evm(
     value_raw: &str,
 ) -> Result<RawBroadcastResult, String> {
     let account = super::super::execution::require_evm_account().await?;
-    let tx_to = Address::from_str(to.trim())
-        .map_err(|e| format!("invalid EVM target address '{to}': {e}"))?;
-    let tx_value = U256::from_dec_str(value_raw.trim())
-        .map_err(|e| format!("invalid native value '{value_raw}': {e}"))?;
     let data = data_hex
         .map(|d| super::super::execution::validate_calldata(&d))
         .transpose()?;
-    let (tx_hash, fee) = sign_and_broadcast(network, &account, tx_to, tx_value, data).await?;
+    // `to` and `value_raw` are validated inside `sign_and_broadcast`, which is
+    // the only place that needs them parsed.
+    let (tx_hash, fee) = sign_and_broadcast(network, &account, to, value_raw, data).await?;
     Ok(RawBroadcastResult {
         transaction_hash: tx_hash.clone(),
         explorer_url: explorer_tx_url_for_evm_network(network, &tx_hash),
@@ -234,19 +235,22 @@ pub async fn tx_status(network: EvmNetwork, hash: &str) -> Result<TxStatusInfo, 
     let status_ok = receipt
         .get("status")
         .and_then(|v| v.as_str())
-        .map(|s| hex_to_u256(s).map(|v| !v.is_zero()).unwrap_or(true))
+        .map(|s| hex_to_u128(s).map(|v| v != 0).unwrap_or(true))
         .unwrap_or(true);
     let block_number = receipt
         .get("blockNumber")
         .and_then(|v| v.as_str())
-        .and_then(|s| hex_to_u256(s).ok())
-        .map(|v| v.as_u64());
+        .and_then(|s| hex_to_u128(s).ok())
+        .map(|v| u64::try_from(v).unwrap_or(u64::MAX));
     let confirmations = match block_number {
         Some(bn) => {
             let head_hex: String = rpc_call_to(&rpc_url, "eth_blockNumber", json!([])).await?;
-            hex_to_u256(&head_hex)
-                .ok()
-                .map(|head| head.as_u64().saturating_sub(bn).saturating_add(1))
+            hex_to_u128(&head_hex).ok().map(|head| {
+                u64::try_from(head)
+                    .unwrap_or(u64::MAX)
+                    .saturating_sub(bn)
+                    .saturating_add(1)
+            })
         }
         None => None,
     };
@@ -289,20 +293,20 @@ pub async fn tx_receipt(network: EvmNetwork, hash: &str) -> Result<TxReceiptInfo
     let success = receipt
         .get("status")
         .and_then(|v| v.as_str())
-        .map(|s| hex_to_u256(s).map(|v| !v.is_zero()).unwrap_or(true));
+        .map(|s| hex_to_u128(s).map(|v| v != 0).unwrap_or(true));
     let block_number = receipt
         .get("blockNumber")
         .and_then(|v| v.as_str())
-        .and_then(|s| hex_to_u256(s).ok())
-        .map(|v| v.as_u64());
+        .and_then(|s| hex_to_u128(s).ok())
+        .map(|v| u64::try_from(v).unwrap_or(u64::MAX));
     let gas_used = receipt
         .get("gasUsed")
         .and_then(|v| v.as_str())
-        .and_then(|s| hex_to_u256(s).ok());
+        .and_then(|s| hex_to_u128(s).ok());
     let effective_gas_price = receipt
         .get("effectiveGasPrice")
         .and_then(|v| v.as_str())
-        .and_then(|s| hex_to_u256(s).ok());
+        .and_then(|s| hex_to_u128(s).ok());
     let fee_raw = match (gas_used, effective_gas_price) {
         (Some(g), Some(p)) => g.checked_mul(p).map(|f| f.to_string()),
         _ => None,
@@ -334,13 +338,24 @@ pub async fn lookup_tx(network: EvmNetwork, hash: &str) -> Result<TxLookupInfo, 
     })
 }
 
+/// Validate an EVM address (20 bytes, 40 hex digits, optional `0x`).
+///
+/// Delegates to the vendored [`tinywallet`] crate, which owns the address
+/// format; this wrapper keeps the `Result<_, String>` shape the rest of the
+/// domain speaks. Accepts exactly what the previous `ethers-core` based check
+/// accepted — prefixed, unprefixed, and any hex case, but not an uppercase
+/// `0X` prefix.
 pub fn validate_evm_address(addr: &str) -> Result<String, String> {
-    let trimmed = addr.trim();
-    if trimmed.is_empty() {
-        return Err("address is empty".to_string());
-    }
-    Address::from_str(trimmed).map_err(|e| format!("invalid EVM address '{trimmed}': {e}"))?;
-    Ok(trimmed.to_string())
+    let result = tinywallet::address::evm::validate(addr).map_err(|e| e.to_string());
+    debug!(
+        "{LOG_PREFIX} validate_address result={}",
+        if result.is_ok() {
+            "accepted"
+        } else {
+            "rejected"
+        }
+    );
+    result
 }
 
 #[cfg(test)]
@@ -510,6 +525,17 @@ mod tests {
         assert!(info.found);
     }
 
+    // Drives the real wallet module, so it must be the only such test in its
+    // process: tinybus never unloads a module, and the module bus belongs to
+    // whichever tokio runtime created it — a second `#[tokio::test]` finds a
+    // broker whose tasks died with the first and the call fails with
+    // "connection closed". Verified passing in isolation:
+    //
+    //   cargo test -p openhuman --lib --features "$(bash scripts/ci/product-features.sh)" \
+    //     sign_and_broadcast_evm_signs_raw_calldata -- --ignored --test-threads=1
+    //
+    // Same constraint tinydocs documents for its module-backed tool tests.
+    #[ignore = "drives the loaded wallet module; must run alone in its process"]
     #[tokio::test]
     async fn sign_and_broadcast_evm_signs_raw_calldata() {
         let _guard = TEST_LOCK.lock();

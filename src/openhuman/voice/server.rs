@@ -2,7 +2,7 @@
 //!
 //! Can run as part of the core process or independently via the CLI.
 //! The server listens for a configurable hotkey, records audio from the
-//! microphone, transcribes via whisper, and inserts the result into the
+//! microphone, transcribes via the configured STT engine, and inserts the result into the
 //! active text field.
 
 use std::sync::atomic::Ordering;
@@ -52,12 +52,12 @@ pub struct VoiceServerStatus {
 /// this are considered silent and skipped. Matches OpenWhispr's 0.002 default.
 const DEFAULT_SILENCE_THRESHOLD: f32 = 0.002;
 
-/// Maximum number of recent transcriptions to keep as context for whisper's
+/// Maximum number of recent transcriptions to keep as context for the STT engine's
 /// initial_prompt, improving continuity across consecutive recordings.
 const MAX_RECENT_TRANSCRIPTS: usize = 5;
 
 /// Maximum character length of the combined initial prompt (dictionary +
-/// recent transcripts). Whisper's prompt token budget is limited.
+/// recent transcripts). The prompt token budget is limited.
 const MAX_INITIAL_PROMPT_CHARS: usize = 500;
 
 /// Configuration for the voice server.
@@ -74,7 +74,7 @@ pub struct VoiceServerConfig {
     /// RMS energy threshold for silence detection. Recordings with peak
     /// energy below this are treated as silence and skipped.
     pub silence_threshold: f32,
-    /// Custom vocabulary words to bias whisper toward (passed as initial_prompt).
+    /// Custom vocabulary words to bias the STT engine toward (passed as initial_prompt).
     pub custom_dictionary: Vec<String>,
 }
 
@@ -102,7 +102,7 @@ pub struct VoiceServer {
     transcription_count: Arc<std::sync::atomic::AtomicU64>,
     session_generation: Arc<std::sync::atomic::AtomicU64>,
     last_error: Arc<Mutex<Option<String>>>,
-    /// Rolling buffer of recent transcriptions used as whisper context for
+    /// Rolling buffer of recent transcriptions used as STT context for
     /// better continuity across consecutive recordings.
     recent_transcripts: Arc<Mutex<Vec<String>>>,
 }
@@ -705,7 +705,7 @@ fn capture_expected_app_name() -> Option<String> {
     None
 }
 
-/// Build the whisper initial_prompt from custom dictionary + recent transcripts.
+/// Build the STT initial_prompt from custom dictionary + recent transcripts.
 async fn build_initial_prompt(
     config: &VoiceServerConfig,
     recent_transcripts: &Mutex<Vec<String>>,
@@ -784,7 +784,7 @@ async fn process_recording_bg(
     .await;
 
     let stop_started = Instant::now();
-    match handle.stop().await {
+    match handle.stop(config).await {
         Ok(result) => {
             let stop_elapsed = stop_started.elapsed();
             info!(
@@ -869,7 +869,23 @@ async fn process_recording_bg(
                     );
 
                     // Gate 3: filter hallucinated/blank output.
-                    if is_hallucinated_output(text, HallucinationMode::Dictation) {
+                    //
+                    // Falls OPEN when the module cannot be reached. Dictation
+                    // inserts into the user's active text field, so a stray
+                    // "Thank you." is visible and undoable, while a filter that
+                    // failed closed would swallow real dictation with no trace.
+                    let hallucinated =
+                        match is_hallucinated(config, text, HallucinationMode::Dictation).await {
+                            Ok(verdict) => verdict,
+                            Err(error) => {
+                                warn!(
+                                "{LOG_PREFIX} [pipeline={pipeline_id}] stage=gate_hallucination \
+                                     UNAVAILABLE ({error}); passing text through"
+                            );
+                                false
+                            }
+                        };
+                    if hallucinated {
                         warn!(
                             "{LOG_PREFIX} [pipeline={pipeline_id}] stage=gate_hallucination DROPPED text='{}'",
                             truncate_for_log(text, 60)
@@ -1081,7 +1097,7 @@ pub async fn run_standalone(
 }
 
 // Hallucination detection is now in the shared `hallucination` module.
-use super::hallucination::{is_hallucinated_output, HallucinationMode};
+use crate::openhuman::modules::voice::{is_hallucinated, HallucinationMode};
 
 fn truncate_for_log(s: &str, max: usize) -> String {
     let truncated: String = s.chars().take(max).collect();

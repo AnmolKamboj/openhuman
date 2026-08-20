@@ -9,11 +9,10 @@
 use serde_json::{Map, Value};
 
 use crate::core::all::{ControllerFuture, RegisteredController};
-use crate::core::runtime::context::CoreContext;
 use crate::core::{ControllerSchema, FieldSchema, TypeSchema};
+use crate::openhuman::memory::api::provider::{MemoryProvider, PersonHandle};
+use crate::openhuman::memory::ops::guard::active_memory_guard;
 use crate::openhuman::memory::people::rpc;
-use crate::openhuman::memory::people::store::PeopleStore;
-use crate::openhuman::memory::people::types::{Handle, PersonId};
 use crate::rpc::RpcOutcome;
 
 pub fn all_controller_schemas() -> Vec<ControllerSchema> {
@@ -290,56 +289,67 @@ fn score_components_schema() -> TypeSchema {
     }
 }
 
-fn current_people_store() -> Result<std::sync::Arc<PeopleStore>, String> {
-    CoreContext::current()
-        .ok_or_else(|| "people store unavailable: core context not initialized".to_string())?
-        .people()
-        .map_err(|e| format!("people store unavailable: {e}"))
+/// The guarded driver for this dispatch, checked to serve the people family.
+///
+/// Returned as the guard rather than as `&dyn MemoryPeople` because the family
+/// accessor borrows from it — a helper handing back the borrow directly would
+/// not outlive the call.
+async fn current_people_guard(
+) -> Result<std::sync::Arc<crate::openhuman::memory::guard::MemoryGuard>, String> {
+    let guard = active_memory_guard().await?;
+    if guard.as_people().is_none() {
+        return Err("memory driver does not support the people family".to_string());
+    }
+    Ok(guard)
 }
 
 fn handle_refresh_address_book(_params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        let store = current_people_store()?;
-        to_json(rpc::handle_refresh_address_book(&store).await?)
+        let guard = current_people_guard().await?;
+        let people = guard.as_people().expect("checked in current_people_guard");
+        to_json(rpc::handle_refresh_address_book(people).await?)
     })
 }
 
 fn handle_list(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        let store = current_people_store()?;
+        let guard = current_people_guard().await?;
+        let people = guard.as_people().expect("checked in current_people_guard");
         let limit = read_optional_u64(&params, "limit")?.unwrap_or(100) as usize;
-        to_json(rpc::handle_list(&store, limit).await?)
+        to_json(rpc::handle_list(people, limit).await?)
     })
 }
 
 fn handle_resolve(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        let store = current_people_store()?;
+        let guard = current_people_guard().await?;
+        let people = guard.as_people().expect("checked in current_people_guard");
         let kind = read_required_string(&params, "kind")?;
         let value = read_required_string(&params, "value")?;
         let create = read_optional_bool(&params, "create_if_missing")?.unwrap_or(false);
         let handle = match kind.as_str() {
-            "imessage" => Handle::IMessage(value),
-            "email" => Handle::Email(value),
-            "display_name" => Handle::DisplayName(value),
+            "imessage" => PersonHandle::IMessage(value),
+            "email" => PersonHandle::Email(value),
+            "display_name" => PersonHandle::DisplayName(value),
             other => {
                 return Err(format!(
                     "invalid 'kind' '{other}': expected 'imessage' | 'email' | 'display_name'"
                 ));
             }
         };
-        to_json(rpc::handle_resolve(&store, handle, create).await?)
+        to_json(rpc::handle_resolve(people, handle, create).await?)
     })
 }
 
 fn handle_score(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
-        let store = current_people_store()?;
+        let guard = current_people_guard().await?;
+        let people = guard.as_people().expect("checked in current_people_guard");
+        // Still parsed here so a malformed id fails the same way it always has,
+        // with the param name in the message, rather than as a driver error.
         let id_s = read_required_string(&params, "person_id")?;
-        let id = uuid::Uuid::parse_str(&id_s)
-            .map(PersonId)
-            .map_err(|e| format!("invalid 'person_id' '{id_s}': {e}"))?;
-        to_json(rpc::handle_score(&store, id).await?)
+        uuid::Uuid::parse_str(&id_s).map_err(|e| format!("invalid 'person_id' '{id_s}': {e}"))?;
+        to_json(rpc::handle_score(people, &id_s).await?)
     })
 }
 

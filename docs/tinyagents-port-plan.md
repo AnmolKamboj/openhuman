@@ -92,7 +92,7 @@ Engine changes are made **inside `vendor/tinyagents`**, committed on a branch th
 - **All RPC surfaces**: `inference/{ops,schemas}.rs`, `provider/ops*`, `tools/schemas.rs`, `agent_orchestration/*_schemas.rs`, `subagent_control.rs`, `command_center/`, `worktree_schemas.rs`. JSON-RPC method names and payload shapes must not change.
 - **Provider resolution & auth**: `provider/factory.rs` (provider-string grammar), `openhuman_backend.rs`, `openai_codex.rs`, `claude_code/`, `claude_agent_sdk/`, `openai_oauth/`, `thread_context.rs`, backend billing-envelope parsing (`openhuman.usage.*` / `openhuman.billing.*`).
 - **Local runtime & voice** (~17k L): all of `inference/local/` (Ollama/LM Studio admin, Whisper/Piper install + engines), `voice/`, `device.rs`+`presets.rs`+`model_ids.rs`+`paths.rs` (device→tier product policy), `sentiment.rs`, `http/` (OpenAI-compat serving surface). tinyagents has no local-runtime provisioning and should not grow one now. (`device.rs` is technically portable — zero openhuman deps — but only valuable if tinyagents ever grows local provisioning; skip.)
-- **Tool product surface**: `tools/ops.rs` registry assembly (~200 registrations over ~50 domains), `user_filter.rs` (UI-toggle families), `orchestrator_tools.rs`, `local_cli.rs`, `impl/computer/` (macOS CGEvent/AX), `impl/presentation/`, network app integrations (polymarket, gitbooks, gmail_unsubscribe, mcp_setup).
+- **Tool product surface**: `tools/ops.rs` registry assembly (~200 registrations over ~50 domains), `user_filter.rs` (UI-toggle families), `orchestrator_tools.rs`, `local_cli.rs`, `impl/computer/` (macOS CGEvent/AX), `impl/presentation/`, network app integrations (gitbooks, gmail_unsubscribe, mcp_setup).
 - **Orchestration product plane**: all `agent_orchestration/tools/*` (openhuman `Tool` impls re-pointed at crate primitives), `subagent_events.rs` + `run_ledger_finalize.rs` (event-bus bridges), `background_{completions,delivery}.rs` (chat idle-delivery UX), `pairing*` (tiny.place consent), `parent_context/` (DI bootstrap), `session_db::run_ledger` durability.
 - **The seam itself** (`src/openhuman/agent/tinyagents/`) — it shrinks as duplication is deleted, but the `ChatModel`/`Tool`/middleware/journal adapters remain openhuman's integration layer.
 
@@ -205,7 +205,7 @@ Fix-in-place candidates (independent of the port; several become moot as phases 
 - `tools/traits.rs:367-372` — `is_concurrency_safe` is advisory-only (harness runs tools serially); tinyagents 1.6 has concurrent independent tool calls — adopting it makes the flag real.
 - `orchestrator_tools.rs:38-41,87-89` — dead `SpawnWorkerThreadTool` registration (pending #1624); mis-attached doc-comment at lines 592-603 describes a different test than the one it precedes.
 - `user_filter.rs:168-188` — `skill_manage` and `workflow_manage` families carry identical `rust_names` (deliberate alias, duplication footgun); `web_search` → `"web_search_tool"` name mapping is drift-prone against the `search` domain.
-- `impl/network/polymarket*` (~2.5k L incl. tests) — a large app integration living under the "cross-cutting families only" `impl/` rule; should move to a domain per the module's own README.
+- ~~`impl/network/polymarket*` — a large app integration under the "cross-cutting families only" `impl/` rule.~~ Resolved by deletion: the Polymarket surface and its `prediction-markets` feature were removed outright.
 - Seam `tools.rs` — `tool_policy_from_openhuman_tool` silently drops `category`, `scope`, and all `*_with_args` per-call gating (§2.2).
 
 **agent_orchestration/**

@@ -26,7 +26,7 @@ use std::time::Duration;
 use serde_json::json;
 use tokio::sync::{mpsc, Mutex as TokioMutex, Notify};
 
-use crate::core::event_bus::BackendMeetTurn;
+use crate::core::events::BackendMeetTurn;
 use crate::openhuman::agent::harness::session::Agent;
 use crate::openhuman::agent::progress::AgentProgress;
 use crate::openhuman::meet::agent::brain::strip_for_speech;
@@ -908,7 +908,7 @@ async fn emit_bot_speak_inner(
 
     // Observability: mirror the emit on the event bus so dashboards and
     // the tracing subscriber see when the bot speaks into a call.
-    crate::core::event_bus::publish_global(crate::core::event_bus::DomainEvent::BackendMeetSpeak {
+    crate::core::bus::BUS.publish(crate::core::events::DomainEvent::BackendMeetSpeak {
         text: text.to_string(),
         correlation_id: correlation_id.map(String::from),
     });

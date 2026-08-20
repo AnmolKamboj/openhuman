@@ -8,12 +8,12 @@ use std::collections::HashMap;
 
 use serde_json::{json, Map, Value};
 
-use crate::core::event_bus::BackendMeetTurn;
+use crate::core::events::BackendMeetTurn;
 use crate::openhuman::meet::ops::validate_display_name;
-use crate::openhuman::memory::ingest_pipeline;
 use crate::openhuman::platform::socket::global_socket_manager;
 use crate::rpc::RpcOutcome;
 use tinycortex::memory::ingest::canonicalize::chat::{ChatBatch, ChatMessage};
+use tinymemory_core::ingest_pipeline;
 
 use super::types::{
     BackendMeetHarnessResponseRequest, BackendMeetJoinRequest, BackendMeetJoinResponse,

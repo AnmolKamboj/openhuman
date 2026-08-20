@@ -2,7 +2,8 @@
 
 use super::dispatch::{run_message_dispatch_loop, RuntimeChannelMessage};
 use super::supervision::{compute_max_in_flight_messages, spawn_supervised_listener};
-use crate::core::event_bus::{self, DomainEvent, TracingSubscriber, DEFAULT_CAPACITY};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::context::channels_prompt::build_system_prompt;
 use crate::openhuman::agent::harness::build_tool_instructions_filtered;
 use crate::openhuman::agent::host_runtime;
@@ -31,14 +32,13 @@ use crate::openhuman::channels::yuanbao::YuanbaoChannel;
 use crate::openhuman::channels::Channel;
 use crate::openhuman::config::Config;
 use crate::openhuman::inference::provider;
-use crate::openhuman::memory::store as memory_store;
-use crate::openhuman::memory::Memory;
 use crate::openhuman::security::SecurityPolicy;
 use crate::openhuman::tools;
 use anyhow::Result;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use tinymemory_core::store as memory_store;
 use tokio::sync::mpsc;
 
 /// How the channels runtime should construct its default chat provider.
@@ -151,13 +151,14 @@ pub(super) fn resolve_chat_workload(config: &Config) -> ChatWorkloadResolution {
 pub async fn start_channels(mut config: Config) -> Result<()> {
     // Initialize the global event bus singleton and register the tracing
     // subscriber for debug logging of all domain events.
-    let bus = event_bus::init_global(DEFAULT_CAPACITY);
-    let _tracing_handle = bus.subscribe(Arc::new(TracingSubscriber));
+    crate::core::bus::init().await.expect("bus init");
+    let bus = crate::core::bus::BUS.get().expect("bus initialised");
+    let _tracing_handle = bus.subscribe(Arc::new(crate::core::bus::TracingSubscriber));
     crate::openhuman::platform::health::bus::register_health_subscriber();
     crate::openhuman::memory::conversations::register_conversation_persistence_subscriber(
         config.workspace_dir.clone(),
     );
-    crate::openhuman::memory::sync_events::register_sync_stage_bridge(&config);
+    crate::openhuman::memory::sync_events_bridge::register_sync_stage_bridge(&config);
     crate::openhuman::integrations::composio::register_composio_trigger_subscriber();
     crate::openhuman::meet::backend_bot::calendar::register_meet_calendar_subscriber();
     crate::openhuman::meet::backend_bot::bus::register_meeting_event_subscriber();
@@ -191,7 +192,7 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
     // Native request handlers. Re-registering is safe (latest wins) so
     // this is idempotent even if `bootstrap_core_runtime` also runs.
     // Must happen before `run_message_dispatch_loop` begins, because
-    // channel dispatch calls `request_native_global("agent.run_turn", …)`
+    // channel dispatch calls `BUS.native().request("agent.run_turn", …)`
     // for every inbound message.
     crate::openhuman::agent::bus::register_agent_handlers();
     // The Phase 2/3/4 self-improvement subscribers (email-signature producer,
@@ -290,46 +291,6 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
         config.workspace_dir.clone(),
     )?;
     let temperature = config.default_temperature;
-    let local_embedding = config.workload_local_model("embeddings");
-    let embedding_api_key = crate::openhuman::inference::embeddings::resolve_api_key(
-        &config,
-        &config.memory.embedding_provider,
-    );
-    // Build the memory store. A misconfigured/removed embedding provider (e.g. a
-    // stale `embedding_provider = "fastembed"` that the factory no longer knows)
-    // makes the embedder build fail — but that must NOT take every messaging
-    // channel offline (issue #3712). Fall back to keyword-only memory
-    // (`embedding_provider = "none"` → NoopEmbedding) so the channel listeners
-    // still start; semantic memory degrades gracefully instead of the whole
-    // runtime aborting.
-    let mem: Arc<dyn Memory> = match memory_store::create_memory_with_local_ai(
-        &config.memory,
-        local_embedding.as_deref(),
-        &embedding_api_key,
-        &[],
-        Some(&config.storage.provider.config),
-        &config.workspace_dir,
-    ) {
-        Ok(mem) => Arc::from(mem),
-        Err(e) => {
-            tracing::error!(
-                error = %format!("{e:#}"),
-                provider = %config.memory.embedding_provider,
-                "[channels] memory embedder build failed — falling back to keyword-only \
-                 memory so channels still start"
-            );
-            let mut fallback_memory = config.memory.clone();
-            fallback_memory.embedding_provider = "none".to_string();
-            Arc::from(memory_store::create_memory_with_local_ai(
-                &fallback_memory,
-                local_embedding.as_deref(),
-                &embedding_api_key,
-                &[],
-                Some(&config.storage.provider.config),
-                &config.workspace_dir,
-            )?)
-        }
-    };
     // Build system prompt from workspace identity files + skills
     let workspace = config.workspace_dir.clone();
     let tools_registry = Arc::new(tools::all_tools_with_runtime(
@@ -337,7 +298,8 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
         &security,
         runtime,
         audit,
-        Arc::clone(&mem),
+        // `all_tools_with_runtime` no longer takes a memory handle — the two
+        // tools that needed one resolve the guarded driver per call.
         &config.browser,
         &config.http_request,
         &config.action_dir,
@@ -707,7 +669,7 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
     println!("  Listening for messages... (Ctrl+C to stop)");
     println!();
 
-    event_bus::publish_global(DomainEvent::SystemStartup {
+    BUS.publish(DomainEvent::SystemStartup {
         component: "channels".into(),
     });
 
@@ -835,7 +797,9 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
         channels_by_name,
         turn_model_source: None,
         default_provider: Arc::new(provider_name),
-        memory: Arc::clone(&mem),
+        memory: crate::openhuman::memory::ops::guard::active_memory_guard()
+            .await
+            .map_err(|e| anyhow::anyhow!("channels startup: memory unavailable: {e}"))?,
         tools_registry: Arc::clone(&tools_registry),
         system_prompt: Arc::new(system_prompt),
         model: Arc::new(model.clone()),

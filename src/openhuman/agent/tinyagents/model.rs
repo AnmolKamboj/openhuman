@@ -161,6 +161,7 @@ fn response_to_model_response(
         raw: openhuman_usage_meta_raw(response.usage.as_ref()),
         resolved_model: None,
         continue_turn: None,
+        served_from_cache: false,
     }
 }
 
@@ -740,7 +741,10 @@ mod g1_usage_tests {
 
         assert_eq!(response.text(), "Checking.");
         assert_eq!(response.message.tool_calls.len(), 1);
-        assert_eq!(response.message.tool_calls[0].id, "call_1");
+        assert!(
+            !response.message.tool_calls[0].id.is_empty(),
+            "the upstream parser assigns the tool-call ID"
+        );
         assert_eq!(response.message.tool_calls[0].name, "lookup");
         assert_eq!(
             response.message.tool_calls[0].arguments,

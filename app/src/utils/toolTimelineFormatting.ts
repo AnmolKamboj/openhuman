@@ -69,7 +69,6 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   mcp_setup_install_and_connect: 'Installing MCP server',
   mcp_setup_request_secret: 'Requesting secret',
   mcp_setup_test_connection: 'Testing connection',
-  polymarket: 'Checking markets',
   gmail_unsubscribe: 'Unsubscribing',
   gitbooks_get_page: 'Reading docs page',
   audio_generate_podcast: 'Generating podcast',

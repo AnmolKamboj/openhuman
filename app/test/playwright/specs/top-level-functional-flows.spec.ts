@@ -98,9 +98,9 @@ test.describe('Top-level functional flows', () => {
     await bootAuthenticatedPage(page, 'pw-top-level-ui', '/home');
     const routes: Array<[string, RegExp]> = [
       // Home folded into the unified chat surface — /home redirects to /chat.
-      ['/home', /New Conversation|Threads/],
+      ['/home', /Your assistant is ready|Reasoning/],
       ['/connections', /Composio Integrations|Composio|Channels|MCP Servers/],
-      ['/chat', /New Conversation|No messages yet|Threads/],
+      ['/chat', /Your assistant is ready|Reasoning|Super Context/],
       ['/settings/notifications-hub', /Notifications/],
       ['/notifications', /Notifications|System Events/],
       ['/rewards', /Rewards|Referrals|Redeem/],

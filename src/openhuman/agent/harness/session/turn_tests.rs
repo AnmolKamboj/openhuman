@@ -338,7 +338,58 @@ impl PostTurnHook for RecordingHook {
     }
 }
 
+/// Point `OPENHUMAN_WORKSPACE` at a scratch directory for the lifetime of a
+/// test, restoring the previous value on drop.
+///
+/// Needed by any test that lets the harness reach `Config::load_or_init()` —
+/// notably the triggered `agent_memory` path, whose deterministic fast path
+/// (`subagent_runner::ops::runner::try_deterministic_memory_retrieval`, #4677)
+/// loads the **host** config and queries the real memory tree behind it, not
+/// the `Memory` handed to the `Agent` under test. Without this the test reads
+/// the developer's own `~/.openhuman`: on a populated machine `fast_retrieve`
+/// returns hits, the fast path short-circuits with zero provider calls, and the
+/// mock provider's queued responses land on the wrong turns. CI has an empty
+/// home, so the failure only ever reproduces locally.
+///
+/// Same shape as the guards in `memory::ops::files` / `memory::query::
+/// test_workspace`; `TEST_ENV_LOCK` serializes it against them.
+struct WorkspaceEnvGuard {
+    _lock: std::sync::MutexGuard<'static, ()>,
+    previous: Option<std::ffi::OsString>,
+}
+
+impl WorkspaceEnvGuard {
+    fn set(path: &std::path::Path) -> Self {
+        let lock = crate::openhuman::config::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let previous = std::env::var_os("OPENHUMAN_WORKSPACE");
+        unsafe {
+            std::env::set_var("OPENHUMAN_WORKSPACE", path);
+        }
+        Self {
+            _lock: lock,
+            previous,
+        }
+    }
+}
+
+impl Drop for WorkspaceEnvGuard {
+    fn drop(&mut self) {
+        unsafe {
+            if let Some(previous) = self.previous.take() {
+                std::env::set_var("OPENHUMAN_WORKSPACE", previous);
+            } else {
+                std::env::remove_var("OPENHUMAN_WORKSPACE");
+            }
+        }
+    }
+}
+
 fn make_agent(visible_tool_names: Option<HashSet<String>>) -> Agent {
+    // The embedding seam fails loudly when unwired; before the memory
+    // extraction this was a direct call and needed no setup.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let workspace = tempfile::TempDir::new().expect("temp workspace");
     let workspace_path = workspace.path().to_path_buf();
     std::mem::forget(workspace);
@@ -346,9 +397,8 @@ fn make_agent(visible_tool_names: Option<HashSet<String>>) -> Agent {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
-    );
+    let mem: Arc<dyn Memory> =
+        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
 
     let mut builder = Agent::builder()
         .chat_model(Arc::new(DummyProvider))
@@ -404,9 +454,8 @@ fn make_agent_with_builder_and_dispatcher(
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
-    );
+    let mem: Arc<dyn Memory> =
+        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
 
     Agent::builder()
         .chat_model(provider)
@@ -575,7 +624,7 @@ fn collect_tree_root_summaries_maps_namespace_body_and_timestamp() {
     // store tuple into the `NamespaceSummary` the prompt renderer stamps.
     use crate::openhuman::config::Config;
     use crate::openhuman::memory::tree::tree_runtime::store::write_node;
-    use crate::openhuman::memory::tree::tree_runtime::types::{
+    use tinycortex::memory::tree::runtime::{
         derive_parent_id, estimate_tokens, level_from_node_id, TreeNode,
     };
 
@@ -616,7 +665,7 @@ fn collect_tree_root_summaries_maps_namespace_body_and_timestamp() {
 fn collect_tree_root_summaries_reads_only_profile_memory_subtree() {
     use crate::openhuman::config::Config;
     use crate::openhuman::memory::tree::tree_runtime::store::write_node;
-    use crate::openhuman::memory::tree::tree_runtime::types::{
+    use tinycortex::memory::tree::runtime::{
         derive_parent_id, estimate_tokens, level_from_node_id, TreeNode,
     };
 
@@ -930,6 +979,10 @@ async fn turn_runs_full_tool_cycle_with_context_and_hooks() {
 
 #[tokio::test]
 async fn turn_triggers_configured_memory_agent_before_parent_prompt() {
+    crate::openhuman::memory::host_impls::install_for_tests();
+    // The embedding seam fails loudly when unwired; before the memory
+    // extraction this was a direct call and needed no setup.
+    crate::openhuman::memory::host_impls::install_for_tests();
     crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::init_global_builtins()
         .expect("built-in agent definitions should load");
     assert!(
@@ -958,13 +1011,18 @@ async fn turn_triggers_configured_memory_agent_before_parent_prompt() {
     let provider: Arc<dyn ChatModel<()>> = provider_impl.clone();
     let workspace = tempfile::TempDir::new().expect("temp workspace");
     let workspace_path = workspace.path().to_path_buf();
+    // The triggered memory agent runs through `run_subagent`, whose
+    // deterministic fast path loads the host config and queries whatever memory
+    // tree it points at. Keep that inside this test's scratch workspace so the
+    // fast path finds nothing and the model-driven walk (the two-call sequence
+    // asserted below) is what actually runs.
+    let _workspace_env = WorkspaceEnvGuard::set(&workspace_path);
     let memory_cfg = crate::openhuman::config::MemoryConfig {
         backend: "none".into(),
         ..crate::openhuman::config::MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
-    );
+    let mem: Arc<dyn Memory> =
+        Arc::from(tinymemory_core::store::create_memory(&memory_cfg, &workspace_path).unwrap());
 
     let mut agent = Agent::builder()
         .chat_model(provider)
@@ -2104,7 +2162,7 @@ fn make_agent_with_memory(
 
 fn make_real_memory(workspace: &std::path::Path) -> Arc<dyn Memory> {
     use crate::openhuman::inference::embeddings::NoopEmbedding;
-    use crate::openhuman::memory::store::UnifiedMemory;
+    use tinymemory_core::store::UnifiedMemory;
     Arc::new(UnifiedMemory::new(workspace, Arc::new(NoopEmbedding), None).unwrap())
 }
 
@@ -2208,7 +2266,7 @@ async fn fetch_learned_context_returns_general_prefs_when_explicit_flag_on_learn
     // writes them). The explicit path now reads `user_pref_general`, not the
     // legacy `user_profile` pinned namespace.
     mem.store(
-        crate::openhuman::memory::preferences::USER_PREF_GENERAL_NAMESPACE,
+        tinymemory_core::preferences::USER_PREF_GENERAL_NAMESPACE,
         "package_manager",
         "Use pnpm for package management.",
         crate::openhuman::memory::MemoryCategory::Core,
@@ -2217,7 +2275,7 @@ async fn fetch_learned_context_returns_general_prefs_when_explicit_flag_on_learn
     .await
     .unwrap();
     mem.store(
-        crate::openhuman::memory::preferences::USER_PREF_GENERAL_NAMESPACE,
+        tinymemory_core::preferences::USER_PREF_GENERAL_NAMESPACE,
         "verbosity",
         "Keep replies terse.",
         crate::openhuman::memory::MemoryCategory::Core,
@@ -2302,7 +2360,7 @@ async fn fetch_learned_context_loads_general_prefs_when_learning_enabled() {
     let tmp = tempfile::TempDir::new().unwrap();
     let mem = make_real_memory(tmp.path());
     mem.store(
-        crate::openhuman::memory::preferences::USER_PREF_GENERAL_NAMESPACE,
+        tinymemory_core::preferences::USER_PREF_GENERAL_NAMESPACE,
         "tone",
         "Be concise and direct.",
         crate::openhuman::memory::MemoryCategory::Core,

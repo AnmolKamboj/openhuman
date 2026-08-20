@@ -7,7 +7,10 @@ use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use tokio::sync::broadcast;
 
-use crate::core::event_bus::{subscribe_global, DomainEvent, EventHandler, SubscriptionHandle};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 
 static INGEST_HANDLE: OnceLock<SubscriptionHandle> = OnceLock::new();
 
@@ -41,7 +44,7 @@ pub fn register_orchestration_ingest_subscriber() {
     if INGEST_HANDLE.get().is_some() {
         return;
     }
-    match subscribe_global(Arc::new(OrchestrationIngestSubscriber)) {
+    match BUS.subscribe(Arc::new(OrchestrationIngestSubscriber)) {
         Some(handle) => {
             let _ = INGEST_HANDLE.set(handle);
         }
@@ -56,7 +59,7 @@ pub fn register_orchestration_ingest_subscriber() {
 pub struct OrchestrationIngestSubscriber;
 
 #[async_trait]
-impl EventHandler for OrchestrationIngestSubscriber {
+impl EventHandler<DomainEvent> for OrchestrationIngestSubscriber {
     fn name(&self) -> &str {
         "orchestration::ingest"
     }

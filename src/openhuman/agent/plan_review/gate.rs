@@ -23,7 +23,8 @@ use parking_lot::Mutex;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 
 use super::types::PlanReviewResolution;
 
@@ -90,7 +91,7 @@ impl PlanReviewGate {
             "[plan_review::gate] parking turn for plan review"
         );
 
-        publish_global(DomainEvent::PlanReviewRequested {
+        BUS.publish(DomainEvent::PlanReviewRequested {
             request_id: request_id.clone(),
             thread_id: thread_id.clone(),
             client_id,
@@ -113,7 +114,7 @@ impl PlanReviewGate {
 
         // `_guard` drops here on the normal path too (cleanup is idempotent with
         // `decide`, which already removed the waiter).
-        publish_global(DomainEvent::PlanReviewDecided {
+        BUS.publish(DomainEvent::PlanReviewDecided {
             request_id: request_id.clone(),
             decision: resolution.as_str().to_string(),
         });

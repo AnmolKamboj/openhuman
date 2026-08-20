@@ -9,18 +9,16 @@ use tempfile::tempdir;
 use chrono::{TimeZone, Utc};
 
 use openhuman_core::openhuman::config::Config;
-use openhuman_core::openhuman::memory::ingest_pipeline::ingest_chat;
-use openhuman_core::openhuman::memory::queue::drain_until_idle;
-use openhuman_core::openhuman::memory::store::content::atomic::stage_summary;
-use openhuman_core::openhuman::memory::store::content::obsidian::ensure_obsidian_defaults;
-use openhuman_core::openhuman::memory::store::content::raw::{write_raw_items, RawItem, RawKind};
-use openhuman_core::openhuman::memory::store::content::wiki_git::{
-    get_read_pointer_tag, set_read_pointer_tag,
-};
-use openhuman_core::openhuman::memory::store::content::{SummaryComposeInput, SummaryTreeKind};
 use openhuman_core::openhuman::memory::tree::ingest::{ingest_summary, SummaryIngestInput};
-use openhuman_core::openhuman::memory::tree_source::registry::get_or_create_source_tree;
 use tinycortex::memory::ingest::canonicalize::chat::{ChatBatch, ChatMessage};
+use tinymemory_core::ingest_pipeline::ingest_chat;
+use tinymemory_core::queue::drain_until_idle;
+use tinymemory_core::store::content::atomic::stage_summary;
+use tinymemory_core::store::content::obsidian::ensure_obsidian_defaults;
+use tinymemory_core::store::content::raw::{write_raw_items, RawItem, RawKind};
+use tinymemory_core::store::content::wiki_git::{get_read_pointer_tag, set_read_pointer_tag};
+use tinymemory_core::store::content::{SummaryComposeInput, SummaryTreeKind};
+use tinymemory_core::tree_source::registry::get_or_create_source_tree;
 
 fn make_config(workspace_dir: &std::path::Path) -> Config {
     let mut config = Config::default();
@@ -164,7 +162,11 @@ async fn summary_ingest_records_summary_only_git_history_and_timestamped_read_ta
     .expect("ingest summary");
 
     let wiki_root = content_root.join("wiki");
-    let repo = git2::Repository::open(&wiki_root).expect("wiki git repo should be initialized");
+    // Through tinycortex's re-export, not a `git2` dependency of this crate:
+    // tinycortex writes this ledger and owns the only libgit2 link in the
+    // graph, so the assertion reads it back with the very same binding.
+    let repo = tinycortex::git2::Repository::open(&wiki_root)
+        .expect("wiki git repo should be initialized");
     let head = repo.head().expect("wiki head").peel_to_commit().unwrap();
     let tree_obj = head.tree().expect("wiki commit tree");
 

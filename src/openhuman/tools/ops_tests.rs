@@ -19,14 +19,6 @@ fn test_config(tmp: &TempDir) -> Config {
     }
 }
 
-fn test_memory(tmp: &TempDir) -> Arc<dyn Memory> {
-    let mem_cfg = MemoryConfig {
-        backend: "markdown".into(),
-        ..MemoryConfig::default()
-    };
-    Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap())
-}
-
 fn tool_names(tools: &[Box<dyn Tool>]) -> Vec<String> {
     tools.iter().map(|t| t.name().to_string()).collect()
 }
@@ -78,14 +70,12 @@ fn integration_test_config(tmp: &TempDir, backend_url: &str) -> Config {
 
 fn integration_tools_for_config(tmp: &TempDir, cfg: &Config) -> Vec<Box<dyn Tool>> {
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(tmp);
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
     all_tools(
         Arc::new(cfg.clone()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -103,19 +93,6 @@ fn find_tool<'a>(tools: &'a [Box<dyn Tool>], name: &str) -> &'a dyn Tool {
 }
 
 #[test]
-fn polymarket_runtime_tool_registration_follows_feature_gate() {
-    let tmp = TempDir::new().unwrap();
-    let mut cfg = test_config(&tmp);
-    cfg.integrations.polymarket.enabled = true;
-    let names = tool_names(&integration_tools_for_config(&tmp, &cfg));
-    assert_eq!(
-        names.iter().any(|name| name == "polymarket"),
-        cfg!(feature = "prediction-markets"),
-        "the Polymarket runtime tool must be absent when prediction-markets is compiled out"
-    );
-}
-
-#[test]
 fn default_tools_has_three() {
     let security = Arc::new(SecurityPolicy::default());
     let tools = default_tools(security);
@@ -130,12 +107,12 @@ fn all_tools_includes_spawn_subagent() {
     // in `agent::harness::subagent_runner` becomes unreachable.
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem_cfg = MemoryConfig {
+    // The embedding seam fails loudly when unwired.
+    crate::openhuman::memory::host_impls::install_for_tests();
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig {
         enabled: false,
@@ -150,7 +127,6 @@ fn all_tools_includes_spawn_subagent() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -172,7 +148,6 @@ fn all_tools_includes_spawn_subagent() {
 fn whatsapp_data_tools_present_when_channels_on() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig {
         enabled: false,
         allowed_domains: vec![],
@@ -185,7 +160,6 @@ fn whatsapp_data_tools_present_when_channels_on() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -213,7 +187,6 @@ fn whatsapp_data_tools_present_when_channels_on() {
 fn whatsapp_data_tools_absent_when_channels_off() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig {
         enabled: false,
         allowed_domains: vec![],
@@ -226,7 +199,6 @@ fn whatsapp_data_tools_absent_when_channels_off() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -250,12 +222,12 @@ fn whatsapp_data_tools_absent_when_channels_off() {
 fn all_tools_includes_spawn_async_subagent() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem_cfg = MemoryConfig {
+    // The embedding seam fails loudly when unwired.
+    crate::openhuman::memory::host_impls::install_for_tests();
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
     let browser = BrowserConfig {
         enabled: false,
         allowed_domains: vec![],
@@ -269,7 +241,6 @@ fn all_tools_includes_spawn_async_subagent() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -287,12 +258,12 @@ fn all_tools_includes_spawn_async_subagent() {
 fn all_tools_includes_spawn_parallel_agents() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem_cfg = MemoryConfig {
+    // The embedding seam fails loudly when unwired.
+    crate::openhuman::memory::host_impls::install_for_tests();
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
     let browser = BrowserConfig {
         enabled: false,
         allowed_domains: vec![],
@@ -306,7 +277,6 @@ fn all_tools_includes_spawn_parallel_agents() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -328,12 +298,14 @@ fn all_tools_always_registers_curl() {
     // off agents that aren't allowed to modify the workspace.
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem_cfg = MemoryConfig {
+    // The embedding seam fails loudly when unwired. This
+    // test doesn't use that helper (it needs the `Arc<dyn Memory>` alongside
+    // its own config setup below), so it installs the seams directly.
+    crate::openhuman::memory::host_impls::install_for_tests();
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -343,7 +315,6 @@ fn all_tools_always_registers_curl() {
         Arc::new(cfg.clone()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -400,7 +371,6 @@ fn media_tools_absent_when_feature_off() {
 fn document_tools_registered_when_feature_on() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig {
         enabled: false,
         ..BrowserConfig::default()
@@ -411,7 +381,6 @@ fn document_tools_registered_when_feature_on() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -434,7 +403,6 @@ fn document_tools_registered_when_feature_on() {
 fn document_tools_absent_when_feature_off() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig {
         enabled: false,
         ..BrowserConfig::default()
@@ -445,7 +413,6 @@ fn document_tools_absent_when_feature_off() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -465,12 +432,12 @@ fn document_tools_absent_when_feature_off() {
 fn all_tools_registers_gitbooks_when_enabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem_cfg = MemoryConfig {
+    // The embedding seam fails loudly when unwired.
+    crate::openhuman::memory::host_impls::install_for_tests();
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
     let mut cfg = test_config(&tmp);
@@ -480,7 +447,6 @@ fn all_tools_registers_gitbooks_when_enabled() {
         Arc::new(cfg.clone()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -581,12 +547,12 @@ fn all_tools_omits_mcp_tools_when_gate_off() {
 fn all_tools_skips_gitbooks_when_disabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem_cfg = MemoryConfig {
+    // The embedding seam fails loudly when unwired.
+    crate::openhuman::memory::host_impls::install_for_tests();
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
     let mut cfg = test_config(&tmp);
@@ -596,7 +562,6 @@ fn all_tools_skips_gitbooks_when_disabled() {
         Arc::new(cfg.clone()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -618,12 +583,12 @@ fn all_tools_skips_gitbooks_when_disabled() {
 fn all_tools_includes_current_time() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem_cfg = MemoryConfig {
+    // The embedding seam fails loudly when unwired.
+    crate::openhuman::memory::host_impls::install_for_tests();
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -633,7 +598,6 @@ fn all_tools_includes_current_time() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -651,7 +615,6 @@ fn all_tools_includes_current_time() {
 fn all_tools_default_registry_contains_expected_baseline_surface() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig {
         enabled: false,
         ..BrowserConfig::default()
@@ -663,7 +626,6 @@ fn all_tools_default_registry_contains_expected_baseline_surface() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -720,10 +682,13 @@ fn all_tools_default_registry_contains_expected_baseline_surface() {
         "gitbooks_search",
         "gitbooks_get_page",
         "web_search_tool",
-        "node_exec",
-        "npm_exec",
         "image_info",
     ];
+    // Managed Node tools exist only when the runtime is compiled in — same
+    // shape as the `channels` conditional just below.
+    if cfg!(feature = "runtime-node") {
+        expected.extend(&["node_exec", "npm_exec"]);
+    }
     // WhatsApp tools are only registered when channels feature is on
     if cfg!(feature = "channels") {
         expected.extend(&[
@@ -740,7 +705,6 @@ fn all_tools_default_registry_contains_expected_baseline_surface() {
 fn all_tools_default_registry_has_no_duplicate_tool_names() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig {
         enabled: false,
         ..BrowserConfig::default()
@@ -752,7 +716,6 @@ fn all_tools_default_registry_has_no_duplicate_tool_names() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -772,12 +735,12 @@ fn all_tools_default_registry_has_no_duplicate_tool_names() {
 fn all_tools_excludes_browser_when_disabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem_cfg = MemoryConfig {
+    // The embedding seam fails loudly when unwired.
+    crate::openhuman::memory::host_impls::install_for_tests();
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig {
         enabled: false,
@@ -792,7 +755,6 @@ fn all_tools_excludes_browser_when_disabled() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -836,12 +798,12 @@ fn browser_allowed_domains_shares_fetch_list_minus_wildcard() {
 fn all_tools_includes_browser_when_enabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem_cfg = MemoryConfig {
+    // The embedding seam fails loudly when unwired.
+    crate::openhuman::memory::host_impls::install_for_tests();
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig {
         enabled: true,
@@ -856,7 +818,6 @@ fn all_tools_includes_browser_when_enabled() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -958,12 +919,12 @@ fn tool_spec_serde() {
 fn all_tools_includes_delegate_when_agents_configured() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem_cfg = MemoryConfig {
+    // The embedding seam fails loudly when unwired.
+    crate::openhuman::memory::host_impls::install_for_tests();
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -984,7 +945,6 @@ fn all_tools_includes_delegate_when_agents_configured() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -999,12 +959,12 @@ fn all_tools_includes_delegate_when_agents_configured() {
 fn all_tools_excludes_delegate_when_no_agents() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem_cfg = MemoryConfig {
+    // The embedding seam fails loudly when unwired.
+    crate::openhuman::memory::host_impls::install_for_tests();
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -1014,7 +974,6 @@ fn all_tools_excludes_delegate_when_no_agents() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -1026,6 +985,7 @@ fn all_tools_excludes_delegate_when_no_agents() {
 }
 
 #[test]
+#[cfg(feature = "runtime-node")]
 fn all_tools_registers_node_exec_when_node_enabled() {
     // Default NodeConfig has `enabled = true`, so both `node_exec` and
     // `npm_exec` must appear in the registry. Regression guard for the
@@ -1033,12 +993,12 @@ fn all_tools_registers_node_exec_when_node_enabled() {
     // lose both tools.
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem_cfg = MemoryConfig {
+    // The embedding seam fails loudly when unwired.
+    crate::openhuman::memory::host_impls::install_for_tests();
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -1048,7 +1008,6 @@ fn all_tools_registers_node_exec_when_node_enabled() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -1072,12 +1031,12 @@ fn all_tools_registers_python_exec_when_python_enabled() {
     // appear in the registry (routes inline code through the runtime pool, #5106).
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem_cfg = MemoryConfig {
+    // The embedding seam fails loudly when unwired.
+    crate::openhuman::memory::host_impls::install_for_tests();
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -1087,7 +1046,6 @@ fn all_tools_registers_python_exec_when_python_enabled() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -1105,12 +1063,12 @@ fn all_tools_registers_python_exec_when_python_enabled() {
 fn all_tools_excludes_node_exec_when_node_disabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem_cfg = MemoryConfig {
+    // The embedding seam fails loudly when unwired.
+    crate::openhuman::memory::host_impls::install_for_tests();
+    let _mem_cfg = MemoryConfig {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -1121,7 +1079,6 @@ fn all_tools_excludes_node_exec_when_node_disabled() {
         Arc::new(Config::default()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -1143,7 +1100,6 @@ fn all_tools_excludes_node_exec_when_node_disabled() {
 fn all_tools_registers_integration_families_when_enabled_and_signed_in() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
     let mut cfg = test_config(&tmp);
@@ -1164,7 +1120,6 @@ fn all_tools_registers_integration_families_when_enabled_and_signed_in() {
         Arc::new(cfg.clone()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -1213,7 +1168,6 @@ fn all_tools_registers_brave_engine_lsp_and_tool_stats_when_enabled() {
     // alongside lsp + tool_stats.
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
     let mut cfg = test_config(&tmp);
@@ -1236,7 +1190,6 @@ fn all_tools_registers_brave_engine_lsp_and_tool_stats_when_enabled() {
         Arc::new(cfg.clone()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -1265,7 +1218,6 @@ fn all_tools_registers_brave_engine_lsp_and_tool_stats_when_enabled() {
 fn all_tools_registers_querit_engine_when_enabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
     let mut cfg = test_config(&tmp);
@@ -1276,7 +1228,6 @@ fn all_tools_registers_querit_engine_when_enabled() {
         Arc::new(cfg.clone()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -1291,7 +1242,6 @@ fn all_tools_registers_querit_engine_when_enabled() {
 fn all_tools_omits_search_surface_when_search_is_disabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(&tmp);
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
     let mut cfg = test_config(&tmp);
@@ -1306,7 +1256,6 @@ fn all_tools_omits_search_surface_when_search_is_disabled() {
         Arc::new(cfg.clone()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -1783,7 +1732,6 @@ async fn readonly_acting_tools_carry_policy_blocked_marker() {
 /// workspace — enough to exercise the expansion tools end-to-end.
 fn expansion_tools_for(tmp: &TempDir) -> Vec<Box<dyn Tool>> {
     let security = Arc::new(SecurityPolicy::default());
-    let mem = test_memory(tmp);
     let browser = BrowserConfig {
         enabled: false,
         allowed_domains: vec![],
@@ -1796,7 +1744,6 @@ fn expansion_tools_for(tmp: &TempDir) -> Vec<Box<dyn Tool>> {
         Arc::new(cfg.clone()),
         &security,
         AuditLogger::disabled(),
-        mem,
         &browser,
         &http,
         tmp.path(),
@@ -2527,7 +2474,6 @@ fn tool_group_classifies_gate_and_harness_families() {
         "list_connectable_toolkits",
         "list_node_kinds",
         "get_node_kind_contract",
-        "rhai_workflows",
         "flow_memory_recall",
         "flow_memory_remember",
     ] {
@@ -2585,7 +2531,7 @@ fn tool_group_classifies_gate_and_harness_families() {
     assert_eq!(tool_group("session_state"), DomainGroup::Security);
     assert_eq!(tool_group("oauth_list"), DomainGroup::Security);
     assert_eq!(tool_group("schedule"), DomainGroup::Automation);
-    assert_eq!(tool_group("polymarket"), DomainGroup::Integrations);
+    assert_eq!(tool_group("web_search_tool"), DomainGroup::Integrations);
     for name in [
         "web_search_tool",
         "tinyfish_search",
@@ -2651,13 +2597,12 @@ fn no_gate_family_tool_silently_defaults_to_platform() {
 
 // --- #4797: `flows` compile-time gate ---------------------------------------
 
-/// With the `flows` feature off, every flows-owned agent tool — and the
-/// `rhai_workflows` tool whose engine the gate sheds via `tinyagents/repl` — is
-/// compiled out of the default registry entirely.
+/// With the `flows` feature off, every flows-owned agent tool is compiled out
+/// of the default registry entirely.
 ///
-/// `SecurityPolicy::default()` is `Supervised` (not `ReadOnly`), so the
-/// `rhai_workflows` assertion is a real one: that tool *would* be registered at
-/// this tier if the feature were on.
+/// `SecurityPolicy::default()` is `Supervised` (not `ReadOnly`), so these
+/// assertions are real ones: each tool *would* be registered at this tier if
+/// the feature were on.
 #[test]
 #[cfg(not(feature = "flows"))]
 fn default_tools_omits_flows_tools_when_feature_off() {
@@ -2691,7 +2636,6 @@ fn default_tools_omits_flows_tools_when_feature_off() {
         "run_flow",
         "save_workflow",
         "suggest_workflows",
-        "rhai_workflows",
         "flow_memory_recall",
         "flow_memory_remember",
     ] {
@@ -2775,5 +2719,327 @@ const REPRESENTATIVE: &[(&str, crate::core::all::DomainGroup)] = {
 /// Families with no agent tools of their own.
 const TOOL_LESS: &[crate::core::all::DomainGroup] = {
     use crate::core::all::DomainGroup as G;
-    &[G::Config, G::Security, G::Meet, G::Medulla]
+    // `Modules` is the loader, not a capability: a loaded module's own surface
+    // is reached through whichever domain calls it (documents go through the
+    // document tools), so the family itself owns no agent tool.
+    &[G::Config, G::Security, G::Meet, G::Medulla, G::Modules]
 };
+
+// ---- tool_capability() drift guard (M5.3) ----------------------------------
+
+/// Driver-backed memory tools and the capability each requires.
+const MEMORY_TOOL_CAPABILITIES: &[(
+    &str,
+    crate::openhuman::memory::api::capabilities::Capability,
+)] = {
+    use crate::openhuman::memory::api::capabilities::Capability as C;
+    &[
+        ("memory_store", C::Core),
+        ("memory_forget", C::Core),
+        ("remember_preference", C::Core),
+        ("save_preference", C::Core),
+        ("memory_recall", C::Recall),
+        ("memory_vector_search", C::Recall),
+        ("memory_chunk_context", C::Recall),
+        ("memory_hybrid_search", C::Recall),
+        ("memory_store_raw_chunks", C::Recall),
+        ("memory_tree", C::Tree),
+        ("memory_flavour", C::Tree),
+        ("memory_store_raw_search", C::Entities),
+        #[cfg(feature = "memory-git")]
+        ("memory_diff", C::Diff),
+        ("memory_doctor", C::Maintenance),
+        ("tool_stats", C::ToolMemory),
+        ("goals_list", C::Goals),
+        ("goals_add", C::Goals),
+        ("goals_edit", C::Goals),
+        ("goals_delete", C::Goals),
+    ]
+};
+
+/// Memory-family tools that are deliberately NOT driver-backed. Each entry is
+/// an argument, not an omission — see `tool_capability`.
+const MEMORY_TOOLS_NOT_DRIVER_BACKED: &[&str] = &[
+    "update_memory_md",
+    "memory_store_kinds",
+    "people_list",
+    "people_resolve",
+    "people_score",
+    "people_get",
+    "people_add_alias",
+    "people_record_interaction",
+    "people_refresh_address_book",
+];
+
+/// Every `DomainGroup::Memory` tool must be a deliberate decision in
+/// [`tool_capability`]: either it maps to a capability, or it is listed as
+/// explicitly not driver-backed.
+///
+/// The failure this prevents is silent and one-directional. A new memory tool
+/// with no `tool_capability` rule returns `None`, which the post-filter reads as
+/// "never filter" — so it stays advertised to the model under a driver that
+/// cannot serve it, which is exactly the registered-but-failing surface
+/// `kernel.md` §3.3 exists to prevent.
+///
+/// Deliberately tests the FUNCTION, not a built registry, for the same reason
+/// `every_domain_group_is_accounted_for_in_tool_group` does: which tools a
+/// registry contains depends on config flags, security tier and enabled
+/// integrations. `tool_stats` is the live example — it is only registered when
+/// `learning.enabled && learning.tool_tracking_enabled`.
+#[test]
+fn every_memory_tool_has_an_explicit_capability_or_is_core() {
+    use crate::core::all::DomainGroup;
+
+    for name in MEMORY_TOOLS_NOT_DRIVER_BACKED {
+        assert_eq!(
+            tool_group(name),
+            DomainGroup::Memory,
+            "`{name}` is no longer a Memory-family tool — this table is stale"
+        );
+        assert!(
+            tool_capability(name).is_none(),
+            "`{name}` is listed as not driver-backed but now maps to a capability"
+        );
+    }
+    for (name, want) in MEMORY_TOOL_CAPABILITIES {
+        assert_eq!(
+            tool_group(name),
+            DomainGroup::Memory,
+            "`{name}` is no longer a Memory-family tool — this table is stale"
+        );
+        assert_eq!(
+            tool_capability(name),
+            Some(*want),
+            "`{name}` must map to {want:?}; if it moved, the rule has drifted"
+        );
+    }
+}
+
+/// A new tool in a prefix-gated memory family must NOT fall through to `None`
+/// (the never-filtered bucket). Synthetic names matching only the prefix.
+#[test]
+fn no_prefix_family_memory_tool_silently_defaults_to_uncapped() {
+    use crate::openhuman::memory::api::capabilities::Capability;
+    for (name, want) in [
+        ("goals_new_thing", Capability::Goals),
+        ("memory_tree_new_thing", Capability::Tree),
+    ] {
+        assert_eq!(tool_capability(name), Some(want), "`{name}` must auto-gate");
+    }
+    // …and the `goals_` prefix must not swallow the per-thread goal tools,
+    // which are `DomainGroup::Threads` and not memory-driver-backed at all.
+    for name in ["goal_get", "goal_set", "goal_complete"] {
+        assert_eq!(tool_capability(name), None, "`{name}` is a Threads tool");
+    }
+}
+
+/// Neither table may rot into names no tool answers to.
+#[test]
+fn memory_capability_table_names_are_real() {
+    let tmp = TempDir::new().unwrap();
+    let names = tool_names(&expansion_tools_for(&tmp));
+    for name in MEMORY_TOOL_CAPABILITIES
+        .iter()
+        .map(|(n, _)| *n)
+        .chain(MEMORY_TOOLS_NOT_DRIVER_BACKED.iter().copied())
+        // `tool_stats` is registered only when `learning.tool_tracking_enabled`,
+        // so it is config-dependent and asserted by the function-level guard
+        // above instead. `memory_diff` is registered only when the
+        // `memory-git` feature is compiled in; no CI lane enables it.
+        .filter(|n| *n != "tool_stats" && (*n != "memory_diff" || cfg!(feature = "memory-git")))
+    {
+        assert!(
+            names.iter().any(|n| n == name),
+            "`{name}` is not a real registered tool; got: {names:?}"
+        );
+    }
+}
+
+// ---- both-ways: the capability post-filter (M5.3) --------------------------
+//
+// The ABSENT half is the one that proves the filter removes anything.
+
+/// A distinct workspace per test: the memory binding cache is keyed by
+/// workspace dir, so sharing one path between an ON and an OFF test would make
+/// one of them silently assert the other's driver (the `caps_ws` convention
+/// from `core::all_tests`).
+fn caps_tools_ws(name: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("oh-m53-tools-{name}"))
+}
+
+/// `[subsystems.memory] driver = "null"` — `NullMemoryProvider` advertises
+/// exactly `Capability::MANDATORY` = {core, recall, portability}, so every
+/// optional family is OFF at once. An operator who wrote `driver = "null"` is
+/// honoured rather than falling back (`memory::binding`).
+fn null_driver_memory_cfg() -> crate::openhuman::config::schema::MemorySubsystemConfig {
+    crate::openhuman::config::schema::MemorySubsystemConfig {
+        driver: "null".into(),
+        ..Default::default()
+    }
+}
+
+/// The optional-family tools that must vanish under a driver advertising
+/// nothing optional.
+///
+/// `memory_diff` is deliberately NOT in this list even though it is one of
+/// these optional-family tools: it only registers at all when the
+/// `memory-git` feature is compiled in (no CI lane enables it), so its
+/// presence is asserted separately, conditioned on that feature, rather than
+/// unconditionally here.
+const OPTIONAL_FAMILY_MEMORY_TOOLS: &[&str] = &[
+    "memory_tree",
+    "memory_flavour",
+    "memory_store_raw_search",
+    "memory_doctor",
+    "goals_list",
+    "goals_add",
+    "goals_edit",
+    "goals_delete",
+];
+
+/// Memory-family tools that remain available when a null driver deliberately
+/// disables every driver-backed capability.
+const ALWAYS_PRESENT_MEMORY_TOOLS: &[&str] =
+    &["update_memory_md", "memory_store_kinds", "people_list"];
+
+/// The ~4000-pre-boot-test default-open property, asserted once directly: with
+/// no ambient context at all the capability filter removes nothing.
+#[test]
+fn memory_tools_all_present_with_no_ambient_context() {
+    let tmp = TempDir::new().unwrap();
+    let names = tool_names(&expansion_tools_for(&tmp));
+    for name in OPTIONAL_FAMILY_MEMORY_TOOLS
+        .iter()
+        .chain(ALWAYS_PRESENT_MEMORY_TOOLS.iter())
+    {
+        assert!(
+            names.iter().any(|n| n == name),
+            "`{name}` must be present with no ambient context; got: {names:?}"
+        );
+    }
+    if cfg!(feature = "memory-git") {
+        assert!(
+            names.iter().any(|n| n == "memory_diff"),
+            "`memory_diff` must be present with no ambient context when `memory-git` is on; got: {names:?}"
+        );
+    }
+}
+
+/// Under the default binding the TinyMemory module
+/// advertises all thirteen families, so the list is byte-identical to today.
+#[tokio::test]
+#[cfg(feature = "modules")]
+async fn memory_tools_all_present_under_the_module_driver() {
+    use crate::core::runtime::context::CoreContext;
+    use crate::core::runtime::DomainSet;
+
+    let tmp = TempDir::new().unwrap();
+    let ctx = CoreContext::for_test(
+        DomainSet::full(),
+        Some(caps_tools_ws("embedded")),
+        Some(crate::openhuman::config::schema::MemorySubsystemConfig::default()),
+    );
+    let names = CoreContext::scope(ctx, async { tool_names(&expansion_tools_for(&tmp)) }).await;
+    for name in OPTIONAL_FAMILY_MEMORY_TOOLS
+        .iter()
+        .chain(ALWAYS_PRESENT_MEMORY_TOOLS.iter())
+    {
+        assert!(
+            names.iter().any(|n| n == name),
+            "`{name}` must survive the module driver; got: {names:?}"
+        );
+    }
+    if cfg!(feature = "memory-git") {
+        assert!(
+            names.iter().any(|n| n == "memory_diff"),
+            "`memory_diff` must survive the module driver when `memory-git` is on; got: {names:?}"
+        );
+    }
+}
+
+/// The git-backed diff tool must not advertise an implementation that cannot
+/// run when the `memory-git` feature is compiled out.
+#[cfg(not(feature = "memory-git"))]
+#[test]
+fn memory_diff_tool_is_absent_when_memory_git_is_disabled() {
+    let tmp = TempDir::new().unwrap();
+    let names = tool_names(&expansion_tools_for(&tmp));
+    assert!(
+        !names.iter().any(|name| name == "memory_diff"),
+        "memory_diff must be absent when the memory-git feature is disabled; got: {names:?}"
+    );
+}
+
+/// The half that proves the filter removes anything.
+#[tokio::test]
+async fn optional_family_memory_tools_absent_under_the_null_driver() {
+    use crate::core::runtime::context::CoreContext;
+    use crate::core::runtime::DomainSet;
+
+    let tmp = TempDir::new().unwrap();
+    let ctx = CoreContext::for_test(
+        DomainSet::full(),
+        Some(caps_tools_ws("null")),
+        Some(null_driver_memory_cfg()),
+    );
+    let names = CoreContext::scope(ctx, async { tool_names(&expansion_tools_for(&tmp)) }).await;
+
+    for absent in OPTIONAL_FAMILY_MEMORY_TOOLS {
+        assert!(
+            !names.iter().any(|n| n == absent),
+            "`{absent}` must be ABSENT under the null driver; got: {names:?}"
+        );
+    }
+    // Absent either way: the null driver disables it (when `memory-git` is
+    // on) or the feature gate already dropped it entirely (when it's off).
+    assert!(
+        !names.iter().any(|n| n == "memory_diff"),
+        "`memory_diff` must be ABSENT under the null driver; got: {names:?}"
+    );
+    for present in ALWAYS_PRESENT_MEMORY_TOOLS {
+        assert!(
+            names.iter().any(|n| n == present),
+            "`{present}` is mandatory or host-owned and must survive the null driver"
+        );
+    }
+}
+
+/// The two post-filters are independent axes (kernel.md §3.7): a narrowed
+/// capability set must not narrow the DomainSet axis.
+#[tokio::test]
+async fn narrow_capabilities_do_not_narrow_the_domain_axis() {
+    use crate::core::runtime::context::CoreContext;
+    use crate::core::runtime::DomainSet;
+
+    let tmp = TempDir::new().unwrap();
+    let ctx = CoreContext::for_test(
+        DomainSet::full(),
+        Some(caps_tools_ws("axes")),
+        Some(null_driver_memory_cfg()),
+    );
+    let names = CoreContext::scope(ctx, async { tool_names(&expansion_tools_for(&tmp)) }).await;
+    for name in ["shell", "file_read", "file_write", "thread_list"] {
+        assert!(
+            names.iter().any(|n| n == name),
+            "a narrowed memory capability set must not remove `{name}`"
+        );
+    }
+}
+
+/// `node_exec` / `npm_exec` are absent when the managed Node runtime is
+/// compiled out — absent, not present-and-erroring, so the model is never shown
+/// a tool it cannot use.
+#[test]
+#[cfg(not(feature = "runtime-node"))]
+fn default_tools_omits_node_tools_when_runtime_node_off() {
+    let tmp = TempDir::new().unwrap();
+    let cfg = integration_test_config(&tmp, "http://127.0.0.1:1");
+    let tools = integration_tools_for_config(&tmp, &cfg);
+    let names = tool_names(&tools);
+    for absent in ["node_exec", "npm_exec"] {
+        assert!(
+            !names.iter().any(|n| n == absent),
+            "`{absent}` must not be registered with runtime-node compiled out"
+        );
+    }
+}

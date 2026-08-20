@@ -31,7 +31,6 @@ pub use crate::openhuman::flows::discovery_tools::*;
 #[cfg(feature = "flows")]
 pub use crate::openhuman::flows::memory_tools::*;
 #[cfg(feature = "flows")]
-pub use crate::openhuman::flows::rhai::tools::*;
 #[cfg(feature = "flows")]
 pub use crate::openhuman::flows::tools::*;
 pub use crate::openhuman::hosted::billing::tools::*;
@@ -44,10 +43,10 @@ pub use crate::openhuman::integrations::tools::*;
 #[cfg(feature = "mcp")]
 pub use crate::openhuman::mcp::registry::tools::*;
 pub use crate::openhuman::memory::agent::tools::*;
-pub use crate::openhuman::memory::diff::tools::*;
-pub use crate::openhuman::memory::goals::tools::*;
-pub use crate::openhuman::memory::people::tools::*;
-pub use crate::openhuman::memory::search::*;
+#[cfg(feature = "memory-git")]
+pub use crate::openhuman::memory::tools::diff::*;
+pub use crate::openhuman::memory::tools::goals::*;
+pub use crate::openhuman::memory::tools::people::*;
 pub use crate::openhuman::memory::tools::*;
 pub use crate::openhuman::platform::cost::tools::*;
 pub use crate::openhuman::platform::doctor::tools::*;

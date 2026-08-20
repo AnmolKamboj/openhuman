@@ -1,8 +1,9 @@
 //! Controller-registry schemas for `openhuman.memory_sync_status_list`.
 //!
 //! Wired into `src/core/all.rs` via the `all_memory_sync_status_*`
-//! re-exports in `super::mod`. Single method now — see `rpc.rs` and
-//! `types.rs` for the simplified design (#1136 rewrite).
+//! re-exports in `super::mod`. Single method now — see `rpc.rs` for the
+//! simplified design (#1136 rewrite). The wire types are engine-owned
+//! (`tinycortex::memory::sync`).
 
 use serde_json::{Map, Value};
 

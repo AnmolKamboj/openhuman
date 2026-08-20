@@ -16,6 +16,7 @@
 //! 6. `flush_open_segment` force-closes the trailing open segment at session
 //!    end so the last segment always gets a recap + embedding + tree ingest.
 
+pub mod boundary;
 mod helpers;
 mod hook_impl;
 mod lifecycle;
@@ -30,8 +31,6 @@ pub use types::ArchivistHook;
 #[cfg(test)]
 pub(crate) use crate::openhuman::agent::hooks::PostTurnHook;
 #[cfg(test)]
-pub(crate) use crate::openhuman::memory::store::profile;
-#[cfg(test)]
 pub(crate) use helpers::extract_profile_key;
 #[cfg(test)]
 pub(crate) use parking_lot::Mutex;
@@ -39,6 +38,8 @@ pub(crate) use parking_lot::Mutex;
 pub(crate) use rusqlite::Connection;
 #[cfg(test)]
 pub(crate) use std::sync::Arc;
+#[cfg(test)]
+pub(crate) use tinymemory_core::store::profile;
 
 #[cfg(test)]
 #[path = "../archivist_tests.rs"]

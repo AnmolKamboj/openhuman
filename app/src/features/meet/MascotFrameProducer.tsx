@@ -162,8 +162,9 @@ const ProducerSession: FC<{ session: BusSession; phase: MeetingPhase }> = ({ ses
   const secondaryEntry: MascotManifestEntry | null =
     dualEnabled && manifest ? (findMascot(manifest, secondaryMascotId) ?? null) : null;
 
-  // Mascot body colors, mirroring HumanPage so the meeting mascot matches the
-  // one on the Human stage. Per-mascot colors are out of scope (#4277) — both
+  // Mascot body colors, mirroring ChatMascotOverlay so the meeting mascot
+  // matches the one on the chat's voice stage. Per-mascot colors are out of
+  // scope (#4277) — both
   // slots share the single selected color.
   const mascotColor = useSelector(selectMascotColor);
   const customPrimary = useSelector(selectCustomPrimaryColor);

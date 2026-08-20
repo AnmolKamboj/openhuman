@@ -5,7 +5,7 @@
 //!
 //! 1. Agent calls `mcp_setup_request_secret(key_name, prompt)`. Core mints
 //!    a fresh [`SecretRef`] (`secret://<hex>`), publishes
-//!    [`crate::core::event_bus::DomainEvent::McpSetupSecretRequested`] so
+//!    [`crate::core::events::DomainEvent::McpSetupSecretRequested`] so
 //!    the UI can render a native prompt, and **awaits** the user.
 //! 2. UI prompts the user out-of-band and POSTs back via
 //!    `mcp_setup_submit_secret(ref_id, value)`. Core stores the raw value

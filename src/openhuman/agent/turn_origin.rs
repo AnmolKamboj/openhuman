@@ -157,6 +157,100 @@ pub fn current() -> Option<AgentTurnOrigin> {
     AGENT_TURN_ORIGIN.try_with(|o| o.clone()).ok()
 }
 
+/// Capture the ambient origin so it can be carried across a `tokio::spawn`
+/// boundary by [`with_inherited_origin`].
+///
+/// This is exactly [`current()`] — it exists as a named pair with
+/// `with_inherited_origin` so the capture/re-scope idiom is greppable at every
+/// delegation site, and so the capture is obviously required to happen on the
+/// *parent* task (task-locals do not cross `tokio::spawn`; calling this inside
+/// the spawned future always yields `None`).
+pub fn capture() -> Option<AgentTurnOrigin> {
+    current()
+}
+
+/// Re-scope a [`capture()`]d origin around `fut` on a freshly-spawned task.
+///
+/// # Why this is inherit-only
+///
+/// `AGENT_TURN_ORIGIN` is a `tokio` task-local, so it is **lost** the moment
+/// work moves onto a new task via `tokio::spawn`. An async sub-agent, team
+/// member, or workflow phase therefore runs unlabelled, the approval gate reads
+/// [`AgentTurnOrigin::Unknown`], and every `external_effect` tool (shell/exec)
+/// is refused. Re-establishing the parent's label is the fix.
+///
+/// It re-establishes the parent's label and **nothing else**:
+///
+/// * `Some(origin)` — scope that exact origin, unchanged. A worker descending
+///   from an [`AgentTurnOrigin::ExternalChannel`] turn stays `ExternalChannel`
+///   (remote, untrusted); it is never promoted to `Cli` or any other origin
+///   just because it now runs on a background task. Delegation must not be a
+///   privilege-escalation primitive.
+/// * `None` — run `fut` with **no** scope at all. The spawned task stays
+///   unlabelled and the gate keeps failing closed exactly as it does today.
+///   Never substitute a default origin here: fabricating a label for an
+///   unlabelled parent would hand every unlabelled call site in the process a
+///   trust root it never earned.
+///
+/// Capture on the parent task *before* the `tokio::spawn`, move the
+/// `Option<AgentTurnOrigin>` into the spawned future, and wrap the future's
+/// body:
+///
+/// ```ignore
+/// let inherited = turn_origin::capture();
+/// tokio::spawn(async move {
+///     turn_origin::with_inherited_origin(inherited, async move { /* agent work */ }).await
+/// });
+/// ```
+pub async fn with_inherited_origin<F: std::future::Future>(
+    captured: Option<AgentTurnOrigin>,
+    fut: F,
+) -> F::Output {
+    match captured {
+        // Box-pinned by `with_origin` for the same stack-depth reason
+        // documented there — the agent loop downstream can be very deep.
+        Some(origin) => with_origin(origin, fut).await,
+        // Deliberately unlabelled: fail-closed is the correct default.
+        None => fut.await,
+    }
+}
+
+/// Carry the origin scoped **right now** into a future that will run on
+/// another task.
+///
+/// A `tokio::task_local` does not cross `tokio::spawn`: a detached sub-agent
+/// (`spawn_async_subagent`, the orchestration `spawn_agent` task) starts on a
+/// fresh task where [`current`] is `None`, so every external-effect tool it
+/// calls reaches the approval gate as [`AgentTurnOrigin::Unknown`] and is
+/// refused — even though the parent turn that delegated the work was properly
+/// labelled. That is the same failure mode
+/// [`fork_context::with_parent_context`](crate::openhuman::agent::harness::fork_context)
+/// and [`thread_context::with_thread_id`](crate::openhuman::agent::tinyagents::thread_context)
+/// already re-install explicitly at those spawn sites; the origin is the third
+/// thing that has to travel with them.
+///
+/// **Call this on the parent task**, i.e. build the future *before* handing it
+/// to `tokio::spawn` — the origin is read when this function is called, not
+/// when the returned future is first polled:
+///
+/// ```ignore
+/// tokio::spawn(turn_origin::propagate(async move { run_subagent(..).await }));
+/// ```
+///
+/// Fail-closed is preserved: with no ambient origin nothing is scoped, so the
+/// child still lands on `Unknown` rather than inheriting a label nobody set.
+/// This only ever *carries* a decision the parent entry point already made — it
+/// cannot manufacture trust that did not exist on the spawning task.
+pub fn propagate<F: std::future::Future>(fut: F) -> impl std::future::Future<Output = F::Output> {
+    let captured = current();
+    async move {
+        match captured {
+            Some(origin) => with_origin(origin, fut).await,
+            None => fut.await,
+        }
+    }
+}
+
 /// Read the ambient web-chat `request_id` for the current turn, when one was
 /// scoped by an [`AgentTurnOrigin::WebChat`] entry point. `None` for every
 /// other origin (channel / cron / CLI / sub-agent) and outside any scope —
@@ -187,6 +281,170 @@ mod tests {
 
         // After the scope exits, current() is None again.
         assert!(current().is_none());
+    }
+
+    /// The defect this helper fixes: a `tokio::spawn`ed delegation loses the
+    /// task-local, so the gate saw `Unknown` and refused every shell/exec tool.
+    /// Capturing on the parent and re-scoping inside the spawned task restores
+    /// the label.
+    #[tokio::test]
+    async fn inherited_origin_crosses_a_spawn_boundary() {
+        let observed = with_origin(AgentTurnOrigin::Cli, async {
+            // Capture happens on the still-scoped parent task.
+            let captured = capture();
+            tokio::spawn(async move {
+                // Without the re-scope this is `None` (task-locals don't cross
+                // `tokio::spawn`).
+                with_inherited_origin(captured, async { current() }).await
+            })
+            .await
+            .expect("spawned task panicked")
+        })
+        .await;
+        assert!(
+            matches!(observed, Some(AgentTurnOrigin::Cli)),
+            "expected the parent's Cli origin to be inherited, got {observed:?}"
+        );
+    }
+
+    /// Fail-closed is preserved: an unlabelled parent produces an unlabelled
+    /// child. The helper must never fabricate an origin.
+    #[tokio::test]
+    async fn inherited_origin_stays_unlabelled_without_an_outer_scope() {
+        let captured = capture();
+        assert!(captured.is_none(), "test precondition: no ambient scope");
+
+        let observed =
+            tokio::spawn(async move { with_inherited_origin(captured, async { current() }).await })
+                .await
+                .expect("spawned task panicked");
+
+        assert!(
+            observed.is_none(),
+            "unlabelled parent must stay unlabelled, got {observed:?}"
+        );
+    }
+
+    /// A remote-untrusted origin is inherited *as itself* — delegation is not a
+    /// privilege-escalation primitive, so no upgrade to `Cli` may happen.
+    #[tokio::test]
+    async fn inherited_origin_preserves_a_non_cli_origin_verbatim() {
+        let observed = with_origin(
+            AgentTurnOrigin::ExternalChannel {
+                channel: "telegram".into(),
+                sender: Some("u-42".into()),
+                reply_target: "chat-7".into(),
+                message_id: "m-9".into(),
+            },
+            async {
+                let captured = capture();
+                tokio::spawn(
+                    async move { with_inherited_origin(captured, async { current() }).await },
+                )
+                .await
+                .expect("spawned task panicked")
+            },
+        )
+        .await;
+
+        match observed {
+            Some(AgentTurnOrigin::ExternalChannel {
+                channel,
+                sender,
+                reply_target,
+                message_id,
+            }) => {
+                assert_eq!(channel, "telegram");
+                assert_eq!(sender.as_deref(), Some("u-42"));
+                assert_eq!(reply_target, "chat-7");
+                assert_eq!(message_id, "m-9");
+            }
+            other => panic!("expected ExternalChannel inherited verbatim, got {other:?}"),
+        }
+    }
+
+    /// Regression: a detached sub-agent (`spawn_async_subagent`, the
+    /// orchestration spawn task) starts on a fresh task, and without explicit
+    /// propagation its tools reach the approval gate as `Unknown` and every
+    /// external-effect call is refused — the parent's label silently lost at
+    /// the `tokio::spawn` boundary.
+    #[tokio::test]
+    async fn propagate_carries_the_origin_across_a_spawn() {
+        let observed = with_origin(
+            AgentTurnOrigin::TrustedAutomation {
+                job_id: "run-1".to_string(),
+                source: TrustedAutomationSource::Workflow {
+                    require_approval: false,
+                },
+            },
+            async {
+                tokio::spawn(propagate(async { current() }))
+                    .await
+                    .expect("spawned task panicked")
+            },
+        )
+        .await;
+        assert!(matches!(
+            observed,
+            Some(AgentTurnOrigin::TrustedAutomation {
+                source: TrustedAutomationSource::Workflow {
+                    require_approval: false
+                },
+                ..
+            })
+        ));
+    }
+
+    /// Without propagation the same spawn loses the label — the behaviour the
+    /// helper above exists to fix, pinned so a future refactor cannot quietly
+    /// reintroduce it by dropping the wrapper.
+    #[tokio::test]
+    async fn a_bare_spawn_loses_the_origin() {
+        let observed = with_origin(AgentTurnOrigin::Cli, async {
+            tokio::spawn(async { current() })
+                .await
+                .expect("spawned task panicked")
+        })
+        .await;
+        assert!(observed.is_none());
+    }
+
+    /// Fail-closed is preserved: propagation carries a decision, it does not
+    /// invent one. An unlabelled parent still yields an unlabelled child.
+    #[tokio::test]
+    async fn propagate_does_not_manufacture_an_origin() {
+        let observed = tokio::spawn(propagate(async { current() }))
+            .await
+            .expect("spawned task panicked");
+        assert!(observed.is_none());
+    }
+
+    /// The `hosted::orchestration::effect_executor::run_local_agent` spawn site
+    /// (#5508 / #5499): the device-tool bridge fires the local sub-agent from a
+    /// bare `tokio::spawn` where there is **no ambient turn** to inherit — unlike
+    /// the four sites PR #5465 fixed with `capture`/`propagate`, `capture()` here
+    /// is `None`, so `with_inherited_origin` would leave the task `Unknown` and
+    /// the gate would refuse every external-effect tool (`cron_add`, shell, …).
+    /// The fix scopes an **explicit** `Cli` origin on the spawned task instead
+    /// (device automation past the Master-chat gate is trusted, turn-less
+    /// internal dispatch). This pins that shape: nothing to inherit on the
+    /// parent, a real `Cli` origin observed across the spawn boundary.
+    #[tokio::test]
+    async fn explicit_cli_origin_survives_a_turnless_spawn() {
+        // No outer scope — exactly the device-tool bridge's situation.
+        assert!(
+            capture().is_none(),
+            "precondition: the effect_executor spawn has no ambient origin to inherit"
+        );
+
+        let observed = tokio::spawn(with_origin(AgentTurnOrigin::Cli, async { current() }))
+            .await
+            .expect("spawned task panicked");
+
+        assert!(
+            matches!(observed, Some(AgentTurnOrigin::Cli)),
+            "the explicitly-scoped Cli origin must be visible on the spawned task, got {observed:?}"
+        );
     }
 
     #[tokio::test]

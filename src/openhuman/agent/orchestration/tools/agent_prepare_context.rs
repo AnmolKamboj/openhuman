@@ -11,7 +11,8 @@
 //! The scout's output is bounded by `context_scout`'s `max_result_chars`
 //! (≈1000 tokens) so the parent's context only grows by a bounded amount.
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::harness::definition::AgentDefinitionRegistry;
 use crate::openhuman::agent::harness::fork_context::{
     current_agent_context_prepared_sources, current_parent, AgentContextPreparedSource,
@@ -434,7 +435,7 @@ async fn run_context_scout_with_catalog_and_workspace(
                                     goal_id = %goal.goal_id,
                                     "[agent_prepare_context] bootstrapped thread goal from scout proposal"
                                 );
-                                publish_global(DomainEvent::ThreadGoalUpdated {
+                                BUS.publish(DomainEvent::ThreadGoalUpdated {
                                     thread_id: goal.thread_id.clone(),
                                     goal_id: goal.goal_id.clone(),
                                     status: goal.status.as_str().to_string(),

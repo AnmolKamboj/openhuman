@@ -669,7 +669,7 @@ mod tests {
         //
         // This test must hold the module lock: it mutates OPENHUMAN_WORKSPACE,
         // which is process-wide, and `reset_status`/install state is shared
-        // with every sibling install_piper / install_whisper / paths test.
+        // with every sibling install_piper / paths test.
         //
         // `workspace_piper_binary_candidates` resolves through
         // `paths::shared_root_dir`, which ignores `config.workspace_dir` unless
@@ -785,7 +785,7 @@ mod tests {
 
     /// Serialise tests that write into the shared `~/.openhuman/bin/piper/`
     /// directory; reuses the module-wide `local_ai_test_guard` so paths +
-    /// install_whisper tests are serialised through the same lock.
+    /// sibling installer tests are serialised through the same lock.
     fn shared_install_lock() -> std::sync::MutexGuard<'static, ()> {
         crate::openhuman::inference::inference_test_guard()
     }
@@ -840,7 +840,7 @@ mod tests {
         wipe_shared_install_dir(&config);
     }
 
-    // Same rationale as install_whisper.rs: holding the sync mutex over
+    // Holding the sync mutex over
     // the install await is safe because the install path doesn't acquire
     // any other locks, and the guard's job is to keep filesystem writes
     // from racing with sibling tests.

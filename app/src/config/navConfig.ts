@@ -30,12 +30,15 @@ export interface NavTab {
  *
  * Settings has no primary tab — it's reached via the gear icon in the sidebar
  * header. Chat is the default landing and the merged Home surface: its empty
- * "new window" state shows the former Home greeting + banners (Home was
- * folded into chat, so there is no separate Home entry). The Human tab is a
- * first-class destination again (briefly merged into Assistant in IA Phase 6,
- * then restored): `/human` renders the Human page on desktop. Ids/paths/
- * walkthroughAttrs travel with each tab so analytics and the walkthrough tour
- * stay attached to the right feature regardless of position.
+ * "new window" state shows the former Home greeting + banners.
+ *
+ * Human and Chat both surface the mascot, deliberately. `/human` is the
+ * dedicated full-bleed mascot stage with a right-rail chat; `/chat` carries the
+ * same mascot docked on the composer, expandable in place. They share one set of
+ * mascot preferences (colour, voice, speak-replies) via `mascotSlice`, so the
+ * two never disagree. Ids/paths/walkthroughAttrs travel with each tab so
+ * analytics and the walkthrough tour stay attached to the right feature
+ * regardless of position.
  */
 export const NAV_TABS: NavTab[] = [
   { id: 'chat', labelKey: 'nav.chat', path: '/chat', walkthroughAttr: 'tab-chat' },

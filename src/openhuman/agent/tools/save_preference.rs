@@ -23,11 +23,13 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::json;
 
-use crate::openhuman::memory::store::safety;
-use crate::openhuman::memory::{Memory, MemoryCategory};
+use crate::openhuman::memory::api::provider::MemoryCore as _;
+use crate::openhuman::memory::api::types::MemoryCategory;
+use crate::openhuman::memory::ops::guard::active_memory_guard;
 use crate::openhuman::security::policy::ToolOperation;
 use crate::openhuman::security::SecurityPolicy;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
+use tinymemory_core::store::safety;
 
 // Namespace constants live in `memory::preferences` so the write path (here),
 // the system-prompt builder (Lane A), and per-turn recall (Lane B) all share a
@@ -82,13 +84,15 @@ impl PrefScope {
 
 /// Agent tool that saves an explicit user preference into the two-lane store.
 pub struct SavePreferenceTool {
-    memory: Arc<dyn Memory>,
+    /// No memory handle: the guarded driver is resolved per call, so building
+    /// the tool registry no longer requires an engine.
     security: Arc<SecurityPolicy>,
 }
 
 impl SavePreferenceTool {
-    pub fn new(memory: Arc<dyn Memory>, security: Arc<SecurityPolicy>) -> Self {
-        Self { memory, security }
+    #[must_use]
+    pub fn new(security: Arc<SecurityPolicy>) -> Self {
+        Self { security }
     }
 }
 
@@ -238,9 +242,23 @@ impl Tool for SavePreferenceTool {
             value.len()
         );
 
-        match self
-            .memory
-            .store(namespace, topic, value, MemoryCategory::Core, None)
+        let guard = match active_memory_guard().await {
+            Ok(guard) => guard,
+            Err(e) => {
+                return Ok(ToolResult::error(format!(
+                    "save_preference: memory unavailable: {e}"
+                )))
+            }
+        };
+        match guard
+            .store(
+                namespace,
+                topic,
+                value,
+                MemoryCategory::Core,
+                None,
+                crate::openhuman::memory::api::types::MemoryTaint::Internal,
+            )
             .await
         {
             Ok(()) => {
@@ -255,7 +273,7 @@ impl Tool for SavePreferenceTool {
                 // re-categorised preference doesn't linger in both lanes. Done
                 // *after* the store (not before) so a store failure can never
                 // leave the user with neither copy.
-                if let Err(e) = self.memory.forget(category.other_namespace(), topic).await {
+                if let Err(e) = guard.forget(category.other_namespace(), topic).await {
                     tracing::debug!(
                         "[tool][save_preference] clearing other-scope copy failed (non-fatal) ns={} topic={}: {e}",
                         category.other_namespace(),
@@ -266,10 +284,7 @@ impl Tool for SavePreferenceTool {
                 // agent (which captured this preference) can spot and resolve a
                 // contradiction itself — no separate model call.
                 let related = crate::openhuman::memory::preferences::recall_related_preferences(
-                    &self.memory,
-                    value,
-                    topic,
-                    4,
+                    &guard, value, topic, 4,
                 )
                 .await;
                 let mut msg = format!("Saved {} preference: {topic} = {value}", category.as_str());

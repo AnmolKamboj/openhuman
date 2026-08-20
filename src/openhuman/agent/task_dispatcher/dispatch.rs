@@ -54,8 +54,8 @@ pub async fn dispatch_card(
         {
             Ok(_parked) => {
                 if let Some(thread_id) = location.thread_id() {
-                    crate::core::event_bus::publish_global(
-                        crate::core::event_bus::DomainEvent::TaskPlanAwaitingApproval {
+                    crate::core::bus::BUS.publish(
+                        crate::core::events::DomainEvent::TaskPlanAwaitingApproval {
                             card_id: card_id.clone(),
                             thread_id: thread_id.to_string(),
                         },

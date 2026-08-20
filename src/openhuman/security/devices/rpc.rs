@@ -220,7 +220,7 @@ pub async fn devices_revoke(
     ACTIVE_CIPHERS.lock().unwrap().remove(&channel_id);
 
     // Publish DeviceRevoked so UI and other subscribers are notified.
-    crate::core::event_bus::publish_global(crate::core::event_bus::DomainEvent::DeviceRevoked {
+    crate::core::bus::BUS.publish(crate::core::events::DomainEvent::DeviceRevoked {
         channel_id: channel_id.clone(),
     });
 

@@ -34,7 +34,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context};
 
-use crate::core::event_bus::{request_native_global, NativeRequestError};
+use crate::core::bus::BUS;
 use crate::openhuman::agent::bus::{AgentTurnRequest, AgentTurnResponse, AGENT_RUN_TURN_METHOD};
 use crate::openhuman::agent::harness::definition::{AgentDefinition, PromptSource};
 use crate::openhuman::agent::harness::AgentDefinitionRegistry;
@@ -45,6 +45,7 @@ use crate::openhuman::cron::scheduler_gate::LlmPermit;
 use crate::openhuman::inference::provider::error_classify::{
     is_rate_limited, is_upstream_unhealthy, parse_retry_after_ms,
 };
+use tinybus::NativeRequestError;
 
 use super::decision::{parse_triage_decision, ParseError, TriageDecision};
 use super::envelope::TriggerEnvelope;
@@ -507,11 +508,10 @@ async fn try_arm(
         },
     };
 
-    let response = match request_native_global::<AgentTurnRequest, AgentTurnResponse>(
-        AGENT_RUN_TURN_METHOD,
-        request,
-    )
-    .await
+    let response = match BUS
+        .native()
+        .request::<AgentTurnRequest, AgentTurnResponse>(AGENT_RUN_TURN_METHOD, request)
+        .await
     {
         Ok(r) => r,
         Err(err) => {

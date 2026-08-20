@@ -17,7 +17,10 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 
-use crate::core::event_bus::{subscribe_global, DomainEvent, EventHandler, SubscriptionHandle};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 
 use super::background_completions;
 
@@ -46,7 +49,7 @@ fn is_busy(session: &str) -> bool {
 struct BackgroundDeliveryHandler;
 
 #[async_trait]
-impl EventHandler for BackgroundDeliveryHandler {
+impl EventHandler<DomainEvent> for BackgroundDeliveryHandler {
     fn name(&self) -> &str {
         "agent_orchestration::background_delivery"
     }
@@ -198,7 +201,7 @@ async fn try_deliver(session: String) {
 /// subscription alive for the process lifetime. Idempotent.
 pub(crate) fn register_background_delivery() {
     static HANDLE: OnceLock<Option<SubscriptionHandle>> = OnceLock::new();
-    HANDLE.get_or_init(|| subscribe_global(Arc::new(BackgroundDeliveryHandler)));
+    HANDLE.get_or_init(|| BUS.subscribe(Arc::new(BackgroundDeliveryHandler)));
 }
 
 #[cfg(test)]

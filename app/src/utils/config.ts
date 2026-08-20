@@ -280,6 +280,43 @@ export const MASCOT_VOICE_MODEL_ID =
   'eleven_multilingual_v2';
 
 /**
+ * Gates the realtime ElevenLabs Agents voice mode (#5399). On by default in
+ * every build (local, staging, production) so the Settings toggle is exposed
+ * without any build-time env wiring; set `VITE_VOICE_MODE=false` to hide it
+ * (kill switch). This gates only the UI switch — the realtime code paths
+ * additionally check the persisted `mascot.voiceMode`, so the feature still
+ * ships dark until the user opts in via the toggle.
+ */
+export const VOICE_MODE_FLAG_ENABLED =
+  (import.meta.env.VITE_VOICE_MODE as string | undefined)?.trim() !== 'false';
+
+/**
+ * Which voice entry point the Human tab offers (#5399).
+ *
+ * On by default in every build: the tab shows the realtime "Start voice chat"
+ * control where the push-to-talk mic used to sit. Set
+ * `VITE_HUMAN_VOICE_REALTIME=false` to fall back to the classic tap-and-speak
+ * composer — the kill switch for the realtime path on this surface.
+ *
+ * Distinct from {@link VOICE_MODE_FLAG_ENABLED}, which gates the *chat* tab's
+ * mascot stage against the persisted `mascot.voiceMode`. Keep them separate:
+ * one surface's rollback must not silently change the other's.
+ */
+export const HUMAN_VOICE_REALTIME_ENABLED =
+  (import.meta.env.VITE_HUMAN_VOICE_REALTIME as string | undefined)?.trim() !== 'false';
+
+/**
+ * Show BOTH voice entry points on the Human tab — the realtime control and the
+ * classic push-to-talk composer, stacked. Off by default: the two are alternative
+ * ways to say the same thing, so shipping both at once is a comparison aid (A/B a
+ * regression, demo the difference), not the intended product surface. Set
+ * `VITE_HUMAN_VOICE_SHOW_BOTH=true` to enable. Takes precedence over
+ * {@link HUMAN_VOICE_REALTIME_ENABLED}.
+ */
+export const HUMAN_VOICE_SHOW_BOTH =
+  (import.meta.env.VITE_HUMAN_VOICE_SHOW_BOTH as string | undefined)?.trim() === 'true';
+
+/**
  * URL of the published mascot manifest (`dist/mascots.json` from the
  * `tinyhumansai/mascots` repo). This is the authoritative source for the
  * in-app mascot library — each entry names a Rive `.riv` runtime file plus its

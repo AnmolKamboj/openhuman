@@ -6,10 +6,10 @@ use std::path::Path;
 
 use serde::Serialize;
 
-use super::store;
-use super::GoalsDoc;
 use crate::openhuman::config::Config;
 use crate::rpc::RpcOutcome;
+use tinycortex::memory::goals::store;
+use tinycortex_api::goals::GoalsDoc;
 
 /// Result of an add operation: the new id plus the full updated list.
 #[derive(Debug, Serialize)]
@@ -32,14 +32,14 @@ pub struct ReflectResult {
 /// List the current goals.
 pub async fn list(workspace_dir: &Path) -> Result<RpcOutcome<GoalsDoc>, String> {
     log::debug!("[memory_goals] rpc=list");
-    let doc = store::load(workspace_dir).await?;
+    let doc = store::load(workspace_dir).map_err(|e| e.to_string())?;
     Ok(RpcOutcome::new(doc, vec![]))
 }
 
 /// Add a goal and return the new id + updated list.
 pub async fn add(workspace_dir: &Path, text: &str) -> Result<RpcOutcome<AddResult>, String> {
     log::debug!("[memory_goals] rpc=add");
-    let (id, goals) = store::add(workspace_dir, text).await?;
+    let (id, goals) = store::add(workspace_dir, text).map_err(|e| e.to_string())?;
     Ok(RpcOutcome::single_log(
         AddResult {
             id: id.clone(),
@@ -56,14 +56,14 @@ pub async fn edit(
     text: &str,
 ) -> Result<RpcOutcome<GoalsDoc>, String> {
     log::debug!("[memory_goals] rpc=edit id={id}");
-    let goals = store::edit(workspace_dir, id, text).await?;
+    let goals = store::edit(workspace_dir, id, text).map_err(|e| e.to_string())?;
     Ok(RpcOutcome::single_log(goals, format!("edited goal {id}")))
 }
 
 /// Delete a goal and return the updated list.
 pub async fn delete(workspace_dir: &Path, id: &str) -> Result<RpcOutcome<GoalsDoc>, String> {
     log::debug!("[memory_goals] rpc=delete id={id}");
-    let goals = store::delete(workspace_dir, id).await?;
+    let goals = store::delete(workspace_dir, id).map_err(|e| e.to_string())?;
     Ok(RpcOutcome::single_log(goals, format!("deleted goal {id}")))
 }
 
@@ -89,7 +89,7 @@ pub async fn reflect_now(
         Ok(s) => s,
         Err(e) => {
             log::warn!("[memory_goals] reflect failed: {e}");
-            let goals = store::load(&workspace_dir).await.unwrap_or_default();
+            let goals = store::load(&workspace_dir).unwrap_or_default();
             return Ok(RpcOutcome::single_log(
                 ReflectResult {
                     ran: false,
@@ -101,7 +101,7 @@ pub async fn reflect_now(
         }
     };
 
-    let goals = store::load(&workspace_dir).await.unwrap_or_default();
+    let goals = store::load(&workspace_dir).unwrap_or_default();
     Ok(RpcOutcome::single_log(
         ReflectResult {
             ran: true,

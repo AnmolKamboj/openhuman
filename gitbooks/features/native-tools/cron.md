@@ -22,10 +22,10 @@ There's also a one-shot `schedule` tool in [System & Utilities](system-and-utili
 
 ## What it's good for
 
-* Daily / weekly digests delivered to your messaging channel of choice.
-* Polling a slow integration that doesn't push events.
-* Reminders the agent itself owns ("remind me Thursday to follow up with Alice").
-* Recurring research - "every Monday, check what's new on this topic and write me a brief".
+- Daily / weekly digests delivered to your messaging channel of choice.
+- Polling a slow integration that doesn't push events.
+- Reminders the agent itself owns ("remind me Thursday to follow up with Alice").
+- Recurring research - "every Monday, check what's new on this topic and write me a brief".
 
 ## How it ties back to the rest
 
@@ -33,5 +33,5 @@ Every cron run is just a normal agent invocation, so it can use any other tool -
 
 ## See also
 
-* [System & Utilities](system-and-utilities.md) - the one-shot `schedule` tool.
-* [Agent Coordination](agent-coordination.md) - for jobs that fan out into subagents.
+- [System & Utilities](system-and-utilities.md) - the one-shot `schedule` tool.
+- [Agent Coordination](agent-coordination.md) - for jobs that fan out into subagents.

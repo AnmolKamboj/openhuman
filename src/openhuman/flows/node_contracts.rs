@@ -122,11 +122,38 @@ fn apply_host_overlay(contract: NodeKindContract) -> NodeKindContract {
                  the ROOT graph's trigger (default 8). Reach for a loop to repeat a section, \
                  and for sub_workflow to reuse a whole flow.",
             ),
+        "spawn" => contract
+            .with_note(
+                "config.slug for target=tool follows the SAME rule as a tool_call: a real \
+                 Composio action slug (with config.connection_ref for the account) or \
+                 oh:<tool_name> for a native OpenHuman tool. Call get_tool_contract first and \
+                 wire every required_arg into config.args.",
+            )
+            .with_note(
+                "THIS host wires a TaskRunner, so spawned work genuinely overlaps. It is \
+                 in-process only: tickets do not survive a core restart, so a spawn whose gate \
+                 would only be reached after one is a spawn whose result is lost — keep the \
+                 spawn and its gate inside the same run.",
+            ),
+        "gate" => contract.with_note(
+            "wait_mode=\"suspend\" interrupts the run, and in THIS host an interrupted flow run \
+             is resumed through flows_resume against the durable checkpointer — so a suspended \
+             gate survives a restart where a polling one does not. Prefer it for anything \
+             waiting longer than seconds.",
+        ),
+        "scatter" => contract.with_note(
+            "Lanes multiply everything inside the region, including COST: a lane body \
+             containing an agent node runs a full harness turn per lane. This host additionally \
+             caps simultaneous harness turns process-wide (8 by default, \
+             OPENHUMAN_FLOWS_MAX_PARALLEL_AGENTS), so a 200-lane scatter over an agent node \
+             queues rather than running 200 wide — correct, but not the throughput the lane \
+             count suggests. Use config.lanes to chunk deliberately.",
+        ),
         _ => contract,
     }
 }
 
-/// All 15 node-kind contracts with this host's overlay applied, in
+/// Every node-kind contract with this host's overlay applied, in
 /// [`NODE_KINDS`] order.
 pub fn all_node_kind_contracts() -> Vec<NodeKindContract> {
     tinyflows::catalog::all_contracts()
@@ -135,8 +162,8 @@ pub fn all_node_kind_contracts() -> Vec<NodeKindContract> {
         .collect()
 }
 
-/// The overlaid contract for one node kind, or `None` if `kind` is not one of
-/// the 14.
+/// The overlaid contract for one node kind, or `None` when `kind` is not one
+/// of [`NODE_KINDS`].
 pub fn node_kind_contract(kind: &str) -> Option<NodeKindContract> {
     tinyflows::catalog::contract_for(kind).map(apply_host_overlay)
 }
@@ -186,8 +213,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn overlay_preserves_all_15_kinds() {
-        assert_eq!(all_node_kind_contracts().len(), 15);
+    fn overlay_preserves_every_kind() {
+        // Counted from NODE_KINDS rather than a literal: the overlay must keep
+        // pace with the engine's catalog, and pinning a number here only ever
+        // reported "tinyflows added a kind", which is not this test's job.
+        assert_eq!(all_node_kind_contracts().len(), NODE_KINDS.len());
         for kind in NODE_KINDS {
             assert!(node_kind_contract(kind).is_some(), "missing {kind}");
         }

@@ -75,13 +75,13 @@ fn profile_memory_subdir(
 async fn open_store(profile_id: Option<&str>) -> Result<AgentExperienceStore, String> {
     let profile_id = profile_id.map(str::trim).filter(|id| !id.is_empty());
     if profile_id.is_none() {
-        let client = match crate::openhuman::memory::global::client_if_ready() {
+        let client = match tinymemory_core::global::client_if_ready() {
             Some(client) => client,
             None => {
                 let config = Config::load_or_init()
                     .await
                     .map_err(|e| format!("load config: {e}"))?;
-                crate::openhuman::memory::global::init(config.workspace_dir)?
+                tinymemory_core::global::init(config.workspace_dir)?
             }
         };
         return Ok(AgentExperienceStore::new(client.memory_handle()));
@@ -100,19 +100,22 @@ async fn open_store_in_subdir(
     memory_subdir: &str,
 ) -> Result<AgentExperienceStore, String> {
     if memory_subdir != "memory" {
-        let memory = crate::openhuman::memory::store::UnifiedMemory::new_with_memory_dir(
+        let memory = tinymemory_core::store::UnifiedMemory::new_with_memory_dir(
             &config.workspace_dir,
             memory_subdir,
-            crate::openhuman::inference::embeddings::default_embedding_provider(),
+            // Config-scoped so the experience store's managed embedder reads the
+            // signed-in user's session, not the keyless `default_state_dir()`
+            // scope (#5501).
+            crate::openhuman::inference::embeddings::default_embedding_provider_with_config(config),
             config.memory.sqlite_open_timeout_secs,
         )
         .map_err(|e| format!("open agent experience store '{memory_subdir}': {e:#}"))?;
         return Ok(AgentExperienceStore::new(Arc::new(memory)));
     }
 
-    let client = match crate::openhuman::memory::global::client_if_ready() {
+    let client = match tinymemory_core::global::client_if_ready() {
         Some(client) => client,
-        None => crate::openhuman::memory::global::init(config.workspace_dir.clone())?,
+        None => tinymemory_core::global::init(config.workspace_dir.clone())?,
     };
     Ok(AgentExperienceStore::new(client.memory_handle()))
 }

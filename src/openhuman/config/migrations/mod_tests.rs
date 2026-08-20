@@ -118,8 +118,8 @@ async fn run_pending_runs_phase_out_when_version_zero() {
 
     let on_disk = std::fs::read_to_string(&config.config_path).unwrap();
     assert!(
-        on_disk.contains("schema_version = 8"),
-        "saved config.toml must record schema_version=8, got:\n{on_disk}"
+        on_disk.contains(&format!("schema_version = {CURRENT_SCHEMA_VERSION}")),
+        "saved config.toml must record schema_version={CURRENT_SCHEMA_VERSION}, got:\n{on_disk}"
     );
 }
 
@@ -134,7 +134,7 @@ async fn run_pending_bumps_version_on_fresh_install() {
 
     assert_eq!(config.schema_version, CURRENT_SCHEMA_VERSION);
     let on_disk = std::fs::read_to_string(&config.config_path).unwrap();
-    assert!(on_disk.contains("schema_version = 8"));
+    assert!(on_disk.contains(&format!("schema_version = {CURRENT_SCHEMA_VERSION}")));
 }
 
 #[tokio::test]
@@ -161,7 +161,7 @@ async fn run_pending_migrates_fastembed_to_managed_without_local_ollama() {
     );
     assert_eq!(config.memory.embedding_dimensions, 1024);
     let on_disk = std::fs::read_to_string(&config.config_path).unwrap();
-    assert!(on_disk.contains("schema_version = 8"));
+    assert!(on_disk.contains(&format!("schema_version = {CURRENT_SCHEMA_VERSION}")));
 }
 
 #[tokio::test]
@@ -210,6 +210,57 @@ async fn run_pending_v7_to_v8_rolls_back_default_model_when_save_fails() {
         config.default_model.as_deref(),
         Some("reasoning-v1"),
         "save failed → default_model must roll back to its pre-migration value"
+    );
+}
+
+#[tokio::test]
+async fn run_pending_v8_to_v9_enables_shadow_reads_on_an_upgraded_workspace() {
+    let tmp = TempDir::new().unwrap();
+    fs::create_dir_all(tmp.path().join("workspace")).unwrap();
+
+    let mut config = config_in(&tmp);
+    config.schema_version = 8;
+    // What a pre-flip build persisted: the key is present and false, so the
+    // serde default can never apply.
+    config.agent.session_shadow_reads = false;
+
+    run_pending(&mut config).await;
+
+    assert_eq!(config.schema_version, CURRENT_SCHEMA_VERSION);
+    assert!(
+        config.agent.session_shadow_reads,
+        "an upgraded workspace must be opted into the parity soak"
+    );
+    let on_disk = std::fs::read_to_string(&config.config_path).unwrap();
+    assert!(
+        on_disk.contains("session_shadow_reads = true"),
+        "the flip must be persisted, got:\n{on_disk}"
+    );
+}
+
+#[tokio::test]
+async fn run_pending_v8_to_v9_rolls_back_shadow_reads_when_save_fails() {
+    let tmp = TempDir::new().unwrap();
+    fs::create_dir_all(tmp.path().join("workspace")).unwrap();
+
+    let mut config = config_in(&tmp);
+    config.schema_version = 8;
+    config.agent.session_shadow_reads = false;
+    // Force save() to fail after the migration body mutates the flag, so the
+    // 8->9 rollback path runs.
+    let blocker = tmp.path().join("blocker");
+    fs::write(&blocker, "not a directory").unwrap();
+    config.config_path = blocker.join("nested").join("config.toml");
+
+    run_pending(&mut config).await;
+
+    assert_eq!(
+        config.schema_version, 8,
+        "save failed → schema_version must roll back to 8"
+    );
+    assert!(
+        !config.agent.session_shadow_reads,
+        "save failed → session_shadow_reads must roll back to its pre-migration value"
     );
 }
 
@@ -312,8 +363,8 @@ async fn run_pending_expands_autonomy_defaults_from_v3() {
     // On-disk config must reflect the new schema_version.
     let on_disk = fs::read_to_string(&config.config_path).unwrap();
     assert!(
-        on_disk.contains("schema_version = 8"),
-        "saved config.toml must record schema_version=8, got:\n{on_disk}"
+        on_disk.contains(&format!("schema_version = {CURRENT_SCHEMA_VERSION}")),
+        "saved config.toml must record schema_version={CURRENT_SCHEMA_VERSION}, got:\n{on_disk}"
     );
 }
 
@@ -345,8 +396,8 @@ async fn run_pending_v4_to_v5_removes_write_tools_from_auto_approve() {
 
     let on_disk = fs::read_to_string(&config.config_path).unwrap();
     assert!(
-        on_disk.contains("schema_version = 8"),
-        "saved config.toml must record schema_version=8, got:\n{on_disk}"
+        on_disk.contains(&format!("schema_version = {CURRENT_SCHEMA_VERSION}")),
+        "saved config.toml must record schema_version={CURRENT_SCHEMA_VERSION}, got:\n{on_disk}"
     );
 }
 
@@ -381,8 +432,8 @@ async fn run_pending_v5_to_v6_repairs_http_request_limits() {
     // The version bump must be persisted to disk too.
     let on_disk = fs::read_to_string(&config.config_path).unwrap();
     assert!(
-        on_disk.contains("schema_version = 8"),
-        "saved config.toml must record schema_version=8, got:\n{on_disk}"
+        on_disk.contains(&format!("schema_version = {CURRENT_SCHEMA_VERSION}")),
+        "saved config.toml must record schema_version={CURRENT_SCHEMA_VERSION}, got:\n{on_disk}"
     );
 }
 
@@ -416,8 +467,8 @@ async fn run_pending_v5_to_v6_reconciles_orphaned_providers() {
 
     let on_disk = fs::read_to_string(&config.config_path).unwrap();
     assert!(
-        on_disk.contains("schema_version = 8"),
-        "saved config.toml must record schema_version=8, got:\n{on_disk}"
+        on_disk.contains(&format!("schema_version = {CURRENT_SCHEMA_VERSION}")),
+        "saved config.toml must record schema_version={CURRENT_SCHEMA_VERSION}, got:\n{on_disk}"
     );
 }
 

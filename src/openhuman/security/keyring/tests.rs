@@ -128,6 +128,91 @@ fn file_backend_multiple_keys_independent() {
     );
 }
 
+// ── FileBackend: the file holds every secret, so a bad write loses all of them ─
+
+/// The regression this whole guard exists for.
+///
+/// A corrupt file used to read as an *empty map*, so the `set` that followed
+/// persisted a map holding nothing but the key being written — every other
+/// secret in the file, including the app session, was gone. Signing in and then
+/// finding yourself signed out again is what that looks like from outside.
+#[test]
+fn file_backend_set_refuses_to_overwrite_an_unparseable_file() {
+    let dir = TempDir::new().expect("tempdir");
+    let fb = FileBackend::new(dir.path());
+    fb.set("session", "keep-me").unwrap();
+
+    let path = dir.path().join("dev-keychain.json");
+    let original = std::fs::read(&path).unwrap();
+    std::fs::write(&path, b"{ truncated by a racing writer").unwrap();
+
+    let err = fb
+        .set("other", "v")
+        .expect_err("a set over an unparseable file must fail, not replace it");
+    assert!(
+        err.to_string().contains("moved aside"),
+        "the error should say the file was preserved: {err}"
+    );
+
+    // The bytes survived under the quarantine name, so nothing is unrecoverable.
+    let quarantined: Vec<_> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.contains(".corrupt."))
+        .collect();
+    assert_eq!(quarantined.len(), 1, "expected one quarantined file");
+    assert_ne!(original, b"{ truncated by a racing writer".to_vec());
+}
+
+/// A *read* still degrades to "no such secret" rather than failing, because the
+/// caller's remedy (sign in again) is recoverable and failing every unrelated
+/// lookup is not.
+#[test]
+fn file_backend_get_treats_an_unparseable_file_as_empty() {
+    let dir = TempDir::new().expect("tempdir");
+    let fb = FileBackend::new(dir.path());
+    std::fs::write(dir.path().join("dev-keychain.json"), b"not json").unwrap();
+
+    assert!(fb.get("anything").unwrap().is_none());
+    assert!(
+        dir.path().join("dev-keychain.json").exists(),
+        "a read must not move the file aside"
+    );
+}
+
+/// Concurrent writers must not lose each other's entries. Before the
+/// cross-process lock, each writer persisted the map it had read *before* the
+/// other landed, so all but the last key vanished.
+#[test]
+fn file_backend_concurrent_sets_all_survive() {
+    let dir = TempDir::new().expect("tempdir");
+    let writers = 8;
+
+    std::thread::scope(|scope| {
+        for i in 0..writers {
+            let path = dir.path().to_path_buf();
+            scope.spawn(move || {
+                // A backend instance per thread: one shared instance would be
+                // covered by an in-process mutex, which is precisely the
+                // guarantee that turned out to be insufficient.
+                FileBackend::new(&path)
+                    .set(&format!("key{i}"), &format!("v{i}"))
+                    .unwrap();
+            });
+        }
+    });
+
+    let fb = FileBackend::new(dir.path());
+    for i in 0..writers {
+        assert_eq!(
+            fb.get(&format!("key{i}")).unwrap().as_deref(),
+            Some(format!("v{i}").as_str()),
+            "key{i} was lost to a concurrent write"
+        );
+    }
+}
+
 // ── FileBackend: migrate_from_file (via production function) ──────────────────
 //
 // These tests exercise the full `migrate_from_file` production function via a

@@ -123,7 +123,18 @@ where
     F: std::future::Future<Output = R>,
 {
     let collector: TurnSubagentUsage = Arc::new(Mutex::new(Vec::new()));
-    let out = TURN_SUBAGENT_USAGE.scope(collector.clone(), future).await;
+    // `scope` takes the inner future **by value**, so a debug build moves the
+    // whole nested turn generator through this frame on its way in. On the agent
+    // turn path that nesting is hundreds of KiB, and this wrapper was the most
+    // expensive of them: measured under gdb, its own frame was 239,184 bytes of
+    // a 2,090,360-byte stack, against the 2 MiB thread `libtest` hands a test.
+    // Pinning to the heap first means only a pointer moves. Boxing here and at
+    // the four sibling `scope` wrappers took the same stack to 731,928 bytes and
+    // fixed 131 tests that aborted on a stack overflow; the cost is one
+    // allocation per scope, against a turn that is about to call a model.
+    let out = TURN_SUBAGENT_USAGE
+        .scope(collector.clone(), Box::pin(future))
+        .await;
     let entries = collector
         .lock()
         .map(|g| g.clone())

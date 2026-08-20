@@ -46,16 +46,21 @@
 //! event bus dispatch loop is never blocked by a long-running provider
 //! call (sync can take seconds).
 
+// `backend_client` is a host extension on the core's `ProviderContext`.
+use crate::openhuman::memory::sync::composio::providers::ProviderContextExt;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
 
-use crate::core::event_bus::{subscribe_global, DomainEvent, EventHandler, SubscriptionHandle};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::triage::{apply_decision, run_triage, TriageOutcome, TriggerEnvelope};
 use crate::openhuman::config::rpc as config_rpc;
-use crate::openhuman::config::schema::COMPOSIO_MODE_DIRECT;
 use crate::openhuman::integrations::composio::trigger_history;
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
+use tinymemory_api::host::COMPOSIO_MODE_DIRECT;
 
 use super::providers::{get_provider, ProviderContext};
 use crate::openhuman::integrations::composio::client::ComposioClient;
@@ -109,7 +114,7 @@ pub fn register_composio_trigger_subscriber() {
     super::providers::init_default_providers();
 
     if COMPOSIO_TRIGGER_HANDLE.get().is_none() {
-        match subscribe_global(Arc::new(ComposioTriggerSubscriber::new())) {
+        match BUS.subscribe(Arc::new(ComposioTriggerSubscriber::new())) {
             Some(handle) => {
                 let _ = COMPOSIO_TRIGGER_HANDLE.set(handle);
                 log::debug!("[event_bus] composio trigger subscriber registered");
@@ -123,7 +128,7 @@ pub fn register_composio_trigger_subscriber() {
     }
 
     if COMPOSIO_CONNECTION_HANDLE.get().is_none() {
-        match subscribe_global(Arc::new(ComposioConnectionCreatedSubscriber::new())) {
+        match BUS.subscribe(Arc::new(ComposioConnectionCreatedSubscriber::new())) {
             Some(handle) => {
                 let _ = COMPOSIO_CONNECTION_HANDLE.set(handle);
                 log::debug!("[event_bus] composio connection_created subscriber registered");
@@ -137,7 +142,7 @@ pub fn register_composio_trigger_subscriber() {
     }
 
     if COMPOSIO_CONFIG_HANDLE.get().is_none() {
-        match subscribe_global(Arc::new(ComposioConfigChangedSubscriber::new())) {
+        match BUS.subscribe(Arc::new(ComposioConfigChangedSubscriber::new())) {
             Some(handle) => {
                 let _ = COMPOSIO_CONFIG_HANDLE.set(handle);
                 log::debug!("[event_bus] composio config_changed subscriber registered");
@@ -168,7 +173,7 @@ impl Default for ComposioTriggerSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for ComposioTriggerSubscriber {
+impl EventHandler<DomainEvent> for ComposioTriggerSubscriber {
     fn name(&self) -> &str {
         "composio::trigger"
     }
@@ -381,7 +386,7 @@ impl EventHandler for ComposioTriggerSubscriber {
                         "[composio][triage] run_triage failed (label={}): {e:#}",
                         envelope.display_label
                     );
-                    crate::core::observability::report_error_or_expected(
+                    tinymemory_core::observability::report_error_or_expected(
                         detail.as_str(),
                         "composio",
                         "trigger_triage",
@@ -421,7 +426,7 @@ impl Default for ComposioConnectionCreatedSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for ComposioConnectionCreatedSubscriber {
+impl EventHandler<DomainEvent> for ComposioConnectionCreatedSubscriber {
     fn name(&self) -> &str {
         "composio::connection_created"
     }
@@ -579,7 +584,29 @@ impl EventHandler for ComposioConnectionCreatedSubscriber {
                     // collapses both to `Vec::new()` and would
                     // otherwise hide auth/backend failures from
                     // incident triage.
-                    match ops::fetch_connected_integrations_status(ctx.config.as_ref()).await {
+                    // `ctx.config` is the seam's `dyn MemoryHostConfig` now,
+                    // and this fetcher wants the host's concrete `Config`.
+                    // Re-reading it here is also the correct thing on its own
+                    // terms: the context snapshot was taken at hook-entry and
+                    // the OAuth completion we are reacting to may have written
+                    // credentials since.
+                    let live_config = match crate::openhuman::config::rpc::reload_config_from_paths(
+                        ctx.config.config_path(),
+                        ctx.config.workspace_dir(),
+                    )
+                    .await
+                    {
+                        Ok(cfg) => cfg,
+                        Err(e) => {
+                            tracing::debug!(
+                                error = %e,
+                                "[composio:bus] connected-integrations refresh: \
+                                 reload_config failed; skipping"
+                            );
+                            return;
+                        }
+                    };
+                    match ops::fetch_connected_integrations_status(&live_config).await {
                         FetchConnectedIntegrationsStatus::Authoritative(entries) => {
                             let mut toolkits: Vec<String> = entries
                                 .iter()
@@ -588,8 +615,8 @@ impl EventHandler for ComposioConnectionCreatedSubscriber {
                                 .collect();
                             toolkits.sort();
                             toolkits.dedup();
-                            crate::core::event_bus::publish_global(
-                                DomainEvent::ComposioIntegrationsChanged {
+                            tinymemory_core::events::publish(
+                                tinymemory_core::events::MemoryEvent::ComposioIntegrationsChanged {
                                     toolkits: toolkits.clone(),
                                 },
                             );
@@ -643,7 +670,7 @@ impl EventHandler for ComposioConnectionCreatedSubscriber {
             // onboarding completes. The memory_sources auto-register below
             // still runs unconditionally so the source appears in the unified
             // sources list immediately.
-            if !ctx.config.onboarding_completed {
+            if !ctx.config.onboarding_completed() {
                 tracing::info!(
                     toolkit = %toolkit,
                     connection_id = %connection_id,
@@ -676,7 +703,7 @@ impl EventHandler for ComposioConnectionCreatedSubscriber {
                     );
                 }
 
-                match crate::openhuman::memory::tinycortex::run_composio_connection(
+                match tinymemory_core::tinycortex::run_composio_connection(
                     &toolkit,
                     &connection_id,
                     ctx.config.as_ref(),
@@ -819,7 +846,7 @@ async fn wait_for_connection_active(
 // ── Config-changed subscriber ───────────────────────────────────────
 
 /// Drops the prompt-level integrations cache whenever the user flips
-/// `config.composio.mode` between `"backend"` and `"direct"` or
+/// `config.composio().mode` between `"backend"` and `"direct"` or
 /// stores/clears the direct-mode API key. Without this, the chat
 /// runtime keeps the old tenant's tool catalogue / connection list
 /// pinned for up to `CACHE_TTL` (60s) — that's the regression behind
@@ -849,7 +876,7 @@ impl Default for ComposioConfigChangedSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for ComposioConfigChangedSubscriber {
+impl EventHandler<DomainEvent> for ComposioConfigChangedSubscriber {
     fn name(&self) -> &str {
         "composio::config_changed"
     }
@@ -891,8 +918,8 @@ impl EventHandler for ComposioConfigChangedSubscriber {
                         .collect();
                     toolkits.sort();
                     toolkits.dedup();
-                    crate::core::event_bus::publish_global(
-                        DomainEvent::ComposioIntegrationsChanged {
+                    tinymemory_core::events::publish(
+                        tinymemory_core::events::MemoryEvent::ComposioIntegrationsChanged {
                             toolkits: toolkits.clone(),
                         },
                     );

@@ -11,7 +11,8 @@ use std::sync::Arc;
 use chrono::Utc;
 use std::collections::HashSet;
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::sync::composio::providers::{get_provider, ProviderContext};
 
@@ -45,7 +46,7 @@ pub async fn run_source_once(
                 outcome.fetched, outcome.routed, outcome.skipped_dupe, outcome.pruned
             );
             let _ = store::record_fetch(config, &source.id, Utc::now(), reason, &status);
-            publish_global(DomainEvent::TaskSourceFetched {
+            BUS.publish(DomainEvent::TaskSourceFetched {
                 source_id: source.id.clone(),
                 provider: outcome.provider.clone(),
                 fetched: outcome.fetched,
@@ -74,7 +75,7 @@ pub async fn run_source_once(
                 reason,
                 &format!("error: {e}"),
             );
-            publish_global(DomainEvent::TaskSourceFetchFailed {
+            BUS.publish(DomainEvent::TaskSourceFetchFailed {
                 source_id: source.id.clone(),
                 provider: outcome.provider.clone(),
                 error: e.clone(),
@@ -182,7 +183,7 @@ async fn run_inner(
 
         store::mark_ingested(config, &source.id, &enriched.task, &new_card_id)
             .map_err(|e| format!("mark_ingested failed: {e}"))?;
-        publish_global(DomainEvent::TaskSourceTaskIngested {
+        BUS.publish(DomainEvent::TaskSourceTaskIngested {
             source_id: source.id.clone(),
             provider: enriched.task.provider.clone(),
             external_id: enriched.task.external_id.clone(),

@@ -27,8 +27,6 @@
 //! toward over-wrapping: it is safer to tag a user-authored row as
 //! untrusted than to leave a connector-synced one bare.
 
-use crate::openhuman::memory::MemoryEntry;
-
 /// Conservative classifier — returns `true` when the entry is unlikely to
 /// be locally-authored and therefore SHOULD be wrapped before reaching
 /// the agent prompt.
@@ -45,15 +43,22 @@ use crate::openhuman::memory::MemoryEntry;
 /// surfaces as "untrusted" (default-deny). The mitigation is conservative
 /// on purpose; refining it requires explicit provenance tagging at
 /// ingest time.
-pub fn is_potentially_untrusted(entry: &MemoryEntry) -> bool {
-    if let Some(ns) = entry.namespace.as_deref() {
+/// Takes the two fields it reads rather than a `MemoryEntry`.
+///
+/// There are two `MemoryEntry` types in play during the module port — the
+/// engine's and the contract's — and this predicate needs neither: it reads a
+/// namespace and a key. Taking them directly means callers on either side can
+/// use it without a conversion, and the signature says what it actually
+/// depends on.
+pub fn is_potentially_untrusted(namespace: Option<&str>, key: &str) -> bool {
+    if let Some(ns) = namespace {
         let ns = ns.trim().to_ascii_lowercase();
         if !is_locally_authored_namespace(&ns) {
             return true;
         }
     }
 
-    let key_lower = entry.key.to_ascii_lowercase();
+    let key_lower = key.to_ascii_lowercase();
     let connector_prefixes: &[&str] = &[
         "chat:",
         "email:",
@@ -134,7 +139,10 @@ fn escape_untrusted_content(content: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Only the tests build entries; the predicate itself takes a namespace and
+    // a key, which is what decoupled it from either `MemoryEntry` type.
     use crate::openhuman::memory::MemoryCategory;
+    use crate::openhuman::memory::MemoryEntry;
 
     fn entry(namespace: Option<&str>, key: &str) -> MemoryEntry {
         MemoryEntry {
@@ -156,7 +164,7 @@ mod tests {
             "working", "agent", "local", "core", "global", "default", "user",
         ] {
             assert!(
-                !is_potentially_untrusted(&entry(Some(ns), "k")),
+                !is_potentially_untrusted(Some(ns), "k"),
                 "namespace '{ns}' must be trusted"
             );
         }
@@ -166,7 +174,7 @@ mod tests {
     fn prefixed_subspaces_are_trusted() {
         for ns in ["working.user.123", "agent.session.foo", "tree.discord.456"] {
             assert!(
-                !is_potentially_untrusted(&entry(Some(ns), "k")),
+                !is_potentially_untrusted(Some(ns), "k"),
                 "namespace '{ns}' must be trusted"
             );
         }
@@ -177,22 +185,22 @@ mod tests {
         // Default-deny — any unrecognised namespace flips to untrusted so
         // a future connector that lands without explicit allowlisting is
         // wrapped by default.
-        assert!(is_potentially_untrusted(&entry(Some("scraped"), "k")));
-        assert!(is_potentially_untrusted(&entry(Some("composio"), "k")));
+        assert!(is_potentially_untrusted(Some("scraped"), "k"));
+        assert!(is_potentially_untrusted(Some("composio"), "k"));
     }
 
     #[test]
     fn connector_key_prefix_is_untrusted_even_without_namespace() {
-        assert!(is_potentially_untrusted(&entry(None, "chat:discord:42")));
-        assert!(is_potentially_untrusted(&entry(None, "gmail:thread:xyz")));
-        assert!(is_potentially_untrusted(&entry(None, "notion:page:abc")));
+        assert!(is_potentially_untrusted(None, "chat:discord:42"));
+        assert!(is_potentially_untrusted(None, "gmail:thread:xyz"));
+        assert!(is_potentially_untrusted(None, "notion:page:abc"));
     }
 
     #[test]
     fn no_namespace_plain_key_is_trusted() {
         // No namespace + no connector prefix = locally authored by
         // default (the bare-key tooling path doesn't reach this code).
-        assert!(!is_potentially_untrusted(&entry(None, "user_pref:theme")));
+        assert!(!is_potentially_untrusted(None, "user_pref:theme"));
     }
 
     #[test]

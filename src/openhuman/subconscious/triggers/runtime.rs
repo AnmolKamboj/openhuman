@@ -19,7 +19,8 @@ use async_trait::async_trait;
 use tokio::sync::Notify;
 use tracing::{debug, info, warn};
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::subconscious::LongLivedSession;
 
 use super::gate::GatePass;
@@ -171,7 +172,7 @@ impl TriggerOrchestrator {
         let latency_ms = started.elapsed().as_millis() as u64;
         let promoted = decision.is_promote();
 
-        publish_global(DomainEvent::SubconsciousTriggerProcessed {
+        BUS.publish(DomainEvent::SubconsciousTriggerProcessed {
             source: source.clone(),
             decision: decision.as_str().to_string(),
             promoted,

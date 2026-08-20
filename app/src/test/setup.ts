@@ -225,6 +225,11 @@ vi.mock('../utils/config', () => ({
   MASCOT_VOICE_MODEL_ID: 'eleven_multilingual_v2',
   MASCOT_MANIFEST_URL:
     'https://raw.githubusercontent.com/tinyhumansai/mascots/main/dist/mascots.json',
+  VOICE_MODE_FLAG_ENABLED: false,
+  // Production defaults, so a test that does not care about the voice entry
+  // point sees what a shipped build sees.
+  HUMAN_VOICE_REALTIME_ENABLED: true,
+  HUMAN_VOICE_SHOW_BOTH: false,
 }));
 
 vi.mock('../services/backendUrl', () => ({

@@ -31,13 +31,13 @@ use crate::openhuman::agent::harness::session::Agent;
 use crate::openhuman::agent::messages::{ChatMessage, ConversationMessage, ToolResultMessage};
 use crate::openhuman::config::{AgentConfig, MemoryConfig};
 use crate::openhuman::inference::provider::{ChatResponse, ToolCall};
-use crate::openhuman::memory::store as memory_store;
 use crate::openhuman::memory::Memory;
 use crate::openhuman::tools::{Tool, ToolResult};
 use anyhow::Result;
 use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
 use tinyagents::harness::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
+use tinymemory_core::store as memory_store;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Test Helpers — Mock Provider, Mock Tool, Mock Memory
@@ -228,21 +228,33 @@ impl Tool for CountingTool {
 /// The returned `TempDir` must be held alive for the duration of the test
 /// to prevent the directory (and its SQLite database) from being deleted.
 fn make_memory() -> (Arc<dyn Memory>, tempfile::TempDir) {
+    // The embedding seam fails loudly when unwired; before the memory
+    // extraction this was a direct call and needed no setup.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let tmp = tempfile::TempDir::new().unwrap();
     let cfg = MemoryConfig {
         backend: "none".into(),
         ..MemoryConfig::default()
     };
+    // The embedding seam fails loudly when unwired; before the memory
+    // extraction this was a direct call and needed no setup.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let mem = Arc::from(memory_store::create_memory(&cfg, tmp.path()).unwrap());
     (mem, tmp)
 }
 
 fn make_sqlite_memory() -> (Arc<dyn Memory>, tempfile::TempDir) {
+    // The embedding seam fails loudly when unwired; before the memory
+    // extraction this was a direct call and needed no setup.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let tmp = tempfile::TempDir::new().unwrap();
     let cfg = MemoryConfig {
         backend: "sqlite".into(),
         ..MemoryConfig::default()
     };
+    // The embedding seam fails loudly when unwired; before the memory
+    // extraction this was a direct call and needed no setup.
+    crate::openhuman::memory::host_impls::install_for_tests();
     let mem = Arc::from(memory_store::create_memory(&cfg, tmp.path()).unwrap());
     (mem, tmp)
 }

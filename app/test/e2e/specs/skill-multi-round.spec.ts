@@ -9,7 +9,6 @@
  * route was retired — see CLAUDE.md). This spec is updated accordingly.
  */
 import { waitForApp } from '../helpers/app-helpers';
-import { textExists } from '../helpers/element-helpers';
 import { resetApp } from '../helpers/reset-app';
 import { navigateViaHash } from '../helpers/shared-flows';
 import { startMockServer, stopMockServer } from '../mock-server';
@@ -34,11 +33,18 @@ describe('Multi-round tool conversation smoke', () => {
     const hash = await browser.execute(() => window.location.hash);
     expect(String(hash)).toContain('/chat');
 
-    // /chat page renders 'Threads' (t('chat.threads')) as a stable sidebar heading.
-    const ok =
-      (await textExists('Threads')) ||
-      (await textExists('New')) ||
-      (await textExists('How can I help'));
-    expect(ok).toBe(true);
+    // Wait for rendered chat content, not only the always-mounted shell. Use
+    // textContent directly because tauri-driver's XPath text lookup can miss
+    // nested text nodes under WebKitGTK.
+    const chatReady = await browser.waitUntil(
+      async () =>
+        (await browser.execute(() =>
+          (
+            document.querySelector('[data-testid="chat-messages-scroll"]')?.textContent ?? ''
+          ).includes('Your assistant is ready when you are')
+        )) as boolean,
+      { timeout: 10_000, interval: 250, timeoutMsg: 'Chat ready content did not render' }
+    );
+    expect(chatReady).toBe(true);
   });
 });

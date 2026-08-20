@@ -8,7 +8,8 @@
 
 use serde::Serialize;
 
-use crate::core::event_bus::{self, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::rpc::RpcOutcome;
 
 /// JSON-serializable acknowledgement returned to CLI / JSON-RPC callers
@@ -38,13 +39,13 @@ pub async fn service_shutdown(
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "service.shutdown".to_string());
 
-    event_bus::init_global(event_bus::DEFAULT_CAPACITY);
+    let _ = crate::core::bus::init().await;
     log::info!(
         "[service:shutdown] accepted shutdown request source={} reason={}",
         source,
         reason
     );
-    event_bus::publish_global(DomainEvent::SystemShutdownRequested {
+    BUS.publish(DomainEvent::SystemShutdownRequested {
         source: source.clone(),
         reason: reason.clone(),
     });
@@ -79,7 +80,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl crate::core::event_bus::EventHandler for ShutdownProbe {
+    impl tinybus::EventHandler<crate::core::events::DomainEvent> for ShutdownProbe {
         fn name(&self) -> &str {
             "service::shutdown_probe"
         }
@@ -99,7 +100,8 @@ mod tests {
 
     #[tokio::test]
     async fn service_shutdown_publishes_event() {
-        let bus = event_bus::init_global(event_bus::DEFAULT_CAPACITY);
+        crate::core::bus::init().await.expect("bus init");
+        let bus = crate::core::bus::BUS.get().expect("bus initialised");
         let (tx, mut rx) = mpsc::unbounded_channel();
         let handle = bus.subscribe(Arc::new(ShutdownProbe {
             tx,
@@ -123,7 +125,7 @@ mod tests {
 
     #[tokio::test]
     async fn service_shutdown_defaults_source_and_reason() {
-        event_bus::init_global(event_bus::DEFAULT_CAPACITY);
+        let _ = crate::core::bus::init().await;
         let outcome = service_shutdown(None, None)
             .await
             .expect("shutdown should succeed");
@@ -134,7 +136,7 @@ mod tests {
 
     #[tokio::test]
     async fn service_shutdown_trims_whitespace_and_falls_back_for_empty() {
-        event_bus::init_global(event_bus::DEFAULT_CAPACITY);
+        let _ = crate::core::bus::init().await;
         let outcome = service_shutdown(Some("  ui  ".into()), Some("  ".into()))
             .await
             .expect("shutdown should succeed");

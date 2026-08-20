@@ -12,7 +12,8 @@ use chrono::Utc;
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::triage::{
     apply_decision, run_triage, TriageOutcome, TriggerEnvelope, TriggerSource,
 };
@@ -159,7 +160,7 @@ pub async fn handle_ingest(params: Map<String, Value>) -> Result<Value, String> 
                                 error = %e,
                                 "[notification_intel] failed to refresh provider settings for routing gate"
                             );
-                            publish_global(DomainEvent::NotificationTriaged {
+                            BUS.publish(DomainEvent::NotificationTriaged {
                                 id: id_for_triage.clone(),
                                 provider: req.provider.clone(),
                                 action: action.clone(),
@@ -187,7 +188,7 @@ pub async fn handle_ingest(params: Map<String, Value>) -> Result<Value, String> 
                     }
                 }
 
-                publish_global(DomainEvent::NotificationTriaged {
+                BUS.publish(DomainEvent::NotificationTriaged {
                     id: id_for_triage.clone(),
                     provider: req.provider.clone(),
                     action: action.clone(),

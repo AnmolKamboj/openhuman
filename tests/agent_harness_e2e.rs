@@ -526,6 +526,13 @@ async fn boot_stack_with_super_context(super_context_enabled: bool) -> Stack {
         super_context_enabled,
     );
 
+    // The transport-only router does not create a Core runtime context. Install
+    // the explicit tinymemory host seams before handlers service memory-backed
+    // agent turns, matching normal startup wiring.
+    openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(std::sync::Arc::new(
+        openhuman_core::openhuman::config::Config::default(),
+    ));
+
     let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
     let rpc_base = format!("http://{rpc_addr}");
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -1306,14 +1313,14 @@ async fn subagent_clarification_flow_inner() {
 // per-intercept via `effective_ttl()`. Tests set it before `send_web_chat` and
 // restore it on drop via EnvVarGuard.
 
-fn ensure_approval_gate() {
-    use openhuman_core::core::event_bus;
+async fn ensure_approval_gate() {
     use openhuman_core::openhuman::security::approval::ApprovalGate;
 
-    // The global event bus must be initialized before registering subscribers.
-    // `build_core_http_router` does NOT call `bootstrap_core_runtime`, so the bus
-    // is not initialized by boot_stack. Initialize it here (idempotent: OnceLock).
-    event_bus::init_global(event_bus::DEFAULT_CAPACITY);
+    // The global bus must be initialized before registering subscribers.
+    // `build_core_http_router` does NOT call `bootstrap_core_runtime`, so the
+    // bus is not initialized by boot_stack. Standing it up is async now — it
+    // connects to a broker — which is why this helper is too. Idempotent.
+    openhuman_core::core::bus::init().await.expect("bus init");
 
     let mut cfg: openhuman_core::openhuman::config::Config = toml::from_str(
         r#"api_url = "http://127.0.0.1:1"
@@ -1363,7 +1370,7 @@ encrypt = false
 /// drops (end of the first test), the task is cancelled and all subsequent tests in the
 /// same binary lose the bridge silently. This per-test helper avoids the issue by
 /// registering a fresh subscription on each test's own runtime.
-fn register_approval_bridge() -> Option<openhuman_core::core::event_bus::SubscriptionHandle> {
+fn register_approval_bridge() -> Option<tinybus::SubscriptionHandle> {
     openhuman_core::openhuman::web_chat::fresh_approval_surface_subscription()
 }
 
@@ -1395,7 +1402,7 @@ fn approval_gate_installed_after_ensure() {
 async fn approval_gate_installed_after_ensure_inner() {
     let _lock = env_lock();
     use openhuman_core::openhuman::security::approval::ApprovalGate;
-    ensure_approval_gate();
+    ensure_approval_gate().await;
     assert!(
         ApprovalGate::try_global().is_some(),
         "ApprovalGate::try_global() must return Some after ensure_approval_gate()"
@@ -1433,7 +1440,7 @@ fn approval_gate_approve_flow() {
 async fn approval_gate_approve_flow_inner() {
     let _lock = env_lock();
     let _ttl = EnvVarGuard::set("OPENHUMAN_APPROVAL_TTL_SECS", "120");
-    ensure_approval_gate();
+    ensure_approval_gate().await;
     // Register a fresh approval bridge on the current runtime. Each approval test needs
     // its own per-runtime bridge so the background task does not die when a previous
     // test's runtime drops (see register_approval_bridge docstring for details).
@@ -1549,7 +1556,7 @@ fn approval_gate_deny_flow() {
 async fn approval_gate_deny_flow_inner() {
     let _lock = env_lock();
     let _ttl = EnvVarGuard::set("OPENHUMAN_APPROVAL_TTL_SECS", "120");
-    ensure_approval_gate();
+    ensure_approval_gate().await;
     let _approval_bridge = register_approval_bridge();
     // Same delegation chain as approve_flow: orchestrator → run_code → code_executor
     // → file_write. After denial, code_executor receives the denial marker from the
@@ -1672,7 +1679,7 @@ fn subagent_with_approval_gate() {
 async fn subagent_with_approval_gate_inner() {
     let _lock = env_lock();
     let _ttl = EnvVarGuard::set("OPENHUMAN_APPROVAL_TTL_SECS", "120");
-    ensure_approval_gate();
+    ensure_approval_gate().await;
     let _approval_bridge = register_approval_bridge();
     reset_script(vec![
         // request[0]: Orchestrator delegates to code_executor via run_code.
@@ -1799,7 +1806,7 @@ async fn approval_gate_timeout_inner() {
     let _lock = env_lock();
     // 2-second TTL via OPENHUMAN_APPROVAL_TTL_SECS → effective_ttl() in gate.rs.
     let _ttl = EnvVarGuard::set("OPENHUMAN_APPROVAL_TTL_SECS", "2");
-    ensure_approval_gate();
+    ensure_approval_gate().await;
     let _approval_bridge = register_approval_bridge();
     // Same delegation chain as approve/deny: orchestrator → run_code → code_executor
     // → file_write. The gate parks and TTL-denies after 2 seconds. code_executor
@@ -2385,7 +2392,6 @@ mod streaming_support {
     use openhuman_core::openhuman::agent::Agent;
     use openhuman_core::openhuman::config::{AgentConfig, ContextConfig, MemoryConfig};
     use openhuman_core::openhuman::memory::agent::memory_loader::MemoryLoader;
-    use openhuman_core::openhuman::memory::store as memory_store;
     use openhuman_core::openhuman::memory::Memory;
     use openhuman_core::openhuman::tools::traits::ToolCallOptions;
     use openhuman_core::openhuman::tools::{
@@ -2403,6 +2409,7 @@ mod streaming_support {
     };
     use tinyagents::harness::tool::ToolCall;
     use tinyagents::harness::usage::Usage;
+    use tinymemory_core::store as memory_store;
 
     // ── ScriptedProvider ────────────────────────────────────────────────────
     // Copied (minimal) from tests/agent_session_turn_raw_coverage_e2e.rs:76-152.
@@ -2476,6 +2483,7 @@ mod streaming_support {
             raw: None,
             resolved_model: None,
             continue_turn: None,
+            served_from_cache: false,
         }
     }
 

@@ -15,14 +15,14 @@ use serde_json::{json, Value};
 use tempfile::{Builder, TempDir};
 
 use openhuman_core::openhuman::integrations::composio::ops::{composio_authorize, composio_list_tools};
-use openhuman_core::openhuman::config::{Config, PolymarketClobCredentials};
+use openhuman_core::openhuman::config::Config;
 use openhuman_core::openhuman::security::credentials::{
     AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
 };
 use openhuman_core::openhuman::security::SecurityPolicy;
 use openhuman_core::openhuman::tools::{
     ComposioAuthorizeTool, ComposioListConnectionsTool, ComposioListToolkitsTool,
-    ComposioListToolsTool, ComposioTool, PolymarketTool, SpawnSubagentTool, Tool, ToolCallOptions,
+    ComposioListToolsTool, ComposioTool, SpawnSubagentTool, Tool, ToolCallOptions,
 };
 
 static ENV_LOCK: &OnceLock<Mutex<()>> = &crate::SHARED_ENV_LOCK;
@@ -460,99 +460,6 @@ async fn round20_direct_composio_tool_covers_fallback_sanitizing_and_account_edg
 }
 
 #[tokio::test]
-async fn round20_polymarket_covers_discovery_errors_rpc_allowance_and_write_gates() {
-    let _lock = env_lock();
-    let state = MockState::default();
-    let base = start_loopback(
-        Router::new()
-            .fallback(any(polymarket_handler))
-            .with_state(state.clone()),
-    )
-    .await;
-    let mut harness = setup_config().await;
-    configure_polymarket(&mut harness.config, &base);
-    harness.config.save().await.expect("save polymarket config");
-
-    let tool = PolymarketTool::new(
-        &harness.config.integrations.polymarket,
-        Arc::new(SecurityPolicy::default()),
-    );
-    assert!(tool.is_concurrency_safe(&json!({ "action": "get_price" })));
-    assert!(!tool.is_concurrency_safe(&json!({ "action": "place_order" })));
-    assert!(!tool.is_concurrency_safe(&json!({ "action": "cancel_order" })));
-    assert_eq!(tool.category().to_string(), "skill");
-    assert!(tool.description().contains("Polymarket"));
-    assert!(tool.parameters_schema()["properties"]["action"]["enum"]
-        .as_array()
-        .unwrap()
-        .contains(&json!("cancel_order")));
-
-    let by_id = tool
-        .execute(json!({ "action": "get_market", "market_id": "m-round20" }))
-        .await
-        .expect("get market by id");
-    assert!(!by_id.is_error);
-    assert!(by_id.output().contains("lookup"));
-
-    let missing_slug = tool
-        .execute(json!({ "action": "get_market", "slug": "empty-slug" }))
-        .await
-        .expect("missing slug returns tool error");
-    assert!(missing_slug.is_error);
-    assert!(missing_slug.output().contains("No Polymarket market found"));
-
-    let event = tool
-        .execute(json!({ "action": "list_events", "event_id": "evt-round20" }))
-        .await
-        .expect("get event by id");
-    assert!(!event.is_error);
-    assert!(event.output().contains("evt-round20"));
-
-    let allowance = tool
-        .execute(json!({
-            "action": "get_usdc_allowance",
-            "user": "0x1111111111111111111111111111111111111111"
-        }))
-        .await
-        .expect("allowance");
-    assert!(!allowance.is_error);
-    assert!(allowance.output().contains("1000000"));
-
-    let invalid_side = tool
-        .execute(json!({ "action": "get_price", "token_id": "tok", "side": "hold" }))
-        .await
-        .expect("invalid side");
-    assert!(invalid_side.is_error);
-    assert!(invalid_side.output().contains("Invalid 'side'"));
-
-    let unapproved_write = tool
-        .execute(json!({
-            "action": "cancel_order",
-            "order_id": "order-round20",
-            "user": "0x1111111111111111111111111111111111111111"
-        }))
-        .await
-        .expect("unapproved write");
-    assert!(unapproved_write.is_error);
-    assert!(unapproved_write.output().contains("explicit user approval"));
-
-    let invalid_request = tool
-        .execute(json!({ "action": "not_real" }))
-        .await
-        .expect_err("invalid request shape returns error")
-        .to_string();
-    assert!(invalid_request.contains("Invalid polymarket request"));
-
-    let requests = state.requests.lock().expect("requests").clone();
-    assert!(requests.iter().any(|request| {
-        request.method == Method::POST && (request.path.is_empty() || request.path == "/")
-    }));
-    assert!(requests
-        .iter()
-        .any(|request| request.method == Method::GET && request.path == "/events/evt-round20"));
-}
-
-#[tokio::test]
 async fn round20_spawn_subagent_covers_validation_schema_and_disabled_worker_branch() {
     let _lock = env_lock();
     let tool = SpawnSubagentTool::new();
@@ -828,81 +735,6 @@ async fn composio_direct_handler(State(state): State<MockState>, request: Reques
             StatusCode::NOT_FOUND,
             &format!("unhandled direct {path} {query}"),
         ),
-    }
-}
-
-async fn polymarket_handler(
-    State(state): State<MockState>,
-    method: Method,
-    uri: Uri,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Response {
-    let path = uri.path().to_string();
-    let query = uri.query().unwrap_or_default().to_string();
-    let body_text = String::from_utf8_lossy(&body);
-    let body_json = serde_json::from_str::<Value>(&body_text).unwrap_or_else(|_| json!(body_text));
-    let api_key = headers
-        .get("poly_api_key")
-        .and_then(|value| value.to_str().ok())
-        .map(str::to_string);
-    state
-        .requests
-        .lock()
-        .expect("requests")
-        .push(RecordedRequest {
-            method: method.clone(),
-            path: path.clone(),
-            query: query.clone(),
-            body: body_json,
-            api_key,
-        });
-
-    match (method, path.as_str()) {
-        (Method::GET, "/markets/m-round20") => {
-            Json(json!({ "id": "m-round20", "slug": "market-round20" })).into_response()
-        }
-        (Method::GET, "/markets") if query.contains("slug=empty-slug") => {
-            Json(json!([])).into_response()
-        }
-        (Method::GET, "/events/evt-round20") => {
-            Json(json!({ "id": "evt-round20", "title": "Event Round20" })).into_response()
-        }
-        (Method::GET, "/price") => Json(json!({ "price": "0.51" })).into_response(),
-        (Method::POST, "") | (Method::POST, "/") => Json(json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "result": "0x0f4240"
-        }))
-        .into_response(),
-        _ => (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": format!("unhandled polymarket {path} {query}") })),
-        )
-            .into_response(),
-    }
-}
-
-fn configure_polymarket(config: &mut Config, base: &str) {
-    config.integrations.polymarket.enabled = true;
-    config.integrations.polymarket.gamma_base_url = base.to_string();
-    config.integrations.polymarket.clob_base_url = base.to_string();
-    config.integrations.polymarket.polygon_rpc_url = base.to_string();
-    config.integrations.polymarket.timeout_secs = 2;
-    config.integrations.polymarket.eoa_address =
-        Some("0x1111111111111111111111111111111111111111".to_string());
-    config.integrations.polymarket.usdc_contract =
-        "0x2222222222222222222222222222222222222222".to_string();
-    config.integrations.polymarket.clob_exchange_contract =
-        "0x3333333333333333333333333333333333333333".to_string();
-    config.integrations.polymarket.derived_clob_credentials = Some(fixture_clob_credentials());
-}
-
-fn fixture_clob_credentials() -> PolymarketClobCredentials {
-    PolymarketClobCredentials {
-        api_key: "round20-key".to_string(),
-        secret: "cm91bmQyMC1zZWNyZXQ=".to_string(),
-        passphrase: "round20-pass".to_string(),
     }
 }
 

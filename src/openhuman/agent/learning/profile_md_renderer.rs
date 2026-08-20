@@ -39,10 +39,13 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::core::event_bus::{subscribe_global, DomainEvent, EventHandler, SubscriptionHandle};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::learning::cache::FacetCache;
 use crate::openhuman::integrations::composio::providers::profile_md::replace_managed_block;
-use crate::openhuman::memory::store::profile::UserState;
+use crate::openhuman::memory::api::provider::UserState;
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 
 // ── Class → block metadata ────────────────────────────────────────────────────
 
@@ -108,10 +111,13 @@ impl ProfileMdRenderer {
 
     /// Read all Active facets from the cache and re-render each of the five
     /// cache-owned blocks. Never touches the `connected-accounts` block.
-    pub fn render(&self) -> anyhow::Result<()> {
+    /// Async since the facet read became a driver call. The
+    /// `spawn_blocking` the subscriber used to wrap this in is gone with it —
+    /// there is no in-process SQLite left to keep off the executor.
+    pub async fn render(&self) -> anyhow::Result<()> {
         tracing::debug!("[learning::profile_md_renderer] render triggered — reading active facets");
 
-        let active_facets = self.cache.list_active()?;
+        let active_facets = self.cache.list_active().await?;
 
         for spec in BLOCK_SPECS {
             // Filter to this class, sort by stability desc then key asc.
@@ -175,7 +181,7 @@ impl ProfileMdRenderer {
     /// Returns the [`SubscriptionHandle`] — hold it alive for the lifetime of
     /// the process (e.g. by leaking it into a static).
     pub fn subscribe(renderer: Arc<ProfileMdRenderer>) -> Option<SubscriptionHandle> {
-        subscribe_global(Arc::new(RendererSubscriber(renderer)))
+        BUS.subscribe(Arc::new(RendererSubscriber(renderer)))
     }
 }
 
@@ -184,7 +190,7 @@ impl ProfileMdRenderer {
 struct RendererSubscriber(Arc<ProfileMdRenderer>);
 
 #[async_trait]
-impl EventHandler for RendererSubscriber {
+impl EventHandler<DomainEvent> for RendererSubscriber {
     fn name(&self) -> &str {
         "learning::profile_md_renderer"
     }
@@ -195,16 +201,15 @@ impl EventHandler for RendererSubscriber {
 
     async fn handle(&self, event: &DomainEvent) {
         if let DomainEvent::CacheRebuilt { .. } = event {
-            let renderer = Arc::clone(&self.0);
-            // Move the blocking I/O (SQLite reads + fs writes) off the async
-            // executor thread.
-            tokio::task::spawn_blocking(move || {
-                if let Err(e) = renderer.render() {
-                    tracing::warn!(
-                        "[learning::profile_md_renderer] render on CacheRebuilt failed: {e:#}"
-                    );
-                }
-            });
+            // Awaited directly. This used to be `spawn_blocking`, because the
+            // facet read was in-process SQLite; it is a driver call now, so
+            // there is nothing blocking to move off the executor. The file
+            // write that remains is small and bounded.
+            if let Err(e) = self.0.render().await {
+                tracing::warn!(
+                    "[learning::profile_md_renderer] render on CacheRebuilt failed: {e:#}"
+                );
+            }
         }
     }
 }
@@ -215,19 +220,15 @@ impl EventHandler for RendererSubscriber {
 mod tests {
     use super::*;
     use crate::openhuman::integrations::composio::providers::profile_md::{block_end, block_start};
-    use crate::openhuman::memory::store::profile::{
-        FacetState, FacetType, ProfileFacet, UserState, PROFILE_INIT_SQL,
-    };
-    use parking_lot::Mutex;
-    use rusqlite::Connection;
+    use crate::openhuman::memory::api::provider::{FacetState, FacetType, ProfileFacet, UserState};
     use std::sync::Arc;
     use tempfile::TempDir;
 
-    fn make_cache(conn: Arc<Mutex<Connection>>) -> Arc<FacetCache> {
-        Arc::new(FacetCache::new(conn))
+    fn make_cache() -> Arc<FacetCache> {
+        Arc::new(crate::openhuman::agent::learning::test_profile::in_memory_cache())
     }
 
-    fn insert_facet(
+    async fn insert_facet(
         cache: &FacetCache,
         key: &str,
         value: &str,
@@ -252,20 +253,18 @@ mod tests {
             class: key.split('/').next().map(|s| s.to_string()),
             cue_families: None,
         };
-        cache.upsert(&facet).unwrap();
+        cache.upsert(&facet).await.unwrap();
     }
 
     fn make_renderer() -> (Arc<FacetCache>, ProfileMdRenderer, TempDir) {
         let tmp = TempDir::new().unwrap();
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(PROFILE_INIT_SQL).unwrap();
-        let cache = make_cache(Arc::new(Mutex::new(conn)));
+        let cache = make_cache();
         let renderer = ProfileMdRenderer::new(Arc::clone(&cache), tmp.path().to_path_buf());
         (cache, renderer, tmp)
     }
 
-    #[test]
-    fn renders_active_facets_to_class_blocks() {
+    #[tokio::test]
+    async fn renders_active_facets_to_class_blocks() {
         let (cache, renderer, tmp) = make_renderer();
         insert_facet(
             &cache,
@@ -274,7 +273,8 @@ mod tests {
             FacetState::Active,
             UserState::Auto,
             2.0,
-        );
+        )
+        .await;
         insert_facet(
             &cache,
             "identity/name",
@@ -282,7 +282,8 @@ mod tests {
             FacetState::Active,
             UserState::Auto,
             1.8,
-        );
+        )
+        .await;
         insert_facet(
             &cache,
             "tooling/editor",
@@ -290,7 +291,8 @@ mod tests {
             FacetState::Active,
             UserState::Auto,
             1.5,
-        );
+        )
+        .await;
         insert_facet(
             &cache,
             "veto/no-em-dashes",
@@ -298,7 +300,8 @@ mod tests {
             FacetState::Active,
             UserState::Auto,
             1.2,
-        );
+        )
+        .await;
         insert_facet(
             &cache,
             "goal/learn-rust",
@@ -306,9 +309,10 @@ mod tests {
             FacetState::Active,
             UserState::Auto,
             1.0,
-        );
+        )
+        .await;
 
-        renderer.render().unwrap();
+        renderer.render().await.unwrap();
 
         let body = std::fs::read_to_string(tmp.path().join("PROFILE.md")).unwrap();
         assert!(
@@ -333,8 +337,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn skips_empty_classes_renders_placeholder() {
+    #[tokio::test]
+    async fn skips_empty_classes_renders_placeholder() {
         let (cache, renderer, tmp) = make_renderer();
         // Only insert a style facet; all other classes will be empty.
         insert_facet(
@@ -344,9 +348,10 @@ mod tests {
             FacetState::Active,
             UserState::Auto,
             2.0,
-        );
+        )
+        .await;
 
-        renderer.render().unwrap();
+        renderer.render().await.unwrap();
 
         let body = std::fs::read_to_string(tmp.path().join("PROFILE.md")).unwrap();
         // Empty classes get the placeholder.
@@ -358,8 +363,8 @@ mod tests {
         assert!(body.contains("- **verbosity**: terse"));
     }
 
-    #[test]
-    fn pinned_facets_marked_in_output() {
+    #[tokio::test]
+    async fn pinned_facets_marked_in_output() {
         let (cache, renderer, tmp) = make_renderer();
         insert_facet(
             &cache,
@@ -368,9 +373,10 @@ mod tests {
             FacetState::Active,
             UserState::Pinned,
             1.0,
-        );
+        )
+        .await;
 
-        renderer.render().unwrap();
+        renderer.render().await.unwrap();
 
         let body = std::fs::read_to_string(tmp.path().join("PROFILE.md")).unwrap();
         assert!(
@@ -380,8 +386,8 @@ mod tests {
         assert!(body.contains("- **format**: markdown *(pinned)*"));
     }
 
-    #[test]
-    fn provisional_facets_excluded_from_output() {
+    #[tokio::test]
+    async fn provisional_facets_excluded_from_output() {
         let (cache, renderer, tmp) = make_renderer();
         insert_facet(
             &cache,
@@ -390,7 +396,8 @@ mod tests {
             FacetState::Provisional,
             UserState::Auto,
             0.8,
-        );
+        )
+        .await;
         insert_facet(
             &cache,
             "style/verbosity",
@@ -398,9 +405,10 @@ mod tests {
             FacetState::Active,
             UserState::Auto,
             2.0,
-        );
+        )
+        .await;
 
-        renderer.render().unwrap();
+        renderer.render().await.unwrap();
 
         let body = std::fs::read_to_string(tmp.path().join("PROFILE.md")).unwrap();
         assert!(
@@ -410,8 +418,8 @@ mod tests {
         assert!(body.contains("terse"));
     }
 
-    #[test]
-    fn re_renders_idempotently_on_repeated_cache_rebuilt() {
+    #[tokio::test]
+    async fn re_renders_idempotently_on_repeated_cache_rebuilt() {
         let (cache, renderer, tmp) = make_renderer();
         insert_facet(
             &cache,
@@ -420,18 +428,19 @@ mod tests {
             FacetState::Active,
             UserState::Auto,
             2.0,
-        );
+        )
+        .await;
 
-        renderer.render().unwrap();
+        renderer.render().await.unwrap();
         let body1 = std::fs::read_to_string(tmp.path().join("PROFILE.md")).unwrap();
-        renderer.render().unwrap();
+        renderer.render().await.unwrap();
         let body2 = std::fs::read_to_string(tmp.path().join("PROFILE.md")).unwrap();
 
         assert_eq!(body1, body2, "second render should be idempotent");
     }
 
-    #[test]
-    fn renders_dont_clobber_connected_accounts_block() {
+    #[tokio::test]
+    async fn renders_dont_clobber_connected_accounts_block() {
         let (cache, renderer, tmp) = make_renderer();
         // Manually write a connected-accounts block first.
         let ca_content = format!(
@@ -449,8 +458,9 @@ mod tests {
             FacetState::Active,
             UserState::Auto,
             2.0,
-        );
-        renderer.render().unwrap();
+        )
+        .await;
+        renderer.render().await.unwrap();
 
         let body = std::fs::read_to_string(&profile_path).unwrap();
         // connected-accounts block preserved.
@@ -466,8 +476,8 @@ mod tests {
         assert!(body.contains("terse"));
     }
 
-    #[test]
-    fn renders_dont_touch_user_authored_text_outside_blocks() {
+    #[tokio::test]
+    async fn renders_dont_touch_user_authored_text_outside_blocks() {
         let (cache, renderer, tmp) = make_renderer();
         let profile_path = tmp.path().join("PROFILE.md");
         std::fs::write(
@@ -483,8 +493,9 @@ mod tests {
             FacetState::Active,
             UserState::Auto,
             2.0,
-        );
-        renderer.render().unwrap();
+        )
+        .await;
+        renderer.render().await.unwrap();
 
         let body = std::fs::read_to_string(&profile_path).unwrap();
         assert!(
@@ -499,9 +510,7 @@ mod tests {
         // Verify that ProfileMdRenderer::subscribe compiles and returns a handle.
         // Full async event delivery is tested in the integration test.
         let tmp = TempDir::new().unwrap();
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(PROFILE_INIT_SQL).unwrap();
-        let cache = make_cache(Arc::new(Mutex::new(conn)));
+        let cache = make_cache();
         let renderer = Arc::new(ProfileMdRenderer::new(cache, tmp.path().to_path_buf()));
         // subscribe_global requires a running runtime; just verify the type works.
         let _renderer_ref = Arc::clone(&renderer);

@@ -149,8 +149,8 @@ impl Tool for GoalSetTool {
         match store::set(&self.workspace_dir, &thread_id, objective, token_budget).await {
             Ok(goal) => {
                 // Emit the live-update event so the UI chip refreshes immediately.
-                crate::core::event_bus::publish_global(
-                    crate::core::event_bus::DomainEvent::ThreadGoalUpdated {
+                crate::core::bus::BUS.publish(
+                    crate::core::events::DomainEvent::ThreadGoalUpdated {
                         thread_id: goal.thread_id.clone(),
                         goal_id: goal.goal_id.clone(),
                         status: goal.status.as_str().to_string(),
@@ -205,8 +205,8 @@ impl Tool for GoalCompleteTool {
         log::debug!("[thread_goals] tool=goal_complete thread_id={thread_id}");
         match store::complete(&self.workspace_dir, &thread_id).await {
             Ok(goal) => {
-                crate::core::event_bus::publish_global(
-                    crate::core::event_bus::DomainEvent::ThreadGoalUpdated {
+                crate::core::bus::BUS.publish(
+                    crate::core::events::DomainEvent::ThreadGoalUpdated {
                         thread_id: goal.thread_id.clone(),
                         goal_id: goal.goal_id.clone(),
                         status: goal.status.as_str().to_string(),

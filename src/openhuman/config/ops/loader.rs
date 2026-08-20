@@ -53,6 +53,67 @@ pub async fn load_config_with_timeout() -> Result<Config, String> {
     }
 }
 
+/// Loads the config that belongs to `workspace_dir`, rather than whichever one
+/// the process-global active-user / `OPENHUMAN_WORKSPACE` resolution currently
+/// selects.
+///
+/// Use this from anything scoped to a workspace it was *handed* — the memory
+/// subsystem driver is the first such caller. [`load_config_with_timeout`]
+/// re-resolves the process-global workspace on every call, so a component bound
+/// to workspace B that loads through it and then merely overwrites
+/// `workspace_dir` keeps A's embedding routes, model dimensions and provider
+/// credentials, and runs them against B's files.
+///
+/// The config file is looked for beside the workspace, in the two layouts the
+/// resolver itself can produce: `<workspace>/config.toml` (a workspace root
+/// that carries its own config) and `<workspace>/../config.toml` (the
+/// `~/.openhuman/users/<id>/{config.toml,workspace}` layout). When neither
+/// exists there is nothing workspace-specific to read, so this falls back to
+/// the process-global load with `workspace_dir` re-anchored — the previous
+/// behaviour, and still correct for a single-workspace host.
+pub async fn load_config_for_workspace_with_timeout(
+    workspace_dir: &Path,
+) -> Result<Config, String> {
+    let candidate = [
+        workspace_dir.join("config.toml"),
+        workspace_dir
+            .parent()
+            .map(|parent| parent.join("config.toml"))
+            .unwrap_or_default(),
+    ]
+    .into_iter()
+    .find(|path| path.is_file());
+
+    if let Some(config_path) = candidate {
+        tracing::debug!(
+            config_path = %config_path.display(),
+            workspace = %workspace_dir.display(),
+            "[config] loading workspace-anchored config"
+        );
+        return match tokio::time::timeout(
+            CONFIG_LOAD_TIMEOUT,
+            Config::load_from_config_path(&config_path, workspace_dir),
+        )
+        .await
+        {
+            Ok(Ok(mut config)) => {
+                normalize_loaded_config(&mut config).await;
+                Ok(config)
+            }
+            Ok(Err(e)) => Err(format!("{e:#}")),
+            Err(_) => Err("Config loading timed out".to_string()),
+        };
+    }
+
+    tracing::debug!(
+        workspace = %workspace_dir.display(),
+        "[config] no config.toml beside workspace; falling back to the process-global load"
+    );
+    let mut config = load_config_with_timeout().await?;
+    config.workspace_dir = workspace_dir.to_path_buf();
+    Ok(config)
+}
+
 /// Reloads the config file represented by an existing runtime snapshot.
 ///
 /// Use this for long-lived objects that need fresh config values while
@@ -60,9 +121,22 @@ pub async fn load_config_with_timeout() -> Result<Config, String> {
 /// [`load_config_with_timeout`], this does not re-resolve the process-global
 /// `OPENHUMAN_WORKSPACE` env var on every call.
 pub async fn reload_config_snapshot_with_timeout(snapshot: &Config) -> Result<Config, String> {
+    reload_config_from_paths(&snapshot.config_path, &snapshot.workspace_dir).await
+}
+
+/// The anchored reload, addressed by path rather than by a whole `Config`.
+///
+/// Callers that hold the extracted memory subsystem's `dyn MemoryHostConfig`
+/// cannot produce a concrete `Config` to pass to
+/// [`reload_config_snapshot_with_timeout`] — but they can read the two paths
+/// off the seam. Same behaviour, narrower argument.
+pub async fn reload_config_from_paths(
+    config_path: &std::path::Path,
+    workspace_dir: &std::path::Path,
+) -> Result<Config, String> {
     match tokio::time::timeout(
         CONFIG_LOAD_TIMEOUT,
-        Config::load_from_config_path(&snapshot.config_path, &snapshot.workspace_dir),
+        Config::load_from_config_path(config_path, workspace_dir),
     )
     .await
     {

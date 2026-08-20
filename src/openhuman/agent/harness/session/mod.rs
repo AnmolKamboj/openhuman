@@ -39,6 +39,7 @@ mod runtime;
 #[cfg(test)]
 mod tool_progress;
 pub(crate) mod transcript;
+pub(crate) mod transcript_history;
 mod turn;
 mod turn_checkpoint;
 mod types;

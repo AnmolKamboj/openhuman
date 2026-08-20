@@ -837,15 +837,13 @@ pub fn log_byo_provider_auth_failure(
     // re-flooding the notification center the way the raw error flooded Sentry.
     let status_code = status.as_u16();
     if crate::openhuman::inference::auth_error_registry::record(provider, status_code) {
-        crate::core::event_bus::publish_global(
-            crate::core::event_bus::DomainEvent::ProviderApiKeyRejected {
-                provider: provider.to_string(),
-                message: crate::openhuman::inference::auth_error_registry::auth_error_message(
-                    provider,
-                    status_code,
-                ),
-            },
-        );
+        crate::core::bus::BUS.publish(crate::core::events::DomainEvent::ProviderApiKeyRejected {
+            provider: provider.to_string(),
+            message: crate::openhuman::inference::auth_error_registry::auth_error_message(
+                provider,
+                status_code,
+            ),
+        });
     }
 }
 
@@ -868,7 +866,7 @@ pub fn log_byo_provider_auth_failure(
 /// [`is_byo_provider_auth_failure_http`] instead). The OpenHuman **backend**
 /// provider is excluded — its `401`/`403` is app-session expiry handled by
 /// [`publish_backend_session_expired`]. Unlike that path, this does **not**
-/// publish [`crate::core::event_bus::DomainEvent::SessionExpired`]: an expired
+/// publish [`crate::core::events::DomainEvent::SessionExpired`]: an expired
 /// *provider* OAuth token must not tear down the OpenHuman app session.
 pub fn is_openai_oauth_session_expired_http(
     provider: &str,
@@ -967,7 +965,7 @@ pub fn log_openai_oauth_session_expired(
 }
 
 /// Handle a backend session-expiry auth failure: publish a
-/// [`crate::core::event_bus::DomainEvent::SessionExpired`] so the credentials
+/// [`crate::core::events::DomainEvent::SessionExpired`] so the credentials
 /// subscriber clears the session and flips the scheduler-gate signed-out
 /// override (halting downstream LLM work — see OPENHUMAN-TAURI-1T), and skip
 /// the Sentry report. Mirrors the `is_auth_failure && is_backend` arm in
@@ -991,7 +989,7 @@ pub fn publish_backend_session_expired(
         status = status.as_u16(),
         "[llm_provider] backend auth failure ({status}) — publishing SessionExpired"
     );
-    crate::core::event_bus::publish_global(crate::core::event_bus::DomainEvent::SessionExpired {
+    crate::core::bus::BUS.publish(crate::core::events::DomainEvent::SessionExpired {
         source: "llm_provider.openhuman_backend".to_string(),
         reason: sanitize_api_error(message),
     });
@@ -1010,7 +1008,7 @@ pub fn publish_backend_session_expired(
 ///   expired. That is expected user-state, not a server bug, and reporting it
 ///   spams Sentry (OPENHUMAN-TAURI-1T: 5,414 events from a single user whose
 ///   cron loops kept firing post-expiry). Instead we publish a
-///   [`crate::core::event_bus::DomainEvent::SessionExpired`] so the credentials
+///   [`crate::core::events::DomainEvent::SessionExpired`] so the credentials
 ///   subscriber clears the session and flips the scheduler-gate signed-out
 ///   override, halting downstream LLM work. 401/403 from **other** providers
 ///   (OpenAI, Anthropic, …) still go to Sentry — those mean a misconfigured

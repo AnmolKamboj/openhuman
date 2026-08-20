@@ -5,7 +5,6 @@ use crate::openhuman::agent::context::prompt::{ConnectedIntegration, ToolCallFor
 use crate::openhuman::agent::harness::definition::AgentDefinitionRegistry;
 use crate::openhuman::agent::harness::{with_parent_context, ParentExecutionContext};
 use crate::openhuman::agent::messages::ChatMessage;
-use crate::openhuman::memory::conversations;
 use crate::openhuman::memory::{Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts};
 use crate::openhuman::tools::Tool;
 use async_trait::async_trait;
@@ -15,6 +14,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tinyagents::harness::message::Message;
 use tinyagents::harness::model::{ChatModel, ModelProfile, ModelRequest, ModelResponse};
+use tinycortex::memory::conversations;
 
 const SPAWN_SUBAGENT_CANARY: &str = "tool-e2e-spawn-subagent-canary";
 const ARCHETYPE_DELEGATION_CANARY: &str = "tool-e2e-archetype-delegation-canary";

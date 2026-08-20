@@ -4,8 +4,9 @@ use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::tree::tree_runtime::{engine, store, types::*};
+use crate::openhuman::memory::tree::tree_runtime::{engine, store};
 use crate::rpc::RpcOutcome;
+use tinycortex::memory::tree::runtime::*;
 
 /// Append raw content to the ingestion buffer.
 pub async fn tree_summarizer_ingest(
@@ -163,7 +164,14 @@ pub async fn tree_summarizer_rebuild(
 /// 3. Error otherwise — "Build Summary Trees" is local-only by default;
 ///    the user must opt in to cloud summarization via the
 ///    `memory_tree.cloud_summarization_opt_in` setting.
-fn create_provider(
+///
+/// Visibility note: `pub(crate)` so the embedded memory driver's
+/// [`MemoryTree`](tinycortex_api::provider::MemoryTree) `seal`/`cascade` reach
+/// the **same** resolver the RPC path uses. Duplicating the local-AI /
+/// cloud-opt-in precedence in the driver would be new policy logic, and the
+/// `summarizer_available` doc below is explicit that this function is the
+/// single source of truth.
+pub(crate) fn create_provider(
     config: &Config,
 ) -> Result<
     (

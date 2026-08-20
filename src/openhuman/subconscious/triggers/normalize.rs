@@ -17,7 +17,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use crate::core::event_bus::DomainEvent;
+use crate::core::events::DomainEvent;
 use crate::openhuman::subconscious::ORCHESTRATOR_THREAD_ID;
 
 use super::types::{DedupeKey, Trigger, TriggerPayload, TriggerPriority, TriggerSource};

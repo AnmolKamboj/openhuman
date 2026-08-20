@@ -35,11 +35,11 @@ use crate::openhuman::agent::orchestration::parent_context::with_root_parent;
 use crate::openhuman::agent::orchestration::{
     AgentOrchestrationSession, AgentStatus, SpawnAgentRequest, WaitAgentOptions,
 };
-use crate::openhuman::agent::session_db::run_ledger::{
+use crate::openhuman::config::Config;
+use tinyagents::session::run_ledger::{
     self, AgentTeamMemberStatus, AgentTeamTask, AgentTeamTaskStatus, ClaimOutcome, RunEvent,
     RunEventAppend, RunEventListRequest,
 };
-use crate::openhuman::config::Config;
 
 use super::types::{StartMemberOutcome, TeamError};
 
@@ -83,7 +83,7 @@ pub async fn start_member_run(
         "[agent_team_runtime] start.entry team={team_id} member={member_id} task={task_id:?}"
     );
 
-    let member = run_ledger::get_agent_team_member(config, member_id)?
+    let member = run_ledger::get_agent_team_member(&config.workspace_dir, member_id)?
         .filter(|m| m.team_id == team_id)
         .ok_or_else(|| {
             anyhow!(TeamError::UnknownMember {
@@ -107,7 +107,7 @@ pub async fn start_member_run(
 
     // Resolve the target task: an explicit id, or the member's next claimable
     // ready task (unowned or owned-by-this-member, dependencies all done).
-    let tasks = run_ledger::list_agent_team_tasks(config, team_id)?;
+    let tasks = run_ledger::list_agent_team_tasks(&config.workspace_dir, team_id)?;
     let target = match task_id {
         Some(tid) => match tasks.iter().find(|t| t.id == tid) {
             Some(t) => t.clone(),
@@ -122,18 +122,23 @@ pub async fn start_member_run(
     // The team-run id doubles as the claim token (CAS guard) and the member's
     // worker/run pointer surfaced to the UI.
     let run_id = format!("teamrun-{}", uuid::Uuid::new_v4().simple());
-    let claimed =
-        match run_ledger::claim_agent_team_task(config, team_id, &target.id, member_id, &run_id)? {
-            ClaimOutcome::Claimed(task) => *task,
-            ClaimOutcome::AlreadyClaimed => return Ok(StartMemberOutcome::AlreadyClaimed),
-            ClaimOutcome::Blocked { unmet } => return Ok(StartMemberOutcome::Blocked { unmet }),
-            ClaimOutcome::UnknownTask => return Ok(StartMemberOutcome::UnknownTask),
-        };
+    let claimed = match run_ledger::claim_agent_team_task(
+        &config.workspace_dir,
+        team_id,
+        &target.id,
+        member_id,
+        &run_id,
+    )? {
+        ClaimOutcome::Claimed(task) => *task,
+        ClaimOutcome::AlreadyClaimed => return Ok(StartMemberOutcome::AlreadyClaimed),
+        ClaimOutcome::Blocked { unmet } => return Ok(StartMemberOutcome::Blocked { unmet }),
+        ClaimOutcome::UnknownTask => return Ok(StartMemberOutcome::UnknownTask),
+    };
 
     // Mark active synchronously so the polling UI reflects the running member
     // before the (async) worker even starts.
     run_ledger::mark_agent_team_member_running(
-        config,
+        &config.workspace_dir,
         team_id,
         member_id,
         &claimed.id,
@@ -150,15 +155,23 @@ pub async fn start_member_run(
     let mem = member_id.to_string();
     let task_for_loop = claimed.clone();
     let rid = run_id.clone();
+    // The member loop drives real agent work on a fresh task, and task-locals
+    // don't cross `tokio::spawn` — capture the caller's turn origin here so the
+    // worker keeps the label the approval gate needs. Inherit-only: no origin
+    // in scope means the worker stays unlabelled and fails closed as before.
+    let inherited_origin = crate::openhuman::agent::turn_origin::capture();
     tokio::spawn(async move {
-        run_member_loop(
-            &cfg,
-            &team,
-            &mem,
-            &agent_id,
-            task_for_loop,
-            &rid,
-            model_override,
+        crate::openhuman::agent::turn_origin::with_inherited_origin(
+            inherited_origin,
+            run_member_loop(
+                &cfg,
+                &team,
+                &mem,
+                &agent_id,
+                task_for_loop,
+                &rid,
+                model_override,
+            ),
         )
         .await;
     });
@@ -209,8 +222,8 @@ async fn run_member_loop(
             "[agent_team_runtime] loop.failed team={team_id} member={member_id} task={} err={err}",
             task.id
         );
-        let _ = run_ledger::release_agent_team_task(config, team_id, &task.id);
-        let _ = run_ledger::mark_agent_team_member_idle(config, team_id, member_id);
+        let _ = run_ledger::release_agent_team_task(&config.workspace_dir, team_id, &task.id);
+        let _ = run_ledger::mark_agent_team_member_idle(&config.workspace_dir, team_id, member_id);
         record_failure_event(config, team_id, member_id, &task.id, &err.to_string());
     }
 }
@@ -332,13 +345,22 @@ async fn drive_member(
                     )]
                 };
                 let outcome = run_ledger::complete_agent_team_task(
-                    &config, &team_id, &task_id, &member_id, &evidence, false,
+                    &config.workspace_dir,
+                    &team_id,
+                    &task_id,
+                    &member_id,
+                    &evidence,
+                    false,
                 )?;
                 log::debug!(
                     target: LOG_TARGET,
                     "[agent_team_runtime] drive.completed team={team_id} member={member_id} task={task_id} outcome={outcome:?}"
                 );
-                run_ledger::mark_agent_team_member_idle(&config, &team_id, &member_id)?;
+                run_ledger::mark_agent_team_member_idle(
+                    &config.workspace_dir,
+                    &team_id,
+                    &member_id,
+                )?;
                 Ok(())
             }
         }
@@ -362,8 +384,12 @@ async fn drive_member(
                     target: LOG_TARGET,
                     "[agent_team_runtime] drive.worker_failed team={team_id} member={member_id} task={task_id} reason={reason}"
                 );
-                run_ledger::release_agent_team_task(&config, &team_id, &task_id)?;
-                run_ledger::mark_agent_team_member_idle(&config, &team_id, &member_id)?;
+                run_ledger::release_agent_team_task(&config.workspace_dir, &team_id, &task_id)?;
+                run_ledger::mark_agent_team_member_idle(
+                    &config.workspace_dir,
+                    &team_id,
+                    &member_id,
+                )?;
                 record_failure_event(&config, &team_id, &member_id, &task_id, &reason);
                 Ok(())
             }
@@ -432,7 +458,7 @@ fn drain_run_events(config: &Config, team_id: &str) -> Result<Vec<RunEvent>> {
     let mut after: Option<u64> = None;
     loop {
         let response = run_ledger::list_recent_run_events(
-            config,
+            &config.workspace_dir,
             &RunEventListRequest {
                 run_id: team_id.to_string(),
                 after_sequence: after,
@@ -485,7 +511,7 @@ fn deliver_pending_messages(
 
     if !contents.is_empty() {
         run_ledger::append_run_event(
-            config,
+            &config.workspace_dir,
             RunEventAppend {
                 run_id: team_id.to_string(),
                 event_type: MESSAGE_DELIVERED_EVENT.to_string(),
@@ -504,7 +530,7 @@ fn record_failure_event(
     reason: &str,
 ) {
     let _ = run_ledger::append_run_event(
-        config,
+        &config.workspace_dir,
         RunEventAppend {
             run_id: team_id.to_string(),
             event_type: MEMBER_FAILED_EVENT.to_string(),

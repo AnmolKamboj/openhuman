@@ -2,7 +2,6 @@ use super::*;
 
 use crate::openhuman::agent::host_runtime::{NativeRuntime, RuntimeAdapter};
 use crate::openhuman::config::{Config, DelegateAgentConfig};
-use crate::openhuman::memory::Memory;
 use crate::openhuman::runtime::javascript::NodeBootstrap;
 use crate::openhuman::runtime::python::PythonBootstrap;
 use crate::openhuman::security::{AuditLogger, SecurityPolicy};
@@ -58,7 +57,6 @@ pub fn all_tools(
     config: Arc<Config>,
     security: &Arc<SecurityPolicy>,
     audit: Arc<AuditLogger>,
-    memory: Arc<dyn Memory>,
     browser_config: &crate::openhuman::config::BrowserConfig,
     http_config: &crate::openhuman::config::HttpRequestConfig,
     action_dir: &std::path::Path,
@@ -70,7 +68,6 @@ pub fn all_tools(
         security,
         Arc::new(NativeRuntime::new()),
         audit,
-        memory,
         browser_config,
         http_config,
         action_dir,
@@ -95,7 +92,6 @@ pub fn all_tools_with_runtime(
     security: &Arc<SecurityPolicy>,
     runtime: Arc<dyn RuntimeAdapter>,
     audit: Arc<AuditLogger>,
-    memory: Arc<dyn Memory>,
     browser_config: &crate::openhuman::config::BrowserConfig,
     http_config: &crate::openhuman::config::HttpRequestConfig,
     action_dir: &std::path::Path,
@@ -117,7 +113,12 @@ pub fn all_tools_with_runtime(
     // NodeExecTool, and NpmExecTool all share the same memoised resolution
     // state. Disabled when `node.enabled = false` — in that case shell skips
     // PATH injection and node/npm tools are not registered.
-    let node_bootstrap: Option<Arc<NodeBootstrap>> = if root_config.node.enabled {
+    // `runtime-node` off => never construct a bootstrap: the stub resolves to
+    // nothing anyway, and this keeps the shell's PATH-injection branch dead
+    // rather than a silent per-invocation no-op.
+    let node_bootstrap: Option<Arc<NodeBootstrap>> = if cfg!(feature = "runtime-node")
+        && root_config.node.enabled
+    {
         tracing::debug!(
             version = %root_config.node.version,
             prefer_system = root_config.node.prefer_system,
@@ -414,12 +415,9 @@ pub fn all_tools_with_runtime(
         // cross-flow exception — it can see every flow's namespace by
         // design, but can never be used to write outside a flow's own.
         #[cfg(feature = "flows")]
-        Box::new(FlowMemoryRecallTool::new(memory.clone())),
+        Box::new(FlowMemoryRecallTool::new()),
         #[cfg(feature = "flows")]
-        Box::new(FlowMemoryRememberTool::new(
-            memory.clone(),
-            security.clone(),
-        )),
+        Box::new(FlowMemoryRememberTool::new(security.clone())),
         // Wallet tools — expose wallet operations to the agent tool-call pipeline
         // so the crypto sub-agent can prepare transfers, check status, etc.
         // Gated with the `web3` feature (the wallet domain is compiled out when
@@ -436,9 +434,9 @@ pub fn all_tools_with_runtime(
         Box::new(WalletTxReceiptTool::new()),
         #[cfg(feature = "web3")]
         Box::new(WalletLookupTxTool::new()),
-        Box::new(MemoryStoreTool::new(memory.clone(), security.clone())),
-        Box::new(MemoryRecallTool::new(memory.clone())),
-        Box::new(MemoryForgetTool::new(memory.clone(), security.clone())),
+        Box::new(MemoryStoreTool::new(security.clone())),
+        Box::new(MemoryRecallTool::new()),
+        Box::new(MemoryForgetTool::new(security.clone())),
         // #4458: the memory read→dedupe→write→update-index protocol
         // (`agent::harness::memory_protocol`) can only close its write cycle via a
         // successful `update_memory_md` call, and the archivist's `[tools] named`
@@ -474,14 +472,11 @@ pub fn all_tools_with_runtime(
         // inference-based learning subsystem is enabled.  The preference
         // injection into the system prompt is controlled independently by
         // `config.learning.explicit_preferences_enabled`.
-        Box::new(RememberPreferenceTool::new(
-            memory.clone(),
-            security.clone(),
-        )),
+        Box::new(RememberPreferenceTool::new(security.clone())),
         // Two-lane explicit preferences (general → system prompt, situational →
         // per-query recall). Written verbatim to user_pref_{general,situational};
         // bypasses the inference/stability pipeline. Always registered.
-        Box::new(SavePreferenceTool::new(memory.clone(), security.clone())),
+        Box::new(SavePreferenceTool::new(security.clone())),
         Box::new(MonitorTool::new(
             security.clone(),
             Arc::clone(&runtime),
@@ -777,6 +772,10 @@ pub fn all_tools_with_runtime(
     // Memory diff — structured "what changed in the agent's world since a
     // checkpoint/last sync". Drives the subconscious tick's first stage and is
     // available to any agent that lists it. Unit struct, no runtime deps.
+    // Absent rather than erroring when `memory-git` is off: a registered tool
+    // that always fails is worse than no tool, because the model keeps
+    // choosing it and reporting the failure back to the user.
+    #[cfg(feature = "memory-git")]
     tools.push(Box::new(crate::openhuman::memory::diff::MemoryDiffTool));
 
     // Subconscious user-facing handoff — notify_user proactive delivery.
@@ -819,16 +818,16 @@ pub fn all_tools_with_runtime(
     {
         let goals_dir = root_config.workspace_dir.clone();
         tools.push(Box::new(
-            crate::openhuman::memory::goals::GoalsListTool::new(goals_dir.clone()),
+            crate::openhuman::memory::tools::goals::GoalsListTool::new(goals_dir.clone()),
         ));
         tools.push(Box::new(
-            crate::openhuman::memory::goals::GoalsAddTool::new(goals_dir.clone()),
+            crate::openhuman::memory::tools::goals::GoalsAddTool::new(goals_dir.clone()),
         ));
         tools.push(Box::new(
-            crate::openhuman::memory::goals::GoalsEditTool::new(goals_dir.clone()),
+            crate::openhuman::memory::tools::goals::GoalsEditTool::new(goals_dir.clone()),
         ));
         tools.push(Box::new(
-            crate::openhuman::memory::goals::GoalsDeleteTool::new(goals_dir),
+            crate::openhuman::memory::tools::goals::GoalsDeleteTool::new(goals_dir),
         ));
     }
 
@@ -1022,6 +1021,29 @@ pub fn all_tools_with_runtime(
         ),
     );
 
+    // Hosting tools — deploy a workspace directory to a real hosting provider,
+    // with a managed database wired into it. Registered only once a credential
+    // actually resolves (`[hosting].api_key`, else the provider's environment
+    // variables): a tool that cannot work is worse than one that is absent,
+    // because a model retries it. A misconfigured section — an unknown provider
+    // slug, a blank key — is logged and skipped rather than failing startup,
+    // since nothing else in the process depends on hosting.
+    #[cfg(feature = "hosting")]
+    match crate::openhuman::hosting::Account::from_config(root_config) {
+        Ok(Some(account)) => {
+            let hosting_tools = account.tools();
+            tracing::debug!(
+                count = hosting_tools.len(),
+                "[tools::ops] registered hosting tools"
+            );
+            tools.extend(hosting_tools);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            tracing::warn!(%error, "[tools::ops] hosting is enabled but misconfigured; tools not registered");
+        }
+    }
+
     // High-level web3 tools (swaps / bridges / dapp calls) built on the wallet.
     // They call the backend deBridge proxy per-invocation and error gracefully
     // when the user is not signed in, so they register unconditionally.
@@ -1030,6 +1052,7 @@ pub fn all_tools_with_runtime(
     // Managed Node.js exec tools — gated on `root_config.node.enabled`.
     // Both share the same `NodeBootstrap` as ShellTool so the download +
     // extract + install pipeline runs at most once per session.
+    #[cfg(feature = "runtime-node")]
     if let Some(bootstrap) = node_bootstrap.as_ref() {
         tools.push(Box::new(NodeExecTool::new(
             security.clone(),
@@ -1070,7 +1093,7 @@ pub fn all_tools_with_runtime(
         "evaluating ToolStatsTool registration"
     );
     if root_config.learning.enabled && root_config.learning.tool_tracking_enabled {
-        tools.push(Box::new(ToolStatsTool::new(memory.clone())));
+        tools.push(Box::new(ToolStatsTool::new()));
         tracing::debug!("ToolStatsTool registered");
     }
 
@@ -1184,19 +1207,6 @@ pub fn all_tools_with_runtime(
         );
     }
 
-    // Leaf gate: the registration site wants ABSENCE when the feature is off,
-    // not a tool that registers and then errors.
-    #[cfg(feature = "prediction-markets")]
-    if root_config.integrations.polymarket.enabled {
-        tools.push(Box::new(PolymarketTool::new(
-            &root_config.integrations.polymarket,
-            security.clone(),
-        )));
-        tracing::debug!("[integrations] registered polymarket tool (read + trading)");
-    } else {
-        tracing::debug!("[integrations] polymarket disabled — skipping");
-    }
-
     // Coding-harness `lsp` tool (issue #1205) — capability-gated by the
     // OPENHUMAN_LSP_ENABLED env var. The backend (real language-server
     // bridge) is a follow-up; today the gate just controls visibility
@@ -1210,61 +1220,46 @@ pub fn all_tools_with_runtime(
         tracing::debug!("[lsp] capability gate off (set OPENHUMAN_LSP_ENABLED=1 to register)");
     }
 
-    // Language-workflow `rhai_workflows` tool (`.ragsh` REPL, `openhuman::flows::rhai`): lets
-    // the orchestrator author and run its own Rhai workflow cells (fan-out,
-    // loops, dedup/verify pipelines). Registered on the `supervised`/`full`
-    // tiers only — dark on `readonly` (it can drive effectful tools/sub-agents)
-    // and behind the `OPENHUMAN_RHAI_WORKFLOWS=0` kill switch. Every effectful inner call
-    // still re-gates itself in the Rhai bridge, so this surface adds no new
-    // ungated capability. Gated with `flows` — the whole tool (and the `rhai`
-    // engine behind it, via `tinyagents/repl`) is absent from a slim build.
-    #[cfg(feature = "flows")]
-    let rhai_workflows_enabled = std::env::var("OPENHUMAN_RHAI_WORKFLOWS")
-        .or_else(|_| std::env::var("OPENHUMAN_RHAI"))
-        .or_else(|_| std::env::var("OPENHUMAN_RLM"))
-        .map(|v| v != "0")
-        .unwrap_or(true);
-    #[cfg(feature = "flows")]
-    if rhai_workflows_enabled
-        && security.autonomy != crate::openhuman::security::policy::AutonomyLevel::ReadOnly
-    {
-        tools.push(Box::new(crate::openhuman::flows::rhai::RhaiTool::new()));
-        tracing::debug!("[rhai_workflows] registered rhai_workflows language-workflow tool");
-    } else {
-        tracing::debug!(
-            rhai_workflows_enabled,
-            tier = ?security.autonomy,
-            "[rhai_workflows] rhai_workflows tool not registered (readonly tier or OPENHUMAN_RHAI_WORKFLOWS=0)"
-        );
-    }
-    #[cfg(not(feature = "flows"))]
-    tracing::debug!(
-        "[rhai_workflows] rhai_workflows tool not registered — flows feature disabled at compile time"
-    );
-
-    // DomainSet post-filter (#4796): drop tools whose DomainGroup is disabled
-    // under the ambient CoreContext. With no active context, or under
-    // `DomainSet::full()`, every tool is kept (byte-identical). Under
-    // `harness()` the gate-family tools (web3/mcp/skills/flows/media/voice/meet)
-    // are dropped so agent turns can't call a domain that isn't live; only the
-    // memory + threads tools survive (the mapped harness families) — see
-    // `tool_group` for the classification and its Platform-default caveat.
+    // Two INDEPENDENT post-filters over the assembled list (kernel.md §3.7's
+    // separate axes — a narrowed DomainSet must not narrow capabilities, and
+    // vice versa):
+    //
+    // 1. DomainSet (#4796): drop tools whose DomainGroup is disabled under the
+    //    ambient CoreContext. With no active context, or under
+    //    `DomainSet::full()`, every tool is kept (byte-identical). Under
+    //    `harness()` the gate-family tools (web3/mcp/skills/flows/media/voice/
+    //    meet) are dropped so agent turns can't call a domain that isn't live;
+    //    only the memory + threads tools survive (the mapped harness families)
+    //    — see `tool_group` for the classification and its Platform-default
+    //    caveat.
+    // 2. Memory capability (M5.3): drop tools whose memory family the bound
+    //    driver does not advertise — see `tool_capability`.
+    //
+    // Both default OPEN: with no ambient context and with nothing bound the
+    // list is unchanged. Absence beats a stub that errors — a
+    // registered-but-failing memory tool teaches the model the capability
+    // exists and makes it retry (the `flows` compile-gate's reasoning).
+    let before = tools.len();
     let domains = crate::core::runtime::context::CoreContext::current().map(|c| c.domains());
-    if let Some(set) = domains {
-        let before = tools.len();
-        let filtered: Vec<Box<dyn Tool>> = tools
+    let mut tools: Vec<Box<dyn Tool>> = if let Some(set) = domains {
+        tools
             .into_iter()
             .filter(|t| set.allows(tool_group(t.name())))
-            .collect();
-        log::debug!(
-            "[tools::ops][domain-filter] ambient DomainSet active — {} of {before} tools retained",
-            filtered.len()
-        );
-        filtered
+            .collect()
     } else {
-        // No ambient context (unit tests / pre-boot) ⇒ no filtering.
+        // No ambient context (unit tests / pre-boot) ⇒ no domain filtering.
         tools
-    }
+    };
+    let after_domains = tools.len();
+
+    tools.retain(|t| crate::core::all::capability_allowed(tool_capability(t.name())));
+
+    log::debug!(
+        "[tools::ops][post-filter] {before} assembled → {after_domains} after DomainSet → {} after \
+         memory capabilities",
+        tools.len()
+    );
+    tools
 }
 
 /// Classify an agent tool into its [`DomainGroup`](crate::core::all::DomainGroup)
@@ -1336,9 +1331,6 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
         "list_connectable_toolkits",
         "list_node_kinds",
         "get_node_kind_contract",
-        // The `rhai_workflows` (.ragsh) tool is compile-gated with `flows` and
-        // belongs to the same runtime domain — drop it when Flows is off too.
-        "rhai_workflows",
         // Per-flow sandboxed memory (issue #5173) — `flow_` prefixed, not
         // `memory_`, so it does NOT fall under the `memory_` prefix check
         // below and must be listed here explicitly like every other
@@ -1475,10 +1467,15 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
         || name.starts_with("apify_")
         || name.starts_with("google_places_")
         || name.starts_with("stock_")
-        || name == "polymarket"
         || name.starts_with("storage_")
         || name.starts_with("task_source_")
         || name == "twilio_call"
+        // Hosting: `hosting_` is a domain-exclusive prefix, so a NEW hosting
+        // tool auto-gates rather than falling through to Platform and staying
+        // callable under a custom DomainSet. `hosting_launch_site` uploads a
+        // workspace directory to a third party and can provision a paid
+        // database, so it must not outlive its family's gate.
+        || name.starts_with("hosting_")
     {
         return DomainGroup::Integrations;
     }
@@ -1513,6 +1510,99 @@ fn tool_group(name: &str) -> crate::core::all::DomainGroup {
     // Everything else — shell/file and other kernel utilities — is Platform:
     // present under full(), absent under harness()/none().
     DomainGroup::Platform
+}
+
+/// Classify an agent tool into the memory capability family its surface
+/// requires, so [`all_tools_with_runtime`] can drop tools the bound memory
+/// driver does not advertise (`docs/specs/kernel.md` §3.3).
+///
+/// `None` means "not backed by the memory driver" — a workspace file
+/// (`update_memory_md`), the per-workspace people SQLite store, pure
+/// introspection (`memory_store_kinds`), or a flow-sandboxed namespace
+/// (`flow_memory_*`, already `DomainGroup::Flows`). Such a tool is never
+/// filtered on the capability axis. `None` here is a *decision*, not a default:
+/// `every_memory_tool_has_an_explicit_capability_or_is_core` forces every
+/// memory-family tool through this function so a new one cannot land in the
+/// always-present bucket by accident.
+///
+/// The mandatory families ([`Capability::Core`], [`Capability::Recall`]) are
+/// returned explicitly rather than folded into `None`. Against a *driver's*
+/// advertised set the filter is a no-op for them by construction (a bindable
+/// driver always advertises `Capability::MANDATORY`) — but it is load-bearing
+/// for one host decision below the driver: `CoreContext::memory_capabilities`
+/// answers with the empty set for a deliberate `[subsystems.memory] driver =
+/// "null"`, and that is what drops `memory_store` / `memory_forget` / the
+/// recall tools when an operator turns memory off. Folding them into `None`
+/// would leave an agent able to persist, expose or delete memory through the
+/// session builder's own `Arc<dyn Memory>` in exactly that configuration.
+///
+/// **The `memory_` prefix is deliberately NOT a catch-all here.** [`tool_group`]
+/// can prefix-match because every `memory_*` tool is one family on the
+/// *DomainSet* axis; on the capability axis the family differs per tool, and a
+/// wrong default is worse than no rule. Hence enumeration plus two narrow
+/// prefix rules, backed by the drift guard.
+///
+/// ## Honesty clause — three assignments run ahead of the plumbing
+///
+/// `goals_*` is filesystem-backed today (`tinycortex::memory::goals::store`), not
+/// `MemoryGoals`; `tool_stats` reads the legacy `Arc<dyn Memory>` plus
+/// `agent::learning::tool_tracker`, not `MemoryToolMemory`; `memory_diff` reads
+/// `memory::diff::ops`, not `MemoryDiff`. Filtering them on the driver's
+/// advertised set is nevertheless the correct M5 behaviour: §3.3 is a contract
+/// about what the *model is told exists*, and the later re-point onto
+/// `MemoryGuard` must not change the advertised surface. Assigning them `None`
+/// to dodge the mismatch would bake the wrong contract in.
+fn tool_capability(name: &str) -> Option<crate::openhuman::memory::api::capabilities::Capability> {
+    use crate::openhuman::memory::api::capabilities::Capability;
+
+    // Not driver-backed. Each entry is an argued exception, not a fallthrough.
+    if name == "update_memory_md"          // writes the workspace `MEMORY.md` file directly
+        || name == "memory_store_kinds"    // enumerates `MemoryKind` constants; no store access
+        || name.starts_with("people_")     // per-workspace people SQLite store, not the driver
+        || name.starts_with("flow_memory_")
+    // flow-sandboxed; DomainGroup::Flows
+    {
+        return None;
+    }
+
+    let capability = match name {
+        // ── Mandatory families: always advertised, listed for the record ──
+        "memory_store" | "memory_forget" | "remember_preference" | "save_preference" => {
+            Capability::Core
+        }
+        // Chunk/recall retrieval surface. NOT `Tree` — these read chunk
+        // embeddings and chunk rows, never the summary tree.
+        "memory_recall"
+        | "memory_vector_search"
+        | "memory_chunk_context"
+        | "memory_hybrid_search"
+        | "memory_store_raw_chunks" => Capability::Recall,
+
+        // ── Optional families: absence means the tool disappears ──
+        // The one registered tree tool (`MemoryQueryTool` is an alias of
+        // `MemoryTreeTool`, `memory/query/mod.rs`) plus the compiled persona
+        // flavour reader, which reads a flavoured summary-tree root.
+        "memory_tree" | "memory_flavour" => Capability::Tree,
+        // Free-text search over the canonical *entity* index
+        // (`memory::tree::retrieval::search::search_entities`).
+        "memory_store_raw_search" => Capability::Entities,
+        "memory_diff" => Capability::Diff,
+        "memory_doctor" => Capability::Maintenance,
+        "tool_stats" => Capability::ToolMemory,
+
+        // Prefix rules, so a NEW tool in one of these families auto-gates
+        // instead of silently landing in the un-filtered bucket — the same
+        // reasoning as `tool_group`'s prefix families (#4808 review). Ordered
+        // after the exact arms so `memory_tree` is not swallowed by
+        // `memory_tree_`. The underscore in `goals_` is load-bearing: the
+        // per-thread `goal_get`/`goal_set`/`goal_complete` tools are
+        // `DomainGroup::Threads` and must not be caught.
+        n if n.starts_with("goals_") => Capability::Goals,
+        n if n.starts_with("memory_tree_") => Capability::Tree,
+
+        _ => return None,
+    };
+    Some(capability)
 }
 
 #[cfg(test)]

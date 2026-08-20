@@ -1091,13 +1091,13 @@ fn configured_openhuman_jwt_slug_routes_to_managed_chat_model() {
 
 #[tokio::test]
 async fn openhuman_jwt_slug_discloses_pinned_model() {
-    use crate::core::event_bus::{init_global, publish_global, DomainEvent, DEFAULT_CAPACITY};
+    use crate::core::events::DomainEvent;
     use crate::openhuman::security::egress::{EgressDescriptor, EgressReason};
     use std::time::Duration;
 
     let _guard = crate::openhuman::inference::inference_test_guard();
-    init_global(DEFAULT_CAPACITY);
-    let mut rx = crate::core::event_bus::global().unwrap().raw_receiver();
+    crate::core::bus::init().await.expect("bus init");
+    let mut rx = crate::core::bus::BUS.get().unwrap().receiver();
 
     let marker = "egress-jwt-pinned-marker-v1";
     let mut config = Config::default();
@@ -1108,7 +1108,7 @@ async fn openhuman_jwt_slug_discloses_pinned_model() {
         .expect("managed model should build");
 
     let sentinel = "egress-jwt-pinned-sentinel-end";
-    publish_global(DomainEvent::ExternalTransferPending {
+    crate::core::bus::BUS.publish(DomainEvent::ExternalTransferPending {
         descriptor: EgressDescriptor::network_fetch(sentinel),
         thread_id: None,
         client_id: None,
@@ -1117,7 +1117,7 @@ async fn openhuman_jwt_slug_discloses_pinned_model() {
     let mut count = 0usize;
     loop {
         match tokio::time::timeout(Duration::from_secs(3), rx.recv()).await {
-            Ok(Ok(DomainEvent::ExternalTransferPending { descriptor, .. })) => {
+            Ok(Some(DomainEvent::ExternalTransferPending { descriptor, .. })) => {
                 if descriptor.service == marker {
                     assert_eq!(descriptor.provider_slug, "openhuman");
                     assert!(matches!(descriptor.reason, EgressReason::Inference));
@@ -1126,11 +1126,8 @@ async fn openhuman_jwt_slug_discloses_pinned_model() {
                     break;
                 }
             }
-            Ok(Ok(_)) => continue,
-            Ok(Err(tokio::sync::broadcast::error::RecvError::Lagged(_))) => continue,
-            Ok(Err(tokio::sync::broadcast::error::RecvError::Closed)) => {
-                panic!("event bus closed before sentinel arrived")
-            }
+            Ok(Some(_)) => continue,
+            Ok(None) => panic!("the bus closed before the sentinel arrived"),
             Err(_) => panic!("timed out before egress sentinel arrived"),
         }
     }
@@ -1142,13 +1139,14 @@ async fn openhuman_jwt_slug_discloses_pinned_model() {
 
 #[tokio::test]
 async fn native_claude_turn_routes_disclose_pinned_models() {
-    use crate::core::event_bus::{init_global, publish_global, DomainEvent, DEFAULT_CAPACITY};
+    use crate::core::bus::BUS;
+    use crate::core::events::DomainEvent;
     use crate::openhuman::security::egress::EgressDescriptor;
     use std::time::Duration;
 
     let _guard = crate::openhuman::inference::inference_test_guard();
-    init_global(DEFAULT_CAPACITY);
-    let mut rx = crate::core::event_bus::global().unwrap().raw_receiver();
+    crate::core::bus::init().await.expect("bus init");
+    let mut rx = crate::core::bus::BUS.get().unwrap().receiver();
 
     let configured_sdk = "egress-sdk-configured-marker";
     let pinned_sdk = "egress-sdk-pinned-marker";
@@ -1167,7 +1165,7 @@ async fn native_claude_turn_routes_disclose_pinned_models() {
     let _ = create_turn_chat_model("chat", &code_config, pinned_code, 0.0);
 
     let sentinel = "egress-native-claude-sentinel-end";
-    publish_global(DomainEvent::ExternalTransferPending {
+    BUS.publish(DomainEvent::ExternalTransferPending {
         descriptor: EgressDescriptor::network_fetch(sentinel),
         thread_id: None,
         client_id: None,
@@ -1178,7 +1176,7 @@ async fn native_claude_turn_routes_disclose_pinned_models() {
     let mut configured_count = 0usize;
     loop {
         match tokio::time::timeout(Duration::from_secs(3), rx.recv()).await {
-            Ok(Ok(DomainEvent::ExternalTransferPending { descriptor, .. })) => {
+            Ok(Some(DomainEvent::ExternalTransferPending { descriptor, .. })) => {
                 match descriptor.service.as_str() {
                     service if service == pinned_sdk => {
                         assert_eq!(descriptor.provider_slug, "claude_agent_sdk");
@@ -1195,11 +1193,8 @@ async fn native_claude_turn_routes_disclose_pinned_models() {
                     _ => {}
                 }
             }
-            Ok(Ok(_)) => continue,
-            Ok(Err(tokio::sync::broadcast::error::RecvError::Lagged(_))) => continue,
-            Ok(Err(tokio::sync::broadcast::error::RecvError::Closed)) => {
-                panic!("event bus closed before sentinel arrived")
-            }
+            Ok(Some(_)) => continue,
+            Ok(None) => panic!("the bus closed before the sentinel arrived"),
             Err(_) => panic!("timed out before egress sentinel arrived"),
         }
     }
@@ -1330,11 +1325,11 @@ fn crate_native_chat_model_factory_preserves_invalid_route_diagnostics() {
 /// Complements the isolated emit unit tests in `security::egress`.
 #[tokio::test]
 async fn from_string_external_provider_emits_egress_realpath() {
-    use crate::core::event_bus::{init_global, DomainEvent, DEFAULT_CAPACITY};
+    use crate::core::events::DomainEvent;
     use crate::openhuman::security::egress::EgressReason;
 
-    init_global(DEFAULT_CAPACITY);
-    let mut rx = crate::core::event_bus::global().unwrap().raw_receiver();
+    crate::core::bus::init().await.expect("bus init");
+    let mut rx = crate::core::bus::BUS.get().unwrap().receiver();
 
     let config = Config::default();
     // External provider → real chokepoint must emit BEFORE constructing.
@@ -1344,18 +1339,15 @@ async fn from_string_external_provider_emits_egress_realpath() {
     let found = tokio::time::timeout(std::time::Duration::from_secs(2), async {
         loop {
             match rx.recv().await {
-                Ok(DomainEvent::ExternalTransferPending { descriptor, .. })
+                Some(DomainEvent::ExternalTransferPending { descriptor, .. })
                     if descriptor.provider_slug == "openai"
                         && descriptor.is_external
                         && matches!(descriptor.reason, EgressReason::Inference) =>
                 {
                     return descriptor;
                 }
-                Ok(_) => continue,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                    panic!("event bus closed before ExternalTransferPending arrived")
-                }
+                Some(_) => continue,
+                None => panic!("the bus closed before the expected event arrived"),
             }
         }
     })
@@ -1374,12 +1366,13 @@ async fn from_string_external_provider_emits_egress_realpath() {
 /// on the legacy `Provider` path, so the default managed turn disclosed nothing.
 #[tokio::test]
 async fn create_chat_model_managed_emits_exactly_one_egress_realpath() {
-    use crate::core::event_bus::{init_global, publish_global, DomainEvent, DEFAULT_CAPACITY};
+    use crate::core::bus::BUS;
+    use crate::core::events::DomainEvent;
     use crate::openhuman::security::egress::{EgressDescriptor, EgressReason};
     use std::time::Duration;
 
-    init_global(DEFAULT_CAPACITY);
-    let mut rx = crate::core::event_bus::global().unwrap().raw_receiver();
+    crate::core::bus::init().await.expect("bus init");
+    let mut rx = crate::core::bus::BUS.get().unwrap().receiver();
 
     // Unique model marker so the process-wide bus can't confuse a concurrent
     // test's managed event with ours. `heartbeat` has no managed tier and
@@ -1391,7 +1384,7 @@ async fn create_chat_model_managed_emits_exactly_one_egress_realpath() {
 
     // Bound the drain with a unique sentinel published AFTER our construction.
     let sentinel = "egress-managed-sentinel-end";
-    publish_global(DomainEvent::ExternalTransferPending {
+    BUS.publish(DomainEvent::ExternalTransferPending {
         descriptor: EgressDescriptor::network_fetch(sentinel),
         thread_id: None,
         client_id: None,
@@ -1400,7 +1393,7 @@ async fn create_chat_model_managed_emits_exactly_one_egress_realpath() {
     let mut count = 0usize;
     loop {
         match tokio::time::timeout(Duration::from_secs(3), rx.recv()).await {
-            Ok(Ok(DomainEvent::ExternalTransferPending { descriptor, .. })) => {
+            Ok(Some(DomainEvent::ExternalTransferPending { descriptor, .. })) => {
                 if descriptor.service == marker {
                     assert_eq!(descriptor.provider_slug, "openhuman");
                     assert!(descriptor.is_external, "managed backend is external");
@@ -1410,11 +1403,8 @@ async fn create_chat_model_managed_emits_exactly_one_egress_realpath() {
                     break;
                 }
             }
-            Ok(Ok(_)) => continue,
-            Ok(Err(tokio::sync::broadcast::error::RecvError::Lagged(_))) => continue,
-            Ok(Err(tokio::sync::broadcast::error::RecvError::Closed)) => {
-                panic!("event bus closed before sentinel arrived")
-            }
+            Ok(Some(_)) => continue,
+            Ok(None) => panic!("the bus closed before the sentinel arrived"),
             Err(_) => panic!("timed out before egress sentinel arrived"),
         }
     }
@@ -1429,12 +1419,13 @@ async fn create_chat_model_managed_emits_exactly_one_egress_realpath() {
 /// (nothing leaves the device — it is disclosed as non-external, no event).
 #[tokio::test]
 async fn create_chat_model_local_runtime_does_not_emit_egress_realpath() {
-    use crate::core::event_bus::{init_global, publish_global, DomainEvent, DEFAULT_CAPACITY};
+    use crate::core::bus::BUS;
+    use crate::core::events::DomainEvent;
     use crate::openhuman::security::egress::EgressDescriptor;
     use std::time::Duration;
 
-    init_global(DEFAULT_CAPACITY);
-    let mut rx = crate::core::event_bus::global().unwrap().raw_receiver();
+    crate::core::bus::init().await.expect("bus init");
+    let mut rx = crate::core::bus::BUS.get().unwrap().receiver();
 
     let local_marker = "egress-local-realpath-marker";
     let mut config = Config::default();
@@ -1444,7 +1435,7 @@ async fn create_chat_model_local_runtime_does_not_emit_egress_realpath() {
     // Sentinel bounds the drain; if the local marker ever appears as an external
     // transfer before it, the local-suppression contract is broken.
     let sentinel = "egress-local-sentinel-end";
-    publish_global(DomainEvent::ExternalTransferPending {
+    BUS.publish(DomainEvent::ExternalTransferPending {
         descriptor: EgressDescriptor::network_fetch(sentinel),
         thread_id: None,
         client_id: None,
@@ -1452,7 +1443,7 @@ async fn create_chat_model_local_runtime_does_not_emit_egress_realpath() {
 
     loop {
         match tokio::time::timeout(Duration::from_secs(3), rx.recv()).await {
-            Ok(Ok(DomainEvent::ExternalTransferPending { descriptor, .. })) => {
+            Ok(Some(DomainEvent::ExternalTransferPending { descriptor, .. })) => {
                 assert_ne!(
                     descriptor.service, local_marker,
                     "local runtime must NOT publish ExternalTransferPending"
@@ -1461,11 +1452,8 @@ async fn create_chat_model_local_runtime_does_not_emit_egress_realpath() {
                     break;
                 }
             }
-            Ok(Ok(_)) => continue,
-            Ok(Err(tokio::sync::broadcast::error::RecvError::Lagged(_))) => continue,
-            Ok(Err(tokio::sync::broadcast::error::RecvError::Closed)) => {
-                panic!("event bus closed before sentinel arrived")
-            }
+            Ok(Some(_)) => continue,
+            Ok(None) => panic!("the bus closed before the sentinel arrived"),
             Err(_) => panic!("timed out before egress sentinel arrived"),
         }
     }
@@ -1627,4 +1615,87 @@ fn cloud_fallback_roles_match_the_roles_provider_for_role_actually_falls_back() 
             "'{role}' is a chat-tier role and must not be described as a cloud fallback"
         );
     }
+}
+
+// ── Per-call inference route ────────────────────────────────────────────────
+//
+// These close the loop between `ephemeral_route::apply` and the two resolution
+// steps that have to honour it for a routed turn to reach the caller's
+// endpoint. Both are read from `Config`, so they are exercised without a
+// network or a booted core.
+
+/// A config carrying a resolved model, as `agent_chat` leaves it after applying
+/// `model_override` and before building the agent.
+fn routed_config(endpoint: &str, api_key: &str, model: &str) -> Config {
+    use crate::openhuman::config::schema::ephemeral_route::{apply, EphemeralRoute};
+    let mut config = Config {
+        default_model: Some(model.to_string()),
+        ..Config::default()
+    };
+    apply(
+        &mut config,
+        EphemeralRoute {
+            endpoint: endpoint.to_string(),
+            api_key: api_key.to_string(),
+        },
+    );
+    config
+}
+
+#[test]
+fn a_routed_turn_resolves_its_roles_to_the_callers_endpoint() {
+    use crate::openhuman::config::schema::EPHEMERAL_ROUTE_SLUG;
+    let config = routed_config(
+        "http://127.0.0.1:41234/openai",
+        "mdl-token",
+        "anthropic/claude-sonnet-4",
+    );
+    let expected = format!("{EPHEMERAL_ROUTE_SLUG}:anthropic/claude-sonnet-4");
+    for role in ["chat", "reasoning", "coding", "agentic"] {
+        assert_eq!(
+            provider_for_role(role, &config),
+            expected,
+            "role '{role}' must resolve to the per-call route"
+        );
+    }
+}
+
+#[test]
+fn a_routed_turn_authenticates_with_the_callers_bearer() {
+    use crate::openhuman::config::schema::EPHEMERAL_ROUTE_SLUG;
+    let config = routed_config("http://127.0.0.1:41234/openai", "mdl-token", "x/y");
+    // Read straight off the config: there is no auth profile on disk for a slug
+    // that exists only in this in-memory copy, so the stored-profile lookup
+    // would come back empty and the turn would 401 several layers later.
+    assert_eq!(
+        lookup_key_for_slug(EPHEMERAL_ROUTE_SLUG, &config).expect("resolves"),
+        "mdl-token"
+    );
+}
+
+#[test]
+fn the_routes_bearer_is_not_offered_to_any_other_slug() {
+    // The containment that makes reusing one config field safe: a background
+    // role that fell through to some other cloud slug must not be handed the
+    // caller's credential.
+    let config = routed_config("http://127.0.0.1:41234/openai", "mdl-token", "x/y");
+    for slug in ["openrouter", "anthropic", "openai"] {
+        let key = lookup_key_for_slug(slug, &config).expect("resolves");
+        assert_ne!(key, "mdl-token", "slug '{slug}' must not see the route key");
+    }
+}
+
+#[test]
+fn the_route_resolves_to_a_provider_the_factory_can_build() {
+    // `resolve_cloud_slug` is where a missing `cloud_providers` entry or an
+    // empty model turns into an error. Building the model proves the entry
+    // `apply` registered is complete enough to be used, not merely present.
+    let config = routed_config("http://127.0.0.1:41234/openai", "mdl-token", "x/y");
+    let (_, model_id) = create_test_chat_model_from_string(
+        "coding",
+        &provider_for_role("coding", &config),
+        &config,
+    )
+    .expect("the per-call route builds a chat model");
+    assert_eq!(model_id, "x/y");
 }

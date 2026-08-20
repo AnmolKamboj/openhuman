@@ -1,4 +1,4 @@
-use crate::core::event_bus::request_native_global;
+use crate::core::bus::BUS;
 use crate::openhuman::channels::whatsapp_data::methods;
 use crate::openhuman::channels::whatsapp_data::tools::{is_handler_absent, UNAVAILABLE_NOTE};
 use crate::openhuman::channels::whatsapp_data::types::{ListChatsRequest, WhatsAppChat};
@@ -62,7 +62,7 @@ impl Tool for WhatsAppDataListChatsTool {
             req.limit,
             req.offset,
         );
-        let chats: Vec<WhatsAppChat> = match request_native_global(methods::LIST_CHATS, req).await {
+        let chats: Vec<WhatsAppChat> = match BUS.native().request(methods::LIST_CHATS, req).await {
             Ok(chats) => chats,
             Err(e) if is_handler_absent(&e) => {
                 // Headless / CLI / docker: no desktop shell handler is

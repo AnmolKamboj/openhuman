@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration as StdDuration;
 
 use chrono::Utc;
@@ -103,6 +103,22 @@ fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         .get_or_init(|| Mutex::new(()))
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn ensure_memory_seams(config: Arc<openhuman_core::openhuman::config::Config>) {
+    std::thread::Builder::new()
+        .name("round20-memory-seams".to_string())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || {
+            openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(Arc::clone(
+                &config,
+            ));
+            #[cfg(feature = "modules")]
+            openhuman_core::openhuman::modules::memory::set_modules_policy(config);
+        })
+        .expect("spawn round20 memory seam installer")
+        .join()
+        .expect("round20 memory seam installer panicked");
 }
 
 fn tempdir() -> TempDir {
@@ -397,7 +413,7 @@ async fn round20_memory_sources_readers_and_sync_cover_error_edges_without_netwo
     let harness = setup("http://127.0.0.1:9");
     let config = harness.config().await;
 
-    let rss = openhuman_core::openhuman::memory::sources::readers::rss::RssReader;
+    let rss = openhuman_core::openhuman::memory::sources::readers::rss::RssReader::new();
     let mut missing_url = source_entry("rss-missing-url", SourceKind::RssFeed);
     assert_eq!(
         rss.list_items(&missing_url, &config)
@@ -406,27 +422,15 @@ async fn round20_memory_sources_readers_and_sync_cover_error_edges_without_netwo
         "rss source requires a url"
     );
 
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
-        .await
-        .expect("bind feed fixture");
-    let feed_url = format!("http://{}", listener.local_addr().expect("addr"));
-    let server = tokio::spawn(async move {
-        if let Ok((mut stream, _)) = listener.accept().await {
-            let mut req = [0_u8; 1024];
-            let _ = stream.read(&mut req).await;
-            let response =
-                "HTTP/1.1 200 OK\r\ncontent-type: text/xml\r\ncontent-length: 10\r\n\r\nnot-a-feed";
-            let _ = stream.write_all(response.as_bytes()).await;
-            let _ = stream.shutdown().await;
-        }
-    });
-    missing_url.url = Some(feed_url);
+    // The reader rejects loopback sources before attempting a network fetch.
+    // This supersedes the former parser-error fixture, which exercised an
+    // unsafe request path that no longer exists.
+    missing_url.url = Some("http://127.0.0.1:9/not-a-feed".to_string());
     let feed_err = rss
         .list_items(&missing_url, &config)
         .await
-        .expect_err("unrecognized feed rejected");
-    assert!(feed_err.contains("unrecognized feed format"));
-    let _ = server.await;
+        .expect_err("loopback feed rejected before fetching");
+    assert!(feed_err.contains("public host"), "unexpected RSS error: {feed_err}");
 
     // GitHub reader portion requires a real `gh` on PATH to shadow with our
     // fake. Skip on CI containers that lack `gh` — without it the reader
@@ -491,13 +495,13 @@ async fn round20_memory_sources_readers_and_sync_cover_error_edges_without_netwo
 
     let mut disabled = source_entry("disabled-twitter", SourceKind::TwitterQuery);
     disabled.enabled = false;
-    let disabled_err = sync_source(disabled, config.clone())
+    let disabled_err = sync_source(disabled, Arc::new(config.clone()))
         .await
         .expect_err("disabled sync rejected");
     assert!(disabled_err.contains("is disabled"));
 
     let twitter = source_entry("twitter-round20", SourceKind::TwitterQuery);
-    sync_source(twitter, config)
+    sync_source(twitter, Arc::new(config))
         .await
         .expect("twitter placeholder is reported by background task");
     tokio::time::sleep(StdDuration::from_millis(25)).await;
@@ -507,6 +511,7 @@ async fn round20_memory_sources_readers_and_sync_cover_error_edges_without_netwo
 async fn round20_memory_documents_files_and_envelopes_cover_success_and_failure_paths() {
     let _lock = env_lock();
     let harness = setup("http://127.0.0.1:9");
+    ensure_memory_seams(Arc::new(harness.config().await));
 
     let init = memory_init(MemoryInitRequest {
         jwt_token: Some("ignored-round20".to_string()),

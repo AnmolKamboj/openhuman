@@ -16,23 +16,21 @@ use openhuman_core::openhuman::config::Config;
 use openhuman_core::openhuman::memory::read_rpc::{
     self, ChunkFilter, GraphMode, ResetTreeResponse,
 };
-use openhuman_core::openhuman::memory::tree_source::get_or_create_source_tree;
+use tinymemory_core::tree_source::get_or_create_source_tree;
 use openhuman_core::openhuman::memory::{
     AppendConversationMessageRequest, ConversationMessageRecord, ConversationMessagesRequest,
     CreateConversationThreadRequest, DeleteConversationThreadRequest, EmptyRequest,
     GenerateConversationThreadTitleRequest, UpdateConversationMessageRequest,
     UpdateConversationThreadLabelsRequest, UpdateConversationThreadTitleRequest,
 };
-use openhuman_core::openhuman::memory::conversations::{
-    ensure_thread, list_threads, CreateConversationThread,
-};
-use openhuman_core::openhuman::memory::store::chunks::store::{upsert_chunks, with_connection};
-use openhuman_core::openhuman::memory::store::chunks::types::{
+use tinycortex::memory::conversations::{ensure_thread, list_threads, CreateConversationThread};
+use tinymemory_core::store::chunks::store::{upsert_chunks, with_connection};
+use tinymemory_core::store::chunks::types::{
     approx_token_count, chunk_id, Chunk, Metadata, SourceKind, SourceRef,
 };
-use openhuman_core::openhuman::memory::store::content;
-use openhuman_core::openhuman::memory::store::trees::store as tree_store;
-use openhuman_core::openhuman::memory::store::trees::types::{SummaryNode, TreeKind};
+use tinymemory_core::store::content;
+use tinymemory_core::store::trees::store as tree_store;
+use tinymemory_core::store::trees::types::{SummaryNode, TreeKind};
 use openhuman_core::openhuman::memory::tree::score::embed::pack_embedding;
 use openhuman_core::openhuman::memory::tree::score::extract::EntityKind;
 use openhuman_core::openhuman::memory::tree::score::resolver::CanonicalEntity;

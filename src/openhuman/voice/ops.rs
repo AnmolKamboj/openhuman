@@ -1,4 +1,4 @@
-//! Voice domain business logic — STT (whisper.cpp) and TTS (piper).
+//! Voice domain business logic — hosted STT and local piper TTS.
 //!
 //! Each public function follows the `RpcOutcome<T>` pattern used by other
 //! domain modules (billing, health, etc.).
@@ -10,55 +10,60 @@ use std::time::Instant;
 use crate::openhuman::config::Config;
 use crate::openhuman::inference::local as local_ai;
 use crate::openhuman::inference::local::model_ids;
-use crate::openhuman::inference::local::paths::{
-    resolve_piper_binary, resolve_stt_model_path, resolve_tts_voice_path, resolve_whisper_binary,
-};
-use crate::openhuman::inference::local::whisper_engine;
+use crate::openhuman::inference::local::paths::{resolve_piper_binary, resolve_tts_voice_path};
 use crate::rpc::RpcOutcome;
 
-use super::hallucination::{is_hallucinated_output, HallucinationMode};
+use super::factory::{create_stt_provider, effective_stt_provider};
 use super::postprocess;
 use super::types::{VoiceSpeechResult, VoiceStatus, VoiceTtsResult};
+use crate::openhuman::modules::voice::{is_hallucinated, HallucinationMode};
 
 const LOG_PREFIX: &str = "[voice]";
 
-/// Check availability of STT/TTS binaries and models without executing them.
+/// Check availability of the STT engine and the TTS binary/model without
+/// executing them.
 pub async fn voice_status(config: &Config) -> Result<RpcOutcome<VoiceStatus>, String> {
     debug!("{LOG_PREFIX} checking voice status");
 
-    let whisper_bin = resolve_whisper_binary();
     let piper_bin = resolve_piper_binary();
-    let stt_model = resolve_stt_model_path(config).ok();
     let tts_voice = resolve_tts_voice_path(config).ok();
 
-    let service = local_ai::global(config);
-    let whisper_in_process = whisper_engine::is_loaded(&service.whisper);
-
-    // STT is available when ANY transcription backend can work:
-    // 1. The in-process whisper engine is already loaded, OR
-    // 2. In-process whisper is enabled in config and the model file exists
-    //    (the engine will load the model on first use), OR
-    // 3. The whisper-cli binary is installed and the model file exists.
-    let stt_available = whisper_in_process
-        || (config.local_ai.whisper_in_process && stt_model.is_some())
-        || (whisper_bin.is_some() && stt_model.is_some());
+    // STT is hosted now, so "available" means the configured engine actually
+    // resolves to a provider: the backend proxy always does, a third-party slug
+    // only when its `voice_providers` entry exists. Constructing the provider is
+    // the same check the transcribe path performs, and it makes no network call
+    // — so this reports the real failure a user would hit, not a guess.
+    let stt_engine = effective_stt_provider(config);
+    let stt_error = create_stt_provider(&stt_engine, "", config)
+        .and_then(|_| {
+            let slug = stt_engine
+                .split_once(':')
+                .map_or(stt_engine.as_str(), |(slug, _)| slug);
+            if matches!(slug.trim(), "cloud" | "openhuman" | "backend") {
+                return Ok(());
+            }
+            let key = crate::openhuman::inference::provider::factory::lookup_key_for_slug(
+                slug.trim(),
+                config,
+            )?;
+            if key.trim().is_empty() {
+                anyhow::bail!("voice provider '{slug}' has no API credential configured")
+            }
+            Ok(())
+        })
+        .err()
+        .map(|e| e.to_string());
+    let stt_available = stt_error.is_none();
     let tts_available = piper_bin.is_some() && tts_voice.is_some();
 
     debug!(
-        "{LOG_PREFIX} stt_available={stt_available} tts_available={tts_available} \
-         whisper_in_process={whisper_in_process} \
-         whisper_bin={} piper_bin={} stt_model={} tts_voice={}",
-        safe_basename_path(&whisper_bin),
+        "{LOG_PREFIX} stt_available={stt_available} stt_engine={stt_engine} \
+         tts_available={tts_available} piper_bin={} tts_voice={} stt_error={:?}",
         safe_basename_path(&piper_bin),
-        safe_basename_str(&stt_model),
         safe_basename_str(&tts_voice),
+        stt_error,
     );
 
-    let stt_provider = if config.local_ai.stt_provider.trim().is_empty() {
-        "cloud".to_string()
-    } else {
-        config.local_ai.stt_provider.clone()
-    };
     let tts_provider = if config.local_ai.tts_provider.trim().is_empty() {
         "cloud".to_string()
     } else {
@@ -70,20 +75,18 @@ pub async fn voice_status(config: &Config) -> Result<RpcOutcome<VoiceStatus>, St
         tts_available,
         stt_model_id: model_ids::effective_stt_model_id(config),
         tts_voice_id: model_ids::effective_tts_voice_id(config),
-        whisper_binary: whisper_bin.map(|p| p.display().to_string()),
         piper_binary: piper_bin.map(|p| p.display().to_string()),
-        stt_model_path: stt_model,
         tts_voice_path: tts_voice,
-        whisper_in_process,
         llm_cleanup_enabled: config.local_ai.voice_llm_cleanup_enabled,
-        stt_provider,
+        stt_engine,
+        stt_error,
         tts_provider,
     };
 
     Ok(RpcOutcome::single_log(status, "voice status checked"))
 }
 
-/// Transcribe audio from a file path using whisper.cpp.
+/// Transcribe audio from a file path through the configured STT engine.
 ///
 /// If `context` is provided, the raw transcription is post-processed through
 /// a local LLM to fix grammar and disambiguate words using conversation history.
@@ -98,7 +101,7 @@ pub async fn voice_transcribe(
 
     let service = local_ai::global(config);
     let transcribe_started = Instant::now();
-    // Pass context as initial_prompt to bias whisper toward known vocabulary.
+    // Context is forwarded as a vocabulary-bias hint where the engine has one.
     let output = service
         .transcribe_with_prompt(config, audio_path.trim(), context)
         .await
@@ -174,7 +177,7 @@ pub async fn voice_transcribe_bytes(
     let write_elapsed = write_started.elapsed();
 
     let transcribe_started = Instant::now();
-    // Pass context as initial_prompt to bias whisper toward known vocabulary.
+    // Context is forwarded as a vocabulary-bias hint where the engine has one.
     let output = service
         .transcribe_with_prompt(config, file_path.to_string_lossy().as_ref(), context)
         .await;
@@ -197,7 +200,21 @@ pub async fn voice_transcribe_bytes(
     );
 
     // Filter hallucinated output before spending time on LLM cleanup.
-    if is_hallucinated_output(&raw_text, HallucinationMode::Conversation) {
+    //
+    // Falls OPEN when the module cannot be reached: passing a stock phrase
+    // through costs the user one bad transcription they can see and redo,
+    // whereas defaulting to "hallucinated" would silently delete real speech.
+    // Only one of those is recoverable.
+    let hallucinated = match is_hallucinated(config, &raw_text, HallucinationMode::Conversation)
+        .await
+    {
+        Ok(verdict) => verdict,
+        Err(error) => {
+            warn!("{LOG_PREFIX} hallucination filter unavailable ({error}); passing text through");
+            false
+        }
+    };
+    if hallucinated {
         debug!("{LOG_PREFIX} transcribe_bytes: hallucination detected, returning empty result");
         return Ok(RpcOutcome::single_log(
             VoiceSpeechResult {
@@ -374,23 +391,85 @@ mod tests {
     async fn voice_status_detects_stub_binaries() {
         let tmp = tempfile::tempdir().expect("tempdir");
 
-        let whisper_stub = tmp.path().join("whisper-cli");
-        std::fs::write(&whisper_stub, b"#!/bin/sh\n").expect("write stub");
+        let piper_stub = tmp.path().join("piper");
+        std::fs::write(&piper_stub, b"#!/bin/sh\n").expect("write stub");
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&whisper_stub, std::fs::Permissions::from_mode(0o755))
+            std::fs::set_permissions(&piper_stub, std::fs::Permissions::from_mode(0o755))
                 .expect("chmod");
         }
 
-        let _guard = EnvGuard::set("WHISPER_BIN", &whisper_stub.display().to_string());
+        let _guard = EnvGuard::set("PIPER_BIN", &piper_stub.display().to_string());
 
         let mut config = Config::default();
         config.workspace_dir = tmp.path().join("workspace");
         config.config_path = tmp.path().join("config.toml");
 
         let result = voice_status(&config).await.unwrap();
-        assert!(result.value.whisper_binary.is_some());
+        assert!(result.value.piper_binary.is_some());
+    }
+
+    /// STT is hosted, so status must report it available on a default config
+    /// with no local binaries or models anywhere — the state that used to mean
+    /// "STT unavailable" back when a whisper.cpp install was required.
+    #[tokio::test]
+    async fn voice_status_reports_backend_stt_available_without_any_local_install() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut config = Config::default();
+        config.workspace_dir = tmp.path().join("workspace");
+        config.config_path = tmp.path().join("config.toml");
+
+        let result = voice_status(&config).await.unwrap();
+        assert!(
+            result.value.stt_available,
+            "backend engine is always routable"
+        );
+        assert_eq!(result.value.stt_engine, "cloud");
+        assert!(result.value.stt_error.is_none());
+    }
+
+    /// Selecting a third-party engine with no matching `voice_providers` entry
+    /// must surface as unavailable-with-a-reason rather than silently falling
+    /// back to the backend proxy and billing the wrong account.
+    #[tokio::test]
+    async fn voice_status_reports_unconfigured_engine_as_unavailable() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut config = Config::default();
+        config.workspace_dir = tmp.path().join("workspace");
+        config.config_path = tmp.path().join("config.toml");
+        config.voice_server.stt_engine = crate::openhuman::config::schema::SttEngine::Elevenlabs;
+
+        let result = voice_status(&config).await.unwrap();
+        assert!(!result.value.stt_available);
+        assert_eq!(result.value.stt_engine, "elevenlabs");
+        let err = result.value.stt_error.expect("reason must be reported");
+        assert!(err.contains("elevenlabs"), "reason names the slug: {err}");
+    }
+
+    #[tokio::test]
+    async fn voice_status_reports_external_engine_without_credentials_as_unavailable() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut config = Config::default();
+        config.workspace_dir = tmp.path().join("workspace");
+        config.config_path = tmp.path().join("config.toml");
+        config.voice_server.stt_engine = crate::openhuman::config::schema::SttEngine::Elevenlabs;
+        config.voice_providers.push(
+            crate::openhuman::config::schema::voice_providers::VoiceProviderCreds {
+                slug: "elevenlabs".into(),
+                endpoint: "https://api.elevenlabs.io/v1".into(),
+                capability:
+                    crate::openhuman::config::schema::voice_providers::VoiceCapability::Both,
+                ..Default::default()
+            },
+        );
+
+        let status = voice_status(&config).await.unwrap().value;
+        assert!(!status.stt_available);
+        assert!(status
+            .stt_error
+            .as_deref()
+            .is_some_and(|error| error.contains("no API credential")));
     }
 
     #[test]
@@ -405,25 +484,44 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn voice_transcribe_errors_when_local_ai_disabled() {
+    /// Transcription no longer depends on the local-AI runtime — STT is a
+    /// hosted call, so a workspace with `local_ai.runtime_enabled = false` must
+    /// still reach the engine. The only failure left on this path is the audio
+    /// file itself, and it must name the file rather than blaming local AI.
+    async fn voice_transcribe_errors_on_unreadable_audio_not_on_disabled_local_ai() {
         let mut config = Config::default();
         config.local_ai.runtime_enabled = false;
+        let missing = std::env::temp_dir().join("openhuman-no-such-input.wav");
+        let _ = std::fs::remove_file(&missing);
 
-        let err = voice_transcribe(&config, " /tmp/input.wav ", None, true)
+        let err = voice_transcribe(&config, &format!(" {} ", missing.display()), None, true)
             .await
-            .expect_err("disabled local ai should fail");
-        assert!(err.contains("local ai is disabled"));
+            .expect_err("a missing audio file must fail");
+        assert!(
+            err.contains("failed to read audio file"),
+            "error should name the unreadable file, got: {err}"
+        );
+        assert!(
+            !err.contains("local ai is disabled"),
+            "hosted STT must not be gated on the local-AI runtime: {err}"
+        );
     }
 
     #[tokio::test]
-    async fn voice_transcribe_bytes_errors_when_local_ai_disabled() {
+    /// Same contract for the bytes entry point: with local AI off it still
+    /// reaches the hosted engine, so the failure comes from the upload (no
+    /// signed-in session in a test workspace), never from a local-AI gate.
+    async fn voice_transcribe_bytes_is_not_gated_on_the_local_ai_runtime() {
         let mut config = Config::default();
         config.local_ai.runtime_enabled = false;
 
         let err = voice_transcribe_bytes(&config, b"abc", Some("wav".to_string()), None, true)
             .await
-            .expect_err("disabled local ai should fail");
-        assert!(err.contains("local ai is disabled"));
+            .expect_err("no signed-in session means the upload cannot happen");
+        assert!(
+            !err.contains("local ai is disabled"),
+            "hosted STT must not be gated on the local-AI runtime: {err}"
+        );
     }
 
     #[tokio::test]

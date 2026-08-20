@@ -5,7 +5,8 @@ use super::types::{
     FollowUpRequest, MessageAgentRequest, ResumeAgentRequest, SpawnAgentRequest,
     SpawnAgentResponse, WaitAgentOptions, WaitAgentResponse,
 };
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::harness::definition::{AgentDefinition, AgentDefinitionRegistry};
 use crate::openhuman::agent::harness::fork_context::{
     current_parent, with_parent_context, ParentExecutionContext,
@@ -243,7 +244,7 @@ impl AgentOrchestrationSession {
             reason: request.reason.clone(),
         });
         drop(state);
-        publish_global(DomainEvent::AgentOrchestrationClosed {
+        BUS.publish(DomainEvent::AgentOrchestrationClosed {
             session_id: self.session_id.clone(),
             orchestration_id: request.orchestration_id,
             reason: request.reason,
@@ -431,7 +432,7 @@ impl AgentOrchestrationSession {
             });
         }
 
-        publish_global(DomainEvent::AgentOrchestrationSpawned {
+        BUS.publish(DomainEvent::AgentOrchestrationSpawned {
             session_id: self.session_id.clone(),
             orchestration_id: orchestration_id.clone(),
             agent_id: agent_id.clone(),
@@ -486,14 +487,21 @@ impl AgentOrchestrationSession {
 
         let task_session = self.clone();
         let task_id = orchestration_id.clone();
-        let task = tokio::spawn(async move {
-            task_session.mark_running(&task_id).await;
-            let result = with_parent_context(parent, async move {
-                run_subagent(&definition, &prompt, options).await
-            })
-            .await;
-            task_session.finish_agent(&task_id, result).await;
-        });
+        // Captured on *this* task: a `tokio::task_local` does not cross
+        // `tokio::spawn`, so the turn's origin label and workspace root are
+        // carried across the same boundary the parent execution context
+        // already is. Without the origin the spawned agent's external-effect
+        // tools reach the approval gate unlabelled and are refused.
+        let task = tokio::spawn(crate::openhuman::agent::turn_origin::propagate(
+            crate::openhuman::agent::turn_workspace::propagate(async move {
+                task_session.mark_running(&task_id).await;
+                let result = with_parent_context(parent, async move {
+                    run_subagent(&definition, &prompt, options).await
+                })
+                .await;
+                task_session.finish_agent(&task_id, result).await;
+            }),
+        ));
 
         {
             let mut state = self.state.lock().await;
@@ -592,7 +600,7 @@ impl AgentOrchestrationSession {
         drop(state);
 
         if let Some((outcome, _)) = completed_event {
-            publish_global(DomainEvent::AgentOrchestrationCompleted {
+            BUS.publish(DomainEvent::AgentOrchestrationCompleted {
                 session_id: self.session_id.clone(),
                 orchestration_id: orchestration_id.to_string(),
                 agent_id: outcome.agent_id,
@@ -602,7 +610,7 @@ impl AgentOrchestrationSession {
             });
         }
         if let Some((agent_id, error, _)) = failed_event {
-            publish_global(DomainEvent::AgentOrchestrationFailed {
+            BUS.publish(DomainEvent::AgentOrchestrationFailed {
                 session_id: self.session_id.clone(),
                 orchestration_id: orchestration_id.to_string(),
                 agent_id,

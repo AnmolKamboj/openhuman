@@ -3,7 +3,7 @@
 //! A [`Trigger`] is the normalized, source-agnostic representation of an
 //! external event (cron tick, user message, Composio webhook, sub-agent
 //! conclusion) that the background orchestrator may decide to act on. The
-//! ingestion front-end (`registry.rs`) turns raw [`crate::core::event_bus::DomainEvent`]s
+//! ingestion front-end (`registry.rs`) turns raw [`crate::core::events::DomainEvent`]s
 //! into `Trigger`s; the LLM gate (`gate.rs`) turns each `Trigger` into a
 //! [`GateDecision`].
 //!

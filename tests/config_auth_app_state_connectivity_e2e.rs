@@ -25,7 +25,7 @@ use openhuman_core::api::config::{
     OPENHUMAN_INFERENCE_PATH, VITE_APP_ENV_VAR,
 };
 use openhuman_core::core::auth::{init_rpc_token, CORE_TOKEN_ENV_VAR};
-use openhuman_core::core::event_bus::{DomainEvent, EventHandler};
+use openhuman_core::core::events::DomainEvent;
 use openhuman_core::core::jsonrpc::build_core_http_router;
 use openhuman_core::openhuman::config::schema::{
     generate_provider_id, generate_voice_provider_id, is_slug_reserved, is_voice_slug_reserved,
@@ -68,6 +68,7 @@ use openhuman_core::openhuman::security::credentials::{
     list_provider_credentials_by_prefix, normalize_provider, rpc_store_composio_api_key,
     store_composio_api_key, AuthService, APP_SESSION_PROVIDER, COMPOSIO_DIRECT_PROVIDER,
 };
+use tinybus::EventHandler;
 
 const TEST_RPC_TOKEN: &str = "worker-a-domain-e2e-token";
 
@@ -1184,23 +1185,6 @@ fn config_schema_defaults_cover_dashboard_capability_memory_and_security_shapes(
         let _: openhuman_core::openhuman::config::schema::McpAuthConfig =
             serde_json::from_value(auth).expect("mcp auth variant should deserialize");
     }
-
-    let incomplete_poly = openhuman_core::openhuman::config::schema::PolymarketClobCredentials {
-        api_key: " key ".into(),
-        secret: "   ".into(),
-        passphrase: " pass ".into(),
-    };
-    assert!(!incomplete_poly.is_complete());
-    let complete_poly = openhuman_core::openhuman::config::schema::PolymarketClobCredentials {
-        api_key: " key ".into(),
-        secret: " secret ".into(),
-        passphrase: " pass ".into(),
-    };
-    assert!(complete_poly.is_complete());
-    assert_eq!(
-        format!("{complete_poly:?}"),
-        "PolymarketClobCredentials { api_key: \"<redacted>\", secret: \"<redacted>\", passphrase: \"<redacted>\" }"
-    );
 }
 
 #[test]

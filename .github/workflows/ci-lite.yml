@@ -73,6 +73,9 @@ jobs:
       # Test wiring surface (workflows, package.json, all.rs, tests/, script
       # tests) → run the test-inventory orphan + controller-domain guard.
       inventory: ${{ steps.filter.outputs.inventory }}
+      # CI image and toolchain pin inputs → check that every workflow, the
+      # image Dockerfile, and rust-toolchain.toml stay in lockstep.
+      toolchain-image: ${{ steps.filter.outputs['toolchain-image'] }}
       # Windows installer or its unit test → run the Pester install lane.
       install-ps1: ${{ steps.filter.outputs.install_ps1 }}
       coverage: ${{ steps.filter.outputs.frontend == 'true' || steps.filter.outputs['rust-core'] == 'true' || steps.filter.outputs['rust-tauri'] == 'true' }}
@@ -201,6 +204,13 @@ jobs:
               - 'scripts/**/*.test.mjs'
               - 'scripts/tests/**'
               - 'scripts/generate-test-inventory.mjs'
+            # The drift guard scans every workflow plus these two direct
+            # inputs, so changes to any of them must run it.
+            toolchain-image:
+              - '.github/workflows/**'
+              - '.github/Dockerfile'
+              - 'rust-toolchain.toml'
+              - 'scripts/ci/check-toolchain-image.mjs'
             # Windows installer + its Pester unit test.
             install_ps1:
               - '.github/workflows/ci-lite.yml'
@@ -214,7 +224,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     container:
-      image: ghcr.io/tinyhumansai/openhuman_ci:rust-1.93.0
+      image: ghcr.io/tinyhumansai/openhuman_ci:latest
     steps:
       - name: Checkout code
         # Pinned to the v7 commit SHA for supply-chain hardening (CodeRabbit
@@ -333,9 +343,10 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     container:
-      image: ghcr.io/tinyhumansai/openhuman_ci:rust-1.93.0
+      image: ghcr.io/tinyhumansai/openhuman_ci:latest
     env:
       CARGO_INCREMENTAL: "0"
+      RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -364,8 +375,25 @@ jobs:
         if: needs.changes.outputs['rust-core'] == 'true' || needs.changes.outputs['rust-tauri'] == 'true'
         run: bash scripts/check-linux-tls-dependencies.sh
 
-      - name: Run clippy (core crate)
+      - name: Run clippy (core crate, product feature set)
         if: needs.changes.outputs['rust-core'] == 'true'
+        # `--features` is load-bearing. `[features] default` is the CONTRIBUTOR
+        # set (see the comment above it in Cargo.toml) and omits voice, web3,
+        # documents, meet, contacts, inference and crash-reporting — so a bare
+        # `cargo clippy` no longer lints code that ships. Product set:
+        # scripts/ci/product-features.txt, asserted equal to the shell's
+        # forwarding list by check-feature-forwarding.mjs.
+        run: |
+          bash scripts/ci-cancel-aware.sh cargo clippy -p openhuman \
+            --features "$(bash scripts/ci/product-features.sh)" -- -D warnings
+
+      - name: Run clippy (core crate, contributor default set)
+        if: needs.changes.outputs['rust-core'] == 'true'
+        # The set a contributor's editor and pre-push hook actually compile. A
+        # lint that only fires with those gates OFF — an import left unused once
+        # a domain is compiled out, say — is invisible to the product lane above
+        # and would land red on every contributor's machine while CI stayed
+        # green. Cheap: this graph is ~356 packages against the product's ~567.
         run: bash scripts/ci-cancel-aware.sh cargo clippy -p openhuman -- -D warnings
 
       - name: Cache CEF binary distribution
@@ -386,10 +414,9 @@ jobs:
   # Feature-gate smoke: proves the core still compiles with a domain gate turned
   # OFF. The disabled build is the ONLY thing that catches stub-facade signature
   # drift (see AGENTS.md "Compile-time domain gates"), so it must run in CI, not
-  # just locally. Pathfinder lane for #4803 (voice); the explicit --features
-  # list (only tokenjuice-treesitter) turns every default gate OFF, so it also
-  # covers #4804 (media) and each sibling gate as it lands — no edit needed
-  # unless a new gate must stay ON here.
+  # just locally. Pathfinder lane for #4803 (voice); plain --no-default-features
+  # turns every default gate OFF, so it also covers #4804 (media) and each
+  # sibling gate as it lands — no edit needed unless a new gate must stay ON here.
   rust-feature-gate-smoke:
     name: Rust Feature-Gate Smoke (gates off)
     needs: [changes]
@@ -399,9 +426,10 @@ jobs:
     # binary, not just `cargo check`.
     timeout-minutes: 40
     container:
-      image: ghcr.io/tinyhumansai/openhuman_ci:rust-1.93.0
+      image: ghcr.io/tinyhumansai/openhuman_ci:latest
     env:
       CARGO_INCREMENTAL: "0"
+      RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
       # Deep-async-stack belt (same as the coverage lanes) — virtual reservation,
       # zero cost. Keeps a gate-contract test with a deep stack from tripping.
       RUST_MIN_STACK: "67108864"
@@ -428,7 +456,20 @@ jobs:
         # a #[cfg] and so do not compile with the gates off. That cleanup is tracked
         # in #5021 alongside running the full gates-off suite; until it lands, this
         # lane checks the lib and RUNS the gate-contract lib tests below.
-        run: bash scripts/ci-cancel-aware.sh cargo check --manifest-path Cargo.toml --no-default-features --features tokenjuice-treesitter
+        run: bash scripts/ci-cancel-aware.sh cargo check --manifest-path Cargo.toml --no-default-features
+
+      - name: Check the gates that are in NEITHER the contributor nor the product set
+        # `tui` is the one gate that is default-OFF *and* deliberately not
+        # forwarded to the desktop shell (it is a terminal front-end; the app
+        # ships its own UI). That combination means nothing else in CI compiles
+        # it: the product lanes do not select it, the contributor lanes no
+        # longer default it on, and the gates-off check above turns it off.
+        #
+        # Without this step the ratatui front-end would rot silently — which is
+        # the same shape of failure as #4901, just pointed at a gate instead of
+        # at the shipped app. If a future gate lands in this same
+        # neither-set position, add it here.
+        run: bash scripts/ci-cancel-aware.sh cargo check --manifest-path Cargo.toml --no-default-features --features tui
 
       - name: Run the gate-contract tests with the default domain gates disabled
         # `cargo check` (even --all-targets) never RUNS tests, so a gated family that
@@ -437,6 +478,13 @@ jobs:
         # (#5022). This step executes the gate-contract test modules so that class of
         # regression fails CI, not just a local pre-push.
         #
+        # `memory::people::address_book::tests` used to be here and was removed: the
+        # address-book tests moved into the tinycortex dependency crate with the code
+        # they cover, and a dependency's unit tests are not collected by this crate's
+        # `--lib` harness — so the filter matched zero tests while reading like
+        # coverage. `contacts_gate_tests` is the live replacement (its off-macOS arm
+        # compiles on Linux, which is where this lane runs).
+        #
         # Scope is deliberate: the full gates-off `--lib` run aborts on a pre-existing
         # task_local stack overflow (`agent::harness::session::tests::
         # turn_dispatches_spawn_subagent_through_full_path`) that reproduces in the
@@ -444,10 +492,10 @@ jobs:
         # test by scope, not by skip. Running the full suite is tracked in #5021.
         run: |
           bash scripts/ci-cancel-aware.sh cargo test --manifest-path Cargo.toml \
-            --no-default-features --features tokenjuice-treesitter --lib -- \
-            core::all:: core::cli:: core::jsonrpc:: core::legacy_aliases:: core::runtime:: agent::registry::agents::loader:: memory::people::address_book::tests:: tools::schemas:: tools::ops::tests::
+            --no-default-features --lib -- \
+            core::all:: core::cli:: core::jsonrpc:: core::legacy_aliases:: core::runtime:: agent::registry::agents::loader:: memory::people::contacts_gate_tests:: openhuman::config:: openhuman::platform::socket::event_handlers:: tools::schemas:: tools::ops::tests::
           bash scripts/ci-cancel-aware.sh cargo test --manifest-path Cargo.toml \
-            --no-default-features --features tokenjuice-treesitter,mcp --lib -- \
+            --no-default-features --features mcp --lib -- \
             mcp::server::resources::
 
       - name: Guard — the kernel dependency floor may not grow
@@ -474,7 +522,7 @@ jobs:
         #
         # This asserts the calibration still holds. If it fails, every
         # projection built on the simulator is suspect until it is fixed.
-        run: python3 scripts/dep-sim.py --cut-nothing --expect-names 285
+        run: python3 scripts/dep-sim.py --cut-nothing --expect-names 264
 
       - name: Guard — new feature-gated test modules must be acknowledged
         # Self-maintaining coverage: the set of source files that #[cfg]-gate a test on
@@ -497,22 +545,23 @@ jobs:
           openhuman/agent/harness/session/tests.rs
           openhuman/agent/harness/subagent_runner/tool_prep.rs
           openhuman/agent/registry/agents/loader.rs
-          openhuman/inference/local/mod.rs
-          openhuman/memory/people/address_book.rs
+          openhuman/config/migrations/retire_local_whisper_stt_tests.rs
           openhuman/mcp/server/resources.rs
+          openhuman/memory/people/mod.rs
+          openhuman/platform/socket/event_handlers.rs
           openhuman/platform/socket/ops.rs
           openhuman/tinyplace/manifest.rs
           openhuman/tools/registry/ops_tests.rs
           openhuman/tools/registry/schemas.rs
           openhuman/tools/ops_tests.rs
-          openhuman/tools/schemas.rs
           openhuman/voice/compile_status.rs
           openhuman/web3/stub.rs
           openhuman/web3/wallet/stub.rs
           openhuman/web3/x402/stub.rs
+          tui/runner.rs
           EOF
           )
-          ACTUAL=$(grep -rlE '#\[cfg\((not\()?feature = "(voice|media|web3|meet|mcp|skills|flows|channels|prediction-markets|contacts)"|#\[cfg\((not\()?all\([^]]*feature = "contacts"' src --include='*.rs' \
+          ACTUAL=$(grep -rlE '#\[cfg\((not\()?feature = "(voice|media|web3|meet|mcp|skills|flows|channels|contacts)"|#\[cfg\((not\()?all\([^]]*feature = "contacts"' src --include='*.rs' \
             | xargs grep -lE '#\[test\]|#\[tokio::test\]|fn .*_test' 2>/dev/null | sed 's|^src/||' | sort -u)
           if ! diff <(echo "$EXPECTED" | sed 's/^ *//' | sort -u) <(echo "$ACTUAL"); then
             echo "::error::Gated-test file set changed. Update the EXPECTED allowlist in the rust-feature-gate-smoke lane, and extend the scoped 'cargo test' filter if the new module can carry an ungated-assert regression (see #5022)."
@@ -532,9 +581,10 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 40
     container:
-      image: ghcr.io/tinyhumansai/openhuman_ci:rust-1.93.0
+      image: ghcr.io/tinyhumansai/openhuman_ci:latest
     env:
       CARGO_INCREMENTAL: "0"
+      RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -579,9 +629,10 @@ jobs:
     # needs more wall-time.
     timeout-minutes: 50
     container:
-      image: ghcr.io/tinyhumansai/openhuman_ci:rust-1.93.0
+      image: ghcr.io/tinyhumansai/openhuman_ci:latest
     env:
       CARGO_INCREMENTAL: "0"
+      RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
       # Coverage-instrumented test binaries are dominated by DWARF debug info,
       # which exhausts the runner disk and SIGBUSes the linker. Drop debug info
       # entirely for this job — llvm-cov line/region coverage is read from the
@@ -636,6 +687,45 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      - name: Install checksum-pinned native test modules
+        run: |
+          # tinybus validates every directory ancestor. GitHub mounts the
+          # checkout as the host runner uid while this container runs as root,
+          # so a module below $GITHUB_WORKSPACE is correctly refused. Keep
+          # native fixtures in a root-owned, container-ephemeral tree instead.
+          module_root="/opt/openhuman-test-modules/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          memory_dir="$module_root/tinymemory"
+          juice_dir="$module_root/tinyjuice"
+          memory_archive="$memory_dir/tinymemory-module-1.0.1-ubuntu-22.04-x86_64.tar.gz"
+          juice_archive="$juice_dir/tinyjuice-module-0.2.2-ubuntu-22.04-x86_64.tar.gz"
+          rm -rf "$memory_dir" "$juice_dir"
+          mkdir -p "$memory_dir" "$juice_dir"
+          curl --fail --location --silent --show-error \
+            "https://github.com/tinyhumansai/tinymemory/releases/download/v1.0.1/$(basename "$memory_archive")" \
+            --output "$memory_archive"
+          curl --fail --location --silent --show-error \
+            "https://github.com/tinyhumansai/tinyjuice/releases/download/v0.2.2/$(basename "$juice_archive")" \
+            --output "$juice_archive"
+          echo "35d13463041f455bebd833a71ba370d891a4e59d1b8e576e81635e2777a0c3dd  $memory_archive" \
+            | sha256sum --check
+          echo "fd8caf7fccb53328870fd26922aa9768d253cd4b3bf758967847d6512df03863  $juice_archive" \
+            | sha256sum --check
+          # Do not restore the release builder's uid into the trusted tree.
+          tar --no-same-owner -xzf "$memory_archive" -C "$memory_dir"
+          tar --no-same-owner -xzf "$juice_archive" -C "$juice_dir"
+          echo "TINYMEMORY_TEST_MODULE=$memory_dir/libtinymemory_module.so" \
+            >> "$GITHUB_ENV"
+          echo "TINYJUICE_TEST_MODULE=$juice_dir/libtinyjuice_module.so" \
+            >> "$GITHUB_ENV"
+
+      - name: Run TinyJuice host-module regression
+        run: |
+          cargo test --lib --features modules \
+            openhuman::agent::tinyagents::middleware::tests::tool_output_tabulates_a_large_graph_for_a_non_exempt_tool \
+            -- --ignored --exact
+        env:
+          CARGO_BUILD_JOBS: "1"
+
       - name: Run cargo llvm-cov for openhuman core (changed modules only)
         run: bash scripts/ci/rust-coverage-changed.sh
         env:
@@ -676,9 +766,10 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     container:
-      image: ghcr.io/tinyhumansai/openhuman_ci:rust-1.93.0
+      image: ghcr.io/tinyhumansai/openhuman_ci:latest
     env:
       CARGO_INCREMENTAL: "0"
+      RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
       # The instrumented Tauri shell binary (whole tauri/zbus/CEF graph) is
       # dominated by DWARF debug info, which exhausts the runner disk and
       # SIGBUSes the linker (collect2: ld terminated with signal 7) during the
@@ -735,8 +826,23 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      - name: Clear stale Tauri coverage artifacts
+        # rust-cache restores app/src-tauri/target, including llvm-cov-target.
+        # cargo's fingerprints do not distinguish a previously restored
+        # non-instrumented test executable, which then runs successfully but
+        # produces no .profraw file for cargo-llvm-cov to merge.
+        run: cargo llvm-cov clean --manifest-path app/src-tauri/Cargo.toml
+
       - name: Run cargo llvm-cov for Tauri shell
-        run: bash scripts/ci-cancel-aware.sh cargo llvm-cov --manifest-path app/src-tauri/Cargo.toml --lcov --output-path lcov-tauri.info
+        run: |
+          # The container's Cargo configuration installs sccache as its rustc
+          # wrapper. Use llvm-cov's RustFLAGS mode so that wrapper cannot
+          # replace its instrumentation wrapper and silently drop .profraw
+          # output after otherwise-passing tests.
+          # The job-level linker flag must also be cleared: llvm-cov sets the
+          # same variable with `-C instrument-coverage` for this invocation.
+          unset RUSTFLAGS
+          bash scripts/ci-cancel-aware.sh cargo llvm-cov --no-rustc-wrapper --manifest-path app/src-tauri/Cargo.toml --lcov --output-path lcov-tauri.info
         env:
           # Serialize codegen/link to cap peak memory + disk during the
           # instrumented Tauri-shell link (SIGBUS otherwise). Mirrors
@@ -767,7 +873,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     container:
-      image: ghcr.io/tinyhumansai/openhuman_ci:rust-1.93.0
+      image: ghcr.io/tinyhumansai/openhuman_ci:latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -806,7 +912,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     container:
-      image: ghcr.io/tinyhumansai/openhuman_ci:rust-1.93.0
+      image: ghcr.io/tinyhumansai/openhuman_ci:latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -819,6 +925,22 @@ jobs:
       # in src/core/all.rs is referenced under tests/.
       - name: Run test-inventory guard
         run: pnpm test:inventory
+
+  toolchain-image-drift:
+    name: Toolchain Image Drift Guard
+    needs: [changes]
+    if: needs.changes.outputs['toolchain-image'] == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify CI image and Rust toolchain pins
+        run: node scripts/ci/check-toolchain-image.mjs
 
   orch-ip-gate:
     name: Orchestration IP Gate (no local brain re-entry)
@@ -888,9 +1010,10 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     container:
-      image: ghcr.io/tinyhumansai/openhuman_ci:rust-1.93.0
+      image: ghcr.io/tinyhumansai/openhuman_ci:latest
     env:
       CARGO_INCREMENTAL: "0"
+      RUSTFLAGS: "-C link-arg=-fuse-ld=mold"
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -898,10 +1021,10 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Init tinycortex submodule
+      - name: Init tinycortex and tinymemory submodules
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git submodule update --init --recursive vendor/tinycortex
+          git submodule update --init --recursive vendor/tinycortex vendor/tinymemory
 
       - name: Cache TinyCortex build artifacts
         uses: Swatinem/rust-cache@v2
@@ -923,6 +1046,7 @@ jobs:
       - rust-tauri-coverage
       - scripts-tests
       - test-inventory
+      - toolchain-image-drift
       - pester-install
       - tinycortex-tests
       - orch-ip-gate
@@ -942,6 +1066,7 @@ jobs:
             ["Rust Tauri Coverage"]="${{ needs['rust-tauri-coverage'].result }}"
             ["Scripts Self-Tests"]="${{ needs['scripts-tests'].result }}"
             ["Test Inventory"]="${{ needs['test-inventory'].result }}"
+            ["Toolchain Image Drift Guard"]="${{ needs['toolchain-image-drift'].result }}"
             ["PowerShell Install Test"]="${{ needs['pester-install'].result }}"
             ["TinyCortex Memory Tests"]="${{ needs['tinycortex-tests'].result }}"
             ["Orchestration IP Gate"]="${{ needs['orch-ip-gate'].result }}"

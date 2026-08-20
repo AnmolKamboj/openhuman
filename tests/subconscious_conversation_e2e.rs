@@ -31,7 +31,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 
-use openhuman_core::core::event_bus::{global, init_global, DomainEvent};
+use openhuman_core::core::bus::BUS;
+use openhuman_core::core::events::DomainEvent;
 use openhuman_core::openhuman::subconscious::triggers::types::{
     GateDecision, Trigger, TriggerPriority, TriggerSource,
 };
@@ -230,13 +231,13 @@ struct Harness {
     emit: Emitter,
     notifications: Arc<StdMutex<Vec<String>>>,
     _loop: tokio::task::JoinHandle<()>,
-    _sub: openhuman_core::core::event_bus::SubscriptionHandle,
+    _sub: tinybus::SubscriptionHandle,
     _tmp: tempfile::TempDir,
 }
 
 impl Harness {
-    fn new(config: OrchestratorConfig) -> Self {
-        init_global(128);
+    async fn new(config: OrchestratorConfig) -> Self {
+        openhuman_core::core::bus::init().await.expect("bus init");
         let transcript = Transcript::new();
         let emit: Emitter = Arc::new(StdMutex::new(VecDeque::new()));
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -255,20 +256,23 @@ impl Harness {
         // Capture proactive (subconscious → human) deliveries off the bus.
         let notifications = Arc::new(StdMutex::new(Vec::<String>::new()));
         let sink = Arc::clone(&notifications);
-        let sub = global().expect("bus").on("conv-e2e-notify", move |event| {
-            let sink = Arc::clone(&sink);
-            let event = event.clone();
-            Box::pin(async move {
-                if let DomainEvent::ProactiveMessageRequested {
-                    source, message, ..
-                } = &event
-                {
-                    if source == "subconscious" {
-                        sink.lock().unwrap().push(message.clone());
+        let sub = openhuman_core::core::bus::BUS.get().expect("bus").on(
+            "conv-e2e-notify",
+            move |event| {
+                let sink = Arc::clone(&sink);
+                let event = event.clone();
+                Box::pin(async move {
+                    if let DomainEvent::ProactiveMessageRequested {
+                        source, message, ..
+                    } = &event
+                    {
+                        if source == "subconscious" {
+                            sink.lock().unwrap().push(message.clone());
+                        }
                     }
-                }
-            })
-        });
+                })
+            },
+        );
 
         let loop_handle = Arc::clone(&orch);
         let task = tokio::spawn(async move { loop_handle.run_loop().await });
@@ -351,7 +355,7 @@ fn human_msg(channel: &str, sender: &str, message: &str) -> DomainEvent {
 #[tokio::test]
 async fn conversation_human_delegates_then_subagent_reports_back() {
     let _g = bus_lock().await;
-    let h = Harness::new(OrchestratorConfig::default());
+    let h = Harness::new(OrchestratorConfig::default()).await;
 
     // Human asks for deep work.
     h.ingest(human_msg(
@@ -383,7 +387,7 @@ async fn conversation_human_delegates_then_subagent_reports_back() {
 #[tokio::test]
 async fn conversation_subagent_failure_recovers_with_retry() {
     let _g = bus_lock().await;
-    let h = Harness::new(OrchestratorConfig::default());
+    let h = Harness::new(OrchestratorConfig::default()).await;
 
     // Inject a sub-agent FAILURE conclusion directly (as if a prior spawn failed).
     h.ingest(DomainEvent::SubagentFailed {
@@ -409,7 +413,7 @@ async fn conversation_subagent_failure_recovers_with_retry() {
 #[tokio::test]
 async fn conversation_interleaved_traffic_is_handled() {
     let _g = bus_lock().await;
-    let h = Harness::new(OrchestratorConfig::default());
+    let h = Harness::new(OrchestratorConfig::default()).await;
 
     // Routine cron tick — gate should drop it (no session run).
     h.ingest(DomainEvent::CronJobTriggered {
@@ -456,7 +460,7 @@ async fn conversation_promotion_budget_caps_a_burst() {
         rate_refill_per_sec: 0.0,
         ..OrchestratorConfig::default()
     };
-    let h = Harness::new(config);
+    let h = Harness::new(config).await;
 
     for i in 0..6 {
         h.ingest(human_msg("slack", "U1", &format!("status check #{i}")));

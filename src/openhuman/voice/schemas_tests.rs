@@ -374,7 +374,19 @@ fn new_rpcs_are_in_registry() {
 fn validate_stt_provider_accepts_sentinels() {
     assert!(validate_stt_provider("cloud").is_ok());
     assert!(validate_stt_provider("openhuman").is_ok());
-    assert!(validate_stt_provider("whisper").is_ok());
+    assert!(validate_stt_provider("backend").is_ok());
+}
+
+#[test]
+fn validate_stt_provider_rejects_removed_local_engine() {
+    for removed in ["whisper", "local"] {
+        let err = validate_stt_provider(removed)
+            .expect_err("the bundled whisper.cpp engine is gone — must not be settable");
+        assert!(
+            err.contains("removed"),
+            "error should say the engine was removed, got: {err}"
+        );
+    }
 }
 
 #[test]
@@ -483,12 +495,9 @@ fn generate_silent_wav_produces_valid_wav_header() {
     assert_eq!(&wav[8..12], b"WAVE");
     assert_eq!(&wav[12..16], b"fmt ");
     assert_eq!(&wav[36..40], b"data");
-    // 16kHz so the in-process whisper engine accepts it (issue #3425).
+    // 16kHz — the rate every routed STT engine takes without resampling.
     let sample_rate = u32::from_le_bytes([wav[24], wav[25], wav[26], wav[27]]);
-    assert_eq!(
-        sample_rate, 16_000,
-        "fixture must be 16kHz for in-process STT"
-    );
+    assert_eq!(sample_rate, 16_000, "fixture must be 16kHz");
     // total size = header(44) + 1600 samples * 2 bytes = 3244
     assert_eq!(wav.len(), 3244);
 }

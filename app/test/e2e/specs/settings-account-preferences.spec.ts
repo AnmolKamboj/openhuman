@@ -45,6 +45,13 @@ describe('Settings - Account Preferences', function () {
     this.timeout(90_000);
     await navigateViaHash('/settings/recovery-phrase');
 
+    // A previous suite or persisted local wallet can leave this panel in its
+    // existing-wallet view. Follow the product's replacement flow before
+    // asserting the generated-phrase controls.
+    if (await textExists('Replace wallet')) {
+      await clickText('Replace wallet', 10_000);
+      await clickText('I understand, replace my wallet', 10_000);
+    }
     await waitForText('Copy to Clipboard', 15_000);
     await clickSelector('input[type="checkbox"]');
     await clickText('Save Recovery Phrase', 10_000);
@@ -79,6 +86,13 @@ describe('Settings - Account Preferences', function () {
     await waitForText('Share Product Analytics and Diagnostics', 15_000);
 
     await clickSelector('[data-testid="privacy-analytics-toggle"]');
+    await browser.waitUntil(
+      async () => {
+        const analytics = await callOpenhumanRpc('openhuman.config_get_analytics_settings', {});
+        return analytics.ok && Boolean(analytics.result?.result?.enabled) === !initialAnalytics;
+      },
+      { timeout: 15_000, interval: 500, timeoutMsg: 'analytics setting did not persist' }
+    );
     await clickSelector('[data-testid="privacy-meet-handoff-toggle"]');
 
     await browser.waitUntil(

@@ -118,10 +118,10 @@ impl Agent {
     /// `composio/tools.rs`, and the spawn-time per-action tool build
     /// path in `subagent_runner/ops.rs`.
     pub async fn fetch_connected_integrations(&mut self) {
-        let config = match self.integration_runtime_config.clone() {
+        let config = match self.runtime_config.clone() {
             Some(config) => config,
             None => match crate::openhuman::config::Config::load_or_init().await {
-                Ok(config) => config,
+                Ok(config) => Arc::new(config),
                 Err(e) => {
                     log::debug!(
                         "[agent] skipping connected integrations fetch: config load failed: {e}"
@@ -141,8 +141,8 @@ impl Agent {
         if self.composio_integrations_rx.is_some() {
             return;
         }
-        if let Some(bus) = crate::core::event_bus::global() {
-            self.composio_integrations_rx = Some(bus.raw_receiver());
+        if let Some(bus) = crate::core::bus::BUS.get() {
+            self.composio_integrations_rx = Some(bus.receiver());
             log::debug!(
                 "[agent_loop] armed composio integrations listener for session='{}'",
                 self.event_session_id
@@ -159,15 +159,13 @@ impl Agent {
         let Some(rx) = self.composio_integrations_rx.as_mut() else {
             return false;
         };
-        use tokio::sync::broadcast::error::TryRecvError;
+        use tinybus::TryRecvError;
 
         let mut saw_signal = false;
         let mut closed = false;
         loop {
             match rx.try_recv() {
-                Ok(crate::core::event_bus::DomainEvent::ComposioIntegrationsChanged {
-                    toolkits,
-                }) => {
+                Ok(crate::core::events::DomainEvent::ComposioIntegrationsChanged { toolkits }) => {
                     saw_signal = true;
                     log::info!(
                         "[agent_loop] received composio integrations changed event (active_toolkits={:?})",
@@ -196,15 +194,15 @@ impl Agent {
     }
 
     /// Lazily attach this session to the global event bus so it can observe
-    /// [`crate::core::event_bus::DomainEvent::WorkflowsChanged`] (skill
+    /// [`crate::core::events::DomainEvent::WorkflowsChanged`] (skill
     /// install / uninstall / create). Mirror of
     /// [`Self::ensure_composio_integrations_listener`].
     pub(super) fn ensure_skill_events_listener(&mut self) {
         if self.skill_events_rx.is_some() {
             return;
         }
-        if let Some(bus) = crate::core::event_bus::global() {
-            self.skill_events_rx = Some(bus.raw_receiver());
+        if let Some(bus) = crate::core::bus::BUS.get() {
+            self.skill_events_rx = Some(bus.receiver());
             log::debug!(
                 "[agent_loop] armed installed-skills listener for session='{}'",
                 self.event_session_id
@@ -212,7 +210,7 @@ impl Agent {
         }
     }
 
-    /// Drain pending [`crate::core::event_bus::DomainEvent::WorkflowsChanged`]
+    /// Drain pending [`crate::core::events::DomainEvent::WorkflowsChanged`]
     /// events. Returns `true` when at least one was observed (or the listener
     /// lagged) and the caller should re-scan the installed skill set via
     /// [`Self::refresh_workflows`]. Mirror of
@@ -222,13 +220,13 @@ impl Agent {
         let Some(rx) = self.skill_events_rx.as_mut() else {
             return false;
         };
-        use tokio::sync::broadcast::error::TryRecvError;
+        use tinybus::TryRecvError;
 
         let mut saw_signal = false;
         let mut closed = false;
         loop {
             match rx.try_recv() {
-                Ok(crate::core::event_bus::DomainEvent::WorkflowsChanged { reason }) => {
+                Ok(crate::core::events::DomainEvent::WorkflowsChanged { reason }) => {
                     saw_signal = true;
                     log::info!("[agent_loop] received installed-skills changed event ({reason})");
                 }
@@ -259,7 +257,7 @@ impl Agent {
         &mut self,
         trigger: &str,
     ) -> bool {
-        let Some(cfg) = self.integration_runtime_config.as_ref() else {
+        let Some(cfg) = self.runtime_config.as_ref() else {
             return false;
         };
         let Some(cache_view) =
@@ -445,7 +443,7 @@ impl Agent {
     #[cfg(test)]
     pub(in super::super) fn set_skill_events_rx_for_test(
         &mut self,
-        rx: tokio::sync::broadcast::Receiver<crate::core::event_bus::DomainEvent>,
+        rx: tinybus::events::EventReceiver<crate::core::events::DomainEvent>,
     ) {
         self.skill_events_rx = Some(rx);
     }
@@ -464,7 +462,7 @@ impl Agent {
     #[cfg(test)]
     pub(in super::super) fn set_composio_integrations_rx_for_test(
         &mut self,
-        rx: tokio::sync::broadcast::Receiver<crate::core::event_bus::DomainEvent>,
+        rx: tinybus::events::EventReceiver<crate::core::events::DomainEvent>,
     ) {
         self.composio_integrations_rx = Some(rx);
     }

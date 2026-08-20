@@ -297,7 +297,7 @@ mod tests {
 
     #[tokio::test]
     async fn synthesize_piper_surfaces_binary_lookup_failure() {
-        // Same shape as the whisper test — make sure missing PIPER_BIN
+        // Make sure a missing PIPER_BIN
         // produces an actionable error, not a panic in the spawn path.
         let prev_piper = std::env::var_os("PIPER_BIN");
         std::env::remove_var("PIPER_BIN");

@@ -187,7 +187,10 @@ pub async fn with_parent_context<F, R>(ctx: ParentExecutionContext, future: F) -
 where
     F: std::future::Future<Output = R>,
 {
-    PARENT_CONTEXT.scope(ctx, future).await
+    // Box before `scope` so only a pointer moves into the task-local frame
+    // rather than the whole nested turn generator — see the measurements on
+    // `with_turn_collector` in `turn_subagent_usage.rs`.
+    PARENT_CONTEXT.scope(ctx, Box::pin(future)).await
 }
 
 /// Returns the one-shot context-preparation sources that have already run for
@@ -222,7 +225,10 @@ pub async fn with_agent_context_prepared_sources<F, R>(
 where
     F: std::future::Future<Output = R>,
 {
+    // Box before `scope` so only a pointer moves into the task-local frame
+    // rather than the whole nested turn generator — see the measurements on
+    // `with_turn_collector` in `turn_subagent_usage.rs`.
     AGENT_CONTEXT_PREPARED_SOURCES
-        .scope(Arc::new(std::sync::Mutex::new(sources)), future)
+        .scope(Arc::new(std::sync::Mutex::new(sources)), Box::pin(future))
         .await
 }

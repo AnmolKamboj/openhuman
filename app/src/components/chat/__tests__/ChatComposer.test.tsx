@@ -176,6 +176,29 @@ describe('ChatComposer', () => {
     expect(onSwitchToMicCloud).toHaveBeenCalledTimes(1);
   });
 
+  describe('mascotDock', () => {
+    it('renders the node inside the input box, not the header stack', () => {
+      // Anchoring matters: the dock is absolutely positioned against the input
+      // box so it stands on its top edge. If it were hoisted into the header
+      // stack it would drift whenever follow-ups or the goal editor open.
+      const { container } = renderComposer({
+        mascotDock: <div data-testid="mascot-dock" />,
+        headerSlots: [<div key="hdr" data-testid="header-slot" />],
+      });
+
+      const dock = screen.getByTestId('mascot-dock');
+      const inputBox = container.querySelector('.rounded-2xl.border');
+      expect(inputBox).not.toBeNull();
+      expect(inputBox!.contains(dock)).toBe(true);
+      expect(inputBox!.contains(screen.getByTestId('header-slot'))).toBe(false);
+    });
+
+    it('renders nothing extra when omitted', () => {
+      renderComposer();
+      expect(screen.queryByTestId('mascot-dock')).not.toBeInTheDocument();
+    });
+  });
+
   describe('drag-and-drop', () => {
     function makeVideoFile() {
       return new File([new Uint8Array(8)], 'clip.mp4', { type: 'video/mp4' });

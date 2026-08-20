@@ -194,7 +194,7 @@ pub async fn run_linkedin_enrichment(
     result.log.push("Scraping LinkedIn profile...".into());
 
     // Build memory client once for all persist calls.
-    let memory = match build_memory_client() {
+    let memory = match build_memory_client().await {
         Ok(m) => Some(m),
         Err(e) => {
             tracing::warn!(
@@ -671,16 +671,48 @@ pub async fn scrape_linkedin_profile(
         .ok_or_else(|| anyhow::anyhow!("Apify run returned an empty items array"))
 }
 
-/// Build a local memory client for profile persistence.
-fn build_memory_client() -> anyhow::Result<crate::openhuman::memory::store::MemoryClient> {
-    crate::openhuman::memory::store::MemoryClient::new_local()
+/// The process-wide memory client, for profile persistence.
+///
+/// Deliberately **not** `MemoryClient::new_local()`. That constructor resolves
+/// `~/.openhuman/workspace` from the home directory and never consults
+/// `OPENHUMAN_WORKSPACE`, so on any host that scopes its workspace — every
+/// hosted tenant, and any local run with the variable set — the scraped profile
+/// was written to a store nothing else reads. It failed by *succeeding*, which
+/// is why nothing surfaced it.
+///
+/// It was also a second engine construction against the same data directory,
+/// which `memory::bypass_allowlist_tests` refuses for
+/// `MemoryClient::from_workspace_dir` on the grounds that it "risks a second
+/// ingestion worker on one store". `new_local` reaches the same constructor one
+/// call deeper, so it was the same hazard with none of the enforcement.
+///
+/// Resolved through `memory::ops::helpers::active_memory_client` rather than
+/// `global::client` directly, for two reasons beyond the one above.
+///
+/// It does not lose the write when startup wiring has not run: it falls back to
+/// `global::init(Config::load_or_init().workspace_dir)`, explicitly **not** to
+/// `~/.openhuman/workspace` — so it cannot reintroduce the bug this function
+/// exists to fix. Both entry points reach here inside a running daemon, so init
+/// has almost certainly happened; this is about which failure the remaining case
+/// gets, and silently dropping a scraped profile is the worse one.
+///
+/// It also resolves the *same* workspace `write_profile_md` writes `PROFILE.md`
+/// into, since both now derive it from `Config`. Taking the global binding here
+/// left the two halves of `run_linkedin_enrichment` deriving their target from
+/// different sources, which can in principle disagree.
+///
+/// The caller still treats an error as "skip persistence and warn", for the
+/// genuine failures that remain.
+async fn build_memory_client() -> anyhow::Result<tinymemory_core::store::MemoryClientRef> {
+    crate::openhuman::memory::ops::helpers::active_memory_client()
+        .await
         .map_err(|e| anyhow::anyhow!("memory client unavailable: {e}"))
 }
 
 /// Persist the full scraped LinkedIn profile to the user-profile memory
 /// namespace so the agent has rich context about the user.
 async fn persist_linkedin_profile(
-    memory: &crate::openhuman::memory::store::MemoryClient,
+    memory: &tinymemory_core::store::MemoryClient,
     url: &str,
     data: &serde_json::Value,
 ) -> anyhow::Result<()> {
@@ -712,7 +744,7 @@ async fn persist_linkedin_profile(
 
 /// Fallback: persist just the LinkedIn URL when the full scrape fails.
 async fn persist_linkedin_url_only(
-    memory: &crate::openhuman::memory::store::MemoryClient,
+    memory: &tinymemory_core::store::MemoryClient,
     url: &str,
 ) -> anyhow::Result<()> {
     memory

@@ -29,7 +29,8 @@ use serde::{Deserialize, Serialize};
 use tinyagents::harness::tool::SandboxMode;
 use tinyagents::harness::workspace::{WorkspaceDescriptor, WorkspaceIsolation};
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 
 /// Directory (relative to the repo root) under which isolated worker
 /// worktrees are created — mirrors Claude Code's `.claude/worktrees/`
@@ -160,7 +161,7 @@ impl WorkspaceIsolation for GitWorktreeIsolation {
             policy_id = %descriptor.policy_id,
             "[workspace] workspace_prepared_emit"
         );
-        let _ = publish_global(DomainEvent::WorkspacePrepared {
+        let _ = BUS.publish(DomainEvent::WorkspacePrepared {
             policy_id: descriptor.policy_id.clone(),
             root: descriptor.root.display().to_string(),
         });
@@ -185,7 +186,7 @@ impl WorkspaceIsolation for GitWorktreeIsolation {
                     policy_id = %descriptor.policy_id,
                     "[workspace] workspace_cleanup_emit_ok"
                 );
-                let _ = publish_global(DomainEvent::WorkspaceCleanup {
+                let _ = BUS.publish(DomainEvent::WorkspaceCleanup {
                     policy_id: descriptor.policy_id.clone(),
                     error: None,
                 });
@@ -204,7 +205,7 @@ impl WorkspaceIsolation for GitWorktreeIsolation {
                     error = %message,
                     "[workspace] workspace_cleanup_emit_err"
                 );
-                let _ = publish_global(DomainEvent::WorkspaceCleanup {
+                let _ = BUS.publish(DomainEvent::WorkspaceCleanup {
                     policy_id: descriptor.policy_id.clone(),
                     error: Some(message.clone()),
                 });
@@ -241,7 +242,7 @@ pub fn enforce_workspace_path(
         policy_id = %descriptor.policy_id,
         "[workspace] workspace_violation_out_of_root"
     );
-    publish_global(DomainEvent::WorkspaceViolation {
+    BUS.publish(DomainEvent::WorkspaceViolation {
         path: rendered.clone(),
     });
     Err(WorktreeError::OutsideWorkspace(path.to_path_buf()))

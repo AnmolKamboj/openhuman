@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 import Button from '../../../components/ui/Button';
 import { useT } from '../../../lib/i18n/I18nContext';
@@ -151,7 +152,14 @@ export function BackgroundProcessesPanel({
     String(processes.length)
   );
 
-  return (
+  // Portaled to `document.body` rather than rendered in place. This is a
+  // viewport-level overlay, but its host tree sits inside `Conversations`'
+  // `relative z-10` wrapper — a stacking context. Left in place, `z-50` only
+  // orders it against its own siblings; from the outside the whole chat subtree
+  // is just "z-10", so any later sibling with a higher z-index paints straight
+  // over it. Portaling lifts it into the root stacking context, where `z-50`
+  // means what it reads like. Same pattern as `components/ui/ModalShell`.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex justify-end" data-testid="background-processes-panel">
       <div className="absolute inset-0 bg-stone-900/30 dark:bg-black/50" onClick={onClose} />
       <aside className="relative flex h-full w-full max-w-sm flex-col bg-surface shadow-xl">
@@ -252,6 +260,7 @@ export function BackgroundProcessesPanel({
           <MemorySection memory={activity.memory} />
         </div>
       </aside>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -223,9 +223,7 @@ pub(super) fn command_center_needs_input(
     config: &Config,
 ) -> Vec<super::attention::NeedsInputSignal> {
     use crate::openhuman::agent::orchestration::command_center::build_view;
-    use crate::openhuman::agent::session_db::run_ledger::{
-        list_agent_runs, AgentRunListRequest, AgentRunStatus,
-    };
+    use tinyagents::session::run_ledger::{list_agent_runs, AgentRunListRequest, AgentRunStatus};
     let request = AgentRunListRequest {
         status: Some(AgentRunStatus::AwaitingUser.as_str().to_string()),
         kind: None,
@@ -234,7 +232,7 @@ pub(super) fn command_center_needs_input(
         limit: Some(ATTENTION_RUN_LIMIT),
         offset: None,
     };
-    match list_agent_runs(config, &request) {
+    match list_agent_runs(&config.workspace_dir, &request) {
         Ok(response) => {
             super::attention::needs_input_from_command_center(build_view(response.runs))
         }
@@ -354,7 +352,7 @@ mod tests {
 
     #[test]
     fn command_center_needs_input_surfaces_only_blocked_runs() {
-        use crate::openhuman::agent::session_db::run_ledger::{
+        use tinyagents::session::run_ledger::{
             upsert_agent_run, AgentRunKind, AgentRunStatus, AgentRunUpsert,
         };
         let tmp = tempfile::tempdir().unwrap();
@@ -364,7 +362,7 @@ mod tests {
         };
         let seed = |id: &str, status: AgentRunStatus| {
             upsert_agent_run(
-                &config,
+                &config.workspace_dir,
                 AgentRunUpsert {
                     id: id.into(),
                     kind: AgentRunKind::Subagent,

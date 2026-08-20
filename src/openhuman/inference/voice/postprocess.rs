@@ -1,6 +1,6 @@
 //! LLM-based post-processing for voice transcription.
 //!
-//! Passes raw whisper output through a local LLM (Ollama) to clean up
+//! Passes the raw STT transcript through a local LLM (Ollama) to clean up
 //! grammar, punctuation, and filler words. Optionally uses conversation
 //! context to disambiguate unclear words (names, technical terms).
 
@@ -111,7 +111,7 @@ pub async fn cleanup_transcription(
     };
 
     // Hard timeout — dictation must feel instant. If the LLM doesn't
-    // respond within 3 seconds, fall back to the raw Whisper text.
+    // respond within 3 seconds, fall back to the raw transcript.
     //
     // Voice cleanup is a user-arrival path (mic press → STT → cleanup
     // shown to user). It bypasses the scheduler_gate permit via
@@ -240,7 +240,7 @@ mod tests {
     async fn enabled_but_llm_not_ready_returns_raw_text() {
         // Covers the branch where cleanup is enabled in config but the
         // local LLM hasn't reached the ready/degraded state yet —
-        // cleanup must gracefully fall back to the raw Whisper output.
+        // cleanup must gracefully fall back to the raw transcript.
         let _g = crate::openhuman::inference::inference_test_guard();
         let config = Config::default(); // voice_llm_cleanup_enabled = true by default
         let service = local_ai::global(&config);

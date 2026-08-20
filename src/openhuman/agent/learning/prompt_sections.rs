@@ -142,14 +142,14 @@ const CACHE_PROMPT_CAP: usize = 25;
 /// descending within each class, then alphabetically by class. The total is capped
 /// at [`CACHE_PROMPT_CAP`] entries.
 ///
-/// This function is **synchronous** and performs only SQLite reads — safe to call
-/// from the synchronous part of the system prompt build path. The caller should
-/// keep both this path and the existing KV-namespace path active until the KV path
-/// is removed in a follow-up phase.
-pub fn load_learned_from_cache(
+/// Async because the facet store moved behind the memory driver: this used to
+/// be a synchronous SQLite read, and is now a driver call. The caller should
+/// keep both this path and the existing KV-namespace path active until the KV
+/// path is removed in a follow-up phase.
+pub async fn load_learned_from_cache(
     cache: &crate::openhuman::agent::learning::cache::FacetCache,
 ) -> Vec<String> {
-    let facets = match cache.list_active() {
+    let facets = match cache.list_active().await {
         Ok(f) => f,
         Err(e) => {
             tracing::warn!("[learning::prompt] load_learned_from_cache failed: {e}");
@@ -163,7 +163,7 @@ pub fn load_learned_from_cache(
 
     // Group by class prefix (portion before the first '/'), then sort within
     // each class by stability descending, then by key alphabetically.
-    use crate::openhuman::memory::store::profile::ProfileFacet;
+    use crate::openhuman::memory::api::provider::ProfileFacet;
     use std::collections::BTreeMap;
     let mut by_class: BTreeMap<String, Vec<usize>> = BTreeMap::new();
 
@@ -197,7 +197,7 @@ pub fn load_learned_from_cache(
             // agent can parse the source. Goal class keeps value-only (full
             // sentence, no key prefix). Pinned entries get a trailing suffix.
             let pinned =
-                if f.user_state == crate::openhuman::memory::store::profile::UserState::Pinned {
+                if f.user_state == crate::openhuman::memory::api::provider::UserState::Pinned {
                     " *(pinned)*"
                 } else {
                     ""
@@ -378,18 +378,12 @@ mod tests {
 
     // ── load_learned_from_cache ───────────────────────────────────────────────
 
-    #[test]
-    fn load_learned_from_cache_formats_active_facets() {
-        use crate::openhuman::agent::learning::cache::FacetCache;
-        use crate::openhuman::memory::store::profile::{
-            FacetState, FacetType, ProfileFacet, UserState, PROFILE_INIT_SQL,
+    #[tokio::test]
+    async fn load_learned_from_cache_formats_active_facets() {
+        use crate::openhuman::memory::api::provider::{
+            FacetState, FacetType, ProfileFacet, UserState,
         };
-        use parking_lot::Mutex;
-        use rusqlite::Connection;
-
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(PROFILE_INIT_SQL).unwrap();
-        let cache = FacetCache::new(Arc::new(Mutex::new(conn)));
+        let cache = crate::openhuman::agent::learning::test_profile::in_memory_cache();
 
         let make_facet = |id: &str, key: &str, value: &str, stab: f64| ProfileFacet {
             facet_id: id.into(),
@@ -411,9 +405,11 @@ mod tests {
 
         cache
             .upsert(&make_facet("f1", "style/verbosity", "terse", 2.0))
+            .await
             .unwrap();
         cache
             .upsert(&make_facet("f2", "identity/name", "Alice", 1.8))
+            .await
             .unwrap();
         cache
             .upsert(&make_facet(
@@ -422,14 +418,15 @@ mod tests {
                 "Learn Rust this year",
                 1.6,
             ))
+            .await
             .unwrap();
 
         // Provisional — should NOT appear.
         let mut prov = make_facet("f4", "style/tone", "formal", 0.8);
         prov.state = FacetState::Provisional;
-        cache.upsert(&prov).unwrap();
+        cache.upsert(&prov).await.unwrap();
 
-        let result = load_learned_from_cache(&cache);
+        let result = load_learned_from_cache(&cache).await;
 
         assert!(
             !result.is_empty(),
@@ -458,18 +455,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn load_learned_from_cache_empty_when_no_active_facets() {
-        use crate::openhuman::agent::learning::cache::FacetCache;
-        use crate::openhuman::memory::store::profile::PROFILE_INIT_SQL;
-        use parking_lot::Mutex;
-        use rusqlite::Connection;
+    #[tokio::test]
+    async fn load_learned_from_cache_empty_when_no_active_facets() {
+        let cache = crate::openhuman::agent::learning::test_profile::in_memory_cache();
 
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(PROFILE_INIT_SQL).unwrap();
-        let cache = FacetCache::new(Arc::new(Mutex::new(conn)));
-
-        let result = load_learned_from_cache(&cache);
+        let result = load_learned_from_cache(&cache).await;
         assert!(result.is_empty());
     }
 

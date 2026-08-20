@@ -11,10 +11,13 @@
 //! provides the **type plumbing and observer** so the integration layer can hook
 //! in without touching the bus machinery.
 
-use crate::core::event_bus::{subscribe_global, DomainEvent, EventHandler, SubscriptionHandle};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::skills::Workflow;
 use async_trait::async_trait;
 use std::sync::{Arc, OnceLock};
+use tinybus::EventHandler;
+use tinybus::SubscriptionHandle;
 
 // ── Trigger pattern ───────────────────────────────────────────────────────────
 
@@ -166,7 +169,7 @@ struct TriggeredSkillSubscriber {
 }
 
 #[async_trait]
-impl EventHandler for TriggeredSkillSubscriber {
+impl EventHandler<DomainEvent> for TriggeredSkillSubscriber {
     fn name(&self) -> &str {
         "skills::triggered_skill"
     }
@@ -217,7 +220,7 @@ pub fn register_triggered_workflow_subscriber(skills: &[Workflow]) -> Option<Sub
         index.len(),
         index.domains()
     );
-    subscribe_global(Arc::new(TriggeredSkillSubscriber {
+    BUS.subscribe(Arc::new(TriggeredSkillSubscriber {
         index: Arc::new(index),
     }))
 }

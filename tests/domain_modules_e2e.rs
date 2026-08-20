@@ -140,6 +140,13 @@ async fn setup() -> TestHarness {
         EnvVarGuard::set("OPENHUMAN_MEMORY_EMBED_MODEL", ""),
     ];
 
+    // The HTTP router is intentionally transport-only and does not construct a
+    // Core runtime context. Memory-backed RPC reads still need the explicit
+    // tinymemory host seams before they can load their configured provider.
+    openhuman_core::openhuman::memory::host_impls::install_memory_host_seams(std::sync::Arc::new(
+        openhuman_core::openhuman::config::Config::default(),
+    ));
+
     let (addr, join) = serve_rpc().await;
     TestHarness {
         _tmp: tmp,
@@ -551,7 +558,6 @@ async fn config_agent_tools_and_threads_mutation_paths_round_trip() {
         ("openhuman.tools_querit_search", json!({})),
         ("openhuman.tools_searxng_search", json!({})),
         ("openhuman.tools_apify_linkedin_scrape", json!({})),
-        ("openhuman.tools_polymarket_execute", json!({})),
     ]
     .into_iter()
     .enumerate()

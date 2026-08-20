@@ -3,14 +3,12 @@
 use crate::openhuman::config::Config;
 use crate::rpc::RpcOutcome;
 
-use super::types::StatusListResponse;
+use tinycortex::memory::sync::StatusListResponse;
 
 pub async fn status_list_rpc(config: &Config) -> Result<RpcOutcome<StatusListResponse>, String> {
     tracing::debug!("[memory_sync_status][rpc] status_list via tinycortex");
-    let memory_config = crate::openhuman::memory::tinycortex::memory_config_from(
-        config,
-        config.workspace_dir.clone(),
-    );
+    let memory_config =
+        tinymemory_core::tinycortex::memory_config_from(config, config.workspace_dir.clone());
     let statuses = match tokio::task::spawn_blocking(move || {
         tinycortex::memory::sync::list_sync_statuses(&memory_config)
     })

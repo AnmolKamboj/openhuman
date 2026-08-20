@@ -4,6 +4,7 @@ use serde_json::json;
 use tempfile::TempDir;
 
 fn test_config(tmp: &TempDir) -> Config {
+    crate::openhuman::memory::host_impls::install_for_tests();
     let config = Config {
         workspace_dir: tmp.path().join("workspace"),
         action_dir: tmp.path().join("workspace"),
@@ -1583,11 +1584,12 @@ async fn reconcile_schedule_triggers_on_boot_survives_a_corrupt_row() {
 
 #[tokio::test]
 async fn flows_delete_clears_flow_memory_namespace() {
-    use crate::openhuman::memory::store::MemoryClient;
     use crate::openhuman::memory::{MemoryCategory, MemoryTaint};
+    use tinymemory_core::store::MemoryClient;
 
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
+    crate::openhuman::memory::host_impls::install_for_tests();
 
     // A directly-constructed `MemoryClient`, injected via `flows_delete_impl`
     // below, instead of `memory::global` — that singleton is a single
@@ -2954,11 +2956,11 @@ async fn flows_run_does_not_notify_when_run_completes_without_pending_approvals(
 /// of waiting for the (up to 610s) blocking RPC to resolve.
 #[tokio::test]
 async fn flows_run_publishes_flow_run_started_with_flow_and_run_id() {
-    use crate::core::event_bus::{
-        init_global, subscribe_global, DomainEvent, EventHandler, DEFAULT_CAPACITY,
-    };
+    use crate::core::bus::BUS;
+    use crate::core::events::DomainEvent;
     use async_trait::async_trait;
     use std::sync::Mutex as StdMutex;
+    use tinybus::EventHandler;
 
     #[derive(Default)]
     struct Collector {
@@ -2966,7 +2968,7 @@ async fn flows_run_publishes_flow_run_started_with_flow_and_run_id() {
     }
 
     #[async_trait]
-    impl EventHandler for Collector {
+    impl EventHandler<DomainEvent> for Collector {
         fn name(&self) -> &str {
             "test::flows::ops::flow_run_started_collector"
         }
@@ -2983,12 +2985,12 @@ async fn flows_run_publishes_flow_run_started_with_flow_and_run_id() {
         }
     }
 
-    init_global(DEFAULT_CAPACITY);
+    crate::core::bus::init().await.expect("bus init");
     let events: Arc<StdMutex<Vec<(String, String)>>> = Arc::new(StdMutex::new(Vec::new()));
     let collector = Arc::new(Collector {
         events: Arc::clone(&events),
     });
-    let _handle = subscribe_global(collector).expect("bus subscriber installed");
+    let _handle = BUS.subscribe(collector).expect("bus subscriber installed");
 
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
@@ -3042,11 +3044,11 @@ async fn flows_run_publishes_flow_run_started_with_flow_and_run_id() {
 /// carrying the final `"completed"` status, not `"pending_approval"`.
 #[tokio::test]
 async fn flows_run_finished_event_skips_pending_approval_and_fires_once_on_resume() {
-    use crate::core::event_bus::{
-        init_global, subscribe_global, DomainEvent, EventHandler, DEFAULT_CAPACITY,
-    };
+    use crate::core::bus::BUS;
+    use crate::core::events::DomainEvent;
     use async_trait::async_trait;
     use std::sync::Mutex as StdMutex;
+    use tinybus::EventHandler;
 
     #[derive(Default)]
     struct Collector {
@@ -3054,7 +3056,7 @@ async fn flows_run_finished_event_skips_pending_approval_and_fires_once_on_resum
     }
 
     #[async_trait]
-    impl EventHandler for Collector {
+    impl EventHandler<DomainEvent> for Collector {
         fn name(&self) -> &str {
             "test::flows::ops::flow_run_finished_pending_approval_collector"
         }
@@ -3076,12 +3078,12 @@ async fn flows_run_finished_event_skips_pending_approval_and_fires_once_on_resum
         }
     }
 
-    init_global(DEFAULT_CAPACITY);
+    crate::core::bus::init().await.expect("bus init");
     let events: Arc<StdMutex<Vec<(String, String, String)>>> = Arc::new(StdMutex::new(Vec::new()));
     let collector = Arc::new(Collector {
         events: Arc::clone(&events),
     });
-    let _handle = subscribe_global(collector).expect("bus subscriber installed");
+    let _handle = BUS.subscribe(collector).expect("bus subscriber installed");
 
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
@@ -4506,29 +4508,80 @@ async fn inference_gate_probes_every_distinct_agent_node_role() {
     );
 }
 
-// ── dynamic agent_ref still gets the Layer-1 check (finding C, P2) ─────────
+// ── dynamic agent_ref: refused at authoring, still reachable at run time ──
 
-#[tokio::test]
-async fn inference_gate_reports_signed_out_for_dynamic_agent_ref_only_graph() {
-    // Finding C: a graph whose only `agent` node has a DYNAMIC (`=`-derived)
-    // `agent_ref` still means "this graph runs inference" at run time — it
-    // must stay in scope for Layer 1 (signed-out/session), even though its
-    // exact per-model role can't be resolved statically. Previously the
-    // dynamic-ref filter excluded such nodes entirely, so a graph made up
-    // only of them returned `None` (no readiness signal at all) and a
-    // signed-out session went completely unreported.
-    let _signed_out = crate::openhuman::cron::scheduler_gate::SignedOutTestGuard::set(true);
-
-    let tmp = TempDir::new().unwrap();
-    let config = test_config(&tmp);
-    let g = graph(json!({
+/// A `=`-expression `agent_ref` is no longer authorable. TinyFlows requires a
+/// literal agent-registry reference so run data — which may include model
+/// output — cannot choose an agent with different privileges, the same
+/// reasoning this host already applies to `tool_call` slugs.
+///
+/// Pinned here rather than left to the vendor's own suite because the
+/// `workflow_builder` agent can propose this shape, and the message a builder
+/// sees on rejection is this host's contract with it.
+#[test]
+fn dynamic_agent_ref_is_rejected_during_structural_validation() {
+    let err = validate_and_migrate_graph(json!({
         "nodes": [
             { "id": "t", "kind": "trigger", "name": "Manual" },
             { "id": "a", "kind": "agent", "name": "Dynamic",
               "config": { "agent_ref": "=nodes.t.item.agent_choice", "prompt": "go" } }
         ],
         "edges": [ { "from_node": "t", "to_node": "a" } ]
-    }));
+    }))
+    .expect_err("dynamic agent_ref must fail structural validation");
+    assert!(
+        err.contains("agent_ref") && err.contains("must be a literal"),
+        "the message must say what is wrong, not just that something is: {err}"
+    );
+}
+
+#[tokio::test]
+async fn inference_gate_reports_signed_out_for_dynamic_agent_ref_only_graph() {
+    // Finding C, and it survives the rule above: an `agent` node whose
+    // `agent_ref` is `=`-derived means "this graph runs inference" whatever
+    // its concrete route resolves to, so it must stay in scope for Layer 1
+    // (signed-out/session) even though its per-model role cannot be resolved
+    // statically. The bug this pins is a graph made up only of such nodes
+    // returning `None` — no readiness signal at all — so a signed-out session
+    // went completely unreported.
+    //
+    // This is NOT a dead path just because authoring now refuses the shape.
+    // `store::load` runs `tinyflows::migrate::migrate` and deserializes, but
+    // never `validate`, and `run_flow_body` hands the loaded `flow.graph`
+    // straight to `validate_inference_readiness` — so a flow persisted before
+    // the vendor rule still reaches this gate with a dynamic ref, which is
+    // also what makes `agent_node_role`'s `=`-filter (and its fallback to the
+    // default role) load-bearing rather than vestigial.
+    //
+    // Built as a struct literal for that reason: `graph()` would reject it,
+    // and going through `graph()` would only prove the rule above twice.
+    let _signed_out = crate::openhuman::cron::scheduler_gate::SignedOutTestGuard::set(true);
+
+    let tmp = TempDir::new().unwrap();
+    let config = test_config(&tmp);
+    let g = WorkflowGraph {
+        nodes: vec![
+            tinyflows::model::Node {
+                id: "t".to_string(),
+                kind: NodeKind::Trigger,
+                type_version: 1,
+                name: "Manual".to_string(),
+                config: json!({ "trigger_kind": "manual" }),
+                ports: Vec::new(),
+                position: None,
+            },
+            tinyflows::model::Node {
+                id: "a".to_string(),
+                kind: NodeKind::Agent,
+                type_version: 1,
+                name: "Dynamic".to_string(),
+                config: json!({ "agent_ref": "=nodes.t.item.agent_choice", "prompt": "go" }),
+                ports: Vec::new(),
+                position: None,
+            },
+        ],
+        ..Default::default()
+    };
 
     let errors = validate_inference_readiness(&config, &g).await;
     assert!(
@@ -6461,6 +6514,9 @@ async fn flows_build_hides_the_live_run_tool_from_the_builder_belt() {
          origin bypasses; see restrict_builder_toolset's doc"
     );
 
+    // Building an agent constructs a memory client, which needs the host seams
+    // wired. `Once`-guarded, so this is free when another test got there first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     crate::openhuman::agent::harness::AgentDefinitionRegistry::init_global(&config.workspace_dir)
         .expect("agent registry init");
     let mut agent =
@@ -6557,6 +6613,9 @@ async fn flows_build_copilot_toolset_unhides_the_live_run_tools() {
     let tmp = TempDir::new().unwrap();
     let config = test_config(&tmp);
 
+    // Building an agent constructs a memory client, which needs the host seams
+    // wired. `Once`-guarded, so this is free when another test got there first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     crate::openhuman::agent::harness::AgentDefinitionRegistry::init_global(&config.workspace_dir)
         .expect("agent registry init");
     let mut agent =
@@ -6616,6 +6675,9 @@ async fn flows_build_applies_the_builder_definitions_effective_iteration_cap() {
     // effective cap, otherwise this test can't distinguish the two.
     assert_eq!(config.agent.max_tool_iterations, 10);
 
+    // Building an agent constructs a memory client, which needs the host seams
+    // wired. `Once`-guarded, so this is free when another test got there first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     crate::openhuman::agent::harness::AgentDefinitionRegistry::init_global(&config.workspace_dir)
         .expect("agent registry init");
     let def = crate::openhuman::agent::harness::AgentDefinitionRegistry::global()
@@ -6655,6 +6717,9 @@ async fn flows_discover_applies_the_flow_discovery_definitions_effective_iterati
     let config = test_config(&tmp);
     assert_eq!(config.agent.max_tool_iterations, 10);
 
+    // Building an agent constructs a memory client, which needs the host seams
+    // wired. `Once`-guarded, so this is free when another test got there first.
+    crate::openhuman::memory::host_impls::install_for_tests();
     crate::openhuman::agent::harness::AgentDefinitionRegistry::init_global(&config.workspace_dir)
         .expect("agent registry init");
     let def = crate::openhuman::agent::harness::AgentDefinitionRegistry::global()

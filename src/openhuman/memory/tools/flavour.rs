@@ -23,8 +23,8 @@ use tinycortex::memory::tree::store::{get_tree_by_scope, TreeKind};
 use tinycortex::memory::tree::{compile_flavoured_root, flavoured_root_abs_path};
 
 use crate::openhuman::config::Config;
-use crate::openhuman::memory::tinycortex::memory_config_from;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
+use tinymemory_core::tinycortex::memory_config_from;
 
 /// The seven valid `flavour` slugs, for error messages.
 const VALID_FLAVOURS: &str =

@@ -7,7 +7,8 @@
 //! defaults like `source: envelope.source.slug().into()`) without
 //! fanning out a churning diff.
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 
 use super::envelope::TriggerEnvelope;
 
@@ -75,7 +76,7 @@ pub fn publish_evaluated(
         latency_ms,
     };
     record_test_event(&event);
-    publish_global(event);
+    BUS.publish(event);
 }
 
 /// Publish [`DomainEvent::TriggerEscalated`] — fired only on
@@ -88,7 +89,7 @@ pub fn publish_escalated(envelope: &TriggerEnvelope, target_agent: &str) {
         target_agent: target_agent.to_string(),
     };
     record_test_event(&event);
-    publish_global(event);
+    BUS.publish(event);
 }
 
 /// Publish [`DomainEvent::TriggerEscalationFailed`] — fired when the
@@ -101,13 +102,13 @@ pub fn publish_failed(envelope: &TriggerEnvelope, reason: &str) {
         reason: reason.to_string(),
     };
     record_test_event(&event);
-    publish_global(event);
+    BUS.publish(event);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::event_bus::{global, init_global, DomainEvent};
+    use crate::core::events::DomainEvent;
     use crate::openhuman::agent::triage::TriggerEnvelope;
     use serde_json::json;
     use std::sync::Arc;
@@ -116,16 +117,19 @@ mod tests {
 
     #[tokio::test]
     async fn publish_helpers_emit_expected_trigger_events() {
-        let _ = init_global(32);
+        crate::core::bus::init().await.expect("bus init");
         let seen = Arc::new(Mutex::new(Vec::<DomainEvent>::new()));
         let seen_handler = Arc::clone(&seen);
-        let _handle = global().unwrap().on("triage-events-test", move |event| {
-            let seen = Arc::clone(&seen_handler);
-            let cloned = event.clone();
-            Box::pin(async move {
-                seen.lock().await.push(cloned);
-            })
-        });
+        let _handle = crate::core::bus::BUS
+            .get()
+            .unwrap()
+            .on("triage-events-test", move |event| {
+                let seen = Arc::clone(&seen_handler);
+                let cloned = event.clone();
+                Box::pin(async move {
+                    seen.lock().await.push(cloned);
+                })
+            });
 
         let envelope = TriggerEnvelope::from_composio(
             "gmail",

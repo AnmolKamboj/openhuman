@@ -73,9 +73,9 @@ The result, in practice, is that participants stop treating it like a bot and st
 
 Everything meeting-related lives on one redesigned page (**Intelligence → Meetings**):
 
-* **Join any platform.** A composer with platform chips (Google Meet / Zoom / Teams / Webex) where the URL placeholder adapts per platform and "Your name" auto-fills from your connected account. Tick *active mode* and the bot answers when addressed (the wake phrase is derived as `Hey {your agent's name}`); leave it off for listen-only.
-* **Live transcript, during the call.** Transcript turns stream into the app in real time while the meeting is running. The in-progress line renders greyed until finalized, then the authoritative final transcript takes over when the call ends.
-* **Meeting history, master-detail.** Recent calls (up to 200) sit in a rail; select one for the full detail: platform, participants, duration, an AI **summary** with headline, key points and an action-item checklist, and the complete **transcript**.
+- **Join any platform.** A composer with platform chips (Google Meet / Zoom / Teams / Webex) where the URL placeholder adapts per platform and "Your name" auto-fills from your connected account. Tick _active mode_ and the bot answers when addressed (the wake phrase is derived as `Hey {your agent's name}`); leave it off for listen-only.
+- **Live transcript, during the call.** Transcript turns stream into the app in real time while the meeting is running. The in-progress line renders greyed until finalized, then the authoritative final transcript takes over when the call ends.
+- **Meeting history, master-detail.** Recent calls (up to 200) sit in a rail; select one for the full detail: platform, participants, duration, an AI **summary** with headline, key points and an action-item checklist, and the complete **transcript**.
 
 ## Calendar auto-join
 
@@ -87,9 +87,9 @@ Auto-join is policy-driven: **ask each time / always / never**, globally and **p
 
 The wake-word gate is owner-scoped and deliberately conservative:
 
-* Only the configured **call owner** (or people the owner has allowlisted) can wake the bot into a tool-backed turn. Non-owners get a greeting or a polite refusal.
-* The owner can grant someone mid-call just by saying "allow" / "go ahead" / "let them in" (a 2-minute pending window).
-* With no owner configured, **no wake ever fires**. The bot also never wakes on its own TTS echo, and heavy per-speaker dedup and cooldowns absorb caption re-emits.
+- Only the configured **call owner** (or people the owner has allowlisted) can wake the bot into a tool-backed turn. Non-owners get a greeting or a polite refusal.
+- The owner can grant someone mid-call just by saying "allow" / "go ahead" / "let them in" (a 2-minute pending window).
+- With no owner configured, **no wake ever fires**. The bot also never wakes on its own TTS echo, and heavy per-speaker dedup and cooldowns absorb caption re-emits.
 
 ## Setup, controls, privacy
 

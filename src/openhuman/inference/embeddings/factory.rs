@@ -226,11 +226,50 @@ fn managed_credential_scope(config: &Config) -> (Option<PathBuf>, bool) {
     (Some(state_dir_from_config(config)), config.secrets.encrypt)
 }
 
+/// Returns the default embedding provider — cloud (OpenHuman backend, Voyage) —
+/// scoped to `config`'s credential store.
+///
+/// This is the [`default_embedding_provider`] every caller that holds a
+/// `&Config` must use. It threads the caller's real credential-store location
+/// ([`managed_credential_scope`]) into the cloud embedder's bearer resolver — the
+/// same `(state_dir, encrypt)` pair sign-in wrote the `app-session` token to — so
+/// a signed-in user's ingest/seal embeds read the session they actually have.
+///
+/// The config-less [`default_embedding_provider`] hardcodes `(None, true)` and so
+/// resolves `default_state_dir()` with encryption forced on; that only lands on
+/// the right store for a default-root, encrypted, single-user install. Routing
+/// the memory client's inline embedder through the keyless constructor is what
+/// made a signed-in user's ingested documents persist vector-less — "Test
+/// connection" passed (config-scoped) while the embed batch silently failed
+/// (keyless scope) — #5501.
+pub fn default_embedding_provider_with_config(config: &Config) -> Arc<dyn EmbeddingProvider> {
+    let (state_dir, encrypt_secrets) = managed_credential_scope(config);
+    // Never log `state_dir`: the user-scoped path embeds the OS username and/or
+    // `users/<uid>` (PII). Log only the non-identifying flag.
+    log::debug!(
+        "[embeddings::factory] building default managed embedder from config credential scope (encrypt={encrypt_secrets})"
+    );
+    Arc::new(OpenHumanCloudEmbedding::new(
+        None,
+        state_dir,
+        encrypt_secrets,
+        DEFAULT_CLOUD_EMBEDDING_MODEL,
+        DEFAULT_CLOUD_EMBEDDING_DIMENSIONS,
+    ))
+}
+
 /// Returns the default embedding provider — cloud (OpenHuman backend, Voyage).
 ///
 /// The cloud embedder lazily resolves the session JWT and API URL on each
 /// call, so this can be constructed before login completes; the first
 /// `embed()` will fail with a clear message if the user is unauthenticated.
+///
+/// **Keyless — prefer [`default_embedding_provider_with_config`].** This hardcodes
+/// `(None, true)` for the credential scope, resolving `default_state_dir()`
+/// (`~/.openhuman` root, or `users/<active>` post-#5427) with encryption forced
+/// on. That reads the wrong store whenever the caller's config disables secret
+/// encryption or roots the workspace/user elsewhere than the process default
+/// (#5356 / #5501). Only callers that genuinely hold no `&Config` should use it.
 pub fn default_embedding_provider() -> Arc<dyn EmbeddingProvider> {
     Arc::new(OpenHumanCloudEmbedding::new(
         None,
@@ -470,6 +509,94 @@ mod tests {
             captured.auth.lock().unwrap().as_deref(),
             Some("Bearer sess-scoped-5356"),
             "managed provider must authenticate with the token from the config scope"
+        );
+    }
+
+    /// #5501 regression: the memory client's inline embedder is built through
+    /// [`default_embedding_provider_with_config`], which MUST authenticate with
+    /// the `app-session` token under the *config* credential scope — the same
+    /// scope "Test connection" uses. The pre-fix keyless
+    /// [`default_embedding_provider`] resolved `default_state_dir()` with
+    /// encryption forced on, so a signed-in user's ingested documents embedded
+    /// with "No backend session" and persisted vector-less while the connection
+    /// test still passed. A local mock stands in for the cloud backend (no
+    /// network) and captures the bearer it receives; a regression back to the
+    /// keyless constructor resolves a scope with no token and never reaches it.
+    #[tokio::test]
+    async fn default_provider_with_config_authenticates_with_config_scoped_token() {
+        use std::sync::{Arc, Mutex};
+
+        use axum::{extract::State, http::HeaderMap, routing::post, Json, Router};
+
+        #[derive(Clone, Default)]
+        struct Captured {
+            auth: Arc<Mutex<Option<String>>>,
+        }
+        let captured = Captured::default();
+        let app = Router::new()
+            .route(
+                "/openai/v1/embeddings",
+                post(
+                    |State(cap): State<Captured>,
+                     headers: HeaderMap,
+                     Json(_body): Json<serde_json::Value>| async move {
+                        *cap.auth.lock().unwrap() = headers
+                            .get("authorization")
+                            .and_then(|v| v.to_str().ok())
+                            .map(str::to_owned);
+                        // The embedder validates returned dims against the
+                        // requested default, so the mock must echo that width.
+                        let embedding = vec![0.1_f32; DEFAULT_CLOUD_EMBEDDING_DIMENSIONS];
+                        Json(serde_json::json!({
+                            "object": "list",
+                            "data": [{ "object": "embedding", "index": 0, "embedding": embedding }],
+                            "model": DEFAULT_CLOUD_EMBEDDING_MODEL,
+                        }))
+                    },
+                ),
+            )
+            .with_state(captured.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        // The app-session token lives ONLY under the config credential scope.
+        let tmp = TempDir::new().unwrap();
+        let config = test_config(&tmp);
+        AuthService::from_config(&config)
+            .store_provider_token(
+                APP_SESSION_PROVIDER,
+                "default",
+                "sess-default-5501",
+                HashMap::new(),
+                true,
+            )
+            .unwrap();
+
+        let provider = {
+            let _env_guard = crate::api::config::backend_env_test_lock();
+            let prev = std::env::var("BACKEND_URL").ok();
+            std::env::set_var("BACKEND_URL", &base);
+            let built = default_embedding_provider_with_config(&config);
+            match prev {
+                Some(v) => std::env::set_var("BACKEND_URL", v),
+                None => std::env::remove_var("BACKEND_URL"),
+            }
+            built
+        };
+
+        let vectors = provider
+            .embed(&["binding probe"])
+            .await
+            .expect("config-scoped default embedder must resolve the app-session token and embed");
+        assert_eq!(
+            vectors.first().map(|v| v.len()).unwrap_or(0),
+            DEFAULT_CLOUD_EMBEDDING_DIMENSIONS
+        );
+        assert_eq!(
+            captured.auth.lock().unwrap().as_deref(),
+            Some("Bearer sess-default-5501"),
+            "the memory client's default embedder must authenticate with the config-scoped token"
         );
     }
 }

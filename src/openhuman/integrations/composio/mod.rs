@@ -33,7 +33,7 @@
 //! ```
 //!
 //! [`DomainEvent::ComposioTriggerReceived`]:
-//! crate::core::event_bus::DomainEvent::ComposioTriggerReceived
+//! crate::core::events::DomainEvent::ComposioTriggerReceived
 
 pub mod action_tool;
 pub mod auth_retry;

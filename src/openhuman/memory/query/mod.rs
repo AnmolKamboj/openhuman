@@ -14,6 +14,8 @@ mod fetch_leaves;
 mod ingest_document;
 mod query_source;
 mod search_entities;
+#[cfg(test)]
+mod test_workspace;
 
 // Re-export individual tool types for callers that need them directly
 // (e.g. tool registration in ops.rs).
@@ -170,8 +172,10 @@ impl Tool for MemoryTreeTool {
 #[cfg(test)]
 mod memory_tree_dispatcher_tests {
     use super::*;
+    use crate::openhuman::memory::query::test_workspace::isolated_config;
     use crate::openhuman::tools::traits::Tool;
     use serde_json::json;
+    use tempfile::TempDir;
 
     #[test]
     fn memory_tree_tool_name_is_correct() {
@@ -243,7 +247,15 @@ mod memory_tree_dispatcher_tests {
     }
 
     #[tokio::test]
+    #[ignore = "needs a built tinymemory module (OPENHUMAN_MODULE_PATH) and its own process: \
+the tool now reads the summary tree through the bound driver, not the in-process engine"]
     async fn memory_tree_fetch_leaves_mode_dispatches_successfully() {
+        // `fetch_leaves` loads config from `OPENHUMAN_WORKSPACE`. Without an
+        // isolated workspace this races sibling tests whose `TempDir` is
+        // deleted mid-call ("Failed to create temporary config file ... No
+        // such file or directory").
+        let tmp = TempDir::new().expect("tempdir");
+        let (_workspace, _cfg) = isolated_config(&tmp).await;
         let result = MemoryTreeTool
             .execute(json!({
                 "mode": "fetch_leaves",

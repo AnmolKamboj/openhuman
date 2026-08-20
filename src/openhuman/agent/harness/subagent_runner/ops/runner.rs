@@ -16,8 +16,8 @@ use crate::openhuman::agent::context::prompt::{
 use crate::openhuman::agent::file_state::with_file_state_agent_id;
 use crate::openhuman::agent::harness::agent_graph::{AgentTurnRequest, AgentTurnUsage};
 use crate::openhuman::agent::harness::artifact_offload::{
-    effective_offload_threshold, extract_artifact_paths, note_artifact_handoff,
-    offload_oversized_result, ArtifactOffload, DEFAULT_OFFLOAD_THRESHOLD_BYTES,
+    effective_offload_threshold, extract_artifact_paths, new_artifact_offload,
+    note_artifact_handoff, offload_oversized_result, DEFAULT_OFFLOAD_THRESHOLD_BYTES,
     HANDOFF_STAGE_RECORDED,
 };
 use crate::openhuman::agent::harness::definition::{
@@ -224,6 +224,7 @@ async fn try_deterministic_memory_retrieval(
     definition: &AgentDefinition,
     task_id: &str,
     started: Instant,
+    loaded_config: &LoadedConfig,
 ) -> Option<SubagentRunOutcome> {
     let agent_id = definition.id.as_str();
     if !memory_fast_path_enabled() {
@@ -233,12 +234,12 @@ async fn try_deterministic_memory_retrieval(
     if query.is_empty() {
         return None;
     }
-    let config = match crate::openhuman::config::Config::load_or_init().await {
-        Ok(config) => config,
+    let config = match loaded_config.as_ref() {
+        Ok(config) => config.as_ref(),
         Err(e) => {
             tracing::warn!(
                 task_id = %task_id,
-                error = %format!("{e:#}"),
+                error = %e,
                 "[subagent_runner] agent_memory fast-path config load failed — falling back to model walk (#4677)"
             );
             return None;
@@ -249,7 +250,7 @@ async fn try_deterministic_memory_retrieval(
     // extraction here is deterministic and cheap (regex, or one spaCy call);
     // `fast_retrieve` repeats it internally, which is the same work its first
     // model-driven tool call would have done.
-    if crate::openhuman::memory::tree::nlp::extract_query_entities(&config, query)
+    if crate::openhuman::memory::tree::nlp::extract_query_entities(config, query)
         .await
         .is_empty()
     {
@@ -263,7 +264,7 @@ async fn try_deterministic_memory_retrieval(
         limit: MEMORY_FAST_PATH_LIMIT,
         ..FastRetrieveOptions::default()
     };
-    let resp = match fast_retrieve(&config, query, opts).await {
+    let resp = match fast_retrieve(config, query, opts).await {
         Ok(resp) => resp,
         Err(e) => {
             tracing::warn!(
@@ -372,6 +373,19 @@ pub async fn run_subagent(
             AgentDefinitionRegistry::global().and_then(|reg| reg.get(&parent.agent_definition_id));
         tier_gate_decision(parent_def, definition, &parent.agent_definition_id, &task_id)?;
 
+        // Load the host config exactly once for this spawn and hand it to
+        // everything below. See `LoadedConfig` — `load_or_init` re-reads
+        // config.toml on every call, and the runtime below is slated to move
+        // into TinyAgents, where there is no config file to load.
+        //
+        // Deliberately placed *after* `tier_gate_decision`: `load_or_init` can
+        // initialize config on first run, and a spawn the tier gate rejects
+        // should not have that side effect.
+        let loaded_config: LoadedConfig = crate::openhuman::config::Config::load_or_init()
+            .await
+            .map(std::sync::Arc::new)
+            .map_err(|e| e.to_string());
+
         // Deterministic fast path for the pure-retrieval memory agent (#4677).
         // Both `retrieve_memory` (chat delegate) and `call_memory_agent` land
         // here via `run_subagent`; short-circuit with the E2GraphRAG hits when
@@ -380,8 +394,14 @@ pub async fn run_subagent(
         // to the full sub-agent when the fast path is disabled/errs/finds
         // nothing (the empty/degraded case is handled by #4655).
         if definition.id == AGENT_MEMORY_ID {
-            if let Some(outcome) =
-                try_deterministic_memory_retrieval(task_prompt, definition, &task_id, started).await
+            if let Some(outcome) = try_deterministic_memory_retrieval(
+                task_prompt,
+                definition,
+                &task_id,
+                started,
+                &loaded_config,
+            )
+            .await
             {
                 return Ok(outcome);
             }
@@ -433,6 +453,7 @@ pub async fn run_subagent(
                             &options,
                             &parent_for_subagent,
                             &task_id,
+                            &loaded_config,
                         ))
                         .await
                     })
@@ -558,7 +579,7 @@ async fn offload_outcome_artifacts(
         .as_ref()
         .map(|p| p.action_dir.clone())
         .unwrap_or_else(|| action_dir.clone());
-    let offload = ArtifactOffload::new(action_dir, policy, outcome.agent_id.clone(), task_id)
+    let offload = new_artifact_offload(action_dir, policy, outcome.agent_id.clone(), task_id)
         .with_render_root(render_root);
     let (output, _artifact) =
         offload_oversized_result(std::mem::take(&mut outcome.output), &offload, threshold).await;
@@ -605,6 +626,24 @@ fn workspace_descriptor_for_subagent(
     )
 }
 
+/// One spawn's snapshot of the host config, loaded once by [`run_subagent`].
+///
+/// `Config::load_or_init()` is **not cached** — it re-resolves the config dirs
+/// and re-reads `config.toml` on every call. `run_typed_mode` needed it in six
+/// places, so a single sub-agent spawn used to hit the disk six times and could
+/// observe six *different* configs if the file changed mid-spawn. One snapshot
+/// is both cheaper and more coherent.
+///
+/// The error is captured as a `String` rather than dropped to `Option` because
+/// the `integrations_agent` path reports it to the caller; the other five sites
+/// degrade without it. Keeping both shapes available is what lets each site
+/// preserve its original failure behaviour.
+///
+/// Threading this in as a parameter (rather than loading it inside the runtime)
+/// is `docs/specs/plan-agents.md` Phase 3: the sub-agent runner is slated to
+/// move into TinyAgents, and a generic runtime has no config file to load.
+type LoadedConfig = Result<std::sync::Arc<crate::openhuman::config::Config>, String>;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Typed mode — narrow prompt, filtered tools, cheaper model
 // ─────────────────────────────────────────────────────────────────────────────
@@ -620,6 +659,7 @@ async fn run_typed_mode(
     options: &SubagentRunOptions,
     parent: &ParentExecutionContext,
     task_id: &str,
+    config: &LoadedConfig,
 ) -> Result<SubagentRunOutcome, SubagentRunError> {
     let started = Instant::now();
     match crate::openhuman::agent::tinyagents::subagent_graph::run_subagent_pipeline_skeleton(
@@ -647,14 +687,12 @@ async fn run_typed_mode(
     }
 
     // Resolve model source + model. See `resolve_subagent_source` for the
-    // semantics of each ModelSpec variant. `Config::load_or_init()` is
-    // async so the load is hoisted out of the helper — the helper itself
-    // is sync and unit-tested.
-    let config_loaded = crate::openhuman::config::Config::load_or_init().await;
+    // semantics of each ModelSpec variant; the helper itself is sync and
+    // unit-tested, and takes the config the caller already loaded.
     let (mut subagent_source, model) = resolve_subagent_source(
         &definition.model,
         &definition.id,
-        config_loaded.as_ref().ok(),
+        config.as_ref().ok().map(|c| c.as_ref()),
         parent.turn_model_source.clone(),
         parent.model_name.clone(),
         !definition.subagents.is_empty(),
@@ -675,18 +713,18 @@ async fn run_typed_mode(
     // returns the fresh list almost for free on the warm path. Fall back
     // to the parent's frozen list when the live fetch returns empty.
     let live_integrations: Vec<crate::openhuman::agent::context::prompt::ConnectedIntegration> = {
-        let probe_config = crate::openhuman::config::Config::load_or_init().await.ok();
-        let signed_in = probe_config
+        let signed_in = config
             .as_ref()
-            .map(user_is_signed_in_to_composio)
+            .ok()
+            .map(|cfg| user_is_signed_in_to_composio(cfg))
             .unwrap_or(false);
         if !signed_in {
             parent.connected_integrations.clone()
         } else {
-            match crate::openhuman::config::Config::load_or_init().await {
-                Ok(config) => {
+            match config.as_ref() {
+                Ok(cfg) => {
                     use crate::openhuman::integrations::composio::FetchConnectedIntegrationsStatus;
-                    match crate::openhuman::integrations::composio::fetch_connected_integrations_status(&config)
+                    match crate::openhuman::integrations::composio::fetch_connected_integrations_status(cfg)
                         .await
                     {
                         FetchConnectedIntegrationsStatus::Authoritative(fresh) => {
@@ -784,8 +822,8 @@ async fn run_typed_mode(
 
     if is_integrations_agent_with_toolkit {
         if let Some(tk) = toolkit_filter {
-            let arc_config = match crate::openhuman::config::Config::load_or_init().await {
-                Ok(c) => std::sync::Arc::new(c),
+            let arc_config = match config.as_ref() {
+                Ok(c) => std::sync::Arc::clone(c),
                 Err(e) => {
                     tracing::warn!(
                         agent_id = %definition.id,
@@ -976,12 +1014,10 @@ async fn run_typed_mode(
         // the parent/extract provider would no longer be observed (issue #4249 P3-B:
         // the extract flip is deferred; the turn-path flip goes through the primary
         // producers instead).
-        let (extract_source, extract_model) = match crate::openhuman::config::Config::load_or_init()
-            .await
-        {
+        let (extract_source, extract_model) = match config.as_ref() {
             Ok(cfg) => {
                 let route =
-                    crate::openhuman::inference::provider::provider_for_role("summarization", &cfg);
+                    crate::openhuman::inference::provider::provider_for_role("summarization", cfg);
                 let r = route.trim();
                 let route_is_managed = r.is_empty() || r == "cloud" || r == "openhuman";
                 if route_is_managed && !parent.turn_model_source.is_local_provider() {
@@ -989,13 +1025,15 @@ async fn run_typed_mode(
                 } else {
                     match crate::openhuman::inference::provider::create_chat_model_with_model_id(
                         "summarization",
-                        &cfg,
+                        cfg,
                         parent.temperature,
                     ) {
                         Ok((_model, resolved_model)) => (
                             crate::openhuman::agent::tinyagents::TurnModelSource::new_crate_native(
                                 "summarization",
-                                Arc::new(cfg.clone()),
+                                // Already an `Arc` from the spawn-wide snapshot —
+                                // share it rather than deep-copying the Config.
+                                Arc::clone(cfg),
                             ),
                             resolved_model,
                         ),
@@ -1132,7 +1170,7 @@ async fn run_typed_mode(
         let local_dir = options
             .worktree_action_dir
             .clone()
-            .or_else(|| config_loaded.as_ref().ok().map(|c| c.action_dir.clone()));
+            .or_else(|| config.as_ref().ok().map(|c| c.action_dir.clone()));
         match local_dir {
             Some(dir) => {
                 crate::openhuman::agent::prompts::load_agents_md_layers(&parent.workspace_dir, &dir)
@@ -1272,10 +1310,10 @@ async fn run_typed_mode(
     // Resolve the sub-agent model's user-configured vision flag; defaults to
     // `false` when config can't be loaded. Combined with the provider capability
     // at the gate, this lets a flagged custom/BYOK sub-agent model forward images.
-    let model_vision = crate::openhuman::config::Config::load_or_init()
-        .await
+    let model_vision = config
+        .as_ref()
         .ok()
-        .map(|cfg| crate::openhuman::inference::model_context::model_supports_vision(&model, &cfg))
+        .map(|cfg| crate::openhuman::inference::model_context::model_supports_vision(&model, cfg))
         .unwrap_or(false);
     tracing::debug!(
         target: "subagent_runner",
@@ -1387,6 +1425,9 @@ async fn run_typed_mode(
                     // Agent-level TokenJuice profile → sub-agent context middleware
                     // (#4466), so sub-agent tool outputs compact like the chat path.
                     definition.effective_tokenjuice_compression(),
+                    // The spawn-wide config snapshot supplies the `[context]`
+                    // knobs the graph used to load for itself.
+                    config.as_ref().ok().map(|c| c.as_ref()),
                 )
                 .await?
             }
@@ -1417,6 +1458,7 @@ async fn run_typed_mode(
                     provider_label: "subagent".to_string(),
                     handoff_cache: handoff_cache.clone(),
                     tokenjuice_compression: definition.effective_tokenjuice_compression(),
+                    config: config.as_ref().ok().map(Arc::clone),
                 };
                 let res = run(req).await?;
                 history = res.history;
@@ -1575,9 +1617,9 @@ mod fast_path_tests {
         apply_max_result_chars, format_deterministic_memory_hits, parse_memory_fast_path_enabled,
         MEMORY_FAST_PATH_LIMIT,
     };
-    use crate::openhuman::memory::store::trees::types::TreeKind;
     use crate::openhuman::memory::tree::retrieval::types::{NodeKind, QueryResponse, RetrievalHit};
     use chrono::Utc;
+    use tinymemory_core::store::trees::types::TreeKind;
 
     fn hit(content: &str, scope: &str, score: f32) -> RetrievalHit {
         RetrievalHit {

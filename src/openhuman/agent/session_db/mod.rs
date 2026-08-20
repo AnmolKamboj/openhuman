@@ -1,29 +1,25 @@
-//! Durable agent session database.
+//! JSON-RPC surface for the durable agent session database.
 //!
-//! SQLite-backed store (WAL + FTS5) for sessions, messages, tool calls,
-//! cost metadata, and parent/child lineage. Complements the existing
-//! `session_raw/*.jsonl` transcript files — those remain the source of
-//! truth for KV-cache resume; this module provides queryable indexing,
-//! cross-session search, and orchestration recovery.
+//! The store itself — sessions, messages, tool calls, cost metadata,
+//! parent/child lineage, and the run ledger — lives in
+//! [`tinyagents::session`]. Only the controller schemas and
+//! their handlers stay here, because the RPC envelope, config resolution, and
+//! `RpcOutcome` shape are host concerns the runtime crate has no business
+//! knowing about.
 //!
-//! Database path: `{workspace}/session_db/sessions.db`.
+//! Call the store directly (`tinyagents::session::…`) rather
+//! than through this module; it deliberately re-exports no storage API.
+//!
+//! Every store entry point takes the workspace root, so handlers pass
+//! `config.workspace_dir`. The database path is
+//! `{workspace}/session_db/sessions.db` — unchanged by the move, so existing
+//! installs keep their history.
+//!
+//! The `session_db` and `run_ledger` RPC namespaces are unchanged.
 
-mod ops;
-pub mod run_ledger;
 mod schemas;
-mod store;
-pub mod types;
 
-pub use ops::{
-    get_session, list_sessions, record_message, record_session_end, record_session_start,
-    record_tool_call, search_sessions,
-};
 pub use schemas::{
     all_controller_schemas as all_session_db_controller_schemas,
     all_registered_controllers as all_session_db_registered_controllers,
-};
-pub use store::with_connection;
-pub use types::{
-    SessionMessage, SessionRecord, SessionSearchParams, SessionSearchResult, SessionStatus,
-    SessionToolCall,
 };

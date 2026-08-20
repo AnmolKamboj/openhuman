@@ -2286,7 +2286,8 @@ fn resolve_cloud_slug<'a>(
     {
         anyhow::bail!("{}", missing_credentials());
     }
-    let codex = resolve_openai_codex_routing(config, slug, &entry.endpoint, &key)
+    let bearer_is_oauth = slug == "openai" && openai_bearer_is_oauth(config);
+    let codex = resolve_openai_codex_routing(config, slug, &entry.endpoint, &key, bearer_is_oauth)
         .map_err(anyhow::Error::msg)?;
 
     Ok(CloudSlugResolution {
@@ -2492,6 +2493,48 @@ fn try_create_cloud_slug_chat_model_from_string_with_native_tools(
     Some(Ok((chat, effective_model)))
 }
 
+/// Whether the openai bearer that [`lookup_key_for_slug`] resolves is an OAuth
+/// (Codex-subscription) credential rather than a standard API key.
+///
+/// OAuth and API-key credentials share the same `provider:openai` profile store
+/// and differ only by [`AuthProfileKind`], so the bearer *string* cannot reveal
+/// its source — which is exactly why the old `access_token == bearer_key` compare
+/// broke under token rotation (#5353). This mirrors `lookup_key_for_slug`'s
+/// precedence (`provider:openai`, then the legacy bare `openai`) and reports the
+/// *kind* of the profile that would win. With no stored openai profile carrying a
+/// credential, the only bearer source is the OAuth fallback, so a present OAuth
+/// credential means the bearer is OAuth.
+pub(crate) fn openai_bearer_is_oauth(config: &Config) -> bool {
+    use crate::openhuman::security::credentials::profiles::AuthProfileKind;
+
+    let auth = AuthService::from_config(config);
+    for provider in [auth_key_for_slug("openai"), "openai".to_string()] {
+        if let Ok(Some(profile)) = auth.get_profile(&provider, None) {
+            // A profile with an empty credential is skipped by
+            // `lookup_key_for_slug`, so fall through to the next precedence level.
+            let has_credential = match profile.kind {
+                AuthProfileKind::Token => profile
+                    .token
+                    .as_deref()
+                    .is_some_and(|t| !t.trim().is_empty()),
+                AuthProfileKind::OAuth => profile
+                    .token_set
+                    .as_ref()
+                    .is_some_and(|t| !t.access_token.trim().is_empty()),
+            };
+            if has_credential {
+                return matches!(profile.kind, AuthProfileKind::OAuth);
+            }
+        }
+    }
+    // No stored openai profile with a credential → the bearer, if any, comes from
+    // the OAuth fallback (`lookup_openai_bearer_token`).
+    crate::openhuman::inference::openai_oauth::lookup_openai_oauth_credentials(config)
+        .ok()
+        .flatten()
+        .is_some()
+}
+
 /// Fetch the bearer token for a slug from the workspace `auth-profiles.json`.
 ///
 /// Tries `provider:<slug>` first (new key format), then the bare `<slug>`
@@ -2500,6 +2543,24 @@ fn try_create_cloud_slug_chat_model_from_string_with_native_tools(
 /// "no auth", which surfaces an authentication error at first call rather than
 /// at factory build time.
 pub fn lookup_key_for_slug(slug: &str, config: &Config) -> anyhow::Result<String> {
+    // Ahead of the stored profiles, and scoped to the one slug the per-call
+    // route registers. A caller that named an endpoint and a bearer for this
+    // turn has said where the credential comes from, and there is nothing on
+    // disk to find for a slug that exists only in this `Config` copy. Scoping it
+    // by slug is what keeps the bearer from reaching a provider the caller never
+    // named — the same containment the legacy `config.api_key` fallback below
+    // gets from `legacy_inference_slug`.
+    if slug == crate::openhuman::config::schema::EPHEMERAL_ROUTE_SLUG {
+        if let Some(route) = config.ephemeral_route.as_ref() {
+            log::debug!(
+                "[providers][chat-factory] auth lookup slug={} key_present={} (per-call route)",
+                slug,
+                !route.api_key.trim().is_empty()
+            );
+            return Ok(route.api_key.trim().to_string());
+        }
+    }
+
     let auth = AuthService::from_config(config);
     // Try new-style key first.
     let new_key = auth_key_for_slug(slug);
@@ -2582,7 +2643,7 @@ pub fn lookup_key_for_slug(slug: &str, config: &Config) -> anyhow::Result<String
 }
 
 /// Return a safe-to-log representation of a URL endpoint: `scheme://host` only.
-pub(super) fn redact_endpoint(url: &str) -> String {
+pub fn redact_endpoint(url: &str) -> String {
     let trimmed = url.trim();
     if let Some(rest) = trimmed.split_once("://") {
         let scheme = rest.0;

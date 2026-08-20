@@ -37,7 +37,8 @@ use std::time::Duration;
 use parking_lot::Mutex;
 use tokio::sync::oneshot;
 
-use crate::core::event_bus::{publish_global, DomainEvent};
+use crate::core::bus::BUS;
+use crate::core::events::DomainEvent;
 use crate::openhuman::agent::turn_origin::{self, AgentTurnOrigin, TrustedAutomationSource};
 use crate::openhuman::config::Config;
 use crate::openhuman::security::POLICY_DENIED_MARKER;
@@ -672,9 +673,45 @@ impl ApprovalGate {
 
         // Chat context (thread/client id) for routing the yes/no reply — set by
         // the web channel around the agent run; absent for non-chat callers.
+        //
+        // Fallback (#5499): when the task-local is absent but the turn is
+        // `WebChat`, route via the thread/client the origin itself carries. The
+        // web channel scopes `APPROVAL_CHAT_CONTEXT` and builds the `WebChat`
+        // origin from the *same* thread_id/client_id (`web_chat::start_chat`),
+        // so the two are identical whenever both are present. They diverge only
+        // when a turn is carried across a `tokio::spawn` boundary that
+        // propagates the origin but not the approval context — most importantly
+        // an async-delegated sub-agent (`spawn_async_subagent`, reached when the
+        // orchestrator routes "remind me…" to `scheduler_agent`): the origin
+        // travels but this task-local does not. Without the fallback the gate
+        // parks with `thread_id: None`, the web-channel surface drops the
+        // `ApprovalRequested` event ("thread/client absent — NOT surfacing"),
+        // and the park silently TTL-denies — so a `cron_add` scheduled from a
+        // chat turn never completes.
         let chat_ctx = APPROVAL_CHAT_CONTEXT.try_with(|c| c.clone()).ok();
-        let chat_thread_id = chat_ctx.as_ref().map(|c| c.thread_id.clone());
-        let chat_client_id = chat_ctx.as_ref().map(|c| c.client_id.clone());
+        let origin_chat_route = match &origin {
+            AgentTurnOrigin::WebChat {
+                thread_id,
+                client_id,
+                ..
+            } => Some((thread_id.clone(), client_id.clone())),
+            _ => None,
+        };
+        if chat_ctx.is_none() && origin_chat_route.is_some() {
+            tracing::debug!(
+                tool = tool_name,
+                "[approval::gate] APPROVAL_CHAT_CONTEXT absent on a WebChat turn — routing the \
+                 approval via the origin's thread/client (async-delegated sub-agent path, #5499)"
+            );
+        }
+        let chat_thread_id = chat_ctx
+            .as_ref()
+            .map(|c| c.thread_id.clone())
+            .or_else(|| origin_chat_route.as_ref().map(|(t, _)| t.clone()));
+        let chat_client_id = chat_ctx
+            .as_ref()
+            .map(|c| c.client_id.clone())
+            .or_else(|| origin_chat_route.as_ref().map(|(_, c)| c.clone()));
 
         // In-call meeting context — set by agent_meetings::in_call around a
         // live-meeting orchestrator turn. Enables the spoken approval
@@ -832,9 +869,14 @@ impl ApprovalGate {
                 return (
                     GateOutcome::Deny {
                         reason: format!(
-                            "{POLICY_DENIED_MARKER} Tool '{tool_name}' rejected: agent turn has \
-                             no origin label. Refusing external_effect tool from unlabelled call \
-                             site."
+                            "{POLICY_DENIED_MARKER} '{tool_name}' was blocked because this agent \
+                             turn is missing its origin label, so the approval gate cannot decide \
+                             who requested the action. Scheduling and other external-effect tools \
+                             (e.g. cron_add / cron_update) are refused when the turn has no origin. \
+                             This is an internal wiring gap, not something you did — the work most \
+                             likely ran on a background task that did not carry the turn's origin \
+                             forward; retry from a normal chat turn, or report it so the spawn site \
+                             can be fixed."
                         ),
                     },
                     None,
@@ -942,7 +984,7 @@ impl ApprovalGate {
             client_id = chat_client_id.as_deref().unwrap_or("<none>"),
             "[approval::gate] publishing ApprovalRequested (surface fires only if thread_id+client_id are both set)"
         );
-        publish_global(DomainEvent::ApprovalRequested {
+        BUS.publish(DomainEvent::ApprovalRequested {
             request_id: request_id.clone(),
             tool_name: tool_name.to_string(),
             action_summary: action_summary.to_string(),
@@ -972,7 +1014,7 @@ impl ApprovalGate {
                 tool = tool_name,
                 "[approval::gate] flow-origin park — surfacing flow_approval_request + notification"
             );
-            publish_global(DomainEvent::FlowApprovalRequested {
+            BUS.publish(DomainEvent::FlowApprovalRequested {
                 request_id: request_id.clone(),
                 flow_id: flow_id.clone(),
                 run_id: run_id.clone(),
@@ -985,7 +1027,7 @@ impl ApprovalGate {
         // Voice channel (issue #3513): tell the meeting bus to speak the
         // approval prompt into the call.
         if let Some(ic) = in_call_ctx.as_ref() {
-            publish_global(DomainEvent::InCallApprovalRequested {
+            BUS.publish(DomainEvent::InCallApprovalRequested {
                 request_id: request_id.clone(),
                 tool_name: tool_name.to_string(),
                 action_summary: action_summary.to_string(),
@@ -1226,7 +1268,7 @@ impl ApprovalGate {
             if let Some(tx) = self.take_waiter(request_id) {
                 let _ = tx.send(decision);
             }
-            publish_global(DomainEvent::ApprovalDecided {
+            BUS.publish(DomainEvent::ApprovalDecided {
                 request_id: row.request_id.clone(),
                 tool_name: row.tool_name.clone(),
                 decision: decision.as_str().to_string(),
@@ -2154,7 +2196,15 @@ mod tests {
             .await;
 
         match outcome {
-            GateOutcome::Deny { reason } => assert!(reason.contains("no origin label")),
+            // The deny message is specific and actionable (issues #5508 / #5499,
+            // 2nd acceptance criterion): it names the missing origin label, calls
+            // out the scheduling/external-effect tools it affects, and frames it
+            // as an internal wiring gap rather than user error.
+            GateOutcome::Deny { reason } => {
+                assert!(reason.contains("origin label"), "reason was: {reason}");
+                assert!(reason.contains("cron_add"), "reason was: {reason}");
+                assert!(reason.contains("external-effect"), "reason was: {reason}");
+            }
             other => panic!("expected deny, got {other:?}"),
         }
     }
@@ -2396,6 +2446,62 @@ mod tests {
 
         // Mapping is cleared once intercept returns.
         assert!(gate.pending_for_thread("thread-42").is_none());
+    }
+
+    /// Regression for #5499: an async-delegated sub-agent carries the `WebChat`
+    /// origin across the `tokio::spawn` boundary (`spawn_async_subagent` calls
+    /// `turn_origin::propagate`) but NOT the `APPROVAL_CHAT_CONTEXT` task-local.
+    /// Before the origin-routing fallback the gate parked with `thread_id:
+    /// None`, the web-channel surface dropped the `ApprovalRequested` event
+    /// ("thread/client absent — NOT surfacing"), and the park silently
+    /// TTL-denied — so a `cron_add` the user asked for in chat never completed.
+    /// The gate must instead route the park via the thread/client the `WebChat`
+    /// origin already carries, so the card can surface and be approved.
+    #[tokio::test]
+    async fn webchat_origin_routes_park_when_approval_chat_context_absent() {
+        let (gate, _dir) = test_gate();
+        let gate = Arc::new(gate);
+
+        // WebChat origin scoped, but NO `APPROVAL_CHAT_CONTEXT` — exactly the
+        // async sub-agent spawn state (origin propagated, approval context not).
+        let g = gate.clone();
+        let origin = AgentTurnOrigin::WebChat {
+            thread_id: "thread-async".into(),
+            client_id: "client-async".into(),
+            request_id: Some("req-async".into()),
+        };
+        let handle = tokio::spawn(async move {
+            turn_origin::with_origin(
+                origin,
+                g.intercept("cron_add", "schedule daily reminder", serde_json::json!({})),
+            )
+            .await
+        });
+
+        // The park must be routable via the origin's thread even though the
+        // approval task-local was never scoped. `thread_to_request` is inserted
+        // only when `chat_thread_id` is `Some`, so this mapping appearing proves
+        // the origin fallback supplied it.
+        let mut tries = 0;
+        let request_id = loop {
+            if let Some(r) = gate.pending_for_thread("thread-async") {
+                break r;
+            }
+            tries += 1;
+            assert!(
+                tries < 50,
+                "park must be routable via the WebChat origin's thread when \
+                 APPROVAL_CHAT_CONTEXT is absent (#5499)"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        };
+
+        // A decision on that mapped request resolves the park (the card can
+        // surface and be approved), instead of silently TTL-denying.
+        gate.decide(&request_id, ApprovalDecision::ApproveOnce)
+            .unwrap();
+        assert!(matches!(handle.await.unwrap(), GateOutcome::Allow));
+        assert!(gate.pending_for_thread("thread-async").is_none());
     }
 
     #[tokio::test]
@@ -2931,6 +3037,57 @@ mod tests {
         assert!(matches!(outcome, GateOutcome::Allow));
     }
 
+    /// Regression for #5508 / #5499: an external-effect scheduling tool
+    /// (`cron_add`) that runs on a freshly-spawned, turn-less task — the exact
+    /// shape of `hosted::orchestration::effect_executor::run_local_agent`, which
+    /// fires the local sub-agent from a bare `tokio::spawn` with no agent turn on
+    /// the stack — must NOT be `Unknown`-denied once the spawn site scopes an
+    /// explicit `AgentTurnOrigin::Cli` (the residual site PR #5465 did not cover).
+    ///
+    /// Both halves run inside a `tokio::spawn` so the assertion exercises the real
+    /// task boundary the fix crosses: `AGENT_TURN_ORIGIN` is a `tokio::task_local`
+    /// that does not survive `spawn`, so the origin the gate reads is whatever the
+    /// spawned future scopes for itself — nothing, or the fix's explicit label.
+    #[tokio::test]
+    async fn cron_add_on_a_turnless_spawn_resolves_to_a_real_origin_not_unknown_denied() {
+        let (gate, _dir) = test_gate();
+        let gate = Arc::new(gate);
+
+        // Precondition — mirrors the bug before the fix: a bare `tokio::spawn`
+        // with no ambient origin (capture() would yield None) reaches the gate as
+        // `Unknown`, and the scheduling tool is refused as "no origin label".
+        let g = gate.clone();
+        let denied = tokio::spawn(async move {
+            g.intercept("cron_add", "schedule a job", serde_json::json!({}))
+                .await
+        })
+        .await
+        .expect("spawned task panicked");
+        match denied {
+            GateOutcome::Deny { reason } => {
+                assert!(reason.contains("origin label"), "reason was: {reason}")
+            }
+            other => panic!("unlabelled turn-less spawn must fail closed, got {other:?}"),
+        }
+
+        // With the fix: `run_local_agent` scopes an explicit `Cli` origin around
+        // the spawned sub-agent work, so the same `cron_add` call now resolves to
+        // a real origin and is allowed (device-tool automation past the
+        // Master-chat gate) instead of being denied as unlabelled.
+        let g = gate.clone();
+        let allowed = tokio::spawn(turn_origin::with_origin(AgentTurnOrigin::Cli, async move {
+            g.intercept("cron_add", "schedule a job", serde_json::json!({}))
+                .await
+        }))
+        .await
+        .expect("spawned task panicked");
+        assert!(
+            matches!(allowed, GateOutcome::Allow),
+            "an explicit Cli origin scoped across the spawn must resolve cron_add \
+             to a real origin and allow it, got {allowed:?}"
+        );
+    }
+
     #[tokio::test]
     async fn intercept_with_external_channel_origin_persists_and_ttl_denies() {
         // Non-web channel inbound (Telegram / Discord / Slack / etc.):
@@ -3294,10 +3451,11 @@ mod tests {
         // surfaces fire instead — the `flow_approval_request` DomainEvent
         // (bridged to a broadcast Socket.IO event by `core::socketio`) and
         // the `flow-gate-approval` CoreNotification with its three actions.
-        crate::core::event_bus::init_global(crate::core::event_bus::DEFAULT_CAPACITY);
-        let mut event_rx = crate::core::event_bus::global()
+        crate::core::bus::init().await.expect("bus init");
+        let mut event_rx = crate::core::bus::BUS
+            .get()
             .expect("event bus initialized above")
-            .raw_receiver();
+            .receiver();
         let mut notif_rx =
             crate::openhuman::desktop::notifications::bus::subscribe_core_notifications();
 
@@ -3353,23 +3511,20 @@ mod tests {
     /// filter by flow id, not just by variant, and tolerate both unrelated
     /// events and broadcast lag rather than returning the first match.
     async fn find_flow_approval_requested(
-        rx: &mut tokio::sync::broadcast::Receiver<crate::core::event_bus::DomainEvent>,
+        rx: &mut tinybus::events::EventReceiver<crate::core::events::DomainEvent>,
         expected_flow_id: &str,
     ) -> (String, String, String) {
         loop {
             match rx.recv().await {
-                Ok(crate::core::event_bus::DomainEvent::FlowApprovalRequested {
+                Some(crate::core::events::DomainEvent::FlowApprovalRequested {
                     request_id,
                     flow_id,
                     run_id,
                     tool_name,
                     ..
                 }) if flow_id == expected_flow_id => return (request_id, run_id, tool_name),
-                Ok(_) => continue,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                    panic!("event bus closed before FlowApprovalRequested arrived")
-                }
+                Some(_) => continue,
+                None => panic!("the bus closed before the expected event arrived"),
             }
         }
     }
@@ -3389,10 +3544,7 @@ mod tests {
             match rx.recv().await {
                 Ok(event) if event.id == expected_id => return event,
                 Ok(_) => continue,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                    panic!("notification bus closed before the flow-gate-approval notification arrived")
-                }
+                Err(err) => panic!("the notification bus closed before the approval: {err}"),
             }
         }
     }

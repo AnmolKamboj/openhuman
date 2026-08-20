@@ -33,7 +33,7 @@ The agent tool layer. Defines the core [`Tool`] trait every agent-callable capab
 | `src/openhuman/tools/impl/filesystem/` | `file_read`, `file_write`, `edit_file`, `apply_patch`, `grep`, `glob_search`, `list_files`, `read_diff`, `csv_export`, `git_operations`, `run_linter`, `run_tests`, `update_memory_md`. |
 | `src/openhuman/tools/impl/browser/` | `browser` (DOM-snapshot automation, pluggable backend), `browser_open`, `image_info`, action parser, native backend, security. |
 | `src/openhuman/tools/impl/computer/` | `mouse`, `keyboard` (native control, default-off), human-path resolution. |
-| `src/openhuman/tools/impl/network/` | `http_request`, `web_fetch`, `curl`, `gitbooks` (search/get-page), `mcp` (list servers/tools, call), `mcp_setup` (5 setup-agent tools), `polymarket` (+ orders, CLOB auth), `gmail_unsubscribe`, `url_guard`. |
+| `src/openhuman/tools/impl/network/` | `http_request`, `web_fetch`, `curl`, `gitbooks` (search/get-page), `mcp` (list servers/tools, call), `mcp_setup` (5 setup-agent tools), `gmail_unsubscribe`, `url_guard`. |
 | `src/openhuman/search/` | Search engine registry and search-owned agent tools such as `web_search`. |
 | `src/openhuman/tools/impl/system/` | `shell`, `node_exec`, `npm_exec`, `install_tool`, `detect_tools`, `current_time`, `schedule`, `proxy_config`, `pushover`, `lsp`, `tool_stats`, `update_check`, `update_apply`, `insert_sql_record`, `workspace_state`. |
 | `*_tests.rs` / `#[cfg(test)] mod tests` | Co-located/sibling unit tests across the module. |
@@ -60,7 +60,6 @@ Namespace `tools` (wired into `src/core/all.rs` via `all_tools_registered_contro
 | `openhuman.tools_querit_search` | Querit web search (gated on a configured Querit key). |
 | `openhuman.tools_searxng_search` | Self-hosted SearXNG search (gated on `searxng.enabled`). |
 | `openhuman.tools_apify_linkedin_scrape` | Apify LinkedIn profile scrape → raw JSON + rendered markdown. |
-| `openhuman.tools_polymarket_execute` | Polymarket action dispatch (Gamma + CLOB; reads and trading writes), gated on `integrations.polymarket.enabled`. |
 
 Handlers load config via `config::rpc::load_config_with_timeout`, build the backend integration client where needed, and return `RpcOutcome`.
 

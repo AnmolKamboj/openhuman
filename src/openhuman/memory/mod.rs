@@ -1,74 +1,133 @@
-//! Memory orchestration.
+//! Memory orchestration — the **host layer** over `tinymemory-core`.
 //!
-//! This module is the high-level routing + policy layer over the memory
-//! stack. Owns the ingest pipeline, background job handlers, scoring,
-//! tree-building policy (tree_global / tree_topic), recall ranking, and
-//! the RPC surface. Storage primitives all live in sibling memory_*
-//! modules — see [`README.md`](README.md) for the full map.
+//! The substance of the memory subsystem was extracted into
+//! [`tinymemory_core`]: the SQLite/vector store, the markdown summary tree, the
+//! provider sync pipelines, ingestion, recall/query/search, the ingest queue,
+//! conversations, people, goals and the tool-memory rules. That crate names no
+//! OpenHuman type.
 //!
-//! No SQLite, no on-disk md, no vector tables here — those belong one
-//! layer down in [`memory_store`](crate::openhuman::memory::store).
+//! What stays here is the host layer, per the tinymemory README's split:
+//!
+//! | Module | Role |
+//! | ------ | ---- |
+//! | [`schemas`] / [`read_rpc`] | the JSON-RPC surface and its controller registration |
+//! | [`tools`] | the memory agent tools |
+//! | [`guard`] | the taint/scope/budget policy gate over every provider call |
+//! | [`driver`] | driver binding — which provider backs this workspace |
+//! | [`ops`] | RPC handlers, delegating into the core |
+//! | [`agent`] | the memory agent and its prompt |
+//! | [`global`] | the per-workspace singleton |
+//! | [`host`] | the seam impls — [`host::install_memory_event_sink`] and `MemoryHostConfig for Config` |
+//!
+//! Everything else in this module is a **re-export** of the extracted crate, so
+//! the ~550 `crate::openhuman::memory::…` paths elsewhere in this crate keep
+//! resolving unchanged. Prefer `tinymemory_core::…` in new code.
 
-// Legacy memory modules
 pub mod agent;
-pub mod conversations;
-pub mod diff;
-pub mod global;
-pub mod goals;
-pub mod ingestion;
+pub mod api;
+pub mod binding;
+pub mod driver;
+pub mod guard;
+pub mod host;
+pub mod host_impls;
 pub mod ops;
-pub mod people;
 pub mod preferences;
-pub mod queue;
-pub mod rpc_models;
-pub mod schemas;
-pub mod search;
-pub mod sources;
-pub mod store;
-pub mod sync;
-pub mod traits;
-
-// Modules moved from memory_tree (Phase 3)
-pub mod chat;
-pub mod ingest_pipeline;
+pub mod sync_events_bridge;
+// The consolidated `memory_query` agent tool and its six retrieval modes. Came
+// back from `tinymemory-core` with the rest of the agent tools — it is a `Tool`
+// impl end to end, and the engine crate cannot name that trait.
 pub mod query;
 pub mod read_rpc;
-pub mod remember;
-pub mod schema;
-pub mod source_scope;
-pub mod sync_events;
-pub mod tinycortex;
-pub mod tool_memory;
+pub mod schemas;
 pub mod tools;
+
+// Domains that are *mostly* extracted but keep their JSON-RPC surface here.
+// Each of these is a thin wrapper: `pub use tinymemory_core::<domain>::*;`
+// plus the handler/schema modules that name `RpcOutcome` and
+// `ControllerSchema`. See the module docs on each for the split.
+pub mod conversations;
+pub mod diff;
+pub mod goals;
+pub mod people;
+pub mod schema;
+pub mod sources;
+/// The golden-fixture seeder. Public so `tests/memory_golden_fixture_e2e.rs`
+/// can drive it; it walks the RPC handlers, which is why it stayed host-side.
+pub mod store_golden;
+pub mod sync;
+pub mod tool_memory;
 pub mod tree;
-pub mod util;
 
-// Tree instances — policy and orchestration over the generic memory_tree engine.
-// The global (time-axis) and topic (subject-axis) trees were removed; source
-// trees plus the entity index are the substrate.
-pub mod tree_policy;
-pub mod tree_source;
-
+#[cfg(test)]
+mod api_identity_tests;
+#[cfg(test)]
+mod bypass_allowlist_tests;
+#[cfg(test)]
+mod direct_engine_refs_tests;
+#[cfg(test)]
+mod profile_conn_guard_tests;
+#[cfg(test)]
+mod seam_integration_tests;
 #[cfg(test)]
 mod sync_pipeline_e2e_tests;
 #[cfg(test)]
 mod tree_e2e_tests;
-pub use ingestion::{
+
+// ── The extracted subsystem, re-exported under its historical paths ─────────
+//
+// `pub use … as …` rather than `pub mod` — these are other crates' modules now.
+// Every one of these was a `pub mod` here before the extraction.
+// The engine's modules are **not** re-exported here any more.
+//
+// They used to be, under their historical `memory::…` paths, which made engine
+// access indistinguishable from host-local code at every call site: a line
+// reading `crate::openhuman::memory::store::chunks::…` never appeared in a
+// `tinymemory_core` grep, so the audit that scoped this port undercounted the
+// direct-engine surface roughly threefold. Every remaining caller now names
+// `tinymemory_core::` explicitly, so `grep tinymemory_core` is an honest
+// inventory of what still has to move behind the driver.
+
+// Flat *type* re-exports, kept while the module facade above is gone.
+//
+// These are types, not module trees: `memory::MemoryCategory` names one value
+// type, where `memory::store::…` opened the whole engine. They still have to
+// move to `memory::api`'s equivalents, but they hide nothing in the meantime.
+pub use ops as rpc;
+pub use ops::*;
+pub use schemas::{
+    all_controller_schemas as all_memory_controller_schemas,
+    all_core_recall_controller_schemas as all_memory_core_recall_controller_schemas,
+    all_core_recall_registered_controllers as all_memory_core_recall_registered_controllers,
+    all_documents_controller_schemas as all_memory_documents_controller_schemas,
+    all_documents_registered_controllers as all_memory_documents_registered_controllers,
+    all_files_controller_schemas as all_memory_files_controller_schemas,
+    all_files_registered_controllers as all_memory_files_registered_controllers,
+    all_ingest_controller_schemas as all_memory_ingest_controller_schemas,
+    all_ingest_registered_controllers as all_memory_ingest_registered_controllers,
+    all_kv_graph_controller_schemas as all_memory_kv_graph_controller_schemas,
+    all_kv_graph_registered_controllers as all_memory_kv_graph_registered_controllers,
+    all_learn_controller_schemas as all_memory_learn_controller_schemas,
+    all_learn_registered_controllers as all_memory_learn_registered_controllers,
+    all_provider_controller_schemas as all_memory_provider_controller_schemas,
+    all_provider_registered_controllers as all_memory_provider_registered_controllers,
+    all_registered_controllers as all_memory_registered_controllers,
+    all_sync_controller_schemas as all_memory_sync_controller_schemas,
+    all_sync_registered_controllers as all_memory_sync_registered_controllers,
+    all_tool_memory_controller_schemas as all_memory_tool_memory_controller_schemas,
+    all_tool_memory_registered_controllers as all_memory_tool_memory_registered_controllers,
+};
+pub use tinymemory_core::ingestion::{
     ExtractedEntity, ExtractedRelation, ExtractionMode, IngestionJob, IngestionQueue,
     IngestionState, IngestionStatusSnapshot, MemoryIngestionConfig, MemoryIngestionRequest,
     MemoryIngestionResult, DEFAULT_MEMORY_EXTRACTION_MODEL,
 };
-pub use ops as rpc;
-pub use ops::*;
-pub use rpc_models::*;
-pub use schemas::{
-    all_controller_schemas as all_memory_controller_schemas,
-    all_registered_controllers as all_memory_registered_controllers,
+pub use tinymemory_core::rpc_models::*;
+pub use tinymemory_core::traits::{
+    Memory, MemoryCategory, MemoryEntry, MemoryTaint, NamespaceSummary, RecallOpts,
 };
-pub use traits::{Memory, MemoryCategory, MemoryEntry, MemoryTaint, NamespaceSummary, RecallOpts};
 
-// Re-export types that external tests and consumers historically imported
-// from `memory::*`. The definitions moved to sibling crates during the
-// memory refactor; these aliases keep the public surface stable.
-pub use crate::openhuman::memory::store::types::NamespaceDocumentInput;
-pub use crate::openhuman::memory::store::{MemoryClient, UnifiedMemory};
+// Types that external tests and consumers historically imported from
+// `memory::*`. The definitions moved to sibling crates during the memory
+// refactor; these aliases keep the public surface stable.
+pub use tinymemory_core::store::types::NamespaceDocumentInput;
+pub use tinymemory_core::store::{MemoryClient, UnifiedMemory};

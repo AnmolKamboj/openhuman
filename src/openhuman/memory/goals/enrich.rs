@@ -15,11 +15,11 @@
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::store;
 use crate::openhuman::agent::harness::definition::AgentDefinitionRegistry;
 use crate::openhuman::agent::turn_origin::{with_origin, AgentTurnOrigin, TrustedAutomationSource};
 use crate::openhuman::agent::Agent;
 use crate::openhuman::config::Config;
+use tinycortex::memory::goals::store;
 
 /// Registry id of the bundled goals enrichment agent definition.
 pub const GOALS_AGENT_ID: &str = "goals_agent";
@@ -66,9 +66,7 @@ pub async fn enrich_goals(
 ) -> Result<String, String> {
     // Surface real storage failures instead of masking them as an empty
     // first-run doc — `load` already maps a missing file to an empty doc.
-    let doc = store::load(workspace_dir)
-        .await
-        .map_err(|e| format!("goals load failed: {e}"))?;
+    let doc = store::load(workspace_dir).map_err(|e| format!("goals load failed: {e}"))?;
     let first_run = doc.is_empty();
     log::info!(
         "[memory_goals] enrich start (first_run={first_run}, existing_items={})",

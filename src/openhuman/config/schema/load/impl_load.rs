@@ -615,6 +615,7 @@ impl Config {
 
     pub async fn save(&self) -> Result<()> {
         let mut config_to_save = self.clone();
+        super::super::cli_overrides::restore_persisted_inference_fields(&mut config_to_save);
         encrypt_config_secrets(&mut config_to_save)?;
 
         let toml_str =
@@ -702,7 +703,35 @@ impl Config {
             })?;
         }
 
-        if let Err(e) = fs::rename(&temp_path, &self.config_path).await {
+        // Parallel test/runtime cleanup can remove an otherwise valid config
+        // directory after the temporary file is written. Recreate it directly
+        // before the rename so the atomic replacement retains its guarantee.
+        fs::create_dir_all(parent_dir).await.with_context(|| {
+            format!(
+                "Failed to recreate config directory before atomic replace: {}",
+                parent_dir.display()
+            )
+        })?;
+
+        let replace = fs::rename(&temp_path, &self.config_path).await;
+        // A concurrently-cleaning test or runtime can still remove the parent
+        // in the narrow window after the create_dir_all above. Retry the rename
+        // once after recreating it; the temp file lives alongside the target and
+        // remains available across that directory-entry race.
+        let replace = match replace {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                fs::create_dir_all(parent_dir).await.with_context(|| {
+                    format!(
+                        "Failed to recreate config directory for atomic replace retry: {}",
+                        parent_dir.display()
+                    )
+                })?;
+                fs::rename(&temp_path, &self.config_path).await
+            }
+            result => result,
+        };
+
+        if let Err(e) = replace {
             let _ = fs::remove_file(&temp_path).await;
             if had_existing_config && backup_path.exists() {
                 fs::copy(&backup_path, &self.config_path)

@@ -46,6 +46,7 @@ module.exports = {
           strong:   'rgb(var(--surface-strong) / <alpha-value>)',
           hover:    'rgb(var(--surface-hover) / <alpha-value>)',
           overlay:  'rgb(var(--surface-overlay) / <alpha-value>)',
+          chrome:   'rgb(var(--surface-chrome) / <alpha-value>)',
         },
         content: {
           DEFAULT:   'rgb(var(--content) / <alpha-value>)',
@@ -58,6 +59,7 @@ module.exports = {
           DEFAULT: 'rgb(var(--line) / <alpha-value>)',
           strong:  'rgb(var(--line-strong) / <alpha-value>)',
           subtle:  'rgb(var(--line-subtle) / <alpha-value>)',
+          chrome:  'rgb(var(--line-chrome) / <alpha-value>)',
         },
 
         // Neutral - Light theme grayscale (from Figma design tokens)
@@ -257,6 +259,11 @@ module.exports = {
         'float': '0 12px 32px -8px rgba(0, 0, 0, 0.12), 0 24px 48px -12px rgba(0, 0, 0, 0.12)',
         'crisp': '0 0 0 1px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.08)',
         'cmd-palette': 'var(--cmd-shadow-palette)',
+        // Zero-blur, zero-spread hairline offset up-left — the seam where the
+        // inset content card meets the window chrome. Deliberately NOT a drop
+        // shadow: the card separates from the chrome by fill contrast, and this
+        // only sharpens the top/left edge where the two surfaces are closest.
+        'content-edge': '-1px -1px 0 0 rgb(var(--line-chrome) / 0.45)',
       },
 
       // Premium animations for polished interactions

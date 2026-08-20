@@ -908,6 +908,7 @@ fn handle_update_voice_server_settings(params: Map<String, Value>) -> Controller
             custom_dictionary: update.custom_dictionary,
             always_on_enabled: update.always_on_enabled,
             wake_word: update.wake_word,
+            stt_engine: update.stt_engine,
         };
         let result = config_rpc::load_and_apply_voice_server_settings(patch).await?;
         // Apply the always-on toggle live (start/idle the capture loop) so the

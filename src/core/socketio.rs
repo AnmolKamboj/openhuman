@@ -667,10 +667,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             let event = match rx.recv().await {
                 Ok(event) => event,
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} web_channel events due to lag",
-                        skipped
-                    );
+                    log::warn!("[socketio] dropped {skipped} web channel events due to lag");
                     continue;
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
@@ -700,7 +697,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             let event = match rx.recv().await {
                 Ok(event) => event,
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!("[socketio] dropped {} dictation events due to lag", skipped);
+                    log::warn!("[socketio] dropped {skipped} events due to lag");
                     continue;
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
@@ -750,10 +747,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             let event = match rx.recv().await {
                 Ok(event) => event,
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} overlay attention events due to lag",
-                        skipped
-                    );
+                    log::warn!("[socketio] dropped {skipped} events due to lag");
                     continue;
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
@@ -781,10 +775,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             let event = match rx.recv().await {
                 Ok(event) => event,
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} core_notification events due to lag",
-                        skipped
-                    );
+                    log::warn!("[socketio] dropped {skipped} events due to lag");
                     continue;
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
@@ -846,7 +837,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             let max_attempts = (MAX_WAIT_SECS * 1000) / RETRY_INTERVAL_MS;
             let mut attempts: u64 = 0;
             loop {
-                if let Some(bus) = crate::core::event_bus::global() {
+                if let Some(bus) = crate::core::bus::BUS.get() {
                     break bus;
                 }
                 attempts += 1;
@@ -860,20 +851,12 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                 tokio::time::sleep(std::time::Duration::from_millis(RETRY_INTERVAL_MS)).await;
             }
         };
-        let mut rx = bus.raw_receiver();
+        let mut rx = bus.receiver();
         loop {
-            let event = match rx.recv().await {
-                Ok(event) => event,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} event_bus events due to lag (auth bridge)",
-                        skipped
-                    );
-                    continue;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            let Some(event) = rx.recv().await else {
+                break;
             };
-            if let crate::core::event_bus::DomainEvent::SessionExpired { source, reason } = event {
+            if let crate::core::events::DomainEvent::SessionExpired { source, reason } = event {
                 log::info!(
                     "[socketio] broadcast auth:session_expired source={} reason_len={}",
                     source,
@@ -901,7 +884,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             let max_attempts = (MAX_WAIT_SECS * 1000) / RETRY_INTERVAL_MS;
             let mut attempts: u64 = 0;
             loop {
-                if let Some(bus) = crate::core::event_bus::global() {
+                if let Some(bus) = crate::core::bus::BUS.get() {
                     break bus;
                 }
                 attempts += 1;
@@ -915,20 +898,12 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                 tokio::time::sleep(std::time::Duration::from_millis(RETRY_INTERVAL_MS)).await;
             }
         };
-        let mut rx = bus.raw_receiver();
+        let mut rx = bus.receiver();
         loop {
-            let event = match rx.recv().await {
-                Ok(event) => event,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} event_bus events due to lag (mcp_setup bridge)",
-                        skipped
-                    );
-                    continue;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            let Some(event) = rx.recv().await else {
+                break;
             };
-            if let crate::core::event_bus::DomainEvent::McpSetupSecretRequested {
+            if let crate::core::events::DomainEvent::McpSetupSecretRequested {
                 ref_id,
                 key_name,
                 prompt,
@@ -986,7 +961,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             let max_attempts = (MAX_WAIT_SECS * 1000) / RETRY_INTERVAL_MS;
             let mut attempts: u64 = 0;
             loop {
-                if let Some(bus) = crate::core::event_bus::global() {
+                if let Some(bus) = crate::core::bus::BUS.get() {
                     break bus;
                 }
                 attempts += 1;
@@ -1000,21 +975,13 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                 tokio::time::sleep(std::time::Duration::from_millis(RETRY_INTERVAL_MS)).await;
             }
         };
-        let mut rx = bus.raw_receiver();
+        let mut rx = bus.receiver();
         loop {
-            let event = match rx.recv().await {
-                Ok(event) => event,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} event_bus events due to lag (memory_sync bridge)",
-                        skipped
-                    );
-                    continue;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            let Some(event) = rx.recv().await else {
+                break;
             };
             match event {
-                crate::core::event_bus::DomainEvent::MemorySyncStageChanged {
+                crate::core::events::DomainEvent::MemorySyncStageChanged {
                     trigger,
                     stage,
                     provider,
@@ -1035,7 +1002,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                     });
                     let _ = io_memory_sync.emit("memory:sync_stage", &payload);
                 }
-                crate::core::event_bus::DomainEvent::TreeSummarizerPropagated {
+                crate::core::events::DomainEvent::TreeSummarizerPropagated {
                     namespace,
                     node_id,
                     level,
@@ -1049,7 +1016,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                     });
                     let _ = io_memory_sync.emit("memory:tree_progress", &payload);
                 }
-                crate::core::event_bus::DomainEvent::TreeSummarizerRebuildCompleted {
+                crate::core::events::DomainEvent::TreeSummarizerRebuildCompleted {
                     namespace,
                     total_nodes,
                 } => {
@@ -1059,7 +1026,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                     });
                     let _ = io_memory_sync.emit("memory:tree_completed", &payload);
                 }
-                crate::core::event_bus::DomainEvent::MemoryTreeBuildProgress {
+                crate::core::events::DomainEvent::MemoryTreeBuildProgress {
                     phase,
                     step,
                     tree_scope,
@@ -1077,7 +1044,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                     });
                     let _ = io_memory_sync.emit("memory:build_progress", &payload);
                 }
-                crate::core::event_bus::DomainEvent::HarnessInitProgress {
+                crate::core::events::DomainEvent::HarnessInitProgress {
                     step_id,
                     state,
                     message,
@@ -1091,7 +1058,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                     });
                     let _ = io_memory_sync.emit("init:progress", &payload);
                 }
-                crate::core::event_bus::DomainEvent::HarnessInitCompleted {
+                crate::core::events::DomainEvent::HarnessInitCompleted {
                     overall,
                     failed_required,
                 } => {
@@ -1106,7 +1073,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                 // truth and the Workflows UI keeps a 2s poller as fallback, so
                 // a dropped event here (broadcast lag) only delays the live
                 // update, never corrupts run history.
-                crate::core::event_bus::DomainEvent::FlowRunProgress {
+                crate::core::events::DomainEvent::FlowRunProgress {
                     run_id,
                     node_id,
                     status,
@@ -1131,7 +1098,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                 // instead of waiting for the blocking `flows_run` RPC to
                 // resolve or the first `FlowRunProgress` step. Best-effort,
                 // same rationale as `flow:run_progress` above.
-                crate::core::event_bus::DomainEvent::FlowRunStarted { flow_id, run_id } => {
+                crate::core::events::DomainEvent::FlowRunStarted { flow_id, run_id } => {
                     let payload = serde_json::json!({
                         "flow_id": flow_id,
                         "run_id": run_id,
@@ -1150,7 +1117,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                 // canvas/sidebar can flip a run to Completed/Failed live
                 // instead of relying on a poll to notice. Best-effort, same
                 // rationale as the other `flow:*` bridges.
-                crate::core::event_bus::DomainEvent::FlowRunFinished {
+                crate::core::events::DomainEvent::FlowRunFinished {
                     flow_id,
                     run_id,
                     status,
@@ -1174,7 +1141,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                 // — most importantly, so an agent `save_workflow` becomes
                 // visible in a canvas the user has open (audit F6). Best-effort;
                 // the UI's refetch-on-focus is the backstop.
-                crate::core::event_bus::DomainEvent::FlowChanged {
+                crate::core::events::DomainEvent::FlowChanged {
                     flow_id,
                     kind,
                     actor,
@@ -1199,7 +1166,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                 // bridge — because a flow run has no chat thread/client to
                 // target; the Workflows UI listens process-wide and filters
                 // by `flow_id`/`run_id` client-side.
-                crate::core::event_bus::DomainEvent::FlowApprovalRequested {
+                crate::core::events::DomainEvent::FlowApprovalRequested {
                     request_id,
                     flow_id,
                     run_id,
@@ -1236,7 +1203,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             let max_attempts = (MAX_WAIT_SECS * 1000) / RETRY_INTERVAL_MS;
             let mut attempts: u64 = 0;
             loop {
-                if let Some(bus) = crate::core::event_bus::global() {
+                if let Some(bus) = crate::core::bus::BUS.get() {
                     break bus;
                 }
                 attempts += 1;
@@ -1250,21 +1217,13 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                 tokio::time::sleep(std::time::Duration::from_millis(RETRY_INTERVAL_MS)).await;
             }
         };
-        let mut rx = bus.raw_receiver();
+        let mut rx = bus.receiver();
         loop {
-            let event = match rx.recv().await {
-                Ok(event) => event,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} event_bus events due to lag (agent_meetings bridge)",
-                        skipped
-                    );
-                    continue;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            let Some(event) = rx.recv().await else {
+                break;
             };
             match event {
-                crate::core::event_bus::DomainEvent::BackendMeetJoined {
+                crate::core::events::DomainEvent::BackendMeetJoined {
                     meet_url,
                     correlation_id,
                 } => {
@@ -1272,7 +1231,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                     log::debug!("[socketio] broadcast agent_meetings:joined");
                     let _ = io_agent_meetings.emit("agent_meetings:joined", &payload);
                 }
-                crate::core::event_bus::DomainEvent::BackendMeetLeft {
+                crate::core::events::DomainEvent::BackendMeetLeft {
                     reason,
                     correlation_id,
                 } => {
@@ -1281,7 +1240,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                     log::debug!("[socketio] broadcast agent_meetings:left reason={}", reason);
                     let _ = io_agent_meetings.emit("agent_meetings:left", &payload);
                 }
-                crate::core::event_bus::DomainEvent::BackendMeetReply {
+                crate::core::events::DomainEvent::BackendMeetReply {
                     transcript,
                     reply,
                     emotion,
@@ -1299,7 +1258,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                     );
                     let _ = io_agent_meetings.emit("agent_meetings:reply", &payload);
                 }
-                crate::core::event_bus::DomainEvent::BackendMeetHarness {
+                crate::core::events::DomainEvent::BackendMeetHarness {
                     transcript,
                     instruction,
                     emotion,
@@ -1317,7 +1276,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                     );
                     let _ = io_agent_meetings.emit("agent_meetings:harness", &payload);
                 }
-                crate::core::event_bus::DomainEvent::BackendMeetTranscript {
+                crate::core::events::DomainEvent::BackendMeetTranscript {
                     turns,
                     duration_ms,
                     correlation_id,
@@ -1334,7 +1293,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                     );
                     let _ = io_agent_meetings.emit("agent_meetings:transcript", &payload);
                 }
-                crate::core::event_bus::DomainEvent::BackendMeetTranscriptDelta {
+                crate::core::events::DomainEvent::BackendMeetTranscriptDelta {
                     turn,
                     index,
                     is_partial,
@@ -1353,7 +1312,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                     );
                     let _ = io_agent_meetings.emit("agent_meetings:transcript_delta", &payload);
                 }
-                crate::core::event_bus::DomainEvent::BackendMeetError {
+                crate::core::events::DomainEvent::BackendMeetError {
                     error,
                     correlation_id,
                 } => {
@@ -1376,7 +1335,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             let max_attempts = (MAX_WAIT_SECS * 1000) / RETRY_INTERVAL_MS;
             let mut attempts: u64 = 0;
             loop {
-                if let Some(bus) = crate::core::event_bus::global() {
+                if let Some(bus) = crate::core::bus::BUS.get() {
                     break bus;
                 }
                 attempts += 1;
@@ -1390,21 +1349,13 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                 tokio::time::sleep(std::time::Duration::from_millis(RETRY_INTERVAL_MS)).await;
             }
         };
-        let mut rx = bus.raw_receiver();
+        let mut rx = bus.receiver();
         loop {
-            let event = match rx.recv().await {
-                Ok(event) => event,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} event_bus events due to lag (tinyplace bridge)",
-                        skipped
-                    );
-                    continue;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            let Some(event) = rx.recv().await else {
+                break;
             };
             match event {
-                crate::core::event_bus::DomainEvent::TinyPlaceStreamMessage {
+                crate::core::events::DomainEvent::TinyPlaceStreamMessage {
                     stream_id,
                     kind,
                     message,
@@ -1421,7 +1372,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                     );
                     let _ = io_tinyplace.emit("tinyplace:stream_message", &payload);
                 }
-                crate::core::event_bus::DomainEvent::TinyPlaceStreamStatusChanged {
+                crate::core::events::DomainEvent::TinyPlaceStreamStatusChanged {
                     stream_id,
                     status,
                 } => {
@@ -1458,7 +1409,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             let max_attempts = (MAX_WAIT_SECS * 1000) / RETRY_INTERVAL_MS;
             let mut attempts: u64 = 0;
             loop {
-                if let Some(bus) = crate::core::event_bus::global() {
+                if let Some(bus) = crate::core::bus::BUS.get() {
                     break bus;
                 }
                 attempts += 1;
@@ -1472,21 +1423,13 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                 tokio::time::sleep(std::time::Duration::from_millis(RETRY_INTERVAL_MS)).await;
             }
         };
-        let mut rx = bus.raw_receiver();
+        let mut rx = bus.receiver();
         loop {
-            let event = match rx.recv().await {
-                Ok(event) => event,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
-                    log::warn!(
-                        "[socketio] dropped {} event_bus events due to lag (channel_status bridge)",
-                        skipped
-                    );
-                    continue;
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            let Some(event) = rx.recv().await else {
+                break;
             };
             let payload = match event {
-                crate::core::event_bus::DomainEvent::ChannelConnected { channel } => {
+                crate::core::events::DomainEvent::ChannelConnected { channel } => {
                     log::debug!(
                         "[socketio] broadcast channel:connection-updated {channel} -> connected"
                     );
@@ -1496,7 +1439,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
                         None,
                     ))
                 }
-                crate::core::event_bus::DomainEvent::ChannelDisconnected { channel, reason } => {
+                crate::core::events::DomainEvent::ChannelDisconnected { channel, reason } => {
                     log::debug!(
                         "[socketio] broadcast channel:connection-updated {channel} -> error reason_len={}",
                         reason.len()
