@@ -144,9 +144,12 @@ fix:
   survivors. `episodic_fts` already exists. Changes which memories surface.
 - **A real vector index** (sqlite-vec, HNSW). Correct long-term answer, largest
   change.
-- **Concurrent readers.** Independent of the above: SQLite WAL supports
-  concurrent readers, but one mutex-guarded connection serializes them. A
-  read-only connection pool would lift the ceiling without touching semantics.
+- **Concurrent readers.** Independent of the above, and the only option here
+  that changes no behaviour: SQLite WAL supports concurrent readers, but one
+  mutex-guarded connection serializes them. A read-only connection pool would
+  let recalls proceed in parallel. Note this raises the ceiling without removing
+  the per-turn O(N) work, so it defers the problem rather than solving it —
+  but unlike the others it cannot change which memories surface.
 
 A deliberately-bounded recall would also make the memory verdict in this harness
 unambiguous, since RSS would stop tracking stored data.
