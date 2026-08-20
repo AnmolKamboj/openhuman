@@ -289,6 +289,9 @@ make_runtime_appdir() {
 
   cp "$HOST_ELF" "$appdir/shared/lib/anylinux.so"
   cp "$HOST_ELF" "$appdir/shared/lib/libxdo.so.3"
+  # Since #5606 libcef.so is no longer a REQUIRED library (CEF was removed in
+  # #5456). It stays in the fixture purely as a sample bundled ELF for the
+  # RPATH-injection cases below.
   cp "$HOST_ELF" "$appdir/shared/lib/libcef.so"
 
   local elf
@@ -321,7 +324,6 @@ assert_runtime_layout_rejected() {
 
 remove_anylinux() { rm -f "$1/shared/lib/anylinux.so"; }
 remove_libxdo() { rm -f "$1/shared/lib/libxdo.so.3"; }
-remove_libcef() { rm -f "$1/shared/lib/libcef.so"; }
 remove_real_app() { rm -f "$1/shared/bin/OpenHuman"; }
 replace_real_app_with_text() {
   rm -f "$1/shared/bin/OpenHuman"
@@ -744,8 +746,6 @@ assert_runtime_layout_rejected missing-anylinux \
   "missing anylinux.so" remove_anylinux
 assert_runtime_layout_rejected missing-libxdo \
   "missing libxdo.so.*" remove_libxdo
-assert_runtime_layout_rejected missing-libcef \
-  "missing libcef.so" remove_libcef
 assert_runtime_layout_rejected missing-real-app \
   "shared/bin/OpenHuman is not an executable ELF" remove_real_app
 assert_runtime_layout_rejected text-real-app \
