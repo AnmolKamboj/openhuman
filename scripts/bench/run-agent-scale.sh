@@ -59,6 +59,7 @@ TREE=""
 KEEP_WORKSPACE=""
 REUSE_WORKSPACE=""
 MEMORY_OFF=""
+MEMORY_WRITES_OFF=""
 OUT_DIR=""
 
 while [[ $# -gt 0 ]]; do
