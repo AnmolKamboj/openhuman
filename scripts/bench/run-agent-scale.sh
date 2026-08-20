@@ -58,6 +58,7 @@ INTERVAL_MS=250
 TREE=""
 KEEP_WORKSPACE=""
 REUSE_WORKSPACE=""
+MEMORY_OFF=""
 OUT_DIR=""
 
 while [[ $# -gt 0 ]]; do
