@@ -168,30 +168,33 @@ mod tests {
                 crate::openhuman::memory::api::CONTRACT_VERSION
             )
         );
-        // All eighteen families — the thirteen of M3d plus the five this port
-        // added (`chunks`, `episodic`, `people`, `profile`, `retrieval`).
-        // Spelled out rather than derived from `Capabilities::all()` on
-        // purpose: this is the wire surface the frontend reads, so the strings
-        // themselves are the assertion. A family added to the contract without
-        // a driver serving it should fail here, not silently widen.
+        // The thirteen families the pinned v1.0.1 tinymemory artifact actually
+        // serves — not the eighteen the contract crate declares. This used to
+        // assert all eighteen, including `chunks`, `episodic`, `people`,
+        // `profile`, and `retrieval`; that encoded #5598 as expected: those
+        // five have no bus member in the pinned release, so calling them
+        // answered `UnknownMethod` rather than reporting themselves absent.
+        // `modules::memory::ARTIFACT_CAPABILITIES` was narrowed to match what
+        // is actually served (see its module docs); this pins the same
+        // corrected boundary. Spelled out rather than derived from
+        // `Capabilities::all()` on purpose: this is the wire surface the
+        // frontend reads, so the strings themselves are the assertion. A
+        // family the pinned artifact starts serving should widen this
+        // deliberately, together with the registry version bump — not
+        // silently.
         assert_eq!(
             status.capabilities,
             vec![
-                "chunks",
                 "core",
                 "diff",
                 "documents",
                 "entities",
-                "episodic",
                 "goals",
                 "graph",
                 "ingest",
                 "maintenance",
-                "people",
                 "portability",
-                "profile",
                 "recall",
-                "retrieval",
                 "sources",
                 "tool_memory",
                 "tree"

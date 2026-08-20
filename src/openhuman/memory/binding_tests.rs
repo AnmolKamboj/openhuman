@@ -361,21 +361,64 @@ fn module_class_binds_the_module_driver_not_null() {
 }
 
 #[test]
-fn module_binding_advertises_every_family() {
-    // Widened once per M3 step; M3d is the last one. The interesting assertion
-    // is the second: a *bound* context and an *unbound* one now agree, which
-    // they did not for the whole of M2/M3a-c.
+fn module_binding_advertises_the_pinned_artifacts_families() {
+    // Was `module_binding_advertises_every_family`, asserting `advertised ==
+    // Capabilities::all()`. That encoded #5598 as expected: the host claimed
+    // all eighteen contract families while the pinned v1.0.1 artifact serves
+    // thirteen, so the other five (`people`, `chunks`, `retrieval`, `profile`,
+    // `episodic`) answered `UnknownMethod` instead of reporting themselves
+    // absent. `modules::memory::ARTIFACT_CAPABILITIES` was narrowed to match
+    // what the pinned release actually serves (see its module docs); this
+    // test now pins the same, corrected boundary instead of the old
+    // "bound equals unbound-default" coincidence, which no longer holds.
     let dir = tempfile::tempdir().unwrap();
     let binding =
         for_workspace(dir.path(), &MemorySubsystemConfig::default()).expect("default bind");
     let advertised = binding.capabilities();
 
     assert!(advertised.contains_all(Capabilities::mandatory()));
-    for family in Capability::ALL {
+
+    const ARTIFACT_SERVES: [Capability; 13] = [
+        Capability::Core,
+        Capability::Recall,
+        Capability::Ingest,
+        Capability::Documents,
+        Capability::Tree,
+        Capability::Entities,
+        Capability::Graph,
+        Capability::Diff,
+        Capability::Goals,
+        Capability::ToolMemory,
+        Capability::Sources,
+        Capability::Maintenance,
+        Capability::Portability,
+    ];
+    for family in ARTIFACT_SERVES {
         assert!(advertised.contains(family), "{family} must be advertised");
     }
-    assert_eq!(advertised, Capabilities::all());
-    assert_eq!(advertised, unbound_default_capabilities());
+
+    const NOT_YET_SERVED: [Capability; 5] = [
+        Capability::People,
+        Capability::Chunks,
+        Capability::Retrieval,
+        Capability::Profile,
+        Capability::Episodic,
+    ];
+    for family in NOT_YET_SERVED {
+        assert!(
+            !advertised.contains(family),
+            "{family} has no bus member in the pinned v1.0.1 artifact (#5598); \
+             widen this only together with the registry version bump"
+        );
+    }
+
+    // The contract may be ahead of the artifact but never behind it.
+    assert!(Capabilities::all().contains_all(advertised));
+    // Unbound contexts still assume the widest set (deny-by-default is wrong
+    // pre-boot, per `unbound_default_capabilities`'s own docs) — that is a
+    // different, deliberately permissive default, not a claim that a bound
+    // module actually serves everything.
+    assert_eq!(unbound_default_capabilities(), Capabilities::all());
 }
 
 #[test]
