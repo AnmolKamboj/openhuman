@@ -298,12 +298,58 @@ async function handleCompletion(req, res, body, opts) {
   });
 }
 
+/**
+ * A deterministic pseudo-embedding derived from the input text.
+ *
+ * Returning one constant vector for every input would be simpler and is what
+ * this did first — but it makes every cosine similarity identical, so retrieval
+ * ranking becomes degenerate and any experiment about WHICH memories a change
+ * surfaces is meaningless. Throughput measurements are unaffected either way
+ * (the same work happens whatever the values are), so the flaw is invisible
+ * unless you go looking for it.
+ *
+ * This derives a unit vector from a hash of the text: same text always yields
+ * the same vector, similar-but-different texts yield different ones, and the
+ * distribution is spread rather than collapsed onto a point. Not semantically
+ * meaningful — nothing here models real language — but structurally realistic
+ * enough to compare retrieval strategies against each other.
+ */
+function embeddingFor(text, dims) {
+  // xorshift32 seeded by the content hash: cheap, deterministic, no shared state.
+  let state = hash32(text) || 1;
+  const next = () => {
+    state ^= state << 13;
+    state >>>= 0;
+    state ^= state >> 17;
+    state ^= state << 5;
+    state >>>= 0;
+    return state / 0xffffffff;
+  };
+  const vec = new Array(dims);
+  let norm = 0;
+  for (let i = 0; i < dims; i += 1) {
+    // Box-Muller-ish spread around zero, so vectors are not all in one orthant.
+    const v = next() * 2 - 1;
+    vec[i] = v;
+    norm += v * v;
+  }
+  norm = Math.sqrt(norm) || 1;
+  for (let i = 0; i < dims; i += 1) vec[i] /= norm;
+  return vec;
+}
+
 function handleEmbeddings(res, body, opts) {
   stats.embeddings += 1;
   let count = 1;
+  let inputs = [''];
   try {
     const parsed = JSON.parse(body);
-    if (Array.isArray(parsed.input)) count = Math.max(1, parsed.input.length);
+    if (Array.isArray(parsed.input)) {
+      inputs = parsed.input.map((v) => (typeof v === 'string' ? v : JSON.stringify(v)));
+      count = Math.max(1, inputs.length);
+    } else if (typeof parsed.input === 'string') {
+      inputs = [parsed.input];
+    }
   } catch {
     stats.malformedRequests += 1;
   }
