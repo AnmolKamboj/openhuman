@@ -304,7 +304,10 @@ async function handleCompletion(req, res, body, opts) {
     finishReason = 'tool_calls';
   } else {
     stats.finalAnswers += 1;
-    message = { role: 'assistant', content: buildReplyText(opts.replyChars) };
+    message = {
+      role: 'assistant',
+      content: buildReplyText(opts.replyChars, `${seed}:${stats.completions}`),
+    };
     finishReason = 'stop';
   }
 
