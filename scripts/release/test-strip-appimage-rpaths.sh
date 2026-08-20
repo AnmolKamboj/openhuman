@@ -4,9 +4,10 @@
 #   1. sanitize_elf_rpaths        — strips /home/runner|/__w build-machine
 #                                    RPATHs from bundled ELFs, rewriting to
 #                                    $ORIGIN-relative.
-#   2. validate_appimage_required_libs — hard-fails when anylinux.so,
-#                                    libxdo.so.*, or libcef.so is missing from
-#                                    a sharun AppDir.
+#   2. validate_appimage_required_libs — hard-fails when anylinux.so or
+#                                    libxdo.so.* is missing from a sharun
+#                                    AppDir. (libcef.so was on that list until
+#                                    #5606; CEF was removed in #5456.)
 #   3. validate-appimage-runtime.sh — checks the final extracted sharun layout
 #                                    and the pre-signing validation seam.
 #
@@ -987,20 +988,24 @@ if ( validate_appimage_required_libs "$GUARD_DIR" ) 2>/dev/null; then
 fi
 echo "[test-rpaths] ok: guard fails when libxdo.so.* is absent"
 
-# 2c — libxdo present but libcef absent → must still fail.
+# 2c — libcef.so is no longer required (#5606). CEF was removed in #5456 and
+# there is no cef package in either Cargo.lock, so demanding it would fail every
+# sharun bundle this guard can still see. The case is kept, inverted: libxdo
+# present and libcef absent must now PASS. Deleting the case instead would have
+# left no coverage of the boundary that moved.
 : > "$GUARD_DIR/shared/lib/libxdo.so.3"
-if ( validate_appimage_required_libs "$GUARD_DIR" ) 2>/dev/null; then
-  fail "validate_appimage_required_libs passed despite missing libcef.so"
-fi
-echo "[test-rpaths] ok: guard fails when libcef.so is absent"
-
-# 2d — all required runtime libraries present → must pass.
-mkdir -p "$GUARD_DIR/usr/lib"
-: > "$GUARD_DIR/shared/lib/libxdo.so.3"
-: > "$GUARD_DIR/usr/lib/libcef.so"
 if ! ( validate_appimage_required_libs "$GUARD_DIR" ) 2>/dev/null; then
-  fail "validate_appimage_required_libs failed despite libxdo.so.3 and libcef.so being present"
+  fail "validate_appimage_required_libs failed with libcef.so absent (no longer required)"
 fi
-echo "[test-rpaths] ok: guard passes when libxdo.so.3 and libcef.so are present"
+echo "[test-rpaths] ok: guard passes without libcef.so — CEF was removed in #5456"
+
+# 2d — a lib satisfied from usr/lib rather than shared/lib → must still pass.
+mkdir -p "$GUARD_DIR/usr/lib"
+rm -f "$GUARD_DIR/shared/lib/libxdo.so.3"
+: > "$GUARD_DIR/usr/lib/libxdo.so.3"
+if ! ( validate_appimage_required_libs "$GUARD_DIR" ) 2>/dev/null; then
+  fail "validate_appimage_required_libs failed despite libxdo.so.3 present under usr/lib"
+fi
+echo "[test-rpaths] ok: guard passes when libxdo.so.3 is satisfied from usr/lib"
 
 echo "[test-rpaths] PASS"

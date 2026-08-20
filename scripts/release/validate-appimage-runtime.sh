@@ -443,10 +443,26 @@ smoke_extracted_apprun() {
     status=$?
   fi
 
+  # Loader failures, matched GENERICALLY rather than by library name. The
+  # previous version listed `anylinux.so`, `libxdo.so.3` and `libcef.so`
+  # individually, which meant the guard only caught a library someone had
+  # thought of in advance — and one of those three (libcef.so) had already
+  # outlived the runtime that produced it. The dynamic loader's own wording is
+  # the stable thing to match, so a library nobody predicted still trips it.
+  # `test-strip-appimage-rpaths.sh` pins this breadth by feeding the smoke a
+  # `cannot open shared object file` diagnostic and requiring a failure.
+  #
+  # No false-positive risk against the real bundle: none of these three strings
+  # appears anywhere in the fork demo run's output, including its successful
+  # 15-second smoke on both architectures.
   local forbidden=0
-  if grep -Eiq \
-    'libxdo\.so\.3.*cannot open shared object file|cannot open shared object file.*libxdo\.so\.3' \
-    "$log_file"; then
+  if grep -Eiq 'cannot open shared object file' "$log_file"; then
+    forbidden=1
+  fi
+  if grep -Eiq 'error while loading shared libraries' "$log_file"; then
+    forbidden=1
+  fi
+  if grep -Eiq 'cannot be preloaded' "$log_file"; then
     forbidden=1
   fi
   # The AppImageKit AppRun's own failure strings. These became reachable when the
