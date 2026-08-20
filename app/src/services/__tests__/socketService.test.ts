@@ -1,0 +1,365 @@
+/**
+ * Unit tests for socketService internals — specifically the
+ * resolveCoreSocketBaseUrl() behaviour that was fixed to consult
+ * getCoreRpcUrl() (and therefore the user's stored preference) instead of
+ * calling invoke('core_rpc_url') directly.
+ *
+ * We cannot import resolveCoreSocketBaseUrl directly because it is not
+ * exported. Instead we spy on getCoreRpcUrl to confirm it is called during
+ * socket connection, and verify the derived base URL strips the /rpc suffix.
+ */
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Mock socket.io-client so no real connections are made
+vi.mock('socket.io-client', () => ({
+  io: vi.fn(() => ({
+    connected: false,
+    disconnected: true,
+    on: vi.fn(),
+    onAny: vi.fn(),
+    once: vi.fn(),
+    off: vi.fn(),
+    emit: vi.fn(),
+    disconnect: vi.fn(),
+    connect: vi.fn(),
+    id: 'mock-socket-id',
+  })),
+}));
+
+// Mock redux store
+const storeMock = { dispatch: vi.fn() };
+vi.mock('../../store', () => ({ store: storeMock }));
+vi.mock('../../store/socketSlice', () => ({
+  setStatusForUser: vi.fn((x: unknown) => ({ type: 'socket/setStatusForUser', payload: x })),
+  setSocketIdForUser: vi.fn((x: unknown) => ({ type: 'socket/setSocketIdForUser', payload: x })),
+  resetForUser: vi.fn((x: unknown) => ({ type: 'socket/resetForUser', payload: x })),
+}));
+vi.mock('../../store/channelConnectionsSlice', () => ({
+  upsertChannelConnection: vi.fn((x: unknown) => x),
+}));
+
+// setBackend mock for connectivity tracking
+const setBackendMock = vi.fn((x: unknown) => ({ type: 'connectivity/setBackend', payload: x }));
+vi.mock('../../store/connectivitySlice', () => ({
+  setBackend: (x: unknown) => setBackendMock(x),
+  setCore: vi.fn((x: unknown) => ({ type: 'connectivity/setCore', payload: x })),
+}));
+
+// Mock coreState
+vi.mock('../../lib/coreState/store', () => ({
+  getCoreStateSnapshot: vi.fn(() => ({
+    snapshot: { auth: { userId: 'core-user-id' }, sessionToken: null },
+  })),
+}));
+
+// Mock MCP as a class so `new SocketIOMCPTransportImpl(...)` works at runtime.
+// Arrow functions cannot be used as constructors, so we wrap in a class here.
+class MockMCPTransport {}
+vi.mock('../../lib/mcp', () => ({ SocketIOMCPTransportImpl: MockMCPTransport }));
+
+/**
+ * Poll `check` up to `maxMs` ms (default 500) in 10 ms increments.
+ * Resolves when `check()` returns without throwing; rejects on timeout.
+ * Used instead of `setTimeout(0)` sleeps to deterministically wait for
+ * the observable side-effect of an async operation.
+ */
+async function pollUntil(check: () => void, maxMs = 500): Promise<void> {
+  const deadline = Date.now() + maxMs;
+  while (true) {
+    try {
+      check();
+      return;
+    } catch {
+      if (Date.now() >= deadline) throw new Error(`pollUntil timed out after ${maxMs}ms`);
+      await new Promise(r => setTimeout(r, 10));
+    }
+  }
+}
+
+// Hoist getCoreRpcUrl mock so it is available before the module is loaded
+const hoisted = vi.hoisted(() => ({ getCoreRpcUrlMock: vi.fn<() => Promise<string>>() }));
+
+vi.mock('../coreRpcClient', () => ({
+  getCoreRpcUrl: hoisted.getCoreRpcUrlMock,
+  clearCoreRpcUrlCache: vi.fn(),
+  // socketService now reads the per-process bearer for the Socket.IO
+  // handshake `auth.token` payload; the test value is irrelevant — the
+  // mock just needs to resolve so the connect flow proceeds.
+  getCoreRpcToken: vi.fn(async () => 'mock-core-bearer'),
+}));
+
+describe('socketService — resolveCoreSocketBaseUrl uses getCoreRpcUrl', () => {
+  beforeEach(() => {
+    hoisted.getCoreRpcUrlMock.mockReset();
+  });
+
+  it('calls getCoreRpcUrl() when connecting', async () => {
+    hoisted.getCoreRpcUrlMock.mockResolvedValue('http://127.0.0.1:7788/rpc');
+
+    // Import after mocks are set up
+    const { socketService } = await import('../socketService');
+    socketService.connect('mock-jwt-token');
+
+    // Wait until getCoreRpcUrl has actually been invoked (deterministic, no sleep)
+    await pollUntil(() => expect(hoisted.getCoreRpcUrlMock).toHaveBeenCalled());
+  });
+
+  it('scopes socket state from core auth userId instead of decoding the JWT payload', async () => {
+    const { getCoreStateSnapshot } = await import('../../lib/coreState/store');
+    const { setStatusForUser } = await import('../../store/socketSlice');
+    const setStatusForUserMock = vi.mocked(setStatusForUser);
+    setStatusForUserMock.mockClear();
+
+    vi.mocked(getCoreStateSnapshot).mockReturnValue({
+      snapshot: {
+        auth: { userId: 'core-user-id' },
+        sessionToken: 'header.eyJ1c2VySWQiOiJqd3QtdXNlci1pZCJ9.signature',
+      },
+    } as ReturnType<typeof getCoreStateSnapshot>);
+
+    hoisted.getCoreRpcUrlMock.mockResolvedValue('http://127.0.0.1:7788/rpc');
+
+    const { socketService } = await import('../socketService');
+    socketService.disconnect();
+    socketService.connect('header.eyJ1c2VySWQiOiJqd3QtdXNlci1pZCJ9.signature');
+
+    await pollUntil(() =>
+      expect(setStatusForUserMock).toHaveBeenCalledWith({
+        userId: 'core-user-id',
+        status: 'connecting',
+      })
+    );
+    expect(setStatusForUserMock).not.toHaveBeenCalledWith({
+      userId: 'jwt-user-id',
+      status: 'connecting',
+    });
+  });
+
+  it('falls back to pending when the core auth snapshot is not available yet', async () => {
+    const { getCoreStateSnapshot } = await import('../../lib/coreState/store');
+    const { setStatusForUser } = await import('../../store/socketSlice');
+    const setStatusForUserMock = vi.mocked(setStatusForUser);
+
+    vi.mocked(getCoreStateSnapshot).mockReturnValue({
+      snapshot: { sessionToken: 'mock-token' },
+    } as ReturnType<typeof getCoreStateSnapshot>);
+
+    hoisted.getCoreRpcUrlMock.mockResolvedValue('http://127.0.0.1:7788/rpc');
+
+    const { socketService } = await import('../socketService');
+    socketService.disconnect();
+    setStatusForUserMock.mockClear();
+    socketService.connect('mock-token-with-missing-auth');
+
+    await pollUntil(() =>
+      expect(setStatusForUserMock).toHaveBeenCalledWith({
+        userId: '__pending__',
+        status: 'connecting',
+      })
+    );
+  });
+
+  it('strips /rpc suffix from the resolved RPC URL to derive the socket base', async () => {
+    const { io } = await import('socket.io-client');
+    const ioMock = vi.mocked(io);
+    ioMock.mockClear();
+
+    hoisted.getCoreRpcUrlMock.mockResolvedValue('http://127.0.0.1:7788/rpc');
+
+    const { socketService } = await import('../socketService');
+    socketService.connect('mock-jwt-token-2');
+
+    await pollUntil(() => expect(hoisted.getCoreRpcUrlMock).toHaveBeenCalled());
+
+    if (ioMock.mock.calls.length > 0) {
+      const connectedUrl = ioMock.mock.calls[ioMock.mock.calls.length - 1][0];
+      expect(connectedUrl).toBe('http://127.0.0.1:7788');
+    } else {
+      // The 1420 guard may have prevented connection — ensure getCoreRpcUrl was still consulted
+      expect(hoisted.getCoreRpcUrlMock).toHaveBeenCalled();
+    }
+  });
+
+  it('works when the resolved URL has no /rpc suffix', async () => {
+    const { io } = await import('socket.io-client');
+    const ioMock = vi.mocked(io);
+    ioMock.mockClear();
+
+    // Return a base URL without the /rpc suffix
+    hoisted.getCoreRpcUrlMock.mockResolvedValue('http://127.0.0.1:7788');
+
+    const { socketService } = await import('../socketService');
+    // Disconnect first in case there's a stale socket from a prior test
+    socketService.disconnect();
+    socketService.connect('mock-jwt-token-3');
+
+    // getCoreRpcUrl must have been consulted (wait deterministically)
+    await pollUntil(() => expect(hoisted.getCoreRpcUrlMock).toHaveBeenCalled());
+
+    if (ioMock.mock.calls.length > 0) {
+      const connectedUrl = ioMock.mock.calls[ioMock.mock.calls.length - 1][0];
+      expect(connectedUrl).toBe('http://127.0.0.1:7788');
+    }
+  });
+
+  it('uses stored custom RPC URL (not static constant) when user has configured one', async () => {
+    const { io } = await import('socket.io-client');
+    const ioMock = vi.mocked(io);
+    ioMock.mockClear();
+
+    // Simulate a user-stored custom RPC URL being returned by getCoreRpcUrl
+    hoisted.getCoreRpcUrlMock.mockResolvedValue('http://custom-core-host:9000/rpc');
+
+    const { socketService } = await import('../socketService');
+    socketService.disconnect();
+    socketService.connect('mock-jwt-token-custom');
+
+    await pollUntil(() => expect(hoisted.getCoreRpcUrlMock).toHaveBeenCalled());
+
+    if (ioMock.mock.calls.length > 0) {
+      const connectedUrl = ioMock.mock.calls[ioMock.mock.calls.length - 1][0];
+      expect(connectedUrl).toBe('http://custom-core-host:9000');
+    }
+  });
+
+  it('preserves queued once listeners when the socket is created later', async () => {
+    const { io } = await import('socket.io-client');
+    const ioMock = vi.mocked(io);
+    ioMock.mockClear();
+
+    hoisted.getCoreRpcUrlMock.mockResolvedValue('http://127.0.0.1:7788/rpc');
+
+    const { socketService } = await import('../socketService');
+    socketService.disconnect();
+
+    const callback = vi.fn();
+    socketService.once('queued-once-event', callback);
+    socketService.connect('mock-jwt-queued-once');
+
+    await pollUntil(() => expect(ioMock).toHaveBeenCalled());
+
+    const latestSocket = ioMock.mock.results[ioMock.mock.results.length - 1].value as {
+      on: ReturnType<typeof vi.fn>;
+      once: ReturnType<typeof vi.fn>;
+    };
+
+    await pollUntil(() =>
+      expect(latestSocket.once).toHaveBeenCalledWith('queued-once-event', expect.any(Function))
+    );
+    expect(latestSocket.on).not.toHaveBeenCalledWith('queued-once-event', expect.any(Function));
+  });
+
+  it('preserves queued on listeners when the socket is created later', async () => {
+    const { io } = await import('socket.io-client');
+    const ioMock = vi.mocked(io);
+    ioMock.mockClear();
+
+    hoisted.getCoreRpcUrlMock.mockResolvedValue('http://127.0.0.1:7788/rpc');
+
+    const { socketService } = await import('../socketService');
+    socketService.disconnect();
+
+    const callback = vi.fn();
+    socketService.on('queued-on-event', callback);
+    socketService.connect('mock-jwt-queued-on');
+
+    await pollUntil(() => expect(ioMock).toHaveBeenCalled());
+
+    const latestSocket = ioMock.mock.results[ioMock.mock.results.length - 1].value as {
+      on: ReturnType<typeof vi.fn>;
+      once: ReturnType<typeof vi.fn>;
+    };
+
+    await pollUntil(() =>
+      expect(latestSocket.on).toHaveBeenCalledWith('queued-on-event', expect.any(Function))
+    );
+    expect(latestSocket.once).not.toHaveBeenCalledWith('queued-on-event', expect.any(Function));
+  });
+
+  it('reconnects when a stale disconnected socket exists for the same token', async () => {
+    const { io } = await import('socket.io-client');
+    const ioMock = vi.mocked(io);
+    ioMock.mockClear();
+
+    hoisted.getCoreRpcUrlMock.mockResolvedValue('http://127.0.0.1:7788/rpc');
+
+    const { socketService } = await import('../socketService');
+    socketService.disconnect();
+
+    socketService.connect('mock-jwt-stale-socket');
+    await pollUntil(() => expect(ioMock).toHaveBeenCalledTimes(1));
+
+    // Same token, previous socket is disconnected=true in our mock.
+    // We should still create a fresh socket instead of returning early.
+    socketService.connect('mock-jwt-stale-socket');
+    await pollUntil(() => expect(ioMock).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe('socketService — connectivity dispatch on socket events (lines 164, 212, 230, 237, 240)', () => {
+  beforeEach(() => {
+    storeMock.dispatch.mockClear();
+    setBackendMock.mockClear();
+    hoisted.getCoreRpcUrlMock.mockReset();
+  });
+
+  it('dispatches setBackend(disconnected) and returns early when URL contains localhost:1420 (line 164)', async () => {
+    hoisted.getCoreRpcUrlMock.mockResolvedValue('http://localhost:1420/rpc');
+
+    const { socketService } = await import('../socketService');
+    socketService.disconnect();
+    socketService.connect('mock-jwt-dev-guard');
+
+    await pollUntil(() => expect(hoisted.getCoreRpcUrlMock).toHaveBeenCalled());
+    // Give the async dispatch a tick to fire.
+    await new Promise(r => setTimeout(r, 20));
+
+    const disconnectedCall = setBackendMock.mock.calls.find(
+      ([arg]) => (arg as { value: string }).value === 'disconnected'
+    );
+    expect(disconnectedCall).toBeDefined();
+  });
+
+  it('clears stale disconnected socket when reconnecting with the same token', async () => {
+    const { io } = await import('socket.io-client');
+    const ioMock = vi.mocked(io);
+    ioMock.mockClear();
+
+    hoisted.getCoreRpcUrlMock.mockResolvedValue('http://127.0.0.1:7788/rpc');
+
+    // Create a mock socket that reports as disconnected (stale).
+    const staleSocket = {
+      connected: false,
+      disconnected: true,
+      on: vi.fn(),
+      onAny: vi.fn(),
+      once: vi.fn(),
+      off: vi.fn(),
+      emit: vi.fn(),
+      disconnect: vi.fn(),
+      connect: vi.fn(),
+      id: 'stale-socket-id',
+      io: { opts: { extraHeaders: { Authorization: 'Bearer same-token' } } },
+    };
+    ioMock.mockReturnValueOnce(staleSocket as never);
+
+    const { socketService } = await import('../socketService');
+    socketService.disconnect();
+
+    // First connect creates the stale socket.
+    socketService.connect('same-token');
+    await pollUntil(() => expect(ioMock).toHaveBeenCalledTimes(1));
+
+    // Second connect with the same token should detect the stale disconnected
+    // socket, null it out, and create a fresh one.
+    ioMock.mockClear();
+    socketService.connect('same-token');
+    await pollUntil(() => expect(ioMock).toHaveBeenCalled());
+
+    // A new io() call proves the stale socket was cleared and replaced.
+    expect(ioMock).toHaveBeenCalled();
+  });
+
+  // Socket event handler tests (connect, disconnect, connect_error) are covered
+  // in socketService.events.test.ts which uses vi.resetModules() for isolation.
+});

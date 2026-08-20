@@ -1,0 +1,752 @@
+#!/usr/bin/env bash
+# OpenHuman Installer (macOS/Linux)
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/tinyhumansai/openhuman/main/scripts/install.sh | bash
+
+set -euo pipefail
+
+# Allow tests to source this file without executing the install flow.
+SOURCE_ONLY=0
+for _arg in "$@"; do
+  if [[ "$_arg" == "--source-only" ]]; then
+    SOURCE_ONLY=1
+  fi
+done
+
+INSTALLER_VERSION="1.0.0"
+REPO="tinyhumansai/openhuman"
+LATEST_JSON_URL="https://github.com/${REPO}/releases/latest/download/latest.json"
+LATEST_RELEASE_API_URL="https://api.github.com/repos/${REPO}/releases/latest"
+
+CHANNEL="stable"
+DRY_RUN=false
+VERBOSE=false
+
+if [ -t 1 ]; then
+  RED='\033[0;31m'
+  GREEN='\033[0;32m'
+  YELLOW='\033[0;33m'
+  CYAN='\033[0;36m'
+  NC='\033[0m'
+else
+  RED=''
+  GREEN=''
+  YELLOW=''
+  CYAN=''
+  NC=''
+fi
+
+log_info() { echo -e "${CYAN}→${NC} $*"; }
+log_ok() { echo -e "${GREEN}✓${NC} $*"; }
+log_warn() { echo -e "${YELLOW}!${NC} $*"; }
+log_err() { echo -e "${RED}x${NC} $*" >&2; }
+
+usage() {
+  cat <<'EOF'
+OpenHuman Installer
+
+Usage: install.sh [OPTIONS]
+
+Options:
+  --help            Show help
+  --version         Show installer version
+  --channel VALUE   Release channel (default: stable)
+  --dry-run         Print actions without mutating local files
+  --verbose         Enable verbose output
+
+Examples:
+  curl -fsSL https://raw.githubusercontent.com/tinyhumansai/openhuman/main/scripts/install.sh | bash
+  curl -fsSL ... | bash -s -- --dry-run
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --version)
+      echo "openhuman-installer ${INSTALLER_VERSION}"
+      exit 0
+      ;;
+    --channel)
+      if [[ $# -lt 2 || "${2:-}" == -* ]]; then
+        log_err "Missing value for --channel"
+        usage
+        exit 1
+      fi
+      CHANNEL="${2:-}"
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=true
+      shift
+      ;;
+    --verbose)
+      VERBOSE=true
+      shift
+      ;;
+    --source-only)
+      # handled above before argument parsing loop; skip silently
+      shift
+      ;;
+    *)
+      log_err "Unknown option: $1"
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if [ "${CHANNEL}" != "stable" ]; then
+  log_err "Only --channel stable is currently supported."
+  exit 1
+fi
+
+for cmd in curl mktemp tar python3; do
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    log_err "Missing required command: ${cmd}"
+    if [ "${cmd}" = "python3" ]; then
+      log_err "Install python3 via your system package manager (e.g. 'apt install python3', 'apk add python3', 'dnf install python3')."
+    fi
+    exit 1
+  fi
+done
+
+OS_RAW="$(uname -s)"
+ARCH_RAW="$(uname -m)"
+OS=""
+ARCH=""
+PLATFORM_KEY=""
+
+case "${OS_RAW}" in
+  Darwin) OS="darwin" ;;
+  Linux) OS="linux" ;;
+  CYGWIN*|MINGW*|MSYS*)
+    log_err "Windows detected. Use PowerShell installer:"
+    echo "  irm https://raw.githubusercontent.com/tinyhumansai/openhuman/main/scripts/install.ps1 | iex"
+    exit 1
+    ;;
+  *)
+    log_err "Unsupported OS: ${OS_RAW}"
+    exit 1
+    ;;
+esac
+
+case "${ARCH_RAW}" in
+  x86_64|amd64) ARCH="x86_64" ;;
+  arm64|aarch64) ARCH="aarch64" ;;
+  *)
+    log_err "Unsupported architecture: ${ARCH_RAW}"
+    exit 1
+    ;;
+esac
+
+if [ "${OS}" = "darwin" ] && [ "${ARCH}" = "aarch64" ]; then
+  PLATFORM_KEY="darwin-aarch64"
+elif [ "${OS}" = "darwin" ] && [ "${ARCH}" = "x86_64" ]; then
+  PLATFORM_KEY="darwin-x86_64"
+elif [ "${OS}" = "linux" ] && [ "${ARCH}" = "x86_64" ]; then
+  PLATFORM_KEY="linux-x86_64"
+elif [ "${OS}" = "linux" ] && [ "${ARCH}" = "aarch64" ]; then
+  PLATFORM_KEY="linux-aarch64"
+fi
+
+log_ok "Detected platform: ${OS}/${ARCH}"
+
+TMP_DIR="$(mktemp -d)"
+cleanup() {
+  rm -rf "${TMP_DIR}"
+}
+trap cleanup EXIT
+
+LATEST_JSON_PATH="${TMP_DIR}/latest.json"
+RELEASE_JSON_PATH="${TMP_DIR}/release.json"
+
+LATEST_VERSION=""
+ASSET_URL=""
+ASSET_NAME=""
+ASSET_SHA256=""
+
+# Resolves an asset URL from a latest.json file for a given OS/arch.
+# Args: $1 = path to latest.json, $2 = os (linux|darwin|windows), $3 = arch (x86_64|aarch64)
+# Stdout: the URL on success.
+# Exit code: 0 on success; 2 on parse error (with diagnostic on stderr); 3 on missing platform.
+resolve_asset_url() {
+  local json_path="$1" os="$2" arch="$3"
+  local key="${os}-${arch}"
+  local url
+  url=$(python3 - "$json_path" "$key" <<'PY'
+import json, sys
+path, key = sys.argv[1], sys.argv[2]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except Exception as e:
+    print(f"ERR_PARSE: {e}", file=sys.stderr)
+    sys.exit(2)
+plat = data.get("platforms", {}).get(key)
+if not plat:
+    available = ", ".join(sorted(data.get("platforms", {}).keys()))
+    print(f"ERR_PLATFORM: {key} not in [{available}]", file=sys.stderr)
+    sys.exit(3)
+url = plat.get("url")
+if not url:
+    print(f"ERR_URL: no url field for {key}", file=sys.stderr)
+    sys.exit(2)
+print(url)
+PY
+  )
+  local rc=$?
+  if [[ $rc -ne 0 ]]; then
+    return $rc
+  fi
+  printf '%s\n' "$url"
+}
+
+linux_package_preference() {
+  if [ "${OS:-}" != "linux" ]; then
+    printf 'appimage\n'
+    return 0
+  fi
+
+  case "${OPENHUMAN_INSTALLER_LINUX_PACKAGE:-auto}" in
+    deb)
+      printf 'deb\n'
+      return 0
+      ;;
+    appimage)
+      printf 'appimage\n'
+      return 0
+      ;;
+    auto|"")
+      ;;
+    *)
+      printf 'appimage\n'
+      return 0
+      ;;
+  esac
+
+  if command -v apt-get >/dev/null 2>&1 && command -v dpkg >/dev/null 2>&1; then
+    printf 'deb\n'
+  else
+    printf 'appimage\n'
+  fi
+}
+
+resolve_release_asset_metadata() {
+  local json_path="$1" os_name="$2" arch="$3" linux_asset_kind="${4:-appimage}"
+  python3 - "$json_path" "$os_name" "$arch" "$linux_asset_kind" <<'PY'
+import json, re, sys
+path, os_name, arch, linux_asset_kind = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+with open(path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+tag = (data.get("tag_name") or "").lstrip("v")
+assets = data.get("assets", [])
+
+def first_matching(names, pattern):
+    for name in names:
+        if re.search(pattern, name):
+            return name
+    return None
+
+def choose_asset():
+    names = [a.get("name", "") for a in assets]
+    chosen = None
+    if os_name == "darwin" and arch == "aarch64":
+        chosen = first_matching(names, r"aarch64.*\.app\.tar\.gz$")
+        if not chosen:
+            chosen = first_matching(names, r"aarch64\.dmg$")
+    elif os_name == "darwin" and arch == "x86_64":
+        chosen = first_matching(names, r"(x86_64-apple-darwin|x64).*\.app\.tar\.gz$")
+        if not chosen:
+            chosen = first_matching(names, r"x64\.dmg$")
+    elif os_name == "linux" and arch == "x86_64":
+        if linux_asset_kind == "deb":
+            chosen = first_matching(names, r"OpenHuman_.*_amd64\.deb$")
+        else:
+            chosen = first_matching(names, r"amd64\.AppImage$")
+    elif os_name == "linux" and arch == "aarch64":
+        if linux_asset_kind == "deb":
+            chosen = first_matching(names, r"OpenHuman_.*_(arm64|aarch64)\.deb$")
+        else:
+            chosen = first_matching(names, r"(arm64|aarch64)\.AppImage$")
+    if not chosen:
+        return "", "", ""
+    for asset in assets:
+        if asset.get("name") == chosen:
+            return chosen, asset.get("browser_download_url", ""), (asset.get("digest", "") or "").replace("sha256:", "")
+    return "", "", ""
+
+name, url, digest = choose_asset()
+if not name or not url:
+    sys.exit(2)
+print(tag)
+print(name)
+print(url)
+print(digest)
+PY
+}
+
+# curl can fail on GitHub/CDN HTTP/2 framing issues on some networks while the
+# same URL succeeds over HTTP/1.1. Try the normal path first, then a
+# compatibility retry before surfacing the failure.
+curl_get_file() {
+  local url="$1" output="$2" rc
+  if curl -fsSL "$url" -o "$output"; then
+    return 0
+  else
+    rc=$?
+  fi
+  log_warn "Request failed (curl rc=${rc}); retrying with HTTP/1.1."
+  curl --http1.1 -fsSL "$url" -o "$output"
+}
+
+curl_download_file() {
+  local url="$1" output="$2" rc
+  if curl -fL "$url" -o "$output"; then
+    return 0
+  else
+    rc=$?
+  fi
+  log_warn "Download failed (curl rc=${rc}); retrying with HTTP/1.1."
+  curl --http1.1 -fL "$url" -o "$output"
+}
+
+curl_head_with_http_fallback() {
+  local url="$1" rc
+  if curl -fsSI --max-time 10 "$url" >/dev/null 2>&1; then
+    return 0
+  else
+    rc=$?
+  fi
+  log_warn "Reachability check failed (curl rc=${rc}); retrying with HTTP/1.1."
+  curl --http1.1 -fsSI --max-time 10 "$url" >/dev/null 2>&1
+}
+
+# Retries an HTTP HEAD on the asset URL, fails loudly with the URL.
+verify_asset_reachable() {
+  local url="$1" max_attempts=5 delay=2
+  for i in $(seq 1 $max_attempts); do
+    if curl_head_with_http_fallback "$url"; then
+      return 0
+    fi
+    if [[ $i -lt $max_attempts ]]; then
+      sleep "$delay"
+      delay=$((delay * 2))
+    fi
+  done
+  echo "ERR_UNREACHABLE: $url not reachable after $max_attempts attempts" >&2
+  return 4
+}
+
+resolve_from_latest_json() {
+  if ! curl_get_file "${LATEST_JSON_URL}" "${LATEST_JSON_PATH}"; then
+    return 1
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    log_warn "python3 is not available; cannot parse latest.json reliably."
+    return 1
+  fi
+
+  local url
+  url=$(resolve_asset_url "${LATEST_JSON_PATH}" "${OS}" "${ARCH}") || {
+    local rc=$?
+    if [[ $rc -eq 3 ]]; then
+      log_warn "Platform ${OS}-${ARCH} not found in latest.json. Resolved URL will be empty — check if a Linux build has been published."
+      log_warn "$(cat "${LATEST_JSON_PATH}" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("Available platforms: " + ", ".join(sorted(d.get("platforms",{}).keys())))' 2>/dev/null || true)"
+    else
+      log_warn "Failed to parse latest.json (exit $rc)."
+    fi
+    return 1
+  }
+
+  ASSET_URL="$url"
+  ASSET_NAME="$(basename "${ASSET_URL}")"
+
+  # Extract version from latest.json
+  LATEST_VERSION="$(python3 -c "
+import json, sys
+with open('${LATEST_JSON_PATH}') as f: d = json.load(f)
+print(d.get('version', ''))
+" 2>/dev/null || true)"
+
+  [ -n "${ASSET_URL}" ]
+}
+
+resolve_from_release_api() {
+  if ! curl_get_file "${LATEST_RELEASE_API_URL}" "${RELEASE_JSON_PATH}"; then
+    return 1
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    log_warn "python3 is not available; cannot parse release API fallback."
+    return 1
+  fi
+
+  local parsed linux_kind rc
+  linux_kind="${LINUX_PACKAGE_KIND:-$(linux_package_preference)}"
+  if parsed="$(resolve_release_asset_metadata "${RELEASE_JSON_PATH}" "${OS}" "${ARCH}" "${linux_kind}")"; then
+    rc=0
+  else
+    rc=$?
+    return "${rc}"
+  fi
+
+  if [ -z "${LATEST_VERSION}" ]; then
+    LATEST_VERSION="$(echo "${parsed}" | sed -n '1p')"
+  fi
+  ASSET_NAME="$(echo "${parsed}" | sed -n '2p')"
+  ASSET_URL="$(echo "${parsed}" | sed -n '3p')"
+  ASSET_SHA256="$(echo "${parsed}" | sed -n '4p')"
+
+  # Exit 0 on success, 2 when API responded but no compatible asset was found.
+  # Callers can distinguish "no asset" (2) from network/parse errors (1).
+  if [ -n "${ASSET_URL}" ]; then
+    return 0
+  fi
+  return 2
+}
+
+resolve_release_digest() {
+  if [ -z "${ASSET_NAME}" ]; then
+    return 0
+  fi
+  if [ ! -s "${RELEASE_JSON_PATH}" ]; then
+    if ! curl_get_file "${LATEST_RELEASE_API_URL}" "${RELEASE_JSON_PATH}"; then
+      return 0
+    fi
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 0
+  fi
+  local digest
+  digest="$(python3 - "${RELEASE_JSON_PATH}" "${ASSET_NAME}" <<'PY'
+import json, sys
+path, name = sys.argv[1], sys.argv[2]
+with open(path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+for asset in data.get("assets", []):
+    if asset.get("name") == name:
+        d = asset.get("digest", "") or ""
+        print(d.replace("sha256:", ""))
+        break
+PY
+)"
+  if [ -n "${digest}" ]; then
+    ASSET_SHA256="${digest}"
+  fi
+}
+
+compute_sha256() {
+  local file="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "${file}" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "${file}" | awk '{print $1}'
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 "${file}" | awk '{print $2}'
+  else
+    return 1
+  fi
+}
+
+ensure_local_bin_path() {
+  local bin_dir="${HOME}/.local/bin"
+  if echo ":${PATH}:" | grep -q ":${bin_dir}:"; then
+    return 0
+  fi
+  local shell_name config_file
+  shell_name="$(basename "${SHELL:-/bin/bash}")"
+  case "${shell_name}" in
+    zsh) config_file="${HOME}/.zshrc" ;;
+    bash) config_file="${HOME}/.bashrc" ;;
+    *) config_file="${HOME}/.profile" ;;
+  esac
+
+  if [ "${DRY_RUN}" = true ]; then
+    echo "DRY RUN: ensure ${bin_dir} in PATH via ${config_file}"
+    return 0
+  fi
+
+  if [ ! -f "${config_file}" ]; then
+    touch "${config_file}"
+  fi
+  if ! grep -q '.local/bin' "${config_file}"; then
+    {
+      echo ""
+      echo '# OpenHuman installer - ensure local user binaries are on PATH'
+      echo 'export PATH="$HOME/.local/bin:$PATH"'
+    } >> "${config_file}"
+    log_ok "Added ~/.local/bin to ${config_file}"
+  fi
+}
+
+apt_get_command_prefix() {
+  if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+    printf 'apt-get'
+  else
+    printf 'sudo apt-get'
+  fi
+}
+
+install_linux_deb() {
+  if [ "${DRY_RUN}" = true ]; then
+    echo "DRY RUN: $(apt_get_command_prefix) install -y --no-install-recommends ${DOWNLOAD_PATH}"
+    return 0
+  fi
+
+  if ! command -v apt-get >/dev/null 2>&1; then
+    log_err "apt-get is required to install ${ASSET_NAME} and resolve dependencies."
+    log_err "Set OPENHUMAN_INSTALLER_LINUX_PACKAGE=appimage to force the AppImage path."
+    exit 1
+  fi
+
+  if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+    apt-get install -y --no-install-recommends "${DOWNLOAD_PATH}"
+  else
+    if ! command -v sudo >/dev/null 2>&1; then
+      log_err "sudo is required to install ${ASSET_NAME} with apt-get."
+      log_err "Re-run as root or install the .deb manually with apt-get."
+      exit 1
+    fi
+    sudo apt-get install -y --no-install-recommends "${DOWNLOAD_PATH}"
+  fi
+}
+
+install_macos() {
+  local apps_dir="${HOME}/Applications"
+  local app_path="${apps_dir}/OpenHuman.app"
+  mkdir -p "${apps_dir}"
+
+  if [[ "${ASSET_NAME}" =~ \.app\.tar\.gz$ ]]; then
+    log_info "Installing OpenHuman.app into ${apps_dir}"
+    if [ "${DRY_RUN}" = true ]; then
+      echo "DRY RUN: tar -xzf ${DOWNLOAD_PATH} -C ${TMP_DIR}"
+      echo "DRY RUN: replace ${app_path}"
+    else
+      tar -xzf "${DOWNLOAD_PATH}" -C "${TMP_DIR}"
+      if [ ! -d "${TMP_DIR}/OpenHuman.app" ]; then
+        log_err "Archive did not contain OpenHuman.app"
+        exit 1
+      fi
+      rm -rf "${app_path}"
+      cp -R "${TMP_DIR}/OpenHuman.app" "${app_path}"
+    fi
+  elif [[ "${ASSET_NAME}" =~ \.dmg$ ]]; then
+    log_info "Mounting DMG and copying OpenHuman.app"
+    if [ "${DRY_RUN}" = true ]; then
+      echo "DRY RUN: hdiutil attach ${DOWNLOAD_PATH}"
+      echo "DRY RUN: copy OpenHuman.app to ${app_path}"
+    else
+      if ! command -v hdiutil >/dev/null 2>&1; then
+        log_err "hdiutil not available, cannot install from DMG."
+        exit 1
+      fi
+      mount_output="$(hdiutil attach "${DOWNLOAD_PATH}" -nobrowse)"
+      mount_point="$(echo "${mount_output}" | awk '/\/Volumes\// {print $NF; exit}')"
+      if [ -z "${mount_point}" ] || [ ! -d "${mount_point}/OpenHuman.app" ]; then
+        log_err "Could not find OpenHuman.app in mounted DMG."
+        echo "${mount_output}"
+        exit 1
+      fi
+      rm -rf "${app_path}"
+      cp -R "${mount_point}/OpenHuman.app" "${app_path}"
+      hdiutil detach "${mount_point}" >/dev/null
+    fi
+  else
+    log_err "Unsupported macOS asset type: ${ASSET_NAME}"
+    exit 1
+  fi
+
+  log_ok "Installed at ${app_path}"
+  echo ""
+  echo "OpenHuman is ready."
+  echo "Launch: open \"${app_path}\""
+  echo "Uninstall: rm -rf \"${app_path}\""
+}
+
+install_linux() {
+  local bin_dir="${HOME}/.local/bin"
+  local app_path="${bin_dir}/openhuman"
+  local desktop_dir="${HOME}/.local/share/applications"
+  local desktop_file="${desktop_dir}/openhuman.desktop"
+
+  if [[ "${ASSET_NAME}" =~ \.deb$ ]]; then
+    log_info "Installing Debian package with apt-get so system dependencies resolve"
+    install_linux_deb
+    log_ok "Installed Debian package ${ASSET_NAME}"
+    echo ""
+    echo "OpenHuman is ready."
+    echo "Launch: openhuman"
+    echo "Uninstall: $(apt_get_command_prefix) remove openhuman"
+    return 0
+  fi
+
+  mkdir -p "${bin_dir}" "${desktop_dir}"
+
+  if [[ ! "${ASSET_NAME}" =~ \.AppImage$ ]]; then
+    log_err "Expected AppImage or .deb for Linux install, got: ${ASSET_NAME}"
+    exit 1
+  fi
+
+  if [ "${DRY_RUN}" = true ]; then
+    echo "DRY RUN: install ${DOWNLOAD_PATH} -> ${app_path}"
+  else
+    cp "${DOWNLOAD_PATH}" "${app_path}"
+    chmod +x "${app_path}"
+  fi
+
+  ensure_local_bin_path
+
+  if [ "${DRY_RUN}" = true ]; then
+    echo "DRY RUN: write ${desktop_file}"
+  else
+    cat > "${desktop_file}" <<EOF
+[Desktop Entry]
+Type=Application
+Name=OpenHuman
+Comment=OpenHuman desktop assistant
+Exec=${app_path}
+TryExec=${app_path}
+Icon=${bin_dir}/openhuman.png
+Terminal=false
+Categories=Utility;
+EOF
+  fi
+
+  log_ok "Installed binary at ${app_path}"
+  echo ""
+  echo "OpenHuman is ready."
+  echo "Launch: ${app_path}"
+  echo "If the AppImage prints 'Interpreter not found!', unshare/uid_map errors,"
+  echo "or missing system-library errors such as libgbm.so.1, use the .deb package"
+  echo "from https://github.com/${REPO}/releases/latest on Debian/Ubuntu."
+  echo "For other distros, report at https://github.com/${REPO}/issues with your"
+  echo "distro, kernel (uname -a), GPU driver (lspci), dmesg excerpt, and asset: ${ASSET_NAME}."
+  echo "Uninstall: rm -f \"${app_path}\" \"${desktop_file}\""
+}
+
+if [[ "${SOURCE_ONLY}" == "1" ]]; then
+  return 0 2>/dev/null || exit 0
+fi
+
+resolve_rc=0
+linux_package_request="${OPENHUMAN_INSTALLER_LINUX_PACKAGE:-auto}"
+
+if [ "${OS}" = "linux" ] && [ "$(linux_package_preference)" = "deb" ]; then
+  LINUX_PACKAGE_KIND="deb"
+  log_info "Debian/Ubuntu package tooling detected; resolving .deb release asset."
+  if resolve_from_release_api; then
+    log_ok "Resolved latest release via releases API (${LATEST_VERSION})"
+  else
+    resolve_rc=$?
+    if [ "${linux_package_request}" = "deb" ]; then
+      if [ "${DRY_RUN}" = true ]; then
+        log_warn "Could not resolve requested .deb release asset (rc=${resolve_rc}) for ${OS}/${ARCH}."
+        echo "DRY RUN: skipping install for ${OS}/${ARCH} - no .deb asset resolved."
+        exit 0
+      fi
+      log_err "Could not resolve requested .deb release asset for ${OS}/${ARCH}."
+      log_err "Set OPENHUMAN_INSTALLER_LINUX_PACKAGE=appimage to use the AppImage fallback."
+      exit 1
+    fi
+    case "${resolve_rc}" in
+      2)
+        log_warn "No .deb release asset published yet for ${OS}/${ARCH}; falling back to AppImage metadata."
+        ;;
+      *)
+        log_warn "Could not resolve .deb via releases API (rc=${resolve_rc}); falling back to AppImage metadata."
+        ;;
+    esac
+    LINUX_PACKAGE_KIND="appimage"
+  fi
+fi
+
+if [ -z "${ASSET_URL}" ] && resolve_from_latest_json; then
+  log_ok "Resolved latest release via latest.json (${LATEST_VERSION})"
+elif [ -z "${ASSET_URL}" ]; then
+  log_warn "latest.json lookup failed. Falling back to releases API."
+  # Wrap the call so `set -e` can't abort before rc is captured. Without the
+  # `if`-guard, `resolve_from_release_api` returning a non-zero rc (e.g. 2 for
+  # "no compatible asset") trips `set -euo pipefail` and exits the script
+  # before the handler below can decide dry-run vs real-install behavior.
+  if resolve_from_release_api; then
+    resolve_rc=0
+  else
+    resolve_rc=$?
+  fi
+  if [ "${resolve_rc}" -ne 0 ]; then
+    # Dry-run is a "what would happen?" query, not an install. If the release
+    # metadata says no compatible asset exists (or the metadata itself can't
+    # be reached), surface a warning and exit 0 so installer smoke checks on
+    # platforms without a current build don't fail the whole CI matrix. Real
+    # installs (non-dry-run) still hard-fail below.
+    if [ "${DRY_RUN}" = true ]; then
+      case "${resolve_rc}" in
+        2)
+          log_warn "No compatible release asset published yet for ${OS}/${ARCH}."
+          ;;
+        *)
+          log_warn "Could not reach release metadata (rc=${resolve_rc}) for ${OS}/${ARCH}."
+          ;;
+      esac
+      echo "DRY RUN: skipping install for ${OS}/${ARCH} — no asset resolved."
+      exit 0
+    fi
+    log_err "Could not resolve a compatible asset for ${OS}/${ARCH}."
+    log_err "Check https://github.com/${REPO}/releases/latest for available assets."
+    exit 1
+  fi
+  log_ok "Resolved latest release via releases API (${LATEST_VERSION})"
+fi
+
+resolve_release_digest
+
+if [ -z "${ASSET_URL}" ]; then
+  log_err "Could not determine download URL for ${OS}/${ARCH}."
+  exit 1
+fi
+
+if [ "${DRY_RUN}" = true ]; then
+  echo "DRY RUN: verify asset reachable ${ASSET_URL}"
+elif ! verify_asset_reachable "${ASSET_URL}"; then
+  log_err "Asset URL is not reachable for ${OS}/${ARCH}: ${ASSET_URL}"
+  exit 4
+fi
+
+DOWNLOAD_PATH="${TMP_DIR}/${ASSET_NAME}"
+log_info "Downloading ${ASSET_NAME}"
+if [ "${DRY_RUN}" = true ]; then
+  echo "DRY RUN: curl -fL ${ASSET_URL} -o ${DOWNLOAD_PATH} (retrying with --http1.1 on failure)"
+else
+  curl_download_file "${ASSET_URL}" "${DOWNLOAD_PATH}"
+fi
+
+if [ -n "${ASSET_SHA256}" ]; then
+  if [ "${DRY_RUN}" = true ]; then
+    echo "DRY RUN: verify sha256 ${ASSET_SHA256} for ${DOWNLOAD_PATH}"
+  else
+    actual_sha256="$(compute_sha256 "${DOWNLOAD_PATH}" || true)"
+    if [ -z "${actual_sha256}" ]; then
+      log_warn "No checksum command available; skipping digest verification."
+    elif [ "${actual_sha256}" != "${ASSET_SHA256}" ]; then
+      log_err "SHA256 mismatch for ${ASSET_NAME}"
+      log_err "Expected: ${ASSET_SHA256}"
+      log_err "Actual:   ${actual_sha256}"
+      exit 1
+    else
+      log_ok "Integrity verified (sha256)"
+    fi
+  fi
+else
+  log_warn "No SHA256 digest available for ${ASSET_NAME}; skipping integrity verification."
+fi
+
+if [ "${OS}" = "darwin" ]; then
+  install_macos
+else
+  install_linux
+fi
