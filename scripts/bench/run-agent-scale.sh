@@ -214,6 +214,28 @@ spacy_enabled = false
 TOML
 )"
 fi
+
+# --memory-writes-off stops memory WRITES while leaving recall reads intact.
+#
+# `--memory-off` turns off reads and writes together, so on its own it cannot
+# say which of the two is the expensive one — and they have different fixes. Run
+# this against an already-populated workspace (`--workspace`): recall still
+# scans the whole namespace every turn, but nothing new is stored. If throughput
+# stays at the --memory-off-less level, the cost is in the read path; if it
+# recovers, write contention on the shared connection was the problem.
+if [[ -n "$MEMORY_WRITES_OFF" ]]; then
+  BENCH_CONFIG="$BENCH_CONFIG$(cat <<'TOML'
+
+[memory]
+auto_save = false
+
+[learning]
+enabled = false
+episodic_capture_enabled = false
+chat_to_tree_enabled = false
+TOML
+)"
+fi
 mkdir -p "$WORKSPACE/workspace"
 printf '%s\n' "$BENCH_CONFIG" >"$WORKSPACE/config.toml"
 printf '%s\n' "$BENCH_CONFIG" >"$WORKSPACE/workspace/config.toml"
