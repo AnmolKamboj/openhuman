@@ -129,11 +129,11 @@ fn handle_test(params: Map<String, Value>) -> ControllerFuture {
                     .join(", ")
             )
         })?;
-        let payload: HookPayload = match params.get("payload") {
-            Some(Value::Null) | None => HookPayload::Empty,
-            Some(value) => serde_json::from_value(value.clone())
-                .map_err(|error| format!("invalid payload for '{event}': {error}"))?,
-        };
+        let payload = HookPayload::from_value_for(
+            event,
+            params.get("payload").cloned().unwrap_or(Value::Null),
+        )
+        .map_err(|error| format!("invalid payload for '{event}': {error}"))?;
 
         let input = super::context::build_input(event, TurnIdentity::default(), payload);
         // A test fire is always run in the foreground, even for an

@@ -303,6 +303,50 @@ pub enum HookPayload {
     Stop(StopPayload),
 }
 
+impl HookPayload {
+    /// Parse a body **for a known event**.
+    ///
+    /// Never rely on `serde`'s untagged dispatch for this. Several bodies have
+    /// only optional fields, so untagged matching picks whichever variant is
+    /// declared first and happens to accept the object — `{"trigger":"auto"}`
+    /// deserializes as a [`SessionPayload`] with everything `None`, silently
+    /// throwing away the field the caller sent. The event already says which
+    /// body this is; use it.
+    pub fn from_value_for(event: HookEvent, value: serde_json::Value) -> Result<Self, String> {
+        fn parse<T: serde::de::DeserializeOwned>(value: serde_json::Value) -> Result<T, String> {
+            serde_json::from_value(value).map_err(|error| error.to_string())
+        }
+        if value.is_null() {
+            return Ok(HookPayload::Empty);
+        }
+        Ok(match event {
+            HookEvent::PreToolUse
+            | HookEvent::PostToolUse
+            | HookEvent::PostToolUseFailure
+            | HookEvent::BeforeMcpExecution
+            | HookEvent::AfterMcpExecution => HookPayload::Tool(parse(value)?),
+            HookEvent::BeforeShellExecution | HookEvent::AfterShellExecution => {
+                HookPayload::Shell(parse(value)?)
+            }
+            HookEvent::BeforeReadFile | HookEvent::AfterFileEdit => {
+                HookPayload::File(parse(value)?)
+            }
+            HookEvent::BeforeSubmitPrompt => HookPayload::Prompt(parse(value)?),
+            HookEvent::SubagentStart | HookEvent::SubagentStop => {
+                HookPayload::Subagent(parse(value)?)
+            }
+            HookEvent::SessionStart | HookEvent::SessionEnd => {
+                HookPayload::Session(parse(value)?)
+            }
+            HookEvent::PreCompact => HookPayload::Compact(parse(value)?),
+            HookEvent::AfterAgentResponse | HookEvent::AfterAgentThought => {
+                HookPayload::Text(parse(value)?)
+            }
+            HookEvent::Stop => HookPayload::Stop(parse(value)?),
+        })
+    }
+}
+
 /// Body for `preToolUse`, `postToolUse`, `postToolUseFailure`, and the MCP
 /// specialisations.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
