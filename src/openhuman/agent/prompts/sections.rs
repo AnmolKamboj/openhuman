@@ -441,14 +441,21 @@ impl PromptSection for ToolsSection {
             .iter()
             .filter(|tool| !has_filter || ctx.visible_tool_names.contains(tool.name))
             .map(|tool| {
-                ToolSchema::new(
-                    tool.name,
-                    tool.description,
-                    tool.parameters_schema
-                        .as_deref()
-                        .and_then(|schema| serde_json::from_str(schema).ok())
-                        .unwrap_or(serde_json::Value::Null),
-                )
+                let parameters = match tool.parameters_schema.as_deref() {
+                    Some(schema) => match serde_json::from_str(schema) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            log::warn!(
+                                "[prompts][tools] tool '{}' has an unparsable parameters_schema \
+                                 ({err}); rendering it with no arguments",
+                                tool.name
+                            );
+                            serde_json::Value::Null
+                        }
+                    },
+                    None => serde_json::Value::Null,
+                };
+                ToolSchema::new(tool.name, tool.description, parameters)
             })
             .collect();
         let mut out = render_pformat_catalogue(&visible);
