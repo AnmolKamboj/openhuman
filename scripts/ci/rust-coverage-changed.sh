@@ -222,8 +222,7 @@ for f in "${files[@]}"; do
       run_full "root module ${f} changed — whole-crate scope"
       ;;
     src/bin/*)
-      # Standalone backfill binaries (slack-backfill, gmail-backfill-3d) have
-      # no unit tests; nothing to scope to.
+      # Standalone ops/bench binaries have no domain unit tests to scope to.
       log "ignoring standalone-binary file: ${f}"
       ;;
     src/*.rs)
