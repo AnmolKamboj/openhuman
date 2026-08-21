@@ -421,7 +421,7 @@ pub async fn start_chat(
     //   [IMAGE:data:…] → [Image: … #att:<id>] placeholder + out-of-band stash
     // Images are rehydrated to a data URI at provider dispatch for vision-capable
     // models only.
-    let message = if message.contains("[FILE:") || message.contains("[IMAGE:") {
+    let mut message = if message.contains("[FILE:") || message.contains("[IMAGE:") {
         let before_chars = message.chars().count();
         log::debug!(
             "[web-channel][ingress] preprocessing attachment markers thread_id={} client_id={} chars={}",
@@ -540,6 +540,42 @@ pub async fn start_chat(
                     }
                 }
             }
+        }
+    }
+
+    // Configured `beforeSubmitPrompt` hooks. Deliberately after the
+    // approval-reply routing above: a bare "yes" answering a parked approval is
+    // not a prompt the user is submitting to the model, and handing it to a
+    // prompt hook would let a hook that blocks short messages strand a turn
+    // waiting for an approval it can no longer receive.
+    //
+    // The message here is post-attachment-processing, so a hook sees extracted
+    // text and placeholders rather than a multi-megabyte data URI on stdin.
+    match crate::openhuman::hooks::ops::prompt_submitted(
+        crate::openhuman::hooks::context::TurnIdentity {
+            conversation_id: Some(thread_id.clone()),
+            ..Default::default()
+        },
+        &message,
+        Vec::new(),
+    )
+    .await
+    {
+        crate::openhuman::hooks::PromptVerdict::Submit { additional_context } => {
+            if let Some(context) = additional_context {
+                log::debug!(
+                    "[web-channel] beforeSubmitPrompt hook added {} chars of context thread_id={}",
+                    context.chars().count(),
+                    thread_id
+                );
+                message = format!("{message}\n\n{context}");
+            }
+        }
+        crate::openhuman::hooks::PromptVerdict::Block(reason) => {
+            log::info!(
+                "[web-channel] prompt blocked by a configured hook thread_id={thread_id}: {reason}"
+            );
+            return Err(reason);
         }
     }
 

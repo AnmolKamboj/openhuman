@@ -113,6 +113,21 @@ The `[autonomy]` block (`src/openhuman/config/schema/autonomy.rs`) drives `Secur
 
 **Sandbox backends** (opt-in per agent via `sandbox_mode = "sandboxed"`): Docker (remote/cron), Local OS jail (Landlock/Seatbelt/AppContainer, desktop), Noop fallback. In-Rust path hardening applies regardless.
 
+### Hooks — two unrelated things with one name
+
+**In-process hooks** (`src/openhuman/agent/hooks.rs`, `agent/stop_hooks.rs`) are Rust traits an *embedding host* installs by compiling against the core: `PostTurnHook`, `ToolHook`, `StopHook`. `ToolHook` now answers with a `ToolHookDecision` (`Proceed` / `ProceedWith(args)` / `Deny(reason)` / `Ask(reason)`) and `after_tool_context` may append text to a tool result. Both come with defaults that bridge to the old `Result<()>` pair, so existing implementations compile unchanged — but a hook that only vetoes is now the degenerate case, not the contract.
+
+**Configurable hooks** (`src/openhuman/hooks/`) are user-authored scripts declared in `hooks.json`, taking [Cursor's contract](https://cursor.com/docs/hooks) verbatim — event names, stdin envelope, stdout decision, exit code 2 = deny — so a script ports between hosts. Full guide: [`gitbooks/developing/hooks.md`](gitbooks/developing/hooks.md).
+
+Four things to know before touching that domain:
+
+- **It mounts on the existing seams, not new call sites.** `hooks::bridge` registers itself as an embedder `ToolHook` + `PostTurnHook`. Only the moments with no seam at all (`beforeSubmitPrompt`, `subagentStart`/`Stop`) get their own call site, in `hooks::ops`.
+- **Shell/file/MCP events are derived from tool calls.** OpenHuman has no separate shell-execution call site — `beforeShellExecution` is the `shell` tool going through the tool seam, reshaped into a Cursor-shaped payload. Both the generic and the specialised event fire, generic first. `SHELL_TOOLS`/`READ_TOOLS`/`WRITE_TOOLS` in `bridge.rs` are the mapping; extend those rather than adding a call site.
+- **`HookEvent::is_wired()` is load-bearing honesty.** Four events (`sessionStart`, `sessionEnd`, `preCompact`, `afterAgentThought`) are fully defined but have no call site yet. The loader warns when one is configured and `hooks.list` reports `wired: false`. Flip the flag when the call site lands — never optimistically.
+- **Strictest verdict wins, and layers concatenate.** Four `hooks.json` layers merge by appending, and `HookOutput::merge` folds deny over ask over allow, so a project file can never loosen an operator's rule. Do not "fix" the layering into an override model.
+
+Gating events run sequentially in the turn's path; observational ones are spawned and never block it (`HookEvent::is_gating` is the single place that split lives). With nothing configured the bridge is not installed, so an unconfigured host pays nothing per tool call.
+
 ---
 
 ## Testing

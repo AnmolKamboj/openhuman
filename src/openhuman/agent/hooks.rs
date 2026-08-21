@@ -139,6 +139,12 @@ pub enum ToolHookEvent {
 }
 
 /// Safe metadata supplied to an embedding host's tool hook.
+///
+/// The post-execution fields (`output`, `error`) carry the tool's *raw* result
+/// text, unlike [`ToolCallRecord::output_summary`], which is sanitized for the
+/// learning pipeline. A tool hook is a policy seam — a hook asked to redact
+/// secrets from a result cannot do it from a summary — so the trade is
+/// deliberate, and it is why these fields exist here and not there.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolHookContext {
     /// The lifecycle moment that raised this notification.
@@ -153,9 +159,56 @@ pub struct ToolHookContext {
     pub success: Option<bool>,
     /// Final tool runtime in milliseconds; absent before execution.
     pub duration_ms: Option<u64>,
+    /// Raw tool result text; absent before execution.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    /// Failure text when the tool errored; absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// Session the call belongs to, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    /// Canonical agent definition id, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+}
+
+/// What a pre-tool hook decided about a call.
+///
+/// This is the enrichment that makes an embedder hook a policy lever rather
+/// than a tripwire: before it existed the only expressible answers were "fine"
+/// and an `Err` that read to the model as a tool crash.
+#[derive(Debug, Clone, Default)]
+pub enum ToolHookDecision {
+    /// Run the tool as requested.
+    #[default]
+    Proceed,
+    /// Run the tool, but with these arguments instead. Used to redact a
+    /// secret, pin a flag, or narrow a path before the tool ever sees it.
+    ProceedWith(serde_json::Value),
+    /// Refuse the call. `reason` is what the model is told.
+    Deny(String),
+    /// Escalate to the human through the approval gate. `reason` is what the
+    /// human is asked about.
+    Ask(String),
+}
+
+impl ToolHookDecision {
+    /// Whether the call is refused outright.
+    pub fn is_deny(&self) -> bool {
+        matches!(self, ToolHookDecision::Deny(_))
+    }
 }
 
 /// Embedder callback around every harness tool execution.
+///
+/// Implement [`before_tool`](ToolHook::before_tool) and
+/// [`after_tool`](ToolHook::after_tool) for a plain observer. Override
+/// [`before_tool_decision`](ToolHook::before_tool_decision) and
+/// [`after_tool_context`](ToolHook::after_tool_context) when the hook needs to
+/// rewrite arguments, escalate to the human, or feed text back to the model;
+/// the defaults bridge to the simpler pair so existing implementations keep
+/// working unchanged.
 #[async_trait]
 pub trait ToolHook: Send + Sync {
     /// Human-readable hook identifier for diagnostics.
@@ -164,6 +217,25 @@ pub trait ToolHook: Send + Sync {
     async fn before_tool(&self, context: &ToolHookContext) -> anyhow::Result<()>;
     /// Observe a completed tool. Errors are logged and never change its result.
     async fn after_tool(&self, context: &ToolHookContext) -> anyhow::Result<()>;
+
+    /// Decide what happens to a call. Defaults to
+    /// [`before_tool`](ToolHook::before_tool), mapping its `Err` to a denial.
+    async fn before_tool_decision(&self, context: &ToolHookContext) -> ToolHookDecision {
+        match self.before_tool(context).await {
+            Ok(()) => ToolHookDecision::Proceed,
+            Err(error) => ToolHookDecision::Deny(format!("{error:#}")),
+        }
+    }
+
+    /// Observe a completed tool and optionally append text to its result, which
+    /// the model then sees. Defaults to [`after_tool`](ToolHook::after_tool)
+    /// with no appended text.
+    async fn after_tool_context(&self, context: &ToolHookContext) -> Option<String> {
+        if let Err(error) = self.after_tool(context).await {
+            log::warn!("[hooks] post-tool hook '{}' failed: {error:#}", self.name());
+        }
+        None
+    }
 }
 
 /// Tool hooks supplied by an embedding host.
