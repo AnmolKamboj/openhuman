@@ -1,0 +1,221 @@
+import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
+import { REHYDRATE } from 'redux-persist';
+
+import type { IntegrationNotification } from '../types/notifications';
+import { resetUserScopedState } from './resetActions';
+
+export type NotificationCategory =
+  | 'messages'
+  | 'agents'
+  | 'skills'
+  | 'system'
+  | 'meetings'
+  | 'reminders'
+  | 'important';
+
+export interface NotificationAction {
+  actionId: string;
+  label: string;
+  payload?: unknown;
+}
+
+export interface NotificationItem {
+  id: string;
+  category: NotificationCategory;
+  title: string;
+  body: string;
+  timestamp: number;
+  read: boolean;
+  accountId?: string;
+  provider?: string;
+  deepLink?: string;
+  actions?: NotificationAction[];
+  /**
+   * Discriminator for a core-originated notification that needs a dedicated
+   * rendering (routed in `NotificationCenter`) instead of the generic
+   * `CoreNotificationCard`. Currently only `'flow-gate-approval'` — a paused
+   * `tinyflows` run's approval gate, resolved via `GateApprovalCard` and the
+   * `openhuman.approval_decide` RPC. Absent for plain action notifications
+   * (e.g. the meeting auto-join prompt) and for the older
+   * `flow-pending-approval:`-prefixed id convention (`FlowApprovalCard`).
+   */
+  kind?: string;
+}
+
+export interface NotificationPreferences {
+  messages: boolean;
+  agents: boolean;
+  skills: boolean;
+  system: boolean;
+  meetings: boolean;
+  reminders: boolean;
+  important: boolean;
+}
+
+export interface NotificationState {
+  items: NotificationItem[];
+  preferences: NotificationPreferences;
+  integrationItems: IntegrationNotification[];
+  integrationUnreadCount: number;
+  integrationLoading: boolean;
+  integrationError: string | null;
+}
+
+const MAX_ITEMS = 200;
+
+const initialState: NotificationState = {
+  items: [],
+  preferences: {
+    messages: true,
+    agents: true,
+    skills: true,
+    system: true,
+    meetings: true,
+    reminders: true,
+    important: true,
+  },
+  integrationItems: [],
+  integrationUnreadCount: 0,
+  integrationLoading: false,
+  integrationError: null,
+};
+
+const notificationSlice = createSlice({
+  name: 'notifications',
+  initialState,
+  reducers: {
+    notificationReceived(state, action: PayloadAction<NotificationItem>) {
+      const item = action.payload;
+      if (!state.preferences[item.category]) return;
+      const existingIndex = state.items.findIndex(i => i.id === item.id);
+      if (existingIndex >= 0) {
+        // Replace existing entry in place to avoid duplicate rows when
+        // socket reconnects or upstream replays the same event id.
+        state.items[existingIndex] = item;
+        return;
+      }
+      state.items.unshift(item);
+      if (state.items.length > MAX_ITEMS) {
+        state.items.length = MAX_ITEMS;
+      }
+    },
+    markRead(state, action: PayloadAction<{ id: string }>) {
+      const item = state.items.find(i => i.id === action.payload.id);
+      if (item) item.read = true;
+    },
+    // Drop the action buttons off a core notification once its prompt has been
+    // handled (e.g. a meeting auto-join join/skip succeeded). NotificationCenter
+    // only surfaces core items that still carry actions, so clearing them here
+    // removes the handled prompt from the actionable list and prevents a second
+    // click re-firing the same RPC (duplicate bot:join / always_join after skip).
+    clearNotificationActions(state, action: PayloadAction<{ id: string }>) {
+      const item = state.items.find(i => i.id === action.payload.id);
+      if (item) item.actions = undefined;
+    },
+    markAllRead(state) {
+      for (const item of state.items) item.read = true;
+    },
+    clearAll(state) {
+      state.items = [];
+    },
+    setPreference(
+      state,
+      action: PayloadAction<{ category: NotificationCategory; enabled: boolean }>
+    ) {
+      state.preferences[action.payload.category] = action.payload.enabled;
+    },
+    setIntegrationLoading(state, action: PayloadAction<boolean>) {
+      state.integrationLoading = action.payload;
+    },
+    setIntegrationError(state, action: PayloadAction<string | null>) {
+      state.integrationError = action.payload;
+      state.integrationLoading = false;
+    },
+    setIntegrationNotifications(
+      state,
+      action: PayloadAction<{ items: IntegrationNotification[]; unread_count: number }>
+    ) {
+      state.integrationItems = action.payload.items;
+      state.integrationUnreadCount = action.payload.unread_count;
+      state.integrationLoading = false;
+      state.integrationError = null;
+    },
+    markIntegrationRead(state, action: PayloadAction<string>) {
+      const n = state.integrationItems.find(i => i.id === action.payload);
+      if (n && n.status === 'unread') {
+        n.status = 'read';
+        state.integrationUnreadCount = Math.max(0, state.integrationUnreadCount - 1);
+      }
+    },
+    markIntegrationActed(state, action: PayloadAction<string>) {
+      const n = state.integrationItems.find(i => i.id === action.payload);
+      if (n) {
+        const wasUnread = n.status === 'unread';
+        n.status = 'acted';
+        if (wasUnread) {
+          state.integrationUnreadCount = Math.max(0, state.integrationUnreadCount - 1);
+        }
+      }
+    },
+    dismissIntegrationNotification(state, action: PayloadAction<string>) {
+      const n = state.integrationItems.find(i => i.id === action.payload);
+      if (n) {
+        const wasUnread = n.status === 'unread';
+        n.status = 'dismissed';
+        if (wasUnread) {
+          state.integrationUnreadCount = Math.max(0, state.integrationUnreadCount - 1);
+        }
+      }
+    },
+    addIntegrationNotification(state, action: PayloadAction<IntegrationNotification>) {
+      const exists = state.integrationItems.some(i => i.id === action.payload.id);
+      if (!exists) {
+        state.integrationItems.unshift(action.payload);
+        if (action.payload.status === 'unread') {
+          state.integrationUnreadCount += 1;
+        }
+      }
+    },
+  },
+  extraReducers: builder => {
+    builder.addCase(resetUserScopedState, () => initialState);
+    // Backfill any new preference keys that may be absent on older persisted
+    // state (e.g. meetings/reminders/important added after initial release).
+    // This ensures state.preferences[item.category] never returns undefined
+    // for a valid NotificationCategory after rehydration.
+    builder.addCase(REHYDRATE, (state, action) => {
+      const rehydrateAction = action as {
+        type: typeof REHYDRATE;
+        key: string;
+        payload?: { preferences?: Partial<NotificationPreferences> };
+      };
+      // Only process the REHYDRATE action that belongs to this slice's persist key.
+      if (rehydrateAction.key !== 'notifications') return;
+      const payload = rehydrateAction.payload;
+      if (payload?.preferences) {
+        state.preferences = { ...initialState.preferences, ...payload.preferences };
+      }
+    });
+  },
+});
+
+export const selectUnreadCount = (items: NotificationItem[]): number =>
+  items.reduce((n, i) => (i.read ? n : n + 1), 0);
+
+export const {
+  notificationReceived,
+  markRead,
+  clearNotificationActions,
+  markAllRead,
+  clearAll,
+  setPreference,
+  setIntegrationLoading,
+  setIntegrationError,
+  setIntegrationNotifications,
+  markIntegrationRead,
+  markIntegrationActed,
+  dismissIntegrationNotification,
+  addIntegrationNotification,
+} = notificationSlice.actions;
+
+export default notificationSlice.reducer;
