@@ -335,9 +335,7 @@ impl HookPayload {
             HookEvent::SubagentStart | HookEvent::SubagentStop => {
                 HookPayload::Subagent(parse(value)?)
             }
-            HookEvent::SessionStart | HookEvent::SessionEnd => {
-                HookPayload::Session(parse(value)?)
-            }
+            HookEvent::SessionStart | HookEvent::SessionEnd => HookPayload::Session(parse(value)?),
             HookEvent::PreCompact => HookPayload::Compact(parse(value)?),
             HookEvent::AfterAgentResponse | HookEvent::AfterAgentThought => {
                 HookPayload::Text(parse(value)?)

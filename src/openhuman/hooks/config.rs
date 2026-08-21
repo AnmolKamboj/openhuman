@@ -220,10 +220,8 @@ impl HookConfig {
                 definition.layer = Some(layer);
                 definition.source_dir.clone_from(&source_dir);
                 if let Some(problem) = unrunnable_reason(&definition) {
-                    self.warnings.push(format!(
-                        "{}: hook for '{event}' {problem}",
-                        path.display()
-                    ));
+                    self.warnings
+                        .push(format!("{}: hook for '{event}' {problem}", path.display()));
                 }
                 slot.push(definition);
             }
@@ -248,7 +246,10 @@ fn unrunnable_reason(definition: &HookDefinition) -> Option<String> {
     }
     let resolved = definition.source_dir.as_ref()?.join(program);
     if !resolved.exists() {
-        return Some(format!("points at a missing script: {}", resolved.display()));
+        return Some(format!(
+            "points at a missing script: {}",
+            resolved.display()
+        ));
     }
     if !super::exec::is_executable(&resolved) {
         return Some(format!(
