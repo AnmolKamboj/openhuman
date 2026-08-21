@@ -100,9 +100,7 @@ use openhuman_core::openhuman::agent::Agent;
 use openhuman_core::openhuman::agent::{
     all_agent_controller_schemas, all_agent_registered_controllers,
 };
-use openhuman_core::openhuman::memory::agent::memory_loader::{
-    collect_recall_citations, CROSS_CHAT_HEADER,
-};
+use openhuman_core::openhuman::memory::agent::memory_loader::collect_recall_citations;
 use openhuman_core::openhuman::agent::registry::agents::BUILTINS;
 use openhuman_core::openhuman::config::schema::cloud_providers::{
     AuthStyle as CloudAuthStyle, CloudProviderCreds,
@@ -1815,30 +1813,6 @@ async fn agent_memory_recall_citations_filter_by_relevance_and_truncate() {
     let memory = ScriptedMemory {
         normal: Arc::new(vec![
             memory_entry(
-                "working-1",
-                "working.user.timezone",
-                "Prefers UTC for release plans.",
-                Some("profile"),
-                None,
-                Some(0.95),
-            ),
-            memory_entry(
-                "working-low",
-                "working.user.low",
-                "Too weak to include.",
-                Some("profile"),
-                None,
-                Some(0.1),
-            ),
-            memory_entry(
-                "prior-1",
-                "high.preference.database",
-                "[high preference] Prefer Postgres for production services.\n[provenance] {\"thread_id\":\"older\"}",
-                Some("conversation_memory"),
-                Some("older-thread"),
-                Some(0.92),
-            ),
-            memory_entry(
                 "citation-1",
                 "project.summary",
                 &"x".repeat(320),
@@ -1855,24 +1829,7 @@ async fn agent_memory_recall_citations_filter_by_relevance_and_truncate() {
                 Some(0.2),
             ),
         ]),
-        cross_session: Arc::new(vec![
-            memory_entry(
-                "episodic-cross:old",
-                "old-thread",
-                "Earlier chat mentioned round seven coverage priorities.",
-                Some("episodic_log"),
-                Some(r#"{"thread_id":"old-thread","client_id":"client"}"#),
-                Some(0.91),
-            ),
-            memory_entry(
-                "episodic-cross:current",
-                "current-thread",
-                "Current chat should be excluded from cross chat context.",
-                Some("episodic_log"),
-                Some(r#"{"thread_id":"current-thread"}"#),
-                Some(0.99),
-            ),
-        ]),
+        cross_session: Arc::new(Vec::new()),
     };
 
     let citations = collect_recall_citations(&memory, "project", 8, 0.4)

@@ -205,7 +205,8 @@ normalization on the keyword side.
 The working-memory recall builds the query string `"working.user {user_message}"`
 — a text hack meant to bias ranking — scans all of `global`, takes the top 5,
 and **then** filters `key.starts_with("working.user.")`
-(`src/openhuman/memory/agent/memory_loader.rs:218-232`).
+(`src/openhuman/memory/agent/memory_loader.rs:218-232` in the pre-change code;
+this PR removed the file's loader implementation).
 
 So it scans the entire namespace to find entries identified by a known key
 prefix. In the benchmark corpus:
@@ -342,14 +343,9 @@ the candidate flagged during the dive is the conversation-store index
 (`vendor/tinycortex/.../conversations/store_index.rs`), which folds
 `threads.jsonl` from scratch on nearly every operation.
 
-### Known loose end
-
-The assistant reply is still stored to `global`
-(`turn/core.rs:1672`, `store("", "assistant_resp", …)`). It uses a **fixed
-key**, so it overwrites itself and does not grow — one row, not a scaling
-problem. Whether "the latest assistant reply" should remain reachable from a
-default-namespace recall is a product call, so it was left alone rather than
-moved for tidiness.
+Assistant summaries now follow user messages into `conversation_raw` and use a
+unique key, so concurrent sessions neither overwrite one global document nor
+leak raw conversation autosaves into default-namespace recall.
 
 ## Tried and rejected
 
