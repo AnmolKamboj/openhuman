@@ -26,26 +26,26 @@
  *     --concurrency 8 --turns 400 --out summary.json --turns-out turns.jsonl
  */
 
-import fs from 'node:fs';
+import fs from "node:fs";
 
 /** Loopback hosts are the only targets that may use cleartext http (CWE-319). */
 function isLoopbackHost(hostname) {
   return (
-    hostname === 'localhost' ||
-    hostname === '127.0.0.1' ||
-    hostname === '::1' ||
-    hostname === '[::1]'
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname === "[::1]"
   );
 }
 
 function assertTransportAllowed(url, what) {
   const parsed = new URL(url);
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error(`${what} must be an http(s) URL, got: ${url}`);
   }
-  if (parsed.protocol === 'http:' && !isLoopbackHost(parsed.hostname)) {
+  if (parsed.protocol === "http:" && !isLoopbackHost(parsed.hostname)) {
     throw new Error(
-      `${what} uses cleartext http for non-loopback host "${parsed.hostname}"; use https or a loopback address`
+      `${what} uses cleartext http for non-loopback host "${parsed.hostname}"; use https or a loopback address`,
     );
   }
   return parsed;
@@ -53,13 +53,13 @@ function assertTransportAllowed(url, what) {
 
 function parseArgs(argv) {
   const opts = {
-    coreUrl: 'http://127.0.0.1:17788',
-    token: process.env.OPENHUMAN_CORE_TOKEN ?? '',
+    coreUrl: "http://127.0.0.1:17788",
+    token: process.env.OPENHUMAN_CORE_TOKEN ?? "",
     concurrency: 4,
     turns: 100,
     durationMs: null,
-    threadMode: 'fresh',
-    message: 'Summarize the benchmark probe in one sentence.',
+    threadMode: "fresh",
+    message: "Summarize the benchmark probe in one sentence.",
     timeoutMs: 120_000,
     out: null,
     turnsOut: null,
@@ -67,20 +67,20 @@ function parseArgs(argv) {
     warmupTurns: 0,
   };
   const spec = {
-    '--core-url': ['coreUrl', String],
-    '--token': ['token', String],
-    '--concurrency': ['concurrency', Number],
-    '--turns': ['turns', Number],
-    '--duration-ms': ['durationMs', Number],
-    '--thread-mode': ['threadMode', String],
-    '--message': ['message', String],
-    '--timeout-ms': ['timeoutMs', Number],
-    '--out': ['out', String],
-    '--turns-out': ['turnsOut', String],
-    '--warmup-turns': ['warmupTurns', Number],
+    "--core-url": ["coreUrl", String],
+    "--token": ["token", String],
+    "--concurrency": ["concurrency", Number],
+    "--turns": ["turns", Number],
+    "--duration-ms": ["durationMs", Number],
+    "--thread-mode": ["threadMode", String],
+    "--message": ["message", String],
+    "--timeout-ms": ["timeoutMs", Number],
+    "--out": ["out", String],
+    "--turns-out": ["turnsOut", String],
+    "--warmup-turns": ["warmupTurns", Number],
   };
   for (let i = 2; i < argv.length; i += 1) {
-    if (argv[i] === '--no-seed-session') {
+    if (argv[i] === "--no-seed-session") {
       opts.seedSession = false;
       continue;
     }
@@ -97,25 +97,27 @@ function parseArgs(argv) {
     }
     opts[key] = value;
   }
-  if (!['fresh', 'shared', 'per-worker'].includes(opts.threadMode)) {
-    throw new Error(`--thread-mode must be fresh|shared|per-worker, got ${opts.threadMode}`);
+  if (!["fresh", "shared", "per-worker"].includes(opts.threadMode)) {
+    throw new Error(
+      `--thread-mode must be fresh|shared|per-worker, got ${opts.threadMode}`,
+    );
   }
-  if (opts.concurrency < 1) throw new Error('--concurrency must be >= 1');
+  if (opts.concurrency < 1) throw new Error("--concurrency must be >= 1");
   if (opts.durationMs === null && opts.turns < 1) {
-    throw new Error('need --turns >= 1 or --duration-ms');
+    throw new Error("need --turns >= 1 or --duration-ms");
   }
   return opts;
 }
 
 const opts = parseArgs(process.argv);
 // Reject non-loopback cleartext targets before any bearer token is attached.
-assertTransportAllowed(opts.coreUrl, '--core-url');
+assertTransportAllowed(opts.coreUrl, "--core-url");
 
 async function rpc(method, params, timeoutMs = opts.timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method, params });
+    const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
     let url = `${opts.coreUrl}/rpc`;
     // The bearer belongs to the core we were pointed at. A redirect may land on
     // a different origin, so it is re-attached per hop rather than once up
@@ -124,22 +126,26 @@ async function rpc(method, params, timeoutMs = opts.timeoutMs) {
     const coreOrigin = new URL(opts.coreUrl).origin;
     let res;
     for (let hop = 0; ; hop += 1) {
-      if (hop >= 5) throw new Error('too many redirects');
-      const headers = { 'content-type': 'application/json' };
+      if (hop >= 5) throw new Error("too many redirects");
+      const headers = { "content-type": "application/json" };
       if (opts.token && new URL(url).origin === coreOrigin) {
         headers.authorization = `Bearer ${opts.token}`;
       }
       res = await fetch(url, {
-        method: 'POST',
+        method: "POST",
         headers,
         body,
-        redirect: 'manual',
+        redirect: "manual",
         signal: controller.signal,
       });
       if (res.status < 300 || res.status >= 400) break;
-      const location = res.headers.get('location');
-      if (!location) throw new Error(`HTTP ${res.status} redirect without Location`);
-      url = assertTransportAllowed(new URL(location, url).href, 'redirect target').href;
+      const location = res.headers.get("location");
+      if (!location)
+        throw new Error(`HTTP ${res.status} redirect without Location`);
+      url = assertTransportAllowed(
+        new URL(location, url).href,
+        "redirect target",
+      ).href;
     }
     const text = await res.text();
     if (!res.ok) {
@@ -171,19 +177,24 @@ async function rpc(method, params, timeoutMs = opts.timeoutMs) {
  * inference and telemetry routes.
  */
 async function seedSession() {
-  await rpc('openhuman.auth_store_session', {
-    token: 'bench.session.local',
-    user: { name: 'agent-scale-bench', email: 'bench@localhost' },
+  await rpc("openhuman.auth_store_session", {
+    token: "bench.session.local",
+    user: { name: "agent-scale-bench", email: "bench@localhost" },
   });
 }
 
 function percentile(sorted, p) {
   if (sorted.length === 0) return null;
-  const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  const idx = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.ceil((p / 100) * sorted.length) - 1),
+  );
   return sorted[idx];
 }
 
-const turnLog = opts.turnsOut ? fs.createWriteStream(opts.turnsOut, { flags: 'w' }) : null;
+const turnLog = opts.turnsOut
+  ? fs.createWriteStream(opts.turnsOut, { flags: "w" })
+  : null;
 
 const results = { ok: 0, failed: 0, latencies: [], errors: new Map() };
 let issued = 0;
@@ -202,7 +213,7 @@ async function runTurn(workerId, threadId, index) {
   let ok = true;
   let errMessage = null;
   try {
-    await rpc('openhuman.agent_chat', params);
+    await rpc("openhuman.agent_chat", params);
   } catch (err) {
     ok = false;
     errMessage = String(err?.message ?? err);
@@ -229,17 +240,17 @@ async function runTurn(workerId, threadId, index) {
         latencyMs,
         ok,
         error: errMessage,
-      })}\n`
+      })}\n`,
     );
   }
 }
 
 async function worker(workerId) {
   const threadId =
-    opts.threadMode === 'per-worker'
+    opts.threadMode === "per-worker"
       ? `bench-worker-${workerId}`
-      : opts.threadMode === 'shared'
-        ? 'bench-shared'
+      : opts.threadMode === "shared"
+        ? "bench-shared"
         : null;
 
   while (shouldContinue()) {
@@ -250,7 +261,7 @@ async function worker(workerId) {
 
 async function main() {
   if (opts.seedSession) {
-    process.stderr.write('[driver] seeding local session\n');
+    process.stderr.write("[driver] seeding local session\n");
     await seedSession();
   }
 
@@ -261,9 +272,13 @@ async function main() {
     process.stderr.write(`[driver] warmup: ${opts.warmupTurns} turns\n`);
     for (let i = 0; i < opts.warmupTurns; i += 1) {
       try {
-        await rpc('openhuman.agent_chat', { message: `${opts.message} (warmup ${i})` });
+        await rpc("openhuman.agent_chat", {
+          message: `${opts.message} (warmup ${i})`,
+        });
       } catch (err) {
-        process.stderr.write(`[driver] warmup turn failed: ${err?.message ?? err}\n`);
+        process.stderr.write(
+          `[driver] warmup turn failed: ${err?.message ?? err}\n`,
+        );
       }
     }
     // The warm-up must not appear in the measured window.
@@ -282,9 +297,11 @@ async function main() {
   process.stderr.write(
     `[driver] load: concurrency=${opts.concurrency} ` +
       `${opts.durationMs !== null ? `duration=${opts.durationMs}ms` : `turns=${opts.turns}`} ` +
-      `thread-mode=${opts.threadMode}\n`
+      `thread-mode=${opts.threadMode}\n`,
   );
-  await Promise.all(Array.from({ length: opts.concurrency }, (_, i) => worker(i)));
+  await Promise.all(
+    Array.from({ length: opts.concurrency }, (_, i) => worker(i)),
+  );
   const wallMs = Date.now() - measureStart;
 
   const sorted = [...results.latencies].sort((a, b) => a - b);
@@ -310,12 +327,14 @@ async function main() {
       p90: percentile(sorted, 90),
       p99: percentile(sorted, 99),
       max: sorted.length ? sorted[sorted.length - 1] : null,
-      mean: sorted.length ? sorted.reduce((a, b) => a + b, 0) / sorted.length : null,
+      mean: sorted.length
+        ? sorted.reduce((a, b) => a + b, 0) / sorted.length
+        : null,
     },
     errors: Object.fromEntries(results.errors),
   };
 
-  if (turnLog) await new Promise(resolve => turnLog.end(resolve));
+  if (turnLog) await new Promise((resolve) => turnLog.end(resolve));
   const rendered = JSON.stringify(summary, null, 2);
   if (opts.out) fs.writeFileSync(opts.out, rendered);
   process.stdout.write(`${rendered}\n`);
@@ -325,13 +344,13 @@ async function main() {
   // result.
   if (completed === 0 || results.ok === 0) {
     process.stderr.write(
-      `[driver] no usable measurement (completed=${completed}, ok=${results.ok})\n`
+      `[driver] no usable measurement (completed=${completed}, ok=${results.ok})\n`,
     );
     process.exit(1);
   }
 }
 
-main().catch(err => {
+main().catch((err) => {
   process.stderr.write(`[driver] fatal: ${err?.stack ?? err}\n`);
   process.exit(1);
 });
