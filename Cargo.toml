@@ -39,31 +39,6 @@ name = "openhuman-core"
 path = "src/main.rs"
 
 [[bin]]
-name = "slack-backfill"
-path = "src/bin/slack_backfill.rs"
-required-features = ["bin-tools"]
-
-[[bin]]
-name = "gmail-backfill-3d"
-path = "src/bin/gmail_backfill_3d.rs"
-required-features = ["bin-tools"]
-
-[[bin]]
-name = "memory-tree-init-smoke"
-path = "src/bin/memory_tree_init_smoke.rs"
-required-features = ["bin-tools"]
-
-[[bin]]
-name = "inference-probe"
-path = "src/bin/inference_probe.rs"
-required-features = ["bin-tools"]
-
-[[bin]]
-name = "harness-subagent-audit"
-path = "src/bin/harness_subagent_audit.rs"
-required-features = ["bin-tools"]
-
-[[bin]]
 name = "test-mcp-stub"
 path = "src/bin/test_mcp_stub.rs"
 
