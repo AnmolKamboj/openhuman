@@ -1,0 +1,852 @@
+---
+name: Release Production
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: Version increment type for the production release.
+        required: false
+        default: patch
+        type: choice
+        options: [patch, minor, major]
+      commit_sha:
+        description:
+          Build from a specific commit SHA instead of release HEAD. The commit
+          must be reachable from release. Leave empty to use release HEAD.
+        required: false
+        type: string
+        default: ""
+      create_release:
+        description:
+          Create and publish the GitHub Release and attach release assets. When
+          false, run the production build matrix without creating or publishing
+          a GitHub Release.
+        required: false
+        type: boolean
+        default: true
+permissions:
+  # `actions: read` lets scripts/ci-cancel-aware.sh poll the run status so
+  # cancelled builds inside container jobs stop themselves (docker exec
+  # swallows the runner's signals).
+  actions: read
+  contents: write
+  packages: write
+concurrency:
+  # Distinct group from release-staging.yml so production and staging cuts can
+  # run independently.
+  group: release-production
+  cancel-in-progress: false
+# ---------------------------------------------------------------------------
+# Branch model: releases are cut from the long-lived `release` branch, not
+# `main`. `release` only advances via green main→release PRs that run the
+# full test suite; this workflow bumps/commits/tags on `release` and the
+# release is built from the tag this workflow creates on `release`. The
+# workflow-dispatch ref does not select the production source branch.
+#
+# Job dependency graph
+#
+#   prepare-build
+#        │
+#        ├─── create-release   (optional no-op when `create_release=false`)
+#        │         │
+#        │    ┌────┴───────────────┬────────────────┐
+#        │    │                    │                │
+#        │  build-desktop    build-cli-linux    build-docker
+#        │  (reusable wf)    (Linux tarballs)   (GHCR image)
+#        │    │                    │                │
+#        │    └────────┬───────────┴────────────────┘
+#        │             │
+#        │      publish-updater-manifest
+#        │             │
+#        │      publish-release
+#        │             │
+#        │      record-sentry-deploy
+#        │
+#        └─── cleanup-failed-release (on failure)
+#
+# The actual desktop build / sign / Sentry / artifact-upload pipeline lives in
+# `.github/workflows/build-desktop.yml` and is shared with release-staging.yml.
+# ---------------------------------------------------------------------------
+jobs:
+  # =========================================================================
+  # Phase 0: Manual approval gate.
+  #
+  # This workflow bumps the version, COMMITS to `release`, and pushes that
+  # commit + tag using a GitHub App token that bypasses branch protection.
+  # If that App private key (secrets.XGITHUB_APP_PRIVATE_KEY) ever leaked,
+  # an attacker could push arbitrary commits to a protected branch — CWE-250.
+  # This job parks the run on the `Release-Approval` environment (configured
+  # with required reviewers in repo settings) so a human must explicitly
+  # approve before prepare-build is allowed to run its push step.
+  # =========================================================================
+  review-approval:
+    name: Manual approval gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: Release-Approval
+    steps:
+      - name: Record approval
+        run: |
+          echo "[release-production] Push to release approved by a required reviewer."
+          echo "Proceeding to version bump + commit/tag push on prepare-build."
+
+  # =========================================================================
+  # Phase 1: Bump version on release, commit, push, and optionally tag
+  # =========================================================================
+  prepare-build:
+    name: Prepare build context
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: Production
+    needs: [review-approval]
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      sha: ${{ steps.resolve.outputs.sha }}
+      # First 12 chars of `sha` — matches the truncation done at runtime by
+      # app/src/utils/config.ts, app/vite.config.ts, src/main.rs, and
+      # app/src-tauri/src/lib.rs when they compute the canonical
+      # `openhuman@<version>+<short_sha>` release tag. Use this (not the
+      # full `sha`) anywhere CI constructs SENTRY_RELEASE so uploaded
+      # artifacts attach to the same release events report.
+      short_sha: ${{ steps.resolve.outputs.short_sha }}
+      build_ref: ${{ steps.resolve.outputs.build_ref }}
+      base_url: ${{ steps.resolve.outputs.base_url }}
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.XGITHUB_APP_ID }}
+          private-key: ${{ secrets.XGITHUB_APP_PRIVATE_KEY }}
+          # Least privilege: this job only pushes the version-bump commit and
+          # tag (and, on production, the back-merge to main) — contents: write
+          # is all it needs. Branch-protection bypass comes from the App's
+          # identity in the ruleset bypass list, not from token scopes.
+          permission-contents: write
+      - name: Checkout release
+        uses: actions/checkout@v7
+        with:
+          ref: release
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+          submodules: recursive
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.10.0
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+          package-manager-cache: false
+      - name: Configure Git
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin https://${APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
+          git fetch origin --tags --prune --prune-tags
+          if [ -n "$COMMIT_SHA" ]; then
+            [[ "$COMMIT_SHA" =~ ^[0-9a-fA-F]{7,40}$ ]] || {
+              echo "Invalid commit_sha: must be a hex SHA (7-40 chars)"
+              exit 1
+            }
+            git rev-parse --verify "${COMMIT_SHA}^{commit}" >/dev/null
+            git merge-base --is-ancestor "$COMMIT_SHA" origin/release || {
+              echo "commit_sha $COMMIT_SHA is not reachable from release"
+              exit 1
+            }
+            git checkout --detach "$COMMIT_SHA"
+          else
+            git checkout release
+            git pull origin release --ff-only
+          fi
+      - name: Compute next version and sync release files
+        id: bump
+        run: node scripts/release/bump-version.js "${{ inputs.release_type }}"
+      - name: Verify release version sync
+        run: node scripts/release/verify-version-sync.js "${{ steps.bump.outputs.version }}"
+      - name: Refresh Cargo.lock files
+        run: |
+          cargo update --workspace --manifest-path Cargo.toml
+          cargo update --workspace --manifest-path app/src-tauri/Cargo.toml
+      - name: Ensure tag does not already exist
+        if: inputs.create_release
+        env:
+          TAG: ${{ steps.bump.outputs.tag }}
+        run: |
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag already exists locally: $TAG"
+            exit 1
+          fi
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q .; then
+            echo "Tag already exists on origin: $TAG"
+            exit 1
+          fi
+      - name: Commit and push version bump
+        id: push
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+          TAG: ${{ steps.bump.outputs.tag }}
+          CREATE_RELEASE: ${{ inputs.create_release }}
+        run: |
+          git add app/package.json app/src-tauri/tauri.conf.json app/src-tauri/Cargo.toml Cargo.toml app/src-tauri/Cargo.lock Cargo.lock
+          # [skip ci]: the bump commit lands on an already-validated release
+          # tree — don't re-trigger the full suite (ci-full.yml, push:release).
+          git commit -m "chore(release): v${VERSION} [skip ci]"
+          git push origin HEAD:release
+          if [ "$CREATE_RELEASE" = "true" ]; then
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
+          else
+            echo "Skipping tag creation (create_release=false)"
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve build outputs
+        id: resolve
+        shell: bash
+        env:
+          CREATE_RELEASE: ${{ inputs.create_release }}
+          VERSION: ${{ steps.bump.outputs.version }}
+          TAG: ${{ steps.bump.outputs.tag }}
+          SHA: ${{ steps.push.outputs.sha }}
+        run: |
+          if [ "$CREATE_RELEASE" = "true" ]; then
+            BUILD_REF="$TAG"
+          else
+            BUILD_REF="$SHA"
+          fi
+          SHORT_SHA="${SHA:0:12}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "build_ref=$BUILD_REF" >> "$GITHUB_OUTPUT"
+          echo "base_url=https://api.tinyhumans.ai/" >> "$GITHUB_OUTPUT"
+
+      # Keep main in sync: the version-bump commit (and anything else on
+      # release) flows back into main right after the cut. continue-on-error
+      # so a merge conflict never strands a release that is already tagged —
+      # resolve the merge manually in that case.
+      - name: Merge release back into main
+        continue-on-error: true
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          bash scripts/release/merge-release-into-main.sh "chore(release): merge release v${VERSION} back into main"
+
+  # =========================================================================
+  # Phase 2: Create draft GitHub release
+  # =========================================================================
+  create-release:
+    name: Prepare GitHub release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: Production
+    needs: [prepare-build]
+    outputs:
+      release_id: ${{ steps.create.outputs.release_id || steps.noop.outputs.release_id }}
+      upload_url: ${{ steps.create.outputs.upload_url || steps.noop.outputs.upload_url }}
+    steps:
+      - name: Skip release creation
+        if: ${{ !inputs.create_release }}
+        id: noop
+        run: |
+          echo "release_id=" >> "$GITHUB_OUTPUT"
+          echo "upload_url=" >> "$GITHUB_OUTPUT"
+      - name: Checkout release ref
+        if: ${{ inputs.create_release }}
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare-build.outputs.build_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Generate AI release notes
+        id: ai-notes
+        if: ${{ inputs.create_release }}
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TAG: ${{ needs.prepare-build.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "::warning::OPENAI_API_KEY is empty — skipping AI notes."
+            exit 1
+          fi
+          node scripts/release/generate-release-notes.mjs \
+            --from latest-release \
+            --to "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --output release-notes.md
+      - name: Fallback to non-AI release notes
+        if: ${{ inputs.create_release && steps.ai-notes.outcome != 'success' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare-build.outputs.tag }}
+        run: |
+          set -euo pipefail
+          echo "::warning::AI release notes failed or timed out — using deterministic notes."
+          node scripts/release/generate-release-notes.mjs \
+            --from latest-release \
+            --to "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --no-ai \
+            --output release-notes.md
+      - name: Create draft release with generated notes
+        if: ${{ inputs.create_release }}
+        id: create
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const tag = '${{ needs.prepare-build.outputs.tag }}';
+            const version = '${{ needs.prepare-build.outputs.version }}';
+            const target = '${{ needs.prepare-build.outputs.sha }}';
+            const { owner, repo } = context.repo;
+            const body = fs.readFileSync('release-notes.md', 'utf8');
+            try {
+              await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+              core.setFailed(`Release already exists for ${tag}`);
+              return;
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+            }
+            const release = await github.rest.repos.createRelease({
+              owner,
+              repo,
+              tag_name: tag,
+              target_commitish: target,
+              name: `OpenHuman v${version}`,
+              body,
+              draft: true,
+              prerelease: false,
+            });
+            core.setOutput('release_id', String(release.data.id));
+            core.setOutput('upload_url', release.data.upload_url);
+
+  # =========================================================================
+  # Phase 3a: Build desktop artifacts (delegated to reusable workflow)
+  # =========================================================================
+  build-desktop:
+    name: Build desktop matrix
+    needs: [prepare-build, create-release]
+    if: always() && needs.create-release.result == 'success'
+    uses: ./.github/workflows/build-desktop.yml
+    secrets: inherit
+    with:
+      build_ref: ${{ needs.prepare-build.outputs.build_ref }}
+      tag: ${{ needs.prepare-build.outputs.tag }}
+      version: ${{ needs.prepare-build.outputs.version }}
+      sha: ${{ needs.prepare-build.outputs.sha }}
+      short_sha: ${{ needs.prepare-build.outputs.short_sha }}
+      base_url: ${{ needs.prepare-build.outputs.base_url }}
+      app_env: production
+      build_profile: release
+      telegram_bot_username: openhumanaibot
+      # with_macos_signing defaults to true — left implicit; production
+      # always notarizes. See build-desktop.yml inputs.
+      with_release_upload: ${{ inputs.create_release }}
+      release_id: ${{ needs.create-release.outputs.release_id }}
+      build_sidecar: false
+
+  # =========================================================================
+  # Phase 3b: Build & push Docker image (runs parallel with build-desktop).
+  #
+  # Publishes `ghcr.io/tinyhumansai/openhuman-core` with two immutable tags
+  # per release:
+  #   - :v<version>            — matches the GitHub Release tag (e.g. v1.2.4)
+  #   - :<version>             — bare SemVer for tooling that strips the v
+  #
+  # `:latest` is intentionally NOT pushed here. If a downstream phase
+  # (build-cli-linux, publish-updater-manifest, the asset-validation gate
+  # in publish-release) fails, the immutable tags are deleted by
+  # cleanup-failed-release while the release is rolled back. Pushing
+  # :latest in this job would move the moving tag onto an image whose
+  # release got cleaned up, leaving downstream `docker pull …:latest`
+  # consumers on a build that has no GitHub Release behind it. The
+  # `tag-docker-latest` job below promotes :latest only after
+  # `publish-release` succeeds.
+  #
+  # linux/amd64 only for now. arm64 users pull the standalone CLI tarball
+  # (`build-cli-linux` matrix) or build the image from source. Adding arm64
+  # via QEMU here triples build time on Rust-heavy stages; revisit when an
+  # `ubuntu-24.04-arm` runner is wired into a per-arch matrix + manifest job.
+  # =========================================================================
+  build-docker:
+    name: "Docker: build and push"
+    needs: [prepare-build, create-release]
+    if: always() && needs.create-release.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: Production
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: tinyhumansai/openhuman-core
+    steps:
+      - name: Checkout build ref
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare-build.outputs.build_ref }}
+          fetch-depth: 1
+      # Every submodule, not an enumerated subset. The Dockerfile COPYs vendor/
+      # because [patch.crates-io] resolves Rust SDK crates from vendor/, and an
+      # uninitialised submodule is copied in as an EMPTY directory — cargo then
+      # fails on the missing manifest before it compiles anything.
+      #
+      # This used to name eight paths, to skip "the large tauri-cef fork the
+      # core image doesn't need". That fork stopped being a submodule in
+      # `1843706c3 refactor(tauri): replace CEF runtime with upstream Wry`, so
+      # there is nothing left for the list to exclude: all ten entries in
+      # `.gitmodules` are `path` dependencies of the root crate, and cargo reads
+      # every one of their manifests to resolve, `optional` or not. A subset is
+      # therefore always a bug, which is what the list kept producing — it went
+      # stale three times (tinymemory in `54f8710f`, then tinywallet and
+      # tinyhosts together, issue #5594), and each time the breakage surfaced at
+      # RELEASE time rather than in PR CI.
+      #
+      # Enumerating buys nothing once nothing can legitimately be excluded, so
+      # the enumeration is gone rather than corrected a third time.
+      - name: Init vendored Rust submodules
+        run: git submodule update --init --recursive
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compute image tags
+        id: image-tags
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          TAG: ${{ needs.prepare-build.outputs.tag }}
+          VERSION: ${{ needs.prepare-build.outputs.version }}
+        run: |
+          set -euo pipefail
+          base="${REGISTRY}/${IMAGE_NAME}"
+          {
+            echo "tags<<EOF"
+            echo "${base}:${TAG}"
+            echo "${base}:${VERSION}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.image-tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.prepare-build.outputs.sha }}
+            org.opencontainers.image.version=${{ needs.prepare-build.outputs.version }}
+            org.opencontainers.image.title=openhuman-core
+          cache-from: type=gha,scope=release-production
+          cache-to: type=gha,scope=release-production,mode=max
+      - name: Verify pushed image is pullable
+        run: |
+          set -euo pipefail
+          image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare-build.outputs.tag }}"
+          docker pull "$image"
+          docker image inspect "$image" >/dev/null
+
+  # =========================================================================
+  # Phase 3c: Build standalone Linux openhuman-core tarballs and attach them
+  # to the GitHub Release. Operators on Linux servers without Docker pull a
+  # plain tarball + sha256 from the release page; cloud-deploy.md links here.
+  #
+  # arm64 uses GitHub-hosted ubuntu-24.04-arm to avoid QEMU emulation
+  # (matches release-packages.yml). If that runner is unavailable for the
+  # repo's plan, fall back to ubuntu-22.04 + cross-rs (see comment in
+  # release-packages.yml `build-cli-linux-arm64`).
+  # =========================================================================
+  build-cli-linux:
+    name: "CLI: ${{ matrix.target }}"
+    needs: [prepare-build, create-release]
+    if: ${{ inputs.create_release && always() && needs.create-release.result == 'success' }}
+    timeout-minutes: 60
+    environment: Production
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+    env:
+      # Consumed by scripts/ci-cancel-aware.sh's cancellation watchdog.
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout build ref
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare-build.outputs.build_ref }}
+          fetch-depth: 1
+          submodules: recursive
+      - name: Install Rust (rust-toolchain.toml)
+        uses: dtolnay/rust-toolchain@1.96.1
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}-release
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libssl-dev build-essential cmake \
+            libasound2-dev libxdo-dev libxtst-dev libx11-dev libevdev-dev \
+            clang
+      - name: Verify Sentry DSN is present
+        env:
+          OPENHUMAN_CORE_SENTRY_DSN: ${{ vars.OPENHUMAN_CORE_SENTRY_DSN || vars.OPENHUMAN_SENTRY_DSN }}
+        run: |
+          if [ -z "${OPENHUMAN_CORE_SENTRY_DSN}" ]; then
+            echo "::error::vars.OPENHUMAN_CORE_SENTRY_DSN (or legacy vars.OPENHUMAN_SENTRY_DSN) is empty — the Linux CLI tarball would ship without crash reporting."
+            exit 1
+          fi
+          echo "OPENHUMAN_CORE_SENTRY_DSN is set (length=${#OPENHUMAN_CORE_SENTRY_DSN})"
+      - name: Build openhuman-core binary
+        env:
+          OPENHUMAN_CORE_SENTRY_DSN: ${{ vars.OPENHUMAN_CORE_SENTRY_DSN || vars.OPENHUMAN_SENTRY_DSN }}
+          # Match the runtime release tag (`openhuman@<version>+<short_sha>`)
+          # baked elsewhere — see prepare-build.outputs.short_sha comment.
+          OPENHUMAN_BUILD_SHA: ${{ needs.prepare-build.outputs.short_sha }}
+          OPENHUMAN_APP_ENV: production
+        run: bash scripts/ci-cancel-aware.sh cargo build --release --bin openhuman-core
+      - name: Package and upload tarball to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPLOAD_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.prepare-build.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          bash scripts/release/package-cli-tarball.sh \
+            target/release/openhuman-core \
+            "$VERSION" \
+            "$TARGET"
+
+  # =========================================================================
+  # Phase 3d: Generate and upload latest.json for the Tauri auto-updater.
+  # Runs after every platform has uploaded its updater artifact (.sig files
+  # from createUpdaterArtifacts) so the manifest can reference all four
+  # platform entries.
+  # =========================================================================
+  publish-updater-manifest:
+    name: Publish updater manifest (latest.json)
+    needs: [prepare-build, create-release, build-desktop]
+    if: ${{ inputs.create_release && always() && needs.build-desktop.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: Production
+    steps:
+      - name: Checkout build ref
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare-build.outputs.build_ref }}
+          fetch-depth: 1
+      - name: Generate and upload latest.json
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare-build.outputs.tag }}
+          VERSION: ${{ needs.prepare-build.outputs.version }}
+          REPO: tinyhumansai/openhuman
+        run: bash scripts/release/publish-updater-manifest.sh
+
+  # =========================================================================
+  # Phase 4: Publish the draft release (waits for ALL build phases)
+  # =========================================================================
+  publish-release:
+    name: Publish draft release
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: Production
+    needs:
+      - prepare-build
+      - create-release
+      - build-desktop
+      - build-cli-linux
+      - build-docker
+      - publish-updater-manifest
+    if: >-
+      inputs.create_release
+      && 
+      always()
+      && needs.build-desktop.result == 'success'
+      && needs.build-cli-linux.result == 'success'
+      && needs.build-docker.result == 'success'
+      && needs.publish-updater-manifest.result == 'success'
+    steps:
+      - name: Checkout validation scripts
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare-build.outputs.build_ref }}
+          fetch-depth: 1
+
+      - name: Validate release assets match latest.json
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare-build.outputs.tag }}
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+        run: |
+          set -euo pipefail
+          # Fetch the release by id, not by tag: at this point the release is
+          # still a draft, and `GET /releases/tags/{tag}` returns 404 for
+          # drafts. The id-keyed endpoint works for drafts and published
+          # releases alike.
+          gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" > /tmp/openhuman-release.json
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern latest.json \
+            --dir /tmp \
+            --clobber
+          scripts/validate-release-assets.sh /tmp/openhuman-release.json /tmp/latest.json
+
+      - name: Validate required installer assets exist
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const releaseId = Number('${{ needs.create-release.outputs.release_id }}');
+            const { owner, repo } = context.repo;
+            const { data: assets } = await github.rest.repos.listReleaseAssets({
+              owner,
+              repo,
+              release_id: releaseId,
+              per_page: 100,
+            });
+            const names = assets.map((a) => a.name);
+            const requiredPatterns = [
+              /OpenHuman_.*_aarch64\.dmg$/,
+              /OpenHuman_.*_x64\.dmg$/,
+              /(OpenHuman_.*_x64-setup\.exe$|OpenHuman_.*_x64.*\.msi$)/,
+              // Linux desktop installer consumed by scripts/install.sh and
+              // advertised in latest.json as linux-x86_64.
+              /OpenHuman_.*_amd64\.AppImage$/,
+              // Debian/Ubuntu script installs prefer release .deb assets so
+              // apt can resolve CEF runtime dependencies.
+              /OpenHuman_.*_amd64\.deb$/,
+              // Linux arm64 desktop installer consumed by scripts/install.sh
+              // and advertised in latest.json as linux-aarch64.
+              /OpenHuman_.*_(arm64|aarch64)\.AppImage$/,
+              /OpenHuman_.*_(arm64|aarch64)\.deb$/,
+              // Auto-updater manifest — without this, installed clients can't
+              // discover new releases via plugins.updater.endpoints.
+              /^latest\.json$/,
+              // Linux standalone openhuman-core CLI tarballs (build-cli-linux).
+              // Operators on headless Linux servers pull these instead of the
+              // Tauri bundle; cloud-deploy.md documents both arches.
+              /^openhuman-core-.*-x86_64-unknown-linux-gnu\.tar\.gz$/,
+              /^openhuman-core-.*-x86_64-unknown-linux-gnu\.tar\.gz\.sha256$/,
+              /^openhuman-core-.*-aarch64-unknown-linux-gnu\.tar\.gz$/,
+              /^openhuman-core-.*-aarch64-unknown-linux-gnu\.tar\.gz\.sha256$/,
+            ];
+            const missing = requiredPatterns.filter((pattern) => !names.some((name) => pattern.test(name)));
+            if (missing.length > 0) {
+              core.setFailed(`Missing required installer assets. Got: ${names.join(', ')}`);
+              return;
+            }
+            core.info('All required installer assets are present.');
+
+      - name: Publish release
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const releaseId = Number('${{ needs.create-release.outputs.release_id }}');
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: releaseId,
+              draft: false,
+            });
+            core.info(`Published release ${releaseId}`);
+
+  # =========================================================================
+  # Phase 4b: Promote :latest to the just-published image.
+  #
+  # `build-docker` only pushed the immutable :v<version> / :<version> tags.
+  # We delay :latest until publish-release has actually flipped the GitHub
+  # Release out of draft, so a downstream failure (build-cli-linux,
+  # publish-updater-manifest, the asset-validation gate) cleans up the
+  # tagged image without leaving :latest pointing at a build that has no
+  # release behind it. Uses `docker buildx imagetools create` to add the
+  # extra tag without re-pulling the build context — it operates against
+  # the registry manifest, not local layers.
+  # =========================================================================
+  tag-docker-latest:
+    name: "Docker: tag :latest"
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: Production
+    needs: [prepare-build, publish-release]
+    if: ${{ inputs.create_release && always() && needs.publish-release.result == 'success' }}
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: tinyhumansai/openhuman-core
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Promote :latest
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          TAG: ${{ needs.prepare-build.outputs.tag }}
+        run: |
+          set -euo pipefail
+          src="${REGISTRY}/${IMAGE_NAME}:${TAG}"
+          dst="${REGISTRY}/${IMAGE_NAME}:latest"
+          docker buildx imagetools create --tag "$dst" "$src"
+
+  # =========================================================================
+  # Phase 5: Record a single Sentry deploy marker once the release has
+  # actually been published. Hangs off `publish-release` so a failed build
+  # (which gets cleaned up by `cleanup-failed-release`) doesn't write a
+  # deploy row. `sentry-cli releases deploys ... new` does NOT deduplicate
+  # by (release, env), so this stays single-runner.
+  # =========================================================================
+  record-sentry-deploy:
+    name: Record Sentry deploy marker
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: Production
+    needs: [prepare-build, publish-release]
+    if: ${{ inputs.create_release && always() && needs.publish-release.result == 'success' }}
+    env:
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_URL: ${{ vars.SENTRY_URL }}
+    steps:
+      - name: Install sentry-cli
+        if: env.SENTRY_AUTH_TOKEN != ''
+        shell: bash
+        run: curl -sSf https://sentry.io/get-cli/ | bash
+      - name: Record deploy marker
+        if: env.SENTRY_AUTH_TOKEN != ''
+        shell: bash
+        env:
+          SENTRY_URL: ${{ vars.SENTRY_URL }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          # Marker lives on the React project's release; events from all
+          # surfaces share the same `openhuman@<version>+<short_sha>` release
+          # tag, so the marker on any single project's release shows in
+          # Sentry's "Deploys" tab for that release group.
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT_REACT }}
+          SENTRY_RELEASE:
+            openhuman@${{ needs.prepare-build.outputs.version }}+${{
+            needs.prepare-build.outputs.short_sha }}
+          SENTRY_ENVIRONMENT: production
+        run: |
+          set -euo pipefail
+          echo "==> Recording deploy marker: ${SENTRY_RELEASE} -> ${SENTRY_ENVIRONMENT}"
+          sentry-cli releases deploys "${SENTRY_RELEASE}" new \
+            -e "${SENTRY_ENVIRONMENT}"
+
+  # =========================================================================
+  # Cleanup: remove draft release + tag if ANY build phase failed
+  # =========================================================================
+  cleanup-failed-release:
+    name: Remove release and tag if build failed
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: Production
+    needs:
+      - prepare-build
+      - create-release
+      - build-desktop
+      - build-cli-linux
+      - build-docker
+      - publish-updater-manifest
+    if: >-
+      always()
+      && inputs.create_release
+      && needs.prepare-build.result == 'success'
+      && needs.create-release.result == 'success'
+      && (needs.build-desktop.result == 'failure' || needs.build-desktop.result == 'cancelled'
+          || needs.build-cli-linux.result == 'failure' || needs.build-cli-linux.result == 'cancelled'
+          || needs.build-docker.result == 'failure' || needs.build-docker.result == 'cancelled'
+          || needs.publish-updater-manifest.result == 'failure' || needs.publish-updater-manifest.result == 'cancelled')
+    steps:
+      - name: Delete GitHub release
+        if: ${{ inputs.create_release && needs.create-release.result == 'success' }}
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const releaseId = Number('${{ needs.create-release.outputs.release_id }}');
+            if (!Number.isFinite(releaseId) || releaseId <= 0) {
+              core.setFailed('Invalid or missing release_id; cannot delete release.');
+              return;
+            }
+            try {
+              await github.rest.repos.deleteRelease({ owner, repo, release_id: releaseId });
+              core.info(`Deleted release ${releaseId}`);
+            } catch (e) {
+              core.warning(`deleteRelease failed: ${e.message}`);
+            }
+      - name: Delete remote tag
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const tag = '${{ needs.prepare-build.outputs.tag }}';
+            try {
+              await github.rest.git.deleteRef({ owner, repo, ref: `tags/${tag}` });
+              core.info(`Deleted remote tag ${tag}`);
+            } catch (e) {
+              if (e.status === 404) {
+                core.info(`Tag ${tag} already absent on remote`);
+              } else {
+                throw e;
+              }
+            }
+      - name: Delete published Docker image versions
+        # If `build-docker` already pushed but a downstream phase failed, the
+        # GHCR image would otherwise outlive the GitHub Release. Walk the
+        # `:v<version>` and `:<version>` tags we just pushed and remove the
+        # underlying package version. `:latest` is left alone — the previous
+        # release is still pointed at it, and clobbering the moving tag here
+        # would orphan downstream pulls.
+        if: needs.build-docker.result == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare-build.outputs.tag }}
+          VERSION: ${{ needs.prepare-build.outputs.version }}
+        run: |-
+          set -uo pipefail
+          PACKAGE="openhuman-core"
+          for IMAGE_TAG in "${TAG}" "${VERSION}"; do
+            echo "Attempting to delete Docker tag: ${IMAGE_TAG}"
+            VERSION_ID="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/orgs/tinyhumansai/packages/container/${PACKAGE}/versions" \
+              --paginate --jq ".[] | select(.metadata.container.tags[]? == \"${IMAGE_TAG}\") | .id" 2>/dev/null | head -1)"
+            if [ -n "$VERSION_ID" ]; then
+              gh api -X DELETE "/orgs/tinyhumansai/packages/container/${PACKAGE}/versions/${VERSION_ID}" || true
+              echo "Deleted image version ${VERSION_ID} (tag ${IMAGE_TAG})"
+            else
+              echo "Tag ${IMAGE_TAG} not found or already deleted"
+            fi
+          done
