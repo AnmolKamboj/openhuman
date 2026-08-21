@@ -28,6 +28,24 @@
 
 import fs from 'node:fs';
 
+/** Loopback hosts are the only targets that may use cleartext http (CWE-319). */
+function isLoopbackHost(hostname) {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]';
+}
+
+function assertTransportAllowed(url, what) {
+  const parsed = new URL(url);
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`${what} must be an http(s) URL, got: ${url}`);
+  }
+  if (parsed.protocol === 'http:' && !isLoopbackHost(parsed.hostname)) {
+    throw new Error(
+      `${what} uses cleartext http for non-loopback host "${parsed.hostname}"; use https or a loopback address`,
+    );
+  }
+  return parsed;
+}
+
 function parseArgs(argv) {
   const opts = {
     coreUrl: 'http://127.0.0.1:17788',
@@ -85,6 +103,8 @@ function parseArgs(argv) {
 }
 
 const opts = parseArgs(process.argv);
+// Reject non-loopback cleartext targets before any bearer token is attached.
+assertTransportAllowed(opts.coreUrl, '--core-url');
 
 async function rpc(method, params, timeoutMs = opts.timeoutMs) {
   const controller = new AbortController();
@@ -92,12 +112,23 @@ async function rpc(method, params, timeoutMs = opts.timeoutMs) {
   try {
     const headers = { 'content-type': 'application/json' };
     if (opts.token) headers.authorization = `Bearer ${opts.token}`;
-    const res = await fetch(`${opts.coreUrl}/rpc`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-      signal: controller.signal,
-    });
+    const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method, params });
+    let url = `${opts.coreUrl}/rpc`;
+    let res;
+    for (let hop = 0; ; hop += 1) {
+      if (hop >= 5) throw new Error('too many redirects');
+      res = await fetch(url, {
+        method: 'POST',
+        headers,
+        body,
+        redirect: 'manual',
+        signal: controller.signal,
+      });
+      if (res.status < 300 || res.status >= 400) break;
+      const location = res.headers.get('location');
+      if (!location) throw new Error(`HTTP ${res.status} redirect without Location`);
+      url = assertTransportAllowed(new URL(location, url).href, 'redirect target').href;
+    }
     const text = await res.text();
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}: ${text.slice(0, 400)}`);
@@ -144,10 +175,10 @@ const turnLog = opts.turnsOut ? fs.createWriteStream(opts.turnsOut, { flags: 'w'
 
 const results = { ok: 0, failed: 0, latencies: [], errors: new Map() };
 let issued = 0;
-const startedAt = Date.now();
+let loadStart = Date.now();
 
 function shouldContinue() {
-  if (opts.durationMs !== null) return Date.now() - startedAt < opts.durationMs;
+  if (opts.durationMs !== null) return Date.now() - loadStart < opts.durationMs;
   return issued < opts.turns;
 }
 
@@ -180,7 +211,7 @@ async function runTurn(workerId, threadId, index) {
   if (turnLog) {
     turnLog.write(
       `${JSON.stringify({
-        tMs: Date.now() - startedAt,
+        tMs: Date.now() - loadStart,
         workerId,
         index,
         latencyMs,
@@ -231,7 +262,11 @@ async function main() {
     issued = 0;
   }
 
-  const measureStart = Date.now();
+  // The load window starts after seeding and warm-up, so setup time is not
+  // counted against --duration-ms and the turn log is measured from the same
+  // instant.
+  loadStart = Date.now();
+  const measureStart = loadStart;
   process.stderr.write(
     `[driver] load: concurrency=${opts.concurrency} ` +
       `${opts.durationMs !== null ? `duration=${opts.durationMs}ms` : `turns=${opts.turns}`} ` +
