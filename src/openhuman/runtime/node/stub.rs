@@ -61,9 +61,20 @@ pub struct ResolvedNode {
 }
 
 /// Inert stand-in for the toolchain client.
-#[derive(Debug)]
 pub struct NodeBootstrap {
     config: Arc<Config>,
+}
+
+impl std::fmt::Debug for NodeBootstrap {
+    /// The real client redacts `Config` because it is full of secrets; the stub
+    /// mirrors that so the two render identically in logs, rather than the
+    /// disabled build being the one that leaks an `api_key` into a debug line.
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("NodeBootstrap")
+            .field("resolved", &false)
+            .finish_non_exhaustive()
+    }
 }
 
 impl NodeBootstrap {
