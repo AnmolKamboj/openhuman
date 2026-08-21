@@ -336,11 +336,8 @@ pub async fn prepare_messages_for_provider(
             );
         }
 
-        let content = mm::compose_multimodal_message(
-            &cleaned_text,
-            &normalized_image_refs,
-            &file_payloads,
-        );
+        let content =
+            mm::compose_multimodal_message(&cleaned_text, &normalized_image_refs, &file_payloads);
         normalized_messages.push(ChatMessage {
             id: message.id.clone(),
             role: message.role.clone(),

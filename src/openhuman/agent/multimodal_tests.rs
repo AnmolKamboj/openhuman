@@ -236,7 +236,6 @@ fn marker_counting_and_ollama_payload_extraction_reach_the_crate() {
     // is no longer passed through as an image payload (#5146 P6).
     assert!(extract_ollama_image_payload(" local-ref ").is_none());
     assert!(extract_ollama_image_payload("data:image/png;base64,   ").is_none());
-
 }
 
 // ── File-attachment marker tests ──────────────────────────────────────
