@@ -94,8 +94,8 @@ function readJsonl(file) {
   return fs
     .readFileSync(file, 'utf8')
     .split('\n')
-    .filter((line) => line.trim().length > 0)
-    .map((line) => JSON.parse(line));
+    .filter(line => line.trim().length > 0)
+    .map(line => JSON.parse(line));
 }
 
 /** Ordinary least squares. Returns slope in units of y per unit of x. */
@@ -123,7 +123,7 @@ function linearFit(xs, ys) {
   return { slope, intercept, r2: ssTot === 0 ? null : 1 - ssRes / ssTot };
 }
 
-const mean = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
+const mean = arr => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
 
 function windowMeans(values) {
   if (values.length < 4) return { early: null, late: null };
@@ -156,14 +156,14 @@ let clippedTail = [];
 if (driver?.measureStartedAtMs && driver?.wallMs) {
   const loadStart = driver.measureStartedAtMs;
   const loadEnd = loadStart + driver.wallMs;
-  const withEpoch = allSamples.filter((s) => typeof s.epochMs === 'number');
+  const withEpoch = allSamples.filter(s => typeof s.epochMs === 'number');
   if (withEpoch.length > 0) {
-    const inWindow = withEpoch.filter((s) => s.epochMs >= loadStart && s.epochMs <= loadEnd);
+    const inWindow = withEpoch.filter(s => s.epochMs >= loadStart && s.epochMs <= loadEnd);
     // Only trust the clip if it left enough to analyze; otherwise fall back to
     // the full series and say so, rather than failing on a technicality.
     if (inWindow.length >= 8) {
       loadSamples = inWindow;
-      clippedTail = withEpoch.filter((s) => s.epochMs > loadEnd);
+      clippedTail = withEpoch.filter(s => s.epochMs > loadEnd);
     }
   }
 }
@@ -176,7 +176,7 @@ if (samples.length < 4) {
   process.stderr.write(
     `[analyze] only ${samples.length} samples after clipping to the load window ` +
       `and dropping ${skip} warm-up samples — run longer, sample more often, or ` +
-      `lower --warmup-frac\n`,
+      `lower --warmup-frac\n`
   );
   process.exit(1);
 }
@@ -223,7 +223,7 @@ function analyzeMemory(field, label) {
   const fit = linearFit(xs, ys);
 
   /** Convert a KiB-per-ms slope into KiB per turn, or null if not derivable. */
-  const perTurn = (slope) =>
+  const perTurn = slope =>
     slope !== null && turnsInWindow && turnsInWindow > 0 && durationMs > 0
       ? (slope * durationMs) / turnsInWindow
       : null;
@@ -246,8 +246,7 @@ function analyzeMemory(field, label) {
   const overBudget = kibPerTurn !== null && kibPerTurn > opts.rssKibPerTurn;
   const tailWithinBudget =
     tailFit.slope !== null &&
-    (tailFit.slope <= 0 ||
-      (tailKibPerTurn !== null && tailKibPerTurn <= opts.rssKibPerTurn));
+    (tailFit.slope <= 0 || (tailKibPerTurn !== null && tailKibPerTurn <= opts.rssKibPerTurn));
 
   let verdict;
   let reason;
@@ -346,12 +345,12 @@ function analyzeCounter(field, label, maxGrowth) {
  */
 function analyzeCpu() {
   const usable = samples.filter(
-    (s) => typeof s.cpuUserMs === 'number' && typeof s.cpuSystemMs === 'number',
+    s => typeof s.cpuUserMs === 'number' && typeof s.cpuSystemMs === 'number'
   );
   if (usable.length < 8) return { available: false };
 
-  const totals = usable.map((s) => s.cpuUserMs + s.cpuSystemMs);
-  const times = usable.map((s) => s.tMs);
+  const totals = usable.map(s => s.cpuUserMs + s.cpuSystemMs);
+  const times = usable.map(s => s.tMs);
 
   const rates = [];
   for (let i = 1; i < usable.length; i += 1) {
@@ -361,13 +360,12 @@ function analyzeCpu() {
   }
   if (rates.length < 4) return { available: false };
 
-  const rateValues = rates.map((r) => r.rate);
+  const rateValues = rates.map(r => r.rate);
   const { early, late } = windowMeans(rateValues);
   const drift = early && early > 0 ? (late - early) / early : null;
 
   const totalCpuMs = totals[totals.length - 1] - totals[0];
-  const cpuMsPerTurn =
-    turnsInWindow && turnsInWindow > 0 ? totalCpuMs / turnsInWindow : null;
+  const cpuMsPerTurn = turnsInWindow && turnsInWindow > 0 ? totalCpuMs / turnsInWindow : null;
 
   // 25% more CPU per unit time for the same offered load is a real drift, not
   // scheduling noise.
@@ -396,7 +394,7 @@ const memory = [
   analyzeMemory('pssKib', 'PSS'),
   analyzeMemory('privateKib', 'Private (clean+dirty)'),
 ];
-if (samples.some((s) => typeof s.treeRssKib === 'number')) {
+if (samples.some(s => typeof s.treeRssKib === 'number')) {
   memory.push(analyzeMemory('treeRssKib', 'RSS incl. descendants'));
 }
 
@@ -429,13 +427,12 @@ const workspace =
 // Enough on-disk growth that an index over it could plausibly account for a
 // rising RSS curve on its own.
 const WORKSPACE_CONFOUND_MIB = 100;
-const memoryConfounded =
-  workspace.available && workspace.growthMib >= WORKSPACE_CONFOUND_MIB;
+const memoryConfounded = workspace.available && workspace.growthMib >= WORKSPACE_CONFOUND_MIB;
 
-const checks = [...memory.filter((m) => m.available), threads, fds, cpu, throughput].filter(
-  (c) => c.available !== false,
+const checks = [...memory.filter(m => m.available), threads, fds, cpu, throughput].filter(
+  c => c.available !== false
 );
-const failed = checks.filter((c) => c.verdict === 'fail');
+const failed = checks.filter(c => c.verdict === 'fail');
 
 // If the core STOPPED, every resource check is describing an idle process and
 // none of their verdicts mean what they appear to. Degradation is different:
@@ -457,9 +454,7 @@ const overall = failed.length > 0 ? 'fail' : 'pass';
  */
 function analyzeSettle() {
   if (clippedTail.length < 2) return { available: false };
-  const rss = clippedTail
-    .map((s) => s.rssKib)
-    .filter((v) => typeof v === 'number');
+  const rss = clippedTail.map(s => s.rssKib).filter(v => typeof v === 'number');
   if (rss.length < 2) return { available: false };
 
   const lastUnderLoad = samples[samples.length - 1];
@@ -509,7 +504,7 @@ function analyzeThroughput(turnsPath) {
   }
   if (turns.length < 20) return { available: false };
 
-  const okTurns = turns.filter((t) => t.ok);
+  const okTurns = turns.filter(t => t.ok);
   if (okTurns.length < 20) return { available: false };
 
   // The window must be the run's actual duration, NOT the timestamp of the last
@@ -519,8 +514,8 @@ function analyzeThroughput(turnsPath) {
   // things still worked, hiding exactly the outage this check exists to catch.
   const runMs = driver?.wallMs ?? turns[turns.length - 1].tMs;
   const quarter = runMs / 4;
-  const firstQuarter = okTurns.filter((t) => t.tMs < quarter).length;
-  const lastQuarter = okTurns.filter((t) => t.tMs >= 3 * quarter).length;
+  const firstQuarter = okTurns.filter(t => t.tMs < quarter).length;
+  const lastQuarter = okTurns.filter(t => t.tMs >= 3 * quarter).length;
 
   const firstRate = firstQuarter / (quarter / 1000);
   const lastRate = lastQuarter / (quarter / 1000);
@@ -561,7 +556,6 @@ function analyzeThroughput(turnsPath) {
   };
 }
 
-
 const report = {
   overall,
   threadMode,
@@ -592,7 +586,7 @@ const report = {
         errors: driver.errors,
       }
     : null,
-  memory: memory.map((m) =>
+  memory: memory.map(m =>
     m.available && m.verdict === 'fail' && memoryConfounded
       ? {
           ...m,
@@ -604,7 +598,7 @@ const report = {
             `memory capture disabled, or run long enough that on-disk growth ` +
             `levels off while RSS does not.`,
         }
-      : m,
+      : m
   ),
   workspace,
   threads,
@@ -617,7 +611,7 @@ const report = {
       'FD verdicts above describe an idle process and must not be read as a ' +
       'clean bill of health. Fix the liveness failure and re-run.'
     : null,
-  failedChecks: failed.map((c) => `${c.label ?? 'check'}: ${c.reason}`),
+  failedChecks: failed.map(c => `${c.label ?? 'check'}: ${c.reason}`),
 };
 
 const rendered = JSON.stringify(report, null, 2);
@@ -627,15 +621,17 @@ if (opts.out) fs.writeFileSync(opts.out, rendered);
 const lines = [];
 lines.push('');
 lines.push(`  agent-scale benchmark — ${overall.toUpperCase()}`);
-lines.push(`  thread-mode=${threadMode}  samples=${samples.length}/${allSamples.length}` +
-  `  window=${(durationMs / 1000).toFixed(1)}s` +
-  `${clippedToLoadWindow ? ' (clipped to load)' : ''}`);
+lines.push(
+  `  thread-mode=${threadMode}  samples=${samples.length}/${allSamples.length}` +
+    `  window=${(durationMs / 1000).toFixed(1)}s` +
+    `${clippedToLoadWindow ? ' (clipped to load)' : ''}`
+);
 if (underpowered) lines.push(`  WEAK EVIDENCE: ${report.underpoweredNote}`);
 if (driver) {
   lines.push(
     `  turns: ${driver.turnsOk} ok / ${driver.turnsFailed} failed` +
       `  throughput=${driver.throughputTurnsPerSec?.toFixed(2)}/s` +
-      `  p50=${driver.latencyMs?.p50?.toFixed(0)}ms p99=${driver.latencyMs?.p99?.toFixed(0)}ms`,
+      `  p50=${driver.latencyMs?.p50?.toFixed(0)}ms p99=${driver.latencyMs?.p99?.toFixed(0)}ms`
   );
 }
 lines.push('');
@@ -644,26 +640,28 @@ for (const m of memory) {
   lines.push(
     `  ${m.verdict.padEnd(12)} ${m.label.padEnd(24)} ` +
       `${(m.firstKib / 1024).toFixed(1)} → ${(m.lastKib / 1024).toFixed(1)} MiB` +
-      (m.kibPerTurn !== null ? `  (${m.kibPerTurn.toFixed(2)} KiB/turn)` : ''),
+      (m.kibPerTurn !== null ? `  (${m.kibPerTurn.toFixed(2)} KiB/turn)` : '')
   );
   lines.push(`               ${m.reason}`);
   if (m.verdict === 'fail' && memoryConfounded) {
     lines.push(
       `               CAVEAT: the workspace grew ${workspace.growthMib} MiB — some of ` +
-        `this is likely index over real data, not a leak.`,
+        `this is likely index over real data, not a leak.`
     );
   }
 }
 for (const c of [threads, fds]) {
   if (!c.available) continue;
-  lines.push(`  ${c.verdict.padEnd(12)} ${c.label.padEnd(24)} ${c.first} → ${c.last} (max ${c.max})`);
+  lines.push(
+    `  ${c.verdict.padEnd(12)} ${c.label.padEnd(24)} ${c.first} → ${c.last} (max ${c.max})`
+  );
   lines.push(`               ${c.reason}`);
 }
 if (cpu.available) {
   lines.push(
     `  ${cpu.verdict.padEnd(12)} ${'CPU'.padEnd(24)} ` +
       `${cpu.meanUtilizationCores?.toFixed(2)} cores mean` +
-      (cpu.cpuMsPerTurn !== null ? `, ${cpu.cpuMsPerTurn.toFixed(1)} ms/turn` : ''),
+      (cpu.cpuMsPerTurn !== null ? `, ${cpu.cpuMsPerTurn.toFixed(1)} ms/turn` : '')
   );
   lines.push(`               ${cpu.reason}`);
 }
@@ -671,7 +669,7 @@ if (throughput.available) {
   lines.push(
     `  ${throughput.verdict.padEnd(12)} ${'Throughput held'.padEnd(24)} ` +
       `${throughput.firstQuarterTurnsPerSec.toFixed(1)} → ` +
-      `${throughput.lastQuarterTurnsPerSec.toFixed(1)} turns/s`,
+      `${throughput.lastQuarterTurnsPerSec.toFixed(1)} turns/s`
   );
   lines.push(`               ${throughput.reason}`);
 }
@@ -684,7 +682,7 @@ if (settle.available) {
   lines.push(
     `  after load (${(settle.idleWindowMs / 1000).toFixed(1)}s idle): ` +
       `released ${(settle.releasedKib / 1024).toFixed(1)} MiB, ` +
-      `idle CPU ${settle.idleCpuFraction === null ? 'n/a' : `${(settle.idleCpuFraction * 100).toFixed(1)}% of one core`}`,
+      `idle CPU ${settle.idleCpuFraction === null ? 'n/a' : `${(settle.idleCpuFraction * 100).toFixed(1)}% of one core`}`
   );
 }
 lines.push('');

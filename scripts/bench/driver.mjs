@@ -30,7 +30,12 @@ import fs from 'node:fs';
 
 /** Loopback hosts are the only targets that may use cleartext http (CWE-319). */
 function isLoopbackHost(hostname) {
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]';
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '[::1]'
+  );
 }
 
 function assertTransportAllowed(url, what) {
@@ -40,7 +45,7 @@ function assertTransportAllowed(url, what) {
   }
   if (parsed.protocol === 'http:' && !isLoopbackHost(parsed.hostname)) {
     throw new Error(
-      `${what} uses cleartext http for non-loopback host "${parsed.hostname}"; use https or a loopback address`,
+      `${what} uses cleartext http for non-loopback host "${parsed.hostname}"; use https or a loopback address`
     );
   }
   return parsed;
@@ -217,7 +222,7 @@ async function runTurn(workerId, threadId, index) {
         latencyMs,
         ok,
         error: errMessage,
-      })}\n`,
+      })}\n`
     );
   }
 }
@@ -270,7 +275,7 @@ async function main() {
   process.stderr.write(
     `[driver] load: concurrency=${opts.concurrency} ` +
       `${opts.durationMs !== null ? `duration=${opts.durationMs}ms` : `turns=${opts.turns}`} ` +
-      `thread-mode=${opts.threadMode}\n`,
+      `thread-mode=${opts.threadMode}\n`
   );
   await Promise.all(Array.from({ length: opts.concurrency }, (_, i) => worker(i)));
   const wallMs = Date.now() - measureStart;
@@ -303,7 +308,7 @@ async function main() {
     errors: Object.fromEntries(results.errors),
   };
 
-  if (turnLog) await new Promise((resolve) => turnLog.end(resolve));
+  if (turnLog) await new Promise(resolve => turnLog.end(resolve));
   const rendered = JSON.stringify(summary, null, 2);
   if (opts.out) fs.writeFileSync(opts.out, rendered);
   process.stdout.write(`${rendered}\n`);
@@ -312,12 +317,14 @@ async function main() {
   // usable measurement. Exit non-zero so a caller cannot mistake it for a clean
   // result.
   if (completed === 0 || results.ok === 0) {
-    process.stderr.write(`[driver] no usable measurement (completed=${completed}, ok=${results.ok})\n`);
+    process.stderr.write(
+      `[driver] no usable measurement (completed=${completed}, ok=${results.ok})\n`
+    );
     process.exit(1);
   }
 }
 
-main().catch((err) => {
+main().catch(err => {
   process.stderr.write(`[driver] fatal: ${err?.stack ?? err}\n`);
   process.exit(1);
 });
