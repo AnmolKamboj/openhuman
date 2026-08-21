@@ -246,7 +246,7 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "this is the construction path the lint protects (fail-closed fallback)",
     ),
     (
-        "vendor/tinymemory/core/src/global.rs",
+        "vendor/tinymemory/crates/tinymemory-core/src/global.rs",
         "MemoryClient::from_workspace_dir(",
         "the process-global slot itself; it is what global::client hands out",
     ),
@@ -307,33 +307,33 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",
     ),
     (
-        "vendor/tinymemory/core/src/store/client.rs",
+        "vendor/tinymemory/crates/tinymemory-core/src/store/client.rs",
         ".profile_conn(",
         "sole in-family call; wraps the raw handle in ProfileStore. profile_conn is pub(in crate::openhuman::memory), so the compiler — not this lint — is the primary enforcement",
     ),
     // ── Composio memory sync: profile_store + &MemoryClientRef ──
     (
-        "vendor/tinymemory/core/src/sync/composio/providers/profile.rs",
+        "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/profile.rs",
         ".profile_store(",
         "typed profile writes; the contract has no profile family, so still unguarded",
     ),
     (
-        "vendor/tinymemory/core/src/sync/composio/providers/profile.rs",
+        "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/profile.rs",
         "global::client_if_ready(",
         "resolved only to reach profile_store()",
     ),
     (
-        "vendor/tinymemory/core/src/sync/composio/providers/types.rs",
+        "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/types.rs",
         "MemoryClient::from_workspace_dir(",
         "provider trait takes &MemoryClientRef; the contract has no such shape",
     ),
     (
-        "vendor/tinymemory/core/src/sync/composio/providers/types.rs",
+        "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/types.rs",
         "global::client_if_ready(",
         "same provider trait shape",
     ),
     (
-        "vendor/tinymemory/core/src/sync/composio/providers/user_scopes.rs",
+        "vendor/tinymemory/crates/tinymemory-core/src/sync/composio/providers/user_scopes.rs",
         "global::client_if_ready(",
         "same provider trait shape",
     ),
@@ -366,22 +366,22 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     // `#[cfg(test)]` modules (the #61 connection-guard tests), which the
     // scanner does not brace-track.
     (
-        "vendor/tinymemory/core/src/engine/sync.rs",
+        "vendor/tinymemory/crates/tinymemory-core/src/engine/sync.rs",
         "MemoryClient::from_workspace_dir(",
         "inline #[cfg(test)] module only; the scanner does not brace-track test blocks",
     ),
     (
-        "vendor/tinymemory/core/src/engine/sync.rs",
+        "vendor/tinymemory/crates/tinymemory-core/src/engine/sync.rs",
         "global::client_if_ready(",
         "the TinyCortex engine seam; it sits beneath the contract, not above it",
     ),
     (
-        "vendor/tinymemory/core/src/sync/pipelines/host.rs",
+        "vendor/tinymemory/crates/tinymemory-core/src/sync/pipelines/host.rs",
         "MemoryClient::from_workspace_dir(",
         "inline #[cfg(test)] module only (the connection-guard tests); not brace-tracked",
     ),
     (
-        "vendor/tinymemory/core/src/sync/pipelines/host.rs",
+        "vendor/tinymemory/crates/tinymemory-core/src/sync/pipelines/host.rs",
         "global::client_if_ready(",
         "the engine-free sync runner's seam over the bound client; beneath the contract, \
          the same way the engine seam beside it is",
@@ -428,14 +428,24 @@ fn scan() -> BTreeSet<(String, String)> {
     // the files this lint counts went with it. Scanning only this crate's `src`
     // would quietly drop them from the tally — which would read as "the
     // bypasses were cleaned up" rather than "they moved out of view".
-    collect_rs_files(
-        &root
-            .join("vendor")
-            .join("tinymemory")
-            .join("core")
-            .join("src"),
-        &mut files,
+    let tinymemory_core = root
+        .join("vendor")
+        .join("tinymemory")
+        .join("crates")
+        .join("tinymemory-core")
+        .join("src");
+    // `collect_rs_files` returns quietly when a directory is missing, so a
+    // moved vendor tree would empty this half of the scan and read as "the
+    // bypasses were cleaned up" — the exact misreading the comment above warns
+    // about. tinymemory#73 moved this path from `core/src` to
+    // `crates/tinymemory-core/src` and proved the point. Fail loudly instead.
+    assert!(
+        tinymemory_core.is_dir(),
+        "the vendored tinymemory core is not at {} — it moved again. \
+         Point this scan at the new path; do not let the scan run half-blind.",
+        tinymemory_core.display()
     );
+    collect_rs_files(&tinymemory_core, &mut files);
 
     let mut found = BTreeSet::new();
     for path in &files {
@@ -491,7 +501,7 @@ fn bypass_scanner_finds_the_known_bypasses() {
          module would pass vacuously. Fix the scanner, not the assertion."
     );
     let canary = (
-        "vendor/tinymemory/core/src/store/client.rs".to_string(),
+        "vendor/tinymemory/crates/tinymemory-core/src/store/client.rs".to_string(),
         ".profile_conn(".to_string(),
     );
     assert!(

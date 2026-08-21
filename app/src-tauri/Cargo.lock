@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "OpenHuman"
-version = "0.63.14"
+version = "0.63.16"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2557,6 +2557,9 @@ name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+dependencies = [
+ "foldhash 0.2.0",
+]
 
 [[package]]
 name = "hashify"
@@ -2572,11 +2575,11 @@ dependencies = [
 
 [[package]]
 name = "hashlink"
-version = "0.11.1"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "824e001ac4f3012dd16a264bec811403a67ca9deb6c102fc5049b32c4574b35f"
+checksum = "32069d97bb81e38fa67eab65e3393bf804bb85969f2bc06bf13f64aef5aba248"
 dependencies = [
- "hashbrown 0.16.1",
+ "hashbrown 0.17.1",
 ]
 
 [[package]]
@@ -4358,7 +4361,7 @@ dependencies = [
 
 [[package]]
 name = "openhuman"
-version = "0.63.14"
+version = "0.63.16"
 dependencies = [
  "aes-gcm",
  "aho-corasick",
@@ -5416,9 +5419,9 @@ dependencies = [
 
 [[package]]
 name = "rusqlite"
-version = "0.40.0"
+version = "0.40.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b3492ea85308705c3a5cc24fb9b9cf77273d30590349070db42991202b214c4"
+checksum = "23f2a97da3e3873c73cb2a2e71b35c40ff95e0b1eefa8d72d8499a6928c3b5b3"
 dependencies = [
  "bitflags 2.13.1",
  "fallible-iterator",
@@ -7189,7 +7192,7 @@ dependencies = [
 
 [[package]]
 name = "tinymemory"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7205,9 +7208,19 @@ version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
- "chrono",
  "log",
  "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "tinymemory-bus",
+]
+
+[[package]]
+name = "tinymemory-bus"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -7222,17 +7235,17 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "dirs 5.0.1",
+ "dirs 6.0.0",
  "futures",
  "log",
  "parking_lot",
- "rand 0.8.7",
+ "rand 0.10.2",
  "regex",
  "reqwest 0.12.28",
  "rusqlite",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.0",
  "thiserror 2.0.20",
  "tinyagents",
  "tinycortex",
@@ -7262,7 +7275,7 @@ dependencies = [
  "serde_json",
  "tinymemory-api",
  "tokio",
- "toml 0.9.12+spec-1.1.0",
+ "toml 1.1.4+spec-1.1.0",
  "tracing",
  "uuid",
  "walkdir",
