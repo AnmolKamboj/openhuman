@@ -13,6 +13,35 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
+#   283/265/2  2026-08-21  tinymemory bumped past its #76/#77 line (-3 packages,
+#                      +1 NAME). The name is `tinymemory-bus`, and it is a
+#                      RAISE, so: tinymemory#74 moved the wire vocabulary —
+#                      member names, payload types, the error-name table — out
+#                      of `tinymemory-api` into a crate beneath it, so anything
+#                      linking the api now also resolves the bus crate. No new
+#                      third-party code enters: `tinymemory-bus` is deliberately
+#                      dependency-light (serde, serde_json, chrono, sha2, uuid,
+#                      anyhow, thiserror — every one already in this profile,
+#                      and it is forbidden an async runtime, rusqlite, git2,
+#                      reqwest or regex by a guard in its own manifest). It is
+#                      also the crate that makes the opposite direction
+#                      possible: a host that later talks to the loadable
+#                      TinyMemory module links THIS and drops the engine, which
+#                      is a shed this ratchet should want.
+#                      The -3 packages are real departures, not a re-count:
+#                      `hashbrown 0.16.1`, `toml 0.9.12`, `toml_datetime 0.7.5`
+#                      and `winnow 0.7.15` leave; `dirs 6.0.0` and
+#                      `tinymemory-bus 0.1.0` enter (`dirs` was already a name
+#                      here at another version, so it moves packages without
+#                      moving names). Everything else in the diff is a version
+#                      bump the pin carries: rusqlite 0.40.0 -> 0.40.2 (and
+#                      libsqlite3-sys 0.38.1 -> 0.38.2, hashlink 0.11 -> 0.12),
+#                      which is `tinymemory-core`'s exact pin, and tinymemory
+#                      1.0.1 -> 1.1.0. Native builds unchanged at 2.
+#                      Measured on CI (Linux): 283/265/2. macOS resolves
+#                      284/266/2 per the documented target skew — the old pin
+#                      read 286/265/2 on the same macOS host against 286/264/2
+#                      on Linux, i.e. the skew is unchanged at +1 name.
 #   286/264/2  2026-08-19  tinymemory bumped across its #18 arc (-4 names, 0
 #                      packages net, native unchanged). A shed, not a gate, and
 #                      a downstream one: tinymemory#43 (§D2) moved `axum` from
@@ -332,4 +361,4 @@
 #                      (libsqlite3-sys, ring) — see docs/plans MIGRATION-PLAN G6.
 # 307/284  2026-08-12  Re-baseline after the upstream lockfile resolution;
 #                      `flows` remains at two native packages.
-flows:286:264:2
+flows:283:265:2
