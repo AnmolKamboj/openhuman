@@ -60,7 +60,7 @@ is the implicit per-turn recall, not the agent's memory tool.
 At 8,600 turns the store held 9,660 documents and 10,127 chunks, all in one
 `global` namespace. Per recall it loads all of both:
 
-```
+```text
 chunks : 10127 rows, 39.6 MiB of embeddings materialized
 docs   : 9660 rows
         ~61 ms of SQL per recall, warm cache
@@ -114,7 +114,7 @@ how much the scan *touches*.
 
 The measurement that settles it, at 5,162 chunks, concurrency 8:
 
-```
+```text
 p50 = 326 ms, throughput 24.1/s
 Little's law: 24.1 × 0.326 = 7.85 ≈ concurrency 8   → every worker busy all turn
 CPU: 6.85 of 14 cores (49%),  295 ms of CPU per turn
@@ -155,9 +155,9 @@ Both changes were reverted; `vendor/tinymemory` is byte-identical to upstream
 `f8bd9af` (`git diff f8bd9af` is empty, 855 tests pass).
 
 **The lesson, stated plainly so it is not re-learned:** the recall path is not
-lock-bound and not I/O-bound. It is doing ~270 ms of CPU per turn touching every
+lock-bound and not I/O-bound. It is doing ~253 ms of CPU per turn touching every
 row in the namespace, twice over. Only reducing what is touched — items 1, 2, 3
-and 7 above — can change that. Micro-optimizing around the scan has now been
+and 7 below — can change that. Micro-optimizing around the scan has now been
 measured twice and found worthless.
 
 ## Deeper dive — where the cost actually is
@@ -210,7 +210,7 @@ and **then** filters `key.starts_with("working.user.")`
 So it scans the entire namespace to find entries identified by a known key
 prefix. In the benchmark corpus:
 
-```
+```text
 global docs scanned per turn : 2025
 docs with key 'working.user.': 0
 ```
@@ -283,7 +283,7 @@ document, never on the query, so it is recomputed identically every turn.
 Semantics-identical.
 
 **6. ~~A read-only connection pool.~~ Tried and measured — it does not help.
-See "Two fixes that failed" below.**
+See "Two fixes that failed" above.**
 
 **7. Only then, a vector index** (sqlite-vec / HNSW). This is the real answer for
 genuinely unbounded semantic search, and the only one that makes recall
