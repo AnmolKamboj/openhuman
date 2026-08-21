@@ -755,6 +755,63 @@ async fn turn_native_tool_progress_reasoning_usage_and_resume_seed_paths_inner()
 }
 
 #[test]
+fn turn_citation_task_replaces_previous_handle_and_joins_successfully() {
+    run_on_agent_stack(
+        "agent-session-turn-citation-task-raw-coverage",
+        turn_citation_task_replaces_previous_handle_and_joins_successfully_inner,
+    );
+}
+
+async fn turn_citation_task_replaces_previous_handle_and_joins_successfully_inner() {
+    ensure_memory_seams();
+    let _env = env_lock();
+    let (_temp, workspace_path) = workspace("citation-task");
+    let _workspace_guard = EnvGuard::set_path("OPENHUMAN_WORKSPACE", &workspace_path);
+    let memory = Arc::new(StaticMemory {
+        entries: Mutex::new(vec![MemoryEntry {
+            id: "citation-success".to_string(),
+            key: "project.summary".to_string(),
+            content: "The launch checklist is ready.".to_string(),
+            namespace: Some("projects".to_string()),
+            category: MemoryCategory::Conversation,
+            timestamp: "2026-05-29T00:00:00Z".to_string(),
+            session_id: None,
+            score: Some(0.9),
+            taint: Default::default(),
+        }]),
+        fail_recall: false,
+    });
+    let mut agent = Agent::builder()
+        .chat_model(ScriptedModel::new(vec![
+            text_response("first answer"),
+            text_response("second answer"),
+        ]))
+        .tools(Vec::new())
+        .memory(memory)
+        .tool_dispatcher(Box::new(XmlToolDispatcher))
+        .workspace_dir(workspace_path)
+        .event_context("round17-session", "round17-channel")
+        .agent_definition_name("round17/orchestrator")
+        .config(AgentConfig::default())
+        .context_config(ContextConfig::default())
+        .auto_save(false)
+        .explicit_preferences_enabled(false)
+        .build()
+        .unwrap();
+
+    assert_eq!(agent.turn("first citation query").await.unwrap(), "first answer");
+    // Starting a second turn exercises replacement (and abort) of the prior
+    // pending handle before installing the citation task joined below.
+    assert_eq!(
+        agent.turn("second citation query").await.unwrap(),
+        "second answer"
+    );
+    let citations = agent.take_last_turn_citations().await;
+    assert_eq!(citations.len(), 1);
+    assert_eq!(citations[0].id, "citation-success");
+}
+
+#[test]
 fn turn_xml_failures_checkpoint_policy_visibility_and_hooks_are_publicly_exercised() {
     run_on_agent_stack(
         "agent-session-turn-xml-raw-coverage",
