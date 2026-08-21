@@ -13,7 +13,7 @@
 # Simulate with: scripts/dep-sim.py --cut <crates>
 #
 # History
-#   283/265/2  2026-08-21  tinymemory bumped past its #76/#77 line (-3 packages,
+#   283/265/2  2026-08-21  tinymemory bumped past its #76/#77 line (-2 packages,
 #                      +1 NAME). The name is `tinymemory-bus`, and it is a
 #                      RAISE, so: tinymemory#74 moved the wire vocabulary —
 #                      member names, payload types, the error-name table — out
@@ -28,20 +28,30 @@
 #                      possible: a host that later talks to the loadable
 #                      TinyMemory module links THIS and drops the engine, which
 #                      is a shed this ratchet should want.
-#                      The -3 packages are real departures, not a re-count:
+#                      The -2 packages are real departures, not a re-count:
 #                      `hashbrown 0.16.1`, `toml 0.9.12`, `toml_datetime 0.7.5`
 #                      and `winnow 0.7.15` leave; `dirs 6.0.0` and
-#                      `tinymemory-bus 0.1.0` enter (`dirs` was already a name
-#                      here at another version, so it moves packages without
-#                      moving names). Everything else in the diff is a version
-#                      bump the pin carries: rusqlite 0.40.0 -> 0.40.2 (and
-#                      libsqlite3-sys 0.38.1 -> 0.38.2, hashlink 0.11 -> 0.12),
-#                      which is `tinymemory-core`'s exact pin, and tinymemory
-#                      1.0.1 -> 1.1.0. Native builds unchanged at 2.
-#                      Measured on CI (Linux): 283/265/2. macOS resolves
-#                      284/266/2 per the documented target skew — the old pin
-#                      read 286/265/2 on the same macOS host against 286/264/2
-#                      on Linux, i.e. the skew is unchanged at +1 name.
+#                      `tinymemory-bus 0.1.0` enter, so four out and two in.
+#                      `dirs 6.0.0` moves the package count without moving the
+#                      name count: `dirs 5.0.1` is a DIRECT dependency of
+#                      `openhuman` itself, so it cannot leave on any host and
+#                      the two versions coexist. The +1 name is therefore
+#                      `tinymemory-bus` alone. Everything else in the diff is a
+#                      version bump the pin carries: rusqlite 0.40.0 -> 0.40.2
+#                      (and libsqlite3-sys 0.38.1 -> 0.38.2, hashlink 0.11 ->
+#                      0.12), which is `tinymemory-core`'s exact pin, and
+#                      tinymemory 1.0.1 -> 1.1.0. Native builds unchanged at 2.
+#                      Measured on CI (Linux): 283/265/2. Both hosts move by the
+#                      same -2/+1: at this branch's base (5cd5b3a) Linux
+#                      resolves 285/264 and macOS 286/265, landing at 283/265
+#                      and 284/266 — the host skew is +1 package and +1 name,
+#                      before and after. Note the 2026-08-19 entry below reads
+#                      286/264: its lockfile is name-for-name identical to this
+#                      branch's base, so that 286 is the macOS package count
+#                      paired with the Linux name count, i.e. one package
+#                      looser than a Linux run of `scripts/kernel-floor.sh
+#                      flows` measures. Re-measure on one host before quoting a
+#                      delta against it.
 #   286/264/2  2026-08-19  tinymemory bumped across its #18 arc (-4 names, 0
 #                      packages net, native unchanged). A shed, not a gate, and
 #                      a downstream one: tinymemory#43 (§D2) moved `axum` from
