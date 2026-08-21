@@ -412,7 +412,7 @@ Per-domain Cargo features drop whole domains **at compile time** (smaller binary
 
 | Set | Where it lives | What it is |
 | --- | --- | --- |
-| **Contributor** | `[features] default` in `Cargo.toml` | What a bare `cargo check`, `cargo test` and rust-analyzer compile. 10 cheap gates. **~353 packages / 3 native builds** (`libsqlite3-sys`, `lzma-sys`, `ring`). |
+| **Contributor** | `[features] default` in `Cargo.toml` | What a bare `cargo check`, `cargo test` and rust-analyzer compile. 10 cheap gates. **~353 packages / 2 native builds** (`libsqlite3-sys`, `ring`). |
 
 > **`modules` is in `default`, and it is the one gate here that is not optional.**
 > The table below has documented it as Contrib=ON since it landed and
