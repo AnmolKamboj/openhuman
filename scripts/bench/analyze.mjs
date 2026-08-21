@@ -198,7 +198,10 @@ const threadMode = driver?.config?.threadMode ?? 'unknown';
 // driver's total covers the whole measured run; scaling it by the analyzed
 // fraction is an approximation, and is labeled as such in the report.
 const turnsTotal = driver?.turnsOk ?? null;
-const analyzedFrac = allSamples.length > 0 ? samples.length / allSamples.length : 1;
+// Scale by the analyzed window only: allSamples includes the idle head before
+// the driver starts and the idle tail after it stops, so dividing by it would
+// deflate per-turn figures whenever the series was clipped.
+const analyzedFrac = loadSamples.length > 0 ? samples.length / loadSamples.length : 1;
 const turnsInWindow = turnsTotal !== null ? turnsTotal * analyzedFrac : null;
 
 function seriesFor(field) {
