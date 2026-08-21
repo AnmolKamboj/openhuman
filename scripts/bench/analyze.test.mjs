@@ -440,8 +440,8 @@ test('throughput quarters are aligned to the measured epoch window', () => {
 
   const { report } = runAnalyzer(samples, measured, [], turnsText);
 
-  assert.equal(report.throughput.firstQuarterTurns, 25);
-  assert.equal(report.throughput.lastQuarterTurns, 25);
+  assert.equal(report.throughput.firstQuarterTurnsPerSec, 2);
+  assert.equal(report.throughput.lastQuarterTurnsPerSec, 2);
   assert.equal(report.throughput.verdict, 'pass');
 });
 
