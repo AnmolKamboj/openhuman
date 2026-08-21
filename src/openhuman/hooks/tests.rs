@@ -462,3 +462,31 @@ fn a_payload_that_does_not_fit_its_event_is_rejected() {
         .expect_err("a shell payload needs a command");
     assert!(error.contains("command"), "{error}");
 }
+
+#[test]
+fn a_relative_script_that_is_missing_is_reported_at_load_time() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    std::fs::write(
+        dir.path().join(config::HOOKS_FILE_NAME),
+        r#"{"version": 1, "hooks": {"preToolUse": [{"command": "./nope.sh"}]}}"#,
+    )
+    .unwrap();
+    let loaded = config::load(None, Some(dir.path()));
+    assert!(
+        loaded.warnings.iter().any(|w| w.contains("missing script")),
+        "{:?}",
+        loaded.warnings
+    );
+}
+
+#[test]
+fn a_bare_command_name_is_not_second_guessed() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    std::fs::write(
+        dir.path().join(config::HOOKS_FILE_NAME),
+        r#"{"version": 1, "hooks": {"preToolUse": [{"command": "audit-tool --strict"}]}}"#,
+    )
+    .unwrap();
+    let loaded = config::load(None, Some(dir.path()));
+    assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+}
