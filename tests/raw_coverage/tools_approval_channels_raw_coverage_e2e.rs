@@ -3535,11 +3535,7 @@ async fn node_and_npm_exec_tools_cover_validation_policy_and_disabled_runtime_pa
         &config.workspace_dir,
     ));
     let runtime = Arc::new(NativeRuntime::new());
-    let bootstrap = Arc::new(NodeBootstrap::new(
-        config.node.clone(),
-        workspace,
-        reqwest::Client::new(),
-    ));
+    let bootstrap = Arc::new(NodeBootstrap::new(Arc::new(config.clone())));
 
     let node = NodeExecTool::new(
         full_security.clone(),
