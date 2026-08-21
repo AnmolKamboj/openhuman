@@ -94,13 +94,33 @@ fn message_never_contains_a_credential_or_endpoint() {
 #[cfg(feature = "modules")]
 #[tokio::test]
 async fn bound_driver_probe_reports_the_default_module_driver() {
+    // Was asserting `capabilities() == Capabilities::all()`. That encoded
+    // #5598 as expected: the pinned v1.0.1 tinymemory artifact serves thirteen
+    // of the contract's eighteen families (missing `chunks`, `episodic`,
+    // `people`, `profile`, `retrieval`), so claiming the full contract made
+    // those five answer `UnknownMethod` instead of reporting themselves
+    // absent. `modules::memory::ARTIFACT_CAPABILITIES` was narrowed to match
+    // what is actually served (see its module docs); this pins the same
+    // corrected boundary rather than the stale full-contract claim.
     let cfg = MemorySubsystemConfig::default();
     let binding = binding_for("default", cfg.clone());
     assert_eq!(
         binding.driver_id(),
         crate::openhuman::memory::binding::MODULE_ID
     );
-    assert_eq!(binding.capabilities(), Capabilities::all());
+    let advertised = binding.capabilities();
+    assert!(advertised.contains_all(Capabilities::mandatory()));
+    assert!(advertised.contains(Capability::Tree));
+    assert!(
+        !advertised.contains(Capability::Retrieval),
+        "the pinned v1.0.1 artifact has no bus member for `retrieval` (#5598)"
+    );
+    assert!(Capabilities::all().contains_all(advertised));
+    assert_ne!(
+        advertised,
+        Capabilities::all(),
+        "advertising the whole contract is the #5598 over-claim"
+    );
 }
 
 /// The negative control that makes the assertions above mean something.
