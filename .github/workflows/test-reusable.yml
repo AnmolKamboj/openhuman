@@ -190,11 +190,11 @@ jobs:
           FEATURES="$(bash scripts/ci/product-features.sh),bin-tools"
           echo "[test-reusable] feature set: ${FEATURES}"
 
-          # `--features bin-tools` is load-bearing, not cosmetic: the six binaries
-          # under src/bin/ now declare `required-features = ["bin-tools"]`, so
-          # without it `--bins` silently matches NOTHING and this lane goes green
-          # having compiled none of them. fleet.rs and slack_backfill.rs each carry
-          # a `#[cfg(test)] mod`, so those tests would vanish too, with no error.
+          # `--features bin-tools` is load-bearing, not cosmetic: the ops binaries
+          # under src/bin/ declare `required-features = ["bin-tools"]`, so without
+          # it `--bins` silently skips them and this lane goes green having
+          # compiled none of them. fleet.rs carries a `#[cfg(test)] mod`, so those
+          # tests would vanish too, with no error.
           bash scripts/ci-cancel-aware.sh cargo test -p openhuman --lib --bins --features "${FEATURES}"
           bash scripts/ci-cancel-aware.sh cargo test -p openhuman --doc --features "${FEATURES}"
 

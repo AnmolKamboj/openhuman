@@ -8,7 +8,6 @@ use crate::openhuman::agent::context::ContextManager;
 use crate::openhuman::agent::harness::session::types::{Agent, AgentBuilder};
 use crate::openhuman::agent::harness::TriggerMemoryAgent;
 use crate::openhuman::config::ContextConfig;
-use crate::openhuman::memory::agent::memory_loader::DefaultMemoryLoader;
 use crate::openhuman::memory::Memory;
 use crate::openhuman::tools::agent_policy::ToolPolicyEngine;
 use crate::openhuman::tools::{Tool, ToolSpec};
@@ -27,7 +26,6 @@ impl AgentBuilder {
             shared_experience_memory: None,
             prompt_builder: None,
             tool_dispatcher: None,
-            memory_loader: None,
             config: None,
             context_config: None,
             model_name: None,
@@ -139,15 +137,6 @@ impl AgentBuilder {
         tool_dispatcher: Box<dyn crate::openhuman::agent::dispatcher::ToolDispatcher>,
     ) -> Self {
         self.tool_dispatcher = Some(tool_dispatcher);
-        self
-    }
-
-    /// Sets the memory loader for the agent.
-    pub fn memory_loader(
-        mut self,
-        memory_loader: Box<dyn crate::openhuman::memory::agent::memory_loader::MemoryLoader>,
-    ) -> Self {
-        self.memory_loader = Some(memory_loader);
         self
     }
 
@@ -598,9 +587,6 @@ impl AgentBuilder {
                 self.tool_dispatcher
                     .ok_or_else(|| anyhow::anyhow!("tool_dispatcher is required"))?,
             ),
-            memory_loader: self
-                .memory_loader
-                .unwrap_or_else(|| Box::new(DefaultMemoryLoader::default())),
             config,
             model_name,
             model_vision: self.model_vision.unwrap_or(false),
@@ -612,6 +598,7 @@ impl AgentBuilder {
             auto_save: self.auto_save.unwrap_or(false),
             last_memory_context: None,
             last_turn_citations: Vec::new(),
+            pending_citations: None,
             last_turn_usage_totals: None,
             last_turn_hit_cap: false,
             history: Vec::new(),

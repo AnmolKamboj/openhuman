@@ -69,7 +69,10 @@ pub use turn_subagent_usage::{LastTurnUsage, SubagentUsageEntry};
 pub(crate) use graph::run_channel_turn_via_graph;
 #[cfg(feature = "channels")]
 pub(crate) use instructions::build_tool_instructions_filtered;
-pub(crate) use parse::{parse_tool_calls, parse_tool_calls_with_pformat};
+pub(crate) use parse::parse_tool_calls_with_pformat;
+// No `parse_tool_calls` re-export: the dispatcher reaches the bare text parser
+// through `tinyagents`' dialect layer now, and the tests that still use it name
+// `parse::parse_tool_calls` directly.
 
 #[cfg(test)]
 mod harness_gap_tests;

@@ -617,9 +617,26 @@ impl Agent {
     }
 
     /// Drain and return memory citations collected for the latest completed turn.
-    pub fn take_last_turn_citations(
+    ///
+    /// Async because collection runs concurrently with the turn rather than
+    /// ahead of it (see `Agent::pending_citations`); this joins whatever is
+    /// still in flight. By the time a caller asks, the model round-trip has
+    /// already happened, so the recall has normally finished and this does not
+    /// wait.
+    pub async fn take_last_turn_citations(
         &mut self,
     ) -> Vec<crate::openhuman::memory::agent::memory_loader::MemoryCitation> {
+        if let Some(handle) = self.pending_citations.take() {
+            match handle.await {
+                Ok(citations) => self.last_turn_citations = citations,
+                // A panicked or aborted collection must not fail the turn — the
+                // citations are decorative, the reply is not.
+                Err(err) => {
+                    log::warn!("[agent_loop] citation task did not complete: {err}");
+                    self.last_turn_citations.clear();
+                }
+            }
+        }
         std::mem::take(&mut self.last_turn_citations)
     }
 

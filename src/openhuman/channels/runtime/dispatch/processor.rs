@@ -273,7 +273,7 @@ pub(crate) async fn process_channel_runtime_message(
         let _ = ctx
             .memory
             .store(
-                "",
+                crate::openhuman::agent::learning::transcript_ingest::CONVERSATION_RAW_NAMESPACE,
                 &autosave_key,
                 &msg.content,
                 crate::openhuman::memory::api::types::MemoryCategory::Conversation,

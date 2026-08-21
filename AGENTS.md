@@ -12,7 +12,7 @@ Architecture docs: [`gitbooks/developing/architecture.md`](gitbooks/developing/a
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | **`app/`**              | pnpm workspace `openhuman-app`: Vite + React (`app/src/`), Tauri desktop host (`app/src-tauri/`), Vitest tests                |
 | **`src/`** (root)       | Rust lib crate `openhuman` + `openhuman-core` CLI binary (`src/main.rs`) — `src/core/` (transport), `src/openhuman/*` domains |
-| **`Cargo.toml`** (root) | Core crate; `cargo build --bin openhuman-core`. Also `slack-backfill` and `gmail-backfill-3d` in `src/bin/`.                  |
+| **`Cargo.toml`** (root) | Core crate; `cargo build --bin openhuman-core`. Also `openhuman-fleet`, `rss-bench` and `library-profile` in `src/bin/`.                  |
 | **`docs/`**             | Deep internals. Public contributor docs in `gitbooks/developing/`.                                                            |
 
 Commands assume **repo root**. Root `package.json` is `openhuman-repo` (private, pnpm-enforced).
@@ -350,6 +350,45 @@ two paths' equivalence — keep that as call sites migrate.
 A move never changes the wire surface — RPC namespaces are string literals in `ControllerSchema`, not derived from module paths — so **do not rename namespace strings to match new paths**.
 
 **Skills runtime**: the QuickJS per-skill VM engine is gone. `src/openhuman/skills/` holds skill metadata/tool descriptors; execution of installed `SKILL.md` workflows lives in `src/openhuman/skills/runtime/` (starts/cancels runs, hosts the `skill_executor` agent, reuses `runtime_node`/`runtime_python`).
+
+### Tool calling lives in tinyagents — `src/openhuman/agent/dispatcher.rs` is a seam
+
+How a model is told to ask for a tool, how the ask is parsed, how results are
+rendered back, and how a transcript is replayed onto the provider wire are one
+thing — a **dialect** — and all four live in
+`tinyagents::harness::tool_calling::dialect` (`XmlDialect` / `PFormatDialect` /
+`NativeDialect`). They belong together because a catalogue advertising one
+grammar next to a parser expecting another is a silent whole-turn failure: the
+model emits a call, nothing recognises it, the iteration is spent, and no error
+is logged anywhere.
+
+`dispatcher.rs` keeps two things and delegates the rest:
+
+- **The vocabulary.** `ParsedToolCall` / `ToolExecutionResult` are named for
+  ~190 call sites, and `ConversationMessage` is the durable JSONL record on
+  existing installations' disks. The crate speaks its own thin `TranscriptEntry`
+  instead, so the conversions in `dispatcher.rs` are the seam — field-wise maps
+  that keep the wire bytes identical while the logic sits upstream. **A
+  conversion that decides something is a second implementation in disguise; put
+  the judgement in the crate.**
+- **The `Tool` trait object.** The crate takes `ToolSchema`s, never a host's
+  tool type — same reason the parse seam already documents: depending on
+  OpenHuman's `Tool` would make the crate unusable by a second host.
+
+Two consequences worth knowing before editing this area:
+
+- **Executing a tool did not move and will not.** The security policy, approval
+  gate, sandbox, per-call timeout and progress events are OpenHuman's. A dialect
+  decides what the model reads and writes; it never decides what is allowed to
+  happen. That line is what keeps the policy auditable in one place.
+- **The catalogue has one renderer.** `ToolsSection` calls the crate's
+  `render_pformat_catalogue`, which builds each `Call as:` signature from the
+  same schema its parser reconstructs arguments from — so prompt order and parse
+  order agree by construction. The local copy this replaced carried a comment
+  promising the two "stay in lockstep", which is the shape of a bug waiting to
+  happen, not a guarantee. `humanize_tool_name` and `context_detail_from_args`
+  in `tools/traits.rs` are re-exports/wrappers over the crate for the same
+  reason; only the trimming rule (80 chars, `…`) is OpenHuman's.
 
 **Rules:**
 

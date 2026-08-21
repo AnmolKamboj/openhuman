@@ -147,35 +147,22 @@ pub struct ToolSpec {
 /// `gmail_read_message` → "Gmail Read Message". Used as the default for
 /// [`Tool::display_label`] and as a safety net for any tool that doesn't
 /// supply a curated phrase, so a timeline row never shows raw `snake_case`.
-pub fn humanize_tool_name(name: &str) -> String {
-    let trimmed = name
-        .strip_prefix("composio_")
-        .or_else(|| name.strip_prefix("mcp_"))
-        .unwrap_or(name);
+///
+/// Re-exported from [`tinyagents::harness::tool`]: naming a tool for a human is
+/// not OpenHuman-specific, and two copies of the prefix list is how one of them
+/// silently stops stripping a prefix the other does.
+pub use tinyagents::harness::tool::humanize_tool_name;
 
-    let mut out = String::with_capacity(trimmed.len());
-    let mut capitalize = true;
-    for ch in trimmed.chars() {
-        if ch == '_' || ch == '-' {
-            if !out.is_empty() && !out.ends_with(' ') {
-                out.push(' ');
-            }
-            capitalize = true;
-        } else if capitalize {
-            out.extend(ch.to_uppercase());
-            capitalize = false;
-        } else {
-            out.push(ch);
-        }
-    }
-
-    let label = out.trim();
-    if label.is_empty() {
-        name.to_string()
-    } else {
-        label.to_string()
-    }
-}
+/// Trimming rule for [`context_detail_from_args`].
+///
+/// OpenHuman elides with a single `…` rather than three dots, because the
+/// detail sits inline in a timeline row where three characters of budget are
+/// worth having. That is the only thing this host changes about the rule.
+const CONTEXT_DETAIL: tinyagents::harness::tool::ContextDetailOptions =
+    tinyagents::harness::tool::ContextDetailOptions {
+        max_chars: 80,
+        ellipsis: "…",
+    };
 
 /// Pull the single most-relevant contextual argument out of a tool-call's
 /// args for the timeline "detail" (the bracketed context after the label).
@@ -186,70 +173,11 @@ pub fn humanize_tool_name(name: &str) -> String {
 /// steven@gmail.com" / `Read(src/openhuman/web3/wallet/ops.rs)` without every tool
 /// hand-writing a [`Tool::display_detail`] override. Returns `None` when no
 /// recognized key carries a usable scalar.
+///
+/// The key list and the scan live in [`tinyagents::harness::tool`]; this wrapper
+/// supplies OpenHuman's [`CONTEXT_DETAIL`] trimming.
 pub fn context_detail_from_args(args: &serde_json::Value) -> Option<String> {
-    /// Common "what is this acting on" keys, most-specific first.
-    const CONTEXT_KEYS: &[&str] = &[
-        "to",
-        "recipient",
-        "recipient_email",
-        "to_email",
-        "email",
-        "query",
-        "q",
-        "search",
-        "search_query",
-        "url",
-        "file_path",
-        "path",
-        "command",
-        "cmd",
-        "subject",
-        "title",
-        "channel",
-        "channel_id",
-        "repo",
-        "repository",
-        "name",
-        "id",
-    ];
-
-    let obj = args.as_object()?;
-    for key in CONTEXT_KEYS {
-        let Some(value) = obj.get(*key) else { continue };
-        if let Some(rendered) = render_context_value(value) {
-            return Some(rendered);
-        }
-    }
-    None
-}
-
-/// Render a single arg value to a compact detail string, or `None` when it
-/// carries nothing useful (empty string, object, null).
-fn render_context_value(value: &serde_json::Value) -> Option<String> {
-    /// Max characters for a timeline detail before it is elided.
-    const MAX_DETAIL: usize = 80;
-
-    let raw = match value {
-        serde_json::Value::String(s) => s.trim().to_string(),
-        serde_json::Value::Number(n) => n.to_string(),
-        serde_json::Value::Bool(b) => b.to_string(),
-        serde_json::Value::Array(items) => items
-            .iter()
-            .filter_map(|v| v.as_str())
-            .collect::<Vec<_>>()
-            .join(", "),
-        _ => String::new(),
-    };
-    let raw = raw.split_whitespace().collect::<Vec<_>>().join(" ");
-    if raw.is_empty() {
-        return None;
-    }
-    if raw.chars().count() > MAX_DETAIL {
-        let truncated: String = raw.chars().take(MAX_DETAIL.saturating_sub(1)).collect();
-        Some(format!("{truncated}…"))
-    } else {
-        Some(raw)
-    }
+    tinyagents::harness::tool::context_detail_from_args_with(args, CONTEXT_DETAIL)
 }
 
 /// Core tool trait — implement for any capability (built-in or integration-based).

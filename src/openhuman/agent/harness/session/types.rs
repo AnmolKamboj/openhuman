@@ -16,7 +16,6 @@ use crate::openhuman::agent::messages::{ChatMessage, ConversationMessage};
 use crate::openhuman::agent::progress::AgentProgress;
 use crate::openhuman::agent::tinyagents::TurnModelSource;
 use crate::openhuman::agent::tool_policy::ToolPolicy;
-use crate::openhuman::memory::agent::memory_loader::MemoryLoader;
 use crate::openhuman::memory::Memory;
 use crate::openhuman::tools::agent_policy::ToolPolicySession;
 use crate::openhuman::tools::{Tool, ToolSpec};
@@ -63,7 +62,6 @@ pub struct Agent {
     // `Arc` (not `Box`) so the tinyagents turn path can hold a cheap clone of
     // the dispatcher without borrowing the `Agent` while session state mutates.
     pub(super) tool_dispatcher: Arc<dyn ToolDispatcher>,
-    pub(super) memory_loader: Box<dyn MemoryLoader>,
     pub(super) config: crate::openhuman::config::AgentConfig,
     pub(super) model_name: String,
     /// User-configured vision capability for [`Self::model_name`], evaluated at
@@ -90,6 +88,23 @@ pub struct Agent {
     /// Consumed by web-channel delivery to render source chips in the UI.
     pub(super) last_turn_citations:
         Vec<crate::openhuman::memory::agent::memory_loader::MemoryCitation>,
+    /// In-flight citation recall for the current turn.
+    ///
+    /// Citations are UI-only — they render source chips and never enter the
+    /// prompt — but collecting them is a full recall, which on a large memory
+    /// store is one of the most expensive things a turn does. Running it inline
+    /// before the model call meant every reply waited on a scan whose result the
+    /// model never sees.
+    ///
+    /// It is spawned instead, so the scan overlaps the inference round-trip, and
+    /// joined only when a consumer actually asks for the citations — which
+    /// happens after the turn returns. The contract is unchanged: callers still
+    /// get the citations for the turn they just ran.
+    pub(super) pending_citations: Option<
+        tokio::task::JoinHandle<
+            Vec<crate::openhuman::memory::agent::memory_loader::MemoryCitation>,
+        >,
+    >,
     /// Holistic token/cost/context accounting for the most recent turn (parent +
     /// any sub-agents spawned during it). Consumed by web-channel delivery to
     /// surface session token/cost/context meters in the UI footer. `None` until
@@ -419,7 +434,6 @@ pub struct AgentBuilder {
     pub(super) shared_experience_memory: Option<Arc<dyn Memory>>,
     pub(super) prompt_builder: Option<SystemPromptBuilder>,
     pub(super) tool_dispatcher: Option<Box<dyn ToolDispatcher>>,
-    pub(super) memory_loader: Option<Box<dyn MemoryLoader>>,
     pub(super) config: Option<crate::openhuman::config::AgentConfig>,
     /// Optional [`ContextConfig`] override threaded through from
     /// `Agent::from_config`. When unset the builder falls back to
