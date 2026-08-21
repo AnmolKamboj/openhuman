@@ -65,6 +65,9 @@ function parseArgs(argv) {
     if (!entry) throw new Error(`unknown argument: ${argv[i]}`);
     const [key, cast] = entry;
     const raw = argv[++i];
+    if (raw === undefined) {
+      throw new Error(`${argv[i - 1]} expects a value, got nothing`);
+    }
     const value = cast(raw);
     if (cast === Number && !Number.isFinite(value)) {
       throw new Error(`${argv[i - 1]} expects a number, got: ${raw}`);

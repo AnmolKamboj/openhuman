@@ -42,11 +42,17 @@ function parseArgs(argv) {
     if (arg === '--tree') {
       opts.tree = true;
     } else if (arg === '--pid') {
-      opts.pid = Number(argv[++i]);
+      const raw = argv[++i];
+      if (raw === undefined) throw new Error('--pid expects a value');
+      opts.pid = Number(raw);
     } else if (arg === '--interval-ms') {
-      opts.intervalMs = Number(argv[++i]);
+      const raw = argv[++i];
+      if (raw === undefined) throw new Error('--interval-ms expects a value');
+      opts.intervalMs = Number(raw);
     } else if (arg === '--duration-ms') {
-      opts.durationMs = Number(argv[++i]);
+      const raw = argv[++i];
+      if (raw === undefined) throw new Error('--duration-ms expects a value');
+      opts.durationMs = Number(raw);
     } else {
       throw new Error(`unknown argument: ${arg}`);
     }
@@ -56,6 +62,9 @@ function parseArgs(argv) {
   }
   if (!Number.isFinite(opts.intervalMs) || opts.intervalMs <= 0) {
     throw new Error('--interval-ms must be a positive number');
+  }
+  if (opts.durationMs !== null && (!Number.isFinite(opts.durationMs) || opts.durationMs <= 0)) {
+    throw new Error('--duration-ms must be a positive number');
   }
   return opts;
 }
