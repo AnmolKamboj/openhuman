@@ -66,6 +66,29 @@ Artifacts land in `target/bench/<timestamp>/`:
 | `mock-stats.json`| what the mock actually served                   |
 | `core.log`       | core stderr                                     |
 
+Runner options (the script's `--help`):
+
+```text
+--concurrency N     parallel in-flight turns (default 8)
+--turns N           total turns in the measured window (default 300)
+--duration-ms N     run for a wall-clock duration instead of a turn count
+--warmup-turns N    turns to run and discard before measuring (default 10)
+--tool-depth N      tool calls the mock drives per turn (default 1)
+--latency-ms N      mock inference latency (default 40)
+--jitter-ms N       jitter around that latency (default 20)
+--reply-chars N     assistant reply size (default 240)
+--fail-rate F       fraction of completions answered 500 (default 0)
+--thread-mode M     fresh | per-worker | shared (default fresh)
+--interval-ms N     resource sampling interval (default 250)
+--tree              also sample descendant processes
+--keep-workspace    do not delete the temp workspace on exit
+--workspace DIR     reuse an existing populated workspace (implies --keep-workspace)
+--memory-off        disable memory reads and writes (recall + learning)
+--memory-writes-off disable memory writes only, keep recall reads (mutually
+                    exclusive with --memory-off)
+--out-dir DIR       where to write artifacts (default target/bench/<stamp>)
+```
+
 ## How it works without touching the core
 
 Two facts carry the whole design, and a change to either breaks this tier:
@@ -93,9 +116,10 @@ you reproduce this setup by hand:
   exhausts it in a few hundred turns, after which every turn fails instantly.
   The runner raises the limit rather than disabling the check, so the budget
   check's own cost stays in the measurement.
-- **The embedding width must match** (`--embed-dims`, default 1024). A mismatch
-  is only a warning: chunks are stored without vectors and the memory write path
-  runs degraded for the entire run.
+- **The embedding width must match** (the mock serves `--embed-dims`, default
+  1024; the runner never overrides it, so only hand-launched mocks can diverge).
+  A mismatch is only a warning: chunks are stored without vectors and the memory
+  write path runs degraded for the entire run.
 
 ## Baseline
 
@@ -145,8 +169,8 @@ and embeddings every turn — a 5-minute run writes gigabytes. An index over dat
 that genuinely grew is not a leak. So when RSS fails alongside large workspace
 growth, the report marks the verdict `confounded` and says what it cannot rule
 out, rather than asserting a leak it cannot distinguish from correct behaviour.
-To separate the two: re-run with memory capture disabled, or run long enough
-that on-disk growth levels off while RSS keeps climbing.
+To separate the two: re-run with `--memory-off` (memory capture disabled), or
+run long enough that on-disk growth levels off while RSS keeps climbing.
 
 **Throughput held / liveness.** The analyzer checks that turns kept completing,
 because on resource metrics alone a dead process is indistinguishable from a
