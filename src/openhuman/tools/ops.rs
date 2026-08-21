@@ -112,8 +112,11 @@ pub fn all_tools_with_runtime(
     // One shared snapshot of this session's configuration for both language
     // clients. They each hand it to the `tinyruntime` module on every call —
     // the module holds no configuration of its own — so the two must not be
-    // able to disagree about which version this session asked for.
-    let shared_config = Arc::new(root_config.clone());
+    // able to disagree about which version this session asked for. The
+    // registry is assembled under `config`, so the bootstraps share that same
+    // Arc rather than a separately-cloned `root_config` — one configuration
+    // snapshot for everything this session builds.
+    let shared_config = Arc::clone(&config);
 
     // Build a session-scoped managed Node.js bootstrap once, so ShellTool,
     // NodeExecTool, and NpmExecTool all share the same memoised resolution
