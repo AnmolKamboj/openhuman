@@ -30,7 +30,7 @@ use tokio::sync::RwLock;
 use super::config::{self, HookConfig, HookDefinition};
 use super::exec::{self, HookRun, DEFAULT_TIMEOUT};
 use super::matcher;
-use super::types::{HookEvent, HookInput, HookOutput, HookPermission};
+use super::types::{HookEvent, HookInput, HookOutput};
 
 /// Follow-ups a single hook may inject per session before the engine stops
 /// honouring it. Matches Cursor's default; a definition may raise it, and an
@@ -340,12 +340,4 @@ impl HookEngine {
             .await
             .retain(|(session, _), _| session != session_id);
     }
-}
-
-/// Convert a merged decision into the permission the caller should enforce.
-///
-/// `None` from every hook means allow — an event nobody voted on is not a
-/// denial.
-pub fn effective_permission(output: &HookOutput) -> HookPermission {
-    output.permission.unwrap_or(HookPermission::Allow)
 }

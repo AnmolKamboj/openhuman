@@ -303,8 +303,9 @@ pub fn ambient_env(input: &HookInput) -> BTreeMap<String, String> {
 
 /// True when a path exists and is executable by this process.
 ///
-/// Used by the RPC validate endpoint to report a hook that will never run,
-/// rather than waiting for the first event to discover it.
+/// Read at **load** time so a hook whose script is missing or was committed
+/// without the executable bit is reported when the file is read, not when the
+/// moment it was meant to guard finally arrives.
 pub fn is_executable(path: &Path) -> bool {
     #[cfg(unix)]
     {

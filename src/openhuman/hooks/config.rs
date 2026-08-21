@@ -219,11 +219,44 @@ impl HookConfig {
                 }
                 definition.layer = Some(layer);
                 definition.source_dir.clone_from(&source_dir);
+                if let Some(problem) = unrunnable_reason(&definition) {
+                    self.warnings.push(format!(
+                        "{}: hook for '{event}' {problem}",
+                        path.display()
+                    ));
+                }
                 slot.push(definition);
             }
         }
         self.sources.push(path.to_path_buf());
     }
+}
+
+/// Report a command-hook script that cannot run, or `None` when it looks fine.
+///
+/// Only *relative* paths are checked. An absolute path may legitimately be
+/// resolved on a machine this config was not loaded on, and a bare name is a
+/// `PATH` lookup or a shell built-in — guessing at either would produce a
+/// warning for a working hook, which is worse than no warning at all.
+fn unrunnable_reason(definition: &HookDefinition) -> Option<String> {
+    if definition.kind != HookKind::Command {
+        return None;
+    }
+    let program = definition.command.split_whitespace().next()?;
+    if !program.starts_with("./") && !program.starts_with("../") {
+        return None;
+    }
+    let resolved = definition.source_dir.as_ref()?.join(program);
+    if !resolved.exists() {
+        return Some(format!("points at a missing script: {}", resolved.display()));
+    }
+    if !super::exec::is_executable(&resolved) {
+        return Some(format!(
+            "points at a script that is not executable (chmod +x): {}",
+            resolved.display()
+        ));
+    }
+    None
 }
 
 /// Suggest the closest known event name, so a typo reports something useful
