@@ -115,13 +115,20 @@ async function rpc(method, params, timeoutMs = opts.timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const headers = { 'content-type': 'application/json' };
-    if (opts.token) headers.authorization = `Bearer ${opts.token}`;
     const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method, params });
     let url = `${opts.coreUrl}/rpc`;
+    // The bearer belongs to the core we were pointed at. A redirect may land on
+    // a different origin, so it is re-attached per hop rather than once up
+    // front -- otherwise following one would hand the token to whoever the
+    // Location header names.
+    const coreOrigin = new URL(opts.coreUrl).origin;
     let res;
     for (let hop = 0; ; hop += 1) {
       if (hop >= 5) throw new Error('too many redirects');
+      const headers = { 'content-type': 'application/json' };
+      if (opts.token && new URL(url).origin === coreOrigin) {
+        headers.authorization = `Bearer ${opts.token}`;
+      }
       res = await fetch(url, {
         method: 'POST',
         headers,
