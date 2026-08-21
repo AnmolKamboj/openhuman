@@ -126,7 +126,7 @@ Published from `ops.rs`: `DomainEvent::ComposioConnectionCreated` (authorize), `
 - `src/openhuman/heartbeat/planner/collectors.rs`, `subconscious/situation_report` — read connected integrations / calendar.
 - `src/openhuman/agent/learning/{linkedin_enrichment,profile_md_renderer}.rs`, `memory/read_rpc.rs`, `memory_tree/score/store.rs` — profile/identity + memory consumers.
 - `src/openhuman/skills/preflight.rs` — identity gate via `connection_identity`.
-- `src/openhuman/security/credentials/ops.rs`, `channels/runtime/dispatch.rs`, `src/bin/slack_backfill.rs`.
+- `src/openhuman/security/credentials/ops.rs`, `channels/runtime/dispatch.rs`.
 
 ## Notes / gotchas
 

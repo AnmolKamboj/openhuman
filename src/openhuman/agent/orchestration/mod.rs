@@ -21,7 +21,6 @@ pub(crate) mod background_completions;
 pub(crate) mod background_delivery;
 pub mod command_center;
 pub(crate) mod delegation;
-pub mod harness_audit;
 mod ops;
 pub mod pairing;
 mod pairing_schemas;

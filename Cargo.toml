@@ -39,31 +39,6 @@ name = "openhuman-core"
 path = "src/main.rs"
 
 [[bin]]
-name = "slack-backfill"
-path = "src/bin/slack_backfill.rs"
-required-features = ["bin-tools"]
-
-[[bin]]
-name = "gmail-backfill-3d"
-path = "src/bin/gmail_backfill_3d.rs"
-required-features = ["bin-tools"]
-
-[[bin]]
-name = "memory-tree-init-smoke"
-path = "src/bin/memory_tree_init_smoke.rs"
-required-features = ["bin-tools"]
-
-[[bin]]
-name = "inference-probe"
-path = "src/bin/inference_probe.rs"
-required-features = ["bin-tools"]
-
-[[bin]]
-name = "harness-subagent-audit"
-path = "src/bin/harness_subagent_audit.rs"
-required-features = ["bin-tools"]
-
-[[bin]]
 name = "test-mcp-stub"
 path = "src/bin/test_mcp_stub.rs"
 
@@ -1086,12 +1061,13 @@ e2e-test-support = []
 # Builds the `rss-bench` benchmark binary (#5046). Default-OFF, so it is never
 # part of the shipped desktop/library build and the feature-forwarding gate
 # (which only inspects the `default` list) never requires forwarding it.
-# CLI argument parsing + logger init for the six developer/ops binaries under
-# `src/bin/`. Default-OFF and NOT in `default`: nothing in the library reaches
-# `clap` or `env_logger` (the one hit in `core/logging.rs` is a doc comment),
-# so the shipped desktop build has no reason to carry a 14-crate CLI stack.
-# Each owning `[[bin]]` declares `required-features = ["bin-tools"]`, so those
-# targets are simply skipped rather than failing to link when it is off.
+# CLI argument parsing + logger init for the developer/ops binaries under
+# `src/bin/` — today only `openhuman-fleet`. Default-OFF and NOT in `default`:
+# nothing in the library reaches `clap` or `env_logger` (the one hit in
+# `core/logging.rs` is a doc comment), so the shipped desktop build has no
+# reason to carry a 14-crate CLI stack. Each owning `[[bin]]` declares
+# `required-features = ["bin-tools"]`, so those targets are simply skipped
+# rather than failing to link when it is off.
 # Battery/AC probe feeding the scheduler's throttle decision. Default-ON.
 # When off there is no hardware probe: `sample_power` reports "on AC, no charge
 # signal", which is the same answer the real probe gives on a server or
