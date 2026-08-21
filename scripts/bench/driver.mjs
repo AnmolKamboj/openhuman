@@ -273,10 +273,11 @@ async function main() {
   if (opts.out) fs.writeFileSync(opts.out, rendered);
   process.stdout.write(`${rendered}\n`);
 
-  // A run where every turn failed produced no usable measurement. Exit non-zero
-  // so a caller cannot mistake it for a clean result.
-  if (completed > 0 && results.ok === 0) {
-    process.stderr.write('[driver] every turn failed — no usable measurement\n');
+  // A run with no completed turn, or one where every turn failed, produced no
+  // usable measurement. Exit non-zero so a caller cannot mistake it for a clean
+  // result.
+  if (completed === 0 || results.ok === 0) {
+    process.stderr.write(`[driver] no usable measurement (completed=${completed}, ok=${results.ok})\n`);
     process.exit(1);
   }
 }

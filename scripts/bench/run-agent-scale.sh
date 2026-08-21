@@ -35,6 +35,10 @@
 #   --interval-ms N     resource sampling interval (default 250)
 #   --tree              also sample descendant processes
 #   --keep-workspace    do not delete the temp workspace on exit
+#   --workspace DIR     reuse an existing populated workspace (implies --keep-workspace)
+#   --memory-off        disable memory reads and writes (recall + learning)
+#   --memory-writes-off disable only memory writes, keep recall reads (mutually
+#                       exclusive with --memory-off)
 #   --out-dir DIR       where to write artifacts (default target/bench/<stamp>)
 #
 # Exit status is the analyzer's: non-zero when a leak or drift check fails.
@@ -85,6 +89,14 @@ while [[ $# -gt 0 ]]; do
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+
+if [[ -n "$MEMORY_OFF" && -n "$MEMORY_WRITES_OFF" ]]; then
+  echo "error: --memory-off and --memory-writes-off are mutually exclusive:" >&2
+  echo "  --memory-off already disables writes, so combining them would emit a" >&2
+  echo "  config with duplicate [memory] and [learning] tables, which the core" >&2
+  echo "  rejects. Run with just --memory-off (both off) or just --memory-writes-off." >&2
+  exit 2
+fi
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/target/bench/$STAMP}"
@@ -144,6 +156,11 @@ if [[ "$WORKSPACE_FS" == "tmpfs" || "$WORKSPACE_FS" == "ramfs" ]]; then
   echo "  A RAM-backed filesystem charges the core's disk writes against machine" >&2
   echo "  memory, which invalidates the memory measurement, and fills up mid-run." >&2
   echo "  Use --out-dir to place artifacts on a disk-backed filesystem." >&2
+  exit 1
+fi
+if [[ "$WORKSPACE_FS" == "unknown" ]]; then
+  echo "error: could not determine the filesystem backing $WORKSPACE (findmnt missing or failed)." >&2
+  echo "  The guard exists to keep the run off tmpfs/ramfs; refusing to proceed blind." >&2
   exit 1
 fi
 
