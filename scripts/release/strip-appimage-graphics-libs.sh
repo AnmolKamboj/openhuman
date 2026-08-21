@@ -1,0 +1,910 @@
+#!/usr/bin/env bash
+# Strip host graphics libraries from AppImage bundles so they load the user's
+# system Mesa/libdrm/libva at launch instead of the older versions baked in by
+# lib4bin's ldd-walk on the ubuntu-22.04 build runner.
+#
+# Without this, AppImages built on Mesa 22.x fail to initialize on systems
+# with newer GPUs (RDNA3, Intel Arc, Lovelace) because the bundled drivers
+# can't talk to the host kernel/driver stack. AppImage convention is to never
+# ship graphics drivers — they must come from the host. See:
+# https://github.com/AppImageCommunity/pkg2appimage/blob/master/excludelist
+#
+# Only top-level lib directories are swept. CEF's own subdirs (swiftshader/,
+# locales/, libcef.so neighbors) are left alone — CEF ships its own
+# GLES/EGL implementation that must stay bundled.
+#
+# Usage: strip-appimage-graphics-libs.sh <bundle-root> [bundle-root...]
+#   where <bundle-root> contains an `appimage/` subdir with *.AppImage files.
+#
+# Env:
+#   TAURI_SIGNING_PRIVATE_KEY            — re-sign modified artifacts when set
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD   — passphrase for the key (may be empty)
+#   APPIMAGETOOL_URL                     — override appimagetool download URL
+#   APPIMAGETOOL_SHA256                  — expected SHA256 of the download
+#                                          (verified before use when set; rotate
+#                                          alongside APPIMAGETOOL_URL)
+#   APPIMAGE_RUNTIME_SMOKE               — set to 1 to run the final AppRun
+#                                          startup smoke after static validation
+#   APPIMAGE_RUNTIME_VALIDATOR           — override the final-artifact validator
+#                                          command (intended for regression tests)
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APPIMAGE_RUNTIME_VALIDATOR="${APPIMAGE_RUNTIME_VALIDATOR:-$SCRIPT_DIR/validate-appimage-runtime.sh}"
+# shellcheck source=scripts/release/tauri-signer.sh
+. "$SCRIPT_DIR/tauri-signer.sh"
+
+EXCLUDE_PATTERNS=(
+  'libGL.so.*'
+  'libGLX.so.*'
+  'libGLdispatch.so.*'
+  'libGLESv1_CM.so.*'
+  'libGLESv2.so.*'
+  'libEGL.so.*'
+  'libgbm.so.*'
+  'libdrm.so.*'
+  'libdrm_*.so.*'
+  'libva.so.*'
+  'libva-drm.so.*'
+  'libva-glx.so.*'
+  'libva-x11.so.*'
+  'libvdpau.so.*'
+  'libxcb-dri2.so.*'
+  'libxcb-dri3.so.*'
+  'libxcb-glx.so.*'
+  'libxcb-present.so.*'
+)
+
+# Default to a pinned release tag rather than the mutable `continuous` asset so
+# CI builds are reproducible and resistant to upstream replacement. Override via
+# APPIMAGETOOL_URL (and bump APPIMAGETOOL_SHA256 alongside it).
+default_appimagetool_url() {
+  local target_arch="${APPIMAGE_TARGET_ARCH:-${MATRIX_TARGET:-$(uname -m)}}"
+  case "$target_arch" in
+    x86_64*|amd64*)
+      echo "https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-x86_64.AppImage"
+      ;;
+    aarch64*|arm64*)
+      echo "https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-aarch64.AppImage"
+      ;;
+    *)
+      echo "[strip-libs] ERROR: unsupported appimagetool architecture: $target_arch" >&2
+      return 1
+      ;;
+  esac
+}
+
+APPIMAGETOOL_URL="${APPIMAGETOOL_URL:-$(default_appimagetool_url)}"
+APPIMAGETOOL_SHA256="${APPIMAGETOOL_SHA256:-}"
+
+ensure_appimagetool() {
+  if command -v appimagetool >/dev/null 2>&1; then
+    APPIMAGETOOL_BIN="$(command -v appimagetool)"
+    return
+  fi
+  local tool=/tmp/appimagetool.AppImage
+  if [ ! -x "$tool" ]; then
+    echo "[strip-libs] Downloading appimagetool from $APPIMAGETOOL_URL"
+    curl -fsSL "$APPIMAGETOOL_URL" -o "$tool"
+    if [ -n "$APPIMAGETOOL_SHA256" ]; then
+      echo "[strip-libs] Verifying appimagetool sha256"
+      if ! echo "${APPIMAGETOOL_SHA256}  ${tool}" | sha256sum -c -; then
+        echo "[strip-libs] ERROR: appimagetool sha256 mismatch — refusing to run" >&2
+        rm -f "$tool"
+        exit 1
+      fi
+    else
+      echo "[strip-libs] WARNING: APPIMAGETOOL_SHA256 not set — skipping integrity check" >&2
+    fi
+    chmod +x "$tool"
+  fi
+  APPIMAGETOOL_BIN="$tool"
+}
+
+ensure_desktop_file_validate() {
+  if command -v desktop-file-validate >/dev/null 2>&1; then
+    return
+  fi
+  local shim="/tmp/desktop-file-validate"
+  printf '#!/bin/sh\nexit 0\n' > "$shim"
+  chmod +x "$shim"
+  export PATH="/tmp:$PATH"
+  echo "[strip-libs] desktop-file-validate not found; installed no-op shim"
+}
+
+appimage_loader_name() {
+  local target_arch="${APPIMAGE_TARGET_ARCH:-${MATRIX_TARGET:-$(uname -m)}}"
+  case "$target_arch" in
+    x86_64*|amd64*)
+      echo "ld-linux-x86-64.so.2"
+      ;;
+    aarch64*|arm64*)
+      echo "ld-linux-aarch64.so.1"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+appimagetool_arch() {
+  local target_arch="${APPIMAGE_TARGET_ARCH:-${MATRIX_TARGET:-$(uname -m)}}"
+  case "$target_arch" in
+    x86_64*|amd64*)
+      echo "x86_64"
+      ;;
+    aarch64*|arm64*)
+      echo "aarch64"
+      ;;
+    *)
+      echo "[strip-libs] ERROR: unsupported AppImage repack architecture: $target_arch" >&2
+      return 1
+      ;;
+  esac
+}
+
+host_dynamic_loader() {
+  local loader_name="$1"
+  local candidates=()
+  case "$loader_name" in
+    ld-linux-x86-64.so.2)
+      candidates=(
+        "/lib64/$loader_name"
+        "/lib/x86_64-linux-gnu/$loader_name"
+        "/usr/lib64/$loader_name"
+        "/usr/lib/$loader_name"
+      )
+      ;;
+    ld-linux-aarch64.so.1)
+      candidates=(
+        "/lib/$loader_name"
+        "/lib/aarch64-linux-gnu/$loader_name"
+        "/usr/lib/aarch64-linux-gnu/$loader_name"
+      )
+      ;;
+  esac
+
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [ -f "$candidate" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+is_executable_elf() {
+  local candidate
+  candidate="$1"
+  [ -f "$candidate" ] || return 1
+  [ -x "$candidate" ] || return 1
+  [ "$(LC_ALL=C head -c 4 "$candidate" 2>/dev/null || true)" = $'\177ELF' ]
+}
+
+emit_entry_if_elf() {
+  local candidate="$1"
+  if is_executable_elf "$candidate"; then
+    printf '%s\0' "$candidate" 2>/dev/null || true
+  fi
+}
+
+emit_desktop_exec_candidate() {
+  local appdir="$1"
+  local command="$2"
+  local candidate
+
+  [ -n "$command" ] || return 0
+  case "$command" in
+    /*)
+      emit_entry_if_elf "$appdir$command"
+      ;;
+    */*)
+      emit_entry_if_elf "$appdir/$command"
+      ;;
+    *)
+      for candidate in "$appdir/$command" "$appdir/bin/$command" "$appdir/usr/bin/$command"; do
+        emit_entry_if_elf "$candidate"
+      done
+      ;;
+  esac
+}
+
+discover_appimage_entry_binaries() {
+  local appdir="$1"
+  local desktop line exec_line command root candidate
+
+  emit_entry_if_elf "$appdir/AppRun"
+  emit_entry_if_elf "$appdir/sharun"
+
+  while IFS= read -r -d '' desktop; do
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in
+        Exec=*)
+          exec_line="${line#Exec=}"
+          case "$exec_line" in
+            \"*\")
+              command="${exec_line#\"}"
+              command="${command%%\"*}"
+              ;;
+            \'*\')
+              command="${exec_line#\'}"
+              command="${command%%\'*}"
+              ;;
+            *)
+              command="${exec_line%%[[:space:]]*}"
+              ;;
+          esac
+          emit_desktop_exec_candidate "$appdir" "$command"
+          ;;
+      esac
+    done < "$desktop"
+  done < <(find "$appdir" -maxdepth 1 -type f -name '*.desktop' -print0)
+
+  for root in "$appdir" "$appdir/bin" "$appdir/usr/bin"; do
+    [ -d "$root" ] || continue
+    while IFS= read -r -d '' candidate; do
+      emit_entry_if_elf "$candidate"
+    done < <(find "$root" -maxdepth 1 -type f -perm /111 -print0)
+  done
+}
+
+uses_sharun_launcher() {
+  local appdir="$1"
+  local candidate
+  while IFS= read -r -d '' candidate; do
+    if grep -a -q "Interpreter not found!" "$candidate" 2>/dev/null; then
+      return 0
+    fi
+  done < <(discover_appimage_entry_binaries "$appdir")
+  return 1
+}
+
+ensure_sharun_interpreter() {
+  local appdir="$1"
+  if ! uses_sharun_launcher "$appdir"; then
+    return 1
+  fi
+
+  local loader_name
+  if ! loader_name="$(appimage_loader_name)"; then
+    echo "[strip-libs] ERROR: AppImage uses sharun but architecture is unsupported; cannot determine required loader" >&2
+    exit 1
+  fi
+
+  local target="$appdir/lib/$loader_name"
+  # Always replace — lib4bin may bundle an ld-linux from the CI runner
+  # that is incompatible with newer host glibc (#3224, #3099).
+  # The host_dynamic_loader source is the CI runner's own system ld-linux,
+  # which is guaranteed compatible with the binary compiled on the same runner.
+  rm -f "$target"
+
+  local source
+  if ! source="$(host_dynamic_loader "$loader_name")"; then
+    echo "[strip-libs] ERROR: AppImage uses sharun but host loader $loader_name was not found; refusing to ship an AppImage that exits with 'Interpreter not found!'" >&2
+    exit 1
+  fi
+
+  mkdir -p "$appdir/lib"
+  cp -L "$source" "$target"
+  chmod 755 "$target"
+  echo "[strip-libs]   bundling sharun interpreter ${target#"$appdir"/} from $source"
+  return 0
+}
+
+rewrite_sharun_lib_path() {
+  local appdir="$1"
+  if ! uses_sharun_launcher "$appdir"; then
+    return 1
+  fi
+
+  local lib_path="$appdir/shared/lib/lib.path"
+  [ -s "$lib_path" ] || return 1
+
+  local -a normalized_entries=()
+  local entry normalized suffix existing duplicate index
+  local normalized_count=0
+  while IFS= read -r entry || [ -n "$entry" ]; do
+    if [ -z "$entry" ]; then
+      echo "[strip-libs] ERROR: shared/lib/lib.path contains an empty entry" >&2
+      return 1
+    fi
+    case "$entry" in
+      *$'\r'*|*:*)
+        echo "[strip-libs] ERROR: shared/lib/lib.path contains a malformed entry: '$entry'" >&2
+        return 1
+        ;;
+      [[:space:]]*|*[[:space:]])
+        echo "[strip-libs] ERROR: shared/lib/lib.path contains a malformed entry: '$entry'" >&2
+        return 1
+        ;;
+    esac
+
+    case "$entry" in
+      +)
+        normalized="+"
+        ;;
+      +/*)
+        normalized="$entry"
+        ;;
+      /*)
+        case "$entry" in
+          */squashfs-root/shared/lib)
+            normalized="+"
+            ;;
+          */squashfs-root/shared/lib/*)
+            suffix="${entry#*/squashfs-root/shared/lib/}"
+            normalized="+/$suffix"
+            ;;
+          */appimage_deb/data/usr/lib)
+            normalized="+"
+            ;;
+          */appimage_deb/data/usr/lib/*)
+            suffix="${entry#*/appimage_deb/data/usr/lib/}"
+            normalized="+/$suffix"
+            ;;
+          # lib4bin/quick-sharun staging roots vary by runner and tool
+          # version; older artifacts use an arbitrary absolute prefix ending
+          # in data/usr/lib rather than the appimage_deb directory above.
+          # Match that stable staged-layout tail here. The derived marker is
+          # validated below against the extracted AppDir's shared/lib tree.
+          */data/usr/lib)
+            normalized="+"
+            ;;
+          */data/usr/lib/*)
+            suffix="${entry#*/data/usr/lib/}"
+            normalized="+/$suffix"
+            ;;
+          *)
+            continue
+            ;;
+        esac
+        ;;
+      *)
+        echo "[strip-libs] ERROR: shared/lib/lib.path contains a malformed entry: '$entry'" >&2
+        return 1
+        ;;
+    esac
+
+    case "${normalized#+}" in
+      *+*)
+        echo "[strip-libs] ERROR: shared/lib/lib.path contains a malformed entry: '$entry'" >&2
+        return 1
+        ;;
+    esac
+
+    duplicate=0
+    index=0
+    while [ "$index" -lt "$normalized_count" ]; do
+      existing="${normalized_entries[$index]}"
+      if [ "$existing" = "$normalized" ]; then
+        duplicate=1
+        break
+      fi
+      index=$((index + 1))
+    done
+    if [ "$duplicate" -eq 0 ]; then
+      normalized_entries[$normalized_count]="$normalized"
+      normalized_count=$((normalized_count + 1))
+    fi
+  done <"$lib_path"
+
+  if [ "$normalized_count" -eq 0 ]; then
+    echo "[strip-libs] ERROR: shared/lib/lib.path contains no valid AppDir library entries" >&2
+    return 1
+  fi
+
+  local normalized_file
+  normalized_file="$(mktemp "$lib_path.tmp.XXXXXX")"
+  printf '%s\n' "${normalized_entries[@]}" >"$normalized_file"
+  if cmp -s "$normalized_file" "$lib_path"; then
+    rm -f "$normalized_file"
+    return 1
+  fi
+
+  mv "$normalized_file" "$lib_path"
+  echo "[strip-libs]   normalized shared/lib/lib.path entries:"
+  printf '[strip-libs]     %s\n' "${normalized_entries[@]}"
+  return 0
+}
+
+validate_sharun_lib_path() {
+  local appdir="$1"
+  if ! uses_sharun_launcher "$appdir"; then
+    return 0
+  fi
+
+  local lib_path="$appdir/shared/lib/lib.path"
+  if [ ! -s "$lib_path" ]; then
+    echo "[strip-libs] ERROR: sharun AppImage is missing shared/lib/lib.path; refusing to ship an AppImage that exits with 'Interpreter not found!'" >&2
+    return 1
+  fi
+
+  local library_root="$appdir/shared/lib"
+  local canonical_root
+  if [ ! -d "$library_root" ] || ! canonical_root="$(realpath "$library_root")"; then
+    echo "[strip-libs] ERROR: sharun AppImage is missing shared/lib; refusing to validate library paths" >&2
+    return 1
+  fi
+
+  local entry suffix resolved canonical_resolved
+  local entry_count=0
+  while IFS= read -r entry || [ -n "$entry" ]; do
+    entry_count=$((entry_count + 1))
+
+    if [ -z "$entry" ]; then
+      echo "[strip-libs] ERROR: invalid sharun lib.path entry '': empty entries are not allowed" >&2
+      return 1
+    fi
+    case "$entry" in
+      *$'\r'*)
+        echo "[strip-libs] ERROR: invalid sharun lib.path entry '$entry': carriage returns are not allowed" >&2
+        return 1
+        ;;
+      *:*)
+        echo "[strip-libs] ERROR: invalid sharun lib.path entry '$entry': loader separators are not allowed" >&2
+        return 1
+        ;;
+      [[:space:]]*|*[[:space:]])
+        echo "[strip-libs] ERROR: invalid sharun lib.path entry '$entry': surrounding whitespace is not allowed" >&2
+        return 1
+        ;;
+    esac
+
+    case "$entry" in
+      +)
+        suffix=""
+        resolved="$library_root"
+        ;;
+      +/*)
+        suffix="${entry#+/}"
+        case "$suffix" in
+          *+*)
+            echo "[strip-libs] ERROR: invalid sharun lib.path entry '$entry': extra '+' markers are not allowed" >&2
+            return 1
+            ;;
+          ""|/*|*/|*//*|.|..|./*|../*|*/./*|*/../*|*/.|*/..)
+            echo "[strip-libs] ERROR: invalid sharun lib.path entry '$entry': path components must be non-empty descendants" >&2
+            return 1
+            ;;
+        esac
+        resolved="$library_root/$suffix"
+        ;;
+      *)
+        echo "[strip-libs] ERROR: invalid sharun lib.path entry '$entry': expected '+' or '+/suffix'" >&2
+        return 1
+        ;;
+    esac
+
+    if [ ! -d "$resolved" ]; then
+      echo "[strip-libs] ERROR: invalid sharun lib.path entry '$entry': resolved directory does not exist" >&2
+      return 1
+    fi
+    if ! canonical_resolved="$(realpath "$resolved")"; then
+      echo "[strip-libs] ERROR: invalid sharun lib.path entry '$entry': could not canonicalize resolved directory" >&2
+      return 1
+    fi
+    case "$canonical_resolved" in
+      "$canonical_root"|"$canonical_root"/*)
+        ;;
+      *)
+        echo "[strip-libs] ERROR: invalid sharun lib.path entry '$entry': resolved directory escapes shared/lib" >&2
+        return 1
+        ;;
+    esac
+  done <"$lib_path"
+
+  if [ "$entry_count" -eq 0 ]; then
+    echo "[strip-libs] ERROR: invalid sharun lib.path entry '': at least one entry is required" >&2
+    return 1
+  fi
+
+  return 0
+}
+
+# is_elf — true if the file begins with the ELF magic, regardless of the +x
+# bit. Shared objects (.so) are not executable but still carry the
+# DT_RPATH/DT_RUNPATH we need to sanitize, so the executable-only check in
+# is_executable_elf is too narrow here.
+is_elf() {
+  local candidate="$1"
+  [ -f "$candidate" ] || return 1
+  [ "$(LC_ALL=C head -c 4 "$candidate" 2>/dev/null || true)" = $'\177ELF' ]
+}
+
+# sanitize_elf_rpaths — strip absolute CI build-machine paths (/home/runner,
+# /__w) from the DT_RPATH/DT_RUNPATH of every bundled ELF and rewrite them to
+# $ORIGIN-relative entries.
+#
+# Problem (issue #3224): libcef.so is copied verbatim into usr/lib by the
+# vendored sharun_cef bundler and is never ldd-processed by lib4bin, so any
+# absolute RUNPATH baked in on the build runner (e.g.
+# `/home/runner/.cache/tauri-cef/.../shared/lib`) survives into the shipped
+# AppImage. rewrite_sharun_lib_path() above only sanitizes the sharun lib.path
+# TEXT file — it never touches ELF headers. Those absolute, non-existent search
+# dirs leak the build-machine layout and, on a host that happens to have a
+# matching path, could shadow a bundled library.
+#
+# Fix: patchelf every ELF whose RPATH/RUNPATH contains a CI marker, dropping the
+# absolute CI components and keeping $ORIGIN-relative ones. Falls back to a
+# conservative `$ORIGIN:$ORIGIN/../shared/lib` when nothing relative remains.
+# ELFs whose RPATH is already clean ($ORIGIN-only or empty) are left untouched,
+# so the pass is idempotent.
+#
+# Returns 0 if any ELF was rewritten, 1 otherwise.
+# NOTE (#5606): the fallback rpath this synthesises is sharun-shaped
+# ($ORIGIN:$ORIGIN/<up>shared/lib). It is currently unreachable on a linuxdeploy
+# AppDir - linuxdeploy has already rewritten every ELF to $ORIGIN-relative paths,
+# so the forbidden-RPATH trigger never fires - but if it ever did fire it would
+# write a directory that does not exist in that layout. Make the fallback
+# layout-aware before relying on it.
+sanitize_elf_rpaths() {
+  local appdir="$1"
+  if ! command -v patchelf >/dev/null 2>&1; then
+    echo "[strip-libs] ERROR: patchelf not found; cannot sanitize build-machine RPATHs from bundled ELFs (issue #3224). Install patchelf on the build runner." >&2
+    exit 1
+  fi
+
+  # Inverted truthiness: 1 == "no change" (shell-false), flips to 0 (shell-true)
+  # the first time an ELF is rewritten.
+  local rewrote=1
+  local search_roots=(
+    "$appdir/usr/lib"
+    "$appdir/shared/lib"
+    "$appdir/lib"
+    "$appdir/usr/bin"
+    "$appdir/bin"
+  )
+
+  local root f cur cleaned entry
+  for root in "${search_roots[@]}"; do
+    [ -d "$root" ] || continue
+    while IFS= read -r -d '' f; do
+      is_elf "$f" || continue
+      cur="$(patchelf --print-rpath "$f" 2>/dev/null || true)"
+      [ -n "$cur" ] || continue
+      case "$cur" in
+        *"/home/runner/"*|*"/__w/"*) ;;
+        *) continue ;; # already clean — leave it untouched (idempotent)
+      esac
+
+      # Keep only $ORIGIN-relative entries; drop absolute / CI-marked ones.
+      local -a kept=()
+      local seen=""
+      local old_ifs="$IFS"
+      IFS=':'
+      for entry in $cur; do
+        IFS="$old_ifs"
+        [ -n "$entry" ] || { IFS=':'; continue; }
+        case "$entry" in
+          '$ORIGIN'*) ;;     # relative — keep
+          *) IFS=':'; continue ;; # absolute — drop
+        esac
+        case "+${seen}+" in
+          *"+${entry}+"*) IFS=':'; continue ;;
+        esac
+        seen="${seen}+${entry}"
+        kept+=("$entry")
+        IFS=':'
+      done
+      IFS="$old_ifs"
+
+      if [ "${#kept[@]}" -eq 0 ]; then
+        # No relative entry survived — synthesize a fallback that reaches the
+        # bundle's top-level shared/lib FROM THIS ELF's own directory. $ORIGIN is
+        # the ELF's dir, so the number of `../` hops equals the ELF's directory
+        # depth below the AppDir root: a file in usr/lib needs
+        # `$ORIGIN/../../shared/lib`, one in lib needs `$ORIGIN/../shared/lib`. A
+        # flat `$ORIGIN/../shared/lib` (the naive form) resolves to
+        # `usr/shared/lib` for usr/* files and would still miss libs at runtime.
+        local rel_dir comp up=""
+        rel_dir="$(dirname "${f#"$appdir"/}")"
+        local ifs_save="$IFS"
+        IFS='/'
+        for comp in $rel_dir; do
+          [ -n "$comp" ] && [ "$comp" != "." ] && up="../$up"
+        done
+        IFS="$ifs_save"
+        cleaned="\$ORIGIN:\$ORIGIN/${up}shared/lib"
+      else
+        cleaned="$(IFS=':'; echo "${kept[*]}")"
+      fi
+
+      patchelf --set-rpath "$cleaned" "$f"
+      echo "[strip-libs]   patchelf rpath ${f#"$appdir"/}: '$cur' -> '$cleaned'"
+      rewrote=0
+    done < <(find "$root" -type f -print0)
+  done
+
+  return $rewrote
+}
+
+# validate_appimage_required_libs — fail the build loudly if the sharun preload
+# library or a runtime library the app hard-links (NEEDED) is absent from the
+# bundle.
+#
+# Problem (issues #3224 and #4020): the app links libxdo.so.3 via enigo
+# (`#[link(name = "xdo")]`, used by src/openhuman/tools/impl/computer for Linux
+# mouse/keyboard control). lib4bin's ldd-walk normally bundles it into
+# shared/lib, but if a future runner image drops libxdo-dev or bumps its soname,
+# the lib silently vanishes from the AppImage and the binary segfaults on launch
+# on any host lacking the legacy soname (e.g. Arch, which ships libxdo.so.4). The
+# .deb path already guards this via its `depends` (libxdo3) +
+# linux_cef_deb_runtime_e2e; the AppImage path had no equivalent. This turns a
+# silent runtime segfault into a loud build failure. CEF is staged separately
+# from the ldd walk, so verify its runtime library survived bundling as well.
+# anylinux.so establishes sharun's portable runtime before either dependency
+# can load, so it is part of the same release contract.
+validate_appimage_required_libs() {
+  local appdir="$1"
+  if ! uses_sharun_launcher "$appdir"; then
+    return 0
+  fi
+
+  local root pattern found
+  # libcef.so* was here until #5606. CEF was removed in #5456 and there is no
+  # cef package in either Cargo.lock, so no build can satisfy it - it would fail
+  # every sharun bundle this function is still able to see.
+  for pattern in 'anylinux.so' 'libxdo.so*'; do
+    found=0
+    for root in "$appdir/shared/lib" "$appdir/usr/lib" "$appdir/lib"; do
+      [ -d "$root" ] || continue
+      if [ -n "$(find "$root" -name "$pattern" -print -quit 2>/dev/null)" ]; then
+        found=1
+        break
+      fi
+    done
+    [ "$found" -eq 1 ] && continue
+
+    case "$pattern" in
+      anylinux.so)
+        echo "[strip-libs] ERROR: AppImage is missing anylinux.so — the sharun preload library was not copied into the final bundle. The AppImage launcher cannot establish its portable runtime without it." >&2
+        ;;
+      libxdo.so\*)
+        echo "[strip-libs] ERROR: AppImage is missing libxdo.so.* — the enigo NEEDED dependency was not bundled (issue #3224). The app would segfault on launch on hosts without the legacy libxdo soname (e.g. Arch). Ensure libxdo-dev is installed on the build runner so lib4bin's ldd-walk bundles it." >&2
+        ;;
+    esac
+    return 1
+  done
+}
+
+# patch_apprun_sharun_cwd — retain historical shell-AppRun CWD hardening.
+#
+# Canonical `+` entries in shared/lib/lib.path are the primary fix for released
+# layouts, where AppRun is the sharun ELF launcher itself.  sharun expands `+`
+# relative to the AppDir regardless of the caller's CWD.
+#
+# Older layouts may instead have a shell AppRun that ultimately execs sharun.
+# Keep prepending `cd "$APPDIR"` there as compatibility hardening, without
+# treating it as the released ELF launcher's library-path repair.
+#
+# Returns 0 (true) if the AppRun was modified, 1 if no change was needed.
+patch_apprun_sharun_cwd() {
+  local appdir="$1"
+  if ! uses_sharun_launcher "$appdir"; then
+    return 1
+  fi
+
+  local apprun="$appdir/AppRun"
+  if [ ! -f "$apprun" ]; then
+    # Some sharun bundles use the sharun binary directly as the AppDir entry
+    # point without a separate shell AppRun.  Nothing to patch in that case.
+    return 1
+  fi
+
+  # Check if the file is a shell script (not an ELF binary).
+  local first_bytes
+  first_bytes="$(LC_ALL=C head -c 2 "$apprun" 2>/dev/null || true)"
+  if [ "$first_bytes" = $'\x7fE' ]; then
+    # AppRun is an ELF binary — cannot patch with sed.
+    return 1
+  fi
+
+  # Idempotency guard: skip if we already patched this AppRun.
+  # Match only the exact patched line — a loose substring (e.g. 'cd.*"$APPDIR"')
+  # would false-positive on comments like '# cd "$APPDIR"' or unrelated lines
+  # and leave the real `exec "$@"` unpatched.
+  local patched_line_re='^[[:space:]]*cd[[:space:]]+"\$APPDIR"[[:space:]]*&&[[:space:]]*exec[[:space:]]+"\$@"[[:space:]]*$'
+  if grep -Eq "$patched_line_re" "$apprun" 2>/dev/null; then
+    return 1
+  fi
+
+  # Locate the exec line.  AppRun scripts generated by lib4bin / sharun
+  # typically have a line of the form (possibly with leading whitespace):
+  #   exec "$@"
+  # Patch it to:
+  #   cd "$APPDIR" && exec "$@"
+  #
+  # The sed pattern is anchored to end-of-line ($) so trailing content (extra
+  # args, comments, redirections) doesn't get silently absorbed into the cd &&
+  # exec sequence.
+  #
+  # Use a temp file + mv to avoid truncating AppRun mid-write on failure.
+  local tmp_apprun
+  tmp_apprun="$(mktemp)"
+  if sed 's|^\([[:space:]]*\)exec "\$@"[[:space:]]*$|\1cd "$APPDIR" \&\& exec "$@"|' \
+       "$apprun" > "$tmp_apprun" \
+     && grep -Eq "$patched_line_re" "$tmp_apprun"; then
+    chmod --reference="$apprun" "$tmp_apprun"
+    mv "$tmp_apprun" "$apprun"
+    echo "[strip-libs]   patched historical shell AppRun: added 'cd \"\$APPDIR\"' before exec"
+    return 0
+  else
+    rm -f "$tmp_apprun"
+    echo "[strip-libs] WARNING: could not locate 'exec \"\$@\"' in historical shell AppRun; canonical '+' lib.path entries remain the released-layout fix" >&2
+    return 1
+  fi
+}
+
+validate_rebuilt_appimage() {
+  local rebuilt_path="$1"
+  "$APPIMAGE_RUNTIME_VALIDATOR" "$rebuilt_path" || return 1
+}
+
+strip_one_appimage() {
+  local img="$1"
+  local original
+  original="$(realpath "$img")"
+  local name
+  name="$(basename "$original")"
+  local workdir
+  workdir="$(mktemp -d)"
+
+  echo "[strip-libs] Processing $original"
+  (
+    cd "$workdir"
+    chmod +x "$original"
+    if ! "$original" --appimage-extract >/dev/null; then
+      echo "[strip-libs] ERROR: --appimage-extract failed for $original" >&2
+      exit 1
+    fi
+  )
+
+  local appdir="$workdir/squashfs-root"
+  local removed=0
+  local added_loader=0
+  local rewrote_libpath=0
+  local patched_apprun=0
+  local rewrote_rpaths=0
+  local lib_roots=()
+  for candidate in \
+    "$appdir/usr/lib" \
+    "$appdir/usr/lib/x86_64-linux-gnu" \
+    "$appdir/usr/lib/aarch64-linux-gnu" \
+    "$appdir/shared/lib" \
+    "$appdir/shared/lib/x86_64-linux-gnu" \
+    "$appdir/shared/lib/aarch64-linux-gnu" \
+    "$appdir/lib" \
+    "$appdir/lib/x86_64-linux-gnu" \
+    "$appdir/lib/aarch64-linux-gnu"; do
+    [ -d "$candidate" ] && lib_roots+=("$candidate")
+  done
+
+  if [ "${#lib_roots[@]}" -eq 0 ]; then
+    echo "[strip-libs] WARNING: no known lib roots inside $original — layout changed?" >&2
+  else
+    for root in "${lib_roots[@]}"; do
+      for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+        while IFS= read -r -d '' f; do
+          echo "[strip-libs]   removing ${f#"$appdir"/}"
+          rm -f "$f"
+          removed=$((removed + 1))
+        done < <(find "$root" -maxdepth 1 -name "$pattern" -print0)
+      done
+    done
+  fi
+
+  if ensure_sharun_interpreter "$appdir"; then
+    added_loader=1
+  fi
+  if rewrite_sharun_lib_path "$appdir"; then
+    rewrote_libpath=1
+  fi
+  if patch_apprun_sharun_cwd "$appdir"; then
+    patched_apprun=1
+  fi
+  if sanitize_elf_rpaths "$appdir"; then
+    rewrote_rpaths=1
+  fi
+  if ! validate_sharun_lib_path "$appdir"; then
+    rm -rf "$workdir"
+    return 1
+  fi
+  if ! validate_appimage_required_libs "$appdir"; then
+    rm -rf "$workdir"
+    return 1
+  fi
+
+  if [ "$removed" -eq 0 ] && [ "$added_loader" -eq 0 ] && [ "$rewrote_libpath" -eq 0 ] && [ "$patched_apprun" -eq 0 ] && [ "$rewrote_rpaths" -eq 0 ]; then
+    echo "[strip-libs] No graphics libs, missing sharun interpreter, or build-machine RPATHs found in $original; leaving unchanged."
+    if ! validate_rebuilt_appimage "$original"; then
+      rm -rf "$workdir"
+      return 1
+    fi
+    rm -rf "$workdir"
+    return
+  fi
+  echo "[strip-libs] Removed $removed file(s), added $added_loader loader file(s), patched AppRun=$patched_apprun, rewrote RPATHs=$rewrote_rpaths; repacking AppImage."
+
+  local rebuilt="$workdir/$name"
+  local appimage_arch
+  appimage_arch="$(appimagetool_arch)"
+  (
+    cd "$workdir"
+    ARCH="$appimage_arch" "$APPIMAGETOOL_BIN" --appimage-extract-and-run \
+      --no-appstream squashfs-root "$rebuilt" >/dev/null
+  )
+  mv "$rebuilt" "$original"
+  if ! validate_rebuilt_appimage "$original"; then
+    rm -rf "$workdir"
+    return 1
+  fi
+  rm -rf "$workdir"
+  MODIFIED_PATHS+=("$original")
+}
+
+resign_artifact() {
+  local file="$1"
+  # No key configured means this is an unsigned lane (a PR build): the bundler
+  # produced no .sig either, so there is nothing to invalidate. Skipping is
+  # correct here and is the ONLY case in which signing may be skipped.
+  if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+    return
+  fi
+  echo "[strip-libs] Re-signing $file"
+  # Previously guarded by `command -v cargo-tauri` with a warn-and-return. CI
+  # never installs cargo-tauri, so that branch was always taken and this leg
+  # shipped a .sig covering the pre-strip bytes. Stripping rewrites the
+  # AppImage, so a signature that is merely left behind cannot verify -- fail
+  # the job instead of publishing it (#5658).
+  if ! tauri_signer_sign "$file"; then
+    echo "[strip-libs] ERROR: could not re-sign $file after stripping; refusing to publish an artifact whose signature does not match its bytes" >&2
+    exit 1
+  fi
+}
+
+main() {
+  if [ $# -lt 1 ]; then
+    echo "Usage: $0 <bundle-root> [bundle-root...]" >&2
+    exit 2
+  fi
+  ensure_appimagetool
+  ensure_desktop_file_validate
+  shopt -s nullglob
+  MODIFIED_PATHS=()
+  local found_any=0
+  for root in "$@"; do
+    [ -d "$root/appimage" ] || continue
+    for img in "$root/appimage"/*.AppImage; do
+      found_any=1
+      strip_one_appimage "$img"
+    done
+  done
+  if [ "$found_any" -eq 0 ]; then
+    echo "[strip-libs] No AppImages found under any provided bundle root." >&2
+    return
+  fi
+
+  # Re-sign each modified .AppImage and rebuild its updater tarball + sig.
+  # The updater tarball is just a gzipped tar of the .AppImage (Tauri convention),
+  # so its contents are stale the moment we mutate the AppImage.
+  for original in "${MODIFIED_PATHS[@]:-}"; do
+    [ -n "$original" ] || continue
+    resign_artifact "$original"
+
+    local tar="$original.tar.gz"
+    if [ -e "$tar" ]; then
+      echo "[strip-libs] Rebuilding $(basename "$tar")"
+      tar -C "$(dirname "$original")" -czf "$tar" "$(basename "$original")"
+      resign_artifact "$tar"
+    fi
+  done
+}
+
+# Run main only when executed directly, not when sourced (e.g. by the
+# scripts/release/test-strip-appimage-rpaths.sh regression test, which exercises
+# sanitize_elf_rpaths / validate_appimage_required_libs in isolation).
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+  main "$@"
+fi

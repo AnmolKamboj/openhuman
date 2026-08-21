@@ -1,0 +1,590 @@
+import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit';
+
+import { extractWorkflowProposalFromMessages } from '../lib/workflows/workflowProposal';
+import { threadApi } from '../services/api/threadApi';
+import { isThreadNotFoundCoreRpcError } from '../services/coreRpcClient';
+import type { Thread, ThreadMessage } from '../types/thread';
+import { IS_DEV } from '../utils/config';
+import { setWorkflowProposalForThread } from './chatRuntimeSlice';
+import { resetUserScopedState } from './resetActions';
+
+export const THREAD_NOT_FOUND_MESSAGE = 'This thread is no longer available.';
+
+interface ThreadState {
+  threads: Thread[];
+  selectedThreadId: string | null;
+  /**
+   * Set of threads that currently have an in-flight inference turn, keyed by
+   * thread id. Replaces the legacy single `activeThreadId` so that turns on
+   * different threads can run concurrently — each thread tracks its own
+   * in-flight state and the composer is gated per-thread (see
+   * `isComposerInteractionBlocked`) rather than globally. Stored as a plain
+   * object (not a `Set`) to stay redux-persist serializable.
+   */
+  activeThreadIds: Record<string, true>;
+  /**
+   * @deprecated — welcome-agent replaced by Joyride walkthrough. Always null
+   * for new users; retained for redux-persist deserialization compatibility.
+   */
+  welcomeThreadId: string | null;
+  messagesByThreadId: Record<string, ThreadMessage[]>;
+  messages: ThreadMessage[];
+  isLoadingThreads: boolean;
+  isLoadingMessages: boolean;
+  messagesError: string | null;
+  /**
+   * Why the last `createNewThread` failed, or `null` when the last attempt
+   * succeeded (or none has run). Recorded centrally so a failed create is never
+   * invisible: before #5156 nothing in the store observed
+   * `createNewThread.rejected`, so every call site had to remember its own
+   * `.catch` — one that forgot produced `UnhandledRejection: Core RPC
+   * openhuman.threads_create_new timed out after 30000ms` (Sentry
+   * TAURI-REACT-10) and one that caught-and-ignored left the user staring at a
+   * dead "New chat" button. The chat surface renders this.
+   */
+  createThreadError: string | null;
+  /**
+   * `requestId` of the most recently *started* `createNewThread`, so a
+   * completion from a superseded attempt can be ignored.
+   *
+   * Two creates can overlap — the user hits New Chat again while the first RPC
+   * is still hung on its 30 s budget. Without this, the newer request could
+   * succeed and clear the banner, and then the older one would time out and set
+   * `createThreadError` again, showing "Couldn't create a new thread" on a chat
+   * that was in fact created. Only the latest attempt is allowed to write this
+   * slice's create-error state.
+   */
+  createThreadRequestId: string | null;
+}
+
+const initialState: ThreadState = {
+  threads: [],
+  selectedThreadId: null,
+  activeThreadIds: {},
+  welcomeThreadId: null,
+  messagesByThreadId: {},
+  messages: [],
+  isLoadingThreads: false,
+  isLoadingMessages: false,
+  messagesError: null,
+  createThreadError: null,
+  createThreadRequestId: null,
+};
+
+function appendMessageToCache(
+  state: ThreadState,
+  threadId: string,
+  message: ThreadMessage,
+  replaceExisting = false
+) {
+  const existing = state.messagesByThreadId[threadId] ?? [];
+  const next = replaceExisting
+    ? existing.map(e => (e.id === message.id ? message : e))
+    : [...existing, message];
+  state.messagesByThreadId[threadId] = next;
+  if (threadId === state.selectedThreadId) {
+    state.messages = replaceExisting
+      ? state.messages.map(e => (e.id === message.id ? message : e))
+      : [...state.messages, message];
+  }
+}
+
+// ── Async thunks (thin RPC wrappers) ──────────────────────────────
+
+export const loadThreads = createAsyncThunk(
+  'thread/loadThreads',
+  async (_, { rejectWithValue }) => {
+    try {
+      return await threadApi.getThreads();
+    } catch (error) {
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to load threads');
+    }
+  }
+);
+
+/**
+ * Normalise whatever `dispatch(createNewThread()).unwrap()` throws into a
+ * displayable string.
+ *
+ * `createAsyncThunk` throws the `rejectWithValue` payload (a bare string) or, if
+ * the thunk threw, Redux's `SerializedError` — a plain object, not an `Error`.
+ * Neither carries a stack, which is why the original report surfaced as
+ * "Non-Error promise rejection captured with value: …" (#5156). Mirrors
+ * `formatThreadLoadError` in `features/conversations/Conversations.tsx`.
+ */
+export function formatThreadCreateError(error: unknown): string {
+  if (typeof error === 'string' && error.trim().length > 0) return error;
+  // `new Error()` carries an empty `message`. Returning it would store a falsy
+  // `createThreadError`, which `deriveChatErrorBanner` treats as "no failure" —
+  // the user would get a dead New Chat button and no banner, the exact outcome
+  // #5156 exists to prevent. Fall through to the generic fallback instead.
+  if (error instanceof Error && error.message.trim().length > 0) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim().length > 0) return message;
+  }
+  return 'Failed to create thread';
+}
+
+export const createNewThread = createAsyncThunk(
+  'thread/createNewThread',
+  async (labels: string[] | undefined, { dispatch, rejectWithValue }) => {
+    try {
+      const thread = await threadApi.createNewThread(labels);
+      await dispatch(loadThreads()).unwrap();
+      return thread;
+    } catch (error) {
+      // Keep the payload a plain string (redux-serializable) but normalise every
+      // throw shape, including the `SerializedError` a nested `.unwrap()` raises
+      // when `loadThreads` is what actually failed (#5156).
+      return rejectWithValue(formatThreadCreateError(error));
+    }
+  }
+);
+
+export const deleteThread = createAsyncThunk(
+  'thread/deleteThread',
+  async (threadId: string, { dispatch, getState, rejectWithValue }) => {
+    try {
+      await threadApi.deleteThread(threadId);
+      const state = getState() as { thread: ThreadState };
+      if (state.thread.selectedThreadId === threadId) {
+        const remaining = state.thread.threads.filter(t => t.id !== threadId);
+        if (remaining.length > 0) {
+          dispatch(setSelectedThread(remaining[0].id));
+        } else {
+          dispatch(clearSelectedThread());
+        }
+      }
+      await dispatch(loadThreads()).unwrap();
+      return { threadId };
+    } catch (error) {
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to delete thread');
+    }
+  }
+);
+
+export const loadThreadMessages = createAsyncThunk(
+  'thread/loadThreadMessages',
+  async (threadId: string, { dispatch, rejectWithValue }) => {
+    try {
+      const response = await threadApi.getThreadMessages(threadId);
+      // Durable workflow-proposal rehydration: the Rust core persists a
+      // proposal produced by an async workflow_builder run as a thread
+      // message (extraMetadata.scope === 'workflow_proposal'). Restoring it
+      // here means the proposal card survives reloads, reconnects, and
+      // dropped socket events — the live `tool_result` events remain the
+      // fast path and simply overwrite this with the same payload.
+      const persistedProposal = extractWorkflowProposalFromMessages(response.messages);
+      if (persistedProposal) {
+        dispatch(setWorkflowProposalForThread({ threadId, proposal: persistedProposal }));
+      }
+      return { threadId, messages: response.messages };
+    } catch (error) {
+      // A cached/seeded thread id (e.g. the Flows copilot's persisted
+      // `workflowCopilotThreads.ts` mapping) can point at a thread that was
+      // since deleted/purged. Evict it the same way the write thunks below
+      // do, so callers see a clean rejection instead of permanently retrying
+      // a dead thread — `useWorkflowBuilderChat`'s rehydrate effect uses this
+      // to null out its `threadId` and let the next send start a fresh one.
+      if (isThreadNotFoundCoreRpcError(error, threadId)) {
+        await evictStaleThread(threadId, dispatch);
+        return rejectWithValue(THREAD_NOT_FOUND_MESSAGE);
+      }
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to load messages');
+    }
+  }
+);
+
+/**
+ * Shared stale-thread handler used by write thunks.
+ *
+ * When `isThreadNotFoundCoreRpcError` is true the thunk should:
+ *   1. Evict the stale thread from Redux state immediately.
+ *   2. Reload the thread list so the sidebar reflects backend state.
+ *   3. Reject with `THREAD_NOT_FOUND_MESSAGE` so callers can branch on it
+ *      without inspecting error message strings.
+ *
+ * The `loadThreads` failure is swallowed — a network hiccup on the refresh
+ * should not surface an additional error on top of the stale-thread UX.
+ */
+/**
+ * Side-effect half of stale-thread cleanup: evict the thread from Redux state
+ * and reload the thread list. Separated from the `rejectWithValue` call so the
+ * thunk return type is inferred purely from `rejectWithValue(THREAD_NOT_FOUND_MESSAGE)`.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function evictStaleThread(threadId: string, dispatch: (action: any) => any): Promise<void> {
+  dispatch(clearStaleThread(threadId));
+  try {
+    await dispatch(loadThreads()).unwrap();
+  } catch (refreshError) {
+    if (IS_DEV) {
+      console.debug('[threadSlice] stale-thread list refresh failed', {
+        threadId,
+        error: refreshError,
+      });
+    }
+  }
+}
+
+export const addMessageLocal = createAsyncThunk(
+  'thread/addMessageLocal',
+  async (payload: { threadId: string; message: ThreadMessage }, { dispatch, rejectWithValue }) => {
+    try {
+      const persisted = await threadApi.appendMessage(payload.threadId, payload.message);
+      if (payload.message.sender === 'user' && payload.message.content.trim()) {
+        void dispatch(generateThreadTitleIfNeeded({ threadId: payload.threadId }))
+          .unwrap()
+          .catch(error => {
+            if (IS_DEV) {
+              console.debug('[threadSlice] addMessageLocal title refresh failed', {
+                threadId: payload.threadId,
+                error,
+              });
+            }
+          });
+      }
+      return { threadId: payload.threadId, message: persisted };
+    } catch (error) {
+      if (isThreadNotFoundCoreRpcError(error, payload.threadId)) {
+        await evictStaleThread(payload.threadId, dispatch);
+        return rejectWithValue(THREAD_NOT_FOUND_MESSAGE);
+      }
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to save message');
+    }
+  }
+);
+
+export const addInferenceResponse = createAsyncThunk(
+  'thread/addInferenceResponse',
+  async (
+    payload: {
+      content: string;
+      threadId?: string;
+      messageId?: string;
+      type?: string;
+      extraMetadata?: Record<string, unknown>;
+    },
+    { dispatch, getState, rejectWithValue }
+  ) => {
+    const state = getState() as { thread: ThreadState };
+    // All real callers pass an explicit `threadId` (the event's `thread_id`).
+    // The fallback to the selected thread is a last-resort for legacy callers
+    // that omit it; under parallel inference there is no single "active" thread
+    // to fall back to, so we cannot use `activeThreadIds` here.
+    const targetThreadId = payload.threadId ?? state.thread.selectedThreadId;
+    if (!targetThreadId) return rejectWithValue('No target thread');
+
+    const message: ThreadMessage = {
+      id:
+        payload.messageId ??
+        `msg_${globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`}`,
+      content: payload.content,
+      type: payload.type ?? 'text',
+      extraMetadata: payload.extraMetadata ?? {},
+      sender: 'agent',
+      createdAt: new Date().toISOString(),
+    };
+
+    try {
+      const persisted = await threadApi.appendMessage(targetThreadId, message);
+      return { threadId: targetThreadId, message: persisted };
+    } catch (error) {
+      if (isThreadNotFoundCoreRpcError(error, targetThreadId)) {
+        await evictStaleThread(targetThreadId, dispatch);
+        return rejectWithValue(THREAD_NOT_FOUND_MESSAGE);
+      }
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to save response');
+    }
+  }
+);
+
+export const generateThreadTitleIfNeeded = createAsyncThunk(
+  'thread/generateThreadTitleIfNeeded',
+  async (
+    payload: { threadId: string; assistantMessage?: string },
+    { dispatch, rejectWithValue }
+  ) => {
+    let thread: Thread;
+    try {
+      thread = await threadApi.generateTitleIfNeeded(payload.threadId, payload.assistantMessage);
+    } catch (error) {
+      if (isThreadNotFoundCoreRpcError(error, payload.threadId)) {
+        await evictStaleThread(payload.threadId, dispatch);
+        return rejectWithValue(THREAD_NOT_FOUND_MESSAGE);
+      }
+      return rejectWithValue(
+        error instanceof Error ? error.message : 'Failed to generate thread title'
+      );
+    }
+
+    try {
+      await dispatch(loadThreads()).unwrap();
+    } catch (error) {
+      if (IS_DEV) {
+        console.debug('[threadSlice] generateThreadTitleIfNeeded refresh failed', {
+          threadId: payload.threadId,
+          error,
+        });
+      }
+    }
+
+    return thread;
+  }
+);
+
+export const persistReaction = createAsyncThunk(
+  'thread/persistReaction',
+  async (
+    payload: { threadId: string; messageId: string; emoji: string },
+    { getState, rejectWithValue }
+  ) => {
+    const state = getState() as { thread: ThreadState };
+    const stored = state.thread.messagesByThreadId[payload.threadId] ?? [];
+    const message = stored.find(e => e.id === payload.messageId);
+    if (!message) return rejectWithValue('Message not found');
+
+    const prev = (message.extraMetadata['myReactions'] as string[] | undefined) ?? [];
+    const idx = prev.indexOf(payload.emoji);
+    const next = idx >= 0 ? prev.filter(e => e !== payload.emoji) : [...prev, payload.emoji];
+    const extraMetadata = { ...message.extraMetadata, myReactions: next };
+
+    try {
+      const persisted = await threadApi.updateMessage(
+        payload.threadId,
+        payload.messageId,
+        extraMetadata
+      );
+      return { threadId: payload.threadId, message: persisted };
+    } catch (error) {
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to save reaction');
+    }
+  }
+);
+
+export const updateThreadTitle = createAsyncThunk(
+  'thread/updateThreadTitle',
+  async (payload: { threadId: string; title: string }, { rejectWithValue }) => {
+    try {
+      return await threadApi.updateTitle(payload.threadId, payload.title);
+    } catch (error) {
+      return rejectWithValue(
+        error instanceof Error ? error.message : 'Failed to update thread title'
+      );
+    }
+  }
+);
+
+// ── Slice ─────────────────────────────────────────────────────────
+
+const threadSlice = createSlice({
+  name: 'thread',
+  initialState,
+  reducers: {
+    /**
+     * Dismiss the "couldn't start a new chat" surface (#5156) — the user has
+     * seen it and moved on (typed into the composer, navigated away).
+     */
+    clearCreateThreadError: state => {
+      state.createThreadError = null;
+    },
+    setSelectedThread: (state, action: { payload: string }) => {
+      state.selectedThreadId = action.payload;
+      state.messages = state.messagesByThreadId[action.payload] ?? [];
+      state.messagesError = null;
+    },
+    clearSelectedThread: state => {
+      state.selectedThreadId = null;
+      state.messages = [];
+      state.messagesError = null;
+    },
+    /**
+     * Back-compat shim retained for existing call sites:
+     *  - `setActiveThread(threadId)` marks that thread's inference turn active.
+     *  - `setActiveThread(null)` clears ALL in-flight markers (legacy global
+     *    clear). Prefer `clearThreadInferenceActive(threadId)` when the
+     *    finishing thread is known so unrelated concurrent turns are untouched.
+     */
+    setActiveThread: (state, action: { payload: string | null }) => {
+      if (action.payload === null) {
+        state.activeThreadIds = {};
+      } else {
+        state.activeThreadIds[action.payload] = true;
+      }
+    },
+    /** Mark a single thread as having an in-flight inference turn. */
+    markThreadInferenceActive: (state, action: PayloadAction<string>) => {
+      state.activeThreadIds[action.payload] = true;
+    },
+    /** Clear the in-flight marker for a single thread (on done/error/timeout). */
+    clearThreadInferenceActive: (state, action: PayloadAction<string>) => {
+      delete state.activeThreadIds[action.payload];
+    },
+    clearStaleThread: (state, action: PayloadAction<string>) => {
+      const threadId = action.payload;
+      state.threads = state.threads.filter(thread => thread.id !== threadId);
+      delete state.messagesByThreadId[threadId];
+      if (state.selectedThreadId === threadId) {
+        state.selectedThreadId = null;
+        state.messages = [];
+        state.messagesError = null;
+      }
+      delete state.activeThreadIds[threadId];
+      if (state.welcomeThreadId === threadId) {
+        state.welcomeThreadId = null;
+      }
+    },
+    clearAllThreads: state => {
+      state.threads = [];
+      state.messagesByThreadId = {};
+      state.selectedThreadId = null;
+      state.messages = [];
+      state.activeThreadIds = {};
+      state.welcomeThreadId = null;
+    },
+    // Like `clearAllThreads` but keeps `selectedThreadId`. Used on the
+    // post-bootstrap identity-observation path (#1168 + #1157): we need to
+    // drop pre-auth in-memory thread rows but the persisted last-viewed
+    // thread id is still valid for the reloaded user, so preserving it lets
+    // the Conversations effect resume that thread instead of falling
+    // through to "most recent".
+    resetThreadCachesPreservingSelection: state => {
+      state.threads = [];
+      state.messagesByThreadId = {};
+      state.messages = [];
+      state.activeThreadIds = {};
+      state.welcomeThreadId = null;
+    },
+    // [#1123] True no-op — welcome-agent onboarding replaced by Joyride walkthrough.
+    // Kept to avoid breaking existing imports; state.welcomeThreadId is never
+    // mutated because the welcome-agent flow no longer runs.
+    setWelcomeThreadId: () => {
+      // intentional no-op
+    },
+  },
+  extraReducers: builder => {
+    builder
+      .addCase(loadThreads.pending, state => {
+        state.isLoadingThreads = true;
+      })
+      .addCase(loadThreads.fulfilled, (state, action) => {
+        state.isLoadingThreads = false;
+        state.threads = action.payload.threads;
+        const liveThreadIds = new Set(action.payload.threads.map(thread => thread.id));
+        if (state.selectedThreadId && !liveThreadIds.has(state.selectedThreadId)) {
+          state.selectedThreadId = null;
+          state.messages = [];
+          state.messagesError = null;
+        }
+        for (const activeId of Object.keys(state.activeThreadIds)) {
+          if (!liveThreadIds.has(activeId)) {
+            delete state.activeThreadIds[activeId];
+          }
+        }
+      })
+      .addCase(loadThreads.rejected, state => {
+        state.isLoadingThreads = false;
+      })
+      // A create in flight supersedes the previous attempt's failure, so the
+      // banner clears the moment the user retries rather than lingering. The
+      // starting request also becomes the only one allowed to write the error
+      // state — see `createThreadRequestId`.
+      .addCase(createNewThread.pending, (state, action) => {
+        state.createThreadRequestId = action.meta.requestId;
+        state.createThreadError = null;
+      })
+      .addCase(createNewThread.fulfilled, (state, action) => {
+        if (action.meta.requestId !== state.createThreadRequestId) return;
+        state.createThreadError = null;
+      })
+      .addCase(createNewThread.rejected, (state, action) => {
+        // A superseded attempt failing late must not repaint the banner over a
+        // newer create that already succeeded.
+        if (action.meta.requestId !== state.createThreadRequestId) return;
+        state.createThreadError = formatThreadCreateError(action.payload ?? action.error?.message);
+      })
+      .addCase(loadThreadMessages.pending, state => {
+        state.isLoadingMessages = true;
+        state.messagesError = null;
+      })
+      .addCase(loadThreadMessages.fulfilled, (state, action) => {
+        state.isLoadingMessages = false;
+        const { threadId, messages: fetched } = action.payload;
+        const existing = state.messagesByThreadId[threadId] ?? [];
+        const fetchedIds = new Set(fetched.map(m => m.id));
+        // A message present locally but missing from this fetch already
+        // persisted server-side (cache entries only ever land via a
+        // `.fulfilled` append) — it just hasn't shown up in this particular
+        // GET yet (e.g. a `loadThreadMessages` rehydrate racing a concurrent
+        // `addMessageLocal`/`addInferenceResponse` append on the same
+        // thread). Merge it back in instead of wholesale-replacing, or the
+        // fetch would silently wipe the newer message out of the visible
+        // transcript. See `useWorkflowBuilderChat`'s copilot-thread rehydrate
+        // effect, which can run concurrently with an auto-sent turn.
+        const localOnly = existing.filter(m => !fetchedIds.has(m.id));
+        const messages =
+          localOnly.length > 0
+            ? [...fetched, ...localOnly].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+            : fetched;
+        state.messagesByThreadId[threadId] = messages;
+        if (threadId === state.selectedThreadId) {
+          state.messages = messages;
+        }
+      })
+      .addCase(loadThreadMessages.rejected, (state, action) => {
+        state.isLoadingMessages = false;
+        state.messagesError = action.payload as string;
+      })
+      .addCase(addMessageLocal.fulfilled, (state, action) => {
+        appendMessageToCache(state, action.payload.threadId, action.payload.message);
+      })
+      .addCase(generateThreadTitleIfNeeded.fulfilled, (state, action) => {
+        const idx = state.threads.findIndex(thread => thread.id === action.payload.id);
+        if (idx >= 0) {
+          state.threads[idx] = action.payload;
+        } else {
+          state.threads = [action.payload, ...state.threads];
+        }
+      })
+      .addCase(addInferenceResponse.fulfilled, (state, action) => {
+        appendMessageToCache(state, action.payload.threadId, action.payload.message);
+        // Do not clear activeThreadId here: streaming sends many segment append
+        // thunks; clearing each time would re-enable the composer mid-turn.
+        // ChatRuntimeProvider clears it on chat_done / chat_error.
+      })
+      .addCase(addInferenceResponse.rejected, () => {
+        // Do NOT clear activeThreadId here — ChatRuntimeProvider clears it on
+        // chat_done / chat_error. Clearing on every rejected segment append
+        // would re-enable the composer while the turn is still in-flight.
+      })
+      .addCase(persistReaction.fulfilled, (state, action) => {
+        appendMessageToCache(state, action.payload.threadId, action.payload.message, true);
+      })
+      .addCase(deleteThread.fulfilled, (state, action) => {
+        delete state.messagesByThreadId[action.payload.threadId];
+      })
+      .addCase(updateThreadTitle.fulfilled, (state, action) => {
+        const idx = state.threads.findIndex(t => t.id === action.payload.id);
+        if (idx >= 0) {
+          state.threads[idx] = action.payload;
+        }
+      })
+      .addCase(resetUserScopedState, () => initialState);
+  },
+});
+
+export const {
+  clearCreateThreadError,
+  setSelectedThread,
+  clearSelectedThread,
+  setActiveThread,
+  markThreadInferenceActive,
+  clearThreadInferenceActive,
+  clearStaleThread,
+  clearAllThreads,
+  resetThreadCachesPreservingSelection,
+  setWelcomeThreadId,
+} = threadSlice.actions;
+
+export default threadSlice.reducer;
