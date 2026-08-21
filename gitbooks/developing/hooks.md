@@ -130,9 +130,9 @@ event, and Claude Code's `UserPromptSubmit` aliases onto `beforeSubmitPrompt`.
 | `afterAgentResponse` | on the assistant's message | — |
 
 `sessionStart`, `sessionEnd`, `preCompact` and `afterAgentThought` are defined —
-they parse, match, execute, and can be exercised with `hooks.test` — but the core
+they parse, match, execute, and can be exercised with `hooks test` — but the core
 does not fire them yet. Configuring one produces a load warning saying so, and
-`hooks.list` reports `"wired": false` for it. That is deliberate: a hook that
+`hooks list` reports `"wired": false` for it. That is deliberate: a hook that
 silently never runs is the worst thing this system can do to you.
 
 ### Derived events
@@ -194,13 +194,16 @@ every tool call.
 Three RPC methods, on the `hooks` namespace:
 
 ```bash
-openhuman rpc hooks.list      # what is configured, from which file, and whether it is wired
-openhuman rpc hooks.reload    # re-read every layer
-openhuman rpc hooks.test --event beforeShellExecution \
+openhuman hooks list      # what is configured, from which file, and whether it is wired
+openhuman hooks reload    # re-read every layer
+openhuman hooks test --event beforeShellExecution \
   --payload '{"command":"rm -rf /","sandbox":false}'
 ```
 
-`hooks.test` fires one synthetic event in the foreground and reports what each
+Over JSON-RPC the same three are `openhuman.hooks_list`, `openhuman.hooks_reload`
+and `openhuman.hooks_test`.
+
+`hooks test` fires one synthetic event in the foreground and reports what each
 matching hook decided, including hooks for observational events that a real
 dispatch would run detached. Debug a hook with it rather than by asking the agent
 to do the dangerous thing to see whether the rule fires.
