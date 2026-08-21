@@ -725,8 +725,10 @@ impl Agent {
                     );
                     citations
                 }
-                Err(err) => {
-                    log::warn!("[agent_loop] memory citation collection failed: {err}");
+                Err(_err) => {
+                    // Recall errors may include the user-authored query. Keep
+                    // warning logs free of raw external content.
+                    log::warn!("[agent_loop] memory citation collection failed");
                     Vec::new()
                 }
             }

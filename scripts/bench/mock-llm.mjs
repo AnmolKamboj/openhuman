@@ -144,6 +144,19 @@ function unitFrom(seed) {
 // Retry counters are keyed by request content. Distinct concurrent turns cannot
 // perturb one another, while a retry of the same request still gets a new draw.
 const attemptsByRequest = new Map();
+const MAX_TRACKED_REQUESTS = 4096;
+
+/** Return the next attempt for a request while bounding benchmark-side state. */
+function nextRequestAttempt(requestKey) {
+  const attempt = (attemptsByRequest.get(requestKey) ?? 0) + 1;
+  // Refresh insertion order so active retrying requests are evicted last.
+  attemptsByRequest.delete(requestKey);
+  attemptsByRequest.set(requestKey, attempt);
+  if (attemptsByRequest.size > MAX_TRACKED_REQUESTS) {
+    attemptsByRequest.delete(attemptsByRequest.keys().next().value);
+  }
+  return attempt;
+}
 
 const stats = {
   startedAt: Date.now(),
@@ -271,8 +284,7 @@ async function handleCompletion(req, res, body, opts) {
   // which requests fail or how much latency they receive. Keep a per-content
   // attempt number so retries do not repeat the same injected failure forever.
   const requestKey = String(hash32(body));
-  const attempt = (attemptsByRequest.get(requestKey) ?? 0) + 1;
-  attemptsByRequest.set(requestKey, attempt);
+  const attempt = nextRequestAttempt(requestKey);
   const seed = `${requestKey}:${attempt}`;
 
   if (opts.failRate > 0 && unitFrom(`fail:${seed}`) < opts.failRate) {

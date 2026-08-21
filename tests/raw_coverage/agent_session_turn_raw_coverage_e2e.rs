@@ -24,7 +24,7 @@ use openhuman_core::openhuman::tools::{
     PermissionLevel, Tool, ToolContent, ToolResult, ToolScope as RuntimeToolScope,
 };
 use serde_json::json;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -209,14 +209,22 @@ impl ScriptedModel {
 
 struct StaticMemory {
     entries: Mutex<Vec<MemoryEntry>>,
+    entries_by_query: HashMap<String, Vec<MemoryEntry>>,
     fail_recall: bool,
+    blocked_query: Option<String>,
+    recall_started: Option<Arc<Notify>>,
+    release_recall: Option<Arc<Notify>>,
 }
 
 impl Default for StaticMemory {
     fn default() -> Self {
         Self {
             entries: Mutex::new(Vec::new()),
+            entries_by_query: HashMap::new(),
             fail_recall: false,
+            blocked_query: None,
+            recall_started: None,
+            release_recall: None,
         }
     }
 }
@@ -259,6 +267,17 @@ impl Memory for StaticMemory {
     ) -> anyhow::Result<Vec<MemoryEntry>> {
         if self.fail_recall {
             anyhow::bail!("forced recall failure for {query}");
+        }
+        if self.blocked_query.as_deref() == Some(query) {
+            if let Some(started) = &self.recall_started {
+                started.notify_one();
+            }
+            if let Some(release) = &self.release_recall {
+                release.notified().await;
+            }
+        }
+        if let Some(entries) = self.entries_by_query.get(query) {
+            return Ok(entries.iter().take(limit).cloned().collect());
         }
         Ok(self
             .entries
@@ -767,19 +786,35 @@ async fn turn_citation_task_replaces_previous_handle_and_joins_successfully_inne
     let _env = env_lock();
     let (_temp, workspace_path) = workspace("citation-task");
     let _workspace_guard = EnvGuard::set_path("OPENHUMAN_WORKSPACE", &workspace_path);
+    let citation = |id: &str| MemoryEntry {
+        id: id.to_string(),
+        key: "project.summary".to_string(),
+        content: "The launch checklist is ready.".to_string(),
+        namespace: Some("projects".to_string()),
+        category: MemoryCategory::Conversation,
+        timestamp: "2026-05-29T00:00:00Z".to_string(),
+        session_id: None,
+        score: Some(0.9),
+        taint: Default::default(),
+    };
+    let first_started = Arc::new(Notify::new());
+    let never_release_first = Arc::new(Notify::new());
     let memory = Arc::new(StaticMemory {
-        entries: Mutex::new(vec![MemoryEntry {
-            id: "citation-success".to_string(),
-            key: "project.summary".to_string(),
-            content: "The launch checklist is ready.".to_string(),
-            namespace: Some("projects".to_string()),
-            category: MemoryCategory::Conversation,
-            timestamp: "2026-05-29T00:00:00Z".to_string(),
-            session_id: None,
-            score: Some(0.9),
-            taint: Default::default(),
-        }]),
+        entries: Mutex::new(Vec::new()),
+        entries_by_query: HashMap::from([
+            (
+                "first citation query".to_string(),
+                vec![citation("citation-first")],
+            ),
+            (
+                "second citation query".to_string(),
+                vec![citation("citation-second")],
+            ),
+        ]),
         fail_recall: false,
+        blocked_query: Some("first citation query".to_string()),
+        recall_started: Some(first_started.clone()),
+        release_recall: Some(never_release_first),
     });
     let mut agent = Agent::builder()
         .chat_model(ScriptedModel::new(vec![
@@ -800,15 +835,18 @@ async fn turn_citation_task_replaces_previous_handle_and_joins_successfully_inne
         .unwrap();
 
     assert_eq!(agent.turn("first citation query").await.unwrap(), "first answer");
-    // Starting a second turn exercises replacement (and abort) of the prior
-    // pending handle before installing the citation task joined below.
+    timeout(Duration::from_secs(1), first_started.notified())
+        .await
+        .expect("first citation recall should be in flight");
+    // Starting a second turn must abort the blocked first task before installing
+    // the query-specific citation task joined below.
     assert_eq!(
         agent.turn("second citation query").await.unwrap(),
         "second answer"
     );
     let citations = agent.take_last_turn_citations().await;
     assert_eq!(citations.len(), 1);
-    assert_eq!(citations[0].id, "citation-success");
+    assert_eq!(citations[0].id, "citation-second");
 }
 
 #[test]
@@ -878,7 +916,11 @@ async fn turn_xml_failures_checkpoint_policy_visibility_and_hooks_are_publicly_e
                 score: Some(0.9),
                 taint: Default::default(),
             }]),
+            entries_by_query: HashMap::new(),
             fail_recall: true,
+            blocked_query: None,
+            recall_started: None,
+            release_recall: None,
         }))
         .tool_dispatcher(Box::new(XmlToolDispatcher))
         .workspace_dir(workspace_path)
