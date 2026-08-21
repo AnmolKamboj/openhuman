@@ -388,7 +388,7 @@ Two consequences worth knowing before editing this area:
   promising the two "stay in lockstep", which is the shape of a bug waiting to
   happen, not a guarantee. `humanize_tool_name` and `context_detail_from_args`
   in `tools/traits.rs` are re-exports/wrappers over the crate for the same
-  reason; only the ellipsis is OpenHuman's.
+  reason; only the trimming rule (80 chars, `…`) is OpenHuman's.
 
 **Rules:**
 
