@@ -20,7 +20,7 @@ use super::types::{HookEvent, HookPayload, ToolPayload};
 
 /// The string a matcher is compared against for a given event, or `None` when
 /// the event has no meaningful subject (session lifecycle, compaction).
-pub fn subject<'a>(event: HookEvent, payload: &'a HookPayload) -> Option<&'a str> {
+pub fn subject(event: HookEvent, payload: &HookPayload) -> Option<&str> {
     match (event, payload) {
         (
             HookEvent::PreToolUse
