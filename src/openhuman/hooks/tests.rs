@@ -436,3 +436,29 @@ fn wired_events_do_not_warn() {
     );
     assert!(parsed.warnings.is_empty(), "{:?}", parsed.warnings);
 }
+
+#[test]
+fn a_payload_is_parsed_for_its_event_not_by_untagged_guessing() {
+    // `{"trigger": "auto"}` also satisfies `SessionPayload` (every field
+    // optional), which is declared earlier in the untagged enum — so untagged
+    // dispatch would silently drop the trigger.
+    let payload = HookPayload::from_value_for(
+        HookEvent::PreCompact,
+        serde_json::json!({"trigger": "auto", "message_count": 12}),
+    )
+    .expect("a compact payload parses");
+    match payload {
+        HookPayload::Compact(compact) => {
+            assert_eq!(compact.trigger, "auto");
+            assert_eq!(compact.message_count, Some(12));
+        }
+        other => panic!("expected a compact payload, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_payload_that_does_not_fit_its_event_is_rejected() {
+    let error = HookPayload::from_value_for(HookEvent::BeforeShellExecution, serde_json::json!({}))
+        .expect_err("a shell payload needs a command");
+    assert!(error.contains("command"), "{error}");
+}
