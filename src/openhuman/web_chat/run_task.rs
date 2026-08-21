@@ -267,7 +267,7 @@ pub(crate) async fn run_chat_task(
             // any stale budget-exhausted signal before it could mislabel a
             // later genuine empty response. See #3386.
             super::ops::clear_budget_signal(thread_id).await;
-            let citations = agent.take_last_turn_citations();
+            let citations = agent.take_last_turn_citations().await;
             let usage = agent.take_last_turn_usage_totals();
             Ok(WebChatTaskResult {
                 full_response: response,

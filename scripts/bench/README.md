@@ -89,6 +89,21 @@ Runner options (the script's `--help`):
 --out-dir DIR       where to write artifacts (default target/bench/<stamp>)
 ```
 
+### Memory comparison controls
+
+- `--memory-off` disables recall, autosave, learning hooks, embeddings, and the
+  memory tree. Compare it with the default run to separate memory cost from
+  unrelated uptime or harness effects.
+- `--memory-writes-off` disables autosave and learning writes but keeps recall.
+  Use it with `--workspace DIR` pointing at populated data to distinguish read
+  cost from write cost.
+- `--workspace DIR` reuses caller-owned data and keeps it after the run. Pair
+  consecutive runs against the same populated corpus to distinguish data-size
+  effects from process-uptime effects.
+
+The two memory-disable flags are mutually exclusive: `--memory-off` already
+includes the write suppression performed by `--memory-writes-off`.
+
 ## How it works without touching the core
 
 Two facts carry the whole design, and a change to either breaks this tier:

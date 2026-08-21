@@ -205,7 +205,8 @@ normalization on the keyword side.
 The working-memory recall builds the query string `"working.user {user_message}"`
 — a text hack meant to bias ranking — scans all of `global`, takes the top 5,
 and **then** filters `key.starts_with("working.user.")`
-(`src/openhuman/memory/agent/memory_loader.rs:218-232`).
+(`src/openhuman/memory/agent/memory_loader.rs:218-232` in the pre-change code;
+this PR removed the file's loader implementation).
 
 So it scans the entire namespace to find entries identified by a known key
 prefix. In the benchmark corpus:
@@ -291,6 +292,60 @@ sub-linear — but items 1–3 cut N by far more than an index would cut the
 constant, and they carry much less risk. There is precedent for bounded
 retrieval everywhere else in the crate: `episodic_search`, `event_search_fts`,
 segments and entities are all `ORDER BY … LIMIT`. This one path is the outlier.
+
+## Outcome — what shipped and what it bought
+
+Items 1, 3 and 2 were implemented (branch `memory-recall-diet`):
+
+1. **`load_context()` removed.** The per-turn `[User working memory]` /
+   `[Prior conversations]` / `[Cross-chat context]` block is gone, taking the
+   `MemoryLoader` trait and `DefaultMemoryLoader` with it. Memory tools are
+   untouched, so the model still fetches memory on demand.
+3. **Autosave moved out of `global`** into `conversation_raw`
+   (`CONVERSATION_RAW_NAMESPACE`), applied to the agent turn and the channels
+   dispatcher.
+2. **Citations overlapped rather than serialized.** They are UI-only but were a
+   full recall blocking every reply before the model call; now spawned and
+   joined in `take_last_turn_citations()`.
+
+Measured on **fresh** workspaces, 4 minutes, concurrency 8, tool-depth 0 —
+i.e. the growth test, since both arms start empty:
+
+| | baseline | recall diet | Δ |
+| --- | --- | --- | --- |
+| turns completed | 7,806 | **16,601** | 2.13× |
+| throughput | 32.5/s | **69.1/s** | 2.13× |
+| p50 latency | 232 ms | **102 ms** | 2.3× lower |
+| CPU per turn | 223 ms | **82 ms** | 2.7× lower |
+| RSS growth | 195 KiB/turn | **26 KiB/turn** | 7.5× lower |
+| latency drift over the run | 125 → 439 ms | **86 → 162 ms** | — |
+| throughput-held verdict | **fail** (33%) | **pass** (55%) | — |
+
+Namespace change confirmed in the resulting stores: baseline wrote
+`global=8202`; the diet build wrote `conversation_raw=17552, global=1`.
+
+### The residual growth is write-side, not read-side
+
+Latency still drifts in the diet build (86 → 162 ms), so the job is not
+finished. Running the same build with memory writes also disabled isolates it
+completely:
+
+| | throughput | p50 | latency over 4 min |
+| --- | --- | --- | --- |
+| baseline | 32.5/s | 232 ms | 125 → 439 ms |
+| diet | 69.1/s | 102 ms | 86 → 162 ms |
+| diet, no memory writes | **105.5/s** | **68 ms** | **75 → 76 ms (flat)** |
+
+Flat, and throughput held **99%**. So every remaining drift is in the memory
+*write* path — upsert, embedding, chunk insert against a growing store — and
+none of it is left on the read side. That is a smaller and separate problem;
+the candidate flagged during the dive is the conversation-store index
+(`vendor/tinycortex/.../conversations/store_index.rs`), which folds
+`threads.jsonl` from scratch on nearly every operation.
+
+Assistant summaries now follow user messages into `conversation_raw` and use a
+unique key, so concurrent sessions neither overwrite one global document nor
+leak raw conversation autosaves into default-namespace recall.
 
 ## Tried and rejected
 

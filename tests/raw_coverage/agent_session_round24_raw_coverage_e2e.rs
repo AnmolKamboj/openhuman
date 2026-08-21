@@ -3,7 +3,6 @@ use async_trait::async_trait;
 use openhuman_core::openhuman::agent::dispatcher::XmlToolDispatcher;
 use openhuman_core::openhuman::agent::hooks::{PostTurnHook, TurnContext};
 use openhuman_core::openhuman::agent::Agent;
-use openhuman_core::openhuman::memory::agent::memory_loader::MemoryLoader;
 use openhuman_core::openhuman::config::{AgentConfig, ContextConfig};
 use openhuman_core::openhuman::agent::context::prompt::{
     ConnectedIntegration, LearnedContextData, PersonalityRosterEntry, PersonalityRosterSection,
@@ -250,14 +249,6 @@ impl Memory for RecordingMemory {
     }
 }
 
-struct EmptyMemoryLoader;
-
-#[async_trait]
-impl MemoryLoader for EmptyMemoryLoader {
-    async fn load_context(&self, _memory: &dyn Memory, _user_message: &str) -> Result<String> {
-        Ok(String::new())
-    }
-}
 
 struct Round24Tool {
     calls: Arc<AtomicUsize>,
@@ -439,7 +430,6 @@ async fn max_iteration_checkpoint_uses_deterministic_fallback_and_hooks() {
             calls: calls.clone(),
         })])
         .memory(RecordingMemory::new())
-        .memory_loader(Box::new(EmptyMemoryLoader))
         .tool_dispatcher(Box::new(XmlToolDispatcher))
         .workspace_dir(workspace_path.clone())
         .event_context("round24-session", "round24-channel")
@@ -525,7 +515,6 @@ async fn builder_validation_and_system_prompt_cover_defaults_and_learning() {
         .chat_model(provider.clone())
         .tools(vec![Box::new(Round24Tool { calls })])
         .memory(memory)
-        .memory_loader(Box::new(EmptyMemoryLoader))
         .tool_dispatcher(Box::new(XmlToolDispatcher))
         .workspace_dir(workspace_path)
         .event_context("round24-prompt-session", "round24-prompt-channel")
