@@ -1353,7 +1353,7 @@ impl ToolPolicyMiddleware {
         // outer policy name; without this check `use_skill` would bypass the
         // session's effective allowlist for any packed tool.
         if call.name == "use_skill" {
-            if let Some(inner_tool) = call.arguments.get("tool").and_then(Value::as_str) {
+            if let Some(inner_tool) = call.arguments.get("tool").and_then(serde_json::Value::as_str) {
                 let inner_decision = self.session.decision_for(inner_tool);
                 if inner_decision.is_denied() {
                     return Some(format!(
