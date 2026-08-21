@@ -141,10 +141,9 @@ function unitFrom(seed) {
   return (hash32(String(seed)) % 1_000_000) / 1_000_000;
 }
 
-// Per-request attempt counter, incremented before the seed is drawn so a retry
-// of the same turn samples a different failure/latency value instead of failing
-// identically on every attempt.
-let attemptCount = 0;
+// Retry counters are keyed by request content. Distinct concurrent turns cannot
+// perturb one another, while a retry of the same request still gets a new draw.
+const attemptsByRequest = new Map();
 
 const stats = {
   startedAt: Date.now(),
@@ -268,12 +267,13 @@ async function handleCompletion(req, res, body, opts) {
   // one tool call we previously emitted.
   const depth = messages.filter((m) => m?.role === 'tool').length;
 
-  // Seed from the conversation shape so a given turn is reproducible, while
-  // different turns still spread across the latency distribution. Include the
-  // attempt counter: a retried turn must draw a different value or it fails
-  // again on every retry instead of exercising the core's retry path.
-  attemptCount += 1;
-  const seed = `${messages.length}:${depth}:${stats.completions}:${attemptCount}`;
+  // Seed from stable request content so concurrent arrival order cannot change
+  // which requests fail or how much latency they receive. Keep a per-content
+  // attempt number so retries do not repeat the same injected failure forever.
+  const requestKey = String(hash32(body));
+  const attempt = (attemptsByRequest.get(requestKey) ?? 0) + 1;
+  attemptsByRequest.set(requestKey, attempt);
+  const seed = `${requestKey}:${attempt}`;
 
   if (opts.failRate > 0 && unitFrom(`fail:${seed}`) < opts.failRate) {
     stats.injectedFailures += 1;

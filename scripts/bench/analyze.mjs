@@ -91,11 +91,22 @@ function parseArgs(argv) {
 }
 
 function readJsonl(file) {
+  let dropped = 0;
   return fs
     .readFileSync(file, 'utf8')
     .split('\n')
     .filter(line => line.trim().length > 0)
-    .map(line => JSON.parse(line));
+    .flatMap(line => {
+      try {
+        return [JSON.parse(line)];
+      } catch {
+        dropped += 1;
+        if (dropped === 1) {
+          process.stderr.write(`[analyze] skipping unparsable line in ${file}\n`);
+        }
+        return [];
+      }
+    });
 }
 
 /** Ordinary least squares. Returns slope in units of y per unit of x. */
@@ -501,6 +512,16 @@ function analyzeThroughput(turnsPath) {
     turns = readJsonl(turnsPath);
   } catch {
     return { available: false };
+  }
+  if (driver?.measureStartedAtMs && driver?.wallMs) {
+    const loadStart = driver.measureStartedAtMs;
+    const loadEnd = loadStart + driver.wallMs;
+    const withEpoch = turns.filter(t => typeof t.epochMs === 'number');
+    if (withEpoch.length > 0) {
+      turns = withEpoch
+        .filter(t => t.epochMs >= loadStart && t.epochMs <= loadEnd)
+        .map(t => ({ ...t, tMs: t.epochMs - loadStart }));
+    }
   }
   if (turns.length < 20) return { available: false };
 

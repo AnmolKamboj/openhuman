@@ -232,9 +232,11 @@ async function runTurn(workerId, threadId, index) {
   }
 
   if (turnLog) {
+    const completedAt = Date.now();
     turnLog.write(
       `${JSON.stringify({
-        tMs: Date.now() - loadStart,
+        tMs: completedAt - loadStart,
+        epochMs: completedAt,
         workerId,
         index,
         latencyMs,
