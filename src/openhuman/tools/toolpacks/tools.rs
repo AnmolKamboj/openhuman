@@ -12,7 +12,7 @@ pub const LOAD_SKILL: &str = "load_skill";
 pub const USE_SKILL: &str = "use_skill";
 
 /// An `Arc`-shared, owned view of the tool registry a pack tool lives in.
-type ToolVec = Arc<Vec<Box<dyn Tool>>>;
+type ToolVec = ToolVec;
 
 /// A late-bound, non-owning view of the tool registry a pack tool lives in.
 ///
@@ -35,7 +35,7 @@ impl PackRegistryHandle {
         }
     }
 
-    fn tools(&self) -> Option<Arc<Vec<Box<dyn Tool>>>> {
+    fn tools(&self) -> Option<ToolVec> {
         self.inner.get()?.upgrade()
     }
 
@@ -44,7 +44,7 @@ impl PackRegistryHandle {
     /// The pack check is not decoration: without it `use_skill` would dispatch
     /// into any packed tool regardless of the skill named, and the model could
     /// reach a crypto write through a workflow skill.
-    fn resolve(&self, skill: &str, tool: &str) -> Option<(Arc<Vec<Box<dyn Tool>>>, usize)> {
+    fn resolve(&self, skill: &str, tool: &str) -> Option<(ToolVec, usize)> {
         registry::pack(skill).filter(|p| p.owns(tool))?;
         let tools = self.tools()?;
         let idx = tools.iter().position(|t| t.name() == tool)?;
@@ -199,7 +199,7 @@ impl UseSkillTool {
         }
     }
 
-    fn resolve(&self, args: &Value) -> Option<(Arc<Vec<Box<dyn Tool>>>, usize)> {
+    fn resolve(&self, args: &Value) -> Option<(ToolVec, usize)> {
         let skill = args.get("skill").and_then(Value::as_str)?;
         let tool = args.get("tool").and_then(Value::as_str)?;
         self.handle.resolve(skill, tool)
