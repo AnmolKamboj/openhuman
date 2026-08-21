@@ -10,3 +10,8 @@ pub use types::{
     DurableSubagentSessionSummary, DurableSubagentStatus, SubagentSessionSelector,
     SubagentSessionStore, SubagentSessionUpsert,
 };
+// Test-only since the `harness-subagent-audit` debug binary (and the
+// `orchestration::harness_audit` facade it needed) were removed: production
+// callers reach the session records through `DurableSubagentSessionSummary`.
+#[cfg(test)]
+pub use types::DurableSubagentSession;
