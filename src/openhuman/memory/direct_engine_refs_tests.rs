@@ -148,27 +148,12 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     // verdicts because they have not been audited individually. See the note on
     // that variant.
     (
-        "src/bin/gmail_backfill_3d.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
-    ),
-    (
         "src/bin/library_profile/scenarios/cold_phases.rs",
         Verdict::FacadeRevealed,
         "engine dependency predates this branch; the facade deletion made it visible",
     ),
     (
         "src/bin/library_profile/scenarios/memory_ingest.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
-    ),
-    (
-        "src/bin/memory_tree_init_smoke.rs",
-        Verdict::FacadeRevealed,
-        "engine dependency predates this branch; the facade deletion made it visible",
-    ),
-    (
-        "src/bin/slack_backfill.rs",
         Verdict::FacadeRevealed,
         "engine dependency predates this branch; the facade deletion made it visible",
     ),
