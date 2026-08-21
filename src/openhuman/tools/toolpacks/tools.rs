@@ -11,6 +11,9 @@ use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolCallOptions, To
 pub const LOAD_SKILL: &str = "load_skill";
 pub const USE_SKILL: &str = "use_skill";
 
+/// An `Arc`-shared, owned view of the tool registry a pack tool lives in.
+type ToolVec = Arc<Vec<Box<dyn Tool>>>;
+
 /// A late-bound, non-owning view of the tool registry a pack tool lives in.
 ///
 /// Late-bound because the pack tools are *inside* the registry they read: the
