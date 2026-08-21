@@ -239,4 +239,13 @@ pub enum SubagentRunError {
 
     #[error("sub-agent exceeded maximum iterations ({0})")]
     MaxIterationsExceeded(usize),
+
+    /// A configured `subagentStart` hook refused the spawn.
+    ///
+    /// Distinct from [`Self::TierViolation`] on purpose: a tier violation is a
+    /// fact about the agent graph the model cannot do anything about, while
+    /// this one carries a reason a human wrote and the model may be able to
+    /// satisfy — so the two must not read the same in a transcript.
+    #[error("delegation blocked by a configured hook: {0}")]
+    HookDenied(String),
 }

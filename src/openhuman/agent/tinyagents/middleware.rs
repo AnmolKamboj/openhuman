@@ -1513,22 +1513,59 @@ impl Middleware<()> for EmbedderToolHooksMiddleware {
         _state: &(),
         call: &mut TaToolCall,
     ) -> TaResult<()> {
-        let context = crate::openhuman::agent::hooks::ToolHookContext {
+        let mut context = crate::openhuman::agent::hooks::ToolHookContext {
             event: crate::openhuman::agent::hooks::ToolHookEvent::PreToolUse,
             call_id: call.id.clone(),
             tool_name: call.name.clone(),
             arguments: call.arguments.clone(),
             success: None,
             duration_ms: None,
+            output: None,
+            error: None,
+            session_id: None,
+            agent_id: None,
         };
         for hook in &self.hooks {
-            hook.before_tool(&context).await.map_err(|error| {
-                tinyagents::error::TinyAgentsError::Tool(format!(
-                    "tool hook '{}' denied {}: {error:#}",
-                    hook.name(),
-                    context.tool_name
-                ))
-            })?;
+            match hook.before_tool_decision(&context).await {
+                crate::openhuman::agent::hooks::ToolHookDecision::Proceed => {}
+                // A rewrite is applied to the live call *and* to the context
+                // handed to later hooks, so a chain of hooks each narrowing the
+                // arguments composes instead of the last one silently winning.
+                crate::openhuman::agent::hooks::ToolHookDecision::ProceedWith(arguments) => {
+                    tracing::debug!(
+                        hook = hook.name(),
+                        tool = context.tool_name,
+                        "[tinyagents::mw] tool hook rewrote call arguments"
+                    );
+                    call.arguments = arguments.clone();
+                    context.arguments = arguments;
+                }
+                crate::openhuman::agent::hooks::ToolHookDecision::Deny(reason) => {
+                    return Err(tinyagents::error::TinyAgentsError::Tool(format!(
+                        "tool hook '{}' denied {}: {reason}",
+                        hook.name(),
+                        context.tool_name
+                    )));
+                }
+                // There is no approval channel inside a middleware, and a hook
+                // that asks for a human is asking for something stricter than
+                // "proceed" — so an unresolvable `Ask` denies rather than
+                // quietly allowing. The approval-gate path in
+                // `security::approval` is where an interactive host resolves it.
+                crate::openhuman::agent::hooks::ToolHookDecision::Ask(reason) => {
+                    tracing::info!(
+                        hook = hook.name(),
+                        tool = context.tool_name,
+                        "[tinyagents::mw] tool hook requested approval; denying in a \
+                         non-interactive middleware"
+                    );
+                    return Err(tinyagents::error::TinyAgentsError::Tool(format!(
+                        "tool hook '{}' requires approval for {}: {reason}",
+                        hook.name(),
+                        context.tool_name
+                    )));
+                }
+            }
         }
         // Cache the (already-recovered) arguments only once every hook approved
         // the call: a vetoed call never reaches `after_tool`, so storing it here
@@ -1559,14 +1596,27 @@ impl Middleware<()> for EmbedderToolHooksMiddleware {
             arguments,
             success: Some(result.error.is_none()),
             duration_ms: Some(result.elapsed_ms),
+            output: Some(result.content.clone()),
+            error: result.error.clone(),
+            session_id: None,
+            agent_id: None,
         };
         for hook in &self.hooks {
-            if let Err(error) = hook.after_tool(&context).await {
-                tracing::warn!(
-                    hook = hook.name(),
-                    tool = context.tool_name,
-                    "embedder post-tool hook failed: {error:#}"
-                );
+            // Text a hook returns is appended to the result the model reads —
+            // the seam a "you edited a file, here is the linter output" hook
+            // needs. It is appended rather than substituted so a hook cannot
+            // erase what the tool actually said.
+            if let Some(additional) = hook.after_tool_context(&context).await {
+                if !additional.trim().is_empty() {
+                    tracing::debug!(
+                        hook = hook.name(),
+                        tool = context.tool_name,
+                        chars = additional.chars().count(),
+                        "[tinyagents::mw] tool hook appended context to the result"
+                    );
+                    result.content.push_str("\n\n");
+                    result.content.push_str(additional.trim_end());
+                }
             }
         }
         Ok(())

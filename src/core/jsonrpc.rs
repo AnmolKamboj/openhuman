@@ -2411,6 +2411,14 @@ pub async fn bootstrap_core_runtime(
     // frontend raises a one-shot "settings were reset" notice off it.
     crate::openhuman::desktop::app_state::latch_from_config(&cfg);
 
+    // --- Configurable hooks -------------------------------------------
+    // Read every `hooks.json` layer and, only if something is configured,
+    // install the harness bridge. Boot is the right moment: a hook that is
+    // meant to gate the first tool call of the first turn has to be loaded
+    // before any session exists, and the alternative — loading lazily on the
+    // first event — would let that first call through while the file is read.
+    crate::openhuman::hooks::init(&cfg).await;
+
     // --- Turn-state recovery -------------------------------------------
     // Any per-thread turn snapshots left on disk from a previous process
     // are stale by definition — there is no live driver to resume them.
