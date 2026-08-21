@@ -153,6 +153,10 @@ function nextRequestAttempt(requestKey) {
   attemptsByRequest.delete(requestKey);
   attemptsByRequest.set(requestKey, attempt);
   if (attemptsByRequest.size > MAX_TRACKED_REQUESTS) {
+    // Eviction intentionally permits a very old request to restart at attempt
+    // 1. Core retries are immediate, so their refreshed keys remain resident;
+    // preserving every completed request across an unbounded duration run
+    // would make the mock itself accumulate benchmark-distorting state.
     attemptsByRequest.delete(attemptsByRequest.keys().next().value);
   }
   return attempt;

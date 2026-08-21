@@ -26,7 +26,7 @@ use openhuman_core::openhuman::tools::{
 use serde_json::json;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use tempfile::TempDir;
 use tinyagents::harness::message::{AssistantMessage, ContentBlock, Message, MessageDelta};
@@ -214,6 +214,20 @@ struct StaticMemory {
     blocked_query: Option<String>,
     recall_started: Option<Arc<Notify>>,
     release_recall: Option<Arc<Notify>>,
+    recall_cancelled: Option<Arc<AtomicBool>>,
+}
+
+struct RecallCancellationGuard {
+    cancelled: Arc<AtomicBool>,
+    armed: bool,
+}
+
+impl Drop for RecallCancellationGuard {
+    fn drop(&mut self) {
+        if self.armed {
+            self.cancelled.store(true, Ordering::SeqCst);
+        }
+    }
 }
 
 impl Default for StaticMemory {
@@ -225,6 +239,7 @@ impl Default for StaticMemory {
             blocked_query: None,
             recall_started: None,
             release_recall: None,
+            recall_cancelled: None,
         }
     }
 }
@@ -272,8 +287,17 @@ impl Memory for StaticMemory {
             if let Some(started) = &self.recall_started {
                 started.notify_one();
             }
+            let mut cancellation_guard = self.recall_cancelled.as_ref().map(|cancelled| {
+                RecallCancellationGuard {
+                    cancelled: cancelled.clone(),
+                    armed: true,
+                }
+            });
             if let Some(release) = &self.release_recall {
                 release.notified().await;
+            }
+            if let Some(guard) = &mut cancellation_guard {
+                guard.armed = false;
             }
         }
         if let Some(entries) = self.entries_by_query.get(query) {
@@ -799,6 +823,7 @@ async fn turn_citation_task_replaces_previous_handle_and_joins_successfully_inne
     };
     let first_started = Arc::new(Notify::new());
     let never_release_first = Arc::new(Notify::new());
+    let first_cancelled = Arc::new(AtomicBool::new(false));
     let memory = Arc::new(StaticMemory {
         entries: Mutex::new(Vec::new()),
         entries_by_query: HashMap::from([
@@ -815,6 +840,7 @@ async fn turn_citation_task_replaces_previous_handle_and_joins_successfully_inne
         blocked_query: Some("first citation query".to_string()),
         recall_started: Some(first_started.clone()),
         release_recall: Some(never_release_first),
+        recall_cancelled: Some(first_cancelled.clone()),
     });
     let mut agent = Agent::builder()
         .chat_model(ScriptedModel::new(vec![
@@ -840,10 +866,21 @@ async fn turn_citation_task_replaces_previous_handle_and_joins_successfully_inne
         .expect("first citation recall should be in flight");
     // Starting a second turn must abort the blocked first task before installing
     // the query-specific citation task joined below.
-    assert_eq!(
-        agent.turn("second citation query").await.unwrap(),
-        "second answer"
-    );
+    let second_answer = timeout(
+        Duration::from_secs(1),
+        agent.turn("second citation query"),
+    )
+    .await
+    .expect("replacement turn must not wait for the blocked first recall")
+    .unwrap();
+    assert_eq!(second_answer, "second answer");
+    timeout(Duration::from_secs(1), async {
+        while !first_cancelled.load(Ordering::SeqCst) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the first citation recall future should be cancelled");
     let citations = agent.take_last_turn_citations().await;
     assert_eq!(citations.len(), 1);
     assert_eq!(citations[0].id, "citation-second");
@@ -921,6 +958,7 @@ async fn turn_xml_failures_checkpoint_policy_visibility_and_hooks_are_publicly_e
             blocked_query: None,
             recall_started: None,
             release_recall: None,
+            recall_cancelled: None,
         }))
         .tool_dispatcher(Box::new(XmlToolDispatcher))
         .workspace_dir(workspace_path)
