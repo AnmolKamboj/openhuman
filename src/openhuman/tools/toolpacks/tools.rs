@@ -14,6 +14,9 @@ pub const USE_SKILL: &str = "use_skill";
 /// An `Arc`-shared, owned view of the tool registry a pack tool lives in.
 type ToolVec = Arc<Vec<Box<dyn Tool>>>;
 
+/// A non-owning view of the tool registry, kept to break the binding cycle.
+type ToolRegistryRef = Weak<Vec<Box<dyn Tool>>>;
+
 /// A late-bound, non-owning view of the tool registry a pack tool lives in.
 ///
 /// Late-bound because the pack tools are *inside* the registry they read: the
@@ -22,11 +25,11 @@ type ToolVec = Arc<Vec<Box<dyn Tool>>>;
 /// cycle that never drops.
 #[derive(Clone, Default)]
 pub struct PackRegistryHandle {
-    inner: Arc<OnceLock<Weak<Vec<Box<dyn Tool>>>>>,
+    inner: Arc<OnceLock<ToolRegistryRef>>,
 }
 
 impl PackRegistryHandle {
-    pub fn bind(&self, registry: Weak<Vec<Box<dyn Tool>>>) {
+    pub fn bind(&self, registry: ToolRegistryRef) {
         // Binding twice is not an error: an agent that rebuilds its tool `Arc`
         // re-binds, and the first write simply wins for that generation. What
         // must never happen is a *silent* mismatch, so log the redundant bind.
