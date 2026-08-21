@@ -439,8 +439,9 @@ impl Agent {
     ///    to preserve KV-cache stability.
     /// 2. **Prompt Construction**: Builds the system prompt (only on the first turn)
     ///    incorporating learned context and tool instructions.
-    /// 3. **Context Injection**: Enriches the user message with relevant memories
-    ///    fetched via the [`MemoryLoader`].
+    /// 3. **Context Injection**: Enriches the user message with per-turn context
+    ///    such as situational preferences, the thread goal, and active sub-agents.
+    ///    Broad memory recall is available to the model on demand instead.
     /// 4. **Execution Loop**: Enters a loop (up to `max_tool_iterations`) where it:
     ///    - Manages the context window (reduction/summarization).
     ///    - Calls the LLM provider.
@@ -561,10 +562,10 @@ impl Agent {
             // backend has already tokenised; replacing its bytes (even
             // cosmetically) forces the backend to re-prefill from scratch.
             //
-            // Dynamic turn-to-turn context (memory recall, learned snippets)
-            // rides on the user message via `memory_loader.load_context()`
-            // — that's where the caller should inject anything that varies
-            // between turns.
+            // Dynamic turn-to-turn context rides on the user message assembled
+            // below (`context`) — that is where anything varying between turns
+            // belongs. Broad memory recall is not injected; the model calls the
+            // memory tools when it needs stored context.
             //
             // *** Mid-session schema-only refresh ***
             //
@@ -694,7 +695,7 @@ impl Agent {
             });
         }
 
-        log::info!("[agent] loading memory context for user message");
+        log::info!("[agent] spawning UI-only citation collection for user message");
         const MEMORY_CITATION_LIMIT: usize = 5;
         const MEMORY_CITATION_MIN_RELEVANCE: f64 = 0.4;
         // Spawned, not awaited: see `Agent::pending_citations`. The result is
@@ -1667,9 +1668,16 @@ impl Agent {
 
         if self.auto_save {
             let summary = truncate_with_ellipsis(&reply, 100);
+            let autosave_key = format!("assistant_resp:{}", uuid::Uuid::new_v4());
             let _ = self
                 .memory
-                .store("", "assistant_resp", &summary, MemoryCategory::Daily, None)
+                .store(
+                    crate::openhuman::agent::learning::transcript_ingest::CONVERSATION_RAW_NAMESPACE,
+                    &autosave_key,
+                    &summary,
+                    MemoryCategory::Daily,
+                    None,
+                )
                 .await;
         }
 

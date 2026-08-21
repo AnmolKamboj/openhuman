@@ -11,27 +11,6 @@ const PRIOR_CONVERSATION_LIMIT: usize = 3;
 /// do not auto-pollute every fresh chat.
 const PRIOR_CONVERSATION_KEY_PREFIX: &str = "high.";
 
-/// Parse a `MemoryEntry::timestamp` (RFC 3339) into an absolute
-/// `YYYY-MM-DD` label for prompt injection, e.g. `2026-05-25`. Returns
-/// `None` when the timestamp is missing or unparseable so callers omit
-/// the stamp rather than emit a garbage date.
-///
-/// Time-sensitive memory ("finish the proposal by Wednesday") is a prime
-/// vector for stale-as-current hallucinations: with no date the model
-/// can't tell a four-day-old working fact from a present-tense one, so it
-/// may serve it as today's — the same failure as the memory-tree path.
-/// This block feeds the chat user message *and*, via
-/// `last_memory_context`, every typed sub-agent including the cron
-/// morning briefing (#2944). Reuses the prompt layer's absolute-date
-/// formatter for one consistent date shape across surfaces.
-fn memory_entry_date_label(timestamp: &str) -> Option<String> {
-    chrono::DateTime::parse_from_rfc3339(timestamp)
-        .ok()
-        .map(|dt| {
-            crate::openhuman::agent::prompts::memory_date_label(dt.with_timezone(&chrono::Utc))
-        })
-}
-
 /// Canonical header for the `[Cross-chat context]` block injected on
 /// every turn that has FTS-surfaced hits from other threads.
 ///
@@ -208,16 +187,6 @@ mod tests {
             score,
             taint: Default::default(),
         }
-    }
-
-    #[test]
-    fn memory_entry_date_label_parses_rfc3339_else_none() {
-        assert_eq!(
-            super::memory_entry_date_label("2026-05-25T07:00:00Z").as_deref(),
-            Some("2026-05-25")
-        );
-        assert_eq!(super::memory_entry_date_label("not-a-date"), None);
-        assert_eq!(super::memory_entry_date_label(""), None);
     }
 
     #[tokio::test]
