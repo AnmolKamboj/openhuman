@@ -244,9 +244,9 @@ tinycortex-api = { path = "vendor/tinycortex/api" }
 # rather than the one pinned inside the tinymemory submodule.
 #
 # After cloning: `git submodule update --init --recursive vendor/tinymemory`.
-tinymemory = { path = "vendor/tinymemory" }
-tinymemory-api = { path = "vendor/tinymemory/api" }
-tinymemory-tinycortex = { path = "vendor/tinymemory/adapters/tinycortex" }
+tinymemory = { path = "vendor/tinymemory/crates/tinymemory" }
+tinymemory-api = { path = "vendor/tinymemory/crates/tinymemory-api" }
+tinymemory-tinycortex = { path = "vendor/tinymemory/crates/tinymemory-tinycortex" }
 # `tinymemory-core` is the *substance* of the memory subsystem, extracted out of
 # `src/openhuman/memory/` — the SQLite/vector store, the markdown summary tree,
 # the provider sync pipelines, ingestion, recall/query/search, the ingest queue,
@@ -263,7 +263,7 @@ tinymemory-tinycortex = { path = "vendor/tinymemory/adapters/tinycortex" }
 # The `schemars` feature is enabled because the memory config *section* structs
 # (`MemoryConfig`, `MemoryTreeConfig`, …) now live in `tinymemory_api::host` and
 # are still fields of OpenHuman's `Config`, which derives `JsonSchema`.
-tinymemory-core = { path = "vendor/tinymemory/core" }
+tinymemory-core = { path = "vendor/tinymemory/crates/tinymemory-core" }
 tinychannels = { version = "0.1", features = ["relay-websocket"] }
 # tinybus — the message bus. Owns what `src/core/event_bus/` used to: the typed
 # pub/sub surface (`EventBus`, `EventHandler`, `SubscriptionHandle`), the
@@ -370,7 +370,7 @@ tokio-util = { version = "0.7", features = ["rt", "io"] }
 # (native-tls on Windows, rustls on macOS / Linux) matches the reqwest
 # backend selected at each TLS call site.
 futures = "0.3"
-rusqlite = { version = "=0.40.0", features = ["bundled"] }
+rusqlite = { version = "=0.40.2", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
 iana-time-zone = "0.1"
 cron = "0.12"
@@ -576,7 +576,7 @@ coins-bip39 = { version = "0.8" }
 # They were `#[cfg(test)]` items in this crate before the memory extraction; a
 # downstream test harness cannot see those across a crate boundary, so the
 # extracted crate exposes them behind `test-support` instead.
-tinymemory-core = { path = "vendor/tinymemory/core", features = ["test-support"] }
+tinymemory-core = { path = "vendor/tinymemory/crates/tinymemory-core", features = ["test-support"] }
 # Dual-declared on purpose (same shape as the `sentry`/`axum` entries): the
 # optional dependency above is bin-only behind `bin-tools`, but
 # `agent_orchestration::tools::tools_e2e_tests` (a #[cfg(test)] LIB module),
@@ -1142,7 +1142,7 @@ while_let_loop = "allow"
 # deleted, reintroduced by dependency resolution. Same entry tinymemory's own
 # workspace carries; the key has no `.git` suffix, matching the dep URL.
 [patch."https://github.com/tinyhumansai/tinymemory"]
-tinymemory-api = { path = "vendor/tinymemory/api" }
+tinymemory-api = { path = "vendor/tinymemory/crates/tinymemory-api" }
 
 [patch.crates-io]
 # Upstream 0.2.1 enables reqwest's default native-tls backend even though it

@@ -558,7 +558,13 @@ jobs:
         #
         # This asserts the calibration still holds. If it fails, every
         # projection built on the simulator is suspect until it is fixed.
-        run: python3 scripts/dep-sim.py --cut-nothing --expect-names 264
+        #
+        # The number is the Linux name count of the `flows` profile, so it moves
+        # whenever scripts/kernel-floor.limits does and belongs in the same PR.
+        # 264 -> 265 on 2026-08-21: the tinymemory #76/#77 bump adds exactly one
+        # name, `tinymemory-bus`. macOS resolves one higher (266) per the host
+        # skew recorded in the limits history — this expects the CI host.
+        run: python3 scripts/dep-sim.py --cut-nothing --expect-names 265
 
       - name: Guard — new feature-gated test modules must be acknowledged
         # Self-maintaining coverage: the set of source files that #[cfg]-gate a test on

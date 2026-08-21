@@ -684,7 +684,7 @@ before touching `src/openhuman/memory/`.
 **The contract is `tinymemory-api`, and `crate::openhuman::memory::api` is a
 re-export of it — not a copy.** `3ee5a3cad` inlined that crate as 10,894 lines
 under `src/openhuman/memory/api/`, every file byte-identical to
-`vendor/tinymemory/api/src/` apart from doc-comment paths. Nothing behaved
+`vendor/tinymemory/crates/tinymemory-api/src/` apart from doc-comment paths. Nothing behaved
 differently, which is what made it worth undoing: the contract is the vocabulary
 the host, `ModuleMemoryProvider`, and the separately compiled module all speak,
 and the module compiles against the **crate**. A verbatim copy made the host's
