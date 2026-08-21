@@ -131,7 +131,8 @@ async fn run_command(
     env: &BTreeMap<String, String>,
     timeout: Duration,
 ) -> Result<HookOutput, String> {
-    let payload = serde_json::to_vec(input).map_err(|error| format!("serializing input: {error}"))?;
+    let payload =
+        serde_json::to_vec(input).map_err(|error| format!("serializing input: {error}"))?;
 
     let mut command =
         crate::openhuman::agent::platform_shell::build_tokio_command(&definition.command);
@@ -244,7 +245,9 @@ async fn run_prompt(definition: &HookDefinition, input: &HookInput) -> Result<Ho
                 .map(str::trim)
                 .filter(|line| line.starts_with('{'))
                 .find_map(|line| serde_json::from_str::<PromptVerdict>(line).ok())
-                .ok_or_else(|| format!("model answer was not a verdict: {}", truncate(&answer, 200)))
+                .ok_or_else(|| {
+                    format!("model answer was not a verdict: {}", truncate(&answer, 200))
+                })
         })
         .map_err(|error| error.to_string())?;
 
@@ -287,10 +290,7 @@ pub fn ambient_env(input: &HookInput) -> BTreeMap<String, String> {
         env.insert("CLAUDE_PROJECT_DIR".into(), root.clone());
         env.insert("CURSOR_PROJECT_DIR".into(), root.clone());
     }
-    env.insert(
-        "OPENHUMAN_VERSION".into(),
-        input.openhuman_version.clone(),
-    );
+    env.insert("OPENHUMAN_VERSION".into(), input.openhuman_version.clone());
     env.insert("OPENHUMAN_HOOK_EVENT".into(), input.hook_event_name.clone());
     if let Some(session) = &input.session_id {
         env.insert("OPENHUMAN_SESSION_ID".into(), session.clone());

@@ -75,7 +75,10 @@ fn definition(command: &str, dir: &std::path::Path) -> HookDefinition {
 fn event_names_resolve_across_dialects() {
     assert_eq!(HookEvent::parse("preToolUse"), Some(HookEvent::PreToolUse));
     assert_eq!(HookEvent::parse("PreToolUse"), Some(HookEvent::PreToolUse));
-    assert_eq!(HookEvent::parse("pre_tool_use"), Some(HookEvent::PreToolUse));
+    assert_eq!(
+        HookEvent::parse("pre_tool_use"),
+        Some(HookEvent::PreToolUse)
+    );
     assert_eq!(
         HookEvent::parse("UserPromptSubmit"),
         Some(HookEvent::BeforeSubmitPrompt)
@@ -171,7 +174,10 @@ fn merged_messages_concatenate_and_rewrites_take_the_last() {
 async fn a_hook_that_prints_a_decision_is_honoured() {
     let dir = scratch(
         "{}",
-        Some(("deny.sh", "#!/bin/sh\necho '{\"permission\":\"deny\",\"agent_message\":\"nope\"}'\n")),
+        Some((
+            "deny.sh",
+            "#!/bin/sh\necho '{\"permission\":\"deny\",\"agent_message\":\"nope\"}'\n",
+        )),
     );
     let run = exec::run(
         &definition("./deny.sh", dir.path()),
@@ -188,7 +194,13 @@ async fn a_hook_that_prints_a_decision_is_honoured() {
 #[cfg(unix)]
 #[tokio::test]
 async fn exit_code_two_denies_with_stderr_as_the_reason() {
-    let dir = scratch("{}", Some(("deny.sh", "#!/bin/sh\necho 'blocked by policy' 1>&2\nexit 2\n")));
+    let dir = scratch(
+        "{}",
+        Some((
+            "deny.sh",
+            "#!/bin/sh\necho 'blocked by policy' 1>&2\nexit 2\n",
+        )),
+    );
     let run = exec::run(
         &definition("./deny.sh", dir.path()),
         &input(HookEvent::PreToolUse, tool_payload("shell")),
@@ -197,7 +209,10 @@ async fn exit_code_two_denies_with_stderr_as_the_reason() {
     )
     .await;
     assert!(run.output.is_deny());
-    assert_eq!(run.output.agent_message.as_deref(), Some("blocked by policy"));
+    assert_eq!(
+        run.output.agent_message.as_deref(),
+        Some("blocked by policy")
+    );
 }
 
 #[cfg(unix)]
@@ -239,8 +254,15 @@ async fn a_hook_that_hangs_times_out_rather_than_stalling_the_turn() {
         Duration::from_secs(1),
     )
     .await;
-    assert!(run.error.as_deref().unwrap_or_default().contains("timed out"));
-    assert!(!run.output.is_deny(), "a timeout fails open unless asked otherwise");
+    assert!(run
+        .error
+        .as_deref()
+        .unwrap_or_default()
+        .contains("timed out"));
+    assert!(
+        !run.output.is_deny(),
+        "a timeout fails open unless asked otherwise"
+    );
 }
 
 #[cfg(unix)]
@@ -313,7 +335,10 @@ async fn a_denial_short_circuits_the_remaining_hooks() {
              {"command": "./deny.sh"},
              {"command": "./second.sh"}
            ]}}"#,
-        Some(("deny.sh", "#!/bin/sh\necho '{\"permission\":\"deny\",\"agent_message\":\"first\"}'\n")),
+        Some((
+            "deny.sh",
+            "#!/bin/sh\necho '{\"permission\":\"deny\",\"agent_message\":\"first\"}'\n",
+        )),
     );
     std::fs::write(
         dir.path().join("second.sh"),

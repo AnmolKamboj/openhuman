@@ -139,7 +139,9 @@ fn handle_test(params: Map<String, Value>) -> ControllerFuture {
         // A test fire is always run in the foreground, even for an
         // observational event: the point of the endpoint is to show the author
         // what happened, and a detached dispatch would report nothing.
-        let outcome = super::engine::global().dispatch_for_test(event, input).await;
+        let outcome = super::engine::global()
+            .dispatch_for_test(event, input)
+            .await;
         Ok(json!({
             "result": {
                 "event": event.as_str(),

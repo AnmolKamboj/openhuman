@@ -249,7 +249,10 @@ fn known_events_hint(key: &str) -> String {
 /// `project_dir` is the agent's action root; `workspace_dir` is the core's
 /// internal state directory. Both are passed in rather than resolved here so
 /// the loader stays testable without touching process globals.
-pub fn layer_paths(project_dir: Option<&Path>, workspace_dir: Option<&Path>) -> Vec<(HookLayer, PathBuf)> {
+pub fn layer_paths(
+    project_dir: Option<&Path>,
+    workspace_dir: Option<&Path>,
+) -> Vec<(HookLayer, PathBuf)> {
     let mut paths = Vec::new();
     if let Some(system) = system_hooks_dir() {
         paths.push((HookLayer::System, system.join(HOOKS_FILE_NAME)));
@@ -296,7 +299,11 @@ pub fn load(project_dir: Option<&Path>, workspace_dir: Option<&Path>) -> HookCon
     for (layer, path) in layer_paths(project_dir, workspace_dir) {
         match std::fs::read_to_string(&path) {
             Ok(contents) => {
-                log::debug!("[hooks] loading {} layer from {}", layer.as_str(), path.display());
+                log::debug!(
+                    "[hooks] loading {} layer from {}",
+                    layer.as_str(),
+                    path.display()
+                );
                 config.absorb(&path, layer, &contents);
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}

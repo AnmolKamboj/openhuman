@@ -40,14 +40,12 @@ pub fn subject<'a>(event: HookEvent, payload: &'a HookPayload) -> Option<&'a str
         (HookEvent::BeforeSubmitPrompt, HookPayload::Prompt(prompt)) => {
             Some(prompt.prompt.as_str())
         }
-        (
-            HookEvent::SubagentStart | HookEvent::SubagentStop,
-            HookPayload::Subagent(subagent),
-        ) => Some(subagent.subagent_type.as_str()),
-        (
-            HookEvent::AfterAgentResponse | HookEvent::AfterAgentThought,
-            HookPayload::Text(text),
-        ) => Some(text.text.as_str()),
+        (HookEvent::SubagentStart | HookEvent::SubagentStop, HookPayload::Subagent(subagent)) => {
+            Some(subagent.subagent_type.as_str())
+        }
+        (HookEvent::AfterAgentResponse | HookEvent::AfterAgentThought, HookPayload::Text(text)) => {
+            Some(text.text.as_str())
+        }
         _ => None,
     }
 }

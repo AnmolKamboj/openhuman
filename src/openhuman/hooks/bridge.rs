@@ -396,10 +396,16 @@ mod tests {
 
     #[test]
     fn reads_have_no_after_event_and_writes_have_no_before_event() {
-        assert_eq!(derived_event("file_read", true), Some(HookEvent::BeforeReadFile));
+        assert_eq!(
+            derived_event("file_read", true),
+            Some(HookEvent::BeforeReadFile)
+        );
         assert_eq!(derived_event("file_read", false), None);
         assert_eq!(derived_event("file_write", true), None);
-        assert_eq!(derived_event("file_write", false), Some(HookEvent::AfterFileEdit));
+        assert_eq!(
+            derived_event("file_write", false),
+            Some(HookEvent::AfterFileEdit)
+        );
     }
 
     #[test]
@@ -467,7 +473,10 @@ mod tests {
     #[test]
     fn timeout_text_classifies_as_a_timeout_failure() {
         assert_eq!(classify_failure("tool timed out after 30s"), "timeout");
-        assert_eq!(classify_failure("[policy-blocked] nope"), "permission_denied");
+        assert_eq!(
+            classify_failure("[policy-blocked] nope"),
+            "permission_denied"
+        );
         assert_eq!(classify_failure("something else"), "error");
     }
 }

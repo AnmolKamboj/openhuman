@@ -44,7 +44,9 @@ static CHANNEL: std::sync::LazyLock<broadcast::Sender<Followup>> = std::sync::La
 
 /// Queue a follow-up and notify any live listener.
 pub async fn publish(session_id: Option<String>, message: String) {
-    let key = session_id.clone().unwrap_or_else(|| SESSIONLESS.to_string());
+    let key = session_id
+        .clone()
+        .unwrap_or_else(|| SESSIONLESS.to_string());
     log::info!(
         "[hooks] stop hook queued a follow-up for session {:?} ({} chars)",
         session_id,
