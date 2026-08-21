@@ -115,7 +115,8 @@ fn remote_client() -> Client {
 // ── Text extraction ──────────────────────────────────────────────────────
 
 /// The host's [`TextExtractor`]: PDF text through the `tinydocs` module,
-/// bounded by [`PDF_EXTRACTION_TIMEOUT`].
+#[cfg_attr(feature = "documents", doc = "bounded by [`PDF_EXTRACTION_TIMEOUT`].")]
+#[cfg_attr(not(feature = "documents"), doc = "bounded by the module's own deadline.")]
 ///
 /// Claims `application/pdf` and nothing else. Every other binary format
 /// surfaces as a [`FilePayload::Reference`] without the module ever seeing the
