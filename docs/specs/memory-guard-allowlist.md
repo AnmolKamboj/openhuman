@@ -170,7 +170,7 @@ are recorded here so M4c starts from the real set.
 `integrations/composio/ops_tests.rs`, `core/runtime/context.rs` (its `#[cfg(test)]`
 module).
 
-`vendor/tinymemory/core/src/tinycortex/sync.rs` also has an inline `#[cfg(test)]`
+`vendor/tinymemory/crates/tinymemory-core/src/engine/sync.rs` also has an inline `#[cfg(test)]`
 module whose isolated-workspace fixtures construct `MemoryClient` directly; it
 is counted because the scanner does not brace-track inline test modules.
 
