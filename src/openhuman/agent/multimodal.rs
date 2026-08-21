@@ -147,14 +147,14 @@ impl TextExtractor for DocumentsTextExtractor {
     async fn extract(&self, _mime: &str, bytes: &[u8]) -> Result<String, String> {
         use crate::openhuman::modules::documents;
 
-        let config = crate::openhuman::config::Config::load_or_init()
-            .await
-            .map_err(|error| format!("config unavailable for pdf extraction: {error}"))?;
-
-        match tokio::time::timeout(
-            PDF_EXTRACTION_TIMEOUT,
-            documents::extract_text(&config, bytes),
-        )
+        match tokio::time::timeout(PDF_EXTRACTION_TIMEOUT, async {
+            let config = crate::openhuman::config::Config::load_or_init()
+                .await
+                .map_err(|error| format!("config unavailable for pdf extraction: {error}"))?;
+            documents::extract_text(&config, bytes)
+                .await
+                .map_err(|error| error.to_string())
+        })
         .await
         {
             Ok(Ok(text)) => Ok(text),
