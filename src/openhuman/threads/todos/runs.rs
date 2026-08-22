@@ -266,6 +266,12 @@ mod tests {
         }
     }
 
+    /// Lowercase-hex encode a thread id, matching [`super::legacy_thread_id`]'s
+    /// decoder so test-built keys round-trip through the migration.
+    fn hex_key(id: &str) -> String {
+        id.as_bytes().iter().map(|b| format!("{b:02x}")).collect()
+    }
+
     #[tokio::test]
     async fn create_and_list_run() {
         let dir = tempdir().unwrap();
