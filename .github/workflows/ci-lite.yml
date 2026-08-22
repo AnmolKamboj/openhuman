@@ -605,6 +605,7 @@ jobs:
           openhuman/web3/stub.rs
           openhuman/web3/wallet/stub.rs
           openhuman/web3/x402/stub.rs
+          embed/harness/builder_tests.rs
           tui/runner.rs
           EOF
           )

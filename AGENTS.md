@@ -452,6 +452,41 @@ Two consequences worth knowing before editing this area:
 
 Modules: `all`, `auth`, `cli`, `dispatch`, `event_bus/`, `jsonrpc`, `logging`, `observability`, `types`, etc. No business logic here.
 
+### Running a turn as a library call — `Harness`
+
+`CoreBuilder` composes a core and `embed::Core` gives it typed methods; **`openhuman_core::Harness` is the front door that turns a prompt into a reply**, with model/provider, workspace, access tier, MCP servers and skills as typed builder inputs.
+
+```rust
+let harness = Harness::builder()
+    .provider(Provider::openai_compatible(base_url, key).model("gpt-5"))
+    .workspace(Workspace::Ephemeral)          // or ::Dir(path) / ::Inherit
+    .access(Access::full())
+    .session(Session::local("my-host"))
+    .backend_url(backend)
+    .mcp(McpServer::stdio("gh", "gh-mcp", ["stdio"]))   // #[cfg(feature = "mcp")]
+    .skills_dir("./skills")                              // #[cfg(feature = "skills")]
+    .build().await?;
+
+let out = harness.run("Summarize this repo.").await?;
+let next = harness.turn("Now the risks.").session(&out.session_id).send().await?;
+```
+
+Layering: `embed::Core::agent()` is the typed turn surface for a host that already owns a `CoreRuntime` (the shell, an existing embedder); `Harness` builds that runtime for you and owns the workspace's lifetime. `embed::Core::auth()` types the session store. Everything routes through `CoreRuntime::invoke`, never `ops::*`, so `DomainSet` gating is honoured — see `src/embed/call.rs`.
+
+**Five things that bite, each of which cost a debugging session to find:**
+
+- **`CoreBuilder::config(..)` alone configures boot and nothing else.** RPC handlers do not receive it — they call `config::ops::load_config_with_timeout()` per dispatch, which re-runs `Config::load_or_init()` and re-resolves the process-global workspace. The config is published on `CoreContext::embedder_config` and that loader prefers it; without that branch an embedder watches its turns run against `~/.openhuman` while believing otherwise.
+- **`config_path` is not cosmetic — set it with `workspace_dir`.** Credential state, auth profiles and the keyring file backend resolve against its *parent*, not against the workspace. Setting only `workspace_dir` yields a harness that looks hermetic and reads the operator's real credentials. `Harness` puts it beside the workspace (`<root>/config.toml` next to `<root>/workspace`), the same shape `load_or_init` produces.
+- **A custom provider is gated on an active app session** (`verify_session_active`), even for a host that supplied the endpoint and key itself — the gate exists to stop an unregistered *desktop* user routing around registration and cannot tell the two apart. `Session::local(..)` satisfies it without asserting anything at the backend.
+- **Point `backend_url` somewhere real or stubbed.** The core makes non-inference backend calls regardless of where inference goes. Signed out of the hosted backend, those are rejected, a rejection publishes `SessionExpired`, and the *next* turn then fails the provider gate for reasons unrelated to the turn.
+- **The access tier is only half of "allowed to act".** The other half is the turn origin, a task-local the approval gate fail-closes on. Setting `autonomy.level = full` and no origin gives an agent whose `shell` / `edit` / `apply_patch` all refuse while the transcript still reads plausibly. `Access::full()` sets both; that is the whole reason the type exists.
+
+**One `Harness` per process.** The keyring master key, the RPC bearer, the global event bus and the `Once`-guarded domain subscribers are process-scoped, so a second one would silently share them. `build()` returns `HarnessError::AlreadyRunning` instead. Lifting this is phase 3 of `docs/plans/pluggable-core/`. The caller also owns the tokio runtime and **must** size it with `AGENT_WORKER_STACK_BYTES` / `MAX_BLOCKING_THREADS` — the default 2 MiB worker stack overflows on a turn that delegates to a sub-agent and aborts the process, which is why `examples/run_turn.rs` does not use `#[tokio::main]`.
+
+**Skills are copied, not linked**, into `<workspace>/skills`. Discovery rejects symlinked bundle dirs and symlinked manifests deliberately (that root is scanned with no trust marker), so a link is silently skipped — skills that look configured and are absent from the turn. `Workspace::Inherit` refuses the copy rather than leaving bundles in the operator's install.
+
+Example: `examples/run_turn.rs`. End-to-end test: `tests/harness_embed.rs`.
+
 ### Runtime composition — `ServiceSet` + `DomainSet` on `CoreBuilder`
 
 Two independent runtime axes on `CoreBuilder` (`src/core/runtime/builder.rs`):
