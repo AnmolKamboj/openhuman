@@ -526,11 +526,7 @@ mod tests {
         tokio::fs::create_dir_all(&legacy_dir).await.unwrap();
 
         let thread_id = "legacy-thread";
-        let hex: String = thread_id
-            .as_bytes()
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect();
+        let hex = hex_key(thread_id);
         let legacy = vec![TaskRun {
             run_id: "legacy-run".to_string(),
             card_id: "card-1".to_string(),
