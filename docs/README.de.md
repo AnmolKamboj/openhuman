@@ -65,7 +65,6 @@ OpenHuman ist drei Dinge, die die meisten Assistenten nicht sind: **ein Gehirn**
 
 - **[Memory Tree](https://tinyhumans.gitbook.io/openhuman/features/memory-tree) + [Obsidian-Wiki](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki)**: deine Daten, komprimiert in bewertete Markdown-Bäume in SQLite auf deiner Maschine, gespiegelt als [Obsidian-Vault](https://x.com/karpathy/status/2039805659525644595), das du öffnen und editieren kannst. Keine Vektor-Suppen-Blackbox.
 - **[100+ OAuth-Integrationen, 5.000+ MCP-Server, 90.000+ Skills](https://tinyhumans.gitbook.io/openhuman/features/integrations)**: mit einem Klick in Gmail, Notion, GitHub, Slack und den Rest deines Stacks. [Auto-Fetch](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki/auto-fetch) füttert das Gehirn alle 20 Minuten. So hat es den Kontext von morgen schon heute Früh.
-- **[Ein Unterbewusstsein](https://tinyhumans.gitbook.io/openhuman/features/subconscious)**: eine Hintergrundschleife, die Veränderungen in deiner Welt erkennt, deine Ziele vorantreibt und dein Morgen-Briefing schreibt. Das Denken geht weiter, auch wenn du längst nicht mehr tippst.
 - **[Goals & Todos](https://tinyhumans.gitbook.io/openhuman/features/goals-and-todos)**: Langzeitziele, dauerhafte Ziele pro Thread und ein geteiltes Kanban-Board pro Unterhaltung.
 - **[TokenJuice](https://tinyhumans.gitbook.io/openhuman/features/token-compression)**: Tool-Ausgaben werden komprimiert, bevor sie das Modell erreichen: dieselbe Information, bis zu 80% weniger Tokens. Ein so großes Gehirn wäre ohne es unbezahlbar.
 
@@ -79,7 +78,6 @@ OpenHuman ist drei Dinge, die die meisten Assistenten nicht sind: **ein Gehirn**
 ### 🔬 Der Deep Researcher & Macher
 
 - **Alles eingebaut**: Web-Suche, Scraper, Coder-Toolset, ein echter [Browser](https://tinyhumans.gitbook.io/openhuman/features/native-tools/browser-and-computer), [native Sprache](../gitbooks/features/native-tools/voice.md) mit In-Process-Whisper. Dazu [Model-Routing](https://tinyhumans.gitbook.io/openhuman/features/model-routing), das das passende LLM pro Workload auswählt, ein Abo, [lokale KI optional](https://tinyhumans.gitbook.io/openhuman/features/model-routing/local-ai).
-- **[Meeting-Agenten](https://tinyhumans.gitbook.io/openhuman/features/mascot/meeting-agents)**: nimmt an **Meet, Zoom, Teams und Webex** teil, mit Gesicht und Stimme. Tritt automatisch aus deinem Kalender bei, streamt ein Live-Transkript, antwortet auf seinen Namen und legt Zusammenfassung + Action Items ab.
 - **[Bild- & Videogenerierung](https://tinyhumans.gitbook.io/openhuman/features/native-tools)**: Seedream/SeedEdit-Bilder und Seedance/Veo-Video, direkt in deinen Workspace im selben Abo.
 - **[17 Messaging-Kanäle](https://tinyhumans.gitbook.io/openhuman/features/channels)**: Telegram, Discord, Slack, WhatsApp, Signal, iMessage… plus **native E-Mail** (IMAP IDLE + SMTP). Dein Agent erreicht dich dort, wo du ohnehin schon bist.
 

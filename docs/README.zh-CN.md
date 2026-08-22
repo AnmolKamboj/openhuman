@@ -65,7 +65,6 @@ OpenHuman 是大多数助手所不具备的三样东西的集合：**一颗大�
 
 - **[记忆树](https://tinyhumans.gitbook.io/openhuman/features/memory-tree) + [Obsidian Wiki](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki)**：你的数据被压缩为带评分的 Markdown 树，存储在你本机的 SQLite 中，并镜像为一个你可以打开和编辑的 [Obsidian 仓库](https://x.com/karpathy/status/2039805659525644595)。没有向量浓汤式的黑箱。
 - **[100+ OAuth 集成、5,000+ MCP 服务器、90,000+ Skills](https://tinyhumans.gitbook.io/openhuman/features/integrations)**：一键接入 Gmail、Notion、GitHub、Slack 以及你技术栈中的其他服务。[自动拉取](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki/auto-fetch)每 20 分钟为大脑输送养分，所以它在今天早上就已经拥有明天的上下文。
-- **[潜意识](https://tinyhumans.gitbook.io/openhuman/features/subconscious)**：一个后台循环，持续比对你的世界的变化、推进你的目标，并为你撰写晨间简报。在你停止输入之后，思考仍在继续。
 - **[目标与待办](https://tinyhumans.gitbook.io/openhuman/features/goals-and-todos)**：长期目标、持久化的会话级目标，以及每个对话共享的看板。
 - **[TokenJuice](https://tinyhumans.gitbook.io/openhuman/features/token-compression)**：工具输出在触达模型之前先被压缩：信息不变，token 最多减少 80%。没有它，这么大的一颗大脑将贵得用不起。
 
@@ -79,7 +78,6 @@ OpenHuman 是大多数助手所不具备的三样东西的集合：**一颗大�
 ### 🔬 深度研究员与实干家
 
 - **开箱即用**：网络搜索、抓取器、编码工具集、真正的[浏览器](https://tinyhumans.gitbook.io/openhuman/features/native-tools/browser-and-computer)、带进程内 Whisper 的[原生语音](../gitbooks/features/native-tools/voice.md)，以及为每个工作负载挑选合适 LLM 的[模型路由](https://tinyhumans.gitbook.io/openhuman/features/model-routing)。一个订阅搞定，[本地 AI 可选](https://tinyhumans.gitbook.io/openhuman/features/model-routing/local-ai)。
-- **[会议智能体](https://tinyhumans.gitbook.io/openhuman/features/mascot/meeting-agents)**：带着一张脸和一副嗓音加入 **Meet、Zoom、Teams 和 Webex**：根据日历自动入会、实时输出转写字幕、被点名时回答、归档摘要和行动项。
 - **[图像与视频生成](https://tinyhumans.gitbook.io/openhuman/features/native-tools)**：Seedream/SeedEdit 图像和 Seedance/Veo 视频，直接输出到你的工作区，同一份订阅。
 - **[17 个消息渠道](https://tinyhumans.gitbook.io/openhuman/features/channels)**：Telegram、Discord、Slack、WhatsApp、Signal、iMessage……外加**原生邮件**（IMAP IDLE + SMTP）。无论你在哪里，智能体都能找到你。
 
