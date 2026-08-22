@@ -94,18 +94,10 @@ describe('a build without the shell feature', () => {
 });
 
 describe('listGateways', () => {
-  it('passes the shell answer through unchanged', async () => {
+  it('passes the credential-free summary through unchanged', async () => {
     const gateways = [
-      { id: 'desktop', label: 'This computer', spec: { kind: 'desktop' } },
-      {
-        id: 'builder',
-        label: 'Build server',
-        spec: {
-          kind: 'box',
-          reach: { kind: 'ssh', destination: 'builder@example.com' },
-          confinement: { kind: 'docker', image: 'openhuman-core:latest' },
-        },
-      },
+      { id: 'desktop', label: 'This computer', kind: 'desktop' },
+      { id: 'builder', label: 'Build server', kind: 'ssh+docker' },
     ];
     invoke.mockResolvedValue(gateways);
 
