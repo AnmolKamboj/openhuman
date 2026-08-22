@@ -2085,11 +2085,8 @@ describe('AIPanel', () => {
 
     await waitFor(() => expect(screen.getByText('Background loops')).toBeInTheDocument());
 
-    expect(screen.getByText('Heartbeat controls')).toBeInTheDocument();
     expect(screen.getByText('Recent usage ledger')).toBeInTheDocument();
     expect(screen.getByText('Loop map')).toBeInTheDocument();
-    expect(screen.getByText('Heartbeat planner')).toBeInTheDocument();
-    expect(screen.getByText('Subconscious tick')).toBeInTheDocument();
     expect(screen.getByText('Memory tree workers')).toBeInTheDocument();
     expect(screen.getByText('Reflection rebuild')).toBeInTheDocument();
     expect(screen.getByText('Composio sync')).toBeInTheDocument();
@@ -2121,105 +2118,7 @@ describe('AIPanel', () => {
     expect(screen.getByText(/Latest spend: \$0\.5000/)).toBeInTheDocument();
   });
 
-  it('patches heartbeat controls and runs a manual planner tick', async () => {
-    let currentSettings = { ...baseHeartbeatSettings };
-    vi.mocked(openhumanHeartbeatSettingsGet).mockImplementation(async () => ({
-      result: { settings: currentSettings },
-      logs: [],
-    }));
-    vi.mocked(openhumanHeartbeatSettingsSet).mockImplementation(async patch => {
-      currentSettings = { ...currentSettings, ...patch };
-      return { result: { settings: currentSettings }, logs: [] };
-    });
 
-    // BackgroundLoopControls was moved out of AIPanel into standalone panels.
-    renderWithProviders(
-      <BackgroundLoopControls
-        view="all"
-        routing={baseSettings.routing}
-        cloudProviders={baseSettings.cloudProviders}
-      />
-    );
-    await waitFor(() => expect(screen.getByText('Heartbeat controls')).toBeInTheDocument());
-
-    const clickToggle = async (label: string, expectedPatch: Record<string, unknown>) => {
-      const row = screen.getByText(label).parentElement!.parentElement!;
-      fireEvent.click(within(row).getByRole('switch'));
-      await waitFor(() =>
-        expect(vi.mocked(openhumanHeartbeatSettingsSet)).toHaveBeenLastCalledWith(expectedPatch)
-      );
-    };
-
-    await clickToggle('Heartbeat loop', { enabled: false });
-    await clickToggle('Subconscious inference', { inference_enabled: false });
-    await clickToggle('Calendar meeting checks', { notify_meetings: false });
-    await clickToggle('Cron reminder checks', { notify_reminders: false });
-    await clickToggle('Relevant notification checks', { notify_relevant_events: true });
-    await clickToggle('External delivery', { external_delivery_enabled: true });
-
-    fireEvent.change(screen.getByLabelText('Calendar cap'), { target: { value: '3' } });
-    await waitFor(() =>
-      expect(vi.mocked(openhumanHeartbeatSettingsSet)).toHaveBeenLastCalledWith({
-        max_calendar_connections_per_tick: 3,
-      })
-    );
-
-    fireEvent.change(screen.getByLabelText('Meeting lookahead'), { target: { value: '120' } });
-    await waitFor(() =>
-      expect(vi.mocked(openhumanHeartbeatSettingsSet)).toHaveBeenLastCalledWith({
-        meeting_lookahead_minutes: 120,
-      })
-    );
-
-    fireEvent.change(screen.getByLabelText('Reminder lookahead'), { target: { value: '60' } });
-    await waitFor(() =>
-      expect(vi.mocked(openhumanHeartbeatSettingsSet)).toHaveBeenLastCalledWith({
-        reminder_lookahead_minutes: 60,
-      })
-    );
-
-    fireEvent.change(screen.getByLabelText('Interval'), { target: { value: '30' } });
-    await waitFor(() =>
-      expect(vi.mocked(openhumanHeartbeatSettingsSet)).toHaveBeenLastCalledWith({
-        interval_minutes: 30,
-      })
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Planner tick now' }));
-    await waitFor(() => expect(vi.mocked(openhumanHeartbeatTickNow)).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByText(/Planner: 3 source events/)).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
-    await waitFor(() => expect(vi.mocked(openhumanHeartbeatSettingsGet)).toHaveBeenCalled());
-  });
-
-  it('shows heartbeat load and planner errors without crashing diagnostics', async () => {
-    vi.mocked(openhumanHeartbeatSettingsGet).mockRejectedValueOnce(new Error('heartbeat offline'));
-    vi.mocked(openhumanHeartbeatTickNow).mockRejectedValueOnce(new Error('tick failed'));
-
-    // BackgroundLoopControls was moved out of AIPanel into standalone panels.
-    renderWithProviders(
-      <BackgroundLoopControls
-        view="all"
-        routing={baseSettings.routing}
-        cloudProviders={baseSettings.cloudProviders}
-      />
-    );
-
-    await waitFor(() => expect(screen.getByText('heartbeat offline')).toBeInTheDocument());
-    expect(screen.getByText('Heartbeat controls unavailable.')).toBeInTheDocument();
-
-    vi.mocked(openhumanHeartbeatSettingsGet).mockResolvedValueOnce({
-      result: { settings: baseHeartbeatSettings },
-      logs: [],
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-    await waitFor(() => expect(screen.getByText('Heartbeat controls')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole('button', { name: 'Planner tick now' }));
-    await waitFor(() => expect(screen.getByText('tick failed')).toBeInTheDocument());
-  });
 });
 
 describe('buildRoutingDiffSummary', () => {
