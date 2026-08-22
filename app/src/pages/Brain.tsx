@@ -1,0 +1,382 @@
+/**
+ * Brain — the centerpiece memory surface.
+ *
+ * Sub-tabs: Welcome, Graph, Goals, Sources, Sync, and
+ * **Orchestration** (the TinyPlace multi-agent surface, folded back in from the
+ * former top-level `/orchestration` tab — see {@link OrchestrationView}).
+ */
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+
+import TinyPlaceSunsetNotice from '../agentworld/TinyPlaceSunsetNotice';
+import { CodingSessionsCard } from '../components/intelligence/CodingSessionsCard';
+import GoalsPanel from '../components/intelligence/GoalsPanel';
+import { MemoryControls } from '../components/intelligence/MemoryControls';
+import { MemoryGraph } from '../components/intelligence/MemoryGraph';
+import { MemorySourcesRegistry } from '../components/intelligence/MemorySourcesRegistry';
+import { MemoryTreeStatusPanel } from '../components/intelligence/MemoryTreeStatusPanel';
+import { SyncAuditPanel } from '../components/intelligence/SyncAuditPanel';
+import { ToastContainer } from '../components/intelligence/Toast';
+import PageWelcome from '../components/layout/PageWelcome';
+import PanelPage from '../components/layout/PanelPage';
+import { SidebarContent } from '../components/layout/shell/SidebarSlot';
+import TwoPaneNav from '../components/layout/TwoPaneNav';
+import OrchestrationView from '../components/orchestration/OrchestrationView';
+import { useTinyPlaceIdentity } from '../hooks/useTinyPlaceIdentity';
+import { useT } from '../lib/i18n/I18nContext';
+import { useCoreState } from '../providers/CoreStateProvider';
+import type { ToastNotification } from '../types/intelligence';
+import {
+  type GraphExportResponse,
+  type GraphMode,
+  memoryTreeGraphExport,
+} from '../utils/tauriCommands';
+
+type BrainTab = 'welcome' | 'graph' | 'goals' | 'sources' | 'sync' | 'orchestration';
+
+/** Small inline icon helper for the Brain sidebar nav. */
+const navIcon = (d: string) => (
+  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={d} />
+  </svg>
+);
+
+const BRAIN_TABS: readonly BrainTab[] = [
+  'welcome',
+  'graph',
+  'goals',
+  'sources',
+  'sync',
+  'orchestration',
+];
+
+/**
+ * Canonical text header (title + one-line description) per functional tab.
+ * Orchestration is excluded — it renders its own full-bleed surface
+ * ({@link OrchestrationView}) with its own chip nav, not the shared scaffold.
+ */
+const BRAIN_HEADERS: Record<
+  Exclude<BrainTab, 'welcome' | 'orchestration'>,
+  { titleKey: string; descKey: string }
+> = {
+  graph: { titleKey: 'brain.tabs.graph', descKey: 'brain.header.graph' },
+  goals: { titleKey: 'brain.tabs.goals', descKey: 'brain.header.goals' },
+  sources: { titleKey: 'brain.tabs.sources', descKey: 'brain.header.sources' },
+  sync: { titleKey: 'brain.tabs.sync', descKey: 'brain.header.sync' },
+};
+
+export default function Brain() {
+  const { t } = useT();
+  const location = useLocation();
+  const navigate = useNavigate();
+  // Tab is reflected in `?tab=` so deep links (and the redirected old settings
+  // routes) land on the right sub-page.
+  const activeTab = useMemo<BrainTab>(() => {
+    const raw = new URLSearchParams(location.search).get('tab');
+    return (BRAIN_TABS as readonly string[]).includes(raw ?? '') ? (raw as BrainTab) : 'welcome';
+  }, [location.search]);
+  const setActiveTab = useCallback(
+    (tab: BrainTab) => {
+      const params = new URLSearchParams(location.search);
+      params.set('tab', tab);
+      navigate({ pathname: location.pathname, search: `?${params.toString()}` });
+    },
+    [location.pathname, location.search, navigate]
+  );
+  // Back-compat: the old `?tab=tinyplace-orchestration` slug (from when
+  // Orchestration was briefly a top-level tab) now maps to the folded-in
+  // Orchestration sub-tab.
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('tab') === 'tinyplace-orchestration') {
+      console.debug('[brain] legacy tinyplace-orchestration deep link → ?tab=orchestration');
+      navigate('/brain?tab=orchestration', { replace: true });
+    }
+  }, [location.search, navigate]);
+
+  // #5424 — the Orchestration sub-tab is a tiny.place surface, hidden from users
+  // without an identity. If a *confirmed* non-holder lands on `?tab=orchestration`
+  // via a stale deep link, redirect to the Brain welcome tab. This is a
+  // render-phase redirect (not a post-commit effect), so once the check resolves
+  // to a non-holder OrchestrationView never mounts. While the check is still in
+  // flight we render optimistically — matching the AgentWorldShell route guard —
+  // so a holder (the common case) never sees a flash; the brief optimistic window
+  // for a stale non-holder link is the deliberate trade-off.
+  const { status: tinyplaceStatus, hasIdentity: hasTinyplaceIdentity } = useTinyPlaceIdentity();
+  const shouldRedirectFromOrchestration =
+    activeTab === 'orchestration' && tinyplaceStatus === 'ready' && !hasTinyplaceIdentity;
+
+  const [graph, setGraph] = useState<GraphExportResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<GraphMode>('tree');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [toasts, setToasts] = useState<ToastNotification[]>([]);
+
+  // The memory graph is read from the on-disk store, but the read only fired on
+  // mount — so after a logout→login cycle the page kept whatever (empty) state
+  // it had when the core was signed-out / mid identity-flip and never refetched
+  // once auth was restored, showing an empty graph for an account whose data is
+  // still on disk (#4149). Key the load on the authenticated identity so a
+  // re-auth (null→user, or A→B) re-pulls the persisted graph, mirroring the
+  // thread-cache reload CoreStateProvider already does on identity change.
+  const { snapshot } = useCoreState();
+  const authUserId = snapshot.auth.userId;
+
+  const addToast = useCallback((toast: Omit<ToastNotification, 'id'>) => {
+    setToasts(prev => [...prev, { ...toast, id: `toast-${Date.now()}-${Math.random()}` }]);
+  }, []);
+  const removeToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+  }, []);
+  const refresh = useCallback(() => setRefreshKey(k => k + 1), []);
+
+  useEffect(() => {
+    // Orchestration is a full-bleed sub-tab that never renders the memory graph,
+    // so skip the export RPC + memory-tree listener entirely while it's active.
+    // Without this, folding Orchestration under Brain would fire an unrelated
+    // graph load on every `/brain?tab=orchestration` (and redirected
+    // `/orchestration`) visit, which the old standalone page never did.
+    if (activeTab === 'orchestration') {
+      console.debug('[brain] graph fetch: skipped (orchestration tab)');
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      console.debug('[brain] graph fetch: entry mode=%s', mode);
+      setError(null);
+      try {
+        const resp = await memoryTreeGraphExport(mode);
+        if (cancelled) return;
+        console.debug(
+          '[brain] graph fetch: exit n=%d edges=%d',
+          resp.nodes.length,
+          resp.edges.length
+        );
+        setGraph(resp);
+      } catch (err) {
+        if (cancelled) return;
+        console.error('[brain] graph fetch failed', err);
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    };
+    void load();
+    const onTreeDone = () => {
+      console.debug('[brain] memory-tree-completed → refetch');
+      void load();
+    };
+    window.addEventListener('openhuman:memory-tree-completed', onTreeDone);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('openhuman:memory-tree-completed', onTreeDone);
+    };
+    // `authUserId` is a dependency so a logout→login (identity becomes
+    // available again) re-pulls the persisted graph instead of leaving the
+    // signed-out empty state on screen (#4149). `activeTab` gates the fetch off
+    // on the Orchestration sub-tab (and re-runs it when returning to a
+    // graph-bearing tab).
+  }, [mode, refreshKey, authUserId, activeTab]);
+
+  const cardClass = 'rounded-lg border border-line bg-surface p-4';
+
+  if (shouldRedirectFromOrchestration) {
+    return <Navigate to="/brain" replace />;
+  }
+
+  return (
+    <div className="h-full">
+      {/* The Brain navigation lives in the root app sidebar's dynamic region. */}
+      <SidebarContent>
+        <div className="h-full overflow-hidden">
+          <TwoPaneNav
+            ariaLabel={t('nav.brain')}
+            selected={activeTab}
+            onSelect={value => setActiveTab(value as BrainTab)}
+            groups={[
+              {
+                items: [
+                  {
+                    value: 'welcome',
+                    label: t('brain.welcome.nav'),
+                    icon: navIcon('M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'),
+                  },
+                  {
+                    value: 'graph',
+                    label: t('brain.tabs.graph'),
+                    icon: navIcon(
+                      'M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z'
+                    ),
+                  },
+                  {
+                    value: 'goals',
+                    label: t('brain.tabs.goals'),
+                    icon: navIcon('M5 3v18M5 3l13 4-13 4M5 13l9 3-9 3'),
+                  },
+                  {
+                    value: 'sources',
+                    label: t('brain.tabs.sources'),
+                    icon: navIcon(
+                      'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4'
+                    ),
+                  },
+                  {
+                    value: 'sync',
+                    label: t('brain.tabs.sync'),
+                    icon: navIcon(
+                      'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15'
+                    ),
+                  },
+                  // TinyPlace multi-agent orchestration, folded back under Brain
+                  // from the former top-level `/orchestration` tab. Hidden from
+                  // users without a tiny.place identity (#5424).
+                  ...(hasTinyplaceIdentity
+                    ? [
+                        {
+                          value: 'orchestration',
+                          label: t('brain.tabs.orchestration'),
+                          icon: navIcon(
+                            'M12 7v3m0 0l-5.5 6M12 10l5.5 6M12 5a2 2 0 100 0M5 19a2 2 0 100 0M19 19a2 2 0 100 0'
+                          ),
+                        },
+                      ]
+                    : []),
+                ],
+              },
+            ]}
+          />
+        </div>
+      </SidebarContent>
+      {activeTab === 'orchestration' ? (
+        // Full-bleed: OrchestrationView renders its own chip nav + surfaces
+        // (chat, graph, task board), which need the full content width — so it
+        // sits outside the shared max-w scaffold the other tabs use.
+        <div className="flex h-full flex-col">
+          <TinyPlaceSunsetNotice />
+          <div className="min-h-0 flex-1">
+            <OrchestrationView />
+          </div>
+        </div>
+      ) : (
+        // Full width on purpose: the header band has to run edge to edge across
+        // the content card, so the width cap cannot live above it. Each tab's
+        // body carries its own `mx-auto max-w-3xl`, which is what the old
+        // `max-w-5xl` here was really constraining.
+        <div className="h-full w-full">
+          {activeTab === 'welcome' ? (
+            <PageWelcome
+              testId="brain-welcome"
+              accent="sage"
+              icon="🧠"
+              eyebrow={t('brain.welcome.eyebrow')}
+              title={t('brain.welcome.title')}
+              description={t('brain.welcome.body')}
+              ctas={[
+                {
+                  label: t('brain.welcome.ctaGraph'),
+                  icon: '🕸️',
+                  onClick: () => setActiveTab('graph'),
+                  testId: 'brain-welcome-cta-graph',
+                },
+                {
+                  label: t('brain.welcome.ctaGoals'),
+                  icon: '🎯',
+                  onClick: () => setActiveTab('goals'),
+                },
+                {
+                  label: t('brain.welcome.ctaSources'),
+                  icon: '🔗',
+                  onClick: () => setActiveTab('sources'),
+                },
+              ]}
+              featuresHeading={t('brain.welcome.featsLabel')}
+              features={[
+                {
+                  icon: '🕸️',
+                  title: t('brain.welcome.feat1Title'),
+                  description: t('brain.welcome.feat1Body'),
+                },
+                {
+                  icon: '🎯',
+                  title: t('brain.welcome.feat2Title'),
+                  description: t('brain.welcome.feat2Body'),
+                },
+                {
+                  icon: '🔄',
+                  title: t('brain.welcome.feat3Title'),
+                  description: t('brain.welcome.feat3Body'),
+                },
+              ]}
+            />
+          ) : (
+            /* All tabs share the standard scaffold: a single scrolling body,
+            all custom controls live inside it. The title/description go through
+            PanelPage so every page opens with the same flush header band, rather
+            than a bordered card floating in the content column. */
+            <PanelPage
+              contentClassName="p-4"
+              title={t(
+                BRAIN_HEADERS[activeTab as Exclude<BrainTab, 'welcome' | 'orchestration'>].titleKey
+              )}
+              description={t(
+                BRAIN_HEADERS[activeTab as Exclude<BrainTab, 'welcome' | 'orchestration'>].descKey
+              )}>
+              <div className="mx-auto max-w-3xl space-y-5">
+                {activeTab === 'graph' && (
+                  <div className="space-y-5 animate-fade-up">
+                    <MemoryControls
+                      mode={mode}
+                      onModeChange={setMode}
+                      onRefresh={refresh}
+                      onToast={addToast}
+                      contentRootAbs={graph?.content_root_abs}
+                    />
+
+                    {graph ? (
+                      <MemoryGraph
+                        nodes={graph.nodes}
+                        edges={graph.edges}
+                        mode={mode}
+                        emptyHint={t('brain.empty')}
+                      />
+                    ) : error ? (
+                      <div
+                        className={`${cardClass} text-sm text-coral-600 dark:text-coral-400`}
+                        role="alert">
+                        {t('brain.error')}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
+                {activeTab === 'goals' && <GoalsPanel />}
+
+                {activeTab === 'sources' && (
+                  <div className="space-y-5 animate-fade-up">
+                    <CodingSessionsCard onToast={addToast} />
+                    <MemorySourcesRegistry onToast={addToast} />
+                  </div>
+                )}
+
+                {activeTab === 'sync' && (
+                  <div className="space-y-5 animate-fade-up">
+                    <div className={cardClass}>
+                      <MemoryTreeStatusPanel onToast={addToast} />
+                    </div>
+                    {/* Sync history relocated from the Memory Inspection panel so
+                      the Sync tab is the single sync surface. */}
+                    <div className={cardClass} data-testid="brain-sync-history">
+                      <h3 className="mb-2 text-sm font-medium text-content-secondary">
+                        {t('sync.auditTitle', 'Sync History')}
+                      </h3>
+                      <SyncAuditPanel />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </PanelPage>
+          )}
+        </div>
+      )}
+
+      <ToastContainer notifications={toasts} onRemove={removeToast} />
+    </div>
+  );
+}
