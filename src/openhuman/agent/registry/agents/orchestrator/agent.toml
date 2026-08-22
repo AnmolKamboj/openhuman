@@ -50,6 +50,22 @@ omit_memory_md = false
 # function-calling schema, so routing decisions happen at the tool-
 # selection layer rather than hidden inside a mega-tool's enum param.
 #
+# That decision still stands, and it has been re-examined: collapsing these
+# into one `delegate(agent = enum, ...)` looks like it would save ~6.8k tokens
+# but does not, because each tool's DISTINCT description (the target's
+# `when_to_use`) does not disappear — it just re-renders inside the mega-tool,
+# the way `SkillDelegationTool::build_description` already does. The tool NAMES
+# are load-bearing too: prompt.md teaches them individually, and the tool-pack
+# withholding table (`tools/toolpacks/registry.rs`) keys on them.
+#
+# What DID cost 6.8k was the shared argument envelope, emitted identically once
+# per delegate tool. That is fixed at the source: `ArchetypeDelegationTool::
+# parameters_schema` now carries descriptions only on the four fields whose name
+# does not carry their meaning, and the envelope's semantics are documented ONCE
+# in prompt.md under "Structured handoffs" — charged once instead of 19 times.
+# If you are here to propose the mega-tool again, it is a routing-quality change
+# needing an eval, not a token change.
+#
 [subagents]
 allowlist = [
     "researcher",

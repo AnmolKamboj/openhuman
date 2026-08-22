@@ -44,16 +44,7 @@ impl Tool for SpawnAsyncSubagentTool {
     }
 
     fn description(&self) -> &str {
-        "Fire-and-forget a specialised sub-agent for low-attention background work. \
-         Use sparingly, only when the user does not need the result in the current \
-         response, such as best-effort memory archiving, cleanup, or background \
-         investigation. Do not use for user-visible answers, code changes, external \
-         service writes, financial actions, or anything that may need clarification. \
-         Never use it when the sub-agent's result must gate your final answer (e.g. \
-         review/critique/verify/approve X BEFORE finalizing): this returns immediately \
-         and the turn finalizes before the result lands. For those, run a synchronous \
-         awaited sub-agent instead — a blocking delegate_* specialist or \
-         spawn_parallel_agents (which collects results before returning)."
+        "Fire-and-forget a sub-agent for low-attention background work the user does not need in this reply (archiving, cleanup, background investigation). Returns immediately, so never use it for user-visible answers, writes, financial actions, or anything whose result must gate your final answer."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {

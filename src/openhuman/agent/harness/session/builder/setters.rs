@@ -451,7 +451,16 @@ impl AgentBuilder {
             .ok_or_else(|| anyhow::anyhow!("tools are required"))?;
         let tool_specs: Vec<ToolSpec> = tools.iter().map(|tool| tool.spec()).collect();
 
-        let visible_names = self.visible_tool_names.unwrap_or_default();
+        let mut visible_names = self.visible_tool_names.unwrap_or_default();
+        // On-demand tool disclosure: withhold packed tools' schemas from the
+        // provider and advertise `load_skill` / `use_skill` in their place. The
+        // tools stay in the registry below and stay executable — only the
+        // advertised surface shrinks. Applied here, before the policy filter,
+        // so the visible set and the policy session cannot disagree.
+        if visible_names.is_empty() {
+            visible_names = tools.iter().map(|tool| tool.name().to_string()).collect();
+        }
+        crate::openhuman::tools::toolpacks::strip_packed_from_visible(&mut visible_names);
         let config = self.config.clone().unwrap_or_default();
         let event_session_id = self
             .event_session_id
@@ -571,9 +580,14 @@ impl AgentBuilder {
             .session_raw_subdir
             .unwrap_or_else(|| "session_raw".to_string());
 
+        let tools = Arc::new(tools);
+        // The pack tools live inside this registry, so they can only be pointed
+        // at it once it exists. Re-bind after any later rebuild of this `Arc`.
+        crate::openhuman::tools::toolpacks::bind_pack_registry(&tools);
+
         Ok(Agent {
             turn_model_source,
-            tools: Arc::new(tools),
+            tools,
             tool_specs: Arc::new(tool_specs),
             visible_tool_specs: Arc::new(visible_tool_specs),
             visible_tool_names: visible_names,

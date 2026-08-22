@@ -23,50 +23,66 @@ impl Tool for ArchetypeDelegationTool {
         &self.tool_description
     }
 
+    /// The delegation envelope — deliberately description-light.
+    ///
+    /// This one literal is emitted for **every** synthesised `delegate_*` tool
+    /// (19 of them on the Master Agent after tool-pack withholding), so each
+    /// word of `description` here is billed 19× on every single turn. Fully
+    /// described the envelope was 356 tokens × 19 = 6,764 tokens — 39% of the
+    /// orchestrator's whole tool-schema budget, for the same JSON 19 times.
+    ///
+    /// The field *semantics* now live once in the parent's system prompt
+    /// (`registry/agents/orchestrator/prompt.md`, "Structured handoffs"),
+    /// which is where policy like "only observed facts" belonged anyway. The
+    /// property names stay self-describing, and they are the only thing
+    /// `render_structured_handoff` below reads.
+    ///
+    /// Four descriptions survive, each well under the 50-token cap, because
+    /// their property name does not carry the meaning:
+    ///
+    /// * `blocking` — the default is behaviour-critical and not inferable from
+    ///   the name. Getting it wrong is silent and asymmetric: async when it
+    ///   should have blocked finalizes the turn before the result lands, the
+    ///   exact failure the prompt's result-gating rule exists to prevent.
+    /// * `evidence` — "actually observed" is the anti-fabrication contract,
+    ///   not a label.
+    /// * `citation_requirement` / `model` — a bare name reads as neither.
+    ///
+    /// Enforced by `envelope_descriptions_stay_within_budget` below. If you
+    /// are about to add a description here, put it in prompt.md instead.
     fn parameters_schema(&self) -> serde_json::Value {
         json!({
             "type": "object",
             "required": ["prompt"],
             "properties": {
-                "prompt": {
-                    "type": "string",
-                    "description": "Brief task instruction. Prefer structured fields below for context; the sub-agent has no memory of your conversation."
-                },
-                "objective": {
-                    "type": "string",
-                    "description": "One sentence outcome the child must produce."
-                },
+                "prompt": { "type": "string" },
+                "objective": { "type": "string" },
                 "evidence": {
                     "type": "array",
                     "items": { "type": "string" },
-                    "description": "Only facts, file paths, URLs, ids, or tool outputs the parent has actually observed."
+                    "description": "Only facts, paths, URLs, ids or tool outputs you actually observed."
                 },
                 "constraints": {
                     "type": "array",
-                    "items": { "type": "string" },
-                    "description": "Hard requirements or limits the child must follow."
+                    "items": { "type": "string" }
                 },
                 "must_not_assume": {
                     "type": "array",
-                    "items": { "type": "string" },
-                    "description": "Claims or facts the child must not infer without evidence."
+                    "items": { "type": "string" }
                 },
-                "expected_output": {
-                    "type": "string",
-                    "description": "Requested output shape, e.g. findings list, patch summary, cited answer."
-                },
+                "expected_output": { "type": "string" },
                 "citation_requirement": {
                     "type": "string",
                     "enum": ["none", "file_paths", "urls", "retrieval_hits", "tool_outputs"],
-                    "description": "Citation/evidence style the child must preserve in its result."
+                    "description": "Evidence style the child must preserve in its result."
                 },
                 "model": {
                     "type": "string",
-                    "description": "Optional exact model id for this delegation only. Keeps the parent provider/routing, but pins the child agent to this model instead of the agent definition's default."
+                    "description": "Pin the child to this exact model id. Omit unless you have a reason."
                 },
                 "blocking": {
                     "type": "boolean",
-                    "description": "Default false: the delegation runs as a durable async worker — you immediately get an [async_subagent_ref] with a subagent_session_id (steer_subagent / wait_subagent / continue_subagent / close_subagent operate on it), and the finished result is inserted into this chat as a new turn. Pass true ONLY when the sub-agent's result must gate THIS reply (e.g. verify/review X before answering)."
+                    "description": "Default false: async worker, result arrives as a later turn. true: waits, and the result gates this reply."
                 }
             }
         })
@@ -263,9 +279,13 @@ mod tests {
         let desc = blocking["description"].as_str().unwrap_or_default();
         assert!(desc.contains("async"), "explains the async default: {desc}");
         assert!(
-            desc.contains("continue_subagent") && desc.contains("subagent_session_id"),
-            "points at the resume contract: {desc}"
+            desc.contains("Default false"),
+            "names which value is the default: {desc}"
         );
+        // The resume contract (`subagent_session_id`, `continue_subagent`,
+        // `steer_subagent`, …) used to be spelled out here, at 19x the cost.
+        // It now lives once in the orchestrator prompt, which
+        // `prompt_documents_the_stripped_envelope_fields` pins.
         assert_eq!(schema["required"], json!(["prompt"]));
     }
 
@@ -288,6 +308,122 @@ mod tests {
                 "tool_outputs"
             ])
         );
+
+        // Stripping descriptions must not become stripping FIELDS: every one
+        // is read back by `render_structured_handoff`, so a "trim" that drops
+        // one silently removes a section of the child prompt.
+        let props = schema["properties"]
+            .as_object()
+            .expect("properties is an object");
+        let mut present: Vec<&str> = props.keys().map(String::as_str).collect();
+        present.sort_unstable();
+        assert_eq!(
+            present,
+            vec![
+                "blocking",
+                "citation_requirement",
+                "constraints",
+                "evidence",
+                "expected_output",
+                "model",
+                "must_not_assume",
+                "objective",
+                "prompt",
+            ]
+        );
+    }
+
+    /// Every `description` in the envelope, as `(json-pointer-ish path, text)`.
+    fn collect_descriptions(node: &Value, path: &str, out: &mut Vec<(String, String)>) {
+        match node {
+            Value::Object(map) => {
+                for (key, value) in map {
+                    if key == "description" {
+                        if let Some(text) = value.as_str() {
+                            out.push((path.to_string(), text.to_string()));
+                        }
+                    } else {
+                        collect_descriptions(value, &format!("{path}/{key}"), out);
+                    }
+                }
+            }
+            Value::Array(items) => {
+                for (idx, item) in items.iter().enumerate() {
+                    collect_descriptions(item, &format!("{path}/{idx}"), out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn envelope_descriptions_stay_within_budget() {
+        // This schema is emitted once per synthesised `delegate_*` tool — 19
+        // times on the Master Agent — so prose here is billed 19x per turn.
+        // Fully described it was 356 tokens each, 6,764 in total and 39% of
+        // the agent's whole tool-schema budget; it is now 193.
+        //
+        // Two rules hold that: only the four fields whose NAME does not carry
+        // their meaning may carry a description, and none may exceed the
+        // ~50-token cap. Anything else belongs in prompt.md, where it is
+        // charged once. See `parameters_schema`'s doc comment for why each
+        // survivor survives.
+        let schema = sample_tool().parameters_schema();
+        let mut found = Vec::new();
+        collect_descriptions(&schema, "", &mut found);
+
+        let mut fields: Vec<&str> = found.iter().map(|(path, _)| path.as_str()).collect();
+        fields.sort_unstable();
+        assert_eq!(
+            fields,
+            vec![
+                "/properties/blocking",
+                "/properties/citation_requirement",
+                "/properties/evidence",
+                "/properties/model",
+            ],
+            "a description came back into the delegation envelope; put it in \
+             orchestrator/prompt.md instead — every word here costs 19x"
+        );
+
+        // ~4 chars per token on this vocabulary, so 220 chars ~= the 50-token
+        // cap. A byte budget alone gets nibbled away, which is why the field
+        // set above is the load-bearing half of this test.
+        for (field, text) in &found {
+            assert!(
+                text.len() <= 220,
+                "{field} description is {} chars, over the ~50-token cap: {text}",
+                text.len()
+            );
+        }
+    }
+
+    #[test]
+    fn prompt_documents_the_stripped_envelope_fields() {
+        // The contract MOVED, it did not vanish. Stripping the per-field
+        // descriptions is only safe while the parent prompt still teaches
+        // them, so couple the two directly: this fails the moment someone
+        // rewrites prompt.md without the "Structured handoffs" block.
+        const ORCHESTRATOR_PROMPT: &str =
+            include_str!("../../registry/agents/orchestrator/prompt.md");
+
+        for needle in [
+            "objective",
+            "evidence",
+            "constraints",
+            "must_not_assume",
+            "expected_output",
+            "citation_requirement",
+            "blocking",
+            "subagent_session_id",
+            "continue_subagent",
+        ] {
+            assert!(
+                ORCHESTRATOR_PROMPT.contains(needle),
+                "orchestrator/prompt.md no longer documents `{needle}`, which \
+                 the delegation envelope stopped describing to save 19x the tokens"
+            );
+        }
     }
 
     #[test]
