@@ -697,6 +697,42 @@ async fn core_worktree_is_refused_because_it_can_redirect_writes_outside_the_san
     );
 }
 
+/// `extensions.worktreeConfig` is itself allowlisted as an ordinary setting,
+/// but turning it on makes git additionally read `config.worktree` — a
+/// second file `--local` alone does not see. A `core.hooksPath` set there is
+/// invisible to a `--local`-only inspection and would still run on the next
+/// `commit`. The inspection step must read the same merged view git does.
+#[tokio::test]
+async fn a_hookspath_hidden_in_worktree_scoped_config_is_still_refused() {
+    let tmp = TempDir::new().unwrap();
+    init_git_repo(tmp.path());
+    set_config(tmp.path(), "extensions.worktreeConfig", "true");
+    // What `git config --worktree core.hooksPath <dir>` writes; `set_config`
+    // only reaches `--local`, so this key is planted directly the same way
+    // the production inspection step reads it — via a real `git config
+    // --worktree` invocation — to prove the bypass is closed, not just that
+    // `set_config` happens to skip it.
+    let ok = hermetic(
+        std::process::Command::new("git")
+            .args(["config", "--worktree", "core.hooksPath"])
+            .arg(tmp.path())
+            .current_dir(tmp.path()),
+    )
+    .status()
+    .unwrap()
+    .success();
+    assert!(ok, "failed to set core.hooksPath in worktree-scoped config");
+
+    let tool = test_tool(tmp.path());
+    let result = tool.execute(json!({"operation": "status"})).await;
+    let msg = error_text(&result);
+
+    assert!(
+        msg.contains("core.hookspath"),
+        "a hookspath hidden in worktree-scoped config must still be refused, got: {msg}"
+    );
+}
+
 /// The config-inspection step must fail closed: if `git config --list
 /// --local` cannot be read, that is not the same as "nothing to distrust",
 /// and running the real command anyway would skip the check entirely.

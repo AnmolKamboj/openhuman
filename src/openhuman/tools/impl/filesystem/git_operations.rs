@@ -555,15 +555,18 @@ const NEUTRALISED_CONFIG: &[&str] = &[
 /// thing being suppressed. `/dev/null` is not a path on Windows; `NUL` is.
 const NULL_CONFIG_PATH: &str = if cfg!(windows) { "NUL" } else { "/dev/null" };
 
-/// Build a `git` invocation with the ambient environment taken away.
+/// Close the system/global config files and the command-valued `GIT_*` env
+/// vars on a `git` invocation, without touching anything about how it reads
+/// the repository's own config.
 ///
 /// `GIT_CONFIG_NOSYSTEM` and `GIT_CONFIG_GLOBAL` close the system and global
-/// config files. Note what they do *not* close: the repository's own
-/// `.git/config`, which is the file an agent-writable workspace actually lets
-/// an attacker author. That one is handled by [`repo_config_is_inert`]; these
-/// two are here because they are free and they close two real vectors.
-fn hardened_git(dir: &Path) -> tokio::process::Command {
-    let mut cmd = tokio::process::Command::new("git");
+/// config files. Note what they do *not* close: the repository's own local
+/// and worktree-scoped config, which is what an agent-writable workspace
+/// actually lets an attacker author. That is handled by
+/// [`first_disallowed_repo_config_key`] — a separate step, precisely because
+/// [`hardened_git`]'s `-c` layer below must not be present while that step is
+/// reading what the repository itself set (see its own doc comment).
+fn suppress_ambient_git_config(cmd: &mut tokio::process::Command) -> &mut tokio::process::Command {
     cmd.env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", NULL_CONFIG_PATH)
         // `git` consults these before it reads any config file.
@@ -574,7 +577,16 @@ fn hardened_git(dir: &Path) -> tokio::process::Command {
         .env_remove("GIT_SSH_COMMAND")
         .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES")
         .env("GIT_TERMINAL_PROMPT", "0")
-        .current_dir(dir);
+}
+
+/// Build the `git` invocation actually used to run a requested operation.
+///
+/// Layers [`suppress_ambient_git_config`] under the [`NEUTRALISED_CONFIG`]
+/// `-c` overrides, which outrank every config file the repository itself
+/// could set.
+fn hardened_git(dir: &Path) -> tokio::process::Command {
+    let mut cmd = tokio::process::Command::new("git");
+    suppress_ambient_git_config(&mut cmd).current_dir(dir);
     for kv in NEUTRALISED_CONFIG {
         cmd.arg("-c").arg(kv);
     }
@@ -600,23 +612,37 @@ fn normalise_config_key(key: &str) -> String {
 /// Returns the first repository config key at `dir` that is not on
 /// [`ALLOWED_REPO_CONFIG`], or `None` if every key it sets is recognised.
 ///
-/// Reading the config is itself done through [`hardened_git`], and
-/// `git config --list` neither consults `core.fsmonitor` nor spawns a pager
-/// when its output is captured, so this inspection step does not have the
-/// property it is checking for.
+/// Deliberately **not** `--local`: when `extensions.worktreeConfig` is set —
+/// itself on [`ALLOWED_REPO_CONFIG`] as an ordinary, non-command-valued
+/// setting — git additionally reads `config.worktree`, a second file `--local`
+/// does not cover. A `core.hooksPath` set with `git config --worktree ...`
+/// lands there, is invisible to `--local`, and is exactly the kind of key this
+/// check exists to catch: `commit` runs the hook it names. Bare `--list`
+/// returns the same merged view `git` itself consults — local *and*
+/// worktree-scoped — with system and global excluded by
+/// [`suppress_ambient_git_config`] instead of by a location flag. Verified
+/// directly: `git config --worktree core.hooksPath ...` followed by
+/// `--local --null` omits it; the same followed by a bare `--list --null`
+/// (system/global suppressed) reports it.
+///
+/// This step must run through [`suppress_ambient_git_config`] alone, **not**
+/// [`hardened_git`]: the latter's `-c` layer would inject the very keys this
+/// check inspects for (`core.fsmonitor=`, `core.pager=cat`, …), none of which
+/// are themselves on [`ALLOWED_REPO_CONFIG`], and every invocation would
+/// refuse itself. Reading the config this way also does not consult
+/// `core.fsmonitor` or spawn a pager when its output is captured, so this
+/// inspection step does not have the property it is checking for.
 ///
 /// A non-zero exit here is treated as a refusal, not as "nothing to
 /// distrust": by the time this runs, the caller (`execute_in_context`) has
 /// already confirmed `dir` — or one of its parents — contains a `.git`, so
-/// `git config --list --local` failing means the config could not be read,
-/// not that there is none. Proceeding to run the real command against config
-/// this step never actually inspected would defeat the point of inspecting
-/// it first.
+/// `git config --list` failing means the config could not be read, not that
+/// there is none. Proceeding to run the real command against config this step
+/// never actually inspected would defeat the point of inspecting it first.
 async fn first_disallowed_repo_config_key(dir: &Path) -> anyhow::Result<Option<String>> {
-    let output = hardened_git(dir)
-        .args(["config", "--list", "--local", "--null"])
-        .output()
-        .await?;
+    let mut cmd = tokio::process::Command::new("git");
+    suppress_ambient_git_config(&mut cmd).current_dir(dir);
+    let output = cmd.args(["config", "--list", "--null"]).output().await?;
 
     if !output.status.success() {
         anyhow::bail!(
