@@ -206,7 +206,7 @@ pub async fn migrate_legacy_task_runs(
             Ok(true) => report.copied += 1,
             Ok(false) => report.skipped += 1,
             Err(error) => {
-                tracing::debug!(path = %path.display(), %error, "skip legacy run ledger: store write failed");
+                tracing::warn!(path = %path.display(), %error, "skip legacy run ledger: store write failed");
                 report.skipped += 1;
             }
         }
