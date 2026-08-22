@@ -228,7 +228,7 @@ fn legacy_thread_id(path: &Path) -> Option<String> {
     if hex.is_empty() || hex.len() % 2 != 0 || !hex.is_ascii() {
         return None;
     }
-    let bytes: Option<Vec<u8>> = hex
+    let bytes: Vec<u8> = hex
         .as_bytes()
         .chunks_exact(2)
         .map(|pair| {
