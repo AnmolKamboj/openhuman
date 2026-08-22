@@ -290,15 +290,20 @@ fn two_workspaces_get_two_services() {
 }
 
 /// A map holding one service per named workspace.
-fn hosts_for(workspaces: &[&std::path::Path]) -> HashMap<PathBuf, Arc<McpHost>> {
+fn hosts_for(workspaces: &[&std::path::Path]) -> HashMap<PathBuf, super::HostEntry> {
     workspaces
         .iter()
         .map(|workspace| {
             let mut config = config_without_docs();
             config.workspace_dir = workspace.to_path_buf();
+            let client = super::client_config(&config);
             (
                 workspace.to_path_buf(),
-                Arc::new(McpHost::open(&config).expect("the service opens")),
+                super::HostEntry {
+                    host: Arc::new(McpHost::open(&config).expect("the service opens")),
+                    identity: client.client_identity,
+                    proxy: client.proxy,
+                },
             )
         })
         .collect()
