@@ -1225,8 +1225,9 @@ fn directory_ownership_contains_files_beneath_it() {
     );
 
     // A file beneath an already-claimed directory is rejected with the
-    // contended ownership path and the rejecting agent's identity, rather
-    // than silently overlapping the owner.
+    // rejected task's ownership claim, the rejecting agent's identity, and
+    // an error naming the contended owner directory — rather than silently
+    // overlapping the owner.
     match &preflight[1] {
         SpawnParallelTaskPreflight::Rejected(rejection) => {
             assert_eq!(rejection.kind, ParallelTaskRejectionKind::RequiresIsolation);
@@ -1237,8 +1238,8 @@ fn directory_ownership_contains_files_beneath_it() {
                 "rejection must carry the rejected task's ownership claim"
             );
             assert!(
-                rejection.error.contains("src/a.rs"),
-                "rejection must name the contended path: {}",
+                rejection.error.contains("'src'"),
+                "rejection error must name the contended owner directory: {}",
                 rejection.error
             );
         }
