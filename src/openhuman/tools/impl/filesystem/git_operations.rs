@@ -522,22 +522,31 @@ const ALLOWED_REPO_CONFIG: &[&str] = &[
 /// Command-valued keys cleared on the command line as a second layer.
 ///
 /// Command-line `-c` outranks every config file, so this genuinely
-/// neutralises these keys even when a repository sets them. It is a denylist
-/// and therefore cannot be the guarantee — [`ALLOWED_REPO_CONFIG`] is — but it
-/// costs nothing and it means a key that slips past the allowlist check still
-/// does not run. `core.hooksPath` is deliberately absent: there is no portable
-/// value that means "nowhere", and none of `status` / `log` / `diff` /
-/// `branch` run hooks anyway. An unrecognised `core.hookspath` is refused by
-/// [`ALLOWED_REPO_CONFIG`], which is the layer that is supposed to catch it.
+/// neutralises these keys even when a repository sets them — and it does so
+/// at the moment `git` actually runs, not at the moment
+/// [`first_disallowed_repo_config_key`] happened to inspect the config a
+/// moment earlier. That distinction matters: the inspection and the real
+/// command are two separate `git` invocations, so a key set in the gap
+/// between them (a second concurrent writer, or a worktree-scoped write) is
+/// invisible to the inspection but still reaches here — where it is
+/// neutralised regardless of timing. It is a denylist and therefore cannot be
+/// the *only* guarantee — [`ALLOWED_REPO_CONFIG`] is the one that fails
+/// closed on a key nobody anticipated — but this layer is what actually holds
+/// under a race, not the inspection step.
 ///
 /// `credential.helper` is command-valued — a value beginning `!` is run as a
 /// shell command — so it belongs nowhere near [`ALLOWED_REPO_CONFIG`] despite
-/// reading like a mere preference; it is refused there.
+/// reading like a mere preference; it is refused there instead, since none of
+/// this tool's operations reach a remote and so have no legitimate use for it
+/// to preserve.
 ///
 /// A `git lfs install` clone is refused, deliberately: `filter.lfs.clean`,
 /// `.smudge` and `.process` each name a program, so an LFS working copy
 /// cannot be read by this tool. That is the fail-closed answer and it is the
 /// intended one. Only `filter.<driver>.required`, a boolean, is allowed.
+///
+/// `core.hooksPath` and `commit.gpgSign` are handled separately, in
+/// [`hardened_git`] — see there for why.
 const NEUTRALISED_CONFIG: &[&str] = &[
     "core.fsmonitor=",
     "core.sshCommand=",
@@ -583,13 +592,43 @@ fn suppress_ambient_git_config(cmd: &mut tokio::process::Command) -> &mut tokio:
 ///
 /// Layers [`suppress_ambient_git_config`] under the [`NEUTRALISED_CONFIG`]
 /// `-c` overrides, which outrank every config file the repository itself
-/// could set.
+/// could set — including one set in the gap between
+/// [`first_disallowed_repo_config_key`]'s inspection and this invocation.
+///
+/// Two more `-c` overrides are added here rather than in the static
+/// [`NEUTRALISED_CONFIG`] list, because their safe value is not a fixed
+/// literal:
+///
+/// - `core.hooksPath=` pointed at [`NULL_CONFIG_PATH`]. `commit` and
+///   `checkout` are the two operations this tool exposes that run hooks
+///   (`pre-commit`/`commit-msg`/`post-commit`, `post-checkout`), and a
+///   repository-writable `core.hooksPath` naming a directory with an
+///   executable `pre-commit` in it is exactly the shape of the worktree-scoped
+///   bypass this hardening exists to close — verified directly: pointing
+///   `core.hooksPath` at a directory containing a `pre-commit` that touches a
+///   marker file, then running with `-c core.hooksPath=<null path>`, leaves
+///   the marker untouched. A previous version of this comment claimed there
+///   was no portable value that meant "nowhere"; there is — the same one
+///   [`suppress_ambient_git_config`] already uses for `GIT_CONFIG_GLOBAL`,
+///   since a location with nothing at it is exactly what git needs it to be.
+/// - `commit.gpgSign=false`. `commit.gpgsign` is on [`ALLOWED_REPO_CONFIG`] as
+///   an ordinary boolean, but a repository could still set it to force every
+///   commit through this tool to be GPG-signed — with whatever real signing
+///   key the *host* happens to have configured, silently attributing a
+///   cryptographic signature to a commit the operator did not ask this tool to
+///   sign. Overriding it here removes that decision from the repository
+///   entirely, the same way `core.editor=false` removes commit message
+///   editing from it in [`NEUTRALISED_CONFIG`] above.
 fn hardened_git(dir: &Path) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new("git");
     suppress_ambient_git_config(&mut cmd).current_dir(dir);
     for kv in NEUTRALISED_CONFIG {
         cmd.arg("-c").arg(kv);
     }
+    cmd.arg("-c")
+        .arg(format!("core.hooksPath={NULL_CONFIG_PATH}"))
+        .arg("-c")
+        .arg("commit.gpgSign=false");
     cmd
 }
 

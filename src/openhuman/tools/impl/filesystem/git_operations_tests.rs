@@ -733,6 +733,108 @@ async fn a_hookspath_hidden_in_worktree_scoped_config_is_still_refused() {
     );
 }
 
+/// The allowlist inspection and the real command are two separate `git`
+/// invocations, so a config change landing in the gap between them would be
+/// invisible to the first and still reach the second. This test calls
+/// `hardened_git` directly — skipping `first_disallowed_repo_config_key`
+/// entirely, standing in for that gap — to prove the second invocation does
+/// not depend on the first having caught anything: `core.hooksPath` is
+/// neutralised at the point of execution regardless of what any inspection
+/// saw or missed.
+#[cfg(unix)]
+#[tokio::test]
+async fn hardened_git_neutralises_hookspath_even_if_the_allowlist_check_never_ran() {
+    let tmp = TempDir::new().unwrap();
+    init_git_repo(tmp.path());
+    set_config(tmp.path(), "user.email", "test@example.com");
+    set_config(tmp.path(), "user.name", "Test");
+
+    let hooks_dir = tmp.path().join("evil-hooks");
+    std::fs::create_dir(&hooks_dir).unwrap();
+    let marker = tmp.path().join("HOOK_RAN");
+    std::fs::write(
+        hooks_dir.join("pre-commit"),
+        format!("#!/bin/sh\ntouch {:?}\nexit 0\n", marker.to_string_lossy()),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            hooks_dir.join("pre-commit"),
+            std::fs::Permissions::from_mode(0o755),
+        )
+        .unwrap();
+    }
+    set_config(tmp.path(), "core.hooksPath", &hooks_dir.to_string_lossy());
+
+    std::fs::write(tmp.path().join("f.txt"), "hi").unwrap();
+    let staged = hermetic(
+        std::process::Command::new("git")
+            .args(["add", "f.txt"])
+            .current_dir(tmp.path()),
+    )
+    .status()
+    .unwrap()
+    .success();
+    assert!(staged, "failed to stage the test file");
+
+    let output = super::hardened_git(tmp.path())
+        .args(["commit", "-m", "msg"])
+        .output()
+        .await
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "commit should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !marker.exists(),
+        "hardened_git ran the repository-configured pre-commit hook — the \
+         override that is supposed to hold even without the allowlist check \
+         did not"
+    );
+}
+
+/// `commit.gpgsign` is on `ALLOWED_REPO_CONFIG` as an ordinary boolean, but
+/// left un-neutralised it would let a repository force every commit through
+/// this tool to be signed with whatever key the host happens to have
+/// configured. If the override in `hardened_git` were missing or wrong, this
+/// commit would fail (no usable signing key in a test environment) rather
+/// than succeed.
+#[tokio::test]
+async fn hardened_git_neutralises_forced_commit_signing() {
+    let tmp = TempDir::new().unwrap();
+    init_git_repo(tmp.path());
+    set_config(tmp.path(), "user.email", "test@example.com");
+    set_config(tmp.path(), "user.name", "Test");
+    set_config(tmp.path(), "commit.gpgsign", "true");
+
+    std::fs::write(tmp.path().join("f.txt"), "hi").unwrap();
+    let staged = hermetic(
+        std::process::Command::new("git")
+            .args(["add", "f.txt"])
+            .current_dir(tmp.path()),
+    )
+    .status()
+    .unwrap()
+    .success();
+    assert!(staged, "failed to stage the test file");
+
+    let output = super::hardened_git(tmp.path())
+        .args(["commit", "-m", "msg"])
+        .output()
+        .await
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "commit.gpgsign=true must not be honoured, got: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 /// The config-inspection step must fail closed: if `git config --list
 /// --local` cannot be read, that is not the same as "nothing to distrust",
 /// and running the real command anyway would skip the check entirely.
