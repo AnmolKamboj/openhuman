@@ -7,6 +7,15 @@ use crate::core::{ControllerSchema, FieldSchema, TypeSchema};
 use crate::openhuman::config::rpc as config_rpc;
 use crate::rpc::RpcOutcome;
 
+/// The canonical RPC method name for `inference.agent_chat`.
+///
+/// The controller's `namespace` + `function` combine into the wire method
+/// `openhuman.inference_agent_chat` ([`rpc_method_name`](crate::core::ControllerSchema)).
+/// Host facades (the embed library) reference this constant rather than
+/// spelling the string out, so a rename upstream cannot silently drift an
+/// embedder's dispatch string away from the registered controller.
+pub const INFERENCE_AGENT_CHAT: &str = "openhuman.inference_agent_chat";
+
 #[derive(Debug, Deserialize)]
 struct InferenceSummarizeParams {
     text: String,

@@ -102,7 +102,7 @@ async fn python_is_done(config: &Config) -> bool {
     // `try_cached`), so an already-installed interpreter is detected without
     // entering a user-visible provisioning run (GH-5047). Never downloads.
     use crate::openhuman::runtime::python::PythonBootstrap;
-    PythonBootstrap::new(config.runtime_python.clone())
+    PythonBootstrap::new(std::sync::Arc::new(config.clone()))
         .probe_installed()
         .await
         .is_some()
@@ -113,7 +113,7 @@ async fn python_run(config: &Config) -> Result<(), String> {
         return Ok(());
     }
     use crate::openhuman::runtime::python::PythonBootstrap;
-    PythonBootstrap::new(config.runtime_python.clone())
+    PythonBootstrap::new(std::sync::Arc::new(config.clone()))
         .resolve()
         .await
         .map(|resolved| {
@@ -249,11 +249,7 @@ fn node_runtime_step() -> HarnessInitStep {
 
 #[cfg(feature = "runtime-node")]
 fn build_node_bootstrap(config: &Config) -> crate::openhuman::runtime::node::NodeBootstrap {
-    crate::openhuman::runtime::node::NodeBootstrap::new(
-        config.node.clone(),
-        config.workspace_dir.clone(),
-        reqwest::Client::new(),
-    )
+    crate::openhuman::runtime::node::NodeBootstrap::new(std::sync::Arc::new(config.clone()))
 }
 
 #[cfg(feature = "runtime-node")]

@@ -364,6 +364,7 @@ two paths' equivalence — keep that as call sites migrate.
 
 A move never changes the wire surface — RPC namespaces are string literals in `ControllerSchema`, not derived from module paths — so **do not rename namespace strings to match new paths**.
 
+
 **Removed product surfaces.** Four capabilities were deleted from the core and the
 UI rather than gated off, so there is no flag that brings them back:
 
@@ -380,7 +381,7 @@ orchestration surface still has a pinned **subconscious chat window**
 `threadFilter`'s `MEETINGS_LABELS` still routes historical meeting-labelled
 threads so existing user data does not leak into the General bucket.
 
-**Skills runtime**: the QuickJS per-skill VM engine is gone. `src/openhuman/skills/` holds skill metadata/tool descriptors; execution of installed `SKILL.md` workflows lives in `src/openhuman/skills/runtime/` (starts/cancels runs, hosts the `skill_executor` agent, reuses `runtime_node`/`runtime_python`).
+**Skills runtime**: the QuickJS per-skill VM engine is gone. `src/openhuman/skills/` holds skill metadata/tool descriptors; execution of installed `SKILL.md` workflows lives in `src/openhuman/skills/runtime/` (starts/cancels runs, hosts the `skill_executor` agent, reuses `runtime::node`/`runtime::python`, which are clients for the `tinyruntime` module).
 
 ### Tool calling lives in tinyagents — `src/openhuman/agent/dispatcher.rs` is a seam
 
@@ -451,6 +452,41 @@ Two consequences worth knowing before editing this area:
 
 Modules: `all`, `auth`, `cli`, `dispatch`, `event_bus/`, `jsonrpc`, `logging`, `observability`, `types`, etc. No business logic here.
 
+### Running a turn as a library call — `Harness`
+
+`CoreBuilder` composes a core and `embed::Core` gives it typed methods; **`openhuman_core::Harness` is the front door that turns a prompt into a reply**, with model/provider, workspace, access tier, MCP servers and skills as typed builder inputs.
+
+```rust
+let harness = Harness::builder()
+    .provider(Provider::openai_compatible(base_url, key).model("gpt-5"))
+    .workspace(Workspace::Ephemeral)          // or ::Dir(path) / ::Inherit
+    .access(Access::full())
+    .session(Session::local("my-host"))
+    .backend_url(backend)
+    .mcp(McpServer::stdio("gh", "gh-mcp", ["stdio"]))   // #[cfg(feature = "mcp")]
+    .skills_dir("./skills")                              // #[cfg(feature = "skills")]
+    .build().await?;
+
+let out = harness.run("Summarize this repo.").await?;
+let next = harness.turn("Now the risks.").session(&out.session_id).send().await?;
+```
+
+Layering: `embed::Core::agent()` is the typed turn surface for a host that already owns a `CoreRuntime` (the shell, an existing embedder); `Harness` builds that runtime for you and owns the workspace's lifetime. `embed::Core::auth()` types the session store. Everything routes through `CoreRuntime::invoke`, never `ops::*`, so `DomainSet` gating is honoured — see `src/embed/call.rs`.
+
+**Five things that bite, each of which cost a debugging session to find:**
+
+- **`CoreBuilder::config(..)` alone configures boot and nothing else.** RPC handlers do not receive it — they call `config::ops::load_config_with_timeout()` per dispatch, which re-runs `Config::load_or_init()` and re-resolves the process-global workspace. The config is published on `CoreContext::embedder_config` and that loader prefers it; without that branch an embedder watches its turns run against `~/.openhuman` while believing otherwise.
+- **`config_path` is not cosmetic — set it with `workspace_dir`.** Credential state, auth profiles and the keyring file backend resolve against its *parent*, not against the workspace. Setting only `workspace_dir` yields a harness that looks hermetic and reads the operator's real credentials. `Harness` puts it beside the workspace (`<root>/config.toml` next to `<root>/workspace`), the same shape `load_or_init` produces.
+- **A custom provider is gated on an active app session** (`verify_session_active`), even for a host that supplied the endpoint and key itself — the gate exists to stop an unregistered *desktop* user routing around registration and cannot tell the two apart. `Session::local(..)` satisfies it without asserting anything at the backend.
+- **Point `backend_url` somewhere real or stubbed.** The core makes non-inference backend calls regardless of where inference goes. Signed out of the hosted backend, those are rejected, a rejection publishes `SessionExpired`, and the *next* turn then fails the provider gate for reasons unrelated to the turn.
+- **The access tier is only half of "allowed to act".** The other half is the turn origin, a task-local the approval gate fail-closes on. Setting `autonomy.level = full` and no origin gives an agent whose `shell` / `edit` / `apply_patch` all refuse while the transcript still reads plausibly. `Access::full()` sets both; that is the whole reason the type exists.
+
+**One `Harness` per process.** The keyring master key, the RPC bearer, the global event bus and the `Once`-guarded domain subscribers are process-scoped, so a second one would silently share them. `build()` returns `HarnessError::AlreadyRunning` instead. Lifting this is phase 3 of `docs/plans/pluggable-core/`. The caller also owns the tokio runtime and **must** size it with `AGENT_WORKER_STACK_BYTES` / `MAX_BLOCKING_THREADS` — the default 2 MiB worker stack overflows on a turn that delegates to a sub-agent and aborts the process, which is why `examples/run_turn.rs` does not use `#[tokio::main]`.
+
+**Skills are copied, not linked**, into `<workspace>/skills`. Discovery rejects symlinked bundle dirs and symlinked manifests deliberately (that root is scanned with no trust marker), so a link is silently skipped — skills that look configured and are absent from the turn. `Workspace::Inherit` refuses the copy rather than leaving bundles in the operator's install.
+
+Example: `examples/run_turn.rs`. End-to-end test: `tests/harness_embed.rs`.
+
 ### Runtime composition — `ServiceSet` + `DomainSet` on `CoreBuilder`
 
 Two independent runtime axes on `CoreBuilder` (`src/core/runtime/builder.rs`):
@@ -482,7 +518,7 @@ Per-domain Cargo features drop whole domains **at compile time** (smaller binary
 
 | Set | Where it lives | What it is |
 | --- | --- | --- |
-| **Contributor** | `[features] default` in `Cargo.toml` | What a bare `cargo check`, `cargo test` and rust-analyzer compile. 10 cheap gates. **~353 packages / 3 native builds** (`libsqlite3-sys`, `lzma-sys`, `ring`). |
+| **Contributor** | `[features] default` in `Cargo.toml` | What a bare `cargo check`, `cargo test` and rust-analyzer compile. 10 cheap gates. **~353 packages / 2 native builds** (`libsqlite3-sys`, `ring`). |
 
 > **`modules` is in `default`, and it is the one gate here that is not optional.**
 > The table below has documented it as Contrib=ON since it landed and
@@ -584,7 +620,7 @@ Two columns because there are two sets (see above): **Contrib** is `[features] d
 | `channels` | ON | ON | `openhuman::channels` (external-messaging providers — Telegram/Discord/Slack/Signal/WhatsApp/iMessage/IRC/… — plus the channel runtime, controllers, host, proactive messaging + inbound dispatch) and the `channels::webview_accounts` / `webview_apis` / `webview_notifications` / `channels::whatsapp_data` webview-bridge domains (incl. the 3 `whatsapp_data_*` agent tools). **Carve-outs `channels::{traits, cli}` stay ungated.** | **28** via `tinychannels/{email,lark}` — the crate itself stays (load-bearing), its two heavy providers do not |
 | `memory-git` | OFF | ON | `openhuman::memory::diff` (git-backed snapshots/checkpoints/read markers, the `memory_diff` RPC namespace + agent tool) and the git wiki mirror in `memory::store::content::wiki_git`. **Type carve-out**: `memory::diff::types` compiles in BOTH builds — the always-on memory profile renders `CrossSourceDiff`/`ChangeKind` into prompts, and tinycortex makes the matching split (its `memory::diff::{types,source}` are ungated, only the `Ledger`/`DiffEngine` half sits behind `git-diff`). Off ⇒ `memory_diff` is unknown-method, the tool is absent, the embedded driver drops `Capability::Diff` **and** `as_diff()` returns `None` in lockstep (`audit_provider` fails on either half alone), and summary nodes are still written to disk but not mirrored into git. **This crate declares no `git2`** — tinycortex owns every libgit2 call in the stack (the diff ledger, the wiki mirror, the persona git-history reader), and the gate reaches the cohort by forwarding `tinycortex/git-diff` + `tinycortex/wiki-git`; `tinymemory-core/memory-git` forwards the same pair. Do not re-add a direct `git2` dependency to this crate or to `tinymemory-core`: it would buy no crates and invite a second major pin, which `links = "git2"` makes a hard cargo error. Test code that must read a ledger back goes through the `tinycortex::git2` re-export (`tests/memory_artifacts_e2e.rs`). | **3**: `git2`, `libgit2-sys`, `libz-sys` — two of the five native C builds in the kernel profile, the largest native shed in the program |
 | `contacts` | OFF | ON | `memory::people::address_book`'s macOS CNContactStore reader — the address-book seeding path for the people domain. Leaf gate over a **pre-existing** off-state: the module already shipped a non-macOS `imp` stub returning an empty contact list, so the gate only widens that stub's cfg. `read`/`read_with`/`AddressBookError`/`SystemContactsSource` and the whole `people` RPC surface stay compiled in every build; off ⇒ a refresh seeds nothing instead of failing. | **6** on macOS (`objc2`, `objc2-foundation`, `objc2-contacts`, `block2` + 2 transitive). **No-op on Linux/Windows** — never in those graphs, so the kernel-floor ratchet does not move. Verify cross-target: `cargo tree --target aarch64-apple-darwin -e normal -i objc2-contacts --no-default-features` (294 → 288 packages). |
-| `runtime-node` | OFF | ON | `runtime::node` (download / verify / extract / install a pinned Node.js toolchain), the `runtime::javascript` language slot, `runtime::pool::node`, the `node_exec` / `npm_exec` agent tools, and the `node_runtime` harness-init step. **Facade + stub** — `ShellTool` holds `Option<Arc<NodeBootstrap>>` and `shell.rs` is kernel, so the module cannot simply vanish; `runtime/node/stub.rs` carries the `NodeBootstrap` type surface while registration sites are leaf-gated. **The generic native-tool dispatcher (`runtime::node::ops` / `runtime::node::types`) is NOT gated** — it backs both the gated `javascript.*` controllers and the ungated `flows` `oh:` `NativeToolBackend`, so native flow tools (`memory_search`, file, shell, …) keep working when the managed Node runtime is off. Off ⇒ `try_cached`/`probe_installed` return `None` and the shell never prepends a managed bin dir, identical to today's `node.enabled = false` path. | **`xz2` + its static liblzma C build.** First gate to remove a NATIVE toolchain build: `lzma-sys` leaves the list, 6 → 5. `tar`/`zip` are NOT shed — shared with `inference` (install_piper), `runtime::python`, and the document tools. |
+| `runtime-node` | OFF | ON | `runtime::node` (the client that asks the `tinyruntime` module for a Node.js toolchain), the `runtime::javascript` language slot, `runtime::pool::node`, the `node_exec` / `npm_exec` agent tools, and the `node_runtime` harness-init step. **Facade + stub** — `ShellTool` holds `Option<Arc<NodeBootstrap>>` and `shell.rs` is kernel, so the module cannot simply vanish; `runtime/node/stub.rs` carries the `NodeBootstrap` type surface while registration sites are leaf-gated. **The generic native-tool dispatcher (`runtime::node::ops` / `runtime::node::types`) is NOT gated** — it backs both the gated `javascript.*` controllers and the ungated `flows` `oh:` `NativeToolBackend`, so native flow tools (`memory_search`, file, shell, …) keep working when the managed Node runtime is off. Off ⇒ `try_cached`/`probe_installed` return `None` and the shell never prepends a managed bin dir, identical to today's `node.enabled = false` path. | **Nothing any more.** This gate used to shed `xz2` and its static liblzma C build; download and extraction moved into the `tinyruntime` module, so that native build left the manifest for **every** configuration rather than only for slim ones. The gate still buys the absence of the tools and controllers. |
 
 **Facade pattern (pathfinder for the other gates).** `pub mod voice;` is **always compiled** as a facade: the real submodules are `#[cfg(feature = "voice")]`, and a `#[cfg(not(feature = "voice"))] mod stub;` (`src/openhuman/voice/stub.rs`) re-exposes the same public surface that always-on / other-gated callers use (`server`, `dictation_listener`, `streaming`, `reply_speech`, `cloud_transcribe`, `cli`, `create_stt_provider`, `effective_stt_provider`, `publish_ptt_transcript_committed`) with no-op / `None` / disabled-error bodies. Callers therefore do **not** need per-call `#[cfg]`. When voice is off: the voice/audio controllers are unregistered (unknown-method over `/rpc`, absent from `/schema`), the `audio_generate_podcast` agent tools are absent, and `openhuman voice` returns a "voice disabled" error. Stub signatures must match the real ones exactly — the disabled build (`--no-default-features`) is the **only** thing that catches drift, so run it before pushing any change to the voice surface.
 
@@ -612,7 +648,7 @@ Two places the carve-out doesn't reach, and why they are `#[cfg]` at the call si
 - `agent/registry/agents/loader.rs` — the `skill_setup` / `skill_executor` `BuiltinAgent` entries. `include_str!` embeds the agent TOML from disk regardless of module gating, so the entry itself must disappear.
 - `agent/task_dispatcher/executor.rs` — the workflow-resolution branch. `registry::get_workflow` returns `Option<WorkflowDefinition>`, which flattens in `AgentDefinition` and is destructured at the call site; stubbing it would mean re-declaring that struct (exactly what the carve-out avoids). With the domain compiled out no handle can resolve to a skill, so falling through to the builtin-agent branch is correct, not degraded.
 
-**Dep note:** `skills = []` — the empty list is **intentional, do not "fix" it**. Unlike `voice` (`hound`/`lettre`), these domains have no exclusive dependencies: every crate they touch is shared with always-on domains, and `runtime_node` / `runtime_python` are used by Agent / Flows / Memory too. This gate's value is tool-surface + prompt-bloat + startup cost, **not** binary size.
+**Dep note:** `skills = []` — the empty list is **intentional, do not "fix" it**. Unlike `voice` (`hound`/`lettre`), these domains have no exclusive dependencies: every crate they touch is shared with always-on domains, and `runtime::node` / `runtime::python` are used by Agent / Flows / Memory too. This gate's value is tool-surface + prompt-bloat + startup cost, **not** binary size.
 
 When skills are off: the `skills` / `skill_runtime` / `skill_registry` controllers are unregistered (unknown-method over `/rpc`, absent from `/schema`), the 16 skill agent tools (incl. `run_workflow` / `await_workflow`) are **absent** from the tool list rather than degraded to an error, the `skill_setup` / `skill_executor` builtin agents are gone, and the boot-time remote catalog refresh is skipped. Composes with the runtime `DomainSet::skills` flag (#4796) — that axis needed no change here; #4798 is compile-time only.
 

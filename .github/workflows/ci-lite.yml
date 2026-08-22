@@ -561,10 +561,15 @@ jobs:
         #
         # The number is the Linux name count of the `flows` profile, so it moves
         # whenever scripts/kernel-floor.limits does and belongs in the same PR.
-        # 264 -> 265 on 2026-08-21: the tinymemory #76/#77 bump adds exactly one
-        # name, `tinymemory-bus`. macOS resolves one higher (266) per the host
-        # skew recorded in the limits history — this expects the CI host.
-        run: python3 scripts/dep-sim.py --cut-nothing --expect-names 265
+        # 265 -> 266 on 2026-08-22: language runtimes moved behind the
+        # tinyruntime TinyBus module, which puts exactly one name on the
+        # always-on path — `tinyruntime-bus`, the wire contract the toolchain
+        # clients name and which cannot be gated because `ShellTool` is kernel.
+        # See the matching entry in scripts/kernel-floor.limits for why, and for
+        # what it buys (xz2 and its liblzma C build leave every configuration).
+        # macOS resolves one higher per the host skew recorded there — this
+        # expects the CI host.
+        run: python3 scripts/dep-sim.py --cut-nothing --expect-names 266
 
       - name: Guard — new feature-gated test modules must be acknowledged
         # Self-maintaining coverage: the set of source files that #[cfg]-gate a test on
@@ -600,6 +605,7 @@ jobs:
           openhuman/web3/stub.rs
           openhuman/web3/wallet/stub.rs
           openhuman/web3/x402/stub.rs
+          embed/harness/builder_tests.rs
           tui/runner.rs
           EOF
           )

@@ -17,7 +17,7 @@
 //! paths and sandboxed runs always use the per-call spawn.
 
 use crate::openhuman::agent::host_runtime::RuntimeAdapter;
-use crate::openhuman::runtime::python::{PythonBootstrap, ResolvedPython};
+use crate::openhuman::runtime::python::PythonBootstrap;
 use crate::openhuman::security::{CommandClass, GateDecision, SecurityPolicy};
 use crate::openhuman::tools::traits::{
     PermissionLevel, Tool, ToolCallOptions, ToolResult, ToolTimeout,
@@ -265,7 +265,7 @@ impl PythonExecTool {
         // pool infrastructure failure also transparently falls back below.
         if let Some(code) = inline_code.as_deref() {
             if let Some(result) = self
-                .try_pool_inline(code, &resolved, &path_policy.action_dir, explicit_timeout)
+                .try_pool_inline(code, &path_policy.action_dir, explicit_timeout)
                 .await
             {
                 return Ok(result);
@@ -356,7 +356,6 @@ impl PythonExecTool {
     async fn try_pool_inline(
         &self,
         code: &str,
-        resolved: &ResolvedPython,
         action_dir: &std::path::Path,
         timeout: Option<Duration>,
     ) -> Option<ToolResult> {
@@ -364,10 +363,7 @@ impl PythonExecTool {
             return None;
         }
         match crate::openhuman::runtime::pool::python::run_inline(
-            &self.workspace_dir,
-            &self.pool_cfg.python,
-            &resolved.python_bin,
-            &resolved.bin_dir,
+            self.bootstrap.config(),
             code.to_string(),
             Some(action_dir.to_path_buf()),
             timeout,
