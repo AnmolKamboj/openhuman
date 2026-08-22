@@ -1,0 +1,22 @@
+---
+# PR/push test gate. Delegates to the reusable `test-reusable.yml`
+# (frontend Vitest + Rust core + Rust Tauri shell). The same reusable
+# workflow is called by `release-staging.yml` and `release-production.yml`
+# as part of the pretest gate before any build-desktop matrix runs.
+name: Test
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    uses: ./.github/workflows/test-reusable.yml
