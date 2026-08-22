@@ -114,7 +114,6 @@ crate replacement and host cutover are both verified.
 | `TranscriptSnapshotMiddleware` | **HOST-OWNED** | Mirrors partial crate transcripts into OpenHuman's persisted `ChatMessage` DTO so failed sub-agent runs remain ingestible. |
 | `OpenHumanToolExposureShadowMiddleware` | **TRANSITIONAL / PARITY-GATED** | Exercises crate allowlist/contextual selection in shadow against the host registry. Delete with the host precompute only after divergence telemetry proves parity; do not flip from this audit alone. |
 | `HandoffMiddleware` | **HOST-OWNED** | Implements integrations-agent progressive disclosure through OpenHuman's `ResultHandoffCache` and `extract_from_result` contract. |
-| `SuperContextMiddleware` | **HOST-OWNED** | Runs OpenHuman first-turn context collection and injects product-formatted context. |
 | `PromptCacheSegmentMiddleware` | **HOST SEAM** | Projects OpenHuman's stable system/tool-cache boundaries and SHA-256 identity into the crate `PromptCacheGuardMiddleware`; the actual drift guard is crate-owned. |
 | `ToolOutputMiddleware` | **HOST-OWNED** | Applies host artifact persistence, TokenJuice compaction, byte caps, and the OpenHuman payload summarizer. |
 | `ApprovalSecurityMiddleware` | **HOST-OWNED** | Calls the global OpenHuman approval gate, redacts args, and records product audit rows. Generic crate approval cannot replace this product/security decision. |
