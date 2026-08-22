@@ -4764,19 +4764,6 @@ const messages: TranslationMap = {
   'settings.ai.backgroundLoops': 'Pętle w tle',
   'settings.ai.backgroundLoopsDesc':
     'Zobacz, co działa bez wiadomości na czacie, wstrzymaj pracę heartbeat i sprawdź ostatnie wiersze księgi kredytów.',
-  'settings.ai.heartbeatControls': 'Sterowanie heartbeat',
-  'settings.ai.heartbeatControlsDesc':
-    'Domyślnie wyłączone. Włączenie uruchamia pętlę; wyłączenie przerywa działające zadanie.',
-  'settings.ai.heartbeatLoop': 'Pętla heartbeat',
-  'settings.ai.heartbeatLoopDesc':
-    'Główny harmonogram dla planera i opcjonalnej inferencji podświadomości.',
-  'settings.ai.subconsciousInference': 'Inferencja podświadomości',
-  'settings.ai.subconsciousInferenceDesc':
-    'Uruchamia opartą na modelu ocenę zadań i refleksji podczas taktów heartbeat.',
-  'settings.ai.calendarMeetingChecks': 'Sprawdzanie spotkań w kalendarzu',
-  'settings.ai.calendarMeetingChecksDesc':
-    'Wywołuje listę wydarzeń kalendarza dla aktywnych połączeń Google Calendar.',
-  'settings.ai.calendarCap': 'Limit kalendarza',
   'settings.ai.connectionsPerTick': '{count} poł./takt',
   'settings.ai.meetingLookahead': 'Wyprzedzenie spotkań',
   'settings.ai.minutesShort': '{count} min',
@@ -4793,8 +4780,6 @@ const messages: TranslationMap = {
   'settings.ai.interval': 'Interwał',
   'settings.ai.running': 'Działa...',
   'settings.ai.plannerTickNow': 'Takt planera teraz',
-  'settings.ai.loadingHeartbeatControls': 'Ładowanie sterowania heartbeat...',
-  'settings.ai.heartbeatControlsUnavailable': 'Sterowanie heartbeat jest niedostępne.',
   'settings.ai.loopMap': 'Mapa pętli',
   'settings.ai.plannerSummary':
     'Planner: {sourceEvents} zdarzeń źródłowych, {sent} wysłanych, {deduped} zdeduplikowanych.',
@@ -4891,10 +4876,6 @@ const messages: TranslationMap = {
   'settings.ai.projectedEmpty': 'Prognozowane wyczerpanie',
   'settings.ai.apiReadsPerDollarRemaining': 'Pozostałe odczyty API na $',
   'settings.ai.loopCallBudget': 'Budżet wywołań pętli',
-  'settings.ai.heartbeatTicks': 'Takty heartbeat',
-  'settings.ai.calendarPlannerCalls': 'Wywołania planera kalendarza',
-  'settings.ai.calendarFanoutCap': 'Limit rozsyłania kalendarza',
-  'settings.ai.subconsciousModelCalls': 'Wywołania modelu podświadomości',
   'settings.ai.composioSyncScans': 'Skanowania synchronizacji Composio',
   'settings.ai.totalBackgroundApiReadBudget': 'Łączny budżet odczytów API w tle',
   'settings.ai.memoryWorkerPolls': 'Odpytywania procesu pamięci',

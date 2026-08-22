@@ -4828,19 +4828,6 @@ const messages: TranslationMap = {
   'settings.ai.backgroundLoops': 'Hintergrundschleifen',
   'settings.ai.backgroundLoopsDesc':
     'Sehen Sie, was ohne Chat-Nachricht läuft, pausieren Sie die Herzschlagarbeit und überprüfen Sie die letzten Kreditbuchzeilen.',
-  'settings.ai.heartbeatControls': 'Heartbeat-Kontrollen',
-  'settings.ai.heartbeatControlsDesc':
-    'Standardmäßig aus. Durch Aktivieren wird die Schleife gestartet; durch Deaktivieren wird der ausgeführte Task abgebrochen.',
-  'settings.ai.heartbeatLoop': 'Heartbeat-Schleife',
-  'settings.ai.heartbeatLoopDesc':
-    'Master-Scheduler für Planer + optionale unbewusste Schlussfolgerung.',
-  'settings.ai.subconsciousInference': 'Unterbewusste Inferenz',
-  'settings.ai.subconsciousInferenceDesc':
-    'Führt eine modellgestützte task/reflection-Auswertung bei Herzschlagzecken durch.',
-  'settings.ai.calendarMeetingChecks': 'Kalenderbesprechungsprüfungen',
-  'settings.ai.calendarMeetingChecksDesc':
-    'Ruft die Kalenderereignisliste für aktive Google Kalenderverbindungen auf.',
-  'settings.ai.calendarCap': 'Kalenderobergrenze',
   'settings.ai.connectionsPerTick': '{count} Verb./Takt',
   'settings.ai.meetingLookahead': 'Besprechungsvorausschau',
   'settings.ai.minutesShort': '{count} Min.',
@@ -4857,8 +4844,6 @@ const messages: TranslationMap = {
   'settings.ai.interval': 'Intervall',
   'settings.ai.running': 'Läuft...',
   'settings.ai.plannerTickNow': 'Planer tickt jetzt',
-  'settings.ai.loadingHeartbeatControls': 'Heartbeat-Steuerelemente werden geladen...',
-  'settings.ai.heartbeatControlsUnavailable': 'Heartbeat-Steuerelemente nicht verfügbar.',
   'settings.ai.loopMap': 'Schleifenzuordnung',
   'settings.ai.plannerSummary':
     'Planer: {sourceEvents} Quellereignisse, {sent} gesendet, {deduped} dedupliziert.',
@@ -4955,10 +4940,6 @@ const messages: TranslationMap = {
   'settings.ai.projectedEmpty': 'Projiziert leer',
   'settings.ai.apiReadsPerDollarRemaining': 'API Lesevorgänge pro verbleibendem $',
   'settings.ai.loopCallBudget': 'Schleifenaufrufbudget',
-  'settings.ai.heartbeatTicks': 'Heartbeat-Ticks',
-  'settings.ai.calendarPlannerCalls': 'Kalenderplaner ruft auf',
-  'settings.ai.calendarFanoutCap': 'Kalender-Fanout-Obergrenze',
-  'settings.ai.subconsciousModelCalls': 'Unterbewusste Modellaufrufe',
   'settings.ai.composioSyncScans': 'Composio Synchronisierungsscans',
   'settings.ai.totalBackgroundApiReadBudget': 'Gesamtbg API Lesebudget',
   'settings.ai.memoryWorkerPolls': 'Speicher-Worker-Umfragen',

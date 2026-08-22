@@ -4767,19 +4767,6 @@ const messages: TranslationMap = {
   'settings.ai.backgroundLoops': 'Loop in background',
   'settings.ai.backgroundLoopsDesc':
     'Vedi cosa funziona senza un messaggio di chat, metti in pausa il lavoro del battito cardiaco e ispeziona le righe recenti del libro mastro dei crediti.',
-  'settings.ai.heartbeatControls': 'Controlli del battito cardiaco',
-  'settings.ai.heartbeatControlsDesc':
-    "Predefinito spento. L'attivazione avvia il ciclo; la disattivazione interrompe il compito in corso.",
-  'settings.ai.heartbeatLoop': 'Ciclo del battito cardiaco',
-  'settings.ai.heartbeatLoopDesc':
-    'Programmatore principale per pianificatore + inferenza subconscia opzionale.',
-  'settings.ai.subconsciousInference': 'Inferenza subconscia',
-  'settings.ai.subconsciousInferenceDesc':
-    'Esegue la valutazione task/reflection supportata dal modello sui tic del battito cardiaco.',
-  'settings.ai.calendarMeetingChecks': 'Controlli delle riunioni del calendario',
-  'settings.ai.calendarMeetingChecksDesc':
-    "Chiama l'elenco degli eventi del calendario per le connessioni del calendario Google attive.",
-  'settings.ai.calendarCap': 'Limite calendario',
   'settings.ai.connectionsPerTick': '{count} conn/tick',
   'settings.ai.meetingLookahead': 'Previsione riunione',
   'settings.ai.minutesShort': '{count} min',
@@ -4796,8 +4783,6 @@ const messages: TranslationMap = {
   'settings.ai.interval': 'Intervallo',
   'settings.ai.running': 'In esecuzione...',
   'settings.ai.plannerTickNow': 'Pianificatore seleziona ora',
-  'settings.ai.loadingHeartbeatControls': 'Caricamento controlli heartbeat...',
-  'settings.ai.heartbeatControlsUnavailable': 'Controlli heartbeat non disponibili.',
   'settings.ai.loopMap': 'Mappa del ciclo',
   'settings.ai.plannerSummary':
     'Pianificatore: {sourceEvents} eventi origine, {sent} inviati, {deduped} deduplicato.',
@@ -4895,10 +4880,6 @@ const messages: TranslationMap = {
   'settings.ai.projectedEmpty': 'Vuoto previsto',
   'settings.ai.apiReadsPerDollarRemaining': 'API letture per $ rimanenti',
   'settings.ai.loopCallBudget': 'Budget delle chiamate in loop',
-  'settings.ai.heartbeatTicks': 'Tick del battito cardiaco',
-  'settings.ai.calendarPlannerCalls': 'Chiamate del pianificatore del calendario',
-  'settings.ai.calendarFanoutCap': 'Limite fanout del calendario',
-  'settings.ai.subconsciousModelCalls': 'Chiamate del modello subconscio',
   'settings.ai.composioSyncScans': 'Composio scansioni di sincronizzazione',
   'settings.ai.totalBackgroundApiReadBudget': 'Totale bg API budget letto',
   'settings.ai.memoryWorkerPolls': 'Sondaggi del Memory Worker',

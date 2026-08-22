@@ -4645,17 +4645,6 @@ const messages: TranslationMap = {
   'settings.ai.backgroundLoops': '백그라운드 루프',
   'settings.ai.backgroundLoopsDesc':
     '채팅 메시지 없이 실행되는 항목을 확인하고, 하트비트 작업을 일시 중지하며, 최근 크레딧 원장 행을 검사합니다.',
-  'settings.ai.heartbeatControls': '하트비트 제어',
-  'settings.ai.heartbeatControlsDesc':
-    '기본값은 꺼짐입니다. 활성화하면 루프가 시작되고 비활성화하면 실행 중인 작업이 중단됩니다.',
-  'settings.ai.heartbeatLoop': '하트비트 루프',
-  'settings.ai.heartbeatLoopDesc': '플래너 및 선택적 잠재의식 추론을 위한 마스터 스케줄러입니다.',
-  'settings.ai.subconsciousInference': '잠재의식 추론',
-  'settings.ai.subconsciousInferenceDesc': '하트비트 틱에서 모델 기반 작업/회고 평가를 실행합니다.',
-  'settings.ai.calendarMeetingChecks': '캘린더 회의 확인',
-  'settings.ai.calendarMeetingChecksDesc':
-    '활성 Google Calendar 연결의 캘린더 이벤트 목록을 호출합니다.',
-  'settings.ai.calendarCap': '캘린더 캡',
   'settings.ai.connectionsPerTick': '틱당 {count}개 연결',
   'settings.ai.meetingLookahead': '회의 미리보기',
   'settings.ai.minutesShort': '{count}분',
@@ -4671,8 +4660,6 @@ const messages: TranslationMap = {
   'settings.ai.interval': '간격',
   'settings.ai.running': '실행 중...',
   'settings.ai.plannerTickNow': '지금 플래너 체크',
-  'settings.ai.loadingHeartbeatControls': '하트비트 제어 로드 중...',
-  'settings.ai.heartbeatControlsUnavailable': '하트비트 제어를 사용할 수 없습니다.',
   'settings.ai.loopMap': '루프 맵',
   'settings.ai.plannerSummary':
     '플래너: {sourceEvents} 소스 이벤트, {sent} 전송, {deduped} 중복 제거.',
@@ -4769,10 +4756,6 @@ const messages: TranslationMap = {
   'settings.ai.projectedEmpty': '비어 있을 것으로 예상됨',
   'settings.ai.apiReadsPerDollarRemaining': '남은 $당 API 읽기',
   'settings.ai.loopCallBudget': '루프 호출 예산',
-  'settings.ai.heartbeatTicks': '하트비트 틱',
-  'settings.ai.calendarPlannerCalls': '캘린더 플래너 호출',
-  'settings.ai.calendarFanoutCap': '달력 팬아웃 한도',
-  'settings.ai.subconsciousModelCalls': '잠재 의식 모델 호출',
   'settings.ai.composioSyncScans': 'Composio 동기화 검색',
   'settings.ai.totalBackgroundApiReadBudget': '총 bg API 읽기 예산',
   'settings.ai.memoryWorkerPolls': '메모리 작업자 설문 조사',

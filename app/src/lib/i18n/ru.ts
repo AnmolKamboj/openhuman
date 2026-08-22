@@ -4738,19 +4738,6 @@ const messages: TranslationMap = {
   'settings.ai.backgroundLoops': 'Фоновые циклы',
   'settings.ai.backgroundLoopsDesc':
     'Посмотрите, что выполняется без сообщения чата, приостановите работу Heartbeat и проверьте последние строки кредитной книги.',
-  'settings.ai.heartbeatControls': 'Управление пульсом.',
-  'settings.ai.heartbeatControlsDesc':
-    'По умолчанию выключено. Включение запускает цикл; отключение прерывает выполняемую задачу.',
-  'settings.ai.heartbeatLoop': 'Цикл Heartbeat',
-  'settings.ai.heartbeatLoopDesc':
-    'Главный планировщик для планировщика + дополнительный подсознательный вывод.',
-  'settings.ai.subconsciousInference': 'Подсознательный вывод.',
-  'settings.ai.subconsciousInferenceDesc':
-    'Выполняет оценку task/reflection на основе модели по тактам пульса.',
-  'settings.ai.calendarMeetingChecks': 'Проверка собраний в календаре.',
-  'settings.ai.calendarMeetingChecksDesc':
-    'Вызывает список событий календаря для активных соединений календаря Google.',
-  'settings.ai.calendarCap': 'Окончание календаря',
   'settings.ai.connectionsPerTick': '{count} подкл./тик',
   'settings.ai.meetingLookahead': 'Предварительный просмотр собрания',
   'settings.ai.minutesShort': '{count} мин',
@@ -4767,8 +4754,6 @@ const messages: TranslationMap = {
   'settings.ai.interval': 'Интервал',
   'settings.ai.running': 'Выполняется...',
   'settings.ai.plannerTickNow': 'Планировщик отметьте сейчас',
-  'settings.ai.loadingHeartbeatControls': 'Загрузка элементов управления пульсом...',
-  'settings.ai.heartbeatControlsUnavailable': 'Элементы управления пульсом недоступны.',
   'settings.ai.loopMap': 'Карта цикла',
   'settings.ai.plannerSummary':
     'Планировщик: исходные события {sourceEvents}, отправлено {sent}, дедуплицировано {deduped}.',
@@ -4865,10 +4850,6 @@ const messages: TranslationMap = {
   'settings.ai.projectedEmpty': 'Прогнозируемая пустая',
   'settings.ai.apiReadsPerDollarRemaining': 'API операций чтения на каждый оставшийся доллар',
   'settings.ai.loopCallBudget': 'Бюджет циклических вызовов',
-  'settings.ai.heartbeatTicks': 'Тактов контрольного сигнала',
-  'settings.ai.calendarPlannerCalls': 'Звонки планировщика календаря',
-  'settings.ai.calendarFanoutCap': 'Крышка разветвления календаря',
-  'settings.ai.subconsciousModelCalls': 'Звонки модели подсознания',
   'settings.ai.composioSyncScans': 'Composio синхронизируют сканирование',
   'settings.ai.totalBackgroundApiReadBudget': 'Общий бюджет чтения API',
   'settings.ai.memoryWorkerPolls': 'Опросы работников памяти',

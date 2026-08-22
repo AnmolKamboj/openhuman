@@ -4776,19 +4776,6 @@ const messages: TranslationMap = {
   'settings.ai.backgroundLoops': 'Bucles de fondo',
   'settings.ai.backgroundLoopsDesc':
     'Vea qué se ejecuta sin un mensaje de chat, pause el trabajo de latido y examine las filas recientes del libro mayor de créditos.',
-  'settings.ai.heartbeatControls': 'Controles de latidos del corazón',
-  'settings.ai.heartbeatControlsDesc':
-    'Predeterminado apagado. Activar inicia el bucle; desactivar aborta la tarea en ejecución.',
-  'settings.ai.heartbeatLoop': 'Bucle de latidos del corazón',
-  'settings.ai.heartbeatLoopDesc':
-    'Programador maestro para planificador + inferencia subconsciente opcional.',
-  'settings.ai.subconsciousInference': 'inferencia subconsciente',
-  'settings.ai.subconsciousInferenceDesc':
-    'Ejecuta la evaluación task/reflection respaldada por modelo en los latidos del corazón.',
-  'settings.ai.calendarMeetingChecks': 'Verificaciones de reuniones del calendario',
-  'settings.ai.calendarMeetingChecksDesc':
-    'Llama a la lista de eventos del calendario para conexiones de calendario Google activas.',
-  'settings.ai.calendarCap': 'tapa del calendario',
   'settings.ai.connectionsPerTick': '{count} conexión/tick',
   'settings.ai.meetingLookahead': 'Reunión anticipada',
   'settings.ai.minutesShort': '{count} min',
@@ -4805,8 +4792,6 @@ const messages: TranslationMap = {
   'settings.ai.interval': 'Intervalo',
   'settings.ai.running': 'Corriendo...',
   'settings.ai.plannerTickNow': 'Planificador marca ahora',
-  'settings.ai.loadingHeartbeatControls': 'Cargando controles de latidos...',
-  'settings.ai.heartbeatControlsUnavailable': 'Los controles de latidos no están disponibles.',
   'settings.ai.loopMap': 'Mapa de bucle',
   'settings.ai.plannerSummary':
     'Planificador: {sourceEvents} eventos de origen, {sent} enviados, {deduped} deduplicados.',
@@ -4904,10 +4889,6 @@ const messages: TranslationMap = {
   'settings.ai.projectedEmpty': 'vacío proyectado',
   'settings.ai.apiReadsPerDollarRemaining': 'API lecturas por $ restantes',
   'settings.ai.loopCallBudget': 'Presupuesto de llamadas en bucle',
-  'settings.ai.heartbeatTicks': 'Latidos del corazón',
-  'settings.ai.calendarPlannerCalls': 'Llamadas del planificador de calendario',
-  'settings.ai.calendarFanoutCap': 'Tapa de distribución del calendario',
-  'settings.ai.subconsciousModelCalls': 'Llamadas del modelo subconsciente',
   'settings.ai.composioSyncScans': 'Composio escaneos de sincronización',
   'settings.ai.totalBackgroundApiReadBudget': 'Total bg API leer presupuesto',
   'settings.ai.memoryWorkerPolls': 'Encuestas de trabajadores de la memoria',

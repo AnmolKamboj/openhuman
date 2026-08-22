@@ -5296,19 +5296,6 @@ const en: TranslationMap = {
   'settings.ai.backgroundLoops': 'Background loops',
   'settings.ai.backgroundLoopsDesc':
     'See what runs without a chat message, pause heartbeat work, and inspect recent credit ledger rows.',
-  'settings.ai.heartbeatControls': 'Heartbeat controls',
-  'settings.ai.heartbeatControlsDesc':
-    'Defaults off. Enabling starts the loop; disabling aborts the running task.',
-  'settings.ai.heartbeatLoop': 'Heartbeat loop',
-  'settings.ai.heartbeatLoopDesc':
-    'Master scheduler for planner + optional subconscious inference.',
-  'settings.ai.subconsciousInference': 'Subconscious inference',
-  'settings.ai.subconsciousInferenceDesc':
-    'Runs model-backed task/reflection evaluation on heartbeat ticks.',
-  'settings.ai.calendarMeetingChecks': 'Calendar meeting checks',
-  'settings.ai.calendarMeetingChecksDesc':
-    'Calls calendar event list for active Google Calendar connections.',
-  'settings.ai.calendarCap': 'Calendar cap',
   'settings.ai.connectionsPerTick': '{count} conn/tick',
   'settings.ai.meetingLookahead': 'Meeting lookahead',
   'settings.ai.minutesShort': '{count} min',
@@ -5324,8 +5311,6 @@ const en: TranslationMap = {
   'settings.ai.interval': 'Interval',
   'settings.ai.running': 'Running...',
   'settings.ai.plannerTickNow': 'Planner tick now',
-  'settings.ai.loadingHeartbeatControls': 'Loading heartbeat controls...',
-  'settings.ai.heartbeatControlsUnavailable': 'Heartbeat controls unavailable.',
   'settings.ai.loopMap': 'Loop map',
   'settings.ai.plannerSummary':
     'Planner: {sourceEvents} source events, {sent} sent, {deduped} deduped.',
@@ -5422,10 +5407,6 @@ const en: TranslationMap = {
   'settings.ai.projectedEmpty': 'Projected empty',
   'settings.ai.apiReadsPerDollarRemaining': 'API reads per $ remaining',
   'settings.ai.loopCallBudget': 'Loop call budget',
-  'settings.ai.heartbeatTicks': 'Heartbeat ticks',
-  'settings.ai.calendarPlannerCalls': 'Calendar planner calls',
-  'settings.ai.calendarFanoutCap': 'Calendar fanout cap',
-  'settings.ai.subconsciousModelCalls': 'Subconscious model calls',
   'settings.ai.composioSyncScans': 'Composio sync scans',
   'settings.ai.totalBackgroundApiReadBudget': 'Total bg API read budget',
   'settings.ai.memoryWorkerPolls': 'Memory worker polls',

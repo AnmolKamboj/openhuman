@@ -4696,18 +4696,6 @@ const messages: TranslationMap = {
   'settings.ai.backgroundLoops': 'पृष्ठभूमि लूप',
   'settings.ai.backgroundLoopsDesc':
     'क्या एक चैट संदेश के बिना चलाता है, दिल की धड़कन काम को रोकें, और हाल ही में क्रेडिट लेजर पंक्तियों का निरीक्षण करें।',
-  'settings.ai.heartbeatControls': 'दिल की धड़कन नियंत्रित होती है',
-  'settings.ai.heartbeatControlsDesc':
-    'डिफ़ॉल्ट। सक्षम करने से लूप शुरू होता है; निष्क्रिय करने से चलने का कार्य समाप्त हो जाता है।',
-  'settings.ai.heartbeatLoop': 'दिल की धड़कन का लूप',
-  'settings.ai.heartbeatLoopDesc': 'प्लानर + वैकल्पिक अवचेतन उपस्थिति के लिए मास्टर शेड्यूलर।',
-  'settings.ai.subconsciousInference': 'अवचेतन अनुमान',
-  'settings.ai.subconsciousInferenceDesc':
-    'हार्टबीट टिक पर मॉडल समर्थित task/reflection मूल्यांकन चलाता है।',
-  'settings.ai.calendarMeetingChecks': 'कैलेंडर मीटिंग की जाँच',
-  'settings.ai.calendarMeetingChecksDesc':
-    'सक्रिय Google कैलेंडर कनेक्शन के लिए कैलेंडर इवेंट सूची बुलाता है।',
-  'settings.ai.calendarCap': 'कैलेंडर कैप',
   'settings.ai.connectionsPerTick': '{count} कॉन/टिक',
   'settings.ai.meetingLookahead': 'बैठक आगे की ओर देख रही है',
   'settings.ai.minutesShort': '{count} मि',
@@ -4724,8 +4712,6 @@ const messages: TranslationMap = {
   'settings.ai.interval': 'अंतराल',
   'settings.ai.running': 'चल रहा है...',
   'settings.ai.plannerTickNow': 'प्लानर अभी टिक करें',
-  'settings.ai.loadingHeartbeatControls': 'दिल की धड़कन नियंत्रण लोड हो रहा है...',
-  'settings.ai.heartbeatControlsUnavailable': 'दिल की धड़कन नियंत्रण अनुपलब्ध है.',
   'settings.ai.loopMap': 'लूप मानचित्र',
   'settings.ai.plannerSummary':
     'योजनाकार: {sourceEvents} स्रोत घटनाएँ, {sent} भेजा गया, {deduped} काटा गया।',
@@ -4822,10 +4808,6 @@ const messages: TranslationMap = {
   'settings.ai.projectedEmpty': 'खाली प्रक्षेपित किया गया',
   'settings.ai.apiReadsPerDollarRemaining': 'API प्रति $ शेष पढ़ता है',
   'settings.ai.loopCallBudget': 'लूप कॉल बजट',
-  'settings.ai.heartbeatTicks': 'दिल की धड़कन टिक-टिक करती है',
-  'settings.ai.calendarPlannerCalls': 'कैलेंडर योजनाकार कॉल करता है',
-  'settings.ai.calendarFanoutCap': 'कैलेंडर फैनआउट कैप',
-  'settings.ai.subconsciousModelCalls': 'अवचेतन मॉडल कॉल',
   'settings.ai.composioSyncScans': 'Composio सिंक स्कैन',
   'settings.ai.totalBackgroundApiReadBudget': 'कुल बीजी API बजट पढ़ें',
   'settings.ai.memoryWorkerPolls': 'स्मृति कार्यकर्ता सर्वेक्षण',

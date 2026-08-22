@@ -4804,19 +4804,6 @@ const messages: TranslationMap = {
   'settings.ai.backgroundLoops': 'Boucles de fond',
   'settings.ai.backgroundLoopsDesc':
     "Voyez ce qui s'exécute sans message de discussion, interrompez le travail du battement de cœur et inspectez les lignes récentes du grand livre de crédit.",
-  'settings.ai.heartbeatControls': 'Contrôles de battement de coeur',
-  'settings.ai.heartbeatControlsDesc':
-    "Désactivé par défaut. L'activation démarre la boucle; la désactivation interrompt la tâche en cours.",
-  'settings.ai.heartbeatLoop': 'Boucle de battement de coeur',
-  'settings.ai.heartbeatLoopDesc':
-    'Planificateur principal pour planificateur + inférence subconsciente optionnelle.',
-  'settings.ai.subconsciousInference': 'Inférence subconsciente',
-  'settings.ai.subconsciousInferenceDesc':
-    'Exécute une évaluation task/reflection basée sur un modèle sur les impulsions du rythme cardiaque.',
-  'settings.ai.calendarMeetingChecks': 'Les réunions du calendrier vérifient',
-  'settings.ai.calendarMeetingChecksDesc':
-    'Appelle la liste des événements du calendrier pour les connexions actives du calendrier Google.',
-  'settings.ai.calendarCap': 'Limite du calendrier',
   'settings.ai.connectionsPerTick': '{count} conn/tick',
   'settings.ai.meetingLookahead': 'Anticipation de la réunion',
   'settings.ai.minutesShort': '{count} min',
@@ -4833,8 +4820,6 @@ const messages: TranslationMap = {
   'settings.ai.interval': 'Intervalle',
   'settings.ai.running': "En cours d'exécution...",
   'settings.ai.plannerTickNow': 'Planificateur tick maintenant',
-  'settings.ai.loadingHeartbeatControls': 'Chargement des contrôles de rythme cardiaque...',
-  'settings.ai.heartbeatControlsUnavailable': 'Contrôles de rythme cardiaque indisponibles.',
   'settings.ai.loopMap': 'Carte de boucle',
   'settings.ai.plannerSummary':
     'Planificateur : événements sources {sourceEvents}, {sent} envoyés, {deduped} dédupliqués.',
@@ -4931,10 +4916,6 @@ const messages: TranslationMap = {
   'settings.ai.projectedEmpty': 'Vide projeté',
   'settings.ai.apiReadsPerDollarRemaining': 'API lectures par $ restant',
   'settings.ai.loopCallBudget': "Budget d'appel en boucle",
-  'settings.ai.heartbeatTicks': 'Ticks de battement de coeur',
-  'settings.ai.calendarPlannerCalls': 'Appels du planificateur de calendrier',
-  'settings.ai.calendarFanoutCap': 'Capuchon de diffusion du calendrier',
-  'settings.ai.subconsciousModelCalls': 'Appels du modèle subconscient',
   'settings.ai.composioSyncScans': 'Composio analyses de synchronisation',
   'settings.ai.totalBackgroundApiReadBudget': 'Budget total de lecture API',
   'settings.ai.memoryWorkerPolls': 'Sondages de mémoire',

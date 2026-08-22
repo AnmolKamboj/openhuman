@@ -4587,17 +4587,6 @@ const messages: TranslationMap = {
   'settings.ai.backgroundLoops': 'حلقات الخلفية',
   'settings.ai.backgroundLoopsDesc':
     'شاهدْ ما يَعْملُ بدون رسالةِ دردشةِ، يَتوقّفُ عملَ نبضات القلب، ويَتفحصُ مؤخراً دفترِ دفاترِ الإئتمانِ.',
-  'settings.ai.heartbeatControls': 'التحكم في نبضات القلب',
-  'settings.ai.heartbeatControlsDesc':
-    'تعطل ويؤدي التمكين إلى بدء الحلقة؛ ويؤدي إلى إجهاض المهمة الجارية.',
-  'settings.ai.heartbeatLoop': 'حلقة نبضات القلب',
-  'settings.ai.heartbeatLoopDesc': 'الجدول الزمني الرئيسي للمخطط + الإستنتاجات الخفية الاختيارية',
-  'settings.ai.subconsciousInference': 'الاستدلال اللاواعي',
-  'settings.ai.subconsciousInferenceDesc': 'يُجري تقييماً مُدعماً بنموذج (Xqx0x) على دقات القلب',
-  'settings.ai.calendarMeetingChecks': 'يتحقق اجتماع التقويم',
-  'settings.ai.calendarMeetingChecksDesc':
-    '(د) قائمة بالأحداث التقويمية للوصلات الناشطة من طراز Xqx0xx Calendar.',
-  'settings.ai.calendarCap': 'غطاء التقويم',
   'settings.ai.connectionsPerTick': 'xxxxxxxxxxxxx',
   'settings.ai.meetingLookahead': 'نظرة أمامية للاجتماع',
   'settings.ai.minutesShort': '{count} دقيقة',
@@ -4613,8 +4602,6 @@ const messages: TranslationMap = {
   'settings.ai.interval': 'الفاصل الزمني',
   'settings.ai.running': 'قيد التشغيل...',
   'settings.ai.plannerTickNow': 'علامة المخطط الآن',
-  'settings.ai.loadingHeartbeatControls': 'جارٍ تحميل عناصر التحكم في نبضات القلب...',
-  'settings.ai.heartbeatControlsUnavailable': 'عناصر التحكم في نبضات القلب غير متاحة.',
   'settings.ai.loopMap': 'خريطة حلقة',
   'settings.ai.plannerSummary':
     'المخطط: {sourceEvents} أحداث المصدر، {sent} تم إرسالها، {deduped} تم حذفها.',
@@ -4711,10 +4698,6 @@ const messages: TranslationMap = {
   'settings.ai.projectedEmpty': 'فارغ متوقع',
   'settings.ai.apiReadsPerDollarRemaining': 'API عدد القراءات لكل دولار متبقي',
   'settings.ai.loopCallBudget': 'ميزانية المكالمة المتكررة',
-  'settings.ai.heartbeatTicks': 'علامات نبضات القلب',
-  'settings.ai.calendarPlannerCalls': 'يستدعي مخطط التقويم',
-  'settings.ai.calendarFanoutCap': 'غطاء التوزيع الموسع للتقويم',
-  'settings.ai.subconsciousModelCalls': 'يستدعي نموذج اللاوعي',
   'settings.ai.composioSyncScans': 'Composio عمليات مسح المزامنة',
   'settings.ai.totalBackgroundApiReadBudget': 'إجمالي bg API ميزانية القراءة',
   'settings.ai.memoryWorkerPolls': 'استطلاعات عاملي الذاكرة',

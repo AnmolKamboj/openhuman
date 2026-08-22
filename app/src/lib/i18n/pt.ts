@@ -4762,19 +4762,6 @@ const messages: TranslationMap = {
   'settings.ai.backgroundLoops': 'Loops de segundo plano.',
   'settings.ai.backgroundLoopsDesc':
     'Veja o que funciona sem uma mensagem de chat, pause o trabalho do pulso e inspecione as linhas recentes do livro razão de créditos.',
-  'settings.ai.heartbeatControls': 'Controles de pulsação',
-  'settings.ai.heartbeatControlsDesc':
-    'Padrões desativados. Ativar inicia o loop; desativar aborta a tarefa em execução.',
-  'settings.ai.heartbeatLoop': 'Loop de pulsação',
-  'settings.ai.heartbeatLoopDesc':
-    'Agendador mestre para planejador + inferência subconsciente opcional.',
-  'settings.ai.subconsciousInference': 'Inferência subconsciente',
-  'settings.ai.subconsciousInferenceDesc':
-    'Executa avaliação task/reflection com suporte a modelo em batimentos de pulso.',
-  'settings.ai.calendarMeetingChecks': 'Verificações de reuniões do calendário',
-  'settings.ai.calendarMeetingChecksDesc':
-    'Chama a lista de eventos do calendário para conexões ativas do Calendário Google.',
-  'settings.ai.calendarCap': 'Limite do calendário',
   'settings.ai.connectionsPerTick': '{count} conn/tick',
   'settings.ai.meetingLookahead': 'Antecipação da reunião',
   'settings.ai.minutesShort': '{count} min',
@@ -4791,8 +4778,6 @@ const messages: TranslationMap = {
   'settings.ai.interval': 'Intervalo',
   'settings.ai.running': 'Em execução...',
   'settings.ai.plannerTickNow': 'Marcação do planejador agora',
-  'settings.ai.loadingHeartbeatControls': 'Carregando controles de pulsação...',
-  'settings.ai.heartbeatControlsUnavailable': 'Controles de pulsação indisponíveis.',
   'settings.ai.loopMap': 'Mapa de loop',
   'settings.ai.plannerSummary':
     'Planejador: {sourceEvents} eventos de origem, {sent} enviados, {deduped} desduplicados.',
@@ -4889,10 +4874,6 @@ const messages: TranslationMap = {
   'settings.ai.projectedEmpty': 'Vazio projetado',
   'settings.ai.apiReadsPerDollarRemaining': 'API leituras por $ restantes',
   'settings.ai.loopCallBudget': 'Orçamento de chamada de loop',
-  'settings.ai.heartbeatTicks': 'Pulsações',
-  'settings.ai.calendarPlannerCalls': 'Chamadas do planejador de calendário',
-  'settings.ai.calendarFanoutCap': 'Limite de fanout do calendário',
-  'settings.ai.subconsciousModelCalls': 'Chamadas de modelo subconsciente',
   'settings.ai.composioSyncScans': 'Composio varreduras de sincronização',
   'settings.ai.totalBackgroundApiReadBudget': 'Total bg API orçamento de leitura',
   'settings.ai.memoryWorkerPolls': 'Pesquisas de trabalho de memória',

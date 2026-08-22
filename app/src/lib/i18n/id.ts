@@ -4714,19 +4714,6 @@ const messages: TranslationMap = {
   'settings.ai.backgroundLoops': 'Perulangan latar belakang',
   'settings.ai.backgroundLoopsDesc':
     'Lihat apa yang berjalan tanpa pesan obrolan, jeda kerja detak jantung, dan memeriksa buku kas kredit baru-baru ini.',
-  'settings.ai.heartbeatControls': 'Kontrol detak jantung',
-  'settings.ai.heartbeatControlsDesc':
-    'Default off. Mengaktifkan memulai loop; menonaktifkan menonaktifkan tugas yang sedang berjalan.',
-  'settings.ai.heartbeatLoop': 'Putaran detak jantung',
-  'settings.ai.heartbeatLoopDesc':
-    'Master penjadwalan untuk perencana + inferensi bawah sadar opsional.',
-  'settings.ai.subconsciousInference': 'Inferensi bawah sadar',
-  'settings.ai.subconsciousInferenceDesc':
-    'Model runs - didukung /reflection evaluasi pada detak jantung.',
-  'settings.ai.calendarMeetingChecks': 'Pemeriksaan rapat kalender',
-  'settings.ai.calendarMeetingChecksDesc':
-    'Memanggil daftar acara kalender untuk koneksi kalender Google yang aktif.',
-  'settings.ai.calendarCap': 'Batas kalender',
   'settings.ai.connectionsPerTick': '{count} samb/centang',
   'settings.ai.meetingLookahead': 'Pertemuan ke depan',
   'settings.ai.minutesShort': '{count} mnt',
@@ -4743,8 +4730,6 @@ const messages: TranslationMap = {
   'settings.ai.interval': 'Interval',
   'settings.ai.running': 'Berjalan...',
   'settings.ai.plannerTickNow': 'Perencana centang sekarang',
-  'settings.ai.loadingHeartbeatControls': 'Memuat kontrol detak jantung...',
-  'settings.ai.heartbeatControlsUnavailable': 'Kontrol detak jantung tidak tersedia.',
   'settings.ai.loopMap': 'Peta loop',
   'settings.ai.plannerSummary':
     'Perencana: {sourceEvents} peristiwa sumber, {sent} terkirim, {deduped} dihapuskan.',
@@ -4841,10 +4826,6 @@ const messages: TranslationMap = {
   'settings.ai.projectedEmpty': 'Proyeksi kosong',
   'settings.ai.apiReadsPerDollarRemaining': 'API pembacaan per $ yang tersisa',
   'settings.ai.loopCallBudget': 'Anggaran panggilan berulang',
-  'settings.ai.heartbeatTicks': 'Detak jantung berdetak',
-  'settings.ai.calendarPlannerCalls': 'Panggilan perencana kalender',
-  'settings.ai.calendarFanoutCap': 'Batas fanout kalender',
-  'settings.ai.subconsciousModelCalls': 'Panggilan model bawah sadar',
   'settings.ai.composioSyncScans': 'Composio pemindaian sinkronisasi',
   'settings.ai.totalBackgroundApiReadBudget': 'Total bg API anggaran baca',
   'settings.ai.memoryWorkerPolls': 'Jajak pendapat pekerja memori',
