@@ -32,7 +32,7 @@ import {
   deleteGateway,
   DESKTOP_GATEWAY_ID,
   type Gateway,
-  gatewayKind,
+  type GatewaySummary,
   gatewayStatus,
   type GatewayStatus,
   listGateways,
@@ -125,7 +125,7 @@ const GatewaySection = ({ available }: Props) => {
   const { t } = useT();
   const dispatch = useAppDispatch();
 
-  const [gateways, setGateways] = useState<Gateway[]>([]);
+  const [gateways, setGateways] = useState<GatewaySummary[]>([]);
   const [activeId, setActiveId] = useState<string>(DESKTOP_GATEWAY_ID);
   const [status, setStatus] = useState<GatewayStatus>({ state: 'inactive' });
   const [draft, setDraft] = useState<DraftGateway | null>(null);
@@ -228,7 +228,7 @@ const GatewaySection = ({ available }: Props) => {
     }
   };
 
-  const statusLine = (gateway: Gateway): string | undefined => {
+  const statusLine = (gateway: GatewaySummary): string | undefined => {
     if (gateway.id !== activeId) return undefined;
     switch (status.state) {
       case 'activating':
@@ -257,7 +257,7 @@ const GatewaySection = ({ available }: Props) => {
           key={gateway.id}
           label={gateway.label}
           description={
-            statusLine(gateway) ?? t(`settings.gateway.kind.${gatewayKind(gateway.spec)}`)
+            statusLine(gateway) ?? t(`settings.gateway.kind.${gateway.kind}`)
           }
           control={
             <div className="flex items-center gap-2">
