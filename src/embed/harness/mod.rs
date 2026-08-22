@@ -193,7 +193,9 @@ impl Drop for Harness {
         // breaking the documented "removed with its harness" guarantee. A
         // bounded retry lets those writes settle before we give up.
         if let Some(temp) = self._workspace._temp.take() {
-            let root = temp.into_path();
+            // `keep()` hands back the path without removing the directory so
+            // we can do the retried removal ourselves.
+            let root = temp.keep();
             for _ in 0..20 {
                 if std::fs::remove_dir_all(&root).is_ok() {
                     break;
