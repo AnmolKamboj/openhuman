@@ -65,20 +65,14 @@ pub enum DecideMiss {
 /// written into the persisted row.
 const DEFAULT_APPROVAL_TTL: Duration = Duration::from_secs(60 * 10);
 
-/// Shorter park window for approvals raised mid-call (issue #3513): a
-/// live meeting can't idle on a parked tool for the default ten
-/// minutes — if nobody approves within two, deny and move on.
-const IN_CALL_APPROVAL_TTL: Duration = Duration::from_secs(120);
-
 /// Shorter park window for approvals raised by the Flow Canvas copilot's
 /// live-run path — `flows_build` streaming into the copilot pane calling
 /// `run_flow` / `resume_flow_run` (PR #5090). A stale ten-minute park on a
 /// copilot pane the user may have already navigated away from is a long time
 /// to leave a live Slack/Gmail/HTTP node waiting; if nobody approves within
 /// three minutes, deny and let the authoring turn continue (the user can
-/// still re-trigger the run from the Runs rail). Mirrors
-/// [`IN_CALL_APPROVAL_TTL`]'s clamp, scoped by [`APPROVAL_COPILOT_STREAM_CONTEXT`]
-/// instead of [`APPROVAL_IN_CALL_CONTEXT`]. Deliberately NOT applied to
+/// still re-trigger the run from the Runs rail). Scoped by
+/// [`APPROVAL_COPILOT_STREAM_CONTEXT`]. Deliberately NOT applied to
 /// main-chat `WebChat` parks — only `flows::ops::flows_build`'s streaming
 /// branch scopes the task-local below.
 const COPILOT_APPROVAL_TTL: Duration = Duration::from_secs(180);
@@ -98,26 +92,6 @@ pub struct ApprovalChatContext {
 
 tokio::task_local! {
     pub static APPROVAL_CHAT_CONTEXT: ApprovalChatContext;
-}
-
-/// In-call meeting context (issue #3513) — set by `agent_meetings::in_call`
-/// around the orchestrator turn for a live meeting. When present, a parked
-/// approval additionally:
-/// - publishes [`DomainEvent::InCallApprovalRequested`] so the meeting bus
-///   can speak the approval prompt into the call (`bot:speak`),
-/// - registers a meeting → request mapping so a spoken
-///   "Hey Tiny, approve" can be routed to [`ApprovalGate::decide`], and
-/// - clamps the park window to [`IN_CALL_APPROVAL_TTL`].
-#[derive(Clone, Debug)]
-pub struct InCallApprovalContext {
-    /// Stable per-meeting key (the correlation id, or `"default"`).
-    pub meeting_key: String,
-    /// Original correlation id, echoed on spoken prompts.
-    pub correlation_id: Option<String>,
-}
-
-tokio::task_local! {
-    pub static APPROVAL_IN_CALL_CONTEXT: InCallApprovalContext;
 }
 
 tokio::task_local! {
@@ -223,11 +197,6 @@ pub struct ApprovalGate {
     /// In-memory only (session-scoped — a parked approval doesn't survive a
     /// restart, and the oneshot waiter is in-memory anyway).
     thread_to_request: Mutex<HashMap<String, String>>,
-    /// meeting_key → request_id for the approval currently parked on a live
-    /// meeting, so a spoken "Hey Tiny, approve" can be routed to a decision
-    /// (issue #3513). Same in-memory/session-scoped semantics as
-    /// `thread_to_request`.
-    meeting_to_request: Mutex<HashMap<String, String>>,
 }
 
 /// RAII guard that tears the parked waiter down even when the surrounding turn
@@ -239,7 +208,7 @@ pub struct ApprovalGate {
 /// resolves *normally*. Once a turn future can be torn down *externally* — the
 /// harness `max_wall_clock_ms` backstop (#4746) or the outer web backstop
 /// (#4751) firing while a tool call is parked — dropping the future skips those
-/// arms entirely, leaving the in-memory waiter, the thread/meeting routing
+/// arms entirely, leaving the in-memory waiter, the thread routing
 /// mappings, and the `pending_approvals` row dangling until the store TTL
 /// sweeps them. A later yes/no arriving before that expiry would then route to a
 /// dead request and return without starting a fresh turn (#4774).
@@ -251,7 +220,6 @@ struct WaiterGuard<'a> {
     gate: &'a ApprovalGate,
     request_id: String,
     thread_id: Option<String>,
-    meeting_key: Option<String>,
     armed: bool,
 }
 
@@ -268,24 +236,20 @@ impl Drop for WaiterGuard<'_> {
             return;
         }
         // External teardown: the normal cleanup was skipped. Evict the waiter,
-        // drop the routing mappings so a later chat/voice reply is not
+        // drop the routing mapping so a later chat reply is not
         // mis-routed to this now-dead request, and deny the still-open pending
         // row. `store::decide` is `WHERE decided_at IS NULL`, so a decision that
         // committed in the same instant is honored rather than overwritten.
         self.gate.evict_waiter(&self.request_id);
         // Only clear the routing entry when it still points at *this* request.
         // On external teardown a replacement turn can park a new approval on the
-        // same thread/meeting and overwrite the mapping before this guard drops;
+        // same thread and overwrite the mapping before this guard drops;
         // an unconditional `remove` would delete the *new* request's routing, so
         // the next typed yes/no would fall through as a fresh chat turn instead
         // of resolving the live gate (#4774).
         if let Some(thread_id) = &self.thread_id {
             self.gate
                 .clear_thread_route_if_owned(thread_id, &self.request_id);
-        }
-        if let Some(meeting_key) = &self.meeting_key {
-            self.gate
-                .clear_meeting_route_if_owned(meeting_key, &self.request_id);
         }
         let _ = store::decide(&self.gate.config, &self.request_id, ApprovalDecision::Deny);
         tracing::warn!(
@@ -341,7 +305,6 @@ impl ApprovalGate {
             ttl,
             waiters: Mutex::new(HashMap::new()),
             thread_to_request: Mutex::new(HashMap::new()),
-            meeting_to_request: Mutex::new(HashMap::new()),
         }
     }
 
@@ -372,21 +335,13 @@ impl ApprovalGate {
     }
 
     /// Resolve the actual park duration from the gate's own `effective_ttl`
-    /// plus whichever origin-specific clamp is active for this call
-    /// (`in_call` → [`IN_CALL_APPROVAL_TTL`], `copilot_stream` →
-    /// [`COPILOT_APPROVAL_TTL`]). A clamp only ever *shortens* the park — it
-    /// can never extend `effective_ttl` past what the gate itself allows
-    /// (e.g. a debug env override). Both flags are expected to be mutually
-    /// exclusive in production (a live-meeting turn and a `flows_build`
-    /// copilot stream are different call sites), but if both were ever true
-    /// the tighter of the two clamps wins, since each `min` only narrows.
-    /// Split out (rather than inlined at the call site) so it is unit
-    /// testable without needing to actually park a future.
-    fn resolve_park_ttl(effective_ttl: Duration, in_call: bool, copilot_stream: bool) -> Duration {
+    /// plus the `copilot_stream` clamp ([`COPILOT_APPROVAL_TTL`]) when that
+    /// origin is active. A clamp only ever *shortens* the park — it can never
+    /// extend `effective_ttl` past what the gate itself allows (e.g. a debug
+    /// env override). Split out (rather than inlined at the call site) so it is
+    /// unit testable without needing to actually park a future.
+    fn resolve_park_ttl(effective_ttl: Duration, copilot_stream: bool) -> Duration {
         let mut ttl = effective_ttl;
-        if in_call {
-            ttl = ttl.min(IN_CALL_APPROVAL_TTL);
-        }
         if copilot_stream {
             ttl = ttl.min(COPILOT_APPROVAL_TTL);
         }
@@ -483,7 +438,7 @@ impl ApprovalGate {
     /// When `park_bound` is `Some` and shorter than the gate's own effective
     /// TTL and it elapses before a decision arrives, the gate abandons the park
     /// in a **cancellation-safe** way — it evicts the in-memory waiter and
-    /// clears the thread/meeting routing mappings (so a later chat/voice reply
+    /// clears the thread routing mapping (so a later chat reply
     /// is not mis-routed to this now-abandoned request) but deliberately LEAVES
     /// the `pending_approvals` row open, so a later human card-click can still
     /// resolve it in the DB — and returns `None`. This is why callers must bound
@@ -522,7 +477,7 @@ impl ApprovalGate {
     /// [`Self::intercept_audited_bounded`]. When `park_bound` is `Some` and
     /// shorter than the effective TTL, the park is capped at it; on that bound
     /// elapsing the park is abandoned cancellation-safely (waiter evicted,
-    /// thread/meeting routing cleared, `pending_approvals` row left open) and
+    /// thread routing cleared, `pending_approvals` row left open) and
     /// `*park_bound_elapsed` is set so the bounded caller can render its own
     /// fast-path result instead of a `Deny`.
     async fn intercept_audited_inner(
@@ -713,11 +668,6 @@ impl ApprovalGate {
             .map(|c| c.client_id.clone())
             .or_else(|| origin_chat_route.as_ref().map(|(_, c)| c.clone()));
 
-        // In-call meeting context — set by agent_meetings::in_call around a
-        // live-meeting orchestrator turn. Enables the spoken approval
-        // channel alongside the thread card (issue #3513).
-        let in_call_ctx = APPROVAL_IN_CALL_CONTEXT.try_with(|c| c.clone()).ok();
-
         // Copilot-streaming context — set by `flows::ops::flows_build` around
         // the streaming `run_single` call. Presence alone clamps the park
         // window to `COPILOT_APPROVAL_TTL`; see that task-local's doc.
@@ -746,16 +696,13 @@ impl ApprovalGate {
                     sender = %sender.as_deref().unwrap_or("<unknown>"),
                     reply_target = %reply_target,
                     message_id = %message_id,
-                    in_call = in_call_ctx.is_some(),
                     "[approval::gate] external channel turn — persisting audit row and parking"
                 );
                 // Fall through to the parking flow: a `pending_approvals` row
                 // is persisted (audit trail) and the future parks. We do NOT
                 // short-circuit to Allow here — remote inputs are untrusted.
-                // Without a routable surface the park TTL-denies; with the
-                // in-call context set (live meeting, issue #3513) a decision
-                // can arrive via the spoken channel (`pending_for_meeting` →
-                // `decide`) or the thread card before the (clamped) TTL.
+                // Without a routable surface the park TTL-denies; a decision
+                // can still arrive via the thread card before the TTL.
             }
             AgentTurnOrigin::TrustedAutomation {
                 source: TrustedAutomationSource::Cron,
@@ -889,14 +836,13 @@ impl ApprovalGate {
         // Resolve the clamped park TTL up front so the persisted `expires_at`
         // and the actual wait below (see `resolve_park_ttl` further down)
         // use the same value — see `Self::resolve_park_ttl` and the
-        // COPILOT_APPROVAL_TTL / IN_CALL_APPROVAL_TTL clamps. Computing this
+        // COPILOT_APPROVAL_TTL clamp. Computing this
         // only after persisting the pending row let a copilot-streaming park
         // advertise the old 10-minute `expires_at` while only actually
         // waiting 180s, so a core restart or an `expire_stale` sweep mid-park
         // could leave the row "actionable" for the wrong window (CodeRabbit
         // + Codex review on PR #5112).
-        let effective_ttl =
-            Self::resolve_park_ttl(self.effective_ttl(), in_call_ctx.is_some(), copilot_stream);
+        let effective_ttl = Self::resolve_park_ttl(self.effective_ttl(), copilot_stream);
         let expires_at = Some(now + chrono::Duration::from_std(effective_ttl).unwrap_or_default());
 
         // Correlation context (flow-approval-surface, PR2): a Workflow-origin
@@ -949,18 +895,9 @@ impl ApprovalGate {
                 .lock()
                 .insert(thread_id.clone(), request_id.clone());
         }
-        // Record the meeting → request mapping so a spoken approval reply
-        // ("Hey Tiny, approve") can be routed to a decision.
-        if let Some(ic) = in_call_ctx.as_ref() {
-            self.meeting_to_request
-                .lock()
-                .insert(ic.meeting_key.clone(), request_id.clone());
-        }
-
         if let Err(err) = store::insert_pending(&self.config, &pending, &self.session_id) {
             self.evict_waiter(&request_id);
             self.clear_thread(&chat_thread_id, &request_id);
-            self.clear_meeting(&in_call_ctx, &request_id);
             tracing::error!(
                 error = %err,
                 tool = tool_name,
@@ -1024,26 +961,14 @@ impl ApprovalGate {
             publish_flow_gate_notification(&request_id, flow_id, run_id, tool_name, action_summary);
         }
 
-        // Voice channel (issue #3513): tell the meeting bus to speak the
-        // approval prompt into the call.
-        if let Some(ic) = in_call_ctx.as_ref() {
-            BUS.publish(DomainEvent::InCallApprovalRequested {
-                request_id: request_id.clone(),
-                tool_name: tool_name.to_string(),
-                action_summary: action_summary.to_string(),
-                correlation_id: ic.correlation_id.clone(),
-            });
-        }
-
         tracing::info!(
             request_id = %request_id,
             tool = tool_name,
             "[approval::gate] tool call parked, waiting for decision"
         );
 
-        // Live meetings and copilot-streaming flows_build runs each get a
-        // clamped park window — see IN_CALL_APPROVAL_TTL / COPILOT_APPROVAL_TTL
-        // and `Self::resolve_park_ttl`. `effective_ttl` was resolved above
+        // Copilot-streaming flows_build runs get a clamped park window — see
+        // COPILOT_APPROVAL_TTL and `Self::resolve_park_ttl`. `effective_ttl` was resolved above
         // (before `expires_at` was built) so the persisted expiry and this
         // wait use the identical clamped duration; `effective_ttl()` applies
         // the debug-only env override, and the clamp is applied on top so a
@@ -1078,7 +1003,6 @@ impl ApprovalGate {
             gate: self,
             request_id: request_id.clone(),
             thread_id: chat_thread_id.clone(),
-            meeting_key: in_call_ctx.as_ref().map(|ic| ic.meeting_key.clone()),
             armed: true,
         };
 
@@ -1127,7 +1051,7 @@ impl ApprovalGate {
             Err(_elapsed) if park_bound_active => {
                 // Caller park bound elapsed (#4756) — NOT the gate's own TTL.
                 // Abandon the park cancellation-safely: evict the in-memory
-                // waiter and (via `clear_thread`/`clear_meeting` below, on every
+                // waiter and (via `clear_thread` below, on every
                 // exit) drop the routing mappings so a later chat/voice reply is
                 // not mis-routed to this now-abandoned request. Deliberately do
                 // NOT `store::decide(Deny)` — the `pending_approvals` row stays
@@ -1214,7 +1138,6 @@ impl ApprovalGate {
         // The routing mappings are only needed while parked; clear them on
         // every exit (decision, channel drop, or timeout).
         self.clear_thread(&chat_thread_id, &request_id);
-        self.clear_meeting(&in_call_ctx, &request_id);
         outcome
     }
 
@@ -1405,24 +1328,10 @@ impl ApprovalGate {
         self.thread_to_request.lock().get(thread_id).cloned()
     }
 
-    /// The request_id of the approval currently parked on a live meeting, if
-    /// any. Used by `agent_meetings::in_call` to route a spoken
-    /// "Hey Tiny, approve" to a decision (issue #3513).
-    pub fn pending_for_meeting(&self, meeting_key: &str) -> Option<String> {
-        self.meeting_to_request.lock().get(meeting_key).cloned()
-    }
-
     /// Drop the thread → request mapping when it still belongs to this request.
     fn clear_thread(&self, thread_id: &Option<String>, request_id: &str) {
         if let Some(t) = thread_id {
             self.clear_thread_route_if_owned(t, request_id);
-        }
-    }
-
-    /// Drop the meeting → request mapping when it still belongs to this request.
-    fn clear_meeting(&self, ctx: &Option<InCallApprovalContext>, request_id: &str) {
-        if let Some(ic) = ctx {
-            self.clear_meeting_route_if_owned(&ic.meeting_key, request_id);
         }
     }
 
@@ -1435,14 +1344,6 @@ impl ApprovalGate {
         let mut map = self.thread_to_request.lock();
         if map.get(thread_id).is_some_and(|rid| rid == request_id) {
             map.remove(thread_id);
-        }
-    }
-
-    /// Meeting-map analogue of [`Self::clear_thread_route_if_owned`].
-    fn clear_meeting_route_if_owned(&self, meeting_key: &str, request_id: &str) {
-        let mut map = self.meeting_to_request.lock();
-        if map.get(meeting_key).is_some_and(|rid| rid == request_id) {
-            map.remove(meeting_key);
         }
     }
 }
@@ -1565,66 +1466,10 @@ mod tests {
         }
     }
 
-    /// An external-channel (live meeting) origin for the in-call fixtures.
-    fn meet_origin() -> AgentTurnOrigin {
-        AgentTurnOrigin::ExternalChannel {
-            channel: "meet".into(),
-            sender: None,
-            reply_target: "meet-1".into(),
-            message_id: "m-1".into(),
-        }
-    }
-
-    fn in_call_ctx() -> InCallApprovalContext {
-        InCallApprovalContext {
-            meeting_key: "meet-1".into(),
-            correlation_id: Some("meet-1".into()),
-        }
-    }
-
-    #[tokio::test]
-    async fn in_call_voice_approve_resolves_parked_external_channel_approval() {
-        let (gate, _dir) = test_gate();
-        let gate = Arc::new(gate);
-
-        let g = gate.clone();
-        let handle = tokio::spawn(async move {
-            turn_origin::with_origin(
-                meet_origin(),
-                APPROVAL_IN_CALL_CONTEXT.scope(
-                    in_call_ctx(),
-                    g.intercept("composio", "create calendar event", serde_json::json!({})),
-                ),
-            )
-            .await
-        });
-
-        // The meeting → request mapping is the voice channel's lookup key.
-        let mut tries = 0;
-        let request_id = loop {
-            if let Some(r) = gate.pending_for_meeting("meet-1") {
-                break r;
-            }
-            tries += 1;
-            assert!(tries < 50, "meeting mapping never appeared");
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        };
-
-        gate.decide(&request_id, ApprovalDecision::ApproveOnce)
-            .unwrap();
-
-        let outcome = handle.await.unwrap();
-        assert!(matches!(outcome, GateOutcome::Allow));
-        assert!(
-            gate.pending_for_meeting("meet-1").is_none(),
-            "meeting mapping must be cleared once the park resolves"
-        );
-    }
-
     #[test]
     fn guard_cleanup_only_clears_routing_it_still_owns() {
         // Regression for #4774: on external turn teardown a replacement turn may
-        // have already parked a new approval on the same thread/meeting and
+        // have already parked a new approval on the same thread and
         // overwritten the routing entry. The dropped guard for the *old* request
         // must not clobber the *new* request's mapping.
         let (gate, _dir) = test_gate();
@@ -1632,92 +1477,17 @@ mod tests {
         gate.thread_to_request
             .lock()
             .insert("thread-1".into(), "req-new".into());
-        gate.meeting_to_request
-            .lock()
-            .insert("meet-1".into(), "req-new".into());
 
         // Stale guard for the superseded request is a no-op.
         gate.clear_thread_route_if_owned("thread-1", "req-old");
-        gate.clear_meeting_route_if_owned("meet-1", "req-old");
         assert_eq!(
             gate.pending_for_thread("thread-1").as_deref(),
-            Some("req-new")
-        );
-        assert_eq!(
-            gate.pending_for_meeting("meet-1").as_deref(),
             Some("req-new")
         );
 
         // The owning request's guard clears its own routing.
         gate.clear_thread_route_if_owned("thread-1", "req-new");
-        gate.clear_meeting_route_if_owned("meet-1", "req-new");
         assert!(gate.pending_for_thread("thread-1").is_none());
-        assert!(gate.pending_for_meeting("meet-1").is_none());
-    }
-
-    #[tokio::test]
-    async fn in_call_voice_deny_resolves_parked_approval_with_deny() {
-        let (gate, _dir) = test_gate();
-        let gate = Arc::new(gate);
-
-        let g = gate.clone();
-        let handle = tokio::spawn(async move {
-            turn_origin::with_origin(
-                meet_origin(),
-                APPROVAL_IN_CALL_CONTEXT.scope(
-                    in_call_ctx(),
-                    g.intercept("composio", "send email", serde_json::json!({})),
-                ),
-            )
-            .await
-        });
-
-        let request_id = loop {
-            if let Some(r) = gate.pending_for_meeting("meet-1") {
-                break r;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        };
-
-        gate.decide(&request_id, ApprovalDecision::Deny).unwrap();
-
-        let outcome = handle.await.unwrap();
-        match outcome {
-            GateOutcome::Deny { reason } => assert!(reason.contains("composio")),
-            other => panic!("expected deny, got {other:?}"),
-        }
-        assert!(gate.pending_for_meeting("meet-1").is_none());
-    }
-
-    #[tokio::test]
-    async fn external_channel_without_in_call_ctx_has_no_meeting_mapping() {
-        // Plain external-channel turns (telegram, discord) must not gain a
-        // voice surface: no in-call context → no meeting mapping. Uses the
-        // 2s test TTL so the parked future deny-resolves quickly.
-        let (gate, _dir) = test_gate();
-        let gate = Arc::new(gate);
-
-        let g = gate.clone();
-        let handle = tokio::spawn(async move {
-            turn_origin::with_origin(
-                meet_origin(),
-                g.intercept("composio", "send email", serde_json::json!({})),
-            )
-            .await
-        });
-
-        // Wait for the row to park, then confirm no meeting mapping exists.
-        loop {
-            if !gate.list_pending().unwrap().is_empty() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        assert!(gate.pending_for_meeting("meet-1").is_none());
-
-        // TTL-deny is the expected terminal state.
-        let outcome = handle.await.unwrap();
-        assert!(matches!(outcome, GateOutcome::Deny { .. }));
     }
 
     #[tokio::test]
@@ -1859,149 +1629,6 @@ mod tests {
             .unwrap();
         assert!(matches!(new_handle.await.unwrap(), GateOutcome::Allow));
         assert!(gate.pending_for_thread("t-test").is_none());
-    }
-
-    #[tokio::test]
-    async fn pending_store_failure_clears_in_call_meeting_route() {
-        let dir = TempDir::new().unwrap();
-        let blocked_workspace = dir.path().join("workspace-file");
-        std::fs::write(&blocked_workspace, b"not a directory").unwrap();
-        let config = Config {
-            workspace_dir: blocked_workspace,
-            ..Config::default()
-        };
-        let gate = ApprovalGate::new(
-            config,
-            format!("session-{}", uuid::Uuid::new_v4()),
-            Duration::from_secs(2),
-        );
-
-        let outcome = turn_origin::with_origin(
-            meet_origin(),
-            APPROVAL_IN_CALL_CONTEXT.scope(
-                in_call_ctx(),
-                gate.intercept("composio", "send email", serde_json::json!({})),
-            ),
-        )
-        .await;
-
-        assert!(matches!(
-            outcome,
-            GateOutcome::Deny { reason } if reason.contains("could not persist")
-        ));
-        assert!(gate.waiters.lock().is_empty());
-        assert!(gate.pending_for_meeting("meet-1").is_none());
-    }
-
-    #[tokio::test]
-    async fn externally_aborted_in_call_waiter_cleans_meeting_route() {
-        let (gate, _dir) = test_gate();
-        let gate = Arc::new(gate);
-
-        let g = gate.clone();
-        let handle = tokio::spawn(async move {
-            turn_origin::with_origin(
-                meet_origin(),
-                APPROVAL_IN_CALL_CONTEXT.scope(
-                    in_call_ctx(),
-                    g.intercept("composio", "send email", serde_json::json!({})),
-                ),
-            )
-            .await
-        });
-
-        let mut tries = 0;
-        let request_id = loop {
-            if let Some(request_id) = gate.pending_for_meeting("meet-1") {
-                break request_id;
-            }
-            tries += 1;
-            assert!(tries < 1_000, "meeting approval route never appeared");
-            tokio::task::yield_now().await;
-        };
-        assert!(gate.waiters.lock().contains_key(&request_id));
-
-        handle.abort();
-        assert!(handle.await.unwrap_err().is_cancelled());
-
-        assert!(gate.pending_for_meeting("meet-1").is_none());
-        assert!(!gate.waiters.lock().contains_key(&request_id));
-        assert!(gate.list_pending().unwrap().is_empty());
-        assert_eq!(
-            store::get_decision(&gate.config, &request_id).unwrap(),
-            Some(ApprovalDecision::Deny)
-        );
-    }
-
-    #[tokio::test]
-    async fn aborting_older_in_call_waiter_preserves_newer_meeting_route() {
-        let (gate, _dir) = test_gate();
-        let gate = Arc::new(gate);
-
-        let old_gate = gate.clone();
-        let old_handle = tokio::spawn(async move {
-            turn_origin::with_origin(
-                meet_origin(),
-                APPROVAL_IN_CALL_CONTEXT.scope(
-                    in_call_ctx(),
-                    old_gate.intercept("composio", "old action", serde_json::json!({})),
-                ),
-            )
-            .await
-        });
-
-        let mut tries = 0;
-        let old_request_id = loop {
-            if let Some(request_id) = gate.pending_for_meeting("meet-1") {
-                break request_id;
-            }
-            tries += 1;
-            assert!(tries < 1_000, "old meeting approval route never appeared");
-            tokio::task::yield_now().await;
-        };
-
-        let new_gate = gate.clone();
-        let new_handle = tokio::spawn(async move {
-            turn_origin::with_origin(
-                meet_origin(),
-                APPROVAL_IN_CALL_CONTEXT.scope(
-                    in_call_ctx(),
-                    new_gate.intercept("composio", "new action", serde_json::json!({})),
-                ),
-            )
-            .await
-        });
-
-        let mut tries = 0;
-        let new_request_id = loop {
-            if let Some(request_id) = gate.pending_for_meeting("meet-1") {
-                if request_id != old_request_id {
-                    break request_id;
-                }
-            }
-            tries += 1;
-            assert!(tries < 1_000, "new meeting approval route never appeared");
-            tokio::task::yield_now().await;
-        };
-
-        old_handle.abort();
-        assert!(old_handle.await.unwrap_err().is_cancelled());
-
-        assert_eq!(
-            gate.pending_for_meeting("meet-1").as_deref(),
-            Some(new_request_id.as_str())
-        );
-        assert!(!gate.waiters.lock().contains_key(&old_request_id));
-        assert!(gate.waiters.lock().contains_key(&new_request_id));
-        assert_eq!(
-            store::get_decision(&gate.config, &old_request_id).unwrap(),
-            Some(ApprovalDecision::Deny)
-        );
-
-        gate.decide(&new_request_id, ApprovalDecision::ApproveOnce)
-            .unwrap();
-        assert!(matches!(new_handle.await.unwrap(), GateOutcome::Allow));
-        assert!(gate.pending_for_meeting("meet-1").is_none());
     }
 
     #[tokio::test]
@@ -2717,9 +2344,9 @@ mod tests {
         fn default_park_keeps_the_full_ttl() {
             let default_ttl = DEFAULT_APPROVAL_TTL;
             assert_eq!(
-                ApprovalGate::resolve_park_ttl(default_ttl, false, false),
+                ApprovalGate::resolve_park_ttl(default_ttl, false),
                 default_ttl,
-                "a plain park (no in-call, no copilot stream) must not be clamped"
+                "a plain park (no copilot stream) must not be clamped"
             );
         }
 
@@ -2727,24 +2354,13 @@ mod tests {
         fn copilot_stream_shortens_a_default_ten_minute_park() {
             let default_ttl = DEFAULT_APPROVAL_TTL;
             assert_eq!(
-                ApprovalGate::resolve_park_ttl(default_ttl, false, true),
+                ApprovalGate::resolve_park_ttl(default_ttl, true),
                 COPILOT_APPROVAL_TTL,
                 "a flows_build copilot-streaming park must clamp to COPILOT_APPROVAL_TTL"
             );
             assert!(
                 COPILOT_APPROVAL_TTL < DEFAULT_APPROVAL_TTL,
                 "the copilot clamp must actually be shorter than the default TTL"
-            );
-        }
-
-        #[test]
-        fn in_call_clamp_is_unaffected_by_the_copilot_flag() {
-            let default_ttl = DEFAULT_APPROVAL_TTL;
-            assert_eq!(
-                ApprovalGate::resolve_park_ttl(default_ttl, true, false),
-                IN_CALL_APPROVAL_TTL,
-                "an in-call meeting park must keep clamping to IN_CALL_APPROVAL_TTL, unchanged \
-                 by this fix"
             );
         }
 
@@ -2756,27 +2372,9 @@ mod tests {
             // already shorter than either clamp).
             let short_ttl = Duration::from_secs(60);
             assert_eq!(
-                ApprovalGate::resolve_park_ttl(short_ttl, false, true),
+                ApprovalGate::resolve_park_ttl(short_ttl, true),
                 short_ttl,
                 "copilot clamp must not extend a boot-time TTL that is already shorter"
-            );
-            assert_eq!(
-                ApprovalGate::resolve_park_ttl(short_ttl, true, false),
-                short_ttl,
-                "in-call clamp must not extend a boot-time TTL that is already shorter"
-            );
-        }
-
-        #[test]
-        fn both_flags_active_takes_the_tighter_clamp() {
-            // Not expected in production (different call sites), but the
-            // helper must not panic or pick the wrong side if it ever
-            // happens — the tighter of the two clamps should win either way.
-            let default_ttl = DEFAULT_APPROVAL_TTL;
-            let tighter = IN_CALL_APPROVAL_TTL.min(COPILOT_APPROVAL_TTL);
-            assert_eq!(
-                ApprovalGate::resolve_park_ttl(default_ttl, true, true),
-                tighter
             );
         }
     }

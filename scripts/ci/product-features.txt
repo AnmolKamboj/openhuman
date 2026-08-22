@@ -58,9 +58,6 @@ modules
 # flow_discovery agents.
 flows
 
-# Meeting join-URL validation, the live STT/LLM/TTS meeting loop, and the
-# backend-delegated Meet bot.
-meet
 
 # SKILL.md discovery/parse/install, workflow execution, remote catalogs.
 skills

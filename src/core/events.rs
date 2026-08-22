@@ -1258,112 +1258,6 @@ pub enum DomainEvent {
     /// A thread's goal was cleared (deleted).
     ThreadGoalCleared { thread_id: String },
 
-    // ── Backend Meet Bot ──────────────────────────────────────────────
-    /// Backend gmeet bot successfully joined the meeting.
-    BackendMeetJoined {
-        meet_url: String,
-        correlation_id: Option<String>,
-    },
-    /// Backend gmeet bot left the meeting.
-    BackendMeetLeft {
-        reason: String,
-        correlation_id: Option<String>,
-    },
-    /// Backend gmeet bot produced a spoken reply.
-    BackendMeetReply {
-        transcript: String,
-        reply: String,
-        emotion: String,
-        correlation_id: Option<String>,
-    },
-    /// Backend gmeet bot needs the harness to execute a tool instruction.
-    BackendMeetHarness {
-        transcript: String,
-        instruction: String,
-        emotion: String,
-        correlation_id: Option<String>,
-    },
-    /// Backend gmeet bot sent the full meeting transcript on close.
-    BackendMeetTranscript {
-        turns: Vec<BackendMeetTurn>,
-        duration_ms: u64,
-        correlation_id: Option<String>,
-    },
-    /// Backend gmeet bot emitted an incremental transcript turn mid-call
-    /// (`bot:transcript_delta`, issue #4304). Relayed live to the renderer so
-    /// the active-call UI can render turns as they're spoken. `is_partial`
-    /// marks a not-yet-finalized line at `index`; a later delta (partial or
-    /// final) at the same `index` supersedes it. The terminal
-    /// `BackendMeetTranscript` stays authoritative for thread/summary.
-    BackendMeetTranscriptDelta {
-        turn: BackendMeetTurn,
-        index: u64,
-        is_partial: bool,
-        correlation_id: Option<String>,
-    },
-    /// Backend gmeet bot emitted an error.
-    BackendMeetError {
-        error: String,
-        correlation_id: Option<String>,
-    },
-    /// Backend gmeet bot detected a wake-phrase command from a participant.
-    BackendMeetInCallRequest {
-        correlation_id: Option<String>,
-        speaker: String,
-        command_text: String,
-        recent_transcript: Vec<BackendMeetTurn>,
-        timestamp_ms: u64,
-        /// Dual-mascot name addressing (#4277 follow-up): slot (0 = primary,
-        /// 1 = secondary) whose mascot name was addressed, or `None` when no
-        /// specific mascot was named. Forwarded to `bot:speak` as `mascotSlot`.
-        mascot_slot: Option<u8>,
-    },
-    /// Core asked the backend bot to speak into the call (`bot:speak`).
-    /// Published for observability after the Socket.IO emit succeeds.
-    BackendMeetSpeak {
-        text: String,
-        correlation_id: Option<String>,
-    },
-    /// An approval was parked during a live-meeting orchestrator turn
-    /// (issue #3513). The meeting bus speaks the prompt into the call;
-    /// the decision arrives by voice ("Hey Tiny, approve") or the
-    /// standard thread approval card — first response wins.
-    InCallApprovalRequested {
-        request_id: String,
-        tool_name: String,
-        action_summary: String,
-        correlation_id: Option<String>,
-    },
-    /// A Google Calendar event with a Meet link was detected and the
-    /// auto-join policy is "ask" — the UI should prompt the user.
-    MeetAutoJoinPrompt {
-        meet_url: String,
-        event_title: String,
-    },
-    /// A new meeting session was created (Pending) after a calendar Meet
-    /// link was detected and the auto-join prompt was surfaced (issue #3507).
-    MeetingSessionCreated {
-        meeting_id: String,
-        meet_url: String,
-        title: String,
-        /// Origin of the session: "calendar" | "manual" | "api".
-        source: String,
-    },
-    /// Auto-join was triggered for a meeting — either policy == Always or the
-    /// user clicked a join action on the auto-join prompt (issue #3507).
-    MeetingAutoJoinTriggered {
-        meeting_id: String,
-        meet_url: String,
-        listen_only: bool,
-        correlation_id: String,
-    },
-    /// Reserved for PR-4: a post-meeting summary was generated from the
-    /// transcript (action items, key decisions, etc.).
-    MeetingSummaryGenerated {
-        thread_id: String,
-        correlation_id: Option<String>,
-        summary: String,
-    },
     /// A JSON message arrived on a tinyplace WebSocket stream.
     /// Published by the stream manager's recv loop. Carries the raw
     /// server-sent JSON value (inbox item, conversation message, etc.)
@@ -1384,12 +1278,6 @@ pub enum DomainEvent {
         /// New status: `"connecting"`, `"connected"`, `"disconnected"`, `"failed"`.
         status: String,
     },
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct BackendMeetTurn {
-    pub role: String,
-    pub content: String,
 }
 
 impl DomainEvent {
@@ -1540,21 +1428,6 @@ impl DomainEvent {
             | Self::McpSetupSecretRequested { .. }
             | Self::McpToolRejected { .. } => "mcp_client",
 
-            Self::BackendMeetJoined { .. }
-            | Self::BackendMeetLeft { .. }
-            | Self::BackendMeetReply { .. }
-            | Self::BackendMeetHarness { .. }
-            | Self::BackendMeetTranscript { .. }
-            | Self::BackendMeetTranscriptDelta { .. }
-            | Self::BackendMeetError { .. }
-            | Self::BackendMeetInCallRequest { .. }
-            | Self::BackendMeetSpeak { .. }
-            | Self::InCallApprovalRequested { .. }
-            | Self::MeetAutoJoinPrompt { .. }
-            | Self::MeetingSessionCreated { .. }
-            | Self::MeetingAutoJoinTriggered { .. }
-            | Self::MeetingSummaryGenerated { .. } => "agent_meetings",
-
             Self::TinyPlaceStreamMessage { .. } | Self::TinyPlaceStreamStatusChanged { .. } => {
                 "tinyplace"
             }
@@ -1687,20 +1560,6 @@ impl DomainEvent {
             Self::TaskRunReclaimed { .. } => "TaskRunReclaimed",
             Self::ThreadGoalUpdated { .. } => "ThreadGoalUpdated",
             Self::ThreadGoalCleared { .. } => "ThreadGoalCleared",
-            Self::BackendMeetJoined { .. } => "BackendMeetJoined",
-            Self::BackendMeetLeft { .. } => "BackendMeetLeft",
-            Self::BackendMeetReply { .. } => "BackendMeetReply",
-            Self::BackendMeetHarness { .. } => "BackendMeetHarness",
-            Self::BackendMeetTranscript { .. } => "BackendMeetTranscript",
-            Self::BackendMeetTranscriptDelta { .. } => "BackendMeetTranscriptDelta",
-            Self::BackendMeetError { .. } => "BackendMeetError",
-            Self::BackendMeetInCallRequest { .. } => "BackendMeetInCallRequest",
-            Self::BackendMeetSpeak { .. } => "BackendMeetSpeak",
-            Self::InCallApprovalRequested { .. } => "InCallApprovalRequested",
-            Self::MeetAutoJoinPrompt { .. } => "MeetAutoJoinPrompt",
-            Self::MeetingSessionCreated { .. } => "MeetingSessionCreated",
-            Self::MeetingAutoJoinTriggered { .. } => "MeetingAutoJoinTriggered",
-            Self::MeetingSummaryGenerated { .. } => "MeetingSummaryGenerated",
             Self::TinyPlaceStreamMessage { .. } => "TinyPlaceStreamMessage",
             Self::TinyPlaceStreamStatusChanged { .. } => "TinyPlaceStreamStatusChanged",
             Self::Voice(_) => "Voice",

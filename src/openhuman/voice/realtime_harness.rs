@@ -614,7 +614,6 @@ async fn build_voice_agent(
     let mut agent = Agent::from_config_for_agent_with_profile(
         &config,
         "orchestrator",
-        None,
         Some(VOICE_DIRECTIVE.to_string()),
         None,
     )

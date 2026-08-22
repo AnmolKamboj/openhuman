@@ -11,7 +11,6 @@ use tokio::sync::mpsc;
 
 use crate::api::models::socket::ConnectionStatus;
 use crate::core::bus::BUS;
-use crate::core::events::BackendMeetTurn;
 use crate::core::events::DomainEvent;
 use crate::openhuman::skills::webhooks::WebhookRequest;
 
@@ -292,102 +291,6 @@ pub(super) fn handle_sio_event(
         }
 
         // ── Backend Meet Bot events ──────────────────────────────────────
-        "bot:joined" => {
-            let meet_url = data
-                .get("meetUrl")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let correlation_id = data
-                .get("correlationId")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            log::info!("[socket] bot:joined meet_url_len={}", meet_url.len());
-            BUS.publish(DomainEvent::BackendMeetJoined {
-                meet_url,
-                correlation_id,
-            });
-        }
-        "bot:left" => {
-            let reason = data
-                .get("reason")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown")
-                .to_string();
-            let correlation_id = data
-                .get("correlationId")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            log::info!("[socket] bot:left reason={}", reason);
-            BUS.publish(DomainEvent::BackendMeetLeft {
-                reason,
-                correlation_id,
-            });
-        }
-        "bot:reply" => {
-            let transcript = data
-                .get("transcript")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let reply = data
-                .get("reply")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let emotion = data
-                .get("emotion")
-                .and_then(|v| v.as_str())
-                .unwrap_or("neutral")
-                .to_string();
-            let correlation_id = data
-                .get("correlationId")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            log::info!(
-                "[socket] bot:reply reply_len={} emotion={}",
-                reply.len(),
-                emotion
-            );
-            BUS.publish(DomainEvent::BackendMeetReply {
-                transcript,
-                reply,
-                emotion,
-                correlation_id,
-            });
-        }
-        "bot:harness" => {
-            let transcript = data
-                .get("transcript")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let instruction = data
-                .get("instruction")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let emotion = data
-                .get("emotion")
-                .and_then(|v| v.as_str())
-                .unwrap_or("neutral")
-                .to_string();
-            let correlation_id = data
-                .get("correlationId")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            log::info!(
-                "[socket] bot:harness instruction_len={} emotion={}",
-                instruction.len(),
-                emotion
-            );
-            BUS.publish(DomainEvent::BackendMeetHarness {
-                transcript,
-                instruction,
-                emotion,
-                correlation_id,
-            });
-        }
         "voice:harness" => {
             // Realtime voice-agent turn relayed from the backend Custom-LLM
             // bridge (#5399): run the local orchestrator and stream the reply
@@ -423,117 +326,6 @@ pub(super) fn handle_sio_event(
                     log::warn!("[socket] voice:harness ignored — voice feature disabled");
                 }
             }
-        }
-        "bot:transcript" => {
-            let turns: Vec<BackendMeetTurn> = data
-                .get("turns")
-                .and_then(|v| serde_json::from_value(v.clone()).ok())
-                .unwrap_or_default();
-            let duration_ms = data.get("durationMs").and_then(|v| v.as_u64()).unwrap_or(0);
-            let correlation_id = data
-                .get("correlationId")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            log::info!(
-                "[socket] bot:transcript turns={} duration_ms={}",
-                turns.len(),
-                duration_ms
-            );
-            // Thread creation + memory ingest are handled by the
-            // MeetingEventSubscriber (agent_meetings/bus.rs) reacting to
-            // this event — no inline spawn needed.
-            BUS.publish(DomainEvent::BackendMeetTranscript {
-                turns,
-                duration_ms,
-                correlation_id,
-            });
-        }
-        "bot:transcript_delta" => {
-            // Incremental mid-call transcript turn (issue #4304). Relayed live
-            // to the renderer; the terminal `bot:transcript` stays authoritative
-            // for thread creation / summary (handled by MeetingEventSubscriber).
-            match parse_transcript_delta(&data) {
-                Some((turn, index, is_partial, correlation_id)) => {
-                    log::info!(
-                        "[socket] bot:transcript_delta index={} is_partial={} role={}",
-                        index,
-                        is_partial,
-                        turn.role
-                    );
-                    BUS.publish(DomainEvent::BackendMeetTranscriptDelta {
-                        turn,
-                        index,
-                        is_partial,
-                        correlation_id,
-                    });
-                }
-                None => {
-                    log::warn!(
-                        "[socket] bot:transcript_delta dropped: missing/invalid 'turn' field"
-                    );
-                }
-            }
-        }
-        "bot:in_call_request" => {
-            let correlation_id = data
-                .get("correlationId")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            let speaker = data
-                .get("speaker")
-                .and_then(|v| v.as_str())
-                .unwrap_or("Unknown")
-                .to_string();
-            let command_text = data
-                .get("commandText")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let recent_transcript: Vec<BackendMeetTurn> = data
-                .get("recentTranscript")
-                .and_then(|v| serde_json::from_value(v.clone()).ok())
-                .unwrap_or_default();
-            let timestamp_ms = data
-                .get("timestampMs")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            // Dual-mascot name addressing (#4277 follow-up): which slot the
-            // backend's wake matcher decided was addressed (0|1), if any.
-            let mascot_slot = data
-                .get("mascotSlot")
-                .and_then(|v| v.as_u64())
-                .filter(|s| *s <= 1)
-                .map(|s| s as u8);
-            log::info!(
-                "[socket] bot:in_call_request speaker={} cmd_len={} mascot_slot={:?}",
-                speaker,
-                command_text.len(),
-                mascot_slot
-            );
-            BUS.publish(DomainEvent::BackendMeetInCallRequest {
-                correlation_id,
-                speaker,
-                command_text,
-                recent_transcript,
-                timestamp_ms,
-                mascot_slot,
-            });
-        }
-        "bot:error" => {
-            let error = data
-                .get("error")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown error")
-                .to_string();
-            let correlation_id = data
-                .get("correlationId")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            log::error!("[socket] bot:error: {}", error);
-            BUS.publish(DomainEvent::BackendMeetError {
-                error,
-                correlation_id,
-            });
         }
 
         // ── Medulla harness plane ────────────────────────────────────────
@@ -693,30 +485,6 @@ fn base64_encode(input: &str) -> String {
     base64::engine::general_purpose::STANDARD.encode(input.as_bytes())
 }
 
-/// Parse a `bot:transcript_delta` payload (issue #4304) into its event fields.
-///
-/// Expected shape: `{ turn: { role, content }, index, isPartial, correlationId }`.
-/// Returns `None` when the required `turn` object is missing or malformed so the
-/// caller can drop the event rather than publish a degenerate turn. `index`
-/// defaults to 0 and `isPartial` to `false` (final) when absent.
-fn parse_transcript_delta(
-    data: &serde_json::Value,
-) -> Option<(BackendMeetTurn, u64, bool, Option<String>)> {
-    let turn: BackendMeetTurn = data
-        .get("turn")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())?;
-    let index = data.get("index").and_then(|v| v.as_u64()).unwrap_or(0);
-    let is_partial = data
-        .get("isPartial")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let correlation_id = data
-        .get("correlationId")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    Some((turn, index, is_partial, correlation_id))
-}
-
 /// Send a Socket.IO event through the emit channel.
 ///
 /// Format: `42["eventName", data]`
@@ -825,41 +593,6 @@ mod tests {
     #[test]
     fn parse_sio_event_returns_none_when_json_invalid() {
         assert!(parse_sio_event(r#"[invalid json"#).is_none());
-    }
-
-    // ── parse_transcript_delta (bot:transcript_delta, #4304) ────────
-
-    #[test]
-    fn parse_transcript_delta_extracts_all_fields() {
-        let data = json!({
-            "turn": { "role": "user", "content": "hello there" },
-            "index": 3,
-            "isPartial": true,
-            "correlationId": "corr-123"
-        });
-        let (turn, index, is_partial, correlation_id) = parse_transcript_delta(&data).unwrap();
-        assert_eq!(turn.role, "user");
-        assert_eq!(turn.content, "hello there");
-        assert_eq!(index, 3);
-        assert!(is_partial);
-        assert_eq!(correlation_id.as_deref(), Some("corr-123"));
-    }
-
-    #[test]
-    fn parse_transcript_delta_defaults_index_partial_and_correlation() {
-        let data = json!({ "turn": { "role": "assistant", "content": "hi" } });
-        let (turn, index, is_partial, correlation_id) = parse_transcript_delta(&data).unwrap();
-        assert_eq!(turn.role, "assistant");
-        assert_eq!(index, 0);
-        assert!(!is_partial);
-        assert!(correlation_id.is_none());
-    }
-
-    #[test]
-    fn parse_transcript_delta_returns_none_without_turn() {
-        assert!(parse_transcript_delta(&json!({ "index": 1, "isPartial": false })).is_none());
-        // Malformed turn (missing required fields) is also dropped.
-        assert!(parse_transcript_delta(&json!({ "turn": { "role": "user" } })).is_none());
     }
 
     // ── handle_sio_event dispatch ───────────────────────────────────

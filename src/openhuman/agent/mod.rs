@@ -17,8 +17,6 @@
 //!   in prompts and parsed from responses (XML, JSON, P-Format).
 //! - **[`harness::subagent_runner`]**: Logic for spawning "sub-agents" from
 //!   within a parent agent's tool loop, enabling hierarchical delegation.
-
-pub mod agentbox;
 pub mod artifacts;
 pub mod bus;
 pub mod context;

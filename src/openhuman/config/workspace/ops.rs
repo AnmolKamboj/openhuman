@@ -2,7 +2,6 @@ use serde_json::json;
 
 use crate::openhuman::config::rpc as config_rpc;
 use crate::openhuman::skills::init_workflows_dir;
-use crate::openhuman::subconscious::heartbeat::engine::HeartbeatEngine;
 use std::path::Path;
 
 const BOOTSTRAP_FILES: [(&str, &str); 2] = [
@@ -67,7 +66,7 @@ fn classify_workspace_entry(
     }
 }
 
-/// Create default dirs, copy bundled prompts, skills README, and heartbeat file.
+/// Create default dirs, copy bundled prompts, and the skills README.
 pub async fn init_workspace(force: bool) -> Result<serde_json::Value, String> {
     let config = config_rpc::load_config_with_timeout().await?;
     let workspace_dir = config.workspace_dir.clone();
@@ -100,13 +99,8 @@ pub async fn init_workspace(force: bool) -> Result<serde_json::Value, String> {
 
     let skills_readme = workspace_dir.join("skills").join("README.md");
     let had_skills_readme = skills_readme.exists();
-    let heartbeat = workspace_dir.join("HEARTBEAT.md");
-    let had_heartbeat = heartbeat.exists();
     init_workflows_dir(&workspace_dir)
         .map_err(|e| format!("failed to initialize skills dir: {e}"))?;
-    HeartbeatEngine::ensure_heartbeat_file(&workspace_dir)
-        .await
-        .map_err(|e| format!("failed to initialize HEARTBEAT.md: {e}"))?;
 
     // Report what the call actually did, not what it was expected to do.
     //
@@ -120,12 +114,6 @@ pub async fn init_workspace(force: bool) -> Result<serde_json::Value, String> {
     classify_workspace_entry(
         &skills_readme,
         had_skills_readme,
-        &mut created_files,
-        &mut existing_files,
-    );
-    classify_workspace_entry(
-        &heartbeat,
-        had_heartbeat,
         &mut created_files,
         &mut existing_files,
     );
@@ -275,7 +263,6 @@ mod tests {
         }
         assert!(workspace_dir.join("SOUL.md").is_file());
         assert!(workspace_dir.join("IDENTITY.md").is_file());
-        assert!(workspace_dir.join("HEARTBEAT.md").is_file());
 
         let created: Vec<&str> = value["result"]["files"]["created"]
             .as_array()

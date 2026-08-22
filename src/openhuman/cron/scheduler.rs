@@ -1098,7 +1098,6 @@ fn build_agent_for_cron_job(config: &Config, job: &CronJob) -> anyhow::Result<Bu
         let agent = Agent::from_config_for_agent_with_profile(
             &effective,
             &agent_id,
-            None,
             profile.system_prompt_suffix.clone(),
             Some(&profile),
         )

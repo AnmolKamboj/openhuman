@@ -244,8 +244,6 @@ struct SessionSummary {
 #[serde(rename_all = "camelCase")]
 struct OrchestrationStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
-    last_tick_at: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     ingest_last_message_at: Option<String>,
     /// Sessions with pending wake work (health signal — persistently > 0 means
     /// the wake loop is stuck).
@@ -811,16 +809,7 @@ fn handle_status(_params: Map<String, Value>) -> ControllerFuture {
             })
             .map_err(|e| format!("status: {e:#}"))?;
 
-        // Last subconscious tick (best-effort — subconscious store is separate).
-        let last_tick_at =
-            crate::openhuman::subconscious::store::with_connection(&config.workspace_dir, |conn| {
-                crate::openhuman::subconscious::store::get_last_tick_at(conn, "memory")
-            })
-            .ok()
-            .filter(|v| *v > 0.0);
-
         to_json(OrchestrationStatus {
-            last_tick_at,
             ingest_last_message_at: ingest_last.filter(|s| !s.is_empty()),
             ingest_cursor_lag: lag,
             last_error,

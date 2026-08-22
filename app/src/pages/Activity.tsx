@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { ConfirmationModal } from '../components/intelligence/ConfirmationModal';
-import IntelligenceSubconsciousTab from '../components/intelligence/IntelligenceSubconsciousTab';
 import { ToastContainer } from '../components/intelligence/Toast';
 import WorkflowsTab from '../components/intelligence/WorkflowsTab';
 import ChipTabs from '../components/layout/ChipTabs';
@@ -10,7 +9,6 @@ import {
   useIntelligenceSocket,
   useIntelligenceSocketManager,
 } from '../hooks/useIntelligenceSocket';
-import { useSubconscious } from '../hooks/useSubconscious';
 import { useT } from '../lib/i18n/I18nContext';
 import type {
   ConfirmationModal as ConfirmationModalType,
@@ -23,9 +21,9 @@ import Notifications from './Notifications';
 // (routes: /settings/intelligence, /settings/agents, /settings/tasks).
 // Back-compat: ?tab=memory / ?tab=agents / ?tab=council / ?tab=tasks are unknown
 // to the visible set and therefore fall back to 'automations' (see isVisibleTab).
-type ActivityTab = 'automations' | 'backgroundActivity' | 'alerts';
+type ActivityTab = 'automations' | 'alerts';
 
-const ACTIVITY_TABS: ActivityTab[] = ['automations', 'backgroundActivity', 'alerts'];
+const ACTIVITY_TABS: ActivityTab[] = ['automations', 'alerts'];
 
 /**
  * Returns a type-guard predicate for the currently visible tabs.
@@ -55,20 +53,6 @@ export default function Activity() {
     },
     [setSearchParams]
   );
-
-  // Subconscious engine data (used by the Background Activity tab).
-  const {
-    status: subconsciousEngineStatus,
-    instances: subconsciousInstances,
-    mode: subconsciousMode,
-    intervalMinutes: subconsciousInterval,
-    triggering: subconsciousTriggering,
-    isTriggering: subconsciousIsTriggering,
-    settingMode: subconsciousSettingMode,
-    triggerTick,
-    setMode: setSubconsciousMode,
-    setIntervalMinutes: setSubconsciousInterval,
-  } = useSubconscious();
 
   // Socket integration
   const socketManager = useIntelligenceSocketManager();
@@ -101,7 +85,6 @@ export default function Activity() {
       label: t('activity.tabs.automations'),
       description: t('activity.tabs.automationsDescription'),
     },
-    { id: 'backgroundActivity', label: t('activity.tabs.backgroundActivity') },
     { id: 'alerts', label: t('activity.tabs.alerts') },
   ];
   const activeTabDef = tabs.find(tab => tab.id === activeTab);
@@ -152,21 +135,6 @@ export default function Activity() {
 
               {/* Tab content */}
               {activeTab === 'automations' && <WorkflowsTab />}
-
-              {activeTab === 'backgroundActivity' && (
-                <IntelligenceSubconsciousTab
-                  status={subconsciousEngineStatus}
-                  instances={subconsciousInstances}
-                  mode={subconsciousMode}
-                  intervalMinutes={subconsciousInterval}
-                  triggerTick={triggerTick}
-                  triggering={subconsciousTriggering}
-                  isTriggering={subconsciousIsTriggering}
-                  settingMode={subconsciousSettingMode}
-                  setMode={setSubconsciousMode}
-                  setIntervalMinutes={setSubconsciousInterval}
-                />
-              )}
             </div>
           </div>
         )}
