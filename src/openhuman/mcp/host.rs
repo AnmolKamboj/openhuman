@@ -59,6 +59,21 @@ const DEFAULT_CORE_PORT: u16 = 7788;
 /// use — `McpRegistry` keeps those private.
 static HOSTS: OnceLock<Mutex<HashMap<PathBuf, HostEntry>>> = OnceLock::new();
 
+/// One open host, with the identity and proxy it was built with.
+///
+/// The reconnect supervisor needs those to dial a reconnecting server with the
+/// same identity the host's connections use, and `McpRegistry` keeps them
+/// private. Storing them here — from the same `client_config` the host was
+/// opened from — is what lets one supervisor task cover every workspace: it
+/// rebuilds each host's `tinymcp::Supervisor` from the stored values rather
+/// than recomputing them from a configuration it does not have.
+#[derive(Debug)]
+struct HostEntry {
+    host: Arc<McpHost>,
+    identity: McpClientIdentityConfig,
+    proxy: Option<McpProxyConfig>,
+}
+
 /// The workspace [`init`] opened, for the callers that have no `Config`.
 ///
 /// A handful of paths — dropping a connection, listing a connected server's
