@@ -86,12 +86,13 @@ impl std::fmt::Debug for Route {
 
 /// A URL safe to surface in logs/diagnostics: userinfo and query/fragment are
 /// stripped, so `https://user:pass@host/v1?key=secret` renders as
-/// `https://host/v1`. Falls back to the raw string only when it does not parse
-/// as an absolute URL (e.g. a bare host or protocol-relative value), since
-/// those carry no credential-bearing components to redact.
+/// `https://host/v1`. A value that does not parse as an absolute URL (a bare
+/// host, a protocol-relative `//user:pass@host`, a malformed string) carries
+/// components this function cannot prove are non-credential, so it is rendered
+/// as the fixed `<redacted>` marker rather than echoed verbatim.
 pub(crate) fn sanitize_url_for_display(url: &str) -> String {
     let Ok(parsed) = url::Url::parse(url) else {
-        return url.to_string();
+        return "<redacted>".to_string();
     };
     let mut out = parsed;
     let _ = out.set_username("");
