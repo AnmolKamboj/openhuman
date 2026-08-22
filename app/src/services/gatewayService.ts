@@ -67,6 +67,19 @@ export interface Gateway {
   spec: GatewaySpec;
 }
 
+/**
+ * The renderer-facing view of a configured gateway.
+ *
+ * Deliberately credential-free: the list UI only shows a label and a kind
+ * badge. The remote bearer, SSH destination and identity path stay in the Tauri
+ * shell store (see {@link GatewaySpec}) and never cross to the renderer.
+ */
+export interface GatewaySummary {
+  id: string;
+  label: string;
+  kind: string;
+}
+
 /** What a gateway is doing right now. */
 export type GatewayStatus =
   | { state: 'inactive' }
@@ -99,10 +112,10 @@ export function gatewaysAvailable(): boolean {
 }
 
 /** Every configured gateway, the desktop one first. */
-export async function listGateways(): Promise<Gateway[]> {
+export async function listGateways(): Promise<GatewaySummary[]> {
   if (!gatewaysAvailable()) return [];
   try {
-    const gateways = await invoke<Gateway[]>('gateway_list');
+    const gateways = await invoke<GatewaySummary[]>('gateway_list');
     log('listed %d gateway(s)', gateways.length);
     return gateways;
   } catch (err) {
