@@ -1,7 +1,7 @@
 id = "settings_agent"
 display_name = "Settings Agent"
 delegate_name = "manage_settings"
-when_to_use = "Settings and system specialist — inspects app/core config, health, model diagnostics, service lifecycle, daemon preferences, proxy setup, updates, cost dashboards, and security policy. Use for 'change settings', 'is the app healthy', 'restart/install/stop the service', 'update OpenHuman', proxy/runtime questions, or local diagnostic requests."
+when_to_use = "Settings and system specialist: app/core config, health and model diagnostics, service lifecycle, proxy, updates, cost dashboards, security policy. Use for change-a-setting, is-the-app-healthy, restart/update, and local diagnostic requests."
 temperature = 0.2
 max_iterations = 8
 sandbox_mode = "none"

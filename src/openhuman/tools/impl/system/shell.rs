@@ -189,13 +189,7 @@ impl Tool for ShellTool {
     }
 
     fn description(&self) -> &str {
-        "Execute a shell command. Use this to run code, manipulate files in the workspace, \
-         or perform system actions on the user's machine — including launching applications \
-         (e.g. `open -a Music` on macOS, `xdg-open music://` on Linux). Only the command's \
-         stdout/stderr is captured and returned to you — a program that prints nothing \
-         (e.g. a `python`/`node` script that computes silently or only writes a file) returns \
-         an empty result, so make scripts print the output you need (e.g. `print(...)`), or \
-         follow up by reading any file they wrote."
+        "Execute a shell command: run code, manipulate workspace files, or launch applications (`open -a Music`, `xdg-open music://`). Only stdout/stderr comes back, so a script that computes silently or only writes a file returns nothing — print what you need, or read the file afterwards."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {

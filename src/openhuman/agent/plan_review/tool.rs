@@ -39,18 +39,7 @@ impl Tool for RequestPlanReviewTool {
     }
 
     fn description(&self) -> &str {
-        "Pause an interactive turn so the user can review a thread-scoped plan \
-         BEFORE you execute it (the Codex/Claude plan-mode contract). Call this \
-         once you have laid out a multi-step plan (e.g. via the `todo` tool) and \
-         BEFORE doing any of the work. The call BLOCKS until the user decides; \
-         the result tells you what to do next: \
-         `approved` → proceed and execute the plan now; \
-         `rejected` → do NOT execute, ask the user what they want instead; \
-         `revise` → the result carries the user's feedback — revise the plan \
-         and call `request_plan_review` again before executing. \
-         On non-interactive turns (cron / subconscious / CLI) this returns \
-         `approved` immediately so automation is never blocked. \
-         Pass `summary` (one line) and `steps` (the ordered plan items)."
+        "Pause the turn so the user can approve a thread-scoped plan before you execute it. Blocks until they decide, then returns `approved`, `rejected`, or `revise` with their feedback. Non-interactive turns (cron / subconscious / CLI) auto-approve."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {

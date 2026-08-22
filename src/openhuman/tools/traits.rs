@@ -228,6 +228,18 @@ pub trait Tool: Send + Sync {
         self.execute_with_options(args, options).await
     }
 
+    /// The late-bound registry handle, for the two tool-pack tools only.
+    ///
+    /// `load_skill` / `use_skill` read the registry they themselves live in, so
+    /// they cannot be handed it at construction. Returning `Some` here lets
+    /// `toolpacks::bind_pack_registry` find them in an already-built registry
+    /// and hand them a `Weak` view of it. Every other tool returns `None`.
+    fn pack_registry_handle(
+        &self,
+    ) -> Option<&crate::openhuman::tools::toolpacks::PackRegistryHandle> {
+        None
+    }
+
     /// Whether this tool can produce a markdown rendering when
     /// [`ToolCallOptions::prefer_markdown`] is set. Default: `false`.
     /// Tools that override [`Self::execute_with_options`] to honor the

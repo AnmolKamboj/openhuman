@@ -94,6 +94,29 @@ pub struct DumpedPrompt {
     pub tool_names: Vec<String>,
     /// Number of `ToolCategory::Workflow` tools in the dump.
     pub skill_tool_count: usize,
+    /// One `{name, description, parameters}` entry per tool the agent
+    /// exposes, in the same order as [`Self::tool_names`].
+    ///
+    /// The system prompt is only half of a turn's fixed cost: the tool
+    /// schemas ride alongside it in every request, and for an agent with a
+    /// few hundred tools they dominate. Dumping the prompt without them
+    /// measures the smaller half.
+    pub tool_specs: Vec<serde_json::Value>,
+}
+
+fn tool_specs_of<T: std::ops::Deref<Target = dyn crate::openhuman::tools::Tool>>(
+    tools: &[T],
+) -> Vec<serde_json::Value> {
+    tools
+        .iter()
+        .map(|t| {
+            serde_json::json!({
+                "name": t.name(),
+                "description": t.description(),
+                "parameters": t.parameters_schema(),
+            })
+        })
+        .collect()
 }
 
 /// Render and return the system prompt for a single agent via the
@@ -202,6 +225,19 @@ async fn load_dump_config(
     if let Some(model) = model_override {
         config.default_model = Some(model);
     }
+
+    // The `agent` CLI dispatches straight to this dumper and never runs the
+    // runtime bootstrap, so nothing else wires the `tinymemory-core` host
+    // seams. Building a session agent constructs a memory store, and the
+    // embedding seam fails loudly when unwired ("no EmbeddingHost installed")
+    // rather than degrading — so without this, every `agent dump-prompt` /
+    // `dump-all` invocation aborts before rendering a single prompt.
+    // Idempotent, so calling it per invocation is safe. Same rationale as
+    // `memory_cli` / `subconscious_cli`.
+    crate::openhuman::memory::host_impls::install_memory_host_seams(std::sync::Arc::new(
+        config.clone(),
+    ));
+
     Ok(config)
 }
 
@@ -229,6 +265,7 @@ async fn render_via_session(config: &Config, agent_id: &str) -> Result<DumpedPro
 
     let tools = agent.tools();
     let tool_names: Vec<String> = tools.iter().map(|t| t.name().to_string()).collect();
+    let tool_specs = tool_specs_of(tools);
     let skill_tool_count = tools
         .iter()
         .filter(|t| t.category() == ToolCategory::Workflow)
@@ -243,6 +280,7 @@ async fn render_via_session(config: &Config, agent_id: &str) -> Result<DumpedPro
         text,
         tool_names,
         skill_tool_count,
+        tool_specs,
     })
 }
 
@@ -457,6 +495,7 @@ async fn render_integrations_agent(config: &Config, toolkit: &str) -> Result<Dum
         .iter()
         .map(|t| t.name().to_string())
         .collect();
+    let tool_specs = tool_specs_of(&rendered_tools);
     let skill_tool_count = rendered_tools
         .iter()
         .filter(|t| t.category() == ToolCategory::Workflow)
@@ -471,6 +510,7 @@ async fn render_integrations_agent(config: &Config, toolkit: &str) -> Result<Dum
         text,
         tool_names,
         skill_tool_count,
+        tool_specs,
     })
 }
 

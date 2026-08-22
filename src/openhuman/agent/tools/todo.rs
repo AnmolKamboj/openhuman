@@ -35,27 +35,7 @@ impl Tool for TodoTool {
     }
 
     fn description(&self) -> &str {
-        "Maintain a visible plan for THIS conversation thread (the cards render \
-         above the user's composer and survive across turns). \
-         Use it for any request with 3+ steps or several distinct tasks: at the \
-         start, `add` one card per step up front; keep exactly ONE card \
-         `in_progress` at a time; mark a card `done` the moment it is finished \
-         (do not batch completions); if a step fails or is abandoned, set it \
-         `blocked` with a `blocker`, or revise it. `list` to re-read the current \
-         plan when resuming. Skip this tool for trivial single-step requests. \
-         The board is bound automatically to the current thread — do not pass a \
-         thread id. \
-         Dispatch via the `op` field: \
-         `add` (content, status?, objective?, plan?, assignedAgent?, allowedTools?, \
-         approvalMode?, acceptanceCriteria?, evidence?, notes?, blocker?), \
-         `edit` (id, content?, status?, objective?, plan?, assignedAgent?, allowedTools?, \
-         approvalMode?, acceptanceCriteria?, evidence?, notes?, blocker?), \
-         `update_status` (id, status), \
-         `remove` (id), \
-         `replace` (cards: full list — wholesale replace), \
-         `clear`, or `list`. \
-         `status` is one of `todo` / `in_progress` / `blocked` / `done`. \
-         Returns the updated list as cards plus a markdown rendering."
+        "Maintain the visible plan for this thread; cards persist across turns. Use for requests with 3+ steps. Keep one `in_progress`; mark finished cards `done` immediately and blocked cards with a `blocker`. The board binds automatically; do not pass a thread id. Orchestrator calls use the shared board."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -383,7 +363,7 @@ mod tests {
         let desc = tool.description();
         assert!(desc.contains("3+ steps"), "missing when-to-use guidance");
         assert!(
-            desc.contains("ONE card `in_progress`"),
+            desc.contains("Keep one `in_progress`"),
             "missing single-in_progress discipline"
         );
         assert!(
