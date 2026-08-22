@@ -476,7 +476,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/memory/ops/sync.rs",
         Verdict::NeedsWiderSeam,
-        "engine internals (tinycortex::run_composio_connection, global::client, sync_events); tinycortex-shaped, so no engine-neutral family can express it",
+        "two blockers: engine internals (tinycortex::run_composio_connection, sync_events), tinycortex-shaped so no engine-neutral family can express them; and the in-process engine handle (global::client), which belongs to memory::binding",
     ),
     (
         "src/openhuman/memory/ops/test_support.rs",
@@ -526,7 +526,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/memory/store_golden.rs",
         Verdict::NeedsWiderSeam,
-        "reaches engine storage below the contract (global::client, store::UnifiedMemory::new, store::chunks); MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door",
+        "two blockers: engine storage below the contract (store::chunks), where MemoryChunks is read-only (list_chunks/get_chunk/chunk_detail/storage_kinds/chunk_embeddings) with no write or transaction door; and the in-process engine handle (global::client, store::UnifiedMemory::new)",
     ),
     (
         "src/openhuman/memory/sync/composio/bus.rs",
@@ -591,7 +591,7 @@ const ALLOWED: &[(&str, Verdict, &str)] = &[
     (
         "src/openhuman/security/credentials/ops.rs",
         Verdict::NeedsWiderSeam,
-        "the re-embed queue (global::init, queue::ensure_reembed_backfill) has no capability family",
+        "two blockers: the re-embed queue (queue::ensure_reembed_backfill), which has no capability family; and the in-process engine handle (global::init), which belongs to memory::binding",
     ),
     (
         "src/openhuman/skills/runtime/run_machinery.rs",
