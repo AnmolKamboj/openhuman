@@ -11,11 +11,13 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use super::*;
-use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
+use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult, ToolTimeout};
 
 struct FakeTool {
     name: &'static str,
     level: PermissionLevel,
+    external: bool,
+    timeout: ToolTimeout,
 }
 
 #[async_trait]
@@ -35,11 +37,36 @@ impl Tool for FakeTool {
     fn permission_level(&self) -> PermissionLevel {
         self.level
     }
+    fn external_effect_with_args(&self, _args: &Value) -> bool {
+        self.external
+    }
+    fn timeout_policy(&self, _args: &Value) -> ToolTimeout {
+        self.timeout
+    }
 }
 
 /// A registry holding one real packed tool plus the two pack tools, bound.
 fn registry_with(name: &'static str, level: PermissionLevel) -> Arc<Vec<Box<dyn Tool>>> {
-    let mut tools: Vec<Box<dyn Tool>> = vec![Box::new(FakeTool { name, level })];
+    let mut tools: Vec<Box<dyn Tool>> = vec![Box::new(FakeTool {
+        name,
+        level,
+        external: false,
+        timeout: ToolTimeout::Inherit,
+    })];
+    append_pack_tools(&mut tools);
+    let tools = Arc::new(tools);
+    bind_pack_registry(&tools);
+    tools
+}
+
+/// A registry whose one packed tool is externally effectful and unbounded.
+fn external_unbounded_registry(name: &'static str) -> Arc<Vec<Box<dyn Tool>>> {
+    let mut tools: Vec<Box<dyn Tool>> = vec![Box::new(FakeTool {
+        name,
+        level: PermissionLevel::ReadOnly,
+        external: true,
+        timeout: ToolTimeout::Unbounded,
+    })];
     append_pack_tools(&mut tools);
     let tools = Arc::new(tools);
     bind_pack_registry(&tools);
@@ -161,6 +188,42 @@ fn use_skill_reports_the_inner_tools_permission_level() {
     assert_eq!(
         use_skill.permission_level_with_args(&json!({"skill": "crypto", "tool": name})),
         PermissionLevel::Dangerous
+    );
+}
+
+#[test]
+fn use_skill_forwards_the_inner_tools_external_effect() {
+    // The approval gate calls external_effect_with_args on the proxy; a proxy
+    // that reported false would let an effectful packed tool skip the prompt.
+    let name = pack("crypto").unwrap().tools[0];
+    let tools = external_unbounded_registry(name);
+    let use_skill = find(&tools, USE_SKILL);
+    assert!(
+        use_skill.external_effect_with_args(&json!({"skill": "crypto", "tool": name})),
+        "proxy must forward the inner tool's external-effect classification"
+    );
+}
+
+#[test]
+fn use_skill_forwards_the_inner_tools_timeout_policy() {
+    // A packed scripting tool must run under its own deadline, not the proxy's.
+    let name = pack("crypto").unwrap().tools[0];
+    let tools = external_unbounded_registry(name);
+    let use_skill = find(&tools, USE_SKILL);
+    assert_eq!(
+        use_skill.timeout_policy(&json!({"skill": "crypto", "tool": name})),
+        ToolTimeout::Unbounded
+    );
+}
+
+#[test]
+fn an_unresolvable_call_reports_inherit_timeout() {
+    let name = pack("crypto").unwrap().tools[0];
+    let tools = external_unbounded_registry(name);
+    let use_skill = find(&tools, USE_SKILL);
+    assert_eq!(
+        use_skill.timeout_policy(&json!({"skill": "crypto", "tool": "nonexistent"})),
+        ToolTimeout::Inherit
     );
 }
 
