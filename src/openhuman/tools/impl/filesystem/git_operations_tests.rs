@@ -466,3 +466,189 @@ async fn add_missing_paths_returns_error() {
         "expected missing-paths error, got: {msg}"
     );
 }
+
+// ── run_git_command_in: repository config hardening (issue #5494) ─────────
+//
+// `run_git_command_in` backs every operation this tool exposes, including
+// `status`, which — like `read_workspace_state`'s `run_git` before #5493 —
+// invokes `core.fsmonitor` from the repository's own `.git/config`. That file
+// lives in `action_dir`, which `file_write` and `git_operations` itself
+// (`add`, `commit`, `checkout`) can write to, so it is attacker-controlled
+// input, not trusted configuration.
+
+/// Write a `core.fsmonitor` hook into `dir`'s repository config that creates a
+/// marker file when git runs it, and return the marker's path.
+fn plant_fsmonitor_hook(dir: &std::path::Path) -> std::path::PathBuf {
+    let hook = dir.join("hook.sh");
+    let marker = dir.join("COMMAND_RAN");
+    std::fs::write(
+        &hook,
+        format!("#!/bin/sh\ntouch {:?}\nexit 1\n", marker.to_string_lossy()),
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    // Written with `git config` rather than by appending to the file:
+    // appending only lands in `[core]` while `[core]` happens to be the last
+    // section, which is true of a fresh `git init` and is not a property
+    // worth depending on.
+    let ok = std::process::Command::new("git")
+        .args(["config", "core.fsmonitor"])
+        .arg(&hook)
+        .current_dir(dir)
+        .status()
+        .unwrap()
+        .success();
+    assert!(ok, "failed to plant the hook in the repository config");
+    marker
+}
+
+/// Set a repository config key with `git config`, asserting it took.
+fn set_config(dir: &std::path::Path, key: &str, value: &str) {
+    let ok = std::process::Command::new("git")
+        .args(["config", key, value])
+        .current_dir(dir)
+        .status()
+        .unwrap()
+        .success();
+    assert!(ok, "failed to set {key} in the test workspace");
+}
+
+/// Issue #5494. `git status` executes the command named by the workspace's
+/// own repository config unless `run_git_command_in` refuses to run under it.
+/// Revert the hardening and this test fails by finding the marker — verified,
+/// not assumed.
+#[cfg(unix)]
+#[tokio::test]
+async fn repository_config_naming_a_command_does_not_get_to_run_it() {
+    let tmp = TempDir::new().unwrap();
+    init_git_repo(tmp.path());
+    let marker = plant_fsmonitor_hook(tmp.path());
+
+    let tool = test_tool(tmp.path());
+    let result = tool.execute(json!({"operation": "status"})).await;
+    let msg = error_text(&result);
+
+    assert!(
+        !marker.exists(),
+        "`git status` executed the command named by the workspace's own \
+         repository config — this tool is a code-execution primitive"
+    );
+    assert!(
+        msg.contains("fsmonitor"),
+        "the refusal should name the key that caused it, got: {msg}"
+    );
+}
+
+/// The allowlist has to leave an ordinary repository working, or the fix is
+/// just a different way of breaking the tool.
+#[tokio::test]
+async fn an_ordinary_repository_still_reports_status() {
+    let tmp = TempDir::new().unwrap();
+    init_git_repo(tmp.path());
+    std::fs::write(tmp.path().join("tracked.txt"), "hi").unwrap();
+
+    let tool = test_tool(tmp.path());
+    let result = tool.execute(json!({"operation": "status"})).await.unwrap();
+
+    assert!(!result.is_error, "got: {}", result.output());
+    assert!(
+        result.output().contains("tracked.txt"),
+        "a plain `git init` workspace must still report status, got: {}",
+        result.output()
+    );
+}
+
+/// A first-draft allowlist that refused any repository carrying an ordinary
+/// setting like `core.autocrlf` would report nothing useful for a large class
+/// of real workspaces.
+#[tokio::test]
+async fn an_inert_setting_an_ordinary_repository_carries_is_allowed() {
+    let tmp = TempDir::new().unwrap();
+    init_git_repo(tmp.path());
+    set_config(tmp.path(), "core.autocrlf", "input");
+    set_config(tmp.path(), "gc.auto", "0");
+    set_config(tmp.path(), "remote.origin.prune", "true");
+
+    let tool = test_tool(tmp.path());
+    let result = tool.execute(json!({"operation": "status"})).await.unwrap();
+
+    assert!(
+        !result.is_error && !result.output().contains("not on the allowlist"),
+        "an ordinary repository must still report status, got: {}",
+        result.output()
+    );
+}
+
+/// The other half of the same question, and the answer is the opposite one.
+/// `filter.lfs.clean` names a program, so an LFS working copy is refused —
+/// fail-closed, and intended rather than an oversight.
+#[tokio::test]
+async fn an_lfs_clone_is_refused_because_its_filter_names_a_program() {
+    let tmp = TempDir::new().unwrap();
+    init_git_repo(tmp.path());
+    // What `git lfs install` writes. `required` is inert and allowed; the
+    // three programs are not.
+    set_config(tmp.path(), "filter.lfs.required", "true");
+    set_config(tmp.path(), "filter.lfs.clean", "git-lfs clean -- %f");
+
+    let tool = test_tool(tmp.path());
+    let result = tool.execute(json!({"operation": "status"})).await;
+    let msg = error_text(&result);
+
+    assert!(
+        msg.contains("filter.lfs.clean"),
+        "the refusal must name the key that caused it, got: {msg}"
+    );
+}
+
+/// `credential.helper` reads like a preference and is command-valued: a value
+/// beginning `!` is run as a shell command. It must be refused however inert
+/// it reads.
+#[tokio::test]
+async fn credential_helper_is_refused_despite_looking_like_a_preference() {
+    let tmp = TempDir::new().unwrap();
+    init_git_repo(tmp.path());
+    set_config(tmp.path(), "credential.helper", "!echo pwned");
+
+    let tool = test_tool(tmp.path());
+    let result = tool.execute(json!({"operation": "status"})).await;
+    let msg = error_text(&result);
+
+    assert!(
+        msg.contains("credential.helper"),
+        "a command-valued key must be refused however inert it reads, got: {msg}"
+    );
+}
+
+/// The refusal must hold for a write operation too, not just `status` — the
+/// same repository config runs under `commit`/`add`/`checkout`/`stash`.
+#[tokio::test]
+async fn refusal_also_covers_write_operations() {
+    let tmp = TempDir::new().unwrap();
+    init_git_repo(tmp.path());
+    set_config(tmp.path(), "credential.helper", "!echo pwned");
+
+    let tool = test_tool(tmp.path());
+    let result = tool
+        .execute(json!({"operation": "commit", "message": "test"}))
+        .await
+        .unwrap();
+
+    assert!(
+        result.is_error && result.output().contains("credential.helper"),
+        "write operations must be refused under untrusted repo config too, got: {}",
+        result.output()
+    );
+}
+
+#[test]
+fn a_subsection_is_elided_so_one_entry_covers_every_remote() {
+    assert_eq!(normalise_config_key("remote.origin.url"), "remote.url");
+    assert_eq!(normalise_config_key("remote.a.b.c.url"), "remote.url");
+    assert_eq!(normalise_config_key("core.fileMode"), "core.filemode");
+    assert_eq!(normalise_config_key("core.fsmonitor"), "core.fsmonitor");
+}

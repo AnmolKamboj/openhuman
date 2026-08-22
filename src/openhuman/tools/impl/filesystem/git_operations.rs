@@ -90,11 +90,22 @@ impl GitOperationsTool {
     }
 
     async fn run_git_command_in(&self, cwd: &Path, args: &[&str]) -> anyhow::Result<String> {
-        let output = tokio::process::Command::new("git")
-            .args(args)
-            .current_dir(cwd)
-            .output()
-            .await?;
+        if let Some(key) = repo_config_is_inert(cwd).await? {
+            tracing::debug!(
+                "[git_operations] refusing to run git: dir={}, disallowed_config_key={key}",
+                cwd.display()
+            );
+            anyhow::bail!(
+                "refusing to run git in {}: its repository config sets `{key}`, which is \
+                 not on the allowlist of configuration this tool will run under. \
+                 Several git config keys name a command git then executes, and this \
+                 directory is agent-writable, so unrecognised configuration is treated \
+                 as untrusted rather than honoured.",
+                cwd.display()
+            )
+        }
+
+        let output = hardened_git(cwd).args(args).output().await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -421,6 +432,191 @@ impl GitOperationsTool {
             Err(e) => Ok(ToolResult::error(format!("Stash {action} failed: {e}"))),
         }
     }
+}
+
+/// Repository config keys this tool will run `git` under.
+///
+/// This is an allowlist, and the direction is the whole point. Several git
+/// config keys name a command that git then executes — `core.fsmonitor` is
+/// run by `git status` (used by the `status` operation here), `core.sshCommand`
+/// by anything that reaches a remote, `diff.external` by `diff`, `core.pager`
+/// and `core.editor` by the commands that use them, and the `filter.*.process`
+/// / `*.clean` / `*.smudge` and `diff.*.textconv` families by content
+/// operations. Enumerating *those* and clearing them is the obvious fix and it
+/// is the wrong shape: the list is only correct until git adds a key, and a
+/// denylist that has gone stale reads as protection while providing none.
+///
+/// An allowlist ages the other way. A key nobody here has heard of is refused,
+/// so a new git release makes this tool fail closed and loud rather than
+/// silently regain the hole.
+///
+/// The entries are `section.key`, lowercased, with any subsection elided —
+/// `remote.origin.url` is checked as `remote.url`.
+const ALLOWED_REPO_CONFIG: &[&str] = &[
+    // What `git init` and `git clone` write, and nothing else.
+    "core.repositoryformatversion",
+    "core.filemode",
+    "core.bare",
+    "core.logallrefupdates",
+    "core.ignorecase",
+    "core.precomposeunicode",
+    "core.symlinks",
+    "core.worktree",
+    "remote.url",
+    "remote.fetch",
+    "remote.pushurl",
+    "remote.mirror",
+    "branch.remote",
+    "branch.merge",
+    "branch.rebase",
+    "submodule.active",
+    "submodule.url",
+    "user.name",
+    "user.email",
+    "pull.rebase",
+    "push.default",
+    "init.defaultbranch",
+    // Inert settings ordinary repositories carry that a first-draft allowlist
+    // would refuse, making the tool useless on a large class of real
+    // workspaces. Each is a value git *interprets*; none names a program git
+    // runs.
+    "core.autocrlf",
+    "core.eol",
+    "core.untrackedcache",
+    "core.longpaths",
+    "core.fscache",
+    "core.hidedotfiles",
+    "core.sparsecheckout",
+    "core.sparsecheckoutcone",
+    "commit.gpgsign",
+    "tag.gpgsign",
+    "remote.tagopt",
+    "remote.prune",
+    "remote.partialclonefilter",
+    "remote.promisor",
+    "branch.vscodemerge",
+    "gc.auto",
+    "fetch.prune",
+    // SHA-256 repositories and worktree-scoped config. Only these two
+    // `extensions.*` keys — the namespace as a whole is where git puts
+    // repository-format switches, and a blanket allow would admit whatever it
+    // adds next.
+    "extensions.objectformat",
+    "extensions.worktreeconfig",
+    // `filter.<driver>.required` is a boolean. The driver's actual programs —
+    // `clean`, `smudge`, `process` — are NOT here and must not be; see the LFS
+    // note on `NEUTRALISED_CONFIG`.
+    "filter.required",
+    "lfs.repositoryformatversion",
+];
+
+/// Command-valued keys cleared on the command line as a second layer.
+///
+/// Command-line `-c` outranks every config file, so this genuinely
+/// neutralises these keys even when a repository sets them. It is a denylist
+/// and therefore cannot be the guarantee — [`ALLOWED_REPO_CONFIG`] is — but it
+/// costs nothing and it means a key that slips past the allowlist check still
+/// does not run. `core.hooksPath` is deliberately absent: there is no portable
+/// value that means "nowhere", and none of `status` / `log` / `diff` /
+/// `branch` run hooks anyway. An unrecognised `core.hookspath` is refused by
+/// [`ALLOWED_REPO_CONFIG`], which is the layer that is supposed to catch it.
+///
+/// `credential.helper` is command-valued — a value beginning `!` is run as a
+/// shell command — so it belongs nowhere near [`ALLOWED_REPO_CONFIG`] despite
+/// reading like a mere preference; it is refused there.
+///
+/// A `git lfs install` clone is refused, deliberately: `filter.lfs.clean`,
+/// `.smudge` and `.process` each name a program, so an LFS working copy
+/// cannot be read by this tool. That is the fail-closed answer and it is the
+/// intended one. Only `filter.<driver>.required`, a boolean, is allowed.
+const NEUTRALISED_CONFIG: &[&str] = &[
+    "core.fsmonitor=",
+    "core.sshCommand=",
+    "core.pager=cat",
+    "core.editor=false",
+    "diff.external=",
+    "sequence.editor=false",
+    "uploadpack.packObjectsHook=",
+];
+
+/// A path git will read as an empty config file.
+///
+/// `GIT_CONFIG_GLOBAL` must name something readable-and-empty rather than be
+/// unset — unsetting it lets git fall back to `~/.gitconfig`, which is the
+/// thing being suppressed. `/dev/null` is not a path on Windows; `NUL` is.
+const NULL_CONFIG_PATH: &str = if cfg!(windows) { "NUL" } else { "/dev/null" };
+
+/// Build a `git` invocation with the ambient environment taken away.
+///
+/// `GIT_CONFIG_NOSYSTEM` and `GIT_CONFIG_GLOBAL` close the system and global
+/// config files. Note what they do *not* close: the repository's own
+/// `.git/config`, which is the file an agent-writable workspace actually lets
+/// an attacker author. That one is handled by [`repo_config_is_inert`]; these
+/// two are here because they are free and they close two real vectors.
+fn hardened_git(dir: &Path) -> tokio::process::Command {
+    let mut cmd = tokio::process::Command::new("git");
+    cmd.env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", NULL_CONFIG_PATH)
+        // `git` consults these before it reads any config file.
+        .env_remove("GIT_EXTERNAL_DIFF")
+        .env_remove("GIT_PAGER")
+        .env_remove("GIT_EDITOR")
+        .env_remove("GIT_SSH")
+        .env_remove("GIT_SSH_COMMAND")
+        .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .current_dir(dir);
+    for kv in NEUTRALISED_CONFIG {
+        cmd.arg("-c").arg(kv);
+    }
+    cmd
+}
+
+/// Normalise a `git config --list` key to the `section.key` form
+/// [`ALLOWED_REPO_CONFIG`] uses, dropping any subsection.
+///
+/// `remote.origin.url` → `remote.url`; `core.filemode` → `core.filemode`. A
+/// subsection may itself contain dots (`includeIf.gitdir:~/x.y/.path`), so the
+/// first and last components are the reliable ones.
+fn normalise_config_key(key: &str) -> String {
+    let key = key.to_ascii_lowercase();
+    match (key.find('.'), key.rfind('.')) {
+        (Some(first), Some(last)) if first != last => {
+            format!("{}.{}", &key[..first], &key[last + 1..])
+        }
+        _ => key,
+    }
+}
+
+/// Is the repository at `dir` configured only in ways that cannot make `git`
+/// run something?
+///
+/// Returns the offending key when it is not. Reading the config is itself
+/// done through [`hardened_git`], and `git config --list` neither consults
+/// `core.fsmonitor` nor spawns a pager when its output is captured, so this
+/// inspection step does not have the property it is checking for.
+async fn repo_config_is_inert(dir: &Path) -> anyhow::Result<Option<String>> {
+    let output = hardened_git(dir)
+        .args(["config", "--list", "--local", "--null"])
+        .output()
+        .await?;
+
+    // A directory that is not a repository has no local config to distrust.
+    // The caller's own "Not in a git repository" check runs first; this is
+    // just defence in depth for that ordering.
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let listing = String::from_utf8_lossy(&output.stdout);
+    for entry in listing.split('\0').filter(|e| !e.is_empty()) {
+        // `--null` separates entries with NUL and key from value with LF.
+        let key = entry.split('\n').next().unwrap_or(entry);
+        if !ALLOWED_REPO_CONFIG.contains(&normalise_config_key(key).as_str()) {
+            return Ok(Some(key.to_string()));
+        }
+    }
+    Ok(None)
 }
 
 #[async_trait]
