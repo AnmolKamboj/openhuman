@@ -78,7 +78,6 @@ OpenHuman ist drei Dinge, die die meisten Assistenten nicht sind: **ein Gehirn**
 
 ### 🔬 Der Deep Researcher & Macher
 
-- **[SuperContext](https://tinyhumans.gitbook.io/openhuman/features/super-context)**: ein Research-Scout durchkämmt dein Gedächtnis und deine Dateien, bevor das Modell deine erste Nachricht liest. Keine Kaltstarts.
 - **Alles eingebaut**: Web-Suche, Scraper, Coder-Toolset, ein echter [Browser](https://tinyhumans.gitbook.io/openhuman/features/native-tools/browser-and-computer), [native Sprache](../gitbooks/features/native-tools/voice.md) mit In-Process-Whisper. Dazu [Model-Routing](https://tinyhumans.gitbook.io/openhuman/features/model-routing), das das passende LLM pro Workload auswählt, ein Abo, [lokale KI optional](https://tinyhumans.gitbook.io/openhuman/features/model-routing/local-ai).
 - **[Meeting-Agenten](https://tinyhumans.gitbook.io/openhuman/features/mascot/meeting-agents)**: nimmt an **Meet, Zoom, Teams und Webex** teil, mit Gesicht und Stimme. Tritt automatisch aus deinem Kalender bei, streamt ein Live-Transkript, antwortet auf seinen Namen und legt Zusammenfassung + Action Items ab.
 - **[Bild- & Videogenerierung](https://tinyhumans.gitbook.io/openhuman/features/native-tools)**: Seedream/SeedEdit-Bilder und Seedance/Veo-Video, direkt in deinen Workspace im selben Abo.

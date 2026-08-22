@@ -78,7 +78,6 @@ OpenHuman 是大多数助手所不具备的三样东西的集合：**一颗大�
 
 ### 🔬 深度研究员与实干家
 
-- **[SuperContext](https://tinyhumans.gitbook.io/openhuman/features/super-context)**：在模型读取你的第一条消息之前，一个研究侦察器会先扫描你的记忆和文件。没有冷启动。
 - **开箱即用**：网络搜索、抓取器、编码工具集、真正的[浏览器](https://tinyhumans.gitbook.io/openhuman/features/native-tools/browser-and-computer)、带进程内 Whisper 的[原生语音](../gitbooks/features/native-tools/voice.md)，以及为每个工作负载挑选合适 LLM 的[模型路由](https://tinyhumans.gitbook.io/openhuman/features/model-routing)。一个订阅搞定，[本地 AI 可选](https://tinyhumans.gitbook.io/openhuman/features/model-routing/local-ai)。
 - **[会议智能体](https://tinyhumans.gitbook.io/openhuman/features/mascot/meeting-agents)**：带着一张脸和一副嗓音加入 **Meet、Zoom、Teams 和 Webex**：根据日历自动入会、实时输出转写字幕、被点名时回答、归档摘要和行动项。
 - **[图像与视频生成](https://tinyhumans.gitbook.io/openhuman/features/native-tools)**：Seedream/SeedEdit 图像和 Seedance/Veo 视频，直接输出到你的工作区，同一份订阅。

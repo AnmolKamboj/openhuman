@@ -20,7 +20,7 @@ const panels: PanelCheck[] = [
   // Home folded into the unified chat surface — /home redirects to /chat.
   { hash: '/home', markers: ['Your assistant is ready', 'Reasoning'] },
   // /chat is the Assistant surface (thread list + agent chat header).
-  { hash: '/chat', markers: ['Your assistant is ready', 'Reasoning', 'Super Context'] },
+  { hash: '/chat', markers: ['Your assistant is ready', 'Reasoning'] },
 ];
 
 async function waitForPanelLoad(page: Parameters<typeof test>[0]['page']) {

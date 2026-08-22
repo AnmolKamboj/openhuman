@@ -15,8 +15,8 @@ pub const MODEL_CHAT_V1: &str = "chat-v1";
 pub const MODEL_REASONING_QUICK_V1: &str = "reasoning-quick-v1";
 pub const MODEL_CODING_V1: &str = "coding-v1";
 /// High-throughput "burst" tier served by the managed backend. Cheap, fast,
-/// non-reasoning, text-only, 128k context, no prompt cache; used by the
-/// super-context scout. Managed-backend only (no BYOK knob).
+/// non-reasoning, text-only, 128k context, no prompt cache; used by fast
+/// high-fanout workers. Managed-backend only (no BYOK knob).
 pub const MODEL_BURST_V1: &str = "burst-v1";
 pub const MODEL_SUMMARIZATION_V1: &str = "summarization-v1";
 /// Multimodal (image-input) tier. Managed backend serves this with the vision

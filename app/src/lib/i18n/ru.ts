@@ -2732,9 +2732,6 @@ const messages: TranslationMap = {
   'chat.left': 'осталось',
   'chat.setup': 'Настроить',
   'chat.switchToText': 'Переключиться на текст',
-  'chat.superContext.label': 'Супер-контекст',
-  'chat.superContext.hint':
-    'Супер-контекст позволяет OpenHuman собирать и подготавливать контекст из всех доступных ему данных, чтобы давать максимально релевантный ответ. Супер-контекст находится на стадии раннего бета-тестирования.',
   'chat.transcribing': 'Транскрипция...',
   'chat.stopAndSend': 'Остановить и отправить',
   'chat.startTalking': 'Начни говорить',

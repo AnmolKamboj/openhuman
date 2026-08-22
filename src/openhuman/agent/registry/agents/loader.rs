@@ -1507,8 +1507,8 @@ mod tests {
         let def = find("context_scout");
         assert_eq!(def.agent_tier, AgentTier::Worker);
         assert_eq!(def.sandbox_mode, SandboxMode::ReadOnly);
-        // Super-context scout rides the cheap, high-throughput `burst` tier
-        // (resolves to `burst-v1` on the managed backend) — not the pricier
+        // The context scout rides the cheap, high-throughput `burst` tier
+        // (resolves to `burst-v1` on the managed backend), not the pricier
         // agentic/reasoning tiers.
         assert!(
             matches!(&def.model, ModelSpec::Hint(h) if h == "burst"),

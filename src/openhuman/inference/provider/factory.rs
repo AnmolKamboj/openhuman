@@ -1097,8 +1097,8 @@ fn managed_tier_for_role(role: &str) -> Option<&'static str> {
         "agentic" => Some(MODEL_AGENTIC_V1),
         "coding" => Some(MODEL_CODING_V1),
         // Burst rides the managed backend's high-throughput tier. Pinned here
-        // (rather than collapsing to `default_model`) so the `hint = "burst"`
-        // sub-agent — the super-context scout — actually reaches `burst-v1`.
+        // (rather than collapsing to `default_model`) so `hint = "burst"`
+        // workers actually reach `burst-v1`.
         // There is no `burst_provider` knob: burst is managed-only.
         "burst" => Some(MODEL_BURST_V1),
         "vision" => Some(MODEL_VISION_V1),
