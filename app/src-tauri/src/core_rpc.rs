@@ -105,7 +105,8 @@ pub(crate) async fn post_json_rpc(
         && crate::gateway::types::validate_remote_transport(url, token).is_err()
     {
         return Err(format!(
-            "refusing to send a bearer to {url} over an insecure transport"
+            "refusing to send a bearer to {} over an insecure transport",
+            redact_url_for_log(url)
         ));
     }
 
