@@ -407,11 +407,7 @@ mod tests {
             run.started_at = "0".to_string();
             run.last_heartbeat_at = "0".to_string();
         }
-        let key: String = thread_id
-            .as_bytes()
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect();
+        let key = hex_key(&thread_id);
         store
             .put(
                 crate_runs::RUNS_NAMESPACE,
