@@ -1058,11 +1058,22 @@ fn mixed_batch_dispatch_modes_and_claim_conflicts_are_stable() {
         ToolScope::Named(vec!["write_fixture".into()]),
         SandboxMode::None,
     );
+    // Defined but deliberately omitted from the parent allowlist below, so it
+    // is policy-rejected *before* any claim is admitted. An earlier rejection
+    // must not advance `admitted_index`, or every later admitted task would
+    // resolve to the wrong plan slot and the clasher's conflict would be
+    // misattributed — this batch pins that the index stays admission-scoped.
+    let outside = definition_with_tool_scope(
+        "outside",
+        ToolScope::Named(vec!["write_fixture".into()]),
+        SandboxMode::None,
+    );
     let definitions = HashMap::from([
         (isolated_writer.id.clone(), isolated_writer),
         (reader.id.clone(), reader),
         (writer.id.clone(), writer),
         (clasher.id.clone(), clasher),
+        (outside.id.clone(), outside),
     ]);
     let parent = parent_admitting(
         &["isolated_writer", "reader", "writer", "clasher"],
@@ -1071,6 +1082,7 @@ fn mixed_batch_dispatch_modes_and_claim_conflicts_are_stable() {
 
     let preflight = prepare_spawn_parallel_tasks_from_defs(
         vec![
+            dispatch_task("outside", None, None),
             dispatch_task("isolated_writer", None, Some("worktree")),
             dispatch_task("reader", None, None),
             dispatch_task("writer", Some("files: src/a.rs"), None),
@@ -1079,6 +1091,18 @@ fn mixed_batch_dispatch_modes_and_claim_conflicts_are_stable() {
         &definitions,
         &parent,
     );
+
+    // The earlier policy rejection is surfaced in place, without advancing the
+    // admission index the later dispatch decisions key off.
+    match &preflight[0] {
+        SpawnParallelTaskPreflight::Rejected(rejection) => {
+            assert_eq!(rejection.kind, ParallelTaskRejectionKind::OutsideAllowlist);
+            assert_eq!(rejection.agent_id, "outside");
+        }
+        SpawnParallelTaskPreflight::Prepared(_) => {
+            panic!("an agent outside the allowlist must be rejected")
+        }
+    }
 
     let modes: Vec<Option<WorkerDispatchMode>> = preflight
         .iter()
@@ -1091,16 +1115,19 @@ fn mixed_batch_dispatch_modes_and_claim_conflicts_are_stable() {
     assert_eq!(
         modes,
         vec![
+            None,
             Some(WorkerDispatchMode::Parallel),
             Some(WorkerDispatchMode::Parallel),
             Some(WorkerDispatchMode::SerialSharedWorkspaceWrite),
             None,
         ],
-        "write-safety dispatch decision changed"
+        "write-safety dispatch decision changed after an earlier rejection"
     );
 
     // The rejection is the *later* claimant; the earlier one keeps its claim.
-    match &preflight[3] {
+    // Index 4 (not 3) because the leading `outside` rejection did not consume
+    // an admission slot.
+    match &preflight[4] {
         SpawnParallelTaskPreflight::Rejected(rejection) => {
             assert_eq!(rejection.kind, ParallelTaskRejectionKind::RequiresIsolation);
             assert_eq!(rejection.agent_id, "clasher");
