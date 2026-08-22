@@ -90,7 +90,7 @@ impl GitOperationsTool {
     }
 
     async fn run_git_command_in(&self, cwd: &Path, args: &[&str]) -> anyhow::Result<String> {
-        if let Some(key) = repo_config_is_inert(cwd).await? {
+        if let Some(key) = first_disallowed_repo_config_key(cwd).await? {
             tracing::debug!(
                 "[git_operations] refusing to run git: dir={}, disallowed_config_key={key}",
                 cwd.display()
@@ -454,6 +454,16 @@ impl GitOperationsTool {
 /// `remote.origin.url` is checked as `remote.url`.
 const ALLOWED_REPO_CONFIG: &[&str] = &[
     // What `git init` and `git clone` write, and nothing else.
+    //
+    // `core.worktree` is deliberately absent, unlike the read-only sibling
+    // this list started from. It redirects the working-tree root Git
+    // operates against — including a linked-worktree-shaped redirect this
+    // tool does not otherwise offer — and this tool runs *write* operations
+    // (`checkout`, `add`, `commit`, `stash`) whose target directory is
+    // supposed to be `action_dir`/the resolved workspace, never something a
+    // repository's own config gets to name. Worktree isolation is already
+    // handled through `WorkspaceDescriptor` (`effective_action_dir_for_context`),
+    // a trusted, in-process mechanism — nothing here needs the config key.
     "core.repositoryformatversion",
     "core.filemode",
     "core.bare",
@@ -461,7 +471,6 @@ const ALLOWED_REPO_CONFIG: &[&str] = &[
     "core.ignorecase",
     "core.precomposeunicode",
     "core.symlinks",
-    "core.worktree",
     "remote.url",
     "remote.fetch",
     "remote.pushurl",
@@ -588,24 +597,34 @@ fn normalise_config_key(key: &str) -> String {
     }
 }
 
-/// Is the repository at `dir` configured only in ways that cannot make `git`
-/// run something?
+/// Returns the first repository config key at `dir` that is not on
+/// [`ALLOWED_REPO_CONFIG`], or `None` if every key it sets is recognised.
 ///
-/// Returns the offending key when it is not. Reading the config is itself
-/// done through [`hardened_git`], and `git config --list` neither consults
-/// `core.fsmonitor` nor spawns a pager when its output is captured, so this
-/// inspection step does not have the property it is checking for.
-async fn repo_config_is_inert(dir: &Path) -> anyhow::Result<Option<String>> {
+/// Reading the config is itself done through [`hardened_git`], and
+/// `git config --list` neither consults `core.fsmonitor` nor spawns a pager
+/// when its output is captured, so this inspection step does not have the
+/// property it is checking for.
+///
+/// A non-zero exit here is treated as a refusal, not as "nothing to
+/// distrust": by the time this runs, the caller (`execute_in_context`) has
+/// already confirmed `dir` — or one of its parents — contains a `.git`, so
+/// `git config --list --local` failing means the config could not be read,
+/// not that there is none. Proceeding to run the real command against config
+/// this step never actually inspected would defeat the point of inspecting
+/// it first.
+async fn first_disallowed_repo_config_key(dir: &Path) -> anyhow::Result<Option<String>> {
     let output = hardened_git(dir)
         .args(["config", "--list", "--local", "--null"])
         .output()
         .await?;
 
-    // A directory that is not a repository has no local config to distrust.
-    // The caller's own "Not in a git repository" check runs first; this is
-    // just defence in depth for that ordering.
     if !output.status.success() {
-        return Ok(None);
+        anyhow::bail!(
+            "refusing to run git in {}: could not inspect its repository config \
+             ({}), so whether it is safe to run under could not be determined",
+            dir.display(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
     }
 
     let listing = String::from_utf8_lossy(&output.stdout);

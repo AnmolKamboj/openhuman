@@ -368,15 +368,28 @@ async fn not_in_git_repo_returns_error() {
     assert!(result.output().contains("Not in a git repository"));
 }
 
+/// Suppress the developer's own system/global git config on a raw
+/// `std::process::Command`, so a machine-local `init.templateDir` or similar
+/// cannot write extra keys into a test repository's `.git/config` and make
+/// these tests depend on ambient environment. Mirrors [`hardened_git`]'s two
+/// env vars; the production code under test applies its own suppression when
+/// it later reads this same config, so this only affects setup.
+fn hermetic(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    cmd.env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", NULL_CONFIG_PATH)
+}
+
 /// Initialise a git repo at `path` and fail the test if `git init`
 /// itself didn't succeed (so we don't misread later assertion failures
 /// as product bugs when the real problem is a missing/broken git).
 fn init_git_repo(path: &std::path::Path) {
-    let output = std::process::Command::new("git")
-        .args(["init"])
-        .current_dir(path)
-        .output()
-        .expect("failed to spawn `git init`");
+    let output = hermetic(
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(path),
+    )
+    .output()
+    .expect("failed to spawn `git init`");
     assert!(
         output.status.success(),
         "`git init` failed: {}",
@@ -478,6 +491,12 @@ async fn add_missing_paths_returns_error() {
 
 /// Write a `core.fsmonitor` hook into `dir`'s repository config that creates a
 /// marker file when git runs it, and return the marker's path.
+///
+/// Runs the hook once up front and asserts the marker appears, then removes
+/// it — so a later absent marker means the hardening refused the hook, not
+/// that the hook itself was silently broken (e.g. by `{:?}`-escaping a path
+/// the shell would quote differently than Rust's `Debug` does).
+#[cfg(unix)]
 fn plant_fsmonitor_hook(dir: &std::path::Path) -> std::path::PathBuf {
     let hook = dir.join("hook.sh");
     let marker = dir.join("COMMAND_RAN");
@@ -486,34 +505,40 @@ fn plant_fsmonitor_hook(dir: &std::path::Path) -> std::path::PathBuf {
         format!("#!/bin/sh\ntouch {:?}\nexit 1\n", marker.to_string_lossy()),
     )
     .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    std::process::Command::new(&hook).status().unwrap();
+    assert!(marker.exists(), "the planted hook does not run at all");
+    std::fs::remove_file(&marker).unwrap();
+
     // Written with `git config` rather than by appending to the file:
     // appending only lands in `[core]` while `[core]` happens to be the last
     // section, which is true of a fresh `git init` and is not a property
     // worth depending on.
-    let ok = std::process::Command::new("git")
-        .args(["config", "core.fsmonitor"])
-        .arg(&hook)
-        .current_dir(dir)
-        .status()
-        .unwrap()
-        .success();
+    let ok = hermetic(
+        std::process::Command::new("git")
+            .args(["config", "core.fsmonitor"])
+            .arg(&hook)
+            .current_dir(dir),
+    )
+    .status()
+    .unwrap()
+    .success();
     assert!(ok, "failed to plant the hook in the repository config");
     marker
 }
 
 /// Set a repository config key with `git config`, asserting it took.
 fn set_config(dir: &std::path::Path, key: &str, value: &str) {
-    let ok = std::process::Command::new("git")
-        .args(["config", key, value])
-        .current_dir(dir)
-        .status()
-        .unwrap()
-        .success();
+    let ok = hermetic(
+        std::process::Command::new("git")
+            .args(["config", key, value])
+            .current_dir(dir),
+    )
+    .status()
+    .unwrap()
+    .success();
     assert!(ok, "failed to set {key} in the test workspace");
 }
 
@@ -645,10 +670,88 @@ async fn refusal_also_covers_write_operations() {
     );
 }
 
+/// `core.worktree` redirects the working-tree root every write operation
+/// here (`checkout`, `add`, `commit`, `stash`) targets. Left on the
+/// allowlist, a repository config could point that root outside
+/// `action_dir` and turn a supposedly sandboxed write into one against an
+/// arbitrary directory. Nothing this tool does needs the key — worktree
+/// isolation goes through `WorkspaceDescriptor` instead.
+#[tokio::test]
+async fn core_worktree_is_refused_because_it_can_redirect_writes_outside_the_sandbox() {
+    let tmp = TempDir::new().unwrap();
+    let elsewhere = TempDir::new().unwrap();
+    init_git_repo(tmp.path());
+    set_config(
+        tmp.path(),
+        "core.worktree",
+        &elsewhere.path().to_string_lossy(),
+    );
+
+    let tool = test_tool(tmp.path());
+    let result = tool.execute(json!({"operation": "status"})).await;
+    let msg = error_text(&result);
+
+    assert!(
+        msg.contains("core.worktree"),
+        "the refusal must name the key that caused it, got: {msg}"
+    );
+}
+
+/// The config-inspection step must fail closed: if `git config --list
+/// --local` cannot be read, that is not the same as "nothing to distrust",
+/// and running the real command anyway would skip the check entirely.
+#[cfg(unix)]
+#[tokio::test]
+async fn unreadable_repo_config_fails_closed_rather_than_running_anyway() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tmp = TempDir::new().unwrap();
+    init_git_repo(tmp.path());
+    let config_path = tmp.path().join(".git").join("config");
+    std::fs::set_permissions(&config_path, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+    // Root (and some CI containers run as root) ignores this permission bit
+    // entirely, which would make the assertion below meaningless rather than
+    // wrong. Detect that up front instead of failing on an unrelated cause.
+    let permission_enforced = std::fs::File::open(&config_path).is_err();
+
+    let result = if permission_enforced {
+        let tool = test_tool(tmp.path());
+        Some(tool.execute(json!({"operation": "status"})).await)
+    } else {
+        None
+    };
+
+    // Restore permissions before the TempDir is dropped, so cleanup doesn't
+    // fail on an unreadable file.
+    std::fs::set_permissions(&config_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+    let Some(result) = result else {
+        eprintln!(
+            "skipping: file permissions are not enforced against this process (running as root?)"
+        );
+        return;
+    };
+    let msg = error_text(&result);
+
+    assert!(
+        msg.contains("could not inspect its repository config"),
+        "an unreadable repo config must refuse, not silently proceed, got: {msg}"
+    );
+}
+
 #[test]
 fn a_subsection_is_elided_so_one_entry_covers_every_remote() {
     assert_eq!(normalise_config_key("remote.origin.url"), "remote.url");
     assert_eq!(normalise_config_key("remote.a.b.c.url"), "remote.url");
     assert_eq!(normalise_config_key("core.fileMode"), "core.filemode");
     assert_eq!(normalise_config_key("core.fsmonitor"), "core.fsmonitor");
+    // The subsection itself contains dots; the first and last components
+    // remain the reliable ones.
+    assert_eq!(
+        normalise_config_key("includeIf.gitdir:~/x.y/.path"),
+        "includeif.path"
+    );
+    // A key with no dot at all is returned unchanged rather than panicking.
+    assert_eq!(normalise_config_key("bare"), "bare");
 }
