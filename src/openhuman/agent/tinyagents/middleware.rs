@@ -1348,6 +1348,24 @@ impl ToolPolicyMiddleware {
                 .render(),
             );
         }
+        // For `use_skill`, also validate the resolved inner tool against the
+        // session allowlist. Role-hidden packed tools are not checked by the
+        // outer policy name; without this check `use_skill` would bypass the
+        // session's effective allowlist for any packed tool.
+        if call.name == "use_skill" {
+            if let Some(inner_tool) = call
+                .arguments
+                .get("tool")
+                .and_then(serde_json::Value::as_str)
+            {
+                let inner_decision = self.session.decision_for(inner_tool);
+                if inner_decision.is_denied() {
+                    return Some(format!(
+                        "Tool `{inner_tool}` is not allowed in the current session and cannot be used through `use_skill`."
+                    ));
+                }
+            }
+        }
         None
     }
 

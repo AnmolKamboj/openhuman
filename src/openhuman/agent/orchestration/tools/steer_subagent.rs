@@ -35,12 +35,7 @@ impl Tool for SteerSubagentTool {
     }
 
     fn description(&self) -> &str {
-        "Send a message into a running async sub-agent (one you started with \
-         spawn_async_subagent), redirecting or feeding it data mid-run without \
-         restarting it. The sub-agent picks the message up at its next step. Use \
-         `mode: steer` (default) for a new instruction it must address, or \
-         `mode: collect` for silent extra context. Returns immediately; use \
-         wait_subagent to collect the final result."
+        "Send a message into a running async sub-agent, redirecting it or feeding it data mid-run without restarting. It is picked up at the next step. `mode: steer` (default) is an instruction it must address; `mode: collect` is silent context. Returns immediately."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {

@@ -1839,16 +1839,29 @@ fn hide_tools_drops_named_from_existing_filter() {
 /// first seed the allowlist from every registered spec so the hide actually
 /// restricts — otherwise removing from an empty set would no-op and leave the
 /// tool still callable under the "empty == all visible" contract.
+///
+/// Note the on-demand tool-pack builder now materialises a concrete visible
+/// allowlist at build time, so a freshly built agent is no longer filter-less;
+/// the empty-set case is exercised here by explicitly resetting to the "all
+/// visible" sentinel, which is the only way a caller reaches it.
 #[test]
 fn hide_tools_seeds_allowlist_when_no_filter_present() {
     let mut agent = build_minimal_agent_with_definition_name(None);
     assert!(
-        agent.visible_tool_names_for_test().is_empty(),
-        "precondition: a freshly built minimal agent has no visible-tool filter"
+        !agent.visible_tool_names_for_test().is_empty(),
+        "precondition: the tool-pack builder seeds a concrete visible allowlist at build time"
     );
     assert!(
         agent.tool_specs().iter().any(|spec| spec.name == "echo"),
         "precondition: the mock belt includes `echo`"
+    );
+
+    // Reset to the "all visible" sentinel so the no-filter seed path below is
+    // actually exercised, matching the historical precondition.
+    agent.set_visible_tool_names(std::collections::HashSet::new());
+    assert!(
+        agent.visible_tool_names_for_test().is_empty(),
+        "precondition: sentinel reset yields an empty visible-tool set"
     );
 
     // Hiding a name that isn't on the belt still forces the seed: the set goes
