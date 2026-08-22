@@ -1629,7 +1629,10 @@ async fn orchestrator_tool_synthesis_covers_agent_and_integration_delegation_edg
         .contains("careful public-source research"));
     assert!(research
         .description()
-        .contains("route"));
+        .contains("Use for careful public-source research."));
+    assert!(!research
+        .description()
+        .contains("direct tools are insufficient"));
     assert_eq!(research.permission_level(), PermissionLevel::Execute);
     assert_eq!(research.category(), ToolCategory::System);
     assert_eq!(
