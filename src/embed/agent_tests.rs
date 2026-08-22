@@ -144,3 +144,17 @@ fn insecure_route_error_names_the_redacted_endpoint() {
     );
     assert!(msg.contains("api.example"), "origin stays readable: {msg}");
 }
+
+#[test]
+fn sanitize_redacts_unparseable_urls() {
+    // A value that does not parse as an absolute URL cannot be proven free of
+    // credential-bearing components (e.g. protocol-relative userinfo), so it
+    // must never be echoed verbatim into diagnostics.
+    assert_eq!(sanitize_url_for_display("//user:sk-secret@host/path"), "<redacted>");
+    assert_eq!(sanitize_url_for_display("not a url at all"), "<redacted>");
+    // A parseable absolute URL is normalized, not dropped.
+    let normalized = sanitize_url_for_display("https://user:sk-secret@api.example/v1?k=leaky");
+    assert!(normalized.contains("api.example"));
+    assert!(!normalized.contains("sk-secret"));
+    assert!(!normalized.contains("leaky"));
+}
