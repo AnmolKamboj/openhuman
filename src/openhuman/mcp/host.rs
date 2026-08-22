@@ -183,13 +183,15 @@ pub fn for_config(config: &Config) -> anyhow::Result<Arc<McpHost>> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .get(&workspace)
     {
-        return Ok(Arc::clone(existing));
+        return Ok(Arc::clone(&existing.host));
     }
 
     // Build outside the lock: opening runs the store's migrations and builds
     // an HTTP client, neither of which should serialize or block a Tokio
-    // worker behind the process-wide map.
-    let service = Arc::new(McpHost::open(config)?);
+    // worker behind the process-wide map. The client configuration is
+    // converted once, so the host and the entry stored beside it share it.
+    let client = client_config(config);
+    let service = Arc::new(McpHost::from_client_config(&workspace, &client)?);
 
     // Recheck before inserting — a concurrent initializer may have won the
     // race while the service was being built. Its Arc wins; ours is dropped.
@@ -198,10 +200,17 @@ pub fn for_config(config: &Config) -> anyhow::Result<Arc<McpHost>> {
         .unwrap_or_else(|poisoned| poisoned.into_inner());
 
     if let Some(existing) = hosts.get(&workspace) {
-        return Ok(Arc::clone(existing));
+        return Ok(Arc::clone(&existing.host));
     }
 
-    hosts.insert(workspace, Arc::clone(&service));
+    hosts.insert(
+        workspace,
+        HostEntry {
+            host: Arc::clone(&service),
+            identity: client.client_identity,
+            proxy: client.proxy,
+        },
+    );
 
     Ok(service)
 }
