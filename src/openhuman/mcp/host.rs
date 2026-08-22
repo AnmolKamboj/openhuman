@@ -31,8 +31,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use tinymcp::{
-    AuditStore, McpClientConfig, McpProxyConfig, McpRegistry, McpServerConfig, McpServerRegistry,
-    Store,
+    AuditStore, McpClientConfig, McpClientIdentityConfig, McpProxyConfig, McpRegistry,
+    McpServerConfig, McpServerRegistry, Store,
 };
 
 use crate::openhuman::config::Config;
