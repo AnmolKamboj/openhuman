@@ -1472,16 +1472,9 @@ mod tests {
     /// self-resolved in `runtime_path_for_command` — see the python branch.)
     #[tokio::test]
     async fn shell_does_not_resolve_or_install_node_on_its_own() {
-        let node = Arc::new(NodeBootstrap::new(
-            crate::openhuman::config::schema::NodeConfig {
-                enabled: true,
-                version: "v22.11.0".to_string(),
-                cache_dir: String::new(),
-                prefer_system: true,
-            },
-            std::env::temp_dir(),
-            reqwest::Client::new(),
-        ));
+        let node = Arc::new(NodeBootstrap::new(Arc::new(
+            crate::openhuman::config::Config::default(),
+        )));
         let tool = ShellTool::with_language_bootstraps(
             test_security(AutonomyLevel::Full),
             test_runtime(),

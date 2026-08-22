@@ -304,7 +304,7 @@ impl NodeExecTool {
         // pool infrastructure failure also transparently falls back below.
         if let Some(code) = inline_code.as_deref() {
             if let Some(result) = self
-                .try_pool_inline(code, &resolved, &path_policy.action_dir, explicit_timeout)
+                .try_pool_inline(code, &path_policy.action_dir, explicit_timeout)
                 .await
             {
                 return Ok(result);
@@ -402,7 +402,6 @@ impl NodeExecTool {
     async fn try_pool_inline(
         &self,
         code: &str,
-        resolved: &crate::openhuman::runtime::node::ResolvedNode,
         action_dir: &std::path::Path,
         timeout: Option<Duration>,
     ) -> Option<ToolResult> {
@@ -418,10 +417,7 @@ impl NodeExecTool {
             return None;
         }
         match crate::openhuman::runtime::pool::node::run_inline(
-            &self.workspace_dir,
-            &self.pool_cfg.node,
-            &resolved.node_bin,
-            &resolved.bin_dir,
+            self.bootstrap.config(),
             code.to_string(),
             Some(action_dir.to_path_buf()),
             timeout,
@@ -843,7 +839,6 @@ mod tests {
     #[tokio::test]
     async fn inline_code_cannot_write_to_sibling_profile() {
         use crate::openhuman::agent::host_runtime::NativeRuntime;
-        use crate::openhuman::config::schema::NodeConfig;
         use crate::openhuman::security::policy::ActiveProfileGuard;
         use crate::openhuman::security::AutonomyLevel;
 
@@ -863,11 +858,9 @@ mod tests {
             }),
             ..SecurityPolicy::default()
         });
-        let bootstrap = Arc::new(NodeBootstrap::new(
-            NodeConfig::default(),
-            temp.path().to_path_buf(),
-            reqwest::Client::new(),
-        ));
+        let bootstrap = Arc::new(NodeBootstrap::new(Arc::new(
+            crate::openhuman::config::Config::default(),
+        )));
         let tool = NodeExecTool::new(
             security,
             Arc::new(NativeRuntime::new()),

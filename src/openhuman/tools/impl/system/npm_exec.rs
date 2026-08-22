@@ -636,7 +636,6 @@ mod tests {
     #[tokio::test]
     async fn args_cannot_target_sibling_profile() {
         use crate::openhuman::agent::host_runtime::NativeRuntime;
-        use crate::openhuman::config::schema::NodeConfig;
         use crate::openhuman::security::policy::ActiveProfileGuard;
         use crate::openhuman::security::AutonomyLevel;
 
@@ -656,11 +655,9 @@ mod tests {
             }),
             ..SecurityPolicy::default()
         });
-        let bootstrap = Arc::new(NodeBootstrap::new(
-            NodeConfig::default(),
-            temp.path().to_path_buf(),
-            reqwest::Client::new(),
-        ));
+        let bootstrap = Arc::new(NodeBootstrap::new(Arc::new(
+            crate::openhuman::config::Config::default(),
+        )));
         let tool = NpmExecTool::new(security, Arc::new(NativeRuntime::new()), bootstrap);
 
         let result = tool
@@ -679,7 +676,6 @@ mod tests {
     #[tokio::test]
     async fn symlinked_cwd_cannot_target_sibling_profile() {
         use crate::openhuman::agent::host_runtime::NativeRuntime;
-        use crate::openhuman::config::schema::NodeConfig;
         use crate::openhuman::security::policy::ActiveProfileGuard;
         use crate::openhuman::security::AutonomyLevel;
         use std::os::unix::fs::symlink;
@@ -702,11 +698,9 @@ mod tests {
             }),
             ..SecurityPolicy::default()
         });
-        let bootstrap = Arc::new(NodeBootstrap::new(
-            NodeConfig::default(),
-            temp.path().to_path_buf(),
-            reqwest::Client::new(),
-        ));
+        let bootstrap = Arc::new(NodeBootstrap::new(Arc::new(
+            crate::openhuman::config::Config::default(),
+        )));
         let tool = NpmExecTool::new(security, Arc::new(NativeRuntime::new()), bootstrap);
 
         let result = tool

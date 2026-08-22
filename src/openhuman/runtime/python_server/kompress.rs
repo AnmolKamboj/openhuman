@@ -130,7 +130,7 @@ pub async fn ensure_kompress(config: &Config) -> Result<KompressRuntime> {
         config.tokenjuice.ml_model_id
     );
 
-    let base = PythonBootstrap::new(config.runtime_python.clone())
+    let base = PythonBootstrap::new(std::sync::Arc::new(config.clone()))
         .resolve()
         .await
         .context("resolving base python for kompress venv")?;

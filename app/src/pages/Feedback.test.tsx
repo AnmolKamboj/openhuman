@@ -12,6 +12,7 @@ const mockSubmit = vi.fn();
 const mockUpdateStatus = vi.fn();
 const mockGetFeedback = vi.fn();
 const mockAddComment = vi.fn();
+const mockValidateFeedback = vi.fn();
 
 vi.mock('../services/api/feedbackApi', () => ({
   feedbackApi: {
@@ -21,6 +22,7 @@ vi.mock('../services/api/feedbackApi', () => ({
     updateStatus: (...args: unknown[]) => mockUpdateStatus(...args),
     getFeedback: (...args: unknown[]) => mockGetFeedback(...args),
     addComment: (...args: unknown[]) => mockAddComment(...args),
+    validateFeedback: (...args: unknown[]) => mockValidateFeedback(...args),
   },
 }));
 
@@ -66,6 +68,8 @@ describe('<Feedback />', () => {
     mockUpdateStatus.mockReset();
     mockGetFeedback.mockReset();
     mockAddComment.mockReset();
+    mockValidateFeedback.mockReset();
+    mockValidateFeedback.mockResolvedValue({ tier: 'pass', reason: 'ok' });
     userRole.current = 'user';
   });
 
@@ -113,6 +117,8 @@ describe('<Feedback /> keeps the board in sync after local mutations', () => {
     mockUpdateStatus.mockReset();
     mockGetFeedback.mockReset();
     mockAddComment.mockReset();
+    mockValidateFeedback.mockReset();
+    mockValidateFeedback.mockResolvedValue({ tier: 'pass', reason: 'ok' });
     userRole.current = 'user';
   });
 

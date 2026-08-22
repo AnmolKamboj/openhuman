@@ -1620,12 +1620,19 @@ async fn orchestrator_tool_synthesis_covers_agent_and_integration_delegation_edg
     assert_eq!(names, vec!["research", "delegate_to_integrations_agent"]);
 
     let research = &tools[0];
-    assert!(research
-        .description()
-        .contains("direct tools are insufficient"));
+    // Delegate-tool descriptions carry the target agent's `when_to_use`
+    // verbatim. The repeated "direct response/direct tools are insufficient"
+    // prefix was intentionally removed (the orchestrator's own prompt already
+    // carries that rule once), so assert it is gone rather than still required.
     assert!(research
         .description()
         .contains("careful public-source research"));
+    assert!(research
+        .description()
+        .contains("Use for careful public-source research."));
+    assert!(!research
+        .description()
+        .contains("direct tools are insufficient"));
     assert_eq!(research.permission_level(), PermissionLevel::Execute);
     assert_eq!(research.category(), ToolCategory::System);
     assert_eq!(
@@ -3535,11 +3542,7 @@ async fn node_and_npm_exec_tools_cover_validation_policy_and_disabled_runtime_pa
         &config.workspace_dir,
     ));
     let runtime = Arc::new(NativeRuntime::new());
-    let bootstrap = Arc::new(NodeBootstrap::new(
-        config.node.clone(),
-        workspace,
-        reqwest::Client::new(),
-    ));
+    let bootstrap = Arc::new(NodeBootstrap::new(Arc::new(config.clone())));
 
     let node = NodeExecTool::new(
         full_security.clone(),

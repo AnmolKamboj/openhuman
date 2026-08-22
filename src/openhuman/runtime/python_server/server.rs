@@ -403,7 +403,7 @@ async fn prepare_launch(config: &Config) -> Result<ServerLaunch> {
         push_kompress_env(&mut env, config, &rt.hf_home);
         rt.python_bin
     } else {
-        crate::openhuman::runtime::python::PythonBootstrap::new(config.runtime_python.clone())
+        crate::openhuman::runtime::python::PythonBootstrap::new(std::sync::Arc::new(config.clone()))
             .resolve()
             .await?
             .python_bin
