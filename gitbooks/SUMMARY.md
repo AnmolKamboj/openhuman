@@ -85,6 +85,7 @@
 - [Chromium Embedded Framework](developing/cef.md)
 - [Theming (Token System)](developing/theming.md)
 - [Agent Observability](developing/agent-observability.md)
+- [Hooks](developing/hooks.md)
 - [Architecture](developing/architecture/README.md)
   - [Agent Harness](developing/architecture/agent-harness.md)
   - [Flows on TinyAgents (src/openhuman/flows/)](developing/architecture/flows-on-tinyagents.md)

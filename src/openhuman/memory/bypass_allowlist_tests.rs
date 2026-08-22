@@ -142,11 +142,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "MemoryClient::from_workspace_dir(",
         "profiling harness; boots its own client outside the guard's process model",
     ),
-    (
-        "src/bin/slack_backfill.rs",
-        "global::client_if_ready(",
-        "standalone backfill binary; boots its own client, no CoreContext",
-    ),
     // ── Metadata-only reads: driver identity, never memory content ──
     (
         "src/core/cli_capability.rs",

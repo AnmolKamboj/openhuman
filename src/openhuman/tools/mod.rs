@@ -8,6 +8,7 @@ pub mod schema;
 mod schemas;
 pub mod status;
 pub mod timeout;
+pub mod toolpacks;
 pub mod traits;
 pub(crate) mod user_filter;
 

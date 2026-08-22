@@ -12,6 +12,8 @@ use super::render_helpers::{
 use super::types::*;
 use anyhow::Result;
 use std::fmt::Write;
+use tinyagents::harness::tool::ToolSchema;
+use tinyagents::harness::tool_calling::dialect::render_pformat_catalogue;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Special sections (archetype, dynamic, reflection)
@@ -425,32 +427,38 @@ impl PromptSection for ToolsSection {
             }
             return Ok(ctx.dispatcher_instructions.to_string());
         }
-        let mut out = String::from("## Tools\n\n");
+        // One rendering shape for every dispatcher: a compact P-Format
+        // signature (`name[a|b|c]`), rendered by the crate from the same
+        // schemas its parser reconstructs arguments with — so the order the
+        // model reads is by construction the order the parser expects. For
+        // `Native` dispatchers the provider already has the full JSON schema in
+        // the API request (handled above); for `Json` / `PFormat` text
+        // dispatchers the dispatcher's own `prompt_instructions` block
+        // (appended below) carries whatever schema detail the wire format needs.
         let has_filter = !ctx.visible_tool_names.is_empty();
-        for tool in ctx.tools {
-            // Skip tools not in the visible set when a filter is active.
-            if has_filter && !ctx.visible_tool_names.contains(tool.name) {
-                continue;
-            }
-
-            // One rendering shape for every dispatcher: a compact
-            // P-Format signature (`name[a|b|c]`). The signature comes
-            // straight from the parameter schema (alphabetical by
-            // property name — see `pformat` module docs for why) so
-            // model and parser agree on argument ordering. For
-            // `Native` dispatchers the provider already has the full
-            // JSON schema in the API request, so repeating it in the
-            // prompt is pure token bloat; for `Json` / `PFormat` text
-            // dispatchers the dispatcher's own `prompt_instructions`
-            // block (appended below) carries whatever schema detail
-            // the wire format needs.
-            let signature = render_pformat_signature_for_prompt(tool);
-            let _ = writeln!(
-                out,
-                "- **{}**: {}\n  Call as: `{}`",
-                tool.name, tool.description, signature
-            );
-        }
+        let visible: Vec<ToolSchema> = ctx
+            .tools
+            .iter()
+            .filter(|tool| !has_filter || ctx.visible_tool_names.contains(tool.name))
+            .map(|tool| {
+                let parameters = match tool.parameters_schema.as_deref() {
+                    Some(schema) => match serde_json::from_str(schema) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            log::warn!(
+                                "[prompts][tools] tool '{}' has an unparsable parameters_schema \
+                                 ({err}); rendering it with no arguments",
+                                tool.name
+                            );
+                            serde_json::Value::Null
+                        }
+                    },
+                    None => serde_json::Value::Null,
+                };
+                ToolSchema::new(tool.name, tool.description, parameters)
+            })
+            .collect();
+        let mut out = render_pformat_catalogue(&visible);
         if !ctx.dispatcher_instructions.is_empty() {
             out.push('\n');
             out.push_str(ctx.dispatcher_instructions);
@@ -765,27 +773,4 @@ fn sanitize_identity_field(s: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-/// Build a P-Format signature line (`name[a|b|c]`) from a [`PromptTool`].
-/// Local to this module so [`ToolsSection`] doesn't have to depend on
-/// the agent crate's `pformat` helper. The two implementations stay in
-/// lockstep — both use BTreeMap iteration order on the schema's
-/// `properties` field.
-fn render_pformat_signature_for_prompt(tool: &PromptTool<'_>) -> String {
-    let names: Vec<String> = tool
-        .parameters_schema
-        .as_deref()
-        .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
-        .and_then(|v| {
-            v.get("properties")
-                .and_then(|p| p.as_object())
-                .map(|m| m.keys().cloned().collect())
-        })
-        .unwrap_or_default();
-    if names.is_empty() {
-        format!("{}[]", tool.name)
-    } else {
-        format!("{}[{}]", tool.name, names.join("|"))
-    }
 }

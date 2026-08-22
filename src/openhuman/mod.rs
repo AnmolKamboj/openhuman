@@ -21,6 +21,10 @@ pub mod cron;
 pub mod desktop;
 #[cfg(feature = "flows")]
 pub mod flows;
+/// User-authored hooks — `hooks.json` scripts that observe and gate the agent.
+/// Kernel surface, never gated: the whole point is a policy seam a slim build
+/// still honours, and it costs nothing when nothing is configured.
+pub mod hooks;
 pub mod hosted;
 // Hosting: the `hosting_*` tools that put a workspace on a real hosting
 // provider, over the `tinyhosts` unified model. Leaf gate — when `hosting` is

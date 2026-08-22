@@ -526,6 +526,12 @@ fn build_registered_controllers() -> Vec<GroupedController> {
         DomainGroup::Platform,
         crate::openhuman::platform::doctor::all_doctor_registered_controllers(),
     );
+    // User-authored hooks — inspect, reload, and test-fire `hooks.json` entries.
+    push(
+        &mut controllers,
+        DomainGroup::Platform,
+        crate::openhuman::hooks::all_hooks_registered_controllers(),
+    );
     // Secret storage and encryption
     push(
         &mut controllers,
@@ -1201,6 +1207,9 @@ pub fn namespace_description(namespace: &str) -> Option<&'static str> {
         ),
         "decrypt" => Some("Decrypt secure values managed by secret storage."),
         "doctor" => Some("Run diagnostics for workspace and runtime health."),
+        "hooks" => Some(
+            "User-authored hooks: list what is configured, reload every hooks.json layer, and test-fire one event.",
+        ),
         "encrypt" => Some("Encrypt secure values managed by secret storage."),
         "health" => Some("Process and component health snapshots."),
         "inference" => Some("Connect to configured text, vision, and embedding inference runtimes."),

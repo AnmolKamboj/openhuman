@@ -1,6 +1,6 @@
 [package]
 name = "openhuman"
-version = "0.63.16"
+version = "0.63.17"
 edition = "2021"
 description = "OpenHuman core business logic and RPC server"
 # The crate ships a verbatim GPLv3 `LICENSE` file but carried no `license` key,
@@ -37,31 +37,6 @@ ignored = ["tinymemory", "tinymemory-tinycortex"]
 [[bin]]
 name = "openhuman-core"
 path = "src/main.rs"
-
-[[bin]]
-name = "slack-backfill"
-path = "src/bin/slack_backfill.rs"
-required-features = ["bin-tools"]
-
-[[bin]]
-name = "gmail-backfill-3d"
-path = "src/bin/gmail_backfill_3d.rs"
-required-features = ["bin-tools"]
-
-[[bin]]
-name = "memory-tree-init-smoke"
-path = "src/bin/memory_tree_init_smoke.rs"
-required-features = ["bin-tools"]
-
-[[bin]]
-name = "inference-probe"
-path = "src/bin/inference_probe.rs"
-required-features = ["bin-tools"]
-
-[[bin]]
-name = "harness-subagent-audit"
-path = "src/bin/harness_subagent_audit.rs"
-required-features = ["bin-tools"]
 
 [[bin]]
 name = "test-mcp-stub"
@@ -193,7 +168,13 @@ tinyflows = { version = "0.8", features = ["mock"], optional = true }
 # NOT enabled here — the default-ON `flows` feature turns it on via
 # `tinyagents/repl` (#4797), so a slim build without `flows` sheds `rhai`.
 # The crate itself can never be dropped: 26+ domains consume tinyagents.
-tinyagents = { version = "2.1", features = ["sqlite"] }
+# `multimodal` is not optional here: `agent::multimodal` is kernel surface —
+# web chat and the agent harness both resolve attachment markers on every turn
+# — so the gate is on for every OpenHuman build. It costs the dependency graph
+# nothing: `base64`, `flate2` and `sha2` are all already resolved in the kernel
+# profile, so turning it on moves neither the package count nor the native
+# build count that `scripts/check-kernel-floor.sh` ratchets.
+tinyagents = { version = "2.1", features = ["sqlite", "multimodal"] }
 # TinyCortex — Rust core for the memory engine (store/chunks/tree/retrieval/
 # queue/ingest/score + long tail), vendored as a git submodule and patched
 # below to `vendor/tinycortex`. OpenHuman's memory subsystem migrates onto this
@@ -1101,12 +1082,13 @@ e2e-test-support = []
 # Builds the `rss-bench` benchmark binary (#5046). Default-OFF, so it is never
 # part of the shipped desktop/library build and the feature-forwarding gate
 # (which only inspects the `default` list) never requires forwarding it.
-# CLI argument parsing + logger init for the six developer/ops binaries under
-# `src/bin/`. Default-OFF and NOT in `default`: nothing in the library reaches
-# `clap` or `env_logger` (the one hit in `core/logging.rs` is a doc comment),
-# so the shipped desktop build has no reason to carry a 14-crate CLI stack.
-# Each owning `[[bin]]` declares `required-features = ["bin-tools"]`, so those
-# targets are simply skipped rather than failing to link when it is off.
+# CLI argument parsing + logger init for the developer/ops binaries under
+# `src/bin/` — today only `openhuman-fleet`. Default-OFF and NOT in `default`:
+# nothing in the library reaches `clap` or `env_logger` (the one hit in
+# `core/logging.rs` is a doc comment), so the shipped desktop build has no
+# reason to carry a 14-crate CLI stack. Each owning `[[bin]]` declares
+# `required-features = ["bin-tools"]`, so those targets are simply skipped
+# rather than failing to link when it is off.
 # Battery/AC probe feeding the scheduler's throttle decision. Default-ON.
 # When off there is no hardware probe: `sample_power` reports "on AC, no charge
 # signal", which is the same answer the real probe gives on a server or

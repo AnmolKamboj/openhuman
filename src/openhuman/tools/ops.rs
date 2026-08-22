@@ -1262,6 +1262,13 @@ pub fn all_tools_with_runtime(
          memory capabilities",
         tools.len()
     );
+
+    // Append the two always-on pack tools. They resolve packed tools by name
+    // out of the agent's live registry (bound after `Arc::new`), so they also
+    // cover the `delegate_*` tools synthesised later by
+    // `orchestrator_tools::collect_orchestrator_tools` — which never pass
+    // through this function.
+    crate::openhuman::tools::toolpacks::append_pack_tools(&mut tools);
     tools
 }
 

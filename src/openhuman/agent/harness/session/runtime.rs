@@ -386,6 +386,10 @@ impl Agent {
         for name in names {
             self.visible_tool_names.remove(*name);
         }
+        // Seeding from `tool_specs` above materialises the "all visible"
+        // sentinel into a concrete set, which would re-admit packed tools that
+        // the builder withheld. Re-apply the withholding.
+        crate::openhuman::tools::toolpacks::strip_packed_from_visible(&mut self.visible_tool_names);
         self.rebuild_tool_policy_session();
     }
 
@@ -617,9 +621,26 @@ impl Agent {
     }
 
     /// Drain and return memory citations collected for the latest completed turn.
-    pub fn take_last_turn_citations(
+    ///
+    /// Async because collection runs concurrently with the turn rather than
+    /// ahead of it (see `Agent::pending_citations`); this joins whatever is
+    /// still in flight. By the time a caller asks, the model round-trip has
+    /// already happened, so the recall has normally finished and this does not
+    /// wait.
+    pub async fn take_last_turn_citations(
         &mut self,
     ) -> Vec<crate::openhuman::memory::agent::memory_loader::MemoryCitation> {
+        if let Some(handle) = self.pending_citations.take() {
+            match handle.await {
+                Ok(citations) => self.last_turn_citations = citations,
+                // A panicked or aborted collection must not fail the turn — the
+                // citations are decorative, the reply is not.
+                Err(err) => {
+                    log::warn!("[agent_loop] citation task did not complete: {err}");
+                    self.last_turn_citations.clear();
+                }
+            }
+        }
         std::mem::take(&mut self.last_turn_citations)
     }
 

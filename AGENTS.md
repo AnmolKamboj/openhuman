@@ -12,7 +12,7 @@ Architecture docs: [`gitbooks/developing/architecture.md`](gitbooks/developing/a
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | **`app/`**              | pnpm workspace `openhuman-app`: Vite + React (`app/src/`), Tauri desktop host (`app/src-tauri/`), Vitest tests                |
 | **`src/`** (root)       | Rust lib crate `openhuman` + `openhuman-core` CLI binary (`src/main.rs`) — `src/core/` (transport), `src/openhuman/*` domains |
-| **`Cargo.toml`** (root) | Core crate; `cargo build --bin openhuman-core`. Also `slack-backfill` and `gmail-backfill-3d` in `src/bin/`.                  |
+| **`Cargo.toml`** (root) | Core crate; `cargo build --bin openhuman-core`. Also `openhuman-fleet`, `rss-bench` and `library-profile` in `src/bin/`.                  |
 | **`docs/`**             | Deep internals. Public contributor docs in `gitbooks/developing/`.                                                            |
 
 Commands assume **repo root**. Root `package.json` is `openhuman-repo` (private, pnpm-enforced).
@@ -112,6 +112,21 @@ The `[autonomy]` block (`src/openhuman/config/schema/autonomy.rs`) drives `Secur
 **Approval gate** ON by default (opt out: `OPENHUMAN_APPROVAL_GATE=0`). Parks interactive chat turns only; background/cron allowed through. Frontend surfaces via `ApprovalRequestCard`. 10-min TTL → Deny.
 
 **Sandbox backends** (opt-in per agent via `sandbox_mode = "sandboxed"`): Docker (remote/cron), Local OS jail (Landlock/Seatbelt/AppContainer, desktop), Noop fallback. In-Rust path hardening applies regardless.
+
+### Hooks — two unrelated things with one name
+
+**In-process hooks** (`src/openhuman/agent/hooks.rs`, `agent/stop_hooks.rs`) are Rust traits an *embedding host* installs by compiling against the core: `PostTurnHook`, `ToolHook`, `StopHook`. `ToolHook` now answers with a `ToolHookDecision` (`Proceed` / `ProceedWith(args)` / `Deny(reason)` / `Ask(reason)`) and `after_tool_context` may append text to a tool result. Both come with defaults that bridge to the old `Result<()>` pair, so existing implementations compile unchanged — but a hook that only vetoes is now the degenerate case, not the contract.
+
+**Configurable hooks** (`src/openhuman/hooks/`) are user-authored scripts declared in `hooks.json`, taking [Cursor's contract](https://cursor.com/docs/hooks) verbatim — event names, stdin envelope, stdout decision, exit code 2 = deny — so a script ports between hosts. Full guide: [`gitbooks/developing/hooks.md`](gitbooks/developing/hooks.md).
+
+Four things to know before touching that domain:
+
+- **It mounts on the existing seams, not new call sites.** `hooks::bridge` registers itself as an embedder `ToolHook` + `PostTurnHook`. Only the moments with no seam at all (`beforeSubmitPrompt`, `subagentStart`/`Stop`) get their own call site, in `hooks::ops`.
+- **Shell/file/MCP events are derived from tool calls.** OpenHuman has no separate shell-execution call site — `beforeShellExecution` is the `shell` tool going through the tool seam, reshaped into a Cursor-shaped payload. Both the generic and the specialised event fire, generic first. `SHELL_TOOLS`/`READ_TOOLS`/`WRITE_TOOLS` in `bridge.rs` are the mapping; extend those rather than adding a call site.
+- **`HookEvent::is_wired()` is load-bearing honesty.** Four events (`sessionStart`, `sessionEnd`, `preCompact`, `afterAgentThought`) are fully defined but have no call site yet. The loader warns when one is configured and `hooks.list` reports `wired: false`. Flip the flag when the call site lands — never optimistically.
+- **Strictest verdict wins, and layers concatenate.** Four `hooks.json` layers merge by appending, and `HookOutput::merge` folds deny over ask over allow, so a project file can never loosen an operator's rule. Do not "fix" the layering into an override model.
+
+Gating events run sequentially in the turn's path; observational ones are spawned and never block it (`HookEvent::is_gating` is the single place that split lives). With nothing configured the bridge is not installed, so an unconfigured host pays nothing per tool call.
 
 ---
 
@@ -350,6 +365,45 @@ two paths' equivalence — keep that as call sites migrate.
 A move never changes the wire surface — RPC namespaces are string literals in `ControllerSchema`, not derived from module paths — so **do not rename namespace strings to match new paths**.
 
 **Skills runtime**: the QuickJS per-skill VM engine is gone. `src/openhuman/skills/` holds skill metadata/tool descriptors; execution of installed `SKILL.md` workflows lives in `src/openhuman/skills/runtime/` (starts/cancels runs, hosts the `skill_executor` agent, reuses `runtime::node`/`runtime::python`, which are clients for the `tinyruntime` module).
+
+### Tool calling lives in tinyagents — `src/openhuman/agent/dispatcher.rs` is a seam
+
+How a model is told to ask for a tool, how the ask is parsed, how results are
+rendered back, and how a transcript is replayed onto the provider wire are one
+thing — a **dialect** — and all four live in
+`tinyagents::harness::tool_calling::dialect` (`XmlDialect` / `PFormatDialect` /
+`NativeDialect`). They belong together because a catalogue advertising one
+grammar next to a parser expecting another is a silent whole-turn failure: the
+model emits a call, nothing recognises it, the iteration is spent, and no error
+is logged anywhere.
+
+`dispatcher.rs` keeps two things and delegates the rest:
+
+- **The vocabulary.** `ParsedToolCall` / `ToolExecutionResult` are named for
+  ~190 call sites, and `ConversationMessage` is the durable JSONL record on
+  existing installations' disks. The crate speaks its own thin `TranscriptEntry`
+  instead, so the conversions in `dispatcher.rs` are the seam — field-wise maps
+  that keep the wire bytes identical while the logic sits upstream. **A
+  conversion that decides something is a second implementation in disguise; put
+  the judgement in the crate.**
+- **The `Tool` trait object.** The crate takes `ToolSchema`s, never a host's
+  tool type — same reason the parse seam already documents: depending on
+  OpenHuman's `Tool` would make the crate unusable by a second host.
+
+Two consequences worth knowing before editing this area:
+
+- **Executing a tool did not move and will not.** The security policy, approval
+  gate, sandbox, per-call timeout and progress events are OpenHuman's. A dialect
+  decides what the model reads and writes; it never decides what is allowed to
+  happen. That line is what keeps the policy auditable in one place.
+- **The catalogue has one renderer.** `ToolsSection` calls the crate's
+  `render_pformat_catalogue`, which builds each `Call as:` signature from the
+  same schema its parser reconstructs arguments from — so prompt order and parse
+  order agree by construction. The local copy this replaced carried a comment
+  promising the two "stay in lockstep", which is the shape of a bug waiting to
+  happen, not a guarantee. `humanize_tool_name` and `context_detail_from_args`
+  in `tools/traits.rs` are re-exports/wrappers over the crate for the same
+  reason; only the trimming rule (80 chars, `…`) is OpenHuman's.
 
 **Rules:**
 

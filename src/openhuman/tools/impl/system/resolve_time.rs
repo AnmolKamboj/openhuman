@@ -226,17 +226,7 @@ impl Tool for ResolveTimeTool {
     }
 
     fn description(&self) -> &str {
-        "Resolve a relative or absolute time expression into an exact timestamp. \
-         ALWAYS use this to produce any date/time argument for another tool \
-         (Slack/Gmail/Calendar `oldest`/`latest`/`since`/`after`, cron times, etc.) — \
-         never hand-compute Unix/epoch seconds yourself; LLM epoch arithmetic is \
-         unreliable. Pass `expr` as \"now\", a past relative duration (\"24h ago\", \
-         \"7d\", \"2 weeks ago\"), a future one for scheduling (\"in 10 minutes\", \
-         \"30m from now\"), \"today\"/\"yesterday\"/\"tomorrow\", an RFC-3339 timestamp \
-         (\"2026-06-09T19:12:00Z\"), or a date (\"2026-06-09\"). The result gives \
-         `unix_s`, `unix_ms`, `slack_ts`, and `rfc3339` — copy the one the target \
-         tool's schema wants. For \"recent / last N\" lookups prefer newest-first \
-         (omit `oldest`) so a wrong floor can't bury the latest data."
+        "Resolve a time expression (\"now\", \"24h ago\", \"in 10 minutes\", \"today\", RFC-3339, or a date) into timestamp representations. Returns `unix_s`, `unix_ms`, `slack_ts` and `rfc3339` — copy whichever the target tool's schema wants. Always produce date/time arguments for other tools this way; never hand-compute epoch seconds."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {

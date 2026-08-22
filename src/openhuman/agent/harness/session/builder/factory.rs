@@ -14,7 +14,6 @@ use crate::openhuman::agent::harness::session::types::Agent;
 use crate::openhuman::agent::host_runtime;
 use crate::openhuman::config::Config;
 use crate::openhuman::inference::provider;
-use crate::openhuman::memory::agent::memory_loader::DefaultMemoryLoader;
 use crate::openhuman::memory::tool_memory::capture::ToolMemoryCaptureHook;
 use crate::openhuman::memory::Memory;
 use crate::openhuman::security::SecurityPolicy;
@@ -1262,22 +1261,6 @@ impl Agent {
             .memory(memory)
             .shared_experience_memory(shared_experience_memory)
             .tool_dispatcher(tool_dispatcher)
-            .memory_loader(Box::new(
-                DefaultMemoryLoader::new(5, config.memory.min_relevance_score)
-                    .with_max_chars(
-                        config
-                            .agent
-                            .resolved_memory_limits()
-                            .max_memory_context_chars,
-                    )
-                    .with_workspace_dir(config.workspace_dir.clone())
-                    // Per-profile memory gate: when the active profile opts out
-                    // of agent-conversation recall, suppress the prior-chat and
-                    // cross-chat blocks. Defaults to on for None / unset.
-                    .with_agent_conversations(
-                        profile.is_none_or(|p| p.include_agent_conversations),
-                    ),
-            ))
             .prompt_builder(prompt_builder)
             .config(effective_agent_config)
             .context_config(config.context.clone())

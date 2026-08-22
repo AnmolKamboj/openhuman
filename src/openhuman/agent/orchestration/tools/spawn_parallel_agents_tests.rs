@@ -819,6 +819,12 @@ fn agent_turn_runs_long_parallel_subagent_flow_with_many_nested_tool_calls() {
 }
 
 async fn agent_turn_runs_long_parallel_subagent_flow_with_many_nested_tool_calls_inner() {
+    // `create_memory` below needs the global embedding host. This test never
+    // installed it, so it only passed when some other test file in the same
+    // binary happened to run first — and failed outright under any filter
+    // narrow enough to exclude them all. `install_for_tests` is `Once`-guarded,
+    // so calling it here is free when a sibling already did.
+    crate::openhuman::memory::host_impls::install_for_tests();
     AgentDefinitionRegistry::init_global_builtins().unwrap();
 
     let workspace = tempfile::TempDir::new().expect("temp workspace");

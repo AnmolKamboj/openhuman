@@ -156,6 +156,12 @@ pub struct Config {
     #[serde(default)]
     pub autonomy: AutonomyConfig,
 
+    /// Host-level switches for the configurable hook system. The hooks
+    /// themselves live in `hooks.json` files, not here — see
+    /// [`super::HooksConfig`].
+    #[serde(default)]
+    pub hooks: super::HooksConfig,
+
     /// Data-egress posture (Privacy Mode). Distinct from `autonomy` (which
     /// governs agent *act* power). Missing `[privacy]` block → `Standard`
     /// (#4435, epic #4256).
@@ -800,6 +806,7 @@ impl Default for Config {
             observability: ObservabilityConfig::default(),
             dashboard: DashboardConfig::default(),
             autonomy: AutonomyConfig::default(),
+            hooks: super::HooksConfig::default(),
             privacy: PrivacyConfig::default(),
             sandbox: SandboxConfig::default(),
             runtime: RuntimeConfig::default(),

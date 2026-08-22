@@ -12,7 +12,6 @@ use crate::openhuman::agent::tool_policy::{
     ToolPolicyRequest,
 };
 use crate::openhuman::inference::provider::{ChatResponse, UsageInfo};
-use crate::openhuman::memory::agent::memory_loader::MemoryLoader;
 use crate::openhuman::memory::Memory;
 use crate::openhuman::tools::ToolResult;
 use crate::openhuman::tools::{PermissionLevel, Tool};
@@ -110,21 +109,6 @@ impl ChatModel<()> for SequenceProvider {
             ModelStreamItem::Started,
             ModelStreamItem::Completed(response),
         ])))
-    }
-}
-
-struct FixedMemoryLoader {
-    context: String,
-}
-
-#[async_trait]
-impl MemoryLoader for FixedMemoryLoader {
-    async fn load_context(
-        &self,
-        _memory: &dyn Memory,
-        _user_message: &str,
-    ) -> anyhow::Result<String> {
-        Ok(self.context.clone())
     }
 }
 
@@ -422,7 +406,6 @@ fn make_agent(visible_tool_names: Option<HashSet<String>>) -> Agent {
 fn make_agent_with_builder(
     provider: Arc<dyn ChatModel<()>>,
     tools: Vec<Box<dyn Tool>>,
-    memory_loader: Box<dyn MemoryLoader>,
     post_turn_hooks: Vec<Arc<dyn PostTurnHook>>,
     config: crate::openhuman::config::AgentConfig,
     context_config: crate::openhuman::config::ContextConfig,
@@ -430,7 +413,6 @@ fn make_agent_with_builder(
     make_agent_with_builder_and_dispatcher(
         provider,
         tools,
-        memory_loader,
         post_turn_hooks,
         config,
         context_config,
@@ -441,7 +423,6 @@ fn make_agent_with_builder(
 fn make_agent_with_builder_and_dispatcher(
     provider: Arc<dyn ChatModel<()>>,
     tools: Vec<Box<dyn Tool>>,
-    memory_loader: Box<dyn MemoryLoader>,
     post_turn_hooks: Vec<Arc<dyn PostTurnHook>>,
     config: crate::openhuman::config::AgentConfig,
     context_config: crate::openhuman::config::ContextConfig,
@@ -461,7 +442,6 @@ fn make_agent_with_builder_and_dispatcher(
         .chat_model(provider)
         .tools(tools)
         .memory(mem)
-        .memory_loader(memory_loader)
         .tool_dispatcher(tool_dispatcher)
         .post_turn_hooks(post_turn_hooks)
         .config(config)
@@ -828,9 +808,6 @@ fn system_prompt_includes_tool_policy_boundary() {
                 calls: Arc::new(AtomicUsize::new(0)),
             }),
         ],
-        Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }),
         vec![],
         config,
         crate::openhuman::config::ContextConfig::default(),
@@ -861,9 +838,6 @@ fn set_agent_definition_name_refreshes_tool_policy_identity() {
                 calls: Arc::new(AtomicUsize::new(0)),
             }),
         ],
-        Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }),
         vec![],
         config,
         crate::openhuman::config::ContextConfig::default(),
@@ -915,9 +889,6 @@ async fn turn_runs_full_tool_cycle_with_context_and_hooks() {
     let mut agent = make_agent_with_builder(
         provider,
         vec![Box::new(EchoTool)],
-        Box::new(FixedMemoryLoader {
-            context: "[Injected]\n".into(),
-        }),
         hooks,
         crate::openhuman::config::AgentConfig {
             max_tool_iterations: 3,
@@ -932,7 +903,6 @@ async fn turn_runs_full_tool_cycle_with_context_and_hooks() {
         .await
         .expect("turn should succeed");
     assert_eq!(response, "final answer");
-    assert!(agent.last_memory_context.as_deref() == Some("[Injected]\n"));
     assert!(agent.history.iter().any(|message| matches!(
         message,
         ConversationMessage::AssistantToolCalls {
@@ -967,7 +937,6 @@ async fn turn_runs_full_tool_cycle_with_context_and_hooks() {
     let requests = provider_impl.requests.lock().await;
     assert_eq!(requests.len(), 2);
     assert_eq!(requests[0][0].role, "system");
-    assert!(requests[0][1].content.contains("[Injected]"));
     assert!(requests[0][1].content.contains("hello world"));
     assert!(requests[1]
         .iter()
@@ -1028,9 +997,6 @@ async fn turn_triggers_configured_memory_agent_before_parent_prompt() {
         .chat_model(provider)
         .tools(vec![Box::new(EchoTool)])
         .memory(mem)
-        .memory_loader(Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }))
         .tool_dispatcher(Box::new(XmlToolDispatcher))
         .config(crate::openhuman::config::AgentConfig {
             max_tool_iterations: 3,
@@ -1086,9 +1052,6 @@ async fn turn_uses_cached_transcript_prefix_on_first_iteration() {
     let mut agent = make_agent_with_builder(
         provider,
         vec![Box::new(EchoTool)],
-        Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }),
         vec![],
         crate::openhuman::config::AgentConfig::default(),
         crate::openhuman::config::ContextConfig::default(),
@@ -1151,9 +1114,6 @@ async fn turn_accepts_valid_required_output_without_repair() {
     let mut agent = make_agent_with_builder(
         provider,
         vec![],
-        Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }),
         vec![],
         config,
         crate::openhuman::config::ContextConfig::default(),
@@ -1210,9 +1170,6 @@ async fn turn_repairs_missing_required_output_via_reprompt() {
     let mut agent = make_agent_with_builder(
         provider,
         vec![],
-        Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }),
         vec![],
         config,
         crate::openhuman::config::ContextConfig::default(),
@@ -1274,9 +1231,6 @@ async fn turn_synthesizes_required_output_when_reprompt_also_omits() {
     let mut agent = make_agent_with_builder(
         provider,
         vec![],
-        Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }),
         vec![],
         config,
         crate::openhuman::config::ContextConfig::default(),
@@ -1344,9 +1298,6 @@ async fn turn_appends_required_output_block_when_streamed_to_preserve_consistenc
     let mut agent = make_agent_with_builder(
         provider,
         vec![],
-        Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }),
         vec![],
         config,
         crate::openhuman::config::ContextConfig::default(),
@@ -1452,9 +1403,6 @@ async fn turn_appends_only_block_not_restated_answer_when_streamed() {
     let mut agent = make_agent_with_builder(
         provider,
         vec![],
-        Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }),
         vec![],
         config,
         crate::openhuman::config::ContextConfig::default(),
@@ -1545,9 +1493,6 @@ async fn turn_appends_synthesized_block_when_streamed_reprompt_also_omits() {
     let mut agent = make_agent_with_builder(
         provider,
         vec![],
-        Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }),
         vec![],
         config,
         crate::openhuman::config::ContextConfig::default(),
@@ -1622,9 +1567,6 @@ async fn turn_synthesizes_required_output_when_reprompt_call_fails() {
     let mut agent = make_agent_with_builder(
         provider,
         vec![],
-        Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }),
         vec![],
         config,
         crate::openhuman::config::ContextConfig::default(),
@@ -1675,9 +1617,6 @@ async fn turn_emits_checkpoint_when_max_tool_iterations_are_exceeded() {
     let mut agent = make_agent_with_builder(
         provider,
         vec![Box::new(EchoTool)],
-        Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }),
         vec![],
         crate::openhuman::config::AgentConfig {
             max_tool_iterations: 1,
@@ -1731,9 +1670,6 @@ async fn turn_errors_on_empty_provider_response() {
     let mut agent = make_agent_with_builder(
         provider,
         vec![],
-        Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }),
         vec![],
         crate::openhuman::config::AgentConfig::default(),
         crate::openhuman::config::ContextConfig::default(),
@@ -1775,9 +1711,6 @@ async fn turn_checkpoint_falls_back_to_deterministic_summary_when_model_summary_
     let mut agent = make_agent_with_builder(
         provider,
         vec![Box::new(EchoTool)],
-        Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }),
         vec![],
         crate::openhuman::config::AgentConfig {
             max_tool_iterations: 1,
@@ -1820,9 +1753,6 @@ async fn turn_checkpoint_rejects_pformat_wrapup_without_streaming_it() {
     let mut agent = make_agent_with_builder_and_dispatcher(
         provider,
         tools,
-        Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }),
         vec![],
         crate::openhuman::config::AgentConfig {
             max_tool_iterations: 1,
@@ -1894,9 +1824,6 @@ async fn turn_synthesizes_final_answer_when_tool_turn_yields_no_text() {
     let mut agent = make_agent_with_builder(
         provider,
         vec![Box::new(EchoTool)],
-        Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }),
         vec![],
         crate::openhuman::config::AgentConfig {
             max_tool_iterations: 5,
@@ -1976,9 +1903,6 @@ async fn turn_final_answer_falls_back_to_deterministic_summary_when_reprompt_emp
     let mut agent = make_agent_with_builder(
         provider,
         vec![Box::new(EchoTool)],
-        Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }),
         vec![],
         crate::openhuman::config::AgentConfig {
             max_tool_iterations: 5,
@@ -2036,9 +1960,6 @@ async fn summarize_turn_wrapup_rejects_prompt_tool_call_and_preserves_usage() {
     let agent = make_agent_with_builder(
         provider,
         vec![],
-        Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }),
         vec![],
         crate::openhuman::config::AgentConfig::default(),
         crate::openhuman::config::ContextConfig::default(),
@@ -2092,9 +2013,6 @@ async fn turn_checkpoint_usage_is_folded_into_transcript_accounting() {
     let mut agent = make_agent_with_builder(
         provider,
         vec![Box::new(EchoTool)],
-        Box::new(FixedMemoryLoader {
-            context: String::new(),
-        }),
         vec![],
         crate::openhuman::config::AgentConfig {
             max_tool_iterations: 1,

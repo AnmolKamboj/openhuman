@@ -293,9 +293,22 @@ test('an idle tail after load does not mask a leak', () => {
     report.window.analyzedSamples < 200,
     'the idle tail must be excluded from the analyzed window',
   );
-  assert.equal(report.memory.find((m) => m.field === 'rssKib').verdict, 'fail');
+  const rss = report.memory.find((m) => m.field === 'rssKib');
+  const expectedKibPerTurn =
+    (400 * (report.window.analyzedSamples - 1)) / report.window.turnsInWindowApprox;
+  assert.ok(Math.abs(rss.kibPerTurn - expectedKibPerTurn) < 1e-9);
+  assert.equal(rss.verdict, 'fail');
   assert.equal(report.overall, 'fail');
   assert.equal(exitCode, 1);
+});
+
+test('a truncated final sample record is skipped without losing valid samples', () => {
+  const valid = buildSamples({ count: 200, rssKib: () => 120_000 });
+  const { report, exitCode } = runAnalyzer(`${valid}{"tMs":`, driver());
+
+  assert.equal(report.window.totalSamples, 200);
+  assert.equal(report.overall, 'pass');
+  assert.equal(exitCode, 0);
 });
 
 test('the settle tail is reported separately from the verdict', () => {
@@ -396,6 +409,40 @@ test('steady throughput passes and is not flagged as a liveness break', () => {
   assert.equal(report.livenessNote, null);
   assert.equal(report.overall, 'pass');
   assert.equal(exitCode, 0);
+});
+
+test('throughput quarters are aligned to the measured epoch window', () => {
+  const samples = buildSamples({ count: 200, rssKib: () => 120_000 });
+  const measured = driver({ measureStartedAtMs: EPOCH0 });
+  const turns = [
+    ...Array.from({ length: 25 }, (_, i) => ({
+      tMs: 49_000,
+      epochMs: EPOCH0 - 5_000 + i,
+      ok: true,
+    })),
+    ...Array.from({ length: 25 }, (_, i) => ({
+      tMs: 49_000,
+      epochMs: EPOCH0 + 1_000 + i * 400,
+      ok: true,
+    })),
+    ...Array.from({ length: 25 }, (_, i) => ({
+      tMs: 1_000,
+      epochMs: EPOCH0 + 39_000 + i * 400,
+      ok: true,
+    })),
+    ...Array.from({ length: 25 }, (_, i) => ({
+      tMs: 1_000,
+      epochMs: EPOCH0 + 55_000 + i,
+      ok: true,
+    })),
+  ];
+  const turnsText = `${turns.map(turn => JSON.stringify(turn)).join('\n')}\n`;
+
+  const { report } = runAnalyzer(samples, measured, [], turnsText);
+
+  assert.equal(report.throughput.firstQuarterTurnsPerSec, 2);
+  assert.equal(report.throughput.lastQuarterTurnsPerSec, 2);
+  assert.equal(report.throughput.verdict, 'pass');
 });
 
 test('throughput is simply unavailable when no turn log is supplied', () => {

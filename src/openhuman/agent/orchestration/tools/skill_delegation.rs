@@ -173,13 +173,15 @@ impl Tool for SkillDelegationTool {
                     "description": "Composio toolkit slug to route to (e.g. `gmail`, `notion`). \
                                     Must match one of the connected toolkits enumerated in this tool's description."
                 },
-                "prompt": {
-                    "type": "string",
-                    "description": "Clear instruction for what to do. Include all relevant context — the sub-agent has no memory of your conversation."
-                },
+                // `prompt` and `model` are described once in the parent's
+                // prompt.md ("Structured handoffs") rather than here, matching
+                // `ArchetypeDelegationTool`. `toolkit` keeps its description:
+                // it is the routing signal and points at the slugs enumerated
+                // in this tool's own description.
+                "prompt": { "type": "string" },
                 "model": {
                     "type": "string",
-                    "description": "Optional exact model id for this delegation only. Keeps the parent provider/routing, but pins the child agent to this model instead of the agent definition's default."
+                    "description": "Pin the child to this exact model id. Omit unless you have a reason."
                 }
             }
         })

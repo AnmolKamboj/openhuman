@@ -85,7 +85,7 @@ while [[ $# -gt 0 ]]; do
     --keep-workspace) KEEP_WORKSPACE=1; shift ;;
     --workspace) REUSE_WORKSPACE="$2"; shift 2 ;;
     --out-dir) OUT_DIR="$2"; shift 2 ;;
-    -h|--help) sed -n '2,40p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,/^# Exit status/p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done

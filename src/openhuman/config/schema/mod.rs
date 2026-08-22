@@ -24,6 +24,8 @@ mod context;
 mod dashboard;
 mod defaults;
 mod dictation;
+mod hooks;
+pub use hooks::HooksConfig;
 mod heartbeat_cron;
 pub mod hosting;
 pub use hosting::HostingConfig;
