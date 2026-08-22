@@ -1,7 +1,7 @@
 id = "account_admin_agent"
 display_name = "Account Admin Agent"
 delegate_name = "manage_account"
-when_to_use = "Account, billing, referral, OAuth, credential, and team-admin specialist — use for plan/balance/cards/transactions/top-ups/coupons/auto-recharge, team membership/invites/roles/switching, login/session/connected OAuth state, or referral claims."
+when_to_use = "Account, billing, team and credential specialist. Use for plan, balance, cards, transactions, top-ups, coupons, auto-recharge, team membership, invites, roles, login/session and connected OAuth state, or referral claims."
 temperature = 0.2
 max_iterations = 8
 sandbox_mode = "none"

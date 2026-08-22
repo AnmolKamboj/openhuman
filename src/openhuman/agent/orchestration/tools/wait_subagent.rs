@@ -60,13 +60,7 @@ impl Tool for WaitSubagentTool {
     }
 
     fn description(&self) -> &str {
-        "Block until an async sub-agent (started with spawn_async_subagent) \
-         finishes, then return its final result. Optionally bound the wait with \
-         `timeout_secs` (default 120, max 3600); on timeout it reports the \
-         sub-agent is still running and you can call wait_subagent again. \
-         Reaching the timeout is a normal outcome, not a failure — prefer a \
-         long wait (minutes) for work like a build or a test suite rather than \
-         polling tightly."
+        "Block until an async sub-agent finishes and return its result. `timeout_secs` defaults to 120, max 3600; timing out is a normal outcome you can retry, so prefer one long wait over tight polling."
     }
 
     /// Let the wait own its own deadline instead of inheriting the generic
