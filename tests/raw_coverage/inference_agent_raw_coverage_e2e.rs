@@ -3877,7 +3877,6 @@ async fn agent_debug_prompt_dump_and_identity_rendering_cover_file_layouts() {
             tool_names: vec!["todo".to_string(), "delegate".to_string()],
             tool_specs: vec![],
             skill_tool_count: 0,
-            tool_specs: Vec::new(),
         },
         DumpedPrompt {
             agent_id: "integrations_agent".to_string(),
@@ -3889,7 +3888,6 @@ async fn agent_debug_prompt_dump_and_identity_rendering_cover_file_layouts() {
             tool_names: vec!["GMAIL_SEND_EMAIL".to_string()],
             tool_specs: vec![],
             skill_tool_count: 1,
-            tool_specs: Vec::new(),
         },
     ];
 

@@ -421,8 +421,91 @@ const TINYVOICE: ModuleRecord = ModuleRecord {
     load: LoadPolicy::Lazy,
 };
 
+/// The `tinyruntime` module: the runtime router.
+///
+/// Resolves a language runtime, installs one when the host has none, reuses one
+/// when it does, and runs code on a bounded pool of warm interpreter processes.
+/// It is a router: on its own it knows no languages, and it routes to the two
+/// provider records below.
+///
+/// Lazy, because a host that never runs a skill, a flow step, or a `node_exec`
+/// should not pay a download and a `dlopen` for the ability to.
+///
+/// # No pinned assets yet
+///
+/// `assets` is deliberately empty: this build pins no published release. The
+/// module still loads from a developer build named by `modules.local` or from
+/// the module search path (`OPENHUMAN_MODULE_PATH`), which is how it is
+/// exercised today. A download attempt reports that no artifact exists for this
+/// platform, which is accurate.
+///
+/// When the first release is cut, take the digests verbatim from that release's
+/// `checksum.toml` — never from a local build, which would agree with itself no
+/// matter what was served.
+const TINYRUNTIME: ModuleRecord = ModuleRecord {
+    id: "tinyruntime",
+    description: "Language runtime resolution, installation, and pooled execution",
+    bus_name: "ai.tinyhumans.runtime.Runtime",
+    object_path: "/ai/tinyhumans/runtime/Runtime",
+    version: "0.1.0",
+    release_url: "https://github.com/tinyhumansai/tinyruntime/releases/tag/v0.1.0",
+    assets: &[],
+    load: LoadPolicy::Lazy,
+};
+
+/// The `tinyruntime-nodejs` module: the Node.js half of the router's knowledge.
+///
+/// Answers which host interpreters count, which archive nodejs.org publishes for
+/// this machine, where the binaries land, and what a warm Node worker is. It
+/// installs nothing itself.
+///
+/// It implements the shared `ai.tinyhumans.runtime.Provider` interface but
+/// serves at its own object path, because two modules cannot claim one bus name
+/// and tinybus derives the path from the name.
+///
+/// Lazy, and loaded by the same call that loads the router: a language is only
+/// worth its `dlopen` when something asks for that language.
+///
+/// See [`TINYRUNTIME`] on why `assets` is empty.
+const TINYRUNTIME_NODEJS: ModuleRecord = ModuleRecord {
+    id: "tinyruntime-nodejs",
+    description: "Node.js runtime provider for tinyruntime",
+    bus_name: "ai.tinyhumans.runtime.nodejs.Provider",
+    object_path: "/ai/tinyhumans/runtime/nodejs/Provider",
+    version: "0.1.0",
+    release_url: "https://github.com/tinyhumansai/tinyruntime-nodejs/releases/tag/v0.1.0",
+    assets: &[],
+    load: LoadPolicy::Lazy,
+};
+
+/// The `tinyruntime-python` module: the Python half of the router's knowledge.
+///
+/// Answers which host interpreters count, which standalone build to install, and
+/// what a warm Python worker is. It installs nothing itself.
+///
+/// See [`TINYRUNTIME`] on why `assets` is empty.
+const TINYRUNTIME_PYTHON: ModuleRecord = ModuleRecord {
+    id: "tinyruntime-python",
+    description: "Python runtime provider for tinyruntime",
+    bus_name: "ai.tinyhumans.runtime.python.Provider",
+    object_path: "/ai/tinyhumans/runtime/python/Provider",
+    version: "0.1.0",
+    release_url: "https://github.com/tinyhumansai/tinyruntime-python/releases/tag/v0.1.0",
+    assets: &[],
+    load: LoadPolicy::Lazy,
+};
+
 /// Every module this build can load.
-pub const ALL: &[ModuleRecord] = &[TINYDOCS, TINYWALLET, TINYMEMORY, TINYJUICE, TINYVOICE];
+pub const ALL: &[ModuleRecord] = &[
+    TINYDOCS,
+    TINYWALLET,
+    TINYMEMORY,
+    TINYJUICE,
+    TINYVOICE,
+    TINYRUNTIME,
+    TINYRUNTIME_NODEJS,
+    TINYRUNTIME_PYTHON,
+];
 
 /// The record for `id`, if this build knows it.
 #[must_use]
@@ -561,11 +644,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn every_host_the_platform_table_can_produce_has_an_asset() {
-        // The two tables are written independently and would drift silently:
-        // `platform` offering a key no release publishes turns a supported host
-        // into an "unsupported host" at first use.
+    /// Every host key `platform` can produce, across the supported triples.
+    fn every_host_key() -> Vec<String> {
         let hosts = [
             ("linux", "x86_64", Some((2, 39))),
             ("linux", "aarch64", Some((2, 39))),
@@ -576,16 +656,54 @@ mod tests {
             ("windows", "x86_64", None),
             ("windows", "aarch64", None),
         ];
-        for record in ALL {
-            for (os, arch, glibc) in hosts {
-                for key in candidates_for(os, arch, glibc) {
-                    assert!(
-                        record.asset_for(&key).is_some(),
-                        "{} publishes no asset for {key}, which {os}/{arch} would ask for",
-                        record.id
-                    );
-                }
+        let mut keys: Vec<String> = hosts
+            .into_iter()
+            .flat_map(|(os, arch, glibc)| candidates_for(os, arch, glibc))
+            .collect();
+        keys.sort();
+        keys.dedup();
+        keys
+    }
+
+    #[test]
+    fn a_record_that_pins_a_release_covers_every_host_the_platform_table_offers() {
+        // The two tables are written independently and would drift silently:
+        // `platform` offering a key no release publishes turns a supported host
+        // into an "unsupported host" at first use.
+        //
+        // Scoped to records that pin a release at all. A record with no assets
+        // is a module this build knows but has no published artifact for; it
+        // loads from a developer build or the module search path, and asserting
+        // release coverage for a release that does not exist would only assert
+        // that it does not exist. The partial-coverage case — the one that is
+        // actually a bug — is caught below.
+        for record in ALL.iter().filter(|record| !record.assets.is_empty()) {
+            for key in every_host_key() {
+                assert!(
+                    record.asset_for(&key).is_some(),
+                    "{} publishes no asset for {key}, which the platform table would ask for",
+                    record.id
+                );
             }
+        }
+    }
+
+    #[test]
+    fn a_record_publishes_for_every_host_or_for_none() {
+        // Partial coverage is the drift that hurts: it looks supported until a
+        // user on the missing platform reaches the feature. All-or-nothing keeps
+        // "not published yet" distinguishable from "published and incomplete".
+        for record in ALL {
+            let covered = every_host_key()
+                .into_iter()
+                .filter(|key| record.asset_for(key).is_some())
+                .count();
+            assert!(
+                covered == 0 || covered == every_host_key().len(),
+                "{} publishes assets for {covered} of {} host keys",
+                record.id,
+                every_host_key().len()
+            );
         }
     }
 

@@ -59,6 +59,23 @@ pub struct CoreContext {
     /// [`CoreContext::current`] → [`CoreContext::domains`]. `full()` for the
     /// desktop shell / standalone CLI (byte-identical to pre-#4796).
     domains: crate::core::runtime::DomainSet,
+    /// The configuration an embedder supplied to
+    /// [`CoreBuilder::config`](crate::core::runtime::CoreBuilder::config),
+    /// if any.
+    ///
+    /// `None` for every host that lets the core discover its own config, which
+    /// is all of them today except a library embedder — so the default path is
+    /// untouched.
+    ///
+    /// This exists because setting the config at boot is **not** sufficient on
+    /// its own: RPC handlers do not receive it, they call
+    /// `config::ops::load_config_with_timeout()` per dispatch, which re-runs
+    /// `Config::load_or_init()` and re-resolves the process-global workspace.
+    /// An embedder that supplied a config would therefore watch its turns run
+    /// against `~/.openhuman` anyway. Publishing it on the context — the seam
+    /// phase 2 of `docs/plans/pluggable-core/` introduced for exactly this
+    /// migration — lets that loader prefer it without any handler changing.
+    embedder_config: Option<crate::openhuman::config::Config>,
 }
 
 /// The complete input to a workspace-scoped memory binding.
@@ -82,10 +99,38 @@ impl CoreContext {
     ///
     /// 1. register controllers, 2. master key, 3. seed RPC bearer,
     /// 4. workspace stores ([`init_stores`]), 5. pure runtime registration.
+    ///
+    /// `preloaded_config` lets an embedder supply the [`Config`] outright
+    /// instead of having step 4 discover one from disk and the environment. See
+    /// [`init_with_config`](Self::init_with_config) for why that matters.
     pub async fn init(
         host_kind: HostKind,
         token: &TokenSource,
         domains: crate::core::runtime::DomainSet,
+    ) -> anyhow::Result<(
+        Arc<CoreContext>,
+        bool,
+        Option<crate::openhuman::config::Config>,
+    )> {
+        Self::init_with_config(host_kind, token, domains, None).await
+    }
+
+    /// [`init`](Self::init) with an optional caller-supplied configuration.
+    ///
+    /// Passing `Some(config)` skips `Config::load_or_init()` entirely — the
+    /// config is used verbatim, exactly as loaded config would be. This is the
+    /// seam that lets a library embedder configure the core with struct fields
+    /// rather than by mutating the process environment before `build()`, which
+    /// is order-dependent, process-global, and invisible at the call site.
+    ///
+    /// Note it does not make the core hermetic on its own: `init_stores`, the
+    /// session database and the keyring still write beneath
+    /// `config.workspace_dir`. It decides *where*, not *whether*.
+    pub async fn init_with_config(
+        host_kind: HostKind,
+        token: &TokenSource,
+        domains: crate::core::runtime::DomainSet,
+        preloaded_config: Option<crate::openhuman::config::Config>,
     ) -> anyhow::Result<(
         Arc<CoreContext>,
         bool,
@@ -114,11 +159,28 @@ impl CoreContext {
                 !token.trim().is_empty()
             }
             TokenSource::EnvOrFile => {
-                let token_dir = crate::openhuman::config::default_root_openhuman_dir()
-                    .unwrap_or_else(|_| {
-                        dirs::home_dir()
-                            .unwrap_or_else(|| std::path::PathBuf::from("."))
-                            .join(".openhuman")
+                // A caller-supplied config scopes the core's state, so a
+                // self-generated bearer must land beside it rather than under
+                // the operator's real `~/.openhuman` root — otherwise an
+                // "ephemeral" harness still writes a `core.token` into the
+                // operator's install. Fall back to the default root only when
+                // no config was supplied.
+                let token_dir = preloaded_config
+                    .as_ref()
+                    .map(|cfg| {
+                        cfg.config_path
+                            .parent()
+                            .map(|p| p.to_path_buf())
+                            .unwrap_or_else(|| cfg.config_path.clone())
+                    })
+                    .unwrap_or_else(|| {
+                        crate::openhuman::config::default_root_openhuman_dir().unwrap_or_else(
+                            |_| {
+                                dirs::home_dir()
+                                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+                                    .join(".openhuman")
+                            },
+                        )
                     });
                 crate::core::auth::init_rpc_token(&token_dir)?;
                 std::env::var(crate::core::auth::CORE_TOKEN_ENV_VAR)
@@ -130,7 +192,19 @@ impl CoreContext {
 
         // 5. Resolve config once, then initialize workspace-bound stores
         //    (memory, attachments, people) with that exact workspace.
-        let config = match crate::openhuman::config::Config::load_or_init().await {
+        // Kept for the context: `preloaded_config` is consumed below, and the
+        // whole point is that handlers can reach it after boot.
+        let embedder_config = preloaded_config.clone();
+        let loaded = match preloaded_config {
+            // A supplied config is authoritative: no disk read, no env overlay,
+            // and no `Err` arm to reach, because there was nothing to fail.
+            Some(cfg) => {
+                log::debug!("[core-context] init: using caller-supplied config (scoped workspace)");
+                Ok(cfg)
+            }
+            None => crate::openhuman::config::Config::load_or_init().await,
+        };
+        let config = match loaded {
             Ok(cfg) => {
                 init_stores(&cfg, domains).await;
                 Some(cfg)
@@ -168,6 +242,7 @@ impl CoreContext {
                 memory_subsystem,
             }),
             domains,
+            embedder_config,
         });
 
         // Register the process default context (first build wins). Dispatch
@@ -311,6 +386,21 @@ impl CoreContext {
     /// (e.g. a unit test that dispatches without initializing the core).
     ///
     /// Handlers migrating off process globals read their state through this.
+    /// The configuration this context was built with, when an embedder
+    /// supplied one.
+    ///
+    /// `None` means "discover it the usual way" — see the field docs.
+    pub fn embedder_config(&self) -> Option<&crate::openhuman::config::Config> {
+        self.embedder_config.as_ref()
+    }
+
+    /// The embedder-supplied config for the current dispatch, if there is one.
+    ///
+    /// The read path for `config::ops::load_config_with_timeout`.
+    pub fn current_embedder_config() -> Option<crate::openhuman::config::Config> {
+        Self::current().and_then(|ctx| ctx.embedder_config.clone())
+    }
+
     pub fn current() -> Option<Arc<CoreContext>> {
         CURRENT_CONTEXT
             .try_with(|ctx| ctx.clone())
@@ -410,6 +500,7 @@ impl CoreContext {
                 memory_subsystem: memory_subsystem.unwrap_or_default(),
             }),
             domains,
+            embedder_config: None,
         })
     }
 }
@@ -594,6 +685,7 @@ mod tests {
                 memory_subsystem: Default::default(),
             }),
             domains: crate::core::runtime::DomainSet::full(),
+            embedder_config: None,
         })
     }
 
@@ -602,6 +694,65 @@ mod tests {
     // not the process default or another tenant's. These assert the primitive
     // directly (independent of the process DEFAULT_CONTEXT global, since
     // `current()` inside a scope resolves the scoped value).
+
+    // ---- embedder-supplied config (the library-embedding seam) ---------------
+    //
+    // `CoreBuilder::config(..)` is only half of the story, and the half that is
+    // easy to get wrong. Setting the config at boot does NOT reach RPC handlers:
+    // they call `load_config_with_timeout()` per dispatch, which re-runs
+    // `Config::load_or_init()` and re-resolves the process-global workspace. The
+    // context has to carry it, and the loader has to prefer it, or an embedder
+    // configures boot and watches its turns run somewhere else entirely.
+
+    fn ctx_with_config(config: crate::openhuman::config::Config) -> Arc<CoreContext> {
+        Arc::new(CoreContext {
+            host_kind: HostKind::Cli,
+            workspace_binding: RwLock::new(WorkspaceBinding {
+                workspace_dir: Some(config.workspace_dir.clone()),
+                memory_subsystem: Default::default(),
+            }),
+            domains: crate::core::runtime::DomainSet::full(),
+            embedder_config: Some(config),
+        })
+    }
+
+    #[test]
+    fn a_context_without_an_embedder_config_reports_none() {
+        // The default for every host that lets the core discover its own
+        // config, which is all of them but a library embedder.
+        assert!(ctx("/tmp/ws").embedder_config().is_none());
+    }
+
+    #[test]
+    fn an_embedder_config_is_readable_from_the_context() {
+        let mut config = crate::openhuman::config::Config::default();
+        config.workspace_dir = PathBuf::from("/tmp/embedder-ws");
+        config.default_model = Some("embedder-model".into());
+
+        let ctx = ctx_with_config(config);
+        let read = ctx.embedder_config().expect("supplied config is readable");
+        assert_eq!(read.workspace_dir, PathBuf::from("/tmp/embedder-ws"));
+        assert_eq!(read.default_model.as_deref(), Some("embedder-model"));
+    }
+
+    #[tokio::test]
+    async fn the_current_dispatch_sees_the_scoped_embedder_config() {
+        // This is the read path `load_config_with_timeout` uses. If it resolved
+        // to the process default instead of the scoped context, a second
+        // embedder in the same process would silently serve the first's config.
+        let mut config = crate::openhuman::config::Config::default();
+        config.workspace_dir = PathBuf::from("/tmp/scoped-ws");
+        config.default_model = Some("scoped-model".into());
+
+        let scoped = CoreContext::scope(ctx_with_config(config), async {
+            CoreContext::current_embedder_config()
+        })
+        .await;
+
+        let scoped = scoped.expect("a scoped embedder config is visible to the dispatch");
+        assert_eq!(scoped.default_model.as_deref(), Some("scoped-model"));
+        assert_eq!(scoped.workspace_dir, PathBuf::from("/tmp/scoped-ws"));
+    }
 
     // ---- store-init gating (#4796 DoD item 3) --------------------------------
     // `init_stores` side-effects on process globals with no init-state probe, so
@@ -714,6 +865,7 @@ mod tests {
                 memory_subsystem: Default::default(),
             }),
             domains: crate::core::runtime::DomainSet::full(),
+            embedder_config: None,
         };
 
         // `workspace_dir()` is the gate every workspace-bound store goes
@@ -761,6 +913,7 @@ mod tests {
                 memory_subsystem: Default::default(),
             }),
             domains: crate::core::runtime::DomainSet::full(),
+            embedder_config: None,
         });
         let b = Arc::new(CoreContext {
             host_kind: HostKind::Cli,
@@ -769,6 +922,7 @@ mod tests {
                 memory_subsystem: Default::default(),
             }),
             domains: crate::core::runtime::DomainSet::full(),
+            embedder_config: None,
         });
 
         let bind_a = a.memory_binding().expect("bind workspace A");
@@ -793,6 +947,7 @@ mod tests {
                 memory_subsystem: Default::default(),
             }),
             domains: crate::core::runtime::DomainSet::full(),
+            embedder_config: None,
         };
 
         let bind_a = ctx.memory_binding().expect("bind workspace A");
@@ -818,6 +973,7 @@ mod tests {
                 memory_subsystem: Default::default(),
             }),
             domains: crate::core::runtime::DomainSet::full(),
+            embedder_config: None,
         };
 
         let bind_a = ctx.memory_binding().expect("bind workspace A");
@@ -856,6 +1012,7 @@ mod tests {
                 memory_subsystem: Default::default(),
             }),
             domains: crate::core::runtime::DomainSet::full(),
+            embedder_config: None,
         };
         let b = CoreContext {
             host_kind: HostKind::Cli,
@@ -864,6 +1021,7 @@ mod tests {
                 memory_subsystem: untrusted_external_memory_cfg(),
             }),
             domains: crate::core::runtime::DomainSet::full(),
+            embedder_config: None,
         };
 
         let bind_a = a.memory_binding().expect("bind workspace A");
@@ -892,6 +1050,7 @@ mod tests {
                 memory_subsystem: Default::default(),
             }),
             domains: crate::core::runtime::DomainSet::full(),
+            embedder_config: None,
         };
         assert!(ctx.memory_binding().is_err(), "no workspace ⇒ no binding");
         assert_eq!(

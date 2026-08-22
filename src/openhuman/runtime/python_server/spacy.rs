@@ -101,7 +101,7 @@ pub async fn ensure_spacy(config: &Config) -> Result<SpacyRuntime> {
         SPACY_MODEL
     );
 
-    let bootstrap = PythonBootstrap::new(config.runtime_python.clone());
+    let bootstrap = PythonBootstrap::new(std::sync::Arc::new(config.clone()));
     let base = bootstrap
         .resolve()
         .await

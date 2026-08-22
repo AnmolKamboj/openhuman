@@ -84,11 +84,7 @@ async fn resolve_node(config: &Config) -> ResolvedRuntimeSummary {
             error: Some("node runtime disabled".to_string()),
         };
     }
-    let bootstrap = NodeBootstrap::new(
-        config.node.clone(),
-        config.workspace_dir.clone(),
-        reqwest::Client::new(),
-    );
+    let bootstrap = NodeBootstrap::new(std::sync::Arc::new(config.clone()));
     match bootstrap.resolve().await {
         Ok(resolved) => ResolvedRuntimeSummary {
             runtime: "node".to_string(),
@@ -132,7 +128,7 @@ async fn resolve_python(config: &Config) -> ResolvedRuntimeSummary {
             error: Some("python runtime disabled".to_string()),
         };
     }
-    let bootstrap = PythonBootstrap::new(config.runtime_python.clone());
+    let bootstrap = PythonBootstrap::new(std::sync::Arc::new(config.clone()));
     match bootstrap.resolve().await {
         Ok(resolved) => ResolvedRuntimeSummary {
             runtime: "python".to_string(),

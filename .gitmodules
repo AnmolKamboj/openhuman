@@ -31,3 +31,6 @@
 	path = vendor/tinyhosts
 	url = https://github.com/tinyhumansai/tinyhosts.git
 	branch = main
+[submodule "vendor/tinyruntime"]
+	path = vendor/tinyruntime
+	url = https://github.com/tinyhumansai/tinyruntime.git
