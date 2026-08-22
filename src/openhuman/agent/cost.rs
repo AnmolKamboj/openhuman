@@ -102,8 +102,8 @@ const PRICING_TABLE: &[ModelPricing] = &[
         output_per_mtok_usd: 0.87,
     },
     // Burst tier — high-throughput, low-cost model; flat rate both directions,
-    // no prompt cache (so cached rate mirrors the input rate). Used by the
-    // SuperContext scout.
+    // no prompt cache (so cached rate mirrors the input rate). Used by fast,
+    // high-fanout workers.
     ModelPricing {
         model: "burst-v1",
         input_per_mtok_usd: 0.208,
@@ -272,9 +272,8 @@ mod tests {
 
     #[test]
     fn lookup_pricing_has_a_burst_row() {
-        // The burst tier (SuperContext scout) must price from its own row —
-        // NOT via the $3/$15 fallback, which would inflate first-turn scout cost
-        // and could trip budget gates.
+        // The burst tier must price from its own row, not via the $3/$15
+        // fallback, which would inflate worker cost and could trip budget gates.
         let p = lookup_pricing("burst-v1");
         assert_eq!(p.model, "burst-v1");
         assert_eq!(p.input_per_mtok_usd, 0.208);

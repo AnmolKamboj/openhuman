@@ -333,7 +333,7 @@ fn assert_no_jsonrpc_error<'a>(v: &'a Value, context: &str) -> &'a Value {
         .unwrap_or_else(|| panic!("{context}: missing result: {v}"))
 }
 
-fn write_min_config(openhuman_dir: &Path, api_origin: &str, super_context_enabled: bool) {
+fn write_min_config(openhuman_dir: &Path, api_origin: &str) {
     let cfg = format!(
         r#"api_url = "{api_origin}"
 default_model = "e2e-mock-model"
@@ -343,12 +343,6 @@ chat_onboarding_completed = true
 [secrets]
 encrypt = false
 
-[context]
-# Most harness tests script the mock-LLM call sequence exactly; the default-on
-# first-turn "super context" pass (#4085) would spawn a context_scout and consume
-# a scripted response, desyncing the orchestrator turns. Tests opt in only when
-# they explicitly cover super context.
-super_context_enabled = {super_context_enabled}
 "#
     );
     fn write_config_file(config_dir: &Path, cfg: &str) {
@@ -496,10 +490,6 @@ impl Drop for Stack {
 }
 
 async fn boot_stack() -> Stack {
-    boot_stack_with_super_context(false).await
-}
-
-async fn boot_stack_with_super_context(super_context_enabled: bool) -> Stack {
     // Ensure the global AgentDefinitionRegistry is populated with built-in
     // archetypes (orchestrator, researcher, task_manager_agent, etc.) before
     // the RPC stack starts. Without this the session builder cannot synthesise
@@ -518,13 +508,9 @@ async fn boot_stack_with_super_context(super_context_enabled: bool) -> Stack {
 
     let (mock_addr, mock_join) = serve_on_ephemeral(scripted_upstream_router()).await;
     let mock_origin = format!("http://{mock_addr}");
-    write_min_config(&openhuman_home, &mock_origin, super_context_enabled);
+    write_min_config(&openhuman_home, &mock_origin);
     // Pre-write user-scoped config so it's found after auth_store_session activates "e2e-user".
-    write_min_config(
-        &openhuman_home.join("users").join("e2e-user"),
-        &mock_origin,
-        super_context_enabled,
-    );
+    write_min_config(&openhuman_home.join("users").join("e2e-user"), &mock_origin);
 
     // The transport-only router does not create a Core runtime context. Install
     // the explicit tinymemory host seams before handlers service memory-backed
@@ -865,204 +851,6 @@ async fn subagent_delegation_happy_path_inner() {
         "request[0] and request[1] share identical first-message content — \
          researcher subagent did not build its own context; \
          content: {req0_sys:?}"
-    );
-
-    stack.shutdown();
-}
-
-// ─── Super context: harness-driven context-scout happy path ───────────────────
-//
-// Tool surface (src/openhuman/agent/orchestration/tools/agent_prepare_context.rs,
-//   src/openhuman/agent/registry/agents/context_scout/agent.toml):
-//   - First-turn context prep is harness-driven, not orchestrator-scoped. The
-//     harness runs the read-only `context_scout` before the orchestrator's first
-//     LLM call and injects the scout's `[context_bundle]` into the user message.
-//
-// Actual LLM request ordering (with registry init):
-//   request[0] = context_scout subagent inner loop → model returns the bundle text
-//   request[1] = orchestrator synthesis → final text, having read the bundle
-
-/// The harness runs `context_scout` before the first orchestrator turn and
-/// injects the returned `[context_bundle]`; the final orchestrator synthesis
-/// reads it. Two upstream requests prove the full scout path ran without
-/// exposing `agent_prepare_context` to the orchestrator.
-#[test]
-fn super_context_happy_path() {
-    run_on_agent_stack("super_context_happy_path", super_context_happy_path_inner);
-}
-
-/// Regression for the "scout runs, bundle missing" failure: the fast chat-tier
-/// `context_scout` wraps its `[context_bundle]` envelope in a preamble and a
-/// closing line. The harness must extract just the envelope and inject it (not
-/// drop the whole thing, and not leak the surrounding prose into the
-/// orchestrator's context).
-#[test]
-fn super_context_extracts_prose_wrapped_bundle() {
-    run_on_agent_stack(
-        "super_context_extracts_prose_wrapped_bundle",
-        super_context_extracts_prose_wrapped_bundle_inner,
-    );
-}
-
-async fn super_context_extracts_prose_wrapped_bundle_inner() {
-    let _lock = env_lock();
-    // The envelope is wrapped in prose on BOTH sides — exactly what the strict
-    // whole-output validator used to reject.
-    let prose_wrapped = "Sure! Here's what I found for you:\n\n\
-         [context_bundle]\n\
-         has_enough_context: true\n\
-         summary: CTX_CANARY_9 — the user wants the marker phrase (memory).\n\
-         recommended_tool_calls:\n\
-         [/context_bundle]\n\n\
-         Hope that helps — let me know if you want me to dig deeper!";
-    reset_script(vec![
-        // request[0]: harness-driven context_scout returns a prose-wrapped bundle.
-        text_completion(prose_wrapped),
-        // request[1]: orchestrator reads the *extracted* bundle and synthesizes.
-        text_completion("Prepared. CTX_CANARY_9 noted."),
-    ]);
-    let stack = boot_stack_with_super_context(true).await;
-
-    let mut events = spawn_sse_collector(format!(
-        "{}/events?client_id=harness-prepctx-prose",
-        stack.rpc_base
-    ));
-    send_web_chat(
-        &stack.rpc_base,
-        400,
-        "harness-prepctx-prose",
-        "thread-prepctx-prose",
-        "prepare context for the marker",
-    )
-    .await;
-
-    let done = wait_for_terminal(&mut events, Duration::from_secs(120)).await;
-    assert_eq!(
-        done.get("event").and_then(Value::as_str),
-        Some("chat_done"),
-        "expected chat_done for prose-wrapped super_context: {done}"
-    );
-
-    let requests = with_captured(|c| c.clone());
-    let last_messages = serde_json::to_string(
-        requests
-            .last()
-            .and_then(|r| r.pointer("/body/messages"))
-            .unwrap_or(&Value::Null),
-    )
-    .unwrap_or_default();
-    // The extracted envelope (with its canary) must reach the orchestrator …
-    assert!(
-        last_messages.contains("[context_bundle]") && last_messages.contains("CTX_CANARY_9"),
-        "extracted bundle missing from synthesis request; messages: {last_messages}"
-    );
-    // … but the wrapping prose must NOT — we inject only the envelope.
-    assert!(
-        !last_messages.contains("Here's what I found")
-            && !last_messages.contains("Hope that helps"),
-        "scout's wrapping prose leaked into the orchestrator context; messages: {last_messages}"
-    );
-
-    stack.shutdown();
-}
-
-async fn super_context_happy_path_inner() {
-    let _lock = env_lock();
-    let scout_bundle = "[context_bundle]\n\
-         has_enough_context: true\n\
-         summary: CTX_CANARY_7 — the user wants the marker phrase (memory).\n\
-         recommended_tool_calls:\n\
-         \x20 - tool: spawn_worker_thread\n\
-         \x20   args: {\"prompt\": \"act on the marker\"}\n\
-         \x20   why: execute the prepared plan\n\
-         [/context_bundle]";
-    reset_script(vec![
-        // request[0]: harness-driven context_scout subagent returns the bundle.
-        text_completion(scout_bundle),
-        // request[1]: Orchestrator reads the injected bundle and synthesizes.
-        text_completion("Prepared. CTX_CANARY_7 noted; next I'd spawn a worker."),
-    ]);
-    let stack = boot_stack_with_super_context(true).await;
-
-    let mut events = spawn_sse_collector(format!(
-        "{}/events?client_id=harness-prepctx",
-        stack.rpc_base
-    ));
-    send_web_chat(
-        &stack.rpc_base,
-        400,
-        "harness-prepctx",
-        "thread-prepctx",
-        "prepare context for the marker",
-    )
-    .await;
-
-    let done = wait_for_terminal(&mut events, Duration::from_secs(120)).await;
-    assert_eq!(
-        done.get("event").and_then(Value::as_str),
-        Some("chat_done"),
-        "expected chat_done for super_context: {done}"
-    );
-    let full_response = done
-        .get("full_response")
-        .and_then(Value::as_str)
-        .unwrap_or_else(|| panic!("chat_done missing 'full_response': {done}"));
-    assert!(
-        full_response.contains("CTX_CANARY_7"),
-        "final response missing scout canary; full_response: {full_response}\nevent: {done}"
-    );
-
-    let requests = with_captured(|c| c.clone());
-    assert!(
-        requests.len() >= 2,
-        "expected ≥2 upstream requests (context_scout + orchestrator), got {};\n{}",
-        requests.len(),
-        serde_json::to_string_pretty(&requests).unwrap_or_default()
-    );
-
-    let orchestrator_tools = serde_json::to_string(
-        requests
-            .last()
-            .and_then(|r| r.pointer("/body/tools"))
-            .unwrap_or(&Value::Null),
-    )
-    .unwrap_or_default();
-    assert!(
-        !orchestrator_tools.contains("agent_prepare_context"),
-        "orchestrator should not see agent_prepare_context in its tool schema; tools: {orchestrator_tools}"
-    );
-
-    // The synthesis turn must carry the scout's bundle in the user message —
-    // proves the [context_bundle] flowed into the orchestrator's context without
-    // an orchestrator tool call.
-    let last_messages = serde_json::to_string(
-        requests
-            .last()
-            .and_then(|r| r.pointer("/body/messages"))
-            .unwrap_or(&Value::Null),
-    )
-    .unwrap_or_default();
-    assert!(
-        last_messages.contains("[context_bundle]") && last_messages.contains("CTX_CANARY_7"),
-        "synthesis request missing the scout bundle as a tool result; messages: {last_messages}"
-    );
-
-    // request[1] (context_scout) must build a different context than request[0]
-    // (orchestrator) — proves a genuinely separate scout agent ran.
-    let req0_sys = requests
-        .first()
-        .and_then(|r| r.pointer("/body/messages/0/content"))
-        .and_then(Value::as_str)
-        .unwrap_or("");
-    let req1_sys = requests
-        .get(1)
-        .and_then(|r| r.pointer("/body/messages/0/content"))
-        .and_then(Value::as_str)
-        .unwrap_or("");
-    assert_ne!(
-        req0_sys, req1_sys,
-        "request[0] and request[1] share identical first-message content — \
-         context_scout did not build its own context"
     );
 
     stack.shutdown();
@@ -2527,14 +2315,7 @@ mod streaming_support {
             .event_context("stream-accum-session", "stream-accum-channel")
             .agent_definition_name("round17/orchestrator")
             .config(config)
-            // These are deterministic scripted-mock orchestrator turns. The
-            // default-on first-turn "super context" pass (#4085) would spawn a
-            // context_scout and add an extra model call the scripts don't expect,
-            // breaking every orchestrator test here. Disable it for the harness.
-            .context_config(ContextConfig {
-                super_context_enabled: false,
-                ..ContextConfig::default()
-            })
+            .context_config(ContextConfig::default())
             .auto_save(true)
             .explicit_preferences_enabled(false)
             .build()
