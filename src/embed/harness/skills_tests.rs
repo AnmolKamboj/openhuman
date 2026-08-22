@@ -69,7 +69,7 @@ fn a_symlinked_bundle_is_skipped_not_followed() {
     // Copying one in would smuggle past a control that exists because this root
     // is scanned with no trust marker.
     let src = tempfile::tempdir().expect("src");
-    let _ws = tempfile::tempdir().expect("ws");
+    let ws = tempfile::tempdir().expect("ws");
     let outside = tempfile::tempdir().expect("outside");
     bundle(&outside.path().join("evil"), "SKILL.md", "# evil");
 
@@ -84,7 +84,7 @@ fn a_symlinked_bundle_is_skipped_not_followed() {
 #[test]
 fn a_symlink_inside_a_bundle_is_skipped_not_followed() {
     let src = tempfile::tempdir().expect("src");
-    let _ws = tempfile::tempdir().expect("ws");
+    let ws = tempfile::tempdir().expect("ws");
     let outside = tempfile::tempdir().expect("outside");
     std::fs::write(outside.path().join("secret"), "token").expect("write");
 
