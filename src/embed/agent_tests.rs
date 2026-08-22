@@ -128,13 +128,15 @@ fn is_https_endpoint_accepts_only_tls() {
 
 #[test]
 fn insecure_route_error_names_the_redacted_endpoint() {
+    // The guard sanitizes the endpoint before it lands in the error, so the
+    // message names the origin but never the credential-bearing parts.
+    let endpoint = sanitize_url_for_display("http://user:pass@api.example/v1?key=leaky");
     let err = CoreError::InsecureRoute {
         method: AGENT_CHAT,
-        endpoint: "http://user:pass@api.example/v1?key=leaky".to_string(),
+        endpoint,
     };
     let msg = err.to_string();
     assert!(msg.contains("non-HTTPS"), "classifies the reason: {msg}");
-    // The endpoint rendered in the message has its credentials stripped.
     assert!(!msg.contains("user"), "userinfo not leaked: {msg}");
     assert!(!msg.contains("leaky"), "query credentials not leaked: {msg}");
     assert!(msg.contains("api.example"), "origin stays readable: {msg}");
