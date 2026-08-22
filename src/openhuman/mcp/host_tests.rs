@@ -329,7 +329,7 @@ fn the_only_open_service_answers_when_no_default_is_set() {
     // is connected while a connection sits in the map.
     let only = tempfile::tempdir().expect("tempdir");
     let hosts = hosts_for(&[only.path()]);
-    let expected = Arc::clone(&hosts[only.path()]);
+    let expected = Arc::clone(&hosts[only.path()].host);
 
     let resolved = super::resolve(None, &hosts).expect("the sole service");
 
@@ -359,7 +359,7 @@ fn a_default_naming_a_workspace_nothing_opened_falls_through_to_the_rule() {
     let only = tempfile::tempdir().expect("tempdir");
     let absent = tempfile::tempdir().expect("tempdir");
     let hosts = hosts_for(&[only.path()]);
-    let expected = Arc::clone(&hosts[only.path()]);
+    let expected = Arc::clone(&hosts[only.path()].host);
 
     let resolved = super::resolve(Some(absent.path()), &hosts).expect("the sole service");
 
