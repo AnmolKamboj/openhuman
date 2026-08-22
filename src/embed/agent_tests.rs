@@ -114,3 +114,28 @@ fn route_debug_redacts_bearer_and_url_embedded_credentials() {
     );
     assert!(debug.contains("redacted"));
 }
+
+#[test]
+fn is_https_endpoint_accepts_only_tls() {
+    assert!(is_https_endpoint("https://api.example.com/v1"));
+    assert!(is_https_endpoint("https://127.0.0.1:8443"));
+    assert!(!is_https_endpoint("http://api.example.com/v1"));
+    // Unparseable or non-URL values are refused, not silently allowed, so a
+    // bearer can never ride a cleartext or ambiguous channel.
+    assert!(!is_https_endpoint("api.example.com"));
+    assert!(!is_https_endpoint("ftp://api.example.com"));
+}
+
+#[test]
+fn insecure_route_error_names_the_redacted_endpoint() {
+    let err = CoreError::InsecureRoute {
+        method: AGENT_CHAT,
+        endpoint: "http://user:pass@api.example/v1?key=leaky".to_string(),
+    };
+    let msg = err.to_string();
+    assert!(msg.contains("non-HTTPS"), "classifies the reason: {msg}");
+    // The endpoint rendered in the message has its credentials stripped.
+    assert!(!msg.contains("user"), "userinfo not leaked: {msg}");
+    assert!(!msg.contains("leaky"), "query credentials not leaked: {msg}");
+    assert!(msg.contains("api.example"), "origin stays readable: {msg}");
+}
