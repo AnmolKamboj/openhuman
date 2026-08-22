@@ -2804,7 +2804,6 @@ async fn worker_a_controller_schemas_are_fully_exposed() {
                 "openhuman.config_get_dashboard_settings",
                 "openhuman.config_get_data_paths",
                 "openhuman.config_get_dictation_settings",
-                "openhuman.config_get_meet_settings",
                 "openhuman.config_get_memory_sync_settings",
                 "openhuman.config_get_onboarding_completed",
                 "openhuman.config_get_privacy_mode",
@@ -2828,7 +2827,6 @@ async fn worker_a_controller_schemas_are_fully_exposed() {
                 "openhuman.config_update_composio_trigger_settings",
                 "openhuman.config_update_dictation_settings",
                 "openhuman.config_update_local_ai_settings",
-                "openhuman.config_update_meet_settings",
                 "openhuman.config_update_memory_settings",
                 "openhuman.config_update_memory_sync_settings",
                 "openhuman.config_update_model_settings",
@@ -3279,30 +3277,6 @@ async fn config_runtime_flags_settings_readbacks_and_validation_paths_are_exerci
             .get("enabled")
             .and_then(Value::as_bool),
         Some(false)
-    );
-
-    ok(
-        &rpc(
-            &harness.rpc_base,
-            11_006,
-            "openhuman.config_update_meet_settings",
-            json!({ "auto_orchestrator_handoff": true }),
-        )
-        .await,
-        "update_meet_settings true",
-    );
-    let meet = rpc(
-        &harness.rpc_base,
-        11_007,
-        "openhuman.config_get_meet_settings",
-        json!({}),
-    )
-    .await;
-    assert_eq!(
-        payload(&meet, "get_meet_settings")
-            .get("auto_orchestrator_handoff")
-            .and_then(Value::as_bool),
-        Some(true)
     );
 
     let onboarding_before = rpc(
