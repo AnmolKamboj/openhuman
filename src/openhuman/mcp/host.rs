@@ -108,8 +108,16 @@ impl McpHost {
     /// client cannot be built.
     pub fn open(config: &Config) -> anyhow::Result<Self> {
         let client = client_config(config);
-        let workspace = config.workspace_dir.as_path();
+        Self::from_client_config(config.workspace_dir.as_path(), &client)
+    }
 
+    /// Builds a host over `workspace` from an already-converted client
+    /// configuration.
+    ///
+    /// [`open`] and [`for_config`] share this so both derive from the one
+    /// conversion: a host and the entry stored beside it can never disagree
+    /// about which identity and proxy they were built with.
+    fn from_client_config(workspace: &Path, client: &McpClientConfig) -> anyhow::Result<Self> {
         Ok(Self {
             dynamic: McpRegistry::new(
                 Store::open(workspace)
@@ -119,7 +127,7 @@ impl McpHost {
                 client.proxy.clone(),
             )
             .map_err(|error| anyhow::anyhow!("failed to start the mcp registry: {error}"))?,
-            static_servers: McpServerRegistry::from_config(&client).map_err(|error| {
+            static_servers: McpServerRegistry::from_config(client).map_err(|error| {
                 anyhow::anyhow!("failed to build the static server set: {error}")
             })?,
             audit: AuditStore::open(workspace)
