@@ -12,8 +12,7 @@
  *     list or an inline "needs you" card, it takes over the whole pane (not a
  *     side drawer) so the session's chat renders full-size, with a back link.
  *
- * Conscious/Subconscious is a bottom toggle in the composer footer (where the
- * generic chat's super-context / quick-reasoning controls sit).
+ * Conscious/Subconscious is a bottom toggle in the composer footer.
  */
 import debugFactory from 'debug';
 import {
@@ -475,8 +474,7 @@ export default function AgentChatPanel({
   const loading = sessionsState.status === 'loading' || messagesState.status === 'loading';
   const errored = sessionsState.status === 'error' || messagesState.status === 'error';
 
-  // The Conscious/Subconscious toggle — sits in the composer footer slot where
-  // the generic chat's super-context / quick-reasoning controls live.
+  // The Conscious/Subconscious toggle sits in the composer footer.
   const modeToggle = (
     <div
       className="inline-flex h-7 items-center rounded-full border border-line bg-surface-subtle p-0.5"

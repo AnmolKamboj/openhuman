@@ -77,7 +77,6 @@ OpenHuman は、ほとんどのアシスタントが持っていない 3 つの�
 
 ### 🔬 ディープリサーチャー & 実行者
 
-- **[SuperContext](https://tinyhumans.gitbook.io/openhuman/features/super-context)**: モデルがあなたの最初のメッセージを読む前に、リサーチスカウトがメモリとファイルを走査します。コールドスタートはありません。
 - **電池同梱（Batteries included）**: ウェブ検索、スクレイパー、コーダーツールセット、本物の[ブラウザ](https://tinyhumans.gitbook.io/openhuman/features/native-tools/browser-and-computer)、インプロセス Whisper による[ネイティブ音声](../gitbooks/features/native-tools/voice.md)、さらにワークロードごとに適切な LLM を選ぶ[モデルルーティング](https://tinyhumans.gitbook.io/openhuman/features/model-routing)。1 つのサブスクリプションで、[ローカル AI はオプション](https://tinyhumans.gitbook.io/openhuman/features/model-routing/local-ai)です。
 - **[画像・動画生成](https://tinyhumans.gitbook.io/openhuman/features/native-tools)**: Seedream/SeedEdit の画像と Seedance/Veo の動画を、同じサブスクリプションでワークスペースに直接生成します。
 - **[17 のメッセージングチャネル](https://tinyhumans.gitbook.io/openhuman/features/channels)**: Telegram、Discord、Slack、WhatsApp、Signal、iMessage… さらに**ネイティブメール**（IMAP IDLE + SMTP）。エージェントはあなたが既にいる場所であなたに届きます。
