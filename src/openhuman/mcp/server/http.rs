@@ -357,9 +357,9 @@ fn text_error(status: StatusCode, message: &str) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openhuman::config::{McpAuthConfig, McpClientIdentityConfig};
     use crate::openhuman::mcp::http_client::McpHttpClient;
     use serde_json::json;
+    use tinymcp_bus::McpAuthConfig;
 
     async fn spawn_test_server(auth_token: Option<&str>) -> String {
         spawn_test_server_with_events(auth_token).await.0
@@ -388,7 +388,7 @@ mod tests {
     #[tokio::test]
     async fn http_client_round_trips_initialize_tools_list_and_ping() {
         let endpoint = spawn_test_server(None).await;
-        let client = McpHttpClient::new(endpoint, 5);
+        let client = McpHttpClient::new(endpoint, 5).expect("a client builds");
 
         let init = client.initialize().await.expect("initialize");
         assert_eq!(init.protocol_version, protocol::LATEST_PROTOCOL_VERSION);
@@ -503,25 +503,23 @@ mod tests {
     async fn http_bearer_auth_rejects_and_accepts() {
         let endpoint = spawn_test_server(Some("phase1-secret")).await;
 
-        let denied = McpHttpClient::with_options(
-            endpoint.clone(),
-            5,
-            McpAuthConfig::BearerToken {
+        let denied = McpHttpClient::builder(endpoint.clone())
+            .timeout_secs(5)
+            .auth(McpAuthConfig::BearerToken {
                 token: "wrong".into(),
-            },
-            McpClientIdentityConfig::default(),
-        );
+            })
+            .build()
+            .expect("a client builds");
         let err = denied.initialize().await.expect_err("bad token");
         assert!(err.to_string().contains("401"), "expected 401, got {err}");
 
-        let allowed = McpHttpClient::with_options(
-            endpoint,
-            5,
-            McpAuthConfig::BearerToken {
+        let allowed = McpHttpClient::builder(endpoint)
+            .timeout_secs(5)
+            .auth(McpAuthConfig::BearerToken {
                 token: "phase1-secret".into(),
-            },
-            McpClientIdentityConfig::default(),
-        );
+            })
+            .build()
+            .expect("a client builds");
         allowed.initialize().await.expect("authorized initialize");
     }
 }

@@ -13,7 +13,6 @@
 //! functions keep their config gates (is it enabled for this user).
 
 // `to_arc` / the config accessors are `MemoryHostConfig` trait methods.
-use std::sync::Once;
 use tinymemory_api::host::MemoryHostConfig;
 
 use crate::core::runtime::ServiceSet;
@@ -337,11 +336,13 @@ pub async fn start_boot_once_jobs(services: ServiceSet, config: &Config) {
     }
 
     if services.mcp_boot {
-        let cfg_for_mcp = config.clone();
-        tokio::spawn(async move {
-            crate::openhuman::mcp::registry::boot::spawn_installed_servers(&cfg_for_mcp).await;
-        });
-        spawn_mcp_reconnect_supervisor(config.clone());
+        // The MCP domain boots itself: service, installed-server reconnect
+        // pass, and reconnect supervisor are orchestrated there, and it is
+        // idempotent — normally a no-op, because `register_domain_subscribers`
+        // brings the domain up when it enables it. Repeated here because the
+        // two are gated separately: a `ServiceSet` that boots MCP is entitled
+        // to a service whether or not the RPC domain was turned on.
+        crate::openhuman::mcp::start_boot_jobs(config);
     } else {
         log::debug!("[runtime] MCP boot-spawn disabled by ServiceSet");
         log::debug!("[runtime] MCP reconnect supervisor disabled by ServiceSet");
@@ -412,15 +413,6 @@ async fn run_legacy_migrations(config: &Config) {
         Ok(_) => {}
         Err(e) => log::warn!("[todos] legacy→crate run-ledger migration failed: {e}"),
     }
-}
-
-fn spawn_mcp_reconnect_supervisor(config: Config) {
-    static SUPERVISOR_SPAWNED: Once = Once::new();
-    SUPERVISOR_SPAWNED.call_once(|| {
-        tokio::spawn(async move {
-            crate::openhuman::mcp::registry::supervisor::run(config).await;
-        });
-    });
 }
 
 /// Auto-connect Socket.IO to the backend when enabled by the service selection.

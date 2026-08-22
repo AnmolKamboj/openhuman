@@ -3126,6 +3126,8 @@ const messages: TranslationMap = {
   'welcome.coreConfigUnreadable':
     '런타임이 자체 구성 파일을 읽지 못했습니다. config.toml이 다른 사용자 계정 소유이거나 다른 이유로 런타임 프로세스가 접근할 수 없는 상태일 수 있습니다. 런타임을 다시 시작하고, 그래도 해결되지 않으면 작업 디렉터리의 소유권을 복구하거나 볼륨을 다시 만드세요.',
   'welcome.localSessionErrorFallback': '로컬 세션을 시작할 수 없습니다.',
+  'welcome.gatewaySessionErrorFallback':
+    '지금은 로그인을 완료할 수 없습니다. 세션 저장소가 제때 응답하지 않았습니다(다시 시도한 후에도). OpenHuman을 다시 시작하고 다시 시도하세요.',
   'welcome.localSessionDesc': '오프라인 로컬 프로필을 사용하고 TinyHumans를 건너뜁니다. OAuth.',
   'chat.agentChatDesc': '에이전트와 직접 채팅 세션을 엽니다.',
   'chat.modelPlaceholder': 'gpt-4o',
@@ -7065,6 +7067,52 @@ const messages: TranslationMap = {
   'notifications.configRecovered.title': '설정 파일 복구됨',
   'notifications.configRecovered.body':
     '설정 파일을 읽을 수 없어 백업에서 복원하거나 기본값으로 재설정했습니다. 읽을 수 없는 파일은 필요할 경우를 대비해 ".corrupted" 접미사를 붙여 보관했습니다.',
+  // Gateways: cores this app provisions and runs elsewhere.
+  'settings.gateway.title': '코어를 다른 곳에서 실행',
+  'settings.gateway.description':
+    '코어는 컨테이너에서, SSH로 연결한 다른 컴퓨터에서, 또는 다른 컴퓨터의 컨테이너에서 실행할 수 있습니다. OpenHuman이 코어를 시작하고 연결하며, 다른 곳으로 전환하면 종료합니다.',
+  'settings.gateway.add': '위치 추가',
+  'settings.gateway.save': '위치 저장',
+  'settings.gateway.remove': '제거',
+  'settings.gateway.use': '이것 사용',
+  'settings.gateway.inUse': '사용 중',
+  'settings.gateway.activating': '연결 중…',
+  'settings.gateway.activatingStep': '연결 중: {step}',
+  'settings.gateway.connected': '{endpoint}에 연결됨',
+  'settings.gateway.failed': '연결할 수 없습니다: {reason}',
+  'settings.gateway.nameLabel': '이름',
+  'settings.gateway.namePlaceholder': '빌드 서버',
+  'settings.gateway.whereLegend': '어디에서 실행할까요?',
+  'settings.gateway.where.here': '이 컴퓨터에서',
+  'settings.gateway.where.ssh': 'SSH로 다른 컴퓨터에서',
+  'settings.gateway.destinationLabel': 'SSH 대상',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
+  'settings.gateway.destinationHelp':
+    'SSH 설정에 있는 호스트 또는 사용자@호스트입니다. 그곳에 이미 설정해 둔 포트, 키, 점프 호스트를 그대로 사용합니다.',
+  'settings.gateway.identityLabel': '개인 키 (선택)',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
+  'settings.gateway.acceptNewHostKey': '처음 연결할 때 이 컴퓨터를 신뢰',
+  'settings.gateway.acceptNewHostKeyHelp':
+    '한 번도 본 적 없는 호스트 키를 받아들입니다. 바뀐 키는 여전히 거부되는데, 바로 그 경우가 무언가 잘못되었다는 뜻이기 때문입니다.',
+  'settings.gateway.containedLabel': '컨테이너 안에서 실행',
+  'settings.gateway.imageLabel': '컨테이너 이미지',
+  'settings.gateway.binaryLabel': 'openhuman-core 경로',
+  'settings.gateway.kind.desktop': '이 앱 안에서',
+  'settings.gateway.kind.remote': 'URL의 코어',
+  'settings.gateway.kind.docker': '여기 컨테이너에서',
+  'settings.gateway.kind.ssh': '다른 컴퓨터에서',
+  'settings.gateway.kind.ssh+docker': '다른 컴퓨터의 컨테이너에서',
+  'settings.gateway.kind.local-process': '이 컴퓨터에서',
+  'settings.gateway.idRequired': '이 위치에 이름을 지어 주세요.',
+  'settings.gateway.idReserved': '그 이름은 앱 자체 코어용으로 예약되어 있습니다.',
+  'settings.gateway.destinationRequired': '연결할 컴퓨터를 입력하세요.',
+  'settings.gateway.imageRequired': '실행할 컨테이너 이미지를 입력하세요.',
+  'settings.gateway.binaryRequired': '그 컴퓨터의 openhuman-core 경로를 입력하세요.',
+  'settings.gateway.portInvalid': 'SSH 포트는 숫자여야 합니다.',
+
+  'devOptions.gateway': '위치',
+  'devOptions.provisionedCore': '이 앱이 시작한 코어',
+  'devOptions.gatewayId': '위치',
 };
 
 export default messages;

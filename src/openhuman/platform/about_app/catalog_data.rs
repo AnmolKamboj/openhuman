@@ -1295,6 +1295,30 @@ pub(super) const CAPABILITIES: &[Capability] = &[
         privacy: None,
     },
     Capability {
+        id: "settings.core_connection",
+        name: "Run the Core Somewhere Else",
+        domain: "settings",
+        category: CapabilityCategory::Settings,
+        description: "Choose where the OpenHuman core runs: inside this app, at a URL \
+            you point it at, in a Docker container, on another machine over SSH, or in a \
+            container on another machine. OpenHuman starts the core, connects to it, and \
+            shuts it down when you switch away. Where it runs and what contains it are \
+            separate choices, so SSH and Docker combine without being a third option.",
+        how_to: "Settings > Core connection",
+        status: CapabilityStatus::Beta,
+        privacy: Some(CapabilityPrivacy {
+            leaves_device: true,
+            data_kind: PrivacyDataKind::Raw,
+            // `Raw`, because everything the core holds - the conversations
+            // themselves, memory, stored credentials - lives wherever the core
+            // runs. Choosing a machine over SSH is choosing to put all of it
+            // there. That is the disclosure that matters here and the one a
+            // hostname field makes easy to overlook, so it is stated at the
+            // strongest kind rather than softened to `Derived`.
+            destinations: &["The machine you configure, when the core runs off this device"],
+        }),
+    },
+    Capability {
         id: "settings.persona_pack",
         name: "Persona Pack",
         domain: "settings",

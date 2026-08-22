@@ -3218,6 +3218,8 @@ const messages: TranslationMap = {
   'welcome.coreConfigUnreadable':
     'Il runtime non è riuscito a leggere il proprio file di configurazione. config.toml potrebbe appartenere a un altro account utente oppure essere inaccessibile al processo per un altro motivo. Riavvia il runtime e, se non basta, correggi la proprietà della cartella di lavoro o ricrea il suo volume.',
   'welcome.localSessionErrorFallback': 'Impossibile avviare una sessione locale.',
+  'welcome.gatewaySessionErrorFallback':
+    'Non è stato possibile completare l’accesso al momento. L’archivio di sessione non ha risposto in tempo (anche dopo un nuovo tentativo). Riavvia OpenHuman e riprova.',
   'welcome.localSessionDesc': 'Utilizza un profilo locale offline e salta TinyHumans OAuth.',
   'chat.agentChatDesc': "Apri una sessione di chat diretta con l'agente.",
   'chat.modelPlaceholder': 'gpt-4o',
@@ -7279,6 +7281,52 @@ const messages: TranslationMap = {
   'notifications.configRecovered.title': 'File delle impostazioni recuperato',
   'notifications.configRecovered.body':
     'Non è stato possibile leggere il tuo file delle impostazioni, quindi è stato ripristinato da un backup o reimpostato ai valori predefiniti. Il file illeggibile è stato conservato con il suffisso ".corrupted" nel caso ti servisse.',
+  // Gateways: cores this app provisions and runs elsewhere.
+  'settings.gateway.title': 'Esegui il core altrove',
+  'settings.gateway.description':
+    'Il core può girare in un container, su un’altra macchina via SSH o in un container su un’altra macchina. OpenHuman lo avvia, si collega e lo arresta quando passi ad altro.',
+  'settings.gateway.add': 'Aggiungi una posizione',
+  'settings.gateway.save': 'Salva posizione',
+  'settings.gateway.remove': 'Rimuovi',
+  'settings.gateway.use': 'Usa questa',
+  'settings.gateway.inUse': 'In uso',
+  'settings.gateway.activating': 'Connessione…',
+  'settings.gateway.activatingStep': 'Connessione: {step}',
+  'settings.gateway.connected': 'Connesso a {endpoint}',
+  'settings.gateway.failed': 'Impossibile connettersi: {reason}',
+  'settings.gateway.nameLabel': 'Nome',
+  'settings.gateway.namePlaceholder': 'Server di build',
+  'settings.gateway.whereLegend': 'Dove deve girare?',
+  'settings.gateway.where.here': 'Su questo computer',
+  'settings.gateway.where.ssh': 'Su un’altra macchina, via SSH',
+  'settings.gateway.destinationLabel': 'Destinazione SSH',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
+  'settings.gateway.destinationHelp':
+    'Un host dalla tua configurazione SSH, oppure utente@host. Porte, chiavi e jump host già configurati lì vengono usati così come sono.',
+  'settings.gateway.identityLabel': 'Chiave privata (facoltativa)',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
+  'settings.gateway.acceptNewHostKey': 'Fidati di questa macchina alla prima connessione',
+  'settings.gateway.acceptNewHostKeyHelp':
+    'Accetta una chiave host mai vista prima. Una chiave cambiata viene comunque rifiutata, perché è quello il caso che segnala un problema reale.',
+  'settings.gateway.containedLabel': 'Eseguilo dentro un container',
+  'settings.gateway.imageLabel': 'Immagine del container',
+  'settings.gateway.binaryLabel': 'Percorso di openhuman-core',
+  'settings.gateway.kind.desktop': 'Dentro questa app',
+  'settings.gateway.kind.remote': 'Un core a un URL',
+  'settings.gateway.kind.docker': 'In un container qui',
+  'settings.gateway.kind.ssh': 'Su un’altra macchina',
+  'settings.gateway.kind.ssh+docker': 'In un container su un’altra macchina',
+  'settings.gateway.kind.local-process': 'Su questo computer',
+  'settings.gateway.idRequired': 'Dai un nome a questa posizione.',
+  'settings.gateway.idReserved': 'Quel nome è riservato al core dell’app stessa.',
+  'settings.gateway.destinationRequired': 'Indica la macchina a cui connetterti.',
+  'settings.gateway.imageRequired': 'Indica l’immagine del container da eseguire.',
+  'settings.gateway.binaryRequired': 'Indica il percorso di openhuman-core su quella macchina.',
+  'settings.gateway.portInvalid': 'La porta SSH deve essere un numero.',
+
+  'devOptions.gateway': 'Posizione',
+  'devOptions.provisionedCore': 'Core avviato da questa app',
+  'devOptions.gatewayId': 'ID della posizione',
 };
 
 export default messages;

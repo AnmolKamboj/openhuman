@@ -1,10 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
-use openhuman_core::openhuman::agent::debug::{dump_agent_prompt, DumpPromptOptions};
-use openhuman_core::openhuman::agent::dispatcher::NativeToolDispatcher;
-use openhuman_core::openhuman::agent::Agent;
-use openhuman_core::openhuman::config::AgentConfig;
 use openhuman_core::openhuman::agent::context::prompt::{
     render_ambient_environment, render_safety, render_subagent_system_prompt_with_format,
     render_tools, ConnectedIntegration, CuratedMemoryPromptSnapshot, LearnedContextData,
@@ -12,6 +8,10 @@ use openhuman_core::openhuman::agent::context::prompt::{
     PromptContext, PromptTool, SubagentRenderOptions, SystemPromptBuilder, ToolCallFormat,
     UserIdentity,
 };
+use openhuman_core::openhuman::agent::debug::{dump_agent_prompt, DumpPromptOptions};
+use openhuman_core::openhuman::agent::dispatcher::NativeToolDispatcher;
+use openhuman_core::openhuman::agent::Agent;
+use openhuman_core::openhuman::config::AgentConfig;
 use openhuman_core::openhuman::memory::{
     Memory, MemoryCategory, MemoryEntry, NamespaceSummary, RecallOpts,
 };

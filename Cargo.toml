@@ -258,6 +258,31 @@ tinymemory-tinycortex = { path = "vendor/tinymemory/crates/tinymemory-tinycortex
 # (`MemoryConfig`, `MemoryTreeConfig`, …) now live in `tinymemory_api::host` and
 # are still fields of OpenHuman's `Config`, which derives `JsonSchema`.
 tinymemory-core = { path = "vendor/tinymemory/crates/tinymemory-core" }
+
+# tinymcp — the Model Context Protocol client, extracted out of this tree
+# (https://github.com/tinyhumansai/tinymcp). Owns both transports, the static
+# config-declared server set, the dynamic registry with its store, supervisor
+# and OAuth, and the write-audit log. What stays here is the host half: the RPC
+# surface, the agent-facing tools, and the prompt-injection scan over remote
+# tool definitions, which is host policy.
+#
+# `tinymcp-bus` is the wire contract — payload types and member names, with no
+# transport and no runtime. The `schemars` feature is on because this crate
+# generates a settings schema for the desktop application from those types
+# rather than from a hand-kept copy.
+#
+# The path dependency on `tinymcp` itself is the step-one arrangement: it is
+# replaced by a loadable module entry in `src/openhuman/modules/registry.rs`
+# once tinymcp cuts a release, at which point only `tinymcp-bus` remains and
+# reqwest/rusqlite leave this build with it.
+#
+# After cloning: `git submodule update --init vendor/tinymcp`.
+# `default-features = false` drops the TinyBus adapter: this build calls the
+# library directly and has no use for a bus inside it.
+tinymcp = { path = "vendor/tinymcp/crates/tinymcp", default-features = false, features = [
+    "rustls-tls",
+] }
+tinymcp-bus = { path = "vendor/tinymcp/crates/tinymcp-bus", features = ["schemars"] }
 tinychannels = { version = "0.1", features = ["relay-websocket"] }
 # tinybus — the message bus. Owns what `src/core/event_bus/` used to: the typed
 # pub/sub surface (`EventBus`, `EventHandler`, `SubscriptionHandle`), the

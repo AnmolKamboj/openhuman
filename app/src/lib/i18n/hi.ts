@@ -3160,6 +3160,8 @@ const messages: TranslationMap = {
   'welcome.coreConfigUnreadable':
     'रनटाइम अपनी कॉन्फ़िगरेशन फ़ाइल नहीं पढ़ सका। हो सकता है config.toml किसी दूसरे उपयोगकर्ता खाते का हो, या किसी अन्य कारण से रनटाइम प्रक्रिया के लिए दुर्गम हो। रनटाइम को पुनः आरंभ करें, और यदि इससे मदद न मिले तो वर्कस्पेस का स्वामित्व ठीक करें या उसका वॉल्यूम दोबारा बनाएँ।',
   'welcome.localSessionErrorFallback': 'स्थानीय सत्र शुरू नहीं किया जा सका।',
+  'welcome.gatewaySessionErrorFallback':
+    'अभी साइन-इन पूरा नहीं किया जा सका। सत्र स्टोर ने समय पर जवाब नहीं दिया (दोबारा प्रयास करने के बाद भी)। कृपया OpenHuman को पुनः आरंभ करें और फिर से प्रयास करें।',
   'welcome.localSessionDesc':
     'ऑफ़लाइन स्थानीय प्रोफ़ाइल का उपयोग करता है और TinyHumans OAuth को छोड़ देता है।',
   'chat.agentChatDesc': 'एजेंट के साथ डायरेक्ट चैट सेशन खोलें।',
@@ -7143,6 +7145,52 @@ const messages: TranslationMap = {
   'notifications.configRecovered.title': 'सेटिंग फ़ाइल पुनर्प्राप्त की गई',
   'notifications.configRecovered.body':
     'आपकी सेटिंग फ़ाइल पढ़ी नहीं जा सकी, इसलिए इसे बैकअप से पुनर्स्थापित किया गया या डिफ़ॉल्ट पर रीसेट कर दिया गया। न पढ़ी जा सकने वाली फ़ाइल को, ज़रूरत पड़ने पर, ".corrupted" प्रत्यय के साथ रखा गया है।',
+  // Gateways: cores this app provisions and runs elsewhere.
+  'settings.gateway.title': 'कोर को कहीं और चलाएँ',
+  'settings.gateway.description':
+    'कोर किसी कंटेनर में, SSH के ज़रिए किसी दूसरी मशीन पर, या दूसरी मशीन के कंटेनर में चल सकता है। OpenHuman उसे शुरू करता है, उससे जुड़ता है, और आपके कहीं और जाने पर बंद कर देता है।',
+  'settings.gateway.add': 'एक जगह जोड़ें',
+  'settings.gateway.save': 'जगह सहेजें',
+  'settings.gateway.remove': 'हटाएँ',
+  'settings.gateway.use': 'यही इस्तेमाल करें',
+  'settings.gateway.inUse': 'इस्तेमाल में',
+  'settings.gateway.activating': 'जुड़ रहा है…',
+  'settings.gateway.activatingStep': 'जुड़ रहा है: {step}',
+  'settings.gateway.connected': '{endpoint} पर जुड़ा हुआ',
+  'settings.gateway.failed': 'जुड़ नहीं सका: {reason}',
+  'settings.gateway.nameLabel': 'नाम',
+  'settings.gateway.namePlaceholder': 'बिल्ड सर्वर',
+  'settings.gateway.whereLegend': 'इसे कहाँ चलना चाहिए?',
+  'settings.gateway.where.here': 'इसी कंप्यूटर पर',
+  'settings.gateway.where.ssh': 'SSH के ज़रिए किसी दूसरी मशीन पर',
+  'settings.gateway.destinationLabel': 'SSH गंतव्य',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
+  'settings.gateway.destinationHelp':
+    'आपकी SSH कॉन्फ़िगरेशन का कोई होस्ट, या उपयोगकर्ता@होस्ट। वहाँ पहले से तय पोर्ट, कुंजियाँ और जंप होस्ट जैसे हैं वैसे ही इस्तेमाल होते हैं।',
+  'settings.gateway.identityLabel': 'निजी कुंजी (वैकल्पिक)',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
+  'settings.gateway.acceptNewHostKey': 'पहली बार जुड़ने पर इस मशीन पर भरोसा करें',
+  'settings.gateway.acceptNewHostKeyHelp':
+    'ऐसी होस्ट कुंजी स्वीकार करता है जो पहले कभी नहीं देखी गई। बदली हुई कुंजी फिर भी अस्वीकार होती है, क्योंकि वही स्थिति बताती है कि कुछ गड़बड़ है।',
+  'settings.gateway.containedLabel': 'इसे कंटेनर के अंदर चलाएँ',
+  'settings.gateway.imageLabel': 'कंटेनर इमेज',
+  'settings.gateway.binaryLabel': 'openhuman-core का पथ',
+  'settings.gateway.kind.desktop': 'इसी ऐप के अंदर',
+  'settings.gateway.kind.remote': 'किसी URL पर मौजूद कोर',
+  'settings.gateway.kind.docker': 'यहाँ एक कंटेनर में',
+  'settings.gateway.kind.ssh': 'किसी दूसरी मशीन पर',
+  'settings.gateway.kind.ssh+docker': 'दूसरी मशीन के कंटेनर में',
+  'settings.gateway.kind.local-process': 'इसी कंप्यूटर पर',
+  'settings.gateway.idRequired': 'इस जगह को एक नाम दें।',
+  'settings.gateway.idReserved': 'वह नाम ऐप के अपने कोर के लिए सुरक्षित है।',
+  'settings.gateway.destinationRequired': 'जिस मशीन से जुड़ना है वह बताएँ।',
+  'settings.gateway.imageRequired': 'चलाने के लिए कंटेनर इमेज बताएँ।',
+  'settings.gateway.binaryRequired': 'उस मशीन पर openhuman-core का पथ बताएँ।',
+  'settings.gateway.portInvalid': 'SSH पोर्ट एक संख्या होनी चाहिए।',
+
+  'devOptions.gateway': 'स्थान',
+  'devOptions.provisionedCore': 'इस ऐप द्वारा शुरू किया गया कोर',
+  'devOptions.gatewayId': 'स्थान',
 };
 
 export default messages;

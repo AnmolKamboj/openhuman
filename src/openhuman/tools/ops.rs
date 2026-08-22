@@ -740,13 +740,13 @@ pub fn all_tools_with_runtime(
         #[cfg(feature = "mcp")]
         Box::new(McpRegistryStatusTool::new(config.clone())),
         #[cfg(feature = "mcp")]
-        Box::new(McpRegistryListToolsTool),
+        Box::new(McpRegistryListToolsTool::new(config.clone())),
         #[cfg(feature = "mcp")]
         Box::new(McpRegistryConnectTool::new(config.clone())),
         #[cfg(feature = "mcp")]
-        Box::new(McpRegistryDisconnectTool),
+        Box::new(McpRegistryDisconnectTool::new(config.clone())),
         #[cfg(feature = "mcp")]
-        Box::new(McpRegistryToolCallTool),
+        Box::new(McpRegistryToolCallTool::new(config.clone())),
         #[cfg(feature = "mcp")]
         Box::new(McpRegistryConfigAssistTool::new(config.clone())),
         #[cfg(feature = "mcp")]
@@ -927,15 +927,29 @@ pub fn all_tools_with_runtime(
             .any(|name| name.eq_ignore_ascii_case("gitbooks"))
     });
     if root_config.gitbooks.enabled && gitbooks_allowed {
-        tools.push(Box::new(GitbooksSearchTool::new(
-            root_config.gitbooks.endpoint.clone(),
-            root_config.gitbooks.timeout_secs,
-        )));
-        tools.push(Box::new(GitbooksGetPageTool::new(
-            root_config.gitbooks.endpoint.clone(),
-            root_config.gitbooks.timeout_secs,
-        )));
-        tracing::debug!("[gitbooks] registered gitbooks_search + gitbooks_get_page");
+        // Building the client can fail on a malformed proxy or an unusable TLS
+        // setting. Both are logged and the tools are simply not registered:
+        // taking the whole surface down over a documentation server would cost
+        // the user every other tool for no reason.
+        match (
+            GitbooksSearchTool::new(
+                root_config.gitbooks.endpoint.clone(),
+                root_config.gitbooks.timeout_secs,
+            ),
+            GitbooksGetPageTool::new(
+                root_config.gitbooks.endpoint.clone(),
+                root_config.gitbooks.timeout_secs,
+            ),
+        ) {
+            (Ok(search), Ok(get_page)) => {
+                tools.push(Box::new(search));
+                tools.push(Box::new(get_page));
+                tracing::debug!("[gitbooks] registered gitbooks_search + gitbooks_get_page");
+            }
+            (Err(error), _) | (_, Err(error)) => {
+                tracing::warn!("[gitbooks] tools not registered: {error}");
+            }
+        }
     } else if root_config.gitbooks.enabled {
         tracing::debug!("[profiles] gitbooks tools suppressed by profile mcp allowlist");
     }
@@ -950,7 +964,7 @@ pub fn all_tools_with_runtime(
         let cfg = Arc::new(root_config.clone());
         tools.push(Box::new(McpSetupSearchTool::new(Arc::clone(&cfg))));
         tools.push(Box::new(McpSetupGetTool::new(Arc::clone(&cfg))));
-        tools.push(Box::new(McpSetupRequestSecretTool::new()));
+        tools.push(Box::new(McpSetupRequestSecretTool::new(Arc::clone(&cfg))));
         tools.push(Box::new(McpSetupTestConnectionTool::new(Arc::clone(&cfg))));
         tools.push(Box::new(McpSetupInstallAndConnectTool::new(cfg)));
         tracing::debug!("[mcp_setup] registered 5 setup-agent tools");
@@ -967,8 +981,11 @@ pub fn all_tools_with_runtime(
     #[cfg(feature = "mcp")]
     {
         let mcp_registry = {
-            let base =
-                crate::openhuman::mcp::config_servers::McpServerRegistry::from_config(root_config);
+            // Built from the converted configuration, which is the one place
+            // the two vocabularies meet. A registry that cannot be built is
+            // logged and treated as empty: a malformed proxy or TLS setting
+            // must not take the whole tool surface down with it.
+            let base = crate::openhuman::mcp::host::static_registry(root_config);
             // Scope the MCP surface to the active profile's allowlist. `None` keeps
             // every configured server; `Some(&[])` yields an empty registry.
             match mcp_allowlist {

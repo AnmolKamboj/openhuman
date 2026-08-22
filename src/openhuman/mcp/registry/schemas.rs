@@ -782,8 +782,12 @@ fn handle_connect(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_disconnect(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
+        let config = config_rpc::load_config_with_timeout().await?;
         let server_id = read_required::<String>(&params, "server_id")?;
-        to_json(crate::openhuman::mcp::registry::ops::mcp_clients_disconnect(server_id).await?)
+        to_json(
+            crate::openhuman::mcp::registry::ops::mcp_clients_disconnect(&config, server_id)
+                .await?,
+        )
     })
 }
 
@@ -817,9 +821,10 @@ fn handle_tool_call(params: Map<String, Value>) -> ControllerFuture {
             .get("arguments")
             .cloned()
             .unwrap_or(Value::Object(Map::new()));
+        let config = config_rpc::load_config_with_timeout().await?;
         to_json(
             crate::openhuman::mcp::registry::ops::mcp_clients_tool_call(
-                server_id, tool_name, arguments,
+                &config, server_id, tool_name, arguments,
             )
             .await?,
         )
@@ -1148,9 +1153,12 @@ fn handle_setup_request_secret(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
         let key_name = read_required::<String>(&params, "key_name")?;
         let prompt = read_required::<String>(&params, "prompt")?;
+        let config = config_rpc::load_config_with_timeout().await?;
         to_json(
-            crate::openhuman::mcp::registry::setup_ops::mcp_setup_request_secret(key_name, prompt)
-                .await?,
+            crate::openhuman::mcp::registry::setup_ops::mcp_setup_request_secret(
+                &config, key_name, prompt,
+            )
+            .await?,
         )
     })
 }
@@ -1159,9 +1167,12 @@ fn handle_setup_submit_secret(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
         let ref_id = read_required::<String>(&params, "ref_id")?;
         let value = read_required::<String>(&params, "value")?;
+        let config = config_rpc::load_config_with_timeout().await?;
         to_json(
-            crate::openhuman::mcp::registry::setup_ops::mcp_setup_submit_secret(ref_id, value)
-                .await?,
+            crate::openhuman::mcp::registry::setup_ops::mcp_setup_submit_secret(
+                &config, ref_id, value,
+            )
+            .await?,
         )
     })
 }

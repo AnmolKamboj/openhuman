@@ -2682,7 +2682,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.58.0",
+ "windows-core 0.57.0",
 ]
 
 [[package]]
@@ -4184,6 +4184,8 @@ dependencies = [
  "tinyflows",
  "tinyhosts",
  "tinyhumans-sdk",
+ "tinymcp",
+ "tinymcp-bus",
  "tinymemory",
  "tinymemory-api",
  "tinymemory-core",
@@ -6501,6 +6503,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "tinymcp"
+version = "0.3.1"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "dirs 5.0.1",
+ "futures-util",
+ "parking_lot",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+ "tinymcp-bus",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "tinymcp-bus"
+version = "0.3.1"
+dependencies = [
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "tinymemory"
 version = "1.1.0"
 dependencies = [
@@ -7866,7 +7898,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
