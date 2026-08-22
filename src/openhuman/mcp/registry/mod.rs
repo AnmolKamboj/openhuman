@@ -249,33 +249,54 @@ pub mod boot {
 /// Keeping installed servers connected.
 #[cfg(feature = "mcp")]
 pub mod supervisor {
-    use crate::openhuman::config::Config;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
     use crate::openhuman::mcp::host;
 
     /// Runs the reconnect supervisor until the process ends.
-    pub async fn run(config: Config) {
-        let service = match host::for_config(&config) {
-            Ok(service) => service,
-            Err(error) => {
-                tracing::warn!("[mcp] the service could not be opened: {error}");
-                return;
-            }
-        };
+    ///
+    /// One task for every host the process has opened. The connection map is
+    /// per-workspace, and a host opened after boot — a workspace switch — is
+    /// supervised from the tick after it appears, so no workspace's installed
+    /// servers go unsupervised. Each host's backoff state is held here, keyed
+    /// by workspace, and the first tick is delayed a whole interval so it does
+    /// not race the startup connect pass.
+    pub async fn run() {
+        let config = tinymcp::SupervisorConfig::default();
+        let mut supervisors: HashMap<PathBuf, tinymcp::Supervisor> = HashMap::new();
 
-        let client = host::client_config(&config);
-        let supervisor = tinymcp::Supervisor::new(
-            tinymcp::SupervisorConfig::default(),
-            client.client_identity.clone(),
-            client.proxy.clone(),
+        let start = tokio::time::Instant::now() + config.tick_interval;
+        let mut interval = tokio::time::interval_at(start, config.tick_interval);
+
+        tracing::info!(
+            tick_seconds = config.tick_interval.as_secs(),
+            probe_seconds = config.probe_timeout.as_secs(),
+            "[mcp] the reconnect supervisor started"
         );
 
-        supervisor
-            .run(
-                service.dynamic().store(),
-                service.dynamic().connections(),
-                service.dynamic().oauth(),
-            )
-            .await;
+        loop {
+            interval.tick().await;
+            let now = std::time::Instant::now();
+
+            // Adopt every host currently open. A host opened since the last
+            // tick gets a supervisor on this one, built from the identity and
+            // proxy it was opened with.
+            for (workspace, service, identity, proxy) in host::all_hosts() {
+                let supervisor = supervisors
+                    .entry(workspace)
+                    .or_insert_with(|| tinymcp::Supervisor::new(config.clone(), identity, proxy));
+
+                supervisor
+                    .tick(
+                        service.dynamic().store(),
+                        service.dynamic().connections(),
+                        service.dynamic().oauth(),
+                        now,
+                    )
+                    .await;
+            }
+        }
     }
 }
 
