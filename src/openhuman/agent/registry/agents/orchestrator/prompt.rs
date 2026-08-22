@@ -668,13 +668,11 @@ mod tests {
         // delegation-guide clause.
         let no_integrations = build(&ctx_with(&[])).unwrap();
         assert!(
-            no_integrations
-                .contains("General knowledge, web/news lookups, headlines, date/time"),
+            no_integrations.contains("General knowledge, web/news lookups, headlines, date/time"),
             "Step-2 scope gate must keep general/web/date asks off integrations delegation"
         );
         assert!(
-            no_integrations
-                .contains("a request that references none"),
+            no_integrations.contains("a request that references none"),
             "Step-2 scope gate must forbid reaching into an unreferenced service"
         );
 
