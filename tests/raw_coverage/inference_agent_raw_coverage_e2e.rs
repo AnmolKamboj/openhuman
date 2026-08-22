@@ -3887,6 +3887,7 @@ async fn agent_debug_prompt_dump_and_identity_rendering_cover_file_layouts() {
             text: "# integrations\nbody\n".to_string(),
             tool_names: vec!["GMAIL_SEND_EMAIL".to_string()],
             skill_tool_count: 1,
+            tool_specs: vec![],
         },
     ];
 
