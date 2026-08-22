@@ -163,8 +163,8 @@ export default function WorldSection() {
 
             The parent card is `pointer-events-none`, so the badge opts back in
             with `pointer-events-auto` to stay hoverable/focusable. It uses the
-            project's self-contained wrapping tooltip pattern (see
-            SuperContextToggle) rather than the shared <Tooltip>, which is
+            project's self-contained wrapping tooltip pattern rather than the
+            shared <Tooltip>, which is
             single-line nowrap and can't fit this sentence, and rather than a
             bare `title` (unreachable under `pointer-events-none`). */}
         <span className="group pointer-events-auto relative mt-2 inline-flex">

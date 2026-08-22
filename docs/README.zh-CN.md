@@ -77,7 +77,6 @@ OpenHuman 是大多数助手所不具备的三样东西的集合：**一颗大�
 
 ### 🔬 深度研究员与实干家
 
-- **[SuperContext](https://tinyhumans.gitbook.io/openhuman/features/super-context)**：在模型读取你的第一条消息之前，一个研究侦察器会先扫描你的记忆和文件。没有冷启动。
 - **开箱即用**：网络搜索、抓取器、编码工具集、真正的[浏览器](https://tinyhumans.gitbook.io/openhuman/features/native-tools/browser-and-computer)、带进程内 Whisper 的[原生语音](../gitbooks/features/native-tools/voice.md)，以及为每个工作负载挑选合适 LLM 的[模型路由](https://tinyhumans.gitbook.io/openhuman/features/model-routing)。一个订阅搞定，[本地 AI 可选](https://tinyhumans.gitbook.io/openhuman/features/model-routing/local-ai)。
 - **[图像与视频生成](https://tinyhumans.gitbook.io/openhuman/features/native-tools)**：Seedream/SeedEdit 图像和 Seedance/Veo 视频，直接输出到你的工作区，同一份订阅。
 - **[17 个消息渠道](https://tinyhumans.gitbook.io/openhuman/features/channels)**：Telegram、Discord、Slack、WhatsApp、Signal、iMessage……外加**原生邮件**（IMAP IDLE + SMTP）。无论你在哪里，智能体都能找到你。

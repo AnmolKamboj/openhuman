@@ -100,7 +100,7 @@ test.describe('Top-level functional flows', () => {
       // Home folded into the unified chat surface — /home redirects to /chat.
       ['/home', /Your assistant is ready|Reasoning/],
       ['/connections', /Composio Integrations|Composio|Channels|MCP Servers/],
-      ['/chat', /Your assistant is ready|Reasoning|Super Context/],
+      ['/chat', /Your assistant is ready|Reasoning/],
       ['/settings/notifications-hub', /Notifications/],
       ['/notifications', /Notifications|System Events/],
       ['/rewards', /Rewards|Referrals|Redeem/],
