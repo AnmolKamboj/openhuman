@@ -1066,9 +1066,6 @@ fn config_schema_defaults_cover_dashboard_capability_memory_and_security_shapes(
     assert_eq!(audit.log_path, "audit.log");
     assert_eq!(audit.max_size_mb, 100);
 
-    let meet: openhuman_core::openhuman::config::schema::MeetConfig =
-        serde_json::from_value(json!({})).expect("meet defaults");
-    assert!(!meet.auto_orchestrator_handoff);
     let observability: openhuman_core::openhuman::config::schema::ObservabilityConfig =
         serde_json::from_value(json!({})).expect("observability defaults");
     assert!(observability.analytics_enabled);

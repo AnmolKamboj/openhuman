@@ -190,8 +190,6 @@ pub struct DomainSet {
     pub skills: bool,
     /// MCP client subsystem (Smithery registry, local servers, audit).
     pub mcp: bool,
-    /// Google Meet join, agent meetings, live meet-agent loop.
-    pub meet: bool,
     /// Messaging channels + webview bridges (web channel, whatsapp data, …).
     pub channels: bool,
     /// Wallet, high-level web3 surface, x402 machine payments.
@@ -241,7 +239,6 @@ impl DomainSet {
             flows: true,
             skills: true,
             mcp: true,
-            meet: true,
             channels: true,
             web3: true,
             voice: true,
@@ -272,7 +269,6 @@ impl DomainSet {
             flows: false,
             skills: false,
             mcp: false,
-            meet: false,
             channels: false,
             web3: false,
             voice: false,
@@ -309,7 +305,7 @@ impl DomainSet {
     /// `ctx.domains().flows` rather than a `ServiceSet` flag.
     ///
     /// An embedded host supplies its own harness wrappers, networking and
-    /// routing, so `meet` / `web3` / `voice` / `media` / `mcp` stay off.
+    /// routing, so `web3` / `voice` / `media` / `mcp` stay off.
     pub fn embedded() -> Self {
         Self {
             agent: true,
@@ -320,7 +316,6 @@ impl DomainSet {
             flows: true,
             skills: true,
             mcp: false,
-            meet: false,
             channels: true,
             web3: false,
             voice: false,
@@ -357,7 +352,6 @@ impl DomainSet {
             flows: false,
             skills: false,
             mcp: false,
-            meet: false,
             channels: false,
             web3: false,
             voice: false,
@@ -386,7 +380,6 @@ impl DomainSet {
             flows: false,
             skills: false,
             mcp: false,
-            meet: false,
             channels: false,
             web3: false,
             voice: false,
@@ -415,7 +408,6 @@ impl DomainSet {
             DomainGroup::Flows => self.flows,
             DomainGroup::Skills => self.skills,
             DomainGroup::Mcp => self.mcp,
-            DomainGroup::Meet => self.meet,
             DomainGroup::Channels => self.channels,
             DomainGroup::Web3 => self.web3,
             DomainGroup::Voice => self.voice,
@@ -841,7 +833,6 @@ mod tests {
             DomainGroup::Flows,
             DomainGroup::Skills,
             DomainGroup::Mcp,
-            DomainGroup::Meet,
             DomainGroup::Channels,
             DomainGroup::Web3,
             DomainGroup::Voice,
@@ -869,7 +860,6 @@ mod tests {
             DomainGroup::Flows,
             DomainGroup::Skills,
             DomainGroup::Mcp,
-            DomainGroup::Meet,
             DomainGroup::Channels,
             DomainGroup::Web3,
             DomainGroup::Voice,
@@ -891,7 +881,6 @@ mod tests {
             DomainGroup::Flows,
             DomainGroup::Skills,
             DomainGroup::Mcp,
-            DomainGroup::Meet,
             DomainGroup::Channels,
             DomainGroup::Web3,
             DomainGroup::Voice,
@@ -925,7 +914,6 @@ mod tests {
 
         for off in [
             DomainGroup::Mcp,
-            DomainGroup::Meet,
             DomainGroup::Web3,
             DomainGroup::Voice,
             DomainGroup::Media,

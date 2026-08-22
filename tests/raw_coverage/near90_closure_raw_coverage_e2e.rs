@@ -294,7 +294,6 @@ async fn round20_app_state_quarantines_directory_state_and_uses_stored_user_on_h
     );
     assert_eq!(snap.session_token.as_deref(), Some("round20.remote.token"));
     assert!(!snap.analytics_enabled);
-    assert!(!snap.meet_auto_orchestrator_handoff);
 
     std::fs::remove_file(harness.app_state_file()).expect("remove app-state file");
     std::fs::create_dir_all(harness.app_state_file()).expect("directory at app-state path");

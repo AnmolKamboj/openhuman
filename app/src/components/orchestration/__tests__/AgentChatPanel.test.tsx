@@ -43,9 +43,6 @@ vi.mock('../../../lib/orchestration/useOrchestrationChats', () => ({
   useOrchestrationChats: () => chatsApi.current,
 }));
 
-const subconsciousTrigger = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
-vi.mock('../../../utils/tauriCommands/subconscious', () => ({ subconsciousTrigger }));
-
 const sendMasterMessage = vi.hoisted(() => vi.fn().mockResolvedValue({ ok: true, messageId: 'm' }));
 vi.mock('../../../lib/orchestration/orchestrationClient', async orig => ({
   ...(await orig<typeof import('../../../lib/orchestration/orchestrationClient')>()),
@@ -114,18 +111,6 @@ describe('AgentChatPanel', () => {
     await waitFor(() =>
       expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ id: 'master' }), 'go')
     );
-  });
-
-  it('shows the steering header + runs a review on the subconscious thread', () => {
-    chatsApi.current = {
-      ...chatsApi.current,
-      selectedId: 'subconscious',
-      selected: { id: 'subconscious', title: 'Subconscious', messages: [] },
-    };
-    render(<AgentChatPanel />);
-    expect(screen.getByTestId('orch-agent-steering')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('tinyplaceOrchestration.steeringHeader.runReview'));
-    expect(subconsciousTrigger).toHaveBeenCalledWith('all');
   });
 
   it('opens a session subpage from a View-session card and replies', async () => {

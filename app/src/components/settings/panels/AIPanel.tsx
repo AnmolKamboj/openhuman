@@ -50,14 +50,6 @@ import {
   type AuthStyle,
   openhumanUpdateLocalAiSettings,
 } from '../../../utils/tauriCommands/config';
-import {
-  type HeartbeatPlannerSummary,
-  type HeartbeatSettings,
-  type HeartbeatSettingsPatch,
-  openhumanHeartbeatSettingsGet,
-  openhumanHeartbeatSettingsSet,
-  openhumanHeartbeatTickNow,
-} from '../../../utils/tauriCommands/heartbeat';
 import { ConfirmationModal } from '../../intelligence/ConfirmationModal';
 import PanelPage from '../../layout/PanelPage';
 import Button from '../../ui/Button';
@@ -975,14 +967,6 @@ const activeConnection = (connection: ComposioConnection): boolean => {
   return status === 'ACTIVE' || status === 'CONNECTED';
 };
 
-const normalizedToolkit = (connection: ComposioConnection): string =>
-  connection.toolkit.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-const isCalendarConnection = (connection: ComposioConnection): boolean => {
-  const toolkit = normalizedToolkit(connection);
-  return toolkit === 'googlecalendar' || toolkit === 'calendar';
-};
-
 function summarizeSpendByAction(
   transactions: CreditTransaction[]
 ): Array<[string, number, number]> {
@@ -1042,34 +1026,6 @@ function describeProvider(ref: ProviderRef, providers: BackgroundLoopProviderVie
   return `${provider?.label ?? ref.providerSlug} ${ref.model || 'custom model'}`;
 }
 
-const LoopToggle = ({
-  label,
-  description,
-  checked,
-  busy,
-  onToggle,
-}: {
-  label: string;
-  description: string;
-  checked: boolean;
-  busy: boolean;
-  onToggle: () => void;
-}) => (
-  <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface px-3 py-2">
-    <div className="min-w-0">
-      <div className="text-sm font-medium text-content">{label}</div>
-      <div className="text-xs text-content-muted">{description}</div>
-    </div>
-    <SettingsSwitch
-      id={`loop-toggle-${label.toLowerCase().replace(/[^a-z0-9]/g, '-')}`}
-      checked={checked}
-      onCheckedChange={onToggle}
-      disabled={busy}
-      aria-label={label}
-    />
-  </div>
-);
-
 const MetricTile = ({
   label,
   value,
@@ -1098,7 +1054,7 @@ const FormulaRow = ({ label, value, detail }: { label: string; value: string; de
   </div>
 );
 
-type BackgroundLoopControlsView = 'all' | 'heartbeat' | 'ledger';
+type BackgroundLoopControlsView = 'all' | 'ledger';
 
 /** Minimal cloud-provider shape consumed by the loop map's `describeProvider`
  *  helper — only slug/label/id are read. Accepting this narrower shape lets
@@ -1119,41 +1075,20 @@ export const BackgroundLoopControls = ({
   hideHeader?: boolean;
 }) => {
   const { t } = useT();
-  const [settings, setSettings] = useState<HeartbeatSettings | null>(null);
   const [usage, setUsage] = useState<TeamUsage | null>(null);
   const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
   const [connections, setConnections] = useState<ComposioConnection[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<string | null>(null);
-  const [runningTick, setRunningTick] = useState(false);
-  const [plannerSummary, setPlannerSummary] = useState<HeartbeatPlannerSummary | null>(null);
   const [error, setError] = useState<string>('');
-  const settingsRef = useRef<HeartbeatSettings | null>(null);
-  const patchRequestIdRef = useRef(0);
-
-  const commitSettings = useCallback((nextSettings: HeartbeatSettings | null) => {
-    settingsRef.current = nextSettings;
-    setSettings(nextSettings);
-  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError('');
-    const [heartbeatResult, usageResult, transactionsResult, connectionsResult] =
-      await Promise.allSettled([
-        openhumanHeartbeatSettingsGet(),
-        creditsApi.getTeamUsage(),
-        creditsApi.getTransactions(200, 0),
-        listComposioConnections(),
-      ]);
-
-    if (heartbeatResult.status === 'fulfilled') {
-      commitSettings(heartbeatResult.value.result.settings);
-    } else {
-      setError(
-        heartbeatResult.reason instanceof Error ? heartbeatResult.reason.message : 'Load failed'
-      );
-    }
+    const [usageResult, transactionsResult, connectionsResult] = await Promise.allSettled([
+      creditsApi.getTeamUsage(),
+      creditsApi.getTransactions(200, 0),
+      listComposioConnections(),
+    ]);
 
     if (usageResult.status === 'fulfilled') {
       setUsage(usageResult.value);
@@ -1167,59 +1102,11 @@ export const BackgroundLoopControls = ({
       setConnections(connectionsResult.value.connections ?? []);
     }
     setLoading(false);
-  }, [commitSettings]);
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
-  }, [refresh]);
-
-  const applyHeartbeatPatch = useCallback(
-    async (patch: HeartbeatSettingsPatch) => {
-      const requestId = patchRequestIdRef.current + 1;
-      patchRequestIdRef.current = requestId;
-      const savingKey = Object.keys(patch).join(',');
-      const previous = settingsRef.current;
-      setError('');
-      setSaving(savingKey);
-      if (!previous) {
-        // No baseline to patch against — abandon this request.
-        if (patchRequestIdRef.current === requestId) {
-          setSaving(null);
-        }
-        return;
-      }
-      commitSettings({ ...previous, ...patch });
-      try {
-        const response = await openhumanHeartbeatSettingsSet(patch);
-        // Stale response — a newer patch superseded us; drop this result.
-        if (patchRequestIdRef.current !== requestId) return;
-        commitSettings(response.result.settings);
-      } catch (err) {
-        if (patchRequestIdRef.current !== requestId) return;
-        commitSettings(previous);
-        setError(err instanceof Error ? err.message : String(err));
-      } finally {
-        if (patchRequestIdRef.current === requestId) {
-          setSaving(null);
-        }
-      }
-    },
-    [commitSettings]
-  );
-
-  const runPlannerNow = useCallback(async () => {
-    setRunningTick(true);
-    setError('');
-    try {
-      const response = await openhumanHeartbeatTickNow();
-      setPlannerSummary(response.result.summary);
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setRunningTick(false);
-    }
   }, [refresh]);
 
   const spendSample = summarizeSpendSample(transactions);
@@ -1227,25 +1114,14 @@ export const BackgroundLoopControls = ({
   const actionSummary = summarizeSpendByAction(transactions);
   const hourSummary = summarizeSpendByHour(transactions);
   const latestSpend = spendRows[0] ?? null;
-  const heartbeatIntervalMinutes = settings ? Math.max(settings.interval_minutes, 5) : 5;
-  const heartbeatTicksPerWeek = settings?.enabled
-    ? Math.ceil(WEEK_MINUTES / heartbeatIntervalMinutes)
-    : 0;
   const activeConnections = connections.filter(activeConnection);
-  const activeCalendarConnections = activeConnections.filter(isCalendarConnection);
-  const maxCalendarConnectionsPerTick = settings
-    ? Math.max(settings.max_calendar_connections_per_tick ?? 2, 1)
-    : 2;
-  const calendarConnectionsPolled = settings?.notify_meetings
-    ? Math.min(activeCalendarConnections.length, maxCalendarConnectionsPerTick)
-    : 0;
-  const calendarConnectionsSkipped = settings?.notify_meetings
-    ? Math.max(activeCalendarConnections.length - calendarConnectionsPolled, 0)
-    : 0;
-  const calendarPlannerCallsPerTick = settings?.notify_meetings ? 1 + calendarConnectionsPolled : 0;
-  const calendarPlannerCallsPerWeek = heartbeatTicksPerWeek * calendarPlannerCallsPerTick;
-  const subconsciousModelCallsPerWeek =
-    settings?.enabled && settings.inference_enabled ? heartbeatTicksPerWeek : 0;
+  // The heartbeat planner, its calendar collector and the subconscious tick
+  // went with the subconscious domain, so none of them contributes scheduled
+  // wakeups or background API reads any more. Kept as named zeros so the
+  // ledger arithmetic below still reads as "everything that runs in the
+  // background" instead of silently dropping the terms.
+  const heartbeatTicksPerWeek = 0;
+  const calendarPlannerCallsPerWeek = 0;
   const composioPeriodicTicksPerWeek = Math.ceil(WEEK_MINUTES / COMPOSIO_PERIODIC_TICK_MINUTES);
   const learningTicksPerWeek = Math.ceil(WEEK_MINUTES / LEARNING_REBUILD_MINUTES);
   const memoryPollsPerWeek = Math.ceil((WEEK_MINUTES * 60 * MEMORY_WORKERS) / MEMORY_POLL_SECONDS);
@@ -1281,27 +1157,6 @@ export const BackgroundLoopControls = ({
 
   const loops = [
     {
-      name: 'Heartbeat planner',
-      enabled: Boolean(settings?.enabled),
-      cadence: `${settings?.interval_minutes ?? 5} min`,
-      route: describeProvider(routing.heartbeat, cloudProviders),
-      work: 'Runs proactive collectors: cron reminders, calendar meetings, relevant notifications.',
-      risk: settings?.notify_meetings
-        ? `${calendarPlannerCallsPerTick} Composio read call(s)/tick; ${calendarConnectionsSkipped} calendar link(s) over cap skipped.`
-        : 'Calendar collector off; planner reads only local enabled categories.',
-    },
-    {
-      name: 'Subconscious tick',
-      enabled: Boolean(settings?.enabled && settings?.inference_enabled),
-      cadence: `${settings?.interval_minutes ?? 5} min`,
-      route: describeProvider(routing.subconscious, cloudProviders),
-      work: 'Evaluates subconscious tasks/reflections through kind=subconscious_tick.',
-      risk:
-        subconsciousModelCallsPerWeek > 0
-          ? `${formatCount(subconsciousModelCallsPerWeek)} model call(s)/week at current interval.`
-          : 'Inference off; no scheduled subconscious model calls.',
-    },
-    {
       name: 'Memory tree workers',
       enabled: true,
       cadence: 'queue',
@@ -1327,7 +1182,6 @@ export const BackgroundLoopControls = ({
     },
   ];
 
-  const showHeartbeat = view === 'all' || view === 'heartbeat';
   const showLedger = view === 'all' || view === 'ledger';
   const gridCols =
     view === 'all' ? 'md:grid-cols-[minmax(0,1fr)_minmax(260px,0.8fr)]' : 'grid-cols-1';
@@ -1348,228 +1202,41 @@ export const BackgroundLoopControls = ({
       {error && <SettingsStatusLine saving={false} error={error} savedNote={null} savingLabel="" />}
 
       <section className={`grid gap-3 ${gridCols}`}>
-        {showHeartbeat && (
-          <div className="space-y-3">
-            <div className="rounded-lg border border-line bg-surface-muted p-3">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-content">
-                    {t('settings.ai.heartbeatControls')}
-                  </div>
-                  <div className="text-xs text-content-muted">
-                    {t('settings.ai.heartbeatControlsDesc')}
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="xs"
-                  onClick={() => void refresh()}
-                  disabled={loading}>
-                  {t('common.refresh')}
-                </Button>
-              </div>
-
-              {settings ? (
-                <div className="space-y-2">
-                  <LoopToggle
-                    label={t('settings.ai.heartbeatLoop')}
-                    description={t('settings.ai.heartbeatLoopDesc')}
-                    checked={settings.enabled}
-                    busy={saving === 'enabled'}
-                    onToggle={() => void applyHeartbeatPatch({ enabled: !settings.enabled })}
-                  />
-                  <LoopToggle
-                    label={t('settings.ai.subconsciousInference')}
-                    description={t('settings.ai.subconsciousInferenceDesc')}
-                    checked={settings.inference_enabled}
-                    busy={saving === 'inference_enabled'}
-                    onToggle={() =>
-                      void applyHeartbeatPatch({ inference_enabled: !settings.inference_enabled })
-                    }
-                  />
-                  <LoopToggle
-                    label={t('settings.ai.calendarMeetingChecks')}
-                    description={t('settings.ai.calendarMeetingChecksDesc')}
-                    checked={settings.notify_meetings}
-                    busy={saving === 'notify_meetings'}
-                    onToggle={() =>
-                      void applyHeartbeatPatch({ notify_meetings: !settings.notify_meetings })
-                    }
-                  />
-                  <div className="grid gap-2 rounded-lg border border-line bg-surface px-3 py-2 sm:grid-cols-3">
-                    <label className="min-w-0 space-y-1 text-xs font-medium text-content-secondary">
-                      <span className="whitespace-nowrap">{t('settings.ai.calendarCap')}</span>
-                      <SettingsSelect
-                        aria-label={t('settings.ai.calendarCap')}
-                        value={maxCalendarConnectionsPerTick}
-                        disabled={saving === 'max_calendar_connections_per_tick'}
-                        onChange={e =>
-                          void applyHeartbeatPatch({
-                            max_calendar_connections_per_tick: Number(e.target.value),
-                          })
-                        }
-                        className="w-full"
-                        inputSize="sm">
-                        {[1, 2, 3, 5, 10].map(count => (
-                          <option key={count} value={count}>
-                            {formatI18n(t('settings.ai.connectionsPerTick'), { count })}
-                          </option>
-                        ))}
-                      </SettingsSelect>
-                    </label>
-                    <label className="min-w-0 space-y-1 text-xs font-medium text-content-secondary">
-                      <span className="whitespace-nowrap">{t('settings.ai.meetingLookahead')}</span>
-                      <SettingsSelect
-                        aria-label={t('settings.ai.meetingLookahead')}
-                        value={settings.meeting_lookahead_minutes}
-                        disabled={saving === 'meeting_lookahead_minutes'}
-                        onChange={e =>
-                          void applyHeartbeatPatch({
-                            meeting_lookahead_minutes: Number(e.target.value),
-                          })
-                        }
-                        className="w-full"
-                        inputSize="sm">
-                        {[15, 30, 60, 120, 240].map(minutes => (
-                          <option key={minutes} value={minutes}>
-                            {formatI18n(t('settings.ai.minutesShort'), { count: minutes })}
-                          </option>
-                        ))}
-                      </SettingsSelect>
-                    </label>
-                    <label className="min-w-0 space-y-1 text-xs font-medium text-content-secondary">
-                      <span className="whitespace-nowrap">
-                        {t('settings.ai.reminderLookahead')}
-                      </span>
-                      <SettingsSelect
-                        aria-label={t('settings.ai.reminderLookahead')}
-                        value={settings.reminder_lookahead_minutes}
-                        disabled={saving === 'reminder_lookahead_minutes'}
-                        onChange={e =>
-                          void applyHeartbeatPatch({
-                            reminder_lookahead_minutes: Number(e.target.value),
-                          })
-                        }
-                        className="w-full"
-                        inputSize="sm">
-                        {[5, 15, 30, 60, 120].map(minutes => (
-                          <option key={minutes} value={minutes}>
-                            {formatI18n(t('settings.ai.minutesShort'), { count: minutes })}
-                          </option>
-                        ))}
-                      </SettingsSelect>
-                    </label>
-                  </div>
-                  <LoopToggle
-                    label={t('settings.ai.cronReminderChecks')}
-                    description={t('settings.ai.cronReminderChecksDesc')}
-                    checked={settings.notify_reminders}
-                    busy={saving === 'notify_reminders'}
-                    onToggle={() =>
-                      void applyHeartbeatPatch({ notify_reminders: !settings.notify_reminders })
-                    }
-                  />
-                  <LoopToggle
-                    label={t('settings.ai.relevantNotificationChecks')}
-                    description={t('settings.ai.relevantNotificationChecksDesc')}
-                    checked={settings.notify_relevant_events}
-                    busy={saving === 'notify_relevant_events'}
-                    onToggle={() =>
-                      void applyHeartbeatPatch({
-                        notify_relevant_events: !settings.notify_relevant_events,
-                      })
-                    }
-                  />
-                  <LoopToggle
-                    label={t('settings.ai.externalDelivery')}
-                    description={t('settings.ai.externalDeliveryDesc')}
-                    checked={settings.external_delivery_enabled}
-                    busy={saving === 'external_delivery_enabled'}
-                    onToggle={() =>
-                      void applyHeartbeatPatch({
-                        external_delivery_enabled: !settings.external_delivery_enabled,
-                      })
-                    }
-                  />
-
-                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2">
-                    <label
-                      className="text-xs font-medium text-content-secondary"
-                      htmlFor="heartbeat-interval">
-                      {t('settings.ai.interval')}
-                    </label>
-                    <SettingsSelect
-                      id="heartbeat-interval"
-                      aria-label={t('settings.ai.interval')}
-                      value={settings.interval_minutes}
-                      disabled={saving === 'interval_minutes'}
-                      onChange={e =>
-                        void applyHeartbeatPatch({ interval_minutes: Number(e.target.value) })
-                      }
-                      inputSize="sm">
-                      {[5, 10, 15, 30, 60].map(minutes => (
-                        <option key={minutes} value={minutes}>
-                          {formatI18n(t('settings.ai.minutesShort'), { count: minutes })}
-                        </option>
-                      ))}
-                    </SettingsSelect>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="xs"
-                      onClick={() => void runPlannerNow()}
-                      disabled={runningTick}
-                      className="ml-auto">
-                      {runningTick ? t('settings.ai.running') : t('settings.ai.plannerTickNow')}
-                    </Button>
-                  </div>
-
-                  {plannerSummary && (
-                    <div className="rounded-md border border-primary-100 bg-primary-50 dark:bg-primary-500/10 px-3 py-2 text-xs text-primary-900">
-                      {t('settings.ai.plannerSummary')
-                        .replace('{sourceEvents}', String(plannerSummary.source_events))
-                        .replace('{sent}', String(plannerSummary.deliveries_sent))
-                        .replace('{deduped}', String(plannerSummary.deliveries_skipped_dedup))}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-xs text-content-muted">
-                  {loading
-                    ? t('settings.ai.loadingHeartbeatControls')
-                    : t('settings.ai.heartbeatControlsUnavailable')}
-                </div>
-              )}
-            </div>
-
-            <div className="overflow-hidden rounded-lg border border-line bg-surface-muted">
-              <div className="border-b border-line px-3 py-2 text-xs font-semibold uppercase tracking-wide text-content-faint">
-                {t('settings.ai.loopMap')}
-              </div>
-              <div className="divide-y divide-line dark:divide-neutral-800">
-                {loops.map(loop => (
-                  <div key={loop.name} className="grid gap-2 px-3 py-3 md:grid-cols-[150px_1fr]">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-content">{loop.name}</div>
-                      <div className="mt-0.5 flex flex-wrap gap-1 text-[11px] text-content-muted">
-                        <span>{loop.enabled ? t('settings.ai.on') : t('settings.ai.off')}</span>
-                        <span>{loop.cadence}</span>
-                      </div>
-                    </div>
-                    <div className="min-w-0 text-xs text-content-secondary">
-                      <div>{loop.work}</div>
-                      <div className="mt-1 font-mono text-[11px] text-content-muted">
-                        {t('settings.ai.routeLabel').replace('{route}', loop.route)}
-                      </div>
-                      <div className="mt-1 text-content-muted">{loop.risk}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+        <div className="overflow-hidden rounded-lg border border-line bg-surface-muted">
+          <div className="flex items-center justify-between gap-3 border-b border-line px-3 py-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-content-faint">
+              {t('settings.ai.loopMap')}
+            </span>
+            <Button
+              type="button"
+              variant="secondary"
+              size="xs"
+              onClick={() => void refresh()}
+              disabled={loading}>
+              {t('common.refresh')}
+            </Button>
           </div>
-        )}
+          <div className="divide-y divide-line dark:divide-neutral-800">
+            {loops.map(loop => (
+              <div key={loop.name} className="grid gap-2 px-3 py-3 md:grid-cols-[150px_1fr]">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium text-content">{loop.name}</div>
+                  <div className="mt-0.5 flex flex-wrap gap-1 text-[11px] text-content-muted">
+                    <span>{loop.enabled ? t('settings.ai.on') : t('settings.ai.off')}</span>
+                    <span>{loop.cadence}</span>
+                  </div>
+                </div>
+                <div className="min-w-0 text-xs text-content-secondary">
+                  <div>{loop.work}</div>
+                  <div className="mt-1 font-mono text-[11px] text-content-muted">
+                    {t('settings.ai.routeLabel').replace('{route}', loop.route)}
+                  </div>
+                  <div className="mt-1 text-content-muted">{loop.risk}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
 
         {showLedger && (
           <div className="rounded-lg border border-line bg-surface p-3">
@@ -1697,34 +1364,6 @@ export const BackgroundLoopControls = ({
                 {t('settings.ai.loopCallBudget')}
               </div>
               <div className="mt-2 grid gap-2">
-                <FormulaRow
-                  label={t('settings.ai.heartbeatTicks')}
-                  value={`${formatCount(heartbeatTicksPerWeek)}/week`}
-                  detail={`10080 min/week / ${heartbeatIntervalMinutes} min interval`}
-                />
-                <FormulaRow
-                  label={t('settings.ai.calendarPlannerCalls')}
-                  value={`${formatCount(calendarPlannerCallsPerWeek)}/week`}
-                  detail={
-                    settings?.notify_meetings
-                      ? `ticks * (1 list_connections + ${calendarConnectionsPolled} GOOGLECALENDAR_EVENTS_LIST)`
-                      : 'Meeting collector disabled.'
-                  }
-                />
-                <FormulaRow
-                  label={t('settings.ai.calendarFanoutCap')}
-                  value={`${formatCount(calendarConnectionsPolled)}/${formatCount(activeCalendarConnections.length)} conn/tick`}
-                  detail={`max_calendar_connections_per_tick = ${maxCalendarConnectionsPerTick}; skipped now = ${calendarConnectionsSkipped}`}
-                />
-                <FormulaRow
-                  label={t('settings.ai.subconsciousModelCalls')}
-                  value={`${formatCount(subconsciousModelCallsPerWeek)}/week`}
-                  detail={
-                    settings?.enabled && settings.inference_enabled
-                      ? 'one kind=subconscious_tick model call per heartbeat tick'
-                      : 'Heartbeat inference disabled.'
-                  }
-                />
                 <FormulaRow
                   label={t('settings.ai.composioSyncScans')}
                   value={`${formatCount(composioConnectionScansPerWeek)}/week`}

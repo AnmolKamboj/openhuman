@@ -403,7 +403,7 @@ pub(crate) fn spawn_progress_bridge(
                 .or_else(|| session_profile_user_attribution(&config))
                 .unwrap_or_else(|| client_id.clone());
             // Run origin for trace metadata: the request's source tag
-            // ("ptt"/"dictation"/"type"/"agentbox"/"autonomous"/…), else a
+            // ("ptt"/"dictation"/"type"/"autonomous"/…), else a
             // plain interactive chat turn.
             let run_type = RunType::from_source(metadata.source.as_deref());
             let channel_source = metadata
