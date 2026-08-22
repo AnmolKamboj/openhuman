@@ -515,6 +515,9 @@ mod tests {
 
     #[tokio::test]
     async fn scratch_location_returns_empty_runs() {
+        // Serialize against the process-global scratch store shared with
+        // `todos::ops` / agent-tool tests (see `scratch_test_lock`).
+        let _guard = ops::scratch_test_lock();
         let runs = list_runs(&BoardLocation::Scratch, None).await.unwrap();
         assert!(runs.is_empty());
     }
