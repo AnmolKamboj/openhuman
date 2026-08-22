@@ -185,13 +185,13 @@ pub async fn migrate_legacy_task_runs(
             Ok(body) => match serde_json::from_str(&body) {
                 Ok(runs) => runs,
                 Err(error) => {
-                    tracing::debug!(path = %path.display(), %error, "skip invalid legacy run ledger");
+                    tracing::warn!(path = %path.display(), %error, "skip invalid legacy run ledger");
                     report.skipped += 1;
                     continue;
                 }
             },
             Err(error) => {
-                tracing::debug!(path = %path.display(), %error, "skip unreadable legacy run ledger");
+                tracing::warn!(path = %path.display(), %error, "skip unreadable legacy run ledger");
                 report.skipped += 1;
                 continue;
             }
