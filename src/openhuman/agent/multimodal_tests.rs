@@ -1,5 +1,9 @@
 use super::*;
 
+// The adapter no longer imports these itself — the encoding lives in the crate
+// now — but the tests still build fixture data by hand.
+use base64::Engine as _;
+
 #[test]
 fn parse_image_markers_extracts_multiple_markers() {
     let input = "Check this [IMAGE:/tmp/a.png] and this [IMAGE:https://example.com/b.jpg]";
@@ -221,7 +225,7 @@ fn extract_ollama_image_payload_trims_before_validating() {
 }
 
 #[test]
-fn helpers_cover_marker_count_payload_and_message_composition() {
+fn marker_counting_and_ollama_payload_extraction_reach_the_crate() {
     let messages = vec![
         ChatMessage::system("ignore"),
         ChatMessage::user("one [IMAGE:/tmp/a.png] two [IMAGE:/tmp/b.png]"),
@@ -232,60 +236,6 @@ fn helpers_cover_marker_count_payload_and_message_composition() {
     // is no longer passed through as an image payload (#5146 P6).
     assert!(extract_ollama_image_payload(" local-ref ").is_none());
     assert!(extract_ollama_image_payload("data:image/png;base64,   ").is_none());
-
-    let composed =
-        compose_multimodal_message("describe", &["data:image/png;base64,abc".into()], &[]);
-    assert!(composed.starts_with("describe"));
-    assert!(composed.contains("[IMAGE:data:image/png;base64,abc]"));
-}
-
-#[test]
-fn mime_and_content_type_helpers_cover_supported_and_unknown_inputs() {
-    assert_eq!(
-        normalize_content_type("image/PNG; charset=utf-8").as_deref(),
-        Some("image/png")
-    );
-    assert_eq!(normalize_content_type("   ").as_deref(), None);
-    assert_eq!(mime_from_extension("JPEG"), Some("image/jpeg"));
-    assert_eq!(mime_from_extension("txt"), None);
-    assert_eq!(
-        mime_from_magic(&[0xff, 0xd8, 0xff, 0x00]),
-        Some("image/jpeg")
-    );
-    assert_eq!(mime_from_magic(b"GIF89a123"), Some("image/gif"));
-    assert_eq!(mime_from_magic(b"BMrest"), Some("image/bmp"));
-    assert_eq!(mime_from_magic(b"not-an-image"), None);
-    assert_eq!(
-        detect_mime(
-            None,
-            &[0xff, 0xd8, 0xff, 0x00],
-            Some("image/webp; charset=binary")
-        )
-        .as_deref(),
-        Some("image/webp")
-    );
-    assert_eq!(
-        validate_mime("x", "text/plain").unwrap_err().to_string(),
-        "multimodal image MIME type is not allowed for 'x': text/plain"
-    );
-}
-
-#[tokio::test]
-async fn normalization_helpers_cover_invalid_data_uri_and_missing_local_file() {
-    let err = normalize_data_uri("data:image/png,abcd", 1024)
-        .expect_err("non-base64 data uri should fail");
-    assert!(err
-        .to_string()
-        .contains("only base64 data URIs are supported"));
-
-    let err = normalize_data_uri("data:text/plain;base64,YQ==", 1024)
-        .expect_err("unsupported mime should fail");
-    assert!(err.to_string().contains("MIME type is not allowed"));
-
-    let err = normalize_local_image("/definitely/missing.png", 1024)
-        .await
-        .expect_err("missing local file should fail");
-    assert!(err.to_string().contains("not found or unreadable"));
 }
 
 // ── File-attachment marker tests ──────────────────────────────────────
@@ -722,49 +672,6 @@ async fn prepare_messages_handles_mixed_image_and_file_markers() {
 }
 
 #[test]
-fn file_mime_from_extension_and_magic_cover_supported_types() {
-    assert_eq!(file_mime_from_extension("PDF"), Some("application/pdf"));
-    assert_eq!(file_mime_from_extension("md"), Some("text/markdown"));
-    assert_eq!(file_mime_from_extension("markdown"), Some("text/markdown"));
-    assert_eq!(file_mime_from_extension("CSV"), Some("text/csv"));
-    assert_eq!(file_mime_from_extension("txt"), Some("text/plain"));
-    assert_eq!(file_mime_from_extension("zip"), Some("application/zip"));
-    assert_eq!(
-        file_mime_from_extension("xlsx"),
-        Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    );
-    assert_eq!(file_mime_from_extension("rs"), None);
-
-    assert_eq!(
-        file_mime_from_magic(b"%PDF-1.4 rest"),
-        Some("application/pdf")
-    );
-    assert_eq!(
-        file_mime_from_magic(&[b'P', b'K', 0x03, 0x04, 0x00]),
-        Some("application/zip")
-    );
-    assert_eq!(file_mime_from_magic(b"not-anything"), None);
-}
-
-#[test]
-fn truncate_chars_respects_cap_and_reports_dropped() {
-    let (text, dropped) = truncate_chars("hello".to_string(), 100);
-    assert_eq!(text, "hello");
-    assert_eq!(dropped, 0);
-
-    let (text, dropped) = truncate_chars("a".repeat(50), 10);
-    assert!(text.chars().count() <= 10);
-    assert!(dropped > 0);
-
-    // UTF-8 safety: multi-byte chars must not split mid-codepoint.
-    let multi = "日本語".repeat(20);
-    let (text, _) = truncate_chars(multi.clone(), 5);
-    assert!(text.chars().count() <= 5);
-    // Round-trip valid utf-8 (would panic otherwise).
-    let _ = text.as_str().chars().count();
-}
-
-#[test]
 fn multimodal_file_config_effective_limits_clamp_to_safe_bounds() {
     let cfg = MultimodalFileConfig {
         max_files: 999,
@@ -831,23 +738,6 @@ fn count_markers_only_inspects_latest_user_message() {
         ChatMessage::user("plain text only".to_string()),
     ];
     assert_eq!(count_image_markers(&image_history), 0);
-}
-
-#[test]
-fn file_payload_renders_truncation_marker_in_compose() {
-    let payload = FilePayload::Extracted {
-        name: "long.txt".to_string(),
-        mime: "text/plain".to_string(),
-        size_bytes: 1024,
-        text: "snippet".to_string(),
-        truncated_chars: 42,
-    };
-    let composed = compose_multimodal_message("intro", &[], &[payload]);
-    assert!(composed.contains("intro"));
-    assert!(composed.contains("[FILE-EXTRACTED: name=\"long.txt\""));
-    assert!(composed.contains("snippet"));
-    assert!(composed.contains("[…truncated 42 chars]"));
-    assert!(composed.contains("[/FILE-EXTRACTED]"));
 }
 
 #[test]
@@ -1076,16 +966,6 @@ fn extract_image_placeholders_pulls_att_tokens_in_order() {
     // A bare placeholder with no stash ref is ignored; plain text yields none.
     assert!(extract_image_placeholders_in_text("[Image: (could not be processed)]").is_empty());
     assert!(extract_image_placeholders_in_text("no images here").is_empty());
-}
-
-#[test]
-fn ext_from_mime_maps_known_image_types() {
-    assert_eq!(ext_from_mime("image/png"), Some("png"));
-    assert_eq!(ext_from_mime("image/jpeg"), Some("jpg"));
-    assert_eq!(ext_from_mime("image/webp"), Some("webp"));
-    assert_eq!(ext_from_mime("image/gif"), Some("gif"));
-    assert_eq!(ext_from_mime("image/bmp"), Some("bmp"));
-    assert_eq!(ext_from_mime("application/pdf"), None);
 }
 
 #[tokio::test]
