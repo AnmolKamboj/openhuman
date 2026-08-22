@@ -139,12 +139,12 @@ fn a_multi_header_credential_keeps_every_header() {
     match &client_config(&config).servers[0].auth {
         tinymcp::McpAuthConfig::Headers { headers } => {
             assert_eq!(headers.len(), 2);
-            assert!(headers.iter().any(|header| {
-                header.name == "X-Client-Key" && header.value == "k"
-            }));
-            assert!(headers.iter().any(|header| {
-                header.name == "Authorization" && header.value == "Bearer s"
-            }));
+            assert!(headers
+                .iter()
+                .any(|header| { header.name == "X-Client-Key" && header.value == "k" }));
+            assert!(headers
+                .iter()
+                .any(|header| { header.name == "Authorization" && header.value == "Bearer s" }));
         }
         other => panic!("expected several headers, got {other:?}"),
     }
