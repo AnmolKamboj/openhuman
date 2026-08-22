@@ -54,7 +54,10 @@ const DEFAULT_CORE_PORT: u16 = 7788;
 ///
 /// The map is what keeps that cheap. Opening a service runs the store's
 /// migrations and builds an HTTP client, which no request path should pay for.
-static HOSTS: OnceLock<Mutex<HashMap<PathBuf, Arc<McpHost>>>> = OnceLock::new();
+/// Each entry carries the identity and proxy its host was built with, so the
+/// reconnect supervisor can dial with the same identity the host's connections
+/// use — `McpRegistry` keeps those private.
+static HOSTS: OnceLock<Mutex<HashMap<PathBuf, HostEntry>>> = OnceLock::new();
 
 /// The workspace [`init`] opened, for the callers that have no `Config`.
 ///
