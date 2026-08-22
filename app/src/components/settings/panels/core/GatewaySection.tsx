@@ -90,7 +90,11 @@ export function draftToGateway(draft: DraftGateway): { gateway: Gateway } | { er
   if (!draft.contained && !draft.binary.trim()) return { error: 'binaryRequired' };
 
   const port = draft.sshPort.trim();
-  if (port && !/^\d+$/.test(port)) return { error: 'portInvalid' };
+  // A bare digit check would accept `0` and values past 65535, which then reach
+  // the shell as connection settings and only fail later with a generic error.
+  if (port && (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65_535)) {
+    return { error: 'portInvalid' };
+  }
 
   return {
     gateway: {
