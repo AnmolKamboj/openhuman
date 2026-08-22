@@ -373,7 +373,7 @@ const GatewaySection = ({ available }: Props) => {
                 <SettingsTextField
                   id="gateway-identity"
                   value={draft.identity}
-                  placeholder="~/.ssh/id_ed25519"
+                  placeholder={t('settings.gateway.identityPlaceholder')}
                   onChange={e => setDraft({ ...draft, identity: e.target.value })}
                 />
               </div>
