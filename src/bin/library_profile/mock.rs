@@ -181,22 +181,6 @@ pub struct SubagentMock {
 }
 
 impl SubagentMock {
-    /// Two researchers, no injected latency (the original `subagents` shape).
-    pub fn new() -> Arc<Self> {
-        Arc::new(Self {
-            prompts: Mutex::new(Vec::new()),
-            researcher_latencies_ms: Mutex::new(Vec::new()),
-            width: 2,
-            latency: LatencyKnobs {
-                mean_ms: 0,
-                jitter_ms: 0,
-                counter: AtomicU64::new(0),
-            },
-            orchestrator_driven: false,
-            spawn_nonce: AtomicU64::new(0),
-        })
-    }
-
     /// K researchers with per-researcher latency drawn from the env knobs, driven
     /// directly against the orchestrator agent (full agent-aware chain).
     pub fn with_width(width: usize) -> Arc<Self> {

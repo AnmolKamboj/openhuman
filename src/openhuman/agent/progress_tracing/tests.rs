@@ -1074,7 +1074,6 @@ fn run_type_classifies_known_sources() {
         RunType::from_source(Some("autonomous")),
         RunType::AutonomousTask
     );
-    assert_eq!(RunType::from_source(Some("agentbox")), RunType::Agentbox);
     assert_eq!(
         RunType::from_source(Some("channel_inbound")),
         RunType::ChannelInbound

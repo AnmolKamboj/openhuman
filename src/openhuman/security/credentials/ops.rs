@@ -625,18 +625,6 @@ async fn store_session_inner(
     );
     logs.push("conversation persistence bound to active workspace".to_string());
 
-    // Now that active_user.toml exists and config.workspace_dir resolves to
-    // the per-user path, seed the subconscious defaults and spawn the
-    // heartbeat loop. Idempotent — no-op on subsequent logins of the same
-    // process. Bootstrap failures are non-fatal: the session itself is
-    // already stored above, so we only warn.
-    if let Err(e) = crate::openhuman::subconscious::registry::bootstrap_after_login().await {
-        tracing::warn!(error = %e, "[subconscious] post-login bootstrap failed");
-        logs.push(format!("subconscious bootstrap warning: {e}"));
-    } else {
-        logs.push("subconscious engine bootstrapped".to_string());
-    }
-
     // Start all login-gated services (voice, orchestration, and local AI).
     // Uses the effective config so services see the user-scoped workspace
     // directory.
@@ -832,12 +820,6 @@ pub async fn clear_session(config: &Config) -> Result<RpcOutcome<serde_json::Val
     // they don't run as orphan processes after logout, consuming RAM/CPU with
     // no user context to operate against.
     stop_login_gated_services(config).await;
-
-    // Tear down the subconscious engine + heartbeat loop. Without this the
-    // cached engine would keep pointing at the previous user's workspace_dir
-    // and the heartbeat task would leak, ticking against the wrong DB when a
-    // different user signs in to the same sidecar process.
-    crate::openhuman::subconscious::registry::reset_engine_for_user_switch().await;
 
     // The process stays alive after desktop/TUI logout, so every process-global
     // store must follow the now-active pre-login workspace. Without this, a

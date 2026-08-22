@@ -394,7 +394,6 @@ fn all_builtin_agent_definitions_have_expected_effective_max_iterations() {
         #[cfg(feature = "skills")]
         ("skill_executor", 50),
         ("tinyplace_agent", 50),
-        ("subconscious", 30),
         // Strict policy, declared `max_iterations` below the old global
         // default (10) -> effective cap lowered.
         ("agent_memory", 6),

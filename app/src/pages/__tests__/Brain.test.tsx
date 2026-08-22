@@ -61,20 +61,6 @@ vi.mock('../../components/intelligence/MemoryGraph', async () => {
 
 vi.mock('../../lib/i18n/I18nContext', () => ({ useT: () => ({ t: (k: string) => k }) }));
 
-vi.mock('../../hooks/useSubconscious', () => ({
-  useSubconscious: () => ({
-    status: null,
-    mode: 'off',
-    refresh: vi.fn(),
-    triggerTick: vi.fn(),
-    setMode: vi.fn(),
-  }),
-}));
-
-vi.mock('../../components/intelligence/IntelligenceSubconsciousTab', async () => {
-  const React = await import('react');
-  return { default: () => React.createElement('div', { 'data-testid': 'brain-subconscious' }) };
-});
 vi.mock('../../components/layout/ChipTabs', async () => {
   const React = await import('react');
   return {
@@ -190,7 +176,6 @@ describe('Brain page', () => {
   it.each([
     ['sources', 'brain-sources'],
     ['sync', 'brain-sync'],
-    ['subconscious', 'brain-subconscious'],
   ])('renders the %s tab', async (tab, testId) => {
     graphExportMock.mockResolvedValue(makeGraph(0));
     await act(async () => {

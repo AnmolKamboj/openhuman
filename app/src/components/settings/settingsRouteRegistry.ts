@@ -43,7 +43,6 @@ type SettingsNavGroup =
   | 'connections'
   | 'knowledgeMemory'
   | 'agentsAutonomy'
-  | 'modelsInference'
   | 'automationIntegrations'
   | 'diagnosticsLogs';
 
@@ -54,7 +53,6 @@ const NAV_GROUP_ORDER: SettingsNavGroup[] = [
   'connections',
   'knowledgeMemory',
   'agentsAutonomy',
-  'modelsInference',
   'automationIntegrations',
   'diagnosticsLogs',
 ];
@@ -68,7 +66,6 @@ export const NAV_GROUP_LABEL_KEY: Record<SettingsNavGroup, string> = {
   // Promoted from the old Developer & Diagnostics sub-sections.
   knowledgeMemory: 'settings.devGroups.knowledgeMemory',
   agentsAutonomy: 'settings.devGroups.agentsAutonomy',
-  modelsInference: 'settings.devGroups.modelsInference',
   automationIntegrations: 'settings.devGroups.automationIntegrations',
   diagnosticsLogs: 'settings.devGroups.diagnosticsLogs',
 };
@@ -230,7 +227,7 @@ export const SETTINGS_ROUTE_REGISTRY: SettingsRegistryEntry[] = [
   // --- Connections group ---
   // The Integrations settings section was retired — the composio/OAuth grid
   // lives on the Connections page and the task-source/webhook triage surface is
-  // no longer used. Desktop Agent and Desktop Companion moved to the
+  // no longer used. Desktop Agent moved to the
   // Connections page's Desktop group; their slugs redirect there.
 
   // Notifications-hub and crypto hub pages are retired — their slugs redirect
@@ -460,14 +457,6 @@ export const SETTINGS_ROUTE_REGISTRY: SettingsRegistryEntry[] = [
     navOrder: 3,
   },
   {
-    // Surfaced on the Connections page (Desktop group); route redirects there.
-    id: 'companion',
-    titleKey: 'pages.settings.features.desktopCompanion',
-    descriptionKey: 'settings.assistant.desktopCompanionDesc',
-    section: 'features',
-    searchKeywords: ['desktop', 'overlay', 'companion'],
-  },
-  {
     // meetings: Meeting Assistant settings (issue #3511 / epic #3505 PR-5).
     // Surfaced on the Connections page (meetings tab, below the meetings list);
     // the route redirects there and it's no longer in the settings sidebar.
@@ -529,7 +518,7 @@ export const SETTINGS_ROUTE_REGISTRY: SettingsRegistryEntry[] = [
   // These live ONLY under Settings → Developer & Diagnostics.
   // Items removed from this list compared to the old DeveloperOptionsPanel:
   //   agents, autonomy, agent-access, sandbox-settings, activity-level,
-  //   tools, companion, voice, embeddings, heartbeat,
+  //   tools, voice, embeddings, heartbeat,
   //   ledger-usage, cost-dashboard, task-sources, composio-routing,
   //   webhooks-triggers, migration, security
   //   (all moved to their canonical section pages).
@@ -565,15 +554,6 @@ export const SETTINGS_ROUTE_REGISTRY: SettingsRegistryEntry[] = [
     section: 'developer',
     devOnly: true,
     navGroup: 'diagnosticsLogs',
-  },
-  {
-    id: 'agentbox',
-    titleKey: 'settings.agentbox.title',
-    descriptionKey: 'settings.agentbox.desc',
-    section: 'developer',
-    devOnly: true,
-    navGroup: 'modelsInference',
-    searchKeywords: ['agentbox', 'gmi', 'maas', 'marketplace'],
   },
   // Automation & Integrations (debug)
   {

@@ -241,29 +241,6 @@ impl SystemPromptBuilder {
         self
     }
 
-    /// Append a "Memory context" section carrying the resolved chunks the
-    /// subconscious LLM cited when it produced the reflection that
-    /// spawned this thread (#623).
-    ///
-    /// Snapshot semantics — chunks are baked at construction so the
-    /// rendered system prompt remains byte-identical for the lifetime of
-    /// the session, preserving the inference backend's prefix cache hit.
-    /// The session builder calls this when it detects a thread with a
-    /// `subconscious_reflection`-origin seed message.
-    ///
-    /// No-op when `chunks` is empty.
-    pub fn with_reflection_context(
-        mut self,
-        chunks: Vec<crate::openhuman::subconscious::SourceChunk>,
-    ) -> Self {
-        if chunks.is_empty() {
-            return self;
-        }
-        self.sections
-            .push(Box::new(ReflectionMemoryContextSection::new(chunks)));
-        self
-    }
-
     /// Render every section in order into a single prompt string.
     ///
     /// The rendered bytes are intended to be **frozen for the whole

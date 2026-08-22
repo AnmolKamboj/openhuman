@@ -1,7 +1,7 @@
 import { useT } from '../../../lib/i18n/I18nContext';
 import type { CoreCronJob, CoreCronSchedule } from '../../../utils/tauriCommands/cron';
 import type { MemorySyncStatusRow } from '../../../utils/tauriCommands/memoryTree';
-import type { MemorySyncSummary, SubconsciousSummary } from '../hooks/useBackgroundActivity';
+import type { MemorySyncSummary } from '../hooks/useBackgroundActivity';
 import { formatRelativeTime, formatResetTime } from '../utils/format';
 
 /** Small, grey section divider shared across the background-activity sections. */
@@ -98,63 +98,6 @@ export function CronJobRow({ job }: { job: CoreCronJob }) {
           {scheduleLabel(job.schedule, t)}
         </span>
         <span className="mt-0.5 block text-[11px] text-content-faint">{lastLabel}</span>
-      </div>
-    </div>
-  );
-}
-
-/** Single status row for the subconscious / background-thinking loop. */
-export function SubconsciousRow({ summary }: { summary: SubconsciousSummary }) {
-  const { t } = useT();
-  const off = !summary.enabled || summary.mode === 'off';
-
-  let dot: string;
-  let pill: string;
-  let pillClass: string;
-  if (off) {
-    dot = 'bg-surface-strong';
-    pill = t('conversations.backgroundTasks.subOff');
-    pillClass = 'text-content-faint';
-  } else if (summary.working) {
-    dot = 'bg-amber-500 animate-pulse';
-    pill = t('conversations.backgroundTasks.subWorking');
-    pillClass = 'text-amber-700 dark:text-amber-300';
-  } else {
-    dot = 'bg-sage-500';
-    pill = t('conversations.backgroundTasks.subIdle');
-    pillClass = 'text-sage-700 dark:text-sage-300';
-  }
-
-  const lastLabel =
-    summary.lastTickAt != null
-      ? t('conversations.backgroundTasks.subLastRan').replace(
-          '{time}',
-          // last_tick_at is epoch *seconds*; formatRelativeTime wants a date string.
-          formatRelativeTime(new Date(summary.lastTickAt * 1000).toISOString())
-        )
-      : t('conversations.backgroundTasks.subNeverRan');
-
-  const meta = [
-    lastLabel,
-    t('conversations.backgroundTasks.subTicks').replace('{count}', String(summary.totalTicks)),
-    summary.queueDepth && summary.queueDepth > 0
-      ? t('conversations.backgroundTasks.subQueued').replace('{count}', String(summary.queueDepth))
-      : null,
-  ].filter(Boolean);
-
-  return (
-    <div
-      data-testid="background-subconscious-row"
-      className={`mb-1 flex items-start gap-2.5 rounded-lg px-2.5 py-2 ${off ? 'opacity-60' : ''}`}>
-      <Dot className={dot} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-sm font-medium text-content">
-            {t('conversations.backgroundTasks.sectionSubconscious')}
-          </span>
-          <span className={`shrink-0 text-[11px] font-medium ${pillClass}`}>{pill}</span>
-        </div>
-        <span className="mt-0.5 block text-[11px] text-content-faint">{meta.join(' · ')}</span>
       </div>
     </div>
   );

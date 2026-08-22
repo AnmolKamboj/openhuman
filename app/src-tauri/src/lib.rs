@@ -37,8 +37,6 @@ mod app_update;
 // (macOS/Windows/Linux): native Save-As dialog (rfd) + Downloads copy.
 mod artifact_commands;
 mod claude_code;
-mod companion;
-mod companion_commands;
 mod core_process;
 mod core_rpc;
 #[cfg(target_os = "linux")]
@@ -2866,18 +2864,11 @@ pub fn run() {
             std::sync::Mutex::new(Vec::new()),
         ))
         .manage(ptt_hotkeys::PttHotkeyState::new())
-        .manage(companion_commands::CompanionHotkeyState(
-            std::sync::Mutex::new(Vec::new()),
-        ))
         .manage(notification_settings::NotificationSettingsState::new())
         .manage(PendingAppUpdateState::default());
     let builder = builder.manage(std::sync::Arc::new(imessage_scanner::ScannerRegistry::new()));
     builder
         .setup(move |app| {
-            // Install the app handle for the desktop companion so its session
-            // state machine can emit `companion://state_changed` events.
-            companion::setup(app.handle());
-
             // Structured WhatsApp Web data store lives shell-side. Register the
             // in-process native handlers so the core agent tools (list/search)
             // and the scanner ingest path can reach the SQLite store over the
@@ -3326,14 +3317,6 @@ pub fn run() {
             workspace_paths::reveal_workspace_path,
             workspace_paths::preview_workspace_text,
             workspace_paths::resolve_workspace_absolute_path,
-            companion_commands::register_companion_hotkey,
-            companion_commands::unregister_companion_hotkey,
-            companion_commands::companion_activate,
-            companion::companion_start_session,
-            companion::companion_stop_session,
-            companion::companion_status,
-            companion::companion_config_get,
-            companion::companion_config_set,
             mcp_commands::mcp_resolve_binary_path,
             mcp_commands::mcp_open_client_config,
             loopback_oauth::start_loopback_oauth_listener,

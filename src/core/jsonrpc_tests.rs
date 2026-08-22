@@ -38,7 +38,6 @@ fn domain_subscriber_plan_full_registers_every_gated_subscriber() {
             channels: true,
             flows: true,
             memory: true,
-            meet: true,
             agent: true,
             hosted: true,
             mcp: true,
@@ -61,7 +60,6 @@ fn domain_subscriber_plan_none_registers_no_gated_subscriber() {
             channels: false,
             flows: false,
             memory: false,
-            meet: false,
             agent: false,
             hosted: false,
             mcp: false,
@@ -89,7 +87,6 @@ fn domain_subscriber_plan_harness_gates_by_owning_group() {
         "harness must skip channel-inbound + web-only proactive"
     );
     assert!(!plan.flows, "harness must skip flows trigger dispatch");
-    assert!(!plan.meet, "harness must skip agent_meetings subscribers");
     assert!(
         !plan.hosted,
         "harness must skip hosted orchestration ingest"

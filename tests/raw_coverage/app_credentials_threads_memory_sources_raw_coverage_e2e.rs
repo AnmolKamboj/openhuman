@@ -303,7 +303,6 @@ async fn round19_app_state_local_state_snapshot_and_corruption_edges() {
     );
     assert!(snap.onboarding_completed);
     assert!(snap.analytics_enabled);
-    assert!(snap.meet_auto_orchestrator_handoff);
 
     let cleared = update_local_state(StoredAppStatePatch {
         keyring_consent: None,

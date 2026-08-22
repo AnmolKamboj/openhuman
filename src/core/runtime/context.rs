@@ -97,12 +97,11 @@ impl CoreContext {
     /// workspace-bound init. Order is load-bearing and mirrors the original
     /// `run_server_inner` sequence:
     ///
-    /// 1. register controllers, 2. master key, 3. AgentBox GMI provider,
-    /// 4. seed RPC bearer, 5. workspace stores ([`init_stores`]),
-    /// 6. pure runtime registration.
+    /// 1. register controllers, 2. master key, 3. seed RPC bearer,
+    /// 4. workspace stores ([`init_stores`]), 5. pure runtime registration.
     ///
     /// `preloaded_config` lets an embedder supply the [`Config`] outright
-    /// instead of having step 5 discover one from disk and the environment. See
+    /// instead of having step 4 discover one from disk and the environment. See
     /// [`init_with_config`](Self::init_with_config) for why that matters.
     pub async fn init(
         host_kind: HostKind,
@@ -145,11 +144,6 @@ impl CoreContext {
         //    needs to decrypt secrets. No-op if already called (e.g. from
         //    run_core_from_args for the CLI).
         crate::openhuman::security::keyring::init_master_key();
-
-        // 3. AgentBox GMI MaaS provider bridge — no-op when env vars absent. Must
-        //    run before the router mounts the AgentBox routes so the inference
-        //    catalog knows about "gmi-maas" by the time `/run` accepts traffic.
-        crate::openhuman::agent::agentbox::register_gmi_provider_if_present();
 
         // 4. Seed the per-process RPC bearer. `Fixed` seeds the in-memory value
         //    directly (never touches the env); `EnvOrFile` reads

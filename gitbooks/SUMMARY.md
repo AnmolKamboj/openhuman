@@ -22,7 +22,6 @@
 ## Features
 
 - [Realtime Mascot](features/mascot/README.md)
-  - [Meeting Agents](features/mascot/meeting-agents.md)
 - [Memory](features/obsidian-wiki/README.md)
   - [Memory Tree](features/obsidian-wiki/memory-tree.md)
   - [Memory Sources & Scoping](features/obsidian-wiki/sources.md)
@@ -59,7 +58,6 @@
   - [Third-party Integrations](features/native-tools/integrations.md)
   - [Agent Coordination](features/native-tools/agent-coordination.md)
   - [System & Utilities](features/native-tools/system-and-utilities.md)
-- [Subconscious Loop](features/subconscious.md)
 - [Notifications & Activity](features/notifications-and-activity.md)
 - [Wallet](features/wallet.md)
 - [tiny.place Agent Economy](features/tinyplace.md)
