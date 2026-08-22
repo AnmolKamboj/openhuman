@@ -1185,12 +1185,38 @@ fn directory_ownership_contains_files_beneath_it() {
         &parent,
     );
 
-    assert!(matches!(
-        preflight[0],
-        SpawnParallelTaskPreflight::Prepared(_)
-    ));
-    assert!(
-        matches!(preflight[1], SpawnParallelTaskPreflight::Rejected(_)),
-        "a file beneath an already-claimed directory must be rejected"
+    // The directory-level owner keeps its claim and serializes against any
+    // sibling write rather than fanning out.
+    let owner = match &preflight[0] {
+        SpawnParallelTaskPreflight::Prepared(prepared) => prepared,
+        SpawnParallelTaskPreflight::Rejected(_) => panic!("owner must be admitted"),
+    };
+    assert_eq!(
+        owner.dispatch_mode(),
+        WorkerDispatchMode::SerialSharedWorkspaceWrite,
+        "directory-level owner serializes against shared-workspace writes"
     );
+
+    // A file beneath an already-claimed directory is rejected with the
+    // contended ownership path and the rejecting agent's identity, rather
+    // than silently overlapping the owner.
+    match &preflight[1] {
+        SpawnParallelTaskPreflight::Rejected(rejection) => {
+            assert_eq!(rejection.kind, ParallelTaskRejectionKind::RequiresIsolation);
+            assert_eq!(rejection.agent_id, "nested");
+            assert_eq!(
+                rejection.ownership.as_deref(),
+                Some("files: src/a.rs"),
+                "rejection must carry the rejected task's ownership claim"
+            );
+            assert!(
+                rejection.error.contains("src/a.rs"),
+                "rejection must name the contended path: {}",
+                rejection.error
+            );
+        }
+        SpawnParallelTaskPreflight::Prepared(_) => {
+            panic!("a file beneath an already-claimed directory must be rejected")
+        }
+    }
 }
