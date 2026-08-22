@@ -225,6 +225,19 @@ tinycortex-api = { path = "vendor/tinycortex/api" }
 # rather than the one pinned inside the tinymemory submodule.
 #
 # After cloning: `git submodule update --init --recursive vendor/tinymemory`.
+# tinyruntime — the runtime router
+# (https://github.com/tinyhumansai/tinyruntime). Only the *contract* crate is
+# taken here, never the router itself: the router ships as a loadable TinyBus
+# module, and a host that also compiled it would carry the download pipeline, the
+# worker pool, and their dependency trees for nothing.
+#
+# `tinyruntime-bus` is deliberately dependency-light — `serde` and `serde_json`
+# and nothing else — which is what makes naming the payload types cost this
+# manifest almost nothing. The module's own CI asserts it stays that way.
+#
+# After cloning: `git submodule update --init --recursive vendor/tinyruntime`.
+tinyruntime-bus = { path = "vendor/tinyruntime/crates/tinyruntime-bus" }
+
 tinymemory = { path = "vendor/tinymemory/crates/tinymemory" }
 tinymemory-api = { path = "vendor/tinymemory/crates/tinymemory-api" }
 tinymemory-tinycortex = { path = "vendor/tinymemory/crates/tinymemory-tinycortex" }
@@ -322,18 +335,18 @@ sha2 = "0.10"
 # graph is a hard cargo error, not a warning. Test code that must inspect a
 # ledger goes through `tinycortex::git2`.
 hmac = "0.12"
-# Archive extraction for the Node.js runtime bootstrap. Unix Node
-# distributions ship as .tar.xz, Windows as .zip. `xz2` with `static`
-# bundles liblzma so we don't need it as a system dependency.
+# Archive handling for the Piper voice installer and the document tools. The
+# Node.js and Python toolchain archives are no longer unpacked here — the
+# `tinyruntime` module owns that — which is what let `xz2` and its static
+# liblzma C build leave this manifest entirely.
 tar = "0.4"
-xz2 = { version = "0.1", features = ["static"], optional = true }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 # gzip decoder for the Piper tar.gz binary releases on macOS / Linux. Already
 # pulled in transitively by zip's `deflate` feature; declared directly so
 # the installer module can `use flate2::read::GzDecoder`.
 flate2 = "1"
-# Real timeout for `node --version` probes in the runtime resolver. Guards
-# against a broken shim on PATH hanging the bootstrap forever.
+# Real timeout around a blocking child wait, for the Claude Code auth probe.
+# Guards against a broken binary on PATH hanging the caller forever.
 wait-timeout = "0.2"
 uuid = { version = "1", features = ["v4"] }
 anyhow = "1.0"
@@ -613,7 +626,7 @@ proptest = "1"
 # web3's ethers/secp256k1 cohort, `documents`' zstd/bzip2 native builds,
 # `voice`+`inference`'s cpal/lettre/arboard/enigo/rdev stack, `contacts`'
 # macOS objc2 cohort, `crash-reporting`'s sentry tree, and `tui`'s
-# ratatui/crossterm, and `runtime-node`'s xz2/liblzma. Turning them off takes a
+# ratatui/crossterm. Turning them off takes a
 # bare `cargo check` from 540 packages / 7 native builds down to ~350 / 2, which
 # is the inner loop every contributor pays on every edit.
 #
@@ -815,13 +828,17 @@ web3 = [
     "modules",
 ]
 
-# Managed Node.js runtime: `runtime::node` (download / verify / extract / install
-# a pinned toolchain), the `runtime::javascript` language slot over it,
-# `runtime::pool::node`, the `node_exec` / `npm_exec` agent tools, and the
-# `node_runtime` harness-init step. Default-ON. Slim builds opt out via
-# `--no-default-features --features "<list without runtime-node>"`, which drops
-# the exclusive `xz2` AND its static liblzma C build — the FIRST native
-# toolchain build this gating program removes (6 native -> 5).
+# Managed Node.js runtime: `runtime::node` (the client that asks the
+# `tinyruntime` module for a toolchain), the `runtime::javascript` language slot
+# over it, `runtime::pool::node`, the `node_exec` / `npm_exec` agent tools, and
+# the `node_runtime` harness-init step. Default-ON. Slim builds opt out via
+# `--no-default-features --features "<list without runtime-node>"`.
+#
+# This gate no longer sheds a dependency. It used to carry the exclusive `xz2`
+# and its static liblzma C build; downloading and unpacking a toolchain moved to
+# the `tinyruntime` module, so that native build left this manifest for every
+# configuration rather than only for slim ones. What the gate still buys is the
+# absence of the tools and controllers themselves.
 #
 # FACADE + STUB, not a leaf gate. `ShellTool` holds `Option<Arc<NodeBootstrap>>`
 # for managed-Node PATH injection and `tools/impl/system/shell.rs` is kernel, so
@@ -837,9 +854,7 @@ web3 = [
 #
 # Off-state: `try_cached`/`probe_installed` return `None`, so the shell never
 # prepends a managed bin dir — identical to today's `node.enabled = false` path.
-# `tar` and `zip` are NOT shed: `tar` is shared with `inference` (install_piper)
-# and `runtime::python`, `zip` with `inference` and the document tools.
-runtime-node = ["dep:xz2"]
+runtime-node = []
 
 # macOS Contacts seeding for the people domain: `memory::people::address_book`
 # reads CNContactStore to seed handles. Default-ON. Slim / headless builds opt

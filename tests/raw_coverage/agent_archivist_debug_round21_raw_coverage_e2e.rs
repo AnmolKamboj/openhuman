@@ -436,8 +436,8 @@ fn debug_dump_writer_sanitizes_names_and_writes_summary_sidecars() -> Result<()>
         workspace_dir: PathBuf::from("/tmp/round21-workspace"),
         text: "SYSTEM PROMPT\n".to_string(),
         tool_names: vec!["echo".to_string(), "search".to_string()],
-        skill_tool_count: 1,
         tool_specs: vec![],
+        skill_tool_count: 1,
     }];
 
     let summary = write_prompt_dumps(tmp.path(), &dumps)?;

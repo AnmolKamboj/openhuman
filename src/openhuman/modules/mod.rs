@@ -33,6 +33,8 @@
 //! - [`platform`] — which published artifact belongs to this host.
 //! - [`host`] — the module broker, connection and loader.
 //! - [`ops`] — resolving, loading, and reporting status.
+//! - [`runtime`] — calling `tinyruntime`: resolving a language runtime and
+//!   running code on it.
 //! - [`schemas`] — the `modules` RPC surface.
 //! - [`boot`] — what happens at startup.
 
@@ -45,6 +47,7 @@ mod memory_host;
 pub mod ops;
 pub mod platform;
 pub mod registry;
+pub mod runtime;
 pub mod schemas;
 mod tokenjuice_host;
 pub mod types;

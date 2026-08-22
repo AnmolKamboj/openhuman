@@ -43,6 +43,17 @@ const AUTH_ME_STORE_TRANSIENT_STATUSES: &[u16] = &[408, 429, 500, 502, 503, 504,
 const AUTH_ME_STORE_VALIDATION_BUDGET: Duration = Duration::from_secs(12);
 const AUTH_ME_STORE_VALIDATION_BUDGET_ENV: &str = "OPENHUMAN_AUTH_ME_STORE_TIMEOUT_MS";
 
+/// Whether this dispatch is running under an embedder-hosted core (the library
+/// `Harness`) rather than the desktop shell or CLI.
+///
+/// An embedder supplies its own scoped [`Config`] via `CoreBuilder::config`,
+/// so its `auth_store_session` must keep activation and credential state under
+/// that config's path and never touch the operator's global
+/// `~/.openhuman/active_user.toml` / `users/` tree.
+fn is_embedder_host() -> bool {
+    crate::core::runtime::context::CoreContext::current_embedder_config().is_some()
+}
+
 /// Start all login-gated background services (local AI, voice, and
 /// orchestration). Called both from the initial boot path (when an existing
 /// session is detected) and from `store_session()` on fresh login.
@@ -157,20 +168,44 @@ pub async fn start_login_gated_services(config: &Config) {
     //    one-shot history migration. Idempotent (aborts a prior session's loops
     //    first); no-op when orchestration is disabled. Runs here so both startup
     //    (already logged in) and a fresh login start the hosted-client tail.
+    //
+    //    Gated on the `hosted` domain family. `start_hosted_client_services`
+    //    lives in `hosted::orchestration`, which `DomainSet` can switch off —
+    //    and a gated domain is supposed to have no live surface at all, its
+    //    background loops included. Starting it anyway is not merely untidy:
+    //    the loop's first act is a backend call with the stored session, and a
+    //    rejection flips the scheduler gate to signed-out, which then fails
+    //    `verify_session_active` for every subsequent turn. An embedder running
+    //    `DomainSet::embedded()` (hosted: false) with its own inference
+    //    endpoint would watch unrelated turns fail with SESSION_EXPIRED.
+    //
+    //    Read the domain set BEFORE the spawn: `CoreContext::current()` resolves
+    //    a task-local, which a spawned task does not inherit. Absent a context
+    //    (a direct CLI call, a unit test) the answer is "enabled", preserving
+    //    the previous behaviour exactly.
     {
-        let config = config.clone();
-        tasks.push((
-            "orchestration",
-            tokio::spawn(async move {
-                let step = std::time::Instant::now();
-                crate::openhuman::hosted::orchestration::start_hosted_client_services(&config)
-                    .await;
-                log::debug!(
-                    "[services] orchestration hosted-client started ({} ms)",
-                    step.elapsed().as_millis()
-                );
-            }),
-        ));
+        let hosted_enabled = crate::core::runtime::context::CoreContext::current()
+            .map(|ctx| ctx.domains().hosted)
+            .unwrap_or(true);
+        if hosted_enabled {
+            let config = config.clone();
+            tasks.push((
+                "orchestration",
+                tokio::spawn(async move {
+                    let step = std::time::Instant::now();
+                    crate::openhuman::hosted::orchestration::start_hosted_client_services(&config)
+                        .await;
+                    log::debug!(
+                        "[services] orchestration hosted-client started ({} ms)",
+                        step.elapsed().as_millis()
+                    );
+                }),
+            ));
+        } else {
+            log::debug!(
+                "[services] orchestration hosted-client skipped — the `hosted` domain family is off"
+            );
+        }
     }
 
     let total = tasks.len();
@@ -420,7 +455,7 @@ async fn store_session_inner(
 
     // Determine user_id so we can scope the openhuman directory to this user.
     let resolved_user_id = metadata.get("user_id").cloned();
-    if pending_backend_validation && resolved_user_id.is_none() {
+    if pending_backend_validation && resolved_user_id.is_none() && !is_embedder_host() {
         if let Ok(root_dir) = default_root_openhuman_dir() {
             if let Some(active_user_id) = read_active_user_id(&root_dir) {
                 let active_user_dir = user_openhuman_dir(&root_dir, &active_user_id);
@@ -448,7 +483,19 @@ async fn store_session_inner(
         session_validation_logs
     };
 
-    if let Some(ref uid) = resolved_user_id {
+    // An embedder host (the harness) keeps session state under its own
+    // `config_path` scope and must never touch the operator's global
+    // `~/.openhuman/active_user.toml` or `users/` tree. Writing it would change
+    // which user the operator's real install believes is active purely by
+    // virtue of running a library call — the exact global side effect an
+    // ephemeral harness exists to avoid. The scoped auth profile is still
+    // stored below; only the global activation is skipped.
+    let operator_user_activation = !is_embedder_host();
+
+    if let Some(ref uid) = resolved_user_id
+        .as_ref()
+        .filter(|_| operator_user_activation)
+    {
         if let Ok(root_dir) = default_root_openhuman_dir() {
             // Snapshot before we overwrite `active_user.toml` so we can tell
             // first activation from signed-out vs an in-place account switch.

@@ -448,6 +448,7 @@ pub struct CoreBuilder {
     domains: DomainSet,
     host: Option<String>,
     port: Option<u16>,
+    config: Option<crate::openhuman::config::Config>,
 }
 
 impl CoreBuilder {
@@ -461,6 +462,7 @@ impl CoreBuilder {
             domains: DomainSet::full(),
             host: None,
             port: None,
+            config: None,
         }
     }
 
@@ -496,6 +498,75 @@ impl CoreBuilder {
         self
     }
 
+    /// Supply the [`Config`](crate::openhuman::config::Config) outright instead
+    /// of letting `build()` discover one from `config.toml` and the environment.
+    ///
+    /// Without this an embedder can only configure the core by setting
+    /// environment variables before `build()` — process-global, order-dependent
+    /// relative to a call it does not appear in, and silently wrong if a later
+    /// caller in the same process wants different values. With it, every knob
+    /// the core reads from config (workspace, action dir, autonomy tier, MCP
+    /// servers, provider routes) is an ordinary struct field.
+    ///
+    /// The config is used **verbatim**: no `config.toml` read and no env
+    /// overlay. Call
+    /// [`apply_env_overrides`](crate::openhuman::config::Config::apply_env_overrides)
+    /// yourself first if you want the environment to participate.
+    pub fn config(mut self, config: crate::openhuman::config::Config) -> Self {
+        self.config = Some(config);
+        self
+    }
+
+    /// Root the core's state at `dir` — sessions, memory, attachments, skills.
+    ///
+    /// Sugar over [`config`](Self::config) for the common case of "same
+    /// configuration, different workspace"; starts from the config already
+    /// supplied, or [`Config::default`](Default::default) when none is.
+    pub fn workspace(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
+        let dir = dir.into();
+        let mut config = self.config.take().unwrap_or_default();
+        config.workspace_dir = dir.clone();
+        // Credential profiles and the file-backed keyring resolve from
+        // `config_path`'s parent, not from `workspace_dir`. Rooting only the
+        // workspace while leaving the default config path would keep sessions
+        // and credentials in the previous config root even though this method
+        // documents `dir` as rooting "core state" — so set a deterministic
+        // config path beside the workspace, mirroring the harness's `Dir`
+        // layout (`<root>/config.toml` next to `<root>/workspace`).
+        config.config_path = dir.join("config.toml");
+        self.config = Some(config);
+        self
+    }
+
+    /// Set the agent's read/write root for acting tools (`action_dir`).
+    ///
+    /// Sugar over [`config`](Self::config), like [`workspace`](Self::workspace).
+    /// Distinct from the workspace on purpose: the workspace holds internal
+    /// state the agent must never write to, and `is_workspace_internal_path`
+    /// enforces that separation fail-closed.
+    pub fn action_dir(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
+        let mut config = self.config.take().unwrap_or_default();
+        config.action_dir = dir.into();
+        self.config = Some(config);
+        self
+    }
+
+    /// Point the core's backend calls at `url` (`Config::api_url`).
+    ///
+    /// Sugar over [`config`](Self::config), like [`workspace`](Self::workspace).
+    /// Worth having as its own method because the value reaches more than the
+    /// obvious client: `/auth/me` session validation, the hosted-backend
+    /// surfaces, and — with no `OPENHUMAN_MEDULLA_BASE_URL` override — the
+    /// Medulla client all resolve through it. A host that sets only one of
+    /// those has the other two pointing at a different deployment, which fails
+    /// as "backend rejected session token" rather than as a mismatch.
+    pub fn backend_url(mut self, url: impl Into<String>) -> Self {
+        let mut config = self.config.take().unwrap_or_default();
+        config.api_url = Some(url.into());
+        self.config = Some(config);
+        self
+    }
+
     /// Initialize the core: register controllers, load the master key, seed the
     /// RPC bearer, initialize workspace-bound stores, and run
     /// [`bootstrap_core_runtime`]. Binds no port and starts no transport.
@@ -504,7 +575,8 @@ impl CoreBuilder {
     /// Stage A).
     pub async fn build(self) -> anyhow::Result<CoreRuntime> {
         let (ctx, has_operator_token, config) =
-            CoreContext::init(self.host_kind, &self.token, self.domains).await?;
+            CoreContext::init_with_config(self.host_kind, &self.token, self.domains, self.config)
+                .await?;
 
         Ok(CoreRuntime {
             ctx,

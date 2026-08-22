@@ -228,10 +228,12 @@ prioritization.
    **and** `native-tls` — two full TLS stacks linked simultaneously. A headless
    host on a known target could pick one, shedding the other.
 
-5. **Node/Python runtime bootstrap deps** (`tar`, `xz2`+liblzma, `zip`, `flate2`).
-   Only needed if `skills`/`flows` actually execute node/python workloads; kept
-   here because `skills` is on. If a deployment runs only pure-LLM skills, these
-   archive/decompression deps become sheddable.
+5. ~~**Node/Python runtime bootstrap deps**~~ — **no longer applicable.**
+   Downloading and unpacking language toolchains moved into the `tinyruntime`
+   module, so `xz2` and its liblzma build left this manifest entirely. `tar`,
+   `zip`, and `flate2` remain, but for the Piper voice installer and the document
+   tools rather than for any runtime bootstrap; they are sheddable with those
+   features, not with `skills`.
 
 ## See also
 

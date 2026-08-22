@@ -618,15 +618,34 @@ End-to-end coverage of the agent harness via the web-chat RPC surface against an
 | 15.1.8 | Profile editor isolation UI (toggles, path rows)               | VU    | `app/src/components/settings/panels/ProfileEditorPage.test.tsx`                                   | ✅     | Default-off render, dispatch payload, hydration, path rows shown/hidden                                        |
 | 15.1.9 | Cron profile picker UI (assign, clear, deleted fallback)       | VU    | `app/src/components/settings/panels/cron/` tests, `app/src/services/api/agentProfilesApi.test.ts` | ✅     | Create with/without id, edit prefill, clear→null, deleted-profile preserved, list label fallback               |
 
+## 16. Embedded Library Harness (`openhuman_core::Harness`)
+
+### 16.1 One-call agent turns for a host process
+
+| ID     | Feature                                                        | Layer | Test path(s)                                                                                      | Status | Notes                                                                                                          |
+| ------ | -------------------------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------- |
+| 16.1.1 | End-to-end turn with no transport and no background services   | RI    | `tests/harness_embed.rs`                                                                          | ✅     | Real turn against a wiremock provider; asserts the request landed on the caller's endpoint, that no RPC listener was bound, session continuity across two turns, `session_db` under the harness workspace, and removal on drop |
+| 16.1.2 | Turn wire contract (`TurnRequest` ↔ `inference.agent_chat`)    | RU    | `src/embed/agent_tests.rs`                                                                        | ✅     | Field names checked **both ways** against the registered controller schema — `AgentChatParams` carries no `rename_all`, so an upstream rename is otherwise a silent runtime failure; plus absent-option omission |
+| 16.1.3 | Embedder-supplied config reaches handlers, not just boot        | RU    | `src/core/runtime/context.rs` (`*_embedder_config`)                                               | ✅     | `CoreBuilder::config` is published on `CoreContext` and preferred by `load_config_with_timeout`; without it every handler re-resolves the process-global workspace |
+| 16.1.4 | Workspace lifetime and credential isolation                     | RU    | `src/embed/harness/workspace_tests.rs`                                                            | ✅     | Ephemeral removed on drop, `Dir` persists, `action_dir` never inside the workspace, and `config_path` beside it — its parent is where auth profiles and the keyring resolve |
+| 16.1.5 | Access tier sets the autonomy level **and** the turn origin     | RU    | `src/embed/harness/access_tests.rs`                                                               | ✅     | The fail-closed trap: tier alone leaves every acting tool refusing while the transcript still reads plausibly. Also pins tool-install and `auto_approve_all` staying off at `full()` |
+| 16.1.6 | Per-call provider route is never persisted                      | RU    | `src/embed/harness/provider_tests.rs`, `src/embed/harness/builder_tests.rs`                       | ✅     | Compiles to `EphemeralRoute`; asserts no `cloud_providers` entry and no `api_url` write, so borrowing an endpoint cannot repoint the operator's install |
+| 16.1.7 | Session store (`Core::auth`)                                    | RU    | `src/embed/auth_tests.rs`                                                                         | ✅     | Local-session token shape + user payload, backend/local discrimination, `AuthState` and token-payload decoding incl. the signed-out shapes |
+| 16.1.8 | MCP servers declared programmatically                           | RU    | `src/embed/harness/mcp_tests.rs`                                                                  | ✅     | stdio/HTTP transports mutually exclusive, enabled by default, env accumulation, allow/deny filters, auth carried through |
+| 16.1.9 | Skill bundles installed into the workspace                      | RU    | `src/embed/harness/skills_tests.rs`                                                               | ✅     | Copied not linked (discovery rejects symlinked bundles and manifests by design); symlinks skipped both as bundles and inside them; `Inherit` refuses the copy |
+| 16.1.10 | One harness per process                                        | RU+RI | `src/embed/harness/builder_tests.rs`, `tests/harness_embed.rs`                                     | ✅     | Second build returns `AlreadyRunning` rather than sharing process-global keyring/event-bus/subscribers; a failed build releases the slot so a retry is possible |
+| 16.1.11 | Gated domains start no background clients                      | RU    | covered by 16.1.1 end-to-end                                                                      | 🟡     | `start_login_gated_services` now skips the `hosted::orchestration` client when `DomainSet.hosted` is off; asserted indirectly (the e2e turn fails `SESSION_EXPIRED` without it), no dedicated unit test |
+
 ## Summary
 
 | Status           | Count                                            |
 | ---------------- | ------------------------------------------------ |
-| ✅ Covered       | 79                                               |
-| 🟡 Partial       | 27                                               |
+| ✅ Covered       | 89                                               |
+| 🟡 Partial       | 28                                               |
 | ❌ Missing       | 26                                               |
 | 🚫 Manual smoke  | 11                                               |
-| **Total leaves** | **143 explicit + nested = 214 product features** |
+| **Total leaves** | **154 explicit + nested = 214 product features** |
 
 PR-A delta: 13 leaves moved from ❌ → ✅ via 5 WDIO specs + 2 Vitest + 1 Rust integration test.
+Section 16 adds 11 leaves (10 ✅, 1 🟡) for the embedded library harness.
 Remaining gaps tracked under sub-issues #965 (process), #966 (docs), #967 (tools), #968 (auth/perm), #969 (settings), #970 (rewards), #971 (manual smoke).

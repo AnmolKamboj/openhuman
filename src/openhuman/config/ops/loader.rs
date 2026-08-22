@@ -36,7 +36,19 @@ pub(super) const CONFIG_LOAD_TIMEOUT: std::time::Duration = std::time::Duration:
 /// the disk read on hot paths but proved racy across the in-process
 /// integration tests (re-used workspace paths, concurrent server tasks
 /// loading mid-mutation), so it isn't worth it.
+/// An embedder-supplied config short-circuits the disk read entirely — see
+/// [`CoreContext::embedder_config`](crate::core::runtime::context::CoreContext::embedder_config).
+/// Without that branch, `CoreBuilder::config(..)` would configure boot and
+/// nothing else: every handler calls this function per dispatch, so the turn
+/// itself would still run against whatever the process-global workspace
+/// resolution found. Normalization still runs, because that is a shaping step
+/// handlers depend on, not a re-read.
 pub async fn load_config_with_timeout() -> Result<Config, String> {
+    if let Some(mut config) = crate::core::runtime::context::CoreContext::current_embedder_config()
+    {
+        normalize_loaded_config(&mut config).await;
+        return Ok(config);
+    }
     match tokio::time::timeout(CONFIG_LOAD_TIMEOUT, Config::load_or_init()).await {
         Ok(Ok(mut config)) => {
             normalize_loaded_config(&mut config).await;
