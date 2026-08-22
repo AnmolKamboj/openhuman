@@ -97,10 +97,11 @@ pub struct McpHost {
 impl McpHost {
     /// Builds a host from `config`, without installing it as the process one.
     ///
-    /// [`init`] uses this and then installs the result. It is public so a test
-    /// can drive a host over its own workspace: the process-wide one is a
-    /// `OnceLock`, and a suite that needs a fresh store per case cannot share
-    /// it.
+    /// Public so a test can drive a host over its own workspace: the
+    /// process-wide one is a `OnceLock`, and a suite that needs a fresh store
+    /// per case cannot share it. The startup path and [`for_config`] build
+    /// through [`from_client_config`] instead, so a host and the entry stored
+    /// beside it share one conversion.
     ///
     /// # Errors
     ///
