@@ -1748,9 +1748,11 @@ const en: TranslationMap = {
   'settings.gateway.where.here': 'On this computer',
   'settings.gateway.where.ssh': 'On another machine, over SSH',
   'settings.gateway.destinationLabel': 'SSH destination',
+  'settings.gateway.destinationPlaceholder': 'builder@example.com',
   'settings.gateway.destinationHelp':
     'A host from your SSH config, or user@host. Ports, keys and jump hosts already configured there are used as they are.',
   'settings.gateway.identityLabel': 'Private key (optional)',
+  'settings.gateway.identityPlaceholder': '~/.ssh/id_ed25519',
   'settings.gateway.acceptNewHostKey': 'Trust this machine the first time it connects',
   'settings.gateway.acceptNewHostKeyHelp':
     'Accepts a host key you have never seen. A key that has changed is still refused, because that is the case that means something is wrong.',
