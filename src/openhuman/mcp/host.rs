@@ -270,10 +270,7 @@ pub fn try_service() -> Option<Arc<McpHost>> {
 /// two `OnceLock`s and a process-wide map that every case in this suite shares,
 /// so a test driving `try_service` directly could only assert whatever the rest
 /// of the suite happened to leave behind — which is to say, nothing.
-fn resolve(
-    default: Option<&Path>,
-    hosts: &HashMap<PathBuf, HostEntry>,
-) -> Option<Arc<McpHost>> {
+fn resolve(default: Option<&Path>, hosts: &HashMap<PathBuf, HostEntry>) -> Option<Arc<McpHost>> {
     if let Some(workspace) = default {
         if let Some(entry) = hosts.get(workspace) {
             return Some(Arc::clone(&entry.host));
