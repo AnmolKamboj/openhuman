@@ -79,7 +79,6 @@ OpenHuman تین چیزیں ہے جو زیادہ تر اسسٹنٹس نہیں ہ
 
 - **[میموری ٹری](https://tinyhumans.gitbook.io/openhuman/features/memory-tree) + [Obsidian Wiki](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki)**: آپ کا ڈیٹا اسکور شدہ Markdown درختوں میں کمپریس ہو کر آپ کی مشین پر SQLite میں محفوظ ہوتا ہے، اور ایک [Obsidian والٹ](https://x.com/karpathy/status/2039805659525644595) کے طور پر عکس بند ہوتا ہے جسے آپ کھول اور ایڈٹ کر سکتے ہیں۔ کوئی ویکٹر سوپ بلیک باکس نہیں۔
 - **[100+ OAuth انضمام، 5,000+ MCP سرورز، 90,000+ سکلز](https://tinyhumans.gitbook.io/openhuman/features/integrations)**: ایک کلک سے Gmail، Notion، GitHub، Slack اور اپنے باقی اسٹیک میں پلگ ان کریں۔ [خودکار لانا](https://tinyhumans.gitbook.io/openhuman/features/obsidian-wiki/auto-fetch) ہر 20 منٹ میں دماغ کو خوراک دیتا ہے۔ اس کے پاس آج صبح ہی کل کا سیاق و سباق ہوتا ہے۔
-- **[ایک لاشعور](https://tinyhumans.gitbook.io/openhuman/features/mascot#it-thinks-in-the-background-the-subconscious)**: ایک پس منظر لوپ جو آپ کی دنیا کا موازنہ کرتا ہے، آپ کے اہداف کو آگے بڑھاتا ہے، اور آپ کی صبح کی بریفنگ لکھتا ہے۔ آپ کے ٹائپ کرنا چھوڑنے کے بعد بھی سوچ جاری رہتی ہے۔
 - **[اہداف اور ٹوڈوز](https://tinyhumans.gitbook.io/openhuman/features/goals-and-todos)**: طویل مدتی اہداف، فی تھریڈ پائیدار اہداف، اور ہر گفتگو کے لیے ایک مشترکہ کنبان بورڈ۔
 - **[TokenJuice](https://tinyhumans.gitbook.io/openhuman/features/token-compression)**: ٹول آؤٹ پٹ ماڈل تک پہنچنے سے پہلے کمپریس ہوتا ہے: وہی معلومات، 80% تک کم ٹوکنز۔ اتنا بڑا دماغ اس کے بغیر ناقابلِ برداشت مہنگا ہوتا۔
 
@@ -94,7 +93,6 @@ OpenHuman تین چیزیں ہے جو زیادہ تر اسسٹنٹس نہیں ہ
 
 - **[SuperContext](https://tinyhumans.gitbook.io/openhuman/features/super-context)**: ایک ریسرچ اسکاؤٹ ماڈل کے آپ کا پہلا پیغام پڑھنے سے پہلے آپ کی یادداشت اور فائلوں کا جائزہ لے لیتا ہے۔ کوئی سرد آغاز نہیں۔
 - **سب کچھ شامل ہے**: ویب سرچ، سکریپر، کوڈر ٹول سیٹ، ایک حقیقی [براؤزر](https://tinyhumans.gitbook.io/openhuman/features/native-tools/browser-and-computer)، ان پروسیس Whisper کے ساتھ [مقامی آواز](../gitbooks/features/native-tools/voice.md)، اور ساتھ [ماڈل روٹنگ](https://tinyhumans.gitbook.io/openhuman/features/model-routing) جو ہر ورک لوڈ کے لیے صحیح LLM چنتی ہے، ایک سبسکرپشن، [مقامی AI اختیاری](https://tinyhumans.gitbook.io/openhuman/features/model-routing/local-ai)۔
-- **[میٹنگ ایجنٹس](https://tinyhumans.gitbook.io/openhuman/features/mascot#it-joins-your-meetings-as-a-real-participant)**: چہرے اور آواز کے ساتھ **Meet، Zoom، Teams، اور Webex** میں شامل ہوتا ہے۔ کیلنڈر سے خود بخود شامل ہوتا ہے، لائیو ٹرانسکرپٹ اسٹریم کرتا ہے، نام سے جواب دیتا ہے، خلاصہ + ایکشن آئٹمز محفوظ کرتا ہے۔
 - **[تصویر اور ویڈیو جنریشن](https://tinyhumans.gitbook.io/openhuman/features/native-tools)**: Seedream/SeedEdit تصاویر اور Seedance/Veo ویڈیو، براہ راست آپ کے ورک اسپیس میں، اسی سبسکرپشن پر۔
 - **[17 میسجنگ چینلز](https://tinyhumans.gitbook.io/openhuman/features/channels)**: Telegram، Discord، Slack، WhatsApp، Signal، iMessage… اور ساتھ **مقامی ای میل** (IMAP IDLE + SMTP)۔ آپ کا ایجنٹ آپ تک وہیں پہنچتا ہے جہاں آپ پہلے سے موجود ہیں۔
 

@@ -278,21 +278,11 @@ pub(super) const CAPABILITIES: &[Capability] = &[
         privacy: None,
     },
     Capability {
-        id: "conversation.background_monitors",
-        name: "Background Monitors",
-        domain: "conversation",
-        category: CapabilityCategory::Conversation,
-        description: "Start, inspect, and stop bounded background command monitors that stream new events into active agent work.",
-        how_to: "Conversations > ask the assistant to monitor a command or status source",
-        status: CapabilityStatus::Beta,
-        privacy: LOCAL_RAW,
-    },
-    Capability {
         id: "conversation.subagent_mascots",
         name: "Subagent Mascots",
         domain: "conversation",
         category: CapabilityCategory::Conversation,
-        description: "Show delegated sub-agents as colored companion mascots with compact activity bubbles and running, completed, or failed states.",
+        description: "Show delegated sub-agents as colored mascots with compact activity bubbles and running, completed, or failed states.",
         how_to: "Human > ask the assistant to delegate work to sub-agents",
         status: CapabilityStatus::Beta,
         privacy: None,
@@ -1182,17 +1172,6 @@ pub(super) const CAPABILITIES: &[Capability] = &[
         privacy: None,
     },
     Capability {
-        id: "companion.session",
-        name: "Desktop Companion Session",
-        domain: "companion",
-        category: CapabilityCategory::Conversation,
-        description: "Run a consent-gated desktop companion conversation with a global hotkey, \
-                      native microphone capture, hosted assistant reasoning, and speech synthesis.",
-        how_to: "Settings > Companion: start a session, then use the configured hotkey.",
-        status: CapabilityStatus::Beta,
-        privacy: DERIVED_TO_BACKEND,
-    },
-    Capability {
         id: "channels.connect_platform",
         name: "Connect Messaging Platforms",
         domain: "channels",
@@ -1554,43 +1533,6 @@ pub(super) const CAPABILITIES: &[Capability] = &[
         privacy: LOCAL_CREDENTIALS,
     },
     // ── Update ──────────────────────────────────────────────────────────────
-    // ── Meet ────────────────────────────────────────────────────────────────
-    Capability {
-        id: "meet.join_call",
-        name: "Join Google Meet Calls",
-        domain: "meet",
-        category: CapabilityCategory::Channels,
-        description: "Join a Google Meet call as an anonymous guest in a dedicated CEF webview \
-                      window with an isolated profile. The agent automatically dismisses the \
-                      device-check, types its display name, and clicks Ask-to-join via CDP; the \
-                      host admits the agent from the Meet waiting room.",
-        how_to: "Intelligence > Calls",
-        status: CapabilityStatus::Beta,
-        privacy: Some(CapabilityPrivacy {
-            leaves_device: true,
-            data_kind: PrivacyDataKind::Metadata,
-            destinations: &["Google Meet"],
-        }),
-    },
-    Capability {
-        id: "meet_agent.live_loop",
-        name: "Live Meet Agent — Listen + Speak",
-        domain: "meet_agent",
-        category: CapabilityCategory::Automation,
-        description: "While the agent is in a Google Meet call, it listens to the other \
-                      participants by tapping the embedded webview's audio output, runs \
-                      VAD-segmented speech-to-text, decides whether to respond, and speaks \
-                      back through a virtual microphone the embedded Chromium reads as if \
-                      it were a real input device. No system audio permission required — \
-                      capture and playback both stay inside the CEF process.",
-        how_to: "Automatic once a Meet call is open via Intelligence > Calls.",
-        status: CapabilityStatus::Beta,
-        privacy: Some(CapabilityPrivacy {
-            leaves_device: true,
-            data_kind: PrivacyDataKind::Derived,
-            destinations: &["Google Meet", "ElevenLabs (STT/TTS via hosted backend)"],
-        }),
-    },
     // ── Mobile (iOS client) ─────────────────────────────────────────────────
     Capability {
         id: "mobile.device_pairing",

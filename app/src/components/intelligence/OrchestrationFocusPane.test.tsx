@@ -21,7 +21,6 @@ const chat = (over: Partial<ChatWindow>): ChatWindow =>
   }) as ChatWindow;
 
 let refresh: ReturnType<typeof vi.fn>;
-let onRunSteeringReview: ReturnType<typeof vi.fn>;
 
 const props = (over: Partial<OrchestrationFocusPaneProps>): OrchestrationFocusPaneProps =>
   ({
@@ -32,8 +31,6 @@ const props = (over: Partial<OrchestrationFocusPaneProps>): OrchestrationFocusPa
     masterError: null,
     refresh,
     steeringText: null,
-    runningReview: false,
-    onRunSteeringReview,
     canCompose: false,
     composerBody: '',
     onComposerChange: vi.fn(),
@@ -45,7 +42,6 @@ const props = (over: Partial<OrchestrationFocusPaneProps>): OrchestrationFocusPa
 describe('OrchestrationFocusPane', () => {
   beforeEach(() => {
     refresh = vi.fn();
-    onRunSteeringReview = vi.fn();
   });
 
   it('renders the payment-required state', () => {
@@ -74,38 +70,6 @@ describe('OrchestrationFocusPane', () => {
       />
     );
     expect(screen.getByText(/msg boom/)).toBeInTheDocument();
-  });
-
-  it('renders the steering header with expiry + last review and runs a review', () => {
-    render(
-      <OrchestrationFocusPane
-        {...props({
-          selected: chat({ kind: 'subconscious', pinned: true }),
-          steeringText: 'ship the migration',
-          status: {
-            steering: {
-              text: 'ship the migration',
-              createdAt: '2026-07-04T00:00:00.000Z',
-              expiresAfterCycles: 12,
-            },
-            lastTickAt: 1_700_000_000,
-          },
-        })}
-      />
-    );
-    const header = screen.getByTestId('tinyplace-steering-header');
-    expect(within(header).getByText('ship the migration')).toBeInTheDocument();
-    fireEvent.click(within(header).getByText('tinyplaceOrchestration.steeringHeader.runReview'));
-    expect(onRunSteeringReview).toHaveBeenCalled();
-  });
-
-  it('shows the running label while a review is in flight', () => {
-    render(
-      <OrchestrationFocusPane
-        {...props({ selected: chat({ kind: 'subconscious' }), runningReview: true })}
-      />
-    );
-    expect(screen.getByText('tinyplaceOrchestration.steeringHeader.running')).toBeInTheDocument();
   });
 
   it('surfaces a composer send error when composing', () => {

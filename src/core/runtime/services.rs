@@ -49,22 +49,6 @@ pub fn spawn_login_gated_services(embedded_core: bool) {
                         &config,
                     )
                     .await;
-
-                    // Subconscious engine + heartbeat.
-                    if !config.heartbeat.enabled {
-                        log::info!("[subconscious] disabled by config (heartbeat.enabled = false)");
-                    } else {
-                        match crate::openhuman::subconscious::registry::bootstrap_after_login()
-                            .await
-                        {
-                            Ok(()) => {
-                                log::info!(
-                                    "[subconscious] bootstrapped on startup (existing session)"
-                                )
-                            }
-                            Err(e) => log::warn!("[subconscious] startup bootstrap failed: {e}"),
-                        }
-                    }
                 } else {
                     log::info!(
                         "[services] no active session — deferring service startup until login"

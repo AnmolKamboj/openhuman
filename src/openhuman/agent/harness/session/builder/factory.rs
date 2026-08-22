@@ -105,58 +105,14 @@ impl Agent {
                 .unwrap_or(config.default_temperature)
         );
 
-        Self::build_session_agent_inner(
-            config,
-            agent_id,
-            target_def.as_ref(),
-            None,
-            None,
-            false,
-            None,
-        )
+        Self::build_session_agent_inner(config, agent_id, target_def.as_ref(), None, false, None)
     }
 
-    /// Same as [`Self::from_config_for_agent`] but also appends a
-    /// `ReflectionMemoryContextSection` to the assembled
-    /// [`SystemPromptBuilder`], seeded with the `source_chunks` snapshot
-    /// from the spawning subconscious reflection (#623).
-    ///
-    /// Used by `channels::provider::web::build_session_agent` when a
-    /// chat thread's seed message metadata flags
-    /// `origin == "subconscious_reflection"` — the orchestrator then
-    /// has the same memory context the reflection-LLM had, so the user's
-    /// follow-up questions stay grounded in the underlying chunks.
-    pub fn from_config_for_agent_with_reflection_chunks(
-        config: &Config,
-        agent_id: &str,
-        reflection_chunks: Vec<crate::openhuman::subconscious::SourceChunk>,
-    ) -> Result<Self> {
-        // Reuse the same registry-resolution path the canonical
-        // `from_config_for_agent` walks, then route through the inner
-        // constructor with the chunks attached.
-        let target_def: Option<crate::openhuman::agent::harness::definition::AgentDefinition> =
-            match AgentDefinitionRegistry::global() {
-                Some(reg) => reg.get(agent_id).cloned(),
-                None => None,
-            };
-        Self::build_session_agent_inner(
-            config,
-            agent_id,
-            target_def.as_ref(),
-            Some(reflection_chunks),
-            None,
-            false,
-            None,
-        )
-    }
-
-    /// Construct a session agent with optional reflection memory chunks and an
-    /// additional profile prompt section. Used by the web channel when the user
+    /// Construct a session agent with an additional profile prompt section. Used by the web channel when the user
     /// selects a persistent agent profile for the thread.
     pub fn from_config_for_agent_with_profile(
         config: &Config,
         agent_id: &str,
-        reflection_chunks: Option<Vec<crate::openhuman::subconscious::SourceChunk>>,
         profile_prompt_suffix: Option<String>,
         profile: Option<&crate::openhuman::agent::profiles::AgentProfile>,
     ) -> Result<Self> {
@@ -165,7 +121,6 @@ impl Agent {
             config,
             agent_id,
             target_def.as_ref(),
-            reflection_chunks,
             profile_prompt_suffix,
             false,
             profile,
@@ -176,13 +131,6 @@ impl Agent {
     /// definition. Split out from [`Agent::from_config_for_agent`] so
     /// the lookup + logging live in one place and the heavy-lifting
     /// body stays readable.
-    ///
-    /// `reflection_chunks`, when present, are appended to the assembled
-    /// `SystemPromptBuilder` as a [`ReflectionMemoryContextSection`] so
-    /// the orchestrator's system prompt carries the same memory context
-    /// the subconscious LLM cited when it produced the spawning
-    /// reflection (#623). Empty / `None` is the default for normal chat
-    /// threads — the section is omitted entirely.
     // `pub(crate)` (rather than private) so `builder_tests` can drive the
     // definition-cap resolution logic (issue #4868) directly with a
     // hand-picked `target_def`, independent of the process-global
@@ -193,7 +141,6 @@ impl Agent {
         config: &Config,
         agent_id: &str,
         target_def: Option<&crate::openhuman::agent::harness::definition::AgentDefinition>,
-        reflection_chunks: Option<Vec<crate::openhuman::subconscious::SourceChunk>>,
         profile_prompt_suffix: Option<String>,
         read_only_tools_only: bool,
         profile: Option<&crate::openhuman::agent::profiles::AgentProfile>,
@@ -647,23 +594,6 @@ impl Agent {
             );
         }
 
-        // (#623) Memory context for threads spawned from a subconscious
-        // reflection: append the resolved `source_chunks` snapshot from
-        // the reflection row as a `ReflectionMemoryContextSection`. The
-        // resulting system prompt stays byte-stable for the session, so
-        // every chat turn in the thread sees the same memory chunks the
-        // subconscious LLM cited — without re-fetching per turn and
-        // without polluting the visible conversation. No-op when the
-        // caller passes `None` (regular chat threads).
-        if let Some(chunks) = reflection_chunks {
-            if !chunks.is_empty() {
-                log::info!(
-                    "[#623] injecting reflection memory context: {} chunks",
-                    chunks.len()
-                );
-                prompt_builder = prompt_builder.with_reflection_context(chunks);
-            }
-        }
         // Compose the profile prompt section: the persona suffix, plus (1b) the
         // cross-profile workspace notice when a dedicated workspace is active.
         // The notice discloses the boundary the guard enforces, so it is added

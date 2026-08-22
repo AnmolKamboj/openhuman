@@ -157,7 +157,6 @@ pub(super) async fn run_autonomous(
     let mut agent = Agent::from_config_for_agent_with_profile(
         &config,
         &executor.agent_id,
-        None,
         executor.prompt_suffix.clone(),
         executor.profile.as_ref(),
     )
