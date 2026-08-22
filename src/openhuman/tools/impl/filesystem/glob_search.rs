@@ -52,11 +52,7 @@ impl Tool for GlobTool {
     }
 
     fn description(&self) -> &str {
-        "Find files matching a glob pattern (e.g. `src/**/*.rs`). Searches your working \
-         directory (the action sandbox) by default; pass `path` to search another folder \
-         you're allowed to read. Returns matching paths sorted by modification time \
-         (newest first) — relative to the working directory, or absolute when outside it — \
-         so each result can be passed straight to `file_read`/`grep`."
+        "Find files matching a glob pattern (e.g. `src/**/*.rs`), searching the action sandbox unless `path` says otherwise. Returns paths newest-first, ready to pass straight to `file_read` / `grep`."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {

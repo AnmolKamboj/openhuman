@@ -434,7 +434,7 @@ mod tests {
         // finalized before the critique ran. The orchestrator prompt must
         // explicitly route result-gating work to a synchronous/awaited path.
         assert!(
-            ARCHETYPE.contains("Result-gating tasks run synchronously"),
+            ARCHETYPE.contains("Result-gating work runs synchronously"),
             "orchestrator prompt must carry the result-gating delegation rule"
         );
         // It must steer such tasks to a synchronous/awaited primitive rather
@@ -592,23 +592,23 @@ mod tests {
     #[test]
     fn build_includes_direct_first_decision_tree() {
         let body = build(&ctx_with(&[])).unwrap();
-        assert!(body.contains("## Delegation Decision Tree (Direct-First)"));
+        assert!(body.contains("## Delegation (direct-first)"));
         assert!(body.contains(
-            "Default bias: **do not spawn a sub-agent when a direct response or direct tool call is sufficient**"
+            "Default: **answer directly, or use a direct tool. Spawn a sub-agent only when the work needs a specialist.**"
         ));
         // Step 2 of the decision tree now explicitly routes live external-service
         // requests to `delegate_to_integrations_agent` rather than `memory_tree`.
-        assert!(body.contains("Does the request name (or imply) a connected external service?"));
-        assert!(body.contains("Do this even if remembered context could plausibly answer"));
+        assert!(body.contains("Needs a connected service's own data or actions"));
+        assert!(body.contains("Use the live service even when memory could plausibly answer"));
     }
 
     #[test]
     fn build_routes_live_facts_to_research_tool() {
         let body = build(&ctx_with(&[])).unwrap();
-        assert!(body.contains("use `research`"));
-        assert!(body.contains("weather, forecasts, current temperatures"));
-        assert!(body.contains("\"use Grok/web/live data\""));
-        assert!(body.contains("Do **not** stop at \"on it\""));
+        assert!(body.contains("via `research`"));
+        assert!(body.contains("weather, forecasts, prices, recent news"));
+        assert!(body.contains("\"use live data\""));
+        assert!(body.contains("Don't stop at \"on it\""));
         assert!(
             !body.contains("delegate_researcher"),
             "orchestrator prompt should name the synthesized researcher tool"
@@ -619,7 +619,7 @@ mod tests {
     #[test]
     fn build_routes_code_repo_work_to_run_code_tool() {
         let body = build(&ctx_with(&[])).unwrap();
-        assert!(body.contains("Code work is direct by default"));
+        assert!(body.contains("Keep code work end-to-end"));
         assert!(
             !body.contains("delegate_run_code"),
             "orchestrator prompt must name the synthesized `run_code` tool, \
@@ -668,13 +668,11 @@ mod tests {
         // delegation-guide clause.
         let no_integrations = build(&ctx_with(&[])).unwrap();
         assert!(
-            no_integrations
-                .contains("General-knowledge answers, web/news lookups, headlines, date/time"),
+            no_integrations.contains("General knowledge, web/news lookups, headlines, date/time"),
             "Step-2 scope gate must keep general/web/date asks off integrations delegation"
         );
         assert!(
-            no_integrations
-                .contains("neither names nor clearly implies a specific service's own data"),
+            no_integrations.contains("a request that references none"),
             "Step-2 scope gate must forbid reaching into an unreferenced service"
         );
 
@@ -702,10 +700,9 @@ mod tests {
     #[test]
     fn build_does_not_route_scope_errors_as_disconnected() {
         let body = build(&ctx_with(&[])).unwrap();
-        assert!(body.contains("[composio:error:insufficient_scope]"));
-        assert!(body.contains("missing required permissions"));
-        assert!(body.contains("connection exists but needs additional permissions"));
-        assert!(body.contains("Settings"));
+        assert!(body.contains("Don't confabulate \"unsupported\""));
+        assert!(body.contains("relay its message if the toolkit is genuinely unavailable"));
+        assert!(body.contains("That is the only honest refusal"));
         assert!(body.contains("Connections"));
     }
 
@@ -840,9 +837,9 @@ mod tests {
     #[test]
     fn build_routes_prompt_heavy_domains_to_specialists() {
         let body = build(&ctx_with(&[])).unwrap();
-        assert!(body.contains("use `ask_docs`"));
-        assert!(body.contains("use `schedule_task`"));
-        assert!(body.contains("use `make_presentation`"));
+        assert!(body.contains("`ask_docs`"));
+        assert!(body.contains("`schedule_task`"));
+        assert!(body.contains("`make_presentation`"));
         assert!(
             !body.contains("## Presentation generation"),
             "presentation-specific grounding policy belongs in presentation_agent"

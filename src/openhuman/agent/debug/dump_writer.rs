@@ -50,6 +50,16 @@ pub fn write_prompt_dumps(dir: &Path, dumps: &[DumpedPrompt]) -> Result<DumpWrit
         std::fs::write(&meta_path, render_meta(dumped))
             .with_context(|| format!("writing {}", meta_path.display()))?;
 
+        // The tool schemas are sent alongside the prompt on every turn, so a
+        // dump that omits them under-reports the fixed per-turn cost.
+        let tools_path = dir.join(format!("{stem}.tools.json"));
+        std::fs::write(
+            &tools_path,
+            serde_json::to_vec_pretty(&dumped.tool_specs)
+                .with_context(|| format!("serialising tool specs for {stem}"))?,
+        )
+        .with_context(|| format!("writing {}", tools_path.display()))?;
+
         let label = label_for(dumped);
         let _ = writeln!(
             summary,
@@ -135,6 +145,7 @@ mod tests {
             workspace_dir: PathBuf::from("/tmp/ws"),
             text: format!("# prompt for {agent}\nbody\n"),
             tool_names: tool_names.iter().map(|s| s.to_string()).collect(),
+            tool_specs: vec![],
             skill_tool_count: 1,
         }
     }

@@ -7018,8 +7018,10 @@ name = "tinyagents"
 version = "2.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "bytes",
  "chrono",
+ "flate2",
  "futures",
  "regex",
  "reqwest 0.12.28",
