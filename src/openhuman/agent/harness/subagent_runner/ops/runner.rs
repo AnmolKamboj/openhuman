@@ -389,10 +389,14 @@ pub async fn run_subagent(
         )
         .await
         {
+            // A denial reason is hook-supplied (`agent_message`/`user_message`),
+            // so it can carry arbitrary content. Log a fixed sentence with the
+            // task identity; the caller still surfaces the detailed reason back
+            // to the model through `SubagentRunError::HookDenied`.
             tracing::info!(
                 agent_id = %definition.id,
                 task_id = %task_id,
-                "[subagent_runner] spawn denied by a configured hook: {reason}"
+                "[subagent_runner] spawn denied by a configured hook"
             );
             return Err(SubagentRunError::HookDenied(reason));
         }
@@ -686,29 +690,6 @@ async fn run_typed_mode(
     config: &LoadedConfig,
 ) -> Result<SubagentRunOutcome, SubagentRunError> {
     let started = Instant::now();
-    match crate::openhuman::agent::tinyagents::subagent_graph::run_subagent_pipeline_skeleton(
-        &definition.id,
-        task_id,
-    )
-    .await
-    {
-        Ok(phases) => {
-            tracing::debug!(
-                agent_id = %definition.id,
-                task_id,
-                phases = ?phases,
-                "[subagent_runner:graph] sub-agent pipeline skeleton completed"
-            );
-        }
-        Err(err) => {
-            tracing::warn!(
-                agent_id = %definition.id,
-                task_id,
-                error = %err,
-                "[subagent_runner:graph] sub-agent pipeline skeleton failed; continuing procedural runner"
-            );
-        }
-    }
 
     // Resolve model source + model. See `resolve_subagent_source` for the
     // semantics of each ModelSpec variant; the helper itself is sync and

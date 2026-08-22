@@ -34,9 +34,9 @@
 //! paths record `Cancelled`. This gives a typed, queryable lifecycle
 //! (`task_records`) alongside the crate-owned runtime registry.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use tokio::sync::watch;
@@ -44,141 +44,20 @@ use tokio::task::AbortHandle;
 
 use crate::openhuman::agent::harness::run_queue::{QueueMode, QueuedMessage, RunQueue};
 use crate::openhuman::agent::tinyagents::orchestration::{
-    shared_steering_registry, DetachedTaskRegistry, DetachedTaskRegistryError,
-    DetachedTaskWaitOutcome, InMemoryTaskStore, JsonlTaskStore, OrchestrationTaskFilter,
-    OrchestrationTaskKind, OrchestrationTaskRecord, OrchestrationTaskResult, OrchestrationTaskSpec,
-    OrchestrationTaskStatus, SteeringCommand, SteeringCommandKind, TaskStore,
+    open_jsonl_task_store_or_memory, reconcile_orphaned_tasks, shared_steering_registry,
+    DetachedTaskRegistry, DetachedTaskRegistryError, DetachedTaskWaitOutcome, InMemoryTaskStore,
+    OrchestrationTaskFilter, OrchestrationTaskKind, OrchestrationTaskRecord,
+    OrchestrationTaskResult, OrchestrationTaskSpec, OrchestrationTaskStatus, SteeringCommand,
+    SteeringCommandKind, TaskStore, TaskStoreRegistry,
 };
 use tinyagents::harness::ids::TaskId;
 use tinyagents::harness::message::Message as TaMessage;
 use tinyagents::CancellationToken;
 
-enum DetachedTaskStore {
-    Durable(JsonlTaskStore),
-    Memory(InMemoryTaskStore),
-}
-
-impl TaskStore for DetachedTaskStore {
-    fn insert(&self, spec: OrchestrationTaskSpec) -> tinyagents::Result<OrchestrationTaskRecord> {
-        match self {
-            Self::Durable(store) => store.insert(spec),
-            Self::Memory(store) => store.insert(spec),
-        }
-    }
-
-    fn get(&self, task_id: &TaskId) -> Option<OrchestrationTaskRecord> {
-        match self {
-            Self::Durable(store) => store.get(task_id),
-            Self::Memory(store) => store.get(task_id),
-        }
-    }
-
-    fn list(&self, filter: OrchestrationTaskFilter) -> Vec<OrchestrationTaskRecord> {
-        match self {
-            Self::Durable(store) => store.list(filter),
-            Self::Memory(store) => store.list(filter),
-        }
-    }
-
-    fn history(&self, task_id: &TaskId) -> Vec<OrchestrationTaskRecord> {
-        match self {
-            Self::Durable(store) => store.history(task_id),
-            Self::Memory(store) => store.history(task_id),
-        }
-    }
-
-    fn mark_running(&self, task_id: &TaskId) -> tinyagents::Result<OrchestrationTaskRecord> {
-        match self {
-            Self::Durable(store) => store.mark_running(task_id),
-            Self::Memory(store) => store.mark_running(task_id),
-        }
-    }
-
-    fn mark_awaiting(&self, task_id: &TaskId) -> tinyagents::Result<OrchestrationTaskRecord> {
-        match self {
-            Self::Durable(store) => store.mark_awaiting(task_id),
-            Self::Memory(store) => store.mark_awaiting(task_id),
-        }
-    }
-
-    fn complete(
-        &self,
-        task_id: &TaskId,
-        result: OrchestrationTaskResult,
-    ) -> tinyagents::Result<OrchestrationTaskRecord> {
-        match self {
-            Self::Durable(store) => store.complete(task_id, result),
-            Self::Memory(store) => store.complete(task_id, result),
-        }
-    }
-
-    fn fail(&self, task_id: &TaskId, error: String) -> tinyagents::Result<OrchestrationTaskRecord> {
-        match self {
-            Self::Durable(store) => store.fail(task_id, error),
-            Self::Memory(store) => store.fail(task_id, error),
-        }
-    }
-
-    fn timeout(
-        &self,
-        task_id: &TaskId,
-        error: String,
-    ) -> tinyagents::Result<OrchestrationTaskRecord> {
-        match self {
-            Self::Durable(store) => store.timeout(task_id, error),
-            Self::Memory(store) => store.timeout(task_id, error),
-        }
-    }
-
-    fn request_cancel(
-        &self,
-        task_id: &TaskId,
-    ) -> tinyagents::Result<
-        crate::openhuman::agent::tinyagents::orchestration::OrchestrationControlOutcome,
-    > {
-        match self {
-            Self::Durable(store) => store.request_cancel(task_id),
-            Self::Memory(store) => store.request_cancel(task_id),
-        }
-    }
-
-    fn mark_cancelled(&self, task_id: &TaskId) -> tinyagents::Result<OrchestrationTaskRecord> {
-        match self {
-            Self::Durable(store) => store.mark_cancelled(task_id),
-            Self::Memory(store) => store.mark_cancelled(task_id),
-        }
-    }
-
-    fn kill(
-        &self,
-        task_id: &TaskId,
-    ) -> tinyagents::Result<
-        crate::openhuman::agent::tinyagents::orchestration::OrchestrationControlOutcome,
-    > {
-        match self {
-            Self::Durable(store) => store.kill(task_id),
-            Self::Memory(store) => store.kill(task_id),
-        }
-    }
-
-    fn set_timeout_ms(
-        &self,
-        task_id: &TaskId,
-        timeout_ms: u64,
-    ) -> tinyagents::Result<OrchestrationTaskRecord> {
-        match self {
-            Self::Durable(store) => store.set_timeout_ms(task_id, timeout_ms),
-            Self::Memory(store) => store.set_timeout_ms(task_id, timeout_ms),
-        }
-    }
-}
-
-static TASK_STORES: OnceLock<Mutex<HashMap<PathBuf, Arc<DetachedTaskStore>>>> = OnceLock::new();
-
-fn task_stores() -> &'static Mutex<HashMap<PathBuf, Arc<DetachedTaskStore>>> {
-    TASK_STORES.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
+/// Where a workspace's detached-task ledger lives.
+///
+/// A product path, not a generic one: TinyAgents opens whatever file it is
+/// given, and this is where OpenHuman keeps it.
 fn task_store_path(workspace_dir: &Path) -> PathBuf {
     workspace_dir
         .join(".openhuman")
@@ -192,55 +71,48 @@ fn default_task_store_workspace() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from(".openhuman").join("workspace"))
 }
 
-fn open_task_store(workspace_dir: &Path) -> DetachedTaskStore {
-    let path = task_store_path(workspace_dir);
-    if let Some(parent) = path.parent() {
-        if let Err(err) = std::fs::create_dir_all(parent) {
-            log::warn!(
-                "[running_subagents] failed to create task store dir {}; falling back to memory: {}",
-                parent.display(),
-                err
-            );
-            return DetachedTaskStore::Memory(InMemoryTaskStore::new());
-        }
-    }
+/// Process-wide typed lifecycle ledger for detached sub-agents (issue #4249),
+/// one durable store per workspace.
+///
+/// The caching and the durable→memory fallback are TinyAgents'
+/// (`TaskStoreRegistry` / `open_jsonl_task_store_or_memory`): opening a second
+/// store over the same append log would give two writers with independently
+/// replayed state, and a workspace that cannot be written should degrade to an
+/// in-memory ledger rather than take orchestration down. What stays here is the
+/// path layout above.
+static TASK_STORES: OnceLock<TaskStoreRegistry<PathBuf>> = OnceLock::new();
 
-    match JsonlTaskStore::open(&path) {
-        Ok(store) => {
-            log::debug!(
-                "[running_subagents] opened durable task store at {}",
-                path.display()
-            );
-            DetachedTaskStore::Durable(store)
-        }
-        Err(err) => {
-            log::warn!(
-                "[running_subagents] failed to open durable task store {}; falling back to memory: {}",
-                path.display(),
-                err
-            );
-            DetachedTaskStore::Memory(InMemoryTaskStore::new())
-        }
-    }
+fn task_stores() -> &'static TaskStoreRegistry<PathBuf> {
+    TASK_STORES.get_or_init(|| {
+        TaskStoreRegistry::new(|workspace_dir: &PathBuf| {
+            open_jsonl_task_store_or_memory(&task_store_path(workspace_dir))
+        })
+    })
 }
 
-/// Process-wide typed lifecycle ledger for detached sub-agents (issue #4249).
+/// The ledger for `workspace_dir`, opening it on first use.
 ///
-/// The first spawn opens a durable JSONL store under that workspace. Calls that
-/// need a view before any spawn use the default internal workspace location.
-fn task_store_for_workspace(workspace_dir: &Path) -> Arc<DetachedTaskStore> {
+/// A poisoned registry lock is degraded to a throwaway in-memory store rather
+/// than propagated: every caller here is a best-effort bookkeeping path, and a
+/// panic in an unrelated task must not turn sub-agent spawning into a second
+/// panic.
+fn task_store_for_workspace(workspace_dir: &Path) -> Arc<dyn TaskStore> {
     let key = workspace_dir.to_path_buf();
-    let mut stores = task_stores()
-        .lock()
-        .expect("running_subagents task store mutex poisoned");
-    stores
-        .entry(key.clone())
-        .or_insert_with(|| Arc::new(open_task_store(&key)))
-        .clone()
+    match task_stores().get_or_open(&key) {
+        Ok(store) => store,
+        Err(err) => {
+            log::warn!(
+                "[running_subagents] task store registry unavailable for {}; using a detached in-memory ledger: {}",
+                workspace_dir.display(),
+                err
+            );
+            Arc::new(InMemoryTaskStore::new())
+        }
+    }
 }
 
 #[cfg(test)]
-fn task_store() -> Arc<DetachedTaskStore> {
+fn task_store() -> Arc<dyn TaskStore> {
     let workspace = default_task_store_workspace();
     task_store_for_workspace(&workspace)
 }
@@ -353,73 +225,68 @@ fn list_task_records(workspace_dir: &Path) -> Vec<OrchestrationTaskRecord> {
 /// run ledger finalizes. Best-effort and non-fatal: per-task transition errors
 /// (e.g. a record that raced to terminal) are logged and skipped, and a
 /// store-open failure simply reconciles nothing. Returns the count reconciled.
+/// The reason an orphaned sub-agent record is settled with.
+///
+/// Built in one place because it is written twice — into the store by the
+/// reconciler, and into the lifecycle event the run ledger reads. If those two
+/// ever disagreed, the ledger would explain a failure differently from the
+/// record behind it.
+fn orphaned_subagent_reason(prior_status: OrchestrationTaskStatus) -> String {
+    format!(
+        "sub-agent orphaned by core restart (was `{}`)",
+        task_status_label(prior_status)
+    )
+}
+
 pub(crate) fn reconcile_orphaned_tasks_on_boot(workspace_dir: &Path) -> usize {
     let store = task_store_for_workspace(workspace_dir);
-    let orphans: Vec<OrchestrationTaskRecord> = store
-        .list(OrchestrationTaskFilter::default().with_kind("sub_agent"))
-        .into_iter()
-        .filter(|record| record.status.is_live())
-        .collect();
-    if orphans.is_empty() {
+
+    // The sweep itself — which statuses are live, and which terminal state each
+    // becomes — is TinyAgents'. What stays here is the reason a *sub-agent*
+    // orphan carries, and the lifecycle event that finalizes OpenHuman's run
+    // ledger afterwards.
+    let report = reconcile_orphaned_tasks(
+        store.as_ref(),
+        OrchestrationTaskFilter::default().with_kind("sub_agent"),
+        &|record| orphaned_subagent_reason(record.status),
+    );
+
+    if report.is_empty() {
         log::debug!(
-            "[taskstore] reconcile found no orphaned sub-agent tasks workspace_dir={}",
+            "[running_subagents] reconcile found no orphaned sub-agent tasks workspace_dir={}",
             workspace_dir.display()
         );
         return 0;
     }
 
-    let mut reconciled = 0usize;
-    for record in orphans {
-        let task_id = record.spec.task_id.as_str().to_string();
-        let id = TaskId::new(task_id.as_str());
-        let prior = task_status_label(record.status);
-        let reason = format!("sub-agent orphaned by core restart (was `{prior}`)");
-        log::debug!(
-            "[orchestrator] reconciling orphaned sub-agent task_id={} prior_status={} workspace_dir={}",
-            task_id,
-            prior,
-            workspace_dir.display()
+    for task in report.settled() {
+        let task_id = task.task_id.as_str().to_string();
+        let prior = task_status_label(task.prior_status);
+        let reason = orphaned_subagent_reason(task.prior_status);
+        let parent_session = record_parent_session(&task.record)
+            .unwrap_or_default()
+            .to_string();
+        let agent_id = record_agent_id(&task.record);
+        // Reuse the 05.2 typed terminal lifecycle helper so the run ledger
+        // finalizes exactly as it would for a live failure.
+        super::subagent_events::publish_subagent_failed(
+            parent_session,
+            task_id.clone(),
+            agent_id,
+            reason,
         );
-        // A cancel-requested orphan settles as Cancelled; every other live state
-        // settles as Failed (its driver died without a terminal event).
-        let outcome = match record.status {
-            OrchestrationTaskStatus::CancelRequested => store.mark_cancelled(&id).map(|_| ()),
-            _ => store.fail(&id, reason.clone()).map(|_| ()),
-        };
-        match outcome {
-            Ok(()) => {
-                reconciled += 1;
-                let parent_session = record_parent_session(&record)
-                    .unwrap_or_default()
-                    .to_string();
-                let agent_id = record_agent_id(&record);
-                // Reuse the 05.2 typed terminal lifecycle helper so the run
-                // ledger finalizes exactly as it would for a live failure.
-                super::subagent_events::publish_subagent_failed(
-                    parent_session,
-                    task_id.clone(),
-                    agent_id,
-                    reason.clone(),
-                );
-                log::info!(
-                    "[orchestrator] reconciled orphaned sub-agent task_id={} prior_status={} -> terminal",
-                    task_id,
-                    prior
-                );
-            }
-            Err(err) => {
-                log::warn!(
-                    "[taskstore] failed to reconcile orphaned sub-agent task_id={} prior_status={}: {}",
-                    task_id,
-                    prior,
-                    err
-                );
-            }
-        }
+        log::info!(
+            "[running_subagents] reconciled orphaned sub-agent task_id={} prior_status={} -> terminal",
+            task_id,
+            prior
+        );
     }
+
+    let reconciled = report.reconciled_count();
     log::info!(
-        "[taskstore] reconciled {reconciled} orphaned sub-agent task(s) on boot workspace_dir={}",
-        workspace_dir.display()
+        "[running_subagents] reconciled {reconciled} orphaned sub-agent task(s) on boot workspace_dir={} errors={}",
+        workspace_dir.display(),
+        report.error_count()
     );
     reconciled
 }
@@ -523,12 +390,7 @@ fn task_status_label(status: OrchestrationTaskStatus) -> &'static str {
 #[cfg(test)]
 fn task_records(parent_session: Option<&str>) -> Vec<OrchestrationTaskRecord> {
     let _ = task_store();
-    let stores: Vec<Arc<DetachedTaskStore>> = task_stores()
-        .lock()
-        .expect("running_subagents task store mutex poisoned")
-        .values()
-        .cloned()
-        .collect();
+    let stores: Vec<Arc<dyn TaskStore>> = task_stores().values().unwrap_or_default();
     let all: Vec<OrchestrationTaskRecord> = stores
         .into_iter()
         .flat_map(|store| store.list(OrchestrationTaskFilter::default()))

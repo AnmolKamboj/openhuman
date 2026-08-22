@@ -564,6 +564,16 @@ impl AgentOrchestrationSession {
                                 iterations: outcome.iterations as u32,
                                 output_chars: outcome.output.chars().count(),
                                 output: outcome.output.clone(),
+                                // Not a dropped value: these three describe a
+                                // worker's *own* isolated checkout, and this
+                                // path never creates one — it only inherits the
+                                // parent's descriptor (above). `spawn_parallel_
+                                // agents` populates them from the descriptor it
+                                // freshly created per worker, and reports `None`
+                                // for an inherited one for the same reason. A
+                                // path with no isolation of its own has no
+                                // worktree to report, so `None` is correct here
+                                // rather than merely unfilled.
                                 worktree_path: None,
                                 changed_files: Vec::new(),
                                 dirty_status: None,
