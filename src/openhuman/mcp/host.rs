@@ -295,6 +295,39 @@ pub fn service() -> Result<Arc<McpHost>, String> {
     try_service().ok_or_else(|| "the mcp service is not initialised yet".to_string())
 }
 
+/// Every host currently open, with the identity and proxy each was built with.
+///
+/// The reconnect supervisor walks this each tick: one task supervises every
+/// workspace's installed servers, including a host opened after boot (a
+/// workspace switch), not just the one booted against. The identity and proxy
+/// ride along because a reconnect must dial with the same identity the host's
+/// connections use, and `McpRegistry` keeps those private.
+#[must_use]
+pub fn all_hosts() -> Vec<(
+    PathBuf,
+    Arc<McpHost>,
+    McpClientIdentityConfig,
+    Option<McpProxyConfig>,
+)> {
+    let Some(hosts) = HOSTS.get() else {
+        return Vec::new();
+    };
+
+    hosts
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .iter()
+        .map(|(workspace, entry)| {
+            (
+                workspace.clone(),
+                Arc::clone(&entry.host),
+                entry.identity.clone(),
+                entry.proxy.clone(),
+            )
+        })
+        .collect()
+}
+
 /// Converts the MCP section of this application's configuration.
 pub fn client_config(config: &Config) -> McpClientConfig {
     let mut client = McpClientConfig {
