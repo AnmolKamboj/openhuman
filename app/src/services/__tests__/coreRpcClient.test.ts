@@ -465,8 +465,9 @@ describe('coreRpcClient', () => {
     vi.resetModules();
     vi.mocked(isTauri).mockReturnValue(true);
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-      if (cmd === 'core_rpc_url') return 'http://127.0.0.1:7788/rpc';
-      if (cmd === 'core_rpc_token') return 'test-local-token';
+      if (cmd === 'core_rpc_endpoint') {
+        return { url: 'http://127.0.0.1:7788/rpc', token: 'test-local-token' };
+      }
       throw new Error(`unexpected command: ${cmd}`);
     });
     const { callCoreRpc: callFreshCoreRpc } = await import('../coreRpcClient');
@@ -487,8 +488,7 @@ describe('coreRpcClient', () => {
     vi.resetModules();
     vi.mocked(isTauri).mockReturnValue(true);
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-      if (cmd === 'core_rpc_url') return 'http://127.0.0.1:7788/rpc';
-      if (cmd === 'core_rpc_token') throw new Error('denied');
+      if (cmd === 'core_rpc_endpoint') throw new Error('denied');
       throw new Error(`unexpected command: ${cmd}`);
     });
     const { callCoreRpc: callFreshCoreRpc } = await import('../coreRpcClient');
@@ -503,8 +503,7 @@ describe('coreRpcClient', () => {
     vi.resetModules();
     vi.mocked(isTauri).mockReturnValue(true);
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-      if (cmd === 'core_rpc_url') return 'http://127.0.0.1:7788/rpc';
-      if (cmd === 'core_rpc_token') throw new Error('denied');
+      if (cmd === 'core_rpc_endpoint') throw new Error('denied');
       throw new Error(`unexpected command: ${cmd}`);
     });
     const { callCoreRpc: callFreshCoreRpc } = await import('../coreRpcClient');
@@ -518,7 +517,7 @@ describe('coreRpcClient', () => {
 
     const tokenCalls = vi
       .mocked(invoke)
-      .mock.calls.filter(([cmd]) => cmd === 'core_rpc_token').length;
+      .mock.calls.filter(([cmd]) => cmd === 'core_rpc_endpoint').length;
     expect(tokenCalls).toBe(1);
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -578,7 +577,8 @@ describe('coreRpcClient', () => {
       vi.resetModules();
       vi.mocked(isTauri).mockReturnValue(true);
       vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-        if (cmd === 'core_rpc_token') return 'deadbeef';
+        if (cmd === 'core_rpc_endpoint')
+          return { url: 'http://127.0.0.1:7788/rpc', token: 'deadbeef' };
         throw new Error(`unexpected command: ${cmd}`);
       });
       const { testCoreRpcConnection } = await import('../coreRpcClient');
@@ -615,7 +615,8 @@ describe('coreRpcClient', () => {
       vi.mocked(isTauri).mockReturnValue(true);
       const invokeMock = vi.mocked(invoke);
       invokeMock.mockImplementation(async (cmd: string) => {
-        if (cmd === 'core_rpc_token') return 'deadbeef';
+        if (cmd === 'core_rpc_endpoint')
+          return { url: 'http://192.168.1.50:7788/rpc', token: 'deadbeef' };
         if (cmd === 'relay_http_rpc') {
           return { status: 200, body: '{"jsonrpc":"2.0","id":1,"result":{}}' };
         }
@@ -649,7 +650,8 @@ describe('coreRpcClient', () => {
       vi.resetModules();
       vi.mocked(isTauri).mockReturnValue(true);
       vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-        if (cmd === 'core_rpc_token') return 'deadbeef';
+        if (cmd === 'core_rpc_endpoint')
+          return { url: 'http://127.0.0.1:7788/rpc', token: 'deadbeef' };
         if (cmd === 'relay_http_rpc') return { status: 200, body: '{}' };
         throw new Error(`unexpected command: ${cmd}`);
       });
@@ -671,8 +673,9 @@ describe('coreRpcClient', () => {
       vi.mocked(isTauri).mockReturnValue(true);
       const invokeMock = vi.mocked(invoke);
       invokeMock.mockImplementation(async (cmd: string) => {
-        if (cmd === 'core_rpc_url') return 'http://192.168.1.50:7788/rpc';
-        if (cmd === 'core_rpc_token') return 'deadbeef';
+        if (cmd === 'core_rpc_endpoint') {
+          return { url: 'http://192.168.1.50:7788/rpc', token: 'deadbeef' };
+        }
         if (cmd === 'relay_http_rpc') {
           return { status: 200, body: '{"jsonrpc":"2.0","id":1,"result":{"ok":true}}' };
         }
@@ -1048,7 +1051,7 @@ describe('getCoreRpcUrl', () => {
     expect(second).toBe('http://new-host:8888/rpc');
   });
 
-  test('in Tauri mode calls invoke("core_rpc_url") when no stored URL', async () => {
+  test('in Tauri mode calls invoke("core_rpc_endpoint") when no stored URL', async () => {
     vi.doMock('../../utils/configPersistence', () => ({
       peekStoredRpcUrl: () => null,
       getStoredCoreToken: () => null,
@@ -1056,14 +1059,16 @@ describe('getCoreRpcUrl', () => {
     }));
     vi.mocked(isTauri).mockReturnValue(true);
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-      if (cmd === 'core_rpc_url') return 'http://tauri-resolved:7788/rpc';
+      if (cmd === 'core_rpc_endpoint') {
+        return { url: 'http://tauri-resolved:7788/rpc', token: '' };
+      }
       throw new Error(`unexpected: ${cmd}`);
     });
 
     const { getCoreRpcUrl: freshGetCoreRpcUrl } = await import('../coreRpcClient');
     const url = await freshGetCoreRpcUrl();
     expect(url).toBe('http://tauri-resolved:7788/rpc');
-    expect(vi.mocked(invoke)).toHaveBeenCalledWith('core_rpc_url');
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith('core_rpc_endpoint');
   });
 
   test('in Tauri mode stored URL takes priority over invoke result', async () => {
@@ -1074,7 +1079,9 @@ describe('getCoreRpcUrl', () => {
     }));
     vi.mocked(isTauri).mockReturnValue(true);
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-      if (cmd === 'core_rpc_url') return 'http://tauri-would-return:7788/rpc';
+      if (cmd === 'core_rpc_endpoint') {
+        return { url: 'http://tauri-would-return:7788/rpc', token: '' };
+      }
       throw new Error(`unexpected: ${cmd}`);
     });
 
@@ -1096,7 +1103,7 @@ describe('getCoreRpcUrl', () => {
     }));
     vi.mocked(isTauri).mockReturnValue(true);
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-      if (cmd === 'core_rpc_url') {
+      if (cmd === 'core_rpc_endpoint') {
         throw new Error('should not be consulted when a stored URL exists');
       }
       throw new Error(`unexpected: ${cmd}`);
@@ -1144,8 +1151,7 @@ describe('getCoreRpcToken (cloud-mode persistence)', () => {
     }));
     vi.mocked(isTauri).mockReturnValue(true);
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-      if (cmd === 'core_rpc_url') return 'https://core.example.com/rpc';
-      if (cmd === 'core_rpc_token') {
+      if (cmd === 'core_rpc_endpoint') {
         throw new Error('should not be called when stored token exists');
       }
       throw new Error(`unexpected invoke: ${cmd}`);
@@ -1159,7 +1165,7 @@ describe('getCoreRpcToken (cloud-mode persistence)', () => {
     const { callCoreRpc: freshCallCoreRpc } = await import('../coreRpcClient');
     await freshCallCoreRpc({ method: 'openhuman.ping' });
 
-    expect(vi.mocked(invoke)).not.toHaveBeenCalledWith('core_rpc_token', expect.anything());
+    expect(vi.mocked(invoke)).not.toHaveBeenCalledWith('core_rpc_endpoint', expect.anything());
     const requestInit = fetchMock.mock.calls[0][1] as RequestInit;
     const headers = requestInit.headers as Record<string, string>;
     expect(headers.Authorization).toBe('Bearer cloud-token-abc');
@@ -1216,8 +1222,9 @@ describe('getCoreRpcToken (cloud-mode persistence)', () => {
     }));
     vi.mocked(isTauri).mockReturnValue(true);
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-      if (cmd === 'core_rpc_url') return 'http://127.0.0.1:7788/rpc';
-      if (cmd === 'core_rpc_token') return 'local-sidecar-token';
+      if (cmd === 'core_rpc_endpoint') {
+        return { url: 'http://127.0.0.1:7788/rpc', token: 'local-sidecar-token' };
+      }
       throw new Error(`unexpected invoke: ${cmd}`);
     });
     const fetchMock = vi.mocked(fetch);
@@ -1232,5 +1239,39 @@ describe('getCoreRpcToken (cloud-mode persistence)', () => {
     const requestInit = fetchMock.mock.calls[0][1] as RequestInit;
     const headers = requestInit.headers as Record<string, string>;
     expect(headers.Authorization).toBe('Bearer local-sidecar-token');
+  });
+
+  test('resolves url and token from the same atomic endpoint snapshot (no race)', async () => {
+    // The shell answers `core_rpc_url` and `core_rpc_token` as separate
+    // commands; if a gateway activation landed between two calls the renderer
+    // could pair A's URL with B's bearer. The atomic `core_rpc_endpoint`
+    // command returns both halves in one snapshot, so getCoreRpcUrl() and
+    // getCoreRpcToken() must share it rather than each re-invoking.
+    vi.doMock('../../utils/configPersistence', () => ({
+      peekStoredRpcUrl: () => null,
+      getStoredCoreToken: () => null,
+      normalizeRpcUrl: normalizeMockRpcUrl,
+    }));
+    vi.mocked(isTauri).mockReturnValue(true);
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === 'core_rpc_endpoint') {
+        return { url: 'http://127.0.0.1:7788/rpc', token: 'consistent-token' };
+      }
+      throw new Error(`unexpected invoke: ${cmd}`);
+    });
+
+    const { getCoreRpcToken: freshGetToken, getCoreRpcUrl: freshGetUrl } =
+      await import('../coreRpcClient');
+
+    const [url, token] = await Promise.all([freshGetUrl(), freshGetToken()]);
+
+    expect(url).toBe('http://127.0.0.1:7788/rpc');
+    expect(token).toBe('consistent-token');
+    const endpointCalls = vi
+      .mocked(invoke)
+      .mock.calls.filter(([cmd]) => cmd === 'core_rpc_endpoint');
+    // One snapshot serves both halves — no independent re-resolution that could
+    // pair a stale URL with a fresh bearer.
+    expect(endpointCalls.length).toBe(1);
   });
 });

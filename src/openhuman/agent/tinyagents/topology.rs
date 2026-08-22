@@ -58,10 +58,6 @@ pub(crate) fn all_graph_topologies() -> Vec<GraphTopologyReport> {
         out.push(describe("workflow_runs:scheduler", &t));
     }
 
-    if let Ok(t) = super::subagent_graph::subagent_pipeline_topology() {
-        out.push(describe("subagent:pipeline", &t));
-    }
-
     if let Ok(t) = crate::openhuman::agent::registry::agents::researcher::graph::topology() {
         out.push(describe("agent:researcher", &t));
     }

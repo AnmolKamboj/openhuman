@@ -35,18 +35,24 @@ fn restore_command_preserves_minimized_and_maximized_frames() {
     assert_eq!(window_show_command(true, true), SW_HIDE);
 }
 
-/// Test core_rpc_url returns expected format
+/// Test the embedded core's URL resolution honours its env override.
+///
+/// Targets `core_rpc_url_value` rather than the `core_rpc_url` command: the
+/// command now answers from the active gateway, so it needs a
+/// `CoreProcessHandle` and an async context. What this test is actually about —
+/// that `OPENHUMAN_CORE_RPC_URL` overrides the default and that the default is
+/// the embedded port — is unchanged and still lives in that function.
 #[test]
 fn core_rpc_url_returns_expected_format() {
     let _g = ENV_LOCK.lock().unwrap();
     let original = std::env::var("OPENHUMAN_CORE_RPC_URL").ok();
 
     std::env::set_var("OPENHUMAN_CORE_RPC_URL", "http://localhost:9999/rpc");
-    let url = core_rpc_url();
+    let url = crate::core_rpc::core_rpc_url_value();
     assert_eq!(url, "http://localhost:9999/rpc");
 
     std::env::remove_var("OPENHUMAN_CORE_RPC_URL");
-    let url = core_rpc_url();
+    let url = crate::core_rpc::core_rpc_url_value();
     assert_eq!(url, "http://127.0.0.1:7788/rpc");
 
     match original {

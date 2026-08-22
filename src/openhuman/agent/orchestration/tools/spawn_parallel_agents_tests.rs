@@ -9,6 +9,7 @@ use crate::openhuman::agent::harness::fork_context::{with_parent_context, Parent
 use crate::openhuman::agent::messages::ConversationMessage;
 use crate::openhuman::agent::orchestration::spawn_parallel_graph::{
     prepare_spawn_parallel_tasks_from_defs, ParallelTaskRejectionKind, SpawnParallelTaskPreflight,
+    WorkerDispatchMode,
 };
 use crate::openhuman::agent::Agent;
 use crate::openhuman::config::AgentConfig;
@@ -958,4 +959,292 @@ fn spawn_parallel_agents_opts_out_of_the_global_tool_timeout() {
         SpawnParallelAgentsTool::new().timeout_policy(&json!({})),
         ToolTimeout::Unbounded,
     );
+}
+
+/// Helper: parent context whose subagent allowlist admits `ids`.
+fn parent_admitting(ids: &[&str], tools: Vec<Box<dyn Tool>>) -> ParentExecutionContext {
+    let mut parent = parent_context_with_tools(8, tools);
+    parent.allowed_subagent_ids = ids.iter().map(|id| id.to_string()).collect();
+    parent
+}
+
+/// Helper: the single write-capable tool the dispatch fixtures share.
+fn write_fixture_tools() -> Vec<Box<dyn Tool>> {
+    vec![Box::new(PermissionFixtureTool {
+        name: "write_fixture",
+        level: PermissionLevel::Write,
+    })]
+}
+
+/// Helper: build a fan-out task with only the fields a dispatch decision reads.
+fn dispatch_task(
+    agent_id: &str,
+    ownership: Option<&str>,
+    isolation: Option<&str>,
+) -> ParallelAgentTask {
+    ParallelAgentTask {
+        agent_id: agent_id.into(),
+        prompt: "do the thing".into(),
+        context: None,
+        toolkit: None,
+        ownership: ownership.map(str::to_string),
+        isolation: isolation.map(str::to_string),
+        base_ref: None,
+    }
+}
+
+/// An absolute or parent-escaping ownership path is rejected with the host's
+/// own sentence, not the crate's typed error.
+#[test]
+fn invalid_ownership_paths_are_rejected_with_the_host_message() {
+    for raw in ["files: /etc/passwd", "files: ../outside.rs"] {
+        let definition = definition_with_tool_scope(
+            "writer",
+            ToolScope::Named(vec!["write_fixture".into()]),
+            SandboxMode::None,
+        );
+        let definitions = HashMap::from([(definition.id.clone(), definition)]);
+        let parent = parent_admitting(&["writer"], write_fixture_tools());
+
+        let preflight = prepare_spawn_parallel_tasks_from_defs(
+            vec![dispatch_task("writer", Some(raw), None)],
+            &definitions,
+            &parent,
+        );
+
+        match &preflight[0] {
+            SpawnParallelTaskPreflight::Rejected(rejection) => {
+                assert_eq!(rejection.kind, ParallelTaskRejectionKind::RequiresIsolation);
+                assert!(
+                    rejection.error.contains("must be a relative file path"),
+                    "ownership rejection wording changed for {raw}: {}",
+                    rejection.error
+                );
+            }
+            SpawnParallelTaskPreflight::Prepared(_) => {
+                panic!("an out-of-workspace ownership path must be rejected: {raw}")
+            }
+        }
+    }
+}
+
+/// Pins the write-safety dispatch decision for a mixed batch.
+///
+/// This is the assertion that must not move: a regression here does not fail a
+/// run, it lets two edit-capable workers into one checkout at the same time and
+/// returns a plausible result built on a torn tree. The sequence below —
+/// worktree-isolated writer parallel, shared read-only agent parallel, shared
+/// writer with disjoint ownership serialized, shared writer claiming an
+/// already-claimed path rejected — is the contract.
+#[test]
+fn mixed_batch_dispatch_modes_and_claim_conflicts_are_stable() {
+    let isolated_writer = definition_with_tool_scope(
+        "isolated_writer",
+        ToolScope::Named(vec!["write_fixture".into()]),
+        SandboxMode::None,
+    );
+    let reader = definition_with_tool_scope(
+        "reader",
+        ToolScope::Named(vec!["write_fixture".into()]),
+        SandboxMode::ReadOnly,
+    );
+    let writer = definition_with_tool_scope(
+        "writer",
+        ToolScope::Named(vec!["write_fixture".into()]),
+        SandboxMode::None,
+    );
+    let clasher = definition_with_tool_scope(
+        "clasher",
+        ToolScope::Named(vec!["write_fixture".into()]),
+        SandboxMode::None,
+    );
+    // Defined but deliberately omitted from the parent allowlist below, so it
+    // is policy-rejected *before* any claim is admitted. An earlier rejection
+    // must not advance `admitted_index`, or every later admitted task would
+    // resolve to the wrong plan slot and the clasher's conflict would be
+    // misattributed — this batch pins that the index stays admission-scoped.
+    let outside = definition_with_tool_scope(
+        "outside",
+        ToolScope::Named(vec!["write_fixture".into()]),
+        SandboxMode::None,
+    );
+    let definitions = HashMap::from([
+        (isolated_writer.id.clone(), isolated_writer),
+        (reader.id.clone(), reader),
+        (writer.id.clone(), writer),
+        (clasher.id.clone(), clasher),
+        (outside.id.clone(), outside),
+    ]);
+    let parent = parent_admitting(
+        &["isolated_writer", "reader", "writer", "clasher"],
+        write_fixture_tools(),
+    );
+
+    let preflight = prepare_spawn_parallel_tasks_from_defs(
+        vec![
+            dispatch_task("outside", None, None),
+            dispatch_task("isolated_writer", None, Some("worktree")),
+            dispatch_task("reader", None, None),
+            dispatch_task("writer", Some("files: src/a.rs"), None),
+            dispatch_task("clasher", Some("files: src/a.rs"), None),
+        ],
+        &definitions,
+        &parent,
+    );
+
+    // The earlier policy rejection is surfaced in place, without advancing the
+    // admission index the later dispatch decisions key off.
+    match &preflight[0] {
+        SpawnParallelTaskPreflight::Rejected(rejection) => {
+            assert_eq!(rejection.kind, ParallelTaskRejectionKind::OutsideAllowlist);
+            assert_eq!(rejection.agent_id, "outside");
+        }
+        SpawnParallelTaskPreflight::Prepared(_) => {
+            panic!("an agent outside the allowlist must be rejected")
+        }
+    }
+
+    let modes: Vec<Option<WorkerDispatchMode>> = preflight
+        .iter()
+        .map(|entry| match entry {
+            SpawnParallelTaskPreflight::Prepared(prepared) => Some(prepared.dispatch_mode()),
+            SpawnParallelTaskPreflight::Rejected(_) => None,
+        })
+        .collect();
+
+    assert_eq!(
+        modes,
+        vec![
+            None,
+            Some(WorkerDispatchMode::Parallel),
+            Some(WorkerDispatchMode::Parallel),
+            Some(WorkerDispatchMode::SerialSharedWorkspaceWrite),
+            None,
+        ],
+        "write-safety dispatch decision changed after an earlier rejection"
+    );
+
+    // The rejection is the *later* claimant; the earlier one keeps its claim.
+    // Index 4 (not 3) because the leading `outside` rejection did not consume
+    // an admission slot.
+    match &preflight[4] {
+        SpawnParallelTaskPreflight::Rejected(rejection) => {
+            assert_eq!(rejection.kind, ParallelTaskRejectionKind::RequiresIsolation);
+            assert_eq!(rejection.agent_id, "clasher");
+            assert!(
+                rejection.error.contains("src/a.rs"),
+                "rejection must name the contended path: {}",
+                rejection.error
+            );
+        }
+        SpawnParallelTaskPreflight::Prepared(_) => {
+            panic!("a worker claiming an already-claimed path must be rejected")
+        }
+    }
+}
+
+/// A shared-workspace writer whose ownership paths are disjoint from every
+/// earlier claim is admitted, and serialized rather than run in parallel.
+#[test]
+fn disjoint_ownership_admits_both_writers_serially() {
+    let first = definition_with_tool_scope(
+        "first",
+        ToolScope::Named(vec!["write_fixture".into()]),
+        SandboxMode::None,
+    );
+    let second = definition_with_tool_scope(
+        "second",
+        ToolScope::Named(vec!["write_fixture".into()]),
+        SandboxMode::None,
+    );
+    let definitions = HashMap::from([(first.id.clone(), first), (second.id.clone(), second)]);
+    let parent = parent_admitting(&["first", "second"], write_fixture_tools());
+
+    let preflight = prepare_spawn_parallel_tasks_from_defs(
+        vec![
+            dispatch_task("first", Some("files: src/a.rs"), None),
+            dispatch_task("second", Some("files: src/b.rs"), None),
+        ],
+        &definitions,
+        &parent,
+    );
+
+    let modes: Vec<Option<WorkerDispatchMode>> = preflight
+        .iter()
+        .map(|entry| match entry {
+            SpawnParallelTaskPreflight::Prepared(prepared) => Some(prepared.dispatch_mode()),
+            SpawnParallelTaskPreflight::Rejected(_) => None,
+        })
+        .collect();
+
+    assert_eq!(
+        modes,
+        vec![
+            Some(WorkerDispatchMode::SerialSharedWorkspaceWrite),
+            Some(WorkerDispatchMode::SerialSharedWorkspaceWrite),
+        ]
+    );
+}
+
+/// Directory-level ownership contains the files beneath it, so a worker
+/// claiming `src` collides with one claiming `src/a.rs`.
+#[test]
+fn directory_ownership_contains_files_beneath_it() {
+    let owner = definition_with_tool_scope(
+        "owner",
+        ToolScope::Named(vec!["write_fixture".into()]),
+        SandboxMode::None,
+    );
+    let nested = definition_with_tool_scope(
+        "nested",
+        ToolScope::Named(vec!["write_fixture".into()]),
+        SandboxMode::None,
+    );
+    let definitions = HashMap::from([(owner.id.clone(), owner), (nested.id.clone(), nested)]);
+    let parent = parent_admitting(&["owner", "nested"], write_fixture_tools());
+
+    let preflight = prepare_spawn_parallel_tasks_from_defs(
+        vec![
+            dispatch_task("owner", Some("files: src"), None),
+            dispatch_task("nested", Some("files: src/a.rs"), None),
+        ],
+        &definitions,
+        &parent,
+    );
+
+    // The directory-level owner keeps its claim and serializes against any
+    // sibling write rather than fanning out.
+    let owner = match &preflight[0] {
+        SpawnParallelTaskPreflight::Prepared(prepared) => prepared,
+        SpawnParallelTaskPreflight::Rejected(_) => panic!("owner must be admitted"),
+    };
+    assert_eq!(
+        owner.dispatch_mode(),
+        WorkerDispatchMode::SerialSharedWorkspaceWrite,
+        "directory-level owner serializes against shared-workspace writes"
+    );
+
+    // A file beneath an already-claimed directory is rejected with the
+    // rejected task's ownership claim, the rejecting agent's identity, and
+    // an error naming the contended owner directory — rather than silently
+    // overlapping the owner.
+    match &preflight[1] {
+        SpawnParallelTaskPreflight::Rejected(rejection) => {
+            assert_eq!(rejection.kind, ParallelTaskRejectionKind::RequiresIsolation);
+            assert_eq!(rejection.agent_id, "nested");
+            assert_eq!(
+                rejection.ownership.as_deref(),
+                Some("files: src/a.rs"),
+                "rejection must carry the rejected task's ownership claim"
+            );
+            assert!(
+                rejection.error.contains("'src'"),
+                "rejection error must name the contended owner directory: {}",
+                rejection.error
+            );
+        }
+        SpawnParallelTaskPreflight::Prepared(_) => {
+            panic!("a file beneath an already-claimed directory must be rejected")
+        }
+    }
 }
