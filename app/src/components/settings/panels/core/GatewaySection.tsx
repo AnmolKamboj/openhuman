@@ -32,9 +32,9 @@ import {
   deleteGateway,
   DESKTOP_GATEWAY_ID,
   type Gateway,
-  type GatewaySummary,
   gatewayStatus,
   type GatewayStatus,
+  type GatewaySummary,
   listGateways,
   saveGateway,
 } from '../../../../services/gatewayService';
@@ -256,9 +256,7 @@ const GatewaySection = ({ available }: Props) => {
         <SettingsRow
           key={gateway.id}
           label={gateway.label}
-          description={
-            statusLine(gateway) ?? t(`settings.gateway.kind.${gateway.kind}`)
-          }
+          description={statusLine(gateway) ?? t(`settings.gateway.kind.${gateway.kind}`)}
           control={
             <div className="flex items-center gap-2">
               {gateway.id === activeId && (

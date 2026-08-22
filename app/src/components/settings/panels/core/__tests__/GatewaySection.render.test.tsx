@@ -41,11 +41,7 @@ vi.mock('../../../../../services/coreRpcClient', () => ({
 }));
 
 const DESKTOP = { id: 'desktop', label: 'This computer', kind: 'desktop' };
-const BUILDER = {
-  id: 'builder',
-  label: 'Build server',
-  kind: 'ssh+docker',
-};
+const BUILDER = { id: 'builder', label: 'Build server', kind: 'ssh+docker' };
 
 beforeEach(() => {
   Object.values(hoisted).forEach(fn => fn.mockReset());
