@@ -363,7 +363,7 @@ mod tests {
         let desc = tool.description();
         assert!(desc.contains("3+ steps"), "missing when-to-use guidance");
         assert!(
-            desc.contains("ONE card `in_progress`"),
+            desc.contains("Keep one `in_progress`"),
             "missing single-in_progress discipline"
         );
         assert!(
