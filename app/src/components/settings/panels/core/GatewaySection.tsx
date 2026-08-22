@@ -357,7 +357,7 @@ const GatewaySection = ({ available }: Props) => {
                 <SettingsTextField
                   id="gateway-destination"
                   value={draft.destination}
-                  placeholder="builder@example.com"
+                  placeholder={t('settings.gateway.destinationPlaceholder')}
                   onChange={e => setDraft({ ...draft, destination: e.target.value })}
                 />
                 <p className="text-[11px] text-content-muted leading-snug">
