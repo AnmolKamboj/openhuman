@@ -67,20 +67,25 @@ impl Tool for McpListServersTool {
             for server in self.registry.list() {
                 let source = match server.source {
                     McpRegistrySource::Config => "config",
-                    McpRegistrySource::LegacyGitbooks => "legacy_gitbooks",
+                    McpRegistrySource::Host => "host",
+                    _ => "unknown",
                 };
                 md.push_str(&format!(
                     "\n- **{}** ({source})\n  - endpoint: `{}`\n  - auth: `{}`",
                     server.name,
                     server.endpoint,
                     match &server.auth {
-                        crate::openhuman::config::McpAuthConfig::None => "none",
-                        crate::openhuman::config::McpAuthConfig::BearerToken { .. } =>
-                            "bearer_token",
-                        crate::openhuman::config::McpAuthConfig::Basic { .. } => "basic",
-                        crate::openhuman::config::McpAuthConfig::Header { .. } => "header",
-                        crate::openhuman::config::McpAuthConfig::Headers { .. } => "headers",
-                        crate::openhuman::config::McpAuthConfig::QueryParam { .. } => "query_param",
+                        tinymcp_bus::McpAuthConfig::None => "none",
+                        tinymcp_bus::McpAuthConfig::BearerToken { .. } => "bearer_token",
+                        tinymcp_bus::McpAuthConfig::Basic { .. } => "basic",
+                        tinymcp_bus::McpAuthConfig::Header { .. } => "header",
+                        tinymcp_bus::McpAuthConfig::Headers { .. } => "headers",
+                        tinymcp_bus::McpAuthConfig::QueryParam { .. } => "query_param",
+                        // The contract's auth enum is `#[non_exhaustive]`, so a
+                        // kind a newer one adds is reported rather than failing
+                        // the build. This is a label in a listing; an unknown
+                        // one is honest.
+                        _ => "unknown",
                     }
                 ));
                 if let Some(description) = server.description.as_deref() {
@@ -272,7 +277,7 @@ impl Tool for McpCallTool {
         if options.prefer_markdown && result.markdown_formatted.is_none() {
             result.markdown_formatted = Some(result.output());
         }
-        Ok(result)
+        Ok(result.into())
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<ToolResult> {
@@ -313,7 +318,9 @@ mod tests {
             timeout_secs: 30,
             auth: crate::openhuman::config::McpAuthConfig::None,
         });
-        Arc::new(McpServerRegistry::from_config(&config))
+        // Through the host conversion, so the test builds the registry the
+        // same way the application does.
+        Arc::new(crate::openhuman::mcp::host::static_registry(&config))
     }
 
     #[tokio::test]

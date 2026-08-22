@@ -4422,6 +4422,8 @@ dependencies = [
  "tinyflows",
  "tinyhosts",
  "tinyhumans-sdk",
+ "tinymcp",
+ "tinymcp-bus",
  "tinymemory",
  "tinymemory-api",
  "tinymemory-core",
@@ -7218,6 +7220,36 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "tinymcp"
+version = "0.3.1"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "dirs 5.0.1",
+ "futures-util",
+ "parking_lot",
+ "reqwest 0.12.28",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.20",
+ "tinymcp-bus",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "tinymcp-bus"
+version = "0.3.1"
+dependencies = [
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

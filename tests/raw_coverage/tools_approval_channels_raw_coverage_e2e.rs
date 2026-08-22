@@ -3743,7 +3743,9 @@ async fn web_fetch_and_gitbooks_tools_use_local_http_backends() {
     assert!(bad_scheme.output().contains("URL rejected"));
 
     let endpoint = format!("{base}/mcp");
-    let search = GitbooksSearchTool::new(endpoint.clone(), 5);
+    // Fallible since the extraction: building the tool builds an HTTP client,
+    // and an unusable proxy configuration is reported rather than aborting.
+    let search = GitbooksSearchTool::new(endpoint.clone(), 5).expect("the search tool builds");
     assert_eq!(search.name(), "gitbooks_search");
     assert_eq!(search.permission_level(), PermissionLevel::ReadOnly);
     let blank_query = search
@@ -3761,7 +3763,7 @@ async fn web_fetch_and_gitbooks_tools_use_local_http_backends() {
         .output()
         .contains("gitbooks mocked searchDocumentation"));
 
-    let get_page = GitbooksGetPageTool::new(endpoint, 5);
+    let get_page = GitbooksGetPageTool::new(endpoint, 5).expect("the page tool builds");
     assert_eq!(get_page.name(), "gitbooks_get_page");
     let blank_url = get_page
         .execute(json!({ "url": "" }))

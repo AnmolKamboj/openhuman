@@ -12,10 +12,22 @@ pub struct GitbooksSearchTool {
 }
 
 impl GitbooksSearchTool {
-    pub fn new(endpoint: String, timeout_secs: u64) -> Self {
-        Self {
-            client: Arc::new(McpHttpClient::new(endpoint, timeout_secs)),
-        }
+    /// Builds the tool.
+    ///
+    /// Fallible because the client is: a malformed proxy URL or an unusable
+    /// TLS setting stops one being built. It used to panic on that; a
+    /// documentation tool taking the process down over a proxy setting is not
+    /// a trade anyone would choose.
+    ///
+    /// # Errors
+    ///
+    /// Returns the reason the client could not be built.
+    pub fn new(endpoint: String, timeout_secs: u64) -> Result<Self, String> {
+        Ok(Self {
+            client: Arc::new(
+                McpHttpClient::new(endpoint, timeout_secs).map_err(|error| error.to_string())?,
+            ),
+        })
     }
 }
 
@@ -70,7 +82,7 @@ impl Tool for GitbooksSearchTool {
             .call_tool("searchDocumentation", json!({ "query": query }))
             .await
         {
-            Ok(result) => Ok(result.rendered),
+            Ok(result) => Ok(result.rendered.into()),
             Err(e) => Ok(ToolResult::error(format!("gitbooks_search failed: {e}"))),
         }
     }
@@ -81,10 +93,22 @@ pub struct GitbooksGetPageTool {
 }
 
 impl GitbooksGetPageTool {
-    pub fn new(endpoint: String, timeout_secs: u64) -> Self {
-        Self {
-            client: Arc::new(McpHttpClient::new(endpoint, timeout_secs)),
-        }
+    /// Builds the tool.
+    ///
+    /// Fallible because the client is: a malformed proxy URL or an unusable
+    /// TLS setting stops one being built. It used to panic on that; a
+    /// documentation tool taking the process down over a proxy setting is not
+    /// a trade anyone would choose.
+    ///
+    /// # Errors
+    ///
+    /// Returns the reason the client could not be built.
+    pub fn new(endpoint: String, timeout_secs: u64) -> Result<Self, String> {
+        Ok(Self {
+            client: Arc::new(
+                McpHttpClient::new(endpoint, timeout_secs).map_err(|error| error.to_string())?,
+            ),
+        })
     }
 }
 
@@ -138,7 +162,7 @@ impl Tool for GitbooksGetPageTool {
             .call_tool("getPage", json!({ "url": url }))
             .await
         {
-            Ok(result) => Ok(result.rendered),
+            Ok(result) => Ok(result.rendered.into()),
             Err(e) => Ok(ToolResult::error(format!("gitbooks_get_page failed: {e}"))),
         }
     }
@@ -162,7 +186,8 @@ mod tests {
 
     #[tokio::test]
     async fn search_rejects_empty_query() {
-        let t = GitbooksSearchTool::new("https://example.com/mcp".into(), 5);
+        let t =
+            GitbooksSearchTool::new("https://example.com/mcp".into(), 5).expect("a client builds");
         let result = t.execute(json!({"query": "   "})).await.unwrap();
         assert!(result.is_error);
         assert!(result.output().contains("empty"));
@@ -170,7 +195,8 @@ mod tests {
 
     #[tokio::test]
     async fn get_page_rejects_empty_url() {
-        let t = GitbooksGetPageTool::new("https://example.com/mcp".into(), 5);
+        let t =
+            GitbooksGetPageTool::new("https://example.com/mcp".into(), 5).expect("a client builds");
         let result = t.execute(json!({"url": ""})).await.unwrap();
         assert!(result.is_error);
     }
@@ -187,7 +213,8 @@ mod tests {
         let t = GitbooksSearchTool::new(
             "https://tinyhumans.gitbook.io/openhuman/~gitbook/mcp".into(),
             30,
-        );
+        )
+        .expect("a client builds");
         let result = t
             .execute(json!({"query": "what is openhuman"}))
             .await

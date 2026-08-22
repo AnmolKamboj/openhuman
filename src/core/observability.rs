@@ -344,7 +344,7 @@ pub enum ExpectedErrorKind {
     /// A remote MCP server answered the connect handshake with HTTP 401 — it
     /// needs OAuth sign-in, not a code fix. `McpHttpClient::read_response`
     /// (`src/openhuman/mcp/http_client/client.rs`) raises the typed
-    /// [`crate::openhuman::mcp::http_client::McpUnauthorizedError`], and
+    /// `tinymcp::Error::Unauthorized`, and
     /// `mcp::registry::connections::connect` already classifies it and stores a
     /// `needs_auth` flag so the UI prompts the user to authenticate (the
     /// `needs_auth` UX shipped in #3733 / #3719). But `mcp_clients_connect`
@@ -1084,7 +1084,7 @@ pub fn is_session_expired_message(msg: &str) -> bool {
 
 /// Detect a remote MCP server's connect-time 401 — the user must sign in to
 /// that server (OAuth), not a code defect. Anchored on the canonical
-/// [`crate::openhuman::mcp::http_client::McpUnauthorizedError`] `Display`
+/// `tinymcp::Error::Unauthorized` `Display`
 /// body, which renders as `"MCP unauthorized for \`<endpoint>\` (HTTP 401…)"`.
 ///
 /// Conjunctive match — both anchors must hit (input already lower-cased):
@@ -3772,19 +3772,20 @@ mod tests {
     /// preventable user-state (the server needs OAuth sign-in), already handled
     /// by the `needs_auth` UX (#3733 / #3719), so it must classify as
     /// `McpServerNeedsAuth` and stay out of Sentry. The canonical body comes
-    /// straight from the typed `McpUnauthorizedError` `Display` impl (both the
+    /// straight from `tinymcp::Error::Unauthorized`'s `Display` impl (both the
     /// bare and `resource metadata:` variants), plus the
     /// `mcp_clients_connect`-prefixed RPC re-report shape that actually reaches
     /// the dispatcher.
     #[test]
     fn classifies_mcp_connect_401_as_needs_auth() {
-        use crate::openhuman::mcp::http_client::McpUnauthorizedError;
-
-        let bare = McpUnauthorizedError {
+        // The 401 is a variant of `tinymcp`'s error now rather than a
+        // standalone type. What this test pins is unchanged: the *wording* the
+        // classifier keys on, which is what reaches the dispatcher.
+        let bare = tinymcp::Error::Unauthorized {
             endpoint: "https://youtube.run.tools".to_string(),
             resource_metadata: None,
         };
-        let with_meta = McpUnauthorizedError {
+        let with_meta = tinymcp::Error::Unauthorized {
             endpoint: "https://youtube.run.tools".to_string(),
             resource_metadata: Some(
                 "https://youtube.run.tools/.well-known/oauth-protected-resource".to_string(),
