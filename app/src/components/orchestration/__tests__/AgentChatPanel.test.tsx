@@ -43,7 +43,6 @@ vi.mock('../../../lib/orchestration/useOrchestrationChats', () => ({
   useOrchestrationChats: () => chatsApi.current,
 }));
 
-
 const sendMasterMessage = vi.hoisted(() => vi.fn().mockResolvedValue({ ok: true, messageId: 'm' }));
 vi.mock('../../../lib/orchestration/orchestrationClient', async orig => ({
   ...(await orig<typeof import('../../../lib/orchestration/orchestrationClient')>()),
@@ -113,7 +112,6 @@ describe('AgentChatPanel', () => {
       expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ id: 'master' }), 'go')
     );
   });
-
 
   it('opens a session subpage from a View-session card and replies', async () => {
     contactSessions.current = [pinged];

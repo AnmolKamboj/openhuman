@@ -55,7 +55,6 @@ describe('Activity URL-backed tab', () => {
     await waitFor(() => expect(screen.getByTestId('tab-automations')).toBeInTheDocument());
   });
 
-
   it('honours ?tab=alerts from the URL', async () => {
     renderAt('/activity?tab=alerts');
     await waitFor(() => expect(screen.getByTestId('tab-alerts')).toBeInTheDocument());
@@ -121,7 +120,6 @@ describe('Activity tab — tab set', () => {
     expect(screen.queryByText('memory.tab.agents')).not.toBeInTheDocument();
     expect(screen.queryByText('memory.tab.council')).not.toBeInTheDocument();
   });
-
 
   it('clicking the alerts pill switches to the alerts tab', async () => {
     renderAt('/activity');

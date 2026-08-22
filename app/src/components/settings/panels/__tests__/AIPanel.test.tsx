@@ -2077,8 +2077,6 @@ describe('AIPanel', () => {
     expect(screen.getByText('SPEND:USAGE_DEDUCTION:USER')).toBeInTheDocument();
     expect(screen.getByText(/Latest spend: \$0\.5000/)).toBeInTheDocument();
   });
-
-
 });
 
 describe('buildRoutingDiffSummary', () => {

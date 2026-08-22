@@ -68,8 +68,6 @@ const CoreNotificationCard = ({ notification: n }: Props) => {
               <NotificationBody body={n.body} />
             </p>
           )}
-
-
         </div>
       </div>
     </div>

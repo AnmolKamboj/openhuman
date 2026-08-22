@@ -72,8 +72,6 @@ describe('OrchestrationFocusPane', () => {
     expect(screen.getByText(/msg boom/)).toBeInTheDocument();
   });
 
-
-
   it('surfaces a composer send error when composing', () => {
     render(<OrchestrationFocusPane {...props({ canCompose: true, masterError: 'send failed' })} />);
     expect(screen.getByTestId('tinyplace-master-composer-input')).toBeInTheDocument();
