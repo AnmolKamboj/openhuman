@@ -193,4 +193,35 @@ mod tests {
         // An unparseable URL degrades to the coarse sentinel.
         assert_eq!(redact_url_for_log("not a url"), "<invalid relay url>");
     }
+
+    /// A non-loopback `http` URL carrying a bearer must be refused, and the
+    /// surfaced error must carry the redacted `scheme://host[:port]` form —
+    /// never the raw secret-bearing userinfo, path, or query (CWE-532).
+    #[cfg(feature = "gateways")]
+    #[tokio::test]
+    async fn insecure_transport_refusal_redacts_url() {
+        let err = super::post_json_rpc(
+            "http://user:pass@192.168.1.74:7788/rpc/secret?token=t0k",
+            Some("bearer-tok"),
+            "body".to_string(),
+        )
+        .await
+        .expect_err("insecure non-loopback + bearer must be refused");
+        assert!(
+            !err.contains("pass"),
+            "raw userinfo leaked into refusal error: {err}"
+        );
+        assert!(
+            !err.contains("t0k"),
+            "raw query token leaked into refusal error: {err}"
+        );
+        assert!(
+            !err.contains("/secret"),
+            "raw path leaked into refusal error: {err}"
+        );
+        assert!(
+            err.contains("http://192.168.1.74:7788/"),
+            "redacted host should remain for diagnostics: {err}"
+        );
+    }
 }
