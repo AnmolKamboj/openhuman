@@ -40,15 +40,11 @@ vi.mock('../../../../../services/coreRpcClient', () => ({
   clearCoreRpcTokenCache: hoisted.clearCoreRpcTokenCache,
 }));
 
-const DESKTOP = { id: 'desktop', label: 'This computer', spec: { kind: 'desktop' as const } };
+const DESKTOP = { id: 'desktop', label: 'This computer', kind: 'desktop' };
 const BUILDER = {
   id: 'builder',
   label: 'Build server',
-  spec: {
-    kind: 'box' as const,
-    reach: { kind: 'ssh' as const, destination: 'builder@example.com' },
-    confinement: { kind: 'docker' as const, image: 'openhuman-core:local' },
-  },
+  kind: 'ssh+docker',
 };
 
 beforeEach(() => {
