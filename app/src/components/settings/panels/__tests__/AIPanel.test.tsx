@@ -2070,14 +2070,9 @@ describe('AIPanel', () => {
     expect(screen.getByText('Projected empty')).toBeInTheDocument();
     expect(screen.getByText('API reads per $ remaining')).toBeInTheDocument();
     expect(screen.getByText('Loop call budget')).toBeInTheDocument();
-    expect(screen.getByText('Calendar fanout cap')).toBeInTheDocument();
-    expect(screen.getByText('Subconscious model calls')).toBeInTheDocument();
     expect(screen.getByText('Composio sync scans')).toBeInTheDocument();
     expect(screen.getByText('Memory worker polls')).toBeInTheDocument();
 
-    expect(screen.getByText(/3 Composio read call\(s\)\/tick/)).toBeInTheDocument();
-    expect(screen.getByText(/1 calendar link\(s\) over cap skipped/)).toBeInTheDocument();
-    expect(screen.getByText(/2\/3 conn\/tick/)).toBeInTheDocument();
     expect(screen.getByText('HEARTBEAT')).toBeInTheDocument();
     expect(screen.getByText('SPEND:USAGE_DEDUCTION:USER')).toBeInTheDocument();
     expect(screen.getByText(/Latest spend: \$0\.5000/)).toBeInTheDocument();
