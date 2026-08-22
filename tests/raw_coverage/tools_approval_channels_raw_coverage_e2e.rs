@@ -1624,9 +1624,10 @@ async fn orchestrator_tool_synthesis_covers_agent_and_integration_delegation_edg
     // verbatim (the "Use only when direct response/direct tools are
     // insufficient." prefix was deliberately dropped — it is stated once in
     // the orchestrator prompt instead of once per delegate schema per turn).
-    assert!(research
-        .description()
-        .contains("Use for careful public-source research."));
+    assert_eq!(
+        research.description(),
+        "Use for careful public-source research."
+    );
     assert_eq!(research.permission_level(), PermissionLevel::Execute);
     assert_eq!(research.category(), ToolCategory::System);
     assert_eq!(
