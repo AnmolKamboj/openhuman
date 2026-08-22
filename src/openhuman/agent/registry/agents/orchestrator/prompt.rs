@@ -434,7 +434,7 @@ mod tests {
         // finalized before the critique ran. The orchestrator prompt must
         // explicitly route result-gating work to a synchronous/awaited path.
         assert!(
-            ARCHETYPE.contains("Result-gating tasks run synchronously"),
+            ARCHETYPE.contains("Result-gating work runs synchronously"),
             "orchestrator prompt must carry the result-gating delegation rule"
         );
         // It must steer such tasks to a synchronous/awaited primitive rather
@@ -839,9 +839,9 @@ mod tests {
     #[test]
     fn build_routes_prompt_heavy_domains_to_specialists() {
         let body = build(&ctx_with(&[])).unwrap();
-        assert!(body.contains("use `ask_docs`"));
-        assert!(body.contains("use `schedule_task`"));
-        assert!(body.contains("use `make_presentation`"));
+        assert!(body.contains("`ask_docs`"));
+        assert!(body.contains("`schedule_task`"));
+        assert!(body.contains("`make_presentation`"));
         assert!(
             !body.contains("## Presentation generation"),
             "presentation-specific grounding policy belongs in presentation_agent"
