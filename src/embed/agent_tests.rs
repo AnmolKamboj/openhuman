@@ -138,6 +138,9 @@ fn insecure_route_error_names_the_redacted_endpoint() {
     let msg = err.to_string();
     assert!(msg.contains("non-HTTPS"), "classifies the reason: {msg}");
     assert!(!msg.contains("user"), "userinfo not leaked: {msg}");
-    assert!(!msg.contains("leaky"), "query credentials not leaked: {msg}");
+    assert!(
+        !msg.contains("leaky"),
+        "query credentials not leaked: {msg}"
+    );
     assert!(msg.contains("api.example"), "origin stays readable: {msg}");
 }
